@@ -1,0 +1,48 @@
+{
+  "name": "Hey Jarvis Development Environment",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:1-20-bullseye",
+  "features": {
+    "ghcr.io/devcontainers-community/npm-features/typescript:1": {
+      "version": "latest"
+    },
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.11"
+    },
+    "ghcr.io/devcontainers-contrib/features/nx:2": {
+      "version": "latest"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode.vscode-typescript-next",
+        "bradlc.vscode-tailwindcss",
+        "ms-vscode.vscode-json",
+        "esbenp.prettier-vscode",
+        "ms-vscode.cpptools",
+        "ms-vscode.cpptools-extension-pack"
+      ],
+      "settings": {
+        "typescript.preferences.preferTypeOnlyAutoImports": true,
+        "typescript.suggest.autoImports": true
+      }
+    }
+  },
+  "postCreateCommand": "npm install",
+  "forwardPorts": [3000, 4200, 8080],
+  "portsAttributes": {
+    "3000": {
+      "label": "E2E Application",
+      "onAutoForward": "notify"
+    },
+    "4200": {
+      "label": "Jarvis MCP Server",
+      "onAutoForward": "notify"
+    },
+    "8080": {
+      "label": "Voice Firmware Interface",
+      "onAutoForward": "notify"
+    }
+  },
+  "remoteUser": "node"
+}
