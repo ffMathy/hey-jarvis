@@ -1,66 +1,29 @@
 /**
- * Jarvis MCP Server
- * Model Context Protocol server for Hey Jarvis digital assistant
+ * Hello World Jarvis MCP Application
  */
 
-interface MCPTool {
-  name: string;
-  description: string;
-  execute(params: any): Promise<any>;
-}
+console.log('Hello World from Jarvis MCP!');
 
-class JarvisMCPServer {
-  private tools: Map<string, MCPTool> = new Map();
-  
-  constructor() {
-    this.initializeTools();
+class HelloWorldMCP {
+  private name: string;
+
+  constructor(name: string = 'MCP') {
+    this.name = name;
   }
-  
-  private initializeTools(): void {
-    // Register MCP tools
-    this.registerTool({
-      name: 'home_control',
-      description: 'Control home automation devices',
-      execute: async (params) => {
-        console.log('Executing home control command:', params);
-        // TODO: Implement home control logic
-        return { status: 'success', action: params.action };
-      }
-    });
-    
-    this.registerTool({
-      name: 'voice_assistant',
-      description: 'Process voice commands',
-      execute: async (params) => {
-        console.log('Processing voice command:', params);
-        // TODO: Integrate with home-assistant-voice-firmware
-        return { status: 'processed', command: params.command };
-      }
-    });
+
+  greet(): string {
+    const message = `Hello, ${this.name}!`;
+    console.log(message);
+    return message;
   }
-  
-  private registerTool(tool: MCPTool): void {
-    this.tools.set(tool.name, tool);
-    console.log(`Registered MCP tool: ${tool.name}`);
-  }
-  
-  async executeTool(name: string, params: any): Promise<any> {
-    const tool = this.tools.get(name);
-    if (!tool) {
-      throw new Error(`Tool not found: ${name}`);
-    }
-    return await tool.execute(params);
-  }
-  
+
   start(): void {
-    console.log('Starting Jarvis MCP Server...');
-    console.log(`Registered ${this.tools.size} tools`);
-    
-    // TODO: Start MCP server (HTTP/WebSocket)
-    console.log('MCP Server is running');
+    console.log('Starting Hello World Jarvis MCP Application...');
+    this.greet();
+    console.log('Jarvis MCP Application running successfully!');
   }
 }
 
-// Start the server
-const server = new JarvisMCPServer();
-server.start();
+// Start the application
+const mcpApp = new HelloWorldMCP('Jarvis MCP');
+mcpApp.start();

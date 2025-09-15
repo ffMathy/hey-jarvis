@@ -1,29 +1,31 @@
 #include <iostream>
 #include <string>
 
-class VoiceFirmware {
+class HelloWorldApp {
+private:
+    std::string name;
+
 public:
-    VoiceFirmware() {
-        std::cout << "Home Assistant Voice Firmware initialized" << std::endl;
+    HelloWorldApp(const std::string& name = "World") : name(name) {
+        std::cout << "Hello World Voice Firmware initialized" << std::endl;
     }
     
-    void processVoiceCommand(const std::string& command) {
-        std::cout << "Processing voice command: " << command << std::endl;
-        // TODO: Implement voice processing logic
+    void greet() {
+        std::cout << "Hello, " << name << "!" << std::endl;
     }
     
     void run() {
-        std::cout << "Voice firmware is running..." << std::endl;
-        // TODO: Implement main firmware loop
+        std::cout << "Starting Hello World Voice Firmware..." << std::endl;
+        greet();
+        std::cout << "Voice Firmware completed successfully!" << std::endl;
     }
 };
 
 int main() {
-    std::cout << "Starting Home Assistant Voice Firmware..." << std::endl;
+    std::cout << "Starting Hello World Voice Firmware Application..." << std::endl;
     
-    VoiceFirmware firmware;
-    firmware.processVoiceCommand("hello");
-    firmware.run();
+    HelloWorldApp app("Voice Firmware");
+    app.run();
     
     return 0;
 }
