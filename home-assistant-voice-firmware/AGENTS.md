@@ -1,0 +1,45 @@
+# Home Assistant Voice Firmware Agents
+
+## Overview
+This document describes the agents and automation capabilities for the Home Assistant Voice Firmware project in the Hey Jarvis monorepo.
+
+## Project Description
+A simple Hello World C++ application that demonstrates basic firmware structure and serves as a foundation for future voice processing and home automation integration.
+
+## Key Features
+- Simple C++ "Hello World" application
+- Demonstrates basic class structure and execution flow
+- Cross-platform compilation support
+- Foundation for embedded systems and IoT device integration
+
+## Agents & Automation
+Currently implements:
+- **HelloWorldApp**: A basic firmware agent that demonstrates greeting functionality
+- Simple console output and execution flow
+- C++ standard library utilization
+
+## Future Capabilities
+- Voice command processing and recognition
+- Home Assistant integration for smart home control
+- Real-time audio processing
+- Device communication protocols
+- Embedded systems deployment
+
+## Hardware Integration
+Designed to be compatible with:
+- Raspberry Pi and similar SBCs
+- ESP32/Arduino microcontrollers
+- Voice processing hardware
+- Home automation devices
+
+## Usage
+```bash
+# Build the firmware
+npx nx build home-assistant-voice-firmware
+
+# Run the firmware
+npx nx serve home-assistant-voice-firmware
+```
+
+## Development
+The firmware is built using C++17 and follows NX monorepo conventions. All source code is located in the `src/` directory. The build system uses g++ for compilation.
