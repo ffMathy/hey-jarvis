@@ -1,36 +1,29 @@
 /**
- * End-to-End Test Suite for Hey Jarvis
+ * Hello World E2E Application
  */
 
-console.log('Starting E2E tests for Hey Jarvis...');
+console.log('Hello World from E2E!');
 
-// TODO: Add proper test framework (jest, mocha, etc.)
-// TODO: Add tests for jarvis-mcp integration
-// TODO: Add tests for home-assistant-voice-firmware integration
+class HelloWorldApp {
+  private name: string;
 
-class E2ETestRunner {
-  async runTests(): Promise<void> {
-    console.log('Running end-to-end tests...');
-    
-    // Test jarvis-mcp connectivity
-    await this.testJarvisMcp();
-    
-    // Test home-assistant-voice-firmware
-    await this.testVoiceFirmware();
-    
-    console.log('All E2E tests completed');
+  constructor(name: string = 'World') {
+    this.name = name;
   }
-  
-  private async testJarvisMcp(): Promise<void> {
-    console.log('Testing jarvis-mcp...');
-    // TODO: Implement MCP testing logic
+
+  greet(): string {
+    const message = `Hello, ${this.name}!`;
+    console.log(message);
+    return message;
   }
-  
-  private async testVoiceFirmware(): Promise<void> {
-    console.log('Testing home-assistant-voice-firmware...');
-    // TODO: Implement voice firmware testing logic
+
+  run(): void {
+    console.log('Starting Hello World E2E Application...');
+    this.greet();
+    console.log('E2E Application completed successfully!');
   }
 }
 
-const runner = new E2ETestRunner();
-runner.runTests().catch(console.error);
+// Create and run the application
+const app = new HelloWorldApp('E2E');
+app.run();
