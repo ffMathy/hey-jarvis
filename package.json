@@ -1,0 +1,43 @@
+{
+  "name": "hey-jarvis",
+  "version": "1.0.0",
+  "description": "My digital assistant that runs the house",
+  "main": "index.js",
+  "scripts": {
+    "build": "nx run-many --target=build --all",
+    "serve": "nx run-many --target=serve --all --parallel",
+    "test": "nx run e2e:serve",
+    "build:jarvis-mcp": "nx build jarvis-mcp",
+    "build:home-assistant-voice-firmware": "nx build home-assistant-voice-firmware",
+    "build:e2e": "nx build e2e",
+    "serve:jarvis-mcp": "nx serve jarvis-mcp",
+    "serve:home-assistant-voice-firmware": "nx serve home-assistant-voice-firmware",
+    "serve:e2e": "nx serve e2e"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ffMathy/hey-jarvis.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ffMathy/hey-jarvis/issues"
+  },
+  "homepage": "https://github.com/ffMathy/hey-jarvis#readme",
+  "devDependencies": {
+    "@nx/esbuild": "21.5.2",
+    "@nx/jest": "^21.5.2",
+    "@nx/js": "^21.5.2",
+    "@nx/node": "^21.5.2",
+    "@swc-node/register": "~1.9.1",
+    "@swc/core": "~1.5.7",
+    "@swc/helpers": "~0.5.11",
+    "@types/node": "20.19.9",
+    "esbuild": "^0.19.2",
+    "nx": "^21.5.2",
+    "prettier": "^2.6.2",
+    "tslib": "^2.3.0",
+    "typescript": "~5.9.2"
+  },
+  "dependencies": {}
+}
