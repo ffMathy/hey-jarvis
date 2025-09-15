@@ -1,0 +1,30 @@
+{
+  "name": "home-assistant-voice-firmware",
+  "$schema": "../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "home-assistant-voice-firmware/src",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "g++ -std=c++17 -I./include -o ./dist/home-assistant-voice-firmware ./src/main.cpp",
+        "cwd": "home-assistant-voice-firmware"
+      }
+    },
+    "serve": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "./dist/home-assistant-voice-firmware",
+        "cwd": "home-assistant-voice-firmware"
+      },
+      "dependsOn": ["build"]
+    },
+    "clean": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "rm -rf ./dist",
+        "cwd": "home-assistant-voice-firmware"
+      }
+    }
+  }
+}
