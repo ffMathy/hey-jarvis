@@ -1,5 +1,5 @@
 {
-  "name": "Hey Jarvis Development Environment",
+  "name": "Hey Jarvis",
   "image": "mcr.microsoft.com/devcontainers/typescript-node:1-20-bullseye",
   "features": {
     "ghcr.io/devcontainers-community/npm-features/typescript:1": {
