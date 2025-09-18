@@ -1,5 +1,5 @@
 {
-  "name": "Hey Jarvis Development Environment",
+  "name": "Hey Jarvis",
   "image": "mcr.microsoft.com/devcontainers/typescript-node:1-20-bullseye",
   "features": {
     "ghcr.io/devcontainers-community/npm-features/typescript:1": {
@@ -8,19 +8,19 @@
     "ghcr.io/devcontainers/features/python:1": {
       "version": "3.11"
     },
-    "ghcr.io/devcontainers-contrib/features/nx:2": {
-      "version": "latest"
-    }
+    "ghcr.io/devcontainers-extra/features/nx-npm:1": {}
+  },
+  "containerEnv": {
+    "ELEVENLABS_AGENT_ID": "${localEnv:ELEVENLABS_AGENT_ID}",
+    "ELEVENLABS_API_KEY": "${localEnv:ELEVENLABS_API_KEY}",
+    "GOOGLE_GENERATIVE_AI_API_KEY": "${localEnv:GOOGLE_GENERATIVE_AI_API_KEY}"
   },
   "customizations": {
     "vscode": {
       "extensions": [
-        "ms-vscode.vscode-typescript-next",
-        "bradlc.vscode-tailwindcss",
-        "ms-vscode.vscode-json",
-        "esbenp.prettier-vscode",
         "ms-vscode.cpptools",
-        "ms-vscode.cpptools-extension-pack"
+        "ms-vscode.cpptools-extension-pack",
+        "nrwl.angular-console"
       ],
       "settings": {
         "typescript.preferences.preferTypeOnlyAutoImports": true,
@@ -28,7 +28,7 @@
       }
     }
   },
-  "postCreateCommand": "npm install",
+  "postCreateCommand": "npm install && nx run-many --target=init --all",
   "forwardPorts": [3000, 4200, 8080],
   "portsAttributes": {
     "3000": {

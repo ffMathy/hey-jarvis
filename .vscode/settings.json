@@ -1,0 +1,8 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "mastra": true,
+        "timeout": true,
+        "nx": true
+    },
+    "chat.agent.maxRequests": 1000
+}
