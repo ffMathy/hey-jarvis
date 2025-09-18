@@ -18,7 +18,8 @@
     "vscode": {
       "extensions": [
         "ms-vscode.cpptools",
-        "ms-vscode.cpptools-extension-pack"
+        "ms-vscode.cpptools-extension-pack",
+        "nrwl.angular-console"
       ],
       "settings": {
         "typescript.preferences.preferTypeOnlyAutoImports": true,
