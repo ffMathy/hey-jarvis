@@ -12,7 +12,8 @@
   },
   "containerEnv": {
     "ELEVENLABS_AGENT_ID": "${localEnv:ELEVENLABS_AGENT_ID}",
-    "ELEVENLABS_API_KEY": "${localEnv:ELEVENLABS_API_KEY}"
+    "ELEVENLABS_API_KEY": "${localEnv:ELEVENLABS_API_KEY}",
+    "GOOGLE_GENERATIVE_AI_API_KEY": "${localEnv:GOOGLE_GENERATIVE_AI_API_KEY}"
   },
   "customizations": {
     "vscode": {
