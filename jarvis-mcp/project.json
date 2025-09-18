@@ -4,79 +4,25 @@
   "sourceRoot": "jarvis-mcp/src",
   "projectType": "application",
   "targets": {
+    "init": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npm install mastra --global",
+        "cwd": "jarvis-mcp"
+      }
+    },
     "build": {
-      "executor": "@nx/esbuild:esbuild",
-      "outputs": ["{options.outputPath}"],
-      "defaultConfiguration": "production",
+      "executor": "nx:run-commands",
       "options": {
-        "platform": "node",
-        "outputPath": "dist/jarvis-mcp",
-        "format": ["cjs"],
-        "bundle": false,
-        "main": "jarvis-mcp/src/main.ts",
-        "tsConfig": "jarvis-mcp/tsconfig.app.json",
-        "assets": ["jarvis-mcp/src/assets"],
-        "generatePackageJson": true,
-        "esbuildOptions": {
-          "sourcemap": true,
-          "outExtension": {
-            ".js": ".js"
-          }
-        }
-      },
-      "configurations": {
-        "development": {},
-        "production": {
-          "esbuildOptions": {
-            "sourcemap": false,
-            "outExtension": {
-              ".js": ".js"
-            }
-          }
-        }
+        "command": "mastra build",
+        "cwd": "jarvis-mcp"
       }
-    },
-    "prune-lockfile": {
-      "dependsOn": ["build"],
-      "cache": true,
-      "executor": "@nx/js:prune-lockfile",
-      "outputs": [
-        "{workspaceRoot}/dist/jarvis-mcp/package.json",
-        "{workspaceRoot}/dist/jarvis-mcp/package-lock.json"
-      ],
-      "options": {
-        "buildTarget": "build"
-      }
-    },
-    "copy-workspace-modules": {
-      "dependsOn": ["build"],
-      "cache": true,
-      "outputs": ["{workspaceRoot}/dist/jarvis-mcp/workspace_modules"],
-      "executor": "@nx/js:copy-workspace-modules",
-      "options": {
-        "buildTarget": "build"
-      }
-    },
-    "prune": {
-      "dependsOn": ["prune-lockfile", "copy-workspace-modules"],
-      "executor": "nx:noop"
     },
     "serve": {
-      "continuous": true,
-      "executor": "@nx/js:node",
-      "defaultConfiguration": "development",
-      "dependsOn": ["build"],
+      "executor": "nx:run-commands",
       "options": {
-        "buildTarget": "jarvis-mcp:build",
-        "runBuildTargetDependencies": false
-      },
-      "configurations": {
-        "development": {
-          "buildTarget": "jarvis-mcp:build:development"
-        },
-        "production": {
-          "buildTarget": "jarvis-mcp:build:production"
-        }
+        "command": "mastra dev",
+        "cwd": "jarvis-mcp"
       }
     }
   },
