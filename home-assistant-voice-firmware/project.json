@@ -4,6 +4,13 @@
   "projectType": "application",
   "sourceRoot": "home-assistant-voice-firmware/src",
   "targets": {
+    "init": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "python3 -m pip install esphome",
+        "cwd": "home-assistant-voice-firmware"
+      }
+    },
     "build": {
       "executor": "nx:run-commands",
       "options": {
