@@ -81,7 +81,7 @@ external_components:
     refresh: 0s
   - source:
       type: local
-      path: esphome/components
+      path: components
     components: 
       - elevenlabs_stream
 

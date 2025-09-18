@@ -10,6 +10,10 @@
     },
     "ghcr.io/devcontainers-extra/features/nx-npm:1": {}
   },
+  "containerEnv": {
+    "ELEVENLABS_AGENT_ID": "${localEnv:ELEVENLABS_AGENT_ID}",
+    "ELEVENLABS_API_KEY": "${localEnv:ELEVENLABS_API_KEY}"
+  },
   "customizations": {
     "vscode": {
       "extensions": [
