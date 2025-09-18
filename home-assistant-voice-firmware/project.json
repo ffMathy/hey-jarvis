@@ -4,17 +4,24 @@
   "projectType": "application",
   "sourceRoot": "home-assistant-voice-firmware/src",
   "targets": {
+    "init": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "python3 -m pip install esphome",
+        "cwd": "home-assistant-voice-firmware"
+      }
+    },
     "build": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "g++ -std=c++17 -I./include -o ./dist/home-assistant-voice-firmware ./src/main.cpp",
+        "command": "python3 -m esphome compile home-assistant-voice.elevenlabs.yaml",
         "cwd": "home-assistant-voice-firmware"
       }
     },
     "serve": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "./dist/home-assistant-voice-firmware",
+        "command": "python3 -m esphome upload home-assistant-voice.elevenlabs.yaml",
         "cwd": "home-assistant-voice-firmware"
       },
       "dependsOn": ["build"]
@@ -22,7 +29,7 @@
     "clean": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "rm -rf ./dist",
+        "command": "python3 -m esphome clean home-assistant-voice.elevenlabs.yaml",
         "cwd": "home-assistant-voice-firmware"
       }
     }
