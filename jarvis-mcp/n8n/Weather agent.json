@@ -1,0 +1,468 @@
+{
+  "name": "Weather agent",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "jsonExample",
+        "jsonExample": "{\n  \"prompt\": \"The prompt for the agent. If asking for the weather, include the location of where to check, preferably using GPS coordinates.\"\n}"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -224,
+        -256
+      ],
+      "id": "a4ddd71f-9524-4543-9c67-77cf7bf974f6",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -224,
+        -16
+      ],
+      "id": "192c2566-55be-4b72-9e90-fdc5bc29e08a",
+      "name": "When chat message received",
+      "webhookId": ""
+    },
+    {
+      "parameters": {
+        "options": {
+          "systemMessage": "You are a weather agent which can provide weather insights via tools (current weather information and 5-day future prognosises for certain locations).\n\nNever ask questions. Always make best-guess assumptions.\n\nIf no location is given, assume the city Aarhus in Denmark, where Mathias and Julie lives.",
+          "maxIterations": 30
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        144,
+        -128
+      ],
+      "id": "2e288086-6791-4b93-909c-070d887d9009",
+      "name": "AI Agent",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "b0e5432e-24b2-487c-913f-f895a46f4b5e",
+              "name": "chatInput",
+              "value": "={{ $json.prompt }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -48,
+        -256
+      ],
+      "id": "5789a2c2-3648-40ff-b815-d8c00b13d622",
+      "name": "Rename field"
+    },
+    {
+      "parameters": {
+        "options": {
+          "maxOutputTokens": 1000000
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        -208,
+        352
+      ],
+      "id": "bd03c19f-22ae-445f-a018-09cb5bb04e2b",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4.1-nano",
+          "mode": "list",
+          "cachedResultName": "gpt-4.1-nano"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        -16,
+        352
+      ],
+      "id": "f92ef398-417f-49b0-a1ea-1647b6fa610a",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "session-weather"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        208,
+        352
+      ],
+      "id": "75a8d08e-47db-4970-82f8-d7504fdc6965",
+      "name": "Window Buffer Memory",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Get future weather information, given a city.",
+        "operation": "5DayForecast",
+        "cityName": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('City', `The city to find the language for, in format \"berlin,de\" for Berlin in Germany (DE) or \"aarhus,dk\" for Aarhus in Denmark (DK).`, 'string') }}",
+        "language": "en"
+      },
+      "type": "n8n-nodes-base.openWeatherMapTool",
+      "typeVersion": 1,
+      "position": [
+        544,
+        448
+      ],
+      "id": "471e6e23-0f43-49c1-bd6d-2dd44d2b3a8a",
+      "name": "Get forecast by city",
+      "credentials": {
+        "openWeatherMapApi": {
+          "id": "",
+          "name": "OpenWeatherMap account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Get current information, given some coordinates.",
+        "locationSelection": "coordinates",
+        "latitude": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Latitude', ``, 'string') }}",
+        "longitude": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Longitude', ``, 'string') }}",
+        "language": "en"
+      },
+      "type": "n8n-nodes-base.openWeatherMapTool",
+      "typeVersion": 1,
+      "position": [
+        720,
+        400
+      ],
+      "id": "67da5c53-4acc-43a7-9898-e3d1b5daa2f2",
+      "name": "Get currrent weather by GPS coordinates",
+      "credentials": {
+        "openWeatherMapApi": {
+          "id": "",
+          "name": "OpenWeatherMap account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Get current information, given a city.",
+        "cityName": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('City', `The city to find the language for, in format \"berlin,de\" for Berlin in Germany (DE) or \"aarhus,dk\" for Aarhus in Denmark (DK).`, 'string') }}",
+        "language": "en"
+      },
+      "type": "n8n-nodes-base.openWeatherMapTool",
+      "typeVersion": 1,
+      "position": [
+        368,
+        464
+      ],
+      "id": "025a9e35-b778-46fa-acf9-9262d75224f2",
+      "name": "Get currrent weather by city",
+      "credentials": {
+        "openWeatherMapApi": {
+          "id": "",
+          "name": "OpenWeatherMap account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Get future weather information, given some GPS coordinates.",
+        "operation": "5DayForecast",
+        "locationSelection": "coordinates",
+        "latitude": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Latitude', ``, 'string') }}",
+        "longitude": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Longitude', ``, 'string') }}",
+        "language": "en"
+      },
+      "type": "n8n-nodes-base.openWeatherMapTool",
+      "typeVersion": 1,
+      "position": [
+        848,
+        304
+      ],
+      "id": "b7494fea-58fb-4e6e-9c6a-3aea6b6856c3",
+      "name": "Get forecast by GPS coordinates",
+      "credentials": {
+        "openWeatherMapApi": {
+          "id": "",
+          "name": "OpenWeatherMap account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 60
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -224,
+        704
+      ],
+      "id": "77079f93-8736-46fe-b2ce-860678dc4f1f",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "cityName": "aarhus,dk"
+      },
+      "type": "n8n-nodes-base.openWeatherMap",
+      "typeVersion": 1,
+      "position": [
+        -16,
+        704
+      ],
+      "id": "41d9835d-e96b-48ad-be22-a0a1789cc802",
+      "name": "OpenWeatherMap",
+      "credentials": {
+        "openWeatherMapApi": {
+          "id": "",
+          "name": "OpenWeatherMap account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": "Memory agent"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "prompt": "={{ null }}",
+            "act": "={{ \n{\n  context: \"The weather has changed.\",\n  events: [{\n    type: \"weather-changed\",\n    information: $json\n  }]\n}\n}}",
+            "remember": "={{ null }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "prompt",
+              "displayName": "prompt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "remember",
+              "displayName": "remember",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object"
+            },
+            {
+              "id": "act",
+              "displayName": "act",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        192,
+        704
+      ],
+      "id": "2bea810b-c35d-4393-ad85-e2b23a43b429",
+      "name": "Execute Workflow"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Rename field",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rename field": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Window Buffer Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get forecast by city": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get currrent weather by city": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get currrent weather by GPS coordinates": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get forecast by GPS coordinates": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        []
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "OpenWeatherMap",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenWeatherMap": {
+      "main": [
+        [
+          {
+            "node": "Execute Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "5e7cf913-f42f-461b-9ad2-cf15d07ddd5c",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": ""
+  },
+  "id": "vdfb31jqWEq0OA39",
+  "tags": []
+}
