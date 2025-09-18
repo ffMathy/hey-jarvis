@@ -14,15 +14,15 @@
     "build": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "mastra build",
-        "cwd": "jarvis-mcp"
+        "command": "mastra build --dir jarvis-mcp/mastra --root .",
+        "cwd": "."
       }
     },
     "serve": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "mastra dev",
-        "cwd": "jarvis-mcp"
+        "command": "mastra dev --dir jarvis-mcp/mastra --root .",
+        "cwd": "."
       }
     }
   },
