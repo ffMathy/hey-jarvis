@@ -1,47 +1,174 @@
-# Jarvis MCP Agents
+# Jarvis Mastra AI Agents
 
 ## Overview
-This document describes the agents and automation capabilities for the Jarvis MCP (Model Context Protocol) project in the Hey Jarvis monorepo.
+This project is a Mastra-powered AI agent framework that enables intelligent home automation, voice interactions, and Model Context Protocol (MCP) integrations within the Hey Jarvis ecosystem.
 
-## Project Description
-A simple Hello World TypeScript application that demonstrates basic MCP server structure and serves as a foundation for future Model Context Protocol integrations and AI agent capabilities.
+## About Mastra
+[Mastra](https://mastra.ai) is a TypeScript agent framework designed to build production-ready AI applications. It provides unified interfaces for multiple LLM providers, persistent agent memory, tool calling capabilities, and graph-based workflows.
 
-## Key Features
-- Simple TypeScript-based "Hello World" MCP application
-- Demonstrates basic class structure and method execution
-- Foundation for AI agent communication and tool integration
-- Extensible architecture for future MCP protocol implementation
+## Project Structure
+The project follows Mastra's recommended structure:
 
-## Agents & Automation
-Currently implements:
-- **HelloWorldMCP**: A basic MCP agent that demonstrates greeting functionality
-- Simple logging and execution flow
-- Foundation for tool registration and execution
-
-## Future Capabilities
-- Full Model Context Protocol server implementation
-- AI tool registration and management
-- Integration with language models and AI services
-- Cross-agent communication protocols
-- Home automation tool integration
-- Voice command processing integration
-
-## MCP Protocol Support
-Designed to support:
-- Tool registration and discovery
-- Secure agent communication
-- Resource management
-- Error handling and logging
-- Real-time agent coordination
-
-## Usage
-```bash
-# Build the MCP server
-npx nx build jarvis-mcp
-
-# Run the MCP server
-npx nx serve jarvis-mcp
+```
+jarvis-mcp/
+├── mastra/
+│   ├── agents/           # AI agent definitions
+│   ├── tools/           # Custom tool implementations
+│   ├── workflows/       # Multi-step workflow graphs
+│   └── index.ts         # Main Mastra configuration
+├── project.json         # NX project configuration
+└── AGENTS.md           # This documentation
 ```
 
+## Key Features
+
+### 🤖 Intelligent Agents
+- **TypeScript-based agents** with persistent memory and tool calling
+- **Multi-provider LLM support** via Vercel AI SDK (OpenAI, Anthropic, Google Gemini)
+- **Structured output** generation with Zod validation
+- **Real-time streaming** responses with step-by-step visibility
+
+### 🔧 Tool Ecosystem
+- **Model Context Protocol (MCP)** server integrations
+- **Home automation tools** for smart device control
+- **Voice processing** capabilities for speech-to-text and text-to-speech
+- **External API integrations** for weather, calendar, and more
+
+### 🌊 Workflow Engine
+- **Graph-based workflows** with deterministic execution
+- **Branching and conditional logic** with `.then()`, `.branch()`, `.parallel()`
+- **Suspend/resume functionality** for human-in-the-loop interactions
+- **Real-time tracing** and observability
+
+### 🧠 Memory & Context
+- **Persistent agent memory** with semantic recall
+- **Thread-based conversations** with context preservation
+- **Vector database integration** for knowledge retrieval
+- **Working memory** for short-term context management
+
+## Current Agents
+
+### Weather Agent
+Provides intelligent weather information and forecasting capabilities:
+- **4 OpenWeatherMap tools**: Current weather and 5-day forecasts by city name or GPS coordinates
+- **Google Gemini model**: Uses `gemini-2.0-flash-exp` for natural language processing
+- **Smart defaults**: Automatically assumes Aarhus, Denmark when no location is specified
+- **Never asks questions**: Makes best-guess assumptions for seamless interaction
+- **Persistent memory**: Maintains conversation context with LibSQLStore
+- **Scheduled monitoring**: Hourly weather checks with automatic memory updates
+
+**Converted from n8n**: This agent replicates the exact functionality of the original n8n Weather Agent workflow, including the same system message, tools, and behavior patterns.
+
+*Note: Additional agents will be added as the project evolves.*
+
+## Available Workflows
+
+### Weather Workflow
+Multi-step weather processing workflow with two main components:
+- **`weatherWorkflow`**: Handles interactive weather requests from prompts or chat (replaces n8n ExecuteWorkflowTrigger + ChatTrigger)
+- **`weatherMonitoringWorkflow`**: Performs scheduled weather checks every hour with memory updates (replaces n8n ScheduleTrigger chain)
+- **Agent integration**: Seamlessly connects to the weather agent for tool execution
+- **Memory updates**: Automatically notifies other agents when weather conditions change
+
 ## Development
-The MCP server is built using TypeScript and follows NX monorepo conventions. All source code is located in the `src/` directory. The application is designed to be easily extensible for future MCP protocol implementation.
+
+### Prerequisites
+```bash
+# Install Mastra globally
+npm install mastra --global
+```
+
+### Running the Project
+```bash
+# Start development server with playground
+npx nx serve jarvis-mcp
+
+# Build for production
+npx nx build jarvis-mcp
+```
+
+### Development Playground
+Access the Mastra development playground at `http://localhost:4111/agents` to:
+- Test agents interactively
+- Monitor agent memory and state
+- Debug tool calls and workflows
+- View execution traces and performance metrics
+
+### Environment Setup
+Create a `.env` file with required API keys:
+```env
+OPENAI_API_KEY=your-openai-key
+ANTHROPIC_API_KEY=your-anthropic-key
+GOOGLE_GENERATIVE_AI_API_KEY=your-google-api-key
+OPENWEATHERMAP_API_KEY=your-openweathermap-key
+# Add other provider keys as needed
+```
+
+## Integration Capabilities
+
+### Home Assistant
+- Voice command processing through ESPHome firmware
+- Smart device control and automation
+- Sensor data processing and analysis
+- Scene and routine management
+
+### Model Context Protocol (MCP)
+- Server-client communication for tool sharing
+- Resource management and discovery
+- Secure agent-to-agent communication
+- Real-time data synchronization
+
+### Voice Interface
+- Speech-to-text processing
+- Natural language understanding
+- Text-to-speech generation with ElevenLabs
+- Wake word detection and response
+
+## Architecture Benefits
+
+### Type Safety
+- Full TypeScript support with runtime validation
+- Zod schemas for structured data
+- Type-safe tool definitions and agent configurations
+
+### Scalability
+- Horizontal scaling with workflow distribution
+- Memory-efficient agent state management
+- Observability and performance monitoring
+- Cloud deployment ready (Vercel, Cloudflare, AWS Lambda)
+
+### Extensibility
+- Modular agent and tool architecture
+- Plugin-based workflow system
+- Easy integration with external services
+- Custom evaluation and scoring systems
+
+## Future Roadmap
+
+### Enhanced Agents
+- **Calendar Agent**: Smart scheduling and meeting management
+- **Security Agent**: Home security monitoring and alerts
+- **Entertainment Agent**: Media control and content recommendations
+- **Energy Agent**: Smart energy management and optimization
+
+### Advanced Workflows
+- **Multi-agent orchestration** for complex home automation
+- **Event-driven automation** with real-time triggers
+- **Learning workflows** that adapt to user preferences
+- **Emergency response** protocols with prioritization
+
+### Integrations
+- **Apple HomeKit** compatibility
+- **Google Assistant** and **Alexa** voice integration
+- **IFTTT/Zapier** workflow connections
+- **IoT device ecosystem** expansion
+
+## Contributing
+This project is part of the Hey Jarvis monorepo and follows Mastra's development patterns. Contributions should:
+- Follow TypeScript best practices
+- Include proper agent memory management
+- Implement comprehensive tool validation
+- Add appropriate workflow testing
+- Document new capabilities thoroughly
+
+For more information about Mastra development, visit the [official documentation](https://mastra.ai/docs).

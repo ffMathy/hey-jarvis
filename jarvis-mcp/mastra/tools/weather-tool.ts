@@ -33,8 +33,15 @@ interface CurrentWeatherResponse {
 
 // Interface for OpenWeatherMap 5-day forecast response
 interface ForecastResponse {
+  city: {
+    name: string;
+    coord: {
+      lat: number;
+      lon: number;
+    };
+  };
   list: Array<{
-    dt: number;
+    dt_txt: string;
     main: {
       temp: number;
       feels_like: number;
@@ -43,11 +50,6 @@ interface ForecastResponse {
       pressure: number;
       humidity: number;
     };
-    weather: Array<{
-      main: string;
-      description: string;
-      icon: string;
-    }>;
     wind: {
       speed: number;
       deg: number;
@@ -56,15 +58,11 @@ interface ForecastResponse {
     clouds: {
       all: number;
     };
-    dt_txt: string;
+    weather: Array<{
+      main: string;
+      description: string;
+    }>;
   }>;
-  city: {
-    name: string;
-    coord: {
-      lat: number;
-      lon: number;
-    };
-  };
 }
 
 // Get OpenWeatherMap API key from environment
