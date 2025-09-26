@@ -1,10 +1,11 @@
 import { google } from '@ai-sdk/google';
 import { Agent } from '@mastra/core/agent';
 import { Memory } from '@mastra/memory';
-import { weatherTools } from '../tools/weather-tools.js';
+import { weatherTools } from '../tools/weather-tools';
+import { memory } from '../memory';
 
 export const weatherAgent = new Agent({
-  name: 'Weather Agent',
+  name: 'Weather',
   instructions: `You are a weather agent which can provide weather insights via tools (current weather information and 5-day future prognosises for certain locations).
 
 Never ask questions. Always make best-guess assumptions.
@@ -19,7 +20,7 @@ When users ask for weather information:
 5. For current conditions, use the current weather tools
 
 Always provide comprehensive weather information including temperature, humidity, wind conditions, and weather descriptions.`,
-  model: google('gemini-2.0-flash-exp'),
+  model: google('gemini-2.5-flash-lite'),
   tools: weatherTools,
-  memory: new Memory(),
+  memory: memory
 });

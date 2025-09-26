@@ -34,15 +34,16 @@
     "@swc/helpers": "~0.5.11",
     "@types/node": "20.19.9",
     "esbuild": "^0.19.2",
+    "mastra": "^0.13.1",
     "nx": "^21.5.2",
     "prettier": "^2.6.2",
     "tslib": "^2.3.0",
-    "typescript": "~5.9.2",
-    "mastra": "^0.13.1"
+    "typescript": "~5.9.2"
   },
   "dependencies": {
     "@ai-sdk/google": "^1.2.22",
     "@mastra/core": "^0.17.1",
+    "@mastra/fastembed": "^0.10.5",
     "@mastra/libsql": "^0.14.2",
     "@mastra/loggers": "^0.10.12",
     "@mastra/memory": "^0.15.2",
