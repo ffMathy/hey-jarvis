@@ -2,17 +2,11 @@
   "name": "Hey Jarvis",
   "image": "mcr.microsoft.com/devcontainers/typescript-node:1-20-bullseye",
   "features": {
-    "ghcr.io/devcontainers-community/npm-features/typescript:1": {
-      "version": "latest"
-    },
-    "ghcr.io/devcontainers/features/python:1": {
-      "installTools": true,
-      "version": "latest"
-    },
-    "ghcr.io/devcontainers-extra/features/nx-npm:1": {
-      "version": "latest"
-    },
-    "ghcr.io/flexwie/devcontainer-features/op:1": {}
+    "ghcr.io/devcontainers-community/npm-features/typescript:1": {},
+    "ghcr.io/devcontainers/features/python:1": {},
+    "ghcr.io/devcontainers-extra/features/nx-npm:1": {},
+    "ghcr.io/flexwie/devcontainer-features/op:1": {},
+    "ghcr.io/jckimble/devcontainer-features/ngrok:3": {}
   },
   "containerEnv": {
     "ELEVENLABS_AGENT_ID": "${localEnv:ELEVENLABS_AGENT_ID}",

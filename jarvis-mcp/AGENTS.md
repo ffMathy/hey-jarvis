@@ -95,14 +95,26 @@ Access the Mastra development playground at `http://localhost:4111/agents` to:
 - View execution traces and performance metrics
 
 ### Environment Setup
-Create a `.env` file with required API keys:
-```env
-OPENAI_API_KEY=your-openai-key
-ANTHROPIC_API_KEY=your-anthropic-key
-GOOGLE_GENERATIVE_AI_API_KEY=your-google-api-key
-OPENWEATHERMAP_API_KEY=your-openweathermap-key
-# Add other provider keys as needed
-```
+
+This project uses **1Password CLI** for secure environment variable management in both development and production environments. 
+
+#### Development Setup
+1. **Install 1Password CLI**: Follow [1Password CLI installation guide](https://developer.1password.com/docs/cli/get-started/)
+2. **Sign in to 1Password**: `op signin`
+3. **Store your API keys** in 1Password vaults with the paths referenced in `.env`
+4. **Run commands**: Use `nx serve jarvis-mcp` or `nx run jarvis-mcp:mcp` - both use `op run` automatically
+
+#### Important Development Guidelines
+- **Do NOT create separate `*-dev` targets** that bypass 1Password CLI
+- **The `op run` approach is designed for both development AND production**
+- **1Password CLI provides secure local testing** without hardcoded keys
+- **All nx targets should use the same `op run --env-file=".env"` pattern**
+- **This ensures consistency between development and deployment environments**
+
+If you encounter 1Password CLI authentication issues:
+1. Run `op signin` to authenticate
+2. Verify your vault contains the referenced secret paths
+3. Check that the `.env` file references match your 1Password structure
 
 ## Integration Capabilities
 
