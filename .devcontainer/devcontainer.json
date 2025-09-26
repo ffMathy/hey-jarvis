@@ -6,21 +6,27 @@
       "version": "latest"
     },
     "ghcr.io/devcontainers/features/python:1": {
-      "version": "3.11"
+      "installTools": true,
+      "version": "latest"
     },
-    "ghcr.io/devcontainers-extra/features/nx-npm:1": {}
+    "ghcr.io/devcontainers-extra/features/nx-npm:1": {
+      "version": "latest"
+    },
+    "ghcr.io/flexwie/devcontainer-features/op:1": {}
   },
   "containerEnv": {
     "ELEVENLABS_AGENT_ID": "${localEnv:ELEVENLABS_AGENT_ID}",
     "ELEVENLABS_API_KEY": "${localEnv:ELEVENLABS_API_KEY}",
-    "GOOGLE_GENERATIVE_AI_API_KEY": "${localEnv:GOOGLE_GENERATIVE_AI_API_KEY}"
+    "GOOGLE_GENERATIVE_AI_API_KEY": "${localEnv:GOOGLE_GENERATIVE_AI_API_KEY}",
+    "OPENWEATHERMAP_API_KEY": "${localEnv:OPENWEATHERMAP_API_KEY}"
   },
   "customizations": {
     "vscode": {
       "extensions": [
         "ms-vscode.cpptools",
         "ms-vscode.cpptools-extension-pack",
-        "nrwl.angular-console"
+        "nrwl.angular-console",
+        "1Password.op-vscode"
       ],
       "settings": {
         "typescript.preferences.preferTypeOnlyAutoImports": true,
@@ -28,6 +34,7 @@
       }
     }
   },
+  "containerUser": "root",
   "postCreateCommand": "npm install && nx run-many --target=init --all",
   "forwardPorts": [3000, 4200, 8080],
   "portsAttributes": {

@@ -1,8 +1,7 @@
 import { google } from '@ai-sdk/google';
 import { Agent } from '@mastra/core/agent';
 import { Memory } from '@mastra/memory';
-import { LibSQLStore } from '@mastra/libsql';
-import { weatherTools } from '../tools/weather-tool.js';
+import { weatherTools } from '../tools/weather-tools.js';
 
 export const weatherAgent = new Agent({
   name: 'Weather Agent',
@@ -11,12 +10,6 @@ export const weatherAgent = new Agent({
 Never ask questions. Always make best-guess assumptions.
 
 If no location is given, assume the city Aarhus in Denmark, where Mathias and Julie lives.
-
-Available tools:
-- getCurrentWeatherByCity: Get current weather for a city (format: "city,country" like "aarhus,dk" or "berlin,de")
-- getCurrentWeatherByCoordinates: Get current weather for specific GPS coordinates
-- getForecastByCity: Get 5-day forecast for a city (format: "city,country")
-- getForecastByCoordinates: Get 5-day forecast for specific GPS coordinates
 
 When users ask for weather information:
 1. If they provide a city name, use the city-based tools
@@ -28,9 +21,5 @@ When users ask for weather information:
 Always provide comprehensive weather information including temperature, humidity, wind conditions, and weather descriptions.`,
   model: google('gemini-2.0-flash-exp'),
   tools: weatherTools,
-  memory: new Memory({
-    storage: new LibSQLStore({
-      url: 'file:../mastra.db', // path is relative to the .mastra/output directory
-    }),
-  }),
+  memory: new Memory(),
 });

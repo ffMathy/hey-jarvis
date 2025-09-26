@@ -21,7 +21,7 @@
     "serve": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "mastra dev --dir jarvis-mcp/mastra --root .",
+        "command": "op run --env-file=\"jarvis-mcp/.env\" -- mastra dev --dir jarvis-mcp/mastra --root .",
         "cwd": "."
       }
     }
