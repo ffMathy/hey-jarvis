@@ -175,6 +175,17 @@ If you encounter 1Password CLI authentication issues:
 - **IFTTT/Zapier** workflow connections
 - **IoT device ecosystem** expansion
 
+## Development Guidelines
+
+### File Creation Policy
+**IMPORTANT**: When working on this project:
+- **Do NOT create new README files** unless explicitly requested
+- **Do NOT create new example scripts** unless explicitly requested  
+- **Only modify existing documentation and examples** when making changes
+- **Focus on core functionality** (agents, tools, workflows) rather than documentation artifacts
+
+This keeps the project lean and focused on the essential Mastra components.
+
 ## Contributing
 This project is part of the Hey Jarvis monorepo and follows Mastra's development patterns. Contributions should:
 - Follow TypeScript best practices

@@ -1,12 +1,14 @@
 import { LibSQLStore, LibSQLVector } from "@mastra/libsql";
+import { mkdir } from "fs/promises";
 import path from 'path';
 
-const dbDir = path.join(process.cwd(), 'jarvis-mcp');
+const databaseDirectory = path.join(process.cwd(), 'jarvis-mcp');
+await mkdir(databaseDirectory, { recursive: true });
 
 export const sqlStorageProvider = new LibSQLStore({
-  url: `file:${path.join(dbDir, 'mastra.sql.db')}`, // absolute path to database file
+  url: `file:${path.join(databaseDirectory, 'mastra.sql.db')}`, // absolute path to database file
 });
 
 export const vectorStorageProvider = new LibSQLVector({
-    connectionUrl: `file:${path.join(dbDir, 'mastra.vector.db')}`, // absolute path to vector database file
+    connectionUrl: `file:${path.join(databaseDirectory, 'mastra.vector.db')}`, // absolute path to vector database file
 });
