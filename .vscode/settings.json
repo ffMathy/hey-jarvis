@@ -5,5 +5,15 @@
         "nx": true,
         "touch": true
     },
-    "chat.agent.maxRequests": 1000
+    "chat.agent.maxRequests": 1000,
+    "nxConsole.generateAiAgentRules": true,
+    "chat.useAgentsMdFile": true,
+    "chat.tools.terminal.enableAutoApprove": true,
+    "chat.tools.terminal.shellIntegrationTimeout": -1,
+    "chat.mcp.autostart": "newAndOutdated",
+    "chat.mcp.access": "all",
+    
+    // Encourage NX usage
+    "workbench.commandPalette.experimental.suggestCommands": true,
+    "workbench.tips.enabled": true
 }

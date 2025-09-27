@@ -1,22 +1,38 @@
 
 import { Mastra } from '@mastra/core/mastra';
 import { PinoLogger } from '@mastra/loggers';
-import { LibSQLStore } from '@mastra/libsql';
 import { weatherAgent } from './agents/weather-agent';
-import { weatherWorkflow, weatherMonitoringWorkflow } from './workflows/weather-workflow';
+import { 
+  recipeSearchAgent, 
+  mealPlanSelectorAgent, 
+  mealPlanGeneratorAgent, 
+  mealPlanEmailFormatterAgent 
+} from './agents/cooking-agent';
+import { 
+  shoppingListAgent,
+  shoppingListSummaryAgent 
+} from './agents/shopping-agent';
+import { weatherMonitoringWorkflow } from './workflows/weather-workflows';
+import { weeklyMealPlanningWorkflow } from './workflows/cooking-workflows';
+import { shoppingListWorkflow } from './workflows/shopping-workflows';
+import { sqlStorageProvider } from './storage';
 
 export const mastra = new Mastra({
+  storage: sqlStorageProvider,
   workflows: { 
-    weatherWorkflow,
     weatherMonitoringWorkflow,
+    weeklyMealPlanningWorkflow,
+    shoppingListWorkflow,
   },
   agents: { 
-    weatherAgent,
+    weather: weatherAgent,
+    recipeSearch: recipeSearchAgent,
+    mealPlanSelector: mealPlanSelectorAgent,
+    mealPlanGenerator: mealPlanGeneratorAgent,
+    mealPlanEmailFormatter: mealPlanEmailFormatterAgent,
+    shoppingList: shoppingListAgent,
+    shoppingListSummary: shoppingListSummaryAgent,
   },
-  storage: new LibSQLStore({
-    // stores telemetry, evals, ... into memory storage, if it needs to persist, change to file:../mastra.db
-    url: ":memory:",
-  }),
   logger: new PinoLogger({
     name: 'Mastra',
     level: 'info',
