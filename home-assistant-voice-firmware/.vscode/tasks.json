@@ -1,0 +1,80 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Initialize ESPHome",
+      "type": "shell",
+      "command": "nx init home-assistant-voice-firmware",
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      },
+      "options": {
+        "cwd": "${workspaceFolder}/.."
+      }
+    },
+    {
+      "label": "Build Voice Firmware",
+      "type": "shell",
+      "command": "nx build home-assistant-voice-firmware",
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      },
+      "options": {
+        "cwd": "${workspaceFolder}/.."
+      }
+    },
+    {
+      "label": "Upload to Device",
+      "type": "shell",
+      "command": "nx serve home-assistant-voice-firmware",
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      },
+      "options": {
+        "cwd": "${workspaceFolder}/.."
+      }
+    },
+    {
+      "label": "Clean Build",
+      "type": "shell",
+      "command": "nx clean home-assistant-voice-firmware",
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      },
+      "options": {
+        "cwd": "${workspaceFolder}/.."
+      }
+    },
+    {
+      "label": "Validate YAML",
+      "type": "shell",
+      "command": "python3 -m esphome config home-assistant-voice.elevenlabs.yaml",
+      "group": "test",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      },
+      "options": {
+        "cwd": "${workspaceFolder}"
+      }
+    }
+  ]
+}

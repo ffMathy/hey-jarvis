@@ -1,0 +1,23 @@
+{
+  "python.defaultInterpreterPath": "/usr/local/bin/python3",
+  "python.linting.enabled": true,
+  "python.linting.flake8Enabled": true,
+  "python.formatting.provider": "black",
+  "editor.codeActionsOnSave": {
+    "source.fixAll": "explicit",
+    "source.organizeImports": "explicit"
+  },
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "ms-python.python",
+  "files.associations": {
+    "*.yaml": "yaml",
+    "*.yml": "yaml",
+    "*.h": "cpp",
+    "*.cpp": "cpp"
+  },
+  "yaml.schemas": {
+    "https://esphome.io/schemas/esphome.json": "*.yaml"
+  },
+  "C_Cpp.default.cppStandard": "c++17",
+  "C_Cpp.default.compilerPath": "/usr/bin/gcc"
+}
