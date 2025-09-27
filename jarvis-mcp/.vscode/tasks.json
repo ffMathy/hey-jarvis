@@ -1,0 +1,67 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Initialize Jarvis MCP",
+      "type": "shell",
+      "command": "nx init jarvis-mcp",
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      },
+      "options": {
+        "cwd": "${workspaceFolder}/.."
+      }
+    },
+    {
+      "label": "Build Jarvis MCP",
+      "type": "shell",
+      "command": "nx build jarvis-mcp",
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      },
+      "options": {
+        "cwd": "${workspaceFolder}/.."
+      }
+    },
+    {
+      "label": "Serve Jarvis MCP",
+      "type": "shell",
+      "command": "nx serve jarvis-mcp",
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "dedicated"
+      },
+      "isBackground": true,
+      "options": {
+        "cwd": "${workspaceFolder}/.."
+      }
+    },
+    {
+      "label": "Serve MCP Server",
+      "type": "shell",
+      "command": "nx serve:mcp jarvis-mcp",
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "dedicated"
+      },
+      "isBackground": true,
+      "options": {
+        "cwd": "${workspaceFolder}/.."
+      }
+    }
+  ]
+}
