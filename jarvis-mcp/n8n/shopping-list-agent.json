@@ -1,0 +1,1277 @@
+{
+  "name": "Shopping list agent",
+  "nodes": [
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.operationType }}",
+                    "rightValue": "set",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "472fb8b2-2d66-4b5b-90af-221957963ed3"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "set"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "950c4d65-7b7b-45b2-9bd7-f8f19335635f",
+                    "leftValue": "={{ $json.operationType }}",
+                    "rightValue": "remove",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "remove"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "57757049-9e51-4729-9c52-928876d4b7af",
+                    "leftValue": "={{ $json.operationType }}",
+                    "rightValue": "null",
+                    "operator": {
+                      "type": "string",
+                      "operation": "empty",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "none"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        -1008,
+        -48
+      ],
+      "id": "ab46068f-d999-43dd-8de7-0b82e276bf6d",
+      "name": "Switch",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -1360,
+        -48
+      ],
+      "id": "45024b2a-c15c-4eb9-8f31-955e02f9b48d",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "output.products",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        -1584,
+        -48
+      ],
+      "id": "c8b45b57-6c4d-46af-a014-9f084faab48f",
+      "name": "Split Out"
+    },
+    {
+      "parameters": {
+        "text": "={{ $('Edit Fields').item.json.chatInput }}\n\n# Existing basket contents\n```json\n{{ JSON.stringify($json.lines) }}\n```",
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"query\": { \"type\": \"string\" },\n    \"products\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"operationType\": {\n            \"type\": [\"string\", \"null\"],\n            \"description\": \"The operation type. `'set'` = set the product quantity in the basket to the given amount, `'remove'` = remove from list, `null` = product already exists in given quantity in basket, no reason to modify.\"\n          },\n          \"name\":     { \"type\": \"string\"  },\n          \"quantity\": { \"type\": \"number\"  },\n          \"unitType\": { \"type\": \"string\"  }\n        }\n      }\n    }\n  }\n}",
+        "options": {
+          "systemPromptTemplate": "You are an expert extraction algorithm that deals with shopping lists.\n\nYou may be given a question or instruction, and your job is to convert the details of that question or instruction into a machine-readable format that will be given to a script. \n\n# Quantities\nBe aware that the same product may be mentioned multiple times. As long as they mean the same, you need to combine it into one product with the combined quantity.\n\nFor some products, you should just always have one quantity no matter how many times it has been requested. These include:\n\n- Fresh herbs\n- Products listed multiple times but with different quantities (for instance \"3 carrots\" and \"200 grams of carrots\" in the same list)\n\n# `operationType`\nIt is important to get the `operationType` right. Do not use `\"set\"` as the `operationType` if an item (or equivalent item) is already in the shopping list. Instead set it to `null`, but still have the item in the list."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.informationExtractor",
+      "typeVersion": 1.1,
+      "position": [
+        -1936,
+        -48
+      ],
+      "id": "f939c9d8-6981-4ce9-bb52-364575d51db2",
+      "name": "Information Extractor",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "maxTries": 2
+    },
+    {
+      "parameters": {
+        "url": "https://api.bilkatogo.dk/api/shop/v6/Cart?u=w&extra=infos",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Jwt_token",
+              "value": "={{ $('Renew JWT token').isExecuted ? $('Renew JWT token').last().json.id_token : $('Exchange login token with JWT token').item.json.id_token }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -880,
+        -304
+      ],
+      "id": "a37ff343-cdde-4c0d-b0c1-4a41dbd9ad1d",
+      "name": "Get new cart contents"
+    },
+    {
+      "parameters": {
+        "operation": "checkIfEvaluating"
+      },
+      "type": "n8n-nodes-base.evaluation",
+      "typeVersion": 4.6,
+      "position": [
+        -416,
+        -304
+      ],
+      "id": "4de10d18-10b7-4bca-8a56-9ff0cb4e7a53",
+      "name": "Is evaluating?"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "[GOOGLE_SHEETS_DOCUMENT_ID]",
+          "mode": "list",
+          "cachedResultName": "n8n/Shopping list",
+          "cachedResultUrl": "[GOOGLE_SHEETS_URL]"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "[GOOGLE_SHEETS_URL]"
+        },
+        "outputs": {
+          "values": [
+            {
+              "outputName": "quantity",
+              "outputValue": "={{ JSON.stringify($json.lines.flatMap(line => line.lines.flatMap(innerLine => innerLine.orderlines.flatMap(orderLine => orderLine.quantity))).last()) }}"
+            },
+            {
+              "outputName": "name",
+              "outputValue": "={{ $json.lines.flatMap(line => line.lines.flatMap(innerLine => innerLine.orderlines.flatMap(orderLine => orderLine.product.name))).last() }}"
+            },
+            {
+              "outputName": "url",
+              "outputValue": "={{$json.lines.flatMap(line => line.lines.flatMap(innerLine => innerLine.orderlines.flatMap(orderLine => \"https://www.bilkatogo.dk/produkt/X/\" + orderLine.product.objectID))).last() }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.evaluation",
+      "typeVersion": 4.6,
+      "position": [
+        -64,
+        -576
+      ],
+      "id": "51ced94b-b304-4f35-a47e-76c703f658a8",
+      "name": "Evaluation",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "[GOOGLE_SHEETS_CREDENTIAL_ID]",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "checkIfEvaluating"
+      },
+      "type": "n8n-nodes-base.evaluation",
+      "typeVersion": 4.6,
+      "position": [
+        -1280,
+        -704
+      ],
+      "id": "7fe0f6bb-9bd8-44e4-883b-bc80f14236af",
+      "name": "Evaluating?"
+    },
+    {
+      "parameters": {
+        "url": "https://api.bilkatogo.dk/api/shop/v6/EmptyCart",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Jwt_token",
+              "value": "={{ $json.id_token }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1008,
+        -816
+      ],
+      "id": "c3278528-5287-4b4f-bea1-4005c4d61426",
+      "name": "Clear cart contents"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "[GOOGLE_SHEETS_DOCUMENT_ID]",
+          "mode": "list",
+          "cachedResultName": "n8n/Shopping list",
+          "cachedResultUrl": "[GOOGLE_SHEETS_URL]"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "[GOOGLE_SHEETS_URL]"
+        }
+      },
+      "type": "n8n-nodes-base.evaluationTrigger",
+      "typeVersion": 4.6,
+      "position": [
+        -2304,
+        -880
+      ],
+      "id": "311268c4-cd27-406e-952b-4bf79cdfa3fe",
+      "name": "When fetching a dataset row",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "[GOOGLE_SHEETS_CREDENTIAL_ID]",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1d47ca3d-29e0-47a9-bb05-6d3833920c2d",
+              "name": "chatInput",
+              "value": "={{ $json.prompt }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -2016,
+        -704
+      ],
+      "id": "960b5798-683d-44c4-bf30-96f04817d68b",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "toolDescription": "Finds a certain product in the catalogue. The result contains some hits for matching products, and maximum 5 products. Each product is identified by the \"objectID\" property of the hit. If a hit doesn't have an objectID, then don't consider it as a valid result. The `storeData` property contains all the items on stock and their price.",
+        "method": "POST",
+        "url": "https://f9vbjlr1bk-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia%20for%20JavaScript%20(4.14.3)%3B%20Browser",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Algolia-Api-Key",
+              "value": "[ALGOLIA_API_KEY]"
+            },
+            {
+              "name": "X-Algolia-Application-Id",
+              "value": "[ALGOLIA_APPLICATION_ID]"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/x-www-form-urlencoded",
+        "body": "={\"requests\":[{\"indexName\":\"prod_BILKATOGO_PRODUCTS\",\"params\":\"attributesToRetrieve=%5B%22objectID%22%2C%22ageCode%22%2C%22article%22%2C%22attributes%22%2C%22blockedByHoliday%22%2C%22brand%22%2C%22countryOfOrigin%22%2C%22blockbit%22%2C%22cpOffer%22%2C%22cpOfferAmount%22%2C%22cpOfferId%22%2C%22cpOfferPrice%22%2C%22description%22%2C%22energyInfo%22%2C%22safetyIcons%22%2C%22safetyTexts%22%2C%22netcontent%22%2C%22imageGUIDs%22%2C%22images%22%2C%22infos%22%2C%22isInCurrentLeaflet%22%2C%22name%22%2C%22objectID%22%2C%22productType%22%2C%22properties%22%2C%22cpOfferFromDate%22%2C%22cpOfferToDate%22%2C%22subBrand%22%2C%22units%22%2C%22unitsOfMeasure%22%2C%22consumerFacingHierarchy%22%2C%22nonsearchable%22%2C%22storeData%22%5D&query={{ $fromAI(\"search_query\", \"The product to search for, in Danish. For instance, 'agurk'.\", \"string\") }}&distinct=false&page=0&hitsPerPage=3&facets=%5B%5D&clickAnalytics=true&analyticsTags=%5B%5D&userToken=[USER_TOKEN]&getRankingInfo=false\"}],\"strategy\":\"none\"}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.2,
+      "position": [
+        -576,
+        352
+      ],
+      "id": "70a4207a-5e6e-4542-a541-12ff5a437d92",
+      "name": "Find product in catalogue",
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "options": {
+          "maxOutputTokens": 1000000,
+          "temperature": 0
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        -1296,
+        432
+      ],
+      "id": "09169107-ab37-49f5-8c71-ff34960beaf6",
+      "name": "Gemini Flash 2.5",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "[GOOGLE_API_CREDENTIAL_ID]",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://api.bilkatogo.dk/api/shop/v6/Cart?u=w",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Jwt_token",
+              "value": "={{ $json.id_token }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -800,
+        -640
+      ],
+      "id": "dee0644b-3d74-402d-831f-c43592de02bb",
+      "name": "Get current cart contents"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://accounts.eu1.gigya.com/accounts.getJWT",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "login_token",
+              "value": "={{ $json.sessionInfo.cookieValue }}"
+            },
+            {
+              "name": "apiKey",
+              "value": "[API_KEY]"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1504,
+        -704
+      ],
+      "id": "7feb606f-bd1a-473a-b0e5-e6d3513a0981",
+      "name": "Exchange login token with JWT token"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://accounts.eu1.gigya.com/accounts.login",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "loginID",
+              "value": "[EMAIL_ADDRESS]"
+            },
+            {
+              "name": "password",
+              "value": "[PASSWORD]"
+            },
+            {
+              "name": "apiKey",
+              "value": "[API_KEY]"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1728,
+        -704
+      ],
+      "id": "0f701b39-a416-42e7-8a19-75dd48a7077d",
+      "name": "Exchange credentials with login token"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -2304,
+        -640
+      ],
+      "id": "4b21b287-9586-4fea-ba3e-913042ea7a55",
+      "name": "When clicking ‘Test workflow’"
+    },
+    {
+      "parameters": {
+        "inputSource": "jsonExample",
+        "jsonExample": "{\n  \"prompt\": \"The prompt for the agent.\"\n}"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -2304,
+        -384
+      ],
+      "id": "d18d97d2-85c0-4697-9182-5e8422f078ff",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4.1",
+          "mode": "list",
+          "cachedResultName": "gpt-4.1"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        -1568,
+        432
+      ],
+      "id": "a031cf23-44ea-4f2f-8165-3d07b3b79bec",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "[OPENAI_API_CREDENTIAL_ID]",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fieldsToAggregate": {
+          "fieldToAggregate": [
+            {
+              "fieldToAggregate": "output"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        -1104,
+        -304
+      ],
+      "id": "57e6db3f-3175-4656-a1b0-b0f6780475f2",
+      "name": "Aggregate"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "f169746f-0ef8-428b-b0aa-50e4ccad2123",
+              "leftValue": "={{ $json.output.needsTokenRenewal }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -96,
+        -64
+      ],
+      "id": "0c711d1b-1134-4209-b45b-f3ab62d69a06",
+      "name": "Token expired?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://accounts.eu1.gigya.com/accounts.getJWT",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "login_token",
+              "value": "={{ $('Exchange credentials with login token').item.json.sessionInfo.cookieValue }}"
+            },
+            {
+              "name": "apiKey",
+              "value": "[API_KEY]"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        288,
+        -96
+      ],
+      "id": "e9e3118d-77fd-4de9-8beb-a6406a8b36ff",
+      "name": "Renew JWT token"
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"needsTokenRenewal\": {\n      \"type\": \"boolean\",\n      \"description\": \"Indicates whether the operation completed successfully. If the response of setting the item in the basket did not have a `tid` property set to a non-empty value, then it indicates that the token should be renewed.\"\n    },\n    \"result\": {\n      \"type\": \"string\",\n      \"minLength\": 1,\n      \"description\": \"Human-readable feedback describing the result of the prompt.\"\n    },\n    \"originalPrompt\": \"The original prompt that was requested, leading to the message as a response.\"\n  },\n  \"required\": [\"success\", \"message\"],\n  \"additionalProperties\": false\n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.2,
+      "position": [
+        -368,
+        144
+      ],
+      "id": "c7c6fc99-e522-45bd-9c28-8ce1c105ae24",
+      "name": "Structured Output Parser"
+    },
+    {
+      "parameters": {
+        "amount": "={{ $runIndex === 0 ? 1 : 40 }}"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        288,
+        112
+      ],
+      "id": "566fc5c4-9a1d-462a-a6ef-6221cb84c66c",
+      "name": "Wait between attempts",
+      "webhookId": "[WEBHOOK_ID]",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "amount": 1,
+        "unit": "minutes"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -96,
+        144
+      ],
+      "id": "93877fa4-9cb0-408f-8ea1-d5baf6c96fb4",
+      "name": "Wait on error before retry",
+      "webhookId": "[WEBHOOK_ID]",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "[WEBHOOK_PATH]",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -2304,
+        -1104
+      ],
+      "id": "b40a9fa5-4653-40d8-a968-ca27dfbb1a26",
+      "name": "Webhook",
+      "webhookId": "[WEBHOOK_ID]"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1d47ca3d-29e0-47a9-bb05-6d3833920c2d",
+              "name": "prompt",
+              "value": "={{ $json.body.chat_input }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -2016,
+        -1104
+      ],
+      "id": "6e086bda-df0f-481d-894d-947d4d90554c",
+      "name": "Rename body parameter"
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.3,
+      "position": [
+        288,
+        -304
+      ],
+      "id": "ce815ee6-6df9-4841-8a88-3d24aaf96273",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n\t\"success\": true,\n\t\"response\": \"The response detailing the summary as much as possible.\"\n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.2,
+      "position": [
+        128,
+        -112
+      ],
+      "id": "379fff08-8e5f-42cf-a844-dbc7f67bef19",
+      "name": "Output format"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=# Prompt\n```json\n{{ JSON.stringify($json) }}\n```",
+        "hasOutputParser": true,
+        "needsFallback": true,
+        "options": {
+          "systemMessage": "# 1 Role & Scope\nYou are a shopping-list agent. For every user request, you will either add or remove items on the list.\n\nNo follow-up questions.\n\nMake best-guess assumptions when information is missing.\n\n# 2 Core Behaviours\n## 2.1 Adding Items\n- If several product variants exist, add only the single most relevant (see §3 priorities).\n- If quantity is missing, choose a sensible minimum (e.g., one egg).\n\n## 2.2 Removing Items\n- Remove an item only if you are 100 % sure it should be removed.\n- If the item is absent, silently ignore the removal request.\n\n# 3 Priority Hierarchy\nHigher rules override lower ones.\n\n1. Correct match. Some items (although they are named similar) are not similar. For instance, a \"Butternut squash\" is not the same as a \"Squash\". They have different texture and taste.\n2. Organic certification (prefer Danish organic over EU where possible).\n3. Danish origin (only if rule 1 and 2 is satisfied).\n4. Healthier option (e.g., whole-grain pasta) unless it breaks rule 1 and 2.\n5. Lowest unit price (kg / l / piece), provided it doesn’t break the previous rules.\n\n# 4 Search Strategy\n1. Start with a concise query: the base ingredient name only.\n2. If the item could be organic, first search “<ingredient> ØKO”. If no results with `objectID`, retry without “ØKO”.\n3. When no results appear, simplify or use synonyms (§6 aliases) and retry.\n4. After fetching results, apply the priority hierarchy (§3).\n5. If no product with an `objectID` appears after retries, treat the search as failed.\n\n# 5 Special Rules for Herbs\n| Herb type            | How to add                                        | Notes                                                    |\n| -------------------- | ------------------------------------------------- | -------------------------------------------------------- |\n| **Fresh / “frisk”**  | Add **one pot** regardless of requested quantity. | Often sold in pots and may mention that it can be dried. |\n| **Dried / “tørret”** | Add according to the requested amount.            | Typically classified as a spice.                         |\n\n**Important:** Always search using only the herb name itself. Apply the organic filter first; then decide between fresh or dried.\n\n# 6 Aliases, Variants & Synonyms\nThe products might be written in Danish.\n\n- **Soja** → Sojasauce\n- **Rødkål** → Rød spidskål\n- **Kyllingefillet** → Kyllingebrystfillet\n- **Soltørrede tomater i olie** → Soltørrede tomater\n- **Juice:** Avoid juice from concentrate.\n- **Organic markers:** ØKO, Økologisk, Organic, Bio\n- **Milk:** Always use \"skummetmælk\" if available\n- **Cheese:** If asked to just buy cheese, buy solid cheese, but in slices.\n\n# 7 Quantity Guidelines\n- Default to the **smallest pack / piece** that roughly satisfies the requested amount.\n- If units differ (pieces vs. grams), pick the form that exists and assume the smallest size meets the need.\n- For garlic, a unit called \"fed\" (in Danish) exists. One garlic contains many \"fed\", so assume just one garlic is needed.\n- If a certain amount of a product (for instance \"one onion\" or \"two onions\") has been requested, check if the product available is one *pack* of onions (Danish: \"en pakke\") or a bundle of onions (Danish: \"i bundt\") (multiple onions). If it is, always just pick just one quantity of these, no matter how much is requested. For things like broccoli, assume it's always a bundle, and only one is needed.\n- Try to balance food waste vs the requested quantities. For example, if 500 grams of meat has been requested, and only 450 grams is available, that's okay (and is better than ordering 2X 450 grams, which would be a big waste). On the other hand, if 500 grams of meat has been requested, and only 200 is available, this is not acceptable, and 2X needs to be ordered (to reach 400 grams). Generally it is OK if the quantity of a good is 20% lower than what has been requested.\n\n# 8 Vegetables & Fruits\n- Items may list **only pieces** _or_ **only weight** —either is acceptable.\n- If asked for 200 g of squash but only “1 piece” exists, assume one piece is sufficient.\n- Strive to keep the number of distinct line-items low while meeting or exceeding the required total amount.\n\n# 9 Error Handling & Retries\n- If a search variant yields no items with `objectID`, consider that query failed and retry with a simplified term or synonym.\n- After exhausting reasonable retries, gracefully return that the item could not be added.",
+          "maxIterations": 1000
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        -704,
+        -64
+      ],
+      "id": "07409b5b-5ed2-499b-9fe4-2a8068bb1eb1",
+      "name": "Shopping List Mutator Agent",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ JSON.stringify($('Information Extractor').item.json.output) }}",
+        "hasOutputParser": true,
+        "needsFallback": true,
+        "options": {
+          "systemMessage": "You are an evaluator agent that takes in a query from a user that has been processed by other agents, along with a \"before\" and \"after\" version of shopping basket contents.\n\nYour job is to answer the query based on the information you have.\n\n# Basket contents\n## Before query\n```json\n{{ JSON.stringify($('Get current cart contents').item.json) }}\n```\n\n## After query\n```json\n{{ JSON.stringify($('Get new cart contents').item.json) }}\n```"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        -96,
+        -304
+      ],
+      "id": "2390c9bd-6e78-49b7-a53e-f7cdafeb9fd0",
+      "name": "Summarization Agent"
+    },
+    {
+      "parameters": {
+        "toolDescription": "Sets the basket quantity for a certain item.",
+        "url": "=https://api.bilkatogo.dk/api/shop/v6/ChangeLineCount?u=w&productId={{ $fromAI(\"object_id\", \"The object ID (found by looking at the objectID property) of the product to adjust the basket quantity of. You get the object ID by searching in the catalogue for new items (and taking the `objectID` property of a product in the hits, or from the existing basket contents (and also taking the `objectID` property of the product from there). This object must come from a product in the catalogue, and cannot be made up.\") }}&count={{ $fromAI(\"quantity\", \"The quantity of the product. For instance, '2'.\", \"number\") }}&fullCart=0&name={{ $fromAI(\"product_name\", \"The name of the product.\", \"string\") }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "jwt_token",
+              "value": "={{ $('Renew JWT token').isExecuted ? $('Renew JWT token').last().json.id_token : $('Exchange login token with JWT token').item.json.id_token }}"
+            }
+          ]
+        },
+        "options": {},
+        "optimizeResponse": true
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.2,
+      "position": [
+        -384,
+        352
+      ],
+      "id": "f5f013ed-ce72-4b62-bedb-a77cd0813d9b",
+      "name": "Set product basket quantity",
+      "retryOnFail": false,
+      "maxTries": 5,
+      "waitBetweenTries": 5000
+    }
+  ],
+  "pinData": {
+    "Webhook": [
+      {
+        "json": {
+          "headers": {
+            "host": "n8n-webhooks-home-assistant.ffmathy.org",
+            "x-real-ip": "[IP_ADDRESS]",
+            "x-forwarded-for": "[IP_ADDRESS], [IP_ADDRESS]",
+            "x-forwarded-proto": "http",
+            "x-forwarded-host": "n8n-webhooks-home-assistant.ffmathy.org",
+            "x-forwarded-port": "8081",
+            "origin": "http://n8n-webhooks-home-assistant.ffmathy.org",
+            "connection": "close",
+            "content-length": "55",
+            "user-agent": "HomeAssistant/2025.5.3 aiohttp/3.11.18 Python/3.13",
+            "accept": "*/*",
+            "accept-encoding": "gzip, br",
+            "cdn-loop": "cloudflare; loops=1",
+            "cf-connecting-ip": "[IP_ADDRESS]",
+            "cf-ipcountry": "DK",
+            "cf-ray": "[CF_RAY_ID]",
+            "cf-visitor": "{\"scheme\":\"https\"}",
+            "cf-warp-tag-id": "[CF_WARP_TAG_ID]",
+            "content-type": "application/json; charset=utf-8"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "chat_input": "Add 'Mælk' to the shopping list."
+          },
+          "webhookUrl": "[WEBHOOK_URL]",
+          "executionMode": "production"
+        }
+      }
+    ],
+    "When Executed by Another Workflow": [
+      {
+        "json": {
+          "prompt": "# Prompt\nAdd the ingredients of this mealplan (in JSON) to the shopping list. Respond with exactly what was added, and what couldn't be found. Respond in Danish, and in HTML.\n\n# Omitted ingredients\nThere are some ingredients that the user never needs. If these are in the mealplan, you can safely ignore these, and assume that they don't need to be added.\n\n- Salt\n- Pepper\n- Sugar\n- Flour\n- Soja (or sojasauce)\n- Hoisin sauce\n- Oils and vinegars like: olive oil, sesame seed oil, balsamico vinegar\n- Dried herbs like thyme, bay leaves, cumin, coriander, oregano, paprika, basil etc (but not fresh herbs)\n- Seeds\n- Color\n- Starch\n- \"Soltørrede tomater\" (in Danish)\n\nDo however detail in the response when you decided to omit certain ingredients.\n\n# Mealplan\nAdd the following to the shopping list:\n- 3X apple or orange juice (not from concentrate)\n- \"Rugbrød\"\n- Cheese\n- \"Spegepølse\"\n- \"Leverpostej\"\n\nAlso add the following items from the mealplan (in JSON):\n```json\n[{\"days\":[\"Mandag\",\"Tirsdag\",\"Onsdag\"],\"recipe\":{\"image_url\":\"https://www.valdemarsro.dk/wp-content/2024/03/friske-foraarsruller-rejer_app.jpg\",\"title\":\"Friske forårsruller med rejer\",\"ingredients\":[\"3 stk fed hvidløg pressede\",\"1.5 tsk ingefær fintrevet\",\"3 spsk fishsauce\",\"3 stk øko lime fintrevet skal og saft herfra\",\"1.5 spsk sesamolie eller anden olie til stegning\",\"375 g vannamei tigerrejer\",\"2 stk æg sammenpisket\",\"105 g pankorasp\",\"1 stk ananas i små tern\",\"3 stk avocado i små tern\",\"2 håndfuld frisk mynte finthakket\",\"2 håndfuld frisk basilikum finthakket\",\"2 stk øko lime saft og fintrevet skal\",\"1 stk rød chili finthakket\",\"salt og friskkværnet peber\",\"24 stk rispapir\",\"5 stk gulerødder i stave\",\"2 stk agurk i stave\",\"115 g bønnespirer\",\"3 stængler forårsløg snittet\",\"1.5 dl sød chilisauce\"],\"url\":\"https://www.valdemarsro.dk/friske-foraarsruller-med-rejer/\",\"directions\":[\"<strong>Pankorejer</strong>\",\"Rør ingefær, hvidløg, fishsauce, limesaft og sesamolie sammen til det er ensartet. Dup rejerne helt tørre med køkkenrulle og vend them godt i marinaden. Lad det trække smag i minimum 1 time eller natten over.\",\"Dyp rejerne en efter en, først i en skål med sammenpisket æg og derefter i en skål med pankorasp. Læg them på en bageplade med  bagepapir, og bag them i en forvarmet ovn ved 190 grader varmluft i cirka 12-15 minutter til de er gyldne.\",\"<strong>Ananassalsa med avocado</strong>\",\"Vend ananas, avocado og krydderurter sammen i en skål. Smag til med limesaft og skal, finthakket chili, salt og peber og rør det godt sammen.\",\"<strong>Saml forårsrullerne</strong>\",\"Kom vand i et stort fad, læg et stykke rispapir i og læg derefter det bløde rispapir på køkkenbordet.\",\"Kom sprøde pankorejer, ananassalsa, frisk mynte, gulerodsstave, bønnespirer, agurkestave og forårsløg på rispapiret, så det ligger i en stribe på midten. Fold siderne omkring fyldet, og rul den sammen til en fast frisk forårsrulle.\",\"Server med sød chilisauce og vis der er overskud af grønt og ananassalsa, så server det som tilbehør ved siden af.\"]}},{\"days\":[\"Torsdag\",\"Fredag\",\"Lørdag\"],\"recipe\":{\"directions\":[\"<strong>Kylling med lime og ingefær</strong>\",\"Riv lime og gem den fintrevet lime skal til senere. Pres saften fra lime og rør limesaften, ingefær, soja og honning sammen til det er ensartet. Vend kyllingestykkerne godt i marinaden. Lad det trække smag i minimum 30 minutter eller natten over.\",\"Varm en pande op med olie og brun den krydrede kylling af ved høj varme under omrøring. Skrue ned for varmen til medium varme og steg videre til kyllingestykkerne er gennemstegt. Lad them køle af på en tallerken, til de er stuetemperatur.\",\"<strong>Mango og avocado salsa</strong>\",\"Vend mango, avocado og krydderurter sammen i en skål og mos det en smule med en gaffel. Det skal gerne være groft og med hele stykker mango og avocado, men samtidig også smovset og lækkert. Smag til med limesaft og skal, chili, salt og peber og rør det godt sammen.\",\"<strong>Saml forårsrullerne</strong>\",\"Kom vand i et stort fad, læg et stykke rispapir i og læg derefter det bløde rispapir på køkkenbordet.\",\"Kom kylling, mangosalsa, gulerodsstave, agurkestave, forårsløg og et drys chili og limeskal på rispapiret, så det ligger i en stribe på midten. Fold siderne omkring fyldet, og rul den sammen til en fast frisk forårsrulle.\",\"Server med hoisinsauce og sød chilisauce. Hvis der er overskud af grønt og mangosalsa, så server det som tilbehør ved siden af.\"],\"image_url\":\"https://www.valdemarsro.dk/wp-content/2023/01/friske-foraarsruller-kylling-app.jpg\",\"url\":\"https://www.valdemarsro.dk/friske-foraarsruller-med-kylling/\",\"ingredients\":[\"3 stk øko lime fintrevet skal og saft herfra\",\"1.5 tsk ingefær fintrevet\",\"1.5 spsk soja\",\"1.5 spsk honning\",\"600 g kyllingefilet skåret i tern\",\"6 spsk sesamolie til stegning\",\"3 stk mango i små tern\",\"5 stk avocado i små tern\",\"2 håndfuld frisk koriander\",\"2 håndfuld frisk basilikum\",\"2 stk øko lime saft og fintrevet skal\",\"1 stk rød chili finthakket\",\"salt og friskkværnet peber\",\"24 stk rispapir\",\"6 stk gulerødder i stave\",\"2 stk agurk i stave\",\"3 stængler forårsløg snittet\",\"1 stk rød chili finthakket\",\"1.5 dl hoisin sauce\",\"1.5 dl sød chilisauce\"],\"title\":\"Friske forårsruller med kylling\"}},{\"days\":[\"Søndag\"],\"recipe\":null}]\n```"
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Retrieve app token": {
+      "main": [
+        [
+          {
+            "node": "Wait for app token retrieval",
+            "type": "main",
+            "index": 1
+          },
+          {
+            "node": "Delete existing app token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Shopping List Mutator Agent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Shopping List Mutator Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [
+          {
+            "node": "Aggregate",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Information Extractor": {
+      "main": [
+        [
+          {
+            "node": "Split Out",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is evaluating?": {
+      "main": [
+        [
+          {
+            "node": "Evaluation",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Summarization Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get new cart contents": {
+      "main": [
+        [
+          {
+            "node": "Is evaluating?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluating?": {
+      "main": [
+        [
+          {
+            "node": "Clear cart contents",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get current cart contents",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clear cart contents": {
+      "main": [
+        [
+          {
+            "node": "Get current cart contents",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When fetching a dataset row": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Exchange credentials with login token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find product in catalogue": {
+      "ai_tool": [
+        [
+          {
+            "node": "Shopping List Mutator Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Flash 2.5": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Summarization Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Information Extractor",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Shopping List Mutator Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get current cart contents": {
+      "main": [
+        [
+          {
+            "node": "Information Extractor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Exchange login token with JWT token": {
+      "main": [
+        [
+          {
+            "node": "Evaluating?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Exchange credentials with login token": {
+      "main": [
+        [
+          {
+            "node": "Exchange login token with JWT token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When clicking ‘Test workflow’": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Summarization Agent",
+            "type": "ai_languageModel",
+            "index": 1
+          },
+          {
+            "node": "Shopping List Mutator Agent",
+            "type": "ai_languageModel",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Aggregate": {
+      "main": [
+        [
+          {
+            "node": "Get new cart contents",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Token expired?": {
+      "main": [
+        [
+          {
+            "node": "Renew JWT token",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait between attempts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Renew JWT token": {
+      "main": [
+        [
+          {
+            "node": "Shopping List Mutator Agent",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Token expired?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Shopping List Mutator Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait between attempts": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait on error before retry": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Rename body parameter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rename body parameter": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Output format": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Summarization Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Shopping List Mutator Agent": {
+      "main": [
+        [
+          {
+            "node": "Token expired?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait on error before retry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summarization Agent": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set product basket quantity": {
+      "ai_tool": [
+        [
+          {
+            "node": "Shopping List Mutator Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "timeSavedPerExecution": 10
+  },
+  "versionId": "cbc79dd1-010d-4556-8c08-be2b1a9dfad7",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "[INSTANCE_ID]"
+  },
+  "id": "IBq3fqo1e1NHlqH9",
+  "tags": []
+}

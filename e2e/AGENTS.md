@@ -30,5 +30,14 @@ npx nx build e2e
 npx nx serve e2e
 ```
 
+## Development Commands
+**CRITICAL: ALWAYS use NX commands** for this monorepo:
+- ✅ Use `nx serve e2e` instead of `npm run dev`
+- ✅ Use `nx build e2e` instead of `npm run build`
+- ✅ Use `nx test e2e` instead of `npm run test`
+- ✅ Use `nx lint e2e` instead of `npm run lint`
+- ❌ **NEVER use `npm run` commands** in this NX monorepo
+- ❌ **NEVER use `npm install` directly** - use NX workspace commands
+
 ## Development
 The application is built using TypeScript and follows NX monorepo conventions. All source code is located in the `src/` directory.
