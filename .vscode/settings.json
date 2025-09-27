@@ -6,5 +6,9 @@
         "touch": true
     },
     "chat.agent.maxRequests": 1000,
-    "nxConsole.generateAiAgentRules": true
+    "nxConsole.generateAiAgentRules": true,
+    
+    // Encourage NX usage
+    "workbench.commandPalette.experimental.suggestCommands": true,
+    "workbench.tips.enabled": true
 }

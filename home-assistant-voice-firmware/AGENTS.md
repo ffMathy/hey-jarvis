@@ -41,5 +41,14 @@ npx nx build home-assistant-voice-firmware
 npx nx serve home-assistant-voice-firmware
 ```
 
+## Development Commands
+**CRITICAL: ALWAYS use NX commands** for this monorepo:
+- ✅ Use `nx serve home-assistant-voice-firmware` instead of `npm run dev`
+- ✅ Use `nx build home-assistant-voice-firmware` instead of `npm run build`
+- ✅ Use `nx test home-assistant-voice-firmware` instead of `npm run test`
+- ✅ Use `nx lint home-assistant-voice-firmware` instead of `npm run lint`
+- ❌ **NEVER use `npm run` commands** in this NX monorepo
+- ❌ **NEVER use `npm install` directly** - use NX workspace commands
+
 ## Development
 The firmware is built using C++17 and follows NX monorepo conventions. All source code is located in the `src/` directory. The build system uses g++ for compilation.

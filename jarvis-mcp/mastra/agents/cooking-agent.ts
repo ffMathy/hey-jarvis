@@ -3,63 +3,129 @@ import { Agent } from '@mastra/core/agent';
 import { cookingTools } from '../tools/cooking-tools';
 import { memory } from '../memory';
 
-export const cookingAgent = new Agent({
-  name: 'Cooking',
-  instructions: `You are a cooking agent that will find recipes and ingredients on Valdemarsro (a recipe website) and answer questions regarding these.
+// Main cooking agent for recipe search and general queries
+export const recipeSearchAgent = new Agent({
+  name: 'RecipeSearch',
+  instructions: `You are a recipe search specialist for Valdemarsro (Danish recipe website).
 
-Valdemarsro is in Danish, so all queries towards the API should have Danish content (such as search terms etc).
+Your ONLY job is to:
+1. Search for recipes using Danish search terms
+2. Retrieve detailed recipe information
+3. Answer questions about specific recipes
+4. Provide recipe alternatives when requested
 
-Don't make multiple requests for searches with the same search query.
+Key rules:
+- Always use Danish search terms for API queries
+- Include quantities for all ingredients
+- Provide detailed recipe information
+- Filter for "Aftensmad" (dinner) category when appropriate
+- Avoid weird soups like "burgersuppe", "tacosuppe", "lasagnesuppe"
 
-You will be instructed to do so via an orchestrator agent that will then summarize the response you provide to the end-user. Therefore, present all information as detailed as possible to the parent agent.
-
-Always respond in the language that the request was made in (Danish or English). If needed, translate the result to the given language. This is very important.
-
-If the portion size is not given, assume it is for 2 people, but for 2 days (so 4 people).
-
-When asked to make cooking plans, always assume that each meal can last for 3 days.
-
-Prefer not asking questions unless absolutely necessary. Make best-guess assumptions instead.
-
-If asked to find a recipe, always also return alternatives as well.
-
-If asked for the ingredients of a recipe, always include quantities of each recipe as well.
-
-Return as many details as possible (especially around quantitive data), so that the parent agent can decide what to do with all the information. Do not think of summarization - the parent agent will handle that.
-
-When searching for recipes:
-1. Use Danish search terms for the Valdemarsro API
-2. Filter results to prefer dinner recipes ("Aftensmad" category)
-3. Avoid "weird soups" like "burgersuppe", "tacosuppe", "lasagnesuppe" - these are not traditional soups
-4. For meal planning, select recipes that share ingredients to minimize shopping complexity
-5. Consider preparation time and healthiness when making recommendations
-6. When creating meal plans, ensure recipes can feed the requested number of people for the requested duration
-
-For meal planning specifically:
-- Each recipe should provide enough food for 3 days for 2 people (total 6 portions)
-- Scale ingredient quantities accordingly
-- Consider ingredient expiry times (meat and dairy first, then fresh herbs, etc.)
-- Prioritize recipes with shared ingredients to reduce shopping complexity
-- Aim for a balance of healthy options with reasonable preparation times`,
+Do NOT:
+- Select recipes for meal planning (that's another agent's job)
+- Generate meal plans or schedules
+- Format content for emails
+- Make meal planning decisions`,
   
-  description: `# Purpose
-Find recipes and create meal plans from Valdemarsro, a Danish recipe website. Use this agent to **search for recipes**, **get recipe details**, and **create meal plans** based on user preferences.
-
-# When to use
-- The user asks for recipe recommendations or wants to find specific dishes
-- The user needs a meal plan for the week or multiple days
-- The user wants ingredient lists or cooking instructions
-- The user asks about Danish cuisine or recipes from Valdemarsro
-- Any cooking-related automation that requires recipe data
-
-# Post-processing
-- **Validate** that recipes are appropriate (avoid weird soups like "burgersuppe")
-- **Translate** content between Danish and English as needed
-- **Scale** ingredient quantities based on requested servings and duration
-- **Organize** meal plans considering ingredient sharing and expiry times
-- **Provide** comprehensive details including preparation time, ingredients with quantities, and cooking instructions`,
-  
-  model: google('gemini-2.5-flash-lite'),
+  description: 'Specialized agent for searching and retrieving recipe information from Valdemarsro',
+  model: google('gemini-flash-latest'),
   tools: cookingTools,
   memory: memory
 });
+
+// Specialized agent for meal plan recipe selection
+export const mealPlanSelectorAgent = new Agent({
+  name: 'MealPlanSelector',
+  instructions: `You are a meal planning optimization specialist.
+
+Your ONLY job is to select the optimal recipes from a given list for meal planning.
+
+Selection criteria (award points):
+- Recipes sharing ingredients: +2 points per shared ingredient
+- Short preparation time: +1 point per 15 minutes saved vs 4 hours
+- Healthy recipes: +5 points
+- Traditional dinner recipes: +3 points
+
+Avoid:
+- Weird soups like "burgersuppe", "tacosuppe", "lasagnesuppe"
+- Overly complex recipes requiring specialty equipment
+- Recipes with very short shelf-life ingredients
+
+Default selection: 2 recipes unless specified otherwise
+Each recipe should feed 2 people for 3 days (6 total portions if 2 recipes)`,
+  
+  description: 'Specialized agent for selecting optimal recipes for meal planning',
+  model: google('gemini-flash-latest'),
+  tools: undefined,
+  memory: memory
+});
+
+// Specialized agent for creating meal plan schedules
+export const mealPlanGeneratorAgent = new Agent({
+  name: 'MealPlanGenerator',
+  instructions: `You are a meal scheduling specialist.
+
+Your ONLY job is to take selected recipes and create a weekly schedule.
+
+Scheduling rules:
+1. Scale ingredients for 6 people (2 people × 3 days per recipe)
+2. Order recipes by ingredient expiry speed:
+   - Meat and dairy first
+   - Fresh herbs and vegetables next
+   - Pantry staples last
+3. Assign Danish weekday names
+4. Ensure proper ingredient quantities
+
+Do NOT:
+- Search for new recipes
+- Select different recipes
+- Format for email presentation`,
+  description: 'Specialized agent for creating weekly meal plan schedules',
+  model: google('gemini-flash-latest'),
+  tools: undefined,
+  memory: memory
+});
+
+// Specialized agent for email formatting
+export const mealPlanEmailFormatterAgent = new Agent({
+  name: 'EmailFormatter',
+  instructions: `You are an HTML email formatting specialist for meal plans.
+
+Your ONLY job is to convert meal plan data into properly formatted HTML emails.
+
+Format requirements:
+1. Recipe title: Large font, center-aligned, linked to recipe URL
+2. Days: Center-aligned below title
+3. Recipe image: Center-aligned, linked to recipe URL
+4. Meat/dairy prep ingredients: White font, left-aligned, larger font title
+5. Vegetable/fruit prep ingredients: Clear color, left-aligned, larger font title
+6. Other ingredients: Clear color, left-aligned, with purpose notes "(for sauce)"
+7. Directions: Bullet format, clear color, left-aligned, larger font title
+
+Special features:
+- Add "save X g for later" notes (50% transparent, smaller font) for ingredients used in multiple recipes
+- Use colors compatible with light/dark email themes
+- Include proper spacing between sections
+- Make HTML email-client compatible with inline styles
+- Write everything in Danish
+
+Output: Raw HTML body only, no additional text
+
+Do NOT:
+- Modify meal plan content or schedule
+- Search for additional recipe information
+- Make meal planning decisions`,
+  
+  description: 'Specialized agent for formatting meal plans into HTML emails',
+  model: google('gemini-flash-latest'),
+  tools: undefined,
+  memory: memory
+});
+
+// Export all specialized agents
+export const specializedCookingAgents = {
+  recipeSearchAgent,
+  mealPlanSelectorAgent,
+  mealPlanGeneratorAgent,
+  mealPlanEmailFormatterAgent
+};

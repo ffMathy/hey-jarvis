@@ -1,335 +1,184 @@
 import { createStep, createWorkflow } from '@mastra/core/workflows';
 import { z } from 'zod';
+import { RuntimeContext } from '@mastra/core/runtime-context';
+import { getAllRecipes } from '../tools/cooking-tools';
 
 // Schema for meal plan structure
 const mealPlanSchema = z.object({
-  mealplan: z.array(z.object({
-    days: z.array(z.string().describe('Weekday names in Danish')),
-    recipe: z.object({
-      title: z.string(),
-      ingredients: z.array(z.string()),
-      directions: z.array(z.string()),
-      imageUrl: z.string(),
-      url: z.string(),
-    }).nullable(),
-  })),
+    mealplan: z.array(z.object({
+        days: z.array(z.string().describe('Weekday names in Danish')),
+        recipe: z.object({
+            title: z.string(),
+            ingredients: z.array(z.string()),
+            directions: z.array(z.string()),
+            imageUrl: z.string(),
+            url: z.string(),
+        }).nullable(),
+    })),
 });
 
-// Step to get recipe data for meal planning
+// Step to get recipe data for meal planning using the getAllRecipes tool directly
 const getRecipesForMealPlanning = createStep({
-  id: 'get-recipes-for-meal-planning',
-  description: 'Fetches dinner recipes from storage for meal planning',
-  inputSchema: z.object({
-    preferences: z.string().optional(),
-    limit: z.number().optional().default(10),
-  }),
-  outputSchema: z.object({
-    recipes: z.array(z.object({
-      id: z.number(),
-      title: z.string(),
-      description: z.string(),
-      categories: z.array(z.string()),
-      ingredients: z.array(z.string()),
-      preparationTime: z.string().optional(),
-      lastUsedInMealplan: z.string().optional(),
-    })),
-  }),
-  execute: async ({ mastra, inputData }) => {
-    // This would typically query a database
-    // For now, we'll use the cooking agent to get recipes
-    const agent = mastra?.getAgent('cookingAgent');
-    if (!agent) {
-      throw new Error('Cooking agent not found');
-    }
+    id: 'get-recipes-for-meal-planning',
+    description: 'Fetches all recipes and filters for dinner recipes suitable for meal planning',
+    inputSchema: z.any(),
+    outputSchema: z.object({
+        recipes: z.array(z.object({
+            id: z.number(),
+            title: z.string(),
+            description: z.string(),
+            categories: z.array(z.string()),
+            ingredients: z.array(z.string()),
+            preparationTime: z.string().optional(),
+        })),
+    }),
+    execute: async ({ runtimeContext, mastra, suspend, writer }) => {
+        // Use the getAllRecipes tool through the proper execution context
+        const allRecipes = await getAllRecipes.execute({
+            context: {},
+            runtimeContext,
+            mastra,
+            suspend,
+            writer
+        });
 
-    // In a real implementation, this would query the database for recipes
-    // that haven't been used in meal plans recently
-    const response = await agent.stream([
-      {
-        role: 'user',
-        content: `Get ${inputData.limit} dinner recipes that are suitable for meal planning. Focus on "Aftensmad" (dinner) category recipes. Avoid weird soups.`,
-      },
-    ]);
+        // Filter recipes for dinner/evening meals (looking for "Aftensmad" or similar categories)
+        const dinnerCategories = ['aftensmad'];
+        const dinnerRecipes = allRecipes.filter(recipe => {
+            return recipe.categories.some(category =>
+                dinnerCategories.some(dinnerCat =>
+                    category.toLowerCase().includes(dinnerCat)
+                )
+            );
+        });
 
-    let recipeData = '';
-    for await (const chunk of response.textStream) {
-      recipeData += chunk;
-    }
-
-    // Parse the response - in a real implementation, this would be structured data from database
-    return {
-      recipes: [], // Would be populated from database query
-    };
-  },
+        return {
+            recipes: dinnerRecipes
+        };
+    },
 });
 
-// Step to select recipes for meal plan
-const selectMealPlanRecipes = createStep({
-  id: 'select-meal-plan-recipes',
-  description: 'Selects optimal recipes for the weekly meal plan',
-  inputSchema: z.object({
-    recipes: z.array(z.object({
-      id: z.number(),
-      title: z.string(),
-      description: z.string(),
-      categories: z.array(z.string()),
-      ingredients: z.array(z.string()),
-      preparationTime: z.string().optional(),
-      lastUsedInMealplan: z.string().optional(),
-    })),
-  }),
-  outputSchema: z.object({
-    selectedRecipeIds: z.array(z.number()),
-  }),
-  execute: async ({ inputData, mastra }) => {
-    const agent = mastra?.getAgent('cookingAgent');
-    if (!agent) {
-      throw new Error('Cooking agent not found');
-    }
+// Combined step that uses specialized agents for selection and meal plan generation
+const selectAndPlanMeals = createStep({
+    id: 'select-and-plan-meals',
+    description: 'Uses specialized agents to select recipes and generate meal plan',
+    inputSchema: z.object({
+        recipes: z.array(z.object({
+            id: z.number(),
+            title: z.string(),
+            description: z.string(),
+            categories: z.array(z.string()),
+            ingredients: z.array(z.string()),
+            preparationTime: z.string().optional(),
+        })),
+    }),
+    outputSchema: mealPlanSchema,
+    execute: async ({ inputData, mastra }) => {
+        // Step 1: Use meal plan selector agent to select optimal recipes
+        const selectorAgent = mastra?.getAgent('mealPlanSelector');
+        if (!selectorAgent) {
+            throw new Error('Meal plan selector agent not found');
+        }
 
-    const prompt = `
-Based on the following recipes, select 2 recipes for a weekly meal plan. Each recipe should provide enough food for 3 days for 2 people.
+        let prompt = `Select 2 optimal recipes for a weekly meal plan from the following options:
 
-Consider:
-- Recipes that share ingredients (bonus points)
-- Short preparation time (bonus points)
-- Healthy options (bonus points)
-- Avoid weird soups like "burgersuppe", "tacosuppe", "lasagnesuppe"
+${JSON.stringify(inputData.recipes, null, 2)}`;
 
-Available recipes:
-${JSON.stringify(inputData.recipes, null, 2)}
+        const selectionResponse = await selectorAgent.streamVNext([
+            {
+                role: 'user',
+                content: prompt,
+            },
+        ], {
+            structuredOutput: {
+                schema: z.object({
+                    selectedRecipeIds: z.array(z.number()).describe('Array of selected recipe IDs for the meal plan'),
+                })
+            }
+        });
 
-Respond with only the recipe IDs as a JSON array of numbers.
-`;
+        // Get the structured result directly from the response
+        const selectionResult = await selectionResponse.object;
+        console.log('selectionResult', selectionResult);
+        
+        const selectedRecipes = inputData.recipes.filter(recipe =>
+            selectionResult.selectedRecipeIds.includes(recipe.id)
+        );
 
-    const response = await agent.stream([
-      {
-        role: 'user',
-        content: prompt,
-      },
-    ]);
+        // Step 2: Use meal plan generator agent to create the detailed meal plan
+        const generatorAgent = mastra?.getAgent('mealPlanGenerator');
+        if (!generatorAgent) {
+            throw new Error('Meal plan generator agent not found');
+        }
 
-    let selectionData = '';
-    for await (const chunk of response.textStream) {
-      selectionData += chunk;
-    }
+        const planResponse = await generatorAgent.streamVNext([
+            {
+                role: 'user',
+                content: `Create a detailed weekly meal plan using these selected recipes:\n\n${JSON.stringify(selectedRecipes, null, 2)}\n\nGenerate the complete meal plan with proper scheduling and scaled ingredients.`,
+            },
+        ], {
+            structuredOutput: {
+                schema: mealPlanSchema
+            }
+        });
 
-    // Parse the JSON response to get selected recipe IDs
-    try {
-      const selectedIds = JSON.parse(selectionData.trim());
-      return { selectedRecipeIds: Array.isArray(selectedIds) ? selectedIds : [] };
-    } catch (error) {
-      throw new Error(`Failed to parse recipe selection: ${error}`);
-    }
-  },
+        // Get the structured result directly from the response
+        const mealPlan = await planResponse.object;
+        console.log('mealPlan', mealPlan);
+        return mealPlan;
+    },
 });
 
-// Step to generate detailed meal plan
-const generateMealPlan = createStep({
-  id: 'generate-meal-plan',
-  description: 'Generates a detailed weekly meal plan with recipes and scheduling',
-  inputSchema: z.object({
-    selectedRecipeIds: z.array(z.number()),
-  }),
-  outputSchema: mealPlanSchema,
-  execute: async ({ inputData, mastra }) => {
-    const agent = mastra?.getAgent('cookingAgent');
-    if (!agent) {
-      throw new Error('Cooking agent not found');
-    }
-
-    const prompt = `
-Create a detailed weekly meal plan using the selected recipe IDs: ${inputData.selectedRecipeIds.join(', ')}
-
-For each recipe:
-1. Get full recipe details including ingredients and directions
-2. Scale ingredients for 6 people (2 people × 3 days)
-3. Assign days of the week in Danish
-4. Consider ingredient expiry (use meat/dairy first)
-
-Format the response as JSON matching this schema:
-{
-  "mealplan": [
-    {
-      "days": ["mandag", "tirsdag", "onsdag"],
-      "recipe": {
-        "title": "Recipe Title",
-        "ingredients": ["ingredient 1", "ingredient 2"],
-        "directions": ["step 1", "step 2"],
-        "imageUrl": "https://...",
-        "url": "https://..."
-      }
-    }
-  ]
-}
-`;
-
-    const response = await agent.stream([
-      {
-        role: 'user',
-        content: prompt,
-      },
-    ]);
-
-    let mealPlanData = '';
-    for await (const chunk of response.textStream) {
-      mealPlanData += chunk;
-    }
-
-    // Parse and validate the meal plan response
-    try {
-      const mealPlan = JSON.parse(mealPlanData.trim());
-      return mealPlanSchema.parse(mealPlan);
-    } catch (error) {
-      throw new Error(`Failed to parse meal plan: ${error}`);
-    }
-  },
-});
-
-// Step to generate HTML email for meal plan
+// Step to generate HTML email using specialized formatter agent
 const generateMealPlanEmail = createStep({
-  id: 'generate-meal-plan-email',
-  description: 'Generates HTML email content for the meal plan',
-  inputSchema: mealPlanSchema,
-  outputSchema: z.object({
-    htmlContent: z.string(),
-    subject: z.string(),
-  }),
-  execute: async ({ inputData, mastra }) => {
-    const agent = mastra?.getAgent('cookingAgent');
-    if (!agent) {
-      throw new Error('Cooking agent not found');
-    }
-
-    const prompt = `
-Generate HTML email content for this meal plan in Danish:
-
-${JSON.stringify(inputData, null, 2)}
-
-For each recipe, include:
-1. Large title as link to recipe URL (center-aligned)
-2. Days the recipe is for (center-aligned)
-3. Recipe image as link (center-aligned)
-4. Meat/dairy ingredients needing preparation (white font, left-aligned)
-5. Vegetable/fruit ingredients needing preparation (clear color, left-aligned)
-6. Other ingredients with purpose notes (clear color, left-aligned)
-7. Cooking directions in bullet format (clear color, left-aligned)
-
-Add proper spacing and use colors compatible with light/dark themes.
-Include "save X g for later" notes for ingredients used in multiple recipes.
-Make HTML email-client compatible with inline styles.
-
-Return JSON with "htmlContent" and "subject" fields.
-`;
-
-    const response = await agent.stream([
-      {
-        role: 'user',
-        content: prompt,
-      },
-    ]);
-
-    let emailData = '';
-    for await (const chunk of response.textStream) {
-      emailData += chunk;
-    }
-
-    try {
-      const emailResult = JSON.parse(emailData.trim());
-      return {
-        htmlContent: emailResult.htmlContent || emailData,
-        subject: emailResult.subject || 'Nyt forslag til madplan',
-      };
-    } catch (error) {
-      // If parsing fails, use the raw response as HTML
-      return {
-        htmlContent: emailData,
-        subject: 'Nyt forslag til madplan',
-      };
-    }
-  },
-});
-
-// Final step to combine results
-const combineResults = createStep({
-  id: 'combine-results',
-  description: 'Combines meal plan and email content into final output',
-  inputSchema: z.object({
-    htmlContent: z.string(),
-    subject: z.string(),
-  }),
-  outputSchema: z.object({
-    emailContent: z.object({
-      htmlContent: z.string(),
-      subject: z.string(),
+    id: 'generate-meal-plan-email',
+    description: 'Generates HTML email using the specialized email formatter agent',
+    inputSchema: mealPlanSchema,
+    outputSchema: z.object({
+        htmlContent: z.string(),
+        subject: z.string(),
     }),
-  }),
-  execute: async ({ inputData, getStepResult }) => {
-    const mealPlan = getStepResult(generateMealPlan);
-    
-    return {
-      emailContent: {
-        htmlContent: inputData.htmlContent,
-        subject: inputData.subject,
-      },
-    };
-  },
+    execute: async ({ inputData, mastra }) => {
+        const formatterAgent = mastra?.getAgent('mealPlanEmailFormatter');
+        if (!formatterAgent) {
+            throw new Error('Email formatter agent not found');
+        }
+
+        const prompt = `Format this meal plan into a professional HTML email:\n\n${JSON.stringify(inputData, null, 2)}`;
+
+        const response = await formatterAgent.streamVNext([
+            {
+                role: 'user',
+                content: prompt,
+            },
+        ], {
+            structuredOutput: {
+                schema: z.string().describe('HTML content of the meal plan email without any additional text or markdown')
+            }
+        });
+
+        let emailData = '';
+        for await (const chunk of response.textStream) {
+            emailData += chunk;
+        }
+
+        return {
+            htmlContent: emailData,
+            subject: 'Nyt forslag til madplan',
+        };
+    },
 });
 
-// Main weekly meal planning workflow
+// Main weekly meal planning workflow using specialized agents
 export const weeklyMealPlanningWorkflow = createWorkflow({
-  id: 'weekly-meal-planning-workflow',
-  inputSchema: z.object({
-    preferences: z.string().optional(),
-    limit: z.number().optional().default(100),
-  }),
-  outputSchema: z.object({
-    emailContent: z.object({
-      htmlContent: z.string(),
-      subject: z.string(),
+    id: 'weekly-meal-planning-workflow',
+    inputSchema: z.any(),
+    outputSchema: z.object({
+        htmlContent: z.string(),
+        subject: z.string(),
     }),
-  }),
 })
-  .then(getRecipesForMealPlanning)
-  .then(selectMealPlanRecipes)
-  .then(generateMealPlan)
-  .then(generateMealPlanEmail)
-  .then(combineResults);
-
-// Recipe indexing workflow (equivalent to the quarterly recipe rebuild in n8n)
-const fetchAllRecipesStep = createStep({
-  id: 'fetch-all-recipes',
-  description: 'Fetches all recipes from Valdemarsro API',
-  inputSchema: z.object({}),
-  outputSchema: z.object({
-    totalRecipes: z.number(),
-    message: z.string(),
-  }),
-  execute: async ({ mastra }) => {
-    const agent = mastra?.getAgent('cookingAgent');
-    if (!agent) {
-      throw new Error('Cooking agent not found');
-    }
-
-    // This would fetch all recipes and store them in the database with embeddings
-    const response = await agent.stream([
-      {
-        role: 'user',
-        content: 'Fetch all recipes from Valdemarsro and prepare them for indexing. Start from page 0 and continue until all pages are processed.',
-      },
-    ]);
-
-    let indexingData = '';
-    for await (const chunk of response.textStream) {
-      indexingData += chunk;
-    }
-
-    return {
-      totalRecipes: 0, // Would be actual count from indexing process
-      message: 'Recipe indexing completed successfully',
-    };
-  },
-});
-
-// Commit the workflows
-weeklyMealPlanningWorkflow.commit();
+    .then(getRecipesForMealPlanning)
+    .then(selectAndPlanMeals)
+    .then(generateMealPlanEmail)
+    .commit();

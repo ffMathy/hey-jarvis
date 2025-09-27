@@ -22,7 +22,7 @@ const scheduledWeatherCheck = createStep({
     }
 
     // Get current weather for Aarhus (default location)
-    const response = await agent.stream([
+    const response = await agent.streamVNext([
       {
         role: 'user',
         content: 'Get current weather for Aarhus, Denmark',

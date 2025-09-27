@@ -180,11 +180,40 @@ If you encounter 1Password CLI authentication issues:
 ### File Creation Policy
 **IMPORTANT**: When working on this project:
 - **Do NOT create new README files** unless explicitly requested
-- **Do NOT create new example scripts** unless explicitly requested  
+- **Do NOT create new example scripts or test files** unless explicitly requested  
+- **Do NOT create testing scripts** - use existing documentation and the Mastra playground instead
+- **Do NOT create analysis files** like `AGENT_ARCHITECTURE_ANALYSIS.md`, `COMPARISON.md`, or similar documentation artifacts
+- **Do NOT create temporary documentation files** for explanations - use inline comments or update existing docs
 - **Only modify existing documentation and examples** when making changes
 - **Focus on core functionality** (agents, tools, workflows) rather than documentation artifacts
 
-This keeps the project lean and focused on the essential Mastra components.
+### Build and Development Commands
+**CRITICAL: ALWAYS use NX commands** for this monorepo:
+- ✅ Use `nx serve jarvis-mcp` instead of `npm run dev`
+- ✅ Use `nx build jarvis-mcp` instead of `npm run build` 
+- ✅ Use `nx test jarvis-mcp` instead of `npm run test`
+- ✅ Use `nx lint jarvis-mcp` instead of `npm run lint`
+- ✅ Use `npx nx install` for package installations through NX
+- ❌ **NEVER use `npm run` commands** in this NX monorepo
+- ❌ **NEVER use `npm install` directly** - use NX workspace commands
+- ❌ **NEVER use `npm start`, `npm test`, `npm build`** - always prefix with `nx`
+
+**Why NX is Required:**
+- NX provides intelligent caching and dependency management
+- Ensures consistent builds across the monorepo
+- Manages project dependencies and task orchestration
+- Prevents conflicts between different project configurations
+
+### Agent Architecture Guidelines
+When refactoring or creating agents:
+- **Prefer specialized agents** over single multi-purpose agents for complex workflows
+- **Keep agent prompts focused** on specific cognitive tasks
+- **Use clear separation of concerns** between search, selection, generation, and formatting
+- **Maintain backward compatibility** by keeping original agent names as aliases
+- **Update the main Mastra index** to register all new specialized agents
+- **Test agent interactions** using the Mastra playground at `http://localhost:4111/agents`
+
+This keeps the project lean, properly structured, and aligned with NX monorepo best practices.
 
 ## Contributing
 This project is part of the Hey Jarvis monorepo and follows Mastra's development patterns. Contributions should:

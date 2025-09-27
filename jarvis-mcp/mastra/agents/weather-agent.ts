@@ -35,7 +35,7 @@ Provide weather data. Use this tool to **fetch the current conditions** or a **5
 - **Summarize** clearly: current conditions first, followed by the 5-day outlook—use concise prose or a compact list; avoid overwhelming detail.  
 - **Convert units** to match the user’s locale or stated preference (°C/°F, mm/in, km/h/mph); note conversions if they differ from the source.  
 - **Highlight significant events** (e.g., “Thunderstorms expected Thursday afternoon”) and offer brief guidance if relevant.`,
-  model: google('gemini-2.5-flash-lite'),
+  model: google('gemini-flash-lite-latest'),
   tools: weatherTools,
-  memory: memory
+  memory: memory,
 });
