@@ -59,6 +59,19 @@ Provides intelligent weather information and forecasting capabilities:
 
 **Converted from n8n**: This agent replicates the exact functionality of the original n8n Weather Agent workflow, including the same system message, tools, and behavior patterns.
 
+### Shopping List Agent
+Provides intelligent shopping list management for Bilka online store with Danish language support:
+- **4 Bilka integration tools**: Product search via Algolia, cart quantity management, cart retrieval, and cart clearing
+- **Google Gemini model**: Uses `gemini-flash-latest` for natural language processing in Danish
+- **Priority-based selection**: Organic certification, Danish origin, healthier options, and price optimization
+- **Smart quantity handling**: Balances food waste reduction with requested quantities (20% tolerance)
+- **Special product logic**: Separate handling for herbs (fresh vs dried), garlic units, and bundled vegetables
+- **Danish product aliases**: Supports synonyms like "Soja → Sojasauce", "Rødkål → Rød spidskål"
+- **Automatic authentication**: JWT token management with renewal for Bilka APIs
+- **Error recovery**: Retry logic with simplified search terms and graceful failure handling
+
+**Converted from n8n**: This agent maintains all the complex logic from the original n8n Shopping List Agent workflow, including the comprehensive priority hierarchy, special rules for herbs and quantities, and Danish product handling.
+
 *Note: Additional agents will be added as the project evolves.*
 
 ## Available Workflows
@@ -69,6 +82,14 @@ Multi-step weather processing workflow with two main components:
 - **`weatherMonitoringWorkflow`**: Performs scheduled weather checks every hour with memory updates (replaces n8n ScheduleTrigger chain)
 - **Agent integration**: Seamlessly connects to the weather agent for tool execution
 - **Memory updates**: Automatically notifies other agents when weather conditions change
+
+### Shopping List Workflow
+Simplified shopping list processing workflow:
+- **`shoppingListWorkflow`**: Handles natural language shopping requests in Danish (replaces complex n8n workflow with multiple agents and branching logic)
+- **Agent-driven processing**: Leverages the intelligent shopping list agent for all operations including product extraction, search, selection, and cart management
+- **Automatic cart synchronization**: Gets current cart state, processes changes, and provides user feedback
+- **Error handling**: Comprehensive retry logic and graceful failure messages
+- **Danish language support**: Processes requests and provides responses in Danish
 
 ## Development
 
@@ -97,6 +118,13 @@ Access the Mastra development playground at `http://localhost:4111/agents` to:
 ### Environment Setup
 
 This project uses **1Password CLI** for secure environment variable management in both development and production environments. 
+
+#### Required Environment Variables
+Store these in your 1Password vault:
+- **Weather**: `OPENWEATHERMAP_API_KEY` for weather data
+- **AI Models**: `GOOGLE_GEMINI_API_KEY` for Gemini language models  
+- **Shopping (Bilka)**: `BILKA_EMAIL`, `BILKA_PASSWORD`, `BILKA_API_KEY` for authentication
+- **Shopping (Search)**: `ALGOLIA_API_KEY`, `ALGOLIA_APPLICATION_ID`, `BILKA_USER_TOKEN` for product search
 
 #### Development Setup
 1. **Install 1Password CLI**: Follow [1Password CLI installation guide](https://developer.1password.com/docs/cli/get-started/)
@@ -178,14 +206,36 @@ If you encounter 1Password CLI authentication issues:
 ## Development Guidelines
 
 ### File Creation Policy
-**IMPORTANT**: When working on this project:
-- **Do NOT create new README files** unless explicitly requested
-- **Do NOT create new example scripts or test files** unless explicitly requested  
-- **Do NOT create testing scripts** - use existing documentation and the Mastra playground instead
-- **Do NOT create analysis files** like `AGENT_ARCHITECTURE_ANALYSIS.md`, `COMPARISON.md`, or similar documentation artifacts
-- **Do NOT create temporary documentation files** for explanations - use inline comments or update existing docs
-- **Only modify existing documentation and examples** when making changes
-- **Focus on core functionality** (agents, tools, workflows) rather than documentation artifacts
+**CRITICAL**: When working on this project:
+
+#### ❌ ABSOLUTELY PROHIBITED FILES:
+- **ANY new .md files** (README, GUIDE, DOCS, SHOPPING_README, etc.)
+- **ANY documentation artifacts** (ANALYSIS.md, COMPARISON.md, ARCHITECTURE.md, etc.)
+- **ANY explanation files** (MIGRATION.md, CONVERSION.md, FEATURES.md, etc.)
+- **ANY example or demo scripts** unless explicitly requested
+- **ANY test files or testing artifacts** outside the standard test directory structure
+- **ANY configuration files** not directly required for functionality
+
+#### ✅ ALLOWED FILE CREATION:
+- **Core functionality files**: agents, tools, workflows in their respective directories
+- **Environment templates**: Only `.env.example` when creating new integrations
+- **Package configuration**: Only when required for new dependencies
+
+#### 📝 DOCUMENTATION UPDATES:
+- **UPDATE this AGENTS.md file** instead of creating new documentation
+- **Add inline comments** in code for complex logic explanations
+- **Update existing configuration files** when adding new features
+- **Use the Mastra playground** for testing and examples instead of creating files
+
+#### 🎯 REASONING:
+This project follows a strict "lean documentation" approach because:
+- **AGENTS.md is the single source of truth** for all project documentation
+- **Scattered documentation** creates maintenance overhead and confusion
+- **The Mastra playground** provides interactive testing without file creation
+- **Inline comments** are more maintainable than separate documentation files
+- **Multiple README files** violate the monorepo structure and NX conventions
+
+**If you feel documentation is needed, ALWAYS update this AGENTS.md file instead of creating new files.**
 
 ### Build and Development Commands
 **CRITICAL: ALWAYS use NX commands** for this monorepo:
