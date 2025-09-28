@@ -154,7 +154,7 @@ const processExtractedProducts = createAgentStep({
     }),
     prompt: ({ context }) => `Process each of these products that need action (operationType is not null) by adding or removing them from the cart:
 
-${JSON.stringify(context.extractedProducts.products.filter(p => p.operationType !== null))}
+${JSON.stringify(context.extractedProducts.products.filter((p: any) => p.operationType !== null))}
 
 For each product:
 1. If operationType is "set": Add/update the product in the cart
@@ -181,7 +181,7 @@ const transformMutationResults = createStep({
     }),
     execute: async ({ context }) => {
         // Split the result by lines or create a single item array
-        const mutationResults = context.result.split('\n').filter(line => line.trim().length > 0);
+        const mutationResults = context.result.split('\n').filter((line: string) => line.trim().length > 0);
         
         return {
             prompt: context.prompt,
