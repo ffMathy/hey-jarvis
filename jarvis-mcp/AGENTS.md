@@ -601,6 +601,65 @@ Always use relative imports from your vertical to the utils:
 
 **When creating new entities, ALWAYS use the Hey Jarvis factory functions instead of direct Mastra constructors.**
 
+### Scorers and Evaluation
+**AUTOMATIC**: All agents and workflow steps automatically include comprehensive evaluation scorers:
+
+#### 🎯 **Included Scorers**:
+- **answer-relevancy**: Evaluates how well responses address the input query (0-1, higher is better)
+- **faithfulness**: Measures how accurately responses represent provided context (0-1, higher is better)
+- **hallucination**: Detects factual contradictions and unsupported claims (0-1, lower is better)
+- **completeness**: Checks if responses include all necessary information (0-1, higher is better)
+- **prompt-alignment**: Measures how well responses align with prompt intent (0-1, higher is better)
+- **bias**: Detects potential biases in outputs (0-1, lower is better)
+
+#### 🔧 **Available But Not Auto-Enabled**:
+- **tool-call-accuracy**: Evaluates whether the LLM selects correct tools (requires per-agent configuration with actual tool objects)
+
+#### ⚙️ **Scorer Configuration**:
+- **Default sampling rate**: 10% of responses are scored (balances monitoring with cost)
+- **Evaluation model**: Uses `gemini-flash-latest` for cost-effectiveness
+- **Asynchronous execution**: Scoring runs in background without blocking responses
+- **Automatic storage**: Results stored in `mastra_scorers` table for analysis
+
+#### 🔧 **Customizing Scorers**:
+```typescript
+// Override sampling rate for production (lower cost)
+export const myAgent = createAgent({
+  name: 'MyAgent',
+  instructions: 'You are a helpful agent...',
+  tools: myTools,
+  scorers: createScorersConfig({}, 0.05), // 5% sampling
+});
+
+// Add custom scorers
+export const myAgent = createAgent({
+  name: 'MyAgent',
+  instructions: 'You are a helpful agent...',
+  tools: myTools,
+  scorers: createScorersConfig({
+    customScorer: {
+      scorer: myCustomScorer(),
+      sampling: { type: 'ratio', rate: 1.0 },
+    },
+  }),
+});
+
+// Disable scorers (not recommended)
+export const myAgent = createAgent({
+  name: 'MyAgent',
+  instructions: 'You are a helpful agent...',
+  tools: myTools,
+  scorers: undefined,
+});
+```
+
+#### 📊 **Monitoring and Analysis**:
+- View scoring results in the Mastra playground at `http://localhost:4111/agents`
+- Access detailed metrics through the database `mastra_scorers` table
+- Use scoring data to identify improvement opportunities and track performance trends
+
+**All scorers are automatically enabled by default to ensure comprehensive quality monitoring across the Hey Jarvis system.**
+
 ### Agent Architecture Guidelines
 When refactoring or creating agents:
 - **Prefer specialized agents** over single multi-purpose agents for complex workflows

@@ -1,6 +1,7 @@
 import { google } from '@ai-sdk/google';
 import { Agent, AgentConfig } from '@mastra/core/agent';
 import { memory } from '../memory';
+import { DEFAULT_SCORERS, createScorersConfig } from './scorers-config';
 
 /**
  * Default configuration values for all agents in the Hey Jarvis system.
@@ -11,6 +12,8 @@ const DEFAULT_AGENT_CONFIG: Partial<AgentConfig> = {
     memory: memory,
     // Use Google Gemini Flash Latest as the default model
     model: google('gemini-flash-latest'),
+    // Use default scorers for comprehensive evaluation
+    scorers: DEFAULT_SCORERS,
 };
 
 /**
