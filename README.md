@@ -103,6 +103,17 @@ npx nx serve home-assistant-voice-firmware
 npx nx run-many --target=build --all
 ```
 
+### Development Principles
+
+#### 🎯 **YAGNI (You Aren't Gonna Need It)**
+This monorepo follows the YAGNI principle across all projects:
+- **Project Structure**: Keep project configurations minimal and add complexity only when needed
+- **Dependencies**: Don't add libraries until they solve specific problems
+- **Build Configuration**: Start with simple build setups and enhance as requirements emerge
+- **Tooling**: Only include development tools that are actively used
+
+Each project implements YAGNI in its specific domain - see individual project AGENTS.md files for detailed guidelines.
+
 ## Future Development
 
 These "Hello World" applications serve as foundations for:

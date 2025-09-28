@@ -534,6 +534,19 @@ Create sub-verticals when:
 
 ## Development Guidelines
 
+### Core Development Principles
+
+#### 🎯 **YAGNI (You Aren't Gonna Need It)**
+This project strictly follows the YAGNI principle - avoid adding functionality or configuration options until they are actually needed:
+
+- **Factory Methods**: Should be opinionated and provide sensible defaults rather than extensive customization options
+- **Configuration**: Only expose parameters that are necessary for core functionality
+- **Features**: Don't implement speculative features or "what if" scenarios
+- **Abstraction**: Keep abstractions minimal and add complexity only when required
+- **Dependencies**: Don't add libraries or tools until they solve an actual problem
+
+**Example**: Our workflow factory methods (`createAgentStep`, `createToolStep`) only accept essential parameters and use opinionated defaults for scorers, rather than exposing all possible configuration options.
+
 ### File Creation Policy
 **CRITICAL**: When working on this project:
 
@@ -704,6 +717,7 @@ export const badWorkflow = createWorkflow({ ... }); // ❌
 - **Type Safety**: Better TypeScript support with optional parameters for common defaults
 - **Maintainability**: Single point of configuration for system-wide changes
 - **Standards Enforcement**: Ensures all components follow Hey Jarvis conventions
+- **YAGNI Compliance**: Factory methods are opinionated and only expose necessary customization options
 
 #### 📦 **Import Paths**:
 Always use relative imports from your vertical to the utils:
@@ -789,5 +803,6 @@ This project is part of the Hey Jarvis monorepo and follows Mastra's development
 - Implement comprehensive tool validation
 - Add appropriate workflow testing
 - Document new capabilities thoroughly
+- **Apply YAGNI principle**: Only add features and configuration options when actually needed
 
 For more information about Mastra development, visit the [official documentation](https://mastra.ai/docs).
