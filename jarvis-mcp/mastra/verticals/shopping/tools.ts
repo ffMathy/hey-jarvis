@@ -1,4 +1,4 @@
-import { createTool } from '@mastra/core/tools';
+import { createTool } from '../../utils/tool-factory';
 import { z } from 'zod';
 import { changeProductQuantity, clearCart, getCartContents, searchProductCatalog } from './bilka/client';
 import { CatalogProduct } from './bilka/types';

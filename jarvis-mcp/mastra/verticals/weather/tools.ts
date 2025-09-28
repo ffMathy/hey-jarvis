@@ -1,4 +1,4 @@
-import { createTool } from '@mastra/core/tools';
+import { createTool } from '../../utils/tool-factory';
 import { z } from 'zod';
 
 // Interface for OpenWeatherMap current weather response
