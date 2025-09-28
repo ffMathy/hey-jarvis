@@ -1,10 +1,8 @@
 #!/usr/bin/env node
 
 import { MCPServer } from '@mastra/mcp';
-import { weatherAgent } from './agents/weather-agent';
-import { weatherTools } from './tools/weather-tools';
-import { shoppingListAgent } from './agents/shopping-agent';
-import { shoppingTools } from './tools/shopping-tools';
+import { weatherAgent, weatherTools } from './verticals/weather';
+import { shoppingListAgent, shoppingTools } from './verticals/shopping';
 
 async function main() {
   const mcpServer = new MCPServer({
