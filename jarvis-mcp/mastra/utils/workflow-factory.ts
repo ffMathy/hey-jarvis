@@ -135,11 +135,7 @@ export function createAgentStep<
     inputSchema: TInputSchema;
     outputSchema: TOutputSchema;
     prompt: (params: { context: z.infer<TInputSchema> }) => string;
-}, options: {
-    enableScorers?: boolean;
-    customScorers?: Record<string, any>;
-    samplingRate?: number;
-} = {}) {
+}) {
     return createStep({
         id: config.id,
         description: config.description,
@@ -166,7 +162,7 @@ export function createAgentStep<
 
             return await response.object;
         },
-    }, options);
+    });
 }
 
 /**
@@ -203,11 +199,7 @@ export function createToolStep<
             writer?: any;
         }) => Promise<z.infer<TToolOutput>>;
     };
-}, options: {
-    enableScorers?: boolean;
-    customScorers?: Record<string, any>;
-    samplingRate?: number;
-} = {}) {
+}) {
     return createStep({
         id: config.id,
         description: config.description,
@@ -222,5 +214,5 @@ export function createToolStep<
                 writer
             });
         },
-    }, options);
+    });
 }
