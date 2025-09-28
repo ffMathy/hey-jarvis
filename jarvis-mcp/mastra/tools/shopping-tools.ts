@@ -10,6 +10,121 @@ interface AuthTokens {
     jwtToken: string;
 }
 
+// Product catalog search interfaces
+export interface ProductAttribute {
+    attributeID: string;
+    attributeName: string;
+    attributeIconID: string;
+    attributeNameAndIcon: string;
+}
+
+export interface ProductEnergyInfo {
+    rating: string;
+    label: string;
+    scale: string;
+    color_code: string;
+    data_sheet: string;
+}
+
+export interface ProductInfoItem {
+    type: number;
+    title: string;
+    value: string;
+}
+
+export interface ProductInfo {
+    code: string;
+    title: string;
+    items: ProductInfoItem[];
+}
+
+export interface HighlightResult {
+    value: string;
+    matchLevel: string;
+    fullyHighlighted?: boolean;
+    matchedWords: string[];
+}
+
+export interface ProductHighlightResult {
+    searchHierachy: HighlightResult[];
+    name: HighlightResult;
+    manufacturer: HighlightResult;
+    brand: HighlightResult;
+    subBrand: HighlightResult;
+    properties: HighlightResult[];
+    attributes: {
+        attributeID: HighlightResult;
+        attributeName: HighlightResult;
+        attributeIconID: HighlightResult;
+        attributeNameAndIcon: HighlightResult;
+    }[];
+    productName: HighlightResult;
+    alternativeSearchWords: HighlightResult[];
+}
+
+export interface CatalogProduct {
+    name: string;
+    description: string;
+    brand: string;
+    subBrand: string;
+    units: number;
+    unitsOfMeasure: string;
+    countryOfOrigin: string[];
+    netcontent: string;
+    properties: string[];
+    attributes: ProductAttribute[];
+    energyInfo: ProductEnergyInfo;
+    safetyIcons: any[];
+    safetyTexts: any[];
+    images: string[];
+    productType: string;
+    infos: ProductInfo[];
+    objectID: string;
+}
+
+export interface SearchExtensions {
+    queryCategorization: {
+        count: number;
+        normalizedQuery: string;
+    };
+}
+
+export interface ProcessingTimings {
+    _request: {
+        roundTrip: number;
+    };
+    extensions: number;
+    rules: number;
+    total: number;
+}
+
+export interface SearchResult {
+    hits: CatalogProduct[];
+    nbHits: number;
+    page: number;
+    nbPages: number;
+    hitsPerPage: number;
+    exhaustiveNbHits: boolean;
+    exhaustiveTypo: boolean;
+    exhaustive: {
+        nbHits: boolean;
+        typo: boolean;
+    };
+    query: string;
+    params: string;
+    index: string;
+    queryID: string;
+    renderingContent: Record<string, any>;
+    extensions: SearchExtensions;
+    processingTimeMS: number;
+    processingTimingsMS: ProcessingTimings;
+    serverTimeMS: number;
+}
+
+export interface ProductCatalogResponse {
+    results: SearchResult[];
+}
+
 // Cart response interfaces
 export interface BilkaCartAttribute {
     attributeID: string;
@@ -257,81 +372,90 @@ async function authenticateWithBilka() {
  */
 export const findProductInCatalog = createTool({
     id: 'find-product-in-catalog',
-    description: 'Finds a certain product in the catalogue. The result contains some hits for matching products, and maximum 5 products. Each product is identified by the "objectID" property of the hit. If a hit doesn\'t have an objectID, then don\'t consider it as a valid result. The `storeData` property contains all the items on stock and their price.',
+    description: 'Finds a certain product in the catalogue.',
     inputSchema: z.object({
         search_query: z.string().describe('The product to search for, in Danish. For instance, "agurk".')
     }),
     execute: async ({ context }) => {
+        const attributeNameOrder = [
+            "Økomærket DK",
+            "Økomærket EU",
+            "Nøglehulsmærket",
+            "Dansk",
+            "Europæisk ejerskab",
+            ""
+        ];
+
         const attributesToRetrieve = [
             "objectID",
-            "ageCode",
-            "article",
             "attributes",
-            "blockedByHoliday",
             "brand",
             "countryOfOrigin",
-            "blockbit",
-            "cpOffer",
-            "cpOfferAmount",
-            "cpOfferId",
-            "cpOfferPrice",
             "description",
-            "energyInfo",
-            "safetyIcons",
-            "safetyTexts",
             "netcontent",
-            "imageGUIDs",
             "images",
             "infos",
-            "isInCurrentLeaflet",
             "name",
-            "objectID",
             "productType",
             "properties",
-            "cpOfferFromDate",
-            "cpOfferToDate",
             "subBrand",
             "units",
             "unitsOfMeasure",
-            "consumerFacingHierarchy",
-            "nonsearchable",
-            "storeData"
         ];
-        const requestBody = {
-            requests: [{
-                indexName: "prod_BILKATOGO_PRODUCTS",
-                params: [
-                    `attributesToRetrieve=${encodeURIComponent(JSON.stringify(attributesToRetrieve))}`,
-                    `query=${encodeURIComponent(context.search_query)}`,
-                    `distinct=false`,
-                    `page=0`,
-                    `hitsPerPage=5`,
-                    `facets=${encodeURIComponent(JSON.stringify([]))}`,
-                    `clickAnalytics=true`,
-                    `analyticsTags=${encodeURIComponent(JSON.stringify([]))}`,
-                    `userToken=${process.env.BILKA_USER_TOKEN}`,
-                    `getRankingInfo=false`
-                ].join('&'),
-            }],
-            strategy: "none"
-        };
 
-        const response = await fetch('https://f9vbjlr1bk-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia%20for%20JavaScript%20(4.14.3)%3B%20Browser', {
-            method: 'POST',
-            headers: {
-                'X-Algolia-Api-Key': process.env.ALGOLIA_API_KEY!,
-                'X-Algolia-Application-Id': process.env.ALGOLIA_APPLICATION_ID!,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(requestBody),
-        });
+        for (const attributeName of attributeNameOrder) {
+            const requestBody = {
+                requests: [{
+                    indexName: "prod_BILKATOGO_PRODUCTS",
+                    params: [
+                        `attributesToRetrieve=${encodeURIComponent(JSON.stringify(attributesToRetrieve))}`,
+                        `query=${encodeURIComponent(context.search_query)}`,
+                        `distinct=false`,
+                        `page=0`,
+                        `hitsPerPage=5`,
+                        `facets=${encodeURIComponent(JSON.stringify([]))}`,
+                        `clickAnalytics=true`,
+                        `analyticsTags=${encodeURIComponent(JSON.stringify([]))}`,
+                        `userToken=${process.env.BILKA_USER_TOKEN}`,
+                        `getRankingInfo=false`,
+                        attributeName && `filters=${encodeURIComponent(`attributes.attributeName:"${attributeName}"`)}`,
+                    ].filter(x => !!x).join('&'),
+                }],
+                strategy: "none"
+            };
 
-        if (!response.ok) {
-            throw new Error(`Search failed: ${response.status} ${response.statusText}`);
+            const response = await fetch('https://f9vbjlr1bk-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia%20for%20JavaScript%20(4.14.3)%3B%20Browser', {
+                method: 'POST',
+                headers: {
+                    'X-Algolia-Api-Key': process.env.ALGOLIA_API_KEY!,
+                    'X-Algolia-Application-Id': process.env.ALGOLIA_APPLICATION_ID!,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(requestBody),
+            });
+
+            if (!response.ok) {
+                throw new Error(`Search failed: ${response.status} ${response.statusText}`);
+            }
+
+            const data = await response.json() as ProductCatalogResponse;
+            return data.results
+                .flatMap(x => x.hits)
+                .map(hit => {
+                    const result = {
+                        ...hit,
+                        brand: `${hit.brand} ${hit.subBrand}`.trim(),
+                        attributes: hit.attributes.map(attr => attr.attributeName),
+                    } as any;
+
+                    delete result['_highlightResult'];
+                    delete result['subBrand'];
+
+                    return result as Omit<CatalogProduct, 'subBrand' | 'attributes'> & {
+                        attributes: string[];
+                    };
+                });
         }
-
-        const data = await response.json();
-        return data;
     },
 });
 
