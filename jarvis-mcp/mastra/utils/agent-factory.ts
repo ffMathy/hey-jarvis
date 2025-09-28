@@ -1,7 +1,7 @@
 import { google } from '@ai-sdk/google';
 import { Agent, AgentConfig } from '@mastra/core/agent';
 import { memory } from '../memory';
-import { DEFAULT_SCORERS, createScorersConfig } from './scorers-config';
+import { DEFAULT_SCORERS } from './scorers-config';
 
 /**
  * Default configuration values for all agents in the Hey Jarvis system.
