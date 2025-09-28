@@ -112,12 +112,17 @@ Multi-step weather processing workflow with two main components:
 - **Memory updates**: Automatically notifies other agents when weather conditions change
 
 ### Shopping List Workflow
-Simplified shopping list processing workflow:
-- **`shoppingListWorkflow`**: Handles natural language shopping requests in Danish (replaces complex n8n workflow with multiple agents and branching logic)
-- **Agent-driven processing**: Leverages the intelligent shopping list agent for all operations including product extraction, search, selection, and cart management
-- **Automatic cart synchronization**: Gets current cart state, processes changes, and provides user feedback
-- **Error handling**: Comprehensive retry logic and graceful failure messages
+Multi-step shopping list processing workflow implementing the original n8n 3-agent architecture:
+- **`shoppingListWorkflow`**: Handles natural language shopping requests in Danish with 5-step process
+- **Step 1 - Cart Snapshot**: Gets current cart contents as "before" baseline
+- **Step 2 - Information Extraction**: Uses specialized Information Extractor agent to parse user requests into structured product data with operation types (set/remove/null)
+- **Step 3 - Product Mutation**: Processes each extracted product using Shopping List Mutator Agent with full tool access for search, selection, and cart modification
+- **Step 4 - Updated Cart Snapshot**: Gets final cart contents as "after" comparison
+- **Step 5 - Summary Generation**: Uses Summarization Agent to compare before/after states and provide user feedback in Danish
+- **Error handling**: Comprehensive retry logic and graceful failure messages for each step
 - **Danish language support**: Processes requests and provides responses in Danish
+
+**Converted from n8n**: This workflow replicates the exact 3-agent pattern from the original n8n Shopping List Agent workflow, including Information Extractor → Shopping List Mutator → Summarization Agent flow with before/after cart comparison.
 
 ## Development
 
