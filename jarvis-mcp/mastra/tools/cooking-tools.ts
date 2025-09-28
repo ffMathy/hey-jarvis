@@ -1,4 +1,3 @@
-import { RuntimeContext } from '@mastra/core/runtime-context';
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 
@@ -63,19 +62,17 @@ export const getRecipeById = createTool({
         recipeId: z.string().describe('The recipe ID of the recipe to retrieve'),
     }),
     outputSchema: z.object({
-        recipe: z.object({
-            id: z.number(),
-            title: z.string(),
-            description: z.string(),
-            directions: z.string(),
-            categories: z.array(z.string()),
-            ingredients: z.array(z.string()),
-            url: z.string(),
-            imageUrl: z.string(),
-            preparationTime: z.string().optional(),
-            servings: z.number().optional(),
-        }),
-    }),
+        id: z.number(),
+        title: z.string(),
+        description: z.string(),
+        directions: z.string(),
+        categories: z.array(z.string()),
+        ingredients: z.array(z.string()),
+        url: z.string(),
+        imageUrl: z.string(),
+        preparationTime: z.string().optional(),
+        servings: z.number().optional(),
+    }).describe('Detailed information about the recipe'),
     execute: async ({ context }) => {
         const apiKey = getApiKey();
         const url = `https://www.valdemarsro.dk/api/v2/recipes/${context.recipeId}?api_key=${apiKey}`;
@@ -86,32 +83,7 @@ export const getRecipeById = createTool({
         }
 
         const data = (await response.json()) as RecipeResponse;
-
-        // Process ingredients into readable format
-        const ingredients = data.data.ingredients
-            .filter(item => item.ingrediens?.name)
-            .map(item => {
-                const amount = item.maengde || '';
-                const unit = item.maengde ? item.enhed || '' : '';
-                const name = item.ingrediens?.name || '';
-                const extra = item.tekst || '';
-                return `${amount} ${unit} ${name} ${extra}`.trim();
-            });
-
-        return {
-            recipe: {
-                id: data.data.recipe_id,
-                title: data.data.title,
-                description: data.data.description,
-                directions: data.data.directions,
-                categories: data.data.categories.map(cat => cat.name),
-                ingredients,
-                url: data.data.url,
-                imageUrl: data.data.media,
-                preparationTime: data.data.fields.tid,
-                servings: data.data.fields.personer_maengde,
-            },
-        };
+        return mapValdemarsroRecipe(data.data);
     },
 });
 
@@ -125,7 +97,7 @@ export const searchRecipes = createTool({
     outputSchema: z.object({
         results: z.array(getRecipeById.outputSchema).describe('Array of detailed recipe information matching the search term, sorted by relevance ascending (most relevant results first)'),
     }),
-    execute: async ({ context }) => {
+    execute: async ({ context, runtimeContext, mastra, suspend, writer }) => {
         const apiKey = getApiKey();
         const url = `https://www.valdemarsro.dk/api/v2/search?api_key=${apiKey}`;
 
@@ -146,11 +118,14 @@ export const searchRecipes = createTool({
         const results = await Promise.all(data.data.result
             .slice(0, 25)
             .map(item => item.post_id.toString())
-            .map(async (id) => await getRecipeById.execute({ 
-                context: { recipeId: id }, 
-                runtimeContext: new RuntimeContext() 
+            .map(async (id) => await getRecipeById.execute({
+                context: { recipeId: id },
+                runtimeContext,
+                mastra,
+                suspend,
+                writer
             })));
-        
+
         return {
             results: results,
         };
@@ -163,18 +138,7 @@ export const getAllRecipes = createTool({
     description: 'Get all recipes from Valdemarsro with pagination support',
     inputSchema: z.any(),
     // Output schema is an array of recipes
-    outputSchema: z.array(z.object({
-        id: z.number(),
-        title: z.string(),
-        description: z.string(),
-        directions: z.string(),
-        categories: z.array(z.string()),
-        ingredients: z.array(z.string()),
-        url: z.string(),
-        imageUrl: z.string(),
-        preparationTime: z.string().optional(),
-        servings: z.number().optional(),
-    })),
+    outputSchema: z.array(getRecipeById.outputSchema).describe('Array of all recipes from Valdemarsro suitable for meal planning'),
     execute: async ({ context }) => {
         async function getPage(page: number) {
             const apiKey = getApiKey();
@@ -197,36 +161,12 @@ export const getAllRecipes = createTool({
 
         let currentPage = 0;
         let hasNext = true;
-        while(hasNext) {
+        while (hasNext) {
             const page = await getPage(currentPage++);
 
-            const recipes = page.data.map(recipe => {
-                const ingredients = recipe.ingredients
-                    .filter(item => item.ingrediens?.name)
-                    .map(item => {
-                        const amount = item.maengde || '';
-                        const unit = item.maengde ? item.enhed || '' : '';
-                        const name = item.ingrediens?.name || '';
-                        const extra = item.tekst || '';
-                        return `${amount} ${unit} ${name} ${extra}`.trim();
-                    })
-                    .filter(item => !!item);
-
-                return {
-                    id: recipe.recipe_id,
-                    title: recipe.title,
-                    description: recipe.description,
-                    directions: recipe.directions,
-                    categories: recipe.categories.map(cat => cat.name),
-                    ingredients,
-                    url: recipe.url,
-                    imageUrl: recipe.media,
-                    preparationTime: recipe.fields.tid,
-                    servings: recipe.fields.personer_maengde,
-                };
-            });
-
+            const recipes = page.data.map(mapValdemarsroRecipe);
             allRecipes.push(...recipes);
+
             hasNext = page.pagination.page < page.pagination.max_pages;
         }
 
@@ -266,3 +206,29 @@ export const cookingTools = {
     getAllRecipes,
     getSearchFilters,
 };
+
+function mapValdemarsroRecipe(recipe: Recipe) {
+    const ingredients = recipe.ingredients
+        .filter(item => item.ingrediens?.name)
+        .map(item => {
+            const amount = item.maengde || '';
+            const unit = item.maengde ? item.enhed || '' : '';
+            const name = item.ingrediens?.name || '';
+            const extra = item.tekst || '';
+            return `${amount} ${unit} ${name} ${extra}`.trim();
+        })
+        .filter(item => !!item);
+
+    return {
+        id: recipe.recipe_id,
+        title: recipe.title,
+        description: recipe.description,
+        directions: recipe.directions,
+        categories: recipe.categories.map(cat => cat.name),
+        ingredients,
+        url: recipe.url,
+        imageUrl: recipe.media,
+        preparationTime: recipe.fields.tid,
+        servings: recipe.fields.personer_maengde,
+    };
+}
