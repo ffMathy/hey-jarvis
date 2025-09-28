@@ -101,9 +101,6 @@ Respond with valid JSON matching this schema:
     }
   ]
 }`,
-    structuredOutput: {
-        schema: extractedProductSchema
-    }
 });
 
 // Step 3: Transform extraction result to include full context
