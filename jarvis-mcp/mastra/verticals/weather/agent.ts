@@ -22,7 +22,7 @@ Always provide comprehensive weather information including temperature, humidity
     description: `# Purpose  
 Provide weather data. Use this tool to **fetch the current conditions** or a **5-day forecast** for any location specified by city name, postal/ZIP code, or latitude/longitude coordinates. **Location is mandatory.**  
 
-# When to use  
+# When to use
 - The user asks about today's weather, tomorrow's forecast, or the outlook for specific dates ("Will it rain in Paris this weekend?").  
 - The user needs details for planning travel or outdoor activities (temperature, precipitation chance, wind, humidity, UV index, sunrise/sunset).  
 - The user wants to compare weather between multiple places or check conditions along a route.  
