@@ -66,6 +66,19 @@ jarvis-mcp/
 
 ## Current Agents
 
+### JWT Authentication Agent
+Provides secure JWT token management and authentication for the Hey Jarvis system:
+- **3 JWT authentication tools**: Token generation, token verification, and authorization header validation
+- **Google Gemini model**: Uses `gemini-flash-latest` for natural language processing  
+- **Secure token handling**: HS256 signature algorithm with configurable expiration (default 24 hours)
+- **Bearer token support**: Extracts and validates tokens from Authorization headers
+- **Claims management**: Supports custom claims and permissions in JWT payloads
+- **Environment-based configuration**: Uses 1Password-managed JWT secrets for security
+- **Authentication workflows**: User authentication and API request authentication flows
+- **Error handling**: Comprehensive validation with detailed error messages
+
+**Security Features**: Implements JWT best practices including signature verification, expiration checking, issuer/audience validation, and secure secret management through 1Password CLI.
+
 ### Weather Agent
 Provides intelligent weather information and forecasting capabilities:
 - **4 OpenWeatherMap tools**: Current weather and 5-day forecasts by city name or GPS coordinates
@@ -103,6 +116,15 @@ Provides general cooking and recipe search capabilities:
 *Note: Additional agents will be added as the project evolves.*
 
 ## Available Workflows
+
+### JWT Authentication Workflows
+Secure authentication workflows for user login and API request validation:
+- **`userAuthenticationWorkflow`**: Handles user login with JWT token generation and token validation workflows
+- **`apiAuthenticationWorkflow`**: Validates API requests with JWT tokens and checks required permissions
+- **Branching logic**: Supports both login (token generation) and validate (token verification) actions
+- **Permission checking**: Validates user permissions against required permissions for API endpoints
+- **Error handling**: Comprehensive error responses for invalid tokens, expired tokens, and insufficient permissions
+- **Security integration**: Works with the JWT Authentication Agent for secure token management
 
 ### Weather Workflow
 Multi-step weather processing workflow with two main components:
@@ -158,6 +180,7 @@ Store these in your 1Password vault:
 - **AI Models**: `GOOGLE_GEMINI_API_KEY` for Gemini language models  
 - **Shopping (Bilka)**: `BILKA_EMAIL`, `BILKA_PASSWORD`, `BILKA_API_KEY` for authentication
 - **Shopping (Search)**: `ALGOLIA_API_KEY`, `ALGOLIA_APPLICATION_ID`, `BILKA_USER_TOKEN` for product search
+- **JWT Authentication**: `JWT_SECRET` for JWT token signing, `JWT_EXPIRES_HOURS` (optional, default 24), `JWT_ISSUER` (optional, default "hey-jarvis"), `JWT_AUDIENCE` (optional, default "jarvis-mcp") for JWT configuration
 
 #### Development Setup
 1. **Install 1Password CLI**: Follow [1Password CLI installation guide](https://developer.1password.com/docs/cli/get-started/)
