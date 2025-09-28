@@ -340,18 +340,32 @@ mkdir -p mastra/verticals/calendar
 2. **Create Core Files**:
 ```typescript
 // calendar/agent.ts
-export const calendarAgent = new Agent({
+import { createAgent } from '../../utils/agent-factory';
+
+export const calendarAgent = createAgent({
   name: 'Calendar',
-  // ... agent config
+  instructions: 'You are a calendar management agent...',
+  tools: calendarTools,
+  // memory and model automatically provided by factory
 });
 
 // calendar/tools.ts  
+import { createTool } from '../../utils/tool-factory';
+import { z } from 'zod';
+
 export const calendarTools = {
-  // ... tool definitions
+  // Use createTool() factory for all tools
+  getCalendarEvents: createTool({
+    id: 'get-calendar-events',
+    // ... tool config
+  }),
 };
 
 // calendar/workflows.ts
+import { createWorkflow, createStep } from '../../utils/workflow-factory';
+
 export const calendarSyncWorkflow = createWorkflow({
+  id: 'calendar-sync-workflow',
   // ... workflow config
 });
 
@@ -503,6 +517,89 @@ This project follows a strict "lean documentation" approach because:
 - **Mastra compatibility**: Aligns with Mastra's recommended practices
 
 **When creating new tools, ALWAYS use kebab-case for tool IDs.**
+
+### Factory Pattern Usage
+**CRITICAL**: All agents, tools, and workflows must be created using the Hey Jarvis factory functions:
+
+#### 🏭 **Required Factory Functions**
+- **Agents**: Use `createAgent()` from `../../utils/agent-factory`
+- **Tools**: Use `createTool()` from `../../utils/tool-factory`  
+- **Workflows**: Use `createWorkflow()` and `createStep()` from `../../utils/workflow-factory`
+
+#### ✅ **CORRECT Usage Examples**:
+
+**Agent Creation:**
+```typescript
+import { createAgent } from '../../utils/agent-factory';
+import { myTools } from './tools';
+
+export const myAgent = createAgent({
+  name: 'MyAgent',
+  instructions: 'You are a helpful agent...',
+  tools: myTools,
+  // memory and model (gemini-flash-latest) are automatically provided
+});
+```
+
+**Tool Creation:**
+```typescript
+import { createTool } from '../../utils/tool-factory';
+import { z } from 'zod';
+
+export const myTool = createTool({
+  id: 'my-tool-action',
+  description: 'Performs a specific action',
+  inputSchema: z.object({ input: z.string() }),
+  outputSchema: z.object({ result: z.string() }),
+  execute: async ({ context }) => ({ result: context.input }),
+});
+```
+
+**Workflow Creation:**
+```typescript
+import { createWorkflow, createStep } from '../../utils/workflow-factory';
+import { z } from 'zod';
+
+const myStep = createStep({
+  id: 'my-step',
+  description: 'A workflow step',
+  inputSchema: z.object({}),
+  outputSchema: z.object({ result: z.string() }),
+  execute: async () => ({ result: 'done' }),
+});
+
+export const myWorkflow = createWorkflow({
+  id: 'my-workflow',
+  inputSchema: z.object({}),
+  outputSchema: z.object({ result: z.string() }),
+}).then(myStep);
+```
+
+#### ❌ **INCORRECT Direct Usage**:
+```typescript
+// ❌ NEVER do this - bypasses Hey Jarvis defaults and standards
+import { Agent } from '@mastra/core/agent';
+import { createTool } from '@mastra/core/tools';
+import { createWorkflow } from '@mastra/core/workflows';
+
+export const badAgent = new Agent({ ... }); // ❌
+export const badTool = createTool({ ... });  // ❌
+export const badWorkflow = createWorkflow({ ... }); // ❌
+```
+
+#### 🎯 **Factory Pattern Benefits**:
+- **Consistent Defaults**: All agents automatically get `gemini-flash-latest` model and shared memory
+- **Future-Proof**: Easy to add logging, error handling, or observability across all entities
+- **Type Safety**: Better TypeScript support with optional parameters for common defaults
+- **Maintainability**: Single point of configuration for system-wide changes
+- **Standards Enforcement**: Ensures all components follow Hey Jarvis conventions
+
+#### 📦 **Import Paths**:
+Always use relative imports from your vertical to the utils:
+- From `verticals/[vertical]/`: `../../utils/agent-factory`
+- From `verticals/[vertical]/[sub-vertical]/`: `../../../utils/agent-factory`
+
+**When creating new entities, ALWAYS use the Hey Jarvis factory functions instead of direct Mastra constructors.**
 
 ### Agent Architecture Guidelines
 When refactoring or creating agents:
