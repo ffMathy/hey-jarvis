@@ -58,10 +58,10 @@ const getRecipesForMealPlanning = createStep({
     },
 });
 
-// Combined step that uses specialized agents for selection and meal plan generation
-const selectAndPlanMeals = createStep({
-    id: 'select-and-plan-meals',
-    description: 'Uses specialized agents to select recipes and generate meal plan',
+// Step 1: Select optimal recipes using the meal plan selector agent
+const selectRecipesForMealPlan = createStep({
+    id: 'select-recipes-for-meal-plan',
+    description: 'Uses meal plan selector agent to select optimal recipes for weekly meal planning',
     inputSchema: z.object({
         recipes: z.array(z.object({
             id: z.number(),
@@ -72,9 +72,17 @@ const selectAndPlanMeals = createStep({
             preparationTime: z.string().optional(),
         })),
     }),
-    outputSchema: mealPlanSchema,
+    outputSchema: z.object({
+        selectedRecipes: z.array(z.object({
+            id: z.number(),
+            title: z.string(),
+            description: z.string(),
+            categories: z.array(z.string()),
+            ingredients: z.array(z.string()),
+            preparationTime: z.string().optional(),
+        })),
+    }),
     execute: async ({ inputData, mastra }) => {
-        // Step 1: Use meal plan selector agent to select optimal recipes
         const selectorAgent = mastra?.getAgent('mealPlanSelector');
         if (!selectorAgent) {
             throw new Error('Meal plan selector agent not found');
@@ -105,7 +113,28 @@ ${JSON.stringify(inputData.recipes, null, 2)}`;
             selectionResult.selectedRecipeIds.includes(recipe.id)
         );
 
-        // Step 2: Use meal plan generator agent to create the detailed meal plan
+        return {
+            selectedRecipes
+        };
+    },
+});
+
+// Step 2: Generate detailed meal plan using the meal plan generator agent
+const generateDetailedMealPlan = createStep({
+    id: 'generate-detailed-meal-plan',
+    description: 'Uses meal plan generator agent to create detailed weekly meal plan from selected recipes',
+    inputSchema: z.object({
+        selectedRecipes: z.array(z.object({
+            id: z.number(),
+            title: z.string(),
+            description: z.string(),
+            categories: z.array(z.string()),
+            ingredients: z.array(z.string()),
+            preparationTime: z.string().optional(),
+        })),
+    }),
+    outputSchema: mealPlanSchema,
+    execute: async ({ inputData, mastra }) => {
         const generatorAgent = mastra?.getAgent('mealPlanGenerator');
         if (!generatorAgent) {
             throw new Error('Meal plan generator agent not found');
@@ -114,7 +143,7 @@ ${JSON.stringify(inputData.recipes, null, 2)}`;
         const planResponse = await generatorAgent.streamVNext([
             {
                 role: 'user',
-                content: `Create a detailed weekly meal plan using these selected recipes:\n\n${JSON.stringify(selectedRecipes, null, 2)}\n\nGenerate the complete meal plan with proper scheduling and scaled ingredients.`,
+                content: `Create a detailed weekly meal plan using these selected recipes:\n\n${JSON.stringify(inputData.selectedRecipes, null, 2)}\n\nGenerate the complete meal plan with proper scheduling and scaled ingredients.`,
             },
         ], {
             structuredOutput: {
@@ -179,6 +208,7 @@ export const weeklyMealPlanningWorkflow = createWorkflow({
     }),
 })
     .then(getRecipesForMealPlanning)
-    .then(selectAndPlanMeals)
+    .then(selectRecipesForMealPlan)
+    .then(generateDetailedMealPlan)
     .then(generateMealPlanEmail)
     .commit();
