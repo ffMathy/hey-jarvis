@@ -39,5 +39,16 @@ npx nx serve e2e
 - ❌ **NEVER use `npm run` commands** in this NX monorepo
 - ❌ **NEVER use `npm install` directly** - use NX workspace commands
 
+## Development Guidelines
+
+### Core Development Principles
+
+#### 🎯 **YAGNI (You Aren't Gonna Need It)**
+Follow the YAGNI principle when developing E2E tests and automation:
+- **Test Cases**: Only create tests for actual functionality, not speculative features
+- **Configuration**: Keep test configuration minimal and add complexity only when needed
+- **Utilities**: Don't build test utilities until multiple tests require them
+- **Abstractions**: Keep test abstractions simple and add layers only when necessary
+
 ## Development
 The application is built using TypeScript and follows NX monorepo conventions. All source code is located in the `src/` directory.

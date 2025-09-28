@@ -50,5 +50,17 @@ npx nx serve home-assistant-voice-firmware
 - ❌ **NEVER use `npm run` commands** in this NX monorepo
 - ❌ **NEVER use `npm install` directly** - use NX workspace commands
 
+## Development Guidelines
+
+### Core Development Principles
+
+#### 🎯 **YAGNI (You Aren't Gonna Need It)**
+Apply YAGNI principle to firmware and embedded systems development:
+- **Hardware Abstraction**: Only abstract hardware interfaces when supporting multiple platforms
+- **Protocol Support**: Don't implement communication protocols until they're needed
+- **Memory Management**: Keep memory allocation simple until optimization is required
+- **Feature Flags**: Avoid configuration options for features that aren't implemented yet
+- **Libraries**: Don't include libraries until they solve a specific problem
+
 ## Development
 The firmware is built using C++17 and follows NX monorepo conventions. All source code is located in the `src/` directory. The build system uses g++ for compilation.
