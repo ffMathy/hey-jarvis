@@ -1,4 +1,5 @@
-import crypto from 'crypto';
+// JWT Authentication utilities for Hey Jarvis
+// Simple JWT implementation without external dependencies
 
 export interface JWTConfig {
   secret: string;
@@ -150,7 +151,7 @@ export class JWTAuth {
   }
 
   private base64UrlEncode(str: string): string {
-    return Buffer.from(str)
+    return (global as any).Buffer.from(str)
       .toString('base64')
       .replace(/\+/g, '-')
       .replace(/\//g, '_')
@@ -159,10 +160,11 @@ export class JWTAuth {
 
   private base64UrlDecode(str: string): string {
     str += new Array(5 - (str.length % 4)).join('=');
-    return Buffer.from(str.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString();
+    return (global as any).Buffer.from(str.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString();
   }
 
   private createSignature(data: string): string {
+    const crypto = (global as any).require('crypto');
     return crypto
       .createHmac('sha256', this.config.secret)
       .update(data)
@@ -178,7 +180,8 @@ export class JWTAuth {
  * Uses environment variables for configuration
  */
 export const createJWTAuth = (config?: Partial<JWTConfig>): JWTAuth => {
-  const jwtSecret = process.env.JWT_SECRET || process.env.JARVIS_JWT_SECRET;
+  const env = (global as any).process?.env || {};
+  const jwtSecret = env.JWT_SECRET || env.JARVIS_JWT_SECRET;
   
   if (!jwtSecret) {
     throw new Error(
@@ -188,9 +191,9 @@ export const createJWTAuth = (config?: Partial<JWTConfig>): JWTAuth => {
 
   return new JWTAuth({
     secret: jwtSecret,
-    expiresInHours: config?.expiresInHours || parseInt(process.env.JWT_EXPIRES_HOURS || '24'),
-    issuer: config?.issuer || process.env.JWT_ISSUER || 'hey-jarvis',
-    audience: config?.audience || process.env.JWT_AUDIENCE || 'jarvis-mcp',
+    expiresInHours: config?.expiresInHours || parseInt(env.JWT_EXPIRES_HOURS || '24'),
+    issuer: config?.issuer || env.JWT_ISSUER || 'hey-jarvis',
+    audience: config?.audience || env.JWT_AUDIENCE || 'jarvis-mcp',
     ...config,
   });
 };
