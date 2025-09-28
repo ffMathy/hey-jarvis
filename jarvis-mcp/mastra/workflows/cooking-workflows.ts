@@ -1,37 +1,13 @@
 import { createStep, createWorkflow } from '@mastra/core/workflows';
 import { z } from 'zod';
-import { RuntimeContext } from '@mastra/core/runtime-context';
 import { getAllRecipes } from '../tools/cooking-tools';
-
-// Schema for meal plan structure
-const mealPlanSchema = z.object({
-    mealplan: z.array(z.object({
-        days: z.array(z.string().describe('Weekday names in Danish')),
-        recipe: z.object({
-            title: z.string(),
-            ingredients: z.array(z.string()),
-            directions: z.array(z.string()),
-            imageUrl: z.string(),
-            url: z.string(),
-        }).nullable(),
-    })),
-});
 
 // Step to get recipe data for meal planning using the getAllRecipes tool directly
 const getRecipesForMealPlanning = createStep({
     id: 'get-recipes-for-meal-planning',
     description: 'Fetches all recipes and filters for dinner recipes suitable for meal planning',
     inputSchema: z.any(),
-    outputSchema: z.object({
-        recipes: z.array(z.object({
-            id: z.number(),
-            title: z.string(),
-            description: z.string(),
-            categories: z.array(z.string()),
-            ingredients: z.array(z.string()),
-            preparationTime: z.string().optional(),
-        })),
-    }),
+    outputSchema: getAllRecipes.outputSchema.describe('Array of dinner recipes suitable for meal planning'),
     execute: async ({ runtimeContext, mastra, suspend, writer }) => {
         // Use the getAllRecipes tool through the proper execution context
         const allRecipes = await getAllRecipes.execute({
@@ -52,9 +28,7 @@ const getRecipesForMealPlanning = createStep({
             );
         });
 
-        return {
-            recipes: dinnerRecipes
-        };
+        return dinnerRecipes;
     },
 });
 
@@ -62,16 +36,7 @@ const getRecipesForMealPlanning = createStep({
 const selectRecipesForMealPlan = createStep({
     id: 'select-recipes-for-meal-plan',
     description: 'Uses meal plan selector agent to select optimal recipes for weekly meal planning',
-    inputSchema: z.object({
-        recipes: z.array(z.object({
-            id: z.number(),
-            title: z.string(),
-            description: z.string(),
-            categories: z.array(z.string()),
-            ingredients: z.array(z.string()),
-            preparationTime: z.string().optional(),
-        })),
-    }),
+    inputSchema: getRecipesForMealPlanning.outputSchema,
     outputSchema: z.object({
         selectedRecipes: z.array(z.object({
             id: z.number(),
@@ -90,7 +55,7 @@ const selectRecipesForMealPlan = createStep({
 
         let prompt = `Select 2 optimal recipes for a weekly meal plan from the following options:
 
-${JSON.stringify(inputData.recipes, null, 2)}`;
+${JSON.stringify(inputData, null, 2)}`;
 
         const selectionResponse = await selectorAgent.streamVNext([
             {
@@ -108,8 +73,8 @@ ${JSON.stringify(inputData.recipes, null, 2)}`;
         // Get the structured result directly from the response
         const selectionResult = await selectionResponse.object;
         console.log('selectionResult', selectionResult);
-        
-        const selectedRecipes = inputData.recipes.filter(recipe =>
+
+        const selectedRecipes = inputData.filter(recipe =>
             selectionResult.selectedRecipeIds.includes(recipe.id)
         );
 
@@ -117,6 +82,20 @@ ${JSON.stringify(inputData.recipes, null, 2)}`;
             selectedRecipes
         };
     },
+});
+
+// Schema for meal plan structure
+const mealPlanSchema = z.object({
+    mealplan: z.array(z.object({
+        days: z.array(z.string().describe('Weekday names in Danish')),
+        recipe: z.object({
+            title: z.string(),
+            ingredients: z.array(z.string()),
+            directions: z.array(z.string()),
+            imageUrl: z.string(),
+            url: z.string(),
+        }).nullable(),
+    })),
 });
 
 // Step 2: Generate detailed meal plan using the meal plan generator agent
