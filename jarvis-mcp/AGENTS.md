@@ -57,6 +57,7 @@ jarvis-mcp/
 - **Branching and conditional logic** with `.then()`, `.branch()`, `.parallel()`
 - **Suspend/resume functionality** for human-in-the-loop interactions
 - **Real-time tracing** and observability
+- **Human approval workflows** with structured feedback and improvement loops
 
 ### 🧠 Memory & Context
 - **Persistent agent memory** with semantic recall
@@ -123,6 +124,24 @@ Multi-step shopping list processing workflow implementing the original n8n 3-age
 - **Danish language support**: Processes requests and provides responses in Danish
 
 **Converted from n8n**: This workflow replicates the exact 3-agent pattern from the original n8n Shopping List Agent workflow, including Information Extractor → Shopping List Mutator → Summarization Agent flow with before/after cart comparison.
+
+### Weekly Meal Planning Workflow
+Multi-agent meal planning workflow with **human-in-the-loop approval** and automatic shopping list integration:
+- **`weeklyMealPlanningWorkflow`**: Main workflow with human approval step and shopping list integration
+- **`regenerateMealPlanWorkflow`**: Separate workflow for regenerating meal plans with human feedback
+- **Step 1 - Recipe Collection**: Fetches and filters dinner recipes from Valdemarsro
+- **Step 2 - Recipe Selection**: Uses meal plan selector agent to choose optimal recipes
+- **Step 3 - Meal Plan Generation**: Creates detailed weekly meal plan with structured data
+- **Step 4 - Human Approval**: **SUSPEND POINT** - Pauses execution for human review and approval
+- **Step 5 - Approval Logic**: Either adds ingredients to shopping list (approved) or returns improvement feedback (rejected)
+- **Shopping Integration**: Automatically extracts all ingredients and calls shopping list workflow on approval
+- **Improvement Loop**: Rejected plans can be regenerated with specific feedback using the regeneration workflow
+
+**Human-in-the-loop Features**:
+- **Suspend/Resume**: Uses Mastra's suspend functionality to pause workflow execution
+- **Structured Approval**: Accepts boolean approval with optional improvement text
+- **Automatic Integration**: Approved meal plans trigger shopping list workflow to add all ingredients
+- **Feedback Loop**: Rejected plans can be improved and resubmitted through regeneration workflow
 
 ## Development
 
