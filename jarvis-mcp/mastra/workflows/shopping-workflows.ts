@@ -20,7 +20,7 @@ const processShoppingListRequest = createStep({
   inputSchema: shoppingListInputSchema,
   outputSchema: shoppingListResultSchema,
   execute: async ({ inputData, mastra }) => {
-    const shoppingAgent = mastra?.getAgent('ShoppingList');
+    const shoppingAgent = mastra?.getAgent('shoppingList');
     if (!shoppingAgent) {
       throw new Error('Shopping list agent not found');
     }
