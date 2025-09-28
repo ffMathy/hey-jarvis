@@ -2,5 +2,5 @@
 export { createAgent } from './agent-factory';
 export { createScorersConfig, DEFAULT_SCORERS } from './scorers-config';
 export { createTool } from './tool-factory';
-export { createStep, createWorkflow } from './workflow-factory';
+export { createStep, createWorkflow, createAgentStep, createToolStep } from './workflow-factory';
 
