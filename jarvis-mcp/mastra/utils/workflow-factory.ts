@@ -104,3 +104,164 @@ export function createStep<
 
     return mastraCreateStep(stepConfig);
 }
+
+/**
+ * Creates a workflow step that uses an agent as the step execution.
+ * This implements the "agent-as-step" pattern where an existing agent
+ * becomes a reusable workflow step.
+ * 
+ * @param config - Configuration for the agent step
+ * @returns A new Step that executes using the specified agent
+ * 
+ * @example
+ * ```typescript
+ * const weatherStep = createAgentStep({
+ *   id: 'weather-check',
+ *   description: 'Get weather using weather agent',
+ *   agentName: 'weather',
+ *   inputSchema: z.object({ location: z.string() }),
+ *   outputSchema: z.object({ weather: z.string() }),
+ *   prompt: ({ context }) => `Get weather for ${context.location}`,
+ * });
+ * ```
+ */
+export function createAgentStep<
+    TInputSchema extends z.ZodSchema,
+    TOutputSchema extends z.ZodSchema
+>(config: {
+    id: string;
+    description: string;
+    agentName: string;
+    inputSchema: TInputSchema;
+    outputSchema: TOutputSchema;
+    prompt: (params: { context: z.infer<TInputSchema> }) => string;
+    structuredOutput?: {
+        schema: z.ZodSchema;
+    };
+}, options: {
+    enableScorers?: boolean;
+    customScorers?: Record<string, any>;
+    samplingRate?: number;
+} = {}) {
+    return createStep({
+        id: config.id,
+        description: config.description,
+        inputSchema: config.inputSchema,
+        outputSchema: config.outputSchema,
+        execute: async ({ context, mastra }) => {
+            const agent = mastra?.getAgent(config.agentName);
+            if (!agent) {
+                throw new Error(`Agent '${config.agentName}' not found`);
+            }
+
+            const prompt = config.prompt({ context });
+            
+            if (config.structuredOutput) {
+                const response = await agent.streamVNext([
+                    {
+                        role: 'user',
+                        content: prompt,
+                    },
+                ], {
+                    structuredOutput: config.structuredOutput
+                });
+
+                return await response.object;
+            } else {
+                const response = await agent.streamVNext([
+                    {
+                        role: 'user',
+                        content: prompt,
+                    },
+                ]);
+
+                let result = '';
+                for await (const chunk of response.textStream) {
+                    result += chunk;
+                }
+
+                // Try to parse the output schema to see what structure is expected
+                const outputShape = config.outputSchema._def?.shape || {};
+                if (outputShape.htmlContent && outputShape.subject) {
+                    // Special case for email output
+                    return {
+                        htmlContent: result,
+                        subject: 'Nyt forslag til madplan'
+                    } as z.infer<TOutputSchema>;
+                } else if (outputShape.result) {
+                    // Generic result wrapper
+                    return { result } as z.infer<TOutputSchema>;
+                } else {
+                    // Try to parse as JSON, fallback to raw result
+                    try {
+                        return JSON.parse(result) as z.infer<TOutputSchema>;
+                    } catch {
+                        return result as z.infer<TOutputSchema>;
+                    }
+                }
+            }
+        },
+    }, options);
+}
+
+/**
+ * Creates a workflow step that uses a tool as the step execution.
+ * This implements the "tool-as-step" pattern where an existing tool
+ * becomes a reusable workflow step.
+ * 
+ * @param config - Configuration for the tool step
+ * @returns A new Step that executes using the specified tool
+ * 
+ * @example
+ * ```typescript
+ * const getCurrentWeatherStep = createToolStep({
+ *   id: 'get-current-weather',
+ *   description: 'Get current weather for a city',
+ *   tool: getCurrentWeatherByCity,
+ *   inputTransform: ({ location }) => ({ cityName: location }),
+ * });
+ * ```
+ */
+export function createToolStep<
+    TInputSchema extends z.ZodSchema,
+    TToolInput extends z.ZodSchema,
+    TToolOutput extends z.ZodSchema
+>(config: {
+    id: string;
+    description: string;
+    tool: {
+        inputSchema: TToolInput;
+        outputSchema: TToolOutput;
+        execute: (params: {
+            context: z.infer<TToolInput>;
+            runtimeContext?: any;
+            mastra?: any;
+            suspend?: any;
+            writer?: any;
+        }) => Promise<z.infer<TToolOutput>>;
+    };
+    inputSchema: TInputSchema;
+    inputTransform: (input: z.infer<TInputSchema>) => z.infer<TToolInput>;
+}, options: {
+    enableScorers?: boolean;
+    customScorers?: Record<string, any>;
+    samplingRate?: number;
+} = {}) {
+    return createStep({
+        id: config.id,
+        description: config.description,
+        inputSchema: config.inputSchema,
+        outputSchema: config.tool.outputSchema,
+        execute: async ({ context, mastra, runtimeContext, suspend, writer }) => {
+            const toolInput = config.inputTransform(context);
+            
+            return await config.tool.execute({
+                context: toolInput,
+                runtimeContext,
+                mastra,
+                suspend,
+                writer
+            });
+        },
+    }, options);
+}
