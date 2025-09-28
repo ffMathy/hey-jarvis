@@ -1,6 +1,6 @@
 import { createStep as mastraCreateStep, createWorkflow as mastraCreateWorkflow } from '@mastra/core/workflows';
 import { z } from 'zod';
-import { DEFAULT_SCORERS, createScorersConfig } from './scorers-config';
+import { createScorersConfig } from './scorers-config';
 
 /**
  * Creates a new Mastra Workflow with sensible defaults for the Hey Jarvis system.
@@ -85,13 +85,13 @@ export function createStep<
     } = {}
 ) {
     const { enableScorers = true, customScorers = {}, samplingRate } = options;
-    
+
     // Add scorers if enabled
     const stepConfig = enableScorers
         ? {
-              ...config,
-              scorers: createScorersConfig(customScorers, samplingRate),
-          }
+            ...config,
+            scorers: createScorersConfig(customScorers, samplingRate),
+        }
         : config;
 
     // For now, this is a direct proxy to the Mastra createStep function
