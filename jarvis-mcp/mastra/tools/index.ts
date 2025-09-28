@@ -1,9 +1,9 @@
-import { cookingTools } from "./cooking-tools";
-import { weatherTools } from "./weather-tools";
-import { shoppingTools } from "./shopping-tools";
+import { cookingTools } from '../verticals/cooking';
+import { shoppingTools } from '../verticals/shopping';
+import { weatherTools } from '../verticals/weather';
 
 export const allTools = {
-    cooking: cookingTools,
     weather: weatherTools,
-    shopping: shoppingTools
+    shopping: shoppingTools,
+    cooking: cookingTools
 };

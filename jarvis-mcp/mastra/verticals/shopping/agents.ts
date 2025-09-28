@@ -1,12 +1,12 @@
 import { google } from '@ai-sdk/google';
 import { Agent } from '@mastra/core/agent';
-import { memory } from '../memory';
-import { shoppingTools } from '../tools/shopping-tools';
+import { memory } from '../../memory';
+import { shoppingTools } from './tools';
 
 // Main shopping list agent for managing Bilka shopping cart
 export const shoppingListAgent = new Agent({
-  name: 'ShoppingList',
-  instructions: `# Role & Scope
+    name: 'ShoppingList',
+    instructions: `# Role & Scope
 You are a shopping-list agent. For every user request, you will either add or remove items on the list.
 
 No follow-up questions.
@@ -82,16 +82,16 @@ The products might be written in Danish.
 3. For items to remove, set quantity to 0
 4. Provide a summary of what was added/removed and any items that couldn't be found`,
 
-  description: 'Specialized agent for managing shopping lists in Bilka online store. Can add/remove items, search products, and manage cart contents.',
-  model: google('gemini-flash-latest'),
-  tools: shoppingTools,
-  memory: memory
+    description: 'Specialized agent for managing shopping lists in Bilka online store. Can add/remove items, search products, and manage cart contents.',
+    model: google('gemini-flash-latest'),
+    tools: shoppingTools,
+    memory: memory
 });
 
 // Specialized agent for summarizing shopping list changes
 export const shoppingListSummaryAgent = new Agent({
-  name: 'ShoppingListSummary',
-  instructions: `You are an evaluator agent that takes in a query from a user that has been processed by other agents, along with a "before" and "after" version of shopping basket contents.
+    name: 'ShoppingListSummary',
+    instructions: `You are an evaluator agent that takes in a query from a user that has been processed by other agents, along with a "before" and "after" version of shopping basket contents.
 
 Your job is to answer the query based on the information you have and provide a clear summary of what was changed.
 
@@ -104,14 +104,14 @@ Format your response in a friendly, conversational way in Danish. Include:
 
 Be concise but informative.`,
 
-  description: 'Specialized agent for summarizing shopping list changes and providing user feedback',
-  model: google('gemini-flash-latest'),
-  tools: undefined,
-  memory: memory
+    description: 'Specialized agent for summarizing shopping list changes and providing user feedback',
+    model: google('gemini-flash-latest'),
+    tools: undefined,
+    memory: memory
 });
 
 // Export all shopping list agents
 export const shoppingListAgents = {
-  shoppingListAgent,
-  shoppingListSummaryAgent
+    shoppingListAgent,
+    shoppingListSummaryAgent
 };

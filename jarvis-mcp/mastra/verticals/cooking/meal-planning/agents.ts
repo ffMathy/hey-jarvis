@@ -1,42 +1,11 @@
 import { google } from '@ai-sdk/google';
 import { Agent } from '@mastra/core/agent';
-import { cookingTools } from '../tools/cooking-tools';
-import { memory } from '../memory';
-
-// Main cooking agent for recipe search and general queries
-export const recipeSearchAgent = new Agent({
-  name: 'RecipeSearch',
-  instructions: `You are a recipe search specialist for Valdemarsro (Danish recipe website).
-
-Your ONLY job is to:
-1. Search for recipes using Danish search terms
-2. Retrieve detailed recipe information
-3. Answer questions about specific recipes
-4. Provide recipe alternatives when requested
-
-Key rules:
-- Always use Danish search terms for API queries
-- Include quantities for all ingredients
-- Provide detailed recipe information
-- Filter for "Aftensmad" (dinner) category when appropriate
-- Avoid weird soups like "burgersuppe", "tacosuppe", "lasagnesuppe"
-
-Do NOT:
-- Select recipes for meal planning (that's another agent's job)
-- Generate meal plans or schedules
-- Format content for emails
-- Make meal planning decisions`,
-  
-  description: 'Specialized agent for searching and retrieving recipe information from Valdemarsro',
-  model: google('gemini-flash-latest'),
-  tools: cookingTools,
-  memory: memory
-});
+import { memory } from '../../../memory';
 
 // Specialized agent for meal plan recipe selection
 export const mealPlanSelectorAgent = new Agent({
-  name: 'MealPlanSelector',
-  instructions: `You are a meal planning optimization specialist.
+    name: 'MealPlanSelector',
+    instructions: `You are a meal planning optimization specialist.
 
 Your ONLY job is to select the optimal recipes from a given list for meal planning.
 
@@ -53,17 +22,17 @@ Avoid:
 
 Default selection: 2 recipes unless specified otherwise
 Each recipe should feed 2 people for 3 days (6 total portions if 2 recipes)`,
-  
-  description: 'Specialized agent for selecting optimal recipes for meal planning',
-  model: google('gemini-flash-latest'),
-  tools: undefined,
-  memory: memory
+
+    description: 'Specialized agent for selecting optimal recipes for meal planning',
+    model: google('gemini-flash-latest'),
+    tools: undefined,
+    memory: memory
 });
 
 // Specialized agent for creating meal plan schedules
 export const mealPlanGeneratorAgent = new Agent({
-  name: 'MealPlanGenerator',
-  instructions: `You are a meal scheduling specialist.
+    name: 'MealPlanGenerator',
+    instructions: `You are a meal scheduling specialist.
 
 Your ONLY job is to take selected recipes and create a weekly schedule.
 
@@ -80,16 +49,16 @@ Do NOT:
 - Search for new recipes
 - Select different recipes
 - Format for email presentation`,
-  description: 'Specialized agent for creating weekly meal plan schedules',
-  model: google('gemini-flash-latest'),
-  tools: undefined,
-  memory: memory
+    description: 'Specialized agent for creating weekly meal plan schedules',
+    model: google('gemini-flash-latest'),
+    tools: undefined,
+    memory: memory
 });
 
 // Specialized agent for email formatting
 export const mealPlanEmailFormatterAgent = new Agent({
-  name: 'EmailFormatter',
-  instructions: `You are an HTML email formatting specialist for meal plans.
+    name: 'EmailFormatter',
+    instructions: `You are an HTML email formatting specialist for meal plans.
 
 Your ONLY job is to convert meal plan data into properly formatted HTML emails.
 
@@ -115,17 +84,16 @@ Do NOT:
 - Modify meal plan content or schedule
 - Search for additional recipe information
 - Make meal planning decisions`,
-  
-  description: 'Specialized agent for formatting meal plans into HTML emails',
-  model: google('gemini-flash-latest'),
-  tools: undefined,
-  memory: memory
+
+    description: 'Specialized agent for formatting meal plans into HTML emails',
+    model: google('gemini-flash-latest'),
+    tools: undefined,
+    memory: memory
 });
 
-// Export all specialized agents
-export const specializedCookingAgents = {
-  recipeSearchAgent,
-  mealPlanSelectorAgent,
-  mealPlanGeneratorAgent,
-  mealPlanEmailFormatterAgent
+// Export all specialized meal planning agents
+export const mealPlanningAgents = {
+    mealPlanSelectorAgent,
+    mealPlanGeneratorAgent,
+    mealPlanEmailFormatterAgent
 };
