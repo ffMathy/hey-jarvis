@@ -12,7 +12,8 @@ import {
   shoppingListWorkflow,
   weatherAgent,
   weatherMonitoringWorkflow,
-  weeklyMealPlanningWorkflow
+  weeklyMealPlanningWorkflow,
+  regenerateMealPlanWorkflow
 } from './verticals';
 
 export const mastra = new Mastra({
@@ -20,6 +21,7 @@ export const mastra = new Mastra({
   workflows: {
     weatherMonitoringWorkflow,
     weeklyMealPlanningWorkflow,
+    regenerateMealPlanWorkflow,
     shoppingListWorkflow,
   },
   agents: {

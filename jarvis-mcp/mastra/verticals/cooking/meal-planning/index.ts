@@ -2,4 +2,4 @@
 export {
     mealPlanEmailFormatterAgent, mealPlanGeneratorAgent, mealPlanSelectorAgent, mealPlanningAgents
 } from './agents';
-export { weeklyMealPlanningWorkflow } from './workflows';
+export { weeklyMealPlanningWorkflow, regenerateMealPlanWorkflow } from './workflows';
