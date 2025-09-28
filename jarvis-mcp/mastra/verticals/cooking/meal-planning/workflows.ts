@@ -38,14 +38,7 @@ const selectRecipesForMealPlan = createStep({
     description: 'Uses meal plan selector agent to select optimal recipes for weekly meal planning',
     inputSchema: getRecipesForMealPlanning.outputSchema,
     outputSchema: z.object({
-        selectedRecipes: z.array(z.object({
-            id: z.number(),
-            title: z.string(),
-            description: z.string(),
-            categories: z.array(z.string()),
-            ingredients: z.array(z.string()),
-            preparationTime: z.string().optional(),
-        })),
+        selectedRecipes: getAllRecipes.outputSchema,
     }),
     execute: async ({ inputData, mastra }) => {
         const selectorAgent = mastra?.getAgent('mealPlanSelector');
@@ -102,16 +95,7 @@ const mealPlanSchema = z.object({
 const generateDetailedMealPlan = createStep({
     id: 'generate-detailed-meal-plan',
     description: 'Uses meal plan generator agent to create detailed weekly meal plan from selected recipes',
-    inputSchema: z.object({
-        selectedRecipes: z.array(z.object({
-            id: z.number(),
-            title: z.string(),
-            description: z.string(),
-            categories: z.array(z.string()),
-            ingredients: z.array(z.string()),
-            preparationTime: z.string().optional(),
-        })),
-    }),
+    inputSchema: selectRecipesForMealPlan.outputSchema,
     outputSchema: mealPlanSchema,
     execute: async ({ inputData, mastra }) => {
         const generatorAgent = mastra?.getAgent('mealPlanGenerator');
@@ -132,7 +116,6 @@ const generateDetailedMealPlan = createStep({
 
         // Get the structured result directly from the response
         const mealPlan = await planResponse.object;
-        console.log('mealPlan', mealPlan);
         return mealPlan;
     },
 });
