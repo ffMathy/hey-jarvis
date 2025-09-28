@@ -1,5 +1,6 @@
 import { createStep as mastraCreateStep, createWorkflow as mastraCreateWorkflow } from '@mastra/core/workflows';
 import { z } from 'zod';
+import { DEFAULT_SCORERS, createScorersConfig } from './scorers-config';
 
 /**
  * Creates a new Mastra Workflow with sensible defaults for the Hey Jarvis system.
@@ -60,21 +61,39 @@ export function createWorkflow<
  * - Maintain a single point of step configuration
  * 
  * @param config - The step configuration object
+ * @param options - Additional options for step configuration
  * @returns A new Step instance with applied defaults
  */
 export function createStep<
     TInputSchema extends z.ZodSchema,
     TOutputSchema extends z.ZodSchema
->(config: {
-    id: string;
-    description: string;
-    inputSchema: TInputSchema;
-    outputSchema: TOutputSchema;
-    execute: (params: {
-        context: z.infer<TInputSchema>;
-        mastra?: any;
-    }) => Promise<z.infer<TOutputSchema>>;
-}) {
+>(
+    config: {
+        id: string;
+        description: string;
+        inputSchema: TInputSchema;
+        outputSchema: TOutputSchema;
+        execute: (params: {
+            context: z.infer<TInputSchema>;
+            mastra?: any;
+        }) => Promise<z.infer<TOutputSchema>>;
+    },
+    options: {
+        enableScorers?: boolean;
+        customScorers?: Record<string, any>;
+        samplingRate?: number;
+    } = {}
+) {
+    const { enableScorers = true, customScorers = {}, samplingRate } = options;
+    
+    // Add scorers if enabled
+    const stepConfig = enableScorers
+        ? {
+              ...config,
+              scorers: createScorersConfig(customScorers, samplingRate),
+          }
+        : config;
+
     // For now, this is a direct proxy to the Mastra createStep function
     // Future enhancements could include:
     // - Automatic error handling and retry logic
@@ -83,5 +102,5 @@ export function createStep<
     // - Step timeout handling
     // - Step-level caching
 
-    return mastraCreateStep(config);
+    return mastraCreateStep(stepConfig);
 }
