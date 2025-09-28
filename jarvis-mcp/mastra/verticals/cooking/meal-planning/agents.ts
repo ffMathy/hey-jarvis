@@ -1,9 +1,7 @@
-import { google } from '@ai-sdk/google';
-import { Agent } from '@mastra/core/agent';
-import { memory } from '../../../memory';
+import { createAgent } from '../../../utils';
 
 // Specialized agent for meal plan recipe selection
-export const mealPlanSelectorAgent = new Agent({
+export const mealPlanSelectorAgent = createAgent({
     name: 'MealPlanSelector',
     instructions: `You are a meal planning optimization specialist.
 
@@ -24,13 +22,11 @@ Default selection: 2 recipes unless specified otherwise
 Each recipe should feed 2 people for 3 days (6 total portions if 2 recipes)`,
 
     description: 'Specialized agent for selecting optimal recipes for meal planning',
-    model: google('gemini-flash-latest'),
     tools: undefined,
-    memory: memory
 });
 
 // Specialized agent for creating meal plan schedules
-export const mealPlanGeneratorAgent = new Agent({
+export const mealPlanGeneratorAgent = createAgent({
     name: 'MealPlanGenerator',
     instructions: `You are a meal scheduling specialist.
 
@@ -50,13 +46,11 @@ Do NOT:
 - Select different recipes
 - Format for email presentation`,
     description: 'Specialized agent for creating weekly meal plan schedules',
-    model: google('gemini-flash-latest'),
     tools: undefined,
-    memory: memory
 });
 
 // Specialized agent for email formatting
-export const mealPlanEmailFormatterAgent = new Agent({
+export const mealPlanEmailFormatterAgent = createAgent({
     name: 'EmailFormatter',
     instructions: `You are an HTML email formatting specialist for meal plans.
 
@@ -86,9 +80,7 @@ Do NOT:
 - Make meal planning decisions`,
 
     description: 'Specialized agent for formatting meal plans into HTML emails',
-    model: google('gemini-flash-latest'),
     tools: undefined,
-    memory: memory
 });
 
 // Export all specialized meal planning agents

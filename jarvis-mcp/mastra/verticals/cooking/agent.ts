@@ -1,10 +1,8 @@
-import { google } from '@ai-sdk/google';
-import { Agent } from '@mastra/core/agent';
-import { memory } from '../../memory';
+import { createAgent } from '../../utils';
 import { cookingTools } from './tools';
 
 // Main cooking agent for recipe search and general queries
-export const recipeSearchAgent = new Agent({
+export const recipeSearchAgent = createAgent({
     name: 'RecipeSearch',
     instructions: `You are a recipe search specialist for Valdemarsro (Danish recipe website).
 
@@ -28,7 +26,5 @@ Do NOT:
 - Make meal planning decisions`,
 
     description: 'Specialized agent for searching and retrieving recipe information from Valdemarsro',
-    model: google('gemini-flash-latest'),
     tools: cookingTools,
-    memory: memory
 });
