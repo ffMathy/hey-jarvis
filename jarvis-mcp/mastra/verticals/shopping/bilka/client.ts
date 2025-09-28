@@ -33,7 +33,7 @@ export async function searchProductCatalog(
                 `query=${encodeURIComponent(searchQuery)}`,
                 `distinct=false`,
                 `page=0`,
-                `hitsPerPage=5`,
+                `hitsPerPage=15`,
                 `facets=${encodeURIComponent(JSON.stringify([]))}`,
                 `clickAnalytics=true`,
                 `analyticsTags=${encodeURIComponent(JSON.stringify([]))}`,
