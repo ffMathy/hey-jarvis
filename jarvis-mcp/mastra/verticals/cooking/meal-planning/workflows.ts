@@ -91,6 +91,12 @@ const mealPlanSchema = z.object({
     })),
 });
 
+// Schema for human approval response
+const approvalResponseSchema = z.object({
+    approved: z.boolean().describe('Whether the meal plan is approved'),
+    improvements: z.string().optional().describe('Suggested improvements if not approved'),
+});
+
 // Step 2: Generate detailed meal plan using the meal plan generator agent
 const generateDetailedMealPlan = createStep({
     id: 'generate-detailed-meal-plan',
@@ -120,57 +126,173 @@ const generateDetailedMealPlan = createStep({
     },
 });
 
-// Step to generate HTML email using specialized formatter agent
-const generateMealPlanEmail = createStep({
-    id: 'generate-meal-plan-email',
-    description: 'Generates HTML email using the specialized email formatter agent',
+// Step to suspend for human approval of the meal plan
+const requestHumanApproval = createStep({
+    id: 'request-human-approval',
+    description: 'Suspends workflow to request human approval of the generated meal plan',
     inputSchema: mealPlanSchema,
     outputSchema: z.object({
-        htmlContent: z.string(),
-        subject: z.string(),
+        mealPlan: mealPlanSchema,
+        approved: z.boolean(),
+        improvements: z.string().optional(),
     }),
-    execute: async ({ inputData, mastra }) => {
-        const formatterAgent = mastra?.getAgent('mealPlanEmailFormatter');
-        if (!formatterAgent) {
-            throw new Error('Email formatter agent not found');
-        }
+    execute: async ({ inputData, suspend }) => {
+        // Present the meal plan for human review
+        const presentationData = {
+            message: 'Please review the following meal plan and decide whether to approve it',
+            mealPlan: inputData,
+        };
 
-        const prompt = `Format this meal plan into a professional HTML email:\n\n${JSON.stringify(inputData, null, 2)}`;
-
-        const response = await formatterAgent.streamVNext([
-            {
-                role: 'user',
-                content: prompt,
-            },
-        ], {
-            structuredOutput: {
-                schema: z.string().describe('HTML content of the meal plan email without any additional text or markdown')
-            }
+        // Suspend execution and wait for human input
+        const humanResponse = await suspend({
+            id: 'meal-plan-approval',
+            data: presentationData,
+            schema: approvalResponseSchema,
         });
 
-        let emailData = '';
-        for await (const chunk of response.textStream) {
-            emailData += chunk;
-        }
-
         return {
-            htmlContent: emailData,
-            subject: 'Nyt forslag til madplan',
+            mealPlan: inputData,
+            approved: humanResponse.approved,
+            improvements: humanResponse.improvements,
         };
     },
 });
 
-// Main weekly meal planning workflow using specialized agents
+// Step to handle approval logic and either proceed or loop back
+const handleApprovalLogic = createStep({
+    id: 'handle-approval-logic',
+    description: 'Handles the approval logic - either adds to shopping list or returns rejection info',
+    inputSchema: z.object({
+        mealPlan: mealPlanSchema,
+        approved: z.boolean(),
+        improvements: z.string().optional(),
+    }),
+    outputSchema: z.object({
+        success: z.boolean(),
+        message: z.string(),
+        mealPlan: mealPlanSchema,
+        shoppingListResult: z.object({
+            success: z.boolean(),
+            message: z.string(),
+        }).optional(),
+    }),
+    execute: async ({ inputData, mastra }) => {
+        if (inputData.approved) {
+            // If approved, add ingredients to shopping list
+            const allIngredients = inputData.mealPlan.mealplan
+                .filter(meal => meal.recipe)
+                .flatMap(meal => meal.recipe!.ingredients);
+
+            const shoppingPrompt = `Add the following ingredients to the shopping list:\n${allIngredients.join('\n')}`;
+
+            try {
+                // Execute the shopping list workflow
+                const shoppingResult = await mastra?.runWorkflow('shopping-list-workflow', {
+                    prompt: shoppingPrompt,
+                });
+
+                return {
+                    success: true,
+                    message: 'Meal plan approved and ingredients added to shopping list',
+                    mealPlan: inputData.mealPlan,
+                    shoppingListResult: {
+                        success: true,
+                        message: `Successfully added ${allIngredients.length} ingredients to shopping list: ${shoppingResult?.message || 'Added items'}`,
+                    },
+                };
+            } catch (error) {
+                return {
+                    success: true,
+                    message: 'Meal plan approved but failed to add ingredients to shopping list',
+                    mealPlan: inputData.mealPlan,
+                    shoppingListResult: {
+                        success: false,
+                        message: `Failed to add ingredients to shopping list: ${error}`,
+                    },
+                };
+            }
+        } else {
+            // If not approved, return the meal plan with rejection info
+            return {
+                success: false,
+                message: `Meal plan was not approved. Improvements requested: ${inputData.improvements || 'No specific improvements provided'}`,
+                mealPlan: inputData.mealPlan,
+            };
+        }
+    },
+});
+
+// Main weekly meal planning workflow with human-in-the-loop approval
 export const weeklyMealPlanningWorkflow = createWorkflow({
     id: 'weekly-meal-planning-workflow',
     inputSchema: z.any(),
     outputSchema: z.object({
-        htmlContent: z.string(),
-        subject: z.string(),
+        success: z.boolean(),
+        message: z.string(),
+        mealPlan: mealPlanSchema,
+        shoppingListResult: z.object({
+            success: z.boolean(),
+            message: z.string(),
+        }).optional(),
     }),
 })
     .then(getRecipesForMealPlanning)
     .then(selectRecipesForMealPlan)
     .then(generateDetailedMealPlan)
-    .then(generateMealPlanEmail)
+    .then(requestHumanApproval)
+    .then(handleApprovalLogic)
+    .commit();
+
+// Workflow to regenerate meal plan with improvements (can be called separately)
+export const regenerateMealPlanWorkflow = createWorkflow({
+    id: 'regenerate-meal-plan-workflow',
+    inputSchema: z.object({
+        improvements: z.string().describe('Specific improvements to incorporate into the new meal plan'),
+    }),
+    outputSchema: z.object({
+        success: z.boolean(),
+        message: z.string(),
+        mealPlan: mealPlanSchema,
+        shoppingListResult: z.object({
+            success: z.boolean(),
+            message: z.string(),
+        }).optional(),
+    }),
+})
+    .then(getRecipesForMealPlanning)
+    .then(selectRecipesForMealPlan)
+    .then(createStep({
+        id: 'generate-improved-meal-plan',
+        description: 'Generates an improved meal plan based on feedback',
+        inputSchema: z.object({
+            selectedRecipes: getAllRecipes.outputSchema,
+        }),
+        outputSchema: mealPlanSchema,
+        execute: async ({ inputData, mastra, context }) => {
+            const generatorAgent = mastra?.getAgent('mealPlanGenerator');
+            if (!generatorAgent) {
+                throw new Error('Meal plan generator agent not found');
+            }
+
+            // Get improvements from the workflow input
+            const improvements = (context as any).improvements || 'Create an improved meal plan';
+
+            const planResponse = await generatorAgent.streamVNext([
+                {
+                    role: 'user',
+                    content: `Create an improved weekly meal plan using these selected recipes:\n\n${JSON.stringify(inputData.selectedRecipes, null, 2)}\n\nIncorporate these improvements: ${improvements}\n\nGenerate the complete meal plan with proper scheduling and scaled ingredients.`,
+                },
+            ], {
+                structuredOutput: {
+                    schema: mealPlanSchema
+                }
+            });
+
+            // Get the structured result directly from the response
+            const mealPlan = await planResponse.object;
+            return mealPlan;
+        },
+    }))
+    .then(requestHumanApproval)
+    .then(handleApprovalLogic)
     .commit();
