@@ -1,6 +1,6 @@
 import { createStep, createWorkflow } from '@mastra/core/workflows';
 import { z } from 'zod';
-import { getAllRecipes } from '../tools/cooking-tools';
+import { getAllRecipes } from '../tools';
 
 // Step to get recipe data for meal planning using the getAllRecipes tool directly
 const getRecipesForMealPlanning = createStep({

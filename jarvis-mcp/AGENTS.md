@@ -7,14 +7,32 @@ This project is a Mastra-powered AI agent framework that enables intelligent hom
 [Mastra](https://mastra.ai) is a TypeScript agent framework designed to build production-ready AI applications. It provides unified interfaces for multiple LLM providers, persistent agent memory, tool calling capabilities, and graph-based workflows.
 
 ## Project Structure
-The project follows Mastra's recommended structure:
+The project follows a vertical-based organization structure for better cohesion:
 
 ```
 jarvis-mcp/
 ├── mastra/
-│   ├── agents/           # AI agent definitions
-│   ├── tools/           # Custom tool implementations
-│   ├── workflows/       # Multi-step workflow graphs
+│   ├── verticals/       # Organized by business verticals
+│   │   ├── weather/     # Weather vertical
+│   │   │   ├── agent.ts
+│   │   │   ├── tools.ts
+│   │   │   ├── workflows.ts
+│   │   │   └── index.ts
+│   │   ├── shopping/    # Shopping vertical
+│   │   │   ├── agents.ts
+│   │   │   ├── tools.ts
+│   │   │   ├── workflows.ts
+│   │   │   └── index.ts
+│   │   └── cooking/     # Cooking vertical
+│   │       ├── agent.ts        # General recipe search agent
+│   │       ├── tools.ts
+│   │       ├── meal-planning/  # Sub-vertical for meal planning
+│   │       │   ├── agents.ts   # 3 specialized meal planning agents
+│   │       │   ├── workflows.ts
+│   │       │   └── index.ts
+│   │       └── index.ts
+│   ├── memory/          # Shared memory management
+│   ├── storage/         # Shared storage configuration
 │   └── index.ts         # Main Mastra configuration
 ├── project.json         # NX project configuration
 └── AGENTS.md           # This documentation
@@ -71,6 +89,16 @@ Provides intelligent shopping list management for Bilka online store with Danish
 - **Error recovery**: Retry logic with simplified search terms and graceful failure handling
 
 **Converted from n8n**: This agent maintains all the complex logic from the original n8n Shopping List Agent workflow, including the comprehensive priority hierarchy, special rules for herbs and quantities, and Danish product handling.
+
+### Recipe Search Agent
+Provides general cooking and recipe search capabilities:
+- **4 Valdemarsro tools**: Recipe search, get by ID, get all recipes, and search filters
+- **Google Gemini model**: Uses `gemini-flash-latest` for natural language processing
+- **Danish recipe focus**: Specialized for Danish cuisine from Valdemarsro website
+- **General purpose**: Handles recipe search, information retrieval, and general cooking questions
+- **Clear boundaries**: Does NOT handle meal planning, scheduling, or email formatting
+
+**Part of cooking vertical**: This agent handles general recipe-related queries, while specialized meal planning agents handle the complex multi-step planning workflows.
 
 *Note: Additional agents will be added as the project evolves.*
 
@@ -166,6 +194,12 @@ If you encounter 1Password CLI authentication issues:
 
 ## Architecture Benefits
 
+### Vertical Organization
+- **Business Domain Alignment**: Code is organized by business verticals (weather, shopping, cooking) rather than technical layers
+- **High Cohesion**: Related agents, tools, and workflows are co-located for better maintainability
+- **Sub-vertical Support**: Complex verticals like cooking can have sub-folders (meal-planning) for specialized flows
+- **Clear Ownership**: Each vertical has its own focused scope and responsibilities
+
 ### Type Safety
 - Full TypeScript support with runtime validation
 - Zod schemas for structured data
@@ -182,6 +216,193 @@ If you encounter 1Password CLI authentication issues:
 - Plugin-based workflow system
 - Easy integration with external services
 - Custom evaluation and scoring systems
+
+## Vertical Organization Conventions
+
+### 📋 **Core Principles**
+This project uses **vertical organization** where code is grouped by business domain rather than technical layer. Follow these conventions for all future development:
+
+### 🏗️ **Directory Structure Rules**
+
+#### **1. New Vertical Creation**
+When adding a new business vertical (e.g., `calendar`, `security`, `entertainment`):
+
+```bash
+# Create the vertical directory structure
+mastra/verticals/[vertical-name]/
+├── agent.ts          # Single general-purpose agent (if simple)
+├── agents.ts         # Multiple agents (if moderate complexity)
+├── tools.ts          # All tools for this vertical
+├── workflows.ts      # All workflows for this vertical
+└── index.ts          # Export everything from this vertical
+```
+
+**Examples:**
+- **Simple vertical**: `weather/` (1 agent, 1 workflow)
+- **Moderate vertical**: `shopping/` (2 agents, 1 workflow)
+- **Complex vertical**: `cooking/` (1 general + 3 specialized agents, 1 workflow)
+
+#### **2. Sub-Vertical Creation**
+For complex verticals with multiple specialized flows, create sub-verticals:
+
+```bash
+# Complex vertical with sub-vertical
+mastra/verticals/[vertical-name]/
+├── agent.ts                    # General vertical agent
+├── tools.ts                    # Shared tools for the vertical
+├── [sub-vertical-name]/        # Specialized sub-vertical
+│   ├── agents.ts              # Specialized agents
+│   ├── workflows.ts           # Specialized workflows
+│   └── index.ts               # Sub-vertical exports
+└── index.ts                   # Main vertical exports
+```
+
+**Example**: `cooking/meal-planning/` contains 3 specialized agents for complex meal planning workflows
+
+### 🎯 **Naming Conventions**
+
+#### **File Naming**
+- **Single agent**: `agent.ts` (e.g., `weather/agent.ts`)
+- **Multiple agents**: `agents.ts` (e.g., `shopping/agents.ts`)
+- **Tools**: Always `tools.ts`
+- **Workflows**: Always `workflows.ts`
+- **Exports**: Always `index.ts`
+
+#### **Agent Naming**
+- **General agents**: `[vertical]Agent` (e.g., `weatherAgent`, `recipeSearchAgent`)
+- **Specialized agents**: `[vertical][Purpose]Agent` (e.g., `mealPlanSelectorAgent`, `shoppingListSummaryAgent`)
+
+#### **Tool Naming**
+- **Tool IDs**: Always use `kebab-case` (e.g., `get-current-weather`, `find-product-in-catalog`)
+- **Tool exports**: Use `[vertical]Tools` (e.g., `weatherTools`, `cookingTools`)
+
+#### **Workflow Naming**
+- **Workflow IDs**: Use `kebab-case` (e.g., `weather-monitoring-workflow`)
+- **Workflow exports**: Use descriptive names (e.g., `weatherMonitoringWorkflow`, `weeklyMealPlanningWorkflow`)
+
+### 📦 **Export Patterns**
+
+#### **Vertical Index Exports**
+Each vertical's `index.ts` must follow this pattern:
+
+```typescript
+// [Vertical] vertical exports
+export { [agent/agents] } from './agent'; // or './agents'
+export { [vertical]Tools } from './tools';
+export { [workflows] } from './workflows';
+export * from './[sub-vertical]'; // if sub-verticals exist
+```
+
+#### **Main Verticals Index**
+The main `verticals/index.ts` should export everything:
+
+```typescript
+// Main verticals exports
+export * from './weather';
+export * from './shopping';
+export * from './cooking';
+export * from './[new-vertical]'; // Add new verticals here
+```
+
+### 🔧 **Implementation Guidelines**
+
+#### **Agent Creation Rules**
+1. **Start Simple**: Begin with a single general agent (`agent.ts`)
+2. **Split When Complex**: If >3 distinct responsibilities, consider multiple agents (`agents.ts`)
+3. **Create Sub-Verticals**: If >4 agents, create specialized sub-verticals
+4. **Maintain Focus**: Each agent should have ONE clear responsibility
+
+#### **Tool Organization Rules**
+1. **Vertical Ownership**: All tools for a vertical go in its `tools.ts`
+2. **No Cross-Vertical Tools**: Tools belong to exactly one vertical
+3. **Shared Tools**: If truly shared, create a new `shared/` vertical
+4. **API Integration**: Group related API calls in the same vertical
+
+#### **Workflow Rules**
+1. **Domain Alignment**: Workflows should match business processes, not technical steps
+2. **Single Vertical**: Workflows should primarily use agents/tools from their own vertical
+3. **Cross-Vertical**: If using multiple verticals, consider if it should be in a new vertical
+
+### 🚀 **Step-by-Step: Adding a New Vertical**
+
+#### **Example: Adding a Calendar Vertical**
+
+1. **Create Directory Structure**:
+```bash
+mkdir -p mastra/verticals/calendar
+```
+
+2. **Create Core Files**:
+```typescript
+// calendar/agent.ts
+export const calendarAgent = new Agent({
+  name: 'Calendar',
+  // ... agent config
+});
+
+// calendar/tools.ts  
+export const calendarTools = {
+  // ... tool definitions
+};
+
+// calendar/workflows.ts
+export const calendarSyncWorkflow = createWorkflow({
+  // ... workflow config
+});
+
+// calendar/index.ts
+export { calendarAgent } from './agent';
+export { calendarTools } from './tools';
+export { calendarSyncWorkflow } from './workflows';
+```
+
+3. **Update Main Exports**:
+```typescript
+// verticals/index.ts
+export * from './weather';
+export * from './shopping';  
+export * from './cooking';
+export * from './calendar'; // Add new vertical
+```
+
+4. **Register in Mastra**:
+```typescript
+// mastra/index.ts
+import { calendarAgent, calendarSyncWorkflow } from './verticals';
+
+export const mastra = new Mastra({
+  agents: {
+    // ... existing agents
+    calendar: calendarAgent,
+  },
+  workflows: {
+    // ... existing workflows  
+    calendarSyncWorkflow,
+  },
+});
+```
+
+### ✅ **Validation Checklist**
+Before considering a vertical complete:
+
+- [ ] Directory follows naming conventions
+- [ ] All files use proper naming patterns  
+- [ ] Exports are properly structured
+- [ ] Agent responsibilities are clear and focused
+- [ ] Tools use kebab-case IDs
+- [ ] Workflows match business processes
+- [ ] Main index files are updated
+- [ ] Build passes: `nx build jarvis-mcp`
+- [ ] Documentation updated in this AGENTS.md file
+
+### 🎯 **When to Create Sub-Verticals**
+Create sub-verticals when:
+- **>4 specialized agents** in one vertical
+- **Multiple distinct workflows** that share some but not all tools
+- **Complex business processes** that have sub-processes
+- **Clear logical separation** within the vertical
+
+**Example**: `cooking/meal-planning/` exists because meal planning has 3 specialized agents and complex workflows, while general recipe search is simpler.
 
 ## Future Roadmap
 
