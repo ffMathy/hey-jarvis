@@ -135,9 +135,6 @@ export function createAgentStep<
     inputSchema: TInputSchema;
     outputSchema: TOutputSchema;
     prompt: (params: { context: z.infer<TInputSchema> }) => string;
-    structuredOutput?: {
-        schema: z.ZodSchema;
-    };
 }, options: {
     enableScorers?: boolean;
     customScorers?: Record<string, any>;
@@ -156,50 +153,18 @@ export function createAgentStep<
 
             const prompt = config.prompt({ context });
             
-            if (config.structuredOutput) {
-                const response = await agent.streamVNext([
-                    {
-                        role: 'user',
-                        content: prompt,
-                    },
-                ], {
-                    structuredOutput: config.structuredOutput
-                });
-
-                return await response.object;
-            } else {
-                const response = await agent.streamVNext([
-                    {
-                        role: 'user',
-                        content: prompt,
-                    },
-                ]);
-
-                let result = '';
-                for await (const chunk of response.textStream) {
-                    result += chunk;
+            const response = await agent.streamVNext([
+                {
+                    role: 'user',
+                    content: prompt,
+                },
+            ], {
+                structuredOutput: {
+                    schema: config.outputSchema
                 }
+            });
 
-                // Try to parse the output schema to see what structure is expected
-                const outputShape = config.outputSchema._def?.shape || {};
-                if (outputShape.htmlContent && outputShape.subject) {
-                    // Special case for email output
-                    return {
-                        htmlContent: result,
-                        subject: 'Nyt forslag til madplan'
-                    } as z.infer<TOutputSchema>;
-                } else if (outputShape.result) {
-                    // Generic result wrapper
-                    return { result } as z.infer<TOutputSchema>;
-                } else {
-                    // Try to parse as JSON, fallback to raw result
-                    try {
-                        return JSON.parse(result) as z.infer<TOutputSchema>;
-                    } catch {
-                        return result as z.infer<TOutputSchema>;
-                    }
-                }
-            }
+            return await response.object;
         },
     }, options);
 }
@@ -218,12 +183,10 @@ export function createAgentStep<
  *   id: 'get-current-weather',
  *   description: 'Get current weather for a city',
  *   tool: getCurrentWeatherByCity,
- *   inputTransform: ({ location }) => ({ cityName: location }),
  * });
  * ```
  */
 export function createToolStep<
-    TInputSchema extends z.ZodSchema,
     TToolInput extends z.ZodSchema,
     TToolOutput extends z.ZodSchema
 >(config: {
@@ -240,8 +203,6 @@ export function createToolStep<
             writer?: any;
         }) => Promise<z.infer<TToolOutput>>;
     };
-    inputSchema: TInputSchema;
-    inputTransform: (input: z.infer<TInputSchema>) => z.infer<TToolInput>;
 }, options: {
     enableScorers?: boolean;
     customScorers?: Record<string, any>;
@@ -250,13 +211,11 @@ export function createToolStep<
     return createStep({
         id: config.id,
         description: config.description,
-        inputSchema: config.inputSchema,
+        inputSchema: config.tool.inputSchema,
         outputSchema: config.tool.outputSchema,
         execute: async ({ context, mastra, runtimeContext, suspend, writer }) => {
-            const toolInput = config.inputTransform(context);
-            
             return await config.tool.execute({
-                context: toolInput,
+                context,
                 runtimeContext,
                 mastra,
                 suspend,
