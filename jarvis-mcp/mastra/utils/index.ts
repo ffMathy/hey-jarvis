@@ -3,6 +3,4 @@ export { createAgent } from './agent-factory';
 export { createScorersConfig, DEFAULT_SCORERS } from './scorers-config';
 export { createTool } from './tool-factory';
 export { createStep, createWorkflow } from './workflow-factory';
-export { JWTAuth, createJWTAuth, jwtAuth } from './jwt-auth';
-export type { JWTConfig, JWTPayload, JWTAuthContext } from './jwt-auth';
 

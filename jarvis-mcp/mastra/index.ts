@@ -2,10 +2,7 @@
 import { Mastra } from '@mastra/core/mastra';
 import { PinoLogger } from '@mastra/loggers';
 import { sqlStorageProvider } from './storage';
-import { jwtAuth } from './utils';
 import {
-  apiAuthenticationWorkflow,
-  jwtAuthAgent,
   mealPlanEmailFormatterAgent,
   mealPlanGeneratorAgent,
   mealPlanSelectorAgent,
@@ -13,7 +10,6 @@ import {
   shoppingListAgent,
   shoppingListSummaryAgent,
   shoppingListWorkflow,
-  userAuthenticationWorkflow,
   weatherAgent,
   weatherMonitoringWorkflow,
   weeklyMealPlanningWorkflow
@@ -22,14 +18,11 @@ import {
 export const mastra = new Mastra({
   storage: sqlStorageProvider,
   workflows: {
-    userAuthenticationWorkflow,
-    apiAuthenticationWorkflow,
     weatherMonitoringWorkflow,
     weeklyMealPlanningWorkflow,
     shoppingListWorkflow,
   },
   agents: {
-    jwtAuth: jwtAuthAgent,
     weather: weatherAgent,
     recipeSearch: recipeSearchAgent,
     mealPlanSelector: mealPlanSelectorAgent,
@@ -42,11 +35,4 @@ export const mastra = new Mastra({
     name: 'Mastra',
     level: 'info',
   }),
-  // JWT Authentication configuration
-  auth: {
-    jwt: jwtAuth ? {
-      verify: (token: string) => jwtAuth.verifyToken(token),
-      extract: (headers: Record<string, any>) => jwtAuth.extractAuthContext(headers),
-    } : undefined,
-  },
 });
