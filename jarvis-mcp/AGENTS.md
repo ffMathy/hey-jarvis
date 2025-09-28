@@ -254,6 +254,30 @@ This project follows a strict "lean documentation" approach because:
 - Manages project dependencies and task orchestration
 - Prevents conflicts between different project configurations
 
+### Tool ID Naming Conventions
+**CRITICAL**: All tool IDs must follow kebab-case naming conventions:
+
+#### ✅ CORRECT Examples:
+- `get-current-weather` ✅
+- `find-product-in-catalog` ✅  
+- `set-product-basket-quantity` ✅
+- `get-current-cart-contents` ✅
+- `clear-cart-contents` ✅
+
+#### ❌ INCORRECT Examples:
+- `get_current_weather` ❌ (snake_case)
+- `getCurrentWeather` ❌ (camelCase)
+- `GetCurrentWeather` ❌ (PascalCase)
+- `get current weather` ❌ (spaces)
+
+#### 🎯 REASONING:
+- **Consistency**: All tools across the project use the same naming pattern
+- **Readability**: Kebab-case is easier to read in tool IDs and URLs
+- **Standards**: Follows web standards and REST API conventions
+- **Mastra compatibility**: Aligns with Mastra's recommended practices
+
+**When creating new tools, ALWAYS use kebab-case for tool IDs.**
+
 ### Agent Architecture Guidelines
 When refactoring or creating agents:
 - **Prefer specialized agents** over single multi-purpose agents for complex workflows
