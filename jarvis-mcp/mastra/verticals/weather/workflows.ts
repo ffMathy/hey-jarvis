@@ -17,10 +17,9 @@ const scheduledWeatherCheck = createAgentStep({
         }).optional(),
     }),
     prompt: () => 'Get current weather for Aarhus, Denmark',
-    // Transform the agent's response into memory update format
 });
 
-// Custom step to transform weather data into memory update format
+// Transform weather data into memory update format
 const transformToMemoryUpdate = createStep({
     id: 'transform-to-memory-update',
     description: 'Transform weather data into memory update format',
