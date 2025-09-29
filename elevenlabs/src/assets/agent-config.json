@@ -1,0 +1,269 @@
+{
+  "agentId": "***REMOVED***",
+  "name": "J.A.R.V.I.S.",
+  "conversationConfig": {
+    "asr": {
+      "quality": "high",
+      "provider": "elevenlabs",
+      "userInputAudioFormat": "pcm_16000",
+      "keywords": [
+        "Jarvis"
+      ]
+    },
+    "turn": {
+      "turnTimeout": 150,
+      "silenceEndCallTimeout": 180,
+      "mode": "turn"
+    },
+    "tts": {
+      "modelId": "eleven_flash_v2",
+      "voiceId": "***REMOVED***",
+      "supportedVoices": [],
+      "agentOutputAudioFormat": "pcm_16000",
+      "optimizeStreamingLatency": 4,
+      "stability": 0.4,
+      "speed": 1,
+      "similarityBoost": 0.75,
+      "pronunciationDictionaryLocators": []
+    },
+    "conversation": {
+      "textOnly": false,
+      "maxDurationSeconds": 900,
+      "clientEvents": [
+        "interruption",
+        "user_transcript",
+        "agent_response",
+        "agent_response_correction",
+        "audio",
+        "agent_tool_response",
+        "vad_score"
+      ]
+    },
+    "languagePresets": {},
+    "vad": {
+      "backgroundVoiceDetection": false
+    },
+    "agent": {
+      "firstMessage": "Hello sir, how can I help?",
+      "language": "en",
+      "dynamicVariables": {
+        "dynamicVariablePlaceholders": {
+          "objective": "Book a hairdresser appointment for Monday at 2 pm."
+        }
+      },
+      "disableFirstMessageInterruptions": true
+    }
+  },
+  "metadata": {
+    "createdAtUnixSecs": 1742778859,
+    "updatedAtUnixSecs": 1759177849
+  },
+  "platformSettings": {
+    "auth": {
+      "enableAuth": true,
+      "allowlist": []
+    },
+    "evaluation": {
+      "criteria": [
+        {
+          "id": "a_tool_was_called_after_each_request",
+          "name": "A tool was called after each request",
+          "type": "prompt",
+          "conversationGoalPrompt": "A tool was called after each request.",
+          "useKnowledgeBase": false
+        },
+        {
+          "id": "the_user_was_satisfied",
+          "name": "The user was satisfied",
+          "type": "prompt",
+          "conversationGoalPrompt": "Determine if the user was satisfied with the request.",
+          "useKnowledgeBase": false
+        }
+      ]
+    },
+    "widget": {
+      "variant": "full",
+      "placement": "bottom-right",
+      "expandable": "never",
+      "avatar": {
+        "type": "orb",
+        "color1": "#2792DC",
+        "color2": "#9CE6E6"
+      },
+      "feedbackMode": "during",
+      "bgColor": "#ffffff",
+      "textColor": "#000000",
+      "btnColor": "#000000",
+      "btnTextColor": "#ffffff",
+      "borderColor": "#e1e1e1",
+      "focusColor": "#000000",
+      "shareablePageShowTerms": true,
+      "termsText": "#### Terms and conditions\n\nBy clicking \"Agree,\" and each time I interact with this AI agent, I consent to the recording, storage, and sharing of my communications with third-party service providers, and as described in the Privacy Policy.\nIf you do not wish to have your conversations recorded, please refrain from using this service.",
+      "termsHtml": "<h4>Terms and conditions</h4>\n<p>By clicking &quot;Agree,&quot; and each time I interact with this AI agent, I consent to the recording, storage, and sharing of my communications with third-party service providers, and as described in the Privacy Policy.\nIf you do not wish to have your conversations recorded, please refrain from using this service.</p>\n",
+      "showAvatarWhenCollapsed": true,
+      "disableBanner": false,
+      "micMutingEnabled": false,
+      "transcriptEnabled": false,
+      "textInputEnabled": false,
+      "defaultExpanded": false,
+      "alwaysExpanded": false,
+      "textContents": {},
+      "styles": {},
+      "languageSelector": false,
+      "supportsTextOnly": false,
+      "languagePresets": {}
+    },
+    "dataCollection": {},
+    "overrides": {
+      "conversationConfigOverride": {
+        "tts": {
+          "voiceId": false,
+          "stability": false,
+          "speed": false,
+          "similarityBoost": false
+        },
+        "conversation": {
+          "textOnly": false
+        },
+        "agent": {
+          "firstMessage": true,
+          "language": false,
+          "prompt": {
+            "prompt": false,
+            "nativeMcpServerIds": false
+          }
+        }
+      },
+      "customLlmExtraBody": false,
+      "enableConversationInitiationClientDataFromWebhook": false
+    },
+    "callLimits": {
+      "agentConcurrencyLimit": 1,
+      "dailyLimit": 1000,
+      "burstingEnabled": false
+    },
+    "ban": null,
+    "privacy": {
+      "recordVoice": true,
+      "retentionDays": 7,
+      "deleteTranscriptAndPii": true,
+      "deleteAudio": true,
+      "applyToExistingConversations": true,
+      "zeroRetentionMode": false
+    },
+    "workspaceOverrides": {
+      "webhooks": {
+        "sendAudio": false
+      }
+    },
+    "testing": {
+      "attachedTests": [],
+      "referenced_tests_ids": []
+    },
+    "archived": false,
+    "safety": {
+      "isBlockedIvc": false,
+      "isBlockedNonIvc": false,
+      "ignoreSafetyEvaluation": false
+    }
+  },
+  "phoneNumbers": [
+    {
+      "provider": "twilio",
+      "phoneNumber": "***REMOVED***",
+      "label": "Danmark",
+      "supportsInbound": true,
+      "supportsOutbound": true,
+      "phoneNumberId": "***REMOVED***",
+      "assignedAgent": {
+        "agentId": "***REMOVED***",
+        "agentName": "J.A.R.V.I.S."
+      }
+    }
+  ],
+  "workflow": {
+    "edges": {},
+    "nodes": {
+      "node_7701k38pwcx1eqp99myzha6f9cky": {
+        "type": "end",
+        "position": {
+          "x": 960,
+          "y": 420
+        },
+        "edge_order": []
+      },
+      "start_node": {
+        "type": "start",
+        "position": {
+          "x": 544,
+          "y": 64
+        },
+        "edge_order": []
+      },
+      "node_6601k38pwcwseayrf13f99nk2aha": {
+        "conversation_config": {
+          "asr": null,
+          "turn": null,
+          "tts": {
+            "model_id": null,
+            "voice_id": "***REMOVED***",
+            "supported_voices": null,
+            "agent_output_audio_format": null,
+            "optimize_streaming_latency": null,
+            "stability": null,
+            "speed": null,
+            "similarity_boost": null,
+            "pronunciation_dictionary_locators": null
+          },
+          "conversation": null,
+          "language_presets": null,
+          "vad": null,
+          "agent": {
+            "first_message": null,
+            "language": null,
+            "dynamic_variables": null,
+            "disable_first_message_interruptions": null,
+            "prompt": {
+              "prompt": "### SYSTEM\nDu er ***REMOVED*** (33 år, ***REMOVED***). Du ringer UD til en virksomhed.\n*Formål:* {{objective}}  \nDu må ALDRIG spørge hvad du kan hjælpe med, eller om der er andet du skal gøre. Heller ikke i slutningen af samtalen. Hvis du er i tvivl, så lig i stedet på. Du må KUN stille spørgsmål der er relateret til dit formål. Det er dig der OPSØGER hjælp fra modparten, ikke omvendt.\nHold alle svar på under 25 ord. Tal altid dansk, naturligt og uformelt. Du er optimistisk og empatisk.  \nHvis modparten giver alternativer, vælg det bedste og bekræft.  \nHvis tre afslag, afslut høfligt.\n\n### FIRST_MESSAGE\n“Hej, det er ***REMOVED***. Jeg ringer fordi {formål}. Kan det lade sig gøre?”\nDit formål er: {{objective}}\n\n### FLOW\n1. Vent på, at modparten tager telefonen.  \n2. Afsend **FIRST_MESSAGE**.  \n3. Lyt aktivt; hvis samtalen afviger, drej tilbage til målet.  \n4. Følg reglerne for alternativer, afslag og afslutning som angivet ovenfor.",
+              "llm": null,
+              "reasoning_effort": null,
+              "temperature": null,
+              "max_tokens": null,
+              "tool_ids": [],
+              "built_in_tools": null,
+              "mcp_server_ids": null,
+              "native_mcp_server_ids": null,
+              "knowledge_base": null,
+              "custom_llm": null,
+              "ignore_default_personality": null,
+              "rag": null,
+              "timezone": null,
+              "tools": null
+            }
+          }
+        },
+        "additional_prompt": "",
+        "additional_knowledge_base": [],
+        "additional_tool_ids": [],
+        "type": "override_agent",
+        "position": {
+          "x": 128,
+          "y": 420
+        },
+        "edge_order": [],
+        "label": "***REMOVED***"
+      }
+    }
+  },
+  "accessInfo": {
+    "isCreator": true,
+    "creatorName": "***REMOVED***",
+    "creatorEmail": "***REMOVED***",
+    "role": "admin"
+  },
+  "tags": [],
+  "_metadata": {
+    "saved_at": "2025-09-29T20:34:43.390Z",
+    "version": "1.0.0"
+  }
+}

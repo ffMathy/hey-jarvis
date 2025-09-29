@@ -1,0 +1,50 @@
+{
+  "name": "elevenlabs",
+  "$schema": "../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "elevenlabs/src",
+  "projectType": "application",
+  "tags": [],
+  "targets": {
+    "build": {
+      "executor": "@nx/esbuild:esbuild",
+      "outputs": ["{options.outputPath}"],
+      "defaultConfiguration": "production",
+      "options": {
+        "platform": "node",
+        "outputPath": "dist/elevenlabs",
+        "format": ["cjs"],
+        "bundle": false,
+        "main": "elevenlabs/src/main.ts",
+        "tsConfig": "elevenlabs/tsconfig.app.json",
+        "assets": ["elevenlabs/src/assets"],
+        "generatePackageJson": true,
+        "esbuildOptions": {
+          "sourcemap": true,
+          "outExtension": {
+            ".js": ".js"
+          }
+        }
+      },
+      "configurations": {
+        "development": {},
+        "production": {
+          "generateLockfile": true,
+          "esbuildOptions": {
+            "sourcemap": false,
+            "outExtension": {
+              ".js": ".js"
+            }
+          }
+        }
+      }
+    },
+    "start": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build"],
+      "options": {
+        "command": "op run --env-file=\"elevenlabs/.env\" --no-masking -- node dist/elevenlabs/main.js",
+        "cwd": "."
+      }
+    }
+  }
+}
