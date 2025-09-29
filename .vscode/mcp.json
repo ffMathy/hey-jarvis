@@ -7,6 +7,10 @@
         "@mastra/mcp-docs-server"
       ],
       "type": "stdio"
-    }
+    },
+    "github/github-mcp-server": {
+			"type": "http",
+			"url": "https://api.githubcopilot.com/mcp/"
+		}
   }
 }
