@@ -5,7 +5,6 @@ import {
 import {
     createAnswerRelevancyScorer,
     createBiasScorer,
-    createFaithfulnessScorer,
     createHallucinationScorer,
     createPromptAlignmentScorerLLM
 } from '@mastra/evals/scorers/llm';
@@ -36,10 +35,6 @@ const DEFAULT_SAMPLING_RATE = 1.0;
 export const DEFAULT_SCORERS = {
     answerRelevancy: {
         scorer: createAnswerRelevancyScorer({ model: SCORER_MODEL }),
-        sampling: { type: 'ratio' as const, rate: DEFAULT_SAMPLING_RATE },
-    },
-    faithfulness: {
-        scorer: createFaithfulnessScorer({ model: SCORER_MODEL }),
         sampling: { type: 'ratio' as const, rate: DEFAULT_SAMPLING_RATE },
     },
     hallucination: {
