@@ -1,0 +1,109 @@
+{
+  "name": "home-assistant-addon",
+  "$schema": "../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "home-assistant-addon/src",
+  "projectType": "application",
+  "tags": [],
+  "targets": {
+    "build": {
+      "executor": "@nx/esbuild:esbuild",
+      "outputs": ["{options.outputPath}"],
+      "defaultConfiguration": "production",
+      "options": {
+        "platform": "node",
+        "outputPath": "dist/home-assistant-addon",
+        "format": ["cjs"],
+        "bundle": false,
+        "main": "home-assistant-addon/src/main.ts",
+        "tsConfig": "home-assistant-addon/tsconfig.app.json",
+        "assets": ["home-assistant-addon/src/assets"],
+        "generatePackageJson": true,
+        "esbuildOptions": {
+          "sourcemap": true,
+          "outExtension": {
+            ".js": ".js"
+          }
+        }
+      },
+      "configurations": {
+        "development": {},
+        "production": {
+          "generateLockfile": true,
+          "esbuildOptions": {
+            "sourcemap": false,
+            "outExtension": {
+              ".js": ".js"
+            }
+          }
+        }
+      }
+    },
+    "prune-lockfile": {
+      "dependsOn": ["build"],
+      "cache": true,
+      "executor": "@nx/js:prune-lockfile",
+      "outputs": [
+        "{workspaceRoot}/dist/home-assistant-addon/package.json",
+        "{workspaceRoot}/dist/home-assistant-addon/package-lock.json"
+      ],
+      "options": {
+        "buildTarget": "build"
+      }
+    },
+    "copy-workspace-modules": {
+      "dependsOn": ["build"],
+      "cache": true,
+      "outputs": [
+        "{workspaceRoot}/dist/home-assistant-addon/workspace_modules"
+      ],
+      "executor": "@nx/js:copy-workspace-modules",
+      "options": {
+        "buildTarget": "build"
+      }
+    },
+    "prune": {
+      "dependsOn": ["prune-lockfile", "copy-workspace-modules"],
+      "executor": "nx:noop"
+    },
+    "serve": {
+      "continuous": true,
+      "executor": "@nx/js:node",
+      "defaultConfiguration": "development",
+      "dependsOn": ["build"],
+      "options": {
+        "buildTarget": "home-assistant-addon:build",
+        "runBuildTargetDependencies": false
+      },
+      "configurations": {
+        "development": {
+          "buildTarget": "home-assistant-addon:build:development"
+        },
+        "production": {
+          "buildTarget": "home-assistant-addon:build:production"
+        }
+      }
+    },
+    "docker:build": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build", "prune"],
+      "options": {
+        "commands": [
+          "docker build -f home-assistant-addon/Dockerfile -t ghcr.io/${IMAGE_OWNER}/home-assistant-addon:latest -t ghcr.io/${IMAGE_OWNER}/home-assistant-addon:${GITHUB_SHA} --build-arg BUILDKIT_INLINE_CACHE=1 dist/home-assistant-addon"
+        ],
+        "parallel": false
+      }
+    },
+    "deploy": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["docker:build"],
+      "options": {
+        "commands": [
+          "echo ${GITHUB_TOKEN} | docker login ghcr.io -u ${GITHUB_ACTOR} --password-stdin",
+          "docker push ghcr.io/${IMAGE_OWNER}/home-assistant-addon:latest",
+          "docker push ghcr.io/${IMAGE_OWNER}/home-assistant-addon:${GITHUB_SHA}"
+        ],
+        "parallel": false
+      }
+    }
+  }
+}

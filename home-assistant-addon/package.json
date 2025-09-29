@@ -1,0 +1,15 @@
+{
+  "name": "home-assistant-addon",
+  "version": "1.0.0",
+  "description": "Home Assistant addon for Hey Jarvis",
+  "main": "main.js",
+  "scripts": {
+    "start": "node main.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

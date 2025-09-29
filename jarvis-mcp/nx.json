@@ -1,13 +1,21 @@
 {
   "installation": {
-    "version": "21.5.2"
+    "version": "21.5.2",
+    "plugins": {
+      "@nx/docker": "21.5.2"
+    }
   },
   "$schema": "./node_modules/nx/schemas/nx-schema.json",
   "targetDefaults": {
     "@nx/esbuild:esbuild": {
       "cache": true,
-      "dependsOn": ["^build"],
-      "inputs": ["default", "^default"]
+      "dependsOn": [
+        "^build"
+      ],
+      "inputs": [
+        "default",
+        "^default"
+      ]
     }
   },
   "plugins": [

@@ -7,12 +7,7 @@
     "build": "nx run-many --target=build --all",
     "serve": "nx run-many --target=serve --all --parallel",
     "test": "nx run e2e:serve",
-    "build:jarvis-mcp": "nx build jarvis-mcp",
-    "build:home-assistant-voice-firmware": "nx build home-assistant-voice-firmware",
-    "build:e2e": "nx build e2e",
-    "serve:jarvis-mcp": "nx serve jarvis-mcp",
-    "serve:home-assistant-voice-firmware": "nx serve home-assistant-voice-firmware",
-    "serve:e2e": "nx serve e2e"
+    "deploy": "nx run-many --target=deploy --all"
   },
   "repository": {
     "type": "git",
@@ -25,21 +20,29 @@
   },
   "homepage": "https://github.com/ffMathy/hey-jarvis#readme",
   "devDependencies": {
+    "@eslint/js": "^9.8.0",
+    "@nx/docker": "21.5.3",
     "@nx/esbuild": "^21.5.3",
+    "@nx/eslint": "21.5.3",
+    "@nx/eslint-plugin": "21.5.3",
     "@nx/jest": "^21.5.3",
     "@nx/js": "^21.5.3",
     "@nx/node": "^21.5.3",
     "@swc-node/register": "^1.11.1",
     "@swc/core": "^1.13.20",
     "@swc/helpers": "~0.5.11",
+    "@types/express": "^4.17.21",
     "@types/node": "^24.5.2",
     "esbuild": "^0.25.10",
+    "eslint": "^9.8.0",
+    "eslint-config-prettier": "^10.0.0",
     "mastra": "^0.13.2",
     "nx": "^21.5.3",
     "prettier": "^3.6.2",
     "tslib": "^2.3.0",
     "tsx": "^4.20.6",
-    "typescript": "~5.9.2"
+    "typescript": "~5.9.2",
+    "typescript-eslint": "^8.40.0"
   },
   "dependencies": {
     "@ai-sdk/google": "^2.0.17",
@@ -50,6 +53,7 @@
     "@mastra/loggers": "^0.10.13",
     "@mastra/mcp": "^0.13.1",
     "@mastra/memory": "^0.15.3",
+    "express": "^4.21.2",
     "zod": "^3.25.76"
   }
 }
