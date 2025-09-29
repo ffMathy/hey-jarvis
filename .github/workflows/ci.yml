@@ -7,10 +7,20 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and test in dev container
         uses: devcontainers/ci@v0.3
@@ -21,4 +31,7 @@ jobs:
           WIFI_SSID: "dummy-wifi-ssid-for-ci"
           WIFI_PASSWORD: "dummy-wifi-password-for-ci"
         with:
+          imageName: ghcr.io/${{ github.repository_owner }}/devcontainer
+          cacheFrom: ghcr.io/${{ github.repository_owner }}/devcontainer
+          push: never
           runCmd: npm run build
