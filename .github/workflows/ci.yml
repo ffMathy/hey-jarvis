@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build and test in dev container
+        uses: devcontainers/ci@v0.3
+        env:
+          # Environment variables for Home Assistant Voice firmware build
+          ELEVENLABS_AGENT_ID: "dummy-agent-id-for-ci"
+          ELEVENLABS_API_KEY: "dummy-api-key-for-ci"
+          WIFI_SSID: "dummy-wifi-ssid-for-ci"
+          WIFI_PASSWORD: "dummy-wifi-password-for-ci"
+        with:
+          runCmd: npm run build

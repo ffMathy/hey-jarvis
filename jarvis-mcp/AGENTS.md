@@ -124,6 +124,95 @@ Multi-step shopping list processing workflow implementing the original n8n 3-age
 
 **Converted from n8n**: This workflow replicates the exact 3-agent pattern from the original n8n Shopping List Agent workflow, including Information Extractor → Shopping List Mutator → Summarization Agent flow with before/after cart comparison.
 
+## Agent-as-Step and Tool-as-Step Patterns
+
+### 🔄 **Modern Workflow Architecture**
+All workflows in this project have been converted to use **agent-as-step** and **tool-as-step** patterns, which provide:
+
+- **Better Reusability**: Existing agents and tools become reusable workflow components
+- **Simplified Logic**: Less custom step code, more declarative workflow composition  
+- **Consistent Behavior**: Agent and tool behavior is the same whether used standalone or in workflows
+- **Easier Maintenance**: Changes to agents/tools automatically benefit all workflows using them
+
+### 🤖 **Agent-as-Step Pattern**
+Uses existing agents directly as workflow steps:
+
+```typescript
+const weatherStep = createAgentStep({
+  id: 'weather-check',
+  description: 'Get weather using weather agent',
+  agentName: 'weather',
+  inputSchema: z.object({ location: z.string() }),
+  outputSchema: z.object({ result: z.string() }),
+  prompt: ({ context }) => `Get weather for ${context.location}`,
+  structuredOutput: { // Optional for JSON responses
+    schema: z.object({ temperature: z.number(), condition: z.string() })
+  }
+});
+```
+
+**Benefits:**
+- Leverages existing agent intelligence and tool access
+- Consistent prompting and response handling
+- Automatic scoring and evaluation (when enabled)
+- Memory integration
+
+### 🔧 **Tool-as-Step Pattern** 
+Uses existing tools directly as workflow steps:
+
+```typescript
+const getCurrentWeatherStep = createToolStep({
+  id: 'get-current-weather',
+  description: 'Get current weather for a city',
+  tool: getCurrentWeatherByCity,
+  inputSchema: z.object({ location: z.string() }),
+  inputTransform: ({ location }) => ({ cityName: location }),
+});
+```
+
+**Benefits:**
+- Direct tool execution without agent overhead
+- Precise input/output transformation
+- Better for deterministic operations
+- Faster execution for simple operations
+
+### 🌊 **Converted Workflows**
+
+#### **Weather Monitoring Workflow**
+- **Before**: Custom step with manual agent calling
+- **After**: Agent-as-step pattern with weather agent
+- **Improvement**: Simplified from 2 custom steps to 1 agent step + 1 transform step
+
+#### **Weekly Meal Planning Workflow**  
+- **Before**: Complex custom steps calling multiple agents
+- **After**: Tool-as-step for recipe fetching + agent-as-step for meal planning
+- **Improvement**: Tool-as-step for `getAllRecipes`, agent-as-step for `mealPlanGenerator`
+
+#### **Shopping List Workflow**
+- **Before**: 5 complex custom steps with inline agent creation
+- **After**: Mix of tool-as-step and agent-as-step patterns
+- **Improvement**: Tool-as-step for cart operations, agent-as-step for extraction/processing/summarization
+
+### 📋 **Pattern Selection Guidelines**
+
+**Use Agent-as-Step when:**
+- Need natural language processing
+- Require tool calling capabilities  
+- Want conversation context
+- Need flexible, intelligent responses
+
+**Use Tool-as-Step when:**
+- Have deterministic operations
+- Need direct API calls
+- Want precise input/output control
+- Prefer faster execution
+
+**Use Custom Steps when:**
+- Need complex data transformation
+- Require workflow-specific logic
+- Must combine multiple operations
+- Need conditional branching
+
 ## Development
 
 ### Prerequisites
@@ -445,6 +534,19 @@ Create sub-verticals when:
 
 ## Development Guidelines
 
+### Core Development Principles
+
+#### 🎯 **YAGNI (You Aren't Gonna Need It)**
+This project strictly follows the YAGNI principle - avoid adding functionality or configuration options until they are actually needed:
+
+- **Factory Methods**: Should be opinionated and provide sensible defaults rather than extensive customization options
+- **Configuration**: Only expose parameters that are necessary for core functionality
+- **Features**: Don't implement speculative features or "what if" scenarios
+- **Abstraction**: Keep abstractions minimal and add complexity only when required
+- **Dependencies**: Don't add libraries or tools until they solve an actual problem
+
+**Example**: Our workflow factory methods (`createAgentStep`, `createToolStep`) only accept essential parameters and use opinionated defaults for scorers, rather than exposing all possible configuration options.
+
 ### File Creation Policy
 **CRITICAL**: When working on this project:
 
@@ -525,6 +627,8 @@ This project follows a strict "lean documentation" approach because:
 - **Agents**: Use `createAgent()` from `../../utils/agent-factory`
 - **Tools**: Use `createTool()` from `../../utils/tool-factory`  
 - **Workflows**: Use `createWorkflow()` and `createStep()` from `../../utils/workflow-factory`
+- **Agent-as-Step**: Use `createAgentStep()` from `../../utils/workflow-factory` to use agents directly as workflow steps
+- **Tool-as-Step**: Use `createToolStep()` from `../../utils/workflow-factory` to use tools directly as workflow steps
 
 #### ✅ **CORRECT Usage Examples**:
 
@@ -557,15 +661,35 @@ export const myTool = createTool({
 
 **Workflow Creation:**
 ```typescript
-import { createWorkflow, createStep } from '../../utils/workflow-factory';
+import { createWorkflow, createStep, createAgentStep, createToolStep } from '../../utils/workflow-factory';
 import { z } from 'zod';
 
+// Traditional custom step
 const myStep = createStep({
   id: 'my-step',
   description: 'A workflow step',
   inputSchema: z.object({}),
   outputSchema: z.object({ result: z.string() }),
   execute: async () => ({ result: 'done' }),
+});
+
+// Agent-as-step: Use an existing agent directly as a workflow step
+const agentStep = createAgentStep({
+  id: 'weather-step',
+  description: 'Get weather using weather agent',
+  agentName: 'weather',
+  inputSchema: z.object({ location: z.string() }),
+  outputSchema: z.object({ weather: z.string() }),
+  prompt: ({ context }) => `Get weather for ${context.location}`,
+});
+
+// Tool-as-step: Use an existing tool directly as a workflow step
+const toolStep = createToolStep({
+  id: 'get-weather-step',
+  description: 'Get current weather using tool',
+  tool: getCurrentWeatherByCity,
+  inputSchema: z.object({ location: z.string() }),
+  inputTransform: ({ location }) => ({ cityName: location }),
 });
 
 export const myWorkflow = createWorkflow({
@@ -593,6 +717,7 @@ export const badWorkflow = createWorkflow({ ... }); // ❌
 - **Type Safety**: Better TypeScript support with optional parameters for common defaults
 - **Maintainability**: Single point of configuration for system-wide changes
 - **Standards Enforcement**: Ensures all components follow Hey Jarvis conventions
+- **YAGNI Compliance**: Factory methods are opinionated and only expose necessary customization options
 
 #### 📦 **Import Paths**:
 Always use relative imports from your vertical to the utils:
@@ -678,5 +803,6 @@ This project is part of the Hey Jarvis monorepo and follows Mastra's development
 - Implement comprehensive tool validation
 - Add appropriate workflow testing
 - Document new capabilities thoroughly
+- **Apply YAGNI principle**: Only add features and configuration options when actually needed
 
 For more information about Mastra development, visit the [official documentation](https://mastra.ai/docs).

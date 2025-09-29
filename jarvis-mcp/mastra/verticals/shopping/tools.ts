@@ -1,4 +1,4 @@
-import { createTool } from '@mastra/core/tools';
+import { createTool } from '../../utils/tool-factory';
 import { z } from 'zod';
 import { changeProductQuantity, clearCart, getCartContents, searchProductCatalog } from './bilka/client';
 import { CatalogProduct } from './bilka/types';
@@ -12,6 +12,13 @@ export const findProductInCatalog = createTool({
     inputSchema: z.object({
         search_query: z.string().describe('The product to search for, in Danish. For instance, "agurk".')
     }),
+    outputSchema: z.array(z.object({
+        objectID: z.string(),
+        name: z.string(),
+        brand: z.string(),
+        price: z.number(),
+        attributes: z.array(z.string()),
+    })),
     execute: async ({ context }) => {
         const attributeNameOrder = [
             "Økomærket DK",
@@ -61,8 +68,16 @@ export const setProductBasketQuantity = createTool({
         quantity: z.number().describe('The quantity of the product. For instance, 2.'),
         product_name: z.string().describe('The name of the product.')
     }),
+    outputSchema: z.object({
+        success: z.boolean(),
+        message: z.string().optional(),
+    }),
     execute: async ({ context }) => {
-        return await changeProductQuantity(context.object_id, context.quantity, context.product_name);
+        const result = await changeProductQuantity(context.object_id, context.quantity, context.product_name);
+        return {
+            success: true,
+            message: `Updated ${context.product_name} quantity to ${context.quantity}`,
+        };
     },
 });
 
@@ -73,6 +88,18 @@ export const getCurrentCartContents = createTool({
     id: 'get-current-cart-contents',
     description: 'Retrieves the current shopping cart contents from Bilka.',
     inputSchema: z.object({}),
+    outputSchema: z.array(z.object({
+        objectID: z.string(),
+        name: z.string(),
+        price: z.number(),
+        brand: z.string(),
+        units: z.number(),
+        unitsOfMeasure: z.string(),
+        quantity: z.number(),
+        totalPrice: z.number(),
+        attributes: z.array(z.string()),
+        type: z.string(),
+    })),
     execute: async () => {
         const cartResponse = await getCartContents();
         return cartResponse.lines
@@ -80,7 +107,7 @@ export const getCurrentCartContents = createTool({
             .flatMap(x => x.orderlines)
             .filter(x => x.product.units > 0)
             .map(x => ({
-                objectID: x.product.objectID,
+                objectID: x.product.objectID.toString(),
                 name: x.product.name,
                 price: x.product.price,
                 brand: `${x.product.brand} ${x.product.subBrand}`.trim(),
@@ -101,6 +128,9 @@ export const clearCartContents = createTool({
     id: 'clear-cart-contents',
     description: 'Empties the entire shopping cart.',
     inputSchema: z.object({}),
+    outputSchema: z.object({
+        success: z.boolean(),
+    }),
     execute: async () => {
         await clearCart();
         return { success: true };
