@@ -38,7 +38,11 @@
         "build"
       ],
       "options": {
-        "command": "docker build -f jarvis-mcp/Dockerfile -t ghcr.io/$IMAGE_OWNER/jarvis-mcp:latest -t ghcr.io/$IMAGE_OWNER/jarvis-mcp:$GITHUB_SHA --build-arg BUILDKIT_INLINE_CACHE=1 ."
+        "command": "docker build -f jarvis-mcp/Dockerfile -t ghcr.io/$IMAGE_OWNER/jarvis-mcp:latest -t ghcr.io/$IMAGE_OWNER/jarvis-mcp:$GITHUB_SHA --build-arg BUILDKIT_INLINE_CACHE=1 .",
+        "env": {
+          "IMAGE_OWNER": "${IMAGE_OWNER}",
+          "GITHUB_SHA": "${GITHUB_SHA}"
+        }
       }
     },
     "deploy": {
@@ -52,7 +56,13 @@
           "docker push ghcr.io/$IMAGE_OWNER/jarvis-mcp:latest",
           "docker push ghcr.io/$IMAGE_OWNER/jarvis-mcp:$GITHUB_SHA"
         ],
-        "parallel": false
+        "parallel": false,
+        "env": {
+          "GITHUB_TOKEN": "${GITHUB_TOKEN}",
+          "GITHUB_ACTOR": "${GITHUB_ACTOR}",
+          "IMAGE_OWNER": "${IMAGE_OWNER}",
+          "GITHUB_SHA": "${GITHUB_SHA}"
+        }
       }
     }
   },
