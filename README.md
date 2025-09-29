@@ -1,124 +1,32 @@
 # Hey Jarvis - Digital Assistant Monorepo
 
-A collection of simple "Hello World" applications demonstrating the foundation for a digital assistant system that can run your house.
+An NX monorepo containing intelligent voice assistant components for comprehensive home automation.
 
-## Monorepo Structure
+## Projects
 
-This is an NX monorepo containing three main projects, each implementing simple "Hello World" applications as foundations for future development:
+| Project | Description | Serve Command |
+|---------|-------------|--------------|
+| **elevenlabs** | End-to-end testing suite and conversational agent configuration for ElevenLabs voice interface | - |
+| **jarvis-mcp** | Mastra AI-powered Model Context Protocol server providing intelligent tools and agents | `nx serve jarvis-mcp` |
+| **home-assistant-addon** | Home Assistant addon for seamlessly hosting the Jarvis MCP server within your Home Assistant instance | `nx serve home-assistant-addon` |
+| **home-assistant-voice-firmware** | ESPHome firmware for dedicated voice hardware devices with local processing capabilities | `nx build home-assistant-voice-firmware` |
 
-### Projects
-
-- **jarvis-mcp** - TypeScript "Hello World" application serving as foundation for Model Context Protocol server
-- **home-assistant-voice-firmware** - C++ "Hello World" application for future Home Assistant voice processing
-- **e2e** - TypeScript "Hello World" application for future end-to-end testing capabilities
-
-## Development Environment
-
-### DevContainer Support
-This repository includes a DevContainer configuration for consistent development environments:
-- TypeScript/Node.js support
-- C++ development tools
-- NX workspace tools
-- VS Code extensions pre-configured
-
-Open in VS Code and select "Reopen in Container" to use the DevContainer.
-
-### Prerequisites
-
-- Node.js (v20+)
-- npm
-- g++ compiler (for C++ project)
-- Docker (for DevContainer support)
-
-## Getting Started
-
-### Installation
+## Quick Start
 
 ```bash
+# Install dependencies
 npm install
+
+# Start the MCP server
+nx serve jarvis-mcp
+
+# Build voice firmware
+nx build home-assistant-voice-firmware
+
+# Start Home Assistant addon
+nx serve home-assistant-addon
 ```
-
-### Building All Projects
-
-```bash
-npm run build
-```
-
-### Running Individual Projects
-
-#### Jarvis MCP Application
-```bash
-npm run serve:jarvis-mcp
-# Or: npx nx serve jarvis-mcp
-```
-
-#### Home Assistant Voice Firmware
-```bash
-npm run serve:home-assistant-voice-firmware
-# Or: npx nx serve home-assistant-voice-firmware
-```
-
-#### E2E Application
-```bash
-npm run serve:e2e
-# Or: npx nx serve e2e
-```
-
-### Building Individual Projects
-
-```bash
-# Build jarvis-mcp
-npm run build:jarvis-mcp
-# Or: npx nx build jarvis-mcp
-
-# Build home-assistant-voice-firmware
-npm run build:home-assistant-voice-firmware
-# Or: npx nx build home-assistant-voice-firmware
-
-# Build e2e
-npm run build:e2e
-# Or: npx nx build e2e
-```
-
-## Agent Documentation
-
-Each project includes detailed agent documentation:
-- [E2E Agents](./e2e/AGENTS.md)
-- [Home Assistant Voice Firmware Agents](./home-assistant-voice-firmware/AGENTS.md)
-- [Jarvis MCP Agents](./jarvis-mcp/AGENTS.md)
 
 ## Development
 
-This project uses NX for monorepo management. You can use NX commands directly:
-
-```bash
-# Show project graph
-npx nx graph
-
-# Run specific target for a project
-npx nx build jarvis-mcp
-npx nx serve home-assistant-voice-firmware
-
-# Run target for all projects
-npx nx run-many --target=build --all
-```
-
-### Development Principles
-
-#### 🎯 **YAGNI (You Aren't Gonna Need It)**
-This monorepo follows the YAGNI principle across all projects:
-- **Project Structure**: Keep project configurations minimal and add complexity only when needed
-- **Dependencies**: Don't add libraries until they solve specific problems
-- **Build Configuration**: Start with simple build setups and enhance as requirements emerge
-- **Tooling**: Only include development tools that are actively used
-
-Each project implements YAGNI in its specific domain - see individual project AGENTS.md files for detailed guidelines.
-
-## Future Development
-
-These "Hello World" applications serve as foundations for:
-- Model Context Protocol integration
-- Voice processing and recognition
-- Home automation control
-- Cross-project communication
-- AI agent coordination
+This monorepo uses NX for build orchestration and dependency management. Each project includes detailed documentation in its respective directory.

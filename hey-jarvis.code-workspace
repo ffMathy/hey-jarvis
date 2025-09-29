@@ -5,10 +5,6 @@
       "path": "."
     },
     {
-      "name": "🧪 E2E Tests",
-      "path": "./e2e"
-    },
-    {
       "name": "🗣️ ElevenLabs Integration",
       "path": "./elevenlabs"
     },
@@ -19,6 +15,10 @@
     {
       "name": "🤖 Jarvis MCP Server",
       "path": "./jarvis-mcp"
+    },
+    {
+      "name": "🏠 Home Assistant Addon",
+      "path": "./home-assistant-addon"
     }
   ],
   "settings": {
@@ -161,6 +161,19 @@
           "focus": false,
           "panel": "shared"
         }
+      },
+      {
+        "label": "🏠 Serve Home Assistant Addon",
+        "type": "shell",
+        "command": "nx serve home-assistant-addon",
+        "group": "build",
+        "presentation": {
+          "echo": true,
+          "reveal": "always",
+          "focus": false,
+          "panel": "dedicated"
+        },
+        "isBackground": true
       }
     ]
   },
