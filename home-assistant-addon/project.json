@@ -87,10 +87,7 @@
       "executor": "nx:run-commands",
       "dependsOn": ["build", "prune"],
       "options": {
-        "commands": [
-          "docker build -f home-assistant-addon/Dockerfile -t ghcr.io/${IMAGE_OWNER}/home-assistant-addon:latest -t ghcr.io/${IMAGE_OWNER}/home-assistant-addon:${GITHUB_SHA} --build-arg BUILDKIT_INLINE_CACHE=1 dist/home-assistant-addon"
-        ],
-        "parallel": false
+        "command": "docker build -f home-assistant-addon/Dockerfile -t ghcr.io/$IMAGE_OWNER/home-assistant-addon:latest -t ghcr.io/$IMAGE_OWNER/home-assistant-addon:$GITHUB_SHA --build-arg BUILDKIT_INLINE_CACHE=1 dist/home-assistant-addon"
       }
     },
     "deploy": {
@@ -98,9 +95,9 @@
       "dependsOn": ["docker:build"],
       "options": {
         "commands": [
-          "echo ${GITHUB_TOKEN} | docker login ghcr.io -u ${GITHUB_ACTOR} --password-stdin",
-          "docker push ghcr.io/${IMAGE_OWNER}/home-assistant-addon:latest",
-          "docker push ghcr.io/${IMAGE_OWNER}/home-assistant-addon:${GITHUB_SHA}"
+          "echo $GITHUB_TOKEN | docker login ghcr.io -u $GITHUB_ACTOR --password-stdin",
+          "docker push ghcr.io/$IMAGE_OWNER/home-assistant-addon:latest",
+          "docker push ghcr.io/$IMAGE_OWNER/home-assistant-addon:$GITHUB_SHA"
         ],
         "parallel": false
       }

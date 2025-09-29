@@ -33,7 +33,7 @@ jobs:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_SHA: ${{ github.sha }}
           REGISTRY: ghcr.io
-          IMAGE_OWNER: ${{ github.repository_owner }}
+          IMAGE_OWNER: ${{ env.REPO_OWNER_LC }}
         with:
           imageName: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
           cacheFrom: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
