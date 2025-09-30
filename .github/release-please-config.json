@@ -10,7 +10,7 @@
       "extra-files": [
         {
           "type": "json",
-          "path": "config.json",
+          "path": "home-assistant-addon/config.json",
           "jsonpath": "$.version"
         }
       ]
