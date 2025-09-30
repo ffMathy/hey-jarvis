@@ -242,11 +242,14 @@ Access the Mastra development playground at `http://localhost:4111/agents` to:
 This project uses **1Password CLI** for secure environment variable management in both development and production environments. 
 
 #### Required Environment Variables
-Store these in your 1Password vault:
-- **Weather**: `OPENWEATHERMAP_API_KEY` for weather data
-- **AI Models**: `GOOGLE_GEMINI_API_KEY` for Gemini language models  
-- **Shopping (Bilka)**: `BILKA_EMAIL`, `BILKA_PASSWORD`, `BILKA_API_KEY` for authentication
-- **Shopping (Search)**: `ALGOLIA_API_KEY`, `ALGOLIA_APPLICATION_ID`, `BILKA_USER_TOKEN` for product search
+All environment variables use the `HEY_JARVIS_` prefix for easy management and DevContainer forwarding. Store these in your 1Password vault:
+- **Weather**: `HEY_JARVIS_OPENWEATHERMAP_API_KEY` for weather data
+- **AI Models**: `HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY` for Gemini language models (explicitly configured in agent factory)
+- **Shopping (Bilka)**: `HEY_JARVIS_BILKA_EMAIL`, `HEY_JARVIS_BILKA_PASSWORD`, `HEY_JARVIS_BILKA_API_KEY` for authentication
+- **Shopping (Search)**: `HEY_JARVIS_ALGOLIA_API_KEY`, `HEY_JARVIS_ALGOLIA_APPLICATION_ID`, `HEY_JARVIS_BILKA_USER_TOKEN` for product search
+- **ElevenLabs**: `HEY_JARVIS_ELEVENLABS_API_KEY`, `HEY_JARVIS_ELEVENLABS_AGENT_ID`, `HEY_JARVIS_ELEVENLABS_VOICE_ID` for voice AI
+- **Recipes**: `HEY_JARVIS_VALDEMARSRO_API_KEY` for Danish recipe data
+- **WiFi**: `HEY_JARVIS_WIFI_SSID`, `HEY_JARVIS_WIFI_PASSWORD` for Home Assistant Voice Firmware
 
 #### Development Setup
 1. **Install 1Password CLI**: Follow [1Password CLI installation guide](https://developer.1password.com/docs/cli/get-started/)
@@ -713,6 +716,7 @@ export const badWorkflow = createWorkflow({ ... }); // ❌
 
 #### 🎯 **Factory Pattern Benefits**:
 - **Consistent Defaults**: All agents automatically get `gemini-flash-latest` model and shared memory
+- **Explicit API Configuration**: Google provider is explicitly configured with `HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY`
 - **Future-Proof**: Easy to add logging, error handling, or observability across all entities
 - **Type Safety**: Better TypeScript support with optional parameters for common defaults
 - **Maintainability**: Single point of configuration for system-wide changes

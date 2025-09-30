@@ -86,8 +86,8 @@ external_components:
       - elevenlabs_stream
 
 wifi:
-  ssid: ${wifi_ssid}
-  password: ${wifi_password}
+  ssid: ${HEY_JARVIS_WIFI_SSID}
+  password: ${HEY_JARVIS_WIFI_PASSWORD}
   id: wifi_id
   fast_connect: ${hidden_ssid}
   on_connect:
@@ -941,8 +941,8 @@ micro_wake_word:
 # ElevenLabs Conversational AI Stream
 elevenlabs_stream:
   id: elevenlabs_conv_ai
-  agent_id: ${elevenlabs_agent_id}
-  api_key: ${elevenlabs_api_key}
+  agent_id: ${HEY_JARVIS_ELEVENLABS_AGENT_ID}
+  api_key: ${HEY_JARVIS_ELEVENLABS_API_KEY}
   microphone: i2s_mics  # Direct microphone reference
   elevenlabs_speaker: announcement_resampling_speaker  # Use announcement resampler for ElevenLabs only
   activation_speaker: soundfile_resampling_speaker  # Use the media resampler for activation sound

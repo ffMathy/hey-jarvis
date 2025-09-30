@@ -1,5 +1,5 @@
-import { createTool } from '../../utils/tool-factory';
 import { z } from 'zod';
+import { createTool } from '../../utils/tool-factory';
 
 // Interface for OpenWeatherMap current weather response
 interface CurrentWeatherResponse {
@@ -67,7 +67,7 @@ interface ForecastResponse {
 
 // Get OpenWeatherMap API key from environment
 const getApiKey = () => {
-    const apiKey = process.env.OPENWEATHERMAP_API_KEY;
+    const apiKey = process.env.HEY_JARVIS_OPENWEATHERMAP_API_KEY;
     if (!apiKey) {
         throw new Error('OpenWeatherMap API key not found. Please set OPENWEATHERMAP_API_KEY environment variable.');
     }

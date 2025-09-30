@@ -10,9 +10,9 @@ class ElevenLabsAgentManager {
   private client: ElevenLabsClient;
 
   constructor() {
-    const apiKey = process.env.ELEVENLABS_API_KEY;
+    const apiKey = process.env.HEY_JARVIS_ELEVENLABS_API_KEY;
     if (!apiKey) {
-      throw new Error('ELEVENLABS_API_KEY environment variable is required');
+      throw new Error('HEY_JARVIS_ELEVENLABS_API_KEY environment variable is required');
     }
     this.client = new ElevenLabsClient({ apiKey });
   }
@@ -89,9 +89,9 @@ class ElevenLabsAgentManager {
 
   private async fetchAgentConfig(): Promise<void> {
     try {
-      const agentId = process.env.ELEVENLABS_AGENT_ID;
+      const agentId = process.env.HEY_JARVIS_ELEVENLABS_AGENT_ID;
       if (!agentId) {
-        throw new Error('ELEVENLABS_AGENT_ID environment variable is required');
+        throw new Error('HEY_JARVIS_ELEVENLABS_AGENT_ID environment variable is required');
       }
 
       console.log(`📡 Fetching configuration for agent ${agentId}...`);
@@ -137,11 +137,11 @@ class ElevenLabsAgentManager {
         };
       }
       
-      const agentId = process.env.ELEVENLABS_AGENT_ID;
-      const voiceId = process.env.ELEVENLABS_VOICE_ID;
-      
+      const agentId = process.env.HEY_JARVIS_ELEVENLABS_AGENT_ID;
+      const voiceId = process.env.HEY_JARVIS_ELEVENLABS_VOICE_ID;
+
       if (!agentId) {
-        throw new Error('ELEVENLABS_AGENT_ID environment variable is required');
+        throw new Error('HEY_JARVIS_ELEVENLABS_AGENT_ID environment variable is required');
       }
       
       // Inject environment variables into config

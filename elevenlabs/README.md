@@ -19,9 +19,9 @@ This project uses 1Password CLI for secure environment variable management:
 
 ```bash
 # Required in your 1Password vault:
-# ELEVENLABS_API_KEY - Your ElevenLabs API key
-# ELEVENLABS_AGENT_ID - Target agent ID
-# ELEVENLABS_VOICE_ID - Voice ID for the agent (optional)
+# HEY_JARVIS_ELEVENLABS_API_KEY - Your ElevenLabs API key
+# HEY_JARVIS_ELEVENLABS_AGENT_ID - Target agent ID
+# HEY_JARVIS_ELEVENLABS_VOICE_ID - Voice ID for the agent (optional)
 
 # The .env file references these 1Password secret paths
 # All nx commands automatically use 'op run' for secure access
@@ -102,7 +102,7 @@ The agent configuration is split into two files for better maintainability:
 
 When deploying, the CLI automatically:
 - Combines these files and updates the agent on ElevenLabs
-- Injects `ELEVENLABS_AGENT_ID` and `ELEVENLABS_VOICE_ID` from environment variables
+- Injects `HEY_JARVIS_ELEVENLABS_AGENT_ID` and `HEY_JARVIS_ELEVENLABS_VOICE_ID` from environment variables
 - Filters sensitive data (phone numbers, access info, metadata, voice_id, agent_id) when saving configurations
 
 ## Security Features
@@ -119,8 +119,8 @@ When fetching configurations from ElevenLabs, the following sensitive data is au
 
 ### Environment Variable Injection
 On deployment, the following environment variables are automatically injected:
-- `ELEVENLABS_AGENT_ID` → `config.agent_id`
-- `ELEVENLABS_VOICE_ID` → `config.conversation_config.agent.voice_id`
+- `HEY_JARVIS_ELEVENLABS_AGENT_ID` → `config.agent_id`
+- `HEY_JARVIS_ELEVENLABS_VOICE_ID` → `config.conversation_config.agent.voice_id`
 
 This ensures sensitive IDs are never persisted to disk but are available during deployment.
 

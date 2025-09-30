@@ -1,4 +1,3 @@
-import { google } from '@ai-sdk/google';
 import {
     createCompletenessScorer,
 } from '@mastra/evals/scorers/code';
@@ -8,6 +7,7 @@ import {
     createHallucinationScorer,
     createPromptAlignmentScorerLLM
 } from '@mastra/evals/scorers/llm';
+import { google } from './google-provider';
 
 /**
  * Evaluation model used for all scorers in the Hey Jarvis system.
@@ -101,7 +101,7 @@ export const DEFAULT_SCORERS = {
  * ```
  */
 export function createScorersConfig(
-    customScorers: Record<string, any> = {},
+    customScorers: Record<string, { scorer: unknown; sampling: { type: 'ratio'; rate: number } }> = {},
     samplingRate: number = DEFAULT_SAMPLING_RATE
 ) {
     // Apply custom sampling rate to all default scorers if specified

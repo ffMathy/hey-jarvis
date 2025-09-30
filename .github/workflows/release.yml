@@ -14,7 +14,7 @@ jobs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
-      - name: Release Please
+      - name: Release using "Release Please"
         id: release
         uses: googleapis/release-please-action@v4
         with:

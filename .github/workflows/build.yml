@@ -30,10 +30,10 @@ jobs:
         uses: devcontainers/ci@v0.3
         env:
           # Environment variables for Home Assistant Voice firmware build
-          ELEVENLABS_AGENT_ID: "dummy-agent-id-for-ci"
-          ELEVENLABS_API_KEY: "dummy-api-key-for-ci"
-          WIFI_SSID: "dummy-wifi-ssid-for-ci"
-          WIFI_PASSWORD: "dummy-wifi-password-for-ci"
+          HEY_JARVIS_ELEVENLABS_AGENT_ID: "dummy-agent-id-for-ci"
+          HEY_JARVIS_ELEVENLABS_API_KEY: "dummy-api-key-for-ci"
+          HEY_JARVIS_WIFI_SSID: "dummy-wifi-ssid-for-ci"
+          HEY_JARVIS_WIFI_PASSWORD: "dummy-wifi-password-for-ci"
         with:
           imageName: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
           cacheFrom: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer

@@ -10,21 +10,14 @@
     "ghcr.io/devcontainers/features/docker-in-docker:2": {},
     "ghcr.io/devcontainers/features/github-cli:1": {}
   },
-  "containerEnv": {
-    "ELEVENLABS_AGENT_ID": "${localEnv:ELEVENLABS_AGENT_ID}",
-    "ELEVENLABS_API_KEY": "${localEnv:ELEVENLABS_API_KEY}",
-    "GOOGLE_GENERATIVE_AI_API_KEY": "${localEnv:GOOGLE_GENERATIVE_AI_API_KEY}",
-    "OPENWEATHERMAP_API_KEY": "${localEnv:OPENWEATHERMAP_API_KEY}",
-    "VALDEMARSRO_API_KEY": "${localEnv:VALDEMARSRO_API_KEY}",
-    "BILKA_EMAIL": "${localEnv:BILKA_EMAIL}",
-    "BILKA_PASSWORD": "${localEnv:BILKA_PASSWORD}",
-    "BILKA_API_KEY": "${localEnv:BILKA_API_KEY}",
-    "ALGOLIA_API_KEY": "${localEnv:ALGOLIA_API_KEY}",
-    "ALGOLIA_APPLICATION_ID": "${localEnv:ALGOLIA_APPLICATION_ID}",
-    "BILKA_USER_TOKEN": "${localEnv:BILKA_USER_TOKEN}",
-    "WIFI_SSID": "${localEnv:WIFI_SSID}",
-    "WIFI_PASSWORD": "${localEnv:WIFI_PASSWORD}"
-  },
+  "runArgs": [
+    "--env", "HEY_JARVIS_*",
+    "--env", "NODE_ENV",
+    "--env", "PATH",
+    "--env", "HOME",
+    "--env", "USER",
+    "--env", "SHELL"
+  ],
   "customizations": {
     "vscode": {
       "extensions": [
