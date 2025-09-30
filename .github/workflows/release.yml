@@ -5,7 +5,7 @@ on:
     branches: [ main ]
 
 jobs:
-  release-please:
+  release:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -21,3 +21,38 @@ jobs:
           config-file: .github/release-please-config.json
           manifest-file: .github/.release-please-manifest.json
           target-branch: main
+
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: 
+      - release
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Set lowercase repository owner
+        run: echo "REPO_OWNER_LC=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Deploy in dev container
+        uses: devcontainers/ci@v0.3
+        if: ${{ job.release.steps.release.outputs.release_created }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_SHA: ${{ github.sha }}
+          REGISTRY: ghcr.io
+          IMAGE_OWNER: ${{ env.REPO_OWNER_LC }}
+        with:
+          imageName: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
+          cacheFrom: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
+          push: always
+          runCmd: npm run deploy

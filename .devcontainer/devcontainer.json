@@ -30,7 +30,8 @@
         "ms-vscode.cpptools",
         "ms-vscode.cpptools-extension-pack",
         "nrwl.angular-console",
-        "1Password.op-vscode"
+        "1Password.op-vscode",
+        "github.vscode-github-actions"
       ],
       "settings": {
         "typescript.preferences.preferTypeOnlyAutoImports": true,
