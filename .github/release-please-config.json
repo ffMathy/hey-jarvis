@@ -1,0 +1,30 @@
+{
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "package-name": "hey-jarvis"
+    },
+    "home-assistant-addon": {
+      "release-type": "simple",
+      "package-name": "home-assistant-addon",
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "config.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    },
+    "jarvis-mcp": {
+      "release-type": "simple",
+      "package-name": "jarvis-mcp"
+    }
+  },
+  "bootstrap-sha": "2ce2b154d33e805a88f976f815152b8f79582ccd",
+  "pull-request-title-pattern": "chore${scope}: release${component} ${version}",
+  "pull-request-header": "🤖 **Release Please** has prepared the following releases:",
+  "separate-pull-requests": false,
+  "group-pull-request-title-pattern": "chore: release ${version}",
+  "release-search-depth": 400,
+  "commit-search-depth": 500
+}

@@ -146,9 +146,9 @@ class ElevenLabsAgentManager {
       
       // Inject environment variables into config
       config.agentId = agentId;
-      if (voiceId && config.conversationConfig?.agent) {
+      if (voiceId && config.conversationConfig?.tts) {
         // voice_id is not part of the official AgentConfig but may be needed by the API
-        (config.conversationConfig.agent as unknown as Record<string, unknown>).voice_id = voiceId;
+        config.conversationConfig.tts.voiceId = voiceId;
       }
       
       console.log(`🚀 Deploying configuration to agent ${agentId}...`);

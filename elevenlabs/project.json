@@ -46,7 +46,7 @@
         "cwd": "."
       }
     },
-    "init": {
+    "refresh": {
       "executor": "nx:run-commands",
       "dependsOn": ["build"],
       "options": {
