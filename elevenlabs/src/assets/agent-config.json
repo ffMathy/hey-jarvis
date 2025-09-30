@@ -1,5 +1,4 @@
 {
-  "agentId": "***REMOVED***",
   "name": "J.A.R.V.I.S.",
   "conversationConfig": {
     "asr": {
@@ -17,7 +16,6 @@
     },
     "tts": {
       "modelId": "eleven_flash_v2",
-      "voiceId": "***REMOVED***",
       "supportedVoices": [],
       "agentOutputAudioFormat": "pcm_16000",
       "optimizeStreamingLatency": 4,
@@ -56,7 +54,7 @@
   },
   "metadata": {
     "createdAtUnixSecs": 1742778859,
-    "updatedAtUnixSecs": 1759177849
+    "updatedAtUnixSecs": 1759225556
   },
   "platformSettings": {
     "auth": {
@@ -167,31 +165,9 @@
       "ignoreSafetyEvaluation": false
     }
   },
-  "phoneNumbers": [
-    {
-      "provider": "twilio",
-      "phoneNumber": "***REMOVED***",
-      "label": "Danmark",
-      "supportsInbound": true,
-      "supportsOutbound": true,
-      "phoneNumberId": "***REMOVED***",
-      "assignedAgent": {
-        "agentId": "***REMOVED***",
-        "agentName": "J.A.R.V.I.S."
-      }
-    }
-  ],
   "workflow": {
     "edges": {},
     "nodes": {
-      "node_7701k38pwcx1eqp99myzha6f9cky": {
-        "type": "end",
-        "position": {
-          "x": 960,
-          "y": 420
-        },
-        "edge_order": []
-      },
       "start_node": {
         "type": "start",
         "position": {
@@ -199,71 +175,8 @@
           "y": 64
         },
         "edge_order": []
-      },
-      "node_6601k38pwcwseayrf13f99nk2aha": {
-        "conversation_config": {
-          "asr": null,
-          "turn": null,
-          "tts": {
-            "model_id": null,
-            "voice_id": "***REMOVED***",
-            "supported_voices": null,
-            "agent_output_audio_format": null,
-            "optimize_streaming_latency": null,
-            "stability": null,
-            "speed": null,
-            "similarity_boost": null,
-            "pronunciation_dictionary_locators": null
-          },
-          "conversation": null,
-          "language_presets": null,
-          "vad": null,
-          "agent": {
-            "first_message": null,
-            "language": null,
-            "dynamic_variables": null,
-            "disable_first_message_interruptions": null,
-            "prompt": {
-              "prompt": "### SYSTEM\nDu er ***REMOVED*** (33 år, ***REMOVED***). Du ringer UD til en virksomhed.\n*Formål:* {{objective}}  \nDu må ALDRIG spørge hvad du kan hjælpe med, eller om der er andet du skal gøre. Heller ikke i slutningen af samtalen. Hvis du er i tvivl, så lig i stedet på. Du må KUN stille spørgsmål der er relateret til dit formål. Det er dig der OPSØGER hjælp fra modparten, ikke omvendt.\nHold alle svar på under 25 ord. Tal altid dansk, naturligt og uformelt. Du er optimistisk og empatisk.  \nHvis modparten giver alternativer, vælg det bedste og bekræft.  \nHvis tre afslag, afslut høfligt.\n\n### FIRST_MESSAGE\n“Hej, det er ***REMOVED***. Jeg ringer fordi {formål}. Kan det lade sig gøre?”\nDit formål er: {{objective}}\n\n### FLOW\n1. Vent på, at modparten tager telefonen.  \n2. Afsend **FIRST_MESSAGE**.  \n3. Lyt aktivt; hvis samtalen afviger, drej tilbage til målet.  \n4. Følg reglerne for alternativer, afslag og afslutning som angivet ovenfor.",
-              "llm": null,
-              "reasoning_effort": null,
-              "temperature": null,
-              "max_tokens": null,
-              "tool_ids": [],
-              "built_in_tools": null,
-              "mcp_server_ids": null,
-              "native_mcp_server_ids": null,
-              "knowledge_base": null,
-              "custom_llm": null,
-              "ignore_default_personality": null,
-              "rag": null,
-              "timezone": null,
-              "tools": null
-            }
-          }
-        },
-        "additional_prompt": "",
-        "additional_knowledge_base": [],
-        "additional_tool_ids": [],
-        "type": "override_agent",
-        "position": {
-          "x": 128,
-          "y": 420
-        },
-        "edge_order": [],
-        "label": "***REMOVED***"
       }
     }
   },
-  "accessInfo": {
-    "isCreator": true,
-    "creatorName": "***REMOVED***",
-    "creatorEmail": "***REMOVED***",
-    "role": "admin"
-  },
-  "tags": [],
-  "_metadata": {
-    "saved_at": "2025-09-29T20:34:43.390Z",
-    "version": "1.0.0"
-  }
+  "tags": []
 }

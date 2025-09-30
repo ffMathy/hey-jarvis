@@ -38,11 +38,19 @@
         }
       }
     },
-    "start": {
+    "deploy": {
       "executor": "nx:run-commands",
       "dependsOn": ["build"],
       "options": {
-        "command": "op run --env-file=\"elevenlabs/.env\" --no-masking -- node dist/elevenlabs/main.js",
+        "command": "op run --env-file=\"elevenlabs/.env\" --no-masking -- node dist/elevenlabs/main.js deploy",
+        "cwd": "."
+      }
+    },
+    "init": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build"],
+      "options": {
+        "command": "op run --env-file=\"elevenlabs/.env\" --no-masking -- node dist/elevenlabs/main.js fetch",
         "cwd": "."
       }
     }
