@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/ffMathy/hey-jarvis/compare/hey-jarvis-v0.2.0...hey-jarvis-v0.2.1) (2025-09-30)
+
+
+### Bug Fixes
+
+* add git status to agents ([da32732](https://github.com/ffMathy/hey-jarvis/commit/da32732750a19616f550d992e4c662f6ae8d47a4))
+
 ## [0.2.0](https://github.com/ffMathy/hey-jarvis/compare/hey-jarvis-v0.1.0...hey-jarvis-v0.2.0) (2025-09-30)
 
 
