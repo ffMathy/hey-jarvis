@@ -19,6 +19,5 @@
       "release-type": "simple",
       "package-name": "jarvis-mcp"
     }
-  },
-  "bootstrap-sha": "2ce2b154d33e805a88f976f815152b8f79582ccd"
+  }
 }
