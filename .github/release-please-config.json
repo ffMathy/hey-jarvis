@@ -33,6 +33,6 @@
     }
   },
   "bootstrap-sha": "2ce2b154d33e805a88f976f815152b8f79582ccd",
-  "group-pull-request-title-pattern": "chore: release ${version}",
+  "group-pull-request-title-pattern": "chore: release",
   "separate-pull-requests": false
 }
