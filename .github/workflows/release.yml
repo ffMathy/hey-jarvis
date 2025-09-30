@@ -4,6 +4,11 @@ on:
   push:
     branches: [ main ]
 
+env:
+  HEY_JARVIS_ELEVENLABS_AGENT_ID: ${{ secrets.HEY_JARVIS_ELEVENLABS_AGENT_ID }}
+  HEY_JARVIS_ELEVENLABS_API_KEY: ${{ secrets.HEY_JARVIS_ELEVENLABS_API_KEY }}
+  HEY_JARVIS_ELEVENLABS_VOICE_ID: ${{ secrets.HEY_JARVIS_ELEVENLABS_VOICE_ID }}
+
 jobs:
   release:
     runs-on: ubuntu-latest
