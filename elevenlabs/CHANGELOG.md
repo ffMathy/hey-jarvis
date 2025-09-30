@@ -1,0 +1,15 @@
+# Changelog
+
+## [0.2.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.1.0...elevenlabs-v0.2.0) (2025-09-30)
+
+
+### Features
+
+* added latest jarvis prompt ([a035701](https://github.com/ffMathy/hey-jarvis/commit/a035701fee0448ee492c275b01de2a554f7ff43e))
+* allow for deploy of jarvis in elevenlabs from prompt ([bd5e35a](https://github.com/ffMathy/hey-jarvis/commit/bd5e35aabee9157326cb351996bf29816cce8962))
+* home assistant voice firmware ([d8f5426](https://github.com/ffMathy/hey-jarvis/commit/d8f54267dc497d6afd38bc8fbffe357f44d12520))
+
+
+### Bug Fixes
+
+* general confidentiality ([2ce2b15](https://github.com/ffMathy/hey-jarvis/commit/2ce2b154d33e805a88f976f815152b8f79582ccd))
