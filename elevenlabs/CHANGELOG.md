@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.2.1...elevenlabs-v0.2.2) (2025-09-30)
+
+
+### Bug Fixes
+
+* reference env from prefix ([edb2a75](https://github.com/ffMathy/hey-jarvis/commit/edb2a75fe2aa6c4e15b54c88d51e8a78698121b3))
+
 ## [0.2.1](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.2.0...elevenlabs-v0.2.1) (2025-09-30)
 
 

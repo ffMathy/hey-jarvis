@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/ffMathy/hey-jarvis/compare/v0.2.0...v0.2.1) (2025-09-30)
+
+
+### Bug Fixes
+
+* reference env from prefix ([edb2a75](https://github.com/ffMathy/hey-jarvis/commit/edb2a75fe2aa6c4e15b54c88d51e8a78698121b3))
+
 ## [0.2.0](https://github.com/ffMathy/hey-jarvis/compare/v0.1.0...v0.2.0) (2025-09-30)
 
 
