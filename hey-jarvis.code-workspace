@@ -49,7 +49,8 @@
       "gh": true,
       "git rev-parse": true,
       "git add": true,
-      "git status": true
+      "git status": true,
+      "chmod": true
     },
     "chat.agent.maxRequests": 1000,
     "nxConsole.generateAiAgentRules": true,
