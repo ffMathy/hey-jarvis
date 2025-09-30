@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/ffMathy/hey-jarvis/compare/hey-jarvis-v0.2.1...hey-jarvis-v0.2.2) (2025-09-30)
+
+
+### Bug Fixes
+
+* only use 1Password when env is missing ([7e79df3](https://github.com/ffMathy/hey-jarvis/commit/7e79df353840222f401f87976e34cf03a450029a))
+
 ## [0.2.1](https://github.com/ffMathy/hey-jarvis/compare/hey-jarvis-v0.2.0...hey-jarvis-v0.2.1) (2025-09-30)
 
 
