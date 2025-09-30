@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.0.8](https://github.com/ffMathy/hey-jarvis/compare/hey-jarvis-v1.0.7...hey-jarvis-v1.0.8) (2025-09-30)
+
+
+### Bug Fixes
+
+* bad formatting ([2a81426](https://github.com/ffMathy/hey-jarvis/commit/2a814264aacfd6e437e33047fec46b6c521dcc11))
+* better version bumping ([296dced](https://github.com/ffMathy/hey-jarvis/commit/296dceda7add657fe42f73e3b8e091c2ba0399b9))
+* don't bootstrap SHA ([8eda6a7](https://github.com/ffMathy/hey-jarvis/commit/8eda6a72b067fb87874d0c564d01abc0500fa9e3))
+
 ## 1.0.0 (2025-09-30)
 
 
