@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.2.0...elevenlabs-v0.2.1) (2025-09-30)
+
+
+### Bug Fixes
+
+* only use 1Password when env is missing ([7e79df3](https://github.com/ffMathy/hey-jarvis/commit/7e79df353840222f401f87976e34cf03a450029a))
+
 ## [0.2.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.1.0...elevenlabs-v0.2.0) (2025-09-30)
 
 
