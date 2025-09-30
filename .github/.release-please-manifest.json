@@ -1,5 +1,7 @@
 {
   ".": "1.1.1",
-  "home-assistant-addon": "1.1.0",
-  "jarvis-mcp": "1.1.1"
+  "home-assistant-addon": "1.1.1",
+  "jarvis-mcp": "1.1.1",
+  "elevenlabs": "1.1.1",
+  "home-assistant-voice-firmware": "1.1.1"
 }

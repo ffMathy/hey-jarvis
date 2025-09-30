@@ -16,8 +16,15 @@
       ]
     },
     "jarvis-mcp": {
-      "release-type": "simple",
+      "release-type": "node",
       "package-name": "jarvis-mcp"
+    },
+    "elevenlabs": {
+      "release-type": "node",
+      "package-name": "jarvis-mcp"
+    },
+    "home-assistant-voice-firmware": {
+      "release-type": "python"
     }
   },
   "bootstrap-sha": "2ce2b154d33e805a88f976f815152b8f79582ccd",
