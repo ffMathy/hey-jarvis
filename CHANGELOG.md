@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.1.0](https://github.com/ffMathy/hey-jarvis/compare/hey-jarvis-v1.0.8...hey-jarvis-v1.1.0) (2025-09-30)
+
+
+### Features
+
+* bump release to trigger new versions ([124c40a](https://github.com/ffMathy/hey-jarvis/commit/124c40aea32cecdc100bba92be17ef5d75f0f192))
+
+
+### Bug Fixes
+
+* better simplicity ([34b9984](https://github.com/ffMathy/hey-jarvis/commit/34b9984d8c457a0aeb903dc6bc27e043cbfdd289))
+* proper path for bumping ([aa46821](https://github.com/ffMathy/hey-jarvis/commit/aa46821d2307106e1332c9467fb9237cdddac39e))
+* set target branch to main again ([97b7ada](https://github.com/ffMathy/hey-jarvis/commit/97b7ada667a3b0c32b8dcb1ad909bd5092124349))
+* switch to "develop" ([fd18528](https://github.com/ffMathy/hey-jarvis/commit/fd185281843254993444b413a234229ba5c8d777))
+
 ## [1.1.0](https://github.com/ffMathy/hey-jarvis/compare/v1.0.0...v1.1.0) (2025-09-30)
 
 
