@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.3](https://github.com/ffMathy/hey-jarvis/compare/hey-jarvis-v0.2.2...hey-jarvis-v0.2.3) (2025-09-30)
+
+
+### Bug Fixes
+
+* reference all variables via prefix ([4a1eb29](https://github.com/ffMathy/hey-jarvis/commit/4a1eb29e0005243729cd75edc0100fb74242f27a))
+* reference env from prefix ([edb2a75](https://github.com/ffMathy/hey-jarvis/commit/edb2a75fe2aa6c4e15b54c88d51e8a78698121b3))
+
 ## [0.2.2](https://github.com/ffMathy/hey-jarvis/compare/hey-jarvis-v0.2.1...hey-jarvis-v0.2.2) (2025-09-30)
 
 
