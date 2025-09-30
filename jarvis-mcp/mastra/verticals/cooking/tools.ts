@@ -1,5 +1,5 @@
-import { createTool } from '../../utils/tool-factory';
 import { z } from 'zod';
+import { createTool } from '../../utils/tool-factory';
 
 // Interface for Valdemarsro Recipe API responses
 interface Recipe {
@@ -47,7 +47,7 @@ interface RecipePageResponse {
 
 // Get Valdemarsro API key from environment
 const getApiKey = () => {
-    const apiKey = process.env.VALDEMARSRO_API_KEY;
+    const apiKey = process.env.HEY_JARVIS_VALDEMARSRO_API_KEY;
     if (!apiKey) {
         throw new Error('Valdemarsro API key not found. Please set VALDEMARSRO_API_KEY environment variable.');
     }
@@ -157,7 +157,7 @@ export const getAllRecipes = createTool({
             return data;
         };
 
-        const allRecipes = new Array();
+        const allRecipes = [];
 
         let currentPage = 0;
         let hasNext = true;

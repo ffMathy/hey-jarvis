@@ -37,7 +37,7 @@ export async function searchProductCatalog(
                 `facets=${encodeURIComponent(JSON.stringify([]))}`,
                 `clickAnalytics=true`,
                 `analyticsTags=${encodeURIComponent(JSON.stringify([]))}`,
-                `userToken=${process.env.BILKA_USER_TOKEN}`,
+                `userToken=${process.env.HEY_JARVIS_BILKA_USER_TOKEN}`,
                 `getRankingInfo=false`,
                 attributeName && `filters=${encodeURIComponent(`attributes.attributeName:"${attributeName}"`)}`,
             ].filter(x => !!x).join('&'),
@@ -48,8 +48,8 @@ export async function searchProductCatalog(
     const response = await fetch('https://f9vbjlr1bk-dsn.algolia.net/1/indexes/*/queries?x-algolia-agent=Algolia%20for%20JavaScript%20(4.14.3)%3B%20Browser', {
         method: 'POST',
         headers: {
-            'X-Algolia-Api-Key': process.env.ALGOLIA_API_KEY!,
-            'X-Algolia-Application-Id': process.env.ALGOLIA_APPLICATION_ID!,
+            'X-Algolia-Api-Key': process.env.HEY_JARVIS_ALGOLIA_API_KEY!,
+            'X-Algolia-Application-Id': process.env.HEY_JARVIS_ALGOLIA_APPLICATION_ID!,
             'Content-Type': 'application/json',
         },
         body: JSON.stringify(requestBody),

@@ -90,9 +90,9 @@ This project uses **1Password CLI** for secure environment management:
 1. Install [1Password CLI](https://developer.1password.com/docs/cli/get-started/)
 2. Sign in: `op signin`
 3. Store required secrets in your 1Password vault:
-   - `OPENWEATHERMAP_API_KEY`
-   - `GOOGLE_GEMINI_API_KEY`
-   - `BILKA_EMAIL`, `BILKA_PASSWORD`, `BILKA_API_KEY`
+   - `HEY_JARVIS_OPENWEATHERMAP_API_KEY`
+   - `HEY_JARVIS_GOOGLE_GEMINI_API_KEY`
+   - `HEY_JARVIS_BILKA_EMAIL`, `HEY_JARVIS_BILKA_PASSWORD`, `HEY_JARVIS_BILKA_API_KEY`
    - `ALGOLIA_API_KEY`, `ALGOLIA_APPLICATION_ID`
 
 All NX commands automatically use `op run` for secure credential injection.

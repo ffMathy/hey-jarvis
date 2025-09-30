@@ -38,9 +38,9 @@ export async function authenticateWithBilka(): Promise<AuthTokens> {
             'Content-Type': 'application/x-www-form-urlencoded',
         },
         body: new URLSearchParams({
-            loginID: process.env.BILKA_EMAIL!,
-            password: process.env.BILKA_PASSWORD!,
-            apiKey: process.env.BILKA_API_KEY!,
+            loginID: process.env.HEY_JARVIS_BILKA_EMAIL!,
+            password: process.env.HEY_JARVIS_BILKA_PASSWORD!,
+            apiKey: process.env.HEY_JARVIS_BILKA_API_KEY!,
         }),
     });
 
@@ -56,7 +56,7 @@ export async function authenticateWithBilka(): Promise<AuthTokens> {
     };
 
     // Step 2: Exchange login token for JWT token
-    const jwtResponse = await fetch(`https://accounts.eu1.gigya.com/accounts.getJWT?login_token=${authTokens.sessionInfo.cookieValue}&apiKey=${process.env.BILKA_API_KEY}`, {
+    const jwtResponse = await fetch(`https://accounts.eu1.gigya.com/accounts.getJWT?login_token=${authTokens.sessionInfo.cookieValue}&apiKey=${process.env.HEY_JARVIS_BILKA_API_KEY}`, {
         method: 'POST',
     });
 

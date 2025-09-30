@@ -7,21 +7,14 @@
     "serve": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "docker run --rm -p 4111:4111 --name hey-jarvis-addon ghcr.io/$IMAGE_OWNER/home-assistant-addon:latest",
-        "env": {
-          "IMAGE_OWNER": "${IMAGE_OWNER:-ffmathy}"
-        }
+        "command": "docker run --rm -p 4111:4111 --name hey-jarvis-addon ghcr.io/$IMAGE_OWNER/home-assistant-addon:latest"
       }
     },
     "build": {
       "executor": "nx:run-commands",
       "dependsOn": ["jarvis-mcp:build"],
       "options": {
-        "command": "docker build -f home-assistant-addon/Dockerfile -t ghcr.io/$IMAGE_OWNER/home-assistant-addon:latest -t ghcr.io/$IMAGE_OWNER/home-assistant-addon:$GITHUB_SHA --build-arg BUILD_FROM=ghcr.io/$IMAGE_OWNER/jarvis-mcp:latest home-assistant-addon",
-        "env": {
-          "IMAGE_OWNER": "${IMAGE_OWNER:-ffmathy}",
-          "GITHUB_SHA": "${GITHUB_SHA:-latest}"
-        }
+        "command": "docker build -f home-assistant-addon/Dockerfile -t ghcr.io/$IMAGE_OWNER/home-assistant-addon:latest -t ghcr.io/$IMAGE_OWNER/home-assistant-addon:$GITHUB_SHA --build-arg BUILD_FROM=ghcr.io/$IMAGE_OWNER/jarvis-mcp:latest home-assistant-addon"
       }
     },
     "deploy": {
@@ -29,13 +22,7 @@
       "dependsOn": ["build"],
       "options": {
         "command": "./home-assistant-addon/scripts/deploy.sh",
-        "cwd": ".",
-        "env": {
-          "GITHUB_TOKEN": "${GITHUB_TOKEN}",
-          "GITHUB_ACTOR": "${GITHUB_ACTOR}",
-          "IMAGE_OWNER": "${IMAGE_OWNER:-ffmathy}",
-          "GITHUB_SHA": "${GITHUB_SHA:-latest}"
-        }
+        "cwd": "."
       }
     }
   }
