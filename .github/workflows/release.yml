@@ -18,7 +18,6 @@ jobs:
         id: release
         uses: googleapis/release-please-action@v4
         with:
-          release-type: simple
           config-file: .github/release-please-config.json
           manifest-file: .github/.release-please-manifest.json
           target-branch: main
