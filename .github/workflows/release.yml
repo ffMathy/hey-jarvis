@@ -22,9 +22,9 @@ jobs:
           manifest-file: .github/.release-please-manifest.json
           target-branch: main
 
-
   deploy:
     runs-on: ubuntu-latest
+    if: ${{ needs.release.outputs.release_created }}
     needs: 
       - release
     permissions:
@@ -44,7 +44,6 @@ jobs:
 
       - name: Deploy in dev container
         uses: devcontainers/ci@v0.3
-        if: ${{ job.release.steps.release.outputs.release_created }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
