@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.1.0](https://github.com/ffMathy/hey-jarvis/compare/v1.0.0...v1.1.0) (2025-09-30)
+
+
+### Features
+
+* bump release to trigger new versions ([2648d8a](https://github.com/ffMathy/hey-jarvis/commit/2648d8a42f5105ce8de10450c1f434ffcb2ca2c4))
+
+
+### Bug Fixes
+
+* better simplicity ([29296ca](https://github.com/ffMathy/hey-jarvis/commit/29296ca45ac25c6fa14dc951b54e9b8ae667259b))
+* better version bumping ([296dced](https://github.com/ffMathy/hey-jarvis/commit/296dceda7add657fe42f73e3b8e091c2ba0399b9))
+* don't bootstrap SHA ([8eda6a7](https://github.com/ffMathy/hey-jarvis/commit/8eda6a72b067fb87874d0c564d01abc0500fa9e3))
+* proper path for bumping ([5d8b595](https://github.com/ffMathy/hey-jarvis/commit/5d8b595910450a06de15543262fd92e979b47409))
+* switch to "develop" ([18fd743](https://github.com/ffMathy/hey-jarvis/commit/18fd743389289a4755e559ab3027d514d3793eb1))
+
 ## 1.0.0 (2025-09-30)
 
 
