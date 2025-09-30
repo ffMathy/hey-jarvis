@@ -2,7 +2,11 @@ name: Deploy
 
 on:
   release:
-    types: [created]
+    types: [published, released]
+  push:
+    tags:
+      - 'v*'
+      - '*-v*'
   workflow_dispatch:
 
 jobs:
