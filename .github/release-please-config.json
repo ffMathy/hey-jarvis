@@ -22,7 +22,5 @@
   },
   "bootstrap-sha": "2ce2b154d33e805a88f976f815152b8f79582ccd",
   "group-pull-request-title-pattern": "chore: release ${version}",
-  "separate-pull-requests": false,
-  "default-branch": "develop",
-  "target-branch": "main"
+  "separate-pull-requests": false
 }
