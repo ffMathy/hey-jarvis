@@ -2,7 +2,8 @@
   "packages": {
     ".": {
       "release-type": "node",
-      "package-name": "hey-jarvis"
+      "package-name": "hey-jarvis",
+      "changelog-path": "CHANGELOG.md"
     },
     "home-assistant-addon": {
       "release-type": "node",
