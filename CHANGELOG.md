@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/ffMathy/hey-jarvis/compare/hey-jarvis-v1.1.0...hey-jarvis-v1.1.1) (2025-09-30)
+
+
+### Bug Fixes
+
+* add missing package.json ([8114f0d](https://github.com/ffMathy/hey-jarvis/commit/8114f0d2a2aba5dbcf3d9cb87233182f6fbf2abc))
+
 ## [1.1.0](https://github.com/ffMathy/hey-jarvis/compare/hey-jarvis-v1.0.8...hey-jarvis-v1.1.0) (2025-09-30)
 
 
