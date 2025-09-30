@@ -21,14 +21,14 @@
     "serve": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "op run --env-file=\"jarvis-mcp/.env\" --no-masking -- mastra dev --dir jarvis-mcp/mastra --root .",
+        "command": "./scripts/run-with-env.sh jarvis-mcp/.env mastra dev --dir jarvis-mcp/mastra --root .",
         "cwd": "."
       }
     },
     "serve:mcp": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "op run --env-file=\"jarvis-mcp/.env\" --no-masking -- npx tsx jarvis-mcp/mastra/mcp-server.ts",
+        "command": "./scripts/run-with-env.sh jarvis-mcp/.env npx tsx jarvis-mcp/mastra/mcp-server.ts",
         "cwd": "."
       }
     },
