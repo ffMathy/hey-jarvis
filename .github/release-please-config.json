@@ -32,7 +32,7 @@
       "changelog-path": "home-assistant-voice-firmware/CHANGELOG.md"
     }
   },
-  "bootstrap-sha": "2ce2b154d33e805a88f976f815152b8f79582ccd",
+  "bootstrap-sha": "d141d9706d07f27787b3561515b701fc961a5b46",
   "group-pull-request-title-pattern": "chore: release",
   "separate-pull-requests": false
 }

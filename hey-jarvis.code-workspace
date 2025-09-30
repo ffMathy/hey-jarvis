@@ -27,7 +27,28 @@
       "mastra": true,
       "timeout": true,
       "nx": true,
-      "touch": true
+      "touch": true,
+      "op whoami": {
+          "approve": true,
+          "matchCommandLine": true
+      },
+      "npm view": true,
+      "npm audit": {
+          "approve": true,
+          "matchCommandLine": true
+      },
+      "npm outdated": {
+          "approve": true,
+          "matchCommandLine": true
+      },
+      "rm": true,
+      "rmdir": true,
+      "node": true,
+      "npm list": true,
+      "git tag": true,
+      "gh": true,
+      "git rev-parse": true,
+      "git add": true
     },
     "chat.agent.maxRequests": 1000,
     "nxConsole.generateAiAgentRules": true,

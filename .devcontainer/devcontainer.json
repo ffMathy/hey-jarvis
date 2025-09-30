@@ -7,7 +7,8 @@
     "ghcr.io/devcontainers-extra/features/nx-npm:1": {},
     "ghcr.io/flexwie/devcontainer-features/op:1": {},
     "ghcr.io/jckimble/devcontainer-features/ngrok:3": {},
-    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {}
   },
   "containerEnv": {
     "ELEVENLABS_AGENT_ID": "${localEnv:ELEVENLABS_AGENT_ID}",
