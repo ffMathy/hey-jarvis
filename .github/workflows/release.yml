@@ -2,7 +2,7 @@ name: Release
 
 on:
   push:
-    branches: [ main ]
+    branches: [ develop ]
 
 jobs:
   release-please:
@@ -21,3 +21,5 @@ jobs:
           release-type: simple
           config-file: .github/release-please-config.json
           manifest-file: .github/.release-please-manifest.json
+          target-branch: main
+          default-branch: develop
