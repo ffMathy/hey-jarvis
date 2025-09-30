@@ -13,21 +13,26 @@
           "path": "home-assistant-addon/config.json",
           "jsonpath": "$.version"
         }
-      ]
+      ],
+      "changelog-path": "home-assistant-addon/CHANGELOG.md"
     },
     "jarvis-mcp": {
       "release-type": "node",
-      "package-name": "jarvis-mcp"
+      "package-name": "jarvis-mcp",
+      "changelog-path": "jarvis-mcp/CHANGELOG.md"
     },
     "elevenlabs": {
       "release-type": "node",
-      "package-name": "jarvis-mcp"
+      "package-name": "elevenlabs",
+      "changelog-path": "elevenlabs/CHANGELOG.md"
     },
     "home-assistant-voice-firmware": {
-      "release-type": "python"
+      "release-type": "python",
+      "changelog-path": "home-assistant-voice-firmware/CHANGELOG.md"
     }
   },
   "bootstrap-sha": "2ce2b154d33e805a88f976f815152b8f79582ccd",
   "group-pull-request-title-pattern": "chore: release ${version}",
-  "separate-pull-requests": false
+  "separate-pull-requests": false,
+  "changelog-type": "github"
 }
