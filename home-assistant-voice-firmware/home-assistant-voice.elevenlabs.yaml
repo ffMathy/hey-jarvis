@@ -22,8 +22,8 @@ substitutions:
   elevenlabs_api_key: !env_var HEY_JARVIS_ELEVENLABS_API_KEY
   
   # WiFi Configuration - set via environment variables  
-  wifi_ssid: !env_var WIFI_SSID
-  wifi_password: !env_var WIFI_PASSWORD
+  wifi_ssid: !env_var HEY_JARVIS_WIFI_SSID
+  wifi_password: !env_var HEY_JARVIS_WIFI_PASSWORD
 
 esphome:
   name: hass-elevenlabs

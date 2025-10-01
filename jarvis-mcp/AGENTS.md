@@ -563,7 +563,6 @@ This project strictly follows the YAGNI principle - avoid adding functionality o
 
 #### ✅ ALLOWED FILE CREATION:
 - **Core functionality files**: agents, tools, workflows in their respective directories
-- **Environment templates**: Only `.env.example` when creating new integrations
 - **Package configuration**: Only when required for new dependencies
 
 #### 📝 DOCUMENTATION UPDATES:
