@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.3](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.2.2...elevenlabs-v0.2.3) (2025-10-01)
+
+
+### Bug Fixes
+
+* better env parsing ([#33](https://github.com/ffMathy/hey-jarvis/issues/33)) ([3d5565f](https://github.com/ffMathy/hey-jarvis/commit/3d5565fc030af3669124c3394d091fb70001fcc9))
+
 ## [0.2.2](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.2.1...elevenlabs-v0.2.2) (2025-09-30)
 
 

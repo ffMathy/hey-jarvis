@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.6](https://github.com/ffMathy/hey-jarvis/compare/hey-jarvis-v0.2.5...hey-jarvis-v0.2.6) (2025-10-01)
+
+
+### Bug Fixes
+
+* better env parsing ([#33](https://github.com/ffMathy/hey-jarvis/issues/33)) ([3d5565f](https://github.com/ffMathy/hey-jarvis/commit/3d5565fc030af3669124c3394d091fb70001fcc9))
+
 ## [0.2.5](https://github.com/ffMathy/hey-jarvis/compare/hey-jarvis-v0.2.4...hey-jarvis-v0.2.5) (2025-10-01)
 
 
