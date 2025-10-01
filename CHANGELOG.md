@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.5](https://github.com/ffMathy/hey-jarvis/compare/hey-jarvis-v0.2.4...hey-jarvis-v0.2.5) (2025-10-01)
+
+
+### Bug Fixes
+
+* include env variables in build.yml ([#31](https://github.com/ffMathy/hey-jarvis/issues/31)) ([467dca4](https://github.com/ffMathy/hey-jarvis/commit/467dca48ca5166379b74758bd9e4d7abc22a30c4))
+
 ## [0.2.4](https://github.com/ffMathy/hey-jarvis/compare/hey-jarvis-v0.2.3...hey-jarvis-v0.2.4) (2025-10-01)
 
 
