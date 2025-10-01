@@ -42,7 +42,6 @@ Hey Jarvis is an NX monorepo containing a digital assistant system with three ma
 
 ✅ **ALLOWED FILE CREATION**:
 - **Core functionality files**: agents, tools, workflows in respective directories
-- **Environment templates**: Only `.env.example` when creating new integrations
 - **Package configuration**: Only when required for new dependencies
 
 **Architecture Patterns**:
