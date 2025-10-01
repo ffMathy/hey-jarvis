@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v0.2.1...home-assistant-addon-v0.2.2) (2025-10-01)
+
+
+### Bug Fixes
+
+* 403 Docker build errors by using locally built base images ([#29](https://github.com/ffMathy/hey-jarvis/issues/29)) ([2af6a45](https://github.com/ffMathy/hey-jarvis/commit/2af6a45188878cfc16291454b07ff564f1a0c032))
+
 ## [0.2.1](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v0.2.0...home-assistant-addon-v0.2.1) (2025-09-30)
 
 
