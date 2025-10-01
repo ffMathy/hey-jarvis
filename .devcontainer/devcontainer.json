@@ -12,12 +12,7 @@
   },
   "initializeCommand": "./scripts/generate-devcontainer-env.sh",
   "runArgs": [
-    "--env-file", ".env",
-    "--env", "NODE_ENV",
-    "--env", "PATH",
-    "--env", "HOME",
-    "--env", "USER",
-    "--env", "SHELL"
+    "--env-file", ".env"
   ],
   "customizations": {
     "vscode": {

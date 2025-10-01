@@ -1,0 +1,35 @@
+#!/bin/bash
+set -e
+
+# Home Assistant Addon Build Script
+# Builds the Docker image for the addon
+
+# Check required dependencies
+if ! command -v docker &> /dev/null; then
+    echo "❌ Docker is required but not installed"
+    exit 1
+fi
+
+# Set defaults for optional environment variables
+IMAGE_OWNER="${IMAGE_OWNER:-ffmathy}"
+GITHUB_SHA="${GITHUB_SHA:-latest}"
+
+echo "🏗️ Building Hey Jarvis Home Assistant Addon..."
+echo "📋 Build configuration:"
+echo "   Image Owner: $IMAGE_OWNER"
+echo "   GitHub SHA: $GITHUB_SHA"
+echo "   Base Image: ghcr.io/$IMAGE_OWNER/jarvis-mcp:latest"
+
+# Build the Docker image
+echo "🐳 Building Docker image..."
+docker build \
+    -f home-assistant-addon/Dockerfile \
+    -t "ghcr.io/$IMAGE_OWNER/home-assistant-addon:latest" \
+    -t "ghcr.io/$IMAGE_OWNER/home-assistant-addon:$GITHUB_SHA" \
+    --build-arg "BUILD_FROM=ghcr.io/$IMAGE_OWNER/jarvis-mcp:latest" \
+    home-assistant-addon
+
+echo "✅ Build complete!"
+echo "📦 Images created:"
+echo "   - ghcr.io/$IMAGE_OWNER/home-assistant-addon:latest"
+echo "   - ghcr.io/$IMAGE_OWNER/home-assistant-addon:$GITHUB_SHA"
