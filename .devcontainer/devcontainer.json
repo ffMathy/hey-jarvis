@@ -11,12 +11,7 @@
     "ghcr.io/devcontainers/features/github-cli:1": {}
   },
   "runArgs": [
-    "--env", "HEY_JARVIS_*",
-    "--env", "NODE_ENV",
-    "--env", "PATH",
-    "--env", "HOME",
-    "--env", "USER",
-    "--env", "SHELL"
+    "--env", "HEY_JARVIS_*"
   ],
   "customizations": {
     "vscode": {
