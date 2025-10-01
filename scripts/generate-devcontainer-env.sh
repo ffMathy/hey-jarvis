@@ -1,6 +1,6 @@
 #!/bin/bash
-# Generate consolidated .env file for DevContainer from project-specific .env files
-# This script combines all HEY_JARVIS_* environment variables from project .env files
+# Generate consolidated .env file for DevContainer from host environment variables
+# This script captures all HEY_JARVIS_* environment variables from the host system
 
 set -e
 
@@ -18,33 +18,23 @@ fi
 # Create header comment
 cat > "$ENV_FILE" << 'EOF'
 # Auto-generated DevContainer environment file
-# This file is generated from project-specific .env files for DevContainer use
+# This file captures all HEY_JARVIS_* environment variables from the host system
 # DO NOT EDIT MANUALLY - regenerated on DevContainer creation
 EOF
 
-# Function to extract and add env vars from a .env file
-add_env_vars_from_file() {
-    local env_file="$1"
-    local project_name="$2"
+# Get all environment variables that start with HEY_JARVIS_
+HEY_JARVIS_VARS=$(env | grep "^HEY_JARVIS_" || true)
+
+if [ -n "$HEY_JARVIS_VARS" ]; then
+    echo "" >> "$ENV_FILE"
+    echo "# HEY_JARVIS_* environment variables from host system" >> "$ENV_FILE"
+    echo "$HEY_JARVIS_VARS" >> "$ENV_FILE"
     
-    if [ -f "$env_file" ]; then
-        echo "" >> "$ENV_FILE"
-        echo "# Environment variables from $project_name" >> "$ENV_FILE"
-        
-        # Extract lines that start with HEY_JARVIS_ (ignoring comments and empty lines)
-        grep "^HEY_JARVIS_" "$env_file" >> "$ENV_FILE" || true
-    fi
-}
-
-# Add environment variables from each project
-add_env_vars_from_file "$ROOT_DIR/jarvis-mcp/.env" "jarvis-mcp"
-add_env_vars_from_file "$ROOT_DIR/elevenlabs/.env" "elevenlabs"
-
-# Check if any HEY_JARVIS_ variables were found and added
-if ! grep -q "^HEY_JARVIS_" "$ENV_FILE" 2>/dev/null; then
-    echo "Warning: No HEY_JARVIS_* environment variables found in project .env files"
+    # Count the variables
+    VAR_COUNT=$(echo "$HEY_JARVIS_VARS" | wc -l)
+    echo "Successfully captured $VAR_COUNT HEY_JARVIS_* environment variables from host"
 else
-    echo "Successfully generated $ENV_FILE with consolidated environment variables"
+    echo "Warning: No HEY_JARVIS_* environment variables found in host environment"
 fi
 
 echo "DevContainer .env generation complete."
