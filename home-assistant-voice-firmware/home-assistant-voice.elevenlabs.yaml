@@ -18,8 +18,8 @@ substitutions:
   hidden_ssid: "false"
   
   # ElevenLabs Configuration - set via environment variables
-  elevenlabs_agent_id: !env_var ELEVENLABS_AGENT_ID
-  elevenlabs_api_key: !env_var ELEVENLABS_API_KEY
+  elevenlabs_agent_id: !env_var HEY_JARVIS_ELEVENLABS_AGENT_ID
+  elevenlabs_api_key: !env_var HEY_JARVIS_ELEVENLABS_API_KEY
   
   # WiFi Configuration - set via environment variables  
   wifi_ssid: !env_var WIFI_SSID
