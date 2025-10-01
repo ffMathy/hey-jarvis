@@ -18,7 +18,14 @@ echo "🏗️ Building Hey Jarvis Home Assistant Addon..."
 echo "📋 Build configuration:"
 echo "   Image Owner: $IMAGE_OWNER"
 echo "   GitHub SHA: $GITHUB_SHA"
-echo "   Base Image: ghcr.io/$IMAGE_OWNER/jarvis-mcp:latest"
+echo "   Base Image: ghcr.io/$IMAGE_OWNER/jarvis-mcp:latest (locally built)"
+
+# Verify the base image exists locally
+if ! docker image inspect "ghcr.io/$IMAGE_OWNER/jarvis-mcp:latest" >/dev/null 2>&1; then
+    echo "❌ Base image ghcr.io/$IMAGE_OWNER/jarvis-mcp:latest not found locally"
+    echo "   Run 'npx nx docker:build jarvis-mcp' first to build the base image"
+    exit 1
+fi
 
 # Build the Docker image
 echo "🐳 Building Docker image..."
