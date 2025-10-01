@@ -45,3 +45,9 @@ jobs:
           cacheFrom: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
           push: never
           runCmd: npm run build
+          env: |
+            GITHUB_TOKEN
+            GITHUB_ACTOR
+            GITHUB_SHA
+            REGISTRY
+            IMAGE_OWNER
