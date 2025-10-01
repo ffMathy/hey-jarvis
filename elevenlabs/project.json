@@ -42,7 +42,7 @@
       "executor": "nx:run-commands",
       "dependsOn": ["build"],
       "options": {
-        "command": "./scripts/run-with-env.sh elevenlabs/.env node dist/elevenlabs/main.js deploy",
+        "command": "./scripts/run-with-env.sh elevenlabs/op.env node dist/elevenlabs/main.js deploy",
         "cwd": "."
       }
     },
@@ -50,7 +50,7 @@
       "executor": "nx:run-commands",
       "dependsOn": ["build"],
       "options": {
-        "command": "./scripts/run-with-env.sh elevenlabs/.env node dist/elevenlabs/main.js fetch",
+        "command": "./scripts/run-with-env.sh elevenlabs/op.env node dist/elevenlabs/main.js fetch",
         "cwd": "."
       }
     }
