@@ -15,6 +15,9 @@ if [ -f "$ENV_FILE" ]; then
     rm "$ENV_FILE"
 fi
 
+# Always create the .env file, even if empty, to avoid Docker errors
+touch "$ENV_FILE"
+
 # Create header comment
 cat > "$ENV_FILE" << 'EOF'
 # Auto-generated DevContainer environment file
@@ -34,6 +37,8 @@ if [ -n "$HEY_JARVIS_VARS" ]; then
     VAR_COUNT=$(echo "$HEY_JARVIS_VARS" | wc -l)
     echo "Successfully captured $VAR_COUNT HEY_JARVIS_* environment variables from host"
 else
+    echo "" >> "$ENV_FILE"
+    echo "# No HEY_JARVIS_* environment variables found in host environment" >> "$ENV_FILE"
     echo "Warning: No HEY_JARVIS_* environment variables found in host environment"
 fi
 
