@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v0.3.0...home-assistant-addon-v0.3.1) (2025-10-02)
+
+
+### Bug Fixes
+
+* multi architecture builds ([#38](https://github.com/ffMathy/hey-jarvis/issues/38)) ([7d1237f](https://github.com/ffMathy/hey-jarvis/commit/7d1237fd23bf389a290ceab3160e74cf67786399))
+
 ## [0.3.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v0.2.2...home-assistant-addon-v0.3.0) (2025-10-02)
 
 

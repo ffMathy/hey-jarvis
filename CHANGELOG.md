@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/ffMathy/hey-jarvis/compare/hey-jarvis-v0.3.0...hey-jarvis-v0.3.1) (2025-10-02)
+
+
+### Bug Fixes
+
+* multi architecture builds ([#38](https://github.com/ffMathy/hey-jarvis/issues/38)) ([7d1237f](https://github.com/ffMathy/hey-jarvis/commit/7d1237fd23bf389a290ceab3160e74cf67786399))
+
 ## [0.3.0](https://github.com/ffMathy/hey-jarvis/compare/hey-jarvis-v0.2.6...hey-jarvis-v0.3.0) (2025-10-02)
 
 
