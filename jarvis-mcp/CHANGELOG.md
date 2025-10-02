@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/ffMathy/hey-jarvis/compare/jarvis-mcp-v0.3.1...jarvis-mcp-v0.3.2) (2025-10-02)
+
+
+### Bug Fixes
+
+* don't import instrumentation ([#42](https://github.com/ffMathy/hey-jarvis/issues/42)) ([619bfb7](https://github.com/ffMathy/hey-jarvis/commit/619bfb73c6f10eef24f92baa476e5355c6a48842))
+
 ## [0.3.1](https://github.com/ffMathy/hey-jarvis/compare/jarvis-mcp-v0.3.0...jarvis-mcp-v0.3.1) (2025-10-02)
 
 
