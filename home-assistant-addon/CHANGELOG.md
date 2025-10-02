@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v0.3.1...home-assistant-addon-v0.3.2) (2025-10-02)
+
+
+### Bug Fixes
+
+* better deploy script ([#40](https://github.com/ffMathy/hey-jarvis/issues/40)) ([ae7a673](https://github.com/ffMathy/hey-jarvis/commit/ae7a67396bd900f0a4b9e44182d2fe8ea7836703))
+
 ## [0.3.1](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v0.3.0...home-assistant-addon-v0.3.1) (2025-10-02)
 
 
