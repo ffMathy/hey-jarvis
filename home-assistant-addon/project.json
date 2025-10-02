@@ -29,7 +29,7 @@
     },
     "deploy": {
       "executor": "nx:run-commands",
-      "dependsOn": ["build"],
+      "dependsOn": ["jarvis-mcp:deploy"],
       "options": {
         "command": "./home-assistant-addon/.scripts/deploy.sh",
         "cwd": "."
