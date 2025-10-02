@@ -4,7 +4,8 @@
       "release-type": "node",
       "package-name": "hey-jarvis",
       "changelog-path": "CHANGELOG.md",
-      "initial-version": "0.1.0"
+      "initial-version": "0.1.0",
+      "component": "root"
     },
     "home-assistant-addon": {
       "release-type": "node",
@@ -17,26 +18,45 @@
         }
       ],
       "changelog-path": "CHANGELOG.md",
-      "initial-version": "0.1.0"
+      "initial-version": "0.1.0",
+      "component": "home-assistant-addon"
     },
     "jarvis-mcp": {
       "release-type": "node",
       "package-name": "jarvis-mcp",
       "changelog-path": "CHANGELOG.md",
-      "initial-version": "0.1.0"
+      "initial-version": "0.1.0",
+      "component": "jarvis-mcp"
     },
     "elevenlabs": {
       "release-type": "node",
       "package-name": "elevenlabs",
       "changelog-path": "CHANGELOG.md",
-      "initial-version": "0.1.0"
+      "initial-version": "0.1.0",
+      "component": "elevenlabs"
     },
     "home-assistant-voice-firmware": {
       "release-type": "python",
       "changelog-path": "CHANGELOG.md",
-      "initial-version": "0.1.0"
+      "initial-version": "0.1.0",
+      "component": "home-assistant-voice-firmware"
     }
   },
   "group-pull-request-title-pattern": "chore: release ${version}",
-  "separate-pull-requests": false
+  "separate-pull-requests": false,
+  "plugins": [
+    {
+      "type": "node-workspace",
+      "merge": true,
+      "updateAllPackages": true
+    },
+    {
+      "type": "linked-versions",
+      "groupName": "jarvis-mcp",
+      "components": [
+        "jarvis-mcp",
+        "home-assistant-addon"
+      ]
+    }
+  ]
 }
