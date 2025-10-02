@@ -48,5 +48,5 @@
     "share:rw",
     "media:rw"
   ],
-  "image": "ghcr.io/{arch}/hey-jarvis-mcp"
+  "image": "ghcr.io/ffmathy/home-assistant-addon"
 }
