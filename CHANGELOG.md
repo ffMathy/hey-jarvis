@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/ffMathy/hey-jarvis/compare/hey-jarvis-v0.2.6...hey-jarvis-v0.3.0) (2025-10-02)
+
+
+### Features
+
+* home assistant addon support ([#36](https://github.com/ffMathy/hey-jarvis/issues/36)) ([3c3d20d](https://github.com/ffMathy/hey-jarvis/commit/3c3d20d05cd038513db1b95a4fcdb9624b79f491))
+
 ## [0.2.6](https://github.com/ffMathy/hey-jarvis/compare/hey-jarvis-v0.2.5...hey-jarvis-v0.2.6) (2025-10-01)
 
 
