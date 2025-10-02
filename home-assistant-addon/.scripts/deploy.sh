@@ -21,11 +21,11 @@ fi
 
 # Set defaults for optional environment variables
 IMAGE_OWNER="${IMAGE_OWNER:-ffmathy}"
-GITHUB_SHA="${GITHUB_SHA:-latest}"
+IMAGE_TAG="${IMAGE_TAG:-latest}"
 
 echo "📋 Deployment configuration:"
 echo "   Image Owner: $IMAGE_OWNER"
-echo "   GitHub SHA: $GITHUB_SHA"
+echo "   Image Tag: $IMAGE_TAG"
 echo "   GitHub Actor: $GITHUB_ACTOR"
 
 # Login to GitHub Container Registry
@@ -39,26 +39,20 @@ echo "📦 Current version: $CURRENT_VERSION"
 # Push images with version tags
 echo "📤 Pushing Docker images..."
 
-# Push with SHA tag
-docker push "ghcr.io/$IMAGE_OWNER/home-assistant-addon:$GITHUB_SHA"
-echo "✅ Pushed: ghcr.io/$IMAGE_OWNER/home-assistant-addon:$GITHUB_SHA"
-
-# Push with version tag
-docker tag "ghcr.io/$IMAGE_OWNER/home-assistant-addon:$GITHUB_SHA" "ghcr.io/$IMAGE_OWNER/home-assistant-addon:v$CURRENT_VERSION"
-docker push "ghcr.io/$IMAGE_OWNER/home-assistant-addon:v$CURRENT_VERSION"
-echo "✅ Pushed: ghcr.io/$IMAGE_OWNER/home-assistant-addon:v$CURRENT_VERSION"
+# Push with version tag (without 'v' prefix for Home Assistant compatibility)
+docker push "ghcr.io/$IMAGE_OWNER/home-assistant-addon:$IMAGE_TAG"
+echo "✅ Pushed: ghcr.io/$IMAGE_OWNER/home-assistant-addon:$IMAGE_TAG"
 
 # Push as latest if on main branch
 if [ "${GITHUB_REF:-}" = "refs/heads/main" ] || [ -z "${GITHUB_REF:-}" ]; then
-    docker tag "ghcr.io/$IMAGE_OWNER/home-assistant-addon:$GITHUB_SHA" "ghcr.io/$IMAGE_OWNER/home-assistant-addon:latest"
+    docker tag "ghcr.io/$IMAGE_OWNER/home-assistant-addon:$IMAGE_TAG" "ghcr.io/$IMAGE_OWNER/home-assistant-addon:latest"
     docker push "ghcr.io/$IMAGE_OWNER/home-assistant-addon:latest"
     echo "✅ Pushed: ghcr.io/$IMAGE_OWNER/home-assistant-addon:latest"
 fi
 
 echo "🎉 Deployment complete!"
 echo "📦 Available tags:"
-echo "   - ghcr.io/$IMAGE_OWNER/home-assistant-addon:$GITHUB_SHA"
-echo "   - ghcr.io/$IMAGE_OWNER/home-assistant-addon:v$CURRENT_VERSION"
+echo "   - ghcr.io/$IMAGE_OWNER/home-assistant-addon:$IMAGE_TAG"
 if [ "${GITHUB_REF:-}" = "refs/heads/main" ] || [ -z "${GITHUB_REF:-}" ]; then
     echo "   - ghcr.io/$IMAGE_OWNER/home-assistant-addon:latest"
 fi

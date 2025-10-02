@@ -37,7 +37,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_SHA: ${{ github.sha }}
+          IMAGE_TAG: pr-${{ github.event.pull_request.number }}
           REGISTRY: ghcr.io
           IMAGE_OWNER: ${{ env.REPO_OWNER_LC }}
         with:
@@ -48,6 +48,6 @@ jobs:
           env: |
             GITHUB_TOKEN
             GITHUB_ACTOR
-            GITHUB_SHA
+            IMAGE_TAG
             REGISTRY
             IMAGE_OWNER

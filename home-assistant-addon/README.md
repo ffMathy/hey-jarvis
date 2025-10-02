@@ -29,33 +29,106 @@ This Node.js Express application serves as a Home Assistant addon, allowing you 
 ```bash
 # Hey Jarvis Home Assistant Addon
 
-This is a Home Assistant Addon that wraps the `jarvis-mcp` Docker image to provide AI-powered home automation capabilities directly within Home Assistant.
+Bring AI-powered voice assistant capabilities directly into your Home Assistant installation with intelligent agents for weather, shopping, cooking, and more.
+
+## What is This?
+
+This Home Assistant addon hosts the Jarvis MCP (Model Context Protocol) server within your Home Assistant instance, providing:
+
+- **AI Agents**: Weather forecasting, shopping list management, recipe search, and meal planning
+- **Voice Integration**: Ready to connect with ElevenLabs conversational AI or Home Assistant voice
+- **Smart Home Control**: Seamless integration with your Home Assistant devices and automations
+- **Web Interface**: Interactive playground to test and manage agents
+
+## Quick Start
+
+### Installation
+
+**Method 1: Add-on Store (Recommended)**
+1. Open Home Assistant → **Supervisor** → **Add-on Store**
+2. Click **⋮** (three dots) → **Repositories**
+3. Add: `https://github.com/ffMathy/hey-jarvis`
+4. Find "Hey Jarvis MCP Server" and click **Install**
+
+**Method 2: Local Development**
+1. Copy `home-assistant-addon/` to `addons/local/` in Home Assistant
+2. Restart Home Assistant
+3. Go to **Supervisor** → **Add-on Store** → **Local Add-ons**
+4. Install "Hey Jarvis MCP Server"
+
+### Usage
+
+1. Click **Start** in the addon configuration
+2. Click **Open Web UI** to access the Mastra playground
+3. Test agents interactively at `http://[host]:4111/agents`
+4. Integrate with voice assistants for voice control
 
 ## Features
 
-- **AI Agents**: Weather, shopping, cooking, and meal planning agents powered by Mastra
-- **Model Context Protocol**: Enables tool sharing and agent communication
-- **Web Interface**: Access the Mastra playground at `http://[host]:4111/agents`
-- **Voice Integration**: Ready for Home Assistant voice assistant integration
-- **Multi-architecture**: Supports AMD64, ARMv7, and AArch64
+### Available AI Agents
 
-## Installation
+- **Weather Agent**: Get forecasts and weather conditions with smart location defaults
+- **Shopping Agent**: Manage Bilka shopping lists with Danish language support
+- **Recipe Agent**: Search Danish recipes from Valdemarsro
+- **Meal Planning**: Generate weekly meal plans with shopping lists
 
-### Method 1: Home Assistant Add-on Store (Recommended)
+### Technical Highlights
 
-1. Open Home Assistant
-2. Navigate to **Supervisor** → **Add-on Store**
-3. Click **⋮** (three dots) → **Repositories**
-4. Add this repository URL: `https://github.com/ffMathy/hey-jarvis`
-5. Find "Hey Jarvis MCP Server" in the add-on list
-6. Click **Install**
+- **Multi-architecture Support**: Works on AMD64, ARMv7, and AArch64 systems
+- **Secure Integration**: Uses Home Assistant ingress for protected web access
+- **Persistent Memory**: Agents remember context across conversations
+- **Real-time Streaming**: See AI responses as they're generated
 
-### Method 2: Manual Installation
+## Configuration
 
-1. Copy the `home-assistant-addon` directory to your Home Assistant's `addons/local/` directory
-2. Restart Home Assistant
-3. Go to **Supervisor** → **Add-on Store** → **Local Add-ons**
-4. Find "Hey Jarvis MCP Server" and click **Install**
+The addon uses sensible defaults and inherits environment variables from the base image. You can configure:
+
+- **Log Level**: Adjust logging verbosity (info, debug, trace, etc.)
+- **Port**: Runs on port 4111 by default
+
+For advanced configuration and development details, see [AGENTS.md](./AGENTS.md).
+
+## Architecture
+
+```
+Voice Input → Home Assistant → Jarvis Addon → AI Agents → Smart Devices
+                                    ↓
+                            Mastra MCP Server
+                                    ↓
+                    Weather • Shopping • Recipes • More
+```
+
+The addon wraps the `jarvis-mcp` Docker image and exposes it as a native Home Assistant addon with full API access.
+
+## Troubleshooting
+
+**Addon won't start?**
+- Check logs in Home Assistant addon configuration
+- Verify Docker image is available
+- Ensure adequate system resources
+
+**Can't access web UI?**
+- Verify addon is running
+- Try direct access: `http://[host]:4111/agents`
+- Check Home Assistant ingress settings
+
+**Voice integration not working?**
+- Ensure Home Assistant API access is enabled
+- Verify MCP server connectivity
+- Check agent configurations in web UI
+
+For detailed troubleshooting and development guidelines, see [AGENTS.md](./AGENTS.md).
+
+## Links
+
+- [Home Assistant Add-on Development](https://developers.home-assistant.io/docs/add-ons/)
+- [Mastra Documentation](https://mastra.ai/docs)
+- [Hey Jarvis GitHub Repository](https://github.com/ffMathy/hey-jarvis)
+- [Development Guidelines](./AGENTS.md)
+
+## License
+
+Part of the Hey Jarvis ecosystem - see repository LICENSE for details.
 
 ## Configuration
 

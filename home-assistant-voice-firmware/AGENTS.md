@@ -41,6 +41,29 @@ npx nx build home-assistant-voice-firmware
 npx nx serve home-assistant-voice-firmware
 ```
 
+## GitHub Integration
+
+### GitHub MCP Tools Usage
+**CRITICAL: Always use GitHub MCP tools** for repository operations:
+- ✅ Use `mcp_github_github_list_releases` to check firmware releases
+- ✅ Use `mcp_github_github_get_release_by_tag` for specific version info
+- ✅ Use `mcp_github_github_list_tags` to see all available tags
+- ✅ Use `mcp_github_github_create_branch` for new feature branches
+- ❌ **NEVER use curl or manual API calls** for GitHub operations
+
+**Example**: When checking if a firmware version exists:
+```typescript
+// ✅ CORRECT
+await mcp_github_github_get_release_by_tag({
+  owner: 'ffmathy',
+  repo: 'hey-jarvis',
+  tag: 'home-assistant-voice-firmware-v0.2.2'
+});
+
+// ❌ INCORRECT
+exec('curl https://api.github.com/repos/...');
+```
+
 ## Development Commands
 **CRITICAL: ALWAYS use NX commands** for this monorepo:
 - ✅ Use `nx serve home-assistant-voice-firmware` instead of `npm run dev`

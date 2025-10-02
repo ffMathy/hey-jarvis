@@ -121,6 +121,24 @@ Repository includes DevContainer configuration with:
 - NX workspace tools pre-configured
 - VS Code extensions
 
+### GitHub MCP Tools
+
+**GitHub repository management tools are available** for:
+- Listing releases and tags
+- Getting release information by tag
+- Checking package/container registry status
+- Managing branches and commits
+- Creating and updating files
+- Push files and manage repositories
+
+**Always use GitHub MCP tools instead of curl/API calls** when interacting with GitHub:
+- ✅ Use `mcp_github_github_list_releases` to check releases
+- ✅ Use `mcp_github_github_get_release_by_tag` for specific versions
+- ✅ Use `mcp_github_github_list_tags` to check available tags
+- ❌ Don't use `curl`, `gh api`, or manual API calls
+
+For Docker images on GHCR, use release tools to verify versions exist before updating config files.
+
 ### Agent Instructions Context
 
 Each project has detailed `AGENTS.md` files with specific instructions:

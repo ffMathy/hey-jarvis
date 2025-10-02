@@ -535,6 +535,76 @@ Create sub-verticals when:
 - **IFTTT/Zapier** workflow connections
 - **IoT device ecosystem** expansion
 
+## GitHub Integration
+
+### GitHub MCP Tools Usage
+**CRITICAL: Always use GitHub MCP tools** for all GitHub repository operations:
+
+#### Available Tools
+- `mcp_github_github_list_releases` - List all releases in repository
+- `mcp_github_github_get_release_by_tag` - Get specific release by tag name
+- `mcp_github_github_get_latest_release` - Get the latest published release
+- `mcp_github_github_list_tags` - List all tags in repository
+- `mcp_github_github_list_branches` - List all branches
+- `mcp_github_github_create_branch` - Create a new branch
+- `mcp_github_github_create_or_update_file` - Create or update files
+- `mcp_github_github_push_files` - Push multiple files in single commit
+
+#### Common Use Cases
+
+**Checking Docker Image Availability**:
+```typescript
+// ✅ CORRECT: Use MCP tools to verify release exists
+const release = await mcp_github_github_get_release_by_tag({
+  owner: 'ffmathy',
+  repo: 'hey-jarvis',
+  tag: 'home-assistant-addon-v0.2.2'
+});
+
+// ❌ INCORRECT: Don't use curl or manual API calls
+exec('curl -H "Authorization: Bearer $GITHUB_TOKEN" ...');
+```
+
+**Listing Available Versions**:
+```typescript
+// ✅ CORRECT: List all releases to see what's published
+const releases = await mcp_github_github_list_releases({
+  owner: 'ffmathy',
+  repo: 'hey-jarvis',
+  perPage: 20
+});
+
+// Filter for specific project
+const addonReleases = releases.filter(r => 
+  r.tag_name.startsWith('home-assistant-addon-v')
+);
+```
+
+**Creating Release Branches**:
+```typescript
+// ✅ CORRECT: Create branch for release work
+await mcp_github_github_create_branch({
+  owner: 'ffmathy',
+  repo: 'hey-jarvis',
+  branch: 'release/v0.3.0',
+  from_branch: 'main'
+});
+```
+
+#### Why Use MCP Tools?
+- **Type Safety**: Full TypeScript types for requests and responses
+- **Error Handling**: Consistent error handling across all operations
+- **Authentication**: Automatic token management
+- **Rate Limiting**: Built-in rate limit handling
+- **Documentation**: Self-documenting with schemas
+
+#### GitHub Container Registry (GHCR)
+When working with Docker images:
+1. **Always verify release exists** before updating `config.json` image references
+2. **Check deployment logs** in GitHub Actions to confirm images were pushed
+3. **Use semantic versioning** for addon releases (e.g., `home-assistant-addon-v0.2.2`)
+4. **Multi-arch images required** for Home Assistant compatibility
+
 ## Development Guidelines
 
 ### Core Development Principles

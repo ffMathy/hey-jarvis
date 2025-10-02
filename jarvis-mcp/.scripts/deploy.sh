@@ -19,11 +19,11 @@ fi
 
 # Set defaults for optional environment variables
 IMAGE_OWNER="${IMAGE_OWNER:-ffmathy}"
-GITHUB_SHA="${GITHUB_SHA:-latest}"
+IMAGE_TAG="${IMAGE_TAG:-latest}"
 
 echo "📋 Deployment configuration:"
 echo "   Image Owner: $IMAGE_OWNER"
-echo "   GitHub SHA: $GITHUB_SHA"
+echo "   Image Tag: $IMAGE_TAG"
 echo "   GitHub Actor: $GITHUB_ACTOR"
 
 # Login to GitHub Container Registry
@@ -36,10 +36,10 @@ echo "📤 Pushing Docker images..."
 docker push "ghcr.io/$IMAGE_OWNER/jarvis-mcp:latest"
 echo "✅ Pushed: ghcr.io/$IMAGE_OWNER/jarvis-mcp:latest"
 
-docker push "ghcr.io/$IMAGE_OWNER/jarvis-mcp:$GITHUB_SHA"
-echo "✅ Pushed: ghcr.io/$IMAGE_OWNER/jarvis-mcp:$GITHUB_SHA"
+docker push "ghcr.io/$IMAGE_OWNER/jarvis-mcp:$IMAGE_TAG"
+echo "✅ Pushed: ghcr.io/$IMAGE_OWNER/jarvis-mcp:$IMAGE_TAG"
 
 echo "🎉 Deployment complete!"
 echo "📦 Available tags:"
 echo "   - ghcr.io/$IMAGE_OWNER/jarvis-mcp:latest"
-echo "   - ghcr.io/$IMAGE_OWNER/jarvis-mcp:$GITHUB_SHA"
+echo "   - ghcr.io/$IMAGE_OWNER/jarvis-mcp:$IMAGE_TAG"
