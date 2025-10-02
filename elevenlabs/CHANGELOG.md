@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.3.0...elevenlabs-v0.3.1) (2025-10-02)
+
+
+### Bug Fixes
+
+* add missing package json ([#45](https://github.com/ffMathy/hey-jarvis/issues/45)) ([69d72a1](https://github.com/ffMathy/hey-jarvis/commit/69d72a1d5779a47da2eb6914bc0101a8b0f38941))
+
 ## [0.3.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.2.3...elevenlabs-v0.3.0) (2025-10-02)
 
 
