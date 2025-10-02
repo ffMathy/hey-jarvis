@@ -12,4 +12,4 @@ COPY .mastra/output ./
 EXPOSE 4111
 
 # Run the built Mastra application
-CMD [ "node", "--import=./instrumentation.mjs", "./index.mjs" ]
+CMD [ "node", "./index.mjs" ]
