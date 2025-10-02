@@ -2,7 +2,7 @@
 set -e
 
 # Home Assistant Addon Deployment Script
-# Pushes Docker images to GitHub Container Registry
+# Builds and pushes multi-architecture Docker images to GitHub Container Registry
 
 PROJECT_DIR="$(dirname "$0")/.."
 
@@ -27,32 +27,36 @@ echo "📋 Deployment configuration:"
 echo "   Image Owner: $IMAGE_OWNER"
 echo "   Image Tag: $IMAGE_TAG"
 echo "   GitHub Actor: $GITHUB_ACTOR"
-
-# Login to GitHub Container Registry
-echo "🔐 Logging in to GitHub Container Registry..."
-echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+echo "   Architectures: amd64, arm64, arm/v7"
 
 # Get current version from config.json
 CURRENT_VERSION=$(grep '"version"' "$PROJECT_DIR/config.json" | sed 's/.*"version": "\([^"]*\)".*/\1/')
 echo "📦 Current version: $CURRENT_VERSION"
 
-# Push images with version tags
-echo "📤 Pushing Docker images..."
+# Login to GitHub Container Registry
+echo "🔐 Logging in to GitHub Container Registry..."
+echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
 
-# Push with version tag (without 'v' prefix for Home Assistant compatibility)
-docker push "ghcr.io/$IMAGE_OWNER/home-assistant-addon:$IMAGE_TAG"
-echo "✅ Pushed: ghcr.io/$IMAGE_OWNER/home-assistant-addon:$IMAGE_TAG"
-
-# Push as latest if on main branch
-if [ "${GITHUB_REF:-}" = "refs/heads/main" ] || [ -z "${GITHUB_REF:-}" ]; then
-    docker tag "ghcr.io/$IMAGE_OWNER/home-assistant-addon:$IMAGE_TAG" "ghcr.io/$IMAGE_OWNER/home-assistant-addon:latest"
-    docker push "ghcr.io/$IMAGE_OWNER/home-assistant-addon:latest"
-    echo "✅ Pushed: ghcr.io/$IMAGE_OWNER/home-assistant-addon:latest"
+# Create builder instance if it doesn't exist
+if ! docker buildx inspect multiarch-builder &> /dev/null 2>&1; then
+    echo "🔧 Creating buildx builder instance..."
+    docker buildx create --name multiarch-builder --use
+else
+    docker buildx use multiarch-builder
 fi
 
-echo "🎉 Deployment complete!"
-echo "📦 Available tags:"
+# Build and push multi-architecture images
+echo "🐳 Building and pushing multi-architecture Docker images..."
+docker buildx build \
+    --platform linux/amd64,linux/arm64,linux/arm/v7 \
+    -f home-assistant-addon/Dockerfile \
+    -t "ghcr.io/$IMAGE_OWNER/home-assistant-addon:latest" \
+    -t "ghcr.io/$IMAGE_OWNER/home-assistant-addon:$IMAGE_TAG" \
+    --build-arg "BUILD_FROM=ghcr.io/$IMAGE_OWNER/jarvis-mcp:$IMAGE_TAG" \
+    --push \
+    home-assistant-addon
+
+echo "✅ Deployment complete!"
+echo "📦 Multi-arch images pushed to registry:"
+echo "   - ghcr.io/$IMAGE_OWNER/home-assistant-addon:latest"
 echo "   - ghcr.io/$IMAGE_OWNER/home-assistant-addon:$IMAGE_TAG"
-if [ "${GITHUB_REF:-}" = "refs/heads/main" ] || [ -z "${GITHUB_REF:-}" ]; then
-    echo "   - ghcr.io/$IMAGE_OWNER/home-assistant-addon:latest"
-fi
