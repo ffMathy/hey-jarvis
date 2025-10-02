@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/ffMathy/hey-jarvis/compare/root-v0.4.0...root-v0.4.1) (2025-10-02)
+
+
+### Bug Fixes
+
+* remove invalid package.json ([#47](https://github.com/ffMathy/hey-jarvis/issues/47)) ([0ee44c0](https://github.com/ffMathy/hey-jarvis/commit/0ee44c0d52cb562af03ffa74ebd70943a78ee620))
+
 ## [0.4.0](https://github.com/ffMathy/hey-jarvis/compare/root-v0.3.3...root-v0.4.0) (2025-10-02)
 
 
