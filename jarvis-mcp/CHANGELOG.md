@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.4](https://github.com/ffMathy/hey-jarvis/compare/jarvis-mcp-v0.3.3...jarvis-mcp-v0.3.4) (2025-10-02)
+
+
+### Bug Fixes
+
+* remove invalid package.json ([#47](https://github.com/ffMathy/hey-jarvis/issues/47)) ([0ee44c0](https://github.com/ffMathy/hey-jarvis/commit/0ee44c0d52cb562af03ffa74ebd70943a78ee620))
+
 ## [0.3.3](https://github.com/ffMathy/hey-jarvis/compare/jarvis-mcp-v0.3.2...jarvis-mcp-v0.3.3) (2025-10-02)
 
 ## [0.3.2](https://github.com/ffMathy/hey-jarvis/compare/jarvis-mcp-v0.3.1...jarvis-mcp-v0.3.2) (2025-10-02)
