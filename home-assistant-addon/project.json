@@ -7,7 +7,7 @@
     "serve": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "./home-assistant-addon/scripts/serve.sh",
+        "command": "./home-assistant-addon/.scripts/serve.sh",
         "cwd": "."
       }
     },
@@ -15,7 +15,7 @@
       "executor": "nx:run-commands",
       "dependsOn": ["jarvis-mcp:docker:build"],
       "options": {
-        "command": "./home-assistant-addon/scripts/build.sh",
+        "command": "./home-assistant-addon/.scripts/build.sh",
         "cwd": "."
       }
     },
@@ -23,7 +23,7 @@
       "executor": "nx:run-commands",
       "dependsOn": ["jarvis-mcp:docker:build"],
       "options": {
-        "command": "./home-assistant-addon/scripts/build.sh",
+        "command": "./home-assistant-addon/.scripts/build.sh",
         "cwd": "."
       }
     },
@@ -31,7 +31,7 @@
       "executor": "nx:run-commands",
       "dependsOn": ["build"],
       "options": {
-        "command": "./home-assistant-addon/scripts/deploy.sh",
+        "command": "./home-assistant-addon/.scripts/deploy.sh",
         "cwd": "."
       }
     }

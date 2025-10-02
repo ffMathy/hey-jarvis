@@ -21,14 +21,14 @@
     "serve": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "./scripts/run-with-env.sh jarvis-mcp/op.env mastra dev --dir jarvis-mcp/mastra --root .",
+        "command": "./.scripts/run-with-env.sh jarvis-mcp/op.env mastra dev --dir jarvis-mcp/mastra --root .",
         "cwd": "."
       }
     },
     "serve:mcp": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "./scripts/run-with-env.sh jarvis-mcp/op.env npx tsx jarvis-mcp/mastra/mcp-server.ts",
+        "command": "./.scripts/run-with-env.sh jarvis-mcp/op.env npx tsx jarvis-mcp/mastra/mcp-server.ts",
         "cwd": "."
       }
     },
@@ -38,7 +38,7 @@
         "build"
       ],
       "options": {
-        "command": "./jarvis-mcp/scripts/docker-build.sh",
+        "command": "./jarvis-mcp/.scripts/docker-build.sh",
         "cwd": "."
       }
     },
@@ -48,7 +48,7 @@
         "docker:build"
       ],
       "options": {
-        "command": "./jarvis-mcp/scripts/deploy.sh",
+        "command": "./jarvis-mcp/.scripts/deploy.sh",
         "cwd": "."
       }
     }

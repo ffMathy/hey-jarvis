@@ -18,6 +18,7 @@ jobs:
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
     steps:
       - name: Release using "Release Please"
         id: release
@@ -55,7 +56,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_SHA: ${{ github.sha }}
+          IMAGE_TAG: ${{ needs.release.outputs.version }}
           REGISTRY: ghcr.io
           IMAGE_OWNER: ${{ env.REPO_OWNER_LC }}
         with:
@@ -66,6 +67,6 @@ jobs:
           env: |
             GITHUB_TOKEN
             GITHUB_ACTOR
-            GITHUB_SHA
+            IMAGE_TAG
             REGISTRY
             IMAGE_OWNER
