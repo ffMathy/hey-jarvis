@@ -13,7 +13,7 @@
     },
     "build": {
       "executor": "nx:run-commands",
-      "dependsOn": ["jarvis-mcp:docker:build"],
+      "dependsOn": ["jarvis-mcp:build"],
       "options": {
         "command": "./home-assistant-addon/.scripts/build.sh",
         "cwd": "."
@@ -21,7 +21,7 @@
     },
     "docker:build": {
       "executor": "nx:run-commands",
-      "dependsOn": ["jarvis-mcp:docker:build"],
+      "dependsOn": ["jarvis-mcp:build"],
       "options": {
         "command": "./home-assistant-addon/.scripts/build.sh",
         "cwd": "."

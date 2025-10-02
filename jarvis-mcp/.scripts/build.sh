@@ -2,7 +2,7 @@
 set -e
 
 # Jarvis MCP Docker Build Script
-# Builds the Docker image for the Jarvis MCP server
+# Builds multi-architecture Docker images for the Jarvis MCP server
 
 # Check required dependencies
 if ! command -v docker &> /dev/null; then
@@ -19,16 +19,15 @@ echo "📋 Build configuration:"
 echo "   Image Owner: $IMAGE_OWNER"
 echo "   Image Tag: $IMAGE_TAG"
 
-# Build the Docker image
+# Build Docker image locally
 echo "🐳 Building Docker image..."
 docker build \
     -f jarvis-mcp/Dockerfile \
     -t "ghcr.io/$IMAGE_OWNER/jarvis-mcp:latest" \
     -t "ghcr.io/$IMAGE_OWNER/jarvis-mcp:$IMAGE_TAG" \
-    --build-arg BUILDKIT_INLINE_CACHE=1 \
     .
 
 echo "✅ Build complete!"
-echo "📦 Images created:"
+echo "📦 Local images:"
 echo "   - ghcr.io/$IMAGE_OWNER/jarvis-mcp:latest"
 echo "   - ghcr.io/$IMAGE_OWNER/jarvis-mcp:$IMAGE_TAG"

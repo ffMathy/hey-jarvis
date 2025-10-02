@@ -296,9 +296,12 @@ cat home-assistant-addon/scripts/deploy.sh
 #### 🎯 **YAGNI (You Aren't Gonna Need It)**
 Apply YAGNI principle to addon development:
 - **Configuration Options**: Only add options users actually need
-- **Integrations**: Don't implement integrations until they solve real problems
+- **Build Scripts**: Keep scripts simple - if it always pushes multi-arch to registry, don't add flags for "local mode" or other scenarios
 - **Features**: Keep addon focused on core MCP server hosting
-- **Complexity**: Avoid over-engineering the addon wrapper
+- **Complexity**: Avoid over-engineering - no speculative features or "what if" scenarios
+- **Abstraction**: Don't abstract until you have multiple concrete use cases
+
+**Example**: Docker build scripts simply build and push multi-arch images. No PUSH flags, no local-vs-production modes, no optional behaviors - just do the one thing that's actually needed.
 
 ### File Creation Policy
 **CRITICAL**: When working on this project:

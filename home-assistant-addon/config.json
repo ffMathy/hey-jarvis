@@ -6,8 +6,8 @@
   "url": "https://github.com/ffMathy/hey-jarvis",
   "arch": [
     "amd64",
-    "armv7",
-    "aarch64"
+    "aarch64",
+    "armv7"
   ],
   "startup": "application",
   "boot": "auto",
