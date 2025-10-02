@@ -38,7 +38,7 @@
         "build:mastra"
       ],
       "options": {
-        "command": "./jarvis-mcp/.scripts/docker-build.sh",
+        "command": "./jarvis-mcp/.scripts/build.sh",
         "cwd": "."
       }
     },
