@@ -1,7 +1,7 @@
 {
-  ".": "0.4.0",
-  "home-assistant-addon": "0.3.3",
-  "jarvis-mcp": "0.3.3",
-  "elevenlabs": "0.3.1",
+  ".": "0.4.1",
+  "home-assistant-addon": "0.3.4",
+  "jarvis-mcp": "0.3.4",
+  "elevenlabs": "0.3.2",
   "home-assistant-voice-firmware": "0.4.0"
 }

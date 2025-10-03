@@ -32,6 +32,14 @@ RUN mastra build --dir jarvis-mcp/mastra --root .
 # Production stage - minimal image with only the built application
 FROM docker.io/node:lts-alpine
 
+# Install dependencies required for native modules (libsql)
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++ \
+    sqlite-libs \
+    sqlite-dev
+
 ENV HOST=0.0.0.0
 ENV PORT=4111
 
