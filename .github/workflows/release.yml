@@ -56,7 +56,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
-          IMAGE_TAG: ${{ needs.release.outputs.version }}
           REGISTRY: ghcr.io
           IMAGE_OWNER: ${{ env.REPO_OWNER_LC }}
         with:
@@ -67,6 +66,5 @@ jobs:
           env: |
             GITHUB_TOKEN
             GITHUB_ACTOR
-            IMAGE_TAG
             REGISTRY
             IMAGE_OWNER
