@@ -1,14 +1,9 @@
-# Build stage - runs mastra build with full monorepo context
-FROM docker.io/node:lts-alpine AS builder
+# Production stage - use Node.js with tsx to run TypeScript directly
+FROM docker.io/node:lts-bullseye
 
-# Install dependencies required for native modules and Mastra CLI
-RUN apk add --no-cache \
-    python3 \
-    make \
-    g++ \
-    sqlite-libs \
-    sqlite-dev \
-    libc6-compat
+ENV HOST=0.0.0.0
+ENV PORT=4111
+ENV NODE_ENV=production
 
 WORKDIR /workspace
 
@@ -16,40 +11,18 @@ WORKDIR /workspace
 COPY package.json package-lock.json* ./
 COPY jarvis-mcp/package.json ./jarvis-mcp/
 
-# Install all dependencies (including NX workspace dependencies)
+# Install all dependencies (we need TypeScript dependencies to run with tsx)
 RUN npm install
 
-# Install Mastra CLI globally
-RUN npm install -g mastra
+# Install tsx globally for running TypeScript
+RUN npm install -g tsx
 
-# Copy necessary files for Mastra build
+# Copy necessary files for running the application
 COPY nx.json tsconfig.base.json ./
 COPY jarvis-mcp/ ./jarvis-mcp/
-
-# Run mastra build - this will build for the Alpine Linux architecture
-RUN mastra build --dir jarvis-mcp/mastra --root .
-
-# Production stage - minimal image with only the built application
-FROM docker.io/node:lts-alpine
-
-# Install dependencies required for native modules (libsql)
-RUN apk add --no-cache \
-    python3 \
-    make \
-    g++ \
-    sqlite-libs \
-    sqlite-dev
-
-ENV HOST=0.0.0.0
-ENV PORT=4111
-
-WORKDIR /app
-
-# Copy the built Mastra application from builder stage
-COPY --from=builder /workspace/.mastra/output ./
 
 # Expose the port for Mastra server
 EXPOSE 4111
 
-# Run the built Mastra application
-CMD [ "node", "./index.mjs" ]
+# Use tsx to run TypeScript directly - simpler and more reliable than mastra build
+CMD [ "tsx", "jarvis-mcp/mastra/server.ts" ]
