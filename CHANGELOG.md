@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.0](https://github.com/ffMathy/hey-jarvis/compare/root-v0.4.2...root-v1.0.0) (2025-10-04)
+
+
+### ⚠ BREAKING CHANGES
+
+* change version detection ([#51](https://github.com/ffMathy/hey-jarvis/issues/51))
+
+### Bug Fixes
+
+* change version detection ([#51](https://github.com/ffMathy/hey-jarvis/issues/51)) ([0190cc9](https://github.com/ffMathy/hey-jarvis/commit/0190cc9332ff27a79d7dc34ca0f26539cb5a3b48))
+
 ## [0.4.2](https://github.com/ffMathy/hey-jarvis/compare/root-v0.4.1...root-v0.4.2) (2025-10-04)
 
 
