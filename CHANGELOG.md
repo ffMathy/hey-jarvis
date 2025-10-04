@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.2](https://github.com/ffMathy/hey-jarvis/compare/root-v0.4.1...root-v0.4.2) (2025-10-04)
+
+
+### Bug Fixes
+
+* architecture building ([#49](https://github.com/ffMathy/hey-jarvis/issues/49)) ([151a490](https://github.com/ffMathy/hey-jarvis/commit/151a49053e44296eb0bf28df4e0723eda87e9e11))
+
 ## [0.4.1](https://github.com/ffMathy/hey-jarvis/compare/root-v0.4.0...root-v0.4.1) (2025-10-02)
 
 
