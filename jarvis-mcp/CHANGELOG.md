@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.5](https://github.com/ffMathy/hey-jarvis/compare/jarvis-mcp-v0.3.4...jarvis-mcp-v0.3.5) (2025-10-04)
+
+
+### Bug Fixes
+
+* architecture building ([#49](https://github.com/ffMathy/hey-jarvis/issues/49)) ([151a490](https://github.com/ffMathy/hey-jarvis/commit/151a49053e44296eb0bf28df4e0723eda87e9e11))
+
 ## [0.3.4](https://github.com/ffMathy/hey-jarvis/compare/jarvis-mcp-v0.3.3...jarvis-mcp-v0.3.4) (2025-10-02)
 
 
