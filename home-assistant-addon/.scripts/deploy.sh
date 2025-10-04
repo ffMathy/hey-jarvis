@@ -21,7 +21,11 @@ fi
 
 # Set defaults for optional environment variables
 IMAGE_OWNER="${IMAGE_OWNER:-ffmathy}"
-IMAGE_TAG="${IMAGE_TAG:-latest}"
+
+# Determine version from project's package.json
+PROJECT_VERSION=$(jq -r '.version' "$PROJECT_DIR/package.json")
+IMAGE_TAG="${PROJECT_VERSION}"
+echo "📦 Detected project version: $PROJECT_VERSION"
 
 echo "📋 Deployment configuration:"
 echo "   Image Owner: $IMAGE_OWNER"
@@ -29,9 +33,9 @@ echo "   Image Tag: $IMAGE_TAG"
 echo "   GitHub Actor: $GITHUB_ACTOR"
 echo "   Architectures: amd64, arm64, arm/v7"
 
-# Get current version from config.json
-CURRENT_VERSION=$(grep '"version"' "$PROJECT_DIR/config.json" | sed 's/.*"version": "\([^"]*\)".*/\1/')
-echo "📦 Current version: $CURRENT_VERSION"
+# Get current version from config.json for validation
+CONFIG_VERSION=$(jq -r '.version' "$PROJECT_DIR/config.json")
+echo "📦 Config.json version: $CONFIG_VERSION"
 
 # Login to GitHub Container Registry
 echo "🔐 Logging in to GitHub Container Registry..."
