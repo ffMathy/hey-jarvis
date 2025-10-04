@@ -4,6 +4,8 @@ set -e
 # Jarvis MCP Deployment Script
 # Builds and pushes multi-architecture Docker images to GitHub Container Registry
 
+PROJECT_DIR="$(dirname "$0")/.."
+
 echo "🚀 Starting Jarvis MCP deployment..."
 
 # Check required environment variables
@@ -19,7 +21,11 @@ fi
 
 # Set defaults for optional environment variables
 IMAGE_OWNER="${IMAGE_OWNER:-ffmathy}"
-IMAGE_TAG="${IMAGE_TAG:-latest}"
+
+# Determine version from project's package.json
+PROJECT_VERSION=$(jq -r '.version' "$PROJECT_DIR/package.json")
+IMAGE_TAG="${PROJECT_VERSION}"
+echo "📦 Detected project version: $PROJECT_VERSION"
 
 echo "📋 Deployment configuration:"
 echo "   Image Owner: $IMAGE_OWNER"
