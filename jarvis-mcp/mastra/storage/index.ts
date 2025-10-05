@@ -1,9 +1,13 @@
 import { LibSQLStore, LibSQLVector } from "@mastra/libsql";
-import { mkdir } from "fs/promises";
+import { mkdirSync, existsSync } from "fs";
 import path from 'path';
 
 const databaseDirectory = path.join(process.cwd(), 'jarvis-mcp');
-await mkdir(databaseDirectory, { recursive: true });
+
+// Create directory synchronously to avoid top-level await issues
+if (!existsSync(databaseDirectory)) {
+  mkdirSync(databaseDirectory, { recursive: true });
+}
 
 export const sqlStorageProvider = new LibSQLStore({
   url: `file:${path.join(databaseDirectory, 'mastra.sql.db')}`, // absolute path to database file
