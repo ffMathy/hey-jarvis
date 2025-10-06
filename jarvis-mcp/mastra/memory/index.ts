@@ -1,8 +1,13 @@
 import { fastembed } from "@mastra/fastembed";
 import { Memory } from "@mastra/memory";
-import { sqlStorageProvider, vectorStorageProvider } from "../storage";
+import { getSqlStorageProvider, getVectorStorageProvider } from "../storage";
 
-export function createMemory() {
+export async function createMemory() {
+    const [sqlStorageProvider, vectorStorageProvider] = await Promise.all([
+        getSqlStorageProvider(),
+        getVectorStorageProvider()
+    ]);
+    
     return new Memory({
         storage: sqlStorageProvider,
         vector: vectorStorageProvider,

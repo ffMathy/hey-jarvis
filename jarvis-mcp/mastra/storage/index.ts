@@ -10,44 +10,25 @@ let initializationPromise: Promise<void> | null = null;
 
 async function initializeStorage() {
   if (!initializationPromise) {
-    initializationPromise = (async () => {
-      await mkdir(databaseDirectory, { recursive: true });
-      
+    initializationPromise = mkdir(databaseDirectory, { recursive: true }).then(() => {
       sqlStorageProviderInstance = new LibSQLStore({
-        url: `file:${path.join(databaseDirectory, 'mastra.sql.db')}`, // absolute path to database file
+        url: `file:${path.join(databaseDirectory, 'mastra.sql.db')}`,
       });
       
       vectorStorageProviderInstance = new LibSQLVector({
-        connectionUrl: `file:${path.join(databaseDirectory, 'mastra.vector.db')}`, // absolute path to vector database file
+        connectionUrl: `file:${path.join(databaseDirectory, 'mastra.vector.db')}`,
       });
-    })();
+    });
   }
   return initializationPromise;
 }
 
-// Initialize storage on module load
-initializeStorage().catch((error) => {
-  console.error('Failed to initialize storage:', error);
-  process.exit(1);
-});
+export async function getSqlStorageProvider(): Promise<LibSQLStore> {
+  await initializeStorage();
+  return sqlStorageProviderInstance!;
+}
 
-// Export proxies that ensure storage is initialized before use
-export const sqlStorageProvider = new Proxy({} as LibSQLStore, {
-  get(target, prop) {
-    if (!sqlStorageProviderInstance) {
-      throw new Error('Storage provider not initialized yet. Please ensure initialization is complete.');
-    }
-    const value = Reflect.get(sqlStorageProviderInstance, prop);
-    return typeof value === 'function' ? value.bind(sqlStorageProviderInstance) : value;
-  }
-});
-
-export const vectorStorageProvider = new Proxy({} as LibSQLVector, {
-  get(target, prop) {
-    if (!vectorStorageProviderInstance) {
-      throw new Error('Vector storage provider not initialized yet. Please ensure initialization is complete.');
-    }
-    const value = Reflect.get(vectorStorageProviderInstance, prop);
-    return typeof value === 'function' ? value.bind(vectorStorageProviderInstance) : value;
-  }
-});
+export async function getVectorStorageProvider(): Promise<LibSQLVector> {
+  await initializeStorage();
+  return vectorStorageProviderInstance!;
+}
