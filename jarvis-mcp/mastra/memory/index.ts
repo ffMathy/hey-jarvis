@@ -3,10 +3,8 @@ import { Memory } from "@mastra/memory";
 import { getSqlStorageProvider, getVectorStorageProvider } from "../storage";
 
 export async function createMemory() {
-    const [sqlStorageProvider, vectorStorageProvider] = await Promise.all([
-        getSqlStorageProvider(),
-        getVectorStorageProvider()
-    ]);
+    const sqlStorageProvider = await getSqlStorageProvider();
+    const vectorStorageProvider = await getVectorStorageProvider();
     
     return new Memory({
         storage: sqlStorageProvider,
