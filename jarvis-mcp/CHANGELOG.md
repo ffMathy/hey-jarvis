@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/ffMathy/hey-jarvis/compare/jarvis-mcp-v1.0.0...jarvis-mcp-v1.0.1) (2025-10-07)
+
+
+### Bug Fixes
+
+* top-level await error preventing Home Assistant addon from starting ([#54](https://github.com/ffMathy/hey-jarvis/issues/54)) ([a78b5b3](https://github.com/ffMathy/hey-jarvis/commit/a78b5b3d3c025d868882fbfd3dba03a45e96b279))
+
 ## [1.0.0](https://github.com/ffMathy/hey-jarvis/compare/jarvis-mcp-v0.3.5...jarvis-mcp-v1.0.0) (2025-10-04)
 
 
