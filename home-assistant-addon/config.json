@@ -48,7 +48,7 @@
   "schema": {
     "log_level": "list(trace|debug|info|notice|warning|error|fatal)?",
     "openweathermap_api_key": "password?",
-    "google_api_key": "password?",
+    "google_api_key": "password",
     "valdemarsro_api_key": "password?",
     "bilka_email": "str?",
     "bilka_password": "password?",

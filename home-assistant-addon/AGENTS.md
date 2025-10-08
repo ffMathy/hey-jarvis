@@ -104,7 +104,7 @@ The addon configuration follows Home Assistant's schema:
   "schema": {
     "log_level": "list(trace|debug|info|notice|warning|error|fatal)?",
     "openweathermap_api_key": "password?",
-    "google_api_key": "password?",
+    "google_api_key": "password",
     "valdemarsro_api_key": "password?",
     "bilka_email": "str?",
     "bilka_password": "password?",
@@ -121,17 +121,17 @@ The addon configuration follows Home Assistant's schema:
 The addon now supports configuring all required API keys and service credentials through the Home Assistant UI. The `run.sh` script reads these values from `/data/options.json` and exports them as environment variables before starting the server.
 
 **Supported Configuration Options**:
-- `openweathermap_api_key` → `HEY_JARVIS_OPENWEATHERMAP_API_KEY`
-- `google_api_key` → `HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY`
-- `valdemarsro_api_key` → `HEY_JARVIS_VALDEMARSRO_API_KEY`
-- `bilka_email` → `HEY_JARVIS_BILKA_EMAIL`
-- `bilka_password` → `HEY_JARVIS_BILKA_PASSWORD`
-- `bilka_api_key` → `HEY_JARVIS_BILKA_API_KEY`
-- `bilka_user_token` → `HEY_JARVIS_BILKA_USER_TOKEN`
-- `algolia_api_key` → `HEY_JARVIS_ALGOLIA_API_KEY`
-- `algolia_application_id` → `HEY_JARVIS_ALGOLIA_APPLICATION_ID`
+- `google_api_key` → `HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY` (**REQUIRED**)
+- `openweathermap_api_key` → `HEY_JARVIS_OPENWEATHERMAP_API_KEY` (optional)
+- `valdemarsro_api_key` → `HEY_JARVIS_VALDEMARSRO_API_KEY` (optional)
+- `bilka_email` → `HEY_JARVIS_BILKA_EMAIL` (optional)
+- `bilka_password` → `HEY_JARVIS_BILKA_PASSWORD` (optional)
+- `bilka_api_key` → `HEY_JARVIS_BILKA_API_KEY` (optional)
+- `bilka_user_token` → `HEY_JARVIS_BILKA_USER_TOKEN` (optional)
+- `algolia_api_key` → `HEY_JARVIS_ALGOLIA_API_KEY` (optional)
+- `algolia_application_id` → `HEY_JARVIS_ALGOLIA_APPLICATION_ID` (optional)
 
-All values are optional. The addon will start without them, but features requiring those credentials won't function.
+The Google Generative AI API key is required for the addon to start. All other values are optional - the addon will start without them, but features requiring those credentials won't function.
 
 ### Image Field Usage
 

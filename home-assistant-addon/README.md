@@ -83,12 +83,15 @@ This Home Assistant addon hosts the Jarvis MCP (Model Context Protocol) server w
 
 The addon can be configured through the Home Assistant UI. Available configuration options:
 
-### API Keys and Service Configuration
+### Required Configuration
 
-Configure the following options in the addon configuration page:
+- **Google Generative AI API Key**: API key for Google's Gemini AI models - **REQUIRED** for the addon to start ([Get your key](https://ai.google.dev/))
+
+### Optional API Keys and Service Configuration
+
+Configure the following additional options in the addon configuration page:
 
 - **OpenWeatherMap API Key**: API key for weather forecasts and conditions ([Get your key](https://openweathermap.org/api))
-- **Google Generative AI API Key**: API key for Google's Gemini AI models ([Get your key](https://ai.google.dev/))
 - **Valdemarsro API Key**: API key for Danish recipe search
 - **Bilka Email**: Email for Bilka shopping integration
 - **Bilka Password**: Password for Bilka shopping integration
@@ -102,7 +105,7 @@ Configure the following options in the addon configuration page:
 - **Log Level**: Adjust logging verbosity (trace, debug, info, notice, warning, error, fatal)
 - **Port**: Server runs on port 4111 by default (inherited from base image)
 
-**Note**: All API keys are optional. The addon will start without them, but specific features requiring those keys won't function. For example, weather features require the OpenWeatherMap API key, and shopping features require Bilka credentials.
+**Note**: While most API keys are optional, the **Google Generative AI API key is required** for the addon to start. Optional API keys enable specific features - for example, weather features require the OpenWeatherMap API key, and shopping features require Bilka credentials.
 
 For advanced configuration and development details, see [AGENTS.md](./AGENTS.md).
 
