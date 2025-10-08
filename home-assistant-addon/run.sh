@@ -1,64 +1,80 @@
-#!/usr/bin/with-contenv bashio
+#!/bin/bash
 # ==============================================================================
 # Home Assistant Add-on: Hey Jarvis MCP Server
 # Runs the Jarvis MCP Server with configuration from Home Assistant
 # ==============================================================================
 
-bashio::log.info "Starting Hey Jarvis MCP Server..."
+set -e
+
+echo "Starting Hey Jarvis MCP Server..."
 
 # Read configuration from Home Assistant options
 CONFIG_PATH=/data/options.json
 
-# Export environment variables from options if they are set
-if bashio::config.has_value 'openweathermap_api_key'; then
-    export HEY_JARVIS_OPENWEATHERMAP_API_KEY=$(bashio::config 'openweathermap_api_key')
-    bashio::log.info "OpenWeatherMap API key configured"
-fi
+# Export environment variables from options if they are set and not empty
+if [ -f "$CONFIG_PATH" ]; then
+    # Read each configuration value and export as environment variable if not empty
+    OPENWEATHERMAP_API_KEY=$(jq -r '.openweathermap_api_key // empty' "$CONFIG_PATH")
+    if [ -n "$OPENWEATHERMAP_API_KEY" ]; then
+        export HEY_JARVIS_OPENWEATHERMAP_API_KEY="$OPENWEATHERMAP_API_KEY"
+        echo "OpenWeatherMap API key configured"
+    fi
 
-if bashio::config.has_value 'google_api_key'; then
-    export HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY=$(bashio::config 'google_api_key')
-    bashio::log.info "Google Generative AI API key configured"
-fi
+    GOOGLE_API_KEY=$(jq -r '.google_api_key // empty' "$CONFIG_PATH")
+    if [ -n "$GOOGLE_API_KEY" ]; then
+        export HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY="$GOOGLE_API_KEY"
+        echo "Google Generative AI API key configured"
+    fi
 
-if bashio::config.has_value 'valdemarsro_api_key'; then
-    export HEY_JARVIS_VALDEMARSRO_API_KEY=$(bashio::config 'valdemarsro_api_key')
-    bashio::log.info "Valdemarsro API key configured"
-fi
+    VALDEMARSRO_API_KEY=$(jq -r '.valdemarsro_api_key // empty' "$CONFIG_PATH")
+    if [ -n "$VALDEMARSRO_API_KEY" ]; then
+        export HEY_JARVIS_VALDEMARSRO_API_KEY="$VALDEMARSRO_API_KEY"
+        echo "Valdemarsro API key configured"
+    fi
 
-if bashio::config.has_value 'bilka_email'; then
-    export HEY_JARVIS_BILKA_EMAIL=$(bashio::config 'bilka_email')
-    bashio::log.info "Bilka email configured"
-fi
+    BILKA_EMAIL=$(jq -r '.bilka_email // empty' "$CONFIG_PATH")
+    if [ -n "$BILKA_EMAIL" ]; then
+        export HEY_JARVIS_BILKA_EMAIL="$BILKA_EMAIL"
+        echo "Bilka email configured"
+    fi
 
-if bashio::config.has_value 'bilka_password'; then
-    export HEY_JARVIS_BILKA_PASSWORD=$(bashio::config 'bilka_password')
-    bashio::log.info "Bilka password configured"
-fi
+    BILKA_PASSWORD=$(jq -r '.bilka_password // empty' "$CONFIG_PATH")
+    if [ -n "$BILKA_PASSWORD" ]; then
+        export HEY_JARVIS_BILKA_PASSWORD="$BILKA_PASSWORD"
+        echo "Bilka password configured"
+    fi
 
-if bashio::config.has_value 'bilka_api_key'; then
-    export HEY_JARVIS_BILKA_API_KEY=$(bashio::config 'bilka_api_key')
-    bashio::log.info "Bilka API key configured"
-fi
+    BILKA_API_KEY=$(jq -r '.bilka_api_key // empty' "$CONFIG_PATH")
+    if [ -n "$BILKA_API_KEY" ]; then
+        export HEY_JARVIS_BILKA_API_KEY="$BILKA_API_KEY"
+        echo "Bilka API key configured"
+    fi
 
-if bashio::config.has_value 'bilka_user_token'; then
-    export HEY_JARVIS_BILKA_USER_TOKEN=$(bashio::config 'bilka_user_token')
-    bashio::log.info "Bilka user token configured"
-fi
+    BILKA_USER_TOKEN=$(jq -r '.bilka_user_token // empty' "$CONFIG_PATH")
+    if [ -n "$BILKA_USER_TOKEN" ]; then
+        export HEY_JARVIS_BILKA_USER_TOKEN="$BILKA_USER_TOKEN"
+        echo "Bilka user token configured"
+    fi
 
-if bashio::config.has_value 'algolia_api_key'; then
-    export HEY_JARVIS_ALGOLIA_API_KEY=$(bashio::config 'algolia_api_key')
-    bashio::log.info "Algolia API key configured"
-fi
+    ALGOLIA_API_KEY=$(jq -r '.algolia_api_key // empty' "$CONFIG_PATH")
+    if [ -n "$ALGOLIA_API_KEY" ]; then
+        export HEY_JARVIS_ALGOLIA_API_KEY="$ALGOLIA_API_KEY"
+        echo "Algolia API key configured"
+    fi
 
-if bashio::config.has_value 'algolia_application_id'; then
-    export HEY_JARVIS_ALGOLIA_APPLICATION_ID=$(bashio::config 'algolia_application_id')
-    bashio::log.info "Algolia Application ID configured"
-fi
+    ALGOLIA_APPLICATION_ID=$(jq -r '.algolia_application_id // empty' "$CONFIG_PATH")
+    if [ -n "$ALGOLIA_APPLICATION_ID" ]; then
+        export HEY_JARVIS_ALGOLIA_APPLICATION_ID="$ALGOLIA_APPLICATION_ID"
+        echo "Algolia Application ID configured"
+    fi
 
-# Log level
-LOG_LEVEL=$(bashio::config 'log_level')
-bashio::log.info "Log level set to: ${LOG_LEVEL}"
+    # Log level
+    LOG_LEVEL=$(jq -r '.log_level // "info"' "$CONFIG_PATH")
+    echo "Log level set to: ${LOG_LEVEL}"
+else
+    echo "Warning: Configuration file not found at $CONFIG_PATH, using default environment variables"
+fi
 
 # Start the server
-bashio::log.info "Starting Mastra MCP Server on port ${PORT}..."
+echo "Starting Mastra MCP Server on port ${PORT:-4111}..."
 exec tsx jarvis-mcp/mastra/server.ts
