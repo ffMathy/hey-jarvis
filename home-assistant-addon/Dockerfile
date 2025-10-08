@@ -14,14 +14,11 @@ LABEL io.hass.type="addon"
 LABEL maintainer="Mathias Lykkegaard Lorenzen <ffmathy@gmail.com>"
 LABEL io.hass.url="https://github.com/ffMathy/hey-jarvis"
 
-# Install jq for parsing Home Assistant configuration
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    jq \
-    && rm -rf /var/lib/apt/lists/*
+# Copy addon configuration (already exists in base image, but we ensure it's available)
+# The base image already has the correct WORKDIR, ENV, EXPOSE, and CMD
 
-# Copy the run script
-COPY run.sh /run.sh
-RUN chmod a+x /run.sh
+# Add any Home Assistant specific configuration or scripts if needed
+# For now, we just use the base jarvis-mcp image as-is
 
-# Use the run script as entrypoint
-CMD [ "/run.sh" ]
+# The base image already exposes port 4111 and runs the Mastra server
+# CMD is inherited from the base jarvis-mcp image
