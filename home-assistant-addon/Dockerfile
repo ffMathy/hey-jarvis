@@ -14,11 +14,21 @@ LABEL io.hass.type="addon"
 LABEL maintainer="Mathias Lykkegaard Lorenzen <ffmathy@gmail.com>"
 LABEL io.hass.url="https://github.com/ffMathy/hey-jarvis"
 
-# Copy addon configuration (already exists in base image, but we ensure it's available)
-# The base image already has the correct WORKDIR, ENV, EXPOSE, and CMD
+# Install bashio for Home Assistant addon helper functions
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    jq \
+    && rm -rf /var/lib/apt/lists/*
 
-# Add any Home Assistant specific configuration or scripts if needed
-# For now, we just use the base jarvis-mcp image as-is
+# Install bashio from GitHub
+RUN curl -J -L -o /tmp/bashio.tar.gz \
+    "https://github.com/hassio-addons/bashio/archive/v0.16.2.tar.gz" \
+    && mkdir -p /usr/lib/bashio \
+    && tar zxvf /tmp/bashio.tar.gz --strip 1 -C /usr/lib/bashio \
+    && rm -f /tmp/bashio.tar.gz
 
-# The base image already exposes port 4111 and runs the Mastra server
-# CMD is inherited from the base jarvis-mcp image
+# Copy the run script
+COPY home-assistant-addon/run.sh /run.sh
+RUN chmod a+x /run.sh
+
+# Use the run script as entrypoint
+CMD [ "/run.sh" ]
