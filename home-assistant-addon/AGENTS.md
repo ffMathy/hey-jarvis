@@ -88,9 +88,50 @@ The addon configuration follows Home Assistant's schema:
   "ports": { "4111/tcp": 4111 },
   "ingress": true,
   "ingress_port": 4111,
-  "image": "ghcr.io/ffmathy/home-assistant-addon"
+  "image": "ghcr.io/ffmathy/home-assistant-addon",
+  "options": {
+    "log_level": "info",
+    "openweathermap_api_key": "",
+    "google_api_key": "",
+    "valdemarsro_api_key": "",
+    "bilka_email": "",
+    "bilka_password": "",
+    "bilka_api_key": "",
+    "bilka_user_token": "",
+    "algolia_api_key": "",
+    "algolia_application_id": ""
+  },
+  "schema": {
+    "log_level": "list(trace|debug|info|notice|warning|error|fatal)?",
+    "openweathermap_api_key": "password?",
+    "google_api_key": "password?",
+    "valdemarsro_api_key": "password?",
+    "bilka_email": "str?",
+    "bilka_password": "password?",
+    "bilka_api_key": "password?",
+    "bilka_user_token": "password?",
+    "algolia_api_key": "password?",
+    "algolia_application_id": "str?"
+  }
 }
 ```
+
+### Environment Variable Configuration
+
+The addon now supports configuring all required API keys and service credentials through the Home Assistant UI. The `run.sh` script reads these values from `/data/options.json` and exports them as environment variables before starting the server.
+
+**Supported Configuration Options**:
+- `openweathermap_api_key` → `HEY_JARVIS_OPENWEATHERMAP_API_KEY`
+- `google_api_key` → `HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY`
+- `valdemarsro_api_key` → `HEY_JARVIS_VALDEMARSRO_API_KEY`
+- `bilka_email` → `HEY_JARVIS_BILKA_EMAIL`
+- `bilka_password` → `HEY_JARVIS_BILKA_PASSWORD`
+- `bilka_api_key` → `HEY_JARVIS_BILKA_API_KEY`
+- `bilka_user_token` → `HEY_JARVIS_BILKA_USER_TOKEN`
+- `algolia_api_key` → `HEY_JARVIS_ALGOLIA_API_KEY`
+- `algolia_application_id` → `HEY_JARVIS_ALGOLIA_APPLICATION_ID`
+
+All values are optional. The addon will start without them, but features requiring those credentials won't function.
 
 ### Image Field Usage
 
