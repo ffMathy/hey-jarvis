@@ -1,6 +1,6 @@
-import { fastembed } from "@mastra/fastembed";
 import { Memory } from "@mastra/memory";
 import { getSqlStorageProvider, getVectorStorageProvider } from "../storage";
+import { geminiEmbedder } from "./gemini-embedder";
 
 export async function createMemory() {
     const sqlStorageProvider = await getSqlStorageProvider();
@@ -9,7 +9,7 @@ export async function createMemory() {
     return new Memory({
         storage: sqlStorageProvider,
         vector: vectorStorageProvider,
-        embedder: fastembed,
+        embedder: geminiEmbedder,
         options: {
             lastMessages: 10,
             workingMemory: {

@@ -7,13 +7,6 @@ ENV NODE_ENV=production
 
 WORKDIR /workspace
 
-# Install build tools needed for native module rebuilding (python, make, g++)
-RUN apt-get update && apt-get install -y \
-    python3 \
-    make \
-    g++ \
-    && rm -rf /var/lib/apt/lists/*
-
 # Copy package files for dependency installation
 COPY package.json package-lock.json* ./
 COPY jarvis-mcp/package.json ./jarvis-mcp/
@@ -30,13 +23,6 @@ COPY jarvis-mcp/ ./jarvis-mcp/
 
 # Expose the port for Mastra server
 EXPOSE 4111
-
-# Copy and set up entrypoint script
-COPY jarvis-mcp/docker-entrypoint.sh /docker-entrypoint.sh
-RUN chmod +x /docker-entrypoint.sh
-
-# Use entrypoint to rebuild native modules on startup for target architecture
-ENTRYPOINT ["/docker-entrypoint.sh"]
 
 # Use tsx to run TypeScript directly - simpler and more reliable than mastra build
 CMD [ "tsx", "jarvis-mcp/mastra/server.ts" ]
