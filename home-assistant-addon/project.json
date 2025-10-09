@@ -3,6 +3,7 @@
   "$schema": "../node_modules/nx/schemas/project-schema.json",
   "projectType": "application",
   "tags": ["home-assistant", "addon", "docker"],
+  "implicitDependencies": ["jarvis-mcp"],
   "targets": {
     "serve": {
       "executor": "nx:run-commands",
