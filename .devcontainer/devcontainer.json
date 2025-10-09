@@ -30,7 +30,7 @@
     }
   },
   "containerUser": "root",
-  "postCreateCommand": "npm install && nx run-many --target=init --all --parallel=1",
+  "postCreateCommand": "npm install",
   "forwardPorts": [3000, 4200, 8080],
   "portsAttributes": {
     "3000": {
