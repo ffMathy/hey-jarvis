@@ -7,7 +7,7 @@
     "init": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "python3 -m pip install esphome",
+        "command": "python3 -m pip install --upgrade --no-cache-dir --timeout=300 esphome",
         "cwd": "home-assistant-voice-firmware"
       }
     },
