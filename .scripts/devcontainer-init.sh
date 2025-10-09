@@ -2,10 +2,11 @@
 # DevContainer initialization script
 # Installs dependencies and runs project-specific initialization
 
-set -e
-
 echo "🔧 Installing npm dependencies..."
-npm install
+npm install || {
+    echo "❌ npm install failed"
+    exit 1
+}
 
 echo "🚀 Running project initialization..."
 
