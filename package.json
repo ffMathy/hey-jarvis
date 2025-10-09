@@ -4,10 +4,10 @@
   "description": "My digital assistant that runs the house",
   "main": "index.js",
   "scripts": {
-    "build": "nx run-many --target=build --all",
-    "serve": "nx run-many --target=serve --all --parallel",
+    "build": "nx affected --target=build",
+    "serve": "nx affected --target=serve --parallel",
     "test": "nx run e2e:serve",
-    "deploy": "nx run-many --target=deploy --all"
+    "deploy": "nx affected --target=deploy"
   },
   "repository": {
     "type": "git",

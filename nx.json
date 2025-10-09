@@ -3,6 +3,9 @@
     "version": "21.5.2"
   },
   "$schema": "./node_modules/nx/schemas/nx-schema.json",
+  "affected": {
+    "defaultBase": "main"
+  },
   "targetDefaults": {
     "@nx/esbuild:esbuild": {
       "cache": true,
