@@ -13,7 +13,6 @@
     },
     "build": {
       "executor": "nx:run-commands",
-      "dependsOn": ["init"],
       "options": {
         "command": "python3 -m esphome compile home-assistant-voice.elevenlabs.yaml",
         "cwd": "home-assistant-voice-firmware"

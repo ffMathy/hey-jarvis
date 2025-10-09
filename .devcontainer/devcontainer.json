@@ -30,7 +30,7 @@
     }
   },
   "containerUser": "root",
-  "postCreateCommand": "npm install",
+  "postCreateCommand": "./.scripts/devcontainer-init.sh",
   "forwardPorts": [3000, 4200, 8080],
   "portsAttributes": {
     "3000": {

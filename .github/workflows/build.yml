@@ -40,6 +40,7 @@ jobs:
           IMAGE_TAG: pr-${{ github.event.pull_request.number }}
           REGISTRY: ghcr.io
           IMAGE_OWNER: ${{ env.REPO_OWNER_LC }}
+          CI: true
         with:
           imageName: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
           cacheFrom: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
@@ -51,3 +52,4 @@ jobs:
             IMAGE_TAG
             REGISTRY
             IMAGE_OWNER
+            CI
