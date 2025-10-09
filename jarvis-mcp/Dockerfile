@@ -24,5 +24,12 @@ COPY jarvis-mcp/ ./jarvis-mcp/
 # Expose the port for Mastra server
 EXPOSE 4111
 
+# Copy and set up entrypoint script
+COPY jarvis-mcp/docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
+# Use entrypoint to rebuild native modules on startup for target architecture
+ENTRYPOINT ["/docker-entrypoint.sh"]
+
 # Use tsx to run TypeScript directly - simpler and more reliable than mastra build
 CMD [ "tsx", "jarvis-mcp/mastra/server.ts" ]
