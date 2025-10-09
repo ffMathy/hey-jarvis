@@ -7,6 +7,13 @@ ENV NODE_ENV=production
 
 WORKDIR /workspace
 
+# Install build tools needed for native module rebuilding (python, make, g++)
+RUN apt-get update && apt-get install -y \
+    python3 \
+    make \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
 # Copy package files for dependency installation
 COPY package.json package-lock.json* ./
 COPY jarvis-mcp/package.json ./jarvis-mcp/
