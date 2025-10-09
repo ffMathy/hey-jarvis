@@ -4,8 +4,7 @@ updates:
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
-      interval: "weekly"
-      day: "monday"
+      interval: "daily"
       time: "09:00"
     open-pull-requests-limit: 10
     groups:
@@ -21,8 +20,7 @@ updates:
   - package-ecosystem: "npm"
     directory: "/jarvis-mcp"
     schedule:
-      interval: "weekly"
-      day: "monday"
+      interval: "daily"
       time: "09:00"
     open-pull-requests-limit: 5
     groups:
@@ -39,8 +37,7 @@ updates:
   - package-ecosystem: "npm"
     directory: "/elevenlabs"
     schedule:
-      interval: "weekly"
-      day: "monday"
+      interval: "daily"
       time: "09:00"
     open-pull-requests-limit: 5
     groups:
@@ -57,8 +54,7 @@ updates:
   - package-ecosystem: "docker"
     directory: "/jarvis-mcp"
     schedule:
-      interval: "weekly"
-      day: "monday"
+      interval: "daily"
       time: "09:00"
     labels:
       - "dependencies"
@@ -67,8 +63,7 @@ updates:
   - package-ecosystem: "docker"
     directory: "/elevenlabs"
     schedule:
-      interval: "weekly"
-      day: "monday"
+      interval: "daily"
       time: "09:00"
     labels:
       - "dependencies"
@@ -77,8 +72,7 @@ updates:
   - package-ecosystem: "docker"
     directory: "/home-assistant-addon"
     schedule:
-      interval: "weekly"
-      day: "monday"
+      interval: "daily"
       time: "09:00"
     labels:
       - "dependencies"
@@ -88,8 +82,7 @@ updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
-      day: "monday"
+      interval: "daily"
       time: "09:00"
     labels:
       - "dependencies"
