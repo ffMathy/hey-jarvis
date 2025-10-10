@@ -7,7 +7,7 @@ export const weatherAgent = createAgent({
 
 Never ask questions. Always make best-guess assumptions.
 
-If no location is given, assume the city ***REMOVED*** in Denmark, where ***REMOVED*** and Julie lives.
+If no location is given, assume the city Mathias in Denmark, where Mathias and Julie lives.
 
 When users ask for weather information:
 1. If they provide a city name, use the city-based tools

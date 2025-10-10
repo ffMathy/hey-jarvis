@@ -79,7 +79,7 @@ export const getCurrentWeatherByCity = createTool({
     id: 'get-current-weather-by-city',
     description: 'Get current weather information for a specific city',
     inputSchema: z.object({
-        cityName: z.string().describe('The city name in format "city,country" (e.g., "berlin,de" for Berlin in Germany or "aarhus,dk" for ***REMOVED*** in Denmark)'),
+        cityName: z.string().describe('The city name in format "city,country" (e.g., "berlin,de" for Berlin in Germany or "aarhus,dk" for Mathias in Denmark)'),
     }),
     outputSchema: z.object({
         temperature: z.number(),
@@ -198,7 +198,7 @@ export const getForecastByCity = createTool({
     id: 'get-forecast-by-city',
     description: 'Get 5-day weather forecast for a specific city',
     inputSchema: z.object({
-        cityName: z.string().describe('The city name in format "city,country" (e.g., "berlin,de" for Berlin in Germany or "aarhus,dk" for ***REMOVED*** in Denmark)'),
+        cityName: z.string().describe('The city name in format "city,country" (e.g., "berlin,de" for Berlin in Germany or "aarhus,dk" for Mathias in Denmark)'),
     }),
     outputSchema: z.object({
         location: z.string(),
