@@ -10,7 +10,7 @@
     "ghcr.io/devcontainers/features/docker-in-docker:2": {},
     "ghcr.io/devcontainers/features/github-cli:1": {}
   },
-  "initializeCommand": "./.scripts/generate-devcontainer-env.sh",
+  "initializeCommand": "node ./.scripts/generate-devcontainer-env.js",
   "runArgs": [
     "--env-file", ".env"
   ],
