@@ -23,7 +23,7 @@ jobs:
     steps:
       - uses: get-bridge/swap-space-action@v1
         with:
-          swap-size-mb: 8192
+          swap-size-mb: 16384
 
       - name: Checkout
         uses: actions/checkout@v4
