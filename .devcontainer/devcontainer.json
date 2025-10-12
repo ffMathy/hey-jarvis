@@ -10,10 +10,22 @@
     "ghcr.io/devcontainers/features/docker-in-docker:2": {},
     "ghcr.io/devcontainers/features/github-cli:1": {}
   },
-  "initializeCommand": "node ./.scripts/generate-devcontainer-env.js",
-  "runArgs": [
-    "--env-file", ".env"
-  ],
+  "remoteEnv": {
+    "HEY_JARVIS_OPENWEATHERMAP_API_KEY": "${localEnv:HEY_JARVIS_OPENWEATHERMAP_API_KEY}",
+    "HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY": "${localEnv:HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY}",
+    "HEY_JARVIS_VALDEMARSRO_API_KEY": "${localEnv:HEY_JARVIS_VALDEMARSRO_API_KEY}",
+    "HEY_JARVIS_BILKA_EMAIL": "${localEnv:HEY_JARVIS_BILKA_EMAIL}",
+    "HEY_JARVIS_BILKA_PASSWORD": "${localEnv:HEY_JARVIS_BILKA_PASSWORD}",
+    "HEY_JARVIS_BILKA_API_KEY": "${localEnv:HEY_JARVIS_BILKA_API_KEY}",
+    "HEY_JARVIS_BILKA_USER_TOKEN": "${localEnv:HEY_JARVIS_BILKA_USER_TOKEN}",
+    "HEY_JARVIS_ALGOLIA_API_KEY": "${localEnv:HEY_JARVIS_ALGOLIA_API_KEY}",
+    "HEY_JARVIS_ALGOLIA_APPLICATION_ID": "${localEnv:HEY_JARVIS_ALGOLIA_APPLICATION_ID}",
+    "HEY_JARVIS_ELEVENLABS_API_KEY": "${localEnv:HEY_JARVIS_ELEVENLABS_API_KEY}",
+    "HEY_JARVIS_ELEVENLABS_AGENT_ID": "${localEnv:HEY_JARVIS_ELEVENLABS_AGENT_ID}",
+    "HEY_JARVIS_ELEVENLABS_VOICE_ID": "${localEnv:HEY_JARVIS_ELEVENLABS_VOICE_ID}",
+    "HEY_JARVIS_WIFI_SSID": "${localEnv:HEY_JARVIS_WIFI_SSID}",
+    "HEY_JARVIS_WIFI_PASSWORD": "${localEnv:HEY_JARVIS_WIFI_PASSWORD}"
+  },
   "customizations": {
     "vscode": {
       "extensions": [

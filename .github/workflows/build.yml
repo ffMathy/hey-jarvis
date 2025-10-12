@@ -6,8 +6,9 @@ on:
     branches: [ main ]
 
 env:
-  HEY_JARVIS_ELEVENLABS_AGENT_ID: "dummy-agent-id-for-ci"
-  HEY_JARVIS_ELEVENLABS_API_KEY: "dummy-api-key-for-ci"
+  HEY_JARVIS_ELEVENLABS_AGENT_ID: ${{ secrets.HEY_JARVIS_ELEVENLABS_AGENT_ID }}
+  HEY_JARVIS_ELEVENLABS_API_KEY: ${{ secrets.HEY_JARVIS_ELEVENLABS_API_KEY }}
+  HEY_JARVIS_ELEVENLABS_VOICE_ID: ${{ secrets.HEY_JARVIS_ELEVENLABS_VOICE_ID }}
   HEY_JARVIS_WIFI_SSID: "dummy-wifi-ssid-for-ci"
   HEY_JARVIS_WIFI_PASSWORD: "dummy-wifi-password-for-ci"
 
