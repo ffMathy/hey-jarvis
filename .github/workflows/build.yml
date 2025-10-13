@@ -48,6 +48,7 @@ jobs:
 
       - name: Set NX SHAs for affected detection
         uses: nrwl/nx-set-shas@v4
+        id: set-shas
         with:
           main-branch-name: main
 
@@ -59,13 +60,13 @@ jobs:
           IMAGE_TAG: pr-${{ github.event.pull_request.number }}
           IMAGE_OWNER: ${{ env.REPO_OWNER_LC }}
           REGISTRY: ghcr.io
-          NX_BASE: ${{ env.NX_BASE }}
-          NX_HEAD: ${{ env.NX_HEAD }}
+          NX_BASE: ${{ steps.set-shas.outputs.base }}
+          NX_HEAD: ${{ steps.set-shas.outputs.head }}
         with:
           imageName: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
           cacheFrom: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
           push: never
-          runCmd: nx affected --target=build --parallel
+          runCmd: nx affected --target=build --parallel=false
           env: |
             GITHUB_TOKEN
             GITHUB_ACTOR
