@@ -115,23 +115,16 @@ The addon configuration follows Home Assistant's schema:
   },
   "environment": {
     "HOST": "0.0.0.0",
-    "PORT": "4111",
-    "HEY_JARVIS_OPENWEATHERMAP_API_KEY": "openweathermap_api_key",
-    "HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY": "google_api_key",
-    "HEY_JARVIS_VALDEMARSRO_API_KEY": "valdemarsro_api_key",
-    "HEY_JARVIS_BILKA_EMAIL": "bilka_email",
-    "HEY_JARVIS_BILKA_PASSWORD": "bilka_password",
-    "HEY_JARVIS_BILKA_API_KEY": "bilka_api_key",
-    "HEY_JARVIS_BILKA_USER_TOKEN": "bilka_user_token",
-    "HEY_JARVIS_ALGOLIA_API_KEY": "algolia_api_key",
-    "HEY_JARVIS_ALGOLIA_APPLICATION_ID": "algolia_application_id"
+    "PORT": "4111"
   }
 }
 ```
 
 ### Environment Variable Configuration
 
-The addon now supports configuring all required API keys and service credentials through the Home Assistant UI. Home Assistant automatically maps the configuration options to environment variables using the `environment` field in `config.json`.
+The addon supports configuring all required API keys and service credentials through the Home Assistant UI. Configuration options are defined in the `options` and `schema` fields of `config.json`.
+
+The addon uses a startup script (`run.sh`) that reads user configuration from `/data/options.json` (provided by Home Assistant) and exports them as environment variables before starting the Mastra MCP server. This follows the standard Home Assistant addon pattern using Bashio for configuration parsing.
 
 **Supported Configuration Options**:
 - `google_api_key` → `HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY` (**REQUIRED**)
