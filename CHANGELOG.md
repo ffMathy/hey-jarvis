@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/ffMathy/hey-jarvis/compare/root-v1.0.3...root-v1.1.0) (2025-10-14)
+
+
+### Features
+
+* add environment variable configuration support to Home Assistant addon ([#59](https://github.com/ffMathy/hey-jarvis/issues/59)) ([a7fae30](https://github.com/ffMathy/hey-jarvis/commit/a7fae30e99beebc43ff145c4e679d69844f4ed45))
+
 ## [1.0.3](https://github.com/ffMathy/hey-jarvis/compare/root-v1.0.2...root-v1.0.3) (2025-10-14)
 
 
