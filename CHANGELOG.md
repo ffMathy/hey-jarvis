@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.2](https://github.com/ffMathy/hey-jarvis/compare/root-v1.0.1...root-v1.0.2) (2025-10-14)
+
+
+### Bug Fixes
+
+* build issue ([#66](https://github.com/ffMathy/hey-jarvis/issues/66)) ([b1029ed](https://github.com/ffMathy/hey-jarvis/commit/b1029ed0d19222d5a98befe513ba474a9b518c13))
+* pass environment variables properly ([7b0bdd6](https://github.com/ffMathy/hey-jarvis/commit/7b0bdd6795d65032a9e600cff13574a5d6f56586))
+
 ## [1.0.1](https://github.com/ffMathy/hey-jarvis/compare/root-v1.0.0...root-v1.0.1) (2025-10-07)
 
 
