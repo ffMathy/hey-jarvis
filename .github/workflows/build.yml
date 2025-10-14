@@ -35,13 +35,6 @@ jobs:
       - name: Set lowercase repository owner
         run: echo "REPO_OWNER_LC=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
 
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.repository_owner }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Set NX SHAs for affected detection
         uses: nrwl/nx-set-shas@v4
         id: set-shas
