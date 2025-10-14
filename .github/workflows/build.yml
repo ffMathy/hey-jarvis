@@ -21,10 +21,6 @@ jobs:
       packages: read
     
     steps:
-      - uses: get-bridge/swap-space-action@v1
-        with:
-          swap-size-mb: 16384
-
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@v1.3.1
 
