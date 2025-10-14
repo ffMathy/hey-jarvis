@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.3](https://github.com/ffMathy/hey-jarvis/compare/jarvis-mcp-v1.0.2...jarvis-mcp-v1.0.3) (2025-10-14)
+
+
+### Bug Fixes
+
+* ARM64 runtime error in Home Assistant by replacing Fastembed with Gemini embeddings ([#61](https://github.com/ffMathy/hey-jarvis/issues/61)) ([e0fc3c0](https://github.com/ffMathy/hey-jarvis/commit/e0fc3c0255fe38ef817083f4792de0a612f3a60a))
+
 ## [1.0.2](https://github.com/ffMathy/hey-jarvis/compare/jarvis-mcp-v1.0.1...jarvis-mcp-v1.0.2) (2025-10-14)
 
 
