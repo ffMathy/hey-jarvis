@@ -42,7 +42,7 @@
     }
   },
   "containerUser": "root",
-  "postCreateCommand": "npm install && nx run-many --target=init --all --parallel=1",
+  "postCreateCommand": "./.scripts/devcontainer-init.sh",
   "forwardPorts": [3000, 4200, 8080],
   "portsAttributes": {
     "3000": {
