@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/ffMathy/hey-jarvis/compare/root-v1.1.0...root-v1.1.1) (2025-10-14)
+
+
+### Bug Fixes
+
+* don't log in to registry on build ([#76](https://github.com/ffMathy/hey-jarvis/issues/76)) ([65f17cc](https://github.com/ffMathy/hey-jarvis/commit/65f17ccb7a6db37c6acb0dfcc4afd0c468dec7a5))
+
 ## [1.1.0](https://github.com/ffMathy/hey-jarvis/compare/root-v1.0.3...root-v1.1.0) (2025-10-14)
 
 
