@@ -31,7 +31,7 @@
     "@swc-node/register": "^1.11.1",
     "@swc/core": "^1.13.20",
     "@swc/helpers": "~0.5.11",
-    "@types/express": "^4.17.21",
+    "@types/express": "^5.0.3",
     "@types/node": "^24.5.2",
     "esbuild": "^0.25.10",
     "eslint": "^9.8.0",
@@ -45,23 +45,23 @@
     "typescript-eslint": "^8.40.0"
   },
   "dependencies": {
-    "@ai-sdk/google": "^2.0.17",
-    "@elevenlabs/elevenlabs-js": "^2.16.0",
+    "@ai-sdk/google": "^2.0.23",
+    "@elevenlabs/elevenlabs-js": "^2.18.0",
     "@hono/node-server": "^1.19.5",
-    "@mastra/core": "^0.18.0",
-    "@mastra/evals": "^0.13.8",
+    "@mastra/core": "^0.20.2",
+    "@mastra/evals": "^0.13.10",
     "@mastra/fastembed": "^0.10.5",
-    "@mastra/libsql": "^0.14.3",
+    "@mastra/libsql": "^0.15.1",
     "@mastra/loggers": "^0.10.13",
     "@mastra/mcp": "^0.13.1",
-    "@mastra/memory": "^0.15.3",
+    "@mastra/memory": "^0.15.6",
     "@types/fs-extra": "^11.0.4",
     "@types/node-fetch": "^2.6.13",
     "commander": "^14.0.1",
-    "dotenv": "^17.2.2",
-    "express": "^4.21.2",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
     "fs-extra": "^11.3.2",
-    "hono": "^4.9.9",
-    "zod": "^3.25.76"
+    "hono": "^4.9.12",
+    "zod": "^4.1.12"
   }
 }
