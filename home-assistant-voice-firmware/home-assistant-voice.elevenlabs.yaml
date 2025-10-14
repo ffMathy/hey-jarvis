@@ -30,6 +30,7 @@ esphome:
   friendly_name: Home Assistant Voice ElevenLabs
   name_add_mac_suffix: true
   min_version: 2025.5.1
+  compile_process_limit: 1
   on_boot:
     priority: 375
     then:
@@ -43,7 +44,7 @@ esp32:
   flash_size: 16MB
   framework:
     type: esp-idf
-    version: recommended
+    version: latest
     sdkconfig_options:
       CONFIG_ESP32S3_DATA_CACHE_64KB: "y"
       CONFIG_ESP32S3_DATA_CACHE_LINE_64B: "y"

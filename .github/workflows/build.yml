@@ -6,21 +6,35 @@ on:
     branches: [ main ]
 
 env:
-  HEY_JARVIS_ELEVENLABS_AGENT_ID: "dummy-agent-id-for-ci"
-  HEY_JARVIS_ELEVENLABS_API_KEY: "dummy-api-key-for-ci"
+  HEY_JARVIS_ELEVENLABS_AGENT_ID: ${{ secrets.HEY_JARVIS_ELEVENLABS_AGENT_ID }}
+  HEY_JARVIS_ELEVENLABS_API_KEY: ${{ secrets.HEY_JARVIS_ELEVENLABS_API_KEY }}
+  HEY_JARVIS_ELEVENLABS_VOICE_ID: ${{ secrets.HEY_JARVIS_ELEVENLABS_VOICE_ID }}
   HEY_JARVIS_WIFI_SSID: "dummy-wifi-ssid-for-ci"
   HEY_JARVIS_WIFI_PASSWORD: "dummy-wifi-password-for-ci"
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 60  # Increase timeout for ESP-IDF toolchain downloads
     permissions:
       contents: read
       packages: write
     
     steps:
+      - uses: get-bridge/swap-space-action@v1
+        with:
+          swap-size-mb: 16384
+
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@v1.3.1
+
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for nx affected to work
+      
+      - name: Fetch base branch
+        run: git fetch origin main:main
       
       - name: Set lowercase repository owner
         run: echo "REPO_OWNER_LC=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
@@ -32,22 +46,32 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set NX SHAs for affected detection
+        uses: nrwl/nx-set-shas@v4
+        id: set-shas
+        with:
+          main-branch-name: main
+
       - name: Build and test in dev container
         uses: devcontainers/ci@v0.3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
           IMAGE_TAG: pr-${{ github.event.pull_request.number }}
-          REGISTRY: ghcr.io
           IMAGE_OWNER: ${{ env.REPO_OWNER_LC }}
+          REGISTRY: ghcr.io
+          NX_BASE: ${{ steps.set-shas.outputs.base }}
+          NX_HEAD: ${{ steps.set-shas.outputs.head }}
         with:
           imageName: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
           cacheFrom: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
           push: never
-          runCmd: npm run build
+          runCmd: nx affected --target=build --exclude=home-assistant-voice-firmware
           env: |
             GITHUB_TOKEN
             GITHUB_ACTOR
             IMAGE_TAG
-            REGISTRY
             IMAGE_OWNER
+            REGISTRY
+            NX_BASE
+            NX_HEAD
