@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.3](https://github.com/ffMathy/hey-jarvis/compare/root-v1.0.2...root-v1.0.3) (2025-10-14)
+
+
+### Bug Fixes
+
+* ARM64 runtime error in Home Assistant by replacing Fastembed with Gemini embeddings ([#61](https://github.com/ffMathy/hey-jarvis/issues/61)) ([e0fc3c0](https://github.com/ffMathy/hey-jarvis/commit/e0fc3c0255fe38ef817083f4792de0a612f3a60a))
+* switch to read permissions ([#72](https://github.com/ffMathy/hey-jarvis/issues/72)) ([5ab5ccb](https://github.com/ffMathy/hey-jarvis/commit/5ab5ccb6db5abf436fbeb35a473554c9456b6aa3))
+
 ## [1.0.2](https://github.com/ffMathy/hey-jarvis/compare/root-v1.0.1...root-v1.0.2) (2025-10-14)
 
 
