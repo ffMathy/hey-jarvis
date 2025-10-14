@@ -50,7 +50,6 @@
     "@hono/node-server": "^1.19.5",
     "@mastra/core": "^0.20.2",
     "@mastra/evals": "^0.13.10",
-    "@mastra/fastembed": "^0.10.5",
     "@mastra/libsql": "^0.15.1",
     "@mastra/loggers": "^0.10.13",
     "@mastra/mcp": "^0.13.1",
