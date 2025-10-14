@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/ffMathy/hey-jarvis/compare/jarvis-mcp-v1.0.3...jarvis-mcp-v1.1.0) (2025-10-14)
+
+
+### Miscellaneous Chores
+
+* **jarvis-mcp:** Synchronize jarvis-mcp versions
+
 ## [1.0.3](https://github.com/ffMathy/hey-jarvis/compare/jarvis-mcp-v1.0.2...jarvis-mcp-v1.0.3) (2025-10-14)
 
 
