@@ -81,10 +81,31 @@ This Home Assistant addon hosts the Jarvis MCP (Model Context Protocol) server w
 
 ## Configuration
 
-The addon uses sensible defaults and inherits environment variables from the base image. You can configure:
+The addon can be configured through the Home Assistant UI. Available configuration options:
 
-- **Log Level**: Adjust logging verbosity (info, debug, trace, etc.)
-- **Port**: Runs on port 4111 by default
+### Required Configuration
+
+- **Google Generative AI API Key**: API key for Google's Gemini AI models - **REQUIRED** for the addon to start ([Get your key](https://ai.google.dev/))
+
+### Optional API Keys and Service Configuration
+
+Configure the following additional options in the addon configuration page:
+
+- **OpenWeatherMap API Key**: API key for weather forecasts and conditions ([Get your key](https://openweathermap.org/api))
+- **Valdemarsro API Key**: API key for Danish recipe search
+- **Bilka Email**: Email for Bilka shopping integration
+- **Bilka Password**: Password for Bilka shopping integration
+- **Bilka API Key**: API key for Bilka services
+- **Bilka User Token**: User token for Bilka authentication
+- **Algolia API Key**: API key for Algolia search (used by Bilka)
+- **Algolia Application ID**: Application ID for Algolia search
+
+### General Settings
+
+- **Log Level**: Adjust logging verbosity (trace, debug, info, notice, warning, error, fatal)
+- **Port**: Server runs on port 4111 by default (inherited from base image)
+
+**Note**: While most API keys are optional, the **Google Generative AI API key is required** for the addon to start. Optional API keys enable specific features - for example, weather features require the OpenWeatherMap API key, and shopping features require Bilka credentials.
 
 For advanced configuration and development details, see [AGENTS.md](./AGENTS.md).
 
@@ -132,10 +153,7 @@ Part of the Hey Jarvis ecosystem - see repository LICENSE for details.
 
 ## Configuration
 
-The addon uses the default configuration from `config.json`. You can modify:
-
-- **Log Level**: Set logging verbosity (trace, debug, info, notice, warning, error, fatal)
-- **Environment Variables**: The addon inherits environment variables from the base `jarvis-mcp` image
+The addon configuration is managed through the Home Assistant UI. See the configuration section above for details on available options including API keys and service credentials.
 
 ## Usage
 
@@ -205,12 +223,7 @@ npx nx docker:build home-assistant-addon
 
 ## Configuration
 
-The addon accepts the following configuration options:
-
-- **API Keys**: ElevenLabs, OpenWeatherMap, and other service credentials
-- **Port**: Server port (default: 8099)
-- **Log Level**: Logging verbosity
-- **MCP Settings**: Model Context Protocol server configuration
+Configure the addon through the Home Assistant UI with your API keys and service credentials. See the configuration section above for all available options.
 
 ## Usage
 
