@@ -18,7 +18,7 @@ jobs:
     timeout-minutes: 60  # Increase timeout for ESP-IDF toolchain downloads
     permissions:
       contents: read
-      packages: write
+      packages: read
     
     steps:
       - uses: get-bridge/swap-space-action@v1
