@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.3](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.3.2...elevenlabs-v0.3.3) (2025-10-14)
+
+
+### Bug Fixes
+
+* build issue ([#66](https://github.com/ffMathy/hey-jarvis/issues/66)) ([b1029ed](https://github.com/ffMathy/hey-jarvis/commit/b1029ed0d19222d5a98befe513ba474a9b518c13))
+
 ## [0.3.2](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.3.1...elevenlabs-v0.3.2) (2025-10-02)
 
 
