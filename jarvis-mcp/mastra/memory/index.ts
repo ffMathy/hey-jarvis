@@ -1,7 +1,6 @@
 import { Memory } from "@mastra/memory";
 import { getSqlStorageProvider, getVectorStorageProvider } from "../storage";
 import { google } from "../utils/google-provider";
-import { embed, embedMany } from "ai";
 
 export async function createMemory() {
     const sqlStorageProvider = await getSqlStorageProvider();
@@ -10,22 +9,7 @@ export async function createMemory() {
     return new Memory({
         storage: sqlStorageProvider,
         vector: vectorStorageProvider,
-        embedder: {
-            embedText: async (text: string) => {
-                const { embedding } = await embed({
-                    model: google.textEmbeddingModel('text-embedding-004'),
-                    value: text,
-                });
-                return embedding;
-            },
-            embedMany: async (texts: string[]) => {
-                const { embeddings } = await embedMany({
-                    model: google.textEmbeddingModel('text-embedding-004'),
-                    values: texts,
-                });
-                return embeddings;
-            },
-        },
+        embedder: google.textEmbeddingModel('text-embedding-004'),
         options: {
             lastMessages: 10,
             workingMemory: {
