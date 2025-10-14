@@ -38,8 +38,8 @@ jobs:
       packages: write
 
     steps:
-      # - name: Free Disk Space (Ubuntu)
-      #   uses: jlumbroso/free-disk-space@v1.3.1
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@v1.3.1
         
       - uses: get-bridge/swap-space-action@v1
         with:
