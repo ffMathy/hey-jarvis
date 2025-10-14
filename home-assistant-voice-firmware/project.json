@@ -7,7 +7,7 @@
     "init": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "python3 -m pip install esphome",
+        "command": "python3 -m pip install --upgrade --no-cache-dir --timeout=900 esphome",
         "cwd": "home-assistant-voice-firmware"
       }
     },
@@ -24,7 +24,9 @@
         "command": "python3 -m esphome upload home-assistant-voice.elevenlabs.yaml",
         "cwd": "home-assistant-voice-firmware"
       },
-      "dependsOn": ["build"]
+      "dependsOn": [
+        "build"
+      ]
     },
     "clean": {
       "executor": "nx:run-commands",

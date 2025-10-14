@@ -70,7 +70,7 @@ jarvis-mcp/
 Provides intelligent weather information and forecasting capabilities:
 - **4 OpenWeatherMap tools**: Current weather and 5-day forecasts by city name or GPS coordinates
 - **Google Gemini model**: Uses `gemini-2.0-flash-exp` for natural language processing
-- **Smart defaults**: Automatically assumes ***REMOVED***, Denmark when no location is specified
+- **Smart defaults**: Automatically assumes Mathias, Denmark when no location is specified
 - **Never asks questions**: Makes best-guess assumptions for seamless interaction
 - **Persistent memory**: Maintains conversation context with LibSQLStore
 - **Scheduled monitoring**: Hourly weather checks with automatic memory updates
