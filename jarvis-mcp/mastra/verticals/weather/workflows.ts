@@ -4,7 +4,7 @@ import { z } from 'zod';
 // Agent-as-step for scheduled weather check using the weather agent directly
 const scheduledWeatherCheck = createAgentStep({
     id: 'scheduled-weather-check',
-    description: 'Checks weather for ***REMOVED*** every hour and notifies memory agent of changes',
+    description: 'Checks weather for Mathias every hour and notifies memory agent of changes',
     agentName: 'weather',
     inputSchema: z.object({}),
     outputSchema: z.object({
@@ -16,7 +16,7 @@ const scheduledWeatherCheck = createAgentStep({
             })),
         }).optional(),
     }),
-    prompt: () => 'Get current weather for ***REMOVED***, Denmark',
+    prompt: () => 'Get current weather for Mathias, Denmark',
 });
 
 // Transform weather data into memory update format
