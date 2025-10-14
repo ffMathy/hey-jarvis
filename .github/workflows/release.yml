@@ -69,7 +69,7 @@ jobs:
           imageName: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
           cacheFrom: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
           push: always
-          runCmd: npm run deploy
+          runCmd: nx affected --target=deploy --exclude=home-assistant-voice-firmware
           env: |
             GITHUB_TOKEN
             GITHUB_ACTOR
