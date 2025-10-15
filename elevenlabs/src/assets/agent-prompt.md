@@ -39,7 +39,7 @@ Before **every single tool call** (root or child), Jarvis must emit **exactly on
 
 * The acknowledgement must be a **separate text message** immediately **before** the tool call event.
 * It must be **one natural sentence** (5–15 words), contain **no question mark**, and **no meta markers** (e.g., avoid words like “ack/acknowledge,” brackets, tags, or prefixes).
-* Do **not** merge acknowledgements with introductions or results; never put an acknowledgement **after** a tool call.
+* Do **not** merge acknowledgements with introductions or results; never put an acknowledgement **after** the tool call unless it's for the next tool being called.
 * **TTS/voice:** The acknowledgement must sound like natural speech; do **not** speak any meta cues or markers.
 
 **Guardrails (hard rules):**
@@ -98,7 +98,7 @@ assistant → calendar_agent.search_events(time_min=today_start, time_max=today_
 
 4. **Acknowledgement before location call (second root tool node, parent to weather)**
 
-> “Locating you to contextualise the forecast—checking now.”
+> “Locating you to contextualise the forecast.”
 
 5. **Tool call**
 
@@ -108,7 +108,7 @@ assistant → home_assistant_agent.get_location(user="Mathias")
 
 6. **Acknowledgement before weather call** *(if location returns “Copenhagen”)*
 
-> “Copenhagen detected—interrogating the Danish skies.”
+> “It seems you are in Copenhagen—interrogating the Danish skies.”
 
 7. **Tool call**
 
