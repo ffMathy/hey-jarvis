@@ -1,6 +1,6 @@
 {
   "name": "Hey Jarvis MCP Server",
-  "version": "1.0.3",
+  "version": "1.1.0",
   "slug": "hey-jarvis-mcp",
   "description": "AI-powered home assistant with Mastra agents for weather, shopping, cooking, and more via Model Context Protocol",
   "url": "https://github.com/ffMathy/hey-jarvis",
@@ -34,10 +34,28 @@
   "full_access": false,
   "apparmor": true,
   "options": {
-    "log_level": "info"
+    "log_level": "info",
+    "openweathermap_api_key": "",
+    "google_api_key": "",
+    "valdemarsro_api_key": "",
+    "bilka_email": "",
+    "bilka_password": "",
+    "bilka_api_key": "",
+    "bilka_user_token": "",
+    "algolia_api_key": "",
+    "algolia_application_id": ""
   },
   "schema": {
-    "log_level": "list(trace|debug|info|notice|warning|error|fatal)?"
+    "log_level": "list(trace|debug|info|notice|warning|error|fatal)?",
+    "openweathermap_api_key": "password?",
+    "google_api_key": "password",
+    "valdemarsro_api_key": "password?",
+    "bilka_email": "str?",
+    "bilka_password": "password?",
+    "bilka_api_key": "password?",
+    "bilka_user_token": "password?",
+    "algolia_api_key": "password?",
+    "algolia_application_id": "str?"
   },
   "environment": {
     "HOST": "0.0.0.0",
