@@ -33,7 +33,9 @@
         "ms-vscode.cpptools-extension-pack",
         "nrwl.angular-console",
         "1Password.op-vscode",
-        "github.vscode-github-actions"
+        "github.vscode-github-actions",
+        "GitHub.copilot",
+        "GitHub.copilot-chat"
       ],
       "settings": {
         "typescript.preferences.preferTypeOnlyAutoImports": true,
