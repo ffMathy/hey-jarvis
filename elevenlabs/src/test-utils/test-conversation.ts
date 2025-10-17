@@ -38,6 +38,7 @@ export class TestConversation {
     this.client = new ElevenLabsConversationClient({
       agentId: options.agentId,
       apiKey: options.apiKey,
+      disableFirstMessage: true, // Always disable first message for testing
     });
     this.googleApiKey =
       options.googleApiKey ||
@@ -86,7 +87,7 @@ export class TestConversation {
    */
   getTranscriptText(): string {
     return this.transcript
-      .map((entry) => `${entry.role.toUpperCase()}: ${entry.message}`)
+      .map((entry) => `> ${entry.role.toUpperCase()}: ${entry.message}`)
       .join('\n');
   }
 
@@ -125,21 +126,30 @@ export class TestConversation {
       schema,
       prompt: `You are evaluating a conversation transcript between a user and an AI agent.
 
-CONVERSATION TRANSCRIPT:
+IMPORTANT: Evaluate the ENTIRE conversation transcript below, not just individual messages.
+Consider the full context and flow across ALL exchanges.
+
+CONVERSATION TRANSCRIPT (COMPLETE):
+\`\`\`markdown
 ${transcriptText}
+\`\`\`
 
 EVALUATION CRITERIA:
+\`\`\`markdown
 ${criteria}
+\`\`\`
 
-Please evaluate whether the conversation meets the specified criteria. Consider:
+Please evaluate whether the FULL conversation meets the specified criteria. Consider:
+- ALL messages in the transcript, not just the first or last
 - The semantic meaning and intent, not just exact wording
-- The overall flow and context of the conversation
-- Whether the agent's responses appropriately address the user's messages
+- The overall flow and context across the ENTIRE conversation
+- Whether the agent's responses appropriately address the user's messages throughout
+- Consistency of behavior across multiple exchanges
 
 Respond with:
-- "passed" (boolean): Whether the criteria is met
-- "score" (number 0-1): Confidence score
-- "reasoning" (string): Clear explanation for your evaluation`,
+- "passed" (boolean): Whether the criteria is met across the FULL transcript
+- "score" (number 0-1): Confidence score based on the ENTIRE conversation
+- "reasoning" (string): Clear explanation for your evaluation with specific examples from the transcript`,
     });
 
     return result.object;

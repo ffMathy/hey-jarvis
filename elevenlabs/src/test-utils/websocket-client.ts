@@ -6,6 +6,7 @@ import {
 export interface ConversationOptions {
   agentId: string;
   apiKey?: string;
+  disableFirstMessage?: boolean;
 }
 
 /**
@@ -19,11 +20,13 @@ export class ElevenLabsConversationClient {
   private client: ElevenLabsClient;
   private readonly agentId: string;
   private readonly apiKey: string;
+  private readonly disableFirstMessage: boolean;
   private responses: string[] = [];
   private lastMessageTime = 0;
 
   constructor(options: ConversationOptions) {
     this.agentId = options.agentId;
+    this.disableFirstMessage = options.disableFirstMessage ?? false;
     const apiKey =
       options.apiKey || process.env.HEY_JARVIS_ELEVENLABS_API_KEY;
     if (!apiKey) {
@@ -87,6 +90,13 @@ export class ElevenLabsConversationClient {
       callbackAgentResponse: (response: string) => {
         this.responses.push(response);
       },
+      ...(this.disableFirstMessage && {
+        overrides: {
+          agent: {
+            firstMessage: '',
+          },
+        },
+      }),
     });
     
     await Promise.race([

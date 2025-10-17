@@ -27,5 +27,13 @@ if [ "$all_vars_present" = true ]; then
 else
     echo "Missing environment variables: ${missing_vars[*]}"
     echo "Falling back to 1Password CLI..."
+    
+    # Check if 1Password CLI is signed in
+    op account get &> /dev/null
+    if [ $? -ne 0 ]; then
+        echo "❌ 1Password CLI is not signed in - run: eval \$(op signin)"
+        exit 1
+    fi
+    
     exec op run --env-file="$env_file" --no-masking -- "$@"
 fi
