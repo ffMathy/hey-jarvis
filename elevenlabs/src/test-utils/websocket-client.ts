@@ -13,6 +13,8 @@ export interface ConversationOptions {
  * Wraps the official SDK's Conversation class for text-only interactions.
  */
 export class ElevenLabsConversationClient {
+  private static lastDisconnectTime = 0;
+  
   private conversation: Conversation | null = null;
   private client: ElevenLabsClient;
   private readonly agentId: string;
@@ -34,6 +36,19 @@ export class ElevenLabsConversationClient {
   }
 
   async connect(): Promise<void> {
+    // Wait for any previous session to fully disconnect on server side
+    while (this.isActive()) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    // Ensure minimum time has passed since last disconnect
+    // to allow server-side cleanup to complete
+    const timeSinceDisconnect = Date.now() - ElevenLabsConversationClient.lastDisconnectTime;
+    const minWaitTime = 3000; // 3 seconds minimum between sessions
+    if (ElevenLabsConversationClient.lastDisconnectTime > 0 && timeSinceDisconnect < minWaitTime) {
+      await new Promise(resolve => setTimeout(resolve, minWaitTime - timeSinceDisconnect));
+    }
+
     this.client = new ElevenLabsClient({ apiKey: this.apiKey });
 
     // Clear responses from any previous connection
@@ -129,6 +144,17 @@ export class ElevenLabsConversationClient {
     return [...this.responses];
   }
 
+  isActive(): boolean {
+    return this.conversation?.isSessionActive() ?? false;
+  }
+
+  async waitForInactive(timeoutMs = 5000): Promise<void> {
+    const startTime = Date.now();
+    while (this.isActive() && Date.now() - startTime < timeoutMs) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+  }
+
   async disconnect(): Promise<void> {
     if (this.conversation) {
       try {
@@ -144,6 +170,9 @@ export class ElevenLabsConversationClient {
           }),
           new Promise((resolve) => setTimeout(resolve, 5000)) // 5 second timeout
         ]);
+        
+        // Wait for session to become inactive before cleaning up
+        await this.waitForInactive();
       } catch (error) {
         console.warn('Disconnect error:', error);
       }
@@ -154,8 +183,6 @@ export class ElevenLabsConversationClient {
     this.client = null;
     this.responses = [];
     this.lastMessageTime = 0;
-    
-    // Add delay after disconnect to allow cleanup
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    ElevenLabsConversationClient.lastDisconnectTime = Date.now();
   }
 }

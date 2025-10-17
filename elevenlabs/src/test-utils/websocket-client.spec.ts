@@ -54,8 +54,6 @@ describe('ElevenLabsConversationClient', () => {
 
   describe('Multi-turn conversation', () => {
     beforeEach(async () => {
-      // Add delay to allow previous connection to fully clean up
-      await new Promise(resolve => setTimeout(resolve, 3000));
       await client.connect();
     });
 
