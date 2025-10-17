@@ -32,17 +32,22 @@
     "@swc/core": "^1.13.20",
     "@swc/helpers": "~0.5.11",
     "@types/express": "^5.0.3",
+    "@types/jest": "^30.0.0",
     "@types/node": "^24.7.2",
+    "@types/ws": "^8.18.1",
     "esbuild": "^0.25.10",
     "eslint": "^9.37.0",
     "eslint-config-prettier": "^10.0.0",
+    "jest": "^30.2.0",
     "mastra": "^0.15.1",
     "nx": "^21.5.3",
     "prettier": "^3.6.2",
+    "ts-jest": "^29.4.5",
     "tslib": "^2.3.0",
     "tsx": "^4.20.6",
     "typescript": "~5.9.3",
-    "typescript-eslint": "^8.46.1"
+    "typescript-eslint": "^8.46.1",
+    "ws": "^8.18.3"
   },
   "dependencies": {
     "@ai-sdk/google": "^2.0.23",
