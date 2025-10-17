@@ -54,13 +54,9 @@
   },
   "metadata": {
     "createdAtUnixSecs": 1742778859,
-    "updatedAtUnixSecs": 1759225556
+    "updatedAtUnixSecs": 1760501094
   },
   "platformSettings": {
-    "auth": {
-      "enableAuth": true,
-      "allowlist": []
-    },
     "evaluation": {
       "criteria": [
         {
@@ -128,12 +124,30 @@
           "language": false,
           "prompt": {
             "prompt": false,
+            "llm": false,
             "nativeMcpServerIds": false
           }
         }
       },
       "customLlmExtraBody": false,
       "enableConversationInitiationClientDataFromWebhook": false
+    },
+    "workspaceOverrides": {
+      "webhooks": {
+        "events": [
+          "transcript"
+        ],
+        "sendAudio": false
+      }
+    },
+    "testing": {
+      "attachedTests": [],
+      "referenced_tests_ids": []
+    },
+    "archived": false,
+    "auth": {
+      "enableAuth": true,
+      "allowlist": []
     },
     "callLimits": {
       "agentConcurrencyLimit": 1,
@@ -149,16 +163,6 @@
       "applyToExistingConversations": true,
       "zeroRetentionMode": false
     },
-    "workspaceOverrides": {
-      "webhooks": {
-        "sendAudio": false
-      }
-    },
-    "testing": {
-      "attachedTests": [],
-      "referenced_tests_ids": []
-    },
-    "archived": false,
     "safety": {
       "isBlockedIvc": false,
       "isBlockedNonIvc": false,
@@ -178,5 +182,6 @@
       }
     }
   },
-  "tags": []
+  "tags": [],
+  "version_id": null
 }
