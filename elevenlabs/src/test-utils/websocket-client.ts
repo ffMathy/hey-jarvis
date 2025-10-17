@@ -74,15 +74,20 @@ export class ElevenLabsConversationClient {
       },
     });
     
-    await new Promise((resolve) => {
-      // eslint-disable-next-line no-var
-      var handler = () => {
-        resolve(undefined);
-        this.conversation.off('conversation_started', handler);
-      }
-      this.conversation.on('conversation_started', handler);
-      this.conversation.startSession();
-    });
+    await Promise.race([
+      new Promise((resolve) => {
+        // eslint-disable-next-line no-var
+        var handler = () => {
+          resolve(undefined);
+          this.conversation.off('conversation_started', handler);
+        }
+        this.conversation.on('conversation_started', handler);
+        this.conversation.startSession();
+      }),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Connection timeout after 30 seconds')), 30000)
+      )
+    ]);
   }
 
   async chat(text: string): Promise<string> {
@@ -126,15 +131,22 @@ export class ElevenLabsConversationClient {
 
   async disconnect(): Promise<void> {
     if (this.conversation) {
-      await new Promise((resolve) => {
-        // eslint-disable-next-line no-var
-        var handler = () => {
-          resolve(undefined);
-          this.conversation.off('session_ended', handler);
-        }
-        this.conversation.on('session_ended', handler);
-        this.conversation.endSession();
-      });
+      try {
+        await Promise.race([
+          new Promise((resolve) => {
+            // eslint-disable-next-line no-var
+            var handler = () => {
+              resolve(undefined);
+              this.conversation.off('session_ended', handler);
+            }
+            this.conversation.on('session_ended', handler);
+            this.conversation.endSession();
+          }),
+          new Promise((resolve) => setTimeout(resolve, 5000)) // 5 second timeout
+        ]);
+      } catch (error) {
+        console.warn('Disconnect error:', error);
+      }
 
       this.conversation = null;
     }
@@ -142,5 +154,8 @@ export class ElevenLabsConversationClient {
     this.client = null;
     this.responses = [];
     this.lastMessageTime = 0;
+    
+    // Add delay after disconnect to allow cleanup
+    await new Promise(resolve => setTimeout(resolve, 2000));
   }
 }

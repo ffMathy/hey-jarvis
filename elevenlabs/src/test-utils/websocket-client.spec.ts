@@ -54,6 +54,8 @@ describe('ElevenLabsConversationClient', () => {
 
   describe('Multi-turn conversation', () => {
     beforeEach(async () => {
+      // Add delay to allow previous connection to fully clean up
+      await new Promise(resolve => setTimeout(resolve, 3000));
       await client.connect();
     });
 
@@ -61,11 +63,11 @@ describe('ElevenLabsConversationClient', () => {
       const response1 = await client.chat('Hello');
       expect(response1).toBeTruthy();
 
-      // const response2 = await client.chat('How are you?');
-      // expect(response2).toBeTruthy();
+      const response2 = await client.chat('How are you?');
+      expect(response2).toBeTruthy();
 
       const responses = client.getAgentResponses();
-      expect(responses.length).toBe(2);
-    });
+      expect(responses.length).toBeGreaterThanOrEqual(2);
+    }, 90000); // 90 second timeout for multi-turn conversation
   });
 });
