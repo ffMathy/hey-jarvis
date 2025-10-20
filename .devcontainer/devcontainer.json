@@ -6,7 +6,6 @@
     "ghcr.io/devcontainers/features/python:1": {},
     "ghcr.io/devcontainers-extra/features/nx-npm:1": {},
     "ghcr.io/flexwie/devcontainer-features/op:1": {},
-    "ghcr.io/jckimble/devcontainer-features/ngrok:3": {},
     "ghcr.io/devcontainers/features/docker-in-docker:2": {},
     "ghcr.io/devcontainers/features/github-cli:1": {}
   },
@@ -38,8 +37,7 @@
         "GitHub.copilot-chat"
       ],
       "settings": {
-        "typescript.preferences.preferTypeOnlyAutoImports": true,
-        "typescript.suggest.autoImports": true
+        //don't put settings here - instead, put them in hey-jarvis.code-workspace in the root of the repo
       }
     }
   },
