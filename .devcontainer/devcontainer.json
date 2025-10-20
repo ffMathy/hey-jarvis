@@ -38,8 +38,7 @@
         "GitHub.copilot-chat"
       ],
       "settings": {
-        "typescript.preferences.preferTypeOnlyAutoImports": true,
-        "typescript.suggest.autoImports": true
+        //don't put settings here - instead, put them in hey-jarvis.code-workspace in the root of the repo
       }
     }
   },
