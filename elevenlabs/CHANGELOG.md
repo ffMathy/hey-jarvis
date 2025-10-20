@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.3.3...elevenlabs-v0.4.0) (2025-10-20)
+
+
+### Features
+
+* new test suite and prompt ([#83](https://github.com/ffMathy/hey-jarvis/issues/83)) ([4663765](https://github.com/ffMathy/hey-jarvis/commit/46637654bb80d99dee9dee14d51d83b701fde01b))
+
 ## [0.3.3](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.3.2...elevenlabs-v0.3.3) (2025-10-14)
 
 
