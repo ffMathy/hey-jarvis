@@ -5,59 +5,23 @@
   "projectType": "application",
   "tags": [],
   "targets": {
-    "build": {
-      "executor": "@nx/esbuild:esbuild",
-      "outputs": ["{options.outputPath}"],
-      "defaultConfiguration": "production",
-      "options": {
-        "platform": "node",
-        "outputPath": "dist/elevenlabs",
-        "format": ["cjs"],
-        "bundle": false,
-        "main": "elevenlabs/src/main.ts",
-        "tsConfig": "elevenlabs/tsconfig.app.json",
-        "assets": ["elevenlabs/src/assets"],
-        "generatePackageJson": true,
-        "esbuildOptions": {
-          "sourcemap": true,
-          "outExtension": {
-            ".js": ".js"
-          }
-        }
-      },
-      "configurations": {
-        "development": {},
-        "production": {
-          "generateLockfile": true,
-          "esbuildOptions": {
-            "sourcemap": false,
-            "outExtension": {
-              ".js": ".js"
-            }
-          }
-        }
-      }
-    },
     "deploy": {
       "executor": "nx:run-commands",
-      "dependsOn": ["build"],
       "options": {
-        "command": "./.scripts/run-with-env.sh elevenlabs/op.env node dist/elevenlabs/main.js deploy",
-        "cwd": "."
+        "command": "../.scripts/run-with-env.sh op.env npx @elevenlabs/cli agents push --no-ui",
+        "cwd": "elevenlabs"
       }
     },
     "refresh": {
       "executor": "nx:run-commands",
-      "dependsOn": ["build"],
       "options": {
-        "command": "./.scripts/run-with-env.sh elevenlabs/op.env node dist/elevenlabs/main.js fetch",
-        "cwd": "."
+        "command": "echo 'y' | ../.scripts/run-with-env.sh op.env npx @elevenlabs/cli agents pull --no-ui --all",
+        "cwd": "elevenlabs"
       }
     },
     "test": {
       "executor": "nx:run-commands",
       "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
-      "dependsOn": ["deploy"],
       "options": {
         "command": "./.scripts/run-with-env.sh elevenlabs/op.env nx run elevenlabs:test:jest",
         "cwd": "."

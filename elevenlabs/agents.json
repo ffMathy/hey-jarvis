@@ -1,0 +1,9 @@
+{
+    "agents": [
+        {
+            "config": "agent_configs/J.A.R.V.I.S.json",
+            "id": "FfaCrKcbTjFdFZOfF1Vy",
+            "env": "prod"
+        }
+    ]
+}

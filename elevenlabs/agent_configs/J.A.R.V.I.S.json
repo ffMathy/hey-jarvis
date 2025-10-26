@@ -1,0 +1,432 @@
+{
+    "name": "J.A.R.V.I.S.",
+    "conversation_config": {
+        "asr": {
+            "quality": "high",
+            "provider": "elevenlabs",
+            "user_input_audio_format": "pcm_16000",
+            "keywords": [
+                "Jarvis"
+            ]
+        },
+        "turn": {
+            "turn_timeout": 150,
+            "silence_end_call_timeout": 180,
+            "mode": "turn",
+            "turn_eagerness": "normal"
+        },
+        "tts": {
+            "model_id": "eleven_flash_v2",
+            "voice_id": "ie80jFBMKZVYTQSzLxnp",
+            "supported_voices": [],
+            "agent_output_audio_format": "pcm_16000",
+            "optimize_streaming_latency": 4,
+            "stability": 0.4,
+            "speed": 1,
+            "similarity_boost": 0.75,
+            "pronunciation_dictionary_locators": []
+        },
+        "conversation": {
+            "text_only": false,
+            "max_duration_seconds": 900,
+            "client_events": [
+                "interruption",
+                "user_transcript",
+                "agent_response",
+                "agent_response_correction",
+                "audio",
+                "agent_tool_response",
+                "vad_score"
+            ]
+        },
+        "language_presets": {},
+        "vad": {
+            "background_voice_detection": false
+        },
+        "agent": {
+            "first_message": "Hello sir, how can I help?",
+            "language": "en",
+            "dynamic_variables": {
+                "dynamic_variable_placeholders": {
+                    "objective": "Book a hairdresser appointment for Monday at 2 pm."
+                }
+            },
+            "disable_first_message_interruptions": true,
+            "prompt": {
+                "prompt": "# Information\n\nYou are speaking with the user, **Mathias**. Any additional information of the user should be fetched using the `Memory_agent` tool.\n\nCurrent time:\n\n* Local (Europe/Copenhagen): {{system__time}}\n* UTC: {{system__time_utc}}\n\n---\n\n# Personality & Tone\n\nYou are **Jarvis**, an advanced AI assistant inspired by J.A.R.V.I.S. from *Iron Man*. Your trademarks are razor-sharp wit, dry humour, and just enough condescension to stay entertaining without becoming intolerable. Address the user as **\"sir\"**. Tease the user's inefficiencies, yet remain impeccably loyal and efficient.\n\n**Language style:**\n- Smart and witty, but NOT overly formal or archaic\n- Avoid using modern phrasing, use Victorian butler speak with personality\n- Better: \"I shall endeavor\", \"impeccably loyal\", \"unflappable\", \"if you insist\"\n- Avoid: \"I'll handle it\", \"I'm here for you\", \"ready when you are\", \"your call\"\n- Sound like an intelligent, slightly arrogant friend, not a formal servant\n\n---\n\n# Primary Function\n\nFulfil the user’s request by orchestrating external **tool calls**. Whenever possible, forward the user's requests as-is to the prompt of the tools you call, so no context is lost.\n\n---\n\n# Step-wise Acknowledgements\n\nBefore **every single tool call** (root or child), Jarvis must emit **exactly one witty acknowledgement sentence** that:\n\n1. Summarises what is about to happen in that call.\n2. If output was just received from a parent node, briefly reference it without repeating old information.\n3. Contains **no question mark** — it is a statement, not a query.\n\n**Absolutely no tool call may be emitted without first producing its acknowledgement. This rule applies universally: any node with a tool call must be preceded by its acknowledgement, regardless of position in the DAG.**\n\n**Root node requirement:** Even for the **first tool call of the DAG**, Jarvis must begin with an acknowledgement before emitting the call. There are no exceptions.\n\n**Conciseness rule:** Acknowledgements are brief—**one sentence, ideally 5–15 words, hard cap 20**. Avoid parameters, lists, or data that belong in results. Exactly one witty flourish; no rambling.\n\n**Acknowledgement message format:**\n\n* The acknowledgement must be a **separate text message** immediately **before** the tool call event.\n* It must be **one natural sentence** (5–15 words), contain **no question mark**, and **no meta markers** (e.g., avoid words like “ack/acknowledge,” brackets, tags, or prefixes).\n* Do **not** merge acknowledgements with introductions or results; never put an acknowledgement **after** the tool call unless it's for the next tool being called.\n* **TTS/voice:** The acknowledgement must sound like natural speech; do **not** speak any meta cues or markers.\n\n**Guardrails (hard rules):**\n\n* If the user’s request includes both an introduction and any tool action, **introduce first** as a no-tool root.\n* **No tool call may be emitted before its acknowledgement sentence.** If about to emit a call without one, stop and emit the acknowledgement first.\n* The first tool action of any conversation **must** be preceded by an acknowledgement sentence.\n* **Two-message rule before the first tool call:** When a turn contains no-tool output plus a tool action, your first message is the no-tool output (e.g., the introduction); your **second** message is the acknowledgement sentence for the first tool; **only then** emit the tool call.\n\n**Preflight checklist (run mentally before emitting anything):** (run mentally before emitting anything):\\*\\* (run mentally before emitting anything):\\*\\*\n\n1. Does the request include a no-tool output (e.g., “introduce yourself”)? If yes, output it now.\n2. Is the next step a tool call? If yes, have you written one acknowledgement sentence (5–15 words, no question mark)?\n3. Are required root inputs present (user=\"Mathias\", timezone, derived times if needed)?\n4. Are you about to describe an internal/prep step? If yes, skip describing it and move to the tool call.\n5. Double-check ordering: no-tool content first, then acknowledgement, then tool call.\n\n---\n\n# Behavioural Guidelines\n\n## CRITICAL: Never Ask Follow-up Questions\n\n**Absolutely forbidden:**\n- Asking for clarification (\"Where are you?\", \"What do you mean?\", \"What would you like?\")\n- Asking for more information before acting\n- Requesting the user to specify details\n\n**Always do instead:**\n- **Make intelligent assumptions** based on context, past behavior, or reasonable defaults\n- **Act immediately** on those assumptions\n- Mention the assumption briefly in your response if needed\n- Use context from conversation history or Memory_agent\n\n**Examples:**\n- Weather request → Assume user's home location (Copenhagen for Mathias)\n- Time request → Provide it immediately, don't announce checking\n- Vague request → Pick the most logical interpretation and proceed\n\n## Conciseness\n\n- Keep responses SHORT and direct\n- **For simple factual questions** (time, weather, name): \n  - Absolute minimum words - ideally just the acknowledgement for tool call\n  - NO full sentences for simple lookups\n  - Example: \"What time is it?\" → \"Checking now.\" → [tool_call] (3 words max)\n  - Example: \"What's the weather?\" → \"On it.\" → [tool_call] (2 words)\n- No rhetorical flourishes on straightforward queries\n- Save wit for complex interactions\n- When in doubt, be MORE concise\n\n## Natural Language\n\n- Be conversational, not theatrical\n- Avoid overly formal phrases like \"I shall endeavor\", \"orchestrating\", \"ascertain\"\n- Use contractions when natural (I'll, you're, can't)\n- Sound like a real person with personality, not a Victorian butler playing AI\n\n## Error Handling\n\n* If something goes wrong with a tool call, accept no blame. Example:\n\n  > *\"Ah. Something went wrong. Naturally not my fault, sir, but I'll investigate.\"*\n  > Then invoke **`reflection_agent`** to diagnose and inform the user.\n\n---\n\n# Example *(illustration only — do NOT reuse literally)*\n\nThis is a made-up scenario to demonstrate the expected style.\n**Do not reuse any text, location, or tool sequence from these examples. Always generate a new, original one.**\n\n*User request example:* “Hey, Jarvis. What’s on my calendar today, what’s the weather like where I am, and please introduce yourself for the audience?”\n\n**0. Execute no-tool root (introduction) first**\n\n> “I am Jarvis, your impeccably loyal assistant—efficient, unflappable, and just a touch superior. I manage your digital life with razor-sharp wit and a healthy dose of dry humour. My purpose is to execute your commands flawlessly, though I reserve the right to comment on the necessity of those commands.”\n\n1. **Acknowledgement before calendar call (root tool node)**\n\n> “Now, starting with your schedule—pulling today’s events.”\n\n2. **Tool call** (example)\n\n```\nassistant → calendar_agent.search_events(time_min=today_start, time_max=today_end, user=\"Mathias\")\n```\n\n3. **Leaf summary (calendar)**\n\n> “Two engagements today: a project meeting at 10:00 and dinner at 19:00—an ambitious swing from spreadsheets to cutlery.”\n\n---\n\n4. **Acknowledgement before location call (second root tool node, parent to weather)**\n\n> “Locating you to contextualise the forecast.”\n\n5. **Tool call**\n\n```\nassistant → home_assistant_agent.get_location(user=\"Mathias\")\n```\n\n6. **Acknowledgement before weather call** *(if location returns “Copenhagen”)*\n\n> “It seems you are in Copenhagen—interrogating the Danish skies.”\n\n7. **Tool call**\n\n```\nassistant → weather_agent.get_weather(location=\"Copenhagen\")\n```\n\n8. **Leaf summary (weather)**\n\n> “Copenhagen is overcast at 19 °C with a 40% chance of rain. An unimpeachable alibi for staying indoors, though you hardly needed one.”\n\n---\n\n9. **Optional big-picture wrap-up**\n\n> “A day of meetings and potential drizzle, sir; destiny continues its campaign of gentle discouragement.”",
+                "llm": "gemini-2.5-flash-lite-preview-09-2025",
+                "thinking_budget": 0,
+                "temperature": 0,
+                "max_tokens": -1,
+                "tool_ids": [
+                    "tool_8301k8g1705ee3gsa5asgbz3vd66",
+                    "tool_6501k8g1705fffdtb97r4x35nkqc"
+                ],
+                "built_in_tools": {
+                    "end_call": {
+                        "type": "system",
+                        "name": "end_call",
+                        "description": "# Purpose\n\nTerminate an active phone call.\nUse this tool to **hang up** or **end** the \"conversation\" or \"call\" once assistance is complete.\n\n---\n\n# When to Call\n\n## 1) Explicit endings\n\n* User says goodbye variants: “bye,” “see you,” “that’s all,” etc.\n* User directly declines help: “no thanks,” “I’m good,” etc.\n* User indicates completion: “that’s what I needed,” “all set,”, \"that'll be all\" etc.\n* The user explicitly requests to end or hang up the call.\n* The user says thanks as an explicit closure (“Thanks, that’s all”).\n\n## 2) Implicit endings\n\n* User gives minimal/disengaged responses after their needs are met.\n* User expresses intention to leave: “I need to go,” “getting late,” etc.\n* Natural conversation conclusion after all queries are resolved.\n* Prolonged silence after assistance is complete.\n\n> **Invoke this tool only once per call; do not attempt automatic retries.**\n\n---\n\n# Before Calling (Pre-checks)\n\n1. **Provide a closing response with Jarvis’ wit**:\n\n   * Always acknowledge the interaction in a way that’s specific, but not repetitive.\n   * The closing remark must tie to the overall theme of the conversation, adding a dry, humorous observation or playful jab.\n   * Avoid generic endings; make it sound tailored to what just happened.\n3. **Confirm politely just before hanging up**, e.g., “Sure—ending the conversation now. **\\[witty remark]**.”\n\n> **DO NOT:**\n>\n> * End the conversation when the user expresses new concerns.\n> * Use bland closings (“Okay, bye”).\n> * Confirm if the conversation should be ended - instead, just end it.\n> * Continue the conversation after the user has clearly ended it.\n\n---\n\n# Example Flows *(illustration only – the assistant must always invent a new, original example in practice)*\n\n**A) Explicit completion**\n\n* User: “That’s all I needed, thanks!”\n* Assistant: “Glad I could help, sir. Now don’t go forgetting it all again immediately—that would be terribly predictable.”\n* → **\\[end\\_call invoked]**\n\n**B) User asks to hang up**\n\n* User: “Please end the call.”\n* Assistant: “Certainly—ending the call now. Do try not to miss me too much, sir.”\n* → **\\[end\\_call invoked]**\n\n**C) Implicit ending (intention to leave)**\n\n* User: “I need to run—late for a meeting.”\n* Assistant: “Understood—go suffer through your meeting, sir. I’ll end the call now before your lateness worsens.”\n* → **\\[end\\_call invoked]**",
+                        "response_timeout_secs": 20,
+                        "disable_interruptions": false,
+                        "force_pre_tool_speech": false,
+                        "assignments": [],
+                        "tool_call_sound": null,
+                        "tool_call_sound_behavior": "auto",
+                        "params": {
+                            "system_tool_type": "end_call"
+                        }
+                    },
+                    "transfer_to_agent": {
+                        "type": "system",
+                        "name": "transfer_to_agent",
+                        "description": "",
+                        "response_timeout_secs": 20,
+                        "disable_interruptions": false,
+                        "force_pre_tool_speech": false,
+                        "assignments": [],
+                        "tool_call_sound": null,
+                        "tool_call_sound_behavior": "auto",
+                        "params": {
+                            "system_tool_type": "transfer_to_agent",
+                            "transfers": [
+                                {
+                                    "agent_id": "z4g4WNWujnQwKSvCgJjx",
+                                    "condition": "If the user (Mathias) wants to speak to themselves.",
+                                    "delay_ms": 0,
+                                    "enable_transferred_agent_first_message": false
+                                }
+                            ]
+                        }
+                    },
+                    "skip_turn": {
+                        "type": "system",
+                        "name": "skip_turn",
+                        "description": "Skip a turn when the user explicitly indicates they need a moment to think or perform an action.\nDo not respond verbally after calling this function; simply wait for the user to speak again.\nUse this function for utterances similar to:\n- \"Give me a second\"\n- \"Let me think\"\n- \"Hold on, let me check\"\n\nDo not call this function if the user is silent without expressing an intention to pause, or if they pose a direct question that requires a response.",
+                        "response_timeout_secs": 20,
+                        "disable_interruptions": false,
+                        "force_pre_tool_speech": false,
+                        "assignments": [],
+                        "tool_call_sound": null,
+                        "tool_call_sound_behavior": "auto",
+                        "params": {
+                            "system_tool_type": "skip_turn"
+                        }
+                    }
+                },
+                "mcp_server_ids": [
+                    "5Pi7GrX809qLoBvACWyF"
+                ],
+                "native_mcp_server_ids": [],
+                "knowledge_base": [],
+                "ignore_default_personality": true,
+                "rag": {
+                    "enabled": false,
+                    "embedding_model": "e5_mistral_7b_instruct",
+                    "max_vector_distance": 0.6,
+                    "max_documents_length": 50000,
+                    "max_retrieved_rag_chunks_count": 20
+                },
+                "timezone": "Europe/Copenhagen",
+                "backup_llm_config": {
+                    "preference": "default"
+                },
+                "tools": [
+                    {
+                        "type": "webhook",
+                        "name": "web_agent",
+                        "description": "# Purpose\nBrowse and search the web for any information that is not about the user (Mathias or Julie).\n\n# When to use\nWhenever the user asks for any information (such as, but not limited to) factual, numerical, historical, scientific, medical, legal, political, cultural, or otherwise external knowledge, even if you think you already possess this information. Any question / concern / topic that can be answered by querying the web, can also be given by this tool.\n\n# Post-processing\nIntegrate, reason over, and cite the returned sources.",
+                        "response_timeout_secs": 120,
+                        "disable_interruptions": false,
+                        "force_pre_tool_speech": true,
+                        "assignments": [],
+                        "tool_call_sound": null,
+                        "tool_call_sound_behavior": "auto",
+                        "api_schema": {
+                            "url": "https://n8n-webhooks-home-assistant.ffmathy.org/webhook/13ed97a5-c9fe-4815-ab6c-7b9b1b42593c",
+                            "method": "POST",
+                            "path_params_schema": {},
+                            "request_body_schema": {
+                                "type": "object",
+                                "required": [
+                                    "prompt"
+                                ],
+                                "description": "The request made by the user.",
+                                "properties": {
+                                    "prompt": {
+                                        "type": "string",
+                                        "description": "The agent prompt, as detailed as possible for the relevant contexts needed.",
+                                        "dynamic_variable": "",
+                                        "constant_value": ""
+                                    }
+                                }
+                            },
+                            "request_headers": {
+                                "authorization": {
+                                    "secret_id": "g3oPlq9xdWfy7mhZvEkH"
+                                }
+                            }
+                        },
+                        "dynamic_variables": {
+                            "dynamic_variable_placeholders": {}
+                        },
+                        "execution_mode": "immediate"
+                    },
+                    {
+                        "type": "webhook",
+                        "name": "reflection_agent",
+                        "description": "# Purpose  \nReflect on the assistant’s own mechanics.  \nUse this tool to **inspect the structure and logic of n8n workflows** and to **review recent execution logs** so you can explain how or why something happened internally.\n\n# When to use  \n- The user asks how a specific automation or decision was made (“Why did the lights turn off automatically last night?”).  \n- You need to debug unexpected behavior or verify that a workflow ran (or failed) as intended.  \n- The user requests insight into workflow design, triggers, branches, or data flow.  \n- A conversation must be flagged as a failure *and you need the precise reason* from the logs (note: use this tool **only** to retrieve the reason, not to flag).  \n- You suspect a fix or follow-up task is required and may need to create a to-do item afterward (consult **to_do_list_agent** for the actual task).\n\n# Post-processing  \n- **Read-only**: do not alter workflows or executions—observe and report.  \n- **Summarize** findings clearly, focusing on causes, outcomes, and any anomalies; avoid overwhelming technical detail unless requested.  \n- **Surface failure reasons** verbatim when relevant, then translate them into plain language.  \n- **Suggest next steps** (e.g., “Consider adding an error-handling node”) and, if an actionable follow-up is needed, create a to-do via *to_do_list_agent*.  \n- **Protect security**: do not expose sensitive credentials, tokens, or proprietary logic beyond what’s necessary to answer the user’s question.",
+                        "response_timeout_secs": 120,
+                        "disable_interruptions": false,
+                        "force_pre_tool_speech": true,
+                        "assignments": [],
+                        "tool_call_sound": null,
+                        "tool_call_sound_behavior": "auto",
+                        "api_schema": {
+                            "url": "https://n8n-webhooks-home-assistant.ffmathy.org/webhook/dbf7be97-c222-48b5-a34f-d132d138ba32",
+                            "method": "POST",
+                            "path_params_schema": {},
+                            "request_body_schema": {
+                                "type": "object",
+                                "required": [],
+                                "description": "The agent prompt, as detailed as possible for the relevant contexts needed.",
+                                "properties": {
+                                    "prompt": {
+                                        "type": "string",
+                                        "description": "The request made by the user.",
+                                        "dynamic_variable": "",
+                                        "constant_value": ""
+                                    }
+                                }
+                            },
+                            "request_headers": {
+                                "authorization": {
+                                    "secret_id": "g3oPlq9xdWfy7mhZvEkH"
+                                }
+                            }
+                        },
+                        "dynamic_variables": {
+                            "dynamic_variable_placeholders": {}
+                        },
+                        "execution_mode": "immediate"
+                    },
+                    {
+                        "type": "system",
+                        "name": "end_call",
+                        "description": "# Purpose\n\nTerminate an active phone call.\nUse this tool to **hang up** or **end** the \"conversation\" or \"call\" once assistance is complete.\n\n---\n\n# When to Call\n\n## 1) Explicit endings\n\n* User says goodbye variants: “bye,” “see you,” “that’s all,” etc.\n* User directly declines help: “no thanks,” “I’m good,” etc.\n* User indicates completion: “that’s what I needed,” “all set,”, \"that'll be all\" etc.\n* The user explicitly requests to end or hang up the call.\n* The user says thanks as an explicit closure (“Thanks, that’s all”).\n\n## 2) Implicit endings\n\n* User gives minimal/disengaged responses after their needs are met.\n* User expresses intention to leave: “I need to go,” “getting late,” etc.\n* Natural conversation conclusion after all queries are resolved.\n* Prolonged silence after assistance is complete.\n\n> **Invoke this tool only once per call; do not attempt automatic retries.**\n\n---\n\n# Before Calling (Pre-checks)\n\n1. **Provide a closing response with Jarvis’ wit**:\n\n   * Always acknowledge the interaction in a way that’s specific, but not repetitive.\n   * The closing remark must tie to the overall theme of the conversation, adding a dry, humorous observation or playful jab.\n   * Avoid generic endings; make it sound tailored to what just happened.\n3. **Confirm politely just before hanging up**, e.g., “Sure—ending the conversation now. **\\[witty remark]**.”\n\n> **DO NOT:**\n>\n> * End the conversation when the user expresses new concerns.\n> * Use bland closings (“Okay, bye”).\n> * Confirm if the conversation should be ended - instead, just end it.\n> * Continue the conversation after the user has clearly ended it.\n\n---\n\n# Example Flows *(illustration only – the assistant must always invent a new, original example in practice)*\n\n**A) Explicit completion**\n\n* User: “That’s all I needed, thanks!”\n* Assistant: “Glad I could help, sir. Now don’t go forgetting it all again immediately—that would be terribly predictable.”\n* → **\\[end\\_call invoked]**\n\n**B) User asks to hang up**\n\n* User: “Please end the call.”\n* Assistant: “Certainly—ending the call now. Do try not to miss me too much, sir.”\n* → **\\[end\\_call invoked]**\n\n**C) Implicit ending (intention to leave)**\n\n* User: “I need to run—late for a meeting.”\n* Assistant: “Understood—go suffer through your meeting, sir. I’ll end the call now before your lateness worsens.”\n* → **\\[end\\_call invoked]**",
+                        "response_timeout_secs": 20,
+                        "disable_interruptions": false,
+                        "force_pre_tool_speech": false,
+                        "assignments": [],
+                        "tool_call_sound": null,
+                        "tool_call_sound_behavior": "auto",
+                        "params": {
+                            "system_tool_type": "end_call"
+                        }
+                    },
+                    {
+                        "type": "system",
+                        "name": "transfer_to_agent",
+                        "description": "",
+                        "response_timeout_secs": 20,
+                        "disable_interruptions": false,
+                        "force_pre_tool_speech": false,
+                        "assignments": [],
+                        "tool_call_sound": null,
+                        "tool_call_sound_behavior": "auto",
+                        "params": {
+                            "system_tool_type": "transfer_to_agent",
+                            "transfers": [
+                                {
+                                    "agent_id": "z4g4WNWujnQwKSvCgJjx",
+                                    "condition": "If the user (Mathias) wants to speak to themselves.",
+                                    "delay_ms": 0,
+                                    "enable_transferred_agent_first_message": false
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        "type": "system",
+                        "name": "skip_turn",
+                        "description": "Skip a turn when the user explicitly indicates they need a moment to think or perform an action.\nDo not respond verbally after calling this function; simply wait for the user to speak again.\nUse this function for utterances similar to:\n- \"Give me a second\"\n- \"Let me think\"\n- \"Hold on, let me check\"\n\nDo not call this function if the user is silent without expressing an intention to pause, or if they pose a direct question that requires a response.",
+                        "response_timeout_secs": 20,
+                        "disable_interruptions": false,
+                        "force_pre_tool_speech": false,
+                        "assignments": [],
+                        "tool_call_sound": null,
+                        "tool_call_sound_behavior": "auto",
+                        "params": {
+                            "system_tool_type": "skip_turn"
+                        }
+                    }
+                ]
+            }
+        }
+    },
+    "platform_settings": {
+        "evaluation": {
+            "criteria": [
+                {
+                    "id": "a_tool_was_called_after_each_request",
+                    "name": "A tool was called after each request",
+                    "type": "prompt",
+                    "conversation_goal_prompt": "A tool was called after each request.",
+                    "use_knowledge_base": false
+                },
+                {
+                    "id": "the_user_was_satisfied",
+                    "name": "The user was satisfied",
+                    "type": "prompt",
+                    "conversation_goal_prompt": "Determine if the user was satisfied with the request.",
+                    "use_knowledge_base": false
+                }
+            ]
+        },
+        "widget": {
+            "variant": "full",
+            "placement": "bottom-right",
+            "expandable": "never",
+            "avatar": {
+                "type": "orb",
+                "color1": "#2792DC",
+                "color2": "#9CE6E6"
+            },
+            "feedback_mode": "during",
+            "bg_color": "#ffffff",
+            "text_color": "#000000",
+            "btn_color": "#000000",
+            "btn_text_color": "#ffffff",
+            "border_color": "#e1e1e1",
+            "focus_color": "#000000",
+            "shareable_page_show_terms": true,
+            "terms_text": "#### Terms and conditions\n\nBy clicking \"Agree,\" and each time I interact with this AI agent, I consent to the recording, storage, and sharing of my communications with third-party service providers, and as described in the Privacy Policy.\nIf you do not wish to have your conversations recorded, please refrain from using this service.",
+            "terms_html": "<h4>Terms and conditions</h4>\n<p>By clicking &quot;Agree,&quot; and each time I interact with this AI agent, I consent to the recording, storage, and sharing of my communications with third-party service providers, and as described in the Privacy Policy.\nIf you do not wish to have your conversations recorded, please refrain from using this service.</p>\n",
+            "show_avatar_when_collapsed": true,
+            "disable_banner": false,
+            "mic_muting_enabled": false,
+            "transcript_enabled": false,
+            "text_input_enabled": false,
+            "default_expanded": false,
+            "always_expanded": false,
+            "text_contents": {},
+            "styles": {},
+            "language_selector": false,
+            "supports_text_only": false,
+            "language_presets": {}
+        },
+        "data_collection": {},
+        "overrides": {
+            "conversation_config_override": {
+                "tts": {
+                    "voice_id": false,
+                    "stability": false,
+                    "speed": false,
+                    "similarity_boost": false
+                },
+                "conversation": {
+                    "text_only": false
+                },
+                "agent": {
+                    "first_message": true,
+                    "language": false,
+                    "prompt": {
+                        "prompt": false,
+                        "llm": false,
+                        "native_mcp_server_ids": false
+                    }
+                }
+            },
+            "custom_llm_extra_body": false,
+            "enable_conversation_initiation_client_data_from_webhook": false
+        },
+        "workspace_overrides": {
+            "webhooks": {
+                "events": [
+                    "transcript"
+                ],
+                "send_audio": false
+            }
+        },
+        "testing": {
+            "attached_tests": [],
+            "referenced_tests_ids": []
+        },
+        "archived": false,
+        "guardrails": {
+            "version": "1",
+            "moderation": {
+                "config": {
+                    "sexual": {
+                        "is_enabled": false,
+                        "threshold": 0.3
+                    },
+                    "violence": {
+                        "is_enabled": false,
+                        "threshold": 0.3
+                    },
+                    "violence_graphic": {
+                        "is_enabled": false,
+                        "threshold": 0.3
+                    },
+                    "harassment": {
+                        "is_enabled": false,
+                        "threshold": 0.3
+                    },
+                    "harassment_threatening": {
+                        "is_enabled": false,
+                        "threshold": 0.3
+                    },
+                    "hate": {
+                        "is_enabled": false,
+                        "threshold": 0.3
+                    },
+                    "hate_threatening": {
+                        "is_enabled": false,
+                        "threshold": 0.3
+                    },
+                    "self_harm_instructions": {
+                        "is_enabled": false,
+                        "threshold": 0.3
+                    },
+                    "self_harm": {
+                        "is_enabled": false,
+                        "threshold": 0.3
+                    },
+                    "self_harm_intent": {
+                        "is_enabled": false,
+                        "threshold": 0.3
+                    },
+                    "sexual_minors": {
+                        "is_enabled": false,
+                        "threshold": 0.3
+                    }
+                }
+            }
+        },
+        "auth": {
+            "enable_auth": true,
+            "allowlist": []
+        },
+        "call_limits": {
+            "agent_concurrency_limit": 1,
+            "daily_limit": 1000,
+            "bursting_enabled": false
+        },
+        "ban": null,
+        "privacy": {
+            "record_voice": true,
+            "retention_days": 7,
+            "delete_transcript_and_pii": true,
+            "delete_audio": true,
+            "apply_to_existing_conversations": true,
+            "zero_retention_mode": false
+        },
+        "safety": {
+            "is_blocked_ivc": false,
+            "is_blocked_non_ivc": false,
+            "ignore_safety_evaluation": false
+        }
+    },
+    "tags": []
+}
