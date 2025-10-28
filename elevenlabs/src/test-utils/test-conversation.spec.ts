@@ -7,8 +7,9 @@ describe('TestConversation', () => {
   const apiKey = process.env.HEY_JARVIS_ELEVENLABS_API_KEY;
   const googleApiKey = process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY;
 
-  // Skip all tests if API keys not configured
-  const runTest = apiKey && googleApiKey ? it : it.skip;
+  // Skip tests if API keys not configured
+  const runTest = apiKey ? it : it.skip;
+  const runLLMTest = apiKey && googleApiKey ? it : it.skip;
 
   beforeEach(() => {
     testConversation = new TestConversation({ agentId, apiKey, googleApiKey });
@@ -18,8 +19,59 @@ describe('TestConversation', () => {
     await testConversation.disconnect();
   });
 
+  describe('Connection', () => {
+    runTest('should connect', async () => {
+      await expect(testConversation.connect()).resolves.not.toThrow();
+    });
+  });
+
+  describe('Messaging', () => {
+    it('should throw if not connected', async () => {
+      const disconnected = new TestConversation({
+        agentId,
+        apiKey,
+      });
+
+      await expect(disconnected.chat('Test')).rejects.toThrow(
+        'Not connected'
+      );
+    });
+  });
+
+  describe('Response handling', () => {
+    beforeEach(async () => {
+      await testConversation.connect();
+    });
+
+    runTest('should receive and store responses', async () => {
+      const response = await testConversation.chat('Hello');
+      expect(response).toBeTruthy();
+      expect(typeof response).toBe('string');
+
+      const responses = testConversation.getAgentResponses();
+      expect(responses.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('Multi-turn conversation', () => {
+    beforeEach(async () => {
+      await testConversation.connect();
+    });
+
+    runTest('should handle multiple messages', async () => {
+      const response1 = await testConversation.chat('Hello');
+      expect(response1).toBeTruthy();
+
+      const response2 = await testConversation.chat('How are you?');
+      expect(response2).toBeTruthy();
+
+      const responses = testConversation.getAgentResponses();
+      expect(responses.length).toBeGreaterThanOrEqual(2);
+    }, 90000); // 90 second timeout for multi-turn conversation
+  });
+
   describe('LLM-based evaluation', () => {
-    runTest(
+    runLLMTest(
       'should evaluate conversation quality using custom criteria',
       async () => {
         await testConversation.connect();
@@ -34,15 +86,16 @@ describe('TestConversation', () => {
       90000
     );
 
-    runTest(
+    runLLMTest(
       'should provide detailed reasoning for evaluations',
       async () => {
         await testConversation.connect();
 
         await testConversation.sendMessage('Tell me about the weather');
 
-        const result = await testConversation.evaluate(
-          'The agent discussed weather-related topics'
+        const result = await testConversation.assertCriteria(
+          'The agent discussed weather-related topics',
+          0.5
         );
 
         console.log('Weather topic evaluation:', result);
