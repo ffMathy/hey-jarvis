@@ -12,7 +12,8 @@
     "turn": {
       "turnTimeout": 150,
       "silenceEndCallTimeout": 180,
-      "mode": "turn"
+      "mode": "turn",
+      "turn_eagerness": "normal"
     },
     "tts": {
       "modelId": "eleven_flash_v2",
@@ -54,7 +55,7 @@
   },
   "metadata": {
     "createdAtUnixSecs": 1742778859,
-    "updatedAtUnixSecs": 1760501094
+    "updatedAtUnixSecs": 1761474741
   },
   "platformSettings": {
     "evaluation": {
@@ -145,6 +146,57 @@
       "referenced_tests_ids": []
     },
     "archived": false,
+    "guardrails": {
+      "version": "1",
+      "moderation": {
+        "config": {
+          "sexual": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "violence": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "violence_graphic": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "harassment": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "harassment_threatening": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "hate": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "hate_threatening": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "self_harm_instructions": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "self_harm": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "self_harm_intent": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "sexual_minors": {
+            "is_enabled": false,
+            "threshold": 0.3
+          }
+        }
+      }
+    },
     "auth": {
       "enableAuth": true,
       "allowlist": []
@@ -178,10 +230,9 @@
           "x": 544,
           "y": 64
         },
-        "edge_order": []
+        "edgeOrder": []
       }
     }
   },
-  "tags": [],
-  "version_id": null
+  "tags": []
 }
