@@ -11,10 +11,6 @@ updates:
       mastra:
         patterns:
           - "@mastra/*"
-      production-dependencies:
-        dependency-type: "production"
-      development-dependencies:
-        dependency-type: "development"
 
   # Docker dependencies
   - package-ecosystem: "docker"
