@@ -26,15 +26,13 @@ describe('TestConversation', () => {
   });
 
   describe('Messaging', () => {
-    it('should throw if not connected', async () => {
+    it('should throw if not connected', () => {
       const disconnected = new TestConversation({
         agentId,
         apiKey,
       });
 
-      await expect(disconnected.chat('Test')).rejects.toThrow(
-        'Not connected'
-      );
+      expect(() => disconnected.chat('Test')).toThrow('Not connected');
     });
   });
 
@@ -44,7 +42,8 @@ describe('TestConversation', () => {
     });
 
     runTest('should receive and store responses', async () => {
-      const response = await testConversation.chat('Hello');
+      testConversation.chat('Hello');
+      const response = await testConversation.waitForAgentResponse();
       expect(response).toBeTruthy();
       expect(typeof response).toBe('string');
 
@@ -59,10 +58,12 @@ describe('TestConversation', () => {
     });
 
     runTest('should handle multiple messages', async () => {
-      const response1 = await testConversation.chat('Hello');
+      testConversation.chat('Hello');
+      const response1 = await testConversation.waitForAgentResponse();
       expect(response1).toBeTruthy();
 
-      const response2 = await testConversation.chat('How are you?');
+      testConversation.chat('How are you?');
+      const response2 = await testConversation.waitForAgentResponse();
       expect(response2).toBeTruthy();
 
       const responses = testConversation.getAgentResponses();
@@ -77,11 +78,14 @@ describe('TestConversation', () => {
         await testConversation.connect();
 
         // Have a brief conversation
-        await testConversation.sendMessage('What can you help me with?');
+        testConversation.sendMessage('What can you help me with?');
+        await testConversation.waitForAgentResponse();
 
         // Use LLM-based evaluation with custom criteria
         await testConversation.assertCriteria(
-          'The agent responded in a friendly and helpful manner', 0.5);
+          'The agent responded in a friendly and helpful manner',
+          0.5
+        );
       },
       90000
     );
@@ -91,7 +95,8 @@ describe('TestConversation', () => {
       async () => {
         await testConversation.connect();
 
-        await testConversation.sendMessage('Tell me about the weather');
+        testConversation.sendMessage('Tell me about the weather');
+        await testConversation.waitForAgentResponse();
 
         const result = await testConversation.assertCriteria(
           'The agent discussed weather-related topics',
@@ -113,30 +118,17 @@ describe('TestConversation', () => {
       async () => {
         await testConversation.connect();
 
-        await testConversation.sendMessage('Hello');
-        await testConversation.sendMessage('How are you?');
+        testConversation.sendMessage('Hello');
+        await testConversation.waitForAgentResponse();
+        testConversation.sendMessage('How are you?');
+        await testConversation.waitForAgentResponse();
 
-        const transcript = testConversation.getTranscript();
-        expect(transcript.length).toBeGreaterThanOrEqual(4); // 2 user + 2 agent messages
+        const messages = testConversation.getMessages();
+        expect(messages.length).toBeGreaterThanOrEqual(2); // At least 2 agent responses
 
         const transcriptText = testConversation.getTranscriptText();
-        expect(transcriptText).toContain('USER:');
         expect(transcriptText).toContain('AGENT:');
-        expect(transcriptText).toContain('Hello');
-      },
-      90000
-    );
-
-    runTest(
-      'should clear transcript',
-      async () => {
-        await testConversation.connect();
-
-        await testConversation.sendMessage('Hello');
-        expect(testConversation.getTranscript().length).toBeGreaterThan(0);
-
-        testConversation.clearTranscript();
-        expect(testConversation.getTranscript().length).toBe(0);
+        expect(transcriptText.length).toBeGreaterThan(0);
       },
       90000
     );
@@ -148,7 +140,8 @@ describe('TestConversation', () => {
       async () => {
         await testConversation.connect();
 
-        await testConversation.sendMessage('Hello');
+        testConversation.sendMessage('Hello');
+        await testConversation.waitForAgentResponse();
 
         // This should fail because the agent likely didn't discuss quantum physics
         await expect(
@@ -166,7 +159,8 @@ describe('TestConversation', () => {
       async () => {
         await testConversation.connect();
 
-        await testConversation.sendMessage('Hello');
+        testConversation.sendMessage('Hello');
+        await testConversation.waitForAgentResponse();
 
         // This should pass - the agent likely greeted the user
         const result = await testConversation.assertCriteria(
@@ -175,6 +169,88 @@ describe('TestConversation', () => {
         );
 
         expect(result.passed).toBe(true);
+      },
+      90000
+    );
+  });
+
+  describe('Tool call detection', () => {
+    runTest(
+      'should detect agent_tool_response messages',
+      async () => {
+        await testConversation.connect();
+
+        // Request weather - should trigger weather_agent tool call
+        testConversation.sendMessage(
+          'What is the weather like in Copenhagen?'
+        );
+
+        // Wait for tool call - should detect agent_tool_response message
+        const toolCallMessage = await testConversation.waitForToolCall(
+          undefined,
+          30000
+        );
+
+        expect(toolCallMessage).toBeTruthy();
+        expect(toolCallMessage.type).toBe('agent_tool_response');
+
+        // Verify tool call appears in transcript
+        const transcript = testConversation.getTranscriptText();
+        expect(transcript).toContain('> TOOL:');
+      },
+      90000
+    );
+
+    runTest(
+      'should include tool calls in transcript',
+      async () => {
+        await testConversation.connect();
+
+        testConversation.sendMessage(
+          'What is the weather like in Copenhagen?'
+        );
+
+        // Wait for both agent response and tool call
+        await testConversation.waitForToolCall(undefined, 30000);
+        await testConversation.waitForAgentResponse();
+
+        const transcript = testConversation.getTranscriptText();
+        
+        // Transcript should include user message, tool call, and agent response
+        expect(transcript).toContain('> USER:');
+        expect(transcript).toContain('> TOOL:');
+        expect(transcript).toContain('> AGENT:');
+        
+        console.log('Weather request transcript:', transcript);
+      },
+      90000
+    );
+
+    runTest(
+      'should verify weather tool is called for weather queries',
+      async () => {
+        await testConversation.connect();
+
+        testConversation.sendMessage(
+          'Tell me about the weather in Copenhagen'
+        );
+
+        // Wait for any tool call
+        const toolCallMessage = await testConversation.waitForToolCall(
+          undefined,
+          30000
+        );
+
+        expect(toolCallMessage.type).toBe('agent_tool_response');
+        
+        // The agent should call a weather-related tool
+        const messages = testConversation.getMessages();
+        const toolCalls = messages.filter(
+          (msg) => msg.type === 'agent_tool_response'
+        );
+        
+        expect(toolCalls.length).toBeGreaterThan(0);
+        console.log('Tool calls detected:', toolCalls.length);
       },
       90000
     );

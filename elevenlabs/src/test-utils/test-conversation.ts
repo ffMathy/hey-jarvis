@@ -20,15 +20,6 @@ export interface EvaluationResult {
 }
 
 /**
- * Conversation transcript entry
- */
-export interface TranscriptEntry {
-  role: 'user' | 'agent';
-  message: string;
-  timestamp: number;
-}
-
-/**
  * WebSocket message types from ElevenLabs Conversational AI
  */
 interface ConversationInitiationMetadataEvent {
@@ -60,11 +51,23 @@ interface PingEvent {
   };
 }
 
+interface AgentToolResponseEvent {
+  type: 'agent_tool_response';
+  agent_tool_response: {
+    tool_name: string;
+    tool_call_id: string;
+    output?: string;
+    [key: string]: unknown;
+  };
+}
+
 type ServerMessage =
   | ConversationInitiationMetadataEvent
   | AgentResponseEvent
   | UserTranscriptEvent
+  | UserMessageEvent
   | PingEvent
+  | AgentToolResponseEvent
   | { type: string; [key: string]: unknown };
 
 /**
@@ -98,8 +101,7 @@ export class TestConversation {
   private readonly agentId: string;
   private readonly apiKey: string;
   private readonly googleApiKey: string | undefined;
-  private responses: string[] = [];
-  private transcript: TranscriptEntry[] = [];
+  private messages: ServerMessage[] = [];
   private conversationId?: string;
   private shouldStop = false;
   private conversationReady = false;
@@ -124,8 +126,7 @@ export class TestConversation {
 
   async connect(): Promise<void> {
     // Clear state from any previous connection
-    this.responses = [];
-    this.transcript = [];
+    this.messages = [];
     this.conversationId = undefined;
     this.shouldStop = false;
     this.conversationReady = false;
@@ -180,7 +181,7 @@ export class TestConversation {
 
       this.ws.on('close', (code: number, reason: Buffer) => {
         clearTimeout(timeoutId);
-        this._onWebSocketClose(code, reason);
+        this._onWebSocketClose();
         
         // If conversation never became ready, reject the connection
         if (!this.conversationReady) {
@@ -212,13 +213,17 @@ export class TestConversation {
 
     try {
       const message = JSON.parse(data.toString()) as ServerMessage;
+      
+      // Store all raw messages
+      this.messages.push(message);
+      
       this._handleMessage(message);
     } catch (error) {
       console.error('Error parsing WebSocket message:', error);
     }
   }
 
-  private _onWebSocketClose(code: number, reason: Buffer): void {
+  private _onWebSocketClose(): void {
     this.ws = null;
   }
 
@@ -245,7 +250,6 @@ export class TestConversation {
         const event = message as AgentResponseEvent;
         const response = event.agent_response_event.agent_response.trim();
         console.log('agent-response', response);
-        this.responses.push(response);
         break;
       }
 
@@ -277,17 +281,10 @@ export class TestConversation {
     }
   }
 
-  async chat(text: string): Promise<string> {
+  chat(text: string): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       throw new Error('Not connected. Call connect() first.');
     }
-
-    // Record user message in transcript
-    this.transcript.push({
-      role: 'user',
-      message: text,
-      timestamp: Date.now(),
-    });
 
     // Send user message
     console.log('user-message', text);
@@ -297,26 +294,17 @@ export class TestConversation {
       text,
     };
 
+    // Store the sent message in our messages array
+    this.messages.push(messageEvent as ServerMessage);
+
     this.ws.send(JSON.stringify(messageEvent));
-
-    // Wait for agent response
-    const response = await this.waitForAgentResponse();
-
-    // Record agent response in transcript
-    this.transcript.push({
-      role: 'agent',
-      message: response,
-      timestamp: Date.now(),
-    });
-
-    return response;
   }
 
   /**
    * Send a message and record it in the transcript
    * Alias for chat() method for backward compatibility
    */
-  async sendMessage(text: string): Promise<string> {
+  sendMessage(text: string): void {
     return this.chat(text);
   }
 
@@ -347,60 +335,136 @@ export class TestConversation {
   /**
    * Wait for an agent response to be received
    * @param timeoutMs Timeout in milliseconds (default: 30000)
-   * @returns The latest agent response
+   * @returns The latest agent response text
    */
   async waitForAgentResponse(timeoutMs = 30000): Promise<string> {
-    const initialLength = this.responses.length;
+    const initialMessageCount = this.messages.length;
 
     await this.waitForCondition(
-      () => this.responses.length > initialLength,
+      () => {
+        // Check if any new agent_response messages have been received
+        const agentResponses = this.messages
+          .slice(initialMessageCount)
+          .filter((msg) => msg.type === 'agent_response');
+        return agentResponses.length > 0;
+      },
       timeoutMs,
       `Agent response timeout. Expected response but got none`
     );
 
-    return this.responses[this.responses.length - 1];
+    // Find the most recent agent response
+    const agentResponses = this.messages.filter(
+      (msg) => msg.type === 'agent_response'
+    ) as AgentResponseEvent[];
+
+    if (agentResponses.length === 0) {
+      throw new Error('No agent response found');
+    }
+
+    const latestResponse = agentResponses[agentResponses.length - 1];
+    const responseText =
+      latestResponse.agent_response_event.agent_response.trim();
+
+    return responseText;
   }
 
   /**
-   * Wait for a tool call to be received (future implementation)
-   * @param toolName Name of the tool to wait for
+   * Wait for a tool call (agent_tool_response) to be received
+   * @param toolName Name of the tool to wait for (optional - waits for any tool if not specified)
    * @param timeoutMs Timeout in milliseconds (default: 30000)
+   * @returns The tool response message
    */
-  async waitForToolCall(toolName: string, timeoutMs = 30000): Promise<void> {
-    // TODO: Implement tool call tracking when ElevenLabs adds tool call events
-    // For now, this is a placeholder for future functionality
+  async waitForToolCall(
+    toolName?: string,
+    timeoutMs = 30000
+  ): Promise<ServerMessage> {
+    const initialMessageCount = this.messages.length;
+
+    const matchesToolName = (msg: ServerMessage) => {
+      if (!toolName) return true;
+      const toolResponse = (msg as { agent_tool_response?: { tool_name?: string } })
+        .agent_tool_response;
+      return toolResponse?.tool_name === toolName;
+    };
+
     await this.waitForCondition(
-      () => false, // Always false for now
+      () => {
+        const toolResponses = this.messages
+          .slice(initialMessageCount)
+          .filter((msg) => msg.type === 'agent_tool_response');
+
+        return toolResponses.length > 0 && toolResponses.some(matchesToolName);
+      },
       timeoutMs,
-      `Tool call timeout. Expected tool "${toolName}" to be called`
+      toolName
+        ? `Tool call timeout. Expected tool "${toolName}" to be called`
+        : `Tool call timeout. Expected any tool to be called`
     );
-  }
 
-  getAgentResponses(): string[] {
-    return [...this.responses];
+    const toolResponses = this.messages
+      .slice(initialMessageCount)
+      .filter((msg) => msg.type === 'agent_tool_response');
+
+    const matchingResponse = toolResponses.find(matchesToolName);
+    if (!matchingResponse) {
+      throw new Error(
+        toolName
+          ? `Tool response for "${toolName}" not found`
+          : 'No tool response found'
+      );
+    }
+
+    return matchingResponse;
   }
 
   /**
-   * Get the full conversation transcript
+   * Get all raw WebSocket messages received
    */
-  getTranscript(): TranscriptEntry[] {
-    return [...this.transcript];
+  getMessages(): ServerMessage[] {
+    return [...this.messages];
   }
 
   /**
-   * Get the transcript formatted as a string
+   * Get all agent responses from the message history
+   */
+  getAgentResponses(): string[] {
+    return this.messages
+      .filter((msg) => msg.type === 'agent_response')
+      .map(
+        (msg) =>
+          (msg as AgentResponseEvent).agent_response_event.agent_response.trim()
+      );
+  }
+
+  /**
+   * Get conversation transcript as formatted text for evaluation
+   * Includes user messages, agent responses, and tool calls
    */
   getTranscriptText(): string {
-    return this.transcript
-      .map((entry) => `> ${entry.role.toUpperCase()}: ${entry.message}`)
+    return this.messages
+      .filter(
+        (msg) =>
+          msg.type === 'user_message' ||
+          msg.type === 'agent_response' ||
+          msg.type === 'agent_tool_response'
+      )
+      .map((msg) => {
+        if (msg.type === 'user_message') {
+          return `> USER: ${(msg as UserMessageEvent).text}`;
+        } else if (msg.type === 'agent_response') {
+          const agentMsg = msg as AgentResponseEvent;
+          return `> AGENT: ${agentMsg.agent_response_event.agent_response.trim()}`;
+        } else if (msg.type === 'agent_tool_response') {
+          const toolMsg = msg as AgentToolResponseEvent;
+          const output = toolMsg.agent_tool_response.output
+            ? ` → ${toolMsg.agent_tool_response.output}`
+            : '';
+          return `> TOOL: ${toolMsg.agent_tool_response.tool_name}${output}`;
+        }
+        return '';
+      })
+      .filter(Boolean)
       .join('\n');
-  }
-
-  /**
-   * Clear the transcript
-   */
-  clearTranscript(): void {
-    this.transcript = [];
   }
 
   /**
@@ -508,8 +572,7 @@ Respond with:
       this.ws = null;
     }
 
-    this.responses = [];
-    this.transcript = [];
+    this.messages = [];
     this.conversationId = undefined;
     this.shouldStop = false;
     this.conversationReady = false;
