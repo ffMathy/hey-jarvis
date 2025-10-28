@@ -11,7 +11,7 @@ LABEL io.hass.name="Hey Jarvis MCP Server"
 LABEL io.hass.description="AI-powered home assistant with Mastra agents for weather, shopping, cooking, and more via Model Context Protocol"
 LABEL io.hass.arch="amd64|armv7|aarch64"
 LABEL io.hass.type="addon"
-LABEL maintainer="Mathias Lykkegaard Lorenzen <ffmathy@gmail.com>"
+LABEL maintainer="Mathias Lykkegaard Lorenzen <mathias.lorenzen@live.com>"
 LABEL io.hass.url="https://github.com/ffMathy/hey-jarvis"
 
 # Install bashio for Home Assistant addon configuration parsing
