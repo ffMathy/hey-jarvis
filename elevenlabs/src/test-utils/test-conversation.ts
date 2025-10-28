@@ -1,7 +1,14 @@
+import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
+import WebSocket from 'ws';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { generateObject } from 'ai';
 import { z } from 'zod';
-import { ElevenLabsConversationClient } from './websocket-client';
+
+export interface ConversationOptions {
+  agentId: string;
+  apiKey?: string;
+  googleApiKey?: string;
+}
 
 /**
  * Evaluation criteria result
@@ -22,50 +29,280 @@ export interface TranscriptEntry {
 }
 
 /**
- * Test conversation wrapper that adds LLM-based evaluation capabilities
- * to the ElevenLabsConversationClient for more robust testing.
+ * WebSocket message types from ElevenLabs Conversational AI
+ */
+interface ConversationInitiationMetadataEvent {
+  type: 'conversation_initiation_metadata';
+  conversation_initiation_metadata_event: {
+    conversation_id: string;
+  };
+}
+
+interface AgentResponseEvent {
+  type: 'agent_response';
+  agent_response_event: {
+    agent_response: string;
+  };
+}
+
+interface UserTranscriptEvent {
+  type: 'user_transcript';
+  user_transcription_event: {
+    user_transcript: string;
+  };
+}
+
+interface PingEvent {
+  type: 'ping';
+  ping_event: {
+    event_id: number;
+    ping_ms?: string;
+  };
+}
+
+type ServerMessage =
+  | ConversationInitiationMetadataEvent
+  | AgentResponseEvent
+  | UserTranscriptEvent
+  | PingEvent
+  | { type: string; [key: string]: unknown };
+
+/**
+ * Client-to-server message types
+ */
+interface ConversationInitiationClientDataEvent {
+  type: 'conversation_initiation_client_data';
+  custom_llm_extra_body?: Record<string, unknown>;
+  conversation_config_override?: Record<string, unknown>;
+  dynamic_variables?: Record<string, unknown>;
+}
+
+interface UserMessageEvent {
+  type: 'user_message';
+  text: string;
+}
+
+interface PongEvent {
+  type: 'pong';
+  event_id: number;
+}
+
+/**
+ * Text-based ElevenLabs Conversational AI client for testing.
+ * Uses raw WebSockets for direct control over the conversation protocol.
+ * Includes LLM-based evaluation capabilities for robust testing.
  */
 export class TestConversation {
-  private client: ElevenLabsConversationClient;
+  private ws: WebSocket | null = null;
+  private client: ElevenLabsClient;
+  private readonly agentId: string;
+  private readonly apiKey: string;
+  private readonly googleApiKey: string | undefined;
+  private responses: string[] = [];
   private transcript: TranscriptEntry[] = [];
-  private googleApiKey: string | undefined;
+  private conversationId?: string;
+  private shouldStop = false;
+  private conversationReady = false;
+  private conversationReadyResolve?: () => void;
 
-  constructor(options: {
-    agentId: string;
-    apiKey?: string;
-    googleApiKey?: string;
-  }) {
-    this.client = new ElevenLabsConversationClient({
-      agentId: options.agentId,
-      apiKey: options.apiKey,
-      disableFirstMessage: true, // Always disable first message for testing
-    });
+  constructor(options: ConversationOptions) {
+    this.agentId = options.agentId;
+    const apiKey =
+      options.apiKey || process.env.HEY_JARVIS_ELEVENLABS_API_KEY;
+    if (!apiKey) {
+      throw new Error(
+        'API key required: set HEY_JARVIS_ELEVENLABS_API_KEY or pass apiKey'
+      );
+    }
+
+    this.apiKey = apiKey;
     this.googleApiKey =
       options.googleApiKey ||
-      process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
       process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY;
+    this.client = new ElevenLabsClient({ apiKey: this.apiKey });
   }
 
   async connect(): Promise<void> {
-    await this.client.connect();
+    // Clear state from any previous connection
+    this.responses = [];
+    this.transcript = [];
+    this.conversationId = undefined;
+    this.shouldStop = false;
+    this.conversationReady = false;
+    this.conversationReadyResolve = undefined;
+
+    // Get signed URL for authenticated connection
+    const { signedUrl } =
+      await this.client.conversationalAi.conversations.getSignedUrl({
+        agentId: this.agentId,
+      });
+
+    // Create WebSocket connection
+    return new Promise((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        reject(new Error('Connection timeout after 10 seconds'));
+      }, 10000);
+
+      // Set up promise for conversation ready state
+      const conversationReadyPromise = new Promise<void>((resolveReady) => {
+        this.conversationReadyResolve = resolveReady;
+      });
+
+      this.ws = new WebSocket(signedUrl, {
+        perMessageDeflate: false,
+        maxPayload: 16 * 1024 * 1024, // 16MB max message size
+      });
+
+      this.ws.on('open', () => {
+        this._onWebSocketOpen();
+        
+        // Wait for conversation to be ready (conversation_initiation_metadata received)
+        conversationReadyPromise
+          .then(() => {
+            clearTimeout(timeoutId);
+            resolve();
+          })
+          .catch((error) => {
+            clearTimeout(timeoutId);
+            reject(error);
+          });
+      });
+
+      this.ws.on('message', (data: WebSocket.Data) => {
+        this._onWebSocketMessage(data);
+      });
+
+      this.ws.on('error', (error: Error) => {
+        clearTimeout(timeoutId);
+        console.error('WebSocket error:', error);
+        reject(error);
+      });
+
+      this.ws.on('close', (code: number, reason: Buffer) => {
+        clearTimeout(timeoutId);
+        this._onWebSocketClose(code, reason);
+        
+        // If conversation never became ready, reject the connection
+        if (!this.conversationReady) {
+          reject(new Error(`WebSocket closed before ready: ${code} - ${reason.toString()}`));
+        }
+      });
+    });
   }
 
-  async disconnect(): Promise<void> {
-    await this.client.disconnect();
+  private _onWebSocketOpen(): void {
+    if (!this.ws) return;
+
+    // Send conversation initiation data
+    const initEvent: ConversationInitiationClientDataEvent = {
+      type: 'conversation_initiation_client_data',
+      custom_llm_extra_body: {},
+      conversation_config_override: {},
+      dynamic_variables: {},
+    };
+
+    this.ws.send(JSON.stringify(initEvent));
+    console.log('WebSocket connected and initialized');
   }
 
-  /**
-   * Send a message and record it in the transcript
-   */
-  async sendMessage(text: string): Promise<string> {
+  private _onWebSocketMessage(data: WebSocket.Data): void {
+    if (this.shouldStop) {
+      return;
+    }
+
+    try {
+      const message = JSON.parse(data.toString()) as ServerMessage;
+      this._handleMessage(message);
+    } catch (error) {
+      console.error('Error parsing WebSocket message:', error);
+    }
+  }
+
+  private _onWebSocketClose(code: number, reason: Buffer): void {
+    this.ws = null;
+  }
+
+  private _handleMessage(message: ServerMessage): void {
+    switch (message.type) {
+      case 'conversation_initiation_metadata': {
+        const event = message as ConversationInitiationMetadataEvent;
+        if (!this.conversationId) {
+          this.conversationId =
+            event.conversation_initiation_metadata_event.conversation_id;
+          console.log('conversation-started', this.conversationId);
+          
+          // Mark conversation as ready
+          this.conversationReady = true;
+          if (this.conversationReadyResolve) {
+            this.conversationReadyResolve();
+            this.conversationReadyResolve = undefined;
+          }
+        }
+        break;
+      }
+
+      case 'agent_response': {
+        const event = message as AgentResponseEvent;
+        const response = event.agent_response_event.agent_response.trim();
+        console.log('agent-response', response);
+        this.responses.push(response);
+        break;
+      }
+
+      case 'user_transcript': {
+        const event = message as UserTranscriptEvent;
+        const transcript =
+          event.user_transcription_event.user_transcript.trim();
+        console.log('user-transcript', transcript);
+        break;
+      }
+
+      case 'ping': {
+        const event = message as PingEvent;
+        // Respond to ping with pong
+        const pongEvent: PongEvent = {
+          type: 'pong',
+          event_id: event.ping_event.event_id,
+        };
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+          this.ws.send(JSON.stringify(pongEvent));
+        }
+        break;
+      }
+
+      default:
+        // Ignore unknown message types
+        console.log('unknown-message-type', message.type);
+        break;
+    }
+  }
+
+  async chat(text: string): Promise<string> {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      throw new Error('Not connected. Call connect() first.');
+    }
+
+    // Record user message in transcript
     this.transcript.push({
       role: 'user',
       message: text,
       timestamp: Date.now(),
     });
 
-    const response = await this.client.chat(text);
+    // Send user message
+    console.log('user-message', text);
 
+    const messageEvent: UserMessageEvent = {
+      type: 'user_message',
+      text,
+    };
+
+    this.ws.send(JSON.stringify(messageEvent));
+
+    // Wait for agent response
+    const response = await this.waitForAgentResponse();
+
+    // Record agent response in transcript
     this.transcript.push({
       role: 'agent',
       message: response,
@@ -73,6 +310,74 @@ export class TestConversation {
     });
 
     return response;
+  }
+
+  /**
+   * Send a message and record it in the transcript
+   * Alias for chat() method for backward compatibility
+   */
+  async sendMessage(text: string): Promise<string> {
+    return this.chat(text);
+  }
+
+  /**
+   * Wait for a specific condition to be met
+   * @param condition Function that returns true when the condition is met
+   * @param timeoutMs Timeout in milliseconds (default: 30000)
+   * @param errorMessage Error message if timeout occurs
+   */
+  private async waitForCondition(
+    condition: () => boolean,
+    timeoutMs = 30000,
+    errorMessage = 'Condition timeout'
+  ): Promise<void> {
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < timeoutMs) {
+      if (condition()) {
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    const elapsed = Date.now() - startTime;
+    throw new Error(`${errorMessage} after ${elapsed}ms`);
+  }
+
+  /**
+   * Wait for an agent response to be received
+   * @param timeoutMs Timeout in milliseconds (default: 30000)
+   * @returns The latest agent response
+   */
+  async waitForAgentResponse(timeoutMs = 30000): Promise<string> {
+    const initialLength = this.responses.length;
+
+    await this.waitForCondition(
+      () => this.responses.length > initialLength,
+      timeoutMs,
+      `Agent response timeout. Expected response but got none`
+    );
+
+    return this.responses[this.responses.length - 1];
+  }
+
+  /**
+   * Wait for a tool call to be received (future implementation)
+   * @param toolName Name of the tool to wait for
+   * @param timeoutMs Timeout in milliseconds (default: 30000)
+   */
+  async waitForToolCall(toolName: string, timeoutMs = 30000): Promise<void> {
+    // TODO: Implement tool call tracking when ElevenLabs adds tool call events
+    // For now, this is a placeholder for future functionality
+    await this.waitForCondition(
+      () => false, // Always false for now
+      timeoutMs,
+      `Tool call timeout. Expected tool "${toolName}" to be called`
+    );
+  }
+
+  getAgentResponses(): string[] {
+    return [...this.responses];
   }
 
   /**
@@ -181,5 +486,33 @@ Respond with:
     }
 
     return result;
+  }
+
+  isActive(): boolean {
+    return (
+      !!this.ws &&
+      this.ws.readyState === WebSocket.OPEN &&
+      !this.shouldStop &&
+      this.conversationReady
+    );
+  }
+
+  async disconnect(): Promise<void> {
+    if (this.ws) {
+      this.shouldStop = true;
+
+      if (this.ws.readyState === WebSocket.OPEN) {
+        this.ws.close();
+      }
+
+      this.ws = null;
+    }
+
+    this.responses = [];
+    this.transcript = [];
+    this.conversationId = undefined;
+    this.shouldStop = false;
+    this.conversationReady = false;
+    this.conversationReadyResolve = undefined;
   }
 }

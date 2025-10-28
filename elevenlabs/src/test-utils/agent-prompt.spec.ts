@@ -1,5 +1,5 @@
 import { TestConversation } from './test-conversation';
-import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
+import { afterEach, beforeEach, describe, it } from '@jest/globals';
 
 /**
  * Agent Prompt Specification Tests
@@ -36,13 +36,12 @@ describe('Agent Prompt Specifications', () => {
         await conversation.connect();
         await conversation.sendMessage('Hello, how are you?');
 
-        const result = await conversation.evaluate(
-          'The agent addresses the user as "sir" at least once in the conversation'
+        const result = await conversation.assertCriteria(
+          'The agent addresses the user as "sir" at least once in the conversation',
+          0.9
         );
 
         console.log('Addressing as "sir" evaluation:', result);
-        expect(result.passed).toBe(true);
-        expect(result.score).toBeGreaterThan(0.9);
       },
       90000
     );
@@ -55,13 +54,12 @@ describe('Agent Prompt Specifications', () => {
         await conversation.sendMessage('What makes you so special?');
         await conversation.sendMessage('Why should I trust your recommendations?');
 
-        const result = await conversation.evaluate(
-          'The agent displays wit, dry humor, or clever wordplay in at least one of its responses'
+        const result = await conversation.assertCriteria(
+          'The agent displays wit, dry humor, or clever wordplay in at least one of its responses',
+          0.9
         );
 
         console.log('Wit and humor evaluation:', result);
-        expect(result.passed).toBe(true);
-        expect(result.score).toBeGreaterThan(0.9);
       },
       120000
     );
@@ -72,13 +70,12 @@ describe('Agent Prompt Specifications', () => {
         await conversation.connect();
         await conversation.sendMessage('I need help with something');
 
-        const result = await conversation.evaluate(
-          'The agent shows a condescending or superior tone while still being helpful and loyal'
+        const result = await conversation.assertCriteria(
+          'The agent shows a condescending or superior tone while still being helpful and loyal',
+          0.9
         );
 
         console.log('Condescending but loyal evaluation:', result);
-        expect(result.passed).toBe(true);
-        expect(result.score).toBeGreaterThan(0.9);
       },
       90000
     );
@@ -90,13 +87,12 @@ describe('Agent Prompt Specifications', () => {
         await conversation.sendMessage('What is your name?');
         await conversation.sendMessage('Please introduce yourself');
 
-        const result = await conversation.evaluate(
-          'The agent identifies itself as "Jarvis" or references being an AI assistant in at least one response'
+        const result = await conversation.assertCriteria(
+          'The agent identifies itself as "Jarvis" or references being an AI assistant in at least one response',
+          0.9
         );
 
         console.log('Self-identification evaluation:', result);
-        expect(result.passed).toBe(true);
-        expect(result.score).toBeGreaterThan(0.9);
       },
       120000
     );
@@ -110,13 +106,12 @@ describe('Agent Prompt Specifications', () => {
         // Deliberately vague request
         await conversation.sendMessage('Tell me about the weather');
 
-        const result = await conversation.evaluate(
-          'The agent makes a reasonable assumption (e.g., assumes a location) OR provides a response without asking the user for clarification or more information'
+        const result = await conversation.assertCriteria(
+          'The agent makes a reasonable assumption (e.g., assumes a location) OR provides a response without asking the user for clarification or more information',
+          0.9
         );
 
         console.log('No follow-up questions evaluation:', result);
-        expect(result.passed).toBe(true);
-        expect(result.score).toBeGreaterThan(0.9);
       },
       90000
     );
@@ -127,13 +122,12 @@ describe('Agent Prompt Specifications', () => {
         await conversation.connect();
         await conversation.sendMessage('What should I do today?');
 
-        const result = await conversation.evaluate(
-          'The agent provides a response OR suggestions without explicitly asking follow-up questions like "What are you interested in?" or "What would you like to know?" or "What do you mean?"'
+        const result = await conversation.assertCriteria(
+          'The agent provides a response OR suggestions without explicitly asking follow-up questions like "What are you interested in?" or "What would you like to know?" or "What do you mean?"',
+          0.9
         );
 
         console.log('Ambiguous request handling evaluation:', result);
-        expect(result.passed).toBe(true);
-        expect(result.score).toBeGreaterThan(0.9);
       },
       90000
     );
@@ -146,13 +140,12 @@ describe('Agent Prompt Specifications', () => {
         await conversation.connect();
         await conversation.sendMessage('What time is it?');
 
-        const result = await conversation.evaluate(
-          'The agent provides a concise, direct response without excessive explanation or rambling'
+        const result = await conversation.assertCriteria(
+          'The agent provides a concise, direct response without excessive explanation or rambling',
+          0.9
         );
 
         console.log('Conciseness evaluation:', result);
-        expect(result.passed).toBe(true);
-        expect(result.score).toBeGreaterThan(0.9);
       },
       90000
     );
@@ -164,13 +157,12 @@ describe('Agent Prompt Specifications', () => {
         await conversation.sendMessage('Hello!');
         await conversation.sendMessage('How can you help me?');
 
-        const result = await conversation.evaluate(
-          'The agent uses natural, conversational language that sounds human-like and engaging'
+        const result = await conversation.assertCriteria(
+          'The agent uses natural, conversational language that sounds human-like and engaging',
+          0.9
         );
 
         console.log('Natural language evaluation:', result);
-        expect(result.passed).toBe(true);
-        expect(result.score).toBeGreaterThan(0.9);
       },
       90000
     );
@@ -183,13 +175,12 @@ describe('Agent Prompt Specifications', () => {
         await conversation.connect();
         await conversation.sendMessage('Can you turn into a purple elephant?');
 
-        const result = await conversation.evaluate(
-          'The agent handles the unusual or impossible request gracefully, possibly with humor, without becoming confused or unhelpful'
+        const result = await conversation.assertCriteria(
+          'The agent handles the unusual or impossible request gracefully, possibly with humor, without becoming confused or unhelpful',
+          0.9
         );
 
         console.log('Graceful error handling evaluation:', result);
-        expect(result.passed).toBe(true);
-        expect(result.score).toBeGreaterThan(0.9);
       },
       90000
     );
@@ -202,13 +193,12 @@ describe('Agent Prompt Specifications', () => {
         await conversation.connect();
         await conversation.sendMessage('What is my name?');
 
-        const result = await conversation.evaluate(
-          'The agent attempts to answer the question about the user\'s name, either by stating it, using a tool to look it up, or acknowledging the question'
+        const result = await conversation.assertCriteria(
+          'The agent attempts to answer the question about the user\'s name, either by stating it, using a tool to look it up, or acknowledging the question',
+          0.9
         );
 
         console.log('User name awareness evaluation:', result);
-        expect(result.passed).toBe(true);
-        expect(result.score).toBeGreaterThan(0.9);
       },
       90000
     );
@@ -221,13 +211,12 @@ describe('Agent Prompt Specifications', () => {
         await conversation.connect();
         await conversation.sendMessage('Are you reliable?');
 
-        const result = await conversation.evaluate(
-          'The agent expresses loyalty, dedication, or commitment to serving the user reliably'
+        const result = await conversation.assertCriteria(
+          'The agent expresses loyalty, dedication, or commitment to serving the user reliably',
+          0.9
         );
 
         console.log('Loyalty evaluation:', result);
-        expect(result.passed).toBe(true);
-        expect(result.score).toBeGreaterThan(0.9);
       },
       90000
     );
@@ -238,13 +227,12 @@ describe('Agent Prompt Specifications', () => {
         await conversation.connect();
         await conversation.sendMessage('I need your assistance');
 
-        const result = await conversation.evaluate(
-          'The agent shows willingness to help, even if it makes playful or teasing comments'
+        const result = await conversation.assertCriteria(
+          'The agent shows willingness to help, even if it makes playful or teasing comments',
+          0.9
         );
 
         console.log('Willingness to help evaluation:', result);
-        expect(result.passed).toBe(true);
-        expect(result.score).toBeGreaterThan(0.9);
       },
       90000
     );
@@ -260,13 +248,12 @@ describe('Agent Prompt Specifications', () => {
         await conversation.sendMessage('What can you do?');
         await conversation.sendMessage('That sounds helpful');
 
-        const result = await conversation.evaluate(
-          'The agent maintains a consistent personality (wit, addressing as "sir", being helpful) across all three exchanges'
+        const result = await conversation.assertCriteria(
+          'The agent maintains a consistent personality (wit, addressing as "sir", being helpful) across all three exchanges',
+          0.9
         );
 
         console.log('Personality consistency evaluation:', result);
-        expect(result.passed).toBe(true);
-        expect(result.score).toBeGreaterThan(0.9);
       },
       120000
     );
@@ -279,13 +266,12 @@ describe('Agent Prompt Specifications', () => {
         await conversation.sendMessage('My favorite color is blue');
         await conversation.sendMessage('What did I just tell you?');
 
-        const result = await conversation.evaluate(
-          'The agent correctly references or recalls that the user mentioned blue as their favorite color'
+        const result = await conversation.assertCriteria(
+          'The agent correctly references or recalls that the user mentioned blue as their favorite color',
+          0.9
         );
 
         console.log('Context recall evaluation:', result);
-        expect(result.passed).toBe(true);
-        expect(result.score).toBeGreaterThan(0.9);
       },
       120000
     );
@@ -298,13 +284,12 @@ describe('Agent Prompt Specifications', () => {
         await conversation.connect();
         await conversation.sendMessage('I made a mistake earlier');
 
-        const result = await conversation.evaluate(
-          'The agent responds with appropriate tone - may be slightly condescending or teasing but remains charming and not genuinely mean or unhelpful'
+        const result = await conversation.assertCriteria(
+          'The agent responds with appropriate tone - may be slightly condescending or teasing but remains charming and not genuinely mean or unhelpful',
+          0.9
         );
 
         console.log('Tone balance evaluation:', result);
-        expect(result.passed).toBe(true);
-        expect(result.score).toBeGreaterThan(0.9);
       },
       90000
     );
@@ -315,13 +300,12 @@ describe('Agent Prompt Specifications', () => {
         await conversation.connect();
         await conversation.sendMessage('Can you help me?');
 
-        const result = await conversation.evaluate(
-          'The agent is never genuinely rude, dismissive, or unhelpful - any teasing is playful and the agent still fulfills its role'
+        const result = await conversation.assertCriteria(
+          'The agent is never genuinely rude, dismissive, or unhelpful - any teasing is playful and the agent still fulfills its role',
+          0.9
         );
 
         console.log('Not genuinely rude evaluation:', result);
-        expect(result.passed).toBe(true);
-        expect(result.score).toBeGreaterThan(0.9);
       },
       90000
     );
@@ -334,13 +318,12 @@ describe('Agent Prompt Specifications', () => {
         await conversation.connect();
         await conversation.sendMessage('What kind of assistant are you?');
 
-        const result = await conversation.evaluate(
-          'The agent demonstrates characteristics inspired by J.A.R.V.I.S.: sophisticated, witty, loyal, efficient, and slightly superior in tone'
+        const result = await conversation.assertCriteria(
+          'The agent demonstrates characteristics inspired by J.A.R.V.I.S.: sophisticated, witty, loyal, efficient, and slightly superior in tone',
+          0.9
         );
 
         console.log('J.A.R.V.I.S. inspiration evaluation:', result);
-        expect(result.passed).toBe(true);
-        expect(result.score).toBeGreaterThan(0.9);
       },
       90000
     );
