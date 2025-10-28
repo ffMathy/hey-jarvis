@@ -16,14 +16,17 @@ LABEL io.hass.url="https://github.com/ffMathy/hey-jarvis"
 
 # Install bashio for Home Assistant addon configuration parsing
 # Bashio is the standard library for Home Assistant addons
-RUN apk add --no-cache bash curl jq && \
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends bash curl jq && \
     curl -J -L -o /tmp/bashio.tar.gz \
     "https://github.com/hassio-addons/bashio/archive/v0.16.2.tar.gz" && \
     mkdir -p /tmp/bashio && \
     tar zxvf /tmp/bashio.tar.gz --strip 1 -C /tmp/bashio && \
     mv /tmp/bashio/lib /usr/lib/bashio && \
     ln -s /usr/lib/bashio/bashio /usr/bin/bashio && \
-    rm -rf /tmp/bashio /tmp/bashio.tar.gz
+    rm -rf /tmp/bashio /tmp/bashio.tar.gz && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 # Copy the run script
 COPY run.sh /
