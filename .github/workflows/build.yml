@@ -23,6 +23,14 @@ jobs:
     steps:
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          # Only remove what we definitely don't need for faster cleanup
+          android: false
+          dotnet: true
+          haskell: true
+          large-packages: false  # Skip large packages check to save time
+          docker-images: false   # Keep Docker images for devcontainer
+          swap-storage: false    # Skip swap removal to save time
 
       - name: Checkout
         uses: actions/checkout@v5
