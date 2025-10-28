@@ -11,6 +11,11 @@ updates:
       mastra:
         patterns:
           - "@mastra/*"
+          - "mastra"
+      nx:
+        patterns:
+          - "@nx/*"
+          - "nx"
 
   # Docker dependencies
   - package-ecosystem: "docker"
