@@ -121,6 +121,7 @@ export class TestConversation {
 
     const google = createGoogleGenerativeAI({ apiKey: this.googleApiKey });
 
+    // @ts-expect-error - TypeScript has issues with deeply nested generic types in AI SDK
     const result = await generateObject({
       model: google('gemini-flash-latest'),
       schema,
