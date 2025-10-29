@@ -30,7 +30,7 @@ jobs:
           dotnet: true
           haskell: true
           large-packages: false  # Skip large packages check to save time
-          docker-images: false   # Keep Docker images for devcontainer
+          docker-images: false   # Skip Docker image removal for devcontainer
           swap-storage: false    # Skip swap removal to save time
 
       - name: Checkout
