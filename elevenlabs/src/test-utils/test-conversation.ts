@@ -1,5 +1,5 @@
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
-import WebSocket from 'ws';
+import { WebSocket, Data } from 'ws';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { generateObject } from 'ai';
 import { z } from 'zod';
@@ -43,6 +43,10 @@ interface UserTranscriptEvent {
   };
 }
 
+interface AudioEvent {
+  type: 'audio';
+}
+
 interface PingEvent {
   type: 'ping';
   ping_event: {
@@ -61,6 +65,16 @@ interface AgentToolResponseEvent {
   };
 }
 
+interface McpToolCallEvent {
+  type: 'mcp_tool_call';
+  mcp_tool_call: {
+    tool_name: string;
+    tool_call_id: string;
+    state: 'success' | 'loading';
+    result: []
+  };
+}
+
 type ServerMessage =
   | ConversationInitiationMetadataEvent
   | AgentResponseEvent
@@ -68,7 +82,8 @@ type ServerMessage =
   | UserMessageEvent
   | PingEvent
   | AgentToolResponseEvent
-  | { type: string; [key: string]: unknown };
+  | McpToolCallEvent 
+  | AudioEvent;
 
 /**
  * Client-to-server message types
@@ -139,7 +154,7 @@ export class TestConversation {
       });
 
     // Create WebSocket connection
-    return new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       const timeoutId = setTimeout(() => {
         reject(new Error('Connection timeout after 10 seconds'));
       }, 10000);
@@ -161,7 +176,7 @@ export class TestConversation {
         conversationReadyPromise
           .then(() => {
             clearTimeout(timeoutId);
-            resolve();
+            resolve(undefined);
           })
           .catch((error) => {
             clearTimeout(timeoutId);
@@ -169,7 +184,7 @@ export class TestConversation {
           });
       });
 
-      this.ws.on('message', (data: WebSocket.Data) => {
+      this.ws.on('message', (data: Data) => {
         this._onWebSocketMessage(data);
       });
 
@@ -206,16 +221,13 @@ export class TestConversation {
     console.log('WebSocket connected and initialized');
   }
 
-  private _onWebSocketMessage(data: WebSocket.Data): void {
+  private _onWebSocketMessage(data: Data): void {
     if (this.shouldStop) {
       return;
     }
 
     try {
       const message = JSON.parse(data.toString()) as ServerMessage;
-      
-      // Store all raw messages
-      this.messages.push(message);
       
       this._handleMessage(message);
     } catch (error) {
@@ -246,21 +258,6 @@ export class TestConversation {
         break;
       }
 
-      case 'agent_response': {
-        const event = message as AgentResponseEvent;
-        const response = event.agent_response_event.agent_response.trim();
-        console.log('agent-response', response);
-        break;
-      }
-
-      case 'user_transcript': {
-        const event = message as UserTranscriptEvent;
-        const transcript =
-          event.user_transcription_event.user_transcript.trim();
-        console.log('user-transcript', transcript);
-        break;
-      }
-
       case 'ping': {
         const event = message as PingEvent;
         // Respond to ping with pong
@@ -274,14 +271,21 @@ export class TestConversation {
         break;
       }
 
+      case 'audio': {
+        break;
+      }
+
       default:
         // Ignore unknown message types
-        console.log('unknown-message-type', message.type);
+        console.debug('agent-message', message);
+      
+        // Store all raw messages
+        this.messages.push(message);
         break;
     }
   }
 
-  chat(text: string): void {
+  async sendMessage(text: string): Promise<void> {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       throw new Error('Not connected. Call connect() first.');
     }
@@ -298,123 +302,40 @@ export class TestConversation {
     this.messages.push(messageEvent as ServerMessage);
 
     this.ws.send(JSON.stringify(messageEvent));
+    await this.waitForResponse();
   }
 
-  /**
-   * Send a message and record it in the transcript
-   * Alias for chat() method for backward compatibility
-   */
-  sendMessage(text: string): void {
-    return this.chat(text);
-  }
-
-  /**
-   * Wait for a specific condition to be met
-   * @param condition Function that returns true when the condition is met
-   * @param timeoutMs Timeout in milliseconds (default: 30000)
-   * @param errorMessage Error message if timeout occurs
-   */
-  private async waitForCondition(
-    condition: () => boolean,
-    timeoutMs = 30000,
-    errorMessage = 'Condition timeout'
-  ): Promise<void> {
-    const startTime = Date.now();
-
-    while (Date.now() - startTime < timeoutMs) {
-      if (condition()) {
-        return;
+  private async waitForResponse() {
+    let currentMessageLength = this.messages.length;
+    const waitForNextMessage = async (): Promise<ServerMessage> => {
+      while (this.messages.length === currentMessageLength) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
       }
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
 
-    const elapsed = Date.now() - startTime;
-    throw new Error(`${errorMessage} after ${elapsed}ms`);
-  }
+      currentMessageLength = this.messages.length;
 
-  /**
-   * Wait for an agent response to be received
-   * @param timeoutMs Timeout in milliseconds (default: 30000)
-   * @returns The latest agent response text
-   */
-  async waitForAgentResponse(timeoutMs = 30000): Promise<string> {
-    const initialMessageCount = this.messages.length;
-
-    await this.waitForCondition(
-      () => {
-        // Check if any new agent_response messages have been received
-        const agentResponses = this.messages
-          .slice(initialMessageCount)
-          .filter((msg) => msg.type === 'agent_response');
-        return agentResponses.length > 0;
-      },
-      timeoutMs,
-      `Agent response timeout. Expected response but got none`
-    );
-
-    // Find the most recent agent response
-    const agentResponses = this.messages.filter(
-      (msg) => msg.type === 'agent_response'
-    ) as AgentResponseEvent[];
-
-    if (agentResponses.length === 0) {
-      throw new Error('No agent response found');
-    }
-
-    const latestResponse = agentResponses[agentResponses.length - 1];
-    const responseText =
-      latestResponse.agent_response_event.agent_response.trim();
-
-    return responseText;
-  }
-
-  /**
-   * Wait for a tool call (agent_tool_response) to be received
-   * @param toolName Name of the tool to wait for (optional - waits for any tool if not specified)
-   * @param timeoutMs Timeout in milliseconds (default: 30000)
-   * @returns The tool response message
-   */
-  async waitForToolCall(
-    toolName?: string,
-    timeoutMs = 30000
-  ): Promise<ServerMessage> {
-    const initialMessageCount = this.messages.length;
-
-    const matchesToolName = (msg: ServerMessage) => {
-      if (!toolName) return true;
-      const toolResponse = (msg as { agent_tool_response?: { tool_name?: string } })
-        .agent_tool_response;
-      return toolResponse?.tool_name === toolName;
+      const message = this.messages[this.messages.length - 1];
+      return message;
     };
 
-    await this.waitForCondition(
-      () => {
-        const toolResponses = this.messages
-          .slice(initialMessageCount)
-          .filter((msg) => msg.type === 'agent_tool_response');
+    let timeout = 0;
 
-        return toolResponses.length > 0 && toolResponses.some(matchesToolName);
-      },
-      timeoutMs,
-      toolName
-        ? `Tool call timeout. Expected tool "${toolName}" to be called`
-        : `Tool call timeout. Expected any tool to be called`
-    );
+    let message: Partial<ServerMessage> | null = {};
+    while (message !== null) {
+      timeout = 10000;
+      if (message?.type === 'mcp_tool_call' && message.mcp_tool_call.state === 'loading') {
+        timeout = 60000; // Wait longer for agent response
+      }
 
-    const toolResponses = this.messages
-      .slice(initialMessageCount)
-      .filter((msg) => msg.type === 'agent_tool_response');
-
-    const matchingResponse = toolResponses.find(matchesToolName);
-    if (!matchingResponse) {
-      throw new Error(
-        toolName
-          ? `Tool response for "${toolName}" not found`
-          : 'No tool response found'
-      );
+      message = await Promise.race([
+        waitForNextMessage(),
+        new Promise<never>((resolve) =>
+          setTimeout(() => {
+            resolve(null);
+          }, timeout)
+        ),
+      ]);
     }
-
-    return matchingResponse;
   }
 
   /**
@@ -425,45 +346,22 @@ export class TestConversation {
   }
 
   /**
-   * Get all agent responses from the message history
-   */
-  getAgentResponses(): string[] {
-    return this.messages
-      .filter((msg) => msg.type === 'agent_response')
-      .map(
-        (msg) =>
-          (msg as AgentResponseEvent).agent_response_event.agent_response.trim()
-      );
-  }
-
-  /**
    * Get conversation transcript as formatted text for evaluation
    * Includes user messages, agent responses, and tool calls
    */
   getTranscriptText(): string {
     return this.messages
-      .filter(
-        (msg) =>
-          msg.type === 'user_message' ||
-          msg.type === 'agent_response' ||
-          msg.type === 'agent_tool_response'
-      )
       .map((msg) => {
         if (msg.type === 'user_message') {
           return `> USER: ${(msg as UserMessageEvent).text}`;
         } else if (msg.type === 'agent_response') {
-          const agentMsg = msg as AgentResponseEvent;
-          return `> AGENT: ${agentMsg.agent_response_event.agent_response.trim()}`;
-        } else if (msg.type === 'agent_tool_response') {
-          const toolMsg = msg as AgentToolResponseEvent;
-          const output = toolMsg.agent_tool_response.output
-            ? ` → ${toolMsg.agent_tool_response.output}`
-            : '';
-          return `> TOOL: ${toolMsg.agent_tool_response.tool_name}${output}`;
+          return `> AGENT: ${msg.agent_response_event.agent_response.trim()}`;
+        } else if (msg.type === 'mcp_tool_call' && msg.mcp_tool_call.state === 'success') {
+          return `> TOOL: ${msg.mcp_tool_call.tool_name} → ${JSON.stringify(msg.mcp_tool_call.result)}`;
         }
         return '';
       })
-      .filter(Boolean)
+      .filter(x => !!x)
       .join('\n');
   }
 
@@ -490,8 +388,7 @@ export class TestConversation {
 
     const google = createGoogleGenerativeAI({ apiKey: this.googleApiKey });
 
-    // @ts-expect-error - TypeScript has issues with deeply nested generic types in AI SDK
-    const result = await generateObject({
+    const result = await generateObject<any>({
       model: google('gemini-flash-latest'),
       schema,
       prompt: `You are evaluating a conversation transcript between a user and an AI agent.
@@ -522,7 +419,7 @@ Respond with:
 - "reasoning" (string): Clear explanation for your evaluation with specific examples from the transcript`,
     });
 
-    return result.object;
+    return result.object as EvaluationResult;
   }
 
   /**
