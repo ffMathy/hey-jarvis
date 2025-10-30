@@ -40,13 +40,13 @@ describe('TestConversation', () => {
   });
 
   describe('Messaging', () => {
-    it('should throw if not connected', () => {
+    it('should throw if not connected', async () => {
       const disconnected = new TestConversation({
         agentId,
         apiKey,
       });
 
-      expect(() => disconnected.sendMessage('Test')).toThrow('Not connected');
+      await expect(disconnected.sendMessage('Test')).rejects.toThrow('Not connected');
     });
   });
 

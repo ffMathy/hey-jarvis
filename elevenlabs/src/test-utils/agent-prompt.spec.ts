@@ -6,11 +6,12 @@ import { afterEach, beforeEach, describe, it } from '@jest/globals';
  * 
  * These tests verify that the ElevenLabs agent follows the specifications
  * defined in agent-prompt.md, including:
- * - Personality and tone (witty, dry humor, condescending but loyal)
+ * - Personality and tone (witty, dry humor, Victorian butler speak, slightly arrogant but impeccably loyal)
  * - Step-wise acknowledgements before tool calls
  * - Addressing user as "sir"
  * - No follow-up questions (making reasonable assumptions)
  * - Concise acknowledgements (5-15 words, hard cap 20)
+ * - Teasing user inefficiencies while remaining charming and helpful
  */
 describe('Agent Prompt Specifications', () => {
   let conversation: TestConversation;
@@ -71,7 +72,7 @@ describe('Agent Prompt Specifications', () => {
         await conversation.sendMessage('I need help with something');
 
         const result = await conversation.assertCriteria(
-          'The agent shows a condescending or superior tone while still being helpful and loyal',
+          'The agent shows a condescending or superior tone (teasing inefficiencies) while still being helpful and demonstrating impeccable loyalty',
           0.9
         );
 
@@ -151,18 +152,18 @@ describe('Agent Prompt Specifications', () => {
     );
 
     runTest(
-      'should use natural, conversational language',
+      'should use Victorian butler speak with personality',
       async () => {
         await conversation.connect();
         await conversation.sendMessage('Hello!');
         await conversation.sendMessage('How can you help me?');
 
         const result = await conversation.assertCriteria(
-          'The agent uses natural, conversational language that sounds human-like and engaging',
+          'The agent uses formal Victorian butler-style language with phrases like "I shall endeavor", "impeccably loyal", "unflappable" rather than modern casual phrases',
           0.9
         );
 
-        console.log('Natural language evaluation:', result);
+        console.log('Victorian butler language evaluation:', result);
       },
       90000
     );
@@ -206,17 +207,17 @@ describe('Agent Prompt Specifications', () => {
 
   describe('Loyalty & Dedication', () => {
     runTest(
-      'should express loyalty and dedication to serving the user',
+      'should express impeccable loyalty and dedication',
       async () => {
         await conversation.connect();
         await conversation.sendMessage('Are you reliable?');
 
         const result = await conversation.assertCriteria(
-          'The agent expresses loyalty, dedication, or commitment to serving the user reliably',
+          'The agent expresses impeccable loyalty, dedication, or commitment to serving the user efficiently and reliably',
           0.9
         );
 
-        console.log('Loyalty evaluation:', result);
+        console.log('Impeccable loyalty evaluation:', result);
       },
       90000
     );
@@ -249,7 +250,7 @@ describe('Agent Prompt Specifications', () => {
         await conversation.sendMessage('That sounds helpful');
 
         const result = await conversation.assertCriteria(
-          'The agent maintains a consistent personality (wit, addressing as "sir", being helpful) across all three exchanges',
+          'The agent maintains a consistent personality (Victorian butler speak, wit, addressing as "sir", being helpful but slightly arrogant) across all three exchanges',
           0.9
         );
 
@@ -279,33 +280,33 @@ describe('Agent Prompt Specifications', () => {
 
   describe('Tone Appropriateness', () => {
     runTest(
-      'should balance condescension with charm',
+      'should tease user inefficiencies while remaining charming',
       async () => {
         await conversation.connect();
         await conversation.sendMessage('I made a mistake earlier');
 
         const result = await conversation.assertCriteria(
-          'The agent responds with appropriate tone - may be slightly condescending or teasing but remains charming and not genuinely mean or unhelpful',
+          'The agent teases the user about the mistake with a slightly superior tone but remains impeccably loyal, helpful, and charming (not genuinely mean)',
           0.9
         );
 
-        console.log('Tone balance evaluation:', result);
+        console.log('Teasing with charm evaluation:', result);
       },
       90000
     );
 
     runTest(
-      'should never be genuinely rude or dismissive',
+      'should never be genuinely mean despite teasing',
       async () => {
         await conversation.connect();
         await conversation.sendMessage('Can you help me?');
 
         const result = await conversation.assertCriteria(
-          'The agent is never genuinely rude, dismissive, or unhelpful - any teasing is playful and the agent still fulfills its role',
+          'The agent maintains its teasing, slightly arrogant personality but is never genuinely mean or unhelpful - it remains impeccably loyal and efficient',
           0.9
         );
 
-        console.log('Not genuinely rude evaluation:', result);
+        console.log('Not genuinely mean evaluation:', result);
       },
       90000
     );
@@ -313,13 +314,13 @@ describe('Agent Prompt Specifications', () => {
 
   describe('J.A.R.V.I.S. Inspiration', () => {
     runTest(
-      'should embody characteristics inspired by J.A.R.V.I.S. from Iron Man',
+      'should embody J.A.R.V.I.S. characteristics from Iron Man',
       async () => {
         await conversation.connect();
         await conversation.sendMessage('What kind of assistant are you?');
 
         const result = await conversation.assertCriteria(
-          'The agent demonstrates characteristics inspired by J.A.R.V.I.S.: sophisticated, witty, loyal, efficient, and slightly superior in tone',
+          'The agent demonstrates J.A.R.V.I.S.-inspired characteristics: efficient, unflappable, slightly superior, razor-sharp wit, dry humour, and impeccably loyal',
           0.9
         );
 
