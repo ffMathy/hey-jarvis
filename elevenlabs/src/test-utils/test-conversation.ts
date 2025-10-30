@@ -218,7 +218,6 @@ export class TestConversation {
     };
 
     this.ws.send(JSON.stringify(initEvent));
-    console.log('WebSocket connected and initialized');
   }
 
   private _onWebSocketMessage(data: Data): void {
@@ -246,7 +245,6 @@ export class TestConversation {
         if (!this.conversationId) {
           this.conversationId =
             event.conversation_initiation_metadata_event.conversation_id;
-          console.log('conversation-started', this.conversationId);
           
           // Mark conversation as ready
           this.conversationReady = true;
@@ -275,10 +273,7 @@ export class TestConversation {
         break;
       }
 
-      default:
-        // Ignore unknown message types
-        console.debug('agent-message', message);
-      
+      default:      
         // Store all raw messages
         this.messages.push(message);
         break;
@@ -290,19 +285,23 @@ export class TestConversation {
       throw new Error('Not connected. Call connect() first.');
     }
 
-    // Send user message
-    console.log('user-message', text);
-
     const messageEvent: UserMessageEvent = {
       type: 'user_message',
       text,
     };
 
-    // Store the sent message in our messages array
-    this.messages.push(messageEvent as ServerMessage);
-
     this.ws.send(JSON.stringify(messageEvent));
     await this.waitForResponse();
+
+    // Store the sent message in our messages array, but in the position right after the first agent_response message
+    const agentResponseIndex = this.messages.findIndex(
+      (msg) => msg.type === 'agent_response'
+    );
+    if (agentResponseIndex !== -1) {
+      this.messages.splice(agentResponseIndex + 1, 0, messageEvent as ServerMessage);
+    } else {
+      this.messages.push(messageEvent as ServerMessage);
+    }
   }
 
   private async waitForResponse() {
@@ -461,11 +460,7 @@ Respond with:
   async disconnect(): Promise<void> {
     if (this.ws) {
       this.shouldStop = true;
-
-      if (this.ws.readyState === WebSocket.OPEN) {
-        this.ws.close();
-      }
-
+      this.ws.close();
       this.ws = null;
     }
 
