@@ -50,22 +50,22 @@
     "ws": "^8.18.3"
   },
   "dependencies": {
-    "@ai-sdk/google": "^2.0.23",
-    "@elevenlabs/elevenlabs-js": "^2.19.0",
-    "@hono/node-server": "^1.19.5",
-    "@mastra/core": "^0.21.1",
-    "@mastra/evals": "^0.14.0",
-    "@mastra/libsql": "^0.15.2",
+    "@ai-sdk/google": "^2.0.25",
+    "@elevenlabs/elevenlabs-js": "^2.21.0",
+    "@hono/node-server": "^1.19.6",
+    "@mastra/core": "^0.23.3",
+    "@mastra/evals": "^0.14.2",
+    "@mastra/libsql": "^0.16.1",
     "@mastra/loggers": "^0.10.13",
-    "@mastra/mcp": "^0.13.1",
-    "@mastra/memory": "^0.15.7",
+    "@mastra/mcp": "^0.14.1",
+    "@mastra/memory": "^0.15.10",
     "@types/fs-extra": "^11.0.4",
     "@types/node-fetch": "^2.6.13",
-    "commander": "^14.0.1",
+    "commander": "^14.0.2",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
     "fs-extra": "^11.3.2",
-    "hono": "^4.10.0",
+    "hono": "^4.10.4",
     "zod": "^4.1.12"
   }
 }
