@@ -2,7 +2,7 @@ import { LibSQLStore, LibSQLVector } from "@mastra/libsql";
 import { mkdir } from "fs/promises";
 import path from 'path';
 
-const databaseDirectory = path.join(process.cwd(), 'jarvis-mcp');
+const databaseDirectory = path.join(process.cwd(), 'mcp');
 
 export async function getSqlStorageProvider(): Promise<LibSQLStore> {
   await mkdir(databaseDirectory, { recursive: true });

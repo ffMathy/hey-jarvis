@@ -19,8 +19,8 @@ This Node.js Express application serves as a Home Assistant addon, allowing you 
 
 ### Via Home Assistant
 
-1. Add this repository to your Home Assistant addon store
-2. Install the "Jarvis MCP Server" addon
+1. Clone this repository
+2. Verify the base `mcp` image is available
 3. Configure the addon settings through the UI
 4. Start the addon
 
@@ -119,7 +119,9 @@ Voice Input → Home Assistant → Jarvis Addon → AI Agents → Smart Devices
                     Weather • Shopping • Recipes • More
 ```
 
-The addon wraps the `jarvis-mcp` Docker image and exposes it as a native Home Assistant addon with full API access.
+## How It Works
+
+The addon wraps the `mcp` Docker image and exposes it as a native Home Assistant addon with full API access.
 
 ## Troubleshooting
 
@@ -161,11 +163,11 @@ The addon configuration is managed through the Home Assistant UI. See the config
 2. **Access Web UI**: Click **Open Web UI** or navigate to `http://[host]:4111/agents`
 3. **Integrate with Home Assistant**: Use the MCP server for voice commands and automations
 
-## Architecture
+### Architecture
 
-This addon is a thin wrapper around the `jarvis-mcp` Docker image:
+This addon is a thin wrapper around the `mcp` Docker image:
 
-- **Base Image**: `ghcr.io/ffmathy/jarvis-mcp:latest`
+- **Base Image**: `ghcr.io/ffmathy/mcp:latest`
 - **Port**: Exposes port 4111 for the Mastra server
 - **Integration**: Uses Home Assistant ingress for secure web access
 - **Permissions**: Configured with appropriate Home Assistant API access
@@ -182,13 +184,13 @@ npx nx docker:build home-assistant-addon
 npx nx serve home-assistant-addon
 ```
 
-### Dependencies
+### Build Dependencies
 
-This addon depends on the `jarvis-mcp` project. Ensure the base image is built first:
+This addon depends on the `mcp` project. Ensure the base image is built first:
 
 ```bash
-# Build the base jarvis-mcp image
-npx nx docker:build jarvis-mcp
+# Build the base mcp image
+npx nx docker:build mcp
 
 # Then build the addon
 npx nx docker:build home-assistant-addon
@@ -199,7 +201,7 @@ npx nx docker:build home-assistant-addon
 ### Addon Won't Start
 
 1. Check the addon logs in Home Assistant
-2. Verify the base `jarvis-mcp` image is available
+2. Verify the base `mcp` image is available
 3. Ensure environment variables are properly configured
 
 ### Web UI Not Accessible

@@ -21,12 +21,12 @@
       "initial-version": "0.1.0",
       "component": "home-assistant-addon"
     },
-    "jarvis-mcp": {
+    "mcp": {
       "release-type": "node",
-      "package-name": "jarvis-mcp",
+      "package-name": "mcp",
       "changelog-path": "CHANGELOG.md",
       "initial-version": "0.1.0",
-      "component": "jarvis-mcp"
+      "component": "mcp"
     },
     "elevenlabs": {
       "release-type": "node",
@@ -52,9 +52,9 @@
     },
     {
       "type": "linked-versions",
-      "groupName": "jarvis-mcp",
+      "groupName": "mcp",
       "components": [
-        "jarvis-mcp",
+        "mcp",
         "home-assistant-addon"
       ]
     }

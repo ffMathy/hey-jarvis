@@ -13,8 +13,8 @@
       "path": "./home-assistant-voice-firmware"
     },
     {
-      "name": "🤖 Jarvis MCP Server",
-      "path": "./jarvis-mcp"
+      "name": "🤖 MCP Server",
+      "path": "./mcp"
     },
     {
       "name": "🏠 Home Assistant Addon",
@@ -186,9 +186,9 @@
         "isBackground": true
       },
       {
-        "label": "🤖 Serve Jarvis MCP",
+        "label": "🤖 Serve MCP",
         "type": "shell",
-        "command": "nx serve jarvis-mcp",
+        "command": "nx serve mcp",
         "group": "build",
         "presentation": {
           "echo": true,
@@ -240,7 +240,7 @@
         "name": "🤖 Debug Jarvis MCP",
         "type": "node",
         "request": "launch",
-        "program": "${workspaceFolder}/jarvis-mcp/mastra/mcp-server.ts",
+        "program": "${workspaceFolder}/mcp/mastra/mcp-server.ts",
         "runtimeArgs": ["--loader", "tsx/esm"],
         "console": "integratedTerminal",
         "env": {

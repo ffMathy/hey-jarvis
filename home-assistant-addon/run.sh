@@ -58,4 +58,5 @@ bashio::log.info "Log level set to: ${LOG_LEVEL}"
 
 # Start the server
 bashio::log.info "Starting Mastra MCP Server on port ${PORT}..."
-exec tsx jarvis-mcp/mastra/server.ts
+# Run the Mastra server from the MCP project
+exec tsx mcp/mastra/server.ts

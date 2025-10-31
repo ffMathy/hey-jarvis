@@ -10,7 +10,7 @@ This project is a Mastra-powered AI agent framework that enables intelligent hom
 The project follows a vertical-based organization structure for better cohesion:
 
 ```
-jarvis-mcp/
+mcp/
 ├── mastra/
 │   ├── verticals/       # Organized by business verticals
 │   │   ├── weather/     # Weather vertical
@@ -224,10 +224,10 @@ npm install mastra --global
 ### Running the Project
 ```bash
 # Start development server with playground
-npx nx serve jarvis-mcp
+npx nx serve mcp
 
 # Build for production
-npx nx build jarvis-mcp
+npx nx build mcp
 ```
 
 ### Development Playground
@@ -255,7 +255,7 @@ All environment variables use the `HEY_JARVIS_` prefix for easy management and D
 1. **Install 1Password CLI**: Follow [1Password CLI installation guide](https://developer.1password.com/docs/cli/get-started/)
 2. **Sign in to 1Password**: `op signin`
 3. **Store your API keys** in 1Password vaults with the paths referenced in `.env`
-4. **Run commands**: Use `nx serve jarvis-mcp` or `nx run jarvis-mcp:mcp` - both use `op run` automatically
+4. **Run commands**: Use `nx serve mcp` or `nx run mcp:mcp` - both use `op run` automatically
 
 #### Important Development Guidelines
 - **Do NOT create separate `*-dev` targets** that bypass 1Password CLI
@@ -503,7 +503,7 @@ Before considering a vertical complete:
 - [ ] Tools use kebab-case IDs
 - [ ] Workflows match business processes
 - [ ] Main index files are updated
-- [ ] Build passes: `nx build jarvis-mcp`
+- [ ] Build passes: `nx build mcp`
 - [ ] Documentation updated in this AGENTS.md file
 
 ### 🎯 **When to Create Sub-Verticals**
@@ -653,10 +653,10 @@ This project follows a strict "lean documentation" approach because:
 
 ### Build and Development Commands
 **CRITICAL: ALWAYS use NX commands** for this monorepo:
-- ✅ Use `nx serve jarvis-mcp` instead of `npm run dev`
-- ✅ Use `nx build jarvis-mcp` instead of `npm run build` 
-- ✅ Use `nx test jarvis-mcp` instead of `npm run test`
-- ✅ Use `nx lint jarvis-mcp` instead of `npm run lint`
+- ✅ Use `nx serve mcp` instead of `npm run dev`
+- ✅ Use `nx build mcp` instead of `npm run build` 
+- ✅ Use `nx test mcp` instead of `npm run test`
+- ✅ Use `nx lint mcp` instead of `npm run lint`
 - ✅ Use `npx nx install` for package installations through NX
 - ❌ **NEVER use `npm run` commands** in this NX monorepo
 - ❌ **NEVER use `npm install` directly** - use NX workspace commands

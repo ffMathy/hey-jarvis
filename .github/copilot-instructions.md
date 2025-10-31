@@ -4,7 +4,7 @@
 
 Hey Jarvis is an NX monorepo containing a digital assistant system with three main projects:
 
-- **jarvis-mcp**: TypeScript MCP (Model Context Protocol) server with Mastra AI agents
+- **mcp**: TypeScript MCP (Model Context Protocol) server with Mastra AI agents
 - **home-assistant-voice-firmware**: C++ voice processing foundation for Home Assistant integration  
 - **e2e**: TypeScript end-to-end testing capabilities foundation
 
@@ -28,7 +28,7 @@ Hey Jarvis is an NX monorepo containing a digital assistant system with three ma
 
 ### Project-Specific Guidelines
 
-#### jarvis-mcp (Mastra AI Agents)
+#### mcp (Mastra AI Agents)
 
 **File Creation Policy - ABSOLUTELY CRITICAL**:
 
@@ -142,7 +142,7 @@ For Docker images on GHCR, use release tools to verify versions exist before upd
 ### Agent Instructions Context
 
 Each project has detailed `AGENTS.md` files with specific instructions:
-- `jarvis-mcp/AGENTS.md`: Comprehensive Mastra development guidelines
+- `mcp/AGENTS.md`: Comprehensive Mastra development guidelines
 - `home-assistant-voice-firmware/AGENTS.md`: C++ firmware development guidelines  
 - `e2e/AGENTS.md`: Testing automation guidelines
 
@@ -157,8 +157,8 @@ npm install  # Install dependencies (may take several minutes)
 
 **Development Workflow**:
 1. Use NX commands exclusively (`./nx` or `npx nx`)
-2. Follow factory patterns for jarvis-mcp components
-3. Respect file creation policies (especially jarvis-mcp restrictions)
+2. Follow factory patterns for mcp components
+3. Respect file creation policies (especially mcp restrictions)
 4. Test changes with appropriate NX targets
 5. Maintain monorepo consistency across all projects
 
@@ -179,7 +179,7 @@ npx nx serve [project-name]
 
 ### Future Development Focus
 
-- Model Context Protocol integration (jarvis-mcp)
+- Model Context Protocol integration (mcp)
 - Voice processing and recognition (home-assistant-voice-firmware)
 - Home automation control coordination
 - Cross-project AI agent communication
