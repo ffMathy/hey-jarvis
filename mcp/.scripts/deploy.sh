@@ -1,12 +1,12 @@
 #!/bin/bash
 set -e
 
-# Jarvis MCP Deployment Script
+# MCP Deployment Script
 # Builds and pushes multi-architecture Docker images to GitHub Container Registry
 
 PROJECT_DIR="$(dirname "$0")/.."
 
-echo "🚀 Starting Jarvis MCP deployment..."
+echo "🚀 Starting MCP deployment..."
 
 # Check required environment variables
 if [ -z "$GITHUB_TOKEN" ]; then
@@ -49,14 +49,14 @@ fi
 echo "🐳 Building and pushing multi-architecture Docker images..."
 docker buildx build \
     --platform linux/amd64,linux/arm64,linux/arm/v7 \
-    -f jarvis-mcp/Dockerfile \
-    -t "ghcr.io/$IMAGE_OWNER/jarvis-mcp:latest" \
-    -t "ghcr.io/$IMAGE_OWNER/jarvis-mcp:$IMAGE_TAG" \
+    -f mcp/Dockerfile \
+    -t "ghcr.io/$IMAGE_OWNER/mcp:latest" \
+    -t "ghcr.io/$IMAGE_OWNER/mcp:$IMAGE_TAG" \
     --build-arg BUILDKIT_INLINE_CACHE=1 \
     --push \
     .
 
 echo "✅ Deployment complete!"
 echo "📦 Multi-arch images pushed to registry:"
-echo "   - ghcr.io/$IMAGE_OWNER/jarvis-mcp:latest"
-echo "   - ghcr.io/$IMAGE_OWNER/jarvis-mcp:$IMAGE_TAG"
+echo "   - ghcr.io/$IMAGE_OWNER/mcp:latest"
+echo "   - ghcr.io/$IMAGE_OWNER/mcp:$IMAGE_TAG"

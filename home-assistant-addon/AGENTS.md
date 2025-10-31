@@ -182,10 +182,10 @@ docker buildx build \
 - ❌ **NEVER use `npm install` directly** - use NX workspace commands
 
 ### Build Dependencies
-The addon depends on `jarvis-mcp` project:
+The addon depends on `mcp` project:
 ```bash
-# The build automatically depends on jarvis-mcp:docker:build
-nx build home-assistant-addon  # Also builds jarvis-mcp first
+# The build automatically depends on mcp:docker:build
+nx build home-assistant-addon  # Also builds mcp first
 ```
 
 This is configured in `project.json`:
@@ -193,7 +193,7 @@ This is configured in `project.json`:
 {
   "targets": {
     "build": {
-      "dependsOn": ["jarvis-mcp:docker:build"]
+      "dependsOn": ["mcp:docker:build"]
     }
   }
 }
@@ -260,20 +260,20 @@ The addon has Home Assistant API access:
 
 ### Component Flow
 ```
-ElevenLabs Agent → Home Assistant Addon → Jarvis MCP Server → Home Assistant Devices
+ElevenLabs Agent → Home Assistant Addon → MCP Server → Home Assistant Devices
                                 ↓
                           Docker Container
                                 ↓
-                    ghcr.io/ffmathy/jarvis-mcp (base image)
+                    ghcr.io/ffmathy/mcp (base image)
                                 ↓
                           Mastra Server (port 4111)
 ```
 
 ### Base Image Relationship
-The addon uses `ghcr.io/ffmathy/jarvis-mcp` as its base image:
-- **Dockerfile**: `FROM ghcr.io/ffmathy/jarvis-mcp:latest`
+The addon uses `ghcr.io/ffmathy/mcp` as its base image:
+- **Dockerfile**: `FROM ghcr.io/ffmathy/mcp:latest`
 - **Dependency**: Built automatically via NX dependency graph
-- **Updates**: Addon version should match jarvis-mcp version
+- **Updates**: Addon version should match mcp version
 
 ## Troubleshooting
 
@@ -308,13 +308,13 @@ Can't install: platform linux/arm64 not available
 
 **3. Build Dependencies Failed**
 ```
-Error: jarvis-mcp:docker:build failed
+Error: mcp:docker:build failed
 ```
 
 **Solution**:
 ```bash
 # Build dependencies first
-nx build jarvis-mcp
+nx build mcp
 
 # Then build addon
 nx build home-assistant-addon

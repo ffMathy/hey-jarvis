@@ -18,10 +18,10 @@ updates:
           - "nx"
 
   # Docker dependencies
-  - package-ecosystem: "docker"
-    directory: "/jarvis-mcp"
+  - package-ecosystem: "npm"
+    directory: "/mcp"
     schedule:
-      interval: "daily"
+      interval: "weekly"
       time: "09:00"
 
   - package-ecosystem: "docker"

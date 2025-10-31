@@ -41,13 +41,13 @@ mastra/verticals/
 
 ```bash
 # Start development server with playground
-nx serve jarvis-mcp
+nx serve mcp
 
 # Build for production  
-nx build jarvis-mcp
+nx build mcp
 
 # Run MCP server only
-nx run jarvis-mcp:mcp
+nx run mcp:mcp
 ```
 
 ## Development Playground
@@ -185,7 +185,7 @@ For complete development guidelines, see [AGENTS.md](./AGENTS.md).
 ## Contributing
 
 This project follows strict development principles:
-- Use NX commands exclusively (`nx serve jarvis-mcp`)
+- Use NX commands exclusively (`nx serve mcp`)
 - Follow vertical organization patterns
 - Implement factory pattern for all components
 - Include comprehensive evaluation and scoring

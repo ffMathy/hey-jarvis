@@ -1,9 +1,9 @@
-# Home Assistant Addon for Hey Jarvis MCP Server
-# This addon wraps the jarvis-mcp Docker image to make it available as a Home Assistant Addon
+# Home Assistant Addon Wrapper for MCP Server
+# This addon wraps the MCP Docker image to make it available as a Home Assistant Addon
 
-# Use the jarvis-mcp image as base
-# In production, this should reference the built jarvis-mcp image from the registry
-ARG BUILD_FROM=ghcr.io/ffmathy/jarvis-mcp:latest
+# Use the MCP image as base
+# In production, this should reference the built MCP image from the registry
+ARG BUILD_FROM=ghcr.io/ffmathy/mcp:latest
 FROM ${BUILD_FROM}
 
 # Add Home Assistant addon labels

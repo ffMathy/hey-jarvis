@@ -1,34 +1,34 @@
 {
-  "name": "jarvis-mcp",
+  "name": "mcp",
   "$schema": "../node_modules/nx/schemas/project-schema.json",
-  "sourceRoot": "jarvis-mcp/src",
+  "sourceRoot": "mcp/src",
   "projectType": "application",
   "targets": {
     "init": {
       "executor": "nx:run-commands",
       "options": {
         "command": "npm install mastra --global",
-        "cwd": "jarvis-mcp"
+        "cwd": "mcp"
       }
     },
     "serve": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "./.scripts/run-with-env.sh jarvis-mcp/op.env mastra dev --dir jarvis-mcp/mastra --root .",
+        "command": "./.scripts/run-with-env.sh mcp/op.env mastra dev --dir mcp/mastra --root .",
         "cwd": "."
       }
     },
     "serve:mcp": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "./.scripts/run-with-env.sh jarvis-mcp/op.env npx tsx jarvis-mcp/mastra/mcp-server.ts",
+        "command": "./.scripts/run-with-env.sh mcp/op.env npx tsx mcp/mastra/mcp-server.ts",
         "cwd": "."
       }
     },
     "build": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "./jarvis-mcp/.scripts/build.sh",
+        "command": "./mcp/.scripts/build.sh",
         "cwd": "."
       }
     },
@@ -38,7 +38,7 @@
         "build"
       ],
       "options": {
-        "command": "./jarvis-mcp/.scripts/deploy.sh",
+        "command": "./mcp/.scripts/deploy.sh",
         "cwd": "."
       }
     }
