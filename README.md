@@ -7,7 +7,7 @@ An NX monorepo containing intelligent voice assistant components for comprehensi
 | Project | Description | Serve Command |
 |---------|-------------|--------------|
 | **elevenlabs** | End-to-end testing suite and conversational agent configuration for ElevenLabs voice interface | - |
-| **jarvis-mcp** | Mastra AI-powered Model Context Protocol server providing intelligent tools and agents | `nx serve jarvis-mcp` |
+| **mcp** | Mastra AI-powered Model Context Protocol server providing intelligent tools and agents | `nx serve mcp` |
 | **home-assistant-addon** | Home Assistant addon for seamlessly hosting the Jarvis MCP server within your Home Assistant instance | `nx serve home-assistant-addon` |
 | **home-assistant-voice-firmware** | ESPHome firmware for dedicated voice hardware devices with local processing capabilities | `nx serve home-assistant-voice-firmware` |
 
@@ -18,7 +18,7 @@ An NX monorepo containing intelligent voice assistant components for comprehensi
 npm install
 
 # Start the MCP server
-nx serve jarvis-mcp
+nx serve mcp
 
 # Build voice firmware
 nx serve home-assistant-voice-firmware

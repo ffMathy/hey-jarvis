@@ -2,9 +2,9 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Initialize Jarvis MCP",
+      "label": "Initialize MCP",
       "type": "shell",
-      "command": "nx init jarvis-mcp",
+      "command": "nx init mcp",
       "group": "build",
       "presentation": {
         "echo": true,
@@ -17,9 +17,9 @@
       }
     },
     {
-      "label": "Build Jarvis MCP",
+      "label": "Build MCP",
       "type": "shell",
-      "command": "nx build jarvis-mcp",
+      "command": "nx build mcp",
       "group": "build",
       "presentation": {
         "echo": true,
@@ -32,9 +32,9 @@
       }
     },
     {
-      "label": "Serve Jarvis MCP",
+      "label": "Serve MCP",
       "type": "shell",
-      "command": "nx serve jarvis-mcp",
+      "command": "nx serve mcp",
       "group": "build",
       "presentation": {
         "echo": true,
@@ -50,7 +50,7 @@
     {
       "label": "Serve MCP Server",
       "type": "shell",
-      "command": "nx serve:mcp jarvis-mcp",
+      "command": "nx serve:mcp mcp",
       "group": "build",
       "presentation": {
         "echo": true,
