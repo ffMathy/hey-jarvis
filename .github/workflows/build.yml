@@ -4,6 +4,8 @@ on:
   pull_request:
     types: [opened, synchronize, labeled]
     branches: [ main ]
+  push:
+    branches: [ main ]
 
 env:
   HEY_JARVIS_ELEVENLABS_AGENT_ID: ${{ secrets.HEY_JARVIS_ELEVENLABS_AGENT_ID }}
