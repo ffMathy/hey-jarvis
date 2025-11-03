@@ -69,7 +69,7 @@
       "options": {
         "jestConfig": "elevenlabs/jest.config.ts",
         "bail": true,
-        "runInBand": true
+        "runInBand": false
       }
     }
   }
