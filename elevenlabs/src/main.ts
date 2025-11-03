@@ -106,8 +106,7 @@ class ElevenLabsAgentManager {
       let prompt = 'You are Jarvis, an advanced AI assistant.'; // fallback
       
       if (response.conversationConfig?.agent?.prompt) {
-        const agentPrompt = response.conversationConfig.agent.prompt;
-        prompt = typeof agentPrompt === 'string' ? agentPrompt : (agentPrompt?.prompt || prompt);
+        prompt = response.conversationConfig.agent.prompt.prompt;
       }
       
       await this.savePrompt(prompt);
@@ -115,7 +114,7 @@ class ElevenLabsAgentManager {
       // Remove prompt from config before saving
       const configToSave = { ...response };
       if (configToSave.conversationConfig?.agent) {
-        delete configToSave.conversationConfig.agent.prompt;
+        delete configToSave.conversationConfig.agent.prompt.prompt;
       }
       
       await this.saveConfig(configToSave);
