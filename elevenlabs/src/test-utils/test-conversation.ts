@@ -14,7 +14,6 @@ export interface ConversationOptions {
   agentId: string;
   apiKey?: string;
   googleApiKey?: string;
-  mcpServers?: Record<string, MastraMCPServerDefinition>; // For Gemini MCP strategy
 }
 
 /**
@@ -67,7 +66,11 @@ export class TestConversation {
       }
       this.strategy = new GeminiMastraConversationStrategy({
         apiKey: this.googleApiKey,
-        mcpServers: options.mcpServers || {},
+        mcpServers: {
+          jarvis: {
+            url: new URL('http://localhost:4111/api/mcp'),
+          },
+        },
       });
     }
   }
@@ -76,8 +79,8 @@ export class TestConversation {
     await this.strategy.connect();
   }
 
-  async sendMessage(text: string): Promise<void> {
-    await this.strategy.sendMessage(text);
+  async sendMessage(text: string): Promise<string> {
+    return await this.strategy.sendMessage(text);
   }
 
   /**

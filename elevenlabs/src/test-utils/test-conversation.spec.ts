@@ -1,8 +1,10 @@
 import { TestConversation } from './test-conversation';
-import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
+import { afterEach, beforeAll, afterAll, beforeEach, describe, expect, it } from '@jest/globals';
+import { startMCPServer, stopMCPServer, type MCPServerHandle } from './mcp-server-lifecycle';
 
 describe('TestConversation', () => {
   let testConversation: TestConversation;
+  let mcpServer: MCPServerHandle | undefined;
 
   // Helper function to get required environment variable
   const getRequiredEnv = (name: string): string => {
@@ -20,6 +22,18 @@ describe('TestConversation', () => {
   // Skip tests if API keys not configured
   const runTest = apiKey ? it : it.skip;
   const runLLMTest = apiKey && googleApiKey ? it : it.skip;
+
+  beforeAll(async () => {
+    // Start MCP server before all tests in this suite
+    mcpServer = await startMCPServer();
+  }, 90000); // 90 second timeout for server startup
+
+  afterAll(async () => {
+    // Stop MCP server after all tests in this suite
+    if (mcpServer) {
+      await stopMCPServer(mcpServer);
+    }
+  });
 
   beforeEach(() => {
     testConversation = new TestConversation({
@@ -180,7 +194,10 @@ describe('TestConversation', () => {
   });
 
   describe('Tool call detection', () => {
-    runTest(
+    // Tool calls only work with ElevenLabs in CI, not with local Gemini strategy
+    const runToolTest = apiKey && process.env.GITHUB_ACTIONS === 'true' ? it : it.skip;
+
+    runToolTest(
       'should include tool calls in transcript',
       async () => {
         await testConversation.connect();
