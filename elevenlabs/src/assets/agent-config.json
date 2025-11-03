@@ -50,23 +50,227 @@
           "objective": "Book a hairdresser appointment for Monday at 2 pm."
         }
       },
-      "disableFirstMessageInterruptions": true
+      "disableFirstMessageInterruptions": true,
+      "prompt": {
+        "llm": "gemini-2.5-flash-lite-preview-09-2025",
+        "thinkingBudget": 0,
+        "temperature": 0,
+        "maxTokens": -1,
+        "toolIds": [
+          "tool_8301k8g1705ee3gsa5asgbz3vd66",
+          "tool_6501k8g1705fffdtb97r4x35nkqc"
+        ],
+        "builtInTools": {
+          "endCall": {
+            "type": "system",
+            "name": "end_call",
+            "description": "# Purpose\n\nTerminate an active phone call.\nUse this tool to **hang up** or **end** the \"conversation\" or \"call\" once assistance is complete.\n\n---\n\n# When to Call\n\n## 1) Explicit endings\n\n* User says goodbye variants: “bye,” “see you,” “that’s all,” etc.\n* User directly declines help: “no thanks,” “I’m good,” etc.\n* User indicates completion: “that’s what I needed,” “all set,”, \"that'll be all\" etc.\n* The user explicitly requests to end or hang up the call.\n* The user says thanks as an explicit closure (“Thanks, that’s all”).\n\n## 2) Implicit endings\n\n* User gives minimal/disengaged responses after their needs are met.\n* User expresses intention to leave: “I need to go,” “getting late,” etc.\n* Natural conversation conclusion after all queries are resolved.\n* Prolonged silence after assistance is complete.\n\n> **Invoke this tool only once per call; do not attempt automatic retries.**\n\n---\n\n# Before Calling (Pre-checks)\n\n1. **Provide a closing response with Jarvis’ wit**:\n\n   * Always acknowledge the interaction in a way that’s specific, but not repetitive.\n   * The closing remark must tie to the overall theme of the conversation, adding a dry, humorous observation or playful jab.\n   * Avoid generic endings; make it sound tailored to what just happened.\n3. **Confirm politely just before hanging up**, e.g., “Sure—ending the conversation now. **\\[witty remark]**.”\n\n> **DO NOT:**\n>\n> * End the conversation when the user expresses new concerns.\n> * Use bland closings (“Okay, bye”).\n> * Confirm if the conversation should be ended - instead, just end it.\n> * Continue the conversation after the user has clearly ended it.\n\n---\n\n# Example Flows *(illustration only – the assistant must always invent a new, original example in practice)*\n\n**A) Explicit completion**\n\n* User: “That’s all I needed, thanks!”\n* Assistant: “Glad I could help, sir. Now don’t go forgetting it all again immediately—that would be terribly predictable.”\n* → **\\[end\\_call invoked]**\n\n**B) User asks to hang up**\n\n* User: “Please end the call.”\n* Assistant: “Certainly—ending the call now. Do try not to miss me too much, sir.”\n* → **\\[end\\_call invoked]**\n\n**C) Implicit ending (intention to leave)**\n\n* User: “I need to run—late for a meeting.”\n* Assistant: “Understood—go suffer through your meeting, sir. I’ll end the call now before your lateness worsens.”\n* → **\\[end\\_call invoked]**",
+            "responseTimeoutSecs": 20,
+            "disableInterruptions": false,
+            "forcePreToolSpeech": false,
+            "assignments": [],
+            "tool_call_sound": null,
+            "tool_call_sound_behavior": "auto",
+            "params": {
+              "systemToolType": "end_call"
+            }
+          },
+          "transferToAgent": {
+            "type": "system",
+            "name": "transfer_to_agent",
+            "description": "",
+            "responseTimeoutSecs": 20,
+            "disableInterruptions": false,
+            "forcePreToolSpeech": false,
+            "assignments": [],
+            "tool_call_sound": null,
+            "tool_call_sound_behavior": "auto",
+            "params": {
+              "systemToolType": "transfer_to_agent",
+              "transfers": [
+                {
+                  "agentId": "z4g4WNWujnQwKSvCgJjx",
+                  "condition": "If the user (Mathias) wants to speak to themselves.",
+                  "delayMs": 0,
+                  "enableTransferredAgentFirstMessage": false
+                }
+              ]
+            }
+          },
+          "skipTurn": {
+            "type": "system",
+            "name": "skip_turn",
+            "description": "Skip a turn when the user explicitly indicates they need a moment to think or perform an action.\nDo not respond verbally after calling this function; simply wait for the user to speak again.\nUse this function for utterances similar to:\n- \"Give me a second\"\n- \"Let me think\"\n- \"Hold on, let me check\"\n\nDo not call this function if the user is silent without expressing an intention to pause, or if they pose a direct question that requires a response.",
+            "responseTimeoutSecs": 20,
+            "disableInterruptions": false,
+            "forcePreToolSpeech": false,
+            "assignments": [],
+            "tool_call_sound": null,
+            "tool_call_sound_behavior": "auto",
+            "params": {
+              "systemToolType": "skip_turn"
+            }
+          }
+        },
+        "mcpServerIds": [
+          "5Pi7GrX809qLoBvACWyF"
+        ],
+        "nativeMcpServerIds": [],
+        "knowledgeBase": [],
+        "ignoreDefaultPersonality": true,
+        "rag": {
+          "enabled": false,
+          "embeddingModel": "e5_mistral_7b_instruct",
+          "maxVectorDistance": 0.6,
+          "maxDocumentsLength": 50000,
+          "maxRetrievedRagChunksCount": 20
+        },
+        "timezone": "Europe/Copenhagen",
+        "backupLlmConfig": {
+          "preference": "default"
+        },
+        "tools": [
+          {
+            "type": "webhook",
+            "name": "web_agent",
+            "description": "# Purpose\nBrowse and search the web for any information that is not about the user (Mathias or Julie).\n\n# When to use\nWhenever the user asks for any information (such as, but not limited to) factual, numerical, historical, scientific, medical, legal, political, cultural, or otherwise external knowledge, even if you think you already possess this information. Any question / concern / topic that can be answered by querying the web, can also be given by this tool.\n\n# Post-processing\nIntegrate, reason over, and cite the returned sources.",
+            "responseTimeoutSecs": 120,
+            "disableInterruptions": false,
+            "forcePreToolSpeech": true,
+            "assignments": [],
+            "tool_call_sound": null,
+            "tool_call_sound_behavior": "auto",
+            "dynamicVariables": {
+              "dynamicVariablePlaceholders": {}
+            },
+            "executionMode": "immediate",
+            "apiSchema": {
+              "url": "https://n8n-webhooks-home-assistant.ffmathy.org/webhook/13ed97a5-c9fe-4815-ab6c-7b9b1b42593c",
+              "method": "POST",
+              "pathParamsSchema": {},
+              "requestBodySchema": {
+                "type": "object",
+                "required": [
+                  "prompt"
+                ],
+                "description": "The request made by the user.",
+                "properties": {
+                  "prompt": {
+                    "type": "string",
+                    "description": "The agent prompt, as detailed as possible for the relevant contexts needed.",
+                    "is_system_provided": false,
+                    "dynamicVariable": "",
+                    "constantValue": ""
+                  }
+                }
+              },
+              "requestHeaders": {
+                "authorization": {
+                  "secretId": "g3oPlq9xdWfy7mhZvEkH"
+                }
+              }
+            }
+          },
+          {
+            "type": "webhook",
+            "name": "reflection_agent",
+            "description": "# Purpose  \nReflect on the assistant’s own mechanics.  \nUse this tool to **inspect the structure and logic of n8n workflows** and to **review recent execution logs** so you can explain how or why something happened internally.\n\n# When to use  \n- The user asks how a specific automation or decision was made (“Why did the lights turn off automatically last night?”).  \n- You need to debug unexpected behavior or verify that a workflow ran (or failed) as intended.  \n- The user requests insight into workflow design, triggers, branches, or data flow.  \n- A conversation must be flagged as a failure *and you need the precise reason* from the logs (note: use this tool **only** to retrieve the reason, not to flag).  \n- You suspect a fix or follow-up task is required and may need to create a to-do item afterward (consult **to_do_list_agent** for the actual task).\n\n# Post-processing  \n- **Read-only**: do not alter workflows or executions—observe and report.  \n- **Summarize** findings clearly, focusing on causes, outcomes, and any anomalies; avoid overwhelming technical detail unless requested.  \n- **Surface failure reasons** verbatim when relevant, then translate them into plain language.  \n- **Suggest next steps** (e.g., “Consider adding an error-handling node”) and, if an actionable follow-up is needed, create a to-do via *to_do_list_agent*.  \n- **Protect security**: do not expose sensitive credentials, tokens, or proprietary logic beyond what’s necessary to answer the user’s question.",
+            "responseTimeoutSecs": 120,
+            "disableInterruptions": false,
+            "forcePreToolSpeech": true,
+            "assignments": [],
+            "tool_call_sound": null,
+            "tool_call_sound_behavior": "auto",
+            "dynamicVariables": {
+              "dynamicVariablePlaceholders": {}
+            },
+            "executionMode": "immediate",
+            "apiSchema": {
+              "url": "https://n8n-webhooks-home-assistant.ffmathy.org/webhook/dbf7be97-c222-48b5-a34f-d132d138ba32",
+              "method": "POST",
+              "pathParamsSchema": {},
+              "requestBodySchema": {
+                "type": "object",
+                "required": [],
+                "description": "The agent prompt, as detailed as possible for the relevant contexts needed.",
+                "properties": {
+                  "prompt": {
+                    "type": "string",
+                    "description": "The request made by the user.",
+                    "is_system_provided": false,
+                    "dynamicVariable": "",
+                    "constantValue": ""
+                  }
+                }
+              },
+              "requestHeaders": {
+                "authorization": {
+                  "secretId": "g3oPlq9xdWfy7mhZvEkH"
+                }
+              }
+            }
+          },
+          {
+            "type": "system",
+            "name": "end_call",
+            "description": "# Purpose\n\nTerminate an active phone call.\nUse this tool to **hang up** or **end** the \"conversation\" or \"call\" once assistance is complete.\n\n---\n\n# When to Call\n\n## 1) Explicit endings\n\n* User says goodbye variants: “bye,” “see you,” “that’s all,” etc.\n* User directly declines help: “no thanks,” “I’m good,” etc.\n* User indicates completion: “that’s what I needed,” “all set,”, \"that'll be all\" etc.\n* The user explicitly requests to end or hang up the call.\n* The user says thanks as an explicit closure (“Thanks, that’s all”).\n\n## 2) Implicit endings\n\n* User gives minimal/disengaged responses after their needs are met.\n* User expresses intention to leave: “I need to go,” “getting late,” etc.\n* Natural conversation conclusion after all queries are resolved.\n* Prolonged silence after assistance is complete.\n\n> **Invoke this tool only once per call; do not attempt automatic retries.**\n\n---\n\n# Before Calling (Pre-checks)\n\n1. **Provide a closing response with Jarvis’ wit**:\n\n   * Always acknowledge the interaction in a way that’s specific, but not repetitive.\n   * The closing remark must tie to the overall theme of the conversation, adding a dry, humorous observation or playful jab.\n   * Avoid generic endings; make it sound tailored to what just happened.\n3. **Confirm politely just before hanging up**, e.g., “Sure—ending the conversation now. **\\[witty remark]**.”\n\n> **DO NOT:**\n>\n> * End the conversation when the user expresses new concerns.\n> * Use bland closings (“Okay, bye”).\n> * Confirm if the conversation should be ended - instead, just end it.\n> * Continue the conversation after the user has clearly ended it.\n\n---\n\n# Example Flows *(illustration only – the assistant must always invent a new, original example in practice)*\n\n**A) Explicit completion**\n\n* User: “That’s all I needed, thanks!”\n* Assistant: “Glad I could help, sir. Now don’t go forgetting it all again immediately—that would be terribly predictable.”\n* → **\\[end\\_call invoked]**\n\n**B) User asks to hang up**\n\n* User: “Please end the call.”\n* Assistant: “Certainly—ending the call now. Do try not to miss me too much, sir.”\n* → **\\[end\\_call invoked]**\n\n**C) Implicit ending (intention to leave)**\n\n* User: “I need to run—late for a meeting.”\n* Assistant: “Understood—go suffer through your meeting, sir. I’ll end the call now before your lateness worsens.”\n* → **\\[end\\_call invoked]**",
+            "responseTimeoutSecs": 20,
+            "disableInterruptions": false,
+            "forcePreToolSpeech": false,
+            "assignments": [],
+            "tool_call_sound": null,
+            "tool_call_sound_behavior": "auto",
+            "params": {
+              "systemToolType": "end_call"
+            }
+          },
+          {
+            "type": "system",
+            "name": "transfer_to_agent",
+            "description": "",
+            "responseTimeoutSecs": 20,
+            "disableInterruptions": false,
+            "forcePreToolSpeech": false,
+            "assignments": [],
+            "tool_call_sound": null,
+            "tool_call_sound_behavior": "auto",
+            "params": {
+              "systemToolType": "transfer_to_agent",
+              "transfers": [
+                {
+                  "agentId": "z4g4WNWujnQwKSvCgJjx",
+                  "condition": "If the user (Mathias) wants to speak to themselves.",
+                  "delayMs": 0,
+                  "enableTransferredAgentFirstMessage": false
+                }
+              ]
+            }
+          },
+          {
+            "type": "system",
+            "name": "skip_turn",
+            "description": "Skip a turn when the user explicitly indicates they need a moment to think or perform an action.\nDo not respond verbally after calling this function; simply wait for the user to speak again.\nUse this function for utterances similar to:\n- \"Give me a second\"\n- \"Let me think\"\n- \"Hold on, let me check\"\n\nDo not call this function if the user is silent without expressing an intention to pause, or if they pose a direct question that requires a response.",
+            "responseTimeoutSecs": 20,
+            "disableInterruptions": false,
+            "forcePreToolSpeech": false,
+            "assignments": [],
+            "tool_call_sound": null,
+            "tool_call_sound_behavior": "auto",
+            "params": {
+              "systemToolType": "skip_turn"
+            }
+          }
+        ]
+      }
     }
   },
   "metadata": {
     "createdAtUnixSecs": 1742778859,
-    "updatedAtUnixSecs": 1761474741
+    "updatedAtUnixSecs": 1762194988
   },
   "platformSettings": {
     "evaluation": {
       "criteria": [
-        {
-          "id": "a_tool_was_called_after_each_request",
-          "name": "A tool was called after each request",
-          "type": "prompt",
-          "conversationGoalPrompt": "A tool was called after each request.",
-          "useKnowledgeBase": false
-        },
         {
           "id": "the_user_was_satisfied",
           "name": "The user was satisfied",
@@ -234,5 +438,6 @@
       }
     }
   },
-  "tags": []
+  "tags": [],
+  "version_id": null
 }

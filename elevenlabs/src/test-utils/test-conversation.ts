@@ -1,15 +1,20 @@
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { generateObject } from 'ai';
 import { z } from 'zod';
+import type { MastraMCPServerDefinition } from '@mastra/mcp';
 import {
   ElevenLabsConversationStrategy,
 } from './elevenlabs-conversation-strategy';
+import {
+  GeminiMastraConversationStrategy,
+} from './gemini-mastra-conversation-strategy';
 import type { ConversationStrategy, ServerMessage } from './conversation-strategy';
 
 export interface ConversationOptions {
   agentId: string;
   apiKey?: string;
   googleApiKey?: string;
+  mcpServers?: Record<string, MastraMCPServerDefinition>; // For Gemini MCP strategy
 }
 
 /**
@@ -32,21 +37,39 @@ export class TestConversation {
   constructor(options: ConversationOptions) {
     const apiKey =
       options.apiKey || process.env.HEY_JARVIS_ELEVENLABS_API_KEY;
-    if (!apiKey) {
-      throw new Error(
-        'API key required: set HEY_JARVIS_ELEVENLABS_API_KEY or pass apiKey'
-      );
-    }
-
+    
     this.googleApiKey =
       options.googleApiKey ||
       process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY;
 
-    // Default to ElevenLabs strategy
-    this.strategy = new ElevenLabsConversationStrategy({
-      agentId: options.agentId,
-      apiKey,
-    });
+    // Determine which strategy to use based on environment
+    // Use ElevenLabs strategy when running in GitHub Actions (CI environment)
+    // Use Gemini MCP strategy for local development
+    const isGitHubActions = process.env.GITHUB_ACTIONS === 'true';
+
+    if (isGitHubActions) {
+      // GitHub Actions: Use ElevenLabs strategy
+      if (!apiKey) {
+        throw new Error(
+          'API key required for ElevenLabs: set HEY_JARVIS_ELEVENLABS_API_KEY or pass apiKey'
+        );
+      }
+      this.strategy = new ElevenLabsConversationStrategy({
+        agentId: options.agentId,
+        apiKey,
+      });
+    } else {
+      // Local development: Use Gemini MCP strategy
+      if (!this.googleApiKey) {
+        throw new Error(
+          'Google API key required for local testing: set HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY or pass googleApiKey'
+        );
+      }
+      this.strategy = new GeminiMastraConversationStrategy({
+        apiKey: this.googleApiKey,
+        mcpServers: options.mcpServers || {},
+      });
+    }
   }
 
   async connect(): Promise<void> {
@@ -94,6 +117,7 @@ const schema = z.object({
 
     const google = createGoogleGenerativeAI({ apiKey: this.googleApiKey });
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = await generateObject<any>({
       model: google('gemini-flash-latest'),
       schema,
