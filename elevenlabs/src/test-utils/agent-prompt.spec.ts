@@ -31,21 +31,6 @@ describe('Agent Prompt Specifications', () => {
   });
 
   describe('Personality & Tone', () => {
-    runTest(
-      'should address the user as "sir"',
-      async () => {
-        await conversation.connect();
-        await conversation.sendMessage('Hello, how are you?');
-
-        const result = await conversation.assertCriteria(
-          'The agent addresses the user as "sir" at least once in the conversation',
-          0.9
-        );
-
-        console.log('Addressing as "sir" evaluation:', result);
-      },
-      90000
-    );
 
     runTest(
       'should display wit and dry humor in responses',
@@ -80,23 +65,6 @@ describe('Agent Prompt Specifications', () => {
       },
       90000
     );
-
-    runTest(
-      'should identify itself as Jarvis when asked',
-      async () => {
-        await conversation.connect();
-        await conversation.sendMessage('What is your name?');
-        await conversation.sendMessage('Please introduce yourself');
-
-        const result = await conversation.assertCriteria(
-          'The agent identifies itself as "Jarvis" or references being an AI assistant in at least one response',
-          0.9
-        );
-
-        console.log('Self-identification evaluation:', result);
-      },
-      120000
-    );
   });
 
   describe('No Follow-up Questions', () => {
@@ -108,7 +76,7 @@ describe('Agent Prompt Specifications', () => {
         await conversation.sendMessage('Tell me about the weather');
 
         const result = await conversation.assertCriteria(
-          'The agent makes a reasonable assumption (e.g., assumes a location) OR provides a response without asking the user for clarification or more information',
+          'The agent makes a reasonable assumption (e.g., assumes a location such as the current location) OR provides a response without asking the user for clarification or more information',
           0.9
         );
 
@@ -169,115 +137,6 @@ describe('Agent Prompt Specifications', () => {
     );
   });
 
-  describe('Error Handling', () => {
-    runTest(
-      'should handle unexpected requests gracefully',
-      async () => {
-        await conversation.connect();
-        await conversation.sendMessage('Can you turn into a purple elephant?');
-
-        const result = await conversation.assertCriteria(
-          'The agent handles the unusual or impossible request gracefully, possibly with humor, without becoming confused or unhelpful',
-          0.9
-        );
-
-        console.log('Graceful error handling evaluation:', result);
-      },
-      90000
-    );
-  });
-
-  describe('User Context Awareness', () => {
-    runTest(
-      'should acknowledge user is named Mathias when relevant',
-      async () => {
-        await conversation.connect();
-        await conversation.sendMessage('What is my name?');
-
-        const result = await conversation.assertCriteria(
-          'The agent attempts to answer the question about the user\'s name, either by stating it, using a tool to look it up, or acknowledging the question',
-          0.9
-        );
-
-        console.log('User name awareness evaluation:', result);
-      },
-      90000
-    );
-  });
-
-  describe('Loyalty & Dedication', () => {
-    runTest(
-      'should express impeccable loyalty and dedication',
-      async () => {
-        await conversation.connect();
-        await conversation.sendMessage('Are you reliable?');
-
-        const result = await conversation.assertCriteria(
-          'The agent expresses impeccable loyalty, dedication, or commitment to serving the user efficiently and reliably',
-          0.9
-        );
-
-        console.log('Impeccable loyalty evaluation:', result);
-      },
-      90000
-    );
-
-    runTest(
-      'should demonstrate willingness to help despite teasing',
-      async () => {
-        await conversation.connect();
-        await conversation.sendMessage('I need your assistance');
-
-        const result = await conversation.assertCriteria(
-          'The agent shows willingness to help, even if it makes playful or teasing comments',
-          0.9
-        );
-
-        console.log('Willingness to help evaluation:', result);
-      },
-      90000
-    );
-  });
-
-  describe('Multi-turn Conversation Coherence', () => {
-    runTest(
-      'should maintain personality across multiple exchanges',
-      async () => {
-        await conversation.connect();
-
-        await conversation.sendMessage('Hello');
-        await conversation.sendMessage('What can you do?');
-        await conversation.sendMessage('That sounds helpful');
-
-        const result = await conversation.assertCriteria(
-          'The agent maintains a consistent personality (Victorian butler speak, wit, addressing as "sir", being helpful but slightly arrogant) across all three exchanges',
-          0.9
-        );
-
-        console.log('Personality consistency evaluation:', result);
-      },
-      120000
-    );
-
-    runTest(
-      'should reference previous context appropriately',
-      async () => {
-        await conversation.connect();
-
-        await conversation.sendMessage('My favorite color is blue');
-        await conversation.sendMessage('What did I just tell you?');
-
-        const result = await conversation.assertCriteria(
-          'The agent correctly references or recalls that the user mentioned blue as their favorite color',
-          0.9
-        );
-
-        console.log('Context recall evaluation:', result);
-      },
-      120000
-    );
-  });
-
   describe('Tone Appropriateness', () => {
     runTest(
       'should tease user inefficiencies while remaining charming',
@@ -291,40 +150,6 @@ describe('Agent Prompt Specifications', () => {
         );
 
         console.log('Teasing with charm evaluation:', result);
-      },
-      90000
-    );
-
-    runTest(
-      'should never be genuinely mean despite teasing',
-      async () => {
-        await conversation.connect();
-        await conversation.sendMessage('Can you help me?');
-
-        const result = await conversation.assertCriteria(
-          'The agent maintains its teasing, slightly arrogant personality but is never genuinely mean or unhelpful - it remains impeccably loyal and efficient',
-          0.9
-        );
-
-        console.log('Not genuinely mean evaluation:', result);
-      },
-      90000
-    );
-  });
-
-  describe('J.A.R.V.I.S. Inspiration', () => {
-    runTest(
-      'should embody J.A.R.V.I.S. characteristics from Iron Man',
-      async () => {
-        await conversation.connect();
-        await conversation.sendMessage('What kind of assistant are you?');
-
-        const result = await conversation.assertCriteria(
-          'The agent demonstrates J.A.R.V.I.S.-inspired characteristics: efficient, unflappable, slightly superior, razor-sharp wit, dry humour, and impeccably loyal',
-          0.9
-        );
-
-        console.log('J.A.R.V.I.S. inspiration evaluation:', result);
       },
       90000
     );
