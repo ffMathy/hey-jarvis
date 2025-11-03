@@ -12,6 +12,7 @@ env:
   HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY }}
   HEY_JARVIS_WIFI_SSID: "dummy-wifi-ssid-for-ci"
   HEY_JARVIS_WIFI_PASSWORD: "dummy-wifi-password-for-ci"
+  GITHUB_ACTIONS: true
 
 jobs:
   build:
@@ -66,6 +67,7 @@ jobs:
           push: never
           runCmd: nx affected --target=build,test --exclude=home-assistant-voice-firmware
           env: |
+            GITHUB_ACTIONS
             GITHUB_TOKEN
             GITHUB_ACTOR
             IMAGE_TAG

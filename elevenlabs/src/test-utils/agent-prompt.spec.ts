@@ -1,5 +1,6 @@
 import { TestConversation } from './test-conversation';
-import { afterEach, beforeEach, describe, it } from '@jest/globals';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, it } from '@jest/globals';
+import { startMCPServer, stopMCPServer, type MCPServerHandle } from './mcp-server-lifecycle';
 
 /**
  * Agent Prompt Specification Tests
@@ -15,12 +16,25 @@ import { afterEach, beforeEach, describe, it } from '@jest/globals';
  */
 describe('Agent Prompt Specifications', () => {
   let conversation: TestConversation;
+  let mcpServer: MCPServerHandle | undefined;
   const agentId = process.env.HEY_JARVIS_ELEVENLABS_AGENT_ID;
   const apiKey = process.env.HEY_JARVIS_ELEVENLABS_API_KEY;
   const googleApiKey = process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY;
 
   // Skip all tests if API keys not configured
   const runTest = apiKey && googleApiKey ? it : it.skip;
+
+  beforeAll(async () => {
+    // Start MCP server before all tests in this suite
+    mcpServer = await startMCPServer();
+  }, 90000); // 90 second timeout for server startup
+
+  afterAll(async () => {
+    // Stop MCP server after all tests in this suite
+    if (mcpServer) {
+      await stopMCPServer(mcpServer);
+    }
+  });
 
   beforeEach(() => {
     conversation = new TestConversation({ agentId, apiKey, googleApiKey });
