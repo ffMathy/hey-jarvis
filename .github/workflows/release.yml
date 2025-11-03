@@ -9,6 +9,7 @@ env:
   HEY_JARVIS_ELEVENLABS_API_KEY: ${{ secrets.HEY_JARVIS_ELEVENLABS_API_KEY }}
   HEY_JARVIS_ELEVENLABS_VOICE_ID: ${{ secrets.HEY_JARVIS_ELEVENLABS_VOICE_ID }}
   HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY }}
+  GITHUB_ACTIONS: true
 
 jobs:
   release:
@@ -70,5 +71,6 @@ jobs:
           env: |
             GITHUB_TOKEN
             GITHUB_ACTOR
+            GITHUB_ACTIONS
             REGISTRY
             IMAGE_OWNER

@@ -43,7 +43,10 @@
       "dependsOn": ["build"],
       "options": {
         "command": "./.scripts/run-with-env.sh elevenlabs/op.env node dist/elevenlabs/main.js deploy",
-        "cwd": "."
+        "cwd": ".",
+        "env": {
+          "NODE_OPTIONS": "--experimental-vm-modules"
+        }
       }
     },
     "refresh": {
@@ -51,7 +54,10 @@
       "dependsOn": ["build"],
       "options": {
         "command": "./.scripts/run-with-env.sh elevenlabs/op.env node dist/elevenlabs/main.js fetch",
-        "cwd": "."
+        "cwd": ".",
+        "env": {
+          "NODE_OPTIONS": "--experimental-vm-modules"
+        }
       }
     },
     "test": {
@@ -60,16 +66,27 @@
       "dependsOn": ["deploy"],
       "options": {
         "command": "./.scripts/run-with-env.sh elevenlabs/op.env nx run elevenlabs:test:jest",
-        "cwd": "."
+        "cwd": ".",
+        "env": {
+          "NODE_OPTIONS": "--experimental-vm-modules"
+        }
       }
     },
     "test:jest": {
+      "__comment": "Do not run this directly - run 'test' instead.",
       "executor": "@nx/jest:jest",
       "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
       "options": {
         "jestConfig": "elevenlabs/jest.config.ts",
         "bail": true,
-        "runInBand": false
+        "runInBand": false,
+        "passWithNoTests": false
+      },
+      "configurations": {
+        "ci": {
+          "ci": true,
+          "codeCoverage": true
+        }
       }
     }
   }

@@ -188,7 +188,7 @@ export class ElevenLabsConversationStrategy implements ConversationStrategy {
     }
   }
 
-  async sendMessage(text: string): Promise<void> {
+  async sendMessage(text: string): Promise<string> {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       throw new Error('Not connected. Call connect() first.');
     }
@@ -214,6 +214,13 @@ export class ElevenLabsConversationStrategy implements ConversationStrategy {
     } else {
       this.messages.push(messageEvent as ServerMessage);
     }
+
+    // Find and return the last agent response
+    const lastAgentResponse = [...this.messages]
+      .reverse()
+      .find((msg) => msg.type === 'agent_response');
+    
+    return lastAgentResponse?.agent_response_event?.agent_response || '';
   }
 
   private async waitForResponse() {

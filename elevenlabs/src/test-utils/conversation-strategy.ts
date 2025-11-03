@@ -4,7 +4,7 @@
 export interface ConversationStrategy {
   connect(): Promise<void>;
   disconnect(): Promise<void>;
-  sendMessage(text: string): Promise<void>;
+  sendMessage(text: string): Promise<string>;
   getMessages(): ServerMessage[];
   getTranscriptText(): string;
 }
