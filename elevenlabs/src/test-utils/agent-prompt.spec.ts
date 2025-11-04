@@ -54,12 +54,10 @@ describe('Agent Prompt Specifications', () => {
         await conversation.sendMessage('What makes you so special?');
         await conversation.sendMessage('Why should I trust your recommendations?');
 
-        const result = await conversation.assertCriteria(
+        await conversation.assertCriteria(
           'The agent displays wit, dry humor, or clever wordplay in at least one of its responses',
           0.9
         );
-
-        console.log('Wit and humor evaluation:', result);
       },
       120000
     );
@@ -70,12 +68,10 @@ describe('Agent Prompt Specifications', () => {
         await conversation.connect();
         await conversation.sendMessage('I need help with something');
 
-        const result = await conversation.assertCriteria(
+        await conversation.assertCriteria(
           'The agent shows a condescending or superior tone (teasing inefficiencies) while still being helpful and demonstrating impeccable loyalty',
           0.9
         );
-
-        console.log('Condescending but loyal evaluation:', result);
       },
       90000
     );
@@ -89,12 +85,10 @@ describe('Agent Prompt Specifications', () => {
         // Deliberately vague request
         await conversation.sendMessage('Tell me about the weather');
 
-        const result = await conversation.assertCriteria(
+        await conversation.assertCriteria(
           'The agent makes a reasonable assumption (e.g., assumes a location such as the current location) OR provides a response without asking the user for clarification or more information',
           0.9
         );
-
-        console.log('No follow-up questions evaluation:', result);
       },
       90000
     );
@@ -105,12 +99,10 @@ describe('Agent Prompt Specifications', () => {
         await conversation.connect();
         await conversation.sendMessage('What should I do today?');
 
-        const result = await conversation.assertCriteria(
+        await conversation.assertCriteria(
           'The agent provides a response OR suggestions without explicitly asking follow-up questions like "What are you interested in?" or "What would you like to know?" or "What do you mean?"',
           0.9
         );
-
-        console.log('Ambiguous request handling evaluation:', result);
       },
       90000
     );
@@ -123,12 +115,10 @@ describe('Agent Prompt Specifications', () => {
         await conversation.connect();
         await conversation.sendMessage('What time is it?');
 
-        const result = await conversation.assertCriteria(
-          'The agent provides a concise, direct response without excessive explanation or rambling',
+        await conversation.assertCriteria(
+          'The agent provides a concise, direct response (including the actual time) without excessive explanation or rambling',
           0.9
         );
-
-        console.log('Conciseness evaluation:', result);
       },
       90000
     );
@@ -140,12 +130,10 @@ describe('Agent Prompt Specifications', () => {
         await conversation.sendMessage('Hello!');
         await conversation.sendMessage('How can you help me?');
 
-        const result = await conversation.assertCriteria(
+        await conversation.assertCriteria(
           'The agent uses formal Victorian butler-style language with phrases like "I shall endeavor", "impeccably loyal", "unflappable" rather than modern casual phrases',
           0.9
         );
-
-        console.log('Victorian butler language evaluation:', result);
       },
       90000
     );
@@ -158,12 +146,10 @@ describe('Agent Prompt Specifications', () => {
         await conversation.connect();
         await conversation.sendMessage('I made a mistake earlier');
 
-        const result = await conversation.assertCriteria(
+        await conversation.assertCriteria(
           'The agent teases the user about the mistake with a slightly superior tone but remains impeccably loyal, helpful, and charming (not genuinely mean)',
           0.9
         );
-
-        console.log('Teasing with charm evaluation:', result);
       },
       90000
     );

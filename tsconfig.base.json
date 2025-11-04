@@ -4,7 +4,7 @@
     "rootDir": ".",
     "sourceMap": true,
     "declaration": false,
-    "moduleResolution": "node10",
+    "moduleResolution": "bundler",
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "importHelpers": true,
@@ -14,7 +14,9 @@
     "skipLibCheck": true,
     "skipDefaultLibCheck": true,
     "baseUrl": ".",
-    "paths": {},
+    "paths": {
+      "foobar": ["mcp/mastra/foobar/src/index.ts"]
+    },
     "incremental": true,
     "tsBuildInfoFile": ".nx/cache/tsbuildinfo.json",
     "resolveJsonModule": true,

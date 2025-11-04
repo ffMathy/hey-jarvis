@@ -148,7 +148,7 @@ export function createAgentStep<
             }
 
             const prompt = config.prompt({ context });
-            
+
             const response = await agent.streamVNext([
                 {
                     role: 'user',
@@ -193,10 +193,7 @@ export function createToolStep<
         outputSchema: TToolOutput;
         execute: (params: {
             context: z.infer<TToolInput>;
-            runtimeContext?: any;
             mastra?: any;
-            suspend?: any;
-            writer?: any;
         }) => Promise<z.infer<TToolOutput>>;
     };
 }) {
@@ -205,13 +202,10 @@ export function createToolStep<
         description: config.description,
         inputSchema: config.tool.inputSchema,
         outputSchema: config.tool.outputSchema,
-        execute: async ({ context, mastra, runtimeContext, suspend, writer }) => {
+        execute: async ({ context, mastra }) => {
             return await config.tool.execute({
                 context,
-                runtimeContext,
                 mastra,
-                suspend,
-                writer
             });
         },
     });

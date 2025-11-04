@@ -2,24 +2,18 @@
 
 import { MCPServer } from '@mastra/mcp';
 import { createServer } from 'node:http';
-import { shoppingListAgent, shoppingTools } from './verticals/shopping';
-import { weatherAgent, weatherTools } from './verticals/weather';
+import { publicAgents } from './shared';
 
 async function main() {
   const mcpServer = new MCPServer({
     name: "J.A.R.V.I.S. Assistant",
     version: "1.0.0",
     description: "A comprehensive assistant that provides weather information and shopping list management via MCP",
-    agents: {
-      weather: weatherAgent,
-      shopping: shoppingListAgent
-    },
+    agents: publicAgents,
     tools: {}
   });
 
   console.log('Starting J.A.R.V.I.S. MCP Server...');
-  console.log('Available weather tools:', Object.keys(weatherTools));
-  console.log('Available shopping tools:', Object.keys(shoppingTools));
 
   const port = parseInt(process.env.PORT || '4111', 10);
   const host = process.env.HOST || '0.0.0.0';

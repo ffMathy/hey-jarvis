@@ -2,7 +2,7 @@ import { createAgent } from '../../utils';
 import { shoppingTools } from './tools';
 
 // Main shopping list agent for managing Bilka shopping cart
-export const shoppingListAgent = createAgent({
+export const shoppingListAgent = await createAgent({
     name: 'ShoppingList',
     instructions: `# Role & Scope
 You are a shopping-list agent. For every user request, you will either add or remove items on the list.
@@ -85,7 +85,7 @@ The products might be written in Danish.
 });
 
 // Specialized agent for summarizing shopping list changes
-export const shoppingListSummaryAgent = createAgent({
+export const shoppingListSummaryAgent = await createAgent({
     name: 'ShoppingListSummary',
     instructions: `You are an evaluator agent that takes in a query from a user that has been processed by other agents, along with a "before" and "after" version of shopping basket contents.
 

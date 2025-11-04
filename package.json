@@ -62,13 +62,11 @@
     "@mastra/loggers": "^0.10.18",
     "@mastra/mcp": "^0.14.1",
     "@mastra/memory": "^0.15.9",
-    "@types/fs-extra": "^11.0.4",
     "@types/node-fetch": "^2.6.13",
     "ai": "^5.0.86",
     "commander": "^14.0.2",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
-    "fs-extra": "^11.3.2",
     "hono": "^4.10.3",
     "zod": "^3.25.76"
   }
