@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
-import * as fs from 'fs-extra';
+import { readFile, writeFile, mkdir, access } from 'fs/promises';
 import * as path from 'path';
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import type { GetAgentResponseModel } from '@elevenlabs/elevenlabs-js/api';
+import { cwd } from 'process';
 
 class ElevenLabsAgentManager {
   private client: ElevenLabsClient;
@@ -18,8 +19,7 @@ class ElevenLabsAgentManager {
   }
 
   private getAssetsPath(): string {
-    const projectRoot = path.resolve(__dirname, '../../../..');
-    return path.join(projectRoot, 'elevenlabs', 'src', 'assets');
+    return path.join(cwd(), 'elevenlabs', 'src', 'assets');
   }
 
   private filterSensitiveData(config: GetAgentResponseModel): Omit<GetAgentResponseModel, 'phoneNumbers' | 'accessInfo' | 'agentId'> {
@@ -44,9 +44,9 @@ class ElevenLabsAgentManager {
     const filteredConfig = this.filterSensitiveData(config);
     
     // Ensure the assets directory exists
-    await fs.ensureDir(assetsPath);
+    await mkdir(assetsPath, { recursive: true });
     
-    await fs.writeFile(configPath, JSON.stringify(filteredConfig, null, 2));
+    await writeFile(configPath, JSON.stringify(filteredConfig, null, 2), 'utf-8');
     console.log(`✅ Configuration saved to ${configPath} (sensitive data filtered)`);
   }
 
@@ -54,11 +54,14 @@ class ElevenLabsAgentManager {
     const assetsPath = this.getAssetsPath();
     const configPath = path.join(assetsPath, 'agent-config.json');
     
-    if (!await fs.pathExists(configPath)) {
+    try {
+      await access(configPath);
+    } catch {
       throw new Error(`Configuration file not found: ${configPath}`);
     }
-    
-    const config = await fs.readJson(configPath);
+
+    const fileContent = await readFile(configPath, 'utf-8');
+    const config = JSON.parse(fileContent);
     console.log(`📂 Configuration loaded from ${configPath}`);
     return config;
   }
@@ -66,12 +69,14 @@ class ElevenLabsAgentManager {
   private async loadPrompt(): Promise<string> {
     const assetsPath = this.getAssetsPath();
     const promptPath = path.join(assetsPath, 'agent-prompt.md');
-    
-    if (!await fs.pathExists(promptPath)) {
+
+    try {
+      await access(promptPath);
+    } catch {
       throw new Error(`Prompt file not found: ${promptPath}`);
     }
-    
-    const prompt = await fs.readFile(promptPath, 'utf-8');
+
+    const prompt = await readFile(promptPath, 'utf-8');
     console.log(`📂 Prompt loaded from ${promptPath}`);
     return prompt.trim();
   }
@@ -81,9 +86,9 @@ class ElevenLabsAgentManager {
     const promptPath = path.join(assetsPath, 'agent-prompt.md');
     
     // Ensure the assets directory exists
-    await fs.ensureDir(assetsPath);
-    
-    await fs.writeFile(promptPath, prompt);
+    await mkdir(assetsPath, { recursive: true });
+
+    await writeFile(promptPath, prompt, 'utf-8');
     console.log(`✅ Prompt saved to ${promptPath}`);
   }
 

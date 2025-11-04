@@ -1,16 +1,13 @@
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
-import { generateText } from 'ai';
-import { MCPClient } from '@mastra/mcp';
-import type { MastraMCPServerDefinition } from '@mastra/mcp';
 import type { ConversationStrategy, ServerMessage, UserMessageEvent } from './conversation-strategy';
 import agentConfig from '../assets/agent-config.json';
 import { readFile } from 'fs/promises';
 import { Agent } from '@mastra/core/agent';
-import type { MastraMessageV3, MessageInput, MessageListInput } from '@mastra/core/dist/agent/message-list';
-import { cwd } from 'process';
+
+// eslint-disable-next-line @nx/enforce-module-boundaries
+import { publicAgents } from 'mcp/mastra/shared/index'
 
 export interface GeminiMastraConversationOptions {
-    mcpServers?: Record<string, MastraMCPServerDefinition>;
     apiKey?: string;
 }
 
@@ -19,15 +16,12 @@ export interface GeminiMastraConversationOptions {
  * Connects Gemini directly to MCP servers for tool calling
  */
 export class GeminiMastraConversationStrategy implements ConversationStrategy {
-    private mcpClient: MCPClient;
     private readonly apiKey: string;
-    private readonly mcpServers: Record<string, MastraMCPServerDefinition>;
     private messages: ServerMessage[] = [];
     private isConnected = false;
 
     constructor(options: GeminiMastraConversationOptions = {}) {
         this.apiKey = options.apiKey || process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY || '';
-        this.mcpServers = options.mcpServers || {};
 
         if (!this.apiKey) {
             throw new Error('Google API key required: set HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY or pass apiKey');
@@ -37,12 +31,6 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
     async connect(): Promise<void> {
         // Clear state from any previous connection
         this.messages = [];
-
-        // Initialize MCP client with provided servers
-        this.mcpClient = new MCPClient({
-            servers: this.mcpServers,
-            timeout: 60000,
-        });
 
         this.isConnected = true;
     }
@@ -59,34 +47,31 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
         };
         this.messages.push(userMessage as ServerMessage);
 
-        // Get MCP tools if client is configured
-        const toolsets = await this.mcpClient.getToolsets();
-
         // Create Google provider instance with API key
         const googleProvider = createGoogleGenerativeAI({
             apiKey: this.apiKey,
         });
 
-        const agentPrompt = await readFile("./elevenlabs/src/assets/agent-prompt.md", 'utf-8');
+        const agentPrompt = await this.readAgentPrompt();
         const agent = new Agent({
             name: 'J.A.R.V.I.S.',
             instructions: agentPrompt,
             model: googleProvider(agentConfig.conversationConfig.agent.prompt.llm),
-            tools: toolsets,
+            agents: publicAgents
         });
 
         // Call Gemini with conversation history and tools
         const result = await agent.generate(this.messages.map((x, i) => ({
             createdAt: new Date(),
             type: 'text',
-            id: i.toString(),
+            id: "message-" + i.toString(),
             content: text,
             role: x.type === 'user_message' ? 
                 'user' as const : 
                 (x.type === 'agent_tool_response' ? 
                     'tool' as const :
                     'assistant' as const),
-        } as MessageInput)));
+        }) as any));
 
         // Extract the response text
         const responseText = result.text || '';
@@ -119,6 +104,13 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
         return responseText;
     }
 
+    private async readAgentPrompt() {
+        const agentPrompt = await readFile("./elevenlabs/src/assets/agent-prompt.md", 'utf-8');
+        return agentPrompt
+            .replace('{{system__time_utc}}', new Date().toISOString())
+            .replace('{{system__time}}', new Date().toLocaleString());
+    }
+
     getMessages(): ServerMessage[] {
         return [...this.messages];
     }
@@ -143,10 +135,6 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
     }
 
     async disconnect(): Promise<void> {
-        if (this.mcpClient) {
-            await this.mcpClient.disconnect();
-        }
-        this.mcpClient = null;
         this.messages = [];
         this.isConnected = false;
     }

@@ -1,0 +1,12 @@
+{
+    "targets": {
+        "initialize": {
+            "executor": "nx:run-commands",
+            "options": {
+                "command": "eval $(op signin -f)",
+                "cwd": "."
+            }
+        }
+    },
+    "name": "root"
+}

@@ -1,52 +1,73 @@
 import { execa, type Subprocess } from 'execa';
+import * as net from 'net';
 
 export interface MCPServerHandle {
   pid: number;
   process: Subprocess;
 }
 
-async function waitForServerReady(
-  process: Subprocess,
-  timeout = 60000
+async function isPortOpen(
+  port: number,
+  host = '127.0.0.1'
 ): Promise<boolean> {
   return new Promise((resolve) => {
-    let serverReady = false;
-    const startTime = Date.now();
-
-    const checkTimeout = setInterval(() => {
-      if (serverReady) {
-        clearInterval(checkTimeout);
-        resolve(true);
-      } else if (Date.now() - startTime > timeout) {
-        clearInterval(checkTimeout);
-        resolve(false);
-      }
-    }, 100);
-
-    // Listen for startup messages
-    if (process.stdout) {
-      process.stdout.on('data', (data: unknown) => {
-        const output = String(data);
-        console.log(`[MCP Server]: ${output.trim()}`);
-
-        // Check for MCP server startup indicators
-        if (
-          output.includes('Starting J.A.R.V.I.S. MCP Server') ||
-          output.includes('Available weather tools') ||
-          output.includes('Available shopping tools') ||
-          output.includes('listening on')
-        ) {
-          serverReady = true;
-        }
-      });
-    }
-
-    if (process.stderr) {
-      process.stderr.on('data', (data: unknown) => {
-        console.error(`[MCP Server Error]: ${String(data).trim()}`);
-      });
-    }
+    const socket = new net.Socket();
+    
+    socket.setTimeout(1000);
+    
+    socket.on('connect', () => {
+      socket.destroy();
+      resolve(true);
+    });
+    
+    socket.on('timeout', () => {
+      socket.destroy();
+      resolve(false);
+    });
+    
+    socket.on('error', () => {
+      socket.destroy();
+      resolve(false);
+    });
+    
+    socket.connect(port, host);
   });
+}
+
+async function waitForServerReady(
+  process: Subprocess,
+  port = 4111,
+  timeout = 60000
+): Promise<boolean> {
+  const startTime = Date.now();
+
+  // Set up logging for stdout/stderr
+  if (process.stdout) {
+    process.stdout.on('data', (data: unknown) => {
+      const output = String(data);
+      console.debug(`[MCP]: ${output.trim()}`);
+    });
+  }
+
+  if (process.stderr) {
+    process.stderr.on('data', (data: unknown) => {
+      console.error(`[MCP]: ${String(data).trim()}`);
+    });
+  }
+
+  // Poll for port availability
+  while (Date.now() - startTime < timeout) {
+    const isReady = await isPortOpen(port);
+    
+    if (isReady) {
+      return true;
+    }
+    
+    // Wait 500ms before checking again
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+
+  return false;
 }
 
 /**
@@ -54,6 +75,7 @@ async function waitForServerReady(
  * Returns a handle that can be used to stop the server
  */
 export async function startMCPServer(): Promise<MCPServerHandle> {
+  return;
   console.log('🚀 Starting MCP server before tests...');
 
   try {
@@ -95,6 +117,7 @@ export async function startMCPServer(): Promise<MCPServerHandle> {
  * Stop the MCP server
  */
 export async function stopMCPServer(handle: MCPServerHandle): Promise<void> {
+  return;
   console.log('🛑 Stopping MCP server after tests...');
 
   if (handle.pid) {

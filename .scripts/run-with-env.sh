@@ -25,8 +25,7 @@ done < "$env_file"
 if [ "$all_vars_present" = true ]; then
     exec "$@"
 else
-    echo "Missing environment variables: ${missing_vars[*]}"
-    echo "Falling back to 1Password CLI..."
+    echo "Missing environment variables, so falling back to 1Password CLI: ${missing_vars[*]}..."
     
     # Check if 1Password CLI is signed in
     op account get &> /dev/null
@@ -35,5 +34,20 @@ else
         exit 1
     fi
     
-    exec op run --env-file="$env_file" --no-masking -- "$@"
+    # Create a temporary env file that includes current environment + op.env
+    temp_env_file=$(mktemp)
+    trap "rm -f '$temp_env_file'" EXIT
+    
+    # Export current environment variables (filter out functions and problematic vars)
+    while IFS='=' read -r name value; do
+        # Only include simple variables
+        if [[ "$name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+            echo "$name=$value" >> "$temp_env_file"
+        fi
+    done < <(env)
+    
+    # Append the original env file (allows 1Password references to override)
+    cat "$env_file" >> "$temp_env_file"
+    
+    exec op run --env-file="$temp_env_file" --no-masking -- "$@"
 fi

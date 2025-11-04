@@ -12,7 +12,7 @@
       "options": {
         "platform": "node",
         "outputPath": "dist/elevenlabs",
-        "format": ["cjs"],
+        "format": ["esm"],
         "bundle": false,
         "main": "elevenlabs/src/main.ts",
         "tsConfig": "elevenlabs/tsconfig.app.json",
