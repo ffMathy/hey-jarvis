@@ -126,7 +126,6 @@ describe('TestConversation', () => {
           0.5
         );
 
-        console.log('Weather topic evaluation:', result);
         expect(result.reasoning).toBeTruthy();
         expect(typeof result.reasoning).toBe('string');
         expect(result.reasoning.length).toBeGreaterThan(10);
@@ -213,8 +212,6 @@ describe('TestConversation', () => {
         expect(transcript).toContain('> USER:');
         expect(transcript).toContain('> TOOL:');
         expect(transcript).toContain('> AGENT:');
-
-        console.log('Weather request transcript:', transcript);
       },
       90000
     );

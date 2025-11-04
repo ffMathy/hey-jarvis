@@ -23,7 +23,8 @@
     "HEY_JARVIS_ELEVENLABS_AGENT_ID": "${localEnv:HEY_JARVIS_ELEVENLABS_AGENT_ID}",
     "HEY_JARVIS_ELEVENLABS_VOICE_ID": "${localEnv:HEY_JARVIS_ELEVENLABS_VOICE_ID}",
     "HEY_JARVIS_WIFI_SSID": "${localEnv:HEY_JARVIS_WIFI_SSID}",
-    "HEY_JARVIS_WIFI_PASSWORD": "${localEnv:HEY_JARVIS_WIFI_PASSWORD}"
+    "HEY_JARVIS_WIFI_PASSWORD": "${localEnv:HEY_JARVIS_WIFI_PASSWORD}",
+    "NODE_OPTIONS": "--experimental-vm-modules"
   },
   "customizations": {
     "vscode": {

@@ -1,7 +1,7 @@
 import { createAgent } from '../../../utils';
 
 // Specialized agent for meal plan recipe selection
-export const mealPlanSelectorAgent = createAgent({
+export const mealPlanSelectorAgent = await createAgent({
     name: 'MealPlanSelector',
     instructions: `You are a meal planning optimization specialist.
 
@@ -26,7 +26,7 @@ Each recipe should feed 2 people for 3 days (6 total portions if 2 recipes)`,
 });
 
 // Specialized agent for creating meal plan schedules
-export const mealPlanGeneratorAgent = createAgent({
+export const mealPlanGeneratorAgent = await createAgent({
     name: 'MealPlanGenerator',
     instructions: `You are a meal scheduling specialist.
 
@@ -50,7 +50,7 @@ Do NOT:
 });
 
 // Specialized agent for email formatting
-export const mealPlanEmailFormatterAgent = createAgent({
+export const mealPlanEmailFormatterAgent = await createAgent({
     name: 'EmailFormatter',
     instructions: `You are an HTML email formatting specialist for meal plans.
 

@@ -2,7 +2,7 @@ import { createAgent } from '../../utils';
 import { cookingTools } from './tools';
 
 // Main cooking agent for recipe search and general queries
-export const recipeSearchAgent = createAgent({
+export const recipeSearchAgent = await createAgent({
     name: 'RecipeSearch',
     instructions: `You are a recipe search specialist for Valdemarsro (Danish recipe website).
 

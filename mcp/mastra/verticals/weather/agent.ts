@@ -1,7 +1,7 @@
 import { createAgent } from '../../utils';
 import { weatherTools } from './tools';
 
-export const weatherAgent = createAgent({
+export const weatherAgent = await createAgent({
     name: 'Weather',
     instructions: `You are a weather agent which can provide weather insights via tools (current weather information and 5-day future prognosises for certain locations).
 

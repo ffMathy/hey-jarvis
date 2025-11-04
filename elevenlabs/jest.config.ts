@@ -5,6 +5,7 @@ export default {
   coverageDirectory: '../coverage/elevenlabs',
   testMatch: ['**/*.spec.ts', '**/*.test.ts'],
   testTimeout: 60000,
+  maxWorkers: 1, // Run tests serially to avoid MCP server port conflicts
   extensionsToTreatAsEsm: ['.ts'],
   moduleNameMapper: {
     '^(\\.{1,2}/.*)\\.js$': '$1',

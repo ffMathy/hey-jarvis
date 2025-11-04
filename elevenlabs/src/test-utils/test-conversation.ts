@@ -66,11 +66,6 @@ export class TestConversation {
       }
       this.strategy = new GeminiMastraConversationStrategy({
         apiKey: this.googleApiKey,
-        mcpServers: {
-          jarvis: {
-            url: new URL('http://localhost:4111/api/mcp'),
-          },
-        },
       });
     }
   }
@@ -172,12 +167,14 @@ Respond with:
 
     if (!result.passed || result.score < minScore) {
       throw new Error(
-        `Conversation failed to meet criteria (score: ${result.score}):\n` +
+        `Conversation failed to meet criteria (scored: ${result.score} but needed: ${minScore}):\n` +
           `Criteria: ${criteria}\n` +
           `Reasoning: ${result.reasoning}\n\n` +
           `Transcript:\n${this.getTranscriptText()}`
       );
     }
+
+    console.debug('✅ ', criteria, '\n', this.getTranscriptText(), '\n', result);
 
     return result;
   }

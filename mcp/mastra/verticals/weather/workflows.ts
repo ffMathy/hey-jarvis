@@ -1,5 +1,5 @@
-import { createWorkflow, createAgentStep, createStep } from '../../utils/workflow-factory';
 import { z } from 'zod';
+import { createAgentStep, createStep, createWorkflow } from '../../utils/workflow-factory';
 
 // Agent-as-step for scheduled weather check using the weather agent directly
 const scheduledWeatherCheck = createAgentStep({
@@ -8,13 +8,7 @@ const scheduledWeatherCheck = createAgentStep({
     agentName: 'weather',
     inputSchema: z.object({}),
     outputSchema: z.object({
-        memoryUpdate: z.object({
-            context: z.string(),
-            events: z.array(z.object({
-                type: z.string(),
-                information: z.any(),
-            })),
-        }).optional(),
+        result: z.string(), // This comes from the agent response
     }),
     prompt: () => 'Get current weather for Mathias, Denmark',
 });
@@ -23,9 +17,7 @@ const scheduledWeatherCheck = createAgentStep({
 const transformToMemoryUpdate = createStep({
     id: 'transform-to-memory-update',
     description: 'Transform weather data into memory update format',
-    inputSchema: z.object({
-        result: z.string(), // This comes from the agent response
-    }),
+    inputSchema: scheduledWeatherCheck.outputSchema,
     outputSchema: z.object({
         memoryUpdate: z.object({
             context: z.string(),
@@ -54,16 +46,8 @@ const transformToMemoryUpdate = createStep({
 // Scheduled weather monitoring workflow using agent-as-step pattern
 export const weatherMonitoringWorkflow = createWorkflow({
     id: 'weather-monitoring-workflow',
-    inputSchema: z.object({}),
-    outputSchema: z.object({
-        memoryUpdate: z.object({
-            context: z.string(),
-            events: z.array(z.object({
-                type: z.string(),
-                information: z.any(),
-            })),
-        }).optional(),
-    }),
+    inputSchema: scheduledWeatherCheck.inputSchema,
+    outputSchema: transformToMemoryUpdate.outputSchema,
 })
     .then(scheduledWeatherCheck)
     .then(transformToMemoryUpdate);
