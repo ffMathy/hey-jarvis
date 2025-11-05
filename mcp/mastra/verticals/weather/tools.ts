@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { createTool } from '../../utils/tool-factory';
+import { createTool } from '../../utils/tool-factory.js';
 
 // Interface for OpenWeatherMap current weather response
 interface CurrentWeatherResponse {
