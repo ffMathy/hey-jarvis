@@ -29,13 +29,13 @@ export interface EvaluationResult {
  * Uses a ConversationStrategy for the actual conversation implementation.
  */
 export class TestConversation {
-  private readonly strategy: ConversationStrategy;
+  private strategy: ConversationStrategy;
   private readonly googleApiKey: string | undefined;
 
   constructor(options: ConversationOptions) {
     const apiKey =
       options.apiKey || process.env.HEY_JARVIS_ELEVENLABS_API_KEY;
-    
+
     this.googleApiKey =
       options.googleApiKey ||
       process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY;
@@ -43,30 +43,38 @@ export class TestConversation {
     // Determine which strategy to use based on environment
     // Use ElevenLabs strategy when running in GitHub Actions (CI environment)
     // Use Gemini MCP strategy for local development
-    const isGitHubActions = process.env.GITHUB_ACTIONS === 'true';
+    this.initializeConversationStrategy(apiKey, options);
+  }
 
-    if (isGitHubActions) {
-      // GitHub Actions: Use ElevenLabs strategy
-      if (!apiKey) {
-        throw new Error(
-          'API key required for ElevenLabs: set HEY_JARVIS_ELEVENLABS_API_KEY or pass apiKey'
-        );
-      }
-      this.strategy = new ElevenLabsConversationStrategy({
-        agentId: options.agentId,
-        apiKey,
-      });
-    } else {
-      // Local development: Use Gemini MCP strategy
-      if (!this.googleApiKey) {
-        throw new Error(
-          'Google API key required for local testing: set HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY or pass googleApiKey'
-        );
-      }
-      this.strategy = new GeminiMastraConversationStrategy({
-        apiKey: this.googleApiKey,
-      });
-    }
+  private initializeConversationStrategy(apiKey: string, options: ConversationOptions) {
+    this.strategy = new GeminiMastraConversationStrategy({
+      apiKey: this.googleApiKey,
+    });
+
+    // const isGitHubActions = process.env.GITHUB_ACTIONS === 'true';
+
+    // if (isGitHubActions) {
+    //   // GitHub Actions: Use ElevenLabs strategy
+    //   if (!apiKey) {
+    //     throw new Error(
+    //       'API key required for ElevenLabs: set HEY_JARVIS_ELEVENLABS_API_KEY or pass apiKey'
+    //     );
+    //   }
+    //   this.strategy = new ElevenLabsConversationStrategy({
+    //     agentId: options.agentId,
+    //     apiKey,
+    //   });
+    // } else {
+    //   // Local development: Use Gemini MCP strategy
+    //   if (!this.googleApiKey) {
+    //     throw new Error(
+    //       'Google API key required for local testing: set HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY or pass googleApiKey'
+    //     );
+    //   }
+    //   this.strategy = new GeminiMastraConversationStrategy({
+    //     apiKey: this.googleApiKey,
+    //   });
+    // }
   }
 
   async connect(): Promise<void> {
@@ -100,7 +108,7 @@ export class TestConversation {
    */
   async evaluate(criteria: string): Promise<EvaluationResult> {
     const transcriptText = this.getTranscriptText();
-const schema = z.object({
+    const schema = z.object({
       passed: z.boolean().describe('Whether the criteria was met'),
       score: z
         .number()
@@ -167,9 +175,9 @@ Respond with:
     if (!result.passed || result.score < minScore) {
       throw new Error(
         `Conversation failed to meet criteria (scored: ${result.score} but needed: ${minScore}):\n` +
-          `Criteria: ${criteria}\n` +
-          `Reasoning: ${result.reasoning}\n\n` +
-          `Transcript:\n${this.getTranscriptText()}`
+        `Criteria: ${criteria}\n` +
+        `Reasoning: ${result.reasoning}\n\n` +
+        `Transcript:\n${this.getTranscriptText()}`
       );
     }
 
