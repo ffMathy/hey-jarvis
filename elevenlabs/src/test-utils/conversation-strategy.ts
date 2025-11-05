@@ -66,7 +66,7 @@ interface McpToolCallEvent {
     tool_name: string;
     tool_call_id: string;
     state: 'success' | 'loading';
-    result: [];
+    result: any[];
   };
 }
 
