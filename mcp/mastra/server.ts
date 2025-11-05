@@ -1,11 +1,10 @@
 import { serve } from '@hono/node-server';
+import type { Mastra } from '@mastra/core';
 import { Hono } from 'hono';
-import { createMastra } from './index';
+import { mastra } from './index.js';
+import { startMcpServer } from './mcp-server.js';
 
-async function main() {
-  // Initialize Mastra with storage
-  const mastra = await createMastra();
-
+async function startMastraServer(mastra: Mastra) {
   // Create Hono app and mount Mastra middleware
   const app = new Hono();
 
@@ -35,7 +34,11 @@ async function main() {
   console.log(`Mastra server running at http://${host}:${port}`);
 }
 
-main().catch((error) => {
-  console.error('Failed to start Mastra server:', error);
+const startServersPromise = Promise.all([
+  startMastraServer(mastra),
+  startMcpServer()
+]);
+startServersPromise.catch((error) => {
+  console.error('Failed to start servers:', error);
   process.exit(1);
 });

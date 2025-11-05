@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { createAgentStep, createStep, createWorkflow } from '../../utils/workflow-factory';
+import { createAgentStep, createStep, createWorkflow } from '../../utils/workflow-factory.js';
 
 // Agent-as-step for scheduled weather check using the weather agent directly
 const scheduledWeatherCheck = createAgentStep({
