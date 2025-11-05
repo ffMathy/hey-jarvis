@@ -3,7 +3,9 @@
   "compilerOptions": {
     "outDir": "../../dist/out-tsc",
     "types": ["jest", "node"],
-    "esModuleInterop": true
+    "esModuleInterop": true,
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext"
   },
   "include": [
     "**/*.test.ts",

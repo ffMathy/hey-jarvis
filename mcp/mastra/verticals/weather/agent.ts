@@ -1,5 +1,5 @@
-import { createAgent } from '../../utils';
-import { weatherTools } from './tools';
+import { createAgent } from '../../utils/index.js';
+import { weatherTools } from './tools.js';
 
 export const weatherAgent = await createAgent({
     name: 'Weather',
