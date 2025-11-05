@@ -57,7 +57,9 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
             name: 'J.A.R.V.I.S.',
             instructions: agentPrompt,
             model: googleProvider(agentConfig.conversationConfig.agent.prompt.llm),
-            agents: publicAgents
+            agents: publicAgents,
+            tools: {},
+            workflows: {}
         });
 
         // Call Gemini with conversation history and tools
@@ -91,10 +93,10 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
                 const toolMessage: ServerMessage = {
                     type: 'mcp_tool_call',
                     mcp_tool_call: {
-                        tool_name: JSON.stringify(toolCall),
+                        tool_name: toolCall.payload.toolName,
                         tool_call_id: toolCall.runId,
                         state: 'success',
-                        result: [],
+                        result: [toolCall.payload.result['text']],
                     },
                 };
                 this.messages.push(toolMessage);
@@ -106,9 +108,10 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
 
     private async readAgentPrompt() {
         const agentPrompt = await readFile("./elevenlabs/src/assets/agent-prompt.md", 'utf-8');
-        return agentPrompt
+        const replacedAgentPrompt = agentPrompt
             .replace('{{system__time_utc}}', new Date().toISOString())
-            .replace('{{system__time}}', new Date().toLocaleString());
+            .replace('{{system__time}}', new Date().toISOString());
+        return replacedAgentPrompt;
     }
 
     getMessages(): ServerMessage[] {
