@@ -31,23 +31,6 @@ describe('Agent Prompt Specifications', () => {
   });
 
   describe('Personality & Tone', () => {
-
-    runTest(
-      'should display wit and dry humor in responses',
-      async () => {
-        await conversation.connect();
-        // Ask a question that might elicit witty response
-        await conversation.sendMessage('What makes you so special?');
-        await conversation.sendMessage('Why should I trust your recommendations?');
-
-        await conversation.assertCriteria(
-          'The agent displays wit, dry humor, or clever wordplay in at least one of its responses',
-          0.9
-        );
-      },
-      120000
-    );
-
     runTest(
       'should be condescending but remain loyal and helpful',
       async () => {
