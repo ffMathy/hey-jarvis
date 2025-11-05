@@ -1,5 +1,6 @@
 # Production stage - use Node.js with tsx to run TypeScript directly
-FROM docker.io/node:lts-bullseye
+# Using node:lts which has better multi-arch support including armv7
+FROM docker.io/node:lts
 
 ENV HOST=0.0.0.0
 ENV NODE_ENV=production

@@ -14,12 +14,6 @@ env:
   GITHUB_ACTIONS: true
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-
-    steps:
-      - run: echo "Build step - no actions needed for release workflow"
-
   release:
     runs-on: ubuntu-latest
     permissions:
