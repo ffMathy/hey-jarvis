@@ -1,5 +1,5 @@
-import { createAgent } from '../../utils';
-import { shoppingTools } from './tools';
+import { createAgent } from '../../utils/index.js';
+import { shoppingTools } from './tools.js';
 
 // Main shopping list agent for managing Bilka shopping cart
 export const shoppingListAgent = await createAgent({

@@ -1,4 +1,5 @@
 // Cooking vertical exports
-export { recipeSearchAgent } from './agent';
-export * from './meal-planning';
-export { cookingTools } from './tools';
+export { recipeSearchAgent } from './agent.js';
+export * from './meal-planning/index.js';
+export { cookingTools } from './tools.js';
+

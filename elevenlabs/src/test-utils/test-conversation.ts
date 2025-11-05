@@ -1,7 +1,6 @@
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { generateObject } from 'ai';
 import { z } from 'zod';
-import type { MastraMCPServerDefinition } from '@mastra/mcp';
 import {
   ElevenLabsConversationStrategy,
 } from './elevenlabs-conversation-strategy';

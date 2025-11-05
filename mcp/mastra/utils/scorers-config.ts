@@ -7,7 +7,7 @@ import {
     createHallucinationScorer,
     createPromptAlignmentScorerLLM
 } from '@mastra/evals/scorers/llm';
-import { google } from './google-provider';
+import { google } from './google-provider.js';
 
 /**
  * Evaluation model used for all scorers in the Hey Jarvis system.

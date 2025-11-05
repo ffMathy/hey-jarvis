@@ -2,7 +2,7 @@
 
 import { MCPServer } from '@mastra/mcp';
 import { createServer } from 'node:http';
-import { publicAgents } from './shared';
+import { publicAgents } from './shared/index.js';
 
 async function main() {
   const mcpServer = new MCPServer({
