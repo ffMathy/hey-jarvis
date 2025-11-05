@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.2](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.4.1...home-assistant-voice-firmware-v0.4.2) (2025-11-05)
+
+
+### Bug Fixes
+
+* progress on stability and tests ([0692649](https://github.com/ffMathy/hey-jarvis/commit/069264952fd76864a39da98d55bf64d1c36b5eba))
+
 ## [0.4.1](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.4.0...home-assistant-voice-firmware-v0.4.1) (2025-10-14)
 
 
