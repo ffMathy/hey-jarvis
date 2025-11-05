@@ -1,12 +1,12 @@
-import {
-    createCompletenessScorer,
-} from '@mastra/evals/scorers/code';
-import {
-    createAnswerRelevancyScorer,
-    createBiasScorer,
-    createHallucinationScorer,
-    createPromptAlignmentScorerLLM
-} from '@mastra/evals/scorers/llm';
+// import {
+//     createCompletenessScorer,
+// } from '@mastra/evals/scorers/code';
+// import {
+//     createAnswerRelevancyScorer,
+//     createBiasScorer,
+//     createHallucinationScorer,
+//     createPromptAlignmentScorerLLM
+// } from '@mastra/evals/scorers/llm';
 import { google } from './google-provider.js';
 
 /**
@@ -33,26 +33,26 @@ const DEFAULT_SAMPLING_RATE = 1.0;
  * - **bias**: Detection of potential biases in outputs
  */
 export const DEFAULT_SCORERS = {
-    answerRelevancy: {
-        scorer: createAnswerRelevancyScorer({ model: SCORER_MODEL }),
-        sampling: { type: 'ratio' as const, rate: DEFAULT_SAMPLING_RATE },
-    },
-    hallucination: {
-        scorer: createHallucinationScorer({ model: SCORER_MODEL }),
-        sampling: { type: 'ratio' as const, rate: DEFAULT_SAMPLING_RATE },
-    },
-    completeness: {
-        scorer: createCompletenessScorer(),
-        sampling: { type: 'ratio' as const, rate: DEFAULT_SAMPLING_RATE },
-    },
-    promptAlignment: {
-        scorer: createPromptAlignmentScorerLLM({ model: SCORER_MODEL }),
-        sampling: { type: 'ratio' as const, rate: DEFAULT_SAMPLING_RATE },
-    },
-    bias: {
-        scorer: createBiasScorer({ model: SCORER_MODEL }),
-        sampling: { type: 'ratio' as const, rate: DEFAULT_SAMPLING_RATE },
-    },
+    // answerRelevancy: {
+    //     scorer: createAnswerRelevancyScorer({ model: SCORER_MODEL }),
+    //     sampling: { type: 'ratio' as const, rate: DEFAULT_SAMPLING_RATE },
+    // },
+    // hallucination: {
+    //     scorer: createHallucinationScorer({ model: SCORER_MODEL }),
+    //     sampling: { type: 'ratio' as const, rate: DEFAULT_SAMPLING_RATE },
+    // },
+    // completeness: {
+    //     scorer: createCompletenessScorer(),
+    //     sampling: { type: 'ratio' as const, rate: DEFAULT_SAMPLING_RATE },
+    // },
+    // promptAlignment: {
+    //     scorer: createPromptAlignmentScorerLLM({ model: SCORER_MODEL }),
+    //     sampling: { type: 'ratio' as const, rate: DEFAULT_SAMPLING_RATE },
+    // },
+    // bias: {
+    //     scorer: createBiasScorer({ model: SCORER_MODEL }),
+    //     sampling: { type: 'ratio' as const, rate: DEFAULT_SAMPLING_RATE },
+    // },
 };
 
 /**
