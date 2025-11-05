@@ -1,5 +1,5 @@
 import { TestConversation } from './test-conversation';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, it } from '@jest/globals';
+import { afterEach, beforeEach, describe, it } from '@jest/globals';
 
 /**
  * Agent Prompt Specification Tests
