@@ -1,7 +1,5 @@
-
-import { Mastra } from '@mastra/core/mastra';
-import { PinoLogger } from '@mastra/loggers';
-import { getSqlStorageProvider } from './storage/index.js';
+import { Mastra } from "@mastra/core";
+import { getSqlStorageProvider } from "./storage/index.js";
 import {
   mealPlanEmailFormatterAgent,
   mealPlanGeneratorAgent,
@@ -13,9 +11,9 @@ import {
   weatherAgent,
   weatherMonitoringWorkflow,
   weeklyMealPlanningWorkflow
-} from './verticals/index.js';
+} from "./verticals/index.js";
 
-export async function createMastra() {
+async function createMastra() {
   const sqlStorageProvider = await getSqlStorageProvider();
 
   return new Mastra({
@@ -33,10 +31,8 @@ export async function createMastra() {
       mealPlanEmailFormatter: mealPlanEmailFormatterAgent,
       shoppingList: shoppingListAgent,
       shoppingListSummary: shoppingListSummaryAgent,
-    },
-    logger: new PinoLogger({
-      name: 'Mastra',
-      level: 'info',
-    }),
+    }
   });
 }
+
+export const mastra = await createMastra();

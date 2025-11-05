@@ -2,9 +2,6 @@ import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { generateObject } from 'ai';
 import { z } from 'zod';
 import {
-  ElevenLabsConversationStrategy,
-} from './elevenlabs-conversation-strategy';
-import {
   GeminiMastraConversationStrategy,
 } from './gemini-mastra-conversation-strategy';
 import type { ConversationStrategy, ServerMessage } from './conversation-strategy';
