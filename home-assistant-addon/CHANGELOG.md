@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v1.1.0...home-assistant-addon-v1.1.1) (2025-11-05)
+
+
+### Bug Fixes
+
+* resolve build issue in dockerfile ([5f92e5a](https://github.com/ffMathy/hey-jarvis/commit/5f92e5a830540c43b523e863ca53a71be5664ea2))
+
 ## [1.1.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v1.0.3...home-assistant-addon-v1.1.0) (2025-10-14)
 
 
