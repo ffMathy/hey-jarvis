@@ -1,7 +1,7 @@
-import { createTool } from '../../utils/tool-factory';
+import { createTool } from '../../utils/tool-factory.js';
 import { z } from 'zod';
-import { changeProductQuantity, clearCart, getCartContents, searchProductCatalog } from './bilka/client';
-import { CatalogProduct } from './bilka/types';
+import { changeProductQuantity, clearCart, getCartContents, searchProductCatalog } from './bilka/client.js';
+import { CatalogProduct } from './bilka/types.js';
 
 /**
  * Searches for products in the Bilka catalog using Algolia search
