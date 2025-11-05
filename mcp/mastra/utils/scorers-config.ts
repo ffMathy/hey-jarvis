@@ -105,18 +105,18 @@ export function createScorersConfig(
     samplingRate: number = DEFAULT_SAMPLING_RATE
 ) {
     // Apply custom sampling rate to all default scorers if specified
-    const scorersWithCustomRate = Object.fromEntries(
-        Object.entries(DEFAULT_SCORERS).map(([key, config]) => [
-            key,
-            {
-                ...config,
-                sampling: { ...config.sampling, rate: samplingRate },
-            },
-        ])
-    );
+    // const scorersWithCustomRate = Object.fromEntries(
+    //     Object.entries(DEFAULT_SCORERS).map(([key, config]) => [
+    //         key,
+    //         {
+    //             ...config,
+    //             sampling: { ...config.sampling, rate: samplingRate },
+    //         },
+    //     ])
+    // );
 
     return {
-        ...scorersWithCustomRate,
+        // ...scorersWithCustomRate,
         ...customScorers,
     };
 }
