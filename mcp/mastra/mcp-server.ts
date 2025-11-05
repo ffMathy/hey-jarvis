@@ -2,9 +2,15 @@
 
 import { MCPServer } from '@mastra/mcp';
 import { createServer } from 'node:http';
-import { publicAgents } from './shared/index.js';
+import { shoppingListAgent } from './verticals/shopping/index.js';
+import { weatherAgent } from './verticals/weather/index.js';
 
-async function main() {
+export const publicAgents = {
+  weather: weatherAgent,
+  shopping: shoppingListAgent
+};
+
+export async function startMcpServer() {
   const mcpServer = new MCPServer({
     name: "J.A.R.V.I.S. Assistant",
     version: "1.0.0",
@@ -35,35 +41,3 @@ async function main() {
   // Store server instance for graceful shutdown
   return httpServer;
 }
-
-// Handle graceful shutdown
-let serverInstance: ReturnType<typeof createServer> | null = null;
-
-process.on('SIGINT', () => {
-  console.error('Received SIGINT, shutting down gracefully...');
-  if (serverInstance) {
-    serverInstance.close(() => {
-      process.exit(0);
-    });
-  } else {
-    process.exit(0);
-  }
-});
-
-process.on('SIGTERM', () => {
-  console.error('Received SIGTERM, shutting down gracefully...');
-  if (serverInstance) {
-    serverInstance.close(() => {
-      process.exit(0);
-    });
-  } else {
-    process.exit(0);
-  }
-});
-
-main().then((server) => {
-  serverInstance = server;
-}).catch((error) => {
-  console.error('Failed to start MCP server:', error);
-  process.exit(1);
-});

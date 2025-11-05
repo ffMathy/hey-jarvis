@@ -1,8 +1,11 @@
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
-import type { ConversationStrategy, ServerMessage, UserMessageEvent } from './conversation-strategy';
+import type { ConversationStrategy, ServerMessage, UserMessageEvent } from './conversation-strategy.js';
 import agentConfig from '../assets/agent-config.json';
 import { readFile } from 'fs/promises';
 import { Agent } from '@mastra/core/agent';
+
+// eslint-disable-next-line @nx/enforce-module-boundaries
+import { publicAgents } from 'mcp/mastra/mcp-server.js'
 
 export interface GeminiMastraConversationOptions {
     apiKey?: string;
@@ -54,7 +57,7 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
             name: 'J.A.R.V.I.S.',
             instructions: agentPrompt,
             model: googleProvider(agentConfig.conversationConfig.agent.prompt.llm),
-            agents: {}, // No sub-agents needed for testing
+            agents: publicAgents, // No sub-agents needed for testing
             tools: {},
             workflows: {}
         });

@@ -25,4 +25,4 @@ COPY mcp/ ./mcp/
 EXPOSE 4111
 
 # Use tsx to run TypeScript directly - simpler and more reliable than mastra build
-CMD [ "tsx", "mcp/mastra/server.ts" ]
+CMD [ "tsx", "mcp/mastra/index.ts" ]
