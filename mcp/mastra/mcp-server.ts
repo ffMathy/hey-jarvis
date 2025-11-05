@@ -21,7 +21,7 @@ export async function startMcpServer() {
 
   console.log('Starting J.A.R.V.I.S. MCP Server...');
 
-  const port = parseInt(process.env.PORT || '4111', 10);
+  const port = 4112;
   const host = process.env.HOST || '0.0.0.0';
   const httpPath = '/api/mcp';
 
@@ -41,3 +41,8 @@ export async function startMcpServer() {
   // Store server instance for graceful shutdown
   return httpServer;
 }
+
+startMcpServer().catch((error) => {
+  console.error('Failed to start servers:', error);
+  process.exit(1);
+});
