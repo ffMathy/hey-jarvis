@@ -14,9 +14,6 @@
     "skipLibCheck": true,
     "skipDefaultLibCheck": true,
     "baseUrl": ".",
-    "paths": {
-      "foobar": ["mcp/mastra/foobar/src/index.ts"]
-    },
     "incremental": true,
     "tsBuildInfoFile": ".nx/cache/tsbuildinfo.json",
     "resolveJsonModule": true,

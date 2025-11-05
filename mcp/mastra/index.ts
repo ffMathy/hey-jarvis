@@ -1,7 +1,7 @@
 
 import { Mastra } from '@mastra/core/mastra';
 import { PinoLogger } from '@mastra/loggers';
-import { getSqlStorageProvider } from './storage';
+import { getSqlStorageProvider } from './storage/index.js';
 import {
   mealPlanEmailFormatterAgent,
   mealPlanGeneratorAgent,
@@ -13,11 +13,11 @@ import {
   weatherAgent,
   weatherMonitoringWorkflow,
   weeklyMealPlanningWorkflow
-} from './verticals';
+} from './verticals/index.js';
 
 export async function createMastra() {
   const sqlStorageProvider = await getSqlStorageProvider();
-  
+
   return new Mastra({
     storage: sqlStorageProvider,
     workflows: {

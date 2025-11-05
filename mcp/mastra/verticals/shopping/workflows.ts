@@ -1,7 +1,7 @@
 import { RuntimeContext } from '@mastra/core/runtime-context';
 import { z } from 'zod';
-import { createAgentStep, createStep, createWorkflow } from '../../utils/workflow-factory';
-import { getCurrentCartContents } from './tools';
+import { createAgentStep, createStep, createWorkflow } from '../../utils/workflow-factory.js';
+import { getCurrentCartContents } from './tools.js';
 
 // Schema for shopping list input
 const shoppingListInputSchema = z.object({
