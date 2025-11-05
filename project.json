@@ -1,6 +1,6 @@
 {
     "targets": {
-        "initialize": {
+        "op": {
             "executor": "nx:run-commands",
             "options": {
                 "command": "eval $(op signin -f)",
