@@ -27,12 +27,3 @@ RUN apt-get update && \
     rm -rf /tmp/bashio /tmp/bashio.tar.gz && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
-
-# Copy the run script
-COPY run.sh /
-RUN chmod a+x /run.sh
-
-# Override the base image's entrypoint and use the run script
-# The node:lts base image has docker-entrypoint.sh which expects node commands,
-# so we need to explicitly set our own entrypoint
-ENTRYPOINT [ "/run.sh" ]
