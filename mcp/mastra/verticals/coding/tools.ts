@@ -1,6 +1,31 @@
 import { z } from 'zod';
 import { createTool } from '../../utils/tool-factory.js';
 
+// GitHub API response type definitions
+interface GitHubRepoResponse {
+    id: number;
+    name: string;
+    full_name: string;
+    description: string | null;
+    html_url: string;
+    stargazers_count: number;
+    language: string | null;
+    updated_at: string;
+    topics?: string[];
+}
+
+interface GitHubIssueResponse {
+    number: number;
+    title: string;
+    state: string;
+    html_url: string;
+    body: string | null;
+    created_at: string;
+    updated_at: string;
+    labels?: Array<{ name: string; color: string }>;
+    pull_request?: unknown;
+}
+
 // GitHub Repository Schema
 const GitHubRepositorySchema = z.object({
     id: z.number(),
@@ -60,17 +85,7 @@ export const listUserRepositories = createTool({
         const repositories = await response.json();
         
         return {
-            repositories: repositories.map((repo: {
-                id: number;
-                name: string;
-                full_name: string;
-                description: string | null;
-                html_url: string;
-                stargazers_count: number;
-                language: string | null;
-                updated_at: string;
-                topics?: string[];
-            }) => ({
+            repositories: repositories.map((repo: GitHubRepoResponse) => ({
                 id: repo.id,
                 name: repo.name,
                 full_name: repo.full_name,
@@ -119,19 +134,10 @@ export const listRepositoryIssues = createTool({
         const issues = await response.json();
         
         // Filter out pull requests (GitHub API includes PRs in issues endpoint)
-        const actualIssues = issues.filter((issue: { pull_request?: unknown }) => !issue.pull_request);
+        const actualIssues = issues.filter((issue: GitHubIssueResponse) => !issue.pull_request);
         
         return {
-            issues: actualIssues.map((issue: {
-                number: number;
-                title: string;
-                state: string;
-                html_url: string;
-                body: string | null;
-                created_at: string;
-                updated_at: string;
-                labels?: Array<{ name: string; color: string }>;
-            }) => ({
+            issues: actualIssues.map((issue: GitHubIssueResponse) => ({
                 number: issue.number,
                 title: issue.title,
                 state: issue.state,
@@ -139,10 +145,7 @@ export const listRepositoryIssues = createTool({
                 body: issue.body,
                 created_at: issue.created_at,
                 updated_at: issue.updated_at,
-                labels: issue.labels?.map((label: { name: string; color: string }) => ({
-                    name: label.name,
-                    color: label.color,
-                })) || [],
+                labels: issue.labels || [],
             })),
             total_count: actualIssues.length,
         };
@@ -187,17 +190,7 @@ export const searchRepositories = createTool({
         const data = await response.json();
         
         return {
-            repositories: data.items.map((repo: {
-                id: number;
-                name: string;
-                full_name: string;
-                description: string | null;
-                html_url: string;
-                stargazers_count: number;
-                language: string | null;
-                updated_at: string;
-                topics?: string[];
-            }) => ({
+            repositories: data.items.map((repo: GitHubRepoResponse) => ({
                 id: repo.id,
                 name: repo.name,
                 full_name: repo.full_name,
@@ -254,10 +247,10 @@ export const assignCopilotToIssue = createTool({
     },
 });
 
-// Export all tools as an array
-export const codingTools = [
+// Export all tools together for convenience
+export const codingTools = {
     listUserRepositories,
     listRepositoryIssues,
     searchRepositories,
     assignCopilotToIssue,
-];
+};
