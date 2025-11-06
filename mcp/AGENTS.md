@@ -250,6 +250,7 @@ All environment variables use the `HEY_JARVIS_` prefix for easy management and D
 - **ElevenLabs**: `HEY_JARVIS_ELEVENLABS_API_KEY`, `HEY_JARVIS_ELEVENLABS_AGENT_ID`, `HEY_JARVIS_ELEVENLABS_VOICE_ID` for voice AI
 - **Recipes**: `HEY_JARVIS_VALDEMARSRO_API_KEY` for Danish recipe data
 - **WiFi**: `HEY_JARVIS_WIFI_SSID`, `HEY_JARVIS_WIFI_PASSWORD` for Home Assistant Voice Firmware
+- **MCP Authentication**: `HEY_JARVIS_MCP_JWT_SECRET` for JWT-based API authentication
 
 #### Development Setup
 1. **Install 1Password CLI**: Follow [1Password CLI installation guide](https://developer.1password.com/docs/cli/get-started/)
@@ -268,6 +269,83 @@ If you encounter 1Password CLI authentication issues:
 1. Run `op signin` to authenticate
 2. Verify your vault contains the referenced secret paths
 3. Check that the `.env` file references match your 1Password structure
+
+## MCP Server Authentication
+
+The MCP server supports JWT (JSON Web Token) authentication for secure API access over HTTP. This ensures that only authorized clients can interact with the MCP endpoints.
+
+### JWT Authentication Setup
+
+#### 1. Configure JWT Secret
+Store a secure JWT secret in your 1Password vault:
+```bash
+# The secret should be a strong, randomly generated string
+HEY_JARVIS_MCP_JWT_SECRET="op://Personal/Hey Jarvis MCP/JWT Secret"
+```
+
+**Important**: The JWT secret should be:
+- At least 32 characters long
+- Randomly generated (use a password generator)
+- Kept secure in your 1Password vault
+- Never committed to version control
+
+#### 2. Generate Test Tokens
+Use the built-in token generator utility:
+```bash
+# Generate a JWT token valid for 24 hours
+npx tsx mcp/mastra/utils/generate-jwt.ts
+```
+
+This will output:
+- The JWT token
+- Example curl command with the token
+- Token expiration information
+
+#### 3. Using JWT Tokens
+Include the JWT token in the `Authorization` header of HTTP requests:
+
+```bash
+# Example curl command
+curl -H "Authorization: Bearer <your-token>" \
+     -X POST \
+     http://localhost:4112/api/mcp
+```
+
+#### 4. Token Format
+Tokens must use the "Bearer" authentication scheme:
+```
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+### Security Features
+
+- **HTTP-Only Authentication**: JWT authentication applies only to HTTP transport. The stdio transport (used for local development with MCP clients) is unaffected.
+- **Token Validation**: All HTTP requests are validated before reaching the MCP server.
+- **Graceful Degradation**: If `HEY_JARVIS_MCP_JWT_SECRET` is not configured, the server runs without authentication and logs a warning.
+- **401 Unauthorized**: Invalid or missing tokens receive a clear error response.
+- **Standard JWT**: Uses industry-standard JWT format compatible with all JWT libraries.
+
+### Authentication Flow
+
+1. Client sends HTTP request with `Authorization: Bearer <token>` header
+2. Server extracts and validates the JWT token using the configured secret
+3. If valid, request proceeds to MCP server
+4. If invalid/missing, server returns 401 Unauthorized response
+
+### Disabling Authentication
+
+To disable authentication (not recommended for production):
+- Simply don't set `HEY_JARVIS_MCP_JWT_SECRET` environment variable
+- The server will start without authentication and log a warning
+
+### Token Payload
+
+Generated tokens include:
+- `sub`: Subject identifier (default: "mcp-client")
+- `iat`: Issued at timestamp
+- `exp`: Expiration timestamp (24 hours by default)
+
+Custom token payloads can be created using any JWT library that supports HS256 signing.
 
 ## Integration Capabilities
 
