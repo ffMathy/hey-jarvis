@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/ffMathy/hey-jarvis/compare/root-v1.2.1...root-v1.3.0) (2025-11-06)
+
+
+### Features
+
+* infer Zod types from Octokit, add auth, defaults, and fix tool descriptions ([951f343](https://github.com/ffMathy/hey-jarvis/commit/951f3434365c6b2a9790e03834859e72e510320f))
+
 ## [1.2.1](https://github.com/ffMathy/hey-jarvis/compare/root-v1.2.0...root-v1.2.1) (2025-11-05)
 
 

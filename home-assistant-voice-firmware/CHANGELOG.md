@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.3](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.4.2...home-assistant-voice-firmware-v0.4.3) (2025-11-06)
+
+
+### Documentation
+
+* add Conventional Commits guidelines to all coding files ([e2871ee](https://github.com/ffMathy/hey-jarvis/commit/e2871ee3901c2b89921ca61898aced48922c3d55))
+
 ## [0.4.2](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.4.1...home-assistant-voice-firmware-v0.4.2) (2025-11-05)
 
 
