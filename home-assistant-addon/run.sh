@@ -66,7 +66,7 @@ bashio::log.info "Starting J.A.R.V.I.S. MCP server on port 4112..."
 
 # Run both mastra dev (port 4111) and mcp-server (port 4112) in parallel
 # Using & to run in background and wait to keep the script alive
-mastra dev --dir mcp/mastra --root . &
+mastra dev --dir mcp/mastra --root . --port "${PORT}" &
 MASTRA_PID=$!
 
 npx tsx mcp/mastra/mcp-server.ts &
