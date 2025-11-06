@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.0.5](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v3.0.4...home-assistant-addon-v3.0.5) (2025-11-06)
+
+
+### Bug Fixes
+
+* **home-assistant-addon:** remove invalid --port flag from mastra dev command ([c5344b0](https://github.com/ffMathy/hey-jarvis/commit/c5344b037b49a9ff2cc2422e5ee95d286c4965b7))
+
 ## [3.0.4](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v3.0.3...home-assistant-addon-v3.0.4) (2025-11-06)
 
 
