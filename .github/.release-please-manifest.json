@@ -1,7 +1,7 @@
 {
-  ".": "3.0.3",
-  "home-assistant-addon": "3.0.3",
-  "mcp": "3.0.3",
+  ".": "3.0.4",
+  "home-assistant-addon": "3.0.4",
+  "mcp": "3.0.4",
   "elevenlabs": "0.4.1",
   "home-assistant-voice-firmware": "0.6.0"
 }
