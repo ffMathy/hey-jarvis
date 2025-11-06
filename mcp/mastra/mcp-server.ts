@@ -2,11 +2,13 @@
 
 import { MCPServer } from '@mastra/mcp';
 import { createServer } from 'node:http';
+import { codingAgent } from './verticals/coding/index.js';
 import { shoppingListAgent } from './verticals/shopping/index.js';
 import { weatherAgent } from './verticals/weather/index.js';
 import { validateJwtToken, sendUnauthorizedResponse } from './utils/jwt-auth.js';
 
 export const publicAgents = {
+  coding: codingAgent,
   weather: weatherAgent,
   shopping: shoppingListAgent
 };
@@ -15,7 +17,7 @@ export async function startMcpServer() {
   const mcpServer = new MCPServer({
     name: "J.A.R.V.I.S. Assistant",
     version: "1.0.0",
-    description: "A comprehensive assistant that provides weather information and shopping list management via MCP",
+    description: "A comprehensive assistant that provides weather information, shopping list management, and GitHub repository coding assistance via MCP",
     agents: publicAgents,
     tools: {}
   });
