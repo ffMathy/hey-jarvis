@@ -72,5 +72,16 @@ MASTRA_PID=$!
 npx tsx mcp/mastra/mcp-server.ts &
 MCP_PID=$!
 
-# Wait for both processes
-wait $MASTRA_PID $MCP_PID
+# Wait for either process to exit (both should run indefinitely)
+# If either exits, the addon should restart
+wait -n $MASTRA_PID $MCP_PID
+EXIT_CODE=$?
+
+# If we reach here, one of the processes has exited
+if ! kill -0 $MASTRA_PID 2>/dev/null; then
+    bashio::log.error "Mastra development server has stopped"
+else
+    bashio::log.error "J.A.R.V.I.S. MCP server has stopped"
+fi
+
+exit $EXIT_CODE
