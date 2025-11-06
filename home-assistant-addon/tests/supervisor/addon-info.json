@@ -1,0 +1,112 @@
+{
+    "result": "ok",
+    "data": {
+        "name": "home-assistant-addon",
+        "slug": "21f64f9f_home-assistant-addon",
+        "hostname": "21f64f9f-home-assistant-addon",
+        "dns": [
+            "21f64f9f-home-assistant-addon.local.hass.io"
+        ],
+        "description": "",
+        "long_description": "",
+        "advanced": false,
+        "stage": "stable",
+        "repository": "21f64f9f",
+        "version_latest": "4.2.6",
+        "protected": true,
+        "rating": 7,
+        "boot_config": "auto",
+        "boot": "auto",
+        "options": {
+            "timezone": "Europe/Berlin",
+            "env_vars_list": [
+                "EXTERNAL_URL: https://webhooks.redacted.example.com/"
+            ],
+            "cmd_line_args": ""
+        },
+        "schema": [
+            {
+                "name": "timezone",
+                "required": true,
+                "type": "string"
+            },
+            {
+                "name": "env_vars_list",
+                "multiple": true,
+                "required": true,
+                "type": "string"
+            },
+            {
+                "name": "cmd_line_args",
+                "optional": true,
+                "type": "string"
+            }
+        ],
+        "arch": [
+            "aarch64",
+            "amd64"
+        ],
+        "machine": [],
+        "homeassistant": null,
+        "url": "https://github.com/ffMathy/hey-jarvis",
+        "detached": false,
+        "available": true,
+        "build": false,
+        "network": {
+            "4111/tcp": null,
+            "4112/tcp": 8081
+        },
+        "network_description": {
+            "4111/tcp": "",
+            "4112/tcp": ""
+        },
+        "host_network": false,
+        "host_pid": false,
+        "host_ipc": false,
+        "host_uts": false,
+        "host_dbus": false,
+        "privileged": [],
+        "full_access": false,
+        "apparmor": "default",
+        "icon": true,
+        "logo": true,
+        "changelog": true,
+        "documentation": false,
+        "stdin": false,
+        "hassio_api": true,
+        "hassio_role": "default",
+        "auth_api": false,
+        "homeassistant_api": true,
+        "gpio": false,
+        "usb": false,
+        "uart": false,
+        "kernel_modules": false,
+        "devicetree": false,
+        "udev": false,
+        "docker_api": false,
+        "video": false,
+        "audio": false,
+        "startup": "application",
+        "services": [],
+        "discovery": [],
+        "translations": {},
+        "ingress": true,
+        "signed": false,
+        "state": "started",
+        "webui": "http://[HOST]:5690/",
+        "ingress_entry": "/api/hassio_ingress/redacted",
+        "ingress_url": "/api/hassio_ingress/redacted/",
+        "ingress_port": 5690,
+        "ingress_panel": true,
+        "audio_input": null,
+        "audio_output": null,
+        "auto_update": true,
+        "ip_address": "172.30.33.1",
+        "version": "4.2.6",
+        "update_available": false,
+        "watchdog": true,
+        "devices": [],
+        "system_managed": false,
+        "system_managed_config_entry": null
+    }
+}
