@@ -32,5 +32,7 @@ RUN apt-get update && \
 COPY run.sh /
 RUN chmod a+x /run.sh
 
-# Use the run script as entrypoint
-CMD [ "/run.sh" ]
+# Override the base image's entrypoint and use the run script
+# The node:lts base image has docker-entrypoint.sh which expects node commands,
+# so we need to explicitly set our own entrypoint
+ENTRYPOINT [ "/run.sh" ]
