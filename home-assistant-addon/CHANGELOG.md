@@ -1,5 +1,15 @@
 # Changelog
 
+## [3.0.4](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v3.0.3...home-assistant-addon-v3.0.4) (2025-11-06)
+
+
+### Bug Fixes
+
+* **home-assistant-addon:** address code review feedback for error handling ([1cf0798](https://github.com/ffMathy/hey-jarvis/commit/1cf0798cb0ff77822e6c370dba33a7d31c466fc8))
+* **home-assistant-addon:** explicitly specify port for mastra dev command ([9b29ee2](https://github.com/ffMathy/hey-jarvis/commit/9b29ee2f9545caa9894ea1ed51c317ae540104d3))
+* **home-assistant-addon:** improve error handling for parallel server startup ([e5e71ac](https://github.com/ffMathy/hey-jarvis/commit/e5e71ac8df559f39c6099148843581ca15020171))
+* **home-assistant-addon:** start both Mastra and MCP servers in parallel ([abf4104](https://github.com/ffMathy/hey-jarvis/commit/abf4104e07344d9de7ebf93e4e5915cf755ab587))
+
 ## [3.0.3](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v3.0.2...home-assistant-addon-v3.0.3) (2025-11-06)
 
 
