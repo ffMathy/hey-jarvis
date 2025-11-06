@@ -1,30 +1,12 @@
 import { z } from 'zod';
+import { Octokit } from 'octokit';
 import { createTool } from '../../utils/tool-factory.js';
 
-// GitHub API response type definitions
-interface GitHubRepoResponse {
-    id: number;
-    name: string;
-    full_name: string;
-    description: string | null;
-    html_url: string;
-    stargazers_count: number;
-    language: string | null;
-    updated_at: string;
-    topics?: string[];
-}
-
-interface GitHubIssueResponse {
-    number: number;
-    title: string;
-    state: string;
-    html_url: string;
-    body: string | null;
-    created_at: string;
-    updated_at: string;
-    labels?: Array<{ name: string; color: string }>;
-    pull_request?: unknown;
-}
+// Create Octokit instance (can be configured with auth token if needed)
+const octokit = new Octokit({
+    userAgent: 'Hey-Jarvis-MCP-Server',
+    // auth: process.env.GITHUB_TOKEN, // Uncomment if authentication is needed
+});
 
 // GitHub Repository Schema
 const GitHubRepositorySchema = z.object({
@@ -68,24 +50,14 @@ export const listUserRepositories = createTool({
         total_count: z.number(),
     }),
     execute: async ({ context }) => {
-        const response = await fetch(
-            `https://api.github.com/users/${context.username}/repos?sort=updated&per_page=100`,
-            {
-                headers: {
-                    'Accept': 'application/vnd.github.v3+json',
-                    'User-Agent': 'Hey-Jarvis-MCP-Server',
-                },
-            }
-        );
-
-        if (!response.ok) {
-            throw new Error(`GitHub API error: ${response.status} ${response.statusText}`);
-        }
-
-        const repositories = await response.json();
+        const { data: repositories } = await octokit.rest.repos.listForUser({
+            username: context.username,
+            sort: 'updated',
+            per_page: 100,
+        });
         
         return {
-            repositories: repositories.map((repo: GitHubRepoResponse) => ({
+            repositories: repositories.map((repo) => ({
                 id: repo.id,
                 name: repo.name,
                 full_name: repo.full_name,
@@ -117,27 +89,18 @@ export const listRepositoryIssues = createTool({
         total_count: z.number(),
     }),
     execute: async ({ context }) => {
-        const response = await fetch(
-            `https://api.github.com/repos/${context.owner}/${context.repo}/issues?state=${context.state}&per_page=100`,
-            {
-                headers: {
-                    'Accept': 'application/vnd.github.v3+json',
-                    'User-Agent': 'Hey-Jarvis-MCP-Server',
-                },
-            }
-        );
-
-        if (!response.ok) {
-            throw new Error(`GitHub API error: ${response.status} ${response.statusText}`);
-        }
-
-        const issues = await response.json();
+        const { data: issues } = await octokit.rest.issues.listForRepo({
+            owner: context.owner,
+            repo: context.repo,
+            state: context.state,
+            per_page: 100,
+        });
         
         // Filter out pull requests (GitHub API includes PRs in issues endpoint)
-        const actualIssues = issues.filter((issue: GitHubIssueResponse) => !issue.pull_request);
+        const actualIssues = issues.filter((issue) => !issue.pull_request);
         
         return {
-            issues: actualIssues.map((issue: GitHubIssueResponse) => ({
+            issues: actualIssues.map((issue) => ({
                 number: issue.number,
                 title: issue.title,
                 state: issue.state,
@@ -145,7 +108,11 @@ export const listRepositoryIssues = createTool({
                 body: issue.body,
                 created_at: issue.created_at,
                 updated_at: issue.updated_at,
-                labels: issue.labels || [],
+                labels: issue.labels.map((label) => 
+                    typeof label === 'string' 
+                        ? { name: label, color: '' }
+                        : { name: label.name || '', color: label.color || '' }
+                ) || [],
             })),
             total_count: actualIssues.length,
         };
@@ -173,24 +140,15 @@ export const searchRepositories = createTool({
             searchQuery = `${context.query} user:${context.owner}`;
         }
 
-        const response = await fetch(
-            `https://api.github.com/search/repositories?q=${encodeURIComponent(searchQuery)}&sort=stars&order=desc&per_page=30`,
-            {
-                headers: {
-                    'Accept': 'application/vnd.github.v3+json',
-                    'User-Agent': 'Hey-Jarvis-MCP-Server',
-                },
-            }
-        );
-
-        if (!response.ok) {
-            throw new Error(`GitHub API error: ${response.status} ${response.statusText}`);
-        }
-
-        const data = await response.json();
+        const { data } = await octokit.rest.search.repos({
+            q: searchQuery,
+            sort: 'stars',
+            order: 'desc',
+            per_page: 30,
+        });
         
         return {
-            repositories: data.items.map((repo: GitHubRepoResponse) => ({
+            repositories: data.items.map((repo) => ({
                 id: repo.id,
                 name: repo.name,
                 full_name: repo.full_name,
