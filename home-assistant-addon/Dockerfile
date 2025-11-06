@@ -4,7 +4,7 @@
 # Use the MCP image as base
 # In production, this should reference the built MCP image from the registry
 ARG BUILD_FROM=ghcr.io/ffmathy/mcp:latest
-FROM ${BUILD_FROM}
+FROM ${BUILD_FROM} AS base
 
 # Add Home Assistant addon labels
 LABEL io.hass.name="Hey Jarvis MCP Server"
@@ -27,3 +27,12 @@ RUN apt-get update && \
     rm -rf /tmp/bashio /tmp/bashio.tar.gz && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
+
+
+# we define this stage to simulate how Home Assistant's ingress works locally.
+FROM base AS home-assistant-addon-end-to-end-test
+COPY tests/nginx.tests.conf /etc/nginx/home-assistant-addon-end-to-end-test.conf
+
+
+# the last stage is the final image used by Home Assistant.
+FROM base AS final
