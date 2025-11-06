@@ -1,8 +1,12 @@
-#!/usr/bin/with-contenv bashio
+#!/usr/bin/env bash
 # ==============================================================================
 # Home Assistant Add-on: Hey Jarvis MCP Server
 # Runs the Jarvis MCP Server with configuration from Home Assistant
 # ==============================================================================
+
+# Source bashio library for Home Assistant addon configuration parsing
+# shellcheck disable=SC1091
+source /usr/lib/bashio/bashio.sh
 
 bashio::log.info "Starting Hey Jarvis MCP Server..."
 
@@ -59,4 +63,4 @@ bashio::log.info "Log level set to: ${LOG_LEVEL}"
 # Start the server
 bashio::log.info "Starting Mastra MCP Server on port ${PORT}..."
 # Run the Mastra server from the MCP project
-exec tsx mcp/mastra/server.ts
+exec tsx mcp/mastra/mcp-server.ts
