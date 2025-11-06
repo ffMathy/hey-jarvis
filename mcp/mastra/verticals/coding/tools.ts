@@ -60,7 +60,17 @@ export const listUserRepositories = createTool({
         const repositories = await response.json();
         
         return {
-            repositories: repositories.map((repo: any) => ({
+            repositories: repositories.map((repo: {
+                id: number;
+                name: string;
+                full_name: string;
+                description: string | null;
+                html_url: string;
+                stargazers_count: number;
+                language: string | null;
+                updated_at: string;
+                topics?: string[];
+            }) => ({
                 id: repo.id,
                 name: repo.name,
                 full_name: repo.full_name,
@@ -109,10 +119,19 @@ export const listRepositoryIssues = createTool({
         const issues = await response.json();
         
         // Filter out pull requests (GitHub API includes PRs in issues endpoint)
-        const actualIssues = issues.filter((issue: any) => !issue.pull_request);
+        const actualIssues = issues.filter((issue: { pull_request?: unknown }) => !issue.pull_request);
         
         return {
-            issues: actualIssues.map((issue: any) => ({
+            issues: actualIssues.map((issue: {
+                number: number;
+                title: string;
+                state: string;
+                html_url: string;
+                body: string | null;
+                created_at: string;
+                updated_at: string;
+                labels?: Array<{ name: string; color: string }>;
+            }) => ({
                 number: issue.number,
                 title: issue.title,
                 state: issue.state,
@@ -120,7 +139,7 @@ export const listRepositoryIssues = createTool({
                 body: issue.body,
                 created_at: issue.created_at,
                 updated_at: issue.updated_at,
-                labels: issue.labels?.map((label: any) => ({
+                labels: issue.labels?.map((label: { name: string; color: string }) => ({
                     name: label.name,
                     color: label.color,
                 })) || [],
@@ -168,7 +187,17 @@ export const searchRepositories = createTool({
         const data = await response.json();
         
         return {
-            repositories: data.items.map((repo: any) => ({
+            repositories: data.items.map((repo: {
+                id: number;
+                name: string;
+                full_name: string;
+                description: string | null;
+                html_url: string;
+                stargazers_count: number;
+                language: string | null;
+                updated_at: string;
+                topics?: string[];
+            }) => ({
                 id: repo.id,
                 name: repo.name,
                 full_name: repo.full_name,
@@ -200,7 +229,7 @@ export const assignCopilotToIssue = createTool({
         message: z.string(),
         task_url: z.string().optional(),
     }),
-    execute: async ({ context, mastra }) => {
+    execute: async ({ context }) => {
         // This tool uses the GitHub MCP server integration if available
         // The actual implementation would use the github-mcp-server-assign_copilot_to_issue tool
         // For now, we'll provide a simulated response that indicates the tool is available
