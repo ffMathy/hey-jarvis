@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.0.1](https://github.com/ffMathy/hey-jarvis/compare/root-v3.0.0...root-v3.0.1) (2025-11-06)
+
+
+### Bug Fixes
+
+* update architecture label in Dockerfile ([3dc8dc8](https://github.com/ffMathy/hey-jarvis/commit/3dc8dc8c3b7620cde49fc5b629fa1f66487de243))
+
 ## [3.0.0](https://github.com/ffMathy/hey-jarvis/compare/root-v2.0.0...root-v3.0.0) (2025-11-06)
 
 
