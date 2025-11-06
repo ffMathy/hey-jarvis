@@ -24,5 +24,11 @@ COPY mcp/ ./mcp/
 # Expose ports for both services
 EXPOSE 4111 4112
 
-# Run both mastra dev (port 4111) and mcp-server (port 4112) in parallel
-CMD [ "bash", "-c", "mastra dev --dir mcp/mastra --root . & npx tsx mcp/mastra/mcp-server.ts & wait" ]
+# Copy the run script
+COPY run.sh /
+RUN chmod a+x /run.sh
+
+# Override the base image's entrypoint and use the run script
+# The node:lts base image has docker-entrypoint.sh which expects node commands,
+# so we need to explicitly set our own entrypoint
+ENTRYPOINT [ "/run.sh" ]
