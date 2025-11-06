@@ -52,7 +52,7 @@ fi
 # Build and push multi-architecture images
 echo "🐳 Building and pushing multi-architecture Docker images..."
 docker buildx build \
-    --platform linux/amd64,linux/arm64,linux/arm/v7 \
+    --platform linux/amd64,linux/arm64 \
     -f home-assistant-addon/Dockerfile \
     -t "ghcr.io/$IMAGE_OWNER/home-assistant-addon:latest" \
     -t "ghcr.io/$IMAGE_OWNER/home-assistant-addon:$IMAGE_TAG" \
