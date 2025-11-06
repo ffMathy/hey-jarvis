@@ -74,14 +74,26 @@ MCP_PID=$!
 
 # Wait for either process to exit (both should run indefinitely)
 # If either exits, the addon should restart
-wait -n $MASTRA_PID $MCP_PID
+wait -n
 EXIT_CODE=$?
 
-# If we reach here, one of the processes has exited
+# Check which process(es) stopped
+MASTRA_RUNNING=true
+MCP_RUNNING=true
+
 if ! kill -0 $MASTRA_PID 2>/dev/null; then
+    MASTRA_RUNNING=false
     bashio::log.error "Mastra development server has stopped"
-else
+fi
+
+if ! kill -0 $MCP_PID 2>/dev/null; then
+    MCP_RUNNING=false
     bashio::log.error "J.A.R.V.I.S. MCP server has stopped"
+fi
+
+# If both stopped, log that as well
+if [ "$MASTRA_RUNNING" = false ] && [ "$MCP_RUNNING" = false ]; then
+    bashio::log.error "Both servers have stopped"
 fi
 
 exit $EXIT_CODE
