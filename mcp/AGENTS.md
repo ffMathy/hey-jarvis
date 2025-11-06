@@ -956,4 +956,67 @@ This project is part of the Hey Jarvis monorepo and follows Mastra's development
 - Document new capabilities thoroughly
 - **Apply YAGNI principle**: Only add features and configuration options when actually needed
 
+### Commit Message Standards
+
+**CRITICAL: ALWAYS follow Conventional Commits** for all commit messages:
+
+#### Format
+```
+<type>(<scope>): <subject>
+
+<body>
+
+<footer>
+```
+
+#### Required Components
+- **type**: Category of the change (REQUIRED)
+- **scope**: Component affected (optional but recommended)
+- **subject**: Brief description (REQUIRED, lowercase, no period)
+- **body**: Detailed explanation (optional)
+- **footer**: Breaking changes, issue references (optional)
+
+#### Commit Types
+- **feat**: New feature for the user
+- **fix**: Bug fix for the user
+- **docs**: Documentation only changes
+- **style**: Formatting, missing semicolons, etc. (no code change)
+- **refactor**: Code change that neither fixes a bug nor adds a feature
+- **perf**: Performance improvement
+- **test**: Adding or refactoring tests
+- **chore**: Maintenance tasks, dependency updates
+- **build**: Build system or external dependency changes
+- **ci**: CI configuration changes
+
+#### Examples
+```bash
+# Feature addition
+feat(mcp): add calendar agent for scheduling
+
+# Bug fix with scope
+fix(shopping): correct product quantity calculation
+
+# Documentation update
+docs(agents): update workflow examples
+
+# Breaking change
+feat(api)!: change authentication method
+
+BREAKING CHANGE: Auth now requires API key instead of password
+```
+
+#### Scope Guidelines
+Use project names or component names:
+- `mcp`, `agents`, `workflows`, `tools`
+- `weather`, `shopping`, `cooking`
+- `build`, `ci`, `deps`
+
+#### Best Practices
+- Keep subject line under 72 characters
+- Use imperative mood ("add" not "added")
+- Don't capitalize first letter of subject
+- No period at end of subject
+- Use body to explain "what" and "why" vs. "how"
+- Reference issues in footer: `Closes #123`
+
 For more information about Mastra development, visit the [official documentation](https://mastra.ai/docs).
