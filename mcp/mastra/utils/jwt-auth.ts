@@ -2,6 +2,23 @@ import { verify } from 'hono/jwt';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
 /**
+ * Extract JWT token from Authorization header
+ */
+function extractToken(authHeader: string | string[] | undefined): string {
+  if (!authHeader) {
+    return '';
+  }
+  
+  const headerValue = typeof authHeader === 'string' 
+    ? authHeader 
+    : Array.isArray(authHeader) 
+      ? authHeader[0]
+      : '';
+  
+  return headerValue.replace(/^Bearer\s+/i, '');
+}
+
+/**
  * JWT authentication middleware for MCP HTTP requests
  * Validates JWT tokens from the Authorization header
  */
@@ -14,18 +31,9 @@ export async function validateJwtToken(req: IncomingMessage): Promise<boolean> {
     return true;
   }
 
-  const authHeader = req.headers.authorization || req.headers.Authorization;
-  
-  if (!authHeader) {
-    return false;
-  }
-
-  // Extract token from "Bearer <token>" format
-  const token = typeof authHeader === 'string' 
-    ? authHeader.replace(/^Bearer\s+/i, '')
-    : Array.isArray(authHeader) 
-      ? authHeader[0].replace(/^Bearer\s+/i, '')
-      : '';
+  // Node.js automatically lowercases header names
+  const authHeader = req.headers.authorization;
+  const token = extractToken(authHeader);
 
   if (!token) {
     return false;
@@ -36,7 +44,7 @@ export async function validateJwtToken(req: IncomingMessage): Promise<boolean> {
     await verify(token, jwtSecret);
     return true;
   } catch (error) {
-    console.error('JWT verification failed:', error);
+    console.error('JWT verification failed');
     return false;
   }
 }
