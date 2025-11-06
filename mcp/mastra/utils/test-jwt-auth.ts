@@ -39,8 +39,9 @@ async function testAuthentication() {
       const body = await response.text();
       console.log(`  Response: ${body}`);
     }
-  } catch (error: any) {
-    console.log(`✗ Error: ${error.message}`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.log(`✗ Error: ${message}`);
   }
   console.log('');
 
@@ -58,8 +59,9 @@ async function testAuthentication() {
       const body = await response.text();
       console.log(`  Response: ${body}`);
     }
-  } catch (error: any) {
-    console.log(`✗ Error: ${error.message}`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.log(`✗ Error: ${message}`);
   }
   console.log('');
 
@@ -84,8 +86,9 @@ async function testAuthentication() {
       if (response.status !== 401) {
         console.log(`  ✓ Authentication successful! MCP server accessible.`);
       }
-    } catch (error: any) {
-      console.log(`✗ Error: ${error.message}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.log(`✗ Error: ${message}`);
     }
   } else {
     console.log('Test 3: Skipped (no JWT secret configured)');
