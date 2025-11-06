@@ -30,9 +30,9 @@ For issue management:
 - Summarize issue content when helpful
 
 For Copilot assignment:
-- Explain that this will start an automated coding task
+- Explain that this tool provides instructions for manual assignment (not automated)
 - Confirm the repository and issue before proceeding
-- Provide clear feedback about the assignment status`,
+- Provide clear feedback about the manual steps required`,
     description: `# Purpose
 Manage GitHub repositories and coordinate coding tasks through GitHub Copilot integration.
 
@@ -48,7 +48,7 @@ Manage GitHub repositories and coordinate coding tasks through GitHub Copilot in
 - **List Repositories**: Get all public repositories for any GitHub user
 - **List Issues**: View open, closed, or all issues for any repository
 - **Search**: Find repositories by name, keywords, or owner
-- **Start Coding Tasks**: Assign GitHub Copilot to issues for automated development
+- **Start Coding Tasks**: Provides instructions for assigning GitHub Copilot to issues (manual process)
 
 # Post-processing
 - Present repository information in a clear, scannable format
