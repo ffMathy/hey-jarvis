@@ -60,7 +60,17 @@ fi
 LOG_LEVEL=$(bashio::config 'log_level')
 bashio::log.info "Log level set to: ${LOG_LEVEL}"
 
-# Start the server
-bashio::log.info "Starting Mastra MCP Server on port ${PORT}..."
-# Run the Mastra server from the MCP project
-exec tsx mcp/mastra/mcp-server.ts
+# Start both servers in parallel
+bashio::log.info "Starting Mastra development server on port ${PORT}..."
+bashio::log.info "Starting J.A.R.V.I.S. MCP server on port 4112..."
+
+# Run both mastra dev (port 4111) and mcp-server (port 4112) in parallel
+# Using & to run in background and wait to keep the script alive
+mastra dev --dir mcp/mastra --root . &
+MASTRA_PID=$!
+
+npx tsx mcp/mastra/mcp-server.ts &
+MCP_PID=$!
+
+# Wait for both processes
+wait $MASTRA_PID $MCP_PID
