@@ -289,17 +289,22 @@ HEY_JARVIS_MCP_JWT_SECRET="op://Personal/Hey Jarvis MCP/JWT Secret"
 - Kept secure in your 1Password vault
 - Never committed to version control
 
-#### 2. Generate Test Tokens
-Use the built-in token generator utility:
-```bash
-# Generate a JWT token valid for 24 hours
-npx tsx mcp/mastra/utils/generate-jwt.ts
+#### 2. Generate JWT Tokens
+Generate JWT tokens using any JWT library that supports HS256 signing. For example, using Node.js:
+
+```javascript
+import { sign } from 'hono/jwt';
+
+const payload = {
+  sub: 'mcp-client',
+  iat: Math.floor(Date.now() / 1000),
+  exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60), // 24 hours
+};
+
+const token = await sign(payload, process.env.HEY_JARVIS_MCP_JWT_SECRET);
 ```
 
-This will output:
-- The JWT token
-- Example curl command with the token
-- Token expiration information
+Or use online tools like [jwt.io](https://jwt.io) with the HS256 algorithm.
 
 #### 3. Using JWT Tokens
 Include the JWT token in the `Authorization` header of HTTP requests:
@@ -340,12 +345,12 @@ To disable authentication (not recommended for production):
 
 ### Token Payload
 
-Generated tokens include:
-- `sub`: Subject identifier (default: "mcp-client")
+JWT tokens should include standard claims:
+- `sub`: Subject identifier (e.g., "mcp-client")
 - `iat`: Issued at timestamp
-- `exp`: Expiration timestamp (24 hours by default)
+- `exp`: Expiration timestamp
 
-Custom token payloads can be created using any JWT library that supports HS256 signing.
+Tokens can be created using any JWT library that supports HS256 signing with your `HEY_JARVIS_MCP_JWT_SECRET`.
 
 ## Integration Capabilities
 
