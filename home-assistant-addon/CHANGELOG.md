@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.0.3](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v3.0.2...home-assistant-addon-v3.0.3) (2025-11-06)
+
+
+### Bug Fixes
+
+* **home-assistant-addon:** resolve docker entrypoint error and correct server path ([1271727](https://github.com/ffMathy/hey-jarvis/commit/127172723c8ea03e2cc276e45b235c78e03059e2))
+
 ## [3.0.2](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v3.0.1...home-assistant-addon-v3.0.2) (2025-11-06)
 
 
