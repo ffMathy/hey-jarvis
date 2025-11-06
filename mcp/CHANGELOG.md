@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.0.3](https://github.com/ffMathy/hey-jarvis/compare/mcp-v3.0.2...mcp-v3.0.3) (2025-11-06)
+
+
+### Miscellaneous Chores
+
+* **mcp:** Synchronize mcp versions
+
 ## [3.0.2](https://github.com/ffMathy/hey-jarvis/compare/mcp-v3.0.1...mcp-v3.0.2) (2025-11-06)
 
 
