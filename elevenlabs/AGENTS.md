@@ -149,6 +149,69 @@ When modifying this project:
 - **Use `nx deploy elevenlabs`** to push prompt changes to production
 - **Follow NX commands** exclusively (no direct npm commands)
 
+### Commit Message Standards
+
+**CRITICAL: ALWAYS follow Conventional Commits** for all commit messages:
+
+#### Format
+```
+<type>(<scope>): <subject>
+
+<body>
+
+<footer>
+```
+
+#### Required Components
+- **type**: Category of the change (REQUIRED)
+- **scope**: Component affected (optional but recommended)
+- **subject**: Brief description (REQUIRED, lowercase, no period)
+- **body**: Detailed explanation (optional)
+- **footer**: Breaking changes, issue references (optional)
+
+#### Commit Types
+- **feat**: New feature for the user
+- **fix**: Bug fix for the user
+- **docs**: Documentation only changes
+- **style**: Formatting, missing semicolons, etc. (no code change)
+- **refactor**: Code change that neither fixes a bug nor adds a feature
+- **perf**: Performance improvement
+- **test**: Adding or refactoring tests
+- **chore**: Maintenance tasks, dependency updates
+- **build**: Build system or external dependency changes
+- **ci**: CI configuration changes
+
+#### Examples
+```bash
+# Feature addition
+feat(voice): add emotion detection to responses
+
+# Bug fix with scope
+fix(tests): correct evaluation score thresholds
+
+# Documentation update
+docs(prompt): update personality guidelines
+
+# Breaking change
+feat(api)!: change websocket connection method
+
+BREAKING CHANGE: WebSocket now requires authentication token
+```
+
+#### Scope Guidelines
+Use project names or component names:
+- `elevenlabs`, `voice`, `agent`
+- `tests`, `prompt`, `config`
+- `build`, `ci`, `deps`
+
+#### Best Practices
+- Keep subject line under 72 characters
+- Use imperative mood ("add" not "added")
+- Don't capitalize first letter of subject
+- No period at end of subject
+- Use body to explain "what" and "why" vs. "how"
+- Reference issues in footer: `Closes #123`
+
 ## Future Enhancements
 
 - Integration with Hey Jarvis MCP agents

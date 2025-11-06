@@ -1,4 +1,5 @@
 {
+  "label": "",
   "packages": {
     ".": {
       "release-type": "node",
