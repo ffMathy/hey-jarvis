@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.0.2](https://github.com/ffMathy/hey-jarvis/compare/root-v3.0.1...root-v3.0.2) (2025-11-06)
+
+
+### Bug Fixes
+
+* proper architecture ([b0f32c8](https://github.com/ffMathy/hey-jarvis/commit/b0f32c87e4b6179538107919278bd2a1c09ab536))
+
 ## [3.0.1](https://github.com/ffMathy/hey-jarvis/compare/root-v3.0.0...root-v3.0.1) (2025-11-06)
 
 
