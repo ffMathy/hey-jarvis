@@ -64,7 +64,7 @@ bashio::log.info "Log level set to: ${LOG_LEVEL}"
 bashio::log.info "Starting Mastra development server on port ${PORT}..."
 bashio::log.info "Starting J.A.R.V.I.S. MCP server on port 4112..."
 
-# Run both mastra dev (port 4111) and mcp-server (port 4112) in parallel
+# Run both mastra dev (port ${PORT}) and mcp-server (port 4112) in parallel
 # Using & to run in background and wait to keep the script alive
 mastra dev --dir mcp/mastra --root . --port "${PORT}" &
 MASTRA_PID=$!
@@ -76,6 +76,7 @@ MCP_PID=$!
 # If either exits, the addon should restart
 wait -n
 EXIT_CODE=$?
+bashio::log.error "A server process has exited with code ${EXIT_CODE}"
 
 # Check which process(es) stopped
 MASTRA_RUNNING=true
