@@ -6,7 +6,7 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: 1, // Use single worker to avoid port conflicts
-  reporter: 'html',
+  reporter: process.env.CI ? undefined : 'html',
   timeout: 120000, // 2 minutes for tests that start Docker containers
   use: {
     baseURL: 'http://localhost:5000',
