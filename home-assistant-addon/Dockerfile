@@ -31,7 +31,7 @@ RUN apt-get update && \
 
 # Copy nginx base configuration
 RUN mkdir -p /run/nginx
-COPY nginx.conf /etc/nginx/nginx.conf
+COPY home-assistant-addon/nginx.conf /etc/nginx/nginx.conf
 
 
 # we define this stage to simulate how Home Assistant's ingress works locally.
@@ -39,8 +39,8 @@ FROM base AS home-assistant-addon-end-to-end-test
 
 # Copy test-specific nginx configuration (simulates Home Assistant ingress)
 # This gets included by the base nginx.conf via the include directive
-COPY tests/nginx.tests.conf /etc/nginx/hass-jarvis-test.conf
-COPY tests/run-test.sh /run-test.sh
+COPY home-assistant-addon/tests/nginx.tests.conf /etc/nginx/hass-jarvis-test.conf
+COPY home-assistant-addon/tests/run-test.sh /run-test.sh
 RUN chmod +x /run-test.sh
 
 # Override entrypoint to start both nginx and the MCP server
