@@ -59,7 +59,7 @@ max_attempts=60
 attempt=0
 
 while [ $attempt -lt $max_attempts ]; do
-    if curl -s -o /dev/null -w "%{http_code}" http://localhost:4111 | grep -q "200\|404\|302"; then
+    if curl -s -o /dev/null -w "%{http_code}" http://localhost:5000 | grep -q "200\|404\|302"; then
         echo "✅ Container is ready!"
         break
     fi
