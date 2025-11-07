@@ -18,13 +18,13 @@ From the repository root:
 
 ```bash
 # Run all E2E tests
-npx nx test:e2e home-assistant-addon
+npx nx test home-assistant-addon
 
 # Run with Playwright UI
-npx nx test:e2e:ui home-assistant-addon
+npx nx test:ui home-assistant-addon
 
 # Run in debug mode
-npx nx test:e2e:debug home-assistant-addon
+npx nx test:debug home-assistant-addon
 ```
 
 ### Manual Container Management

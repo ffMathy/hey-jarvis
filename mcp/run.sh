@@ -8,6 +8,10 @@
 # shellcheck disable=SC1091
 source /usr/lib/bashio/bashio.sh
 
+# Source shared server start functions
+# shellcheck disable=SC1091
+source /workspace/mcp/lib/start-servers.sh
+
 bashio::log.info "Starting Hey Jarvis MCP Server..."
 
 # Export environment variables from options if they are set
@@ -60,42 +64,13 @@ fi
 LOG_LEVEL=$(bashio::config 'log_level')
 bashio::log.info "Log level set to: ${LOG_LEVEL}"
 
-# Start both servers in parallel
-bashio::log.info "Starting Mastra development server on port ${PORT}..."
-bashio::log.info "Starting J.A.R.V.I.S. MCP server on port 4112..."
+# Start both servers in parallel using shared function
+PIDS=$(start_mcp_servers)
+read -r MASTRA_PID MCP_PID <<< "$PIDS"
 
-# Run both mastra dev (port ${PORT}) and mcp-server (port 4112) in parallel
-# Using & to run in background and wait to keep the script alive
-# Note: PORT is set via environment variable, not a CLI flag
-mastra dev --dir mcp/mastra --root . &
-MASTRA_PID=$!
-
-npx tsx mcp/mastra/mcp-server.ts &
-MCP_PID=$!
-
-# Wait for either process to exit (both should run indefinitely)
-# If either exits, the addon should restart
-wait -n
+# Wait for either process to exit and handle status
+wait_for_server_exit "$MASTRA_PID" "$MCP_PID"
 EXIT_CODE=$?
+
 bashio::log.error "A server process has exited with code ${EXIT_CODE}"
-
-# Check which process(es) stopped
-MASTRA_RUNNING=true
-MCP_RUNNING=true
-
-if ! kill -0 $MASTRA_PID 2>/dev/null; then
-    MASTRA_RUNNING=false
-    bashio::log.error "Mastra development server has stopped"
-fi
-
-if ! kill -0 $MCP_PID 2>/dev/null; then
-    MCP_RUNNING=false
-    bashio::log.error "J.A.R.V.I.S. MCP server has stopped"
-fi
-
-# If both stopped, log that as well
-if [ "$MASTRA_RUNNING" = false ] && [ "$MCP_RUNNING" = false ]; then
-    bashio::log.error "Both servers have stopped"
-fi
-
 exit $EXIT_CODE

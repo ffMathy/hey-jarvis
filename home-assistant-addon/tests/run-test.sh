@@ -6,6 +6,10 @@
 
 set -e
 
+# Source shared server start functions
+# shellcheck disable=SC1091
+source /workspace/mcp/lib/start-servers.sh
+
 echo "Starting E2E test environment..."
 
 # Start nginx in the background to simulate Home Assistant ingress
@@ -26,17 +30,9 @@ export HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY="test-api-key-for-e2e-tests"
 echo "Starting Hey Jarvis MCP Server on port ${PORT}..."
 echo "Google Generative AI API key configured (test mode)"
 
-# Start both servers in parallel
-echo "Starting Mastra development server on port ${PORT}..."
-echo "Starting J.A.R.V.I.S. MCP server on port 4112..."
-
-# Run both mastra dev (port ${PORT}) and mcp-server (port 4112) in parallel
-cd /workspace
-mastra dev --dir mcp/mastra --root . &
-MASTRA_PID=$!
-
-npx tsx mcp/mastra/mcp-server.ts &
-MCP_PID=$!
+# Start both servers in parallel using shared function
+PIDS=$(start_mcp_servers)
+read -r MASTRA_PID MCP_PID <<< "$PIDS"
 
 # Function to cleanup on exit
 cleanup() {
@@ -46,9 +42,6 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
-# Wait for either process to exit
-wait -n
-EXIT_CODE=$?
-echo "A server process has exited with code ${EXIT_CODE}"
-
-exit $EXIT_CODE
+# Wait for either process to exit and handle status
+wait_for_server_exit "$MASTRA_PID" "$MCP_PID"
+exit $?
