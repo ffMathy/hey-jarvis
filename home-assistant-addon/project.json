@@ -35,25 +35,25 @@
         "cwd": "."
       }
     },
-    "test:e2e": {
+    "test": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "npx playwright test",
-        "cwd": "home-assistant-addon"
+        "command": "npx playwright test --config=home-assistant-addon/playwright.config.ts",
+        "cwd": "."
       }
     },
-    "test:e2e:ui": {
+    "test:ui": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "npx playwright test --ui",
-        "cwd": "home-assistant-addon"
+        "command": "npx playwright test --config=home-assistant-addon/playwright.config.ts --ui",
+        "cwd": "."
       }
     },
-    "test:e2e:debug": {
+    "test:debug": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "npx playwright test --debug",
-        "cwd": "home-assistant-addon"
+        "command": "npx playwright test --config=home-assistant-addon/playwright.config.ts --debug",
+        "cwd": "."
       }
     }
   }
