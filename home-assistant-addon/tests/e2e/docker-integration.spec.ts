@@ -116,10 +116,10 @@ test.describe('Docker Container Integration Tests', () => {
     // Navigate to the application
     await page.goto('http://localhost:5000/api/hassio_ingress/redacted/');
     
-    // Wait for the page to fully load
-    await page.waitForLoadState('networkidle');
+    // Wait for the DOM to be ready (don't wait for networkidle since SSE connections stay open)
+    await page.waitForLoadState('domcontentloaded');
     
-    // Wait a bit more to catch any delayed requests
+    // Wait a bit for any additional resources to load
     await page.waitForTimeout(5000);
     
     // Log results
@@ -130,9 +130,17 @@ test.describe('Docker Container Integration Tests', () => {
       console.log('Failed requests:', failedRequests);
     }
     
-    // Assert no critical failures (allow some 404s for assets that might not exist)
+    // Assert no critical failures (500+ errors)
     const criticalFailures = failedRequests.filter(req => req.status >= 500);
     expect(criticalFailures).toHaveLength(0);
+    
+    // Assert no failed asset loads (404s for JS, CSS, images)
+    // Exclude SSE endpoints which may fail/retry
+    const assetFailures = failedRequests.filter(req => 
+      req.status === 404 && 
+      (req.url.includes('/assets/') || req.url.endsWith('.js') || req.url.endsWith('.css') || req.url.endsWith('.svg'))
+    );
+    expect(assetFailures).toHaveLength(0);
     
     // Assert the page loaded
     expect(page.url()).toContain('localhost:5000');
