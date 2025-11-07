@@ -8,6 +8,13 @@ npm install || {
     exit 1
 }
 
+echo "🎭 Installing Playwright browsers..."
+npx playwright install --with-deps chromium || {
+    echo "⚠️  Playwright browser installation failed (exit code: $?)"
+    echo "   You can manually run: npx playwright install --with-deps chromium"
+    # Don't fail the devcontainer creation
+}
+
 echo "🚀 Running project initialization..."
 
 # Run init with proper error handling
