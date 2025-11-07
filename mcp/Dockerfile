@@ -25,10 +25,9 @@ COPY mcp/ ./mcp/
 EXPOSE 4111 4112
 
 # Copy the run script
-COPY mcp/run.sh /
-RUN chmod a+x /run.sh
+RUN chmod a+x ./mcp/run.sh
 
 # Override the base image's entrypoint and use the run script
 # The node:lts base image has docker-entrypoint.sh which expects node commands,
 # so we need to explicitly set our own entrypoint
-ENTRYPOINT [ "/run.sh" ]
+ENTRYPOINT [ "./mcp/run.sh" ]
