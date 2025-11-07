@@ -10,7 +10,7 @@ test.describe('Docker Container Integration Tests', () => {
     console.log('Starting Docker container using start-addon.sh...');
     
     // Start the Docker container using start-addon.sh script
-    dockerProcess = spawn('bash', ['./tests/start-addon.sh'], {
+    dockerProcess = spawn('bash', ['./home-assistant-addon/tests/start-addon.sh'], {
       stdio: 'pipe',
       detached: true
     });
