@@ -15,7 +15,11 @@
       "executor": "nx:run-commands",
       "dependsOn": ["mcp:build"],
       "options": {
-        "command": "./home-assistant-addon/.scripts/build.sh",
+        "commands": [
+          "./home-assistant-addon/.scripts/build.sh",
+          "./home-assistant-addon/.scripts/build-test-image.sh"
+        ],
+        "parallel": false,
         "cwd": "."
       }
     },
