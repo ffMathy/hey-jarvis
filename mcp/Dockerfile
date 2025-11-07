@@ -21,6 +21,9 @@ RUN npm install -g tsx mastra
 COPY tsconfig.base.json ./
 COPY mcp/ ./mcp/
 
+# Ensure lib directory exists (for shared scripts)
+RUN mkdir -p /workspace/mcp/lib
+
 # Expose ports for both services
 EXPOSE 4111 4112
 
