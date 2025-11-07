@@ -44,6 +44,14 @@ jobs:
     steps:
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          # Only remove what we definitely don't need for faster cleanup
+          android: false
+          dotnet: true
+          haskell: true
+          large-packages: false  # Skip large packages check to save time
+          docker-images: false   # Skip Docker image removal for devcontainer
+          swap-storage: false    # Skip swap removal to save time
 
       - name: Checkout
         uses: actions/checkout@v5
@@ -69,7 +77,7 @@ jobs:
           imageName: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
           cacheFrom: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
           push: always
-          runCmd: nx affected --target=deploy --exclude=home-assistant-voice-firmware
+          runCmd: nx run-many --target=deploy --exclude=home-assistant-voice-firmware
           env: |
             GITHUB_TOKEN
             GITHUB_ACTOR
