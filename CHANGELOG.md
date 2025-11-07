@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.1.1](https://github.com/ffMathy/hey-jarvis/compare/root-v3.1.0...root-v3.1.1) (2025-11-07)
+
+
+### Bug Fixes
+
+* deploy everything always ([b165d3c](https://github.com/ffMathy/hey-jarvis/commit/b165d3cb50e043a2279ae43282e292a7182792de))
+
 ## [3.1.0](https://github.com/ffMathy/hey-jarvis/compare/root-v3.0.5...root-v3.1.0) (2025-11-07)
 
 
