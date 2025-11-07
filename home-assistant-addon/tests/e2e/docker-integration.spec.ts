@@ -119,11 +119,16 @@ test.describe('Docker Container Integration Tests', () => {
       });
     });
 
-    // Navigate to the application
-    // Note: We test the nginx proxy layer (5690) which serves the Mastra playground
-    // The full ingress path (/api/hassio_ingress/redacted/) works in production but
-    // has asset path issues in testing due to SPA base path configuration
-    await page.goto('http://localhost:5000/');
+    // Navigate to the application through the Home Assistant ingress path
+    // This simulates how Home Assistant proxies the addon through paths like:
+    // /api/hassio_ingress/{token}/
+    // 
+    // NOTE: Asset 404s are EXPECTED in this test because:
+    // 1. The Mastra SPA doesn't support configurable base paths
+    // 2. We're only testing the ingress proxy layer (nginx routing, headers, websockets)
+    // 3. In production, Home Assistant handles the full request lifecycle differently
+    // 4. The core functionality (API endpoints, WebSockets) work through ingress
+    await page.goto('http://localhost:5000/api/hassio_ingress/redacted/');
     
     // Wait for the DOM to be ready (don't wait for networkidle since SSE connections stay open)
     await page.waitForLoadState('domcontentloaded');
