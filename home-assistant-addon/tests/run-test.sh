@@ -19,11 +19,12 @@ sleep 2
 # Set PORT to 5690 (the port that nginx will proxy to)
 export PORT=5690
 
-# Source bashio library for Home Assistant addon configuration parsing
-# In test mode, bashio will use the fallback environment variables
-source /usr/lib/bashio/bashio.sh
+# For E2E tests, directly export a test API key
+# In production, these would come from bashio config
+export HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY="test-api-key-for-e2e-tests"
 
 echo "Starting Hey Jarvis MCP Server on port ${PORT}..."
+echo "Google Generative AI API key configured (test mode)"
 
 # Start both servers in parallel
 echo "Starting Mastra development server on port ${PORT}..."

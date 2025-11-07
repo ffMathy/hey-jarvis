@@ -18,11 +18,16 @@
         "boot_config": "auto",
         "boot": "auto",
         "options": {
-            "timezone": "Europe/Berlin",
-            "env_vars_list": [
-                "EXTERNAL_URL: https://webhooks.redacted.example.com/"
-            ],
-            "cmd_line_args": ""
+            "log_level": "info",
+            "google_api_key": "test-api-key-for-e2e-tests",
+            "openweathermap_api_key": "",
+            "valdemarsro_api_key": "",
+            "bilka_email": "",
+            "bilka_password": "",
+            "bilka_api_key": "",
+            "bilka_user_token": "",
+            "algolia_api_key": "",
+            "algolia_application_id": ""
         },
         "schema": [
             {
