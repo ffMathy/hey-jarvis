@@ -7,6 +7,7 @@ test.describe('Docker Container Integration Tests', () => {
   let dockerProcess: ChildProcess | null = null;
   
   test.beforeAll(async () => {
+    const startTime = Date.now();
     console.log('Starting Docker container using start-addon.sh...');
     
     // Start the Docker container using start-addon.sh script
@@ -15,10 +16,7 @@ test.describe('Docker Container Integration Tests', () => {
       detached: true
     });
     
-    let outputBuffer = '';
-    
     dockerProcess.stdout?.on('data', (data) => {
-      outputBuffer += data.toString();
       console.log('Docker stdout:', data.toString());
     });
     
@@ -30,41 +28,49 @@ test.describe('Docker Container Integration Tests', () => {
     console.log('Waiting for container to start...');
 
     // Wait up to 5 minutes for the container to be ready
+    // (Image is pre-built during 'build' step, so startup should be faster)
     const maxWaitTime = 60 * 1000 * 5; // 5 minutes
-    const checkInterval = 5000; // 5 seconds
+    const checkInterval = 2000; // 2 seconds (frequent checks for faster detection)
     let waitTime = 0;
     
     while (waitTime < maxWaitTime) {
       try {
         const response = await fetch('http://localhost:5000/api/hassio_ingress/redacted/');
         if (response.status < 500) {
-          console.log('Container is ready!');
+          const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+          console.log(`Container is ready! (took ${elapsed}s)`);
           break;
         }
-      } catch (error) {
+      } catch {
         // Container not ready yet
       }
       
       await sleep(checkInterval);
       waitTime += checkInterval;
-      console.log(`Waiting for container... (${waitTime / 1000}s)`);
+      
+      // Log progress every 30 seconds
+      if (waitTime % 30000 === 0) {
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        console.log(`Still waiting for container... (${elapsed}s elapsed)`);
+      }
     }
     
     if (waitTime >= maxWaitTime) {
-      throw new Error('Container failed to start within timeout period');
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      throw new Error(`Container failed to start within timeout period (${elapsed}s elapsed)`);
     }
     
     // Give it a bit more time to fully initialize
-    await sleep(10000);
+    await sleep(5000); // Reduced from 10s to 5s
   });
   
   test.afterAll(async () => {
     console.log('Cleaning up Docker container...');
     
-    if (dockerProcess) {
+    if (dockerProcess && dockerProcess.pid) {
       // Kill the process group to ensure cleanup
       try {
-        process.kill(-dockerProcess.pid!, 'SIGTERM');
+        process.kill(-dockerProcess.pid, 'SIGTERM');
       } catch (error) {
         console.log('Error killing Docker process:', error);
       }

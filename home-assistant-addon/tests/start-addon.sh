@@ -33,15 +33,8 @@ ADDON_INFO=$(cat "$SCRIPT_DIR/supervisor/addon-info.json")
 CONFIG=$(cat "$SCRIPT_DIR/supervisor/config.json")
 INFO=$(cat "$SCRIPT_DIR/supervisor/info.json")
 
-# Build the Docker image
-echo "🔨 Building Docker image..."
-docker build \
-    --build-arg NGINX_ALLOWED_IP=all \
-    --target home-assistant-addon-end-to-end-test \
-    -t home-assistant-addon-test \
-    "$PROJECT_ROOT"
-
 # Start the container in the background
+# (Test image is pre-built by the build target)
 echo "🚀 Starting Docker container..."
 docker run \
     --rm \
