@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.2](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.4.1...elevenlabs-v0.4.2) (2025-11-07)
+
+
+### Bug Fixes
+
+* playwright installation ([8f2197e](https://github.com/ffMathy/hey-jarvis/commit/8f2197e475226452b016bbe5d7ca168f29ea4c48))
+* update config ([80f1e9f](https://github.com/ffMathy/hey-jarvis/commit/80f1e9fccc4533d418aa571c860b522e874e4da9))
+
 ## [0.4.1](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.4.0...elevenlabs-v0.4.1) (2025-11-05)
 
 
