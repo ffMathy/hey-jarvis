@@ -28,7 +28,7 @@ RUN mkdir -p /workspace/mcp/lib
 EXPOSE 4111 4112
 
 # Copy the run script
-COPY run.sh /
+COPY mcp/run.sh /
 RUN chmod a+x /run.sh
 
 # Override the base image's entrypoint and use the run script
