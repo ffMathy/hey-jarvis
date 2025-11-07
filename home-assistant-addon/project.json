@@ -19,14 +19,6 @@
         "cwd": "."
       }
     },
-    "docker:build": {
-      "executor": "nx:run-commands",
-      "dependsOn": ["mcp:build"],
-      "options": {
-        "command": "./home-assistant-addon/.scripts/build.sh",
-        "cwd": "."
-      }
-    },
     "deploy": {
       "executor": "nx:run-commands",
       "dependsOn": ["mcp:deploy"],
@@ -37,6 +29,7 @@
     },
     "test": {
       "executor": "nx:run-commands",
+      "dependsOn": ["build"],
       "options": {
         "command": "npx playwright test --config=home-assistant-addon/playwright.config.ts",
         "cwd": "."
