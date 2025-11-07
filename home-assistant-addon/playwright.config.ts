@@ -3,12 +3,12 @@ import { defineConfig, devices } from '@playwright/test';
 export default defineConfig({
   testDir: './tests/e2e',
   fullyParallel: false, // Run tests sequentially for Docker container management
-  forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 1 : 0, // Reduce retries from 2 to 1 to save time
+  forbidOnly: !!process.env.GITHUB_ACTIONS,
+  retries: process.env.GITHUB_ACTIONS ? 1 : 0, // Reduce retries from 2 to 1 to save time
   workers: 1, // Use single worker to avoid port conflicts
-  reporter: process.env.CI ? 'github' : 'html', // Use GitHub Actions reporter for better CI output
+  reporter: process.env.GITHUB_ACTIONS ? 'github' : 'html', // Use GitHub Actions reporter for better CI output
   timeout: 180000, // 3 minutes for tests that start Docker containers
-  globalTimeout: process.env.CI ? 900000 : 0, // 15 minutes total for CI runs
+  globalTimeout: process.env.GITHUB_ACTIONS ? 900000 : 0, // 15 minutes total for CI runs
   use: {
     baseURL: 'http://localhost:5000',
     trace: 'on-first-retry',
