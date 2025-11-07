@@ -5,16 +5,14 @@
 # ==============================================================================
 
 start_mcp_servers() {
-    local port=${PORT:-4111}
-    
-    echo "Starting Mastra development server on port ${port}..."
+    echo "Starting Mastra development server on port 4111..."
     echo "Starting J.A.R.V.I.S. MCP server on port 4112..."
     
-    # Run both mastra dev (port ${PORT}) and mcp-server (port 4112) in parallel
+    # Run both mastra dev (port 4111) and mcp-server (port 4112) in parallel
     # Using & to run in background and wait to keep the script alive
-    # Note: PORT is set via environment variable, not a CLI flag
+    # Ports are hardcoded: Mastra=4111, MCP=4112
     cd /workspace
-    mastra dev --dir mcp/mastra --root . &
+    PORT=4111 mastra dev --dir mcp/mastra --root . &
     MASTRA_PID=$!
     
     npx tsx mcp/mastra/mcp-server.ts &

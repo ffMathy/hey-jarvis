@@ -20,14 +20,11 @@ NGINX_PID=$!
 # Give nginx time to start
 sleep 2
 
-# Set PORT to 4111 (the port that nginx will proxy to)
-export PORT=4111
-
 # For E2E tests, directly export a test API key
 # In production, these would come from bashio config
 export HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY="test-api-key-for-e2e-tests"
 
-echo "Starting Hey Jarvis MCP Server on port ${PORT}..."
+echo "Starting Hey Jarvis servers (Mastra on 4111, MCP on 4112)..."
 echo "Google Generative AI API key configured (test mode)"
 
 # Start both servers in parallel using shared function
