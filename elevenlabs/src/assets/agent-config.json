@@ -11,7 +11,12 @@
     },
     "turn": {
       "turnTimeout": 150,
+      "initial_wait_time": null,
       "silenceEndCallTimeout": 180,
+      "soft_timeout_config": {
+        "timeout_seconds": -1,
+        "message": "Hhmmmm...yeah give me a second..."
+      },
       "mode": "turn",
       "turn_eagerness": "normal"
     },
@@ -266,7 +271,7 @@
   },
   "metadata": {
     "createdAtUnixSecs": 1742778859,
-    "updatedAtUnixSecs": 1762194988
+    "updatedAtUnixSecs": 1762505579
   },
   "platformSettings": {
     "evaluation": {
@@ -290,6 +295,7 @@
         "color2": "#9CE6E6"
       },
       "feedbackMode": "during",
+      "end_feedback": null,
       "bgColor": "#ffffff",
       "textColor": "#000000",
       "btnColor": "#000000",
@@ -315,6 +321,11 @@
     "dataCollection": {},
     "overrides": {
       "conversationConfigOverride": {
+        "turn": {
+          "soft_timeout_config": {
+            "message": false
+          }
+        },
         "tts": {
           "voiceId": false,
           "stability": false,
@@ -439,5 +450,6 @@
     }
   },
   "tags": [],
-  "version_id": null
+  "version_id": null,
+  "branch_id": null
 }
