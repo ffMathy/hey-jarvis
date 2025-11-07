@@ -10,7 +10,7 @@ export default defineConfig({
   timeout: 180000, // 3 minutes for tests that start Docker containers
   globalTimeout: process.env.GITHUB_ACTIONS ? 900000 : 0, // 15 minutes total for CI runs
   use: {
-    baseURL: 'http://localhost:5000',
+    baseURL: 'http://localhost:5690',
     trace: 'on-first-retry',
     actionTimeout: 30000,
     navigationTimeout: 30000,

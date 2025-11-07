@@ -14,14 +14,14 @@ echo "Starting E2E test environment..."
 
 # Start nginx in the background to simulate Home Assistant ingress
 echo "Starting nginx proxy on port 5000..."
-nginx -c /etc/nginx/home-assistant-addon-end-to-end-test.conf &
+nginx -g 'daemon off;' &
 NGINX_PID=$!
 
 # Give nginx time to start
 sleep 2
 
-# Set PORT to 5690 (the port that nginx will proxy to)
-export PORT=5690
+# Set PORT to 4111 (the port that nginx will proxy to)
+export PORT=4111
 
 # For E2E tests, directly export a test API key
 # In production, these would come from bashio config

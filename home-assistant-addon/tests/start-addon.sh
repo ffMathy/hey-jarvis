@@ -41,6 +41,7 @@ docker run \
     --detach \
     --name home-assistant-addon-test \
     -p 5000:5000 \
+    -p 5690:5690 \
     -e ADDON_INFO_FALLBACK="$ADDON_INFO" \
     -e CONFIG_FALLBACK="$CONFIG" \
     -e INFO_FALLBACK="$INFO" \
@@ -52,7 +53,7 @@ max_attempts=60
 attempt=0
 
 while [ $attempt -lt $max_attempts ]; do
-    if curl -s -o /dev/null -w "%{http_code}" http://localhost:5000 | grep -q "200\|404\|302"; then
+    if curl -s -o /dev/null -w "%{http_code}" http://localhost:5690 | grep -q "200\|404\|302"; then
         echo "✅ Container is ready!"
         break
     fi
