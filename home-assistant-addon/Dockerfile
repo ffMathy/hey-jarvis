@@ -31,7 +31,20 @@ RUN apt-get update && \
 
 # we define this stage to simulate how Home Assistant's ingress works locally.
 FROM base AS home-assistant-addon-end-to-end-test
+
+# Install nginx to simulate Home Assistant's ingress proxy
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends nginx && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy nginx configuration and test entrypoint
 COPY tests/nginx.tests.conf /etc/nginx/home-assistant-addon-end-to-end-test.conf
+COPY tests/run-test.sh /run-test.sh
+RUN chmod +x /run-test.sh
+
+# Override entrypoint to start both nginx and the MCP server
+ENTRYPOINT ["/run-test.sh"]
 
 
 # the last stage is the final image used by Home Assistant.
