@@ -16,8 +16,9 @@ LABEL io.hass.url="https://github.com/ffMathy/hey-jarvis"
 
 # Install bashio for Home Assistant addon configuration parsing
 # Bashio is the standard library for Home Assistant addons
+# Also install nginx for proxying the MCP server through Home Assistant ingress
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends bash curl jq && \
+    apt-get install -y --no-install-recommends bash curl jq nginx && \
     curl -J -L -o /tmp/bashio.tar.gz \
     "https://github.com/hassio-addons/bashio/archive/v0.16.2.tar.gz" && \
     mkdir -p /tmp/bashio && \
@@ -28,18 +29,17 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+# Copy nginx base configuration
+RUN mkdir -p /run/nginx
+COPY nginx.conf /etc/nginx/nginx.conf
+
 
 # we define this stage to simulate how Home Assistant's ingress works locally.
 FROM base AS home-assistant-addon-end-to-end-test
 
-# Install nginx to simulate Home Assistant's ingress proxy
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends nginx && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
-# Copy nginx configuration and test entrypoint
-COPY tests/nginx.tests.conf /etc/nginx/home-assistant-addon-end-to-end-test.conf
+# Copy test-specific nginx configuration (simulates Home Assistant ingress)
+# This gets included by the base nginx.conf via the include directive
+COPY tests/nginx.tests.conf /etc/nginx/hass-jarvis-test.conf
 COPY tests/run-test.sh /run-test.sh
 RUN chmod +x /run-test.sh
 
