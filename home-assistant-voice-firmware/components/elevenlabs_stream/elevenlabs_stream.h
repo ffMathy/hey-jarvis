@@ -43,8 +43,12 @@ public:
   void set_microphone(microphone::Microphone *microphone) { this->microphone_ = microphone; }
   void set_elevenlabs_speaker(speaker::Speaker *speaker) { this->elevenlabs_speaker_ = speaker; }
   void set_activation_speaker(speaker::Speaker *speaker) { this->activation_speaker_ = speaker; }
+  void set_initial_message(const std::string &message) { this->initial_message_ = message; }
+  void set_conversation_timeout(uint32_t timeout_ms) { this->conversation_timeout_ms_ = timeout_ms; }
 
   bool start_stream();
+  bool start_stream(const std::string &initial_message);
+  bool start_stream(const std::string &initial_message, uint32_t timeout_ms);
   void stop_stream();
   bool is_running() const { return this->state_ == StreamState::ON; }
   StreamState get_state() const { return this->state_; }
@@ -95,6 +99,11 @@ public:
   std::string agent_output_audio_format_;
   std::string user_input_audio_format_;
   std::string signed_url_; // Stores the current signed URL for ElevenLabs WebSocket
+  
+  // Notification/proactive message support
+  std::string initial_message_; // Custom initial message for proactive notifications
+  uint32_t conversation_timeout_ms_{0}; // Timeout in milliseconds (0 = no timeout)
+  uint32_t last_user_input_time_{0}; // Track last user input for timeout detection
 
   // Triggers - simplified
   std::vector<Trigger<> *> on_start_triggers_;
@@ -140,7 +149,21 @@ public:
 // Actions
 template<typename... Ts> class ElevenLabsStreamStartAction : public Action<Ts...>, public Parented<ElevenLabsStream> {
  public:
-  void play(Ts... x) override { this->parent_->start_stream(); }
+  TEMPLATABLE_VALUE(std::string, initial_message)
+  TEMPLATABLE_VALUE(uint32_t, timeout)
+  
+  void play(Ts... x) override {
+    auto initial_message = this->initial_message_.optional_value(x...);
+    auto timeout = this->timeout_.optional_value(x...);
+    
+    if (initial_message.has_value() && timeout.has_value()) {
+      this->parent_->start_stream(initial_message.value(), timeout.value());
+    } else if (initial_message.has_value()) {
+      this->parent_->start_stream(initial_message.value());
+    } else {
+      this->parent_->start_stream();
+    }
+  }
 };
 
 template<typename... Ts> class ElevenLabsStreamStopAction : public Action<Ts...>, public Parented<ElevenLabsStream> {

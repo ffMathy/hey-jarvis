@@ -4,6 +4,8 @@ import {
   mealPlanEmailFormatterAgent,
   mealPlanGeneratorAgent,
   mealPlanSelectorAgent,
+  notificationAgent,
+  notificationWorkflow,
   recipeSearchAgent,
   shoppingListAgent,
   shoppingListSummaryAgent,
@@ -22,6 +24,7 @@ async function createMastra() {
       weatherMonitoringWorkflow,
       weeklyMealPlanningWorkflow,
       shoppingListWorkflow,
+      notificationWorkflow,
     },
     agents: {
       weather: weatherAgent,
@@ -31,6 +34,7 @@ async function createMastra() {
       mealPlanEmailFormatter: mealPlanEmailFormatterAgent,
       shoppingList: shoppingListAgent,
       shoppingListSummary: shoppingListSummaryAgent,
+      notification: notificationAgent,
     }
   });
 }
