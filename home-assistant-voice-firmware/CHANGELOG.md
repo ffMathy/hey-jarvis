@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.7.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.6.0...home-assistant-voice-firmware-v0.7.0) (2025-11-08)
+
+
+### Features
+
+* **notification:** add proactive notification workflow with ElevenLabs integration ([9bc4bfd](https://github.com/ffMathy/hey-jarvis/commit/9bc4bfd4a9f1cf450c506219ea720c384f00d471))
+
+
+### Documentation
+
+* add comprehensive documentation and improve notification tool ([97fe5ce](https://github.com/ffMathy/hey-jarvis/commit/97fe5ce28db180dc799d0858bae8f61874aa69c9))
+
 ## [0.6.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.5.0...home-assistant-voice-firmware-v0.6.0) (2025-11-06)
 
 
