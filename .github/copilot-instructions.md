@@ -22,9 +22,9 @@ Hey Jarvis is an NX monorepo containing a digital assistant system with three ma
 - `npx nx run-many --target=build --all`
 
 ❌ **NEVER use**:
-- `npm run dev` or `npm run build` in subdirectories
-- `npm install` directly in subdirectories
+- Running commands directly in subdirectories (always use NX)
 - Individual package.json scripts bypassing NX
+- npm commands (this is a Bun-powered monorepo)
 
 ### Project-Specific Guidelines
 
@@ -283,7 +283,7 @@ const getCurrentWeatherStep = createToolStep({
 #### Prerequisites
 ```bash
 # Install Mastra globally
-npm install mastra --global
+bun install mastra --global
 ```
 
 #### Running the Project
@@ -400,12 +400,13 @@ This project strictly follows the YAGNI principle - avoid adding functionality o
 #### Build and Development Commands
 
 **CRITICAL: ALWAYS use NX commands** for this monorepo:
-- ✅ Use `nx serve mcp` instead of `npm run dev`
-- ✅ Use `nx build mcp` instead of `npm run build`
-- ✅ Use `nx test mcp` instead of `npm run test`
-- ✅ Use `nx lint mcp` instead of `npm run lint`
-- ❌ **NEVER use `npm run` commands** in this NX monorepo
-- ❌ **NEVER use `npm install` directly** - use NX workspace commands
+- ✅ Use `nx serve mcp` instead of running commands directly
+- ✅ Use `nx build mcp` instead of running commands directly
+- ✅ Use `nx test mcp` instead of running commands directly
+- ✅ Use `nx lint mcp` instead of running commands directly
+- ✅ Use `bun install` for package management at workspace level
+- ❌ **NEVER use npm commands** in this Bun-powered monorepo
+- ❌ **NEVER run commands directly** - always use NX
 
 #### Tool ID Naming Conventions
 
@@ -535,11 +536,11 @@ npx nx serve home-assistant-voice-firmware
 
 ### Development Commands
 **CRITICAL: ALWAYS use NX commands** for this monorepo:
-- ✅ Use `nx serve home-assistant-voice-firmware` instead of `npm run dev`
-- ✅ Use `nx build home-assistant-voice-firmware` instead of `npm run build`
-- ✅ Use `nx test home-assistant-voice-firmware` instead of `npm run test`
-- ✅ Use `nx lint home-assistant-voice-firmware` instead of `npm run lint`
-- ❌ **NEVER use `npm run` commands** in this NX monorepo
+- ✅ Use `nx serve home-assistant-voice-firmware` instead of running commands directly
+- ✅ Use `nx build home-assistant-voice-firmware` instead of running commands directly
+- ✅ Use `nx test home-assistant-voice-firmware` instead of running commands directly
+- ✅ Use `nx lint home-assistant-voice-firmware` instead of running commands directly
+- ❌ **NEVER use npm commands** in this Bun-powered monorepo
 
 ### Development Guidelines
 
@@ -598,11 +599,11 @@ The addon configuration follows Home Assistant's schema with environment variabl
 ### Development Commands
 
 **CRITICAL: ALWAYS use NX commands** for this monorepo:
-- ✅ Use `nx serve home-assistant-addon` instead of `npm run dev`
-- ✅ Use `nx build home-assistant-addon` instead of `npm run build`
+- ✅ Use `nx serve home-assistant-addon` instead of running commands directly
+- ✅ Use `nx build home-assistant-addon` instead of running commands directly
 - ✅ Use `nx deploy home-assistant-addon` instead of running deploy script directly
 - ✅ Use `nx docker:build home-assistant-addon` for Docker builds
-- ❌ **NEVER use `npm run` commands** in this NX monorepo
+- ❌ **NEVER use npm commands** in this Bun-powered monorepo
 
 #### Build Dependencies
 The addon depends on `mcp` project:
@@ -751,11 +752,11 @@ The agent prompt in `src/assets/agent-prompt.md` defines:
 ### Development Commands
 
 **CRITICAL: ALWAYS use NX commands** for this monorepo:
-- ✅ Use `nx test elevenlabs` instead of `npm test`
-- ✅ Use `nx build elevenlabs` instead of `npm run build`
+- ✅ Use `nx test elevenlabs` instead of running commands directly
+- ✅ Use `nx build elevenlabs` instead of running commands directly
 - ✅ Use `nx deploy elevenlabs` to update ElevenLabs agent configuration
 - ✅ Use `nx refresh elevenlabs` to fetch current agent configuration
-- ❌ **NEVER use `npm run` commands** in this NX monorepo
+- ❌ **NEVER use npm commands** in this Bun-powered monorepo
 
 ### Environment Setup
 
@@ -792,7 +793,7 @@ This project uses **1Password CLI** for secure environment variable management:
 
 **Initial Setup**:
 ```bash
-npm install  # Install dependencies (may take several minutes)
+bun install  # Install dependencies (may take several minutes)
 ```
 
 **Development Workflow**:
