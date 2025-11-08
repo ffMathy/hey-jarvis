@@ -1,9 +1,5 @@
-# Production stage - use Node.js with tsx to run TypeScript directly
-# Using node:lts which has better multi-arch support including armv7
-FROM docker.io/node:lts
-
-ENV HOST=0.0.0.0
-ENV NODE_ENV=production
+# Build stage - use slim image for building
+FROM docker.io/node:lts-slim AS builder
 
 WORKDIR /workspace
 
@@ -11,23 +7,45 @@ WORKDIR /workspace
 COPY package.json package-lock.json ./
 COPY mcp/package.json ./mcp/
 
-# Install all dependencies (we need TypeScript dependencies to run with tsx)
-RUN npm install
-
-# Install tsx and mastra globally for running TypeScript
-RUN npm install -g tsx mastra
+# Install all dependencies (needed for TypeScript compilation)
+RUN npm ci --include=dev
 
 # Copy source code
 COPY tsconfig.base.json ./
 COPY mcp/ ./mcp/
 
+# Production stage - use Alpine for minimal size
+# Using node:lts-alpine which has better multi-arch support including arm64
+FROM docker.io/node:lts-alpine AS production
+
+ENV HOST=0.0.0.0
+ENV NODE_ENV=production
+
+WORKDIR /workspace
+
+# Install bash (required for run.sh script)
+RUN apk add --no-cache bash
+
+# Copy package files
+COPY package.json package-lock.json ./
+COPY mcp/package.json ./mcp/
+
+# Install only production dependencies and global tools
+RUN npm ci --omit=dev && \
+    npm install -g tsx@4.20.6 mastra@0.18.0 && \
+    npm cache clean --force
+
+# Copy source code from builder
+COPY --from=builder /workspace/tsconfig.base.json ./
+COPY --from=builder /workspace/mcp/ ./mcp/
+
 # Expose ports for both services
 EXPOSE 4111 4112
 
-# Copy the run script
+# Make run script executable
 RUN chmod a+x ./mcp/run.sh
 
 # Override the base image's entrypoint and use the run script
-# The node:lts base image has docker-entrypoint.sh which expects node commands,
+# The node:lts-alpine base image has docker-entrypoint.sh which expects node commands,
 # so we need to explicitly set our own entrypoint
 ENTRYPOINT [ "./mcp/run.sh" ]

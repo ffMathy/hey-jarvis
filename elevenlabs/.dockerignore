@@ -1,0 +1,28 @@
+# Source code (not needed, we copy dist/)
+src/
+
+# Dependencies (installed in container)
+node_modules/
+
+# Testing
+coverage/
+*.log
+
+# Development
+.env
+*.swp
+
+# IDE
+.vscode/
+.idea/
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+
+# Other
+.DS_Store
+Thumbs.db
