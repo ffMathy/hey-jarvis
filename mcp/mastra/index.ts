@@ -1,4 +1,5 @@
 import { Mastra } from "@mastra/core";
+import { PinoLogger } from "@mastra/loggers";
 import { getSqlStorageProvider } from "./storage/index.js";
 import {
   mealPlanEmailFormatterAgent,
@@ -18,6 +19,13 @@ async function createMastra() {
 
   return new Mastra({
     storage: sqlStorageProvider,
+    logger: new PinoLogger({
+      name: "Mastra",
+      level: "info",
+    }),
+    observability: {
+      default: { enabled: true }, // Enables AI Tracing with DefaultExporter
+    },
     workflows: {
       weatherMonitoringWorkflow,
       weeklyMealPlanningWorkflow,
