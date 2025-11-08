@@ -883,24 +883,33 @@ Always use relative imports from your vertical to the utils:
 **When creating new entities, ALWAYS use the Hey Jarvis factory functions instead of direct Mastra constructors.**
 
 ### Scorers and Evaluation
-**AUTOMATIC**: All agents and workflow steps automatically include comprehensive evaluation scorers:
+
+**AUTOMATIC**: All agents and workflow steps automatically include comprehensive evaluation scorers through the new **AI Tracing** system:
 
 #### 🎯 **Included Scorers**:
 - **answer-relevancy**: Evaluates how well responses address the input query (0-1, higher is better)
-- **faithfulness**: Measures how accurately responses represent provided context (0-1, higher is better)
 - **hallucination**: Detects factual contradictions and unsupported claims (0-1, lower is better)
 - **completeness**: Checks if responses include all necessary information (0-1, higher is better)
 - **prompt-alignment**: Measures how well responses align with prompt intent (0-1, higher is better)
 - **bias**: Detects potential biases in outputs (0-1, lower is better)
 
 #### 🔧 **Available But Not Auto-Enabled**:
+- **faithfulness**: Measures how accurately responses represent provided context (requires context to be provided)
 - **tool-call-accuracy**: Evaluates whether the LLM selects correct tools (requires per-agent configuration with actual tool objects)
 
 #### ⚙️ **Scorer Configuration**:
 - **Default sampling rate**: 10% of responses are scored (balances monitoring with cost)
 - **Evaluation model**: Uses `gemini-flash-latest` for cost-effectiveness
 - **Asynchronous execution**: Scoring runs in background without blocking responses
-- **Automatic storage**: Results stored in `mastra_scorers` table for analysis
+- **Automatic storage**: Results stored in `mastra_scorers` table via AI Tracing
+
+#### 📊 **AI Tracing and Observability**:
+The project now uses **Mastra AI Tracing** instead of the deprecated telemetry system:
+- **AI Tracing**: Enabled via `observability: { default: { enabled: true } }` in Mastra config
+- **Structured Logging**: Uses PinoLogger for comprehensive log management
+- **Trace Storage**: All traces and scorer results automatically stored in LibSQL database
+- **DefaultExporter**: Persists traces locally for viewing in Studio
+- **CloudExporter**: Optionally sends traces to Mastra Cloud (requires `MASTRA_CLOUD_ACCESS_TOKEN`)
 
 #### 🔧 **Customizing Scorers**:
 ```typescript
@@ -936,7 +945,8 @@ export const myAgent = createAgent({
 
 #### 📊 **Monitoring and Analysis**:
 - View scoring results in the Mastra playground at `http://localhost:4111/agents`
-- Access detailed metrics through the database `mastra_scorers` table
+- Access AI traces and detailed metrics through Studio's Observability section
+- Query the `mastra_scorers` table directly for custom analysis
 - Use scoring data to identify improvement opportunities and track performance trends
 
 **All scorers are automatically enabled by default to ensure comprehensive quality monitoring across the Hey Jarvis system.**
