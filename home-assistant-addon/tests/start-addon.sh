@@ -36,8 +36,7 @@ INFO=$(cat "$SCRIPT_DIR/supervisor/info.json")
 # Start the container in the background
 # (Test image is pre-built by the build target)
 echo "🚀 Starting Docker container..."
-docker run \
-    --rm \
+CONTAINER_ID=$(docker run \
     --detach \
     --name home-assistant-addon-test \
     -p 5000:5000 \
@@ -45,7 +44,21 @@ docker run \
     -e ADDON_INFO_FALLBACK="$ADDON_INFO" \
     -e CONFIG_FALLBACK="$CONFIG" \
     -e INFO_FALLBACK="$INFO" \
-    home-assistant-addon-test
+    home-assistant-addon-test)
+
+echo "📦 Container ID: $CONTAINER_ID"
+
+# Give container a moment to start
+sleep 2
+
+# Check if container is actually running
+if ! docker ps | grep -q "home-assistant-addon-test"; then
+    echo "❌ Container failed to start or exited immediately!"
+    echo "📋 Container logs:"
+    docker logs home-assistant-addon-test 2>&1 || echo "Could not retrieve logs"
+    docker rm home-assistant-addon-test 2>/dev/null || true
+    exit 1
+fi
 
 # Wait for the container to be ready
 echo "⏳ Waiting for container to be ready..."

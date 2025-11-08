@@ -120,16 +120,14 @@ export class TestConversation {
 
     const google = createGoogleGenerativeAI({ apiKey: this.googleApiKey });
 
-    // Retry logic for transient API failures
-    let lastError: Error | undefined;
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const result = await generateObject<any>({
-          model: google('gemini-flash-latest'),
-          temperature: 0,
-          schema,
-          prompt: `You are evaluating a conversation transcript between a user and an AI agent.
+    // Use Vercel AI SDK's built-in retry mechanism
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await generateObject<any>({
+      model: google('gemini-flash-latest'),
+      temperature: 0,
+      schema,
+      maxRetries, // Vercel AI SDK v5+ supports built-in retry with exponential backoff
+      prompt: `You are evaluating a conversation transcript between a user and an AI agent.
 
 IMPORTANT: Evaluate the ENTIRE conversation transcript below, not just individual messages.
 Consider the full context and flow across ALL exchanges.
@@ -155,24 +153,9 @@ Respond with:
 - "passed" (boolean): Whether the criteria is met across the FULL transcript
 - "score" (number 0-1): Confidence score based on the ENTIRE conversation
 - "reasoning" (string): Clear explanation for your evaluation with specific examples from the transcript`,
-        });
+    });
 
-        return result.object as EvaluationResult;
-      } catch (error) {
-        lastError = error as Error;
-        console.error(`Evaluation attempt ${attempt}/${maxRetries} failed:`, error);
-        
-        // If this wasn't the last attempt, wait before retrying
-        if (attempt < maxRetries) {
-          const waitTime = Math.pow(2, attempt) * 1000; // Exponential backoff: 2s, 4s, 8s
-          console.log(`Retrying in ${waitTime}ms...`);
-          await new Promise(resolve => setTimeout(resolve, waitTime));
-        }
-      }
-    }
-
-    // If all retries failed, throw the last error
-    throw new Error(`Evaluation failed after ${maxRetries} attempts: ${lastError?.message || 'Unknown error'}`);
+    return result.object as EvaluationResult;
   }
 
   /**
