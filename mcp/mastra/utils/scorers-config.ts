@@ -8,49 +8,75 @@ import {
 import { google } from './google-provider.js';
 
 /**
- * Evaluation model used for all scorers in the Hey Jarvis system.
- * Using Gemini Flash Latest for cost-effectiveness while maintaining quality.
- */
-const SCORER_MODEL = google('gemini-flash-latest');
-
-/**
  * Default sampling rate for live evaluations.
  * 0.1 = 10% of responses will be scored (good balance between monitoring and cost)
  */
 const DEFAULT_SAMPLING_RATE = 0.1;
 
 /**
- * Hey Jarvis default scorers configuration for agents and workflows.
- * These scorers provide comprehensive evaluation across multiple dimensions:
+ * Lazy initialization of the scorer model to avoid import-time failures.
+ * Only creates the Google model when scorers are actually instantiated.
+ */
+let scorerModel: ReturnType<typeof google> | null = null;
+function getScorerModel() {
+    if (!scorerModel) {
+        scorerModel = google('gemini-flash-latest');
+    }
+    return scorerModel;
+}
+
+/**
+ * Lazy initialization function for default scorers.
+ * This prevents scorer instantiation at module load time, which could fail
+ * during build/test if the environment isn't fully configured.
  * 
+ * Scorers provide comprehensive evaluation across multiple dimensions:
  * - **answer-relevancy**: How well responses address the input query
  * - **hallucination**: Detection of factual contradictions and unsupported claims
  * - **completeness**: Whether responses include all necessary information
  * - **prompt-alignment**: How well responses align with prompt intent
  * - **bias**: Detection of potential biases in outputs
  */
-export const DEFAULT_SCORERS = {
-    answerRelevancy: {
-        scorer: createAnswerRelevancyScorer({ model: SCORER_MODEL }),
-        sampling: { type: 'ratio' as const, rate: DEFAULT_SAMPLING_RATE },
-    },
-    hallucination: {
-        scorer: createHallucinationScorer({ model: SCORER_MODEL }),
-        sampling: { type: 'ratio' as const, rate: DEFAULT_SAMPLING_RATE },
-    },
-    completeness: {
-        scorer: createCompletenessScorer(),
-        sampling: { type: 'ratio' as const, rate: DEFAULT_SAMPLING_RATE },
-    },
-    promptAlignment: {
-        scorer: createPromptAlignmentScorerLLM({ model: SCORER_MODEL }),
-        sampling: { type: 'ratio' as const, rate: DEFAULT_SAMPLING_RATE },
-    },
-    bias: {
-        scorer: createBiasScorer({ model: SCORER_MODEL }),
-        sampling: { type: 'ratio' as const, rate: DEFAULT_SAMPLING_RATE },
-    },
-};
+function createDefaultScorers() {
+    const model = getScorerModel();
+    return {
+        answerRelevancy: {
+            scorer: createAnswerRelevancyScorer({ model }),
+            sampling: { type: 'ratio' as const, rate: DEFAULT_SAMPLING_RATE },
+        },
+        hallucination: {
+            scorer: createHallucinationScorer({ model }),
+            sampling: { type: 'ratio' as const, rate: DEFAULT_SAMPLING_RATE },
+        },
+        completeness: {
+            scorer: createCompletenessScorer(),
+            sampling: { type: 'ratio' as const, rate: DEFAULT_SAMPLING_RATE },
+        },
+        promptAlignment: {
+            scorer: createPromptAlignmentScorerLLM({ model }),
+            sampling: { type: 'ratio' as const, rate: DEFAULT_SAMPLING_RATE },
+        },
+        bias: {
+            scorer: createBiasScorer({ model }),
+            sampling: { type: 'ratio' as const, rate: DEFAULT_SAMPLING_RATE },
+        },
+    };
+}
+
+/**
+ * Cache for default scorers to avoid recreating them on every call.
+ */
+let defaultScorersCache: ReturnType<typeof createDefaultScorers> | null = null;
+
+/**
+ * Gets the default scorers configuration, creating them lazily on first access.
+ */
+export function getDefaultScorers() {
+    if (!defaultScorersCache) {
+        defaultScorersCache = createDefaultScorers();
+    }
+    return defaultScorersCache;
+}
 
 /**
  * Creates a tool call accuracy scorer with the provided tools configuration.
@@ -101,9 +127,12 @@ export function createScorersConfig(
     customScorers: Record<string, { scorer: unknown; sampling: { type: 'ratio'; rate: number } }> = {},
     samplingRate: number = DEFAULT_SAMPLING_RATE
 ) {
+    // Get default scorers (lazy initialization)
+    const defaultScorers = getDefaultScorers();
+    
     // Apply custom sampling rate to all default scorers if specified
     const scorersWithCustomRate = Object.fromEntries(
-        Object.entries(DEFAULT_SCORERS).map(([key, config]) => [
+        Object.entries(defaultScorers).map(([key, config]) => [
             key,
             {
                 ...config,
