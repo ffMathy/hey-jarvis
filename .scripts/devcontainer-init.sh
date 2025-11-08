@@ -3,17 +3,14 @@
 # Installs dependencies and runs project-specific initialization
 
 echo "🔧 Installing npm dependencies..."
-npm install || {
+npm ci --prefer-offline || {
     echo "❌ npm install failed"
     exit 1
 }
 
-echo "🎭 Installing Playwright browsers..."
-npx playwright install --with-deps chromium || {
-    echo "⚠️  Playwright browser installation failed (exit code: $?)"
-    echo "   You can manually run: npx playwright install --with-deps chromium"
-    # Don't fail the devcontainer creation
-}
+# Skip Playwright installation by default - can be installed manually when needed
+# This significantly reduces DevContainer build time
+# To install manually: npx playwright install --with-deps chromium
 
 echo "🚀 Running project initialization..."
 

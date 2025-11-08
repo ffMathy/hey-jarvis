@@ -72,10 +72,13 @@ export const notificationWorkflow = createWorkflow({
   }),
 })
   .then(validateMessage)
-  .branch({
-    condition: ({ ctx }) => ctx.valid === true,
-    whenTrue: [sendNotification],
-    whenFalse: [
+  .branch([
+    [
+      ({ ctx }) => ctx.valid === true,
+      sendNotification,
+    ],
+    [
+      ({ ctx }) => ctx.valid === false,
       createStep({
         id: 'validation-error',
         description: 'Return validation error',
@@ -90,7 +93,7 @@ export const notificationWorkflow = createWorkflow({
         }),
       }),
     ],
-  });
+  ]);
 
 // Commit the workflow
 notificationWorkflow.commit();
