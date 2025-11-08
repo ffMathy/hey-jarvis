@@ -73,7 +73,9 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
                 (x.type === 'agent_tool_response' ? 
                     'tool' as const :
                     'assistant' as const),
-        }) as any));
+        }) as any), {
+            modelSettings: { temperature: 0 }
+        });
 
         // Extract the response text
         const responseText = result.text || '';
