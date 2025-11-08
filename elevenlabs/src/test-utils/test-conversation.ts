@@ -122,6 +122,7 @@ export class TestConversation {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = await generateObject<any>({
       model: google('gemini-flash-latest'),
+      temperature: 0,
       schema,
       prompt: `You are evaluating a conversation transcript between a user and an AI agent.
 
