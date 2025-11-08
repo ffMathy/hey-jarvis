@@ -100,9 +100,70 @@ Provides general cooking and recipe search capabilities:
 
 **Part of cooking vertical**: This agent handles general recipe-related queries, while specialized meal planning agents handle the complex multi-step planning workflows.
 
+### Notification Agent
+Provides proactive notification delivery to Home Assistant Voice Preview Edition devices:
+- **1 notification tool**: Sends voice notifications via ElevenLabs-enabled voice devices
+- **Google Gemini model**: Uses `gemini-flash-latest` for natural language processing
+- **Proactive messaging**: Triggers conversations without wake word activation
+- **Configurable timeout**: Default 5-second timeout after notification delivery
+- **Device targeting**: Can notify specific devices or broadcast to all available devices
+- **Home Assistant integration**: Works through ESPHome API service calls
+
+**Key Capabilities:**
+- Send notifications proactively without user initiation
+- Start interactive conversations after notification
+- Automatically timeout if no user response within configured period
+- Support for custom notification messages
+- Integration with Home Assistant automation system
+
+**Example Use Cases:**
+- "Remind me about my meeting in 5 minutes"
+- "Notify me when the laundry is done"
+- "Alert me if the temperature drops below 18°C"
+- "Let me know when dinner is ready"
+
 *Note: Additional agents will be added as the project evolves.*
 
 ## Available Workflows
+
+### Notification Workflow
+Proactive notification delivery workflow with validation and device targeting:
+- **`notificationWorkflow`**: Sends proactive voice notifications to Home Assistant Voice Preview Edition devices
+- **Step 1 - Validation**: Ensures notification message is not empty and within reasonable length (max 500 characters)
+- **Step 2 - Delivery**: Sends notification via ESPHome service with configurable timeout
+- **Device support**: Can target specific device by name or broadcast to all devices
+- **Timeout configuration**: Default 5-second conversation timeout, configurable per notification
+- **Error handling**: Graceful failure messages for validation errors and API failures
+
+**Technical Implementation:**
+- Uses ESPHome API service: `esphome.{device_name}_send_notification`
+- Parameters: `message` (string), `timeout` (integer in milliseconds)
+- Requires device firmware with ElevenLabs integration and custom action support
+- Works within Home Assistant addon environment with Supervisor token
+
+**Usage Example:**
+```typescript
+await mastra.workflows.notificationWorkflow.execute({
+  message: "Sir, your meeting starts in 5 minutes",
+  deviceName: "hass_elevenlabs", // Optional: defaults to "hass_elevenlabs"
+  conversationTimeout: 5000, // Optional: defaults to 5000ms
+});
+```
+
+**ESPHome Device Configuration:**
+The target device must have the following service configured:
+```yaml
+api:
+  services:
+    - service: send_notification
+      variables:
+        message: string
+        timeout: int
+      then:
+        - elevenlabs_stream.start:
+            initial_message: !lambda 'return message;'
+            timeout: !lambda 'return timeout;'
+```
 
 ### Weather Workflow
 Multi-step weather processing workflow with two main components:
