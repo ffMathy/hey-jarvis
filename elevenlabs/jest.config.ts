@@ -6,6 +6,7 @@ export default {
   testMatch: ['**/*.spec.ts', '**/*.test.ts'],
   testTimeout: 60000,
   maxWorkers: 10,
+  maxConcurrency: 10,
   extensionsToTreatAsEsm: ['.ts'],
   moduleNameMapper: {
     '^(\\.{1,2}/.*)\\.js$': '$1',

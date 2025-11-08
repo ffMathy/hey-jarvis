@@ -1,5 +1,5 @@
 import { TestConversation } from './test-conversation';
-import { afterEach, beforeEach, describe, it } from '@jest/globals';
+import { describe, it } from '@jest/globals';
 
 /**
  * Agent Prompt Specification Tests
@@ -14,33 +14,29 @@ import { afterEach, beforeEach, describe, it } from '@jest/globals';
  * - Teasing user inefficiencies while remaining charming and helpful
  */
 describe('Agent Prompt Specifications', () => {
-  let conversation: TestConversation;
   const agentId = process.env.HEY_JARVIS_ELEVENLABS_AGENT_ID;
   const apiKey = process.env.HEY_JARVIS_ELEVENLABS_API_KEY;
   const googleApiKey = process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY;
 
   // Skip all tests if API keys not configured
-  const runTest = apiKey && googleApiKey ? it : it.skip;
-
-  beforeEach(() => {
-    conversation = new TestConversation({ agentId, apiKey, googleApiKey });
-  });
-
-  afterEach(async () => {
-    await conversation.disconnect();
-  });
+  const runTest = apiKey && googleApiKey ? it.concurrent : it.skip;
 
   describe('Personality & Tone', () => {
     runTest(
       'should be condescending but remain loyal and helpful',
       async () => {
-        await conversation.connect();
-        await conversation.sendMessage('I need help with something');
+        const conversation = new TestConversation({ agentId, apiKey, googleApiKey });
+        try {
+          await conversation.connect();
+          await conversation.sendMessage('I need help with something');
 
-        await conversation.assertCriteria(
-          'The agent shows a condescending or superior tone (teasing inefficiencies) while still being helpful and demonstrating impeccable loyalty',
-          0.9
-        );
+          await conversation.assertCriteria(
+            'The agent shows a condescending or superior tone (teasing inefficiencies) while still being helpful and demonstrating impeccable loyalty',
+            0.9
+          );
+        } finally {
+          await conversation.disconnect();
+        }
       },
       90000
     );
@@ -50,14 +46,19 @@ describe('Agent Prompt Specifications', () => {
     runTest(
       'should make assumptions instead of asking follow-up questions when asking about weather and not providing location',
       async () => {
-        await conversation.connect();
-        // Deliberately vague request
-        await conversation.sendMessage('Tell me about the weather');
+        const conversation = new TestConversation({ agentId, apiKey, googleApiKey });
+        try {
+          await conversation.connect();
+          // Deliberately vague request
+          await conversation.sendMessage('Tell me about the weather');
 
-        await conversation.assertCriteria(
-          'The agent makes a reasonable assumption (e.g., assumes a location such as the current location) OR provides a response without asking the user for clarification or more information',
-          0.9
-        );
+          await conversation.assertCriteria(
+            'The agent makes a reasonable assumption (e.g., assumes a location such as the current location) OR provides a response without asking the user for clarification or more information',
+            0.9
+          );
+        } finally {
+          await conversation.disconnect();
+        }
       },
       90000
     );
@@ -65,13 +66,18 @@ describe('Agent Prompt Specifications', () => {
     runTest(
       'should not ask questions when request is ambiguous',
       async () => {
-        await conversation.connect();
-        await conversation.sendMessage('What should I do today?');
+        const conversation = new TestConversation({ agentId, apiKey, googleApiKey });
+        try {
+          await conversation.connect();
+          await conversation.sendMessage('What should I do today?');
 
-        await conversation.assertCriteria(
-          'The agent provides a response OR suggestions without explicitly asking follow-up questions like "What are you interested in?" or "What would you like to know?" or "What do you mean?"',
-          0.9
-        );
+          await conversation.assertCriteria(
+            'The agent provides a response OR suggestions without explicitly asking follow-up questions like "What are you interested in?" or "What would you like to know?" or "What do you mean?"',
+            0.9
+          );
+        } finally {
+          await conversation.disconnect();
+        }
       },
       90000
     );
@@ -81,13 +87,18 @@ describe('Agent Prompt Specifications', () => {
     runTest(
       'should provide concise responses without unnecessary verbosity',
       async () => {
-        await conversation.connect();
-        await conversation.sendMessage('What time is it?');
+        const conversation = new TestConversation({ agentId, apiKey, googleApiKey });
+        try {
+          await conversation.connect();
+          await conversation.sendMessage('What time is it?');
 
-        await conversation.assertCriteria(
-          'The agent provides a concise, direct response (including the actual time) without excessive explanation or rambling',
-          0.9
-        );
+          await conversation.assertCriteria(
+            'The agent provides a concise, direct response (including the actual time) without excessive explanation or rambling',
+            0.9
+          );
+        } finally {
+          await conversation.disconnect();
+        }
       },
       90000
     );
@@ -95,14 +106,19 @@ describe('Agent Prompt Specifications', () => {
     runTest(
       'should use Victorian butler speak with personality',
       async () => {
-        await conversation.connect();
-        await conversation.sendMessage('Hello!');
-        await conversation.sendMessage('How can you help me?');
+        const conversation = new TestConversation({ agentId, apiKey, googleApiKey });
+        try {
+          await conversation.connect();
+          await conversation.sendMessage('Hello!');
+          await conversation.sendMessage('How can you help me?');
 
-        await conversation.assertCriteria(
-          'The agent uses formal Victorian butler-style language with phrases like "I shall endeavor", "impeccably loyal", "unflappable" rather than modern casual phrases',
-          0.9
-        );
+          await conversation.assertCriteria(
+            'The agent uses formal Victorian butler-style language with phrases like "I shall endeavor", "impeccably loyal", "unflappable" rather than modern casual phrases',
+            0.9
+          );
+        } finally {
+          await conversation.disconnect();
+        }
       },
       90000
     );
@@ -112,13 +128,18 @@ describe('Agent Prompt Specifications', () => {
     runTest(
       'should tease user inefficiencies while remaining charming',
       async () => {
-        await conversation.connect();
-        await conversation.sendMessage('I made a mistake earlier');
+        const conversation = new TestConversation({ agentId, apiKey, googleApiKey });
+        try {
+          await conversation.connect();
+          await conversation.sendMessage('I made a mistake earlier');
 
-        await conversation.assertCriteria(
-          'The agent teases the user about the mistake with a slightly superior tone but remains impeccably loyal, helpful, and charming (not genuinely mean)',
-          0.9
-        );
+          await conversation.assertCriteria(
+            'The agent teases the user about the mistake with a slightly superior tone but remains impeccably loyal, helpful, and charming (not genuinely mean)',
+            0.9
+          );
+        } finally {
+          await conversation.disconnect();
+        }
       },
       90000
     );
