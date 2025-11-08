@@ -93,6 +93,21 @@ nx deploy elevenlabs
 nx init elevenlabs
 ```
 
+### Testing
+
+**IMPORTANT**: The test target depends on the deploy target. This is intentional and required because:
+
+- Tests validate agent behavior against the **deployed configuration** on ElevenLabs
+- Tests use LLM-based evaluation to verify conversation quality and personality traits
+- The agent must be deployed with the latest configuration before tests can validate its behavior
+
+When you run `nx test elevenlabs`, it automatically:
+1. Deploys the current agent configuration to ElevenLabs (`nx deploy elevenlabs`)
+2. Runs tests that interact with the live deployed agent via WebSocket
+3. Evaluates responses using Gemini models to verify personality, tone, and correctness
+
+**Note**: Do not remove the `deploy` dependency from the test target, as this will cause tests to run against stale configurations.
+
 ### Agent Configuration
 
 The agent configuration is split into two files for better maintainability:
