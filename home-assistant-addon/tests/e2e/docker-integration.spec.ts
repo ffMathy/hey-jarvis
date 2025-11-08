@@ -16,12 +16,28 @@ test.describe('Docker Container Integration Tests', () => {
       detached: true
     });
     
+    let dockerOutput = '';
+    let dockerErrors = '';
+    
     dockerProcess.stdout?.on('data', (data) => {
-      console.log('Docker stdout:', data.toString());
+      const output = data.toString();
+      dockerOutput += output;
+      console.log('Docker stdout:', output);
     });
     
     dockerProcess.stderr?.on('data', (data) => {
-      console.log('Docker stderr:', data.toString());
+      const output = data.toString();
+      dockerErrors += output;
+      console.log('Docker stderr:', output);
+    });
+    
+    // Check if the process exits prematurely
+    let processExited = false;
+    let exitCode: number | null = null;
+    dockerProcess.on('exit', (code) => {
+      processExited = true;
+      exitCode = code;
+      console.log(`Docker process exited with code ${code}`);
     });
     
     // Wait for the container to be ready
@@ -34,6 +50,15 @@ test.describe('Docker Container Integration Tests', () => {
     let waitTime = 0;
     
     while (waitTime < maxWaitTime) {
+      // Check if docker process died
+      if (processExited) {
+        console.error('Docker process exited prematurely!');
+        console.error('Exit code:', exitCode);
+        console.error('Last output:', dockerOutput);
+        console.error('Last errors:', dockerErrors);
+        throw new Error(`Docker process exited with code ${exitCode} before container was ready`);
+      }
+      
       try {
         const response = await fetch('http://localhost:5690/');
         if (response.status < 500) {
@@ -57,6 +82,9 @@ test.describe('Docker Container Integration Tests', () => {
     
     if (waitTime >= maxWaitTime) {
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      console.error('Container startup timeout!');
+      console.error('Last output:', dockerOutput);
+      console.error('Last errors:', dockerErrors);
       throw new Error(`Container failed to start within timeout period (${elapsed}s elapsed)`);
     }
     
