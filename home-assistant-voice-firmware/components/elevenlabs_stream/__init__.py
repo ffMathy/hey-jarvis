@@ -160,14 +160,30 @@ async def to_code(config):
 
 
 # Actions
+CONF_INITIAL_MESSAGE = "initial_message"
+CONF_TIMEOUT = "timeout"
+
 @automation.register_action(
     "elevenlabs_stream.start",
     ElevenLabsStreamStartAction,
-    cv.Schema({cv.GenerateID(): cv.use_id(ElevenLabsStream)}),
+    cv.Schema({
+        cv.GenerateID(): cv.use_id(ElevenLabsStream),
+        cv.Optional(CONF_INITIAL_MESSAGE): cv.templatable(cv.string),
+        cv.Optional(CONF_TIMEOUT): cv.templatable(cv.positive_int),
+    }),
 )
 async def elevenlabs_stream_start_to_code(config, action_id, template_arg, args):
     var = cg.new_Pvariable(action_id, template_arg)
     await cg.register_parented(var, config[CONF_ID])
+    
+    if CONF_INITIAL_MESSAGE in config:
+        template_ = await cg.templatable(config[CONF_INITIAL_MESSAGE], args, cg.std_string)
+        cg.add(var.set_initial_message(template_))
+    
+    if CONF_TIMEOUT in config:
+        template_ = await cg.templatable(config[CONF_TIMEOUT], args, cg.uint32)
+        cg.add(var.set_timeout(template_))
+    
     return var
 
 
