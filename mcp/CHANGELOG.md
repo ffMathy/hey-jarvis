@@ -1,5 +1,17 @@
 # Changelog
 
+## [3.2.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v3.1.0...mcp-v3.2.0) (2025-11-08)
+
+
+### Features
+
+* migrate from deprecated telemetry to AI Tracing and re-enable scorers ([a27fe14](https://github.com/ffMathy/hey-jarvis/commit/a27fe14af5cb945143234ba6955843bc329b560b))
+
+
+### Bug Fixes
+
+* make scorer initialization lazy to prevent build-time failures ([825501c](https://github.com/ffMathy/hey-jarvis/commit/825501c10c44024242fd28e7db5877f946d46afe))
+
 ## [3.1.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v3.0.5...mcp-v3.1.0) (2025-11-07)
 
 

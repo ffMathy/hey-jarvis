@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.5.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.4.2...elevenlabs-v0.5.0) (2025-11-08)
+
+
+### Features
+
+* **elevenlabs:** enable parallel test execution with concurrency of 10 ([71b2d8c](https://github.com/ffMathy/hey-jarvis/commit/71b2d8c3f454a77f5160cc8c058b52a0a4555f17))
+
+
+### Bug Fixes
+
+* **elevenlabs:** set temperature to 0 for deterministic LLM outputs ([e4d3bde](https://github.com/ffMathy/hey-jarvis/commit/e4d3bde31307f056a174b66ab463c74f21953cc8))
+* **elevenlabs:** use correct message content in conversation history ([18dd820](https://github.com/ffMathy/hey-jarvis/commit/18dd82016e525b8396c7f048919ed027cd734e4d))
+
 ## [0.4.2](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.4.1...elevenlabs-v0.4.2) (2025-11-07)
 
 
