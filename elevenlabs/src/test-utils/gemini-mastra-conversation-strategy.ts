@@ -67,7 +67,11 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
             createdAt: new Date(),
             type: 'text',
             id: "message-" + i.toString(),
-            content: text,
+            content: x.type === 'user_message' 
+                ? (x as UserMessageEvent).text 
+                : (x.type === 'agent_response' 
+                    ? x.agent_response_event.agent_response 
+                    : JSON.stringify(x)),
             role: x.type === 'user_message' ? 
                 'user' as const : 
                 (x.type === 'agent_tool_response' ? 
