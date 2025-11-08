@@ -7,7 +7,7 @@
     "initialize": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "npm install mastra --global",
+        "command": "bun install mastra --global",
         "cwd": "mcp"
       }
     },
