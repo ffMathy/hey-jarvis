@@ -32,6 +32,13 @@
         "cwd": "."
       }
     },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "echo 'No tests configured for MCP project'",
+        "cwd": "."
+      }
+    },
     "deploy": {
       "executor": "nx:run-commands",
       "dependsOn": [
