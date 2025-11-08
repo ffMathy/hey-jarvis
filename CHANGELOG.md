@@ -1,5 +1,20 @@
 # Changelog
 
+## [3.2.0](https://github.com/ffMathy/hey-jarvis/compare/root-v3.1.1...root-v3.2.0) (2025-11-08)
+
+
+### Features
+
+* **elevenlabs:** enable parallel test execution with concurrency of 10 ([71b2d8c](https://github.com/ffMathy/hey-jarvis/commit/71b2d8c3f454a77f5160cc8c058b52a0a4555f17))
+* migrate from deprecated telemetry to AI Tracing and re-enable scorers ([a27fe14](https://github.com/ffMathy/hey-jarvis/commit/a27fe14af5cb945143234ba6955843bc329b560b))
+
+
+### Bug Fixes
+
+* **elevenlabs:** set temperature to 0 for deterministic LLM outputs ([e4d3bde](https://github.com/ffMathy/hey-jarvis/commit/e4d3bde31307f056a174b66ab463c74f21953cc8))
+* **elevenlabs:** use correct message content in conversation history ([18dd820](https://github.com/ffMathy/hey-jarvis/commit/18dd82016e525b8396c7f048919ed027cd734e4d))
+* make scorer initialization lazy to prevent build-time failures ([825501c](https://github.com/ffMathy/hey-jarvis/commit/825501c10c44024242fd28e7db5877f946d46afe))
+
 ## [3.1.1](https://github.com/ffMathy/hey-jarvis/compare/root-v3.1.0...root-v3.1.1) (2025-11-07)
 
 
