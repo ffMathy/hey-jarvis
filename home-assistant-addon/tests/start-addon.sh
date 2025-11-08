@@ -71,7 +71,16 @@ fi
 echo "🎯 Addon container is running and ready for testing!"
 echo "Press Ctrl+C to stop the container."
 
-# Keep the script running until interrupted
+# Monitor container health and keep script running
+echo "📊 Monitoring container health..."
 while true; do
-    sleep 1
+    # Check if container is still running
+    if ! docker ps | grep -q "home-assistant-addon-test"; then
+        echo "❌ Container has stopped unexpectedly!"
+        echo "📋 Container logs:"
+        docker logs home-assistant-addon-test 2>&1 | tail -50
+        exit 1
+    fi
+    
+    sleep 5
 done

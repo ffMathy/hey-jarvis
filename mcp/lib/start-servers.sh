@@ -12,11 +12,33 @@ start_mcp_servers() {
     # Using & to run in background and wait to keep the script alive
     # Ports are hardcoded: Mastra=4111, MCP=4112
     cd /workspace
-    PORT=4111 mastra dev --dir mcp/mastra --root . &
+    
+    echo "Current directory: $(pwd)"
+    echo "Checking for required files..."
+    [ -d "mcp/mastra" ] && echo "✓ mcp/mastra directory exists" || echo "✗ mcp/mastra directory missing"
+    [ -f "mcp/mastra/mcp-server.ts" ] && echo "✓ mcp/mastra/mcp-server.ts exists" || echo "✗ mcp/mastra/mcp-server.ts missing"
+    
+    echo "Starting Mastra dev server..."
+    PORT=4111 mastra dev --dir mcp/mastra --root . 2>&1 | sed 's/^/[MASTRA] /' &
     MASTRA_PID=$!
     
-    npx tsx mcp/mastra/mcp-server.ts &
+    echo "Starting MCP server..."
+    npx tsx mcp/mastra/mcp-server.ts 2>&1 | sed 's/^/[MCP] /' &
     MCP_PID=$!
+    
+    # Give servers a moment to start
+    sleep 3
+    
+    # Check if processes are still running
+    if ! kill -0 $MASTRA_PID 2>/dev/null; then
+        echo "ERROR: Mastra server failed to start or exited immediately"
+        return 1
+    fi
+    
+    if ! kill -0 $MCP_PID 2>/dev/null; then
+        echo "ERROR: MCP server failed to start or exited immediately"
+        return 1
+    fi
     
     # Export PIDs for cleanup
     echo "$MASTRA_PID $MCP_PID"
