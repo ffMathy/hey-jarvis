@@ -47,12 +47,12 @@ const sendNotification = createToolStep({
   tool: notificationTools.notifyDevice,
   inputSchema: z.object({
     message: z.string(),
-    deviceEntityId: z.string().optional(),
+    deviceName: z.string().optional(),
     conversationTimeout: z.number().optional(),
   }),
-  inputTransform: ({ message, deviceEntityId, conversationTimeout }) => ({
+  inputTransform: ({ message, deviceName, conversationTimeout }) => ({
     message,
-    deviceEntityId,
+    deviceName,
     conversationTimeout,
   }),
 });
@@ -62,13 +62,13 @@ export const notificationWorkflow = createWorkflow({
   id: 'proactive-notification-workflow',
   inputSchema: z.object({
     message: z.string().describe('The notification message to deliver'),
-    deviceEntityId: z.string().optional().describe('Optional: Specific device to notify'),
+    deviceName: z.string().optional().describe('Optional: Device name to notify (e.g., "hass_elevenlabs")'),
     conversationTimeout: z.number().optional().default(5000).describe('Timeout in ms (default: 5000)'),
   }),
   outputSchema: z.object({
     success: z.boolean(),
     message: z.string(),
-    devicesNotified: z.array(z.string()).optional(),
+    serviceCalled: z.string().optional(),
   }),
 })
   .then(validateMessage)

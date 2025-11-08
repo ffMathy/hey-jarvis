@@ -102,6 +102,15 @@ logger:
 
 api:
   id: api_id
+  services:
+    - service: send_notification
+      variables:
+        message: string
+        timeout: int
+      then:
+        - elevenlabs_stream.start:
+            initial_message: !lambda 'return message;'
+            timeout: !lambda 'return timeout;'
 
 json:
 
