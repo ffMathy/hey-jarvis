@@ -63,7 +63,7 @@
     "test": {
       "executor": "nx:run-commands",
       "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
-      "dependsOn": ["build"],
+      "dependsOn": ["deploy"],
       "options": {
         "command": "./.scripts/run-with-env.sh elevenlabs/op.env nx run elevenlabs:test:jest",
         "cwd": ".",
