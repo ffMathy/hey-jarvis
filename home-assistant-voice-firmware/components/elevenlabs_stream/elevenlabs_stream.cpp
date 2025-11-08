@@ -167,6 +167,17 @@ void ElevenLabsStream::loop() {
              loop_count, this->state_ == StreamState::OFF ? "OFF" : "ON");
   }
   
+  // Check for conversation timeout if configured
+  if (this->conversation_timeout_ms_ > 0 && this->state_ == StreamState::ON && 
+      this->last_user_input_time_ > 0 && !this->speaker_is_active_) {
+    uint32_t time_since_input = millis() - this->last_user_input_time_;
+    if (time_since_input >= this->conversation_timeout_ms_) {
+      ESP_LOGI(TAG, "LOOP: Conversation timeout reached (%u ms since last input), stopping stream", time_since_input);
+      this->stop_stream();
+      return;
+    }
+  }
+  
   // Send periodic heartbeat when connected
   if (this->client_ && this->state_ == StreamState::ON && !this->speaker_is_active_) {
     uint32_t heartbeat_elapsed = millis() - this->last_heartbeat_;
@@ -182,9 +193,23 @@ void ElevenLabsStream::loop() {
 }
 
 bool ElevenLabsStream::start_stream() {
+  return start_stream("", 0);
+}
+
+bool ElevenLabsStream::start_stream(const std::string &initial_message) {
+  return start_stream(initial_message, 0);
+}
+
+bool ElevenLabsStream::start_stream(const std::string &initial_message, uint32_t timeout_ms) {
   ESP_LOGI(TAG, "=== START_STREAM CALLED ===");
   ESP_LOGD(TAG, "START_STREAM: Current state=%s", stream_state_to_string(this->state_));
   ESP_LOGD(TAG, "START_STREAM: Agent ID='%s'", this->agent_id_.c_str());
+  ESP_LOGD(TAG, "START_STREAM: Initial message='%s', timeout=%u ms", initial_message.c_str(), timeout_ms);
+
+  // Store the initial message and timeout for this session
+  this->initial_message_ = initial_message;
+  this->conversation_timeout_ms_ = timeout_ms;
+  this->last_user_input_time_ = 0; // Reset on new stream
 
   this->connection_start_time_ = millis();
   ESP_LOGD(TAG, "START_STREAM: Connection start time set to %d", this->connection_start_time_);
@@ -615,7 +640,8 @@ void ElevenLabsStream::send_conversation_init() {
     JsonObject tts = conversation_config["tts"].to<JsonObject>();
     
     // Language configuration
-    agent["first_message"] = "";
+    // Use custom initial message if provided, otherwise use empty string
+    agent["first_message"] = this->initial_message_.empty() ? "" : this->initial_message_.c_str();
   });
   
   ESP_LOGD(TAG, "SEND_CONV_INIT: Sending conversation init: %s", message.c_str());
@@ -743,6 +769,9 @@ void ElevenLabsStream::handle_microphone_data(const std::vector<uint8_t> &data) 
   
   if (!this->send_websocket_message(message)) {
     ESP_LOGW(TAG, "HANDLE_MIC: Failed to send audio message via websocket");
+  } else {
+    // Update last user input time when audio is successfully sent
+    this->last_user_input_time_ = millis();
   }
 }
 
