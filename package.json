@@ -54,9 +54,9 @@
     "ws": "^8.18.3"
   },
   "dependencies": {
-    "@ai-sdk/google": "^2.0.24",
-    "@elevenlabs/elevenlabs-js": "^2.20.1",
-    "@hono/node-server": "^1.19.5",
+    "@ai-sdk/google": "^2.0.29",
+    "@elevenlabs/elevenlabs-js": "^2.22.0",
+    "@hono/node-server": "^1.19.6",
     "@mastra/core": "^0.24.0",
     "@mastra/evals": "^0.14.3",
     "@mastra/libsql": "^0.16.2",
@@ -64,11 +64,11 @@
     "@mastra/mcp": "^0.14.2",
     "@mastra/memory": "^0.15.11",
     "@types/node-fetch": "^2.6.13",
-    "ai": "^5.0.86",
+    "ai": "^5.0.89",
     "commander": "^14.0.2",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
-    "hono": "^4.10.3",
+    "hono": "^4.10.4",
     "octokit": "^5.0.5",
     "zod": "^3.25.76"
   }
