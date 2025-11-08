@@ -15,7 +15,7 @@ An NX monorepo containing intelligent voice assistant components for comprehensi
 
 ```bash
 # Install dependencies
-npm install
+bun install
 
 # Start the MCP server
 nx serve mcp

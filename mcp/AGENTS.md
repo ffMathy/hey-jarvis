@@ -279,7 +279,7 @@ const getCurrentWeatherStep = createToolStep({
 ### Prerequisites
 ```bash
 # Install Mastra globally
-npm install mastra --global
+bun install mastra --global
 ```
 
 ### Running the Project
@@ -797,14 +797,13 @@ This project follows a strict "lean documentation" approach because:
 
 ### Build and Development Commands
 **CRITICAL: ALWAYS use NX commands** for this monorepo:
-- ✅ Use `nx serve mcp` instead of `npm run dev`
-- ✅ Use `nx build mcp` instead of `npm run build` 
-- ✅ Use `nx test mcp` instead of `npm run test`
-- ✅ Use `nx lint mcp` instead of `npm run lint`
-- ✅ Use `npx nx install` for package installations through NX
-- ❌ **NEVER use `npm run` commands** in this NX monorepo
-- ❌ **NEVER use `npm install` directly** - use NX workspace commands
-- ❌ **NEVER use `npm start`, `npm test`, `npm build`** - always prefix with `nx`
+- ✅ Use `nx serve mcp` instead of running dev directly
+- ✅ Use `nx build mcp` instead of running build directly
+- ✅ Use `nx test mcp` instead of running test directly
+- ✅ Use `nx lint mcp` instead of running lint directly
+- ✅ Use `bun install` for package installations at the workspace level
+- ❌ **NEVER use npm commands** in this Bun-powered monorepo
+- ❌ **NEVER run commands directly** - always use NX for project commands
 
 **Why NX is Required:**
 - NX provides intelligent caching and dependency management

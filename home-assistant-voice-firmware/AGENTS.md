@@ -66,12 +66,12 @@ exec('curl https://api.github.com/repos/...');
 
 ## Development Commands
 **CRITICAL: ALWAYS use NX commands** for this monorepo:
-- ✅ Use `nx serve home-assistant-voice-firmware` instead of `npm run dev`
-- ✅ Use `nx build home-assistant-voice-firmware` instead of `npm run build`
-- ✅ Use `nx test home-assistant-voice-firmware` instead of `npm run test`
-- ✅ Use `nx lint home-assistant-voice-firmware` instead of `npm run lint`
-- ❌ **NEVER use `npm run` commands** in this NX monorepo
-- ❌ **NEVER use `npm install` directly** - use NX workspace commands
+- ✅ Use `nx serve home-assistant-voice-firmware` instead of running dev directly
+- ✅ Use `nx build home-assistant-voice-firmware` instead of running build directly
+- ✅ Use `nx test home-assistant-voice-firmware` instead of running test directly
+- ✅ Use `nx lint home-assistant-voice-firmware` instead of running lint directly
+- ❌ **NEVER use npm commands** in this Bun-powered monorepo
+- ❌ **NEVER run commands directly** - always use NX for project commands
 
 ## Development Guidelines
 

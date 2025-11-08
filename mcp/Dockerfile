@@ -1,22 +1,21 @@
-# Build stage - use slim image for building
-FROM docker.io/node:lts-slim AS builder
+# Build stage - use Bun image for building
+FROM docker.io/oven/bun:1-alpine AS builder
 
 WORKDIR /workspace
 
 # Copy package files for dependency installation
-COPY package.json package-lock.json ./
+COPY package.json bun.lock ./
 COPY mcp/package.json ./mcp/
 
 # Install all dependencies (needed for TypeScript compilation)
-RUN npm ci --include=dev
+RUN bun install --frozen-lockfile
 
 # Copy source code
 COPY tsconfig.base.json ./
 COPY mcp/ ./mcp/
 
-# Production stage - use Alpine for minimal size
-# Using node:lts-alpine which has better multi-arch support including arm64
-FROM docker.io/node:lts-alpine AS production
+# Production stage - use Bun Alpine for minimal size
+FROM docker.io/oven/bun:1-alpine AS production
 
 ENV HOST=0.0.0.0
 ENV NODE_ENV=production
@@ -27,13 +26,12 @@ WORKDIR /workspace
 RUN apk add --no-cache bash
 
 # Copy package files
-COPY package.json package-lock.json ./
+COPY package.json bun.lock ./
 COPY mcp/package.json ./mcp/
 
 # Install only production dependencies and global tools
-RUN npm ci --omit=dev && \
-    npm install -g tsx@4.20.6 mastra@0.18.0 && \
-    npm cache clean --force
+RUN bun install --frozen-lockfile --production && \
+    bun add -g tsx@4.20.6 mastra@0.18.0
 
 # Copy source code from builder
 COPY --from=builder /workspace/tsconfig.base.json ./
