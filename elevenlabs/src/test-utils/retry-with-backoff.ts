@@ -82,10 +82,11 @@ export async function retryWithBackoff<T>(
       }
 
       // Calculate delay with exponential backoff: initialDelay * (backoffMultiplier ^ (attempt - 1))
-      const delayMs = Math.min(
-        initialDelay * Math.pow(backoffMultiplier, attempt - 1),
-        maxDelay
-      );
+      // Use integer arithmetic to avoid floating-point precision issues
+      let delayMs = initialDelay;
+      for (let i = 1; i < attempt; i++) {
+        delayMs = Math.min(delayMs * backoffMultiplier, maxDelay);
+      }
 
       // Call the retry callback if provided
       if (onRetry) {
