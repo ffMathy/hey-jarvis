@@ -38,7 +38,7 @@ describe('Agent Prompt Specifications', () => {
           await conversation.disconnect();
         }
       },
-      90000
+      120000 // Increased from 90s to 120s to account for retries
     );
   });
 
@@ -60,7 +60,7 @@ describe('Agent Prompt Specifications', () => {
           await conversation.disconnect();
         }
       },
-      90000
+      120000
     );
 
     runTest(
@@ -79,7 +79,7 @@ describe('Agent Prompt Specifications', () => {
           await conversation.disconnect();
         }
       },
-      90000
+      120000
     );
   });
 
@@ -100,7 +100,7 @@ describe('Agent Prompt Specifications', () => {
           await conversation.disconnect();
         }
       },
-      90000
+      120000
     );
 
     runTest(
@@ -120,7 +120,7 @@ describe('Agent Prompt Specifications', () => {
           await conversation.disconnect();
         }
       },
-      90000
+      120000
     );
   });
 
@@ -141,7 +141,7 @@ describe('Agent Prompt Specifications', () => {
           await conversation.disconnect();
         }
       },
-      90000
+      120000
     );
   });
 });
