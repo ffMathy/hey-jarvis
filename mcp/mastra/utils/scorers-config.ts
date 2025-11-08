@@ -1,12 +1,10 @@
-// import {
-//     createCompletenessScorer,
-// } from '@mastra/evals/scorers/code';
-// import {
-//     createAnswerRelevancyScorer,
-//     createBiasScorer,
-//     createHallucinationScorer,
-//     createPromptAlignmentScorerLLM
-// } from '@mastra/evals/scorers/llm';
+import { createCompletenessScorer } from '@mastra/evals/scorers/code';
+import {
+    createAnswerRelevancyScorer,
+    createBiasScorer,
+    createHallucinationScorer,
+    createPromptAlignmentScorerLLM
+} from '@mastra/evals/scorers/llm';
 import { google } from './google-provider.js';
 
 /**
@@ -19,40 +17,39 @@ const SCORER_MODEL = google('gemini-flash-latest');
  * Default sampling rate for live evaluations.
  * 0.1 = 10% of responses will be scored (good balance between monitoring and cost)
  */
-const DEFAULT_SAMPLING_RATE = 1.0;
+const DEFAULT_SAMPLING_RATE = 0.1;
 
 /**
  * Hey Jarvis default scorers configuration for agents and workflows.
  * These scorers provide comprehensive evaluation across multiple dimensions:
  * 
  * - **answer-relevancy**: How well responses address the input query
- * - **faithfulness**: How accurately responses represent provided context
  * - **hallucination**: Detection of factual contradictions and unsupported claims
  * - **completeness**: Whether responses include all necessary information
  * - **prompt-alignment**: How well responses align with prompt intent
  * - **bias**: Detection of potential biases in outputs
  */
 export const DEFAULT_SCORERS = {
-    // answerRelevancy: {
-    //     scorer: createAnswerRelevancyScorer({ model: SCORER_MODEL }),
-    //     sampling: { type: 'ratio' as const, rate: DEFAULT_SAMPLING_RATE },
-    // },
-    // hallucination: {
-    //     scorer: createHallucinationScorer({ model: SCORER_MODEL }),
-    //     sampling: { type: 'ratio' as const, rate: DEFAULT_SAMPLING_RATE },
-    // },
-    // completeness: {
-    //     scorer: createCompletenessScorer(),
-    //     sampling: { type: 'ratio' as const, rate: DEFAULT_SAMPLING_RATE },
-    // },
-    // promptAlignment: {
-    //     scorer: createPromptAlignmentScorerLLM({ model: SCORER_MODEL }),
-    //     sampling: { type: 'ratio' as const, rate: DEFAULT_SAMPLING_RATE },
-    // },
-    // bias: {
-    //     scorer: createBiasScorer({ model: SCORER_MODEL }),
-    //     sampling: { type: 'ratio' as const, rate: DEFAULT_SAMPLING_RATE },
-    // },
+    answerRelevancy: {
+        scorer: createAnswerRelevancyScorer({ model: SCORER_MODEL }),
+        sampling: { type: 'ratio' as const, rate: DEFAULT_SAMPLING_RATE },
+    },
+    hallucination: {
+        scorer: createHallucinationScorer({ model: SCORER_MODEL }),
+        sampling: { type: 'ratio' as const, rate: DEFAULT_SAMPLING_RATE },
+    },
+    completeness: {
+        scorer: createCompletenessScorer(),
+        sampling: { type: 'ratio' as const, rate: DEFAULT_SAMPLING_RATE },
+    },
+    promptAlignment: {
+        scorer: createPromptAlignmentScorerLLM({ model: SCORER_MODEL }),
+        sampling: { type: 'ratio' as const, rate: DEFAULT_SAMPLING_RATE },
+    },
+    bias: {
+        scorer: createBiasScorer({ model: SCORER_MODEL }),
+        sampling: { type: 'ratio' as const, rate: DEFAULT_SAMPLING_RATE },
+    },
 };
 
 /**
@@ -105,18 +102,18 @@ export function createScorersConfig(
     samplingRate: number = DEFAULT_SAMPLING_RATE
 ) {
     // Apply custom sampling rate to all default scorers if specified
-    // const scorersWithCustomRate = Object.fromEntries(
-    //     Object.entries(DEFAULT_SCORERS).map(([key, config]) => [
-    //         key,
-    //         {
-    //             ...config,
-    //             sampling: { ...config.sampling, rate: samplingRate },
-    //         },
-    //     ])
-    // );
+    const scorersWithCustomRate = Object.fromEntries(
+        Object.entries(DEFAULT_SCORERS).map(([key, config]) => [
+            key,
+            {
+                ...config,
+                sampling: { ...config.sampling, rate: samplingRate },
+            },
+        ])
+    );
 
     return {
-        // ...scorersWithCustomRate,
+        ...scorersWithCustomRate,
         ...customScorers,
     };
 }
