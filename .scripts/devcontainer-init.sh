@@ -2,11 +2,18 @@
 # DevContainer initialization script
 # Installs dependencies and runs project-specific initialization
 
-echo "🔧 Installing npm dependencies..."
-npm ci --prefer-offline || {
-    echo "❌ npm install failed"
-    exit 1
-}
+echo "🔧 Installing dependencies with Bun..."
+if [ -f "bun.lock" ]; then
+    bun install --frozen-lockfile || {
+        echo "❌ bun install failed"
+        exit 1
+    }
+else
+    bun install || {
+        echo "❌ bun install failed"
+        exit 1
+    }
+fi
 
 # Skip Playwright installation by default - can be installed manually when needed
 # This significantly reduces DevContainer build time

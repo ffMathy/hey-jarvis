@@ -87,11 +87,11 @@ The agent prompt in `src/assets/agent-prompt.md` defines:
 
 ### NX Commands
 **CRITICAL: ALWAYS use NX commands** for this monorepo:
-- ✅ Use `nx test elevenlabs` instead of `npm test`
-- ✅ Use `nx build elevenlabs` instead of `npm run build`
+- ✅ Use `nx test elevenlabs` instead of running test directly
+- ✅ Use `nx build elevenlabs` instead of running build directly
 - ✅ Use `nx deploy elevenlabs` to update ElevenLabs agent configuration
 - ✅ Use `nx refresh elevenlabs` to fetch current agent configuration
-- ❌ **NEVER use `npm run` commands** in this NX monorepo
+- ❌ **NEVER use npm commands** in this Bun-powered monorepo
 
 ### Environment Setup
 
@@ -147,7 +147,7 @@ When modifying this project:
 - **Add tests** with 0.9+ score requirements for new features
 - **Test locally** before deploying to ElevenLabs
 - **Use `nx deploy elevenlabs`** to push prompt changes to production
-- **Follow NX commands** exclusively (no direct npm commands)
+- **Follow NX commands** exclusively (no direct package manager commands)
 
 ### Commit Message Standards
 
