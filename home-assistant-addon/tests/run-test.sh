@@ -34,8 +34,18 @@ echo "Google Generative AI API key configured (test mode)"
 
 # Start both servers in parallel using shared function
 echo "Executing start_mcp_servers function..."
-PIDS=$(start_mcp_servers)
+PIDS=$(start_mcp_servers) || {
+    echo "ERROR: Failed to start MCP servers"
+    exit 1
+}
 read -r MASTRA_PID MCP_PID <<< "$PIDS"
+
+# Validate PIDs are not empty
+if [ -z "$MASTRA_PID" ] || [ -z "$MCP_PID" ]; then
+    echo "ERROR: Failed to get server PIDs (MASTRA_PID=$MASTRA_PID, MCP_PID=$MCP_PID)"
+    exit 1
+fi
+
 echo "✓ Mastra server started (PID: $MASTRA_PID)"
 echo "✓ MCP server started (PID: $MCP_PID)"
 
