@@ -174,12 +174,12 @@ docker buildx build \
 
 ### NX Commands
 **CRITICAL: ALWAYS use NX commands** for this monorepo:
-- ✅ Use `nx serve home-assistant-addon` instead of `npm run dev`
-- ✅ Use `nx build home-assistant-addon` instead of `npm run build`
+- ✅ Use `nx serve home-assistant-addon` instead of running dev directly
+- ✅ Use `nx build home-assistant-addon` instead of running build directly
 - ✅ Use `nx deploy home-assistant-addon` instead of running deploy script directly
 - ✅ Use `nx docker:build home-assistant-addon` for Docker builds
-- ❌ **NEVER use `npm run` commands** in this NX monorepo
-- ❌ **NEVER use `npm install` directly** - use NX workspace commands
+- ❌ **NEVER use npm commands** in this Bun-powered monorepo
+- ❌ **NEVER run commands directly** - always use NX for project commands
 
 ### Build Dependencies
 The addon depends on `mcp` project:

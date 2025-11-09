@@ -4,7 +4,7 @@
 #
 # Run the container with `nx docker:run elevenlabs -p 3000:3000`.
 #
-FROM docker.io/node:lts-alpine
+FROM docker.io/oven/bun:1-alpine
 
 ENV HOST=0.0.0.0
 ENV PORT=3000
@@ -12,11 +12,11 @@ ENV PORT=3000
 
 WORKDIR /app
 
-COPY dist .
+COPY . .
 
 # You can remove this install step if you build with `--bundle` option.
 # The bundled output will include external dependencies.
 
-RUN npm --omit=dev -f install
+RUN bun install --production
 
-CMD [ "node", "main.js" ]
+CMD [ "bun", "run", "main.js" ]
