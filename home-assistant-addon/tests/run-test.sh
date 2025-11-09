@@ -6,6 +6,10 @@
 
 set -e
 
+echo "==========================="
+echo "E2E Test Environment Setup"
+echo "==========================="
+
 # Source shared server start functions
 # shellcheck disable=SC1091
 source /workspace/mcp/lib/start-servers.sh
@@ -16,6 +20,7 @@ echo "Starting E2E test environment..."
 echo "Starting nginx proxy on port 5000..."
 nginx -g 'daemon off;' &
 NGINX_PID=$!
+echo "✓ Nginx started (PID: $NGINX_PID)"
 
 # Give nginx time to start
 sleep 2
@@ -28,8 +33,21 @@ echo "Starting Hey Jarvis servers (Mastra on 4111, MCP on 4112)..."
 echo "Google Generative AI API key configured (test mode)"
 
 # Start both servers in parallel using shared function
-PIDS=$(start_mcp_servers)
+echo "Executing start_mcp_servers function..."
+PIDS=$(start_mcp_servers) || {
+    echo "ERROR: Failed to start MCP servers"
+    exit 1
+}
 read -r MASTRA_PID MCP_PID <<< "$PIDS"
+
+# Validate PIDs are not empty
+if [ -z "$MASTRA_PID" ] || [ -z "$MCP_PID" ]; then
+    echo "ERROR: Failed to get server PIDs (MASTRA_PID=$MASTRA_PID, MCP_PID=$MCP_PID)"
+    exit 1
+fi
+
+echo "✓ Mastra server started (PID: $MASTRA_PID)"
+echo "✓ MCP server started (PID: $MCP_PID)"
 
 # Function to cleanup on exit
 cleanup() {
@@ -38,6 +56,11 @@ cleanup() {
 }
 
 trap cleanup EXIT INT TERM
+
+echo "==========================="
+echo "All services started successfully!"
+echo "Waiting for server processes..."
+echo "==========================="
 
 # Wait for either process to exit and handle status
 wait_for_server_exit "$MASTRA_PID" "$MCP_PID"

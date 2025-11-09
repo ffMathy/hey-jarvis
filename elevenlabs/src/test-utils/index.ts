@@ -13,3 +13,8 @@ export {
   GeminiMastraConversationStrategy,
   type GeminiMastraConversationOptions,
 } from './gemini-mastra-conversation-strategy';
+
+export {
+  retryWithBackoff,
+  type RetryOptions,
+} from './retry-with-backoff';

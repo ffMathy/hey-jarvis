@@ -10,6 +10,36 @@ Hey Jarvis is an NX monorepo containing a digital assistant system with three ma
 
 ## Development Guidelines
 
+### Verification Policy - CRITICAL
+
+**ALWAYS verify your changes work before committing**:
+
+✅ **REQUIRED VERIFICATION STEPS**:
+1. **Build**: Run `npx nx build [project-name] --configuration=production` to verify production builds succeed
+2. **Test**: Run `npx nx test [project-name]` to verify tests pass
+3. **Lint**: Run `npx nx lint [project-name]` to verify code quality
+4. **Manual Testing**: For user-facing changes, manually test the functionality
+5. **Check Build Output**: Verify build artifacts are correct (e.g., no test files in production builds)
+
+**When to Verify**:
+- ✅ After fixing bugs or errors
+- ✅ After adding new features
+- ✅ After refactoring code
+- ✅ Before pushing commits
+- ✅ After addressing code review feedback
+
+**Example Verification Workflow**:
+```bash
+# After making changes to elevenlabs project
+npx nx build elevenlabs --configuration=production
+npx nx test elevenlabs
+npx nx lint elevenlabs
+
+# Verify no test files in build output
+find dist/elevenlabs -name "*.spec.js" -o -name "*.test.js"
+# Should return nothing
+```
+
 ### Build System - NX Workspace Commands
 
 **CRITICAL: ALWAYS use NX commands** for this monorepo:
