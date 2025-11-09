@@ -10,6 +10,9 @@ test.describe('Docker Container Integration Tests', () => {
     const startTime = Date.now();
     console.log('Starting Docker container using start-addon.sh...');
     
+    // Track if the startup script exits early (indicates failure)
+    let scriptExited = false;
+    
     // Start the Docker container using start-addon.sh script
     dockerProcess = spawn('bash', ['./home-assistant-addon/tests/start-addon.sh'], {
       stdio: 'pipe',
@@ -32,12 +35,12 @@ test.describe('Docker Container Integration Tests', () => {
     });
     
     // Check if the process exits prematurely
-    let processExited = false;
+    let scriptExited = false;
     let exitCode: number | null = null;
     dockerProcess.on('exit', (code) => {
-      processExited = true;
+      scriptExited = true;
       exitCode = code;
-      console.log(`Docker process exited with code ${code}`);
+      console.error(`Docker startup script exited with code ${code}`);
     });
     
     // Wait for the container to be ready
@@ -50,13 +53,13 @@ test.describe('Docker Container Integration Tests', () => {
     let waitTime = 0;
     
     while (waitTime < maxWaitTime) {
-      // Check if docker process died
-      if (processExited) {
+      // Check if startup script exited (indicates failure)
+      if (scriptExited) {
         console.error('Docker process exited prematurely!');
         console.error('Exit code:', exitCode);
         console.error('Last output:', dockerOutput);
         console.error('Last errors:', dockerErrors);
-        throw new Error(`Docker process exited with code ${exitCode} before container was ready`);
+        throw new Error(`Docker startup script exited with code ${exitCode} before container was ready - check logs above for details`);
       }
       
       try {

@@ -38,7 +38,7 @@ describe('Agent Prompt Specifications', () => {
           await conversation.disconnect();
         }
       },
-      90000
+      90000 // Vercel AI SDK handles retries internally
     );
   });
 

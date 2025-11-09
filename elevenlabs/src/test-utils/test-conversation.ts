@@ -101,9 +101,10 @@ export class TestConversation {
    * Evaluate the conversation transcript against specific criteria using an LLM
    *
    * @param criteria - Evaluation criteria (e.g., "The agent was helpful and polite")
+   * @param maxRetries - Maximum number of retries for transient failures (default 3)
    * @returns Evaluation result with passed status, confidence score, and reasoning
    */
-  async evaluate(criteria: string): Promise<EvaluationResult> {
+  async evaluate(criteria: string, maxRetries = 3): Promise<EvaluationResult> {
     const transcriptText = this.getTranscriptText();
     const schema = z.object({
       passed: z.boolean().describe('Whether the criteria was met'),
@@ -119,11 +120,13 @@ export class TestConversation {
 
     const google = createGoogleGenerativeAI({ apiKey: this.googleApiKey });
 
+    // Use Vercel AI SDK's built-in retry mechanism
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = await generateObject<any>({
       model: google('gemini-flash-latest'),
       temperature: 0,
       schema,
+      maxRetries, // Vercel AI SDK v5+ supports built-in retry with exponential backoff
       prompt: `You are evaluating a conversation transcript between a user and an AI agent.
 
 IMPORTANT: Evaluate the ENTIRE conversation transcript below, not just individual messages.
