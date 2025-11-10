@@ -1,11 +1,11 @@
 import { Memory } from "@mastra/memory";
-import { getSqlStorageProvider, getVectorStorageProvider } from "../storage";
-import { google } from "../utils/google-provider";
+import { getSqlStorageProvider, getVectorStorageProvider } from "../storage/index.js";
+import { google } from "../utils/google-provider.js";
 
 export async function createMemory() {
     const sqlStorageProvider = await getSqlStorageProvider();
     const vectorStorageProvider = await getVectorStorageProvider();
-    
+
     return new Memory({
         storage: sqlStorageProvider,
         vector: vectorStorageProvider,

@@ -60,7 +60,9 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
             model: googleProvider(agentConfig.conversationConfig.agent.prompt.llm),
             agents,
             tools: {},
-            workflows: {}
+            workflows: {},
+            inputProcessors: [],
+            outputProcessors: [],
         });
 
         // Call Gemini with conversation history and tools
