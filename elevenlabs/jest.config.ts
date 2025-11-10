@@ -9,17 +9,21 @@ export default {
   extensionsToTreatAsEsm: ['.ts'],
   moduleNameMapper: {
     '^(\\.{1,2}/.*)\\.js$': '$1',
+    // Map @mastra/evals subpath exports to actual file locations
+    '^@mastra/evals/scorers/llm$': '<rootDir>/../node_modules/@mastra/evals/dist/scorers/llm/index.js',
+    '^@mastra/evals/scorers/code$': '<rootDir>/../node_modules/@mastra/evals/dist/scorers/code/index.js',
   },
   transform: {
     '^.+\\.tsx?$': [
       'ts-jest',
       {
         useESM: true,
+        isolatedModules: true,
+        // Skip type checking to avoid issues with package.json exports resolution
+        diagnostics: {
+          ignoreCodes: ['TS2307'],
+        },
       },
     ],
   },
-  transformIgnorePatterns: [
-    // ESM-only packages that need transformation by ts-jest
-    'node_modules/(?!(@mastra|@sindresorhus|escape-string-regexp|@elevenlabs)/)',
-  ],
 };
