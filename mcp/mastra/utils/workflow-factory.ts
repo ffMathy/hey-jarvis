@@ -1,6 +1,6 @@
 import { createStep as mastraCreateStep, createWorkflow as mastraCreateWorkflow } from '@mastra/core/workflows';
 import { z } from 'zod';
-import { createScorersConfig } from './scorers-config';
+import { createScorersConfig } from './scorers-config.js';
 
 /**
  * Creates a new Mastra Workflow with sensible defaults for the Hey Jarvis system.

@@ -1,7 +1,7 @@
 import { Agent, AgentConfig } from '@mastra/core/agent';
-import { createMemory } from '../memory';
-import { google } from './google-provider';
-import { getDefaultScorers } from './scorers-config';
+import { createMemory } from '../memory/index.js';
+import { google } from './google-provider.js';
+import { getDefaultScorers } from './scorers-config.js';
 
 export async function createAgent(
     config: Omit<AgentConfig, 'model' | 'memory' | 'scorers'> & {
@@ -17,6 +17,8 @@ export async function createAgent(
         model: google('gemini-flash-latest'),
         // Use default scorers for comprehensive evaluation
         scorers: getDefaultScorers(),
+        inputProcessors: [],
+        outputProcessors: [],
     };
 
     const mergedConfig: AgentConfig = {

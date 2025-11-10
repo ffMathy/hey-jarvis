@@ -19,6 +19,7 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
     private readonly apiKey: string;
     private messages: ServerMessage[] = [];
     private isConnected = false;
+    private agent?: Agent;
 
     constructor(options: GeminiMastraConversationOptions = {}) {
         this.apiKey = options.apiKey || process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY || '';
@@ -31,8 +32,34 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
     async connect(): Promise<void> {
         // Clear state from any previous connection
         this.messages = [];
+        this.agent = undefined; // Reset agent on new connection
 
         this.isConnected = true;
+    }
+
+    private async getJarvisAgent(): Promise<Agent> {
+        if (!this.agent) {
+            // Create Google provider instance with API key
+            const googleProvider = createGoogleGenerativeAI({
+                apiKey: this.apiKey,
+            });
+
+            const agentPrompt = await this.readAgentPrompt();
+            const agents = await getPublicAgents();
+            
+            this.agent = new Agent({
+                name: 'J.A.R.V.I.S.',
+                instructions: agentPrompt,
+                model: googleProvider(agentConfig.conversationConfig.agent.prompt.llm),
+                agents,
+                tools: {},
+                workflows: {},
+                inputProcessors: [],
+                outputProcessors: [],
+            });
+        }
+        
+        return this.agent;
     }
 
     async sendMessage(text: string): Promise<string> {
@@ -40,59 +67,48 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
             throw new Error('Not connected. Call connect() first.');
         }
 
+        // Get or create the agent
+        const agent = await this.getJarvisAgent();
+
         // Store the user message
-        const userMessage: UserMessageEvent = {
+        const userMessage = {
             type: 'user_message',
             text,
-        };
-        this.messages.push(userMessage as ServerMessage);
-
-        // Create Google provider instance with API key
-        const googleProvider = createGoogleGenerativeAI({
-            apiKey: this.apiKey,
-        });
-
-        const agentPrompt = await this.readAgentPrompt();
-        const agents = await getPublicAgents();
-        const agent = new Agent({
-            name: 'J.A.R.V.I.S.',
-            instructions: agentPrompt,
-            model: googleProvider(agentConfig.conversationConfig.agent.prompt.llm),
-            agents,
-            tools: {},
-            workflows: {}
-        });
+        } as ServerMessage;
+        this.messages.push(userMessage);
 
         // Call Gemini with conversation history and tools
-        const result = await agent.generate(this.messages.map((x, i) => ({
+        const result = await agent.generate(({
             createdAt: new Date(),
             type: 'text',
-            id: "message-" + i.toString(),
-            content: x.type === 'user_message' 
-                ? (x as UserMessageEvent).text 
-                : (x.type === 'agent_response' 
-                    ? x.agent_response_event.agent_response 
-                    : JSON.stringify(x)),
-            role: x.type === 'user_message' ? 
+            id: "message-" + this.messages.length.toString(),
+            content: userMessage.type === 'user_message' 
+                ? userMessage.text 
+                : (userMessage.type === 'agent_response' 
+                    ? userMessage.agent_response_event.agent_response 
+                    : JSON.stringify(userMessage)),
+            role: userMessage.type === 'user_message' ? 
                 'user' as const : 
-                (x.type === 'agent_tool_response' ? 
+                (userMessage.type === 'agent_tool_response' ? 
                     'tool' as const :
                     'assistant' as const),
-        }) as any), {
+        }) as any, {
             modelSettings: { temperature: 0 }
         });
 
         // Extract the response text
         const responseText = result.text || '';
 
-        // Store the agent response in ElevenLabs format
-        const agentResponse: ServerMessage = {
-            type: 'agent_response',
-            agent_response_event: {
-                agent_response: responseText,
-            },
-        };
-        this.messages.push(agentResponse);
+        if(responseText) {
+            // Store the agent response in ElevenLabs format
+            const agentResponse: ServerMessage = {
+                type: 'agent_response',
+                agent_response_event: {
+                    agent_response: responseText,
+                },
+            };
+            this.messages.push(agentResponse);
+        }
 
         // Store tool calls if any
         if (result.toolResults && result.toolResults.length > 0) {
@@ -146,6 +162,7 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
 
     async disconnect(): Promise<void> {
         this.messages = [];
+        this.agent = undefined;
         this.isConnected = false;
     }
 }
