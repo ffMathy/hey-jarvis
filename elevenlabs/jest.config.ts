@@ -22,7 +22,7 @@ export default {
     ],
   },
   transformIgnorePatterns: [
-    // Transform only ESM-only packages, let Node handle the rest
-    'node_modules/(?!(@sindresorhus|escape-string-regexp|@elevenlabs)/)',
+    // Let Node handle ESM packages natively with --experimental-vm-modules
+    'node_modules/',
   ],
 };

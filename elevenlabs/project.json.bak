@@ -7,22 +7,16 @@
   "targets": {
     "build": {
       "executor": "@nx/esbuild:esbuild",
-      "outputs": [
-        "{options.outputPath}"
-      ],
+      "outputs": ["{options.outputPath}"],
       "defaultConfiguration": "production",
       "options": {
         "platform": "node",
         "outputPath": "dist/elevenlabs",
-        "format": [
-          "esm"
-        ],
+        "format": ["esm"],
         "bundle": false,
         "main": "elevenlabs/src/main.ts",
         "tsConfig": "elevenlabs/tsconfig.app.json",
-        "assets": [
-          "elevenlabs/src/assets"
-        ],
+        "assets": ["elevenlabs/src/assets"],
         "generatePackageJson": true,
         "esbuildOptions": {
           "sourcemap": true,
@@ -46,9 +40,7 @@
     },
     "deploy": {
       "executor": "nx:run-commands",
-      "dependsOn": [
-        "build"
-      ],
+      "dependsOn": ["build"],
       "options": {
         "command": "./.scripts/run-with-env.sh elevenlabs/op.env node dist/elevenlabs/main.js deploy",
         "cwd": ".",
@@ -59,9 +51,7 @@
     },
     "refresh": {
       "executor": "nx:run-commands",
-      "dependsOn": [
-        "build"
-      ],
+      "dependsOn": ["build"],
       "options": {
         "command": "./.scripts/run-with-env.sh elevenlabs/op.env node dist/elevenlabs/main.js fetch",
         "cwd": ".",
@@ -72,12 +62,8 @@
     },
     "test": {
       "executor": "nx:run-commands",
-      "outputs": [
-        "{workspaceRoot}/coverage/{projectRoot}"
-      ],
-      "dependsOn": [
-        "deploy"
-      ],
+      "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
+      "dependsOn": ["deploy"],
       "options": {
         "command": "./.scripts/run-with-env.sh elevenlabs/op.env nx run elevenlabs:test:jest",
         "cwd": ".",
@@ -89,11 +75,9 @@
     "test:jest": {
       "__comment": "Do not run this directly - run 'test' instead.",
       "executor": "@nx/jest:jest",
-      "outputs": [
-        "{workspaceRoot}/coverage/{projectRoot}"
-      ],
+      "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
       "options": {
-        "jestConfig": "elevenlabs/jest.compiled.config.ts",
+        "jestConfig": "elevenlabs/jest.config.ts",
         "bail": false,
         "runInBand": false,
         "passWithNoTests": false
@@ -103,52 +87,7 @@
           "ci": true,
           "codeCoverage": true
         }
-      },
-      "dependsOn": [
-        "build:test"
-      ]
-    },
-    "build:test": {
-      "executor": "@nx/esbuild:esbuild",
-      "outputs": [
-        "{options.outputPath}"
-      ],
-      "options": {
-        "platform": "node",
-        "outputPath": "dist/elevenlabs-test",
-        "format": [
-          "esm"
-        ],
-        "bundle": true,
-        "main": "elevenlabs/src/test-utils/agent-prompt.spec.ts",
-        "additionalEntryPoints": [
-          "elevenlabs/src/**/*.spec.ts",
-          "elevenlabs/src/**/*.test.ts",
-          "elevenlabs/src/**/*.ts"
-        ],
-        "tsConfig": "elevenlabs/tsconfig.app.json",
-        "assets": [
-          {
-            "input": "elevenlabs/src",
-            "glob": "**/*.json",
-            "output": "."
-          },
-          {
-            "input": "elevenlabs/src",
-            "glob": "**/*.md",
-            "output": "."
-          }
-        ],
-        "esbuildOptions": {
-          "sourcemap": true,
-          "outExtension": {
-            ".js": ".js"
-          }
-        },
-        "skipTypeCheck": true,
-        "external": []
-      },
-      "dependsOn": []
+      }
     }
   }
 }
