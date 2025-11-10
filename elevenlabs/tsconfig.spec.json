@@ -5,7 +5,10 @@
     "types": ["jest", "node"],
     "esModuleInterop": true,
     "module": "NodeNext",
-    "moduleResolution": "NodeNext"
+    "moduleResolution": "NodeNext",
+    "resolvePackageJsonExports": true,
+    "resolvePackageJsonImports": true,
+    "isolatedModules": true
   },
   "include": [
     "**/*.test.ts",
