@@ -93,7 +93,7 @@
         "{workspaceRoot}/coverage/{projectRoot}"
       ],
       "options": {
-        "jestConfig": "elevenlabs/jest.compiled.config.ts",
+        "jestConfig": "elevenlabs/jest.config.ts",
         "bail": false,
         "runInBand": false,
         "passWithNoTests": false
@@ -129,14 +129,9 @@
         "tsConfig": "elevenlabs/tsconfig.app.json",
         "assets": [
           {
-            "input": "elevenlabs/src",
-            "glob": "**/*.json",
-            "output": "."
-          },
-          {
-            "input": "elevenlabs/src",
-            "glob": "**/*.md",
-            "output": "."
+            "input": "elevenlabs/src/assets",
+            "glob": "**/*",
+            "output": "./assets"
           }
         ],
         "esbuildOptions": {

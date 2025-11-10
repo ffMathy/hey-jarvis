@@ -2,7 +2,8 @@ import { createAgent } from '../../utils/index.js';
 import { codingTools } from './tools.js';
 import type { Agent } from '@mastra/core/agent';
 
-export const codingAgent: Promise<Agent> = createAgent({
+export async function getCodingAgent(): Promise<Agent> {
+    return createAgent({
     name: 'Coding',
     instructions: `You are a coding agent that helps with GitHub repository management and code development tasks.
 
@@ -59,4 +60,5 @@ Manage GitHub repositories and coordinate coding tasks through GitHub Copilot in
 - Summarize results when showing many items
 - Guide users on next steps after assigning Copilot`,
     tools: codingTools,
-});
+    });
+}

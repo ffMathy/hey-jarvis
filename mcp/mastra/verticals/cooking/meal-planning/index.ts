@@ -1,5 +1,7 @@
 // Meal planning vertical exports
 export {
-    mealPlanEmailFormatterAgent, mealPlanGeneratorAgent, mealPlanSelectorAgent, mealPlanningAgents
+    getMealPlanEmailFormatterAgent,
+    getMealPlanGeneratorAgent,
+    getMealPlanSelectorAgent
 } from './agents';
 export { weeklyMealPlanningWorkflow } from './workflows';

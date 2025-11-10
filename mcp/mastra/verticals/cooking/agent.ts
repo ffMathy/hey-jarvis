@@ -3,7 +3,8 @@ import type { Agent } from '@mastra/core/agent';
 import { cookingTools } from './tools';
 
 // Main cooking agent for recipe search and general queries
-export const recipeSearchAgent: Promise<Agent> = createAgent({
+export async function getRecipeSearchAgent(): Promise<Agent> {
+    return createAgent({
     name: 'RecipeSearch',
     instructions: `You are a recipe search specialist for Valdemarsro (Danish recipe website).
 
@@ -28,4 +29,5 @@ Do NOT:
 
     description: 'Specialized agent for searching and retrieving recipe information from Valdemarsro',
     tools: cookingTools,
-});
+    });
+}

@@ -2,22 +2,43 @@ import { Mastra } from "@mastra/core";
 import { PinoLogger } from "@mastra/loggers";
 import { getSqlStorageProvider } from "./storage/index.js";
 import {
-  mealPlanEmailFormatterAgent,
-  mealPlanGeneratorAgent,
-  mealPlanSelectorAgent,
-  notificationAgent,
+  getMealPlanEmailFormatterAgent,
+  getMealPlanGeneratorAgent,
+  getMealPlanSelectorAgent,
+  getNotificationAgent,
   notificationWorkflow,
-  recipeSearchAgent,
-  shoppingListAgent,
-  shoppingListSummaryAgent,
+  getRecipeSearchAgent,
+  getShoppingListAgent,
+  getShoppingListSummaryAgent,
   shoppingListWorkflow,
-  weatherAgent,
+  getWeatherAgent,
   weatherMonitoringWorkflow,
   weeklyMealPlanningWorkflow
 } from "./verticals/index.js";
 
 async function createMastra() {
   const sqlStorageProvider = await getSqlStorageProvider();
+  
+  // Get all agents
+  const [
+    weatherAgent,
+    recipeSearchAgent,
+    mealPlanSelectorAgent,
+    mealPlanGeneratorAgent,
+    mealPlanEmailFormatterAgent,
+    shoppingListAgent,
+    shoppingListSummaryAgent,
+    notificationAgent
+  ] = await Promise.all([
+    getWeatherAgent(),
+    getRecipeSearchAgent(),
+    getMealPlanSelectorAgent(),
+    getMealPlanGeneratorAgent(),
+    getMealPlanEmailFormatterAgent(),
+    getShoppingListAgent(),
+    getShoppingListSummaryAgent(),
+    getNotificationAgent()
+  ]);
 
   return new Mastra({
     storage: sqlStorageProvider,
