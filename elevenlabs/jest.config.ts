@@ -9,11 +9,9 @@ export default {
   extensionsToTreatAsEsm: ['.ts'],
   moduleNameMapper: {
     '^(\\.{1,2}/.*)\\.js$': '$1',
-    // Skip scorer imports during testing
+    // Mock scorer imports to avoid @mastra/evals subpath resolution issues
     '^@mastra/evals/scorers/llm$': '<rootDir>/src/test-utils/__mocks__/empty-module.ts',
     '^@mastra/evals/scorers/code$': '<rootDir>/src/test-utils/__mocks__/empty-module.ts',
-    // Mock the entire MCP server to avoid loading all dependencies
-    '^mcp/mastra/mcp-server\\.js$': '<rootDir>/src/test-utils/__mocks__/mcp-server.ts',
   },
   transform: {
     '^.+\\.tsx?$': [
@@ -34,6 +32,7 @@ export default {
     ],
   },
   transformIgnorePatterns: [
-    'node_modules/(?!(@mastra|@sindresorhus|escape-string-regexp|exit-hook|onetime|mimic-function|execa|@elevenlabs|octokit|@octokit)/)',
+    // Transform ESM-only packages from node_modules
+    'node_modules/(?!(@mastra|@sindresorhus|@octokit|octokit|escape-string-regexp|exit-hook|onetime|mimic-function|execa|@elevenlabs|universal-user-agent|before-after-hook|@octokit\\/.*)/)',
   ],
 };

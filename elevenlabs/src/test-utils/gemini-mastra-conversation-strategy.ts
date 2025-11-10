@@ -4,9 +4,6 @@ import agentConfig from '../assets/agent-config.json';
 import { readFile } from 'fs/promises';
 import { Agent } from '@mastra/core/agent';
 
-// eslint-disable-next-line @nx/enforce-module-boundaries
-import { publicAgents } from 'mcp/mastra/mcp-server.js'
-
 export interface GeminiMastraConversationOptions {
     apiKey?: string;
 }
@@ -53,7 +50,13 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
         });
 
         const agentPrompt = await this.readAgentPrompt();
+        
+        // Dynamically import publicAgents to avoid loading mcp-server at module initialization
+        // This allows tests to skip without triggering ESM import errors
+        // eslint-disable-next-line @nx/enforce-module-boundaries
+        const { publicAgents } = await import('mcp/mastra/mcp-server.js');
         const agents = await publicAgents;
+        
         const agent = new Agent({
             name: 'J.A.R.V.I.S.',
             instructions: agentPrompt,
