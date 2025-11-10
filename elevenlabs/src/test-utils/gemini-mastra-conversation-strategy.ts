@@ -53,11 +53,12 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
         });
 
         const agentPrompt = await this.readAgentPrompt();
+        const agents = await publicAgents;
         const agent = new Agent({
             name: 'J.A.R.V.I.S.',
             instructions: agentPrompt,
             model: googleProvider(agentConfig.conversationConfig.agent.prompt.llm),
-            agents: publicAgents, // No sub-agents needed for testing
+            agents, // No sub-agents needed for testing
             tools: {},
             workflows: {}
         });

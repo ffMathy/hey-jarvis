@@ -1,7 +1,8 @@
 import { createAgent } from '../../utils/index.js';
+import type { Agent } from '@mastra/core/agent';
 import { weatherTools } from './tools.js';
 
-export const weatherAgent = await createAgent({
+export const weatherAgent: Promise<Agent> = createAgent({
     name: 'Weather',
     instructions: `You are a weather agent which can provide weather insights via tools (current weather information and 5-day future prognosises for certain locations).
 

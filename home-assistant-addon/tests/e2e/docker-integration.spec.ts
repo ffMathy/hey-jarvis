@@ -35,7 +35,6 @@ test.describe('Docker Container Integration Tests', () => {
     });
     
     // Check if the process exits prematurely
-    let scriptExited = false;
     let exitCode: number | null = null;
     dockerProcess.on('exit', (code) => {
       scriptExited = true;

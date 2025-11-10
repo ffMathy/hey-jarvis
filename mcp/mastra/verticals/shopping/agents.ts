@@ -1,8 +1,9 @@
 import { createAgent } from '../../utils/index.js';
+import type { Agent } from '@mastra/core/agent';
 import { shoppingTools } from './tools.js';
 
 // Main shopping list agent for managing Bilka shopping cart
-export const shoppingListAgent = await createAgent({
+export const shoppingListAgent: Promise<Agent> = createAgent({
     name: 'ShoppingList',
     instructions: `# Role & Scope
 You are a shopping-list agent. For every user request, you will either add or remove items on the list.
@@ -85,7 +86,7 @@ The products might be written in Danish.
 });
 
 // Specialized agent for summarizing shopping list changes
-export const shoppingListSummaryAgent = await createAgent({
+export const shoppingListSummaryAgent: Promise<Agent> = createAgent({
     name: 'ShoppingListSummary',
     instructions: `You are an evaluator agent that takes in a query from a user that has been processed by other agents, along with a "before" and "after" version of shopping basket contents.
 
