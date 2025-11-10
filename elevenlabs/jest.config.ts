@@ -9,30 +9,17 @@ export default {
   extensionsToTreatAsEsm: ['.ts'],
   moduleNameMapper: {
     '^(\\.{1,2}/.*)\\.js$': '$1',
-    // Mock scorer imports to avoid @mastra/evals subpath resolution issues
-    '^@mastra/evals/scorers/llm$': '<rootDir>/src/test-utils/__mocks__/empty-module.ts',
-    '^@mastra/evals/scorers/code$': '<rootDir>/src/test-utils/__mocks__/empty-module.ts',
   },
   transform: {
     '^.+\\.tsx?$': [
       'ts-jest',
       {
         useESM: true,
-        tsconfig: {
-          esModuleInterop: true,
-          allowSyntheticDefaultImports: true,
-          module: 'esnext',
-          moduleResolution: 'Bundler',
-          target: 'esnext',
-        },
-        diagnostics: {
-          ignoreCodes: ['TS2307'], // Ignore "Cannot find module" errors for @mastra/evals subpaths
-        },
       },
     ],
   },
   transformIgnorePatterns: [
-    // Transform ESM-only packages from node_modules
-    'node_modules/(?!(@mastra|@sindresorhus|@octokit|octokit|escape-string-regexp|exit-hook|onetime|mimic-function|execa|@elevenlabs|universal-user-agent|before-after-hook|@octokit\\/.*)/)',
+    // ESM-only packages that need transformation by ts-jest
+    'node_modules/(?!(@mastra|@sindresorhus|escape-string-regexp|@elevenlabs)/)',
   ],
 };

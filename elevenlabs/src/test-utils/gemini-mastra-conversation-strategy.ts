@@ -50,18 +50,11 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
         });
 
         const agentPrompt = await this.readAgentPrompt();
-        
-        // Dynamically import publicAgents to avoid loading mcp-server at module initialization
-        // This allows tests to skip without triggering ESM import errors
-        // eslint-disable-next-line @nx/enforce-module-boundaries
-        const { publicAgents } = await import('mcp/mastra/mcp-server.js');
-        const agents = await publicAgents;
-        
         const agent = new Agent({
             name: 'J.A.R.V.I.S.',
             instructions: agentPrompt,
             model: googleProvider(agentConfig.conversationConfig.agent.prompt.llm),
-            agents, // No sub-agents needed for testing
+            agents: {}, // Empty agents for testing - sub-agents not needed
             tools: {},
             workflows: {}
         });
