@@ -1,26 +1,19 @@
 export default {
   displayName: 'elevenlabs',
-  preset: '../jest.preset.js',
   testEnvironment: 'node',
-  coverageDirectory: '../coverage/elevenlabs',
-  testMatch: ['**/*.spec.ts', '**/*.test.ts'],
+  coverageDirectory: './coverage/elevenlabs',
+  testMatch: ['<rootDir>/dist/elevenlabs-test/**/*.spec.js', '<rootDir>/dist/elevenlabs-test/**/*.test.js'],
   testTimeout: 60000,
   maxWorkers: 10,
-  maxConcurrency: 10,
-  extensionsToTreatAsEsm: ['.ts'],
+  moduleFileExtensions: ['js', 'json'],
   moduleNameMapper: {
     '^(\\.{1,2}/.*)\\.js$': '$1',
+    // Map cross-project import to built dist folder
+    '^mcp/mastra/mcp-server\\.js$': '<rootDir>/dist/mcp/mastra/mcp-server.js',
   },
-  transform: {
-    '^.+\\.tsx?$': [
-      'ts-jest',
-      {
-        useESM: true,
-        tsconfig: {
-          esModuleInterop: true,
-          allowSyntheticDefaultImports: true,
-        },
-      },
-    ],
-  },
+  // No transform needed - running on compiled JavaScript
+  transform: {},
+  transformIgnorePatterns: [],
+  rootDir: '..',
+  coverageReporters: ['html'],
 };

@@ -1,3 +1,4 @@
+import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { retryWithBackoff } from './retry-with-backoff';
 
 describe('retryWithBackoff', () => {
@@ -6,7 +7,7 @@ describe('retryWithBackoff', () => {
   });
 
   it('should succeed on first attempt if function succeeds', async () => {
-    const mockFn = jest.fn().mockResolvedValue('success');
+    const mockFn = jest.fn<() => Promise<string>>().mockResolvedValue('success');
     
     const result = await retryWithBackoff(mockFn, { maxRetries: 3 });
     
@@ -16,7 +17,7 @@ describe('retryWithBackoff', () => {
 
   it('should retry on failure and eventually succeed', async () => {
     const mockFn = jest
-      .fn()
+      .fn<() => Promise<string>>()
       .mockRejectedValueOnce(new Error('Attempt 1 failed'))
       .mockRejectedValueOnce(new Error('Attempt 2 failed'))
       .mockResolvedValue('success on attempt 3');
@@ -31,7 +32,7 @@ describe('retryWithBackoff', () => {
   });
 
   it('should throw error after exhausting all retries', async () => {
-    const mockFn = jest.fn().mockRejectedValue(new Error('Always fails'));
+    const mockFn = jest.fn<() => Promise<never>>().mockRejectedValue(new Error('Always fails'));
     
     await expect(
       retryWithBackoff(mockFn, {
@@ -45,11 +46,11 @@ describe('retryWithBackoff', () => {
 
   it('should call onRetry callback with correct arguments', async () => {
     const mockFn = jest
-      .fn()
+      .fn<() => Promise<string>>()
       .mockRejectedValueOnce(new Error('Attempt 1 failed'))
       .mockResolvedValue('success');
     
-    const onRetry = jest.fn();
+    const onRetry = jest.fn<(error: Error, attempt: number, delay: number) => void>();
     
     await retryWithBackoff(mockFn, {
       maxRetries: 3,
@@ -67,12 +68,12 @@ describe('retryWithBackoff', () => {
 
   it('should use exponential backoff for delays', async () => {
     const mockFn = jest
-      .fn()
+      .fn<() => Promise<string>>()
       .mockRejectedValueOnce(new Error('Attempt 1'))
       .mockRejectedValueOnce(new Error('Attempt 2'))
       .mockResolvedValue('success');
     
-    const onRetry = jest.fn();
+    const onRetry = jest.fn<(error: Error, attempt: number, delay: number) => void>();
     
     await retryWithBackoff(mockFn, {
       maxRetries: 3,
@@ -88,12 +89,12 @@ describe('retryWithBackoff', () => {
 
   it('should respect maxDelay cap', async () => {
     const mockFn = jest
-      .fn()
+      .fn<() => Promise<string>>()
       .mockRejectedValueOnce(new Error('Attempt 1'))
       .mockRejectedValueOnce(new Error('Attempt 2'))
       .mockResolvedValue('success');
     
-    const onRetry = jest.fn();
+    const onRetry = jest.fn<(error: Error, attempt: number, delay: number) => void>();
     
     await retryWithBackoff(mockFn, {
       maxRetries: 3,
@@ -108,9 +109,9 @@ describe('retryWithBackoff', () => {
   });
 
   it('should respect shouldRetry predicate', async () => {
-    const mockFn = jest.fn().mockRejectedValue(new Error('Non-retryable error'));
+    const mockFn = jest.fn<() => Promise<never>>().mockRejectedValue(new Error('Non-retryable error'));
     
-    const shouldRetry = jest.fn().mockReturnValue(false);
+    const shouldRetry = jest.fn<(error: Error) => boolean>().mockReturnValue(false);
     
     await expect(
       retryWithBackoff(mockFn, {
@@ -126,7 +127,7 @@ describe('retryWithBackoff', () => {
 
   it('should only retry on retryable errors', async () => {
     const mockFn = jest
-      .fn()
+      .fn<() => Promise<never>>()
       .mockRejectedValueOnce(new Error('Retryable'))
       .mockRejectedValueOnce(new Error('Non-retryable'));
     

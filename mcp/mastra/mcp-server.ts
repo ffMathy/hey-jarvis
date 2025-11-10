@@ -2,23 +2,34 @@
 
 import { MCPServer } from '@mastra/mcp';
 import { createServer } from 'node:http';
-import { codingAgent } from './verticals/coding/index.js';
-import { shoppingListAgent } from './verticals/shopping/index.js';
-import { weatherAgent } from './verticals/weather/index.js';
+import { getCodingAgent } from './verticals/coding/index.js';
+import { getShoppingListAgent } from './verticals/shopping/index.js';
+import { getWeatherAgent } from './verticals/weather/index.js';
 import { validateJwtToken, sendUnauthorizedResponse } from './utils/jwt-auth.js';
+import type { Agent } from '@mastra/core/agent';
 
-export const publicAgents = {
-  coding: codingAgent,
-  weather: weatherAgent,
-  shopping: shoppingListAgent
-};
+// Export an async function that returns the public agents
+export async function getPublicAgents(): Promise<Record<string, Agent>> {
+  const [coding, weather, shopping] = await Promise.all([
+    getCodingAgent(),
+    getWeatherAgent(),
+    getShoppingListAgent()
+  ]);
+  
+  return {
+    coding,
+    weather,
+    shopping
+  };
+}
 
 export async function startMcpServer() {
+  const agents = await getPublicAgents();
   const mcpServer = new MCPServer({
     name: "J.A.R.V.I.S. Assistant",
     version: "1.0.0",
     description: "A comprehensive assistant that provides weather information, shopping list management, and GitHub repository coding assistance via MCP",
-    agents: publicAgents,
+    agents,
     tools: {}
   });
 

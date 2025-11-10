@@ -5,7 +5,7 @@ import { readFile } from 'fs/promises';
 import { Agent } from '@mastra/core/agent';
 
 // eslint-disable-next-line @nx/enforce-module-boundaries
-import { publicAgents } from 'mcp/mastra/mcp-server.js'
+import { getPublicAgents } from 'mcp/mastra/mcp-server.js';
 
 export interface GeminiMastraConversationOptions {
     apiKey?: string;
@@ -53,11 +53,12 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
         });
 
         const agentPrompt = await this.readAgentPrompt();
+        const agents = await getPublicAgents();
         const agent = new Agent({
             name: 'J.A.R.V.I.S.',
             instructions: agentPrompt,
             model: googleProvider(agentConfig.conversationConfig.agent.prompt.llm),
-            agents: publicAgents, // No sub-agents needed for testing
+            agents,
             tools: {},
             workflows: {}
         });
