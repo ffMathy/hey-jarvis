@@ -97,18 +97,8 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
         });
 
         // Extract the response text - await it in case it's a promise from streaming
-        // Add timeout to prevent hanging on unresolved promises
-        let responseText = '';
-        try {
-            const textPromise = Promise.resolve(result.text);
-            const timeoutPromise = new Promise<string>((_, reject) => 
-                setTimeout(() => reject(new Error('Text promise timeout')), 30000)
-            );
-            responseText = await Promise.race([textPromise, timeoutPromise]);
-        } catch (error) {
-            console.warn('Error or timeout getting response text:', error);
-            responseText = '';
-        }
+        // Awaiting a non-promise value just returns the value immediately
+        const responseText = (await result.text) || '';
 
         if(responseText) {
             // Store the agent response in ElevenLabs format
