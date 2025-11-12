@@ -2,6 +2,15 @@
 
 A simple command-line tool for deploying and managing a single ElevenLabs conversational AI agent directly from code, eliminating the need for manual UI setup.
 
+> **Note on ElevenLabs CLI**: The official [@elevenlabs/cli](https://github.com/elevenlabs/cli) provides similar functionality with a broader feature set. However, our custom implementation offers specific advantages for the Hey Jarvis project:
+> - Simplified single-agent focus with environment-driven configuration
+> - Custom prompt separation for better version control
+> - Integrated security filtering for sensitive data
+> - Seamless 1Password integration
+> - No React/UI dependencies that could conflict in monorepo environments
+>
+> Users comfortable with the official CLI can use it alongside this tool - both use the same ElevenLabs SDK under the hood.
+
 ## Features
 
 - **Single Agent Focus**: Manage one agent via environment configuration
