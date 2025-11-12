@@ -19,7 +19,8 @@ describe('Agent Prompt Specifications', () => {
   const googleApiKey = process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY;
 
   // Skip all tests if API keys not configured
-  const runTest = apiKey && googleApiKey ? it.concurrent : it.skip;
+  // Run tests sequentially to avoid resource contention and flakiness
+  const runTest = apiKey && googleApiKey ? it : it.skip;
 
   describe('Personality & Tone', () => {
     runTest(
