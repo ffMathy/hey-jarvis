@@ -96,8 +96,9 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
             modelSettings: { temperature: 0 }
         });
 
-        // Extract the response text
-        const responseText = result.text || '';
+        // Extract the response text - await it in case it's a promise from streaming
+        // Awaiting a non-promise value just returns the value immediately
+        const responseText = (await result.text) || '';
 
         if(responseText) {
             // Store the agent response in ElevenLabs format
