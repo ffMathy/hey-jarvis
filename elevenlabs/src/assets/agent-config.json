@@ -148,7 +148,7 @@
             "dynamicVariables": {
               "dynamicVariablePlaceholders": {}
             },
-            "executionMode": "immediate",
+            "executionMode": "async",
             "apiSchema": {
               "url": "https://n8n-webhooks-home-assistant.ffmathy.org/webhook/13ed97a5-c9fe-4815-ab6c-7b9b1b42593c",
               "method": "POST",
@@ -189,7 +189,7 @@
             "dynamicVariables": {
               "dynamicVariablePlaceholders": {}
             },
-            "executionMode": "immediate",
+            "executionMode": "async",
             "apiSchema": {
               "url": "https://n8n-webhooks-home-assistant.ffmathy.org/webhook/dbf7be97-c222-48b5-a34f-d132d138ba32",
               "method": "POST",

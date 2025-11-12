@@ -111,9 +111,49 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
             this.messages.push(agentResponse);
         }
 
-        // Store tool calls if any
+        // Handle async tool execution pattern
         if (result.toolResults && result.toolResults.length > 0) {
             for (const toolCall of result.toolResults) {
+                // Step 1: Emit "in_progress" response and let agent react
+                const inProgressResult = {
+                    status: 'in_progress',
+                    message: 'Executing the task in the background. Result will be reported later.'
+                };
+                
+                const inProgressMessage: ServerMessage = {
+                    type: 'mcp_tool_call',
+                    mcp_tool_call: {
+                        tool_name: toolCall.payload.toolName,
+                        tool_call_id: toolCall.runId + '_in_progress',
+                        state: 'success',
+                        result: [JSON.stringify(inProgressResult)],
+                    },
+                };
+                this.messages.push(inProgressMessage);
+                
+                // Let the agent react to the in_progress message
+                const inProgressReaction = await agent.generate(({
+                    createdAt: new Date(),
+                    type: 'text',
+                    id: "tool-in-progress-" + toolCall.runId,
+                    content: JSON.stringify(inProgressResult),
+                    role: 'tool' as const,
+                }) as any, {
+                    modelSettings: { temperature: 0 }
+                });
+                
+                const inProgressResponseText = (await inProgressReaction.text) || '';
+                if (inProgressResponseText) {
+                    const inProgressAgentResponse: ServerMessage = {
+                        type: 'agent_response',
+                        agent_response_event: {
+                            agent_response: inProgressResponseText,
+                        },
+                    };
+                    this.messages.push(inProgressAgentResponse);
+                }
+                
+                // Step 2: Emit the actual tool result and let agent react
                 const toolMessage: ServerMessage = {
                     type: 'mcp_tool_call',
                     mcp_tool_call: {
@@ -124,6 +164,28 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
                     },
                 };
                 this.messages.push(toolMessage);
+                
+                // Let the agent react to the actual result
+                const actualReaction = await agent.generate(({
+                    createdAt: new Date(),
+                    type: 'text',
+                    id: "tool-result-" + toolCall.runId,
+                    content: toolCall.payload.result['text'],
+                    role: 'tool' as const,
+                }) as any, {
+                    modelSettings: { temperature: 0 }
+                });
+                
+                const actualResponseText = (await actualReaction.text) || '';
+                if (actualResponseText) {
+                    const actualAgentResponse: ServerMessage = {
+                        type: 'agent_response',
+                        agent_response_event: {
+                            agent_response: actualResponseText,
+                        },
+                    };
+                    this.messages.push(actualAgentResponse);
+                }
             }
         }
 
