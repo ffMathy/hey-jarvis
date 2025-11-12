@@ -33,8 +33,8 @@ This project uses 1Password CLI for secure environment variable management:
 # Deploy current agent configuration to ElevenLabs
 nx deploy elevenlabs
 
-# Initialize/fetch current agent configuration from ElevenLabs  
-nx init elevenlabs
+# Refresh/fetch current agent configuration from ElevenLabs  
+nx refresh elevenlabs
 ```
 
 ## Project Structure
@@ -68,8 +68,8 @@ nx build elevenlabs
 # Deploy agent configuration to ElevenLabs
 nx deploy elevenlabs
 
-# Initialize/fetch agent configuration from ElevenLabs
-nx init elevenlabs
+# Refresh/fetch agent configuration from ElevenLabs
+nx refresh elevenlabs
 
 # Run tests
 nx test elevenlabs
@@ -89,8 +89,8 @@ nx build elevenlabs
 # Deploy with current configuration
 nx deploy elevenlabs
 
-# Initialize/fetch latest configuration from ElevenLabs
-nx init elevenlabs
+# Refresh/fetch latest configuration from ElevenLabs
+nx refresh elevenlabs
 ```
 
 ### Testing
@@ -163,8 +163,8 @@ This project is part of the Hey Jarvis ecosystem:
 
 2. **Agent Not Found**
    ```bash
-   # Check if agent exists by initializing
-   nx init elevenlabs
+   # Check if agent exists by refreshing configuration
+   nx refresh elevenlabs
    ```
 
 3. **API Key Problems**
