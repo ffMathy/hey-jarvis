@@ -6,7 +6,7 @@
       "name": "hey-jarvis",
       "dependencies": {
         "@ai-sdk/google": "^2.0.29",
-        "@elevenlabs/elevenlabs-js": "^2.22.0",
+        "@elevenlabs/elevenlabs-js": "^2.23.0",
         "@hono/node-server": "^1.19.6",
         "@mastra/core": "^0.24.0",
         "@mastra/evals": "^0.14.3",
@@ -326,7 +326,7 @@
 
     "@cspotcode/source-map-support": ["@cspotcode/source-map-support@0.8.1", "", { "dependencies": { "@jridgewell/trace-mapping": "0.3.9" } }, "sha512-IchNf6dN4tHoMFIn/7OE8LWZ19Y6q/67Bmf6vnGREv8RSbBVb9LPJxEcnwrcwX6ixSvaiGoomAUvu4YSxXrVgw=="],
 
-    "@elevenlabs/elevenlabs-js": ["@elevenlabs/elevenlabs-js@2.22.0", "", { "dependencies": { "command-exists": "^1.2.9", "node-fetch": "^2.7.0", "ws": "^8.18.3" } }, "sha512-+r9AnlSUbo3yj9Yt0PfeCV5K8x7mQbsnl/Tcwj+vBA/t6utLKDQSiumX5bw2GNss3OVsqK60CkV6xiO4Nfi9eQ=="],
+    "@elevenlabs/elevenlabs-js": ["@elevenlabs/elevenlabs-js@2.23.0", "", { "dependencies": { "command-exists": "^1.2.9", "node-fetch": "^2.7.0", "ws": "^8.18.3" } }, "sha512-SULPrszQ8lsGQeIEBuoJ+8GNAULrja8A6/JFJ0rlr3Nh8EXeakDf1HPPOsmvUVWmm2V3rf8d2W1oCw17KboZwA=="],
 
     "@emnapi/core": ["@emnapi/core@1.5.0", "", { "dependencies": { "@emnapi/wasi-threads": "1.1.0", "tslib": "^2.4.0" } }, "sha512-sbP8GzB1WDzacS8fgNPpHlp6C9VZe+SJP3F90W9rLemaQj2PzIuTEl1qDOYQf58YIpyjViI24y9aPWCjEzY2cg=="],
 

@@ -14,8 +14,8 @@
       "initial_wait_time": null,
       "silenceEndCallTimeout": 180,
       "soft_timeout_config": {
-        "timeout_seconds": -1,
-        "message": "Hhmmmm...yeah give me a second..."
+        "timeout_seconds": 2,
+        "message": "I'm experiencing higher latency than usual, sir. However, I'll respond to you as quickly as I can."
       },
       "mode": "turn",
       "turn_eagerness": "normal"
