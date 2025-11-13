@@ -148,9 +148,8 @@
             "dynamicVariables": {
               "dynamicVariablePlaceholders": {}
             },
-            "executionMode": "immediate",
+            "executionMode": "async",
             "apiSchema": {
-
               "method": "POST",
               "pathParamsSchema": {},
               "requestBodySchema": {
@@ -189,9 +188,8 @@
             "dynamicVariables": {
               "dynamicVariablePlaceholders": {}
             },
-            "executionMode": "immediate",
+            "executionMode": "async",
             "apiSchema": {
-
               "method": "POST",
               "pathParamsSchema": {},
               "requestBodySchema": {
