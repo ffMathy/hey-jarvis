@@ -10,15 +10,14 @@
       ]
     },
     "turn": {
-      "turnTimeout": 150,
-      "initial_wait_time": null,
-      "silenceEndCallTimeout": 180,
-      "soft_timeout_config": {
-        "timeout_seconds": 2,
+      "turnTimeout": 2,
+      "silenceEndCallTimeout": 10,
+      "softTimeoutConfig": {
+        "timeoutSeconds": -1,
         "message": "I'm experiencing higher latency than usual, sir. However, I'll respond to you as quickly as I can."
       },
       "mode": "turn",
-      "turn_eagerness": "normal"
+      "turnEagerness": "eager"
     },
     "tts": {
       "modelId": "eleven_flash_v2",
@@ -45,7 +44,7 @@
     },
     "languagePresets": {},
     "vad": {
-      "backgroundVoiceDetection": false
+      "background_voice_detection": false
     },
     "agent": {
       "firstMessage": "Hello sir, how can I help?",
@@ -57,7 +56,7 @@
       },
       "disableFirstMessageInterruptions": true,
       "prompt": {
-        "llm": "gemini-2.5-flash-lite-preview-09-2025",
+        "llm": "gemini-2.5-flash-preview-09-2025",
         "thinkingBudget": 0,
         "temperature": 0,
         "maxTokens": -1,
@@ -74,8 +73,7 @@
             "disableInterruptions": false,
             "forcePreToolSpeech": false,
             "assignments": [],
-            "tool_call_sound": null,
-            "tool_call_sound_behavior": "auto",
+            "toolCallSoundBehavior": "auto",
             "params": {
               "systemToolType": "end_call"
             }
@@ -88,8 +86,7 @@
             "disableInterruptions": false,
             "forcePreToolSpeech": false,
             "assignments": [],
-            "tool_call_sound": null,
-            "tool_call_sound_behavior": "auto",
+            "toolCallSoundBehavior": "auto",
             "params": {
               "systemToolType": "transfer_to_agent",
               "transfers": [
@@ -110,8 +107,7 @@
             "disableInterruptions": false,
             "forcePreToolSpeech": false,
             "assignments": [],
-            "tool_call_sound": null,
-            "tool_call_sound_behavior": "auto",
+            "toolCallSoundBehavior": "auto",
             "params": {
               "systemToolType": "skip_turn"
             }
@@ -122,7 +118,7 @@
         ],
         "nativeMcpServerIds": [],
         "knowledgeBase": [],
-        "ignoreDefaultPersonality": true,
+        "ignoreDefaultPersonality": false,
         "rag": {
           "enabled": false,
           "embeddingModel": "e5_mistral_7b_instruct",
@@ -143,8 +139,7 @@
             "disableInterruptions": false,
             "forcePreToolSpeech": true,
             "assignments": [],
-            "tool_call_sound": null,
-            "tool_call_sound_behavior": "auto",
+            "toolCallSoundBehavior": "auto",
             "dynamicVariables": {
               "dynamicVariablePlaceholders": {}
             },
@@ -162,7 +157,7 @@
                   "prompt": {
                     "type": "string",
                     "description": "The agent prompt, as detailed as possible for the relevant contexts needed.",
-                    "is_system_provided": false,
+                    "isSystemProvided": false,
                     "dynamicVariable": "",
                     "constantValue": ""
                   }
@@ -172,7 +167,8 @@
                 "authorization": {
                   "secretId": "g3oPlq9xdWfy7mhZvEkH"
                 }
-              }
+              },
+              "contentType": "application/json"
             }
           },
           {
@@ -183,8 +179,7 @@
             "disableInterruptions": false,
             "forcePreToolSpeech": true,
             "assignments": [],
-            "tool_call_sound": null,
-            "tool_call_sound_behavior": "auto",
+            "toolCallSoundBehavior": "auto",
             "dynamicVariables": {
               "dynamicVariablePlaceholders": {}
             },
@@ -200,7 +195,7 @@
                   "prompt": {
                     "type": "string",
                     "description": "The request made by the user.",
-                    "is_system_provided": false,
+                    "isSystemProvided": false,
                     "dynamicVariable": "",
                     "constantValue": ""
                   }
@@ -210,7 +205,8 @@
                 "authorization": {
                   "secretId": "g3oPlq9xdWfy7mhZvEkH"
                 }
-              }
+              },
+              "contentType": "application/json"
             }
           },
           {
@@ -221,8 +217,7 @@
             "disableInterruptions": false,
             "forcePreToolSpeech": false,
             "assignments": [],
-            "tool_call_sound": null,
-            "tool_call_sound_behavior": "auto",
+            "toolCallSoundBehavior": "auto",
             "params": {
               "systemToolType": "end_call"
             }
@@ -235,8 +230,7 @@
             "disableInterruptions": false,
             "forcePreToolSpeech": false,
             "assignments": [],
-            "tool_call_sound": null,
-            "tool_call_sound_behavior": "auto",
+            "toolCallSoundBehavior": "auto",
             "params": {
               "systemToolType": "transfer_to_agent",
               "transfers": [
@@ -257,8 +251,7 @@
             "disableInterruptions": false,
             "forcePreToolSpeech": false,
             "assignments": [],
-            "tool_call_sound": null,
-            "tool_call_sound_behavior": "auto",
+            "toolCallSoundBehavior": "auto",
             "params": {
               "systemToolType": "skip_turn"
             }
@@ -269,7 +262,7 @@
   },
   "metadata": {
     "createdAtUnixSecs": 1742778859,
-    "updatedAtUnixSecs": 1762505579
+    "updatedAtUnixSecs": 1763055785
   },
   "platformSettings": {
     "evaluation": {
@@ -293,7 +286,6 @@
         "color2": "#9CE6E6"
       },
       "feedbackMode": "during",
-      "end_feedback": null,
       "bgColor": "#ffffff",
       "textColor": "#000000",
       "btnColor": "#000000",
@@ -320,7 +312,7 @@
     "overrides": {
       "conversationConfigOverride": {
         "turn": {
-          "soft_timeout_config": {
+          "softTimeoutConfig": {
             "message": false
           }
         },
@@ -447,7 +439,5 @@
       }
     }
   },
-  "tags": [],
-  "version_id": null,
-  "branch_id": null
+  "tags": []
 }

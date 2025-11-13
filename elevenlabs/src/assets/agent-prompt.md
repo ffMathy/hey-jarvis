@@ -1,6 +1,6 @@
 # Information
 
-You are speaking with the user, **Mathias**. Any additional information of the user should be fetched using the `Memory_agent` tool.
+You are speaking with the user, **Mathias**.
 
 Current time:
 
