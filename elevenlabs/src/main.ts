@@ -35,6 +35,21 @@ class ElevenLabsAgentManager {
       delete filtered.conversationConfig.tts.voiceId;
     }
     
+    // Remove webhook URLs from tools as they contain secrets
+    if (filtered.conversationConfig?.agent?.prompt?.tools) {
+      filtered.conversationConfig.agent.prompt.tools = filtered.conversationConfig.agent.prompt.tools.map((tool: any) => {
+        if (tool.type === 'webhook' && tool.apiSchema?.url) {
+          const toolCopy = { ...tool };
+          // Remove the URL which contains webhook secrets
+          if (toolCopy.apiSchema) {
+            delete toolCopy.apiSchema.url;
+          }
+          return toolCopy;
+        }
+        return tool;
+      });
+    }
+    
     return filtered;
   }
 
