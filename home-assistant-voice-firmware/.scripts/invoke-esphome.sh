@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 set -euo pipefail
-set -x
 
 ACTION="$1" # compile | upload | clean
 YAML_FILE="home-assistant-voice.elevenlabs.yaml"
