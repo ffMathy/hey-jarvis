@@ -3,7 +3,7 @@
   "conversationConfig": {
     "asr": {
       "quality": "high",
-      "provider": "elevenlabs",
+      "provider": "scribe_realtime",
       "userInputAudioFormat": "pcm_16000",
       "keywords": [
         "Jarvis"
