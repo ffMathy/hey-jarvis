@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.8.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.7.0...home-assistant-voice-firmware-v0.8.0) (2025-11-13)
+
+
+### Features
+
+* add code workspace ([#8](https://github.com/ffMathy/hey-jarvis/issues/8)) ([3d64bd4](https://github.com/ffMathy/hey-jarvis/commit/3d64bd4e77a814441497b69c571e1965d347ebf0))
+* home assistant addon support ([#36](https://github.com/ffMathy/hey-jarvis/issues/36)) ([307ac9e](https://github.com/ffMathy/hey-jarvis/commit/307ac9e008d438f1d07c37694bc5afb0dbf47f5e))
+* home assistant voice firmware ([d8f5426](https://github.com/ffMathy/hey-jarvis/commit/d8f54267dc497d6afd38bc8fbffe357f44d12520))
+* introduce home assistant voice firmware ([af1ac84](https://github.com/ffMathy/hey-jarvis/commit/af1ac8451c9b23f25c0eac6433e99924442e1024))
+* migrate from NPM to Bun for package management ([5455985](https://github.com/ffMathy/hey-jarvis/commit/54559850929c9dc36fbada4661dede0336cafa6d))
+* migration phase 1 ([#7](https://github.com/ffMathy/hey-jarvis/issues/7)) ([b47b2cd](https://github.com/ffMathy/hey-jarvis/commit/b47b2cd9a248a426c4c1ab7bbd6932444ba0f4db))
+* **notification:** add proactive notification workflow with ElevenLabs integration ([c620f2e](https://github.com/ffMathy/hey-jarvis/commit/c620f2ec000c289bc0e8a207b47607cec9a44231))
+
+
+### Bug Fixes
+
+* broken build commands for nx ([23f70c1](https://github.com/ffMathy/hey-jarvis/commit/23f70c1dc7b395f8c030f0c5d00da64afa877c7c))
+* build issue ([#66](https://github.com/ffMathy/hey-jarvis/issues/66)) ([31783be](https://github.com/ffMathy/hey-jarvis/commit/31783bee891a4e9698795108a6730268e41299c0))
+* progress on stability and tests ([082660f](https://github.com/ffMathy/hey-jarvis/commit/082660f8b5bd0db869ef0d4ece56bc01eee5eb54))
+* reference env from prefix ([11b1213](https://github.com/ffMathy/hey-jarvis/commit/11b12135ff6e20aa89830bb8ca91ef8bd701fbec))
+* **release-please:** correct pattern syntax and resolve blocking issues ([#185](https://github.com/ffMathy/hey-jarvis/issues/185)) ([cd1cef8](https://github.com/ffMathy/hey-jarvis/commit/cd1cef861687d9be48d09efffd883ac843d7be0e))
+
+
+### Documentation
+
+* add comprehensive documentation and improve notification tool ([7e00e4d](https://github.com/ffMathy/hey-jarvis/commit/7e00e4d342f2ab18efdd3b8624f534cc86c6375b))
+* add Conventional Commits guidelines to all coding files ([95b1319](https://github.com/ffMathy/hey-jarvis/commit/95b131978f9d5e977a9c94789e3cc869aab3d20e))
+* better documentation ([a165dd9](https://github.com/ffMathy/hey-jarvis/commit/a165dd95fea0425b6d9158d48f60519bf2465fbb))
+
 ## [0.7.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.6.0...home-assistant-voice-firmware-v0.7.0) (2025-11-08)
 
 
