@@ -45,7 +45,15 @@
       }
     }
   },
+  "mounts": [
+    "source=/dev,target=/dev,type=bind,consistency=cached"
+  ],
+  "runArgs": [
+    "--privileged",
+    "--device=/dev:/dev"
+  ],
   "containerUser": "root",
+  "remoteUser": "root",
   "postCreateCommand": "./.scripts/devcontainer-init.sh",
   "forwardPorts": [3000, 4200, 8080],
   "portsAttributes": {
@@ -61,6 +69,5 @@
       "label": "Voice Firmware Interface",
       "onAutoForward": "notify"
     }
-  },
-  "remoteUser": "node"
+  }
 }

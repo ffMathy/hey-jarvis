@@ -69,8 +69,9 @@ esp32:
       CONFIG_WS_TRANSPORT: "y"
     components:
       - name: esp_websocket_client
-        source: github://espressif/esp-protocols@websocket-v1.5.0
+        source: https://github.com/espressif/esp-protocols.git
         path: components/esp_websocket_client
+        ref: websocket-v1.5.0
 
 external_components:
   - source:

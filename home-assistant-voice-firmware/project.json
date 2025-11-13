@@ -14,19 +14,16 @@
     "build": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "python3 -m esphome compile home-assistant-voice.elevenlabs.yaml",
+        "command": "bash ./.scripts/build.sh",
         "cwd": "home-assistant-voice-firmware"
       }
     },
     "serve": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "python3 -m esphome upload home-assistant-voice.elevenlabs.yaml",
+        "command": "bash ./.scripts/serve.sh",
         "cwd": "home-assistant-voice-firmware"
-      },
-      "dependsOn": [
-        "build"
-      ]
+      }
     },
     "clean": {
       "executor": "nx:run-commands",
