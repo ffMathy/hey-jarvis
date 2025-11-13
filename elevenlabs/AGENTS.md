@@ -83,6 +83,48 @@ The agent prompt in `src/assets/agent-prompt.md` defines:
 - **Conciseness**: Brief, witty acknowledgements (5-15 words, max 20)
 - **Step-wise Acknowledgements**: Before every tool call, provide a witty one-sentence summary
 
+## Development Guidelines
+
+### Code Quality Principles
+
+**CRITICAL: ALWAYS follow these principles:**
+
+#### DRY (Don't Repeat Yourself)
+- ✅ **Extract repeated code into reusable functions**
+- ✅ **Create helper methods for common patterns** (e.g., ServerMessage creation)
+- ❌ **NEVER copy-paste code blocks** - refactor into functions instead
+- ❌ **NEVER duplicate logic** - centralize common functionality
+
+#### Clean Code
+- ✅ **Single Responsibility**: Each function should do one thing well
+- ✅ **Descriptive Names**: Use clear, self-documenting function/variable names
+- ✅ **Small Functions**: Keep functions focused and concise
+- ✅ **Avoid Magic Numbers**: Use named constants for clarity
+
+#### Example: Bad vs Good
+
+❌ **BAD - Repeated Code:**
+```typescript
+// Creating messages multiple times
+const msg1 = { type: 'agent_response', agent_response_event: { agent_response: text1 } };
+const msg2 = { type: 'agent_response', agent_response_event: { agent_response: text2 } };
+const msg3 = { type: 'agent_response', agent_response_event: { agent_response: text3 } };
+```
+
+✅ **GOOD - DRY with Helper Function:**
+```typescript
+private createAgentResponseMessage(responseText: string): ServerMessage {
+    return {
+        type: 'agent_response',
+        agent_response_event: { agent_response: responseText },
+    };
+}
+
+const msg1 = this.createAgentResponseMessage(text1);
+const msg2 = this.createAgentResponseMessage(text2);
+const msg3 = this.createAgentResponseMessage(text3);
+```
+
 ## Development Commands
 
 ### NX Commands

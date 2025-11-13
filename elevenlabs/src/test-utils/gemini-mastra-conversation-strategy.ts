@@ -62,6 +62,56 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
         return this.agent;
     }
 
+    /**
+     * Create an agent response server message
+     */
+    private createAgentResponseMessage(responseText: string): ServerMessage {
+        return {
+            type: 'agent_response',
+            agent_response_event: {
+                agent_response: responseText,
+            },
+        };
+    }
+
+    /**
+     * Create a tool call server message
+     */
+    private createToolCallMessage(toolName: string, toolCallId: string, result: string): ServerMessage {
+        return {
+            type: 'mcp_tool_call',
+            mcp_tool_call: {
+                tool_name: toolName,
+                tool_call_id: toolCallId,
+                state: 'success',
+                result: [result],
+            },
+        };
+    }
+
+    /**
+     * Send a message to the agent and store both the message and response
+     */
+    private async sendToAgent(agent: Agent, content: string, role: 'user' | 'tool' | 'assistant', id: string): Promise<string> {
+        const result = await agent.generate(({
+            createdAt: new Date(),
+            type: 'text',
+            id,
+            content,
+            role,
+        }) as any, {
+            modelSettings: { temperature: 0 }
+        });
+
+        const responseText = (await result.text) || '';
+        
+        if (responseText) {
+            this.messages.push(this.createAgentResponseMessage(responseText));
+        }
+
+        return responseText;
+    }
+
     async sendMessage(text: string): Promise<string> {
         if (!this.isConnected) {
             throw new Error('Not connected. Call connect() first.');
@@ -71,121 +121,68 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
         const agent = await this.getJarvisAgent();
 
         // Store the user message
-        const userMessage = {
+        const userMessage: ServerMessage = {
             type: 'user_message',
             text,
-        } as ServerMessage;
+        };
         this.messages.push(userMessage);
 
-        // Call Gemini with conversation history and tools
-        const result = await agent.generate(({
+        // Call agent with user message
+        const initialResult = await agent.generate(({
             createdAt: new Date(),
             type: 'text',
             id: "message-" + this.messages.length.toString(),
-            content: userMessage.type === 'user_message' 
-                ? userMessage.text 
-                : (userMessage.type === 'agent_response' 
-                    ? userMessage.agent_response_event.agent_response 
-                    : JSON.stringify(userMessage)),
-            role: userMessage.type === 'user_message' ? 
-                'user' as const : 
-                (userMessage.type === 'agent_tool_response' ? 
-                    'tool' as const :
-                    'assistant' as const),
+            content: text,
+            role: 'user' as const,
         }) as any, {
             modelSettings: { temperature: 0 }
         });
 
-        // Extract the response text - await it in case it's a promise from streaming
-        // Awaiting a non-promise value just returns the value immediately
-        const responseText = (await result.text) || '';
+        const responseText = (await initialResult.text) || '';
 
         if(responseText) {
-            // Store the agent response in ElevenLabs format
-            const agentResponse: ServerMessage = {
-                type: 'agent_response',
-                agent_response_event: {
-                    agent_response: responseText,
-                },
-            };
-            this.messages.push(agentResponse);
+            this.messages.push(this.createAgentResponseMessage(responseText));
         }
 
         // Handle async tool execution pattern
-        if (result.toolResults && result.toolResults.length > 0) {
-            for (const toolCall of result.toolResults) {
-                // Step 1: Emit "in_progress" response and let agent react
+        if (initialResult.toolResults && initialResult.toolResults.length > 0) {
+            for (const toolCall of initialResult.toolResults) {
+                // Step 1: Emit "in_progress" response
                 const inProgressResult = {
                     status: 'in_progress',
                     message: 'Executing the task in the background. Result will be reported later.'
                 };
                 
-                const inProgressMessage: ServerMessage = {
-                    type: 'mcp_tool_call',
-                    mcp_tool_call: {
-                        tool_name: toolCall.payload.toolName,
-                        tool_call_id: toolCall.runId + '_in_progress',
-                        state: 'success',
-                        result: [JSON.stringify(inProgressResult)],
-                    },
-                };
+                const inProgressMessage = this.createToolCallMessage(
+                    toolCall.payload.toolName,
+                    toolCall.runId + '_in_progress',
+                    JSON.stringify(inProgressResult)
+                );
                 this.messages.push(inProgressMessage);
                 
-                // Let the agent react to the in_progress message
-                const inProgressReaction = await agent.generate(({
-                    createdAt: new Date(),
-                    type: 'text',
-                    id: "tool-in-progress-" + toolCall.runId,
-                    content: JSON.stringify(inProgressResult),
-                    role: 'tool' as const,
-                }) as any, {
-                    modelSettings: { temperature: 0 }
-                });
+                // Send in_progress to agent and store response
+                await this.sendToAgent(
+                    agent,
+                    JSON.stringify(inProgressResult),
+                    'tool',
+                    "tool-in-progress-" + toolCall.runId
+                );
                 
-                const inProgressResponseText = (await inProgressReaction.text) || '';
-                if (inProgressResponseText) {
-                    const inProgressAgentResponse: ServerMessage = {
-                        type: 'agent_response',
-                        agent_response_event: {
-                            agent_response: inProgressResponseText,
-                        },
-                    };
-                    this.messages.push(inProgressAgentResponse);
-                }
-                
-                // Step 2: Emit the actual tool result and let agent react
-                const toolMessage: ServerMessage = {
-                    type: 'mcp_tool_call',
-                    mcp_tool_call: {
-                        tool_name: toolCall.payload.toolName,
-                        tool_call_id: toolCall.runId,
-                        state: 'success',
-                        result: [toolCall.payload.result['text']],
-                    },
-                };
+                // Step 2: Emit the actual tool result
+                const toolMessage = this.createToolCallMessage(
+                    toolCall.payload.toolName,
+                    toolCall.runId,
+                    toolCall.payload.result['text']
+                );
                 this.messages.push(toolMessage);
                 
-                // Let the agent react to the actual result
-                const actualReaction = await agent.generate(({
-                    createdAt: new Date(),
-                    type: 'text',
-                    id: "tool-result-" + toolCall.runId,
-                    content: toolCall.payload.result['text'],
-                    role: 'tool' as const,
-                }) as any, {
-                    modelSettings: { temperature: 0 }
-                });
-                
-                const actualResponseText = (await actualReaction.text) || '';
-                if (actualResponseText) {
-                    const actualAgentResponse: ServerMessage = {
-                        type: 'agent_response',
-                        agent_response_event: {
-                            agent_response: actualResponseText,
-                        },
-                    };
-                    this.messages.push(actualAgentResponse);
-                }
+                // Send actual result to agent and store response
+                await this.sendToAgent(
+                    agent,
+                    toolCall.payload.result['text'],
+                    'tool',
+                    "tool-result-" + toolCall.runId
+                );
             }
         }
 
