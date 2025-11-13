@@ -23,10 +23,7 @@
       "options": {
         "command": "bash ./.scripts/serve.sh",
         "cwd": "home-assistant-voice-firmware"
-      },
-      "dependsOn": [
-        "build"
-      ]
+      }
     },
     "clean": {
       "executor": "nx:run-commands",
