@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.1.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.0.0...root-v4.1.0) (2025-11-13)
+
+
+### Features
+
+* home assistant voice building ([#187](https://github.com/ffMathy/hey-jarvis/issues/187)) ([9f17536](https://github.com/ffMathy/hey-jarvis/commit/9f17536aec616e71fee8a5654f3cf83a5113c7b8))
+
 ## [4.0.0](https://github.com/ffMathy/hey-jarvis/compare/root-v3.2.0...root-v4.0.0) (2025-11-13)
 
 
