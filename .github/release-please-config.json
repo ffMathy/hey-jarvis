@@ -42,7 +42,8 @@
       "component": "home-assistant-voice-firmware"
     }
   },
-  "group-pull-request-title-pattern": "chore: release ${version}",
+  "pull-request-title-pattern": "chore(${component}): release v${version}",
+  "group-pull-request-title-pattern": "chore: release v${version}",
   "separate-pull-requests": false,
   "plugins": [
     {
