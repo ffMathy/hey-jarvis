@@ -23,7 +23,7 @@ start_mcp_servers() {
     MASTRA_PID=$!
     
     echo "Starting MCP server..." >&2
-    npx tsx mcp/mastra/mcp-server.ts 2>&1 | sed 's/^/[MCP] /' &
+    bun run mcp/mastra/mcp-server.ts 2>&1 | sed 's/^/[MCP] /' &
     MCP_PID=$!
     
     # Give servers a moment to start
