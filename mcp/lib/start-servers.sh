@@ -19,11 +19,11 @@ start_mcp_servers() {
     [ -f "mcp/mastra/mcp-server.ts" ] && echo "✓ mcp/mastra/mcp-server.ts exists" >&2 || echo "✗ mcp/mastra/mcp-server.ts missing" >&2
     
     echo "Starting Mastra dev server..." >&2
-    PORT=4111 mastra dev --dir mcp/mastra --root . 2>&1 | sed 's/^/[MASTRA] /' &
+    PORT=4111 mastra dev --dir mcp/mastra --root . 2>&1 &
     MASTRA_PID=$!
     
     echo "Starting MCP server..." >&2
-    npx tsx mcp/mastra/mcp-server.ts 2>&1 | sed 's/^/[MCP] /' &
+    bun run mcp/mastra/mcp-server.ts 2>&1 &
     MCP_PID=$!
     
     # Give servers a moment to start
