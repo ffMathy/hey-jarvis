@@ -22,10 +22,10 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 # Check if container is already running
-if docker ps | grep -q "home-assistant-addon-test"; then
+if docker ps -a | grep -q "home-assistant-addon-test"; then
     echo "⚠️  Stopping existing container..."
-    docker stop home-assistant-addon-test
-    docker rm home-assistant-addon-test
+    docker stop home-assistant-addon-test 2>/dev/null || true
+    docker rm home-assistant-addon-test 2>/dev/null || true
 fi
 
 # Read test configuration files
