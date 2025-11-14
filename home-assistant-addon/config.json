@@ -19,7 +19,7 @@
   },
   "webui": "http://[HOST]:[PORT:4111]/agents",
   "ingress": true,
-  "ingress_port": 4111,
+  "ingress_port": 5690,
   "panel_icon": "mdi:robot",
   "panel_title": "Hey Jarvis",
   "panel_admin": false,
