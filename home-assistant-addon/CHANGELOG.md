@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.0.1](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v4.0.0...home-assistant-addon-v4.0.1) (2025-11-14)
+
+
+### Bug Fixes
+
+* replace npx tsx with bun run for MCP server startup in container ([#189](https://github.com/ffMathy/hey-jarvis/issues/189)) ([847bb22](https://github.com/ffMathy/hey-jarvis/commit/847bb22f2f24f3b4a77213f131570498a021a2be))
+
 ## [4.0.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v3.2.0...home-assistant-addon-v4.0.0) (2025-11-13)
 
 
