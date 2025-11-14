@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.1.2](https://github.com/ffMathy/hey-jarvis/compare/root-v4.1.1...root-v4.1.2) (2025-11-14)
+
+
+### Bug Fixes
+
+* **home-assistant-addon:** resolve static asset 404s under ingress proxy ([#191](https://github.com/ffMathy/hey-jarvis/issues/191)) ([d58603f](https://github.com/ffMathy/hey-jarvis/commit/d58603f6ede6e643cbcea5cd39d2abd83f2d78e3))
+
 ## [4.1.1](https://github.com/ffMathy/hey-jarvis/compare/root-v4.1.0...root-v4.1.1) (2025-11-14)
 
 
