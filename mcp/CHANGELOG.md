@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.0.2](https://github.com/ffMathy/hey-jarvis/compare/mcp-v4.0.1...mcp-v4.0.2) (2025-11-14)
+
+
+### Miscellaneous Chores
+
+* **mcp:** Synchronize mcp versions
+
 ## [4.0.1](https://github.com/ffMathy/hey-jarvis/compare/mcp-v4.0.0...mcp-v4.0.1) (2025-11-14)
 
 
