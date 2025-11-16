@@ -6,6 +6,28 @@ This project is a Mastra-powered AI agent framework that enables intelligent hom
 ## About Mastra
 [Mastra](https://mastra.ai) is a TypeScript agent framework designed to build production-ready AI applications. It provides unified interfaces for multiple LLM providers, persistent agent memory, tool calling capabilities, and graph-based workflows.
 
+**This project uses Mastra V1 beta** (v1.0.0-beta.2), which is the upcoming stable release with standardized APIs and improved production readiness.
+
+### Mastra V1 Migration
+As of the latest update, this project has been migrated to Mastra V1 beta:
+- **@mastra/core**: 1.0.0-beta.2 (previously 0.24.0)
+- **mastra CLI**: 1.0.0-beta.1 (previously 0.18.0)
+- **Supporting packages**: Continue using stable versions until V1 beta releases are available
+  - @mastra/memory: 0.15.11
+  - @mastra/libsql: 0.16.2
+  - @mastra/loggers: 0.10.19
+  - @mastra/mcp: 0.14.2
+  - @mastra/evals: 0.14.4
+
+**Key API changes:**
+- `streamVNext()` → `stream()` - Now the standard streaming API
+- `generateVNext()` → `generate()` - Now the standard generation API
+- Full AI SDK v5 compatibility
+- Enhanced structured output options
+- Unified API signatures across the framework
+
+For more details, see the [official migration guide](https://mastra.ai/guides/v1/migrations/upgrade-to-v1/overview).
+
 ## Project Structure
 The project follows a vertical-based organization structure for better cohesion:
 
