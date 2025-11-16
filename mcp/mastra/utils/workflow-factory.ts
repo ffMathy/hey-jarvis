@@ -149,7 +149,7 @@ export function createAgentStep<
 
             const prompt = config.prompt({ context });
 
-            const response = await agent.streamVNext([
+            const response = await agent.stream([
                 {
                     role: 'user',
                     content: prompt,
