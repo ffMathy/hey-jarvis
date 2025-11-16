@@ -69,7 +69,10 @@ jobs:
             echo "Using origin/main as fallback base for affected detection"
             BASE_SHA="origin/main"
           else
-            echo "✓ Base commit $BASE_SHA exists"
+            echo "✓ Base commit $BASE_SHA exists outside devcontainer"
+            # Even if it exists outside, use the ref name for better devcontainer compatibility
+            echo "Using main branch ref instead of SHA for devcontainer compatibility"
+            BASE_SHA="origin/main"
           fi
 
           # Check if the head commit exists
