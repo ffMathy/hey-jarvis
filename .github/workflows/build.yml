@@ -54,6 +54,36 @@ jobs:
         with:
           main-branch-name: main
 
+      - name: Validate and fix NX base commit
+        id: validate-nx-base
+        run: |
+          BASE_SHA="${{ steps.set-shas.outputs.base }}"
+          HEAD_SHA="${{ steps.set-shas.outputs.head }}"
+          
+          echo "NX_BASE from nx-set-shas: $BASE_SHA"
+          echo "NX_HEAD from nx-set-shas: $HEAD_SHA"
+          
+          # Check if the base commit exists (handles force push scenarios)
+          if ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+            echo "⚠️  Base commit $BASE_SHA not found (likely due to force push)"
+            echo "Using origin/main as fallback base for affected detection"
+            BASE_SHA="origin/main"
+          else
+            echo "✓ Base commit $BASE_SHA exists"
+          fi
+          
+          # Check if the head commit exists
+          if ! git cat-file -e "$HEAD_SHA^{commit}" 2>/dev/null; then
+            echo "⚠️  Head commit $HEAD_SHA not found"
+            echo "Using HEAD as fallback"
+            HEAD_SHA="HEAD"
+          else
+            echo "✓ Head commit $HEAD_SHA exists"
+          fi
+          
+          echo "NX_BASE=$BASE_SHA" >> $GITHUB_OUTPUT
+          echo "NX_HEAD=$HEAD_SHA" >> $GITHUB_OUTPUT
+
       - name: Build and test in dev container
         uses: devcontainers/ci@v0.3
         env:
@@ -62,8 +92,8 @@ jobs:
           IMAGE_TAG: pr-${{ github.event.pull_request.number }}
           IMAGE_OWNER: ${{ env.REPO_OWNER_LC }}
           REGISTRY: ghcr.io
-          NX_BASE: ${{ steps.set-shas.outputs.base }}
-          NX_HEAD: ${{ steps.set-shas.outputs.head }}
+          NX_BASE: ${{ steps.validate-nx-base.outputs.NX_BASE }}
+          NX_HEAD: ${{ steps.validate-nx-base.outputs.NX_HEAD }}
         with:
           imageName: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
           cacheFrom: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
