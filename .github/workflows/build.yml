@@ -68,10 +68,7 @@ jobs:
           imageName: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
           cacheFrom: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
           push: never
-          runCmd: |
-            git config --global --add safe.directory /workspaces/hey-jarvis
-            git fetch --depth=1 origin $NX_BASE || git fetch --depth=1 origin main
-            nx affected --target=build,test
+          runCmd: nx affected --target=build,test
           env: |
             GITHUB_ACTIONS
             GITHUB_TOKEN
