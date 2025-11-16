@@ -2,6 +2,9 @@
 # DevContainer initialization script
 # Installs dependencies and runs project-specific initialization
 
+# Configure git safe.directory to avoid ownership issues
+git config --global --add safe.directory /workspaces/hey-jarvis
+
 # Ensure Bun is in PATH
 # The Bun feature installs to /usr/local/bin or ~/.bun/bin depending on the user
 if command -v bun &> /dev/null; then
