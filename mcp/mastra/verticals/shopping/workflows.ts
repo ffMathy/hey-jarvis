@@ -1,4 +1,3 @@
-import { RuntimeContext } from '@mastra/core/runtime-context';
 import { z } from 'zod';
 import { createAgentStep, createStep, createWorkflow } from '../../utils/workflow-factory.js';
 import { getCurrentCartContents } from './tools.js';
@@ -52,12 +51,15 @@ const getInitialCartContents = createStep({
         // Use the getCurrentCartContents tool directly 
         const cartContents = await getCurrentCartContents.execute({
             context: {},
-            runtimeContext: new RuntimeContext()
         });
+
+        // Type assertion: In normal operation, the tool returns the expected array type
+        // ValidationError would only occur if there's a schema mismatch
+        const cart = cartContents as z.infer<typeof cartSnapshotSchema>;
 
         return {
             prompt: context.prompt,
-            cartBefore: cartContents,
+            cartBefore: cart,
         };
     },
 });
@@ -147,13 +149,16 @@ const getUpdatedCartContents = createStep({
         // Use the getCurrentCartContents tool directly
         const cartContents = await getCurrentCartContents.execute({
             context: {},
-            runtimeContext: new RuntimeContext()
         });
+
+        // Type assertion: In normal operation, the tool returns the expected array type
+        // ValidationError would only occur if there's a schema mismatch
+        const cart = cartContents as z.infer<typeof cartSnapshotSchema>;
 
         return {
             prompt: context.prompt,
             cartBefore: context.cartBefore,
-            cartAfter: cartContents,
+            cartAfter: cart,
             extractedProducts: context.extractedProducts,
             mutationResults: context.mutationResults,
         };
