@@ -69,6 +69,7 @@ jobs:
           cacheFrom: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
           push: never
           runCmd: |
+            git config --global --add safe.directory /workspaces/hey-jarvis
             git fetch --depth=1 origin $NX_BASE || git fetch --depth=1 origin main
             nx affected --target=build,test
           env: |
