@@ -38,4 +38,3 @@ fi
 # To install manually: npx playwright install --with-deps chromium
 
 echo "✅ DevContainer initialization complete!"
-echo "ℹ️  Project-specific initialization (initialize target) will run automatically when building/testing affected projects"
