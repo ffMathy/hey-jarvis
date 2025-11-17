@@ -39,6 +39,62 @@ expect(result.score).toBeGreaterThan(0.6);       // ❌ Still too low!
 - **Never use `>= 0`** - this accepts any response including complete failures
 - **Document exceptions**: If a test needs <0.9, add a comment explaining why
 
+### Mastra V1 Tool Message Format
+
+**CRITICAL**: When sending tool results to agents, use the proper Mastra V1 message format:
+
+```typescript
+const message = {
+    createdAt: new Date(),
+    id: 'unique-id',
+    content: 'tool result content',  // REQUIRED: Must not be null/undefined
+    role: 'tool',
+    type: 'tool-result',  // REQUIRED for tool messages
+};
+```
+
+**Key Requirements**:
+- ✅ Tool messages **MUST** have `type: 'tool-result'`
+- ✅ Tool messages **MUST** have `content` property that is non-null (empty strings allowed)
+- ✅ OR tool messages can use `parts` array instead of `content`
+- ❌ **NEVER** set `type: 'text'` for tool role messages
+- ❌ **NEVER** pass null/undefined as content
+
+**Example Error**:
+```
+Message with role "tool" must have either a 'content' property (string or array) 
+or a 'parts' property (array) that is not empty, null, or undefined.
+```
+
+This validation is enforced by Mastra V1 beta in `message-list/index.js`.
+
+### Tool Call Verification
+
+When testing tool-calling behavior:
+
+1. **Direct Message Inspection**: Check message history for actual tool calls
+```typescript
+const messages = conversation.getMessages();
+const toolCalls = messages.filter(
+  (msg) => msg.type === 'mcp_tool_call' && 
+  msg.mcp_tool_call.tool_name.toLowerCase().includes('weather')
+);
+
+if (toolCalls.length === 0) {
+  throw new Error('Expected weather tool to be called');
+}
+```
+
+2. **LLM Evaluation**: Use for semantic verification of behavior
+```typescript
+await conversation.assertCriteria(
+  'The agent makes reasonable assumptions without asking follow-up questions',
+  0.9
+);
+```
+
+**NEVER** use workarounds - always fix root causes properly and document requirements.
+
 ### Evaluation Best Practices
 
 The `TestConversation.evaluate()` method automatically:
