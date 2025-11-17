@@ -103,21 +103,13 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
      * Send a message to the agent and store both the message and response
      */
     private async sendToAgent(agent: Agent, content: string, role: 'user' | 'tool' | 'assistant', id: string): Promise<string> {
-        const message: any = {
+        const result = await agent.generate({
             createdAt: new Date(),
             id,
             content,
             role,
-        };
-        
-        // For tool messages, use tool-result type as per Mastra V1 requirements
-        if (role === 'tool') {
-            message.type = 'tool-result';
-        } else {
-            message.type = 'text';
-        }
-        
-        const result = await agent.generate(message, {
+            type: role === 'tool' ? 'tool-result' : 'text',
+        }, {
             modelSettings: { temperature: 0 }
         });
 
