@@ -833,6 +833,17 @@ This project follows a strict "lean documentation" approach because:
 - Manages project dependencies and task orchestration
 - Prevents conflicts between different project configurations
 
+**Testing NX Targets:**
+After modifying NX target configurations (project.json), always test through NX:
+```bash
+# Test with cache disabled to verify dependencies work
+npx nx build mcp --skip-nx-cache
+npx nx build home-assistant-voice-firmware --skip-nx-cache
+
+# Verify that dependent targets (e.g., initialize) run automatically
+# Check output for "Running target [target] for project [name] and X tasks it depends on"
+```
+
 ### Tool ID Naming Conventions
 **CRITICAL**: All tool IDs must follow kebab-case naming conventions:
 

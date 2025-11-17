@@ -8,11 +8,6 @@
       "executor": "nx:run-commands",
       "cache": true,
       "outputs": [],
-      "inputs": [
-        {
-          "externalDependencies": ["python3"]
-        }
-      ],
       "options": {
         "command": "python3 -m pip install --upgrade --no-cache-dir --timeout=900 esphome",
         "cwd": "home-assistant-voice-firmware"

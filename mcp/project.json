@@ -8,11 +8,6 @@
       "executor": "nx:run-commands",
       "cache": true,
       "outputs": [],
-      "inputs": [
-        {
-          "externalDependencies": ["bun"]
-        }
-      ],
       "options": {
         "command": "bun install mastra --global",
         "cwd": "mcp"
