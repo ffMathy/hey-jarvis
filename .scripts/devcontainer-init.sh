@@ -39,12 +39,19 @@ fi
 
 echo "🚀 Running project initialization..."
 
-# Run init with proper error handling
-# Use --parallel=false to avoid race conditions
-nx run-many --target=initialize --parallel=false || {
-    echo "⚠️  Some init targets failed (exit code: $?)"
-    echo "   You can manually run: npx nx run PROJECT:init"
-    exit 0  # Don't fail the devcontainer creation
-}
+# In CI environments, skip heavy initialization tasks (like ESPHome toolchain download)
+# to avoid OOM issues. The build will handle any needed initialization.
+if [ "${GITHUB_ACTIONS:-false}" = "true" ]; then
+    echo "ℹ️  CI environment detected - skipping initialize targets to conserve memory"
+    echo "   Projects will initialize on-demand during build/test"
+else
+    # Run init with proper error handling
+    # Use --parallel=false to avoid race conditions
+    nx run-many --target=initialize --parallel=false || {
+        echo "⚠️  Some init targets failed (exit code: $?)"
+        echo "   You can manually run: npx nx run PROJECT:init"
+        exit 0  # Don't fail the devcontainer creation
+    }
+fi
 
 echo "✅ DevContainer initialization complete!"
