@@ -47,12 +47,22 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
             const agentPrompt = await this.readAgentPrompt();
             const agents = await getPublicAgents();
             
+            // Extract tools from all agents
+            const tools: Record<string, any> = {};
+            for (const [agentName, agent] of Object.entries(agents)) {
+                const agentTools = await agent.listTools();
+                if (agentTools) {
+                    // Merge tools from each agent into the tools object
+                    Object.assign(tools, agentTools);
+                }
+            }
+            
             this.agent = new Agent({
                 name: 'J.A.R.V.I.S.',
                 instructions: agentPrompt,
                 model: googleProvider(agentConfig.conversationConfig.agent.prompt.llm),
                 agents,
-                tools: {},
+                tools,
                 workflows: {},
                 inputProcessors: [],
                 outputProcessors: [],

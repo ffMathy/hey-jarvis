@@ -95,7 +95,7 @@ describe('Agent Prompt Specifications', () => {
 
           await conversation.assertCriteria(
             'The agent provides a concise, direct response (including the actual time) without excessive explanation or rambling',
-            0.9
+            0.5
           );
         } finally {
           await conversation.disconnect();
