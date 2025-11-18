@@ -5,6 +5,64 @@
 
 * **home-assistant-addon:** resolve static asset 404s under ingress proxy ([#191](https://github.com/ffMathy/hey-jarvis/issues/191)) ([d58603f](https://github.com/ffMathy/hey-jarvis/commit/d58603f6ede6e643cbcea5cd39d2abd83f2d78e3))
 
+## 0.1.0 (2025-11-18)
+
+
+### ⚠ BREAKING CHANGES
+
+* change version detection ([#51](https://github.com/ffMathy/hey-jarvis/issues/51))
+
+### Features
+
+* add environment variable configuration support to Home Assistant addon ([#59](https://github.com/ffMathy/hey-jarvis/issues/59)) ([e025956](https://github.com/ffMathy/hey-jarvis/commit/e025956f1c36e93fb0e2f1f14f23c34462a2f23a))
+* add new project and deploy pipeline ([857dd8a](https://github.com/ffMathy/hey-jarvis/commit/857dd8a7290100f31984d7a94fd822f85f2a1987))
+* add shared functions to start MCP servers ([#222](https://github.com/ffMathy/hey-jarvis/issues/222)) ([8cfd97d](https://github.com/ffMathy/hey-jarvis/commit/8cfd97d1d83443d52af2ef232c69ebc45f8d82db))
+* bump release to trigger new versions ([fb4b36f](https://github.com/ffMathy/hey-jarvis/commit/fb4b36feecd6acfa7b9fa1d48608c8a141aa26d1))
+* home assistant addon support ([#36](https://github.com/ffMathy/hey-jarvis/issues/36)) ([307ac9e](https://github.com/ffMathy/hey-jarvis/commit/307ac9e008d438f1d07c37694bc5afb0dbf47f5e))
+* **home-assistant-addon:** add catch-all proxy and improve e2e test assertions ([f2ba633](https://github.com/ffMathy/hey-jarvis/commit/f2ba633ef514f025be206ca045a3ad40b8ee3580))
+* **home-assistant-addon:** add catch-all proxy and improve e2e test assertions ([1be148f](https://github.com/ffMathy/hey-jarvis/commit/1be148f8cd8f4fc34c1ae2f74aba61188bf1ffaa))
+* **home-assistant-addon:** add nginx to e2e test for ingress simulation ([52e9062](https://github.com/ffMathy/hey-jarvis/commit/52e90629a4e5c734e3b5b3138819e4ee0189845c))
+* **home-assistant-addon:** add nginx to e2e test for ingress simulation ([3d2b757](https://github.com/ffMathy/hey-jarvis/commit/3d2b757787f750f75fb1b277c4db1d2d4a592e7b))
+* migrate from NPM to Bun for package management ([5455985](https://github.com/ffMathy/hey-jarvis/commit/54559850929c9dc36fbada4661dede0336cafa6d))
+* optimize Docker images with Alpine base and multi-stage builds ([c616e78](https://github.com/ffMathy/hey-jarvis/commit/c616e7895b3ac4123dade49c2f82f27bedab8fcc))
+
+
+### Bug Fixes
+
+* 403 Docker build errors by using locally built base images ([#29](https://github.com/ffMathy/hey-jarvis/issues/29)) ([a5a94b3](https://github.com/ffMathy/hey-jarvis/commit/a5a94b31bb92510867ae14f73c0400f79ecb15ef))
+* attempt at variable substitution ([7f3cbce](https://github.com/ffMathy/hey-jarvis/commit/7f3cbcebec69a3a322e2d1edf655e3252dd95b64))
+* better deploy script ([#40](https://github.com/ffMathy/hey-jarvis/issues/40)) ([54838cf](https://github.com/ffMathy/hey-jarvis/commit/54838cfd67a7646a95a1c2c466c0c711895c8a5d))
+* better paths ([c756779](https://github.com/ffMathy/hey-jarvis/commit/c7567799bfd4b8bc9ab9044c67471f5432562714))
+* better tests ([716b97c](https://github.com/ffMathy/hey-jarvis/commit/716b97c6d28fd97b1ae0fa91561f801ac9af8f6e))
+* better version bumping ([4330e52](https://github.com/ffMathy/hey-jarvis/commit/4330e5226be27eea7c4f9015033c96223354b4ec))
+* change version detection ([#51](https://github.com/ffMathy/hey-jarvis/issues/51)) ([5fea475](https://github.com/ffMathy/hey-jarvis/commit/5fea475ef50ab24b77397f2e5d05e1ef69054b8d))
+* end-to-end Home Assistant tests ([5c90bad](https://github.com/ffMathy/hey-jarvis/commit/5c90bad29ec07823cd7e58ec4f24f8b627760a42))
+* end-to-end Home Assistant tests ([4a04654](https://github.com/ffMathy/hey-jarvis/commit/4a04654353bccc1b41212dd310b6c269ad9b26c9))
+* end-to-end Home Assistant tests ([4967eb0](https://github.com/ffMathy/hey-jarvis/commit/4967eb0266843871bff9b3adc2ad25ba2f8cb9e1))
+* **home-assistant-addon:** address code review feedback for error handling ([11c7d85](https://github.com/ffMathy/hey-jarvis/commit/11c7d85a64fbff11d7d1f7d3ab259c49ce1323ff))
+* **home-assistant-addon:** explicitly specify port for mastra dev command ([eb08426](https://github.com/ffMathy/hey-jarvis/commit/eb08426b3e1a089d830907a2d5b3b92dc805c224))
+* **home-assistant-addon:** improve error handling for parallel server startup ([7fecdf8](https://github.com/ffMathy/hey-jarvis/commit/7fecdf897acd1ec77b8fe75c825d7eae76dd2953))
+* **home-assistant-addon:** increase test timeout and improve error reporting ([50cb221](https://github.com/ffMathy/hey-jarvis/commit/50cb221b629f6d8050c90dbded56d7befb584eb3))
+* **home-assistant-addon:** remove invalid --port flag from mastra dev command ([ad1d819](https://github.com/ffMathy/hey-jarvis/commit/ad1d81960924f797c150e86d8a6c6e3babdc1b17))
+* **home-assistant-addon:** resolve docker entrypoint error and correct server path ([ee45197](https://github.com/ffMathy/hey-jarvis/commit/ee451975b1b8c858ce980d55564494247b6b01d8))
+* **home-assistant-addon:** resolve static asset 404s under ingress proxy ([#191](https://github.com/ffMathy/hey-jarvis/issues/191)) ([d58603f](https://github.com/ffMathy/hey-jarvis/commit/d58603f6ede6e643cbcea5cd39d2abd83f2d78e3))
+* **home-assistant-addon:** simplify test entrypoint with direct env vars ([bb5fc42](https://github.com/ffMathy/hey-jarvis/commit/bb5fc4294a52913066e00e3beb94bf42e23defad))
+* **home-assistant-addon:** start both Mastra and MCP servers in parallel ([e40b47c](https://github.com/ffMathy/hey-jarvis/commit/e40b47c30fc907ebc5daa92c002149f0b4c8c724))
+* missing lines ([036ff1a](https://github.com/ffMathy/hey-jarvis/commit/036ff1a24dca83efbc67ad72bd365275d7493eaa))
+* multi architecture builds ([#38](https://github.com/ffMathy/hey-jarvis/issues/38)) ([d0ca5d9](https://github.com/ffMathy/hey-jarvis/commit/d0ca5d989390c84bd870c2a2d7a3fd66166f400f))
+* new changelog format ([7e69f27](https://github.com/ffMathy/hey-jarvis/commit/7e69f27e53b61ff5c5412ded5792db178d96b439))
+* proper architecture ([1443e60](https://github.com/ffMathy/hey-jarvis/commit/1443e6018d4f349496bf4369c6a9ced6eb8df868))
+* proper env check ([38fbdff](https://github.com/ffMathy/hey-jarvis/commit/38fbdffff65caee985a04f9d03dd7fa542140eff))
+* reference env from prefix ([11b1213](https://github.com/ffMathy/hey-jarvis/commit/11b12135ff6e20aa89830bb8ca91ef8bd701fbec))
+* replace npx tsx with bun run for MCP server startup in container ([#189](https://github.com/ffMathy/hey-jarvis/issues/189)) ([847bb22](https://github.com/ffMathy/hey-jarvis/commit/847bb22f2f24f3b4a77213f131570498a021a2be))
+* resolve build issue in dockerfile ([f42508b](https://github.com/ffMathy/hey-jarvis/commit/f42508b18bbdae2c819ff5626453177c17cdc107))
+* resolve Jest test failures by compiling TypeScript first with esbuild ([#162](https://github.com/ffMathy/hey-jarvis/issues/162)) ([d0ec7bf](https://github.com/ffMathy/hey-jarvis/commit/d0ec7bfd3a27014874585ed9f7bd9089cb98a839))
+* test performance ([d8935de](https://github.com/ffMathy/hey-jarvis/commit/d8935de6f94754476dcf89849704513dcb048b64))
+* test url ([9cfd539](https://github.com/ffMathy/hey-jarvis/commit/9cfd53976cca147821d952ea9f649fc0c8b84720))
+* test url ([9350533](https://github.com/ffMathy/hey-jarvis/commit/9350533800b953f1a14bbd4efe7a353e27b3f2db))
+* tests now truly run via nx too ([cbe44fd](https://github.com/ffMathy/hey-jarvis/commit/cbe44fdbea93edb03f509b7261904db99cae62be))
+* update architecture label in Dockerfile ([81e3f86](https://github.com/ffMathy/hey-jarvis/commit/81e3f86d1ebdc74614279bae5f9625efa51c7ad4))
+
 ## [4.0.1](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v4.0.0...home-assistant-addon-v4.0.1) (2025-11-14)
 
 
