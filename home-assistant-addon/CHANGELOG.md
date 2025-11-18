@@ -5,6 +5,13 @@
 
 * **home-assistant-addon:** resolve static asset 404s under ingress proxy ([#191](https://github.com/ffMathy/hey-jarvis/issues/191)) ([d58603f](https://github.com/ffMathy/hey-jarvis/commit/d58603f6ede6e643cbcea5cd39d2abd83f2d78e3))
 
+## [0.1.1](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v0.1.0...home-assistant-addon-v0.1.1) (2025-11-18)
+
+
+### Bug Fixes
+
+* **mcp:** use bunx for mastra CLI in Docker startup script ([#226](https://github.com/ffMathy/hey-jarvis/issues/226)) ([cc5a924](https://github.com/ffMathy/hey-jarvis/commit/cc5a92412361b194f32c73fa32f877260cfad370))
+
 ## 0.1.0 (2025-11-18)
 
 
