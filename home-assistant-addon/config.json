@@ -12,12 +12,14 @@
   "boot": "auto",
   "init": false,
   "ports": {
-    "4111/tcp": 4111
+    "4111/tcp": null,
+    "4112/tcp": null
   },
   "ports_description": {
-    "4111/tcp": "Mastra development playground and API server"
+    "4111/tcp": "Mastra development playground and API server",
+    "4112/tcp": "Mastra MCP server"
   },
-  "webui": "http://[HOST]:[PORT:4111]/agents",
+  "webui": "http://[HOST]:[PORT:4111]",
   "ingress": true,
   "ingress_port": 5690,
   "panel_icon": "mdi:robot",
@@ -57,8 +59,7 @@
     "algolia_application_id": "str?"
   },
   "environment": {
-    "HOST": "0.0.0.0",
-    "PORT": "4111"
+    "HOST": "0.0.0.0"
   },
   "map": [
     "config:rw",
