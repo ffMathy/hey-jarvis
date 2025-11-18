@@ -14,6 +14,35 @@ source /workspace/mcp/lib/server-functions.sh
 
 bashio::log.info "Starting Hey Jarvis MCP Server..."
 
+# Configure JWT authentication if secret is provided
+if bashio::config.has_value 'jwt_secret'; then
+    export HEY_JARVIS_MCP_JWT_SECRET=$(bashio::config 'jwt_secret')
+    bashio::log.info "JWT authentication enabled"
+    
+    # Create JWT key file for nginx-auth-jwt module
+    # The module expects a JSON keyval format: {"kid": "secret"}
+    # We use a fixed kid value since we're using HMAC (symmetric key)
+    echo "{\"default\": \"${HEY_JARVIS_MCP_JWT_SECRET}\"}" > /tmp/jwt_key.json
+    chmod 600 /tmp/jwt_key.json
+    
+    # Create nginx JWT auth configuration file
+    cat > /etc/nginx/jwt-auth.conf <<EOF
+# JWT Authentication configuration (auto-generated from Home Assistant config)
+auth_jwt "Hey Jarvis MCP Server";
+auth_jwt_key_file /tmp/jwt_key.json keyval;
+EOF
+    
+    bashio::log.info "JWT key file created at /tmp/jwt_key.json"
+else
+    bashio::log.warning "JWT authentication disabled - no jwt_secret configured"
+    
+    # Create empty JWT auth configuration to disable authentication
+    cat > /etc/nginx/jwt-auth.conf <<EOF
+# JWT Authentication disabled - no jwt_secret configured
+auth_jwt off;
+EOF
+fi
+
 # Export environment variables from options if they are set
 if bashio::config.has_value 'openweathermap_api_key'; then
     export HEY_JARVIS_OPENWEATHERMAP_API_KEY=$(bashio::config 'openweathermap_api_key')
@@ -64,16 +93,37 @@ fi
 LOG_LEVEL=$(bashio::config 'log_level')
 bashio::log.info "Log level set to: ${LOG_LEVEL}"
 
+# Start nginx in background
+bashio::log.info "Starting nginx proxy on ingress port 5690..."
+nginx -g 'daemon off;' &
+NGINX_PID=$!
+bashio::log.info "Nginx started (PID: ${NGINX_PID})"
+
+# Give nginx time to start
+sleep 2
+
 # Start both servers in parallel using shared function
 PIDS=$(start_mcp_servers) || {
     bashio::log.error "Failed to start MCP servers"
+    kill $NGINX_PID 2>/dev/null || true
     exit 1
 }
 read -r MASTRA_PID MCP_PID <<< "$PIDS"
 
+# Function to cleanup on exit
+cleanup() {
+    bashio::log.info "Shutting down servers..."
+    kill $MASTRA_PID $MCP_PID $NGINX_PID 2>/dev/null || true
+}
+
+trap cleanup EXIT INT TERM
+
 # Wait for either process to exit and handle status
 wait_for_server_exit "$MASTRA_PID" "$MCP_PID"
 EXIT_CODE=$?
+
+# Cleanup nginx
+kill $NGINX_PID 2>/dev/null || true
 
 bashio::log.error "A server process has exited with code ${EXIT_CODE}"
 exit $EXIT_CODE

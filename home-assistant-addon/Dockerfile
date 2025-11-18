@@ -16,9 +16,9 @@ LABEL io.hass.url="https://github.com/ffMathy/hey-jarvis"
 
 # Install bashio for Home Assistant addon configuration parsing
 # Bashio is the standard library for Home Assistant addons
-# Also install nginx for proxying the MCP server through Home Assistant ingress
+# Also install nginx and nginx-mod-http-auth-jwt for JWT authentication
 # Using Alpine packages for smaller size
-RUN apk add --no-cache curl jq nginx && \
+RUN apk add --no-cache curl jq nginx nginx-mod-http-auth-jwt && \
     curl -J -L -o /tmp/bashio.tar.gz \
     "https://github.com/hassio-addons/bashio/archive/v0.16.2.tar.gz" && \
     mkdir -p /tmp/bashio && \
