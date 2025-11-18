@@ -1,0 +1,798 @@
+{
+  "graph": {
+    "nodes": {
+      "home-assistant-voice-firmware": {
+        "name": "home-assistant-voice-firmware",
+        "type": "app",
+        "data": {
+          "root": "home-assistant-voice-firmware",
+          "name": "home-assistant-voice-firmware",
+          "$schema": "../node_modules/nx/schemas/project-schema.json",
+          "projectType": "application",
+          "sourceRoot": "home-assistant-voice-firmware/src",
+          "targets": {
+            "initialize": {
+              "executor": "nx:run-commands",
+              "cache": true,
+              "outputs": [],
+              "options": {
+                "command": "python3 -m pip install --upgrade --no-cache-dir --timeout=900 esphome",
+                "cwd": "home-assistant-voice-firmware"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "build": {
+              "executor": "nx:run-commands",
+              "dependsOn": [
+                "initialize"
+              ],
+              "options": {
+                "command": "bash ./.scripts/build.sh",
+                "cwd": "home-assistant-voice-firmware"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "serve": {
+              "executor": "nx:run-commands",
+              "options": {
+                "command": "bash ./.scripts/serve.sh",
+                "cwd": "home-assistant-voice-firmware"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "clean": {
+              "executor": "nx:run-commands",
+              "options": {
+                "command": "python3 -m esphome clean home-assistant-voice.elevenlabs.yaml",
+                "cwd": "home-assistant-voice-firmware"
+              },
+              "configurations": {},
+              "parallelism": true
+            }
+          },
+          "implicitDependencies": [],
+          "tags": []
+        }
+      },
+      "home-assistant-addon": {
+        "name": "home-assistant-addon",
+        "type": "app",
+        "data": {
+          "root": "home-assistant-addon",
+          "targets": {
+            "lint": {
+              "cache": true,
+              "options": {
+                "cwd": "home-assistant-addon",
+                "command": "eslint ."
+              },
+              "inputs": [
+                "default",
+                "^default",
+                "{workspaceRoot}/eslint.config.mjs",
+                "{workspaceRoot}/tools/eslint-rules/**/*",
+                {
+                  "externalDependencies": [
+                    "eslint"
+                  ]
+                }
+              ],
+              "outputs": [
+                "{options.outputFile}"
+              ],
+              "metadata": {
+                "technologies": [
+                  "eslint"
+                ],
+                "description": "Runs ESLint on project",
+                "help": {
+                  "command": "bun eslint --help",
+                  "example": {
+                    "options": {
+                      "max-warnings": 0
+                    }
+                  }
+                }
+              },
+              "executor": "nx:run-commands",
+              "configurations": {},
+              "parallelism": true
+            },
+            "docker:build": {
+              "dependsOn": [
+                "build",
+                "^build"
+              ],
+              "options": {
+                "cwd": "home-assistant-addon",
+                "args": [
+                  "--tag home-assistant-addon"
+                ],
+                "command": "docker build ."
+              },
+              "inputs": [
+                "default",
+                "^default"
+              ],
+              "metadata": {
+                "technologies": [
+                  "docker"
+                ],
+                "description": "Run Docker build",
+                "help": {
+                  "command": "docker build --help",
+                  "example": {
+                    "options": {
+                      "cache-from": "type=s3,region=eu-west-1,bucket=mybucket .",
+                      "cache-to": "type=s3,region=eu-west-1,bucket=mybucket ."
+                    }
+                  }
+                }
+              },
+              "executor": "nx:run-commands",
+              "configurations": {},
+              "parallelism": true
+            },
+            "docker:run": {
+              "dependsOn": [
+                "docker:build"
+              ],
+              "options": {
+                "cwd": "home-assistant-addon",
+                "command": "docker run {args} home-assistant-addon"
+              },
+              "inputs": [
+                "default",
+                "^default"
+              ],
+              "metadata": {
+                "technologies": [
+                  "docker"
+                ],
+                "description": "Run Docker run",
+                "help": {
+                  "command": "docker run --help",
+                  "example": {
+                    "options": {
+                      "args": [
+                        "-p",
+                        "3000:3000"
+                      ]
+                    }
+                  }
+                }
+              },
+              "executor": "nx:run-commands",
+              "configurations": {},
+              "parallelism": true
+            },
+            "nx-release-publish": {
+              "executor": "@nx/js:release-publish",
+              "dependsOn": [
+                "^nx-release-publish"
+              ],
+              "options": {},
+              "configurations": {},
+              "parallelism": true
+            },
+            "serve": {
+              "executor": "nx:run-commands",
+              "options": {
+                "command": "./home-assistant-addon/.scripts/serve.sh",
+                "cwd": "."
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "build": {
+              "executor": "nx:run-commands",
+              "dependsOn": [
+                "mcp:build"
+              ],
+              "options": {
+                "commands": [
+                  "./home-assistant-addon/.scripts/build.sh",
+                  "./home-assistant-addon/.scripts/build-test-image.sh"
+                ],
+                "parallel": false,
+                "cwd": "."
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "deploy": {
+              "executor": "nx:run-commands",
+              "dependsOn": [
+                "mcp:deploy"
+              ],
+              "options": {
+                "command": "./home-assistant-addon/.scripts/deploy.sh",
+                "cwd": "."
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "test": {
+              "executor": "nx:run-commands",
+              "dependsOn": [
+                "build"
+              ],
+              "options": {
+                "command": "bunx playwright test --config=home-assistant-addon/playwright.config.ts",
+                "cwd": "."
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "test:ui": {
+              "executor": "nx:run-commands",
+              "options": {
+                "command": "bunx playwright test --config=home-assistant-addon/playwright.config.ts --ui",
+                "cwd": "."
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "test:debug": {
+              "executor": "nx:run-commands",
+              "options": {
+                "command": "bunx playwright test --config=home-assistant-addon/playwright.config.ts --debug",
+                "cwd": "."
+              },
+              "configurations": {},
+              "parallelism": true
+            }
+          },
+          "metadata": {
+            "targetGroups": {
+              "Docker": [
+                "docker:build",
+                "docker:run",
+                "nx-release-publish"
+              ]
+            },
+            "js": {
+              "packageName": "home-assistant-addon",
+              "packageVersion": "0.1.1",
+              "isInPackageManagerWorkspaces": false
+            }
+          },
+          "name": "home-assistant-addon",
+          "tags": [
+            "npm:public",
+            "home-assistant",
+            "addon",
+            "docker"
+          ],
+          "$schema": "../node_modules/nx/schemas/project-schema.json",
+          "projectType": "application",
+          "implicitDependencies": []
+        }
+      },
+      "elevenlabs": {
+        "name": "elevenlabs",
+        "type": "app",
+        "data": {
+          "root": "elevenlabs",
+          "targets": {
+            "lint": {
+              "cache": true,
+              "options": {
+                "cwd": "elevenlabs",
+                "command": "eslint ."
+              },
+              "inputs": [
+                "default",
+                "^default",
+                "{workspaceRoot}/eslint.config.mjs",
+                "{workspaceRoot}/elevenlabs/eslint.config.mjs",
+                "{workspaceRoot}/tools/eslint-rules/**/*",
+                {
+                  "externalDependencies": [
+                    "eslint"
+                  ]
+                }
+              ],
+              "outputs": [
+                "{options.outputFile}"
+              ],
+              "metadata": {
+                "technologies": [
+                  "eslint"
+                ],
+                "description": "Runs ESLint on project",
+                "help": {
+                  "command": "bun eslint --help",
+                  "example": {
+                    "options": {
+                      "max-warnings": 0
+                    }
+                  }
+                }
+              },
+              "executor": "nx:run-commands",
+              "configurations": {},
+              "parallelism": true
+            },
+            "docker:build": {
+              "dependsOn": [
+                "build",
+                "^build"
+              ],
+              "options": {
+                "cwd": "elevenlabs",
+                "args": [
+                  "--tag elevenlabs"
+                ],
+                "command": "docker build ."
+              },
+              "inputs": [
+                "default",
+                "^default"
+              ],
+              "metadata": {
+                "technologies": [
+                  "docker"
+                ],
+                "description": "Run Docker build",
+                "help": {
+                  "command": "docker build --help",
+                  "example": {
+                    "options": {
+                      "cache-from": "type=s3,region=eu-west-1,bucket=mybucket .",
+                      "cache-to": "type=s3,region=eu-west-1,bucket=mybucket ."
+                    }
+                  }
+                }
+              },
+              "executor": "nx:run-commands",
+              "configurations": {},
+              "parallelism": true
+            },
+            "docker:run": {
+              "dependsOn": [
+                "docker:build"
+              ],
+              "options": {
+                "cwd": "elevenlabs",
+                "command": "docker run {args} elevenlabs"
+              },
+              "inputs": [
+                "default",
+                "^default"
+              ],
+              "metadata": {
+                "technologies": [
+                  "docker"
+                ],
+                "description": "Run Docker run",
+                "help": {
+                  "command": "docker run --help",
+                  "example": {
+                    "options": {
+                      "args": [
+                        "-p",
+                        "3000:3000"
+                      ]
+                    }
+                  }
+                }
+              },
+              "executor": "nx:run-commands",
+              "configurations": {},
+              "parallelism": true
+            },
+            "nx-release-publish": {
+              "executor": "@nx/js:release-publish",
+              "dependsOn": [
+                "^nx-release-publish"
+              ],
+              "options": {},
+              "configurations": {},
+              "parallelism": true
+            },
+            "build": {
+              "executor": "@nx/esbuild:esbuild",
+              "outputs": [
+                "{options.outputPath}"
+              ],
+              "defaultConfiguration": "production",
+              "options": {
+                "platform": "node",
+                "outputPath": "dist/elevenlabs",
+                "format": [
+                  "esm"
+                ],
+                "bundle": false,
+                "main": "elevenlabs/src/main.ts",
+                "tsConfig": "elevenlabs/tsconfig.app.json",
+                "assets": [
+                  "elevenlabs/src/assets"
+                ],
+                "generatePackageJson": true,
+                "esbuildOptions": {
+                  "sourcemap": true,
+                  "outExtension": {
+                    ".js": ".js"
+                  }
+                }
+              },
+              "configurations": {
+                "development": {},
+                "production": {
+                  "generateLockfile": false,
+                  "esbuildOptions": {
+                    "sourcemap": false,
+                    "outExtension": {
+                      ".js": ".js"
+                    }
+                  }
+                }
+              },
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": [
+                "^build"
+              ],
+              "inputs": [
+                "default",
+                "^default"
+              ]
+            },
+            "deploy": {
+              "executor": "nx:run-commands",
+              "dependsOn": [
+                "build"
+              ],
+              "options": {
+                "command": "./.scripts/run-with-env.sh elevenlabs/op.env node dist/elevenlabs/main.js deploy",
+                "cwd": ".",
+                "env": {
+                  "NODE_OPTIONS": "--experimental-vm-modules"
+                }
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "refresh": {
+              "executor": "nx:run-commands",
+              "dependsOn": [
+                "build"
+              ],
+              "options": {
+                "command": "./.scripts/run-with-env.sh elevenlabs/op.env node dist/elevenlabs/main.js fetch",
+                "cwd": ".",
+                "env": {
+                  "NODE_OPTIONS": "--experimental-vm-modules"
+                }
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "test": {
+              "executor": "nx:run-commands",
+              "outputs": [
+                "{workspaceRoot}/coverage/{projectRoot}"
+              ],
+              "dependsOn": [
+                "deploy"
+              ],
+              "options": {
+                "command": "./.scripts/run-with-env.sh elevenlabs/op.env nx run elevenlabs:test:jest",
+                "cwd": ".",
+                "env": {
+                  "NODE_OPTIONS": "--experimental-vm-modules"
+                }
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "test:jest": {
+              "__comment": "Do not run this directly - run 'test' instead.",
+              "executor": "@nx/jest:jest",
+              "outputs": [
+                "{workspaceRoot}/coverage/{projectRoot}"
+              ],
+              "options": {
+                "jestConfig": "elevenlabs/jest.config.ts",
+                "bail": false,
+                "runInBand": false,
+                "passWithNoTests": false
+              },
+              "configurations": {
+                "ci": {
+                  "ci": true,
+                  "codeCoverage": true
+                }
+              },
+              "dependsOn": [
+                "build:test"
+              ],
+              "parallelism": true
+            },
+            "build:test": {
+              "executor": "@nx/esbuild:esbuild",
+              "outputs": [
+                "{options.outputPath}"
+              ],
+              "options": {
+                "platform": "node",
+                "outputPath": "dist/elevenlabs-test",
+                "format": [
+                  "esm"
+                ],
+                "bundle": true,
+                "main": "elevenlabs/src/test-utils/agent-prompt.spec.ts",
+                "additionalEntryPoints": [
+                  "elevenlabs/src/**/*.spec.ts",
+                  "elevenlabs/src/**/*.test.ts",
+                  "elevenlabs/src/**/*.ts"
+                ],
+                "tsConfig": "elevenlabs/tsconfig.app.json",
+                "assets": [
+                  {
+                    "input": "elevenlabs/src/assets",
+                    "glob": "**/*",
+                    "output": "./assets"
+                  }
+                ],
+                "esbuildOptions": {
+                  "sourcemap": true,
+                  "outExtension": {
+                    ".js": ".js"
+                  }
+                },
+                "skipTypeCheck": true,
+                "external": []
+              },
+              "dependsOn": [],
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "inputs": [
+                "default",
+                "^default"
+              ]
+            }
+          },
+          "metadata": {
+            "targetGroups": {
+              "Docker": [
+                "docker:build",
+                "docker:run",
+                "nx-release-publish"
+              ]
+            },
+            "js": {
+              "packageName": "elevenlabs",
+              "packageVersion": "0.1.0",
+              "isInPackageManagerWorkspaces": false
+            }
+          },
+          "name": "elevenlabs",
+          "tags": [
+            "npm:public"
+          ],
+          "$schema": "../node_modules/nx/schemas/project-schema.json",
+          "sourceRoot": "elevenlabs/src",
+          "projectType": "application",
+          "implicitDependencies": []
+        }
+      },
+      "mcp": {
+        "name": "mcp",
+        "type": "app",
+        "data": {
+          "root": "mcp",
+          "targets": {
+            "lint": {
+              "cache": true,
+              "options": {
+                "cwd": "mcp",
+                "command": "eslint ."
+              },
+              "inputs": [
+                "default",
+                "^default",
+                "{workspaceRoot}/eslint.config.mjs",
+                "{workspaceRoot}/tools/eslint-rules/**/*",
+                {
+                  "externalDependencies": [
+                    "eslint"
+                  ]
+                }
+              ],
+              "outputs": [
+                "{options.outputFile}"
+              ],
+              "metadata": {
+                "technologies": [
+                  "eslint"
+                ],
+                "description": "Runs ESLint on project",
+                "help": {
+                  "command": "bun eslint --help",
+                  "example": {
+                    "options": {
+                      "max-warnings": 0
+                    }
+                  }
+                }
+              },
+              "executor": "nx:run-commands",
+              "configurations": {},
+              "parallelism": true
+            },
+            "docker:build": {
+              "dependsOn": [
+                "build",
+                "^build"
+              ],
+              "options": {
+                "cwd": "mcp",
+                "args": [
+                  "--tag mcp"
+                ],
+                "command": "docker build ."
+              },
+              "inputs": [
+                "default",
+                "^default"
+              ],
+              "metadata": {
+                "technologies": [
+                  "docker"
+                ],
+                "description": "Run Docker build",
+                "help": {
+                  "command": "docker build --help",
+                  "example": {
+                    "options": {
+                      "cache-from": "type=s3,region=eu-west-1,bucket=mybucket .",
+                      "cache-to": "type=s3,region=eu-west-1,bucket=mybucket ."
+                    }
+                  }
+                }
+              },
+              "executor": "nx:run-commands",
+              "configurations": {},
+              "parallelism": true
+            },
+            "docker:run": {
+              "dependsOn": [
+                "docker:build"
+              ],
+              "options": {
+                "cwd": "mcp",
+                "command": "docker run {args} mcp"
+              },
+              "inputs": [
+                "default",
+                "^default"
+              ],
+              "metadata": {
+                "technologies": [
+                  "docker"
+                ],
+                "description": "Run Docker run",
+                "help": {
+                  "command": "docker run --help",
+                  "example": {
+                    "options": {
+                      "args": [
+                        "-p",
+                        "3000:3000"
+                      ]
+                    }
+                  }
+                }
+              },
+              "executor": "nx:run-commands",
+              "configurations": {},
+              "parallelism": true
+            },
+            "nx-release-publish": {
+              "executor": "@nx/js:release-publish",
+              "dependsOn": [
+                "^nx-release-publish"
+              ],
+              "options": {},
+              "configurations": {},
+              "parallelism": true
+            },
+            "initialize": {
+              "executor": "nx:run-commands",
+              "cache": true,
+              "outputs": [],
+              "options": {
+                "command": "bun install mastra --global",
+                "cwd": "mcp"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "serve": {
+              "executor": "nx:run-commands",
+              "options": {
+                "command": "./.scripts/run-with-env.sh mcp/op.env mastra dev --dir mcp/mastra --root .",
+                "cwd": "."
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "serve:mcp": {
+              "executor": "nx:run-commands",
+              "options": {
+                "command": "./.scripts/run-with-env.sh mcp/op.env bunx tsx mcp/mastra/mcp-server.ts",
+                "cwd": "."
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "build": {
+              "executor": "nx:run-commands",
+              "dependsOn": [
+                "initialize"
+              ],
+              "options": {
+                "command": "./mcp/.scripts/build.sh",
+                "cwd": "."
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "deploy": {
+              "executor": "nx:run-commands",
+              "dependsOn": [
+                "build"
+              ],
+              "options": {
+                "command": "./mcp/.scripts/deploy.sh",
+                "cwd": "."
+              },
+              "configurations": {},
+              "parallelism": true
+            }
+          },
+          "metadata": {
+            "targetGroups": {
+              "Docker": [
+                "docker:build",
+                "docker:run",
+                "nx-release-publish"
+              ]
+            },
+            "js": {
+              "packageName": "mcp",
+              "packageVersion": "0.1.1",
+              "isInPackageManagerWorkspaces": false
+            }
+          },
+          "name": "mcp",
+          "tags": [
+            "npm:public"
+          ],
+          "$schema": "../node_modules/nx/schemas/project-schema.json",
+          "sourceRoot": "mcp/src",
+          "projectType": "application",
+          "implicitDependencies": []
+        }
+      }
+    },
+    "dependencies": {
+      "home-assistant-voice-firmware": [],
+      "home-assistant-addon": [],
+      "elevenlabs": [
+        {
+          "source": "elevenlabs",
+          "target": "mcp",
+          "type": "static"
+        }
+      ],
+      "mcp": []
+    }
+  }
+}
