@@ -20,6 +20,7 @@ Hey Jarvis is an NX monorepo containing a digital assistant system with three ma
 3. **Lint**: Run `npx nx lint [project-name]` to verify code quality
 4. **Manual Testing**: For user-facing changes, manually test the functionality
 5. **Check Build Output**: Verify build artifacts are correct (e.g., no test files in production builds)
+6. **NX Target Testing**: Test through NX targets, not just scripts directly - this verifies target dependencies work correctly
 
 **When to Verify**:
 - ✅ After fixing bugs or errors
@@ -27,6 +28,7 @@ Hey Jarvis is an NX monorepo containing a digital assistant system with three ma
 - ✅ After refactoring code
 - ✅ Before pushing commits
 - ✅ After addressing code review feedback
+- ✅ After modifying NX target configurations
 
 **Example Verification Workflow**:
 ```bash
@@ -38,6 +40,10 @@ npx nx lint elevenlabs
 # Verify no test files in build output
 find dist/elevenlabs -name "*.spec.js" -o -name "*.test.js"
 # Should return nothing
+
+# After modifying build targets or dependencies
+npx nx build [project-name] --skip-nx-cache
+# Verify target dependencies (e.g., initialize) run correctly
 ```
 
 ### Build System - NX Workspace Commands

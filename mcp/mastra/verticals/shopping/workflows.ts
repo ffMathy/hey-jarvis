@@ -1,4 +1,3 @@
-import { RuntimeContext } from '@mastra/core/runtime-context';
 import { z } from 'zod';
 import { createAgentStep, createStep, createWorkflow } from '../../utils/workflow-factory.js';
 import { getCurrentCartContents } from './tools.js';
@@ -18,15 +17,18 @@ const extractedProductSchema = z.object({
     })).describe('List of extracted products from the request'),
 });
 
-// Schema for cart snapshot - simplified to match tool output
+// Schema for cart snapshot - must match getCurrentCartContents output exactly
 const cartSnapshotSchema = z.array(z.object({
     objectID: z.string(),
     name: z.string(),
-    quantity: z.number(),
     price: z.number(),
     brand: z.string(),
+    units: z.number(),
+    unitsOfMeasure: z.string(),
+    quantity: z.number(),
     totalPrice: z.number(),
     attributes: z.array(z.string()),
+    type: z.string(),
 }));
 
 // Schema for shopping list operation result
@@ -49,12 +51,15 @@ const getInitialCartContents = createStep({
         // Use the getCurrentCartContents tool directly 
         const cartContents = await getCurrentCartContents.execute({
             context: {},
-            runtimeContext: new RuntimeContext()
         });
+
+        // Type assertion: In normal operation, the tool returns the expected array type
+        // ValidationError would only occur if there's a schema mismatch
+        const cart = cartContents as z.infer<typeof cartSnapshotSchema>;
 
         return {
             prompt: context.prompt,
-            cartBefore: cartContents,
+            cartBefore: cart,
         };
     },
 });
@@ -144,13 +149,16 @@ const getUpdatedCartContents = createStep({
         // Use the getCurrentCartContents tool directly
         const cartContents = await getCurrentCartContents.execute({
             context: {},
-            runtimeContext: new RuntimeContext()
         });
+
+        // Type assertion: In normal operation, the tool returns the expected array type
+        // ValidationError would only occur if there's a schema mismatch
+        const cart = cartContents as z.infer<typeof cartSnapshotSchema>;
 
         return {
             prompt: context.prompt,
             cartBefore: context.cartBefore,
-            cartAfter: cartContents,
+            cartAfter: cart,
             extractedProducts: context.extractedProducts,
             mutationResults: context.mutationResults,
         };

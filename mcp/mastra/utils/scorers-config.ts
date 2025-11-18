@@ -1,10 +1,10 @@
-import { createCompletenessScorer } from '@mastra/evals/scorers/code';
 import {
     createAnswerRelevancyScorer,
     createBiasScorer,
+    createCompletenessScorer,
     createHallucinationScorer,
     createPromptAlignmentScorerLLM
-} from '@mastra/evals/scorers/llm';
+} from '@mastra/evals/scorers/prebuilt';
 import { google } from './google-provider.js';
 
 /**

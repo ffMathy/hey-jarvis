@@ -6,6 +6,8 @@
   "targets": {
     "initialize": {
       "executor": "nx:run-commands",
+      "cache": true,
+      "outputs": [],
       "options": {
         "command": "bun install mastra --global",
         "cwd": "mcp"
@@ -27,6 +29,7 @@
     },
     "build": {
       "executor": "nx:run-commands",
+      "dependsOn": ["initialize"],
       "options": {
         "command": "./mcp/.scripts/build.sh",
         "cwd": "."

@@ -6,6 +6,8 @@
   "targets": {
     "initialize": {
       "executor": "nx:run-commands",
+      "cache": true,
+      "outputs": [],
       "options": {
         "command": "python3 -m pip install --upgrade --no-cache-dir --timeout=900 esphome",
         "cwd": "home-assistant-voice-firmware"
@@ -13,6 +15,7 @@
     },
     "build": {
       "executor": "nx:run-commands",
+      "dependsOn": ["initialize"],
       "options": {
         "command": "bash ./.scripts/build.sh",
         "cwd": "home-assistant-voice-firmware"
