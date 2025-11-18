@@ -35,10 +35,10 @@ Designed to be compatible with:
 ## Usage
 ```bash
 # Build the firmware
-npx nx build home-assistant-voice-firmware
+bunx nx build home-assistant-voice-firmware
 
 # Run the firmware
-npx nx serve home-assistant-voice-firmware
+bunx nx serve home-assistant-voice-firmware
 ```
 
 ## GitHub Integration

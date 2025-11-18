@@ -35,21 +35,21 @@
       "executor": "nx:run-commands",
       "dependsOn": ["build"],
       "options": {
-        "command": "npx playwright test --config=home-assistant-addon/playwright.config.ts",
+        "command": "bunx playwright test --config=home-assistant-addon/playwright.config.ts",
         "cwd": "."
       }
     },
     "test:ui": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "npx playwright test --config=home-assistant-addon/playwright.config.ts --ui",
+        "command": "bunx playwright test --config=home-assistant-addon/playwright.config.ts --ui",
         "cwd": "."
       }
     },
     "test:debug": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "npx playwright test --config=home-assistant-addon/playwright.config.ts --debug",
+        "command": "bunx playwright test --config=home-assistant-addon/playwright.config.ts --debug",
         "cwd": "."
       }
     }

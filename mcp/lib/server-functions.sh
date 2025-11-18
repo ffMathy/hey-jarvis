@@ -15,7 +15,7 @@ start_mcp_servers() {
     
     echo "Current directory: $(pwd)" >&2
     echo "Starting Mastra dev server..." >&2
-    PORT=4111 mastra dev --dir mcp/mastra --root . 2>&1 &
+    PORT=4111 bunx mastra dev --dir mcp/mastra --root . 2>&1 &
     MASTRA_PID=$!
     
     echo "Starting MCP server..." >&2

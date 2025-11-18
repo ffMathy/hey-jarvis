@@ -307,10 +307,10 @@ bun install mastra --global
 ### Running the Project
 ```bash
 # Start development server with playground
-npx nx serve mcp
+bunx nx serve mcp
 
 # Build for production
-npx nx build mcp
+bunx nx build mcp
 ```
 
 ### Development Playground
@@ -837,8 +837,8 @@ This project follows a strict "lean documentation" approach because:
 After modifying NX target configurations (project.json), always test through NX:
 ```bash
 # Test with cache disabled to verify dependencies work
-npx nx build mcp --skip-nx-cache
-npx nx build home-assistant-voice-firmware --skip-nx-cache
+bunx nx build mcp --skip-nx-cache
+bunx nx build home-assistant-voice-firmware --skip-nx-cache
 
 # Verify that dependent targets (e.g., initialize) run automatically
 # Check output for "Running target [target] for project [name] and X tasks it depends on"
