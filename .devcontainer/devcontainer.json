@@ -55,7 +55,7 @@
   ],
   "containerUser": "root",
   "remoteUser": "root",
-  "postCreateCommand": "./.devcontainer/.scripts/devcontainer-init.sh",
+  "postCreateCommand": "chmod +x ./.devcontainer/.scripts/devcontainer-init.sh && ./.devcontainer/.scripts/devcontainer-init.sh",
   "forwardPorts": [],
   "portsAttributes": {
   }
