@@ -1,8 +1,12 @@
 {
   "folders": [
     {
-      "name": "🏠 Root",
-      "path": "."
+      "name": "⚙️ GitHub Workflows",
+      "path": "./.github"
+    },
+    {
+      "name": "🐳 DevContainer",
+      "path": "./.devcontainer"
     },
     {
       "name": "🗣️ ElevenLabs Integration",
