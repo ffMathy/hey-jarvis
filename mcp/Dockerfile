@@ -31,7 +31,7 @@ COPY mcp/package.json ./mcp/
 
 # Install only production dependencies and global tools
 RUN bun install --frozen-lockfile --production && \
-    bun add -g tsx@4.20.6 mastra@0.18.0
+    bun add -g tsx@4.20.6 mastra@1.0.0-beta.1
 
 # Copy source code from builder
 COPY --from=builder /workspace/tsconfig.base.json ./

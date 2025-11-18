@@ -47,12 +47,22 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
             const agentPrompt = await this.readAgentPrompt();
             const agents = await getPublicAgents();
             
+            // Extract tools from all agents
+            const tools: Record<string, any> = {};
+            for (const [agentName, agent] of Object.entries(agents)) {
+                const agentTools = await agent.listTools();
+                if (agentTools) {
+                    // Merge tools from each agent into the tools object
+                    Object.assign(tools, agentTools);
+                }
+            }
+            
             this.agent = new Agent({
                 name: 'J.A.R.V.I.S.',
                 instructions: agentPrompt,
                 model: googleProvider(agentConfig.conversationConfig.agent.prompt.llm),
                 agents,
-                tools: {},
+                tools,
                 workflows: {},
                 inputProcessors: [],
                 outputProcessors: [],
@@ -93,13 +103,13 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
      * Send a message to the agent and store both the message and response
      */
     private async sendToAgent(agent: Agent, content: string, role: 'user' | 'tool' | 'assistant', id: string): Promise<string> {
-        const result = await agent.generate(({
+        const result = await agent.generate({
             createdAt: new Date(),
-            type: 'text',
             id,
             content,
             role,
-        }) as any, {
+            type: role === 'tool' ? 'tool-result' : 'text',
+        }, {
             modelSettings: { temperature: 0 }
         });
 
@@ -169,17 +179,18 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
                 );
                 
                 // Step 2: Emit the actual tool result
+                const toolResultText = toolCall.payload.result['text'] || JSON.stringify(toolCall.payload.result);
                 const toolMessage = this.createToolCallMessage(
                     toolCall.payload.toolName,
                     toolCall.runId,
-                    toolCall.payload.result['text']
+                    toolResultText
                 );
                 this.messages.push(toolMessage);
                 
                 // Send actual result to agent and store response
                 await this.sendToAgent(
                     agent,
-                    toolCall.payload.result['text'],
+                    toolResultText,
                     'tool',
                     "tool-result-" + toolCall.runId
                 );
