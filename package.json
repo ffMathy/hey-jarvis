@@ -55,7 +55,7 @@
     "tslib": "^2.3.0",
     "tsx": "^4.20.6",
     "typescript": "~5.9.3",
-    "typescript-eslint": "^8.46.1",
+    "typescript-eslint": "^8.47.0",
     "wait-port": "^1.1.0",
     "ws": "^8.18.3"
   },
