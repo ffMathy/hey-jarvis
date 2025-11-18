@@ -54,20 +54,8 @@
   ],
   "containerUser": "root",
   "remoteUser": "root",
-  "postCreateCommand": "./.scripts/devcontainer-init.sh",
-  "forwardPorts": [3000, 4200, 8080],
+  "postCreateCommand": "./.devcontainer/.scripts/devcontainer-init.sh",
+  "forwardPorts": [],
   "portsAttributes": {
-    "3000": {
-      "label": "E2E Application",
-      "onAutoForward": "notify"
-    },
-    "4200": {
-      "label": "Jarvis MCP Server",
-      "onAutoForward": "notify"
-    },
-    "8080": {
-      "label": "Voice Firmware Interface",
-      "onAutoForward": "notify"
-    }
   }
 }
