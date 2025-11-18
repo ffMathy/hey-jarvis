@@ -23,7 +23,7 @@
     "serve:mcp": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "./.scripts/run-with-env.sh mcp/op.env npx tsx mcp/mastra/mcp-server.ts",
+        "command": "./.scripts/run-with-env.sh mcp/op.env bunx tsx mcp/mastra/mcp-server.ts",
         "cwd": "."
       }
     },

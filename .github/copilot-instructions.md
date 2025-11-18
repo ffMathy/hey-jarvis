@@ -49,9 +49,9 @@ See `.husky/README.md` for more details on git hooks configuration.
 **ALWAYS verify your changes work before committing**:
 
 ✅ **REQUIRED VERIFICATION STEPS**:
-1. **Build**: Run `npx nx build [project-name] --configuration=production` to verify production builds succeed
-2. **Test**: Run `npx nx test [project-name]` to verify tests pass
-3. **Lint**: Run `npx nx lint [project-name]` to verify code quality
+1. **Build**: Run `bunx nx build [project-name] --configuration=production` to verify production builds succeed
+2. **Test**: Run `bunx nx test [project-name]` to verify tests pass
+3. **Lint**: Run `bunx nx lint [project-name]` to verify code quality
 4. **Manual Testing**: For user-facing changes, manually test the functionality
 5. **Check Build Output**: Verify build artifacts are correct (e.g., no test files in production builds)
 6. **NX Target Testing**: Test through NX targets, not just scripts directly - this verifies target dependencies work correctly
@@ -67,34 +67,35 @@ See `.husky/README.md` for more details on git hooks configuration.
 **Example Verification Workflow**:
 ```bash
 # After making changes to elevenlabs project
-npx nx build elevenlabs --configuration=production
-npx nx test elevenlabs
-npx nx lint elevenlabs
+bunx nx build elevenlabs --configuration=production
+bunx nx test elevenlabs
+bunx nx lint elevenlabs
 
 # Verify no test files in build output
 find dist/elevenlabs -name "*.spec.js" -o -name "*.test.js"
 # Should return nothing
 
 # After modifying build targets or dependencies
-npx nx build [project-name] --skip-nx-cache
+bunx nx build [project-name] --skip-nx-cache
 # Verify target dependencies (e.g., initialize) run correctly
 ```
 
 ### Build System - NX Workspace Commands
 
-**CRITICAL: ALWAYS use NX commands** for this monorepo:
+**CRITICAL: ALWAYS use NX commands with bunx** for this monorepo:
 
 ✅ **CORRECT**:
-- `npx nx build [project-name]`
-- `npx nx serve [project-name]` 
-- `npx nx test [project-name]`
-- `npx nx lint [project-name]`
-- `npx nx run-many --target=build --all`
+- `bunx nx build [project-name]`
+- `bunx nx serve [project-name]` 
+- `bunx nx test [project-name]`
+- `bunx nx lint [project-name]`
+- `bunx nx run-many --target=build --all`
 
 ❌ **NEVER use**:
 - Running commands directly in subdirectories (always use NX)
 - Individual package.json scripts bypassing NX
 - npm commands (this is a Bun-powered monorepo)
+- npx (use bunx instead for consistency with Bun)
 
 ### Project-Specific Guidelines
 
@@ -359,10 +360,10 @@ bun install mastra --global
 #### Running the Project
 ```bash
 # Start development server with playground
-npx nx serve mcp
+bunx nx serve mcp
 
 # Build for production
-npx nx build mcp
+bunx nx build mcp
 ```
 
 #### Development Playground
@@ -598,10 +599,10 @@ Designed to be compatible with:
 ### Usage
 ```bash
 # Build the firmware
-npx nx build home-assistant-voice-firmware
+bunx nx build home-assistant-voice-firmware
 
 # Run the firmware
-npx nx serve home-assistant-voice-firmware
+bunx nx serve home-assistant-voice-firmware
 ```
 
 ### Development Commands
@@ -867,7 +868,7 @@ bun install  # Install dependencies (may take several minutes)
 ```
 
 **Development Workflow**:
-1. Use NX commands exclusively (`./nx` or `npx nx`)
+1. Use NX commands exclusively with bunx (`bunx nx`)
 2. Follow factory patterns for mcp components
 3. Respect file creation policies (especially mcp restrictions)
 4. Test changes with appropriate NX targets
@@ -876,16 +877,16 @@ bun install  # Install dependencies (may take several minutes)
 **Common Commands**:
 ```bash
 # Show all projects and their dependencies
-npx nx graph
+bunx nx graph
 
 # Build all projects
-npx nx run-many --target=build --all
+bunx nx run-many --target=build --all
 
 # Build specific project
-npx nx build [project-name]
+bunx nx build [project-name]
 
 # Serve/run specific project
-npx nx serve [project-name]
+bunx nx serve [project-name]
 ```
 
 ### Commit Message Standards
