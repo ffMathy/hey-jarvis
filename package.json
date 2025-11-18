@@ -57,6 +57,7 @@
   },
   "dependencies": {
     "@ai-sdk/google": "^2.0.29",
+    "@elevenlabs/cli": "^0.2.1",
     "@elevenlabs/elevenlabs-js": "^2.24.0",
     "@hono/node-server": "^1.19.6",
     "@mastra/core": "1.0.0-beta.2",

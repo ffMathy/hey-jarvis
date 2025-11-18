@@ -10,6 +10,18 @@ A simple command-line tool for deploying and managing a single ElevenLabs conver
 - **TypeScript**: Full type safety and modern development experience
 - **1Password Integration**: Secure credential management
 - **Security Filtering**: Sensitive data automatically filtered from persisted configs
+- **SDK-Based**: Uses `@elevenlabs/elevenlabs-js` SDK directly for reliable programmatic access
+
+## ElevenLabs CLI vs SDK
+
+This project uses the `@elevenlabs/elevenlabs-js` SDK directly rather than the `@elevenlabs/cli` tool for the following reasons:
+
+1. **Programmatic Use**: The `@elevenlabs/cli` is designed for interactive terminal use with React/Ink UI components, which cannot be reliably invoked programmatically from Node.js scripts
+2. **SDK Version**: We use `@elevenlabs/elevenlabs-js` v2.24.0, which is newer than the v2.18.0 bundled in the CLI
+3. **Identical API**: The CLI internally uses the same SDK we use, so there's no feature advantage
+4. **Reliability**: Direct SDK usage avoids shell execution overhead and UI rendering issues
+
+The `@elevenlabs/cli` package is included as a dependency for reference and potential future interactive use, but all automation uses the SDK directly.
 
 ## Quick Start
 
