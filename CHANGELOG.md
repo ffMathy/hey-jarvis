@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.1.3](https://github.com/ffMathy/hey-jarvis/compare/root-v4.1.2...root-v4.1.3) (2025-11-18)
+
+
+### Bug Fixes
+
+* **ci:** configure git safe.directory in devcontainer for NX affected detection ([#194](https://github.com/ffMathy/hey-jarvis/issues/194)) ([30fcec7](https://github.com/ffMathy/hey-jarvis/commit/30fcec72c25199403cce27f40ba19511a49f6c02))
+
 ## [4.1.2](https://github.com/ffMathy/hey-jarvis/compare/root-v4.1.1...root-v4.1.2) (2025-11-14)
 
 
