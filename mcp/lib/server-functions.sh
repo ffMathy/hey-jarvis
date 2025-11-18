@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Shared function to start MCP servers
+# Shared functions to start MCP servers
 # Used by both production (run.sh) and test (run-test.sh) entrypoints
 # ==============================================================================
 
@@ -14,10 +14,6 @@ start_mcp_servers() {
     cd /workspace
     
     echo "Current directory: $(pwd)" >&2
-    echo "Checking for required files..." >&2
-    [ -d "mcp/mastra" ] && echo "✓ mcp/mastra directory exists" >&2 || echo "✗ mcp/mastra directory missing" >&2
-    [ -f "mcp/mastra/mcp-server.ts" ] && echo "✓ mcp/mastra/mcp-server.ts exists" >&2 || echo "✗ mcp/mastra/mcp-server.ts missing" >&2
-    
     echo "Starting Mastra dev server..." >&2
     PORT=4111 mastra dev --dir mcp/mastra --root . 2>&1 &
     MASTRA_PID=$!

@@ -10,7 +10,7 @@ source /usr/lib/bashio/bashio.sh
 
 # Source shared server start functions
 # shellcheck disable=SC1091
-source /workspace/mcp/lib/start-servers.sh
+source /workspace/mcp/lib/server-functions.sh
 
 bashio::log.info "Starting Hey Jarvis MCP Server..."
 

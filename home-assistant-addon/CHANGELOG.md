@@ -1,7 +1,5 @@
 # Changelog
 
-## [4.0.2](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v4.0.1...home-assistant-addon-v4.0.2) (2025-11-14)
-
 
 ### Bug Fixes
 

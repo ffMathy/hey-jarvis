@@ -12,7 +12,7 @@ echo "==========================="
 
 # Source shared server start functions
 # shellcheck disable=SC1091
-source /workspace/mcp/lib/start-servers.sh
+source /workspace/mcp/lib/server-functions.sh
 
 echo "Starting E2E test environment..."
 
