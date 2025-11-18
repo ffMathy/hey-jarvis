@@ -5,8 +5,7 @@
       "package-name": "hey-jarvis",
       "changelog-path": "CHANGELOG.md",
       "initial-version": "0.1.0",
-  "component": "root",
-  "bootstrap-sha": "f011e1c114e60382ee1d20b2a5528f6cb3ac5bee"
+      "component": "root"
     },
     "home-assistant-addon": {
       "release-type": "node",
@@ -20,31 +19,27 @@
       ],
       "changelog-path": "CHANGELOG.md",
       "initial-version": "0.1.0",
-  "component": "home-assistant-addon",
-  "bootstrap-sha": "f011e1c114e60382ee1d20b2a5528f6cb3ac5bee"
+      "component": "home-assistant-addon"
     },
     "mcp": {
       "release-type": "node",
       "package-name": "mcp",
       "changelog-path": "CHANGELOG.md",
       "initial-version": "0.1.0",
-  "component": "mcp",
-  "bootstrap-sha": "f011e1c114e60382ee1d20b2a5528f6cb3ac5bee"
+      "component": "mcp"
     },
     "elevenlabs": {
       "release-type": "node",
       "package-name": "elevenlabs",
       "changelog-path": "CHANGELOG.md",
       "initial-version": "0.1.0",
-  "component": "elevenlabs",
-  "bootstrap-sha": "f011e1c114e60382ee1d20b2a5528f6cb3ac5bee"
+      "component": "elevenlabs"
     },
     "home-assistant-voice-firmware": {
       "release-type": "python",
       "changelog-path": "CHANGELOG.md",
       "initial-version": "0.1.0",
-  "component": "home-assistant-voice-firmware",
-  "bootstrap-sha": "9bc4bfd4a9f1cf450c506219ea720c384f00d471"
+      "component": "home-assistant-voice-firmware"
     }
   },
   "pull-request-title-pattern": "chore${scope}: release${component} ${version}",

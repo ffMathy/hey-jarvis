@@ -1,7 +1,5 @@
 # Changelog
 
-## [0.6.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.5.0...elevenlabs-v0.6.0) (2025-11-13)
-
 
 ### Features
 

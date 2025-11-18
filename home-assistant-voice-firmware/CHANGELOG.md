@@ -1,7 +1,5 @@
 # Changelog
 
-## [0.9.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.8.0...home-assistant-voice-firmware-v0.9.0) (2025-11-13)
-
 
 ### Features
 
