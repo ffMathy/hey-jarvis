@@ -56,7 +56,7 @@
     "ws": "^8.18.3"
   },
   "dependencies": {
-    "@ai-sdk/google": "^2.0.29",
+    "@ai-sdk/google": "^2.0.34",
     "@elevenlabs/elevenlabs-js": "^2.24.0",
     "@hono/node-server": "^1.19.6",
     "@mastra/core": "1.0.0-beta.2",
