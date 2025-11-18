@@ -7,7 +7,8 @@
     "build": "nx affected --target=build",
     "serve": "nx affected --target=serve",
     "test": "nx affected --target=test",
-    "deploy": "nx affected --target=deploy"
+    "deploy": "nx affected --target=deploy",
+    "prepare": "husky"
   },
   "repository": {
     "type": "git",
@@ -20,6 +21,8 @@
   },
   "homepage": "https://github.com/ffMathy/hey-jarvis#readme",
   "devDependencies": {
+    "@commitlint/cli": "^20.1.0",
+    "@commitlint/config-conventional": "^20.0.0",
     "@eslint/js": "^9.37.0",
     "@nx/docker": "21.6.5",
     "@nx/esbuild": "^21.6.5",
@@ -42,6 +45,7 @@
     "eslint": "^9.37.0",
     "eslint-config-prettier": "^10.0.0",
     "execa": "^9.6.0",
+    "husky": "^9.1.7",
     "jest": "^30.2.0",
     "mastra": "1.0.0-beta.1",
     "nx": "^21.5.3",

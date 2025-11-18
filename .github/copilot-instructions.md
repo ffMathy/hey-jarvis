@@ -10,6 +10,40 @@ Hey Jarvis is an NX monorepo containing a digital assistant system with three ma
 
 ## Development Guidelines
 
+### Commit Message Standards - CRITICAL
+
+**ALL commits and PR titles MUST follow Conventional Commits format**:
+
+```
+<type>(<scope>): <subject>
+```
+
+**Valid types**: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `chore`, `build`, `ci`
+
+**Examples**:
+- ✅ `feat(mcp): add calendar agent for scheduling`
+- ✅ `fix(elevenlabs): correct voice synthesis issue`
+- ✅ `chore: update dependencies`
+- ❌ `Migrate to Mastra V1 beta` (missing type)
+- ❌ `Update files` (missing type)
+
+**Why this matters**:
+- Release Please uses commit messages to determine version bumps and generate changelogs
+- Non-conventional commits cause parsing errors and break automated releases
+- PR titles become merge commit messages, so they must follow this format
+
+**Enforcement**:
+- **Local**: Husky + commitlint validates commit messages before they're created
+- **CI**: GitHub Actions validates PR titles automatically
+- **Result**: Invalid commits are prevented, and PRs with non-conventional titles fail checks
+
+**How it works**:
+1. When you commit: Husky runs commitlint to validate the message
+2. Invalid messages are rejected immediately with helpful error messages
+3. Valid messages are accepted and the commit proceeds
+
+See `.husky/README.md` for more details on git hooks configuration.
+
 ### Verification Policy - CRITICAL
 
 **ALWAYS verify your changes work before committing**:
