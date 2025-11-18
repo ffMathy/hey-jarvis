@@ -1,6 +1,6 @@
 {
   "name": "hey-jarvis",
-  "version": "4.1.3",
+  "version": "5.0.0",
   "description": "My digital assistant that runs the house",
   "main": "index.js",
   "scripts": {
