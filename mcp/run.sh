@@ -65,7 +65,10 @@ LOG_LEVEL=$(bashio::config 'log_level')
 bashio::log.info "Log level set to: ${LOG_LEVEL}"
 
 # Start both servers in parallel using shared function
-PIDS=$(start_mcp_servers)
+PIDS=$(start_mcp_servers) || {
+    bashio::log.error "Failed to start MCP servers"
+    exit 1
+}
 read -r MASTRA_PID MCP_PID <<< "$PIDS"
 
 # Wait for either process to exit and handle status
