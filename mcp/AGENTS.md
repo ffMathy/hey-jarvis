@@ -333,7 +333,7 @@ All environment variables use the `HEY_JARVIS_` prefix for easy management and D
 - **ElevenLabs**: `HEY_JARVIS_ELEVENLABS_API_KEY`, `HEY_JARVIS_ELEVENLABS_AGENT_ID`, `HEY_JARVIS_ELEVENLABS_VOICE_ID` for voice AI
 - **Recipes**: `HEY_JARVIS_VALDEMARSRO_API_KEY` for Danish recipe data
 - **WiFi**: `HEY_JARVIS_WIFI_SSID`, `HEY_JARVIS_WIFI_PASSWORD` for Home Assistant Voice Firmware
-- **MCP Authentication**: `HEY_JARVIS_MCP_JWT_SECRET` for JWT-based API authentication
+- **Authentication**: `HEY_JARVIS_MCP_JWT_SECRET` for JWT-based HTTP authentication (protects both Mastra UI and MCP server)
 
 #### Development Setup
 1. **Install 1Password CLI**: Follow [1Password CLI installation guide](https://developer.1password.com/docs/cli/get-started/)
@@ -355,21 +355,29 @@ If you encounter 1Password CLI authentication issues:
 
 ## MCP Server Authentication
 
-The MCP server supports JWT (JSON Web Token) authentication for secure API access over HTTP. This ensures that only authorized clients can interact with the MCP endpoints.
+The MCP server and Mastra UI support JWT (JSON Web Token) authentication for secure access over HTTP. Authentication is handled at the Nginx reverse proxy layer in the Home Assistant addon, providing a single authentication layer for both services (Mastra UI on port 4111 and MCP server on port 4112).
 
 ### JWT Authentication Setup
 
 #### 1. Configure JWT Secret
+
+**For Home Assistant Addon:**
+Configure the JWT secret in the addon configuration:
+1. Go to **Supervisor** → **Hey Jarvis MCP Server** → **Configuration**
+2. Add your JWT secret to the `jwt_secret` field
+3. Save and restart the addon
+
+**For Development with 1Password:**
 Store a secure JWT secret in your 1Password vault:
 ```bash
 # The secret should be a strong, randomly generated string
-HEY_JARVIS_MCP_JWT_SECRET="op://Personal/Hey Jarvis MCP/JWT Secret"
+HEY_JARVIS_MCP_JWT_SECRET="op://Personal/Jarvis/JWT secret"
 ```
 
 **Important**: The JWT secret should be:
 - At least 32 characters long
 - Randomly generated (use a password generator)
-- Kept secure in your 1Password vault
+- Kept secure in your 1Password vault or Home Assistant configuration
 - Never committed to version control
 
 #### 2. Generate JWT Tokens
@@ -393,10 +401,14 @@ Or use online tools like [jwt.io](https://jwt.io) with the HS256 algorithm.
 Include the JWT token in the `Authorization` header of HTTP requests:
 
 ```bash
-# Example curl command
+# Example curl command for MCP server
 curl -H "Authorization: Bearer <your-token>" \
      -X POST \
      http://localhost:4112/api/mcp
+
+# Example curl command for Mastra UI
+curl -H "Authorization: Bearer <your-token>" \
+     http://localhost:4111/agents
 ```
 
 #### 4. Token Format
@@ -407,33 +419,36 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 ### Security Features
 
+- **Nginx-Based Authentication**: JWT validation happens at the Nginx layer, protecting both the Mastra UI and MCP server
+- **Unified Protection**: Single authentication configuration protects all services
 - **HTTP-Only Authentication**: JWT authentication applies only to HTTP transport. The stdio transport (used for local development with MCP clients) is unaffected.
-- **Token Validation**: All HTTP requests are validated before reaching the MCP server.
-- **Graceful Degradation**: If `HEY_JARVIS_MCP_JWT_SECRET` is not configured, the server runs without authentication and logs a warning.
-- **401 Unauthorized**: Invalid or missing tokens receive a clear error response.
-- **Standard JWT**: Uses industry-standard JWT format compatible with all JWT libraries.
+- **Token Validation**: All HTTP requests are validated before reaching the backend services.
+- **Graceful Degradation**: If JWT secret is not configured, the services run without authentication (useful for development).
+- **401 Unauthorized**: Invalid or missing tokens receive a clear error response from Nginx.
+- **Standard JWT**: Uses industry-standard JWT format (HS256 algorithm) compatible with all JWT libraries.
 
 ### Authentication Flow
 
 1. Client sends HTTP request with `Authorization: Bearer <token>` header
-2. Server extracts and validates the JWT token using the configured secret
-3. If valid, request proceeds to MCP server
-4. If invalid/missing, server returns 401 Unauthorized response
+2. Nginx extracts and validates the JWT token using the configured secret via nginx-mod-http-auth-jwt
+3. If valid, request is proxied to the appropriate backend service (Mastra UI or MCP server)
+4. If invalid/missing, Nginx returns 401 Unauthorized response
 
 ### Disabling Authentication
 
 To disable authentication (not recommended for production):
-- Simply don't set `HEY_JARVIS_MCP_JWT_SECRET` environment variable
-- The server will start without authentication and log a warning
+- **Home Assistant Addon**: Leave the `jwt_secret` field empty in the addon configuration
+- **Development**: Don't set `HEY_JARVIS_MCP_JWT_SECRET` environment variable
+- The services will start without authentication and log a warning
 
 ### Token Payload
 
 JWT tokens should include standard claims:
 - `sub`: Subject identifier (e.g., "mcp-client")
 - `iat`: Issued at timestamp
-- `exp`: Expiration timestamp
+- `exp`: Expiration timestamp (recommended: 24 hours or less)
 
-Tokens can be created using any JWT library that supports HS256 signing with your `HEY_JARVIS_MCP_JWT_SECRET`.
+Tokens can be created using any JWT library that supports HS256 signing with your JWT secret.
 
 ## Integration Capabilities
 
