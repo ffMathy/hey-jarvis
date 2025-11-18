@@ -166,3 +166,4 @@ home-assistant-voice-firmware/dist/
 # Playwright test artifacts
 playwright-report/
 test-results/
+project-graph.json
