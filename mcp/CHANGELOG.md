@@ -5,6 +5,13 @@
 
 * **mcp:** Synchronize mcp versions
 
+## [0.1.2](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.1.1...mcp-v0.1.2) (2025-11-18)
+
+
+### Bug Fixes
+
+* **mcp:** add error handling for server startup failures in run.sh ([#228](https://github.com/ffMathy/hey-jarvis/issues/228)) ([963f647](https://github.com/ffMathy/hey-jarvis/commit/963f64799d1a6169c9ba325227b8a41933a9a510))
+
 ## [0.1.1](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.1.0...mcp-v0.1.1) (2025-11-18)
 
 
