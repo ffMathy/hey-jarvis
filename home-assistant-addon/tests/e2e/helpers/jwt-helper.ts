@@ -8,7 +8,7 @@ import { sign } from 'hono/jwt';
  */
 export async function generateTestToken(secret: string, expiresIn = 3600): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
-  
+
   const payload = {
     sub: 'test-client',
     iat: now,
@@ -25,7 +25,7 @@ export async function generateTestToken(secret: string, expiresIn = 3600): Promi
  */
 export async function generateExpiredToken(secret: string): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
-  
+
   const payload = {
     sub: 'test-client',
     iat: now - 7200, // 2 hours ago
@@ -42,7 +42,7 @@ export async function generateExpiredToken(secret: string): Promise<string> {
  */
 export async function generateTokenWithoutExpiry(secret: string): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
-  
+
   const payload = {
     sub: 'test-client',
     iat: now,

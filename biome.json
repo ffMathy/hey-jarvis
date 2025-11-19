@@ -9,16 +9,7 @@
   "files": {
     "ignoreUnknown": false,
     "includes": ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx", "**/*.json"],
-    "experimentalScannerIgnores": [
-      "node_modules",
-      "dist",
-      "build",
-      "coverage",
-      ".nx",
-      ".next",
-      ".turbo",
-      "*.log"
-    ]
+    "experimentalScannerIgnores": ["node_modules", "dist", "build", "coverage", ".nx", ".next", ".turbo", "*.log"]
   },
   "formatter": {
     "enabled": true,

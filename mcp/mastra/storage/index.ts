@@ -1,5 +1,5 @@
-import { LibSQLStore, LibSQLVector } from "@mastra/libsql";
-import { mkdir } from "fs/promises";
+import { LibSQLStore, LibSQLVector } from '@mastra/libsql';
+import { mkdir } from 'fs/promises';
 import path from 'path';
 
 const databaseDirectory = path.join(process.cwd(), 'mcp');

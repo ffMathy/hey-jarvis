@@ -1,7 +1,7 @@
-import { Mastra } from "@mastra/core";
-import { PinoLogger } from "@mastra/loggers";
-import { Observability } from "@mastra/observability";
-import { getSqlStorageProvider } from "./storage/index.js";
+import { Mastra } from '@mastra/core';
+import { PinoLogger } from '@mastra/loggers';
+import { Observability } from '@mastra/observability';
+import { getSqlStorageProvider } from './storage/index.js';
 import {
   getCodingAgent,
   getMealPlanEmailFormatterAgent,
@@ -15,8 +15,8 @@ import {
   notificationWorkflow,
   shoppingListWorkflow,
   weatherMonitoringWorkflow,
-  weeklyMealPlanningWorkflow
-} from "./verticals/index.js";
+  weeklyMealPlanningWorkflow,
+} from './verticals/index.js';
 
 async function createMastra() {
   const sqlStorageProvider = await getSqlStorageProvider();
@@ -31,7 +31,7 @@ async function createMastra() {
     shoppingListAgent,
     shoppingListSummaryAgent,
     notificationAgent,
-    codingAgent
+    codingAgent,
   ] = await Promise.all([
     getWeatherAgent(),
     getRecipeSearchAgent(),
@@ -41,14 +41,14 @@ async function createMastra() {
     getShoppingListAgent(),
     getShoppingListSummaryAgent(),
     getNotificationAgent(),
-    getCodingAgent()
+    getCodingAgent(),
   ]);
 
   return new Mastra({
     storage: sqlStorageProvider,
     logger: new PinoLogger({
-      name: "Mastra",
-      level: "info",
+      name: 'Mastra',
+      level: 'info',
     }),
     observability: new Observability({ default: { enabled: true } }),
     workflows: {
@@ -67,7 +67,7 @@ async function createMastra() {
       shoppingListSummary: shoppingListSummaryAgent,
       notification: notificationAgent,
       coding: codingAgent,
-    }
+    },
   });
 }
 

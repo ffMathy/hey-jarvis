@@ -8,13 +8,9 @@ function extractToken(authHeader: string | string[] | undefined): string {
   if (!authHeader) {
     return '';
   }
-  
-  const headerValue = typeof authHeader === 'string' 
-    ? authHeader 
-    : Array.isArray(authHeader) 
-      ? authHeader[0]
-      : '';
-  
+
+  const headerValue = typeof authHeader === 'string' ? authHeader : Array.isArray(authHeader) ? authHeader[0] : '';
+
   return headerValue.replace(/^Bearer\s+/i, '');
 }
 
@@ -24,7 +20,7 @@ function extractToken(authHeader: string | string[] | undefined): string {
  */
 export async function validateJwtToken(req: IncomingMessage): Promise<boolean> {
   const jwtSecret = process.env.HEY_JARVIS_MCP_JWT_SECRET;
-  
+
   // If no JWT secret is configured, skip authentication
   if (!jwtSecret) {
     console.warn('Warning: HEY_JARVIS_MCP_JWT_SECRET not configured. JWT authentication is disabled.');
@@ -54,8 +50,10 @@ export async function validateJwtToken(req: IncomingMessage): Promise<boolean> {
  */
 export function sendUnauthorizedResponse(res: ServerResponse): void {
   res.writeHead(401, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ 
-    error: 'Unauthorized', 
-    message: 'Valid JWT token required in Authorization header' 
-  }));
+  res.end(
+    JSON.stringify({
+      error: 'Unauthorized',
+      message: 'Valid JWT token required in Authorization header',
+    }),
+  );
 }

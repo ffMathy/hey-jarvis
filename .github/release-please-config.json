@@ -54,10 +54,7 @@
     {
       "type": "linked-versions",
       "groupName": "mcp",
-      "components": [
-        "mcp",
-        "home-assistant-addon"
-      ]
+      "components": ["mcp", "home-assistant-addon"]
     }
   ]
 }

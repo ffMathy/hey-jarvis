@@ -1,74 +1,77 @@
 // Authentication and session management
 export interface AuthTokens {
-    sessionInfo: {
-        cookieValue: string;
-        cookieName: string;
-    };
-    jwtToken: string;
+  sessionInfo: {
+    cookieValue: string;
+    cookieName: string;
+  };
+  jwtToken: string;
 }
 
 let cachedTokens: {
-    tokens: AuthTokens | undefined;
-    refreshTime: Date;
+  tokens: AuthTokens | undefined;
+  refreshTime: Date;
 };
 
 /**
  * Authenticates with Bilka's API and returns session tokens
  */
 export async function authenticateWithBilka(): Promise<AuthTokens> {
-    const cacheDurationInMinutes = 5;
-    if (cachedTokens && cachedTokens.refreshTime.getTime() + cacheDurationInMinutes * 60 * 1000 > new Date().getTime()) {
-        if (!cachedTokens.tokens) {
-            throw new Error('Could not sign in.');
-        }
-
-        return cachedTokens.tokens;
+  const cacheDurationInMinutes = 5;
+  if (cachedTokens && cachedTokens.refreshTime.getTime() + cacheDurationInMinutes * 60 * 1000 > new Date().getTime()) {
+    if (!cachedTokens.tokens) {
+      throw new Error('Could not sign in.');
     }
 
-    const newCachedTokens: typeof cachedTokens = {
-        tokens: undefined,
-        refreshTime: new Date(),
-    }
-    cachedTokens = newCachedTokens;
+    return cachedTokens.tokens;
+  }
 
-    // Step 1: Login with credentials to get login token
-    const loginResponse = await fetch('https://accounts.eu1.gigya.com/accounts.login', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-            loginID: process.env.HEY_JARVIS_BILKA_EMAIL!,
-            password: process.env.HEY_JARVIS_BILKA_PASSWORD!,
-            apiKey: process.env.HEY_JARVIS_BILKA_API_KEY!,
-        }),
-    });
+  const newCachedTokens: typeof cachedTokens = {
+    tokens: undefined,
+    refreshTime: new Date(),
+  };
+  cachedTokens = newCachedTokens;
 
-    const loginData = await loginResponse.json();
+  // Step 1: Login with credentials to get login token
+  const loginResponse = await fetch('https://accounts.eu1.gigya.com/accounts.login', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: new URLSearchParams({
+      loginID: process.env.HEY_JARVIS_BILKA_EMAIL!,
+      password: process.env.HEY_JARVIS_BILKA_PASSWORD!,
+      apiKey: process.env.HEY_JARVIS_BILKA_API_KEY!,
+    }),
+  });
 
-    if (!loginData.sessionInfo?.cookieValue) {
-        throw new Error('Failed to get login token');
-    }
+  const loginData = await loginResponse.json();
 
-    const authTokens: AuthTokens = {
-        sessionInfo: loginData.sessionInfo,
-        jwtToken: undefined!,
-    };
+  if (!loginData.sessionInfo?.cookieValue) {
+    throw new Error('Failed to get login token');
+  }
 
-    // Step 2: Exchange login token for JWT token
-    const jwtResponse = await fetch(`https://accounts.eu1.gigya.com/accounts.getJWT?login_token=${authTokens.sessionInfo.cookieValue}&apiKey=${process.env.HEY_JARVIS_BILKA_API_KEY}`, {
-        method: 'POST',
-    });
+  const authTokens: AuthTokens = {
+    sessionInfo: loginData.sessionInfo,
+    jwtToken: undefined!,
+  };
 
-    const jwtData = await jwtResponse.json();
-    if (!jwtData.id_token) {
-        throw new Error('Failed to get JWT token');
-    }
+  // Step 2: Exchange login token for JWT token
+  const jwtResponse = await fetch(
+    `https://accounts.eu1.gigya.com/accounts.getJWT?login_token=${authTokens.sessionInfo.cookieValue}&apiKey=${process.env.HEY_JARVIS_BILKA_API_KEY}`,
+    {
+      method: 'POST',
+    },
+  );
 
-    authTokens.jwtToken = jwtData.id_token;
+  const jwtData = await jwtResponse.json();
+  if (!jwtData.id_token) {
+    throw new Error('Failed to get JWT token');
+  }
 
-    newCachedTokens.tokens = authTokens;
-    newCachedTokens.refreshTime = new Date();
+  authTokens.jwtToken = jwtData.id_token;
 
-    return authTokens;
+  newCachedTokens.tokens = authTokens;
+  newCachedTokens.refreshTime = new Date();
+
+  return authTokens;
 }

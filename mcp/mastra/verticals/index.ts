@@ -4,4 +4,3 @@ export * from './cooking/index.js';
 export * from './notification/index.js';
 export * from './shopping/index.js';
 export * from './weather/index.js';
-

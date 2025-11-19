@@ -3,7 +3,7 @@ import type { Agent } from '@mastra/core/agent';
 import { weatherTools } from './tools.js';
 
 export async function getWeatherAgent(): Promise<Agent> {
-    return createAgent({
+  return createAgent({
     name: 'Weather',
     instructions: `You are a weather agent which can provide weather insights via tools (current weather information and 5-day future prognosises for certain locations).
 
@@ -35,5 +35,5 @@ Provide weather data. Use this tool to **fetch the current conditions** or a **5
 - **Convert units** to match the user's locale or stated preference (°C/°F, mm/in, km/h/mph); note conversions if they differ from the source.  
 - **Highlight significant events** (e.g., "Thunderstorms expected Thursday afternoon") and offer brief guidance if relevant.`,
     tools: weatherTools,
-    });
+  });
 }

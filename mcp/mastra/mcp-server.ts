@@ -9,27 +9,24 @@ import type { Agent } from '@mastra/core/agent';
 
 // Export an async function that returns the public agents
 export async function getPublicAgents(): Promise<Record<string, Agent>> {
-  const [coding, weather, shopping] = await Promise.all([
-    getCodingAgent(),
-    getWeatherAgent(),
-    getShoppingListAgent()
-  ]);
-  
+  const [coding, weather, shopping] = await Promise.all([getCodingAgent(), getWeatherAgent(), getShoppingListAgent()]);
+
   return {
     coding,
     weather,
-    shopping
+    shopping,
   };
 }
 
 export async function startMcpServer() {
   const agents = await getPublicAgents();
   const mcpServer = new MCPServer({
-    name: "J.A.R.V.I.S. Assistant",
-    version: "1.0.0",
-    description: "A comprehensive assistant that provides weather information, shopping list management, and GitHub repository coding assistance via MCP",
+    name: 'J.A.R.V.I.S. Assistant',
+    version: '1.0.0',
+    description:
+      'A comprehensive assistant that provides weather information, shopping list management, and GitHub repository coding assistance via MCP',
     agents,
-    tools: {}
+    tools: {},
   });
 
   console.log('Starting J.A.R.V.I.S. MCP Server...');
