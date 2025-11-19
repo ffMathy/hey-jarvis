@@ -323,7 +323,31 @@ export async function getMyAgent() {
 **Current Usage:**
 - **Notification Agent**: Configured with error reporting for notification failures
 
-For detailed documentation, see `mcp/mastra/processors/README.md`.
+**Testing:**
+```bash
+# Start MCP server
+bunx nx serve mcp
+
+# Access playground at http://localhost:4111/agents
+# Select notification agent
+# Send message containing error keywords: "error", "failed", "exception", "stack trace"
+# Verify agent responds immediately (non-blocking)
+# Check GitHub repository for created issue with sanitized error
+```
+
+**PII Redaction Examples:**
+- Email: `user@example.com` → `[REDACTED_EMAIL]`
+- API Key: `sk_live_abc123` → `[REDACTED_API_KEY]`
+- IP Address: `192.168.1.1` → `[REDACTED_IP]`
+- File Path: `/home/username/project` → `/[REDACTED]/project`
+- Phone: `555-1234` → `[REDACTED_PHONE]`
+
+**Architecture Notes:**
+- **Async execution**: Processor doesn't block agent responses (~2-3s background processing)
+- **Error detection**: Simple keyword matching (very fast)
+- **PII sanitization**: LLM call to Google Gemini (~1-2 seconds)
+- **Issue creation**: GitHub API call (~0.5-1 second)
+- **Failure handling**: Processor errors are logged but don't fail the main agent flow
 
 ## Agent-as-Step and Tool-as-Step Patterns
 
@@ -983,16 +1007,18 @@ const mcpExternalPort = 4112;
 **CRITICAL**: When working on this project:
 
 #### ❌ ABSOLUTELY PROHIBITED FILES:
-- **ANY new .md files** (README, GUIDE, DOCS, SHOPPING_README, etc.)
-- **ANY documentation artifacts** (ANALYSIS.md, COMPARISON.md, ARCHITECTURE.md, etc.)
-- **ANY explanation files** (MIGRATION.md, CONVERSION.md, FEATURES.md, etc.)
-- **ANY example or demo scripts** unless explicitly requested
-- **ANY test files or testing artifacts** outside the standard test directory structure
-- **ANY configuration files** not directly required for functionality
+- **NEVER create ANY .md files** - Not README.md, not GUIDE.md, not TESTING.md, not anything
+- **NO markdown files of any kind** (README, GUIDE, DOCS, SHOPPING_README, TESTING, IMPLEMENTATION_SUMMARY, etc.)
+- **NO documentation artifacts** (ANALYSIS.md, COMPARISON.md, ARCHITECTURE.md, etc.)
+- **NO explanation files** (MIGRATION.md, CONVERSION.md, FEATURES.md, etc.)
+- **NO example or demo scripts** unless explicitly requested
+- **NO test files or testing artifacts** outside the standard test directory structure
+- **NO configuration files** not directly required for functionality
 
 #### ✅ ALLOWED FILE CREATION:
 - **Core functionality files**: agents, tools, workflows in their respective directories
 - **Package configuration**: Only when required for new dependencies
+- **Test scripts**: Only .js/.ts files in appropriate test directories when needed
 
 #### 📝 DOCUMENTATION UPDATES:
 - **UPDATE this AGENTS.md file** instead of creating new documentation
@@ -1003,12 +1029,13 @@ const mcpExternalPort = 4112;
 #### 🎯 REASONING:
 This project follows a strict "lean documentation" approach because:
 - **AGENTS.md is the single source of truth** for all project documentation
+- **NO OTHER .md FILES ARE PERMITTED** - everything goes in AGENTS.md
 - **Scattered documentation** creates maintenance overhead and confusion
 - **The Mastra playground** provides interactive testing without file creation
 - **Inline comments** are more maintainable than separate documentation files
 - **Multiple README files** violate the monorepo structure and NX conventions
 
-**If you feel documentation is needed, ALWAYS update this AGENTS.md file instead of creating new files.**
+**If you feel documentation is needed, ALWAYS update this AGENTS.md file instead of creating new files. DO NOT CREATE ANY .md FILES UNDER ANY CIRCUMSTANCES.**
 
 ### Build and Development Commands
 **CRITICAL: ALWAYS use NX commands** for this monorepo:

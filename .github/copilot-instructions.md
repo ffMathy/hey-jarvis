@@ -169,16 +169,24 @@ bunx nx build [project-name] --skip-nx-cache
 **File Creation Policy - ABSOLUTELY CRITICAL**:
 
 ❌ **PROHIBITED FILES**:
-- **ANY new .md files** (README, GUIDE, DOCS, etc.)
-- **ANY documentation artifacts** (ANALYSIS.md, COMPARISON.md, ARCHITECTURE.md)
-- **ANY explanation files** (MIGRATION.md, CONVERSION.md, FEATURES.md)
-- **ANY example or demo scripts** unless explicitly requested
-- **ANY test files or testing artifacts** outside standard test directory structure
-- **ANY configuration files** not directly required for functionality
+- **NEVER create ANY .md files** - Not README.md, not TESTING.md, not GUIDE.md, not anything with .md extension
+- **NO markdown files of any kind** (README, GUIDE, DOCS, TESTING, IMPLEMENTATION_SUMMARY, ANALYSIS, COMPARISON, etc.)
+- **NO documentation artifacts** of any type
+- **NO explanation files** (MIGRATION.md, CONVERSION.md, FEATURES.md)
+- **NO example or demo scripts** unless explicitly requested
+- **NO test files or testing artifacts** outside standard test directory structure
+- **NO configuration files** not directly required for functionality
 
 ✅ **ALLOWED FILE CREATION**:
 - **Core functionality files**: agents, tools, workflows in respective directories
 - **Package configuration**: Only when required for new dependencies
+- **Test scripts**: Only .js/.ts files in appropriate test directories when needed
+
+📝 **DOCUMENTATION RULE**:
+- **UPDATE existing documentation files** (like AGENTS.md, project README.md) instead of creating new ones
+- **NEVER create new .md files under any circumstances**
+- **Use inline code comments** for complex logic explanations
+- **All documentation goes in existing files only**
 
 **Architecture Patterns**:
 
@@ -516,19 +524,22 @@ This project strictly follows the YAGNI principle - avoid adding functionality o
 #### File Creation Policy
 
 **❌ ABSOLUTELY PROHIBITED FILES:**
-- **ANY new .md files** (README, GUIDE, DOCS, etc.)
-- **ANY documentation artifacts** (ANALYSIS.md, COMPARISON.md, ARCHITECTURE.md)
-- **ANY explanation files** (MIGRATION.md, CONVERSION.md, FEATURES.md)
-- **ANY example or demo scripts** unless explicitly requested
-- **ANY test files or testing artifacts** outside standard test directory structure
-- **ANY configuration files** not directly required for functionality
+- **NEVER create ANY .md files** - Not README.md, not TESTING.md, not GUIDE.md, not anything
+- **NO markdown files of any kind** (README, GUIDE, DOCS, TESTING, IMPLEMENTATION_SUMMARY, etc.)
+- **NO documentation artifacts** of any type
+- **NO explanation files** (MIGRATION.md, CONVERSION.md, FEATURES.md)
+- **NO example or demo scripts** unless explicitly requested
+- **NO test files or testing artifacts** outside standard test directory structure
+- **NO configuration files** not directly required for functionality
 
 **✅ ALLOWED FILE CREATION:**
 - **Core functionality files**: agents, tools, workflows in respective directories
 - **Package configuration**: Only when required for new dependencies
+- **Test scripts**: Only .js/.ts files in appropriate test directories when needed
 
 **📝 DOCUMENTATION UPDATES:**
 - **UPDATE AGENTS.md file** instead of creating new documentation
+- **NEVER create new .md files under any circumstances**
 - **Add inline comments** in code for complex logic explanations
 - **Update existing configuration files** when adding new features
 - **Use the Mastra playground** for testing and examples instead of creating files
@@ -804,9 +815,10 @@ Apply YAGNI principle to addon development:
 **File Creation Policy:**
 
 **❌ ABSOLUTELY PROHIBITED FILES:**
-- **ANY new .md files** (except AGENTS.md)
-- **ANY documentation artifacts**
-- **ANY example or demo scripts** unless explicitly requested
+- **NEVER create ANY .md files** - No README.md, no TESTING.md, nothing
+- **NO markdown files of any kind**
+- **NO documentation artifacts**
+- **NO example or demo scripts** unless explicitly requested
 
 **✅ ALLOWED FILE CREATION:**
 - **Core addon files**: config.json, Dockerfile, scripts
