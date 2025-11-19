@@ -30,9 +30,9 @@ if bashio::config.has_value 'jwt_secret'; then
 # JWT Authentication configuration (auto-generated from Home Assistant config)
 auth_jwt "Hey Jarvis MCP Server";
 auth_jwt_key_file /tmp/jwt_key.json keyval;
-# Only validate signature, allow tokens without expiry
-# By specifying auth_jwt_require without \$exp, we skip exp validation
-auth_jwt_require \$jwt_claim_sub;
+# Allow JWT tokens with any expiry by setting a very high leeway (100 years)
+# This makes exp validation effectively optional while still validating the signature
+auth_jwt_leeway 3153600000;
 EOF
     
     bashio::log.info "JWT key file created at /tmp/jwt_key.json"
