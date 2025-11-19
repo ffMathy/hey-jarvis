@@ -5,11 +5,13 @@
       "quality": "high",
       "provider": "scribe_realtime",
       "userInputAudioFormat": "pcm_16000",
-      "keywords": ["Jarvis"]
+      "keywords": [
+        "Jarvis"
+      ]
     },
     "turn": {
       "turnTimeout": 2,
-      "silenceEndCallTimeout": 10,
+      "silenceEndCallTimeout": 30,
       "softTimeoutConfig": {
         "timeoutSeconds": -1,
         "message": "I'm experiencing higher latency than usual, sir. However, I'll respond to you as quickly as I can."
@@ -20,11 +22,13 @@
     "tts": {
       "modelId": "eleven_flash_v2",
       "supportedVoices": [],
+      "suggested_audio_tags": [],
       "agentOutputAudioFormat": "pcm_16000",
       "optimizeStreamingLatency": 4,
       "stability": 0.4,
       "speed": 1,
       "similarityBoost": 0.75,
+      "text_normalisation_type": "system_prompt",
       "pronunciationDictionaryLocators": []
     },
     "conversation": {
@@ -37,7 +41,9 @@
         "agent_response_correction",
         "audio",
         "agent_tool_response",
-        "vad_score"
+        "vad_score",
+        "agent_tool_request",
+        "agent_chat_response_part"
       ]
     },
     "languagePresets": {},
@@ -58,7 +64,10 @@
         "thinkingBudget": 0,
         "temperature": 0,
         "maxTokens": -1,
-        "toolIds": ["tool_8301k8g1705ee3gsa5asgbz3vd66", "tool_6501k8g1705fffdtb97r4x35nkqc"],
+        "toolIds": [
+          "tool_8301k8g1705ee3gsa5asgbz3vd66",
+          "tool_6501k8g1705fffdtb97r4x35nkqc"
+        ],
         "builtInTools": {
           "endCall": {
             "type": "system",
@@ -108,10 +117,13 @@
             }
           }
         },
-        "mcpServerIds": ["5Pi7GrX809qLoBvACWyF"],
+        "mcpServerIds": [
+          "SdzBBPUpxOBIISlpGGHU",
+          "5Pi7GrX809qLoBvACWyF"
+        ],
         "nativeMcpServerIds": [],
         "knowledgeBase": [],
-        "ignoreDefaultPersonality": false,
+        "ignoreDefaultPersonality": true,
         "rag": {
           "enabled": false,
           "embeddingModel": "e5_mistral_7b_instruct",
@@ -136,13 +148,15 @@
             "dynamicVariables": {
               "dynamicVariablePlaceholders": {}
             },
-            "executionMode": "async",
+            "executionMode": "immediate",
             "apiSchema": {
               "method": "POST",
               "pathParamsSchema": {},
               "requestBodySchema": {
                 "type": "object",
-                "required": ["prompt"],
+                "required": [
+                  "prompt"
+                ],
                 "description": "The request made by the user.",
                 "properties": {
                   "prompt": {
@@ -174,7 +188,7 @@
             "dynamicVariables": {
               "dynamicVariablePlaceholders": {}
             },
-            "executionMode": "async",
+            "executionMode": "immediate",
             "apiSchema": {
               "method": "POST",
               "pathParamsSchema": {},
@@ -253,7 +267,7 @@
   },
   "metadata": {
     "createdAtUnixSecs": 1742778859,
-    "updatedAtUnixSecs": 1763055785
+    "updatedAtUnixSecs": 1763578017
   },
   "platformSettings": {
     "evaluation": {
@@ -331,7 +345,9 @@
     },
     "workspaceOverrides": {
       "webhooks": {
-        "events": ["transcript"],
+        "events": [
+          "transcript"
+        ],
         "sendAudio": false
       }
     },
@@ -428,5 +444,6 @@
       }
     }
   },
-  "tags": []
+  "tags": [],
+  "main_branch_id": null
 }
