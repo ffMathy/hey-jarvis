@@ -8,6 +8,9 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
+# Source centralized port configuration
+source "$(dirname "$(dirname "$SCRIPT_DIR")")/mcp/lib/ports.sh"
+
 echo "🐳 Starting home-assistant-addon addon container..."
 
 # Function to cleanup Docker container
@@ -33,18 +36,28 @@ ADDON_INFO=$(cat "$SCRIPT_DIR/supervisor/addon-info.json")
 CONFIG=$(cat "$SCRIPT_DIR/supervisor/config.json")
 INFO=$(cat "$SCRIPT_DIR/supervisor/info.json")
 
+# Build docker run command with base arguments
+DOCKER_ARGS=(
+    --detach
+    --name home-assistant-addon-test
+    -p "${TEST_INGRESS_PORT}:${TEST_INGRESS_PORT}"
+    -p "${MASTRA_UI_PORT}:${MASTRA_UI_PORT}"
+    -p "${MCP_SERVER_PORT}:${MCP_SERVER_PORT}"
+    -e ADDON_INFO_FALLBACK="$ADDON_INFO"
+    -e CONFIG_FALLBACK="$CONFIG"
+    -e INFO_FALLBACK="$INFO"
+)
+
+# Add any additional environment variables passed from the caller
+# Environment variables starting with JWT_ will be passed through
+if [ -n "$JWT_SECRET" ]; then
+    DOCKER_ARGS+=(-e JWT_SECRET="$JWT_SECRET")
+fi
+
 # Start the container in the background
 # (Test image is pre-built by the build target)
 echo "🚀 Starting Docker container..."
-CONTAINER_ID=$(docker run \
-    --detach \
-    --name home-assistant-addon-test \
-    -p 5000:5000 \
-    -p 5690:5690 \
-    -e ADDON_INFO_FALLBACK="$ADDON_INFO" \
-    -e CONFIG_FALLBACK="$CONFIG" \
-    -e INFO_FALLBACK="$INFO" \
-    home-assistant-addon-test)
+CONTAINER_ID=$(docker run "${DOCKER_ARGS[@]}" home-assistant-addon-test)
 
 echo "📦 Container ID: $CONTAINER_ID"
 

@@ -802,6 +802,64 @@ This project strictly follows the YAGNI principle - avoid adding functionality o
 
 **Example**: Our workflow factory methods (`createAgentStep`, `createToolStep`) only accept essential parameters and use opinionated defaults for scorers, rather than exposing all possible configuration options.
 
+#### 🔁 **DRY (Don't Repeat Yourself)**
+Avoid duplication of configuration and constants:
+
+- **Centralized Configuration**: All ports and URLs are defined in centralized configuration files
+  - Bash scripts: `mcp/lib/ports.sh`
+  - TypeScript tests: `home-assistant-addon/tests/e2e/helpers/ports.ts`
+- **Single Source of Truth**: Never hardcode the same value in multiple files
+- **Helper Functions**: Create reusable helper functions instead of duplicating logic
+- **Configuration Sharing**: Import configurations rather than duplicating them
+
+**Example**: Port configuration is centralized in `ports.sh` and `ports.ts`, then imported by all scripts and tests rather than hardcoded.
+
+#### 💬 **Clean Code Comments - CRITICAL**
+**Comments should ONLY explain *WHY*, never *WHAT* or *HOW*:**
+
+❌ **NEVER write comments like these:**
+```typescript
+// Loop through users
+for (const user of users) { ... }
+
+// Set port to 4111
+const port = 4111;
+
+// Create HTTP server
+const server = createServer();
+
+// Call the API
+const response = await fetch(url);
+```
+
+✅ **ONLY write comments like these:**
+```typescript
+// Using internal port to allow nginx to handle JWT authentication at reverse proxy layer
+const port = 8111;
+
+// Workaround for nginx auth module not supporting dynamic key files - must be created before nginx starts
+createJWTKeyFile();
+
+// Port 4112 exposed externally for MCP clients, while internal service uses 8112 to avoid conflicts
+const mcpExternalPort = 4112;
+```
+
+**When comments ARE allowed:**
+- Explaining non-obvious business logic or architectural decisions
+- Documenting workarounds for bugs in external libraries
+- Clarifying why a hack or unusual pattern exists
+- Noting important security considerations or constraints
+- Explaining why we chose a specific approach over alternatives
+
+**When comments are NOT allowed:**
+- Describing what the code does (the code itself shows this)
+- Explaining how something works (use descriptive names instead)
+- Repeating information already in the code
+- Documenting standard patterns or idioms
+- Stating the obvious
+
+**Golden Rule**: If removing the comment makes the code unclear, improve the code (better names, smaller functions, clearer structure) rather than adding a comment.
+
 ### File Creation Policy
 **CRITICAL**: When working on this project:
 

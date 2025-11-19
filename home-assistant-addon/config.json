@@ -21,7 +21,7 @@
   },
   "webui": "http://[HOST]:[PORT:4111]",
   "ingress": true,
-  "ingress_port": 5690,
+  "ingress_port": 4111,
   "panel_icon": "mdi:robot",
   "panel_title": "Hey Jarvis",
   "panel_admin": false,
@@ -49,7 +49,7 @@
   },
   "schema": {
     "log_level": "list(trace|debug|info|notice|warning|error|fatal)?",
-    "jwt_secret": "password?",
+    "jwt_secret": "password",
     "openweathermap_api_key": "password?",
     "google_api_key": "password",
     "valdemarsro_api_key": "password?",

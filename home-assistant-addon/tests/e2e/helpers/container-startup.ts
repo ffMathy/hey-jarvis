@@ -1,5 +1,6 @@
 import { spawn, ChildProcess } from 'child_process';
 import { promisify } from 'util';
+import { getMastraUIUrl } from './ports';
 
 const sleep = promisify(setTimeout);
 
@@ -12,6 +13,7 @@ export interface ContainerStartupOptions {
   maxWaitTime?: number;
   checkInterval?: number;
   additionalInitTime?: number;
+  environmentVariables?: Record<string, string>;
 }
 
 /**
@@ -25,6 +27,7 @@ export async function startContainer(
     maxWaitTime = 60 * 1000 * 5, // 5 minutes default
     checkInterval = 2000, // 2 seconds default
     additionalInitTime = 5000, // 5 seconds default
+    environmentVariables = {},
   } = options;
 
   const startTime = Date.now();
@@ -33,10 +36,14 @@ export async function startContainer(
   // Track if the startup script exits early (indicates failure)
   let scriptExited = false;
 
+  // Prepare environment variables for the script
+  const env = { ...process.env, ...environmentVariables };
+
   // Start the Docker container using start-addon.sh script
   const dockerProcess = spawn('bash', ['./home-assistant-addon/tests/start-addon.sh'], {
     stdio: 'pipe',
     detached: true,
+    env,
   });
 
   let dockerOutput = '';
@@ -80,7 +87,7 @@ export async function startContainer(
     }
 
     try {
-      const response = await fetch('http://localhost:5690/');
+      const response = await fetch(getMastraUIUrl());
       if (response.status < 500) {
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
         console.log(`Container is ready! (took ${elapsed}s)`);

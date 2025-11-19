@@ -17,7 +17,7 @@ source /workspace/mcp/lib/server-functions.sh
 echo "Starting E2E test environment..."
 
 # Start nginx in the background to simulate Home Assistant ingress
-echo "Starting nginx proxy on port 5000..."
+echo "Starting nginx proxy on port ${TEST_INGRESS_PORT}..."
 nginx -g 'daemon off;' &
 NGINX_PID=$!
 echo "✓ Nginx started (PID: $NGINX_PID)"
@@ -29,7 +29,7 @@ sleep 2
 # In production, these would come from bashio config
 export HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY="test-api-key-for-e2e-tests"
 
-echo "Starting Hey Jarvis servers (Mastra on 4111, MCP on 4112)..."
+echo "Starting Hey Jarvis servers (Mastra on ${MASTRA_UI_PORT}, MCP on ${MCP_SERVER_PORT})..."
 echo "Google Generative AI API key configured (test mode)"
 
 # Start both servers in parallel using shared function
