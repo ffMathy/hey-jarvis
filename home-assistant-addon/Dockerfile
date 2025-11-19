@@ -31,6 +31,10 @@ RUN apk add --no-cache curl jq nginx nginx-mod-http-auth-jwt && \
 RUN mkdir -p /run/nginx
 COPY nginx.conf /etc/nginx/nginx.conf
 
+# Create default JWT auth configuration (disabled by default, overwritten by run.sh if configured)
+RUN echo "# JWT Authentication disabled by default" > /etc/nginx/jwt-auth.conf && \
+    echo "auth_jwt off;" >> /etc/nginx/jwt-auth.conf
+
 
 # we define this stage to simulate how Home Assistant's ingress works locally.
 FROM base AS home-assistant-addon-end-to-end-test
