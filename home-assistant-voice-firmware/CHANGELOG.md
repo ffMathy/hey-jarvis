@@ -5,6 +5,13 @@
 
 * home assistant voice building ([#187](https://github.com/ffMathy/hey-jarvis/issues/187)) ([9f17536](https://github.com/ffMathy/hey-jarvis/commit/9f17536aec616e71fee8a5654f3cf83a5113c7b8))
 
+## [0.1.2](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.1.1...home-assistant-voice-firmware-v0.1.2) (2025-11-19)
+
+
+### Bug Fixes
+
+* **env:** update GitHub API token reference in op.env ([#236](https://github.com/ffMathy/hey-jarvis/issues/236)) ([d841ea7](https://github.com/ffMathy/hey-jarvis/commit/d841ea787ce385c027117c4c6e2b12157ee695ea))
+
 ## [0.1.1](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.1.0...home-assistant-voice-firmware-v0.1.1) (2025-11-18)
 
 

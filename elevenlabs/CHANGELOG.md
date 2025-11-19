@@ -55,6 +55,13 @@
 
 * add parallelism ([3541485](https://github.com/ffMathy/hey-jarvis/commit/3541485c5ed86625dcf8a2c0b56c57de6fa5520b))
 
+## [0.1.1](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.1.0...elevenlabs-v0.1.1) (2025-11-19)
+
+
+### Bug Fixes
+
+* **env:** update GitHub API token reference in op.env ([#236](https://github.com/ffMathy/hey-jarvis/issues/236)) ([d841ea7](https://github.com/ffMathy/hey-jarvis/commit/d841ea787ce385c027117c4c6e2b12157ee695ea))
+
 ## 0.1.0 (2025-11-18)
 
 
