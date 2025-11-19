@@ -1,6 +1,7 @@
 import type { Processor } from '@mastra/core/processors';
 import type { MastraDBMessage } from '@mastra/core/agent';
-import { Mastra } from '@mastra/core';
+import { PIIDetector } from '@mastra/core/processors';
+import { google } from '../utils/google-provider.js';
 
 export interface ErrorReportingProcessorOptions {
     /**
@@ -27,7 +28,7 @@ export interface ErrorReportingProcessorOptions {
  * This processor:
  * - Runs asynchronously after the response is complete (non-blocking)
  * - Detects error conditions in the output
- * - Uses the ErrorFilter agent to sanitize PII from error messages
+ * - Uses Mastra's PIIDetector to sanitize PII from error messages
  * - Creates a GitHub issue with the sanitized error details
  * 
  * Usage:
@@ -55,6 +56,14 @@ export function createErrorReportingProcessor(
         enabled = true,
     } = options;
 
+    // Create PII detector for sanitizing error messages
+    const piiDetector = new PIIDetector({
+        model: google('gemini-flash-latest'),
+        strategy: 'redact',
+        redactionMethod: 'placeholder',
+        threshold: 0.6,
+    });
+
     return {
         id: 'error-reporting-processor',
         name: 'Error Reporting to GitHub',
@@ -72,7 +81,7 @@ export function createErrorReportingProcessor(
                         owner,
                         repo,
                         labels,
-                    });
+                    }, piiDetector);
                 } catch (error) {
                     // Silently log errors in the processor to avoid blocking the main flow
                     console.error('[ErrorReportingProcessor] Failed to process error:', error);
@@ -90,7 +99,8 @@ export function createErrorReportingProcessor(
  */
 async function detectAndReportErrors(
     messages: MastraDBMessage[],
-    options: Required<Pick<ErrorReportingProcessorOptions, 'owner' | 'repo' | 'labels'>>
+    options: Required<Pick<ErrorReportingProcessorOptions, 'owner' | 'repo' | 'labels'>>,
+    piiDetector: PIIDetector
 ): Promise<void> {
     // Check if any message indicates an error
     const errorMessage = findErrorInMessages(messages);
@@ -98,15 +108,11 @@ async function detectAndReportErrors(
         return;
     }
 
-    // Get the Mastra instance to access agents and tools
-    // We need to import it dynamically to avoid circular dependencies
-    const { mastra } = await import('../index.js');
-    
-    // Use the ErrorFilter agent to sanitize the error
-    const sanitizedError = await sanitizeError(mastra, errorMessage);
+    // Use PIIDetector to sanitize the error
+    const sanitizedError = await sanitizeError(errorMessage, piiDetector);
     
     // Create a GitHub issue with the sanitized error
-    await createIssueForError(mastra, sanitizedError, options);
+    await createIssueForError(sanitizedError, options);
 }
 
 /**
@@ -136,29 +142,38 @@ function findErrorInMessages(messages: MastraDBMessage[]): string | null {
 }
 
 /**
- * Uses the ErrorFilter agent to sanitize error messages
+ * Uses Mastra's PIIDetector to sanitize error messages
  */
-async function sanitizeError(mastra: Mastra, errorMessage: string): Promise<string> {
-    const errorFilterAgent = mastra.agents.errorFilter;
-    
-    if (!errorFilterAgent) {
-        // If ErrorFilter agent is not available, return the original error
-        // This shouldn't happen in production, but provides a fallback
-        console.warn('[ErrorReportingProcessor] ErrorFilter agent not found, using original error message');
-        return errorMessage;
-    }
-
+async function sanitizeError(errorMessage: string, piiDetector: PIIDetector): Promise<string> {
     try {
-        const response = await errorFilterAgent.text({
-            messages: [
-                {
-                    role: 'user',
-                    content: `Please sanitize this error message by removing all PII and format it for a GitHub issue:\n\n${errorMessage}`,
-                },
-            ],
+        // Create a message structure for the PII detector
+        const messages: MastraDBMessage[] = [
+            {
+                role: 'user',
+                content: errorMessage,
+            },
+        ];
+
+        // Use PIIDetector to sanitize the error message
+        const sanitizedMessages = await piiDetector.processOutputResult({
+            messages,
+            abort: (reason?: string) => {
+                throw new Error(reason || 'PII detection aborted');
+            },
         });
 
-        return response.text;
+        // Extract the sanitized content
+        const sanitizedContent = sanitizedMessages[0]?.content;
+        if (typeof sanitizedContent === 'string') {
+            return sanitizedContent;
+        } else if (Array.isArray(sanitizedContent)) {
+            return sanitizedContent
+                .filter((c) => c.type === 'text')
+                .map((c) => 'text' in c ? c.text : '')
+                .join(' ');
+        }
+
+        return errorMessage; // Fallback to original if sanitization fails
     } catch (error) {
         console.error('[ErrorReportingProcessor] Failed to sanitize error:', error);
         return `Error sanitization failed. Original error (may contain PII): ${errorMessage}`;
@@ -169,7 +184,6 @@ async function sanitizeError(mastra: Mastra, errorMessage: string): Promise<stri
  * Creates a GitHub issue using the createGitHubIssue tool
  */
 async function createIssueForError(
-    mastra: Mastra,
     sanitizedError: string,
     options: Required<Pick<ErrorReportingProcessorOptions, 'owner' | 'repo' | 'labels'>>
 ): Promise<void> {

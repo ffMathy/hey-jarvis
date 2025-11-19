@@ -3,7 +3,6 @@ import { PinoLogger } from "@mastra/loggers";
 import { getSqlStorageProvider } from "./storage/index.js";
 import {
   getCodingAgent,
-  getErrorFilterAgent,
   getMealPlanEmailFormatterAgent,
   getMealPlanGeneratorAgent,
   getMealPlanSelectorAgent,
@@ -31,8 +30,7 @@ async function createMastra() {
     shoppingListAgent,
     shoppingListSummaryAgent,
     notificationAgent,
-    codingAgent,
-    errorFilterAgent
+    codingAgent
   ] = await Promise.all([
     getWeatherAgent(),
     getRecipeSearchAgent(),
@@ -42,8 +40,7 @@ async function createMastra() {
     getShoppingListAgent(),
     getShoppingListSummaryAgent(),
     getNotificationAgent(),
-    getCodingAgent(),
-    getErrorFilterAgent()
+    getCodingAgent()
   ]);
 
   return new Mastra({
@@ -71,7 +68,6 @@ async function createMastra() {
       shoppingListSummary: shoppingListSummaryAgent,
       notification: notificationAgent,
       coding: codingAgent,
-      errorFilter: errorFilterAgent,
     }
   });
 }

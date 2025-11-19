@@ -57,9 +57,6 @@ mcp/
 │   │   │   ├── agent.ts
 │   │   │   ├── tools.ts
 │   │   │   └── index.ts
-│   │   ├── error-handling/  # Error sanitization
-│   │   │   ├── agent.ts
-│   │   │   └── index.ts
 │   │   └── notification/    # Proactive notifications
 │   │       ├── agent.ts
 │   │       ├── tools.ts
@@ -67,8 +64,7 @@ mcp/
 │   │       └── index.ts
 │   ├── processors/      # Output processors for post-processing
 │   │   ├── error-reporting.ts
-│   │   ├── index.ts
-│   │   └── README.md
+│   │   └── index.ts
 │   ├── memory/          # Shared memory management
 │   ├── storage/         # Shared storage configuration
 │   └── index.ts         # Main Mastra configuration
@@ -184,29 +180,6 @@ Manages GitHub repositories and provides coding task coordination:
 - "Search for repositories about AI agents"
 - "Create an issue for the bug I just reported"
 
-### Error Filter Agent
-Sanitizes error messages by removing personally identifiable information (PII):
-- **No tools**: Uses LLM reasoning for intelligent PII detection and redaction
-- **Google Gemini model**: Uses `gemini-flash-latest` for natural language processing
-- **PII detection**: Identifies emails, API keys, IP addresses, file paths, phone numbers, etc.
-- **Preserves technical info**: Keeps error types, stack traces, function names, and line numbers
-- **Markdown formatting**: Generates GitHub-ready issue descriptions
-
-**Key Capabilities:**
-- Analyze error messages and stack traces
-- Identify and redact multiple types of PII
-- Preserve technical debugging information
-- Format sanitized errors for GitHub issues
-- Suggest potential causes or fixes
-
-**PII Redaction Examples:**
-- Email: `user@example.com` → `[REDACTED_EMAIL]`
-- API Key: `sk_live_abc123` → `[REDACTED_API_KEY]`
-- Path: `/home/username/project` → `/[REDACTED]/project`
-- IP: `192.168.1.1` → `[REDACTED_IP]`
-
-**Used by:** Error Reporting Processor (see Processors section)
-
 *Note: Additional agents will be added as the project evolves.*
 
 ## Available Workflows
@@ -281,26 +254,22 @@ Automatically captures errors from agent responses and creates GitHub issues wit
 **Features:**
 - **Asynchronous execution**: Runs in background without blocking agent responses
 - **Error detection**: Scans agent output for error indicators (keywords: "error", "failed", "exception", "stack trace")
-- **PII sanitization**: Uses ErrorFilter agent to remove sensitive information before creating issues
+- **PII sanitization**: Uses Mastra's built-in PIIDetector to remove sensitive information before creating issues
 - **GitHub integration**: Creates issues using the `createGitHubIssue` tool
+- **Automatic integration**: Added to ALL agents by default via agent factory
 - **Configurable**: Labels, repository, and enable/disable options
 
-**Usage Example:**
-```typescript
-import { createAgent } from '../../utils/agent-factory.js';
-import { createErrorReportingProcessor } from '../../processors/index.js';
+**Automatic Integration:**
+The error reporting processor is automatically added to all agents created with `createAgent()`. No manual configuration needed - every agent gets error reporting by default.
 
+```typescript
+// Error reporting is automatically included
 export async function getMyAgent() {
   return createAgent({
     name: 'MyAgent',
     instructions: '...',
     tools: myTools,
-    outputProcessors: [
-      createErrorReportingProcessor({
-        repo: 'hey-jarvis',
-        labels: ['automated-error', 'my-agent'],
-      }),
-    ],
+    // Error reporting processor is automatically added
   });
 }
 ```
@@ -316,12 +285,9 @@ export async function getMyAgent() {
 
 **How It Works:**
 1. After agent generates response, processor scans messages for error indicators
-2. If error detected, ErrorFilter agent sanitizes the error message (removes PII)
+2. If error detected, Mastra's PIIDetector sanitizes the error message (removes PII)
 3. GitHub issue is created with sanitized error using `createGitHubIssue` tool
 4. All processing happens asynchronously - agent response returns immediately
-
-**Current Usage:**
-- **Notification Agent**: Configured with error reporting for notification failures
 
 **Testing:**
 ```bash
@@ -329,23 +295,24 @@ export async function getMyAgent() {
 bunx nx serve mcp
 
 # Access playground at http://localhost:4111/agents
-# Select notification agent
+# Select any agent (all have error reporting)
 # Send message containing error keywords: "error", "failed", "exception", "stack trace"
 # Verify agent responds immediately (non-blocking)
 # Check GitHub repository for created issue with sanitized error
 ```
 
 **PII Redaction Examples:**
-- Email: `user@example.com` → `[REDACTED_EMAIL]`
-- API Key: `sk_live_abc123` → `[REDACTED_API_KEY]`
-- IP Address: `192.168.1.1` → `[REDACTED_IP]`
-- File Path: `/home/username/project` → `/[REDACTED]/project`
-- Phone: `555-1234` → `[REDACTED_PHONE]`
+Mastra's PIIDetector automatically redacts:
+- Email: `user@example.com` → `[EMAIL]`
+- API Key: `sk_live_abc123` → `[API-KEY]`
+- IP Address: `192.168.1.1` → `[IP-ADDRESS]`
+- Phone: `555-1234` → `[PHONE]`
+- Credit Card: `4111-1111-1111-1111` → `[CREDIT-CARD]`
 
 **Architecture Notes:**
 - **Async execution**: Processor doesn't block agent responses (~2-3s background processing)
 - **Error detection**: Simple keyword matching (very fast)
-- **PII sanitization**: LLM call to Google Gemini (~1-2 seconds)
+- **PII sanitization**: Uses Mastra's PIIDetector with Google Gemini (~1-2 seconds)
 - **Issue creation**: GitHub API call (~0.5-1 second)
 - **Failure handling**: Processor errors are logged but don't fail the main agent flow
 
