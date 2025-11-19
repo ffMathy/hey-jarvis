@@ -208,10 +208,57 @@ export const assignCopilotToIssue = createTool({
     },
 });
 
+/**
+ * Tool to create a new GitHub issue
+ */
+export const createGitHubIssue = createTool({
+    id: 'create-github-issue',
+    description: 'Creates a new GitHub issue with the given title, body, and optional labels. Useful for reporting errors or bugs. Defaults to "ffMathy" owner if not specified.',
+    inputSchema: z.object({
+        owner: z.string().optional().describe('The repository owner (defaults to "ffMathy" if not provided)'),
+        repo: z.string().describe('The repository name (e.g., "hey-jarvis")'),
+        title: z.string().describe('The issue title'),
+        body: z.string().describe('The issue description/body'),
+        labels: z.array(z.string()).optional().describe('Optional labels to add to the issue (e.g., ["bug", "error"])'),
+    }),
+    outputSchema: z.object({
+        success: z.boolean(),
+        issue_number: z.number().optional(),
+        issue_url: z.string().optional(),
+        message: z.string(),
+    }),
+    execute: async ({ context }) => {
+        const owner = context.owner || 'ffMathy';
+        
+        try {
+            const { data: issue } = await octokit.rest.issues.create({
+                owner,
+                repo: context.repo,
+                title: context.title,
+                body: context.body,
+                labels: context.labels || [],
+            });
+            
+            return {
+                success: true,
+                issue_number: issue.number,
+                issue_url: issue.html_url,
+                message: `Successfully created issue #${issue.number}`,
+            };
+        } catch (error) {
+            return {
+                success: false,
+                message: `Failed to create issue: ${error instanceof Error ? error.message : String(error)}`,
+            };
+        }
+    },
+});
+
 // Export all tools together for convenience
 export const codingTools = {
     listUserRepositories,
     listRepositoryIssues,
     searchRepositories,
     assignCopilotToIssue,
+    createGitHubIssue,
 };
