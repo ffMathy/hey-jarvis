@@ -1,9 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { spawn } from 'child_process';
-import { promisify } from 'util';
 import { startContainer, ContainerStartupResult } from './helpers/container-startup';
-
-const sleep = promisify(setTimeout);
 
 test.describe('Server Startup Tests', () => {
   let container: ContainerStartupResult | undefined;
@@ -59,8 +56,8 @@ test.describe('Server Startup Tests', () => {
         mastraAccessible = true;
         console.log(`Mastra server is accessible with status: ${response.status}`);
       }
-    } catch (error: any) {
-      console.log(`Mastra server check error: ${error.message}`);
+    } catch (error) {
+      console.log(`Mastra server check error: ${error instanceof Error ? error.message : String(error)}`);
     }
     
     expect(mastraAccessible, 'Mastra server should be accessible via nginx').toBe(true);

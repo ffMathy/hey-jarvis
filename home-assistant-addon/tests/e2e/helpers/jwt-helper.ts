@@ -6,7 +6,7 @@ import { sign } from 'hono/jwt';
  * @param expiresIn - Expiration time in seconds (default: 1 hour)
  * @returns A signed JWT token
  */
-export async function generateTestToken(secret: string, expiresIn: number = 3600): Promise<string> {
+export async function generateTestToken(secret: string, expiresIn = 3600): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   
   const payload = {
