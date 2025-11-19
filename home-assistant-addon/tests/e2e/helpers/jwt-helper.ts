@@ -34,3 +34,20 @@ export async function generateExpiredToken(secret: string): Promise<string> {
 
   return await sign(payload, secret);
 }
+
+/**
+ * Generate a JWT token without expiry for testing
+ * @param secret - The JWT secret to use for signing
+ * @returns A JWT token without exp claim
+ */
+export async function generateTokenWithoutExpiry(secret: string): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  
+  const payload = {
+    sub: 'test-client',
+    iat: now,
+    // No exp field - token never expires
+  };
+
+  return await sign(payload, secret);
+}
