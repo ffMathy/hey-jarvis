@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/ffMathy/hey-jarvis/compare/root-v0.2.0...root-v0.3.0) (2025-11-19)
+
+
+### Features
+
+* **home-assistant-addon:** allow JWT tokens without expiry claim ([#232](https://github.com/ffMathy/hey-jarvis/issues/232)) ([fea7c94](https://github.com/ffMathy/hey-jarvis/commit/fea7c94e0f0ade3829a1962c9a65f1c9770f6319))
+
 ## [0.2.0](https://github.com/ffMathy/hey-jarvis/compare/root-v0.1.2...root-v0.2.0) (2025-11-19)
 
 

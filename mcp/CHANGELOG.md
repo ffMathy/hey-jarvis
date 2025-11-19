@@ -5,6 +5,13 @@
 
 * **mcp:** Synchronize mcp versions
 
+## [0.3.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.2.0...mcp-v0.3.0) (2025-11-19)
+
+
+### Features
+
+* **home-assistant-addon:** allow JWT tokens without expiry claim ([#232](https://github.com/ffMathy/hey-jarvis/issues/232)) ([fea7c94](https://github.com/ffMathy/hey-jarvis/commit/fea7c94e0f0ade3829a1962c9a65f1c9770f6319))
+
 ## [0.2.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.1.2...mcp-v0.2.0) (2025-11-19)
 
 
