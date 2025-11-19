@@ -8,6 +8,9 @@
     "serve": "nx affected --target=serve",
     "test": "nx affected --target=test",
     "deploy": "nx affected --target=deploy",
+    "lint": "nx run-many --target=lint --all",
+    "format": "bunx biome format --write .",
+    "check": "bunx biome check --write .",
     "prepare": "husky"
   },
   "repository": {
