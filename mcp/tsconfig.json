@@ -4,7 +4,5 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext"
   },
-  "include": [
-    "mastra/**/*"
-  ]
+  "include": ["mastra/**/*"]
 }

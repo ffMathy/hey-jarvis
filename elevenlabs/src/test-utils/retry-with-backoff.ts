@@ -18,16 +18,16 @@ export interface RetryOptions {
 
 /**
  * Execute an async function with exponential backoff retry logic
- * 
+ *
  * NOTE: For Vercel AI SDK calls (generateObject, generateText, etc.), use the built-in
  * `maxRetries` parameter instead of this utility. This utility is for general-purpose
  * retry logic for other async operations.
- * 
+ *
  * @param fn - Async function to execute
  * @param options - Retry configuration options
  * @returns Promise resolving to the function's result
  * @throws Error if all retry attempts are exhausted
- * 
+ *
  * @example
  * ```typescript
  * // For Vercel AI SDK calls, use built-in retry:
@@ -36,7 +36,7 @@ export interface RetryOptions {
  *   maxRetries: 3, // Built-in retry
  *   // ...
  * });
- * 
+ *
  * // For other async operations, use this utility:
  * const result = await retryWithBackoff(
  *   async () => await apiCall(),
@@ -50,10 +50,7 @@ export interface RetryOptions {
  * );
  * ```
  */
-export async function retryWithBackoff<T>(
-  fn: () => Promise<T>,
-  options: RetryOptions = {}
-): Promise<T> {
+export async function retryWithBackoff<T>(fn: () => Promise<T>, options: RetryOptions = {}): Promise<T> {
   const {
     maxRetries = 3,
     initialDelay = 1000,
@@ -94,12 +91,10 @@ export async function retryWithBackoff<T>(
       }
 
       // Wait before retrying
-      await new Promise(resolve => setTimeout(resolve, delayMs));
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
   }
 
   // All retries exhausted
-  throw new Error(
-    `Operation failed after ${maxRetries} attempts: ${lastError?.message || 'Unknown error'}`
-  );
+  throw new Error(`Operation failed after ${maxRetries} attempts: ${lastError?.message || 'Unknown error'}`);
 }

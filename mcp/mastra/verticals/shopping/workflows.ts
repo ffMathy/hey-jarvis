@@ -4,21 +4,31 @@ import { getCurrentCartContents } from './tools.js';
 
 // Schema for shopping list input
 const shoppingListInputSchema = z.object({
-    prompt: z.string().describe('The user request for adding/removing items from the shopping list'),
+  prompt: z.string().describe('The user request for adding/removing items from the shopping list'),
 });
 
 // Schema for extracted product information
 const extractedProductSchema = z.object({
-    products: z.array(z.object({
-        operationType: z.enum(['set', 'remove']).nullable().describe('The operation type. "set" = set the product quantity in the basket to the given amount, "remove" = remove from list, null = product already exists in given quantity in basket, no reason to modify.'),
+  products: z
+    .array(
+      z.object({
+        operationType: z
+          .enum(['set', 'remove'])
+          .nullable()
+          .describe(
+            'The operation type. "set" = set the product quantity in the basket to the given amount, "remove" = remove from list, null = product already exists in given quantity in basket, no reason to modify.',
+          ),
         name: z.string().describe('Product name'),
         quantity: z.number().describe('Product quantity'),
-        unitType: z.string().describe('Unit type (e.g., "stk", "kg", "l")')
-    })).describe('List of extracted products from the request'),
+        unitType: z.string().describe('Unit type (e.g., "stk", "kg", "l")'),
+      }),
+    )
+    .describe('List of extracted products from the request'),
 });
 
 // Schema for cart snapshot - must match getCurrentCartContents output exactly
-const cartSnapshotSchema = z.array(z.object({
+const cartSnapshotSchema = z.array(
+  z.object({
     objectID: z.string(),
     name: z.string(),
     price: z.number(),
@@ -29,56 +39,57 @@ const cartSnapshotSchema = z.array(z.object({
     totalPrice: z.number(),
     attributes: z.array(z.string()),
     type: z.string(),
-}));
+  }),
+);
 
 // Schema for shopping list operation result
 const shoppingListResultSchema = z.object({
-    success: z.boolean(),
-    message: z.string(),
-    itemsProcessed: z.number().optional(),
+  success: z.boolean(),
+  message: z.string(),
+  itemsProcessed: z.number().optional(),
 });
 
 // Step 1: Tool-as-step - Get current cart contents (before snapshot)
 const getInitialCartContents = createStep({
-    id: 'get-initial-cart-contents',
-    description: 'Gets the current cart contents before processing the request',
-    inputSchema: shoppingListInputSchema,
-    outputSchema: z.object({
-        prompt: z.string(),
-        cartBefore: cartSnapshotSchema,
-    }),
-    execute: async ({ context }) => {
-        // Use the getCurrentCartContents tool directly 
-        const cartContents = await getCurrentCartContents.execute({
-            context: {},
-        });
+  id: 'get-initial-cart-contents',
+  description: 'Gets the current cart contents before processing the request',
+  inputSchema: shoppingListInputSchema,
+  outputSchema: z.object({
+    prompt: z.string(),
+    cartBefore: cartSnapshotSchema,
+  }),
+  execute: async ({ context }) => {
+    // Use the getCurrentCartContents tool directly
+    const cartContents = await getCurrentCartContents.execute({
+      context: {},
+    });
 
-        // Type assertion: In normal operation, the tool returns the expected array type
-        // ValidationError would only occur if there's a schema mismatch
-        const cart = cartContents as z.infer<typeof cartSnapshotSchema>;
+    // Type assertion: In normal operation, the tool returns the expected array type
+    // ValidationError would only occur if there's a schema mismatch
+    const cart = cartContents as z.infer<typeof cartSnapshotSchema>;
 
-        return {
-            prompt: context.prompt,
-            cartBefore: cart,
-        };
-    },
+    return {
+      prompt: context.prompt,
+      cartBefore: cart,
+    };
+  },
 });
 
 // Step 2: Agent-as-step - Extract product information using specialized prompt
 const extractProductInformation = createAgentStep({
-    id: 'extract-product-information',
-    description: 'Extracts structured product information from the user request using Information Extractor logic',
-    agentName: 'shoppingList', // We'll use the existing shopping list agent with specific instructions
-    inputSchema: z.object({
-        prompt: z.string(),
-        cartBefore: cartSnapshotSchema,
-    }),
-    outputSchema: z.object({
-        prompt: z.string(),
-        cartBefore: cartSnapshotSchema,
-        extractedProducts: extractedProductSchema,
-    }),
-    prompt: ({ context }) => `Act as an expert extraction algorithm that deals with shopping lists.
+  id: 'extract-product-information',
+  description: 'Extracts structured product information from the user request using Information Extractor logic',
+  agentName: 'shoppingList', // We'll use the existing shopping list agent with specific instructions
+  inputSchema: z.object({
+    prompt: z.string(),
+    cartBefore: cartSnapshotSchema,
+  }),
+  outputSchema: z.object({
+    prompt: z.string(),
+    cartBefore: cartSnapshotSchema,
+    extractedProducts: extractedProductSchema,
+  }),
+  prompt: ({ context }) => `Act as an expert extraction algorithm that deals with shopping lists.
 
 Your job is to convert the user's request into a machine-readable format.
 
@@ -108,21 +119,23 @@ Respond with valid JSON matching this schema:
 
 // Step 4: Agent-as-step - Process extracted products using Shopping List Mutator Agent
 const processExtractedProducts = createAgentStep({
-    id: 'process-extracted-products',
-    description: 'Processes each extracted product using the Shopping List Mutator Agent',
-    agentName: 'shoppingList',
-    inputSchema: z.object({
-        prompt: z.string(),
-        cartBefore: cartSnapshotSchema,
-        extractedProducts: extractedProductSchema,
-    }),
-    outputSchema: z.object({
-        prompt: z.string(),
-        cartBefore: cartSnapshotSchema,
-        extractedProducts: extractedProductSchema,
-        mutationResults: z.array(z.string()),
-    }),
-    prompt: ({ context }) => `Process each of these products that need action (operationType is not null) by adding or removing them from the cart:
+  id: 'process-extracted-products',
+  description: 'Processes each extracted product using the Shopping List Mutator Agent',
+  agentName: 'shoppingList',
+  inputSchema: z.object({
+    prompt: z.string(),
+    cartBefore: cartSnapshotSchema,
+    extractedProducts: extractedProductSchema,
+  }),
+  outputSchema: z.object({
+    prompt: z.string(),
+    cartBefore: cartSnapshotSchema,
+    extractedProducts: extractedProductSchema,
+    mutationResults: z.array(z.string()),
+  }),
+  prompt: ({
+    context,
+  }) => `Process each of these products that need action (operationType is not null) by adding or removing them from the cart:
 
 ${JSON.stringify(context.extractedProducts.products.filter((p: any) => p.operationType !== null))}
 
@@ -135,50 +148,50 @@ Use your tools to search for products and modify the cart. Return a summary of a
 
 // Step 6: Get updated cart contents (after processing)
 const getUpdatedCartContents = createStep({
-    id: 'get-updated-cart-contents',
-    description: 'Gets the updated cart contents after processing all items',
-    inputSchema: processExtractedProducts.outputSchema,
-    outputSchema: z.object({
-        prompt: z.string(),
-        cartBefore: cartSnapshotSchema,
-        cartAfter: cartSnapshotSchema,
-        extractedProducts: extractedProductSchema,
-        mutationResults: z.array(z.string()),
-    }),
-    execute: async ({ context }) => {
-        // Use the getCurrentCartContents tool directly
-        const cartContents = await getCurrentCartContents.execute({
-            context: {},
-        });
+  id: 'get-updated-cart-contents',
+  description: 'Gets the updated cart contents after processing all items',
+  inputSchema: processExtractedProducts.outputSchema,
+  outputSchema: z.object({
+    prompt: z.string(),
+    cartBefore: cartSnapshotSchema,
+    cartAfter: cartSnapshotSchema,
+    extractedProducts: extractedProductSchema,
+    mutationResults: z.array(z.string()),
+  }),
+  execute: async ({ context }) => {
+    // Use the getCurrentCartContents tool directly
+    const cartContents = await getCurrentCartContents.execute({
+      context: {},
+    });
 
-        // Type assertion: In normal operation, the tool returns the expected array type
-        // ValidationError would only occur if there's a schema mismatch
-        const cart = cartContents as z.infer<typeof cartSnapshotSchema>;
+    // Type assertion: In normal operation, the tool returns the expected array type
+    // ValidationError would only occur if there's a schema mismatch
+    const cart = cartContents as z.infer<typeof cartSnapshotSchema>;
 
-        return {
-            prompt: context.prompt,
-            cartBefore: context.cartBefore,
-            cartAfter: cart,
-            extractedProducts: context.extractedProducts,
-            mutationResults: context.mutationResults,
-        };
-    },
+    return {
+      prompt: context.prompt,
+      cartBefore: context.cartBefore,
+      cartAfter: cart,
+      extractedProducts: context.extractedProducts,
+      mutationResults: context.mutationResults,
+    };
+  },
 });
 
 // Step 7: Agent-as-step - Generate summary using Summarization Agent
 const generateSummary = createAgentStep({
-    id: 'generate-summary',
-    description: 'Generates a summary of changes using the Summarization Agent',
-    agentName: 'shoppingListSummary',
-    inputSchema: z.object({
-        prompt: z.string(),
-        cartBefore: cartSnapshotSchema,
-        cartAfter: cartSnapshotSchema,
-        extractedProducts: extractedProductSchema,
-        mutationResults: z.array(z.string()),
-    }),
-    outputSchema: shoppingListResultSchema,
-    prompt: ({ context }) => `Summarize the shopping list changes in Danish:
+  id: 'generate-summary',
+  description: 'Generates a summary of changes using the Summarization Agent',
+  agentName: 'shoppingListSummary',
+  inputSchema: z.object({
+    prompt: z.string(),
+    cartBefore: cartSnapshotSchema,
+    cartAfter: cartSnapshotSchema,
+    extractedProducts: extractedProductSchema,
+    mutationResults: z.array(z.string()),
+  }),
+  outputSchema: shoppingListResultSchema,
+  prompt: ({ context }) => `Summarize the shopping list changes in Danish:
 
 Original request: ${context.prompt}
 
@@ -198,13 +211,13 @@ Provide a summary in Danish of what was changed.`,
 
 // Main shopping list workflow implementing the 3-agent pattern using agent-as-step and tool-as-step
 export const shoppingListWorkflow = createWorkflow({
-    id: 'shopping-list-workflow',
-    inputSchema: shoppingListInputSchema,
-    outputSchema: shoppingListResultSchema,
+  id: 'shopping-list-workflow',
+  inputSchema: shoppingListInputSchema,
+  outputSchema: shoppingListResultSchema,
 })
-    .then(getInitialCartContents)
-    .then(extractProductInformation)
-    .then(processExtractedProducts)
-    .then(getUpdatedCartContents)
-    .then(generateSummary)
-    .commit();
+  .then(getInitialCartContents)
+  .then(extractProductInformation)
+  .then(processExtractedProducts)
+  .then(getUpdatedCartContents)
+  .then(generateSummary)
+  .commit();

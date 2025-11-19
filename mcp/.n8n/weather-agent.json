@@ -8,10 +8,7 @@
       },
       "type": "n8n-nodes-base.executeWorkflowTrigger",
       "typeVersion": 1.1,
-      "position": [
-        -224,
-        -256
-      ],
+      "position": [-224, -256],
       "id": "a4ddd71f-9524-4543-9c67-77cf7bf974f6",
       "name": "When Executed by Another Workflow"
     },
@@ -21,10 +18,7 @@
       },
       "type": "@n8n/n8n-nodes-langchain.chatTrigger",
       "typeVersion": 1.1,
-      "position": [
-        -224,
-        -16
-      ],
+      "position": [-224, -16],
       "id": "192c2566-55be-4b72-9e90-fdc5bc29e08a",
       "name": "When chat message received",
       "webhookId": ""
@@ -38,10 +32,7 @@
       },
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 1.7,
-      "position": [
-        144,
-        -128
-      ],
+      "position": [144, -128],
       "id": "2e288086-6791-4b93-909c-070d887d9009",
       "name": "AI Agent",
       "alwaysOutputData": false
@@ -62,10 +53,7 @@
       },
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
-      "position": [
-        -48,
-        -256
-      ],
+      "position": [-48, -256],
       "id": "5789a2c2-3648-40ff-b815-d8c00b13d622",
       "name": "Rename field"
     },
@@ -77,10 +65,7 @@
       },
       "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
       "typeVersion": 1,
-      "position": [
-        -208,
-        352
-      ],
+      "position": [-208, 352],
       "id": "bd03c19f-22ae-445f-a018-09cb5bb04e2b",
       "name": "Google Gemini Chat Model",
       "credentials": {
@@ -102,10 +87,7 @@
       },
       "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
       "typeVersion": 1.2,
-      "position": [
-        -16,
-        352
-      ],
+      "position": [-16, 352],
       "id": "f92ef398-417f-49b0-a1ea-1647b6fa610a",
       "name": "OpenAI Chat Model",
       "credentials": {
@@ -122,10 +104,7 @@
       },
       "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
       "typeVersion": 1.3,
-      "position": [
-        208,
-        352
-      ],
+      "position": [208, 352],
       "id": "75a8d08e-47db-4970-82f8-d7504fdc6965",
       "name": "Window Buffer Memory",
       "disabled": true
@@ -140,10 +119,7 @@
       },
       "type": "n8n-nodes-base.openWeatherMapTool",
       "typeVersion": 1,
-      "position": [
-        544,
-        448
-      ],
+      "position": [544, 448],
       "id": "471e6e23-0f43-49c1-bd6d-2dd44d2b3a8a",
       "name": "Get forecast by city",
       "credentials": {
@@ -164,10 +140,7 @@
       },
       "type": "n8n-nodes-base.openWeatherMapTool",
       "typeVersion": 1,
-      "position": [
-        720,
-        400
-      ],
+      "position": [720, 400],
       "id": "67da5c53-4acc-43a7-9898-e3d1b5daa2f2",
       "name": "Get currrent weather by GPS coordinates",
       "credentials": {
@@ -186,10 +159,7 @@
       },
       "type": "n8n-nodes-base.openWeatherMapTool",
       "typeVersion": 1,
-      "position": [
-        368,
-        464
-      ],
+      "position": [368, 464],
       "id": "025a9e35-b778-46fa-acf9-9262d75224f2",
       "name": "Get currrent weather by city",
       "credentials": {
@@ -211,10 +181,7 @@
       },
       "type": "n8n-nodes-base.openWeatherMapTool",
       "typeVersion": 1,
-      "position": [
-        848,
-        304
-      ],
+      "position": [848, 304],
       "id": "b7494fea-58fb-4e6e-9c6a-3aea6b6856c3",
       "name": "Get forecast by GPS coordinates",
       "credentials": {
@@ -237,10 +204,7 @@
       },
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [
-        -224,
-        704
-      ],
+      "position": [-224, 704],
       "id": "77079f93-8736-46fe-b2ce-860678dc4f1f",
       "name": "Schedule Trigger"
     },
@@ -250,10 +214,7 @@
       },
       "type": "n8n-nodes-base.openWeatherMap",
       "typeVersion": 1,
-      "position": [
-        -16,
-        704
-      ],
+      "position": [-16, 704],
       "id": "41d9835d-e96b-48ad-be22-a0a1789cc802",
       "name": "OpenWeatherMap",
       "credentials": {
@@ -315,10 +276,7 @@
       },
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
-      "position": [
-        192,
-        704
-      ],
+      "position": [192, 704],
       "id": "2bea810b-c35d-4393-ad85-e2b23a43b429",
       "name": "Execute Workflow"
     }
@@ -425,9 +383,7 @@
       ]
     },
     "OpenAI Chat Model": {
-      "ai_languageModel": [
-        []
-      ]
+      "ai_languageModel": [[]]
     },
     "Schedule Trigger": {
       "main": [

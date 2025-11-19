@@ -1,25 +1,26 @@
-import { Mastra } from "@mastra/core";
-import { PinoLogger } from "@mastra/loggers";
-import { getSqlStorageProvider } from "./storage/index.js";
+import { Mastra } from '@mastra/core';
+import { PinoLogger } from '@mastra/loggers';
+import { Observability } from '@mastra/observability';
+import { getSqlStorageProvider } from './storage/index.js';
 import {
   getCodingAgent,
   getMealPlanEmailFormatterAgent,
   getMealPlanGeneratorAgent,
   getMealPlanSelectorAgent,
   getNotificationAgent,
-  notificationWorkflow,
   getRecipeSearchAgent,
   getShoppingListAgent,
   getShoppingListSummaryAgent,
-  shoppingListWorkflow,
   getWeatherAgent,
+  notificationWorkflow,
+  shoppingListWorkflow,
   weatherMonitoringWorkflow,
-  weeklyMealPlanningWorkflow
-} from "./verticals/index.js";
+  weeklyMealPlanningWorkflow,
+} from './verticals/index.js';
 
 async function createMastra() {
   const sqlStorageProvider = await getSqlStorageProvider();
-  
+
   // Get all agents
   const [
     weatherAgent,
@@ -30,7 +31,7 @@ async function createMastra() {
     shoppingListAgent,
     shoppingListSummaryAgent,
     notificationAgent,
-    codingAgent
+    codingAgent,
   ] = await Promise.all([
     getWeatherAgent(),
     getRecipeSearchAgent(),
@@ -40,18 +41,16 @@ async function createMastra() {
     getShoppingListAgent(),
     getShoppingListSummaryAgent(),
     getNotificationAgent(),
-    getCodingAgent()
+    getCodingAgent(),
   ]);
 
   return new Mastra({
     storage: sqlStorageProvider,
     logger: new PinoLogger({
-      name: "Mastra",
-      level: "info",
+      name: 'Mastra',
+      level: 'info',
     }),
-    observability: {
-      default: { enabled: true }, // Enables AI Tracing with DefaultExporter
-    },
+    observability: new Observability({ default: { enabled: true } }),
     workflows: {
       weatherMonitoringWorkflow,
       weeklyMealPlanningWorkflow,
@@ -68,7 +67,7 @@ async function createMastra() {
       shoppingListSummary: shoppingListSummaryAgent,
       notification: notificationAgent,
       coding: codingAgent,
-    }
+    },
   });
 }
 

@@ -1,6 +1,6 @@
 /**
  * Centralized Port Configuration for Hey Jarvis Services
- * 
+ *
  * Follow DRY (Don't Repeat Yourself) principle - update ports here, not in individual files.
  * This configuration must match mcp/lib/ports.sh for consistency.
  */
@@ -9,11 +9,11 @@ export const PORTS = {
   // External ports (exposed by Nginx to the outside)
   MASTRA_UI: 4111,
   MCP_SERVER: 4112,
-  
+
   // Internal ports (used by backend services, proxied by Nginx)
   MASTRA_UI_INTERNAL: 8111,
   MCP_SERVER_INTERNAL: 8112,
-  
+
   // Test ingress port (for Home Assistant ingress simulation)
   TEST_INGRESS: 5000,
 } as const;

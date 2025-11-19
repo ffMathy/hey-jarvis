@@ -38,13 +38,13 @@ test.describe('JWT Authentication Tests', () => {
     const response = await fetch(getMCPServerUrl() + '/api/mcp', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         jsonrpc: '2.0',
         method: 'tools/list',
-        id: 1
-      })
+        id: 1,
+      }),
     });
 
     // Accept both 400 (Bad Request) and 401 (Unauthorized) as valid rejection responses
@@ -56,14 +56,14 @@ test.describe('JWT Authentication Tests', () => {
     const response = await fetch(getMCPServerUrl() + '/api/mcp', {
       method: 'POST',
       headers: {
-        'Authorization': 'Bearer invalid-token-here',
-        'Content-Type': 'application/json'
+        Authorization: 'Bearer invalid-token-here',
+        'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         jsonrpc: '2.0',
         method: 'tools/list',
-        id: 1
-      })
+        id: 1,
+      }),
     });
 
     // Accept both 400 (Bad Request) and 401 (Unauthorized) as valid rejection responses
@@ -73,18 +73,18 @@ test.describe('JWT Authentication Tests', () => {
 
   test('should deny MCP server access with expired JWT token', async () => {
     const expiredToken = await generateExpiredToken(JWT_SECRET);
-    
+
     const response = await fetch(getMCPServerUrl() + '/api/mcp', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${expiredToken}`,
-        'Content-Type': 'application/json'
+        Authorization: `Bearer ${expiredToken}`,
+        'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         jsonrpc: '2.0',
         method: 'tools/list',
-        id: 1
-      })
+        id: 1,
+      }),
     });
 
     // Accept both 400 (Bad Request) and 401 (Unauthorized) as valid rejection responses
@@ -94,18 +94,18 @@ test.describe('JWT Authentication Tests', () => {
 
   test('should allow MCP server access with valid JWT token', async () => {
     const validToken = await generateTestToken(JWT_SECRET);
-    
+
     const response = await fetch(getMCPServerUrl() + '/api/mcp', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${validToken}`,
-        'Content-Type': 'application/json'
+        Authorization: `Bearer ${validToken}`,
+        'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         jsonrpc: '2.0',
         method: 'tools/list',
-        id: 1
-      })
+        id: 1,
+      }),
     });
 
     // We expect either success or a method-specific error, but NOT 401
@@ -115,18 +115,18 @@ test.describe('JWT Authentication Tests', () => {
 
   test('should allow MCP server access with JWT token without expiry', async () => {
     const tokenWithoutExpiry = await generateTokenWithoutExpiry(JWT_SECRET);
-    
+
     const response = await fetch(getMCPServerUrl() + '/api/mcp', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${tokenWithoutExpiry}`,
-        'Content-Type': 'application/json'
+        Authorization: `Bearer ${tokenWithoutExpiry}`,
+        'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         jsonrpc: '2.0',
         method: 'tools/list',
-        id: 1
-      })
+        id: 1,
+      }),
     });
 
     // We expect either success or a method-specific error, but NOT 401
@@ -136,19 +136,19 @@ test.describe('JWT Authentication Tests', () => {
 
   test('should accept JWT token in Bearer format (case-insensitive)', async () => {
     const validToken = await generateTestToken(JWT_SECRET);
-    
+
     // Test with lowercase 'bearer'
     const response = await fetch(getMCPServerUrl() + '/api/mcp', {
       method: 'POST',
       headers: {
-        'Authorization': `bearer ${validToken}`,
-        'Content-Type': 'application/json'
+        Authorization: `bearer ${validToken}`,
+        'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         jsonrpc: '2.0',
         method: 'tools/list',
-        id: 1
-      })
+        id: 1,
+      }),
     });
 
     expect(response.status).not.toBe(401);

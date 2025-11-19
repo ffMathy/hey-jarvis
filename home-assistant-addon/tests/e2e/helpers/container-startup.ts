@@ -20,9 +20,7 @@ export interface ContainerStartupOptions {
  * Starts the Docker container using the start-addon.sh script and waits for it to be ready.
  * Returns the docker process and a cleanup function.
  */
-export async function startContainer(
-  options: ContainerStartupOptions = {}
-): Promise<ContainerStartupResult> {
+export async function startContainer(options: ContainerStartupOptions = {}): Promise<ContainerStartupResult> {
   const {
     maxWaitTime = 60 * 1000 * 5, // 5 minutes default
     checkInterval = 2000, // 2 seconds default
@@ -82,7 +80,7 @@ export async function startContainer(
       console.error('Last output:', dockerOutput);
       console.error('Last errors:', dockerErrors);
       throw new Error(
-        `Docker startup script exited with code ${exitCode} before container was ready - check logs above for details`
+        `Docker startup script exited with code ${exitCode} before container was ready - check logs above for details`,
       );
     }
 

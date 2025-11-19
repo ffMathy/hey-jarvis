@@ -2,7 +2,7 @@ import { createAgent } from '../../../utils';
 
 // Specialized agent for meal plan recipe selection
 export async function getMealPlanSelectorAgent() {
-    return createAgent({
+  return createAgent({
     name: 'MealPlanSelector',
     instructions: `You are a meal planning optimization specialist.
 
@@ -24,12 +24,12 @@ Each recipe should feed 2 people for 3 days (6 total portions if 2 recipes)`,
 
     description: 'Specialized agent for selecting optimal recipes for meal planning',
     tools: undefined,
-    });
+  });
 }
 
 // Specialized agent for creating meal plan schedules
 export async function getMealPlanGeneratorAgent() {
-    return createAgent({
+  return createAgent({
     name: 'MealPlanGenerator',
     instructions: `You are a meal scheduling specialist.
 
@@ -50,12 +50,12 @@ Do NOT:
 - Format for email presentation`,
     description: 'Specialized agent for creating weekly meal plan schedules',
     tools: undefined,
-    });
+  });
 }
 
 // Specialized agent for email formatting
 export async function getMealPlanEmailFormatterAgent() {
-    return createAgent({
+  return createAgent({
     name: 'EmailFormatter',
     instructions: `You are an HTML email formatting specialist for meal plans.
 
@@ -86,5 +86,5 @@ Do NOT:
 
     description: 'Specialized agent for formatting meal plans into HTML emails',
     tools: undefined,
-    });
+  });
 }

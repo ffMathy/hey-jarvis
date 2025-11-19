@@ -37,9 +37,7 @@
     },
     "deploy": {
       "executor": "nx:run-commands",
-      "dependsOn": [
-        "build"
-      ],
+      "dependsOn": ["build"],
       "options": {
         "command": "./mcp/.scripts/deploy.sh",
         "cwd": "."

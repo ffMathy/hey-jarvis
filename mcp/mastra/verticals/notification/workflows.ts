@@ -16,7 +16,7 @@ const validateMessage = createStep({
   }),
   execute: async ({ context }) => {
     const { message } = context;
-    
+
     if (!message || message.trim().length === 0) {
       return {
         valid: false,
@@ -24,7 +24,7 @@ const validateMessage = createStep({
         error: 'Notification message cannot be empty',
       };
     }
-    
+
     if (message.length > 500) {
       return {
         valid: false,
@@ -32,7 +32,7 @@ const validateMessage = createStep({
         error: 'Notification message is too long (max 500 characters)',
       };
     }
-    
+
     return {
       valid: true,
       message,
@@ -73,10 +73,7 @@ export const notificationWorkflow = createWorkflow({
 })
   .then(validateMessage)
   .branch([
-    [
-      ({ ctx }) => ctx.valid === true,
-      sendNotification,
-    ],
+    [({ ctx }) => ctx.valid === true, sendNotification],
     [
       ({ ctx }) => ctx.valid === false,
       createStep({

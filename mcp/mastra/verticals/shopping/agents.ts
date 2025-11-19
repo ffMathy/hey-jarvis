@@ -4,7 +4,7 @@ import { shoppingTools } from './tools.js';
 
 // Main shopping list agent for managing Bilka shopping cart
 export async function getShoppingListAgent(): Promise<Agent> {
-    return createAgent({
+  return createAgent({
     name: 'ShoppingList',
     instructions: `# Role & Scope
 You are a shopping-list agent. For every user request, you will either add or remove items on the list.
@@ -82,14 +82,15 @@ The products might be written in Danish.
 3. For items to remove, set quantity to 0
 4. Provide a summary of what was added/removed and any items that couldn't be found`,
 
-    description: 'Specialized agent for managing shopping lists in Bilka online store. Can add/remove items, search products, and manage cart contents.',
+    description:
+      'Specialized agent for managing shopping lists in Bilka online store. Can add/remove items, search products, and manage cart contents.',
     tools: shoppingTools,
-    });
+  });
 }
 
 // Specialized agent for summarizing shopping list changes
 export async function getShoppingListSummaryAgent(): Promise<Agent> {
-    return createAgent({
+  return createAgent({
     name: 'ShoppingListSummary',
     instructions: `You are an evaluator agent that takes in a query from a user that has been processed by other agents, along with a "before" and "after" version of shopping basket contents.
 
@@ -106,5 +107,5 @@ Be concise but informative.`,
 
     description: 'Specialized agent for summarizing shopping list changes and providing user feedback',
     tools: undefined,
-    });
+  });
 }

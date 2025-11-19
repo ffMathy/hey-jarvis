@@ -5,9 +5,7 @@
       "quality": "high",
       "provider": "scribe_realtime",
       "userInputAudioFormat": "pcm_16000",
-      "keywords": [
-        "Jarvis"
-      ]
+      "keywords": ["Jarvis"]
     },
     "turn": {
       "turnTimeout": 2,
@@ -60,10 +58,7 @@
         "thinkingBudget": 0,
         "temperature": 0,
         "maxTokens": -1,
-        "toolIds": [
-          "tool_8301k8g1705ee3gsa5asgbz3vd66",
-          "tool_6501k8g1705fffdtb97r4x35nkqc"
-        ],
+        "toolIds": ["tool_8301k8g1705ee3gsa5asgbz3vd66", "tool_6501k8g1705fffdtb97r4x35nkqc"],
         "builtInTools": {
           "endCall": {
             "type": "system",
@@ -113,9 +108,7 @@
             }
           }
         },
-        "mcpServerIds": [
-          "5Pi7GrX809qLoBvACWyF"
-        ],
+        "mcpServerIds": ["5Pi7GrX809qLoBvACWyF"],
         "nativeMcpServerIds": [],
         "knowledgeBase": [],
         "ignoreDefaultPersonality": false,
@@ -149,9 +142,7 @@
               "pathParamsSchema": {},
               "requestBodySchema": {
                 "type": "object",
-                "required": [
-                  "prompt"
-                ],
+                "required": ["prompt"],
                 "description": "The request made by the user.",
                 "properties": {
                   "prompt": {
@@ -340,9 +331,7 @@
     },
     "workspaceOverrides": {
       "webhooks": {
-        "events": [
-          "transcript"
-        ],
+        "events": ["transcript"],
         "sendAudio": false
       }
     },

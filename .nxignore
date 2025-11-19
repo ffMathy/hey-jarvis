@@ -1,0 +1,69 @@
+# Dependencies
+node_modules
+**/node_modules
+
+# Build outputs
+dist
+build
+out
+.next
+.nuxt
+.output
+.turbo
+
+# Test coverage
+coverage
+.nyc_output
+
+# Logs
+*.log
+logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Cache directories
+.cache
+.parcel-cache
+.stylelintcache
+
+# Temporary files
+tmp
+temp
+*.tmp
+
+# IDE
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea
+
+# OS
+.DS_Store
+Thumbs.db
+
+# ESPHome build artifacts
+home-assistant-voice-firmware/.esphome
+
+# Docker
+.docker
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info
+.pytest_cache
+
+# Environment
+.env.local
+.env.*.local
+
+# NX
+.nx
