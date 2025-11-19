@@ -1,5 +1,5 @@
-import type { Processor } from '@mastra/core/processors';
 import type { MastraDBMessage } from '@mastra/core/agent';
+import type { OutputProcessor } from '@mastra/core/processors';
 import { PIIDetector } from '@mastra/core/processors';
 import { google } from '../utils/google-provider.js';
 
@@ -48,7 +48,7 @@ export interface ErrorReportingProcessorOptions {
  */
 export function createErrorReportingProcessor(
     options: ErrorReportingProcessorOptions
-): Processor {
+): OutputProcessor {
     const {
         owner = 'ffMathy',
         repo,
@@ -67,7 +67,7 @@ export function createErrorReportingProcessor(
     return {
         id: 'error-reporting-processor',
         name: 'Error Reporting to GitHub',
-        
+
         async processOutputResult({ messages }) {
             if (!enabled) {
                 return messages;
@@ -110,7 +110,7 @@ async function detectAndReportErrors(
 
     // Use PIIDetector to sanitize the error
     const sanitizedError = await sanitizeError(errorMessage, piiDetector);
-    
+
     // Create a GitHub issue with the sanitized error
     await createIssueForError(sanitizedError, options);
 }
@@ -120,24 +120,23 @@ async function detectAndReportErrors(
  */
 function findErrorInMessages(messages: MastraDBMessage[]): string | null {
     for (const message of messages) {
-        const content = typeof message.content === 'string' 
-            ? message.content 
-            : message.content
-                .filter((c) => c.type === 'text')
-                .map((c) => 'text' in c ? c.text : '')
-                .join(' ');
+        // MastraMessageContentV2 has a parts array
+        const textParts = message.content.parts
+            .filter((part) => part.type === 'text')
+            .map((part) => 'text' in part ? part.text : '')
+            .join(' ');
 
         // Look for common error indicators
         if (
-            content.toLowerCase().includes('error') ||
-            content.toLowerCase().includes('failed') ||
-            content.toLowerCase().includes('exception') ||
-            content.toLowerCase().includes('stack trace')
+            textParts.toLowerCase().includes('error') ||
+            textParts.toLowerCase().includes('failed') ||
+            textParts.toLowerCase().includes('exception') ||
+            textParts.toLowerCase().includes('stack trace')
         ) {
-            return content;
+            return textParts;
         }
     }
-    
+
     return null;
 }
 
@@ -149,8 +148,13 @@ async function sanitizeError(errorMessage: string, piiDetector: PIIDetector): Pr
         // Create a message structure for the PII detector
         const messages: MastraDBMessage[] = [
             {
+                id: 'error-msg',
                 role: 'user',
-                content: errorMessage,
+                createdAt: new Date(),
+                content: {
+                    format: 2,
+                    parts: [{ type: 'text', text: errorMessage }],
+                },
             },
         ];
 
@@ -162,14 +166,12 @@ async function sanitizeError(errorMessage: string, piiDetector: PIIDetector): Pr
             },
         });
 
-        // Extract the sanitized content
+        // Extract the sanitized content from MastraMessageContentV2
         const sanitizedContent = sanitizedMessages[0]?.content;
-        if (typeof sanitizedContent === 'string') {
-            return sanitizedContent;
-        } else if (Array.isArray(sanitizedContent)) {
-            return sanitizedContent
-                .filter((c) => c.type === 'text')
-                .map((c) => 'text' in c ? c.text : '')
+        if (sanitizedContent && 'parts' in sanitizedContent) {
+            return sanitizedContent.parts
+                .filter((part) => part.type === 'text')
+                .map((part) => 'text' in part ? part.text : '')
                 .join(' ');
         }
 
@@ -192,19 +194,18 @@ async function createIssueForError(
 
     try {
         const result = await createGitHubIssue.execute({
-            context: {
-                owner: options.owner,
-                repo: options.repo,
-                title: 'Automated Error Report',
-                body: sanitizedError,
-                labels: options.labels,
-            },
+            owner: options.owner,
+            repo: options.repo,
+            title: 'Automated Error Report',
+            body: sanitizedError,
+            labels: options.labels,
         });
 
-        if (result.success) {
+        if ('success' in result && result.success) {
             console.log(`[ErrorReportingProcessor] Created issue: ${result.issue_url}`);
         } else {
-            console.error(`[ErrorReportingProcessor] Failed to create issue: ${result.message}`);
+            const errorMsg = 'message' in result ? result.message : 'Unknown error';
+            console.error(`[ErrorReportingProcessor] Failed to create issue: ${errorMsg}`);
         }
     } catch (error) {
         console.error('[ErrorReportingProcessor] Failed to execute createGitHubIssue tool:', error);

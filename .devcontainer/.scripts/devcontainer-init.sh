@@ -15,4 +15,9 @@ bun install --frozen-lockfile || {
 # This significantly reduces DevContainer build time
 # To install manually: npx playwright install --with-deps chromium
 
+echo "🚀 Starting Nx Daemon..."
+nx daemon --start || {
+    echo "⚠️  Nx Daemon failed to start (non-fatal)"
+}
+
 echo "✅ DevContainer initialization complete!"

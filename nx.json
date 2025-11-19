@@ -3,6 +3,19 @@
     "version": "21.5.2"
   },
   "$schema": "./node_modules/nx/schemas/nx-schema.json",
+  "defaultBase": "main",
+  "namedInputs": {
+    "default": ["{projectRoot}/**/*", "sharedGlobals"],
+    "production": [
+      "default",
+      "!{projectRoot}/**/?(*.)+(spec|test).[jt]s?(x)?(.snap)",
+      "!{projectRoot}/tsconfig.spec.json",
+      "!{projectRoot}/jest.config.[jt]s",
+      "!{projectRoot}/**/*.spec.[jt]s?(x)",
+      "!{projectRoot}/**/*.test.[jt]s?(x)"
+    ],
+    "sharedGlobals": ["{workspaceRoot}/biome.json"]
+  },
   "targetDefaults": {
     "@nx/esbuild:esbuild": {
       "cache": true,
@@ -13,15 +26,33 @@
       "cache": true,
       "dependsOn": ["^build"],
       "inputs": ["default", "^default"]
+    },
+    "lint": {
+      "cache": true,
+      "inputs": ["default", "{workspaceRoot}/biome.json"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "biome lint --write {projectRoot}"
+      }
+    },
+    "format": {
+      "cache": true,
+      "inputs": ["default", "{workspaceRoot}/biome.json"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "biome format --write {projectRoot}"
+      }
+    },
+    "check": {
+      "cache": true,
+      "inputs": ["default", "{workspaceRoot}/biome.json"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "biome check --write {projectRoot}"
+      }
     }
   },
   "plugins": [
-    {
-      "plugin": "@nx/eslint/plugin",
-      "options": {
-        "targetName": "lint"
-      }
-    },
     {
       "plugin": "@nx/docker",
       "options": {
@@ -29,5 +60,23 @@
         "runTarget": "docker:run"
       }
     }
-  ]
+  ],
+  "generators": {
+    "@nx/js": {
+      "library": {
+        "linter": "none"
+      }
+    },
+    "@nx/node": {
+      "application": {
+        "linter": "none"
+      },
+      "library": {
+        "linter": "none"
+      }
+    }
+  },
+  "parallel": 3,
+  "cacheDirectory": ".nx/cache",
+  "useDaemonProcess": true
 }
