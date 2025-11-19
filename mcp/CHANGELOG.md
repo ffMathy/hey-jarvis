@@ -5,6 +5,18 @@
 
 * **mcp:** Synchronize mcp versions
 
+## [0.4.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.3.0...mcp-v0.4.0) (2025-11-19)
+
+
+### Features
+
+* **error-handling:** add async error reporting processor with Mastra PIIDetector ([#234](https://github.com/ffMathy/hey-jarvis/issues/234)) ([28f7e31](https://github.com/ffMathy/hey-jarvis/commit/28f7e31af9edb6eff6554d1262210bf9909c9ee5))
+
+
+### Bug Fixes
+
+* **env:** update GitHub API token reference in op.env ([#236](https://github.com/ffMathy/hey-jarvis/issues/236)) ([d841ea7](https://github.com/ffMathy/hey-jarvis/commit/d841ea787ce385c027117c4c6e2b12157ee695ea))
+
 ## [0.3.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.2.0...mcp-v0.3.0) (2025-11-19)
 
 

@@ -5,6 +5,13 @@
 
 * **home-assistant-addon:** resolve static asset 404s under ingress proxy ([#191](https://github.com/ffMathy/hey-jarvis/issues/191)) ([d58603f](https://github.com/ffMathy/hey-jarvis/commit/d58603f6ede6e643cbcea5cd39d2abd83f2d78e3))
 
+## [0.4.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v0.3.0...home-assistant-addon-v0.4.0) (2025-11-19)
+
+
+### Bug Fixes
+
+* **env:** update GitHub API token reference in op.env ([#236](https://github.com/ffMathy/hey-jarvis/issues/236)) ([d841ea7](https://github.com/ffMathy/hey-jarvis/commit/d841ea787ce385c027117c4c6e2b12157ee695ea))
+
 ## [0.3.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v0.2.0...home-assistant-addon-v0.3.0) (2025-11-19)
 
 
