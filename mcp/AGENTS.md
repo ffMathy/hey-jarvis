@@ -45,14 +45,30 @@ mcp/
 │   │   │   ├── tools.ts
 │   │   │   ├── workflows.ts
 │   │   │   └── index.ts
-│   │   └── cooking/     # Cooking vertical
-│   │       ├── agent.ts        # General recipe search agent
+│   │   ├── cooking/     # Cooking vertical
+│   │   │   ├── agent.ts        # General recipe search agent
+│   │   │   ├── tools.ts
+│   │   │   ├── meal-planning/  # Sub-vertical for meal planning
+│   │   │   │   ├── agents.ts   # 3 specialized meal planning agents
+│   │   │   │   ├── workflows.ts
+│   │   │   │   └── index.ts
+│   │   │   └── index.ts
+│   │   ├── coding/      # GitHub repository management
+│   │   │   ├── agent.ts
+│   │   │   ├── tools.ts
+│   │   │   └── index.ts
+│   │   ├── error-handling/  # Error sanitization
+│   │   │   ├── agent.ts
+│   │   │   └── index.ts
+│   │   └── notification/    # Proactive notifications
+│   │       ├── agent.ts
 │   │       ├── tools.ts
-│   │       ├── meal-planning/  # Sub-vertical for meal planning
-│   │       │   ├── agents.ts   # 3 specialized meal planning agents
-│   │       │   ├── workflows.ts
-│   │       │   └── index.ts
+│   │       ├── workflows.ts
 │   │       └── index.ts
+│   ├── processors/      # Output processors for post-processing
+│   │   ├── error-reporting.ts
+│   │   ├── index.ts
+│   │   └── README.md
 │   ├── memory/          # Shared memory management
 │   ├── storage/         # Shared storage configuration
 │   └── index.ts         # Main Mastra configuration
@@ -130,6 +146,7 @@ Provides proactive notification delivery to Home Assistant Voice Preview Edition
 - **Configurable timeout**: Default 5-second timeout after notification delivery
 - **Device targeting**: Can notify specific devices or broadcast to all available devices
 - **Home Assistant integration**: Works through ESPHome API service calls
+- **Error reporting**: Configured with error reporting processor (see Processors section)
 
 **Key Capabilities:**
 - Send notifications proactively without user initiation
@@ -137,12 +154,58 @@ Provides proactive notification delivery to Home Assistant Voice Preview Edition
 - Automatically timeout if no user response within configured period
 - Support for custom notification messages
 - Integration with Home Assistant automation system
+- Automatic error reporting to GitHub when failures occur
 
 **Example Use Cases:**
 - "Remind me about my meeting in 5 minutes"
 - "Notify me when the laundry is done"
 - "Alert me if the temperature drops below 18°C"
 - "Let me know when dinner is ready"
+
+### Coding Agent
+Manages GitHub repositories and provides coding task coordination:
+- **4 GitHub tools**: List repositories, list issues, search repositories, create GitHub issues
+- **Google Gemini model**: Uses `gemini-flash-latest` for natural language processing
+- **Repository management**: Browse and search repositories for any GitHub user
+- **Issue tracking**: View open, closed, or all issues for repositories
+- **Issue creation**: Create new GitHub issues with title, body, and labels
+- **Smart defaults**: Defaults to "ffMathy" owner when not specified
+
+**Key Capabilities:**
+- List all public repositories for a GitHub user
+- Search repositories by name, keywords, or topics
+- View issues with filtering by state (open/closed/all)
+- Create GitHub issues programmatically (used by error reporting processor)
+- Provide GitHub URLs for quick access to repositories and issues
+
+**Example Use Cases:**
+- "What repositories does ffMathy have?"
+- "Show me open issues in hey-jarvis"
+- "Search for repositories about AI agents"
+- "Create an issue for the bug I just reported"
+
+### Error Filter Agent
+Sanitizes error messages by removing personally identifiable information (PII):
+- **No tools**: Uses LLM reasoning for intelligent PII detection and redaction
+- **Google Gemini model**: Uses `gemini-flash-latest` for natural language processing
+- **PII detection**: Identifies emails, API keys, IP addresses, file paths, phone numbers, etc.
+- **Preserves technical info**: Keeps error types, stack traces, function names, and line numbers
+- **Markdown formatting**: Generates GitHub-ready issue descriptions
+
+**Key Capabilities:**
+- Analyze error messages and stack traces
+- Identify and redact multiple types of PII
+- Preserve technical debugging information
+- Format sanitized errors for GitHub issues
+- Suggest potential causes or fixes
+
+**PII Redaction Examples:**
+- Email: `user@example.com` → `[REDACTED_EMAIL]`
+- API Key: `sk_live_abc123` → `[REDACTED_API_KEY]`
+- Path: `/home/username/project` → `/[REDACTED]/project`
+- IP: `192.168.1.1` → `[REDACTED_IP]`
+
+**Used by:** Error Reporting Processor (see Processors section)
 
 *Note: Additional agents will be added as the project evolves.*
 
@@ -206,6 +269,61 @@ Multi-step shopping list processing workflow implementing the original n8n 3-age
 - **Danish language support**: Processes requests and provides responses in Danish
 
 **Converted from n8n**: This workflow replicates the exact 3-agent pattern from the original n8n Shopping List Agent workflow, including Information Extractor → Shopping List Mutator → Summarization Agent flow with before/after cart comparison.
+
+## Processors
+
+### 🔍 **Output Processors**
+This project implements custom output processors that run after agent responses are generated. Processors enable post-processing logic without blocking the main agent flow.
+
+### **Error Reporting Processor**
+Automatically captures errors from agent responses and creates GitHub issues with sanitized information.
+
+**Features:**
+- **Asynchronous execution**: Runs in background without blocking agent responses
+- **Error detection**: Scans agent output for error indicators (keywords: "error", "failed", "exception", "stack trace")
+- **PII sanitization**: Uses ErrorFilter agent to remove sensitive information before creating issues
+- **GitHub integration**: Creates issues using the `createGitHubIssue` tool
+- **Configurable**: Labels, repository, and enable/disable options
+
+**Usage Example:**
+```typescript
+import { createAgent } from '../../utils/agent-factory.js';
+import { createErrorReportingProcessor } from '../../processors/index.js';
+
+export async function getMyAgent() {
+  return createAgent({
+    name: 'MyAgent',
+    instructions: '...',
+    tools: myTools,
+    outputProcessors: [
+      createErrorReportingProcessor({
+        repo: 'hey-jarvis',
+        labels: ['automated-error', 'my-agent'],
+      }),
+    ],
+  });
+}
+```
+
+**Configuration:**
+- `owner` (optional): Repository owner, defaults to "ffMathy"
+- `repo` (required): Repository name where issues will be created
+- `labels` (optional): Issue labels, defaults to `["automated-error", "bug"]`
+- `enabled` (optional): Enable/disable processor, defaults to `true`
+
+**Environment Requirements:**
+- `HEY_JARVIS_GITHUB_API_TOKEN`: GitHub Personal Access Token with `repo` scope
+
+**How It Works:**
+1. After agent generates response, processor scans messages for error indicators
+2. If error detected, ErrorFilter agent sanitizes the error message (removes PII)
+3. GitHub issue is created with sanitized error using `createGitHubIssue` tool
+4. All processing happens asynchronously - agent response returns immediately
+
+**Current Usage:**
+- **Notification Agent**: Configured with error reporting for notification failures
+
+For detailed documentation, see `mcp/mastra/processors/README.md`.
 
 ## Agent-as-Step and Tool-as-Step Patterns
 
@@ -332,6 +450,7 @@ All environment variables use the `HEY_JARVIS_` prefix for easy management and D
 - **Shopping (Search)**: `HEY_JARVIS_ALGOLIA_API_KEY`, `HEY_JARVIS_ALGOLIA_APPLICATION_ID`, `HEY_JARVIS_BILKA_USER_TOKEN` for product search
 - **ElevenLabs**: `HEY_JARVIS_ELEVENLABS_API_KEY`, `HEY_JARVIS_ELEVENLABS_AGENT_ID`, `HEY_JARVIS_ELEVENLABS_VOICE_ID` for voice AI
 - **Recipes**: `HEY_JARVIS_VALDEMARSRO_API_KEY` for Danish recipe data
+- **GitHub**: `HEY_JARVIS_GITHUB_API_TOKEN` for GitHub API access (coding agent and error reporting processor)
 - **WiFi**: `HEY_JARVIS_WIFI_SSID`, `HEY_JARVIS_WIFI_PASSWORD` for Home Assistant Voice Firmware
 - **Authentication**: `HEY_JARVIS_MCP_JWT_SECRET` for JWT-based HTTP authentication of the MCP server (Mastra UI is protected by Home Assistant ingress)
 

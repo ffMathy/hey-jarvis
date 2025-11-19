@@ -1,5 +1,6 @@
 import { createAgent } from '../../utils/agent-factory.js';
 import { notificationTools } from './tools.js';
+import { createErrorReportingProcessor } from '../../processors/index.js';
 
 export async function getNotificationAgent() {
   return createAgent({
@@ -14,5 +15,11 @@ When asked to send a notification:
 
 Be brief and direct in your responses.`,
     tools: notificationTools,
+    outputProcessors: [
+      createErrorReportingProcessor({
+        repo: 'hey-jarvis',
+        labels: ['automated-error', 'notification-agent'],
+      }),
+    ],
   });
 }
