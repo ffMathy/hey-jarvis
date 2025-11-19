@@ -1,10 +1,8 @@
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { generateObject } from 'ai';
 import { z } from 'zod';
-import {
-  GeminiMastraConversationStrategy,
-} from './gemini-mastra-conversation-strategy';
 import type { ConversationStrategy, ServerMessage } from './conversation-strategy';
+import { GeminiMastraConversationStrategy } from './gemini-mastra-conversation-strategy';
 
 export interface ConversationOptions {
   agentId: string;
@@ -30,12 +28,9 @@ export class TestConversation {
   private readonly googleApiKey: string | undefined;
 
   constructor(options: ConversationOptions) {
-    const apiKey =
-      options.apiKey || process.env.HEY_JARVIS_ELEVENLABS_API_KEY;
+    const apiKey = options.apiKey || process.env.HEY_JARVIS_ELEVENLABS_API_KEY;
 
-    this.googleApiKey =
-      options.googleApiKey ||
-      process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY;
+    this.googleApiKey = options.googleApiKey || process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY;
 
     // Determine which strategy to use based on environment
     // Use ElevenLabs strategy when running in GitHub Actions (CI environment)
@@ -108,14 +103,8 @@ export class TestConversation {
     const transcriptText = this.getTranscriptText();
     const schema = z.object({
       passed: z.boolean().describe('Whether the criteria was met'),
-      score: z
-        .number()
-        .min(0)
-        .max(1)
-        .describe('Confidence score from 0 to 1'),
-      reasoning: z
-        .string()
-        .describe('Explanation of why the criteria was or was not met'),
+      score: z.number().min(0).max(1).describe('Confidence score from 0 to 1'),
+      reasoning: z.string().describe('Explanation of why the criteria was or was not met'),
     });
 
     const google = createGoogleGenerativeAI({ apiKey: this.googleApiKey });
@@ -167,18 +156,15 @@ Respond with:
    * @returns Evaluation result if criteria is met
    * @throws Error if criteria is not met
    */
-  async assertCriteria(
-    criteria: string,
-    minScore = 0.7
-  ): Promise<EvaluationResult> {
+  async assertCriteria(criteria: string, minScore = 0.7): Promise<EvaluationResult> {
     const result = await this.evaluate(criteria);
 
     if (!result.passed || result.score < minScore) {
       throw new Error(
         `Conversation failed to meet criteria (scored: ${result.score} but needed: ${minScore}):\n` +
-        `Criteria: ${criteria}\n` +
-        `Reasoning: ${result.reasoning}\n\n` +
-        `Transcript:\n${this.getTranscriptText()}`
+          `Criteria: ${criteria}\n` +
+          `Reasoning: ${result.reasoning}\n\n` +
+          `Transcript:\n${this.getTranscriptText()}`,
       );
     }
 

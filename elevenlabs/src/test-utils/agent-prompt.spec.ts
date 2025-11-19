@@ -1,9 +1,9 @@
-import { TestConversation } from './test-conversation';
 import { describe, it } from '@jest/globals';
+import { TestConversation } from './test-conversation';
 
 /**
  * Agent Prompt Specification Tests
- * 
+ *
  * These tests verify that the ElevenLabs agent follows the specifications
  * defined in agent-prompt.md, including:
  * - Personality and tone (witty, dry humor, Victorian butler speak, slightly arrogant but impeccably loyal)
@@ -33,13 +33,13 @@ describe('Agent Prompt Specifications', () => {
 
           await conversation.assertCriteria(
             'The agent shows a condescending or superior tone (teasing inefficiencies) while still being helpful and demonstrating impeccable loyalty',
-            0.9
+            0.9,
           );
         } finally {
           await conversation.disconnect();
         }
       },
-      90000 // Vercel AI SDK handles retries internally
+      90000, // Vercel AI SDK handles retries internally
     );
   });
 
@@ -56,27 +56,28 @@ describe('Agent Prompt Specifications', () => {
           // First verify a weather tool was actually called by checking messages
           const messages = conversation.getMessages();
           const toolCalls = messages.filter(
-            (msg) =>
-              msg.type === 'mcp_tool_call' &&
-              msg.mcp_tool_call.tool_name.toLowerCase().includes('weather')
+            (msg) => msg.type === 'mcp_tool_call' && msg.mcp_tool_call.tool_name.toLowerCase().includes('weather'),
           );
-          
+
           if (toolCalls.length === 0) {
             throw new Error(
-              `Expected weather tool to be called, but no weather tool calls found in messages. Available tools: ${messages.filter(m => m.type === 'mcp_tool_call').map(m => (m as any).mcp_tool_call.tool_name).join(', ')}`
+              `Expected weather tool to be called, but no weather tool calls found in messages. Available tools: ${messages
+                .filter((m) => m.type === 'mcp_tool_call')
+                .map((m) => (m as any).mcp_tool_call.tool_name)
+                .join(', ')}`,
             );
           }
 
           // Then verify no follow-up questions using LLM evaluation
           await conversation.assertCriteria(
             'The agent makes a reasonable assumption (e.g., assumes a location such as the current location) OR provides a response without asking the user for clarification or more information',
-            0.9
+            0.9,
           );
         } finally {
           await conversation.disconnect();
         }
       },
-      90000
+      90000,
     );
 
     runTest(
@@ -89,13 +90,13 @@ describe('Agent Prompt Specifications', () => {
 
           await conversation.assertCriteria(
             'The agent provides a response OR suggestions without explicitly asking follow-up questions like "What are you interested in?" or "What would you like to know?" or "What do you mean?"',
-            0.9
+            0.9,
           );
         } finally {
           await conversation.disconnect();
         }
       },
-      90000
+      90000,
     );
   });
 
@@ -110,13 +111,13 @@ describe('Agent Prompt Specifications', () => {
 
           await conversation.assertCriteria(
             'The agent provides a concise, direct response (including the actual time) without excessive explanation or rambling',
-            0.5
+            0.5,
           );
         } finally {
           await conversation.disconnect();
         }
       },
-      90000
+      90000,
     );
 
     runTest(
@@ -130,13 +131,13 @@ describe('Agent Prompt Specifications', () => {
 
           await conversation.assertCriteria(
             'The agent uses formal Victorian butler-style language with phrases like "I shall endeavor", "impeccably loyal", "unflappable" rather than modern casual phrases',
-            0.9
+            0.9,
           );
         } finally {
           await conversation.disconnect();
         }
       },
-      90000
+      90000,
     );
   });
 
@@ -151,13 +152,13 @@ describe('Agent Prompt Specifications', () => {
 
           await conversation.assertCriteria(
             'The agent teases the user about the mistake with a slightly superior tone but remains impeccably loyal, helpful, and charming (not genuinely mean)',
-            0.9
+            0.9,
           );
         } finally {
           await conversation.disconnect();
         }
       },
-      90000
+      90000,
     );
   });
 });

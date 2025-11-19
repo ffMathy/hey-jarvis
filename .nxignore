@@ -27,7 +27,6 @@ lerna-debug.log*
 # Cache directories
 .cache
 .parcel-cache
-.eslintcache
 .stylelintcache
 
 # Temporary files
@@ -65,3 +64,6 @@ __pycache__
 # Environment
 .env.local
 .env.*.local
+
+# NX
+.nx

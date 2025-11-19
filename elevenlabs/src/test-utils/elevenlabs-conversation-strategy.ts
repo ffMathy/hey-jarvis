@@ -1,6 +1,12 @@
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
-import { WebSocket, Data } from 'ws';
-import type { ConversationInitiationMetadataEvent, ConversationStrategy, PingEvent, ServerMessage, UserMessageEvent } from './conversation-strategy';
+import { type Data, WebSocket } from 'ws';
+import type {
+  ConversationInitiationMetadataEvent,
+  ConversationStrategy,
+  PingEvent,
+  ServerMessage,
+  UserMessageEvent,
+} from './conversation-strategy';
 
 /**
  * Client-to-server message types
@@ -52,10 +58,9 @@ export class ElevenLabsConversationStrategy implements ConversationStrategy {
     this.conversationReadyResolve = undefined;
 
     // Get signed URL for authenticated connection
-    const { signedUrl } =
-      await this.client.conversationalAi.conversations.getSignedUrl({
-        agentId: this.agentId,
-      });
+    const { signedUrl } = await this.client.conversationalAi.conversations.getSignedUrl({
+      agentId: this.agentId,
+    });
 
     // Create WebSocket connection
     await new Promise<void>((resolve, reject) => {
@@ -104,11 +109,7 @@ export class ElevenLabsConversationStrategy implements ConversationStrategy {
 
         // If conversation never became ready, reject the connection
         if (!this.conversationReady) {
-          reject(
-            new Error(
-              `WebSocket closed before ready: ${code} - ${reason.toString()}`
-            )
-          );
+          reject(new Error(`WebSocket closed before ready: ${code} - ${reason.toString()}`));
         }
       });
     });
@@ -151,8 +152,7 @@ export class ElevenLabsConversationStrategy implements ConversationStrategy {
       case 'conversation_initiation_metadata': {
         const event = message as ConversationInitiationMetadataEvent;
         if (!this.conversationId) {
-          this.conversationId =
-            event.conversation_initiation_metadata_event.conversation_id;
+          this.conversationId = event.conversation_initiation_metadata_event.conversation_id;
 
           // Mark conversation as ready
           this.conversationReady = true;
@@ -202,24 +202,16 @@ export class ElevenLabsConversationStrategy implements ConversationStrategy {
     await this.waitForResponse();
 
     // Store the sent message in our messages array, but in the position right after the first agent_response message
-    const agentResponseIndex = this.messages.findIndex(
-      (msg) => msg.type === 'agent_response'
-    );
+    const agentResponseIndex = this.messages.findIndex((msg) => msg.type === 'agent_response');
     if (agentResponseIndex !== -1) {
-      this.messages.splice(
-        agentResponseIndex + 1,
-        0,
-        messageEvent as ServerMessage
-      );
+      this.messages.splice(agentResponseIndex + 1, 0, messageEvent as ServerMessage);
     } else {
       this.messages.push(messageEvent as ServerMessage);
     }
 
     // Find and return the last agent response
-    const lastAgentResponse = [...this.messages]
-      .reverse()
-      .find((msg) => msg.type === 'agent_response');
-    
+    const lastAgentResponse = [...this.messages].reverse().find((msg) => msg.type === 'agent_response');
+
     return lastAgentResponse?.agent_response_event?.agent_response || '';
   }
 
@@ -241,10 +233,7 @@ export class ElevenLabsConversationStrategy implements ConversationStrategy {
     let message: Partial<ServerMessage> | null = {};
     while (message !== null) {
       timeout = 15000;
-      if (
-        message?.type === 'mcp_tool_call' &&
-        message.mcp_tool_call.state === 'loading'
-      ) {
+      if (message?.type === 'mcp_tool_call' && message.mcp_tool_call.state === 'loading') {
         timeout = 60000; // Wait longer for agent response
       }
 
@@ -253,7 +242,7 @@ export class ElevenLabsConversationStrategy implements ConversationStrategy {
         new Promise<never>((resolve) =>
           setTimeout(() => {
             resolve(null);
-          }, timeout)
+          }, timeout),
         ),
       ]);
     }
@@ -270,10 +259,7 @@ export class ElevenLabsConversationStrategy implements ConversationStrategy {
           return `> USER: ${(msg as UserMessageEvent).text}`;
         } else if (msg.type === 'agent_response') {
           return `> AGENT: ${msg.agent_response_event.agent_response.trim()}`;
-        } else if (
-          msg.type === 'mcp_tool_call' &&
-          msg.mcp_tool_call.state === 'success'
-        ) {
+        } else if (msg.type === 'mcp_tool_call' && msg.mcp_tool_call.state === 'success') {
           return `> TOOL: ${msg.mcp_tool_call.tool_name} → ${JSON.stringify(msg.mcp_tool_call.result)}`;
         }
         return '';
