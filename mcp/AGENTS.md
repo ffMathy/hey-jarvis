@@ -333,7 +333,7 @@ All environment variables use the `HEY_JARVIS_` prefix for easy management and D
 - **ElevenLabs**: `HEY_JARVIS_ELEVENLABS_API_KEY`, `HEY_JARVIS_ELEVENLABS_AGENT_ID`, `HEY_JARVIS_ELEVENLABS_VOICE_ID` for voice AI
 - **Recipes**: `HEY_JARVIS_VALDEMARSRO_API_KEY` for Danish recipe data
 - **WiFi**: `HEY_JARVIS_WIFI_SSID`, `HEY_JARVIS_WIFI_PASSWORD` for Home Assistant Voice Firmware
-- **MCP Authentication**: `HEY_JARVIS_MCP_JWT_SECRET` for JWT-based API authentication
+- **Authentication**: `HEY_JARVIS_MCP_JWT_SECRET` for JWT-based HTTP authentication of the MCP server (Mastra UI is protected by Home Assistant ingress)
 
 #### Development Setup
 1. **Install 1Password CLI**: Follow [1Password CLI installation guide](https://developer.1password.com/docs/cli/get-started/)
@@ -355,21 +355,29 @@ If you encounter 1Password CLI authentication issues:
 
 ## MCP Server Authentication
 
-The MCP server supports JWT (JSON Web Token) authentication for secure API access over HTTP. This ensures that only authorized clients can interact with the MCP endpoints.
+The MCP server supports JWT (JSON Web Token) authentication for secure access over HTTP. Authentication is handled at the Nginx reverse proxy layer in the Home Assistant addon, providing protection for the MCP server endpoints (port 4112) while allowing open access to the Mastra UI (port 4111) which is protected by Home Assistant's ingress authentication.
 
 ### JWT Authentication Setup
 
 #### 1. Configure JWT Secret
+
+**For Home Assistant Addon:**
+Configure the JWT secret in the addon configuration:
+1. Go to **Supervisor** → **Hey Jarvis MCP Server** → **Configuration**
+2. Add your JWT secret to the `jwt_secret` field
+3. Save and restart the addon
+
+**For Development with 1Password:**
 Store a secure JWT secret in your 1Password vault:
 ```bash
 # The secret should be a strong, randomly generated string
-HEY_JARVIS_MCP_JWT_SECRET="op://Personal/Hey Jarvis MCP/JWT Secret"
+HEY_JARVIS_MCP_JWT_SECRET="op://Personal/Jarvis/JWT secret"
 ```
 
 **Important**: The JWT secret should be:
 - At least 32 characters long
 - Randomly generated (use a password generator)
-- Kept secure in your 1Password vault
+- Kept secure in your 1Password vault or Home Assistant configuration
 - Never committed to version control
 
 #### 2. Generate JWT Tokens
@@ -390,13 +398,16 @@ const token = await sign(payload, process.env.HEY_JARVIS_MCP_JWT_SECRET);
 Or use online tools like [jwt.io](https://jwt.io) with the HS256 algorithm.
 
 #### 3. Using JWT Tokens
-Include the JWT token in the `Authorization` header of HTTP requests:
+Include the JWT token in the `Authorization` header of HTTP requests to the MCP server:
 
 ```bash
-# Example curl command
+# Example curl command for MCP server (requires JWT)
 curl -H "Authorization: Bearer <your-token>" \
      -X POST \
      http://localhost:4112/api/mcp
+
+# Mastra UI does NOT require JWT - it's protected by Home Assistant ingress
+# Access through Home Assistant ingress: http://homeassistant.local:8123/...
 ```
 
 #### 4. Token Format
@@ -407,33 +418,38 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 ### Security Features
 
+- **Nginx-Based Authentication**: JWT validation happens at the Nginx layer for MCP server endpoints
+- **Selective Protection**: Only MCP server (`/api/mcp`) requires JWT authentication
+- **Mastra UI Access**: Mastra UI is accessible without JWT (protected by Home Assistant ingress instead)
 - **HTTP-Only Authentication**: JWT authentication applies only to HTTP transport. The stdio transport (used for local development with MCP clients) is unaffected.
-- **Token Validation**: All HTTP requests are validated before reaching the MCP server.
-- **Graceful Degradation**: If `HEY_JARVIS_MCP_JWT_SECRET` is not configured, the server runs without authentication and logs a warning.
-- **401 Unauthorized**: Invalid or missing tokens receive a clear error response.
-- **Standard JWT**: Uses industry-standard JWT format compatible with all JWT libraries.
+- **Token Validation**: All MCP HTTP requests are validated before reaching the backend service.
+- **Graceful Degradation**: If JWT secret is not configured, the MCP server runs without authentication (useful for development).
+- **401 Unauthorized**: Invalid or missing tokens receive a clear error response from Nginx.
+- **Standard JWT**: Uses industry-standard JWT format (HS256 algorithm) compatible with all JWT libraries.
 
 ### Authentication Flow
 
-1. Client sends HTTP request with `Authorization: Bearer <token>` header
-2. Server extracts and validates the JWT token using the configured secret
-3. If valid, request proceeds to MCP server
-4. If invalid/missing, server returns 401 Unauthorized response
+1. Client sends HTTP request to `/api/mcp` with `Authorization: Bearer <token>` header
+2. Nginx extracts and validates the JWT token using the configured secret via nginx-mod-http-auth-jwt
+3. If valid, request is proxied to the MCP server (port 4112)
+4. If invalid/missing, Nginx returns 401 Unauthorized response
+5. Requests to other paths (Mastra UI) are proxied without JWT validation
 
 ### Disabling Authentication
 
 To disable authentication (not recommended for production):
-- Simply don't set `HEY_JARVIS_MCP_JWT_SECRET` environment variable
-- The server will start without authentication and log a warning
+- **Home Assistant Addon**: Leave the `jwt_secret` field empty in the addon configuration
+- **Development**: Don't set `HEY_JARVIS_MCP_JWT_SECRET` environment variable
+- The MCP server will be accessible without authentication
 
 ### Token Payload
 
 JWT tokens should include standard claims:
 - `sub`: Subject identifier (e.g., "mcp-client")
 - `iat`: Issued at timestamp
-- `exp`: Expiration timestamp
+- `exp`: Expiration timestamp (recommended: 24 hours or less)
 
-Tokens can be created using any JWT library that supports HS256 signing with your `HEY_JARVIS_MCP_JWT_SECRET`.
+Tokens can be created using any JWT library that supports HS256 signing with your JWT secret.
 
 ## Integration Capabilities
 
@@ -785,6 +801,64 @@ This project strictly follows the YAGNI principle - avoid adding functionality o
 - **Dependencies**: Don't add libraries or tools until they solve an actual problem
 
 **Example**: Our workflow factory methods (`createAgentStep`, `createToolStep`) only accept essential parameters and use opinionated defaults for scorers, rather than exposing all possible configuration options.
+
+#### 🔁 **DRY (Don't Repeat Yourself)**
+Avoid duplication of configuration and constants:
+
+- **Centralized Configuration**: All ports and URLs are defined in centralized configuration files
+  - Bash scripts: `mcp/lib/ports.sh`
+  - TypeScript tests: `home-assistant-addon/tests/e2e/helpers/ports.ts`
+- **Single Source of Truth**: Never hardcode the same value in multiple files
+- **Helper Functions**: Create reusable helper functions instead of duplicating logic
+- **Configuration Sharing**: Import configurations rather than duplicating them
+
+**Example**: Port configuration is centralized in `ports.sh` and `ports.ts`, then imported by all scripts and tests rather than hardcoded.
+
+#### 💬 **Clean Code Comments - CRITICAL**
+**Comments should ONLY explain *WHY*, never *WHAT* or *HOW*:**
+
+❌ **NEVER write comments like these:**
+```typescript
+// Loop through users
+for (const user of users) { ... }
+
+// Set port to 4111
+const port = 4111;
+
+// Create HTTP server
+const server = createServer();
+
+// Call the API
+const response = await fetch(url);
+```
+
+✅ **ONLY write comments like these:**
+```typescript
+// Using internal port to allow nginx to handle JWT authentication at reverse proxy layer
+const port = 8111;
+
+// Workaround for nginx auth module not supporting dynamic key files - must be created before nginx starts
+createJWTKeyFile();
+
+// Port 4112 exposed externally for MCP clients, while internal service uses 8112 to avoid conflicts
+const mcpExternalPort = 4112;
+```
+
+**When comments ARE allowed:**
+- Explaining non-obvious business logic or architectural decisions
+- Documenting workarounds for bugs in external libraries
+- Clarifying why a hack or unusual pattern exists
+- Noting important security considerations or constraints
+- Explaining why we chose a specific approach over alternatives
+
+**When comments are NOT allowed:**
+- Describing what the code does (the code itself shows this)
+- Explaining how something works (use descriptive names instead)
+- Repeating information already in the code
+- Documenting standard patterns or idioms
+- Stating the obvious
+
+**Golden Rule**: If removing the comment makes the code unclear, improve the code (better names, smaller functions, clearer structure) rather than adding a comment.
 
 ### File Creation Policy
 **CRITICAL**: When working on this project:

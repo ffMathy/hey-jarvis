@@ -10,6 +10,71 @@ Hey Jarvis is an NX monorepo containing a digital assistant system with three ma
 
 ## Development Guidelines
 
+### Core Development Principles
+
+#### 🎯 **YAGNI (You Aren't Gonna Need It)**
+Avoid adding functionality or configuration options until they are actually needed:
+- **Factory Methods**: Should be opinionated and provide sensible defaults
+- **Configuration**: Only expose parameters that are necessary for core functionality
+- **Features**: Don't implement speculative features or "what if" scenarios
+- **Abstraction**: Keep abstractions minimal and add complexity only when required
+- **Dependencies**: Don't add libraries or tools until they solve an actual problem
+
+#### 🔁 **DRY (Don't Repeat Yourself)**
+Avoid duplication of configuration and constants:
+- **Centralized Configuration**: Define ports, URLs, and constants in centralized configuration files
+  - Bash scripts: `mcp/lib/ports.sh`
+  - TypeScript: Use helper files like `home-assistant-addon/tests/e2e/helpers/ports.ts`
+- **Single Source of Truth**: Never hardcode the same value in multiple files
+- **Helper Functions**: Create reusable helper functions instead of duplicating logic
+- **Configuration Sharing**: Import configurations rather than duplicating them
+
+#### 💬 **Clean Code Comments - CRITICAL**
+**Comments should ONLY explain *WHY*, never *WHAT* or *HOW*:**
+
+❌ **NEVER write comments like these:**
+```typescript
+// Loop through users
+for (const user of users) { ... }
+
+// Set port to 4111
+const port = 4111;
+
+// Create HTTP server
+const server = createServer();
+
+// Call the API
+const response = await fetch(url);
+```
+
+✅ **ONLY write comments like these:**
+```typescript
+// Using internal port to allow nginx to handle JWT authentication at reverse proxy layer
+const port = 8111;
+
+// Workaround for nginx auth module not supporting dynamic key files - must be created before nginx starts
+createJWTKeyFile();
+
+// Port 4112 exposed externally for MCP clients, while internal service uses 8112 to avoid conflicts
+const mcpExternalPort = 4112;
+```
+
+**When comments ARE allowed:**
+- Explaining non-obvious business logic or architectural decisions
+- Documenting workarounds for bugs in external libraries
+- Clarifying why a hack or unusual pattern exists
+- Noting important security considerations or constraints
+- Explaining why we chose a specific approach over alternatives
+
+**When comments are NOT allowed:**
+- Describing what the code does (the code itself shows this)
+- Explaining how something works (use descriptive names instead)
+- Repeating information already in the code
+- Documenting standard patterns or idioms
+- Stating the obvious
+
+**Golden Rule**: If removing the comment makes the code unclear, improve the code (better names, smaller functions, clearer structure) rather than adding a comment.
+
 ### Commit Message Standards - CRITICAL
 
 **ALL commits and PR titles MUST follow Conventional Commits format**:
