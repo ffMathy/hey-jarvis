@@ -1,6 +1,6 @@
 {
   "name": "Hey Jarvis MCP Server",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "slug": "hey-jarvis-mcp",
   "description": "AI-powered home assistant with Mastra agents for weather, shopping, cooking, and more via Model Context Protocol",
   "url": "https://github.com/ffMathy/hey-jarvis",

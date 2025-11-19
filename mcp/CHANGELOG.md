@@ -5,6 +5,13 @@
 
 * **mcp:** Synchronize mcp versions
 
+## [0.2.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.1.2...mcp-v0.2.0) (2025-11-19)
+
+
+### Features
+
+* **home-assistant-addon:** add nginx-based JWT authentication for MCP server ([#230](https://github.com/ffMathy/hey-jarvis/issues/230)) ([4e35f06](https://github.com/ffMathy/hey-jarvis/commit/4e35f06aa08c264f8fdf83f9be2db5c2e1959bcd))
+
 ## [0.1.2](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.1.1...mcp-v0.1.2) (2025-11-18)
 
 

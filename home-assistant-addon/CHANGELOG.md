@@ -5,6 +5,13 @@
 
 * **home-assistant-addon:** resolve static asset 404s under ingress proxy ([#191](https://github.com/ffMathy/hey-jarvis/issues/191)) ([d58603f](https://github.com/ffMathy/hey-jarvis/commit/d58603f6ede6e643cbcea5cd39d2abd83f2d78e3))
 
+## [0.2.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v0.1.2...home-assistant-addon-v0.2.0) (2025-11-19)
+
+
+### Features
+
+* **home-assistant-addon:** add nginx-based JWT authentication for MCP server ([#230](https://github.com/ffMathy/hey-jarvis/issues/230)) ([4e35f06](https://github.com/ffMathy/hey-jarvis/commit/4e35f06aa08c264f8fdf83f9be2db5c2e1959bcd))
+
 ## [0.1.2](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v0.1.1...home-assistant-addon-v0.1.2) (2025-11-18)
 
 
