@@ -108,7 +108,7 @@ export const listRepositoryIssues = createTool({
     'Lists all issues for a specific GitHub repository. Can filter by state (open/closed/all). Defaults to "ffMathy" owner if not specified.',
   inputSchema: z.object({
     owner: z.string().optional().describe('The repository owner (defaults to "ffMathy" if not provided)'),
-    repo: z.string().describe('The repository name (e.g., "hey-jarvis")'),
+    repo: z.string().optional().describe('The repository name (defaults to "hey-jarvis" if not provided)'),
     state: z.enum(['open', 'closed', 'all']).default('open').describe('Filter issues by state'),
   }),
   outputSchema: z.object({
@@ -117,10 +117,11 @@ export const listRepositoryIssues = createTool({
   }),
   execute: async (inputData) => {
     const owner = inputData.owner || 'ffMathy';
+    const repo = inputData.repo || 'hey-jarvis';
 
     const { data: issues } = await octokit.rest.issues.listForRepo({
       owner,
-      repo: inputData.repo,
+      repo,
       state: inputData.state,
       per_page: 100,
     });
@@ -268,6 +269,60 @@ export const createGitHubIssue = createTool({
   },
 });
 
+/**
+ * Tool to update an existing GitHub issue
+ */
+export const updateGitHubIssue = createTool({
+  id: 'updateGitHubIssue',
+  description:
+    'Updates an existing GitHub issue with new title, body, labels, or state. Useful for updating draft issues with accumulated requirements. Defaults to "ffMathy" owner if not specified.',
+  inputSchema: z.object({
+    owner: z.string().optional().describe('The repository owner (defaults to "ffMathy" if not provided)'),
+    repo: z.string().describe('The repository name (e.g., "hey-jarvis")'),
+    issue_number: z.number().describe('The issue number to update'),
+    title: z.string().optional().describe('Updated issue title'),
+    body: z.string().optional().describe('Updated issue description/body'),
+    labels: z.array(z.string()).optional().describe('Updated labels for the issue'),
+    state: z.enum(['open', 'closed']).optional().describe('Updated state of the issue'),
+  }),
+  outputSchema: z.object({
+    success: z.boolean(),
+    issue_number: z.number().optional(),
+    issue_url: z.string().optional(),
+    message: z.string(),
+  }),
+  execute: async (inputData) => {
+    const owner = inputData.owner || 'ffMathy';
+
+    try {
+      const updateData: any = {
+        owner,
+        repo: inputData.repo,
+        issue_number: inputData.issue_number,
+      };
+
+      if (inputData.title !== undefined) updateData.title = inputData.title;
+      if (inputData.body !== undefined) updateData.body = inputData.body;
+      if (inputData.labels !== undefined) updateData.labels = inputData.labels;
+      if (inputData.state !== undefined) updateData.state = inputData.state;
+
+      const { data: issue } = await octokit.rest.issues.update(updateData);
+
+      return {
+        success: true,
+        issue_number: issue.number,
+        issue_url: issue.html_url,
+        message: `Successfully updated issue #${issue.number}`,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: `Failed to update issue: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+  },
+});
+
 // Export all tools together for convenience
 export const codingTools = {
   listUserRepositories,
@@ -275,4 +330,5 @@ export const codingTools = {
   searchRepositories,
   assignCopilotToIssue,
   createGitHubIssue,
+  updateGitHubIssue,
 };

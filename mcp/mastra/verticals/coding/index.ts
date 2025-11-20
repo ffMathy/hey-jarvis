@@ -1,3 +1,5 @@
 // Coding vertical exports
-export { getCodingAgent } from './agent.js';
+export { getCodingAgent, getRequirementsInterviewerAgent } from './agent.js';
 export { codingTools } from './tools.js';
+export { requirementsGatheringWorkflow } from './workflows.js';
+

@@ -56,18 +56,53 @@ export function createWorkflow<TInputSchema extends z.ZodSchema, TOutputSchema e
  * - Apply consistent defaults across all steps
  * - Easily modify default behavior in the future
  * - Maintain a single point of step configuration
+ * - Support workflow state management via workflow parameter
  *
  * @param config - The step configuration object
  * @param options - Additional options for step configuration
  * @returns A new Step instance with applied defaults
+ *
+ * @example
+ * ```typescript
+ * // Using workflow state for cleaner data flow
+ * const myStep = createStep({
+ *   id: 'my-step',
+ *   description: 'A helpful step',
+ *   inputSchema: z.object({}),
+ *   outputSchema: z.object({}),
+ *   execute: async ({ context, workflow }) => {
+ *     // Read from workflow state
+ *     const data = workflow.state;
+ *     
+ *     // Update workflow state
+ *     workflow.setState({
+ *       ...data,
+ *       result: 'done',
+ *     });
+ *     
+ *     return {};
+ *   },
+ * });
+ * ```
  */
-export function createStep<TInputSchema extends z.ZodSchema, TOutputSchema extends z.ZodSchema>(
+export function createStep<
+  TInputSchema extends z.ZodSchema,
+  TOutputSchema extends z.ZodSchema,
+  TResumeSchema extends z.ZodSchema = z.ZodNever,
+  TSuspendSchema extends z.ZodSchema = z.ZodNever,
+>(
   config: {
     id: string;
     description: string;
     inputSchema: TInputSchema;
     outputSchema: TOutputSchema;
-    execute: (params: { context: z.infer<TInputSchema>; mastra?: any }) => Promise<z.infer<TOutputSchema>>;
+    resumeSchema?: TResumeSchema;
+    suspendSchema?: TSuspendSchema;
+    execute: (params: {
+      context: z.infer<TInputSchema>;
+      mastra?: any;
+      workflow?: any;
+    }) => Promise<z.infer<TOutputSchema>>;
   },
   options: {
     enableScorers?: boolean;
@@ -77,23 +112,16 @@ export function createStep<TInputSchema extends z.ZodSchema, TOutputSchema exten
 ) {
   const { enableScorers = true, customScorers = {}, samplingRate } = options;
 
-  // Add scorers if enabled
-  const stepConfig = enableScorers
-    ? {
-      ...config,
-      scorers: createScorersConfig(customScorers, samplingRate),
-    }
-    : config;
-
-  // For now, this is a direct proxy to the Mastra createStep function
-  // Future enhancements could include:
-  // - Automatic error handling and retry logic
-  // - Step-level logging and observability
-  // - Input/output validation
-  // - Step timeout handling
-  // - Step-level caching
-
-  return mastraCreateStep(stepConfig);
+  return mastraCreateStep({
+    id: config.id,
+    description: config.description,
+    inputSchema: config.inputSchema,
+    outputSchema: config.outputSchema,
+    resumeSchema: config.resumeSchema,
+    suspendSchema: config.suspendSchema,
+    execute: config.execute.bind(config),
+    ...(enableScorers && { scorers: createScorersConfig(customScorers, samplingRate) }),
+  });
 }
 
 /**
@@ -122,20 +150,20 @@ export function createAgentStep<TInputSchema extends z.ZodSchema, TOutputSchema 
   agentName: string;
   inputSchema: TInputSchema;
   outputSchema: TOutputSchema;
-  prompt: (params: { context: z.infer<TInputSchema> }) => string;
+  prompt: (params: { context: z.infer<TInputSchema>; workflow?: any }) => string;
 }) {
   return createStep({
     id: config.id,
     description: config.description,
     inputSchema: config.inputSchema,
     outputSchema: config.outputSchema,
-    execute: async ({ context, mastra }) => {
+    execute: async ({ context, mastra, workflow }) => {
       const agent = mastra?.getAgent(config.agentName);
       if (!agent) {
         throw new Error(`Agent '${config.agentName}' not found`);
       }
 
-      const prompt = config.prompt({ context });
+      const prompt = config.prompt({ context, workflow });
 
       const response = await agent.stream(
         [
@@ -170,28 +198,37 @@ export function createAgentStep<TInputSchema extends z.ZodSchema, TOutputSchema 
  *   id: 'get-current-weather',
  *   description: 'Get current weather for a city',
  *   tool: getCurrentWeatherByCity,
+ *   inputSchema: z.object({ location: z.string() }),
+ *   inputTransform: ({ location }) => ({ cityName: location }),
  * });
  * ```
  */
-export function createToolStep<TToolInput extends z.ZodSchema, TToolOutput extends z.ZodSchema>(config: {
+export function createToolStep<
+  TInputSchema extends z.ZodSchema,
+  TToolInput extends z.ZodSchema,
+  TToolOutput extends z.ZodSchema,
+>(config: {
   id: string;
   description: string;
   tool: {
-    inputSchema?: TToolInput;
-    outputSchema?: TToolOutput;
-    execute: (params: { context: z.infer<TToolInput>; mastra?: any }) => Promise<z.infer<TToolOutput>>;
+    inputSchema: TToolInput;
+    outputSchema: TToolOutput;
+    execute: (inputData: z.infer<TToolInput>, context?: any) => Promise<z.infer<TToolOutput>>;
   };
+  inputSchema?: TInputSchema;
+  inputTransform?: (input: z.infer<TInputSchema>) => z.infer<TToolInput>;
 }) {
+  const inputSchema = config.inputSchema ?? config.tool.inputSchema;
+  const inputTransform = config.inputTransform ?? ((input: any) => input);
+
   return createStep({
     id: config.id,
     description: config.description,
-    inputSchema: config.tool?.inputSchema,
-    outputSchema: config.tool?.outputSchema,
+    inputSchema: inputSchema,
+    outputSchema: config.tool.outputSchema,
     execute: async ({ context, mastra }) => {
-      return await config.tool.execute({
-        context,
-        mastra,
-      });
+      const toolInput = inputTransform(context);
+      return await config.tool.execute(toolInput, mastra);
     },
   });
 }

@@ -1,6 +1,6 @@
-import { createAgent } from '../../utils';
 import type { Agent } from '@mastra/core/agent';
-import { cookingTools } from './tools';
+import { createAgent } from '../../utils/index.js';
+import { cookingTools } from './tools.js';
 
 // Main cooking agent for recipe search and general queries
 export async function getRecipeSearchAgent(): Promise<Agent> {

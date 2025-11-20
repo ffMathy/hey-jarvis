@@ -152,7 +152,7 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
         id: 'message-' + this.messages.length.toString(),
         content: text,
         role: 'user' as const,
-      } as any,
+      },
       {
         modelSettings: { temperature: 0 },
       },

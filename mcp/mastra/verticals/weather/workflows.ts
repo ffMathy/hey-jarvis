@@ -1,23 +1,39 @@
 import { z } from 'zod';
 import { createAgentStep, createStep, createWorkflow } from '../../utils/workflow-factory.js';
 
-// Agent-as-step for scheduled weather check using the weather agent directly
+// Agent-as-step for scheduled weather check using workflow state
 const scheduledWeatherCheck = createAgentStep({
   id: 'scheduled-weather-check',
-  description: 'Checks weather for Mathias every hour and notifies memory agent of changes',
+  description: 'Checks weather for Mathias every hour',
   agentName: 'weather',
   inputSchema: z.object({}),
   outputSchema: z.object({
-    result: z.string(), // This comes from the agent response
+    result: z.string(),
   }),
   prompt: () => 'Get current weather for Mathias, Denmark',
 });
 
-// Transform weather data into memory update format
+// Store weather result in workflow state
+const storeWeatherResult = createStep({
+  id: 'store-weather-result',
+  description: 'Stores weather result in workflow state',
+  inputSchema: z.object({
+    result: z.string(),
+  }),
+  outputSchema: z.object({}),
+  execute: async ({ context, workflow }) => {
+    workflow.setState({
+      weatherResult: context.result,
+    });
+    return {};
+  },
+});
+
+// Transform weather data into memory update format using workflow state
 const transformToMemoryUpdate = createStep({
   id: 'transform-to-memory-update',
   description: 'Transform weather data into memory update format',
-  inputSchema: scheduledWeatherCheck.outputSchema,
+  inputSchema: z.object({}),
   outputSchema: z.object({
     memoryUpdate: z
       .object({
@@ -31,14 +47,16 @@ const transformToMemoryUpdate = createStep({
       })
       .optional(),
   }),
-  execute: async ({ context }) => {
-    // Create memory update event (like the n8n ExecuteWorkflow node does)
+  execute: async ({ workflow }) => {
+    const state = workflow.state;
+
+    // Create memory update event
     const memoryUpdate = {
       context: 'The weather has changed.',
       events: [
         {
           type: 'weather-changed',
-          information: context.result,
+          information: state.weatherResult,
         },
       ],
     };
@@ -49,14 +67,25 @@ const transformToMemoryUpdate = createStep({
   },
 });
 
-// Scheduled weather monitoring workflow using agent-as-step pattern
+// Scheduled weather monitoring workflow using workflow state
 export const weatherMonitoringWorkflow = createWorkflow({
   id: 'weather-monitoring-workflow',
-  inputSchema: scheduledWeatherCheck.inputSchema,
-  outputSchema: transformToMemoryUpdate.outputSchema,
+  inputSchema: z.object({}),
+  outputSchema: z.object({
+    memoryUpdate: z
+      .object({
+        context: z.string(),
+        events: z.array(
+          z.object({
+            type: z.string(),
+            information: z.any(),
+          }),
+        ),
+      })
+      .optional(),
+  }),
 })
   .then(scheduledWeatherCheck)
-  .then(transformToMemoryUpdate);
-
-// Commit the workflows
-weatherMonitoringWorkflow.commit();
+  .then(storeWeatherResult)
+  .then(transformToMemoryUpdate)
+  .commit();

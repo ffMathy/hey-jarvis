@@ -55,7 +55,9 @@ mcp/
 │   │   │   └── index.ts
 │   │   ├── coding/      # GitHub repository management
 │   │   │   ├── agent.ts
+│   │   │   ├── requirements-agent.ts
 │   │   │   ├── tools.ts
+│   │   │   ├── workflows.ts
 │   │   │   └── index.ts
 │   │   └── notification/    # Proactive notifications
 │   │       ├── agent.ts
@@ -159,26 +161,87 @@ Provides proactive notification delivery to Home Assistant Voice Preview Edition
 - "Let me know when dinner is ready"
 
 ### Coding Agent
-Manages GitHub repositories and provides coding task coordination:
-- **4 GitHub tools**: List repositories, list issues, search repositories, create GitHub issues
+Manages GitHub repositories and coordinates feature implementation through requirements gathering workflows:
+- **6 GitHub tools**: List repositories, list issues, search repositories, create/update GitHub issues, assign Copilot
 - **Google Gemini model**: Uses `gemini-flash-latest` for natural language processing
 - **Repository management**: Browse and search repositories for any GitHub user
 - **Issue tracking**: View open, closed, or all issues for repositories
-- **Issue creation**: Create new GitHub issues with title, body, and labels
-- **Smart defaults**: Defaults to "ffMathy" owner when not specified
+- **Workflow coordination**: Triggers requirements gathering workflow for new feature requests
+- **Smart defaults**: Defaults to "ffMathy" owner and "hey-jarvis" repository when not specified
 
 **Key Capabilities:**
 - List all public repositories for a GitHub user
 - Search repositories by name, keywords, or topics
 - View issues with filtering by state (open/closed/all)
-- Create GitHub issues programmatically (used by error reporting processor)
+- Create and update GitHub issues programmatically
+- Trigger requirements gathering workflow for new implementations
 - Provide GitHub URLs for quick access to repositories and issues
+
+**Architecture Pattern:**
+This agent follows the **workflow delegation pattern**. When a user requests a new feature implementation, instead of gathering requirements itself, it delegates to the `requirementsGatheringWorkflow`, which:
+1. Creates a draft issue
+2. Uses the Requirements Interviewer Agent to gather complete requirements
+3. Updates the issue with structured requirements
+4. Assigns GitHub Copilot for automated implementation
 
 **Example Use Cases:**
 - "What repositories does ffMathy have?"
 - "Show me open issues in hey-jarvis"
 - "Search for repositories about AI agents"
-- "Create an issue for the bug I just reported"
+- "I want to add email notifications" _(triggers requirements workflow)_
+
+### Requirements Interviewer Agent
+Specialized agent for interactive requirements gathering through structured interviews:
+- **No tools**: Pure conversation agent focused on questioning and clarification
+- **Google Gemini model**: Uses `gemini-flash-latest` for natural language processing
+- **One question at a time**: Focused, sequential questioning for clarity
+- **Never assumes**: Always asks clarifying questions, never guesses
+- **Structured output**: Produces complete requirements document with acceptance criteria
+
+**Key Principles:**
+- **NEVER ASSUME** - Always ask, never guess
+- **ONE QUESTION AT A TIME** - Focus deeply on each aspect
+- **BE SPECIFIC** - Ask detailed, technical questions
+- **VERIFY UNDERSTANDING** - Summarize after each answer
+- **TRACK PROGRESS** - Monitor what's been clarified vs what remains
+
+**Interview Process:**
+1. **Acknowledge** user's answer and summarize what was learned
+2. **Update** mental model of requirements
+3. **Assess** what's still unclear or missing
+4. **Ask** the next most important clarifying question
+
+**Completion Criteria:**
+Only stops when 100% certain about:
+- What exactly is being implemented
+- Where it will be implemented
+- What are the inputs and outputs
+- How it handles edge cases
+- What dependencies are needed
+- What are the acceptance criteria
+
+**Output Structure:**
+```typescript
+{
+  title: "Clear feature name",
+  requirements: ["Specific requirement 1", "Requirement 2", ...],
+  acceptanceCriteria: ["Testable criteria 1", "Criteria 2", ...],
+  implementation: {
+    location: "Where in codebase",
+    dependencies: ["Dependency 1", "Dependency 2", ...],
+    edgeCases: ["Edge case 1", "Edge case 2", ...]
+  },
+  questionsAsked: ["Q1", "Q2", ...],
+  isComplete: true
+}
+```
+
+**Example Questions:**
+- "What email service should this integrate with?"
+- "Where in the codebase should this be implemented?"
+- "What should happen if the API is unavailable?"
+- "What are the expected inputs and outputs?"
+- "Are there any existing patterns to follow?"
 
 *Note: Additional agents will be added as the project evolves.*
 
@@ -242,6 +305,41 @@ Multi-step shopping list processing workflow implementing the original n8n 3-age
 - **Danish language support**: Processes requests and provides responses in Danish
 
 **Converted from n8n**: This workflow replicates the exact 3-agent pattern from the original n8n Shopping List Agent workflow, including Information Extractor → Shopping List Mutator → Summarization Agent flow with before/after cart comparison.
+
+### Requirements Gathering Workflow
+Implements the workflow-based requirements gathering pattern for new feature implementation:
+- **`requirementsGatheringWorkflow`**: Handles complete requirements gathering process before implementation
+- **Step 1 - Create Draft Issue**: Creates initial GitHub issue to track requirements gathering progress
+- **Step 2 - Gather Requirements**: Uses Requirements Interviewer Agent to ask clarifying questions
+- **Step 3 - Update Issue**: Updates GitHub issue with complete requirements and acceptance criteria
+- **Step 4 - Assign Copilot**: Assigns GitHub Copilot for automated implementation
+
+**Architecture Pattern:**
+This workflow follows the **agent-as-step** pattern recommended by Mastra for sequential multi-step processes where the exact steps are known in advance (not dynamic routing).
+
+**Workflow Steps:**
+1. **Draft Issue Creation**: Creates a GitHub issue labeled `["draft", "requirements-gathering"]` with initial request
+2. **Interactive Interview**: Requirements Interviewer Agent asks questions one at a time until 100% certain
+3. **Issue Update**: Formats and updates issue with structured requirements, acceptance criteria, and implementation details
+4. **Copilot Assignment**: Assigns issue to GitHub Copilot using MCP tool for automated implementation
+
+**Usage Example:**
+```typescript
+await mastra.workflows.requirementsGatheringWorkflow.execute({
+  initialRequest: "Add email notifications for task reminders",
+  repository: "hey-jarvis", // Optional: defaults to "hey-jarvis"
+  owner: "ffMathy", // Optional: defaults to "ffMathy"
+});
+```
+
+**Why Workflow Instead of Agent Network?**
+- **Known sequence**: Requirements gathering follows a predictable pattern (create → interview → update → assign)
+- **No dynamic routing**: Unlike agent networks, we don't need to choose between different paths at runtime
+- **Deterministic**: Each step has clear inputs/outputs and executes in order
+- **Auditable**: Workflow provides transparent execution trace and step-by-step visibility
+
+**Human-in-the-Loop:**
+The workflow uses Mastra's suspend/resume pattern in the Requirements Interviewer step, allowing the agent to ask questions and wait for user responses before proceeding.
 
 ## Processors
 

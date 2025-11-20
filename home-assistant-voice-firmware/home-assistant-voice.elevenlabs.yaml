@@ -29,7 +29,7 @@ esphome:
   name: hass-elevenlabs
   friendly_name: Home Assistant Voice ElevenLabs
   name_add_mac_suffix: true
-  min_version: 2025.5.1
+  min_version: 2025.11.0
   compile_process_limit: 1
   on_boot:
     priority: 375
@@ -127,8 +127,7 @@ i2c:
 psram:
   mode: octal
   speed: 80MHz
-
-
+  ignore_not_found: false
 
 voice_kit:
   id: voice_kit_component
