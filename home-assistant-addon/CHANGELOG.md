@@ -5,6 +5,13 @@
 
 * **home-assistant-addon:** resolve static asset 404s under ingress proxy ([#191](https://github.com/ffMathy/hey-jarvis/issues/191)) ([d58603f](https://github.com/ffMathy/hey-jarvis/commit/d58603f6ede6e643cbcea5cd39d2abd83f2d78e3))
 
+## [0.5.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v0.4.4...home-assistant-addon-v0.5.0) (2025-11-20)
+
+
+### Features
+
+* enhance 1Password authentication and terminal session managemen… ([#251](https://github.com/ffMathy/hey-jarvis/issues/251)) ([ec808be](https://github.com/ffMathy/hey-jarvis/commit/ec808be26efb82d0b4d491ea367f4f1f6eecacd8))
+
 ## [0.4.4](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v0.4.3...home-assistant-addon-v0.4.4) (2025-11-20)
 
 
