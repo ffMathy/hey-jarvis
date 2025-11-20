@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.4](https://github.com/ffMathy/hey-jarvis/compare/root-v0.4.3...root-v0.4.4) (2025-11-20)
+
+
+### Bug Fixes
+
+* shopping list broken ([#249](https://github.com/ffMathy/hey-jarvis/issues/249)) ([43da7b6](https://github.com/ffMathy/hey-jarvis/commit/43da7b6c12d1eec9ef60f8570a239c7ab23983e0))
+
 ## [0.4.3](https://github.com/ffMathy/hey-jarvis/compare/root-v0.4.2...root-v0.4.3) (2025-11-20)
 
 
