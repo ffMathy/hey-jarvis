@@ -5,6 +5,13 @@
 
 * **mcp:** Synchronize mcp versions
 
+## [0.4.1](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.4.0...mcp-v0.4.1) (2025-11-20)
+
+
+### Bug Fixes
+
+* **agent-config:** update silence end call timeout ([#238](https://github.com/ffMathy/hey-jarvis/issues/238)) ([2d2d4e9](https://github.com/ffMathy/hey-jarvis/commit/2d2d4e9d34379df48817cd4fb39fb11b3408855a))
+
 ## [0.4.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.3.0...mcp-v0.4.0) (2025-11-19)
 
 
