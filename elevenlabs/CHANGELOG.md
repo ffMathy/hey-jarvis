@@ -55,6 +55,13 @@
 
 * add parallelism ([3541485](https://github.com/ffMathy/hey-jarvis/commit/3541485c5ed86625dcf8a2c0b56c57de6fa5520b))
 
+## [0.4.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.3.0...elevenlabs-v0.4.0) (2025-11-20)
+
+
+### Features
+
+* update dependencies and enhance ElevenLabs conversation strategy ([#261](https://github.com/ffMathy/hey-jarvis/issues/261)) ([59bb4b2](https://github.com/ffMathy/hey-jarvis/commit/59bb4b298723a96dc59bda67fd0c7aee1cce8a4b))
+
 ## [0.3.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.2.0...elevenlabs-v0.3.0) (2025-11-20)
 
 
