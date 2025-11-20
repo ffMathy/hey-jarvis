@@ -54,37 +54,53 @@ const shoppingListResultSchema = z.object({
 const workflowStateSchema = z.object({
   prompt: z.string(), // Used by extraction (step 2) and summary (step 5) - spans 3 steps
   cartBefore: z.any(), // Used by summary (step 5) - spans 4 steps
+}).partial();
+
+// Step 1: Store prompt and prepare for cart tool
+const storePromptAndPrepare = createStep({
+  id: 'store-prompt-and-prepare',
+  description: 'Stores prompt in state and prepares empty input for cart tool',
+  stateSchema: workflowStateSchema,
+  inputSchema: shoppingListInputSchema,
+  outputSchema: z.object({}),
+  execute: async (params) => {
+    // Store prompt in state for later use
+    params.setState({
+      prompt: params.inputData.prompt,
+    });
+
+    // Return empty object for cart tool
+    return {};
+  },
 });
 
-// Step 1: Get current cart contents and store prompt in state
+// Step 2: Get initial cart contents using createToolStep
 const getInitialCartContents = createToolStep({
   id: 'get-initial-cart-contents',
   description: 'Gets the current cart contents before processing the request',
   stateSchema: workflowStateSchema,
   tool: getCurrentCartContents,
-  inputSchema: shoppingListInputSchema,
 });
 
-// Store initial cart and prompt in workflow state (both used by summary step later)
-const storeInitialCartAndPrompt = createStep({
-  id: 'store-initial-cart-and-prompt',
-  description: 'Stores initial cart and prompt in workflow state for summary generation',
+// Step 3: Store cart in state
+const storeInitialCart = createStep({
+  id: 'store-initial-cart',
+  description: 'Stores initial cart in state for summary generation',
   stateSchema: workflowStateSchema,
-  inputSchema: z.object({
-    cart: cartSnapshotSchema,
-    prompt: z.string(),
-  }),
+  inputSchema: cartSnapshotSchema,
   outputSchema: z.object({}),
-  execute: async ({ context, workflow }) => {
-    workflow.setState({
-      prompt: context.prompt,
-      cartBefore: context.cart,
+  execute: async (params) => {
+    // Store cart in state
+    params.setState({
+      cartBefore: params.inputData,
     });
+
+    // Return empty object for extraction agent
     return {};
   },
 });
 
-// Step 2: Extract product information
+// Step 4: Extract product information
 // Uses workflow.state.prompt (spans from input to here)
 const extractProductInformation = createAgentStep({
   id: 'extract-product-information',
@@ -124,7 +140,7 @@ Respond with valid JSON matching this schema:
   },
 });
 
-// Step 3: Process extracted products
+// Step 5: Process extracted products
 // Products passed through context - no state needed since only used once
 const processExtractedProducts = createAgentStep({
   id: 'process-extracted-products',
@@ -148,18 +164,30 @@ Use your tools to search for products and modify the cart. Return a summary of a
   },
 });
 
-// Step 4: Get updated cart contents
+// Step 6: Prepare to get updated cart (discard mutation results)
+const prepareForCartUpdate = createStep({
+  id: 'prepare-for-cart-update',
+  description: 'Prepares to get updated cart contents',
+  stateSchema: workflowStateSchema,
+  inputSchema: z.object({
+    mutationResults: z.array(z.string()),
+  }),
+  outputSchema: z.object({}),
+  execute: async () => {
+    // Just return empty object for the cart tool
+    return {};
+  },
+});
+
+// Step 7: Get updated cart contents using createToolStep
 const getUpdatedCartContents = createToolStep({
   id: 'get-updated-cart-contents',
   description: 'Gets the updated cart contents after processing all items',
   stateSchema: workflowStateSchema,
   tool: getCurrentCartContents,
-  inputSchema: z.object({
-    mutationResults: z.array(z.string()),
-  }),
 });
 
-// Step 5: Generate summary
+// Step 8: Generate summary
 // Uses workflow.state for prompt and cartBefore, context for cartAfter
 const generateSummary = createAgentStep({
   id: 'generate-summary',
@@ -168,8 +196,8 @@ const generateSummary = createAgentStep({
   agentName: 'shoppingListSummary',
   inputSchema: cartSnapshotSchema,
   outputSchema: shoppingListResultSchema,
-  prompt: ({ context, workflow }) => {
-    const state = workflow.state;
+  prompt: (params) => {
+    const state = params.workflow.state;
     return `Summarize the shopping list changes in Danish:
 
 Original request: ${state.prompt}
@@ -178,7 +206,7 @@ Basket contents before:
 ${JSON.stringify(state.cartBefore)}
 
 Basket contents after:
-${JSON.stringify(context)}
+${JSON.stringify(params.context)}
 
 Provide a summary in Danish of what was changed.`;
   },
@@ -193,10 +221,12 @@ export const shoppingListWorkflow = createWorkflow({
   inputSchema: shoppingListInputSchema,
   outputSchema: shoppingListResultSchema,
 })
+  .then(storePromptAndPrepare)
   .then(getInitialCartContents)
-  .then(storeInitialCartAndPrompt)
+  .then(storeInitialCart)
   .then(extractProductInformation)
   .then(processExtractedProducts)
+  .then(prepareForCartUpdate)
   .then(getUpdatedCartContents)
   .then(generateSummary)
   .commit();

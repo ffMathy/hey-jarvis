@@ -1,5 +1,5 @@
-import { authenticateWithBilka } from './auth';
-import { BilkaCartResponse, ProductCatalogResponse } from './types';
+import { authenticateWithBilka } from './auth.js';
+import { BilkaCartResponse, ProductCatalogResponse } from './types.js';
 
 /**
  * Searches for products in the Bilka catalog using Algolia search

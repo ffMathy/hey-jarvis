@@ -68,6 +68,7 @@ export interface CatalogProduct {
   productType: string;
   infos: ProductInfo[];
   objectID: string;
+  price: number;
 }
 
 export interface SearchExtensions {

@@ -13,9 +13,12 @@ import type {
  */
 interface ConversationInitiationClientDataEvent {
   type: 'conversation_initiation_client_data';
-  custom_llm_extra_body?: Record<string, unknown>;
-  conversation_config_override?: Record<string, unknown>;
-  dynamic_variables?: Record<string, unknown>;
+  custom_llm_extra_body?: {};
+  conversation_config_override?: {};
+  dynamic_variables?: {};
+  conversation?: {
+    text_only?: boolean
+  }
 }
 
 interface PongEvent {
@@ -124,6 +127,9 @@ export class ElevenLabsConversationStrategy implements ConversationStrategy {
       custom_llm_extra_body: {},
       conversation_config_override: {},
       dynamic_variables: {},
+      conversation: {
+        text_only: true
+      }
     };
 
     this.ws.send(JSON.stringify(initEvent));
