@@ -9,7 +9,7 @@
       "cache": true,
       "outputs": [],
       "options": {
-        "command": "bun install mastra --global",
+        "command": "bun install mastra@1.0.0-beta.2 --global",
         "cwd": "mcp"
       }
     },
