@@ -5,6 +5,13 @@
 
 * **mcp:** Synchronize mcp versions
 
+## [0.7.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.6.0...mcp-v0.7.0) (2025-11-20)
+
+
+### Features
+
+* update dependencies and enhance ElevenLabs conversation strategy ([#261](https://github.com/ffMathy/hey-jarvis/issues/261)) ([59bb4b2](https://github.com/ffMathy/hey-jarvis/commit/59bb4b298723a96dc59bda67fd0c7aee1cce8a4b))
+
 ## [0.6.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.5.0...mcp-v0.6.0) (2025-11-20)
 
 
