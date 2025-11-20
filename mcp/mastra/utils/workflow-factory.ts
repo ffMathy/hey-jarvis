@@ -259,6 +259,7 @@ export function createToolStep<
     description: config.description,
     inputSchema: inputSchema,
     outputSchema: config.tool.outputSchema,
+    stateSchema: config.stateSchema,
     execute: async (params) => {
       return await config.tool.execute(params.inputData, params.mastra);
     },

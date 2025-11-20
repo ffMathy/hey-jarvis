@@ -3,6 +3,7 @@ import { generateObject } from 'ai';
 import { z } from 'zod';
 import type { ConversationStrategy, ServerMessage } from './conversation-strategy';
 import { GeminiMastraConversationStrategy } from './gemini-mastra-conversation-strategy';
+import { ElevenLabsConversationStrategy } from './elevenlabs-conversation-strategy';
 
 export interface ConversationOptions {
   agentId: string;
@@ -39,9 +40,10 @@ export class TestConversation {
   }
 
   private initializeConversationStrategy(apiKey: string, options: ConversationOptions) {
-    this.strategy = new GeminiMastraConversationStrategy({
-      apiKey: this.googleApiKey,
-    });
+    this.strategy = new ElevenLabsConversationStrategy({
+        agentId: options.agentId,
+        apiKey,
+      });
 
     // const isGitHubActions = process.env.GITHUB_ACTIONS === 'true';
 

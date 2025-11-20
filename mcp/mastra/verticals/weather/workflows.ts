@@ -34,14 +34,14 @@ const transformToMemoryUpdate = createStep({
       })
       .optional(),
   }),
-  execute: async ({ context }) => {
+  execute: async (params) => {
     // Create memory update event from context (no state needed)
     const memoryUpdate = {
       context: 'The weather has changed.',
       events: [
         {
           type: 'weather-changed',
-          information: context.result,
+          information: params.inputData.result,
         },
       ],
     };

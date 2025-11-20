@@ -42,7 +42,6 @@
         "audio",
         "agent_tool_response",
         "vad_score",
-        "agent_tool_request",
         "agent_chat_response_part"
       ]
     },
