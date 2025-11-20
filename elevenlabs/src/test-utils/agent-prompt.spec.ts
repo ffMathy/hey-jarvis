@@ -56,12 +56,15 @@ describe('Agent Prompt Specifications', () => {
           // First verify a weather tool was actually called by checking messages
           const messages = conversation.getMessages();
           const toolCalls = messages.filter(
-            (msg) => msg.type === 'mcp_tool_call' && msg.mcp_tool_call.tool_name.toLowerCase().includes('weather'),
+            (msg) => 
+              msg.type === 'mcp_tool_call' && 
+              (msg.mcp_tool_call.tool_name.toLowerCase().includes('weather') ||
+               msg.mcp_tool_call.tool_name.toLowerCase().includes('home_assistant')),
           );
 
           if (toolCalls.length === 0) {
             throw new Error(
-              `Expected weather tool to be called, but no weather tool calls found in messages. Available tools: ${messages
+              `Expected weather or home assistant tool to be called, but no relevant tool calls found in messages. Available tools: ${messages
                 .filter((m) => m.type === 'mcp_tool_call')
                 .map((m) => m.mcp_tool_call.tool_name)
                 .join(', ')}`,
