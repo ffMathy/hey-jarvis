@@ -23,13 +23,22 @@
     "serve:mcp": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "./.scripts/run-with-env.sh mcp/op.env bunx tsx mcp/mastra/mcp-server.ts",
+        "command": "./.scripts/run-with-env.sh mcp/op.env nx serve:mcp:tsx mcp",
+        "cwd": "."
+      }
+    },
+    "serve:mcp:tsx": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bunx tsx mcp/mastra/mcp-server.ts",
         "cwd": "."
       }
     },
     "build": {
       "executor": "nx:run-commands",
-      "dependsOn": ["initialize"],
+      "dependsOn": [
+        "initialize"
+      ],
       "options": {
         "command": "./mcp/.scripts/build.sh",
         "cwd": "."
@@ -37,11 +46,23 @@
     },
     "deploy": {
       "executor": "nx:run-commands",
-      "dependsOn": ["build"],
+      "dependsOn": [
+        "build"
+      ],
       "options": {
         "command": "./mcp/.scripts/deploy.sh",
         "cwd": "."
       }
+    },
+    "test": {
+      "executor": "@nx/jest:jest",
+      "options": {
+        "jestConfig": "mcp/jest.config.ts",
+        "passWithNoTests": false
+      },
+      "outputs": [
+        "{workspaceRoot}/coverage/{projectRoot}"
+      ]
     }
   },
   "tags": []
