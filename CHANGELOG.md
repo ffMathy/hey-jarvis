@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.3](https://github.com/ffMathy/hey-jarvis/compare/root-v0.4.2...root-v0.4.3) (2025-11-20)
+
+
+### Bug Fixes
+
+* error reporting ([#247](https://github.com/ffMathy/hey-jarvis/issues/247)) ([0329160](https://github.com/ffMathy/hey-jarvis/commit/0329160cb6ce3ba700f1e424a65c8cc6a6503721))
+
 ## [0.4.2](https://github.com/ffMathy/hey-jarvis/compare/root-v0.4.1...root-v0.4.2) (2025-11-20)
 
 
