@@ -5,6 +5,13 @@
 
 * home assistant voice building ([#187](https://github.com/ffMathy/hey-jarvis/issues/187)) ([9f17536](https://github.com/ffMathy/hey-jarvis/commit/9f17536aec616e71fee8a5654f3cf83a5113c7b8))
 
+## [0.3.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.2.0...home-assistant-voice-firmware-v0.3.0) (2025-11-20)
+
+
+### Features
+
+* much better coding agent ([#259](https://github.com/ffMathy/hey-jarvis/issues/259)) ([5477b1f](https://github.com/ffMathy/hey-jarvis/commit/5477b1f312cbf568952dc89dbf46c2291e7df25a))
+
 ## [0.2.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.1.2...home-assistant-voice-firmware-v0.2.0) (2025-11-20)
 
 

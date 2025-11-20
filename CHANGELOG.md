@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/ffMathy/hey-jarvis/compare/root-v0.5.0...root-v0.6.0) (2025-11-20)
+
+
+### Features
+
+* much better coding agent ([#259](https://github.com/ffMathy/hey-jarvis/issues/259)) ([5477b1f](https://github.com/ffMathy/hey-jarvis/commit/5477b1f312cbf568952dc89dbf46c2291e7df25a))
+
 ## [0.5.0](https://github.com/ffMathy/hey-jarvis/compare/root-v0.4.4...root-v0.5.0) (2025-11-20)
 
 

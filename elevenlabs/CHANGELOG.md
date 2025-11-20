@@ -55,6 +55,13 @@
 
 * add parallelism ([3541485](https://github.com/ffMathy/hey-jarvis/commit/3541485c5ed86625dcf8a2c0b56c57de6fa5520b))
 
+## [0.3.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.2.0...elevenlabs-v0.3.0) (2025-11-20)
+
+
+### Features
+
+* much better coding agent ([#259](https://github.com/ffMathy/hey-jarvis/issues/259)) ([5477b1f](https://github.com/ffMathy/hey-jarvis/commit/5477b1f312cbf568952dc89dbf46c2291e7df25a))
+
 ## [0.2.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.1.2...elevenlabs-v0.2.0) (2025-11-20)
 
 
