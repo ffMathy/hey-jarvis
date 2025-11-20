@@ -1,7 +1,6 @@
 import { Agent, AgentConfig } from '@mastra/core/agent';
 import type { OutputProcessor } from '@mastra/core/processors';
 import { createMemory } from '../memory/index.js';
-import { createErrorReportingProcessor } from '../processors/index.js';
 import { google } from './google-provider.js';
 import { getDefaultScorers } from './scorers-config.js';
 
@@ -23,10 +22,10 @@ export async function createAgent(
     outputProcessors: [
       // Add error reporting processor to all agents by default
       // Cast to OutputProcessor since TypeScript can't infer it implements processOutputResult
-      createErrorReportingProcessor({
-        repo: 'hey-jarvis',
-        labels: ['automated-error', config.name || 'unknown-agent'],
-      }),
+      // createErrorReportingProcessor({
+      //   repo: 'hey-jarvis',
+      //   labels: ['automated-error', config.name || 'unknown-agent'],
+      // }),
     ],
   };
 
