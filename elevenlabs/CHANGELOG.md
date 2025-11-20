@@ -55,6 +55,13 @@
 
 * add parallelism ([3541485](https://github.com/ffMathy/hey-jarvis/commit/3541485c5ed86625dcf8a2c0b56c57de6fa5520b))
 
+## [0.1.2](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.1.1...elevenlabs-v0.1.2) (2025-11-20)
+
+
+### Bug Fixes
+
+* **agent-config:** update silence end call timeout ([#238](https://github.com/ffMathy/hey-jarvis/issues/238)) ([2d2d4e9](https://github.com/ffMathy/hey-jarvis/commit/2d2d4e9d34379df48817cd4fb39fb11b3408855a))
+
 ## [0.1.1](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.1.0...elevenlabs-v0.1.1) (2025-11-19)
 
 

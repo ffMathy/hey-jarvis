@@ -5,6 +5,13 @@
 
 * **home-assistant-addon:** resolve static asset 404s under ingress proxy ([#191](https://github.com/ffMathy/hey-jarvis/issues/191)) ([d58603f](https://github.com/ffMathy/hey-jarvis/commit/d58603f6ede6e643cbcea5cd39d2abd83f2d78e3))
 
+## [0.4.1](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v0.4.0...home-assistant-addon-v0.4.1) (2025-11-20)
+
+
+### Miscellaneous Chores
+
+* **home-assistant-addon:** Synchronize mcp versions
+
 ## [0.4.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v0.3.0...home-assistant-addon-v0.4.0) (2025-11-19)
 
 
