@@ -33,6 +33,7 @@ export const findProductInCatalog = createTool({
             ...hit,
             brand: `${hit.brand} ${hit.subBrand}`.trim(),
             attributes: hit.attributes.map((attr) => attr.attributeName),
+            price: hit.price / 100
           } as any;
 
           delete result['_highlightResult'];
