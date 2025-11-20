@@ -5,6 +5,13 @@
 
 * home assistant voice building ([#187](https://github.com/ffMathy/hey-jarvis/issues/187)) ([9f17536](https://github.com/ffMathy/hey-jarvis/commit/9f17536aec616e71fee8a5654f3cf83a5113c7b8))
 
+## [0.2.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.1.2...home-assistant-voice-firmware-v0.2.0) (2025-11-20)
+
+
+### Features
+
+* enhance 1Password authentication and terminal session managemen… ([#251](https://github.com/ffMathy/hey-jarvis/issues/251)) ([ec808be](https://github.com/ffMathy/hey-jarvis/commit/ec808be26efb82d0b4d491ea367f4f1f6eecacd8))
+
 ## [0.1.2](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.1.1...home-assistant-voice-firmware-v0.1.2) (2025-11-19)
 
 
