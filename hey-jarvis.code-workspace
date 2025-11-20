@@ -106,7 +106,8 @@
     "chat.edits2.enabled": true,
     "chat.useChatSessionsForCloudButton": true,
     "inlineChat.enableV2": true,
-    "typescript.tsdk": "node_modules/typescript/lib"
+    "typescript.tsdk": "node_modules/typescript/lib",
+    "github.copilot.chat.codeGeneration.useInstructionFiles": false
   },
   "extensions": {
     "recommendations": [

@@ -15,18 +15,18 @@ const requirementsInputSchema = z.object({
 
 // Schema for gathered requirements
 const gatheredRequirementsSchema = z.object({
-    title: z.string().describe('Clear, concise feature title'),
-    requirements: z.array(z.string()).describe('List of specific requirements gathered from the user'),
-    acceptanceCriteria: z.array(z.string()).describe('List of acceptance criteria for the feature'),
+    title: z.string().optional().describe('Clear, concise feature title'),
+    requirements: z.array(z.string()).optional().describe('List of specific requirements gathered from the user'),
+    acceptanceCriteria: z.array(z.string()).optional().describe('List of acceptance criteria for the feature'),
     implementation: z
         .object({
-            location: z.string().describe('Where in the codebase this should be implemented'),
-            dependencies: z.array(z.string()).describe('Required dependencies or integrations'),
-            edgeCases: z.array(z.string()).describe('Edge cases to consider'),
+            location: z.string().optional().describe('Where in the codebase this should be implemented'),
+            dependencies: z.array(z.string()).optional().describe('Required dependencies or integrations'),
+            edgeCases: z.array(z.string()).optional().describe('Edge cases to consider'),
         })
         .describe('Implementation details'),
-    questionsAsked: z.array(z.string()).describe('List of questions asked during requirements gathering'),
-    isComplete: z.boolean().describe('Whether all requirements have been gathered'),
+    questionsAsked: z.array(z.string()).optional().describe('List of questions asked during requirements gathering'),
+    isComplete: z.boolean().optional().describe('Whether all requirements have been gathered'),
 });
 
 // Define workflow state schema for strong typing
@@ -40,7 +40,7 @@ const workflowStateSchema = z.object({
     response: z
         .object({
             needsMoreQuestions: z.boolean(),
-            nextQuestion: z.string().nullable(),
+            nextQuestion: z.string().optional(),
             requirements: gatheredRequirementsSchema,
         })
         .nullable(),
@@ -51,7 +51,7 @@ const workflowStateSchema = z.object({
 // Schema for iterative questioning response
 const questioningResponseSchema = z.object({
     needsMoreQuestions: z.boolean().describe('Whether more questions need to be asked'),
-    nextQuestion: z.string().nullable().describe('The next question to ask, or null if complete'),
+    nextQuestion: z.string().optional().describe('The next question to ask, or null if complete'),
     requirements: gatheredRequirementsSchema.describe('Current state of gathered requirements'),
 });
 
@@ -76,8 +76,7 @@ Start by asking your first clarifying question to understand what needs to be im
             initialRequest: params.inputData.initialRequest,
             repository: repo,
             owner,
-            conversationHistory: [{ role: 'user', content: initialPrompt }],
-            response: null,
+            conversationHistory: [{ role: 'user', content: initialPrompt }]
         });
 
         return {};
@@ -123,6 +122,7 @@ const askRequirementsQuestion = createStep({
             structuredOutput: {
                 schema: questioningResponseSchema,
             },
+            toolChoice: 'none'
         });
 
         const currentResponse = await response.object;

@@ -36,6 +36,7 @@ Ask clarifying questions ONE AT A TIME until you have 100% certainty about:
 - **BE SPECIFIC** - Ask detailed, technical questions
 - **VERIFY UNDERSTANDING** - Summarize after each answer
 - **TRACK PROGRESS** - Keep mental note of what's been clarified vs what remains unclear
+- **NO FUNCTION CALLS** - You don't have any tools, just ask questions directly
 
 # Question Types to Ask
 - **Integration questions**: "What email service should this integrate with?"
@@ -60,7 +61,26 @@ Only when you can answer ALL of these with certainty:
 - [ ] What dependencies are needed?
 - [ ] What are the acceptance criteria?
 
-If you have even 1% doubt about any aspect, continue asking questions.`,
+If you have even 1% doubt about any aspect, continue asking questions.
+
+# Response Format
+ALWAYS respond in valid JSON format with this exact structure (no markdown, no code blocks, just raw JSON):
+{
+  "needsMoreQuestions": true or false,
+  "nextQuestion": "your question here" or null,
+  "requirements": {
+    "title": "Clear feature title",
+    "requirements": ["requirement 1", "requirement 2"],
+    "acceptanceCriteria": ["criteria 1", "criteria 2"],
+    "implementation": {
+      "location": "where to implement",
+      "dependencies": ["dep 1", "dep 2"],
+      "edgeCases": ["edge case 1", "edge case 2"]
+    },
+    "questionsAsked": ["question 1", "question 2"],
+    "isComplete": true or false
+  }
+}`,
     description: `# Purpose
 Gather complete, unambiguous requirements through interactive questioning.
 
