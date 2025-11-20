@@ -22,6 +22,7 @@ export async function searchProductCatalog(
     'properties',
     'subBrand',
     'units',
+    'price',
     'unitsOfMeasure',
   ];
 
