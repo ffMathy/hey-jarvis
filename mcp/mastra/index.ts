@@ -12,13 +12,13 @@ import {
   getShoppingListAgent,
   getShoppingListSummaryAgent,
   getWeatherAgent,
-  notificationWorkflow,
-  shoppingListWorkflow,
   weatherMonitoringWorkflow,
-  weeklyMealPlanningWorkflow,
+  weeklyMealPlanningWorkflow
 } from './verticals/index.js';
 
 async function createMastra() {
+  process.env['GOOGLE_GENERATIVE_AI_API_KEY'] = process.env['HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY'] || '';
+
   const sqlStorageProvider = await getSqlStorageProvider();
 
   // Get all agents
@@ -54,8 +54,6 @@ async function createMastra() {
     workflows: {
       weatherMonitoringWorkflow,
       weeklyMealPlanningWorkflow,
-      shoppingListWorkflow,
-      notificationWorkflow,
     },
     agents: {
       weather: weatherAgent,

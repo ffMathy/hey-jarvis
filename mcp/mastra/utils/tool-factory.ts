@@ -26,8 +26,8 @@ import { z } from 'zod';
  *   outputSchema: z.object({
  *     result: z.string(),
  *   }),
- *   execute: async ({ context }) => {
- *     return { result: `Processed: ${context.input}` };
+ *   execute: async (inputData) => {
+ *     return { result: `Processed: ${inputData.input}` };
  *   },
  * });
  * ```
@@ -37,7 +37,7 @@ export function createTool<TInputSchema extends z.ZodSchema, TOutputSchema exten
   description: string;
   inputSchema: TInputSchema;
   outputSchema: TOutputSchema;
-  execute: (params: { context: z.infer<TInputSchema>; mastra?: any }) => Promise<z.infer<TOutputSchema>>;
+  execute: (inputData: z.infer<TInputSchema>, context?: any) => Promise<z.infer<TOutputSchema>>;
 }) {
   // For now, this is a direct proxy to the Mastra createTool function
   // Future enhancements could include:

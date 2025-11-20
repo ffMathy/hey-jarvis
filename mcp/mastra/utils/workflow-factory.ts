@@ -80,9 +80,9 @@ export function createStep<TInputSchema extends z.ZodSchema, TOutputSchema exten
   // Add scorers if enabled
   const stepConfig = enableScorers
     ? {
-        ...config,
-        scorers: createScorersConfig(customScorers, samplingRate),
-      }
+      ...config,
+      scorers: createScorersConfig(customScorers, samplingRate),
+    }
     : config;
 
   // For now, this is a direct proxy to the Mastra createStep function
@@ -177,16 +177,16 @@ export function createToolStep<TToolInput extends z.ZodSchema, TToolOutput exten
   id: string;
   description: string;
   tool: {
-    inputSchema: TToolInput;
-    outputSchema: TToolOutput;
+    inputSchema?: TToolInput;
+    outputSchema?: TToolOutput;
     execute: (params: { context: z.infer<TToolInput>; mastra?: any }) => Promise<z.infer<TToolOutput>>;
   };
 }) {
   return createStep({
     id: config.id,
     description: config.description,
-    inputSchema: config.tool.inputSchema,
-    outputSchema: config.tool.outputSchema,
+    inputSchema: config.tool?.inputSchema,
+    outputSchema: config.tool?.outputSchema,
     execute: async ({ context, mastra }) => {
       return await config.tool.execute({
         context,

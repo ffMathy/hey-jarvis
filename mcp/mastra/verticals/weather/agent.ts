@@ -1,5 +1,5 @@
-import { createAgent } from '../../utils/index.js';
 import type { Agent } from '@mastra/core/agent';
+import { createAgent } from '../../utils/index.js';
 import { weatherTools } from './tools.js';
 
 export async function getWeatherAgent(): Promise<Agent> {

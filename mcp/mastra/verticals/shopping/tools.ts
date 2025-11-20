@@ -7,7 +7,7 @@ import { CatalogProduct } from './bilka/types.js';
  * Searches for products in the Bilka catalog using Algolia search
  */
 export const findProductInCatalog = createTool({
-  id: 'find-product-in-catalog',
+  id: 'findProductInCatalog',
   description: 'Finds a certain product in the catalogue.',
   inputSchema: z.object({
     search_query: z.string().describe('The product to search for, in Danish. For instance, "agurk".'),
@@ -21,11 +21,11 @@ export const findProductInCatalog = createTool({
       attributes: z.array(z.string()),
     }),
   ),
-  execute: async ({ context }) => {
+  execute: async (inputData) => {
     const attributeNameOrder = ['Økomærket DK', 'Økomærket EU', 'Nøglehulsmærket', 'Dansk', 'Europæisk ejerskab', ''];
 
     for (const attributeName of attributeNameOrder) {
-      const response = await searchProductCatalog(context.search_query, attributeName || undefined);
+      const response = await searchProductCatalog(inputData.search_query, attributeName || undefined);
       const results = response.results
         .flatMap((x) => x.hits)
         .map((hit) => {
@@ -56,7 +56,7 @@ export const findProductInCatalog = createTool({
  * Sets the basket quantity for a certain item
  */
 export const setProductBasketQuantity = createTool({
-  id: 'set-product-basket-quantity',
+  id: 'setProductBasketQuantity',
   description: 'Sets the basket quantity for a certain item.',
   inputSchema: z.object({
     object_id: z
@@ -71,11 +71,11 @@ export const setProductBasketQuantity = createTool({
     success: z.boolean(),
     message: z.string().optional(),
   }),
-  execute: async ({ context }) => {
-    const result = await changeProductQuantity(context.object_id, context.quantity, context.product_name);
+  execute: async (inputData) => {
+    const result = await changeProductQuantity(inputData.object_id, inputData.quantity, inputData.product_name);
     return {
       success: true,
-      message: `Updated ${context.product_name} quantity to ${context.quantity}`,
+      message: `Updated ${inputData.product_name} quantity to ${inputData.quantity}`,
     };
   },
 });
@@ -84,7 +84,7 @@ export const setProductBasketQuantity = createTool({
  * Gets the current cart contents
  */
 export const getCurrentCartContents = createTool({
-  id: 'get-current-cart-contents',
+  id: 'getCurrentCartContents',
   description: 'Retrieves the current shopping cart contents from Bilka.',
   inputSchema: z.object({}),
   outputSchema: z.array(
@@ -126,7 +126,7 @@ export const getCurrentCartContents = createTool({
  * Clears all items from the cart
  */
 export const clearCartContents = createTool({
-  id: 'clear-cart-contents',
+  id: 'clearCartContents',
   description: 'Empties the entire shopping cart.',
   inputSchema: z.object({}),
   outputSchema: z.object({

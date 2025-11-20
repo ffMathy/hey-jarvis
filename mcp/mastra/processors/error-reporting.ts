@@ -1,4 +1,5 @@
 import type { MastraDBMessage } from '@mastra/core/agent';
+import type { TracingContext } from '@mastra/core/observability';
 import type { OutputProcessor } from '@mastra/core/processors';
 import { PIIDetector } from '@mastra/core/processors';
 import { google } from '../utils/google-provider.js';
@@ -61,8 +62,9 @@ export function createErrorReportingProcessor(options: ErrorReportingProcessorOp
     id: 'error-reporting-processor',
     name: 'Error Reporting to GitHub',
 
-    async processOutputResult({ messages }) {
-      if (!enabled) {
+    async processOutputResult({ messages, tracingContext }) {
+      console.log('tracing-context', tracingContext);
+      if (!enabled || !tracingContext.currentSpan.errorInfo) {
         return messages;
       }
 
@@ -71,7 +73,7 @@ export function createErrorReportingProcessor(options: ErrorReportingProcessorOp
       void (async () => {
         try {
           await detectAndReportErrors(
-            messages,
+            tracingContext,
             {
               owner,
               repo,
@@ -95,62 +97,31 @@ export function createErrorReportingProcessor(options: ErrorReportingProcessorOp
  * Detects errors in messages and creates GitHub issues for them
  */
 async function detectAndReportErrors(
-  messages: MastraDBMessage[],
+  tracingContext: TracingContext,
   options: Required<Pick<ErrorReportingProcessorOptions, 'owner' | 'repo' | 'labels'>>,
   piiDetector: PIIDetector,
 ): Promise<void> {
-  // Check if any message indicates an error
-  const errorMessage = findErrorInMessages(messages);
-  if (!errorMessage) {
-    return;
-  }
-
   // Use PIIDetector to sanitize the error
-  const sanitizedError = await sanitizeError(errorMessage, piiDetector);
+  const sanitizedError = await sanitizeError(tracingContext, piiDetector);
 
   // Create a GitHub issue with the sanitized error
   await createIssueForError(sanitizedError, options);
 }
 
 /**
- * Finds error indicators in messages
- */
-function findErrorInMessages(messages: MastraDBMessage[]): string | null {
-  for (const message of messages) {
-    // MastraMessageContentV2 has a parts array
-    const textParts = message.content.parts
-      .filter((part) => part.type === 'text')
-      .map((part) => ('text' in part ? part.text : ''))
-      .join(' ');
-
-    // Look for common error indicators
-    if (
-      textParts.toLowerCase().includes('error') ||
-      textParts.toLowerCase().includes('failed') ||
-      textParts.toLowerCase().includes('exception') ||
-      textParts.toLowerCase().includes('stack trace')
-    ) {
-      return textParts;
-    }
-  }
-
-  return null;
-}
-
-/**
  * Uses Mastra's PIIDetector to sanitize error messages
  */
-async function sanitizeError(errorMessage: string, piiDetector: PIIDetector): Promise<string> {
+async function sanitizeError(tracingContext: TracingContext, piiDetector: PIIDetector): Promise<string> {
   try {
     // Create a message structure for the PII detector
     const messages: MastraDBMessage[] = [
       {
         id: 'error-msg',
-        role: 'user',
+        role: 'system',
         createdAt: new Date(),
         content: {
           format: 2,
-          parts: [{ type: 'text', text: errorMessage }],
+          parts: [{ type: 'text', text: JSON.stringify(tracingContext.currentSpan.errorInfo) }],
         },
       },
     ];
@@ -172,10 +143,10 @@ async function sanitizeError(errorMessage: string, piiDetector: PIIDetector): Pr
         .join(' ');
     }
 
-    return errorMessage; // Fallback to original if sanitization fails
+    return JSON.stringify(tracingContext.currentSpan.errorInfo); // Fallback to original if sanitization fails
   } catch (error) {
     console.error('[ErrorReportingProcessor] Failed to sanitize error:', error);
-    return `Error sanitization failed. Original error (may contain PII): ${errorMessage}`;
+    return `Error sanitization failed. Original error (may contain PII): ${JSON.stringify(tracingContext.currentSpan.errorInfo)}`;
   }
 }
 
