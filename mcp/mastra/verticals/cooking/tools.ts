@@ -56,7 +56,7 @@ const getApiKey = () => {
 
 // Tool to get recipe details by ID
 export const getRecipeById = createTool({
-  id: 'get-recipe-by-id',
+  id: 'getRecipeById',
   description: 'Get detailed information about a specific recipe using its recipe ID',
   inputSchema: z.object({
     recipeId: z.string().describe('The recipe ID of the recipe to retrieve'),
@@ -75,9 +75,9 @@ export const getRecipeById = createTool({
       servings: z.number().optional(),
     })
     .describe('Detailed information about the recipe'),
-  execute: async ({ context }) => {
+  execute: async (inputData) => {
     const apiKey = getApiKey();
-    const url = `https://www.valdemarsro.dk/api/v2/recipes/${context.recipeId}?api_key=${apiKey}`;
+    const url = `https://www.valdemarsro.dk/api/v2/recipes/${inputData.recipeId}?api_key=${apiKey}`;
 
     const response = await fetch(url);
     if (!response.ok) {
@@ -91,7 +91,7 @@ export const getRecipeById = createTool({
 
 // Tool to search for recipes on Valdemarsro
 export const searchRecipes = createTool({
-  id: 'search-recipes',
+  id: 'searchRecipes',
   description: 'Search for recipes on Valdemarsro using Danish search terms',
   inputSchema: z.object({
     searchTerm: z.string().describe('Search term in Danish for finding recipes'),
@@ -103,12 +103,12 @@ export const searchRecipes = createTool({
         'Array of detailed recipe information matching the search term, sorted by relevance ascending (most relevant results first)',
       ),
   }),
-  execute: async ({ context, runtimeContext, mastra, suspend, writer }) => {
+  execute: async (inputData, context) => {
     const apiKey = getApiKey();
     const url = `https://www.valdemarsro.dk/api/v2/search?api_key=${apiKey}`;
 
     const searchBody = {
-      search_term: context.searchTerm,
+      search_term: inputData.searchTerm,
     };
 
     const response = await fetch(url, {
@@ -127,13 +127,7 @@ export const searchRecipes = createTool({
         .map((item) => item.post_id.toString())
         .map(
           async (id) =>
-            await getRecipeById.execute({
-              context: { recipeId: id },
-              runtimeContext,
-              mastra,
-              suspend,
-              writer,
-            }),
+            await getRecipeById.execute({ recipeId: id }, context),
         ),
     );
 
@@ -145,20 +139,20 @@ export const searchRecipes = createTool({
 
 // Tool to get all recipes with pagination
 export const getAllRecipes = createTool({
-  id: 'get-all-recipes',
+  id: 'getAllRecipes',
   description: 'Get all recipes from Valdemarsro with pagination support',
   inputSchema: z.any(),
   // Output schema is an array of recipes
   outputSchema: z
     .array(getRecipeById.outputSchema)
     .describe('Array of all recipes from Valdemarsro suitable for meal planning'),
-  execute: async ({ context }) => {
+  execute: async (inputData) => {
     async function getPage(page: number) {
       const apiKey = getApiKey();
       let url = `https://www.valdemarsro.dk/api/v2/recipes/page/${page}?api_key=${apiKey}`;
 
-      if (context.fromDate) {
-        url += `&fromdate=${encodeURIComponent(context.fromDate)}`;
+      if (inputData.fromDate) {
+        url += `&fromdate=${encodeURIComponent(inputData.fromDate)}`;
       }
 
       const response = await fetch(url);
@@ -189,7 +183,7 @@ export const getAllRecipes = createTool({
 
 // Tool to get search filters
 export const getSearchFilters = createTool({
-  id: 'get-search-filters',
+  id: 'getSearchFilters',
   description: 'Get available search filters for recipes',
   inputSchema: z.object({}),
   outputSchema: z.object({

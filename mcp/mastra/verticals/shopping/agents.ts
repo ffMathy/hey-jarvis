@@ -1,6 +1,7 @@
-import { createAgent } from '../../utils/index.js';
 import type { Agent } from '@mastra/core/agent';
+import { createAgent } from '../../utils/index.js';
 import { shoppingTools } from './tools.js';
+import { shoppingListWorkflow } from './workflows.js';
 
 // Main shopping list agent for managing Bilka shopping cart
 export async function getShoppingListAgent(): Promise<Agent> {
@@ -107,5 +108,8 @@ Be concise but informative.`,
 
     description: 'Specialized agent for summarizing shopping list changes and providing user feedback',
     tools: undefined,
+    workflows: {
+      shoppingListWorkflow
+    }
   });
 }

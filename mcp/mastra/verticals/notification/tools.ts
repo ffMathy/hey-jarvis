@@ -1,5 +1,5 @@
-import { createTool } from '../../utils/tool-factory.js';
 import { z } from 'zod';
+import { createTool } from '../../utils/tool-factory.js';
 
 /**
  * Tool to send proactive notifications to Home Assistant Voice Preview Edition devices.
@@ -42,8 +42,8 @@ import { z } from 'zod';
  *             timeout: !lambda 'return timeout;'
  * ```
  */
-export const notifyDeviceTool = createTool({
-  id: 'notify-device',
+export const notifyDevice = createTool({
+  id: 'notifyDevice',
   description:
     'Send a proactive voice notification to Home Assistant Voice Preview Edition device(s) running the Hey Jarvis ElevenLabs firmware. The notification will start a conversation where the user can respond, with a configurable timeout if no response is received. Requires proper Home Assistant and ESPHome configuration (see tool documentation).',
   inputSchema: z.object({
@@ -67,9 +67,9 @@ export const notifyDeviceTool = createTool({
     message: z.string(),
     serviceCalled: z.string().optional(),
   }),
-  execute: async ({ context }) => {
+  execute: async (inputData) => {
     try {
-      const { message, deviceName, conversationTimeout = 5000 } = context;
+      const { message, deviceName, conversationTimeout = 5000 } = inputData;
 
       // Get Home Assistant Supervisor API URL from environment
       const supervisorToken = process.env.SUPERVISOR_TOKEN;
@@ -128,5 +128,5 @@ export const notifyDeviceTool = createTool({
 });
 
 export const notificationTools = {
-  notifyDevice: notifyDeviceTool,
+  notifyDevice,
 };

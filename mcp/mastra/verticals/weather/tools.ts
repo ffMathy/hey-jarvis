@@ -76,7 +76,7 @@ const getApiKey = () => {
 
 // Tool to get current weather by city name
 export const getCurrentWeatherByCity = createTool({
-  id: 'get-current-weather-by-city',
+  id: 'getCurrentWeatherByCity',
   description: 'Get current weather information for a specific city',
   inputSchema: z.object({
     cityName: z
@@ -104,10 +104,9 @@ export const getCurrentWeatherByCity = createTool({
       lon: z.number(),
     }),
   }),
-  execute: async ({ context }) => {
+  execute: async (inputData) => {
     const apiKey = getApiKey();
-    const url = `https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(context.cityName)}&appid=${apiKey}&units=metric&lang=en`;
-
+    const url = `https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(inputData.cityName)}&appid=${apiKey}&units=metric&lang=en`;
     const response = await fetch(url);
     if (!response.ok) {
       throw new Error(`Failed to fetch weather data: ${response.statusText}`);
@@ -139,7 +138,7 @@ export const getCurrentWeatherByCity = createTool({
 
 // Tool to get current weather by GPS coordinates
 export const getCurrentWeatherByCoordinates = createTool({
-  id: 'get-current-weather-by-coordinates',
+  id: 'getCurrentWeatherByCoordinates',
   description: 'Get current weather information for specific GPS coordinates',
   inputSchema: z.object({
     latitude: z.number().describe('Latitude coordinate'),
@@ -164,9 +163,9 @@ export const getCurrentWeatherByCoordinates = createTool({
       lon: z.number(),
     }),
   }),
-  execute: async ({ context }) => {
+  execute: async (inputData) => {
     const apiKey = getApiKey();
-    const url = `https://api.openweathermap.org/data/2.5/weather?lat=${context.latitude}&lon=${context.longitude}&appid=${apiKey}&units=metric&lang=en`;
+    const url = `https://api.openweathermap.org/data/2.5/weather?lat=${inputData.latitude}&lon=${inputData.longitude}&appid=${apiKey}&units=metric&lang=en`;
 
     const response = await fetch(url);
     if (!response.ok) {
@@ -199,7 +198,7 @@ export const getCurrentWeatherByCoordinates = createTool({
 
 // Tool to get 5-day forecast by city name
 export const getForecastByCity = createTool({
-  id: 'get-forecast-by-city',
+  id: 'getForecastByCity',
   description: 'Get 5-day weather forecast for a specific city',
   inputSchema: z.object({
     cityName: z
@@ -232,9 +231,9 @@ export const getForecastByCity = createTool({
       }),
     ),
   }),
-  execute: async ({ context }) => {
+  execute: async (inputData) => {
     const apiKey = getApiKey();
-    const url = `https://api.openweathermap.org/data/2.5/forecast?q=${encodeURIComponent(context.cityName)}&appid=${apiKey}&units=metric&lang=en`;
+    const url = `https://api.openweathermap.org/data/2.5/forecast?q=${encodeURIComponent(inputData.cityName)}&appid=${apiKey}&units=metric&lang=en`;
 
     const response = await fetch(url);
     if (!response.ok) {
@@ -270,7 +269,7 @@ export const getForecastByCity = createTool({
 
 // Tool to get 5-day forecast by GPS coordinates
 export const getForecastByCoordinates = createTool({
-  id: 'get-forecast-by-coordinates',
+  id: 'getForecastByCoordinates',
   description: 'Get 5-day weather forecast for specific GPS coordinates',
   inputSchema: z.object({
     latitude: z.number().describe('Latitude coordinate'),
@@ -300,9 +299,9 @@ export const getForecastByCoordinates = createTool({
       }),
     ),
   }),
-  execute: async ({ context }) => {
+  execute: async (inputData) => {
     const apiKey = getApiKey();
-    const url = `https://api.openweathermap.org/data/2.5/forecast?lat=${context.latitude}&lon=${context.longitude}&appid=${apiKey}&units=metric&lang=en`;
+    const url = `https://api.openweathermap.org/data/2.5/forecast?lat=${inputData.latitude}&lon=${inputData.longitude}&appid=${apiKey}&units=metric&lang=en`;
 
     const response = await fetch(url);
     if (!response.ok) {

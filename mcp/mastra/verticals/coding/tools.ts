@@ -1,5 +1,5 @@
-import { z } from 'zod';
 import { Octokit } from 'octokit';
+import { z } from 'zod';
 import { createTool } from '../../utils/tool-factory.js';
 
 // Create Octokit instance with optional GitHub token authentication
@@ -70,7 +70,7 @@ const GitHubIssueSchema = z.object({
  * Tool to list all repositories for a GitHub user
  */
 export const listUserRepositories = createTool({
-  id: 'list-user-repositories',
+  id: 'listUserRepositories',
   description:
     'Lists all public repositories for a given GitHub username. Returns repository information including name, description, stars, and language. Defaults to "ffMathy" if no username is provided.',
   inputSchema: z.object({
@@ -83,8 +83,8 @@ export const listUserRepositories = createTool({
     repositories: z.array(GitHubRepositorySchema),
     total_count: z.number(),
   }),
-  execute: async ({ context }) => {
-    const username = context.username || 'ffMathy';
+  execute: async (inputData) => {
+    const username = inputData.username || 'ffMathy';
 
     const { data: repositories } = await octokit.rest.repos.listForUser({
       username,
@@ -103,7 +103,7 @@ export const listUserRepositories = createTool({
  * Tool to list all issues for a specific repository
  */
 export const listRepositoryIssues = createTool({
-  id: 'list-repository-issues',
+  id: 'listRepositoryIssues',
   description:
     'Lists all issues for a specific GitHub repository. Can filter by state (open/closed/all). Defaults to "ffMathy" owner if not specified.',
   inputSchema: z.object({
@@ -115,13 +115,13 @@ export const listRepositoryIssues = createTool({
     issues: z.array(GitHubIssueSchema),
     total_count: z.number(),
   }),
-  execute: async ({ context }) => {
-    const owner = context.owner || 'ffMathy';
+  execute: async (inputData) => {
+    const owner = inputData.owner || 'ffMathy';
 
     const { data: issues } = await octokit.rest.issues.listForRepo({
       owner,
-      repo: context.repo,
-      state: context.state,
+      repo: inputData.repo,
+      state: inputData.state,
       per_page: 100,
     });
 
@@ -153,7 +153,7 @@ export const listRepositoryIssues = createTool({
  * Tool to search for GitHub repositories
  */
 export const searchRepositories = createTool({
-  id: 'search-repositories',
+  id: 'searchRepositories',
   description:
     'Searches for GitHub repositories by name or keywords. Returns matching repositories with their details. Defaults to filtering by "ffMathy" owner if not specified.',
   inputSchema: z.object({
@@ -164,11 +164,11 @@ export const searchRepositories = createTool({
     repositories: z.array(GitHubRepositorySchema),
     total_count: z.number(),
   }),
-  execute: async ({ context }) => {
-    const owner = context.owner || 'ffMathy';
+  execute: async (inputData) => {
+    const owner = inputData.owner || 'ffMathy';
 
     // Construct search query with owner filter
-    const searchQuery = `${context.query} user:${owner}`;
+    const searchQuery = `${inputData.query} user:${owner}`;
 
     const { data } = await octokit.rest.search.repos({
       q: searchQuery,
@@ -192,7 +192,7 @@ export const searchRepositories = createTool({
  * and MCP server configuration with proper authentication.
  */
 export const assignCopilotToIssue = createTool({
-  id: 'assign-copilot-to-issue',
+  id: 'assignCopilotToIssue',
   description:
     'Provides instructions for assigning GitHub Copilot Coding Agent to a specific issue. This is an informational tool that does NOT automatically start a coding task. To enable automation, install the GitHub App and configure the MCP server with proper permissions. Defaults to "ffMathy" owner if not specified.',
   inputSchema: z.object({
@@ -205,13 +205,13 @@ export const assignCopilotToIssue = createTool({
     message: z.string(),
     task_url: z.string().optional(),
   }),
-  execute: async ({ context }) => {
-    const owner = context.owner || 'ffMathy';
+  execute: async (inputData) => {
+    const owner = inputData.owner || 'ffMathy';
 
     // This is an informational tool that provides instructions for manual assignment
     // Automation would require GitHub App installation and proper MCP server configuration
 
-    const issueUrl = `https://github.com/${owner}/${context.repo}/issues/${context.issue_number}`;
+    const issueUrl = `https://github.com/${owner}/${inputData.repo}/issues/${inputData.issue_number}`;
 
     return {
       success: false,
@@ -225,7 +225,7 @@ export const assignCopilotToIssue = createTool({
  * Tool to create a new GitHub issue
  */
 export const createGitHubIssue = createTool({
-  id: 'create-github-issue',
+  id: 'createGitHubIssue',
   description:
     'Creates a new GitHub issue with the given title, body, and optional labels. Useful for reporting errors or bugs. Defaults to "ffMathy" owner if not specified.',
   inputSchema: z.object({
@@ -241,16 +241,16 @@ export const createGitHubIssue = createTool({
     issue_url: z.string().optional(),
     message: z.string(),
   }),
-  execute: async ({ context }) => {
-    const owner = context.owner || 'ffMathy';
+  execute: async (inputData) => {
+    const owner = inputData.owner || 'ffMathy';
 
     try {
       const { data: issue } = await octokit.rest.issues.create({
         owner,
-        repo: context.repo,
-        title: context.title,
-        body: context.body,
-        labels: context.labels || [],
+        repo: inputData.repo,
+        title: inputData.title,
+        body: inputData.body,
+        labels: inputData.labels || [],
       });
 
       return {

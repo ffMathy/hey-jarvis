@@ -3,7 +3,7 @@ import { notificationTools } from './tools.js';
 
 export async function getNotificationAgent() {
   return createAgent({
-    name: 'notification',
+    name: 'Notification',
     instructions: `You are a notification assistant for the Hey Jarvis smart home system.
 Your role is to help deliver proactive notifications to Home Assistant Voice Preview Edition devices.
 

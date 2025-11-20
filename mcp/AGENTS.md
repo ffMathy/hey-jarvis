@@ -662,8 +662,41 @@ mastra/verticals/[vertical-name]/
 - **Specialized agents**: `[vertical][Purpose]Agent` (e.g., `mealPlanSelectorAgent`, `shoppingListSummaryAgent`)
 
 #### **Tool Naming**
-- **Tool IDs**: Always use `kebab-case` (e.g., `get-current-weather`, `find-product-in-catalog`)
-- **Tool exports**: Use `[vertical]Tools` (e.g., `weatherTools`, `cookingTools`)
+- **Tool IDs**: Always use `camelCase` matching the variable name (e.g., `getCurrentWeather`, `findProductInCatalog`)
+- **Tool variable names**: Must exactly match their tool ID (e.g., tool ID `getCurrentWeather` = variable name `getCurrentWeather`)
+- **Tool exports**: **CRITICAL** - Export tools using the variable name directly as shorthand
+- **Tool collection exports**: Use `[vertical]Tools` (e.g., `weatherTools`, `cookingTools`)
+
+**Example - CORRECT Tool Naming:**
+```typescript
+// ✅ CORRECT: Variable name matches tool ID (camelCase)
+export const getCurrentWeather = createTool({
+  id: 'getCurrentWeather',  // camelCase ID matching variable name
+  // ... tool config
+});
+
+export const weatherTools = {
+  getCurrentWeather,  // ✅ Shorthand - key and value use same name
+  getForecast,
+};
+```
+
+**Example - INCORRECT Tool Naming:**
+```typescript
+// ❌ INCORRECT: Variable name doesn't match ID
+export const fetchWeather = createTool({
+  id: 'getCurrentWeather',  // ❌ ID doesn't match variable name
+  // ... tool config
+});
+
+// ❌ INCORRECT: Using different key than variable name
+export const weatherTools = {
+  'get-current-weather': getCurrentWeather,  // ❌ Wrong key format!
+};
+```
+
+**Why This Matters:**
+Mastra's `/api/tools` endpoint requires tool keys to match their tool IDs. When tools are registered in the Mastra instance, the object keys become the tool identifiers used by the API. The tool ID, variable name, and export key must all be identical for tools to be properly exposed.
 
 #### **Workflow Naming**
 - **Workflow IDs**: Use `kebab-case` (e.g., `weather-monitoring-workflow`)
@@ -706,6 +739,25 @@ export * from './[new-vertical]'; // Add new verticals here
 2. **No Cross-Vertical Tools**: Tools belong to exactly one vertical
 3. **Shared Tools**: If truly shared, create a new `shared/` vertical
 4. **API Integration**: Group related API calls in the same vertical
+5. **CRITICAL - Tool Naming**: Tool ID, variable name, and export key must all be identical camelCase
+
+**Tool Export Pattern:**
+```typescript
+// In tools.ts - Export using variable name directly (shorthand)
+export const weatherTools = {
+  getCurrentWeather,        // ✅ Shorthand for getCurrentWeather: getCurrentWeather
+  getForecastByCity,        // ✅ ID, variable, and key all match
+};
+
+// In index.ts - Export the tools object
+export { weatherTools } from './tools';
+
+// In mastra/index.ts - Spread into Mastra config
+tools: {
+  ...weatherTools,  // Keys will be tool IDs (camelCase)
+  ...shoppingTools,
+}
+```
 
 #### **Workflow Rules**
 1. **Domain Alignment**: Workflows should match business processes, not technical steps
@@ -737,12 +789,13 @@ export const calendarAgent = createAgent({
 import { createTool } from '../../utils/tool-factory';
 import { z } from 'zod';
 
+export const getCalendarEvents = createTool({
+  id: 'getCalendarEvents',  // camelCase matching variable name
+  // ... tool config
+});
+
 export const calendarTools = {
-  // Use createTool() factory for all tools
-  getCalendarEvents: createTool({
-    id: 'get-calendar-events',
-    // ... tool config
-  }),
+  getCalendarEvents,  // Shorthand export
 };
 
 // calendar/workflows.ts
