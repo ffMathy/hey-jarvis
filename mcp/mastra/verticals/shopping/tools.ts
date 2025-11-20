@@ -34,7 +34,7 @@ export const findProductInCatalog = createTool({
             brand: `${hit.brand} ${hit.subBrand}`.trim(),
             attributes: hit.attributes.map((attr) => attr.attributeName),
             price: hit.price / 100
-          } as any;
+          };
 
           delete result['_highlightResult'];
           delete result['subBrand'];

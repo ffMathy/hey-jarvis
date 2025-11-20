@@ -1,5 +1,5 @@
 import { describe, it } from '@jest/globals';
-import { TestConversation } from './test-conversation';
+import { TestConversation } from './test-conversation.js';
 
 /**
  * Agent Prompt Specification Tests
@@ -63,7 +63,7 @@ describe('Agent Prompt Specifications', () => {
             throw new Error(
               `Expected weather tool to be called, but no weather tool calls found in messages. Available tools: ${messages
                 .filter((m) => m.type === 'mcp_tool_call')
-                .map((m) => (m as any).mcp_tool_call.tool_name)
+                .map((m) => m.mcp_tool_call.tool_name)
                 .join(', ')}`,
             );
           }

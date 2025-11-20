@@ -1,0 +1,389 @@
+import type { MessageInput } from '@mastra/core/agent/message-list';
+import { z } from 'zod';
+import { createStep, createToolStep, createWorkflow } from '../../utils/workflow-factory.js';
+import { assignCopilotToIssue, createGitHubIssue } from './tools.js';
+
+// Schema for requirements gathering input
+const requirementsInputSchema = z.object({
+    initialRequest: z.string().describe('The initial feature/implementation request from the user'),
+    repository: z
+        .string()
+        .optional()
+        .describe('The repository name (defaults to "hey-jarvis")'),
+    owner: z.string().optional().describe('The repository owner (defaults to "ffMathy")'),
+});
+
+// Schema for gathered requirements
+const gatheredRequirementsSchema = z.object({
+    title: z.string().optional().describe('Clear, concise feature title'),
+    requirements: z.array(z.string()).optional().describe('List of specific requirements gathered from the user'),
+    acceptanceCriteria: z.array(z.string()).optional().describe('List of acceptance criteria for the feature'),
+    implementation: z
+        .object({
+            location: z.string().optional().describe('Where in the codebase this should be implemented'),
+            dependencies: z.array(z.string()).optional().describe('Required dependencies or integrations'),
+            edgeCases: z.array(z.string()).optional().describe('Edge cases to consider'),
+        })
+        .describe('Implementation details'),
+    questionsAsked: z.array(z.string()).optional().describe('List of questions asked during requirements gathering'),
+    isComplete: z.boolean().optional().describe('Whether all requirements have been gathered'),
+});
+
+// Define workflow state schema for strong typing
+const workflowStateSchema = z.object({
+    initialRequest: z.string(),
+    repository: z.string(),
+    owner: z.string(),
+    issueNumber: z.number().optional(),
+    issueUrl: z.string().optional(),
+    conversationHistory: z.array(z.any()),
+    response: z
+        .object({
+            needsMoreQuestions: z.boolean(),
+            nextQuestion: z.string().optional(),
+            requirements: gatheredRequirementsSchema,
+        })
+        .nullable(),
+    success: z.boolean().optional(),
+    message: z.string().optional(),
+}).partial();
+
+// Schema for iterative questioning response
+const questioningResponseSchema = z.object({
+    needsMoreQuestions: z.boolean().describe('Whether more questions need to be asked'),
+    nextQuestion: z.string().optional().describe('The next question to ask, or null if complete'),
+    requirements: gatheredRequirementsSchema.describe('Current state of gathered requirements'),
+});
+
+// Step 1: Initialize requirements gathering session using workflow state
+const initializeGatheringSession = createStep({
+    id: 'initialize-gathering-session',
+    description: 'Sets up the initial prompt for requirements gathering',
+    stateSchema: workflowStateSchema,
+    inputSchema: requirementsInputSchema,
+    outputSchema: z.object({}),
+    execute: async (params) => {
+        const owner = params.inputData.owner || 'ffMathy';
+        const repo = params.inputData.repository || 'hey-jarvis';
+
+        const initialPrompt = `You are conducting a requirements gathering session for this feature request:
+
+"${params.inputData.initialRequest}"
+
+Start by asking your first clarifying question to understand what needs to be implemented.`;
+
+        params.setState({
+            initialRequest: params.inputData.initialRequest,
+            repository: repo,
+            owner,
+            conversationHistory: [{ role: 'user', content: initialPrompt }]
+        });
+
+        return {};
+    },
+});
+
+// Step 2: Ask a single question in the requirements gathering loop using workflow state
+const askRequirementsQuestion = createStep({
+    id: 'ask-requirements-question',
+    description: 'Asks a single clarifying question using the Requirements Interviewer Agent',
+    stateSchema: workflowStateSchema,
+    inputSchema: z.object({}),
+    outputSchema: z.object({}),
+    resumeSchema: z.object({
+        userAnswer: z.string().describe("The user's answer to the question"),
+    }),
+    suspendSchema: z.object({
+        question: z.string().describe('The question being asked to the user'),
+        context: z.string().describe("Context about what we're trying to gather"),
+    }),
+    execute: async (params) => {
+        const agent = params.mastra?.getAgent('requirementsInterviewer');
+        if (!agent) {
+            throw new Error('Requirements Interviewer agent not found');
+        }
+
+        const state = params.state;
+
+        // If we have resume data, add the user's answer to conversation history
+        let conversationHistory = state.conversationHistory;
+        if (params.resumeData?.userAnswer) {
+            conversationHistory = [
+                ...conversationHistory,
+                {
+                    role: 'user',
+                    content: params.resumeData.userAnswer,
+                },
+            ];
+        }
+
+        // Get agent response with structured output
+        const response = await agent.stream(conversationHistory as MessageInput[], {
+            structuredOutput: {
+                schema: questioningResponseSchema,
+            },
+            toolChoice: 'none'
+        });
+
+        const currentResponse = await response.object;
+
+        if (!currentResponse) {
+            throw new Error('Agent failed to provide a valid response');
+        }
+
+        // Add agent response to history
+        const updatedHistory = [
+            ...conversationHistory,
+            {
+                role: 'assistant',
+                content: JSON.stringify(currentResponse),
+            } as MessageInput,
+        ];
+
+        // Update workflow state with latest conversation and response
+        params.setState({
+            ...state,
+            conversationHistory: updatedHistory,
+            response: currentResponse,
+        });
+
+        // If more questions needed, suspend the workflow to wait for human input
+        if (currentResponse.needsMoreQuestions) {
+            if (!currentResponse.nextQuestion) {
+                throw new Error('Agent indicated more questions needed but did not provide a question');
+            }
+
+            // Suspend the workflow with context for the UI
+            return await params.suspend({
+                question: currentResponse.nextQuestion,
+                context: 'Requirements gathering in progress. Please provide your answer to continue.',
+            });
+        }
+
+        return {};
+    },
+});
+
+// Step 3: Prepare issue creation data using workflow state
+const prepareIssueCreationData = createStep({
+    id: 'prepare-issue-creation-data',
+    description: 'Prepares data for creating the issue with complete requirements',
+    stateSchema: workflowStateSchema,
+    inputSchema: z.object({}),
+    outputSchema: z.object({
+        owner: z.string().optional(),
+        repo: z.string(),
+        title: z.string(),
+        body: z.string(),
+        labels: z.array(z.string()).optional(),
+    }),
+    execute: async (params) => {
+        const state = params.state;
+        const { requirements } = state.response;
+
+        // Format requirements as markdown
+        const requirementsSection = requirements.requirements.map((req) => `- ${req}`).join('\n');
+        const acceptanceCriteriaSection = requirements.acceptanceCriteria.map((ac) => `- [ ] ${ac}`).join('\n');
+        const implementationSection = `
+**Location**: ${requirements.implementation.location}
+
+**Dependencies**:
+${requirements.implementation.dependencies.map((dep) => `- ${dep}`).join('\n') || '- None'}
+
+**Edge Cases**:
+${requirements.implementation.edgeCases.map((edge) => `- ${edge}`).join('\n') || '- None'}
+`;
+
+        const discussionSection = requirements.questionsAsked
+            .map((q, idx) => `**Q${idx + 1}**: ${q}`)
+            .join('\n\n');
+
+        const finalBody = `## Requirements
+${requirementsSection}
+
+## Acceptance Criteria
+${acceptanceCriteriaSection}
+
+## Implementation Details
+${implementationSection}
+
+## Discussion History
+${discussionSection}
+`;
+
+        return {
+            owner: state.owner,
+            repo: state.repository,
+            title: requirements.title,
+            body: finalBody,
+            labels: ['ready', 'requirements-complete'],
+        };
+    },
+});
+
+// Step 4: Create issue with requirements using tool
+const createIssueWithRequirementsTool = createToolStep({
+    id: 'create-issue-with-requirements-tool',
+    description: 'Creates the issue with requirements using the GitHub API',
+    tool: createGitHubIssue,
+    stateSchema: workflowStateSchema,
+});
+
+// Step 5: Store issue creation result in workflow state
+const storeIssueCreationResult = createStep({
+    id: 'store-issue-creation-result',
+    description: 'Stores the issue creation result in workflow state',
+    stateSchema: workflowStateSchema,
+    inputSchema: z.object({
+        success: z.boolean(),
+        message: z.string(),
+        issue_number: z.number().optional(),
+        issue_url: z.string().optional(),
+    }),
+    outputSchema: z.object({}),
+    execute: async (params) => {
+        if (!params.inputData.success || !params.inputData.issue_number || !params.inputData.issue_url) {
+            throw new Error(`Failed to create issue: ${params.inputData.message}`);
+        }
+
+        const state = params.state;
+        params.setState({
+            ...state,
+            issueNumber: params.inputData.issue_number,
+            issueUrl: params.inputData.issue_url,
+            success: params.inputData.success,
+            message: params.inputData.message,
+        });
+        return {};
+    },
+});
+
+// Step 6: Validate success before Copilot assignment
+const validateBeforeCopilotAssignment = createStep({
+    id: 'validate-before-copilot-assignment',
+    description: 'Validates that issue update succeeded before assigning Copilot',
+    stateSchema: workflowStateSchema,
+    inputSchema: z.object({}),
+    outputSchema: z.object({}),
+    execute: async (params) => {
+        const state = params.state;
+
+        if (!state.success) {
+            throw new Error('Cannot assign to Copilot: Issue update failed');
+        }
+
+        return {};
+    },
+});
+
+// Step 7: Prepare Copilot assignment data using workflow state
+const prepareCopilotAssignmentData = createStep({
+    id: 'prepare-copilot-assignment-data',
+    description: 'Prepares data for assigning the issue to Copilot',
+    stateSchema: workflowStateSchema,
+    inputSchema: z.object({}),
+    outputSchema: z.object({
+        owner: z.string().optional(),
+        repo: z.string(),
+        issue_number: z.number(),
+    }),
+    execute: async (params) => {
+        const state = params.state;
+
+        return {
+            owner: state.owner,
+            repo: state.repository,
+            issue_number: state.issueNumber,
+        };
+    },
+});
+
+// Step 8: Assign to GitHub Copilot using tool
+const assignToCopilotTool = createToolStep({
+    id: 'assign-to-copilot-tool',
+    description: 'Assigns the issue to Copilot using the GitHub API',
+    tool: assignCopilotToIssue,
+    stateSchema: workflowStateSchema,
+});
+
+// Step 9: Format final workflow output
+const formatFinalOutput = createStep({
+    id: 'format-final-output',
+    description: 'Formats the final workflow output with success message',
+    stateSchema: workflowStateSchema,
+    inputSchema: z.object({
+        success: z.boolean(),
+        message: z.string(),
+        task_url: z.string().optional(),
+    }),
+    outputSchema: z.object({
+        success: z.boolean(),
+        message: z.string(),
+        issueUrl: z.string().optional(),
+    }),
+    execute: async (params) => {
+        const state = params.state;
+
+        if (!params.inputData.success) {
+            return {
+                success: false,
+                message: `Copilot assignment initiated but may require manual confirmation: ${params.inputData.message}`,
+                issueUrl: state.issueUrl,
+            };
+        }
+
+        return {
+            success: true,
+            message: `Successfully assigned Copilot to issue #${state.issueNumber}. ${params.inputData.message}`,
+            issueUrl: state.issueUrl,
+        };
+    },
+});
+
+/**
+ * Workflow for gathering requirements and creating implementation issues
+ *
+ * This workflow implements the requirements gathering pattern using workflow state:
+ * 1. Initializes the requirements gathering session
+ * 2. Uses Mastra's .dowhile() to iteratively:
+ *    a. Ask clarifying questions via Requirements Interviewer Agent
+ * 3. Prepares and creates the issue with complete requirements (3 sub-steps)
+ * 4. Validates success before Copilot assignment
+ * 5. Prepares and assigns GitHub Copilot for implementation (3 sub-steps)
+ *
+ * All state is managed via workflow.state and workflow.setState for cleaner code.
+ * Tool calls are isolated in dedicated createToolStep steps for better observability.
+ */
+export const implementFeatureWorkflow = createWorkflow({
+    id: 'implement-feature-workflow',
+    stateSchema: workflowStateSchema,
+    inputSchema: requirementsInputSchema,
+    outputSchema: z.object({
+        success: z.boolean(),
+        message: z.string(),
+        issueUrl: z.string().optional(),
+    }),
+})
+    .then(initializeGatheringSession)
+    .dowhile(
+        askRequirementsQuestion,
+        async ({ iterationCount }) => {
+            // Safety limit check
+            if (iterationCount >= 50) {
+                throw new Error('Requirements gathering exceeded maximum iterations');
+            }
+
+            // Note: We can't access workflow.state in dowhile condition
+            // The loop will naturally exit when suspend() is not called
+            // which happens when needsMoreQuestions is false
+            return true;
+        },
+    )
+    .then(prepareIssueCreationData)
+    .then(createIssueWithRequirementsTool)
+    .then(storeIssueCreationResult)
+    .then(validateBeforeCopilotAssignment)
+    .then(prepareCopilotAssignmentData)
+    .then(assignToCopilotTool)
+    .then(formatFinalOutput)
+    .commit();

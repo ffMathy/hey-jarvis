@@ -9,9 +9,11 @@ import {
   getMealPlanSelectorAgent,
   getNotificationAgent,
   getRecipeSearchAgent,
+  getRequirementsInterviewerAgent,
   getShoppingListAgent,
   getShoppingListSummaryAgent,
   getWeatherAgent,
+  implementFeatureWorkflow,
   weatherMonitoringWorkflow,
   weeklyMealPlanningWorkflow
 } from './verticals/index.js';
@@ -32,6 +34,7 @@ async function createMastra() {
     shoppingListSummaryAgent,
     notificationAgent,
     codingAgent,
+    requirementsInterviewerAgent,
   ] = await Promise.all([
     getWeatherAgent(),
     getRecipeSearchAgent(),
@@ -42,6 +45,7 @@ async function createMastra() {
     getShoppingListSummaryAgent(),
     getNotificationAgent(),
     getCodingAgent(),
+    getRequirementsInterviewerAgent(),
   ]);
 
   return new Mastra({
@@ -54,6 +58,7 @@ async function createMastra() {
     workflows: {
       weatherMonitoringWorkflow,
       weeklyMealPlanningWorkflow,
+      implementFeatureWorkflow,
     },
     agents: {
       weather: weatherAgent,
@@ -65,6 +70,7 @@ async function createMastra() {
       shoppingListSummary: shoppingListSummaryAgent,
       notification: notificationAgent,
       coding: codingAgent,
+      requirementsInterviewer: requirementsInterviewerAgent,
     },
   });
 }

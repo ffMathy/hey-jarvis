@@ -1,23 +1,26 @@
 import { z } from 'zod';
 import { createAgentStep, createStep, createWorkflow } from '../../utils/workflow-factory.js';
 
-// Agent-as-step for scheduled weather check using the weather agent directly
+// Agent-as-step for scheduled weather check
 const scheduledWeatherCheck = createAgentStep({
   id: 'scheduled-weather-check',
-  description: 'Checks weather for Mathias every hour and notifies memory agent of changes',
+  description: 'Checks weather for Mathias every hour',
   agentName: 'weather',
   inputSchema: z.object({}),
   outputSchema: z.object({
-    result: z.string(), // This comes from the agent response
+    result: z.string(),
   }),
   prompt: () => 'Get current weather for Mathias, Denmark',
 });
 
 // Transform weather data into memory update format
+// Data flows through context - no state needed since result only used once
 const transformToMemoryUpdate = createStep({
   id: 'transform-to-memory-update',
   description: 'Transform weather data into memory update format',
-  inputSchema: scheduledWeatherCheck.outputSchema,
+  inputSchema: z.object({
+    result: z.string(),
+  }),
   outputSchema: z.object({
     memoryUpdate: z
       .object({
@@ -32,7 +35,7 @@ const transformToMemoryUpdate = createStep({
       .optional(),
   }),
   execute: async ({ context }) => {
-    // Create memory update event (like the n8n ExecuteWorkflow node does)
+    // Create memory update event from context (no state needed)
     const memoryUpdate = {
       context: 'The weather has changed.',
       events: [
@@ -49,14 +52,25 @@ const transformToMemoryUpdate = createStep({
   },
 });
 
-// Scheduled weather monitoring workflow using agent-as-step pattern
+// Scheduled weather monitoring workflow
+// No state needed - data flows directly through context from step to step
 export const weatherMonitoringWorkflow = createWorkflow({
   id: 'weather-monitoring-workflow',
-  inputSchema: scheduledWeatherCheck.inputSchema,
-  outputSchema: transformToMemoryUpdate.outputSchema,
+  inputSchema: z.object({}),
+  outputSchema: z.object({
+    memoryUpdate: z
+      .object({
+        context: z.string(),
+        events: z.array(
+          z.object({
+            type: z.string(),
+            information: z.any(),
+          }),
+        ),
+      })
+      .optional(),
+  }),
 })
   .then(scheduledWeatherCheck)
-  .then(transformToMemoryUpdate);
-
-// Commit the workflows
-weatherMonitoringWorkflow.commit();
+  .then(transformToMemoryUpdate)
+  .commit();

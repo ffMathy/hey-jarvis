@@ -141,7 +141,9 @@ export const searchRecipes = createTool({
 export const getAllRecipes = createTool({
   id: 'getAllRecipes',
   description: 'Get all recipes from Valdemarsro with pagination support',
-  inputSchema: z.any(),
+  inputSchema: z.object({
+    fromDate: z.string().optional().describe('Optional from date filter'),
+  }),
   // Output schema is an array of recipes
   outputSchema: z
     .array(getRecipeById.outputSchema)

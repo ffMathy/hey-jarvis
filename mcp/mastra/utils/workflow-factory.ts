@@ -1,6 +1,5 @@
-import { createStep as mastraCreateStep, createWorkflow as mastraCreateWorkflow } from '@mastra/core/workflows';
+import { createStep as mastraCreateStep, createWorkflow as mastraCreateWorkflow, type DefaultEngineType, type Step, type StepParams, type WorkflowConfig } from '@mastra/core/workflows';
 import { z } from 'zod';
-import { createScorersConfig } from './scorers-config.js';
 
 /**
  * Creates a new Mastra Workflow with sensible defaults for the Hey Jarvis system.
@@ -9,6 +8,7 @@ import { createScorersConfig } from './scorers-config.js';
  * - Apply consistent defaults across all workflows
  * - Easily modify default behavior in the future
  * - Maintain a single point of workflow configuration
+ * - Support strong-typed workflow state
  *
  * @param config - The workflow configuration object
  * @returns A new Workflow instance with applied defaults
@@ -18,26 +18,39 @@ import { createScorersConfig } from './scorers-config.js';
  * import { createWorkflow, createStep } from '../utils/workflow-factory';
  * import { z } from 'zod';
  *
- * const myStep = createStep({
+ * // Define state schema for strong typing
+ * const stateSchema = z.object({
+ *   result: z.string(),
+ *   count: z.number(),
+ * });
+ *
+ * const myStep = createStep<typeof stateSchema>()({
  *   id: 'my-step',
  *   description: 'A helpful step',
  *   inputSchema: z.object({}),
  *   outputSchema: z.object({ result: z.string() }),
- *   execute: async () => ({ result: 'done' }),
+ *   execute: async ({ workflow }) => {
+ *     // workflow.state is now strongly typed!
+ *     const currentCount = workflow.state.count;
+ *     workflow.setState({ ...workflow.state, count: currentCount + 1 });
+ *     return { result: 'done' };
+ *   },
  * });
  *
  * export const myWorkflow = createWorkflow({
  *   id: 'my-workflow',
+ *   stateSchema,
  *   inputSchema: z.object({}),
  *   outputSchema: z.object({ result: z.string() }),
  * }).then(myStep);
  * ```
  */
-export function createWorkflow<TInputSchema extends z.ZodSchema, TOutputSchema extends z.ZodSchema>(config: {
-  id: string;
-  inputSchema: TInputSchema;
-  outputSchema: TOutputSchema;
-}) {
+export function createWorkflow<
+  TWorkflowId extends string = string,
+  TState extends z.ZodObject<any> = z.ZodObject<any>,
+  TInput extends z.ZodType<any> = z.ZodType<any>,
+  TOutput extends z.ZodType<any> = z.ZodType<any>,
+  TSteps extends Step<string, any, any, any, any, any, DefaultEngineType>[] = Step<string, any, any, any, any, any, DefaultEngineType>[]>(config: WorkflowConfig<TWorkflowId, TState, TInput, TOutput, TSteps>) {
   // For now, this is a direct proxy to the Mastra createWorkflow function
   // Future enhancements could include:
   // - Automatic error handling and retry logic
@@ -56,44 +69,66 @@ export function createWorkflow<TInputSchema extends z.ZodSchema, TOutputSchema e
  * - Apply consistent defaults across all steps
  * - Easily modify default behavior in the future
  * - Maintain a single point of step configuration
+ * - Support strongly-typed workflow state management via workflow parameter
  *
- * @param config - The step configuration object
- * @param options - Additional options for step configuration
- * @returns A new Step instance with applied defaults
+ * @param config - The step configuration
+ * @param options - Optional scorers configuration
+ * @returns A Mastra workflow step with type-safe state access
+ *
+ * @example
+ * ```typescript
+ * // Define state schema for strong typing
+ * const stateSchema = z.object({
+ *   result: z.string(),
+ *   count: z.number(),
+ * });
+ *
+ * // Create step with typed state
+ * const myStep = createStep<typeof stateSchema, typeof inputSchema, typeof outputSchema>({
+ *   id: 'my-step',
+ *   description: 'A helpful step',
+ *   inputSchema: z.object({}),
+ *   outputSchema: z.object({}),
+ *   execute: async ({ context, workflow }) => {
+ *     // workflow.state is now strongly typed!
+ *     const currentCount = workflow.state.count;
+ *     workflow.setState({
+ *       ...workflow.state,
+ *       count: currentCount + 1,
+ *     });
+ *     return {};
+ *   },
+ * });
+ *
+ * // Create step without state (no generic parameter needed)
+ * const simpleStep = createStep({
+ *   id: 'simple-step',
+ *   description: 'A simple step',
+ *   inputSchema: z.object({ data: z.string() }),
+ *   outputSchema: z.object({ result: z.string() }),
+ *   execute: async ({ context }) => ({ result: context.data }),
+ * });
+ * ```
  */
-export function createStep<TInputSchema extends z.ZodSchema, TOutputSchema extends z.ZodSchema>(
-  config: {
-    id: string;
-    description: string;
-    inputSchema: TInputSchema;
-    outputSchema: TOutputSchema;
-    execute: (params: { context: z.infer<TInputSchema>; mastra?: any }) => Promise<z.infer<TOutputSchema>>;
-  },
-  options: {
-    enableScorers?: boolean;
-    customScorers?: Record<string, any>;
-    samplingRate?: number;
-  } = {},
-) {
-  const { enableScorers = true, customScorers = {}, samplingRate } = options;
-
-  // Add scorers if enabled
-  const stepConfig = enableScorers
-    ? {
-      ...config,
-      scorers: createScorersConfig(customScorers, samplingRate),
-    }
-    : config;
-
-  // For now, this is a direct proxy to the Mastra createStep function
-  // Future enhancements could include:
-  // - Automatic error handling and retry logic
-  // - Step-level logging and observability
-  // - Input/output validation
-  // - Step timeout handling
-  // - Step-level caching
-
-  return mastraCreateStep(stepConfig);
+export function createStep<
+  TStepId extends string = string,
+  TState extends z.ZodObject<any> = z.ZodObject<any>,
+  TInput extends z.ZodSchema = z.ZodSchema,
+  TOutput extends z.ZodSchema = z.ZodSchema,
+  TResume extends z.ZodSchema = z.ZodNever,
+  TSuspend extends z.ZodSchema = z.ZodNever,
+>(
+  config: StepParams<TStepId, TState, TInput, TOutput, TResume, TSuspend>) {
+  return mastraCreateStep({
+    id: config.id,
+    stateSchema: config.stateSchema,
+    description: config.description,
+    inputSchema: config.inputSchema,
+    outputSchema: config.outputSchema,
+    resumeSchema: config.resumeSchema,
+    suspendSchema: config.suspendSchema,
+    execute: config.execute.bind(config),
+  });
 }
 
 /**
@@ -101,41 +136,61 @@ export function createStep<TInputSchema extends z.ZodSchema, TOutputSchema exten
  * This implements the "agent-as-step" pattern where an existing agent
  * becomes a reusable workflow step.
  *
- * @param config - Configuration for the agent step
- * @returns A new Step that executes using the specified agent
+ * @param config - The agent step configuration
+ * @returns A Mastra workflow step that executes the specified agent
  *
  * @example
  * ```typescript
- * const weatherStep = createAgentStep({
+ * // Define state schema
+ * const stateSchema = z.object({
+ *   location: z.string(),
+ * });
+ *
+ * const weatherStep = createAgentStep<typeof stateSchema, typeof inputSchema, typeof outputSchema>({
  *   id: 'weather-check',
  *   description: 'Get weather using weather agent',
  *   agentName: 'weather',
  *   inputSchema: z.object({ location: z.string() }),
  *   outputSchema: z.object({ weather: z.string() }),
- *   prompt: ({ context }) => `Get weather for ${context.location}`,
+ *   prompt: ({ context, workflow }) => {
+ *     // workflow.state is strongly typed!
+ *     return `Get weather for ${workflow.state.location}`;
+ *   },
  * });
  * ```
  */
-export function createAgentStep<TInputSchema extends z.ZodSchema, TOutputSchema extends z.ZodSchema>(config: {
-  id: string;
+export function createAgentStep<
+  TStepId extends string = string,
+  TStateSchema extends z.ZodObject<any> = z.ZodObject<any>,
+  TInputSchema extends z.ZodSchema = z.ZodSchema,
+  TOutputSchema extends z.ZodSchema = z.ZodSchema,
+>(config: {
+  id: TStepId;
   description: string;
   agentName: string;
+  stateSchema?: TStateSchema;
   inputSchema: TInputSchema;
   outputSchema: TOutputSchema;
-  prompt: (params: { context: z.infer<TInputSchema> }) => string;
+  prompt: (params: {
+    context: z.infer<TInputSchema>;
+    workflow?: {
+      state: z.infer<TStateSchema>;
+      setState: (state: z.infer<TStateSchema>) => void;
+    };
+  }) => string;
 }) {
-  return createStep({
+  return createStep<TStepId, TStateSchema, TInputSchema, TOutputSchema>({
     id: config.id,
     description: config.description,
     inputSchema: config.inputSchema,
     outputSchema: config.outputSchema,
-    execute: async ({ context, mastra }) => {
-      const agent = mastra?.getAgent(config.agentName);
+    execute: async (params): Promise<TOutputSchema> => {
+      const agent = params.mastra?.getAgent(config.agentName);
       if (!agent) {
         throw new Error(`Agent '${config.agentName}' not found`);
       }
 
-      const prompt = config.prompt({ context });
+      const prompt = config.prompt({ context: params });
 
       const response = await agent.stream(
         [
@@ -161,37 +216,51 @@ export function createAgentStep<TInputSchema extends z.ZodSchema, TOutputSchema 
  * This implements the "tool-as-step" pattern where an existing tool
  * becomes a reusable workflow step.
  *
- * @param config - Configuration for the tool step
- * @returns A new Step that executes using the specified tool
+ * @param config - The tool step configuration
+ * @returns A Mastra workflow step that executes the specified tool
  *
  * @example
  * ```typescript
- * const getCurrentWeatherStep = createToolStep({
+ * // Define state schema (if needed)
+ * const stateSchema = z.object({
+ *   cityName: z.string(),
+ * });
+ *
+ * const getCurrentWeatherStep = createToolStep<typeof stateSchema, typeof inputSchema, typeof toolInputSchema, typeof toolOutputSchema>({
  *   id: 'get-current-weather',
  *   description: 'Get current weather for a city',
  *   tool: getCurrentWeatherByCity,
+ *   inputSchema: z.object({ location: z.string() }),
+ *   inputTransform: ({ location }) => ({ cityName: location }),
  * });
  * ```
  */
-export function createToolStep<TToolInput extends z.ZodSchema, TToolOutput extends z.ZodSchema>(config: {
-  id: string;
+export function createToolStep<
+  TStepId extends string = string,
+  TStateSchema extends z.ZodObject<any> = z.ZodObject<any>,
+  TInputSchema extends z.ZodSchema = z.ZodSchema,
+  TToolInput extends z.ZodSchema = z.ZodSchema,
+  TToolOutput extends z.ZodSchema = z.ZodSchema,
+>(config: {
+  id: TStepId;
   description: string;
   tool: {
-    inputSchema?: TToolInput;
-    outputSchema?: TToolOutput;
-    execute: (params: { context: z.infer<TToolInput>; mastra?: any }) => Promise<z.infer<TToolOutput>>;
+    inputSchema: TToolInput;
+    outputSchema: TToolOutput;
+    execute: (inputData: z.infer<TToolInput>, context?: any) => Promise<z.infer<TToolOutput>>;
   };
+  stateSchema?: TStateSchema;
+  inputSchema?: TInputSchema;
 }) {
-  return createStep({
+  const inputSchema = config.tool.inputSchema;
+
+  return createStep<TStepId, TStateSchema, typeof inputSchema, TToolOutput>({
     id: config.id,
     description: config.description,
-    inputSchema: config.tool?.inputSchema,
-    outputSchema: config.tool?.outputSchema,
-    execute: async ({ context, mastra }) => {
-      return await config.tool.execute({
-        context,
-        mastra,
-      });
+    inputSchema: inputSchema,
+    outputSchema: config.tool.outputSchema,
+    execute: async (params) => {
+      return await config.tool.execute(params.inputData, params.mastra);
     },
   });
 }

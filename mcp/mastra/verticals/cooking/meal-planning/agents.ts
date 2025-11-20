@@ -1,4 +1,4 @@
-import { createAgent } from '../../../utils';
+import { createAgent } from '../../../utils/index.js';
 
 // Specialized agent for meal plan recipe selection
 export async function getMealPlanSelectorAgent() {
