@@ -1,6 +1,5 @@
-import { createStep as mastraCreateStep, createWorkflow as mastraCreateWorkflow } from '@mastra/core/workflows';
+import { createStep as mastraCreateStep, createWorkflow as mastraCreateWorkflow, type DefaultEngineType, type Step, type StepParams, type WorkflowConfig } from '@mastra/core/workflows';
 import { z } from 'zod';
-import { createScorersConfig } from './scorers-config.js';
 
 /**
  * Creates a new Mastra Workflow with sensible defaults for the Hey Jarvis system.
@@ -47,15 +46,11 @@ import { createScorersConfig } from './scorers-config.js';
  * ```
  */
 export function createWorkflow<
-  TInputSchema extends z.ZodSchema,
-  TOutputSchema extends z.ZodSchema,
-  TStateSchema extends z.ZodObject<any> = z.ZodObject<any>,
->(config: {
-  id: string;
-  inputSchema: TInputSchema;
-  outputSchema: TOutputSchema;
-  stateSchema?: TStateSchema;
-}) {
+  TWorkflowId extends string = string,
+  TState extends z.ZodObject<any> = z.ZodObject<any>,
+  TInput extends z.ZodType<any> = z.ZodType<any>,
+  TOutput extends z.ZodType<any> = z.ZodType<any>,
+  TSteps extends Step<string, any, any, any, any, any, DefaultEngineType>[] = Step<string, any, any, any, any, any, DefaultEngineType>[]>(config: WorkflowConfig<TWorkflowId, TState, TInput, TOutput, TSteps>) {
   // For now, this is a direct proxy to the Mastra createWorkflow function
   // Future enhancements could include:
   // - Automatic error handling and retry logic
@@ -64,7 +59,7 @@ export function createWorkflow<
   // - Workflow versioning
   // - Automatic step validation
 
-  return mastraCreateWorkflow(config) as any;
+  return mastraCreateWorkflow(config);
 }
 
 /**
@@ -116,49 +111,24 @@ export function createWorkflow<
  * ```
  */
 export function createStep<
-  TStateSchema extends z.ZodObject<any> = z.ZodObject<any>,
-  TInputSchema extends z.ZodSchema = z.ZodSchema,
-  TOutputSchema extends z.ZodSchema = z.ZodSchema,
-  TResumeSchema extends z.ZodSchema = z.ZodNever,
-  TSuspendSchema extends z.ZodSchema = z.ZodNever,
+  TStepId extends string = string,
+  TState extends z.ZodObject<any> = z.ZodObject<any>,
+  TInput extends z.ZodSchema = z.ZodSchema,
+  TOutput extends z.ZodSchema = z.ZodSchema,
+  TResume extends z.ZodSchema = z.ZodNever,
+  TSuspend extends z.ZodSchema = z.ZodNever,
 >(
-  config: {
-    id: string;
-    description: string;
-    stateSchema?: TStateSchema;
-    inputSchema: TInputSchema;
-    outputSchema: TOutputSchema;
-    resumeSchema?: TResumeSchema;
-    suspendSchema?: TSuspendSchema;
-    execute: (params: {
-      context: z.infer<TInputSchema>;
-      mastra?: any;
-      workflow?: {
-        state: z.infer<TStateSchema>;
-        setState: (state: z.infer<TStateSchema>) => void;
-        suspend: (data: z.infer<TSuspendSchema>) => Promise<z.infer<TOutputSchema>>;
-        resumeData?: z.infer<TResumeSchema>;
-      };
-    }) => Promise<z.infer<TOutputSchema>>;
-  },
-  options: {
-    enableScorers?: boolean;
-    customScorers?: Record<string, any>;
-    samplingRate?: number;
-  } = {},
-) {
-  const { enableScorers = true, customScorers = {}, samplingRate } = options;
-
+  config: StepParams<TStepId, TState, TInput, TOutput, TResume, TSuspend>) {
   return mastraCreateStep({
     id: config.id,
+    stateSchema: config.stateSchema,
     description: config.description,
     inputSchema: config.inputSchema,
     outputSchema: config.outputSchema,
     resumeSchema: config.resumeSchema,
     suspendSchema: config.suspendSchema,
     execute: config.execute.bind(config),
-    ...(enableScorers && { scorers: createScorersConfig(customScorers, samplingRate) }),
-  }) as any;
+  });
 }
 
 /**
@@ -190,11 +160,12 @@ export function createStep<
  * ```
  */
 export function createAgentStep<
+  TStepId extends string = string,
   TStateSchema extends z.ZodObject<any> = z.ZodObject<any>,
   TInputSchema extends z.ZodSchema = z.ZodSchema,
   TOutputSchema extends z.ZodSchema = z.ZodSchema,
 >(config: {
-  id: string;
+  id: TStepId;
   description: string;
   agentName: string;
   stateSchema?: TStateSchema;
@@ -208,18 +179,18 @@ export function createAgentStep<
     };
   }) => string;
 }) {
-  return createStep<TStateSchema, TInputSchema, TOutputSchema>({
+  return createStep<TStepId, TStateSchema, TInputSchema, TOutputSchema>({
     id: config.id,
     description: config.description,
     inputSchema: config.inputSchema,
     outputSchema: config.outputSchema,
-    execute: async ({ context, mastra, workflow }) => {
-      const agent = mastra?.getAgent(config.agentName);
+    execute: async (params): Promise<TOutputSchema> => {
+      const agent = params.mastra?.getAgent(config.agentName);
       if (!agent) {
         throw new Error(`Agent '${config.agentName}' not found`);
       }
 
-      const prompt = config.prompt({ context, workflow });
+      const prompt = config.prompt({ context: params });
 
       const response = await agent.stream(
         [
@@ -265,12 +236,13 @@ export function createAgentStep<
  * ```
  */
 export function createToolStep<
+  TStepId extends string = string,
   TStateSchema extends z.ZodObject<any> = z.ZodObject<any>,
   TInputSchema extends z.ZodSchema = z.ZodSchema,
   TToolInput extends z.ZodSchema = z.ZodSchema,
   TToolOutput extends z.ZodSchema = z.ZodSchema,
 >(config: {
-  id: string;
+  id: TStepId;
   description: string;
   tool: {
     inputSchema: TToolInput;
@@ -279,19 +251,16 @@ export function createToolStep<
   };
   stateSchema?: TStateSchema;
   inputSchema?: TInputSchema;
-  inputTransform?: (input: z.infer<TInputSchema>) => z.infer<TToolInput>;
 }) {
-  const inputSchema = config.inputSchema ?? config.tool.inputSchema;
-  const inputTransform = config.inputTransform ?? ((input: any) => input);
+  const inputSchema = config.tool.inputSchema;
 
-  return createStep<TStateSchema, typeof inputSchema, TToolOutput>({
+  return createStep<TStepId, TStateSchema, typeof inputSchema, TToolOutput>({
     id: config.id,
     description: config.description,
     inputSchema: inputSchema,
     outputSchema: config.tool.outputSchema,
-    execute: async ({ context, mastra }) => {
-      const toolInput = inputTransform(context);
-      return await config.tool.execute(toolInput, mastra);
+    execute: async (params) => {
+      return await config.tool.execute(params.inputData, params.mastra);
     },
   });
 }

@@ -1,7 +1,7 @@
 import type { MessageInput } from '@mastra/core/agent/message-list';
 import { z } from 'zod';
-import { createStep, createWorkflow } from '../../utils/workflow-factory.js';
-import { assignCopilotToIssue, createGitHubIssue, updateGitHubIssue } from './tools.js';
+import { createStep, createToolStep, createWorkflow } from '../../utils/workflow-factory.js';
+import { assignCopilotToIssue, createGitHubIssue } from './tools.js';
 
 // Schema for requirements gathering input
 const requirementsInputSchema = z.object({
@@ -34,111 +34,19 @@ const workflowStateSchema = z.object({
     initialRequest: z.string(),
     repository: z.string(),
     owner: z.string(),
-    issueNumber: z.number(),
-    issueUrl: z.string(),
+    issueNumber: z.number().optional(),
+    issueUrl: z.string().optional(),
     conversationHistory: z.array(z.any()),
-    response: z.object({
-        needsMoreQuestions: z.boolean(),
-        nextQuestion: z.string().nullable(),
-        requirements: gatheredRequirementsSchema,
-    }).nullable(),
+    response: z
+        .object({
+            needsMoreQuestions: z.boolean(),
+            nextQuestion: z.string().nullable(),
+            requirements: gatheredRequirementsSchema,
+        })
+        .nullable(),
     success: z.boolean().optional(),
     message: z.string().optional(),
-});
-
-// Step 1a: Prepare draft issue data using workflow state
-const prepareDraftIssueData = createStep({
-    id: 'prepare-draft-issue-data',
-    description: 'Prepares data for draft issue creation',
-    stateSchema: workflowStateSchema,
-    inputSchema: requirementsInputSchema,
-    outputSchema: z.object({
-        owner: z.string().optional(),
-        repo: z.string(),
-        title: z.string(),
-        body: z.string(),
-        labels: z.array(z.string()).optional(),
-    }),
-    execute: async ({ context, workflow }) => {
-        const owner = context.owner || 'ffMathy';
-        const repo = context.repository || 'hey-jarvis';
-
-        // Store initial request in workflow state
-        workflow.setState({
-            initialRequest: context.initialRequest,
-            repository: repo,
-            owner,
-        });
-
-        return {
-            owner,
-            repo,
-            title: `[DRAFT] ${context.initialRequest.substring(0, 100)}`,
-            body: `## Initial Request
-${context.initialRequest}
-
-## Requirements
-_To be gathered..._
-
-## Acceptance Criteria
-_To be defined..._
-
-## Discussion
-_Requirements gathering in progress..._`,
-            labels: ['draft', 'requirements-gathering'],
-        };
-    },
-});
-
-// Step 1b: Create draft issue using tool
-const createDraftIssueTool = createStep({
-    id: 'create-draft-issue-tool',
-    description: 'Creates a draft GitHub issue using the GitHub API',
-    stateSchema: workflowStateSchema,
-    inputSchema: z.object({
-        owner: z.string().optional(),
-        repo: z.string(),
-        title: z.string(),
-        body: z.string(),
-        labels: z.array(z.string()).optional(),
-    }),
-    outputSchema: z.object({
-        success: z.boolean(),
-        message: z.string(),
-        issue_number: z.number().optional(),
-        issue_url: z.string().optional(),
-    }),
-    execute: async ({ context, mastra }) => {
-        return await createGitHubIssue.execute(context, mastra);
-    },
-});
-
-// Step 1c: Store issue details in workflow state
-const storeDraftIssueDetails = createStep({
-    id: 'store-draft-issue-details',
-    description: 'Stores the created issue details in workflow state',
-    stateSchema: workflowStateSchema,
-    inputSchema: z.object({
-        success: z.boolean(),
-        message: z.string(),
-        issue_number: z.number().optional(),
-        issue_url: z.string().optional(),
-    }),
-    outputSchema: z.object({}),
-    execute: async ({ context, workflow }) => {
-        if (!context.success || !context.issue_number || !context.issue_url) {
-            throw new Error(`Failed to create draft issue: ${context.message}`);
-        }
-
-        // Store issue details in workflow state
-        workflow.setState({
-            ...workflow.state,
-            issueNumber: context.issue_number,
-            issueUrl: context.issue_url,
-        });
-        return {};
-    },
-});
+}).partial();
 
 // Schema for iterative questioning response
 const questioningResponseSchema = z.object({
@@ -147,25 +55,27 @@ const questioningResponseSchema = z.object({
     requirements: gatheredRequirementsSchema.describe('Current state of gathered requirements'),
 });
 
-// Step 2a: Initialize requirements gathering session using workflow state
+// Step 1: Initialize requirements gathering session using workflow state
 const initializeGatheringSession = createStep({
     id: 'initialize-gathering-session',
     description: 'Sets up the initial prompt for requirements gathering',
     stateSchema: workflowStateSchema,
-    inputSchema: z.object({}),
+    inputSchema: requirementsInputSchema,
     outputSchema: z.object({}),
-    execute: async ({ workflow }) => {
-        const state = workflow.state;
+    execute: async (params) => {
+        const owner = params.inputData.owner || 'ffMathy';
+        const repo = params.inputData.repository || 'hey-jarvis';
+
         const initialPrompt = `You are conducting a requirements gathering session for this feature request:
 
-"${state.initialRequest}"
-
-Draft issue created: ${state.issueUrl}
+"${params.inputData.initialRequest}"
 
 Start by asking your first clarifying question to understand what needs to be implemented.`;
 
-        workflow.setState({
-            ...state,
+        params.setState({
+            initialRequest: params.inputData.initialRequest,
+            repository: repo,
+            owner,
             conversationHistory: [{ role: 'user', content: initialPrompt }],
             response: null,
         });
@@ -174,7 +84,7 @@ Start by asking your first clarifying question to understand what needs to be im
     },
 });
 
-// Step 2b: Ask a single question in the requirements gathering loop using workflow state
+// Step 2: Ask a single question in the requirements gathering loop using workflow state
 const askRequirementsQuestion = createStep({
     id: 'ask-requirements-question',
     description: 'Asks a single clarifying question using the Requirements Interviewer Agent',
@@ -188,22 +98,22 @@ const askRequirementsQuestion = createStep({
         question: z.string().describe('The question being asked to the user'),
         context: z.string().describe("Context about what we're trying to gather"),
     }),
-    execute: async ({ mastra, workflow }) => {
-        const agent = mastra?.getAgent('requirementsInterviewer');
+    execute: async (params) => {
+        const agent = params.mastra?.getAgent('requirementsInterviewer');
         if (!agent) {
             throw new Error('Requirements Interviewer agent not found');
         }
 
-        const state = workflow.state;
+        const state = params.state;
 
         // If we have resume data, add the user's answer to conversation history
         let conversationHistory = state.conversationHistory;
-        if (workflow.resumeData?.userAnswer) {
+        if (params.resumeData?.userAnswer) {
             conversationHistory = [
                 ...conversationHistory,
                 {
                     role: 'user',
-                    content: workflow.resumeData.userAnswer,
+                    content: params.resumeData.userAnswer,
                 },
             ];
         }
@@ -231,7 +141,7 @@ const askRequirementsQuestion = createStep({
         ];
 
         // Update workflow state with latest conversation and response
-        workflow.setState({
+        params.setState({
             ...state,
             conversationHistory: updatedHistory,
             response: currentResponse,
@@ -244,7 +154,7 @@ const askRequirementsQuestion = createStep({
             }
 
             // Suspend the workflow with context for the UI
-            return await workflow.suspend({
+            return await params.suspend({
                 question: currentResponse.nextQuestion,
                 context: 'Requirements gathering in progress. Please provide your answer to continue.',
             });
@@ -254,121 +164,21 @@ const askRequirementsQuestion = createStep({
     },
 });
 
-// Step 2c: Prepare draft issue update data using workflow state
-const prepareDraftIssueUpdateData = createStep({
-    id: 'prepare-draft-issue-update-data',
-    description: 'Prepares data for updating the draft issue with progress',
+// Step 3: Prepare issue creation data using workflow state
+const prepareIssueCreationData = createStep({
+    id: 'prepare-issue-creation-data',
+    description: 'Prepares data for creating the issue with complete requirements',
     stateSchema: workflowStateSchema,
     inputSchema: z.object({}),
     outputSchema: z.object({
         owner: z.string().optional(),
         repo: z.string(),
-        issue_number: z.number(),
-        body: z.string().optional(),
-    }),
-    execute: async ({ workflow }) => {
-        const state = workflow.state;
-        const { requirements } = state.response;
-
-        // Format current requirements as markdown
-        const requirementsSection =
-            requirements.requirements.length > 0
-                ? requirements.requirements.map((req) => `- ${req}`).join('\n')
-                : '_Gathering..._';
-
-        const acceptanceCriteriaSection =
-            requirements.acceptanceCriteria.length > 0
-                ? requirements.acceptanceCriteria.map((ac) => `- [ ] ${ac}`).join('\n')
-                : '_To be defined..._';
-
-        const implementationSection = `
-**Location**: ${requirements.implementation.location || '_To be determined..._'}
-
-**Dependencies**:
-${requirements.implementation.dependencies.length > 0 ? requirements.implementation.dependencies.map((dep) => `- ${dep}`).join('\n') : '- _None identified yet_'}
-
-**Edge Cases**:
-${requirements.implementation.edgeCases.length > 0 ? requirements.implementation.edgeCases.map((edge) => `- ${edge}`).join('\n') : '- _None identified yet_'}
-`;
-
-        const discussionSection =
-            requirements.questionsAsked.length > 0
-                ? requirements.questionsAsked.map((q, idx) => `**Q${idx + 1}**: ${q}`).join('\n\n')
-                : '_No questions asked yet..._';
-
-        const status = requirements.isComplete ? '✅ Complete' : '🔄 In Progress';
-
-        const progressBody = `## Status: ${status}
-
-## Initial Request
-${state.initialRequest}
-
-## Requirements
-${requirementsSection}
-
-## Acceptance Criteria
-${acceptanceCriteriaSection}
-
-## Implementation Details
-${implementationSection}
-
-## Discussion History
-${discussionSection}
-`;
-
-        return {
-            owner: state.owner,
-            repo: state.repository,
-            issue_number: state.issueNumber,
-            body: progressBody,
-        };
-    },
-});
-
-// Step 2d: Update draft issue with progress using tool
-const updateDraftIssueProgressTool = createStep({
-    id: 'update-draft-issue-progress-tool',
-    description: 'Updates the draft issue with progress using the GitHub API',
-    stateSchema: workflowStateSchema,
-    inputSchema: z.object({
-        owner: z.string().optional(),
-        repo: z.string(),
-        issue_number: z.number(),
-        body: z.string().optional(),
-    }),
-    outputSchema: z.object({
-        success: z.boolean(),
-        message: z.string(),
-        issue_number: z.number().optional(),
-        issue_url: z.string().optional(),
-    }),
-    execute: async ({ context, mastra }) => {
-        return await updateGitHubIssue.execute(context, mastra);
-    },
-});
-
-// Step 3a: Prepare final issue update data using workflow state
-const prepareFinalIssueUpdateData = createStep({
-    id: 'prepare-final-issue-update-data',
-    description: 'Prepares data for final issue update with complete requirements',
-    stateSchema: workflowStateSchema,
-    inputSchema: z.object({
-        success: z.boolean(),
-        message: z.string(),
-        issue_number: z.number().optional(),
-        issue_url: z.string().optional(),
-    }),
-    outputSchema: z.object({
-        owner: z.string().optional(),
-        repo: z.string(),
-        issue_number: z.number(),
-        title: z.string().optional(),
-        body: z.string().optional(),
+        title: z.string(),
+        body: z.string(),
         labels: z.array(z.string()).optional(),
-        state: z.enum(['open', 'closed']).optional(),
     }),
-    execute: async ({ workflow }) => {
-        const state = workflow.state;
+    execute: async (params) => {
+        const state = params.state;
         const { requirements } = state.response;
 
         // Format requirements as markdown
@@ -404,44 +214,25 @@ ${discussionSection}
         return {
             owner: state.owner,
             repo: state.repository,
-            issue_number: state.issueNumber,
             title: requirements.title,
             body: finalBody,
             labels: ['ready', 'requirements-complete'],
-            state: 'open' as const,
         };
     },
 });
 
-// Step 3b: Update issue with final requirements using tool
-const updateIssueWithRequirementsTool = createStep({
-    id: 'update-issue-with-requirements-tool',
-    description: 'Updates the issue with requirements using the GitHub API',
+// Step 4: Create issue with requirements using tool
+const createIssueWithRequirementsTool = createToolStep({
+    id: 'create-issue-with-requirements-tool',
+    description: 'Creates the issue with requirements using the GitHub API',
+    tool: createGitHubIssue,
     stateSchema: workflowStateSchema,
-    inputSchema: z.object({
-        owner: z.string().optional(),
-        repo: z.string(),
-        issue_number: z.number(),
-        title: z.string().optional(),
-        body: z.string().optional(),
-        labels: z.array(z.string()).optional(),
-        state: z.enum(['open', 'closed']).optional(),
-    }),
-    outputSchema: z.object({
-        success: z.boolean(),
-        message: z.string(),
-        issue_number: z.number().optional(),
-        issue_url: z.string().optional(),
-    }),
-    execute: async ({ context, mastra }) => {
-        return await updateGitHubIssue.execute(context, mastra);
-    },
 });
 
-// Step 3c: Store update result in workflow state
-const storeFinalUpdateResult = createStep({
-    id: 'store-final-update-result',
-    description: 'Stores the final update result in workflow state',
+// Step 5: Store issue creation result in workflow state
+const storeIssueCreationResult = createStep({
+    id: 'store-issue-creation-result',
+    description: 'Stores the issue creation result in workflow state',
     stateSchema: workflowStateSchema,
     inputSchema: z.object({
         success: z.boolean(),
@@ -450,26 +241,32 @@ const storeFinalUpdateResult = createStep({
         issue_url: z.string().optional(),
     }),
     outputSchema: z.object({}),
-    execute: async ({ context, workflow }) => {
-        const state = workflow.state;
-        workflow.setState({
+    execute: async (params) => {
+        if (!params.inputData.success || !params.inputData.issue_number || !params.inputData.issue_url) {
+            throw new Error(`Failed to create issue: ${params.inputData.message}`);
+        }
+
+        const state = params.state;
+        params.setState({
             ...state,
-            success: context.success,
-            message: context.message,
+            issueNumber: params.inputData.issue_number,
+            issueUrl: params.inputData.issue_url,
+            success: params.inputData.success,
+            message: params.inputData.message,
         });
         return {};
     },
 });
 
-// Step 4a: Validate success before Copilot assignment
+// Step 6: Validate success before Copilot assignment
 const validateBeforeCopilotAssignment = createStep({
     id: 'validate-before-copilot-assignment',
     description: 'Validates that issue update succeeded before assigning Copilot',
     stateSchema: workflowStateSchema,
     inputSchema: z.object({}),
     outputSchema: z.object({}),
-    execute: async ({ workflow }) => {
-        const state = workflow.state;
+    execute: async (params) => {
+        const state = params.state;
 
         if (!state.success) {
             throw new Error('Cannot assign to Copilot: Issue update failed');
@@ -479,7 +276,7 @@ const validateBeforeCopilotAssignment = createStep({
     },
 });
 
-// Step 4b: Prepare Copilot assignment data using workflow state
+// Step 7: Prepare Copilot assignment data using workflow state
 const prepareCopilotAssignmentData = createStep({
     id: 'prepare-copilot-assignment-data',
     description: 'Prepares data for assigning the issue to Copilot',
@@ -490,8 +287,8 @@ const prepareCopilotAssignmentData = createStep({
         repo: z.string(),
         issue_number: z.number(),
     }),
-    execute: async ({ workflow }) => {
-        const state = workflow.state;
+    execute: async (params) => {
+        const state = params.state;
 
         return {
             owner: state.owner,
@@ -501,27 +298,15 @@ const prepareCopilotAssignmentData = createStep({
     },
 });
 
-// Step 4c: Assign to GitHub Copilot using tool
-const assignToCopilotTool = createStep({
+// Step 8: Assign to GitHub Copilot using tool
+const assignToCopilotTool = createToolStep({
     id: 'assign-to-copilot-tool',
     description: 'Assigns the issue to Copilot using the GitHub API',
+    tool: assignCopilotToIssue,
     stateSchema: workflowStateSchema,
-    inputSchema: z.object({
-        owner: z.string().optional(),
-        repo: z.string(),
-        issue_number: z.number(),
-    }),
-    outputSchema: z.object({
-        success: z.boolean(),
-        message: z.string(),
-        task_url: z.string().optional(),
-    }),
-    execute: async ({ context, mastra }) => {
-        return await assignCopilotToIssue.execute(context, mastra);
-    },
 });
 
-// Step 4d: Format final workflow output
+// Step 9: Format final workflow output
 const formatFinalOutput = createStep({
     id: 'format-final-output',
     description: 'Formats the final workflow output with success message',
@@ -536,20 +321,20 @@ const formatFinalOutput = createStep({
         message: z.string(),
         issueUrl: z.string().optional(),
     }),
-    execute: async ({ context, workflow }) => {
-        const state = workflow.state;
+    execute: async (params) => {
+        const state = params.state;
 
-        if (!context.success) {
+        if (!params.inputData.success) {
             return {
                 success: false,
-                message: `Copilot assignment initiated but may require manual confirmation: ${context.message}`,
+                message: `Copilot assignment initiated but may require manual confirmation: ${params.inputData.message}`,
                 issueUrl: state.issueUrl,
             };
         }
 
         return {
             success: true,
-            message: `Successfully assigned Copilot to issue #${state.issueNumber}. ${context.message}`,
+            message: `Successfully assigned Copilot to issue #${state.issueNumber}. ${params.inputData.message}`,
             issueUrl: state.issueUrl,
         };
     },
@@ -559,13 +344,12 @@ const formatFinalOutput = createStep({
  * Workflow for gathering requirements and creating implementation issues
  *
  * This workflow implements the requirements gathering pattern using workflow state:
- * 1. Prepares and creates a draft issue to track progress (3 sub-steps)
- * 2. Initializes the requirements gathering session
- * 3. Uses Mastra's .dowhile() to iteratively:
+ * 1. Initializes the requirements gathering session
+ * 2. Uses Mastra's .dowhile() to iteratively:
  *    a. Ask clarifying questions via Requirements Interviewer Agent
- * 4. Prepares and updates the draft issue with current progress (2 sub-steps)
- * 5. Prepares and updates the issue with final requirements (3 sub-steps)
- * 6. Prepares and assigns GitHub Copilot for implementation (3 sub-steps)
+ * 3. Prepares and creates the issue with complete requirements (3 sub-steps)
+ * 4. Validates success before Copilot assignment
+ * 5. Prepares and assigns GitHub Copilot for implementation (3 sub-steps)
  *
  * All state is managed via workflow.state and workflow.setState for cleaner code.
  * Tool calls are isolated in dedicated createToolStep steps for better observability.
@@ -580,9 +364,6 @@ export const implementFeatureWorkflow = createWorkflow({
         issueUrl: z.string().optional(),
     }),
 })
-    .then(prepareDraftIssueData)
-    .then(createDraftIssueTool)
-    .then(storeDraftIssueDetails)
     .then(initializeGatheringSession)
     .dowhile(
         askRequirementsQuestion,
@@ -598,11 +379,9 @@ export const implementFeatureWorkflow = createWorkflow({
             return true;
         },
     )
-    .then(prepareDraftIssueUpdateData)
-    .then(updateDraftIssueProgressTool)
-    .then(prepareFinalIssueUpdateData)
-    .then(updateIssueWithRequirementsTool)
-    .then(storeFinalUpdateResult)
+    .then(prepareIssueCreationData)
+    .then(createIssueWithRequirementsTool)
+    .then(storeIssueCreationResult)
     .then(validateBeforeCopilotAssignment)
     .then(prepareCopilotAssignmentData)
     .then(assignToCopilotTool)
