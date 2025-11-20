@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { createAgentStep, createStep, createWorkflow } from '../../utils/workflow-factory.js';
 
-// Agent-as-step for scheduled weather check using workflow state
+// Agent-as-step for scheduled weather check
 const scheduledWeatherCheck = createAgentStep({
   id: 'scheduled-weather-check',
   description: 'Checks weather for Mathias every hour',
@@ -13,27 +13,14 @@ const scheduledWeatherCheck = createAgentStep({
   prompt: () => 'Get current weather for Mathias, Denmark',
 });
 
-// Store weather result in workflow state
-const storeWeatherResult = createStep({
-  id: 'store-weather-result',
-  description: 'Stores weather result in workflow state',
-  inputSchema: z.object({
-    result: z.string(),
-  }),
-  outputSchema: z.object({}),
-  execute: async ({ context, workflow }) => {
-    workflow.setState({
-      weatherResult: context.result,
-    });
-    return {};
-  },
-});
-
-// Transform weather data into memory update format using workflow state
+// Transform weather data into memory update format
+// Data flows through context - no state needed since result only used once
 const transformToMemoryUpdate = createStep({
   id: 'transform-to-memory-update',
   description: 'Transform weather data into memory update format',
-  inputSchema: z.object({}),
+  inputSchema: z.object({
+    result: z.string(),
+  }),
   outputSchema: z.object({
     memoryUpdate: z
       .object({
@@ -47,16 +34,14 @@ const transformToMemoryUpdate = createStep({
       })
       .optional(),
   }),
-  execute: async ({ workflow }) => {
-    const state = workflow.state;
-
-    // Create memory update event
+  execute: async ({ context }) => {
+    // Create memory update event from context (no state needed)
     const memoryUpdate = {
       context: 'The weather has changed.',
       events: [
         {
           type: 'weather-changed',
-          information: state.weatherResult,
+          information: context.result,
         },
       ],
     };
@@ -67,7 +52,8 @@ const transformToMemoryUpdate = createStep({
   },
 });
 
-// Scheduled weather monitoring workflow using workflow state
+// Scheduled weather monitoring workflow
+// No state needed - data flows directly through context from step to step
 export const weatherMonitoringWorkflow = createWorkflow({
   id: 'weather-monitoring-workflow',
   inputSchema: z.object({}),
@@ -86,6 +72,5 @@ export const weatherMonitoringWorkflow = createWorkflow({
   }),
 })
   .then(scheduledWeatherCheck)
-  .then(storeWeatherResult)
   .then(transformToMemoryUpdate)
   .commit();

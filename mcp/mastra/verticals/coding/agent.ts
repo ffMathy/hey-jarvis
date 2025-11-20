@@ -1,6 +1,7 @@
 import type { Agent } from '@mastra/core/agent';
 import { createAgent } from '../../utils/index.js';
 import { codingTools } from './tools.js';
+import { implementFeatureWorkflow } from './workflows.js';
 
 /**
  * Requirements Interviewer Agent
@@ -121,7 +122,7 @@ When a user asks you to implement ANYTHING (feature, agent, tool, workflow, etc.
 
 1. **STOP immediately** - Do NOT proceed with implementation
 2. **Explain the process**: "I'll start a requirements gathering workflow to ensure we have complete clarity"
-3. **Trigger workflow**: Start the requirements gathering workflow using the requirementsGatheringWorkflow
+3. **Trigger workflow**: Start the requirements gathering workflow using the implementFeatureWorkflow
 4. **Set expectations**: Explain that you'll ask clarifying questions before creating an issue
 5. **Hand off**: Let the workflow handle the interactive requirements gathering
 
@@ -163,5 +164,8 @@ Manage GitHub repositories and coordinate coding tasks through GitHub Copilot in
 - Summarize results when showing many items
 - Guide users on next steps after assigning Copilot`,
     tools: codingTools,
+    workflows: {
+      implementFeatureWorkflow: implementFeatureWorkflow
+    }
   });
 }

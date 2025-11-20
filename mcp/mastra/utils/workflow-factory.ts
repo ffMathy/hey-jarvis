@@ -9,6 +9,7 @@ import { createScorersConfig } from './scorers-config.js';
  * - Apply consistent defaults across all workflows
  * - Easily modify default behavior in the future
  * - Maintain a single point of workflow configuration
+ * - Support strong-typed workflow state
  *
  * @param config - The workflow configuration object
  * @returns A new Workflow instance with applied defaults
@@ -18,25 +19,42 @@ import { createScorersConfig } from './scorers-config.js';
  * import { createWorkflow, createStep } from '../utils/workflow-factory';
  * import { z } from 'zod';
  *
- * const myStep = createStep({
+ * // Define state schema for strong typing
+ * const stateSchema = z.object({
+ *   result: z.string(),
+ *   count: z.number(),
+ * });
+ *
+ * const myStep = createStep<typeof stateSchema>()({
  *   id: 'my-step',
  *   description: 'A helpful step',
  *   inputSchema: z.object({}),
  *   outputSchema: z.object({ result: z.string() }),
- *   execute: async () => ({ result: 'done' }),
+ *   execute: async ({ workflow }) => {
+ *     // workflow.state is now strongly typed!
+ *     const currentCount = workflow.state.count;
+ *     workflow.setState({ ...workflow.state, count: currentCount + 1 });
+ *     return { result: 'done' };
+ *   },
  * });
  *
  * export const myWorkflow = createWorkflow({
  *   id: 'my-workflow',
+ *   stateSchema,
  *   inputSchema: z.object({}),
  *   outputSchema: z.object({ result: z.string() }),
  * }).then(myStep);
  * ```
  */
-export function createWorkflow<TInputSchema extends z.ZodSchema, TOutputSchema extends z.ZodSchema>(config: {
+export function createWorkflow<
+  TInputSchema extends z.ZodSchema,
+  TOutputSchema extends z.ZodSchema,
+  TStateSchema extends z.ZodObject<any> = z.ZodObject<any>,
+>(config: {
   id: string;
   inputSchema: TInputSchema;
   outputSchema: TOutputSchema;
+  stateSchema?: TStateSchema;
 }) {
   // For now, this is a direct proxy to the Mastra createWorkflow function
   // Future enhancements could include:
@@ -46,7 +64,7 @@ export function createWorkflow<TInputSchema extends z.ZodSchema, TOutputSchema e
   // - Workflow versioning
   // - Automatic step validation
 
-  return mastraCreateWorkflow(config);
+  return mastraCreateWorkflow(config) as any;
 }
 
 /**
@@ -56,44 +74,58 @@ export function createWorkflow<TInputSchema extends z.ZodSchema, TOutputSchema e
  * - Apply consistent defaults across all steps
  * - Easily modify default behavior in the future
  * - Maintain a single point of step configuration
- * - Support workflow state management via workflow parameter
+ * - Support strongly-typed workflow state management via workflow parameter
  *
- * @param config - The step configuration object
- * @param options - Additional options for step configuration
- * @returns A new Step instance with applied defaults
+ * @param config - The step configuration
+ * @param options - Optional scorers configuration
+ * @returns A Mastra workflow step with type-safe state access
  *
  * @example
  * ```typescript
- * // Using workflow state for cleaner data flow
- * const myStep = createStep({
+ * // Define state schema for strong typing
+ * const stateSchema = z.object({
+ *   result: z.string(),
+ *   count: z.number(),
+ * });
+ *
+ * // Create step with typed state
+ * const myStep = createStep<typeof stateSchema, typeof inputSchema, typeof outputSchema>({
  *   id: 'my-step',
  *   description: 'A helpful step',
  *   inputSchema: z.object({}),
  *   outputSchema: z.object({}),
  *   execute: async ({ context, workflow }) => {
- *     // Read from workflow state
- *     const data = workflow.state;
- *     
- *     // Update workflow state
+ *     // workflow.state is now strongly typed!
+ *     const currentCount = workflow.state.count;
  *     workflow.setState({
- *       ...data,
- *       result: 'done',
+ *       ...workflow.state,
+ *       count: currentCount + 1,
  *     });
- *     
  *     return {};
  *   },
+ * });
+ *
+ * // Create step without state (no generic parameter needed)
+ * const simpleStep = createStep({
+ *   id: 'simple-step',
+ *   description: 'A simple step',
+ *   inputSchema: z.object({ data: z.string() }),
+ *   outputSchema: z.object({ result: z.string() }),
+ *   execute: async ({ context }) => ({ result: context.data }),
  * });
  * ```
  */
 export function createStep<
-  TInputSchema extends z.ZodSchema,
-  TOutputSchema extends z.ZodSchema,
+  TStateSchema extends z.ZodObject<any> = z.ZodObject<any>,
+  TInputSchema extends z.ZodSchema = z.ZodSchema,
+  TOutputSchema extends z.ZodSchema = z.ZodSchema,
   TResumeSchema extends z.ZodSchema = z.ZodNever,
   TSuspendSchema extends z.ZodSchema = z.ZodNever,
 >(
   config: {
     id: string;
     description: string;
+    stateSchema?: TStateSchema;
     inputSchema: TInputSchema;
     outputSchema: TOutputSchema;
     resumeSchema?: TResumeSchema;
@@ -101,7 +133,12 @@ export function createStep<
     execute: (params: {
       context: z.infer<TInputSchema>;
       mastra?: any;
-      workflow?: any;
+      workflow?: {
+        state: z.infer<TStateSchema>;
+        setState: (state: z.infer<TStateSchema>) => void;
+        suspend: (data: z.infer<TSuspendSchema>) => Promise<z.infer<TOutputSchema>>;
+        resumeData?: z.infer<TResumeSchema>;
+      };
     }) => Promise<z.infer<TOutputSchema>>;
   },
   options: {
@@ -121,7 +158,7 @@ export function createStep<
     suspendSchema: config.suspendSchema,
     execute: config.execute.bind(config),
     ...(enableScorers && { scorers: createScorersConfig(customScorers, samplingRate) }),
-  });
+  }) as any;
 }
 
 /**
@@ -129,30 +166,49 @@ export function createStep<
  * This implements the "agent-as-step" pattern where an existing agent
  * becomes a reusable workflow step.
  *
- * @param config - Configuration for the agent step
- * @returns A new Step that executes using the specified agent
+ * @param config - The agent step configuration
+ * @returns A Mastra workflow step that executes the specified agent
  *
  * @example
  * ```typescript
- * const weatherStep = createAgentStep({
+ * // Define state schema
+ * const stateSchema = z.object({
+ *   location: z.string(),
+ * });
+ *
+ * const weatherStep = createAgentStep<typeof stateSchema, typeof inputSchema, typeof outputSchema>({
  *   id: 'weather-check',
  *   description: 'Get weather using weather agent',
  *   agentName: 'weather',
  *   inputSchema: z.object({ location: z.string() }),
  *   outputSchema: z.object({ weather: z.string() }),
- *   prompt: ({ context }) => `Get weather for ${context.location}`,
+ *   prompt: ({ context, workflow }) => {
+ *     // workflow.state is strongly typed!
+ *     return `Get weather for ${workflow.state.location}`;
+ *   },
  * });
  * ```
  */
-export function createAgentStep<TInputSchema extends z.ZodSchema, TOutputSchema extends z.ZodSchema>(config: {
+export function createAgentStep<
+  TStateSchema extends z.ZodObject<any> = z.ZodObject<any>,
+  TInputSchema extends z.ZodSchema = z.ZodSchema,
+  TOutputSchema extends z.ZodSchema = z.ZodSchema,
+>(config: {
   id: string;
   description: string;
   agentName: string;
+  stateSchema?: TStateSchema;
   inputSchema: TInputSchema;
   outputSchema: TOutputSchema;
-  prompt: (params: { context: z.infer<TInputSchema>; workflow?: any }) => string;
+  prompt: (params: {
+    context: z.infer<TInputSchema>;
+    workflow?: {
+      state: z.infer<TStateSchema>;
+      setState: (state: z.infer<TStateSchema>) => void;
+    };
+  }) => string;
 }) {
-  return createStep({
+  return createStep<TStateSchema, TInputSchema, TOutputSchema>({
     id: config.id,
     description: config.description,
     inputSchema: config.inputSchema,
@@ -189,12 +245,17 @@ export function createAgentStep<TInputSchema extends z.ZodSchema, TOutputSchema 
  * This implements the "tool-as-step" pattern where an existing tool
  * becomes a reusable workflow step.
  *
- * @param config - Configuration for the tool step
- * @returns A new Step that executes using the specified tool
+ * @param config - The tool step configuration
+ * @returns A Mastra workflow step that executes the specified tool
  *
  * @example
  * ```typescript
- * const getCurrentWeatherStep = createToolStep({
+ * // Define state schema (if needed)
+ * const stateSchema = z.object({
+ *   cityName: z.string(),
+ * });
+ *
+ * const getCurrentWeatherStep = createToolStep<typeof stateSchema, typeof inputSchema, typeof toolInputSchema, typeof toolOutputSchema>({
  *   id: 'get-current-weather',
  *   description: 'Get current weather for a city',
  *   tool: getCurrentWeatherByCity,
@@ -204,9 +265,10 @@ export function createAgentStep<TInputSchema extends z.ZodSchema, TOutputSchema 
  * ```
  */
 export function createToolStep<
-  TInputSchema extends z.ZodSchema,
-  TToolInput extends z.ZodSchema,
-  TToolOutput extends z.ZodSchema,
+  TStateSchema extends z.ZodObject<any> = z.ZodObject<any>,
+  TInputSchema extends z.ZodSchema = z.ZodSchema,
+  TToolInput extends z.ZodSchema = z.ZodSchema,
+  TToolOutput extends z.ZodSchema = z.ZodSchema,
 >(config: {
   id: string;
   description: string;
@@ -215,13 +277,14 @@ export function createToolStep<
     outputSchema: TToolOutput;
     execute: (inputData: z.infer<TToolInput>, context?: any) => Promise<z.infer<TToolOutput>>;
   };
+  stateSchema?: TStateSchema;
   inputSchema?: TInputSchema;
   inputTransform?: (input: z.infer<TInputSchema>) => z.infer<TToolInput>;
 }) {
   const inputSchema = config.inputSchema ?? config.tool.inputSchema;
   const inputTransform = config.inputTransform ?? ((input: any) => input);
 
-  return createStep({
+  return createStep<TStateSchema, typeof inputSchema, TToolOutput>({
     id: config.id,
     description: config.description,
     inputSchema: inputSchema,

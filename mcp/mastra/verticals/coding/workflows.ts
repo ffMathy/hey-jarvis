@@ -29,10 +29,28 @@ const gatheredRequirementsSchema = z.object({
     isComplete: z.boolean().describe('Whether all requirements have been gathered'),
 });
 
+// Define workflow state schema for strong typing
+const workflowStateSchema = z.object({
+    initialRequest: z.string(),
+    repository: z.string(),
+    owner: z.string(),
+    issueNumber: z.number(),
+    issueUrl: z.string(),
+    conversationHistory: z.array(z.any()),
+    response: z.object({
+        needsMoreQuestions: z.boolean(),
+        nextQuestion: z.string().nullable(),
+        requirements: gatheredRequirementsSchema,
+    }).nullable(),
+    success: z.boolean().optional(),
+    message: z.string().optional(),
+});
+
 // Step 1a: Prepare draft issue data using workflow state
 const prepareDraftIssueData = createStep({
     id: 'prepare-draft-issue-data',
     description: 'Prepares data for draft issue creation',
+    stateSchema: workflowStateSchema,
     inputSchema: requirementsInputSchema,
     outputSchema: z.object({
         owner: z.string().optional(),
@@ -76,6 +94,7 @@ _Requirements gathering in progress..._`,
 const createDraftIssueTool = createStep({
     id: 'create-draft-issue-tool',
     description: 'Creates a draft GitHub issue using the GitHub API',
+    stateSchema: workflowStateSchema,
     inputSchema: z.object({
         owner: z.string().optional(),
         repo: z.string(),
@@ -98,6 +117,7 @@ const createDraftIssueTool = createStep({
 const storeDraftIssueDetails = createStep({
     id: 'store-draft-issue-details',
     description: 'Stores the created issue details in workflow state',
+    stateSchema: workflowStateSchema,
     inputSchema: z.object({
         success: z.boolean(),
         message: z.string(),
@@ -131,6 +151,7 @@ const questioningResponseSchema = z.object({
 const initializeGatheringSession = createStep({
     id: 'initialize-gathering-session',
     description: 'Sets up the initial prompt for requirements gathering',
+    stateSchema: workflowStateSchema,
     inputSchema: z.object({}),
     outputSchema: z.object({}),
     execute: async ({ workflow }) => {
@@ -157,6 +178,7 @@ Start by asking your first clarifying question to understand what needs to be im
 const askRequirementsQuestion = createStep({
     id: 'ask-requirements-question',
     description: 'Asks a single clarifying question using the Requirements Interviewer Agent',
+    stateSchema: workflowStateSchema,
     inputSchema: z.object({}),
     outputSchema: z.object({}),
     resumeSchema: z.object({
@@ -235,7 +257,8 @@ const askRequirementsQuestion = createStep({
 // Step 2c: Prepare draft issue update data using workflow state
 const prepareDraftIssueUpdateData = createStep({
     id: 'prepare-draft-issue-update-data',
-    description: 'Prepares data for updating draft issue with current progress',
+    description: 'Prepares data for updating the draft issue with progress',
+    stateSchema: workflowStateSchema,
     inputSchema: z.object({}),
     outputSchema: z.object({
         owner: z.string().optional(),
@@ -306,6 +329,7 @@ ${discussionSection}
 const updateDraftIssueProgressTool = createStep({
     id: 'update-draft-issue-progress-tool',
     description: 'Updates the draft issue with progress using the GitHub API',
+    stateSchema: workflowStateSchema,
     inputSchema: z.object({
         owner: z.string().optional(),
         repo: z.string(),
@@ -327,6 +351,7 @@ const updateDraftIssueProgressTool = createStep({
 const prepareFinalIssueUpdateData = createStep({
     id: 'prepare-final-issue-update-data',
     description: 'Prepares data for final issue update with complete requirements',
+    stateSchema: workflowStateSchema,
     inputSchema: z.object({
         success: z.boolean(),
         message: z.string(),
@@ -391,7 +416,8 @@ ${discussionSection}
 // Step 3b: Update issue with final requirements using tool
 const updateIssueWithRequirementsTool = createStep({
     id: 'update-issue-with-requirements-tool',
-    description: 'Updates the issue with final requirements using the GitHub API',
+    description: 'Updates the issue with requirements using the GitHub API',
+    stateSchema: workflowStateSchema,
     inputSchema: z.object({
         owner: z.string().optional(),
         repo: z.string(),
@@ -416,6 +442,7 @@ const updateIssueWithRequirementsTool = createStep({
 const storeFinalUpdateResult = createStep({
     id: 'store-final-update-result',
     description: 'Stores the final update result in workflow state',
+    stateSchema: workflowStateSchema,
     inputSchema: z.object({
         success: z.boolean(),
         message: z.string(),
@@ -438,6 +465,7 @@ const storeFinalUpdateResult = createStep({
 const validateBeforeCopilotAssignment = createStep({
     id: 'validate-before-copilot-assignment',
     description: 'Validates that issue update succeeded before assigning Copilot',
+    stateSchema: workflowStateSchema,
     inputSchema: z.object({}),
     outputSchema: z.object({}),
     execute: async ({ workflow }) => {
@@ -454,7 +482,8 @@ const validateBeforeCopilotAssignment = createStep({
 // Step 4b: Prepare Copilot assignment data using workflow state
 const prepareCopilotAssignmentData = createStep({
     id: 'prepare-copilot-assignment-data',
-    description: 'Prepares data for assigning issue to GitHub Copilot',
+    description: 'Prepares data for assigning the issue to Copilot',
+    stateSchema: workflowStateSchema,
     inputSchema: z.object({}),
     outputSchema: z.object({
         owner: z.string().optional(),
@@ -475,7 +504,8 @@ const prepareCopilotAssignmentData = createStep({
 // Step 4c: Assign to GitHub Copilot using tool
 const assignToCopilotTool = createStep({
     id: 'assign-to-copilot-tool',
-    description: 'Assigns the issue to GitHub Copilot using the GitHub API',
+    description: 'Assigns the issue to Copilot using the GitHub API',
+    stateSchema: workflowStateSchema,
     inputSchema: z.object({
         owner: z.string().optional(),
         repo: z.string(),
@@ -495,6 +525,7 @@ const assignToCopilotTool = createStep({
 const formatFinalOutput = createStep({
     id: 'format-final-output',
     description: 'Formats the final workflow output with success message',
+    stateSchema: workflowStateSchema,
     inputSchema: z.object({
         success: z.boolean(),
         message: z.string(),
@@ -539,8 +570,9 @@ const formatFinalOutput = createStep({
  * All state is managed via workflow.state and workflow.setState for cleaner code.
  * Tool calls are isolated in dedicated createToolStep steps for better observability.
  */
-export const requirementsGatheringWorkflow = createWorkflow({
-    id: 'requirements-gathering-workflow',
+export const implementFeatureWorkflow = createWorkflow({
+    id: 'implement-feature-workflow',
+    stateSchema: workflowStateSchema,
     inputSchema: requirementsInputSchema,
     outputSchema: z.object({
         success: z.boolean(),

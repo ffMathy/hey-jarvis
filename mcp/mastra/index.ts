@@ -13,7 +13,7 @@ import {
   getShoppingListAgent,
   getShoppingListSummaryAgent,
   getWeatherAgent,
-  requirementsGatheringWorkflow,
+  implementFeatureWorkflow,
   weatherMonitoringWorkflow,
   weeklyMealPlanningWorkflow
 } from './verticals/index.js';
@@ -58,7 +58,7 @@ async function createMastra() {
     workflows: {
       weatherMonitoringWorkflow,
       weeklyMealPlanningWorkflow,
-      requirementsGatheringWorkflow,
+      implementFeatureWorkflow,
     },
     agents: {
       weather: weatherAgent,

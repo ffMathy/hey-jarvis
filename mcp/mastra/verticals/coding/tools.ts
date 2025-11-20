@@ -328,7 +328,4 @@ export const codingTools = {
   listUserRepositories,
   listRepositoryIssues,
   searchRepositories,
-  assignCopilotToIssue,
-  createGitHubIssue,
-  updateGitHubIssue,
 };
