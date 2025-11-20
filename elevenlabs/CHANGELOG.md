@@ -55,6 +55,13 @@
 
 * add parallelism ([3541485](https://github.com/ffMathy/hey-jarvis/commit/3541485c5ed86625dcf8a2c0b56c57de6fa5520b))
 
+## [0.2.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.1.2...elevenlabs-v0.2.0) (2025-11-20)
+
+
+### Features
+
+* enhance 1Password authentication and terminal session managemen… ([#251](https://github.com/ffMathy/hey-jarvis/issues/251)) ([ec808be](https://github.com/ffMathy/hey-jarvis/commit/ec808be26efb82d0b4d491ea367f4f1f6eecacd8))
+
 ## [0.1.2](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.1.1...elevenlabs-v0.1.2) (2025-11-20)
 
 
