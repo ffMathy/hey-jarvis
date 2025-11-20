@@ -73,6 +73,19 @@ exec('curl https://api.github.com/repos/...');
 - ❌ **NEVER use npm commands** in this Bun-powered monorepo
 - ❌ **NEVER run commands directly** - always use NX for project commands
 
+### 1Password Authentication
+If this project uses 1Password CLI for environment variables:
+1. **Sign in**: `eval $(op signin)` - **CRITICAL: Always run this command when you get a 1Password authentication error or non-zero exit code from op commands**
+2. **Verify**: `op whoami`
+
+**Important**: If any command using 1Password fails with "no active session found" or similar errors, immediately run `eval $(op signin)` to re-authenticate before continuing.
+
+### Terminal Session Management
+**CRITICAL: Always reuse existing terminal sessions** when running commands:
+- Check `get_terminal_output` to see what terminals are available
+- Reuse the same terminal ID for related commands instead of creating new terminals
+- This maintains context, environment variables, and reduces resource usage
+
 ## Development Guidelines
 
 ### Core Development Principles

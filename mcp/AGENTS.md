@@ -447,9 +447,17 @@ All environment variables use the `HEY_JARVIS_` prefix for easy management and D
 
 #### Development Setup
 1. **Install 1Password CLI**: Follow [1Password CLI installation guide](https://developer.1password.com/docs/cli/get-started/)
-2. **Sign in to 1Password**: `op signin`
+2. **Sign in to 1Password**: `eval $(op signin)` - **CRITICAL: Always run this command when you get a 1Password authentication error or non-zero exit code from op commands**
 3. **Store your API keys** in 1Password vaults with the paths referenced in `.env`
 4. **Run commands**: Use `nx serve mcp` or `nx run mcp:mcp` - both use `op run` automatically
+
+**Important**: If any command using 1Password fails with "no active session found" or similar errors, immediately run `eval $(op signin)` to re-authenticate before continuing.
+
+#### Terminal Session Management
+**CRITICAL: Always reuse existing terminal sessions** when running commands:
+- Check `get_terminal_output` to see what terminals are available
+- Reuse the same terminal ID for related commands instead of creating new terminals
+- This maintains context, environment variables, and reduces resource usage
 
 #### Important Development Guidelines
 - **Do NOT create separate `*-dev` targets** that bypass 1Password CLI

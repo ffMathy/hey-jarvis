@@ -202,9 +202,17 @@ This project uses **1Password CLI** for secure environment variable management:
 - `HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY` - Google Gemini API for test evaluations
 
 #### 1Password Setup
-1. **Sign in**: `op signin` (or `eval $(op signin -f)`)
+1. **Sign in**: `eval $(op signin)` - **CRITICAL: Always run this command when you get a 1Password authentication error or non-zero exit code from op commands**
 2. **Verify**: `op whoami`
 3. **Run tests**: `nx test elevenlabs` (automatically uses `op run`)
+
+**Important**: If any command using 1Password fails with "no active session found" or similar errors, immediately run `eval $(op signin)` to re-authenticate before continuing.
+
+#### Terminal Session Management
+**CRITICAL: Always reuse existing terminal sessions** when running commands:
+- Check `get_terminal_output` to see what terminals are available
+- Reuse the same terminal ID for related commands instead of creating new terminals
+- This maintains context, environment variables, and reduces resource usage
 
 ## File Structure
 
