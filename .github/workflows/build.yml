@@ -11,6 +11,7 @@ env:
   HEY_JARVIS_ELEVENLABS_VOICE_ID: ${{ secrets.HEY_JARVIS_ELEVENLABS_VOICE_ID }}
   HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY }}
   HEY_JARVIS_OPENWEATHERMAP_API_KEY: ${{ secrets.HEY_JARVIS_OPENWEATHERMAP_API_KEY }}
+  HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID: ${{ secrets.HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID }}
 
   HEY_JARVIS_WIFI_SSID: "dummy-wifi-ssid-for-ci"
   HEY_JARVIS_WIFI_PASSWORD: "dummy-wifi-password-for-ci"
@@ -64,11 +65,6 @@ jobs:
           REGISTRY: ghcr.io
           NX_BASE: ${{ steps.set-shas.outputs.base }}
           NX_HEAD: ${{ steps.set-shas.outputs.head }}
-          HEY_JARVIS_ELEVENLABS_AGENT_ID: ${{ secrets.HEY_JARVIS_ELEVENLABS_AGENT_ID }}
-          HEY_JARVIS_ELEVENLABS_API_KEY: ${{ secrets.HEY_JARVIS_ELEVENLABS_API_KEY }}
-          HEY_JARVIS_ELEVENLABS_VOICE_ID: ${{ secrets.HEY_JARVIS_ELEVENLABS_VOICE_ID }}
-          HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY }}
-          HEY_JARVIS_OPENWEATHERMAP_API_KEY: ${{ secrets.HEY_JARVIS_OPENWEATHERMAP_API_KEY }}
         with:
           imageName: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
           cacheFrom: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer

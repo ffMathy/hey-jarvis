@@ -14,7 +14,7 @@ import { TestConversation } from './test-conversation.js';
  * - Teasing user inefficiencies while remaining charming and helpful
  */
 describe('Agent Prompt Specifications', () => {
-  const agentId = process.env.HEY_JARVIS_ELEVENLABS_AGENT_ID;
+  const agentId = process.env.HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID;
   const apiKey = process.env.HEY_JARVIS_ELEVENLABS_API_KEY;
   const googleApiKey = process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY;
 
