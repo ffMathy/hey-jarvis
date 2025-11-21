@@ -59,12 +59,9 @@ export async function ensureTunnelRunning(): Promise<void> {
 
     // Start cloudflared tunnel in background
     tunnelProcess = spawn('cloudflared', ['tunnel', 'run', '--token', token], {
-        detached: true,
+        detached: false,
         stdio: ['ignore', 'inherit', 'inherit'],
     });
-
-    // Detach the process so it continues running
-    tunnelProcess.unref();
 
     // Verify tunnel is running with retry logic (up to 30 seconds)
     await retryWithBackoff(
@@ -91,17 +88,6 @@ export async function ensureTunnelRunning(): Promise<void> {
  * Stops the cloudflared tunnel if it was started by this process
  */
 export function stopTunnel(): void {
-    if (tunnelProcess && !tunnelProcess.killed) {
-        try {
-            // Kill the entire process group
-            process.kill(-tunnelProcess.pid!, 'SIGTERM');
-        } catch (err) {
-            // Fallback to killing just the process
-            tunnelProcess.kill('SIGTERM');
-        }
-        tunnelProcess = null;
-        console.log('🛑 Cloudflared tunnel stopped');
-    }
     // Also kill any orphaned processes
     killExistingTunnels();
 }

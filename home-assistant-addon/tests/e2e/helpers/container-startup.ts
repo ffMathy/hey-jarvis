@@ -34,7 +34,7 @@ export async function startContainer(options: ContainerStartupOptions = {}): Pro
   // Track if the startup script exits early (indicates failure)
   let scriptExited = false;
 
-  // Prepare environment variables for the script
+  // Forward all process.env variables and merge with any additional ones
   const env = { ...process.env, ...environmentVariables };
 
   // Start the Docker container using start-addon.sh script
