@@ -15,18 +15,17 @@ source /workspace/mcp/lib/server-functions.sh
 bashio::log.info "Starting Hey Jarvis MCP Server..."
 
 # Configure JWT authentication if secret is provided
-if bashio::config.has_value 'jwt_secret'; then
-    export HEY_JARVIS_MCP_JWT_SECRET=$(bashio::config 'jwt_secret')
-    bashio::log.info "JWT authentication enabled"
-    
-    # Create JWT key file for nginx-auth-jwt module
-    # The module expects a JSON keyval format: {"kid": "secret"}
-    # We use a fixed kid value since we're using HMAC (symmetric key)
-    echo "{\"default\": \"${HEY_JARVIS_MCP_JWT_SECRET}\"}" > /tmp/jwt_key.json
-    chmod 600 /tmp/jwt_key.json
-    
-    # Create nginx JWT auth configuration file
-    cat > /etc/nginx/jwt-auth.conf <<EOF
+export HEY_JARVIS_MCP_JWT_SECRET=$(bashio::config 'jwt_secret')
+bashio::log.info "JWT authentication enabled"
+
+# Create JWT key file for nginx-auth-jwt module
+# The module expects a JSON keyval format: {"kid": "secret"}
+# We use a fixed kid value since we're using HMAC (symmetric key)
+echo "{\"default\": \"${HEY_JARVIS_MCP_JWT_SECRET}\"}" > /tmp/jwt_key.json
+chmod 600 /tmp/jwt_key.json
+
+# Create nginx JWT auth configuration file
+cat > /etc/nginx/jwt-auth.conf <<EOF
 # JWT Authentication configuration (auto-generated from Home Assistant config)
 auth_jwt "Hey Jarvis MCP Server";
 auth_jwt_key_file /tmp/jwt_key.json keyval;
@@ -34,17 +33,8 @@ auth_jwt_key_file /tmp/jwt_key.json keyval;
 # This makes exp validation effectively optional while still validating the signature
 auth_jwt_leeway 3153600000;
 EOF
-    
-    bashio::log.info "JWT key file created at /tmp/jwt_key.json"
-else
-    bashio::log.warning "JWT authentication disabled - no jwt_secret configured"
-    
-    # Create empty JWT auth configuration to disable authentication
-    cat > /etc/nginx/jwt-auth.conf <<EOF
-# JWT Authentication disabled - no jwt_secret configured
-auth_jwt off;
-EOF
-fi
+
+bashio::log.info "JWT key file created at /tmp/jwt_key.json"
 
 # Export environment variables from options if they are set
 if bashio::config.has_value 'openweathermap_api_key'; then
