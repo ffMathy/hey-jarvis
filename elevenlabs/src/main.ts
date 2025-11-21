@@ -183,6 +183,9 @@ class ElevenLabsAgentManager {
         if (config.conversationConfig?.agent?.prompt) {
           config.conversationConfig.agent.prompt.mcpServerIds = ['OvJ613BzWU43pnzrkOFe'];
           console.log('🔧 Setting mcpServerIds to local tunnel MCP server for test agent');
+          
+          config.conversationConfig.agent.prompt.tools = [];
+          console.log('🔧 Clearing tools array for test agent');
         }
         
         // Suffix agent name with " (test)" to distinguish from production
