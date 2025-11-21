@@ -55,10 +55,10 @@
       }
     },
     "test": {
-      "executor": "@nx/jest:jest",
+      "executor": "nx:run-commands",
       "options": {
-        "jestConfig": "mcp/jest.config.ts",
-        "passWithNoTests": false
+        "command": "./.scripts/run-with-env.sh mcp/op.env bunx jest --config=mcp/jest.config.ts",
+        "cwd": "."
       },
       "outputs": [
         "{workspaceRoot}/coverage/{projectRoot}"

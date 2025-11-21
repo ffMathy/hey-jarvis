@@ -1,4 +1,5 @@
 // Bilka integration exports
-export * from './auth';
-export * from './client';
-export * from './types';
+export * from './auth.js';
+export * from './client.js';
+export * from './types.js';
+

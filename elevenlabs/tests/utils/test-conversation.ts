@@ -29,46 +29,14 @@ export class TestConversation {
   private readonly googleApiKey: string | undefined;
 
   constructor(options: ConversationOptions) {
-    const apiKey = options.apiKey || process.env.HEY_JARVIS_ELEVENLABS_API_KEY;
+    const apiKey = options.apiKey || process.env.HEY_JARVIS_ELEVENLABS_API_KEY!;
 
     this.googleApiKey = options.googleApiKey || process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY;
 
-    // Determine which strategy to use based on environment
-    // Use ElevenLabs strategy when running in GitHub Actions (CI environment)
-    // Use Gemini MCP strategy for local development
-    this.initializeConversationStrategy(apiKey, options);
-  }
-
-  private initializeConversationStrategy(apiKey: string, options: ConversationOptions) {
     this.strategy = new ElevenLabsConversationStrategy({
         agentId: options.agentId,
         apiKey,
       });
-
-    // const isGitHubActions = process.env.GITHUB_ACTIONS === 'true';
-
-    // if (isGitHubActions) {
-    //   // GitHub Actions: Use ElevenLabs strategy
-    //   if (!apiKey) {
-    //     throw new Error(
-    //       'API key required for ElevenLabs: set HEY_JARVIS_ELEVENLABS_API_KEY or pass apiKey'
-    //     );
-    //   }
-    //   this.strategy = new ElevenLabsConversationStrategy({
-    //     agentId: options.agentId,
-    //     apiKey,
-    //   });
-    // } else {
-    //   // Local development: Use Gemini MCP strategy
-    //   if (!this.googleApiKey) {
-    //     throw new Error(
-    //       'Google API key required for local testing: set HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY or pass googleApiKey'
-    //     );
-    //   }
-    //   this.strategy = new GeminiMastraConversationStrategy({
-    //     apiKey: this.googleApiKey,
-    //   });
-    // }
   }
 
   async connect(): Promise<void> {

@@ -1,7 +1,7 @@
-import { afterEach, beforeAll, describe, it } from '@jest/globals';
+import { afterAll, afterEach, beforeAll, describe, it } from '@jest/globals';
 import { TestConversation } from '../utils/test-conversation.js';
-import { ensureMcpServerRunning } from '../utils/mcp-server-manager.js';
-import { ensureTunnelRunning } from '../utils/tunnel-manager.js';
+import { ensureMcpServerRunning, stopMcpServer } from '../utils/mcp-server-manager.js';
+import { ensureTunnelRunning, stopTunnel } from '../utils/tunnel-manager.js';
 
 /**
  * Agent Prompt Specification Tests
@@ -25,6 +25,12 @@ describe('Agent Prompt Specifications', () => {
     await ensureMcpServerRunning();
     await ensureTunnelRunning();
   }, 90000);
+
+  // Clean up after all tests
+  afterAll(() => {
+    stopMcpServer();
+    stopTunnel();
+  });
 
   const runTest = it;
 

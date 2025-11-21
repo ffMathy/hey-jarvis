@@ -38,21 +38,21 @@ function createSimplifiedAgentTool(name: string, agent: Agent, description: stri
       try {
         const result = await agent.generate(input.message);
         return { response: result.text || 'No response generated' };
-      } catch (error: any) {
-        // Return simplified error message
-        return { response: error.message || error.details?.message || 'An error occurred' };
+      } catch (error) {
+        const err = error as Error & { details?: { message?: string } };
+        return { response: err.message || err.details?.message || 'An error occurred' };
       }
     },
   });
 }
 
 export async function startMcpServer() {
-  // JWT authentication is mandatory - validate BEFORE loading any agents or modules
   const jwtSecret = process.env.HEY_JARVIS_MCP_JWT_SECRET;
+
   if (!jwtSecret) {
     throw new Error(
-      'HEY_JARVIS_MCP_JWT_SECRET environment variable is required for security. ' +
-      'The MCP server cannot run without JWT authentication.'
+      'HEY_JARVIS_MCP_JWT_SECRET environment variable is required. ' +
+      'JWT authentication cannot be disabled for security reasons.'
     );
   }
 
@@ -80,9 +80,7 @@ export async function startMcpServer() {
   const mcpServer = new MCPServer({
     name: 'J.A.R.V.I.S. Assistant',
     version: '1.0.0',
-    description:
-      'A comprehensive assistant that provides weather information, shopping list management, and GitHub repository coding assistance via MCP',
-    agents: {}, // Don't expose agents directly to avoid automatic tool creation
+    agents: {},
     tools,
   });
 
@@ -90,58 +88,74 @@ export async function startMcpServer() {
 
   const port = parseInt(process.env.PORT || '4112', 10);
   const host = process.env.HOST || '0.0.0.0';
-  const httpPath = '/api/mcp';
+  const mcpPath = '/api/mcp';
 
   const app = express();
 
-  console.log('JWT authentication enabled for MCP endpoint');
+  // Health check endpoint (no JWT required)
+  app.get('/health', (_req, res) => {
+    res.json({ status: 'healthy', version: '1.0.0' });
+  });
 
-  // Apply JWT middleware and MCP handler in a single chained call
-  app.use(
-    httpPath,
+  // MCP endpoint - handles both GET (for initial connection) and POST (for messages)
+  app.all(
+    mcpPath,
     expressjwt({
       secret: jwtSecret,
       algorithms: ['HS256'],
       credentialsRequired: true,
     }),
-    (err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-      // Error handler for JWT failures
-      if (err.name === 'UnauthorizedError') {
-        res.status(401).json({
-          error: 'Invalid or missing authentication token',
-          message: err.message,
-        });
-        return;
-      }
-      next(err);
-    },
     async (req, res) => {
-      // MCP handler - only reached if JWT is valid
-      await mcpServer.startHTTP({
-        url: new URL(req.url || '', `http://${host}:${port}`),
-        httpPath,
-        req,
-        res,
-      });
-    }
-  );
+      try {
+        const base = `http://${host}:${port}`;
+        const url = new URL(req.url || '', base);
 
-  // Global error handler for other errors
-  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-    console.error('Unhandled error:', err);
-    if (!res.headersSent) {
-      res.status(500).json({
+        await mcpServer.startHTTP({
+          url,
+          httpPath: mcpPath,
+          req,
+          res,
+        });
+
+        // startHTTP takes over the response (including SSE/streaming)
+        // so we don't send anything else here
+      } catch (err) {
+        console.error('Error handling MCP HTTP connection', err);
+        if (!res.headersSent) {
+          res.status(500).json({
+            error: 'Failed to establish MCP connection',
+            details: (err as Error).message,
+          });
+        }
+      }
+    });
+
+  // Express error handler for JWT authentication failures
+  app.use((err: Error & { status?: number }, req, res, _next) => {
+    if (err.name === 'UnauthorizedError') {
+      res.status(401).json({
+        error: 'Unauthorized',
+        message: 'Invalid or missing JWT token',
+      });
+    } else {
+      res.status(err.status || 500).json({
         error: 'Internal server error',
         message: err.message,
       });
     }
   });
 
-  const server = app.listen(port, host, () => {
-    console.log(`J.A.R.V.I.S. MCP Server listening on http://${host}:${port}${httpPath}`);
-  });
+  console.log(`JWT authentication enabled for ${mcpPath} with secret length: ${jwtSecret.length} characters`);
+  console.log(`J.A.R.V.I.S. MCP Server listening on http://${host}:${port}${mcpPath}`);
 
-  return server;
+  // Start the Express server
+  return new Promise<void>((resolve) => {
+    app.listen(port, host, () => {
+      console.log(`Server running on http://${host}:${port}`);
+      console.log(`MCP HTTP endpoint: http://${host}:${port}${mcpPath}`);
+      resolve();
+    });
+  });
 }
 
 // Only auto-start if this file is run directly (not imported)
