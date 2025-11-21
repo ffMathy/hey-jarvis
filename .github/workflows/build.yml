@@ -31,6 +31,10 @@ env:
 
 jobs:
   build:
+    concurrency:
+      group: build-${{ github.actor }}
+      cancel-in-progress: true
+      
     runs-on: ubuntu-latest
     timeout-minutes: 60  # Increase timeout for ESP-IDF toolchain downloads
     permissions:
@@ -79,7 +83,8 @@ jobs:
         with:
           imageName: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
           cacheFrom: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
-          push: never
+          push: filter
+          refFilterForPush: refs/heads/main
           runCmd: nx affected --target=build,test --parallel 1
           env: |
             GITHUB_ACTIONS
