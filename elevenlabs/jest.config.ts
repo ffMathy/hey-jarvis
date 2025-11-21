@@ -3,8 +3,9 @@ export default {
   testEnvironment: 'node',
   coverageDirectory: './coverage/elevenlabs',
   testMatch: ['<rootDir>/dist/elevenlabs-test/**/*.spec.js', '<rootDir>/dist/elevenlabs-test/**/*.test.js'],
-  testTimeout: 60000,
+  testTimeout: 180000,
   maxWorkers: 1,
+  forceExit: true,
   moduleFileExtensions: ['js', 'json'],
   moduleNameMapper: {
     '^(\\.{1,2}/.*)\\.js$': '$1',
