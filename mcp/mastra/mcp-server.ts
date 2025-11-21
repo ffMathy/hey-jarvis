@@ -3,7 +3,8 @@
 import type { Agent } from '@mastra/core/agent';
 import { createTool } from '@mastra/core/tools';
 import { MCPServer } from '@mastra/mcp';
-import { createServer } from 'node:http';
+import express from 'express';
+import { expressjwt } from 'express-jwt';
 import { z } from 'zod';
 import { getCodingAgent } from './verticals/coding/index.js';
 import { getShoppingListAgent } from './verticals/shopping/index.js';
@@ -46,6 +47,15 @@ function createSimplifiedAgentTool(name: string, agent: Agent, description: stri
 }
 
 export async function startMcpServer() {
+  // JWT authentication is mandatory - validate BEFORE loading any agents or modules
+  const jwtSecret = process.env.HEY_JARVIS_MCP_JWT_SECRET;
+  if (!jwtSecret) {
+    throw new Error(
+      'HEY_JARVIS_MCP_JWT_SECRET environment variable is required for security. ' +
+      'The MCP server cannot run without JWT authentication.'
+    );
+  }
+
   const agents = await getPublicAgents();
 
   // Create simplified tools that return clean text responses
@@ -82,23 +92,62 @@ export async function startMcpServer() {
   const host = process.env.HOST || '0.0.0.0';
   const httpPath = '/api/mcp';
 
-  const httpServer = createServer(async (req, res) => {
-    await mcpServer.startHTTP({
-      url: new URL(req.url || '', `http://${host}:${port}`),
-      httpPath,
-      req,
-      res,
-    });
+  const app = express();
+
+  console.log('JWT authentication enabled for MCP endpoint');
+
+  // Apply JWT middleware and MCP handler in a single chained call
+  app.use(
+    httpPath,
+    expressjwt({
+      secret: jwtSecret,
+      algorithms: ['HS256'],
+      credentialsRequired: true,
+    }),
+    (err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+      // Error handler for JWT failures
+      if (err.name === 'UnauthorizedError') {
+        res.status(401).json({
+          error: 'Invalid or missing authentication token',
+          message: err.message,
+        });
+        return;
+      }
+      next(err);
+    },
+    async (req, res) => {
+      // MCP handler - only reached if JWT is valid
+      await mcpServer.startHTTP({
+        url: new URL(req.url || '', `http://${host}:${port}`),
+        httpPath,
+        req,
+        res,
+      });
+    }
+  );
+
+  // Global error handler for other errors
+  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    console.error('Unhandled error:', err);
+    if (!res.headersSent) {
+      res.status(500).json({
+        error: 'Internal server error',
+        message: err.message,
+      });
+    }
   });
 
-  httpServer.listen(port, host, () => {
+  const server = app.listen(port, host, () => {
     console.log(`J.A.R.V.I.S. MCP Server listening on http://${host}:${port}${httpPath}`);
   });
 
-  return httpServer;
+  return server;
 }
 
-startMcpServer().catch((error) => {
-  console.error('Failed to start servers:', error);
-  process.exit(1);
-});
+// Only auto-start if this file is run directly (not imported)
+if (import.meta.main) {
+  startMcpServer().catch((error) => {
+    console.error('Failed to start servers:', error);
+    process.exit(1);
+  });
+}

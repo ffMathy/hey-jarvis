@@ -16,14 +16,14 @@ source /workspace/mcp/lib/server-functions.sh
 
 echo "Starting E2E test environment..."
 
-# Start nginx in the background to simulate Home Assistant ingress
-echo "Starting nginx proxy on port ${TEST_INGRESS_PORT}..."
-nginx -g 'daemon off;' &
-NGINX_PID=$!
-echo "✓ Nginx started (PID: $NGINX_PID)"
+# JWT secret is required for security
+if [ -z "$JWT_SECRET" ]; then
+    echo "ERROR: JWT_SECRET environment variable is required"
+    exit 1
+fi
 
-# Give nginx time to start
-sleep 2
+export HEY_JARVIS_MCP_JWT_SECRET="$JWT_SECRET"
+echo "JWT authentication configured for testing"
 
 # For E2E tests, directly export a test API key
 # In production, these would come from bashio config
@@ -52,7 +52,7 @@ echo "✓ MCP server started (PID: $MCP_PID)"
 # Function to cleanup on exit
 cleanup() {
     echo "Shutting down servers..."
-    kill $MASTRA_PID $MCP_PID $NGINX_PID 2>/dev/null || true
+    kill $MASTRA_PID $MCP_PID 2>/dev/null || true
 }
 
 trap cleanup EXIT INT TERM

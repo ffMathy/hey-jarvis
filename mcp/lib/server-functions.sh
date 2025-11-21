@@ -9,21 +9,21 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/ports.sh"
 
 start_mcp_servers() {
-    echo "Starting Mastra development server on internal port ${MASTRA_UI_INTERNAL_PORT}..." >&2
-    echo "Starting J.A.R.V.I.S. MCP server on internal port ${MCP_SERVER_INTERNAL_PORT}..." >&2
+    echo "Starting Mastra development server on port ${MASTRA_UI_PORT}..." >&2
+    echo "Starting J.A.R.V.I.S. MCP server on port ${MCP_SERVER_PORT}..." >&2
     
     # Run both mastra dev and mcp-server in parallel
-    # Nginx exposes these on ports ${MASTRA_UI_PORT} and ${MCP_SERVER_PORT} externally
+    # Services now listen directly on their external ports
     # Using & to run in background and wait to keep the script alive
     cd /workspace
     
     echo "Current directory: $(pwd)" >&2
     echo "Starting Mastra dev server..." >&2
-    PORT=${MASTRA_UI_INTERNAL_PORT} bunx mastra dev --dir mcp/mastra --root . 2>&1 &
+    PORT=${MASTRA_UI_PORT} bunx mastra dev --dir mcp/mastra --root . 2>&1 &
     MASTRA_PID=$!
     
     echo "Starting MCP server..." >&2
-    PORT=${MCP_SERVER_INTERNAL_PORT} HOST=0.0.0.0 bun run mcp/mastra/mcp-server.ts 2>&1 &
+    PORT=${MCP_SERVER_PORT} HOST=0.0.0.0 bun run mcp/mastra/mcp-server.ts 2>&1 &
     MCP_PID=$!
     
     # Give servers a moment to start

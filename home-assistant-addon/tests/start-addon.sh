@@ -40,7 +40,6 @@ INFO=$(cat "$SCRIPT_DIR/supervisor/info.json")
 DOCKER_ARGS=(
     --detach
     --name home-assistant-addon-test
-    -p "${TEST_INGRESS_PORT}:${TEST_INGRESS_PORT}"
     -p "${MASTRA_UI_PORT}:${MASTRA_UI_PORT}"
     -p "${MCP_SERVER_PORT}:${MCP_SERVER_PORT}"
     -e ADDON_INFO_FALLBACK="$ADDON_INFO"
@@ -79,7 +78,7 @@ max_attempts=60
 attempt=0
 
 while [ $attempt -lt $max_attempts ]; do
-    if curl -s -o /dev/null -w "%{http_code}" http://localhost:5690 | grep -q "200\|404\|302"; then
+    if curl -s -o /dev/null -w "%{http_code}" http://localhost:${MASTRA_UI_PORT} | grep -q "200\|404\|302"; then
         echo "✅ Container is ready!"
         break
     fi

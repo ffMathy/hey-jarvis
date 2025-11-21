@@ -6,16 +6,9 @@
  */
 
 export const PORTS = {
-  // External ports (exposed by Nginx to the outside)
+  // Service ports (exposed directly by Node.js services)
   MASTRA_UI: 4111,
   MCP_SERVER: 4112,
-
-  // Internal ports (used by backend services, proxied by Nginx)
-  MASTRA_UI_INTERNAL: 8111,
-  MCP_SERVER_INTERNAL: 8112,
-
-  // Test ingress port (for Home Assistant ingress simulation)
-  TEST_INGRESS: 5000,
 } as const;
 
 /**
@@ -30,11 +23,4 @@ export function getMastraUIUrl(): string {
  */
 export function getMCPServerUrl(): string {
   return `http://localhost:${PORTS.MCP_SERVER}`;
-}
-
-/**
- * Get the base URL for test ingress
- */
-export function getTestIngressUrl(): string {
-  return `http://localhost:${PORTS.TEST_INGRESS}`;
 }
