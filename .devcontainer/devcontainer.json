@@ -48,7 +48,7 @@
     }
   },
   "mounts": ["source=/dev,target=/dev,type=bind,consistency=cached"],
-  "runArgs": ["--privileged", "--device=/dev:/dev"],
+  "runArgs": ["--privileged", "--device=/dev:/dev", "--network=host"],
   "containerUser": "root",
   "remoteUser": "root",
   "postCreateCommand": "chmod +x ./.devcontainer/.scripts/devcontainer-init.sh && ./.devcontainer/.scripts/devcontainer-init.sh",
