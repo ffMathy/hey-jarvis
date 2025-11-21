@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, it } from '@jest/globals';
 import { TestConversation } from '../utils/test-conversation.js';
-import { ensureMcpServerRunning, stopMcpServer } from '../utils/mcp-server-manager.js';
+import { startMcpServerForTestingPurposes, stopMcpServer } from '@mcp/tests/utils/mcp-server-manager.js';
 import { ensureTunnelRunning, stopTunnel } from '../utils/tunnel-manager.js';
 
 /**
@@ -22,7 +22,7 @@ describe('Agent Prompt Specifications', () => {
 
   // Ensure MCP server and cloudflared tunnel are running before all tests
   beforeAll(async () => {
-    await ensureMcpServerRunning();
+    await startMcpServerForTestingPurposes();
     await ensureTunnelRunning();
   }, 90000);
 

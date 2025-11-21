@@ -127,6 +127,9 @@
           "sourcemap": true,
           "outExtension": {
             ".js": ".js"
+          },
+          "alias": {
+            "@mcp": "./mcp"
           }
         },
         "skipTypeCheck": true,
