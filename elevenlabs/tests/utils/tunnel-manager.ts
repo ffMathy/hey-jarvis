@@ -1,5 +1,6 @@
 import { spawn, ChildProcess, execSync } from 'child_process';
-import { retryWithBackoff } from 'mcp/tests/utils/retry-with-backoff.js';
+import { retryWithBackoff } from '../../../mcp/tests/utils/retry-with-backoff.js';
+import { createAuthenticatedMcpClient, isMcpServerRunning } from '../../../mcp/tests/utils/mcp-server-manager.js';
 
 let tunnelProcess: ChildProcess | null = null;
 
@@ -20,28 +21,9 @@ function killExistingTunnels(): void {
  * A 401 response means the tunnel is working but requires JWT authentication
  */
 async function isTunnelRunning(): Promise<boolean> {
-    // const client = new MCPClient({
-    //     id: 'client',
-    //     servers: {
-    //         testServer: {
-    //             url: new URL(`${process.env.HEY_JARVIS_CLOUDFLARED_TUNNEL_URL}/api/mcp`),
-    //         },
-    //     },
-    //     timeout: 10000,
-    // });
-    try {
-        // await client.listTools();
-        const response = await fetch(`${process.env.HEY_JARVIS_CLOUDFLARED_TUNNEL_URL}/api/mcp`, {
-            method: 'GET',
-        });
-        console.log('️ Tunnel check response:', response.status);
-        // 200 = OK, 400 = Bad request (tunnel working), 401 = Unauthorized (tunnel working, JWT required)
-        return response.ok || response.status === 400 || response.status === 401;
-    } catch {
-        return false;
-    } finally {
-        // await client.disconnect();
-    }
+    return await isMcpServerRunning({
+        url: `${process.env.HEY_JARVIS_CLOUDFLARED_TUNNEL_URL!}/api/mcp`
+    });
 }
 
 /**
@@ -78,20 +60,7 @@ export async function ensureTunnelRunning(): Promise<void> {
     // Start cloudflared tunnel in background
     tunnelProcess = spawn('cloudflared', ['tunnel', 'run', '--token', token], {
         detached: true,
-        stdio: ['ignore', 'pipe', 'pipe'],
-    });
-
-    // Log tunnel output
-    tunnelProcess.stdout?.on('data', (data) => {
-        console.log(`[cloudflared stdout] ${data.toString().trim()}`);
-    });
-
-    tunnelProcess.stderr?.on('data', (data) => {
-        console.log(`[cloudflared stderr] ${data.toString().trim()}`);
-    });
-
-    tunnelProcess.on('error', (error) => {
-        console.error('Failed to start cloudflared tunnel:', error);
+        stdio: ['ignore', 'inherit', 'inherit'],
     });
 
     // Detach the process so it continues running

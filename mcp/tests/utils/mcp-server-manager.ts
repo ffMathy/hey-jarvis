@@ -8,7 +8,6 @@ let mcpServerProcess: ChildProcess | null = null;
 
 // JWT secret for authentication (must match server)
 const MCP_PORT = 4112;
-const MCP_SERVER_URL = 'http://localhost:4112/api/mcp';
 
 /**
  * Kills any process listening on the specified port.
@@ -25,10 +24,10 @@ async function killProcessOnPort(port: number): Promise<void> {
 /**
  * Checks if the MCP server is already running
  */
-async function isMcpServerRunning(): Promise<boolean> {
+export async function isMcpServerRunning(args?: AuthenticatedMcpClientArgs): Promise<boolean> {
     let client: MCPClient | null = null;
     try {
-        client = await createAuthenticatedMcpClient();
+        client = await createAuthenticatedMcpClient(args);
         await client.listTools();
         return true;
     } catch (error) {
@@ -164,24 +163,27 @@ export function generateTokenWithoutExpiry(): string {
  * Creates an authenticated MCP client with a JWT token.
  * If no token is provided, generates a valid JWT signed with the secret.
  */
-export async function createAuthenticatedMcpClient(token?: string): Promise<MCPClient> {
-    // If no token provided, generate a valid token using the function above
-    if (!token) {
-        token = generateValidToken();
-    }
-
+type AuthenticatedMcpClientArgs = {
+    token?: string,
+    url?: string
+};
+export async function createAuthenticatedMcpClient(args?: AuthenticatedMcpClientArgs): Promise<MCPClient> {
+    const timeout = 5000;
     return new MCPClient({
         id: 'mcp-test-client',
         servers: {
             testServer: {
-                url: new URL(MCP_SERVER_URL),
+                enableServerLogs: false,
+                connectTimeout: timeout,
+                timeout: timeout,
+                url: new URL(args?.url || 'http://localhost:4112/api/mcp'),
                 requestInit: {
                     headers: {
-                        'Authorization': `Bearer ${token}`,
-                    },
-                },
+                        'Authorization': `Bearer ${args?.token || generateValidToken()}`,
+                    }
+                }
             },
         },
-        timeout: 10000,
+        timeout: timeout,
     });
 }

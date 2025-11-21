@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { retryWithBackoff } from 'mcp/tests/utils/retry-with-backoff.js';
+import { retryWithBackoff } from '../../../mcp/tests/utils/retry-with-backoff.js';
 
 describe('retryWithBackoff', () => {
   beforeEach(() => {
