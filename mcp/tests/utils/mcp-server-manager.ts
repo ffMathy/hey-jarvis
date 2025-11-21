@@ -68,17 +68,10 @@ export async function startMcpServerForTestingPurposes(): Promise<void> {
         'tsx',
         'mcp/mastra/mcp-server.ts'
     ], {
-        detached: true,
+        detached: false,
         stdio: ['ignore', 'inherit', 'inherit'],
         cwd: '/workspaces/hey-jarvis',
     });
-
-    mcpServerProcess.on('error', (error) => {
-        console.error('Failed to start MCP server:', error);
-    });
-
-    // Detach the process so it continues running
-    mcpServerProcess.unref();
 
     // Wait for server to be ready with exponential backoff
     await retryWithBackoff(
@@ -92,9 +85,9 @@ export async function startMcpServerForTestingPurposes(): Promise<void> {
             throw new Error('MCP server not ready yet');
         },
         {
-            maxRetries: 30,
+            maxRetries: 5,
             initialDelay: 1000,
-            backoffMultiplier: 1,
+            backoffMultiplier: 5,
             onRetry: (error, attempt, delayMs) => {
                 console.log(`🔍 Checking MCP server status (attempt ${attempt}/30)...`);
             },
