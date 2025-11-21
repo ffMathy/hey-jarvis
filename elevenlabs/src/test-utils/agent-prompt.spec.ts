@@ -1,5 +1,7 @@
-import { afterEach, describe, it } from '@jest/globals';
+import { afterEach, beforeAll, describe, it } from '@jest/globals';
 import { TestConversation } from './test-conversation.js';
+import { ensureMcpServerRunning } from './mcp-server-manager.js';
+import { ensureTunnelRunning } from './tunnel-manager.js';
 
 /**
  * Agent Prompt Specification Tests
@@ -17,6 +19,12 @@ describe('Agent Prompt Specifications', () => {
   const agentId = process.env.HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID;
   const apiKey = process.env.HEY_JARVIS_ELEVENLABS_API_KEY;
   const googleApiKey = process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY;
+
+  // Ensure MCP server and cloudflared tunnel are running before all tests
+  beforeAll(async () => {
+    await ensureMcpServerRunning();
+    await ensureTunnelRunning();
+  }, 30000);
 
   // Skip all tests if API keys not configured
   // Run tests sequentially to avoid resource contention and flakiness

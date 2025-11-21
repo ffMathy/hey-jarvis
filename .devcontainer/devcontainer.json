@@ -10,7 +10,8 @@
     "ghcr.io/flexwie/devcontainer-features/op:1": {},
     "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {},
     "ghcr.io/devcontainers/features/github-cli:1": {},
-    "ghcr.io/devcontainers-extra/features/bun:1": {}
+    "ghcr.io/devcontainers-extra/features/bun:1": {},
+    "ghcr.io/devcontainers-extra/features/cloudflared:1": {}
   },
   "remoteEnv": {
     "HEY_JARVIS_OPENWEATHERMAP_API_KEY": "${localEnv:HEY_JARVIS_OPENWEATHERMAP_API_KEY}",
