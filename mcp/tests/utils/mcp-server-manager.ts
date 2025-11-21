@@ -166,7 +166,7 @@ export async function createAuthenticatedMcpClient(args?: AuthenticatedMcpClient
         id: 'mcp-test-client',
         servers: {
             testServer: {
-                logger: null,
+                logger: (_message => {}),
                 enableServerLogs: false,
                 connectTimeout: timeout,
                 timeout: timeout,
