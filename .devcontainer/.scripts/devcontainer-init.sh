@@ -20,4 +20,6 @@ nx daemon --start || {
     echo "⚠️  Nx Daemon failed to start (non-fatal)"
 }
 
+# Project-level dependencies are installed with the "initialize" target in NX, lazily, when needed.
+
 echo "✅ DevContainer initialization complete!"

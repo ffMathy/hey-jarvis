@@ -54,13 +54,38 @@ esphome compile home-assistant-voice.elevenlabs.yaml
 
 ### Flashing Device
 
-```bash
-# Flash to connected device
-nx serve home-assistant-voice-firmware
+#### Initial Flash (USB)
+For the first firmware upload, connect the device via USB:
 
-# Or flash specific configuration
+```bash
+# Flash to USB-connected device
 esphome upload home-assistant-voice.elevenlabs.yaml
 ```
+
+#### Over-the-Air (OTA) Updates via WiFi
+
+After the initial flash, the firmware can be updated wirelessly over WiFi. **This is fully supported inside the DevContainer** thanks to host network mode:
+
+```bash
+# Deploy firmware updates over WiFi
+nx serve home-assistant-voice-firmware
+
+# Or directly with ESPHome
+esphome run home-assistant-voice.elevenlabs.yaml
+```
+
+The ESPHome `run` command will:
+1. Compile the firmware
+2. Automatically discover the device on your network via mDNS
+3. Upload the firmware wirelessly
+4. Show real-time logs from the device
+
+**Requirements for OTA:**
+- Device must have been flashed at least once with USB
+- Device must be connected to the same WiFi network (configured via `HEY_JARVIS_WIFI_SSID` and `HEY_JARVIS_WIFI_PASSWORD` environment variables)
+- DevContainer must have host network access (already configured)
+
+**Note:** The DevContainer is configured with `--network=host` to enable mDNS discovery and OTA uploads without any additional setup.
 
 ## Custom Components
 
@@ -99,25 +124,45 @@ These modules can be included in your configuration for additional sensors and a
 ## Development
 
 ### Prerequisites
+
+#### Using DevContainer (Recommended)
+The repository includes a fully configured DevContainer with all dependencies pre-installed:
+- ESPHome is automatically installed during DevContainer initialization
+- Host network mode enabled for WiFi OTA deployment
+- Device access configured for USB flashing
+- All environment variables passed through from host
+
+Simply open the project in VS Code with the Dev Containers extension, and everything will be ready.
+
+#### Manual Setup
+If not using DevContainer:
 - ESPHome installed (`pip install esphome`)
 - Compatible ESP32 development board
 - Audio hardware (microphone and speaker)
+- Network access for OTA deployment
 
 ### Configuration
 
-1. Copy one of the base configurations
-2. Modify WiFi credentials and Home Assistant settings
-3. Adjust hardware pin assignments as needed
-4. Add any additional components or sensors
+1. Set required environment variables:
+   ```bash
+   export HEY_JARVIS_WIFI_SSID="your-wifi-name"
+   export HEY_JARVIS_WIFI_PASSWORD="your-wifi-password"
+   export HEY_JARVIS_ELEVENLABS_API_KEY="your-api-key"
+   export HEY_JARVIS_ELEVENLABS_AGENT_ID="your-agent-id"
+   ```
+
+2. Choose a base configuration (e.g., `home-assistant-voice.elevenlabs.yaml`)
+3. Modify hardware-specific settings if needed
+4. Adjust pin assignments for your specific board
 
 ### Testing
 
 ```bash
 # Validate configuration
-esphome config home-assistant-voice.yaml
+esphome config home-assistant-voice.elevenlabs.yaml
 
-# Monitor device logs
-esphome logs home-assistant-voice.yaml
+# Monitor device logs (works over WiFi)
+esphome logs home-assistant-voice.elevenlabs.yaml
 ```
 
 ## Integration
