@@ -87,7 +87,7 @@ describe('MCP Server Connection Tests', () => {
     });
 
     it('should establish connection with valid JWT token', async () => {
-        mcpClient = await createAuthenticatedMcpClient(jwtToken);
+        mcpClient = await createAuthenticatedMcpClient({ token: jwtToken });
 
         // Getting tools successfully means connection was established
         const tools = await mcpClient.listTools();
@@ -96,7 +96,7 @@ describe('MCP Server Connection Tests', () => {
     });
 
     it('should list available tools with JWT authentication', async () => {
-        mcpClient = await createAuthenticatedMcpClient(jwtToken);
+        mcpClient = await createAuthenticatedMcpClient({ token: jwtToken });
 
         const tools = await mcpClient.listTools();
         expect(tools).toBeDefined();

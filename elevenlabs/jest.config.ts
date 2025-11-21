@@ -1,18 +1,30 @@
 export default {
   displayName: 'elevenlabs',
   testEnvironment: 'node',
-  coverageDirectory: './coverage/elevenlabs',
-  testMatch: ['<rootDir>/dist/elevenlabs-test/**/*.spec.js', '<rootDir>/dist/elevenlabs-test/**/*.test.js'],
-  testTimeout: 180000,
-  maxWorkers: 1,
-  forceExit: true,
-  moduleFileExtensions: ['js', 'json'],
+  testMatch: ['<rootDir>/tests/**/*.spec.ts'],
+  testTimeout: 180000, // 3 minutes for server startup + tests
+  maxWorkers: 1, // Run tests sequentially to avoid port conflicts
+  forceExit: true, // Force Jest to exit after all tests complete
+  moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx'],
+  transform: {
+    '^.+\\.tsx?$': ['@swc/jest', {
+      jsc: {
+        parser: {
+          syntax: 'typescript',
+          decorators: true,
+        },
+        target: 'es2022',
+        transform: {
+          decoratorMetadata: true,
+        },
+      },
+      module: {
+        type: 'es6',
+      },
+    }],
+  },
+  extensionsToTreatAsEsm: ['.ts'],
   moduleNameMapper: {
     '^(\\.{1,2}/.*)\\.js$': '$1',
   },
-  // No transform needed - running on compiled JavaScript
-  transform: {},
-  transformIgnorePatterns: [],
-  rootDir: '..',
-  coverageReporters: ['html'],
 };

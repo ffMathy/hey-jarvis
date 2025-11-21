@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, it } from '@jest/globals';
 import { TestConversation } from '../utils/test-conversation.js';
-import { startMcpServerForTestingPurposes, stopMcpServer } from 'mcp/tests/utils/mcp-server-manager.js';
+import { startMcpServerForTestingPurposes, stopMcpServer } from '../../../mcp/tests/utils/mcp-server-manager.js';
 import { ensureTunnelRunning, stopTunnel } from '../utils/tunnel-manager.js';
 
 /**

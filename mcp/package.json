@@ -1,8 +1,5 @@
 {
   "name": "mcp",
   "version": "0.7.0",
-  "type": "module",
-  "exports": {
-    "./tests/utils/retry-with-backoff.js": "./tests/utils/retry-with-backoff.ts"
-  }
+  "type": "module"
 }
