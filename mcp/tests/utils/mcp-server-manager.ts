@@ -2,6 +2,7 @@ import { MCPClient } from '@mastra/mcp';
 import { ChildProcess, spawn } from 'child_process';
 import fkill from 'fkill';
 import jwt from 'jsonwebtoken';
+import { retryWithBackoff } from './retry-with-backoff';
 
 let mcpServerProcess: ChildProcess | null = null;
 
@@ -72,20 +73,26 @@ export async function startMcpServerForTestingPurposes(): Promise<void> {
     // Detach the process so it continues running
     mcpServerProcess.unref();
 
-    // Wait for server to be ready (up to 30 seconds)
-    const maxRetries = 30;
-    for (let i = 0; i < maxRetries; i++) {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        if (await isMcpServerRunning()) {
-            console.log('✅ MCP server started successfully');
-            // Give server extra time to stabilize
-            await new Promise((resolve) => setTimeout(resolve, 1000));
-            return;
+    // Wait for server to be ready with exponential backoff
+    await retryWithBackoff(
+        async () => {
+            if (await isMcpServerRunning()) {
+                console.log('✅ MCP server started successfully');
+                // Give server extra time to stabilize
+                await new Promise((resolve) => setTimeout(resolve, 1000));
+                return;
+            }
+            throw new Error('MCP server not ready yet');
+        },
+        {
+            maxRetries: 30,
+            initialDelay: 1000,
+            backoffMultiplier: 1,
+            onRetry: (error, attempt, delayMs) => {
+                console.log(`🔍 Checking MCP server status (attempt ${attempt}/30)...`);
+            },
         }
-        console.log(`🔍 Checking MCP server status (attempt ${i + 1}/${maxRetries})...`);
-    }
-
-    throw new Error('MCP server failed to start within timeout');
+    );
 }
 
 /**
