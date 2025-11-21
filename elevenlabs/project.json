@@ -49,6 +49,17 @@
         }
       }
     },
+    "deploy:test": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build"],
+      "options": {
+        "command": "./.scripts/run-with-env.sh elevenlabs/op.env node dist/elevenlabs/main.js deploy --test",
+        "cwd": ".",
+        "env": {
+          "NODE_OPTIONS": "--experimental-vm-modules"
+        }
+      }
+    },
     "refresh": {
       "executor": "nx:run-commands",
       "dependsOn": ["build"],
@@ -63,7 +74,7 @@
     "test": {
       "executor": "nx:run-commands",
       "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
-      "dependsOn": ["deploy"],
+      "dependsOn": ["deploy:test"],
       "options": {
         "command": "./.scripts/run-with-env.sh elevenlabs/op.env nx run elevenlabs:test:jest",
         "cwd": ".",

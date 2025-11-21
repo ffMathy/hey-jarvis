@@ -148,7 +148,7 @@ class ElevenLabsAgentManager {
     }
   }
 
-  private async deployConfig(): Promise<void> {
+  private async deployConfig(isTestAgent: boolean = false): Promise<void> {
     try {
       const config = await this.loadConfig();
       const prompt = await this.loadPrompt();
@@ -160,11 +160,14 @@ class ElevenLabsAgentManager {
         };
       }
 
-      const agentId = process.env.HEY_JARVIS_ELEVENLABS_AGENT_ID;
+      const agentId = isTestAgent
+        ? process.env.HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID
+        : process.env.HEY_JARVIS_ELEVENLABS_AGENT_ID;
       const voiceId = process.env.HEY_JARVIS_ELEVENLABS_VOICE_ID;
 
       if (!agentId) {
-        throw new Error('HEY_JARVIS_ELEVENLABS_AGENT_ID environment variable is required');
+        const envVarName = isTestAgent ? 'HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID' : 'HEY_JARVIS_ELEVENLABS_AGENT_ID';
+        throw new Error(`${envVarName} environment variable is required`);
       }
 
       // Inject environment variables into config
@@ -174,7 +177,23 @@ class ElevenLabsAgentManager {
         config.conversationConfig.tts.voiceId = voiceId;
       }
 
-      console.log(`🚀 Deploying configuration to agent ${agentId}...`);
+      // Modify configuration for test agents
+      if (isTestAgent) {
+        // Set textOnly to true for test agents
+        if (config.conversationConfig?.conversation) {
+          config.conversationConfig.conversation.textOnly = true;
+          console.log('🔧 Setting textOnly to true for test agent');
+        }
+        
+        // Suffix agent name with " (test)" to distinguish from production
+        if (config.name && !config.name.endsWith(' (test)')) {
+          config.name = `${config.name} (test)`;
+          console.log(`🏷️ Renaming agent to: ${config.name}`);
+        }
+      }
+
+      const agentType = isTestAgent ? 'test agent' : 'agent';
+      console.log(`🚀 Deploying configuration to ${agentType} ${agentId}...`);
 
       const response = await this.client.conversationalAi.agents.update(agentId, config);
 
@@ -183,6 +202,9 @@ class ElevenLabsAgentManager {
       console.log(`🆔 Agent ID: ${response.agentId}`);
       if (voiceId) {
         console.log(`🎤 Voice ID: ${voiceId}`);
+      }
+      if (isTestAgent) {
+        console.log('🧪 Test agent mode enabled (textOnly: true)');
       }
     } catch (error) {
       console.error('❌ Failed to deploy configuration:', error);
@@ -203,7 +225,8 @@ class ElevenLabsAgentManager {
     program
       .command('deploy')
       .description('Deploy agent configuration to ElevenLabs')
-      .action(() => this.deployConfig());
+      .option('--test', 'Deploy to test agent with textOnly enabled')
+      .action((options) => this.deployConfig(options.test));
 
     await program.parseAsync();
   }
