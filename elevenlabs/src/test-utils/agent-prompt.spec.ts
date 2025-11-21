@@ -24,11 +24,9 @@ describe('Agent Prompt Specifications', () => {
   beforeAll(async () => {
     await ensureMcpServerRunning();
     await ensureTunnelRunning();
-  }, 30000);
+  }, 90000);
 
-  // Skip all tests if API keys not configured
-  // Run tests sequentially to avoid resource contention and flakiness
-  const runTest = agentId && apiKey && googleApiKey ? it : it.skip;
+  const runTest = it;
 
   describe('Personality & Tone', () => {
     runTest(
