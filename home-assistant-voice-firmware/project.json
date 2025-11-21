@@ -15,10 +15,19 @@
     },
     "build": {
       "executor": "nx:run-commands",
-      "dependsOn": ["initialize"],
+      "dependsOn": [
+        "initialize"
+      ],
+      "cache": true,
+      "outputs": [
+        "{projectRoot}/.esphome/build"
+      ],
       "options": {
         "command": "bash ./.scripts/build.sh",
         "cwd": "home-assistant-voice-firmware"
+      },
+      "configurations": {
+        "production": {}
       }
     },
     "serve": {

@@ -1,0 +1,619 @@
+{
+  "name": "Home Assistant agent",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "jsonExample",
+        "jsonExample": "{\n  \"prompt\": \"The prompt for the agent.\"\n}"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -752,
+        -848
+      ],
+      "id": "",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -752,
+        -640
+      ],
+      "id": "",
+      "name": "When chat message received",
+      "webhookId": ""
+    },
+    {
+      "parameters": {
+        "options": {
+          "systemMessage": "REDACTED_ID",
+          "maxIterations": 10
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        416,
+        -432
+      ],
+      "id": "",
+      "name": "AI Agent",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-flash-lite-latest",
+        "options": {
+          "maxOutputTokens": 1000000
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        240,
+        -240
+      ],
+      "id": "",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "name": "call_service_with_arguments",
+        "description": "Call this tool to invoke a particular service, for a particular domain, for a particular target. \n\nArguments can also be supplied. If you need to target more targets or entities, call this for each target.\n\nBe careful about preferring arguments that are meant to be identifiers. For instance, if offered an argument called \"color name\" for the color of a light and the format doesn't tell what kind of valid color names exist, instead prefer to use another argument (for instance \"kelvin\" if you are instructed to adjust the warm-ness of the color, or \"rgb_values\" if you are to set it to a particular color).\n\nFavor being explicit over reducing the amount of tool calls. For instance, if asked to turn off the all lights except the ones in the living room, explicitly turn off all other lights. Do not turn off *all* lights and then turn on the living room lights, as this would cause flickering of the living room lights.",
+        "jsCode": "REDACTED_TOKEN",
+        "specifyInputSchema": true,
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"domain\": {\n      \"type\": \"string\",\n      \"description\": \"The domain where the service is located (e.g., 'light', 'media_player').\"\n    },\n    \"serviceId\": {\n      \"type\": \"string\",\n      \"description\": \"The ID of the service to be called, coming from the key of 'services_by_id'. For instance, 'mathias_phone' or 'turn_on'.\"\n    },\n    \"data\": {\n      \"type\": {},\n      \"description\": \"A parameter object containing a name and value. For instance, could be `{\\\"entity_id\\\": \\\"some-entity-id\\\", \\\"state\\\": \\\"on\\\", \\\"brightness_pct\\\": 100}`. Some services allow not specifying the entity ID, but use it if you found a relevant entity ID.\"\n    }\n  },\n  \"required\": [\n    \"domain\",\n    \"serviceId\",\n    \"data\"\n  ],\n  \"additionalProperties\": false\n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.1,
+      "position": [
+        640,
+        -208
+      ],
+      "id": "",
+      "name": "Call service",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "",
+              "name": "chatInput",
+              "value": "REDACTED_ID",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -512,
+        -768
+      ],
+      "id": "",
+      "name": "Rename field"
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Fetches the logbook entries for a given entity, and a given time range. This can be used for seeing how an entity has changed state over time. Only call this tool if you need to look at past values. Never use it for fetching the current values - you have already been provided with these.",
+        "resource": "log",
+        "operation": "getLogbookEntries",
+        "additionalFields": {
+          "endTime": "REDACTED_ID",
+          "entityId": "REDACTED_ID",
+          "startTime": "REDACTED_ID"
+        }
+      },
+      "type": "n8n-nodes-base.homeAssistantTool",
+      "typeVersion": 1,
+      "position": [
+        512,
+        -160
+      ],
+      "id": "",
+      "name": "List logbook entries for entity",
+      "credentials": {
+        "homeAssistantApi": {
+          "id": "",
+          "name": "Home Assistant account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "numberInputs": 3,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.1,
+      "position": [
+        480,
+        -688
+      ],
+      "id": "",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "resource": "template",
+        "template": "REDACTED_ID"
+      },
+      "type": "n8n-nodes-base.homeAssistant",
+      "typeVersion": 1,
+      "position": [
+        -256,
+        -416
+      ],
+      "id": "",
+      "name": "Get all devices",
+      "credentials": {
+        "homeAssistantApi": {
+          "id": "",
+          "name": "Home Assistant account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "service",
+        "returnAll": true
+      },
+      "type": "n8n-nodes-base.homeAssistant",
+      "typeVersion": 1,
+      "position": [
+        -256,
+        -640
+      ],
+      "id": "",
+      "name": "Get all services",
+      "credentials": {
+        "homeAssistantApi": {
+          "id": "",
+          "name": "Home Assistant account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "REDACTED_ID"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -64,
+        -416
+      ],
+      "id": "",
+      "name": "Exclude AI prohibited devices"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "REDACTED_ID"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -64,
+        -640
+      ],
+      "id": "",
+      "name": "Rename fields"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -480,
+        -176
+      ],
+      "id": "",
+      "name": "Trigger subconsciousness"
+    },
+    {
+      "parameters": {
+        "resource": "template",
+        "template": "REDACTED_ID"
+      },
+      "type": "n8n-nodes-base.homeAssistant",
+      "typeVersion": 1,
+      "position": [
+        -272,
+        -176
+      ],
+      "id": "",
+      "name": "Get changed devices since last time",
+      "credentials": {
+        "homeAssistantApi": {
+          "id": "",
+          "name": "Home Assistant account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "6ZfDmwOoGWXfoEb1",
+          "mode": "list",
+          "cachedResultName": "Memory agent"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "prompt": "={{ null }}",
+            "remember": "={{ null }}",
+            "act": "REDACTED_ID"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "prompt",
+              "displayName": "prompt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "remember",
+              "displayName": "remember",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object",
+              "removed": false
+            },
+            {
+              "id": "act",
+              "displayName": "act",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        -64,
+        64
+      ],
+      "id": "",
+      "name": "Execute Workflow"
+    },
+    {
+      "parameters": {
+        "jsCode": "REDACTED_ID"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -480,
+        64
+      ],
+      "id": "",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "renderedTemplate",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        -64,
+        -176
+      ],
+      "id": "",
+      "name": "Split Out"
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        -272,
+        64
+      ],
+      "id": "",
+      "name": "Combine devices"
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "services_by_domain",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        128,
+        -640
+      ],
+      "id": "",
+      "name": "Combine services"
+    },
+    {
+      "parameters": {
+        "jsCode": "return {\n  excludedDomains: [\n    'update',\n    'hassio',\n    'frontend',\n    'logger',\n    'system_log'\n  ]\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -512,
+        -544
+      ],
+      "id": "",
+      "name": "Define excluded domains"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Rename field",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "Rename field",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call service": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rename field": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Define excluded domains",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List logbook entries for entity": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get all devices": {
+      "main": [
+        [
+          {
+            "node": "Exclude AI prohibited devices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get all services": {
+      "main": [
+        [
+          {
+            "node": "Rename fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Exclude AI prohibited devices": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Rename fields": {
+      "main": [
+        [
+          {
+            "node": "Combine services",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger subconsciousness": {
+      "main": [
+        [
+          {
+            "node": "Get changed devices since last time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get changed devices since last time": {
+      "main": [
+        [
+          {
+            "node": "Split Out",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Combine devices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Combine devices": {
+      "main": [
+        [
+          {
+            "node": "Execute Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Combine services": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Define excluded domains": {
+      "main": [
+        [
+          {
+            "node": "Get all services",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get all devices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": ""
+  },
+  "id": "",
+  "tags": []
+}

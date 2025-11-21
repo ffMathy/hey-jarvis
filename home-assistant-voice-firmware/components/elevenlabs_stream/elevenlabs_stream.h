@@ -152,7 +152,7 @@ template<typename... Ts> class ElevenLabsStreamStartAction : public Action<Ts...
   TEMPLATABLE_VALUE(std::string, initial_message)
   TEMPLATABLE_VALUE(uint32_t, timeout)
   
-  void play(Ts... x) override {
+  void play(const Ts &...x) override {
     auto initial_message = this->initial_message_.optional_value(x...);
     auto timeout = this->timeout_.optional_value(x...);
     

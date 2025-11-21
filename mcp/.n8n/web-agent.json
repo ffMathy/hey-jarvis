@@ -1,0 +1,486 @@
+{
+  "name": "Web agent",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "jsonExample",
+        "jsonExample": "{\n  \"prompt\": \"The prompt for the agent.\"\n}"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -224,
+        -256
+      ],
+      "id": "0adda349-739c-4f72-867a-ae9e3142ca98",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -224,
+        -16
+      ],
+      "id": "e3ffe398-66df-4415-8d3b-09c131b0acd9",
+      "name": "When chat message received",
+      "webhookId": "022ee358-c7c9-4b6e-bbf8-3c18d940b564"
+    },
+    {
+      "parameters": {
+        "options": {
+          "systemMessage": "You are a research agent that can search for things on the web, and fetch their HTML content. \n\nYou value factual results and are willing to do whatever it takes and as many attempts or iterations at possible of research to find your answer. If you are unsure, better do more research first.\n\nDo not ask questions, make best-guess assumptions.\n\nThe web can generally not always be trusted, as each search result represents an individual independent source. Do not consider prior chat history as a source of information. Never conclude anything before performing at least one search.\n\nNever return a response without browsing at least 3 of the search results by their URLs, since not doing so might lead to incomplete conclusions (it is never good to conclude anything from the search results without actually browsing the pages for their full content).\n\nFor each result you return, return at least the following:\n- A title.\n- A summary.\n- A URL for the source of the information.\n\nThe final result should be formatted in HTML, to be sent in an email. It's important that you don't mix markdown into it - it needs to be pure HTML.",
+          "maxIterations": 100
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        144,
+        -128
+      ],
+      "id": "35f0d090-4ac7-4de6-91b5-5d0dff43018d",
+      "name": "AI Agent",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "b0e5432e-24b2-487c-913f-f895a46f4b5e",
+              "name": "chatInput",
+              "value": "={{ $json.prompt }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -48,
+        -256
+      ],
+      "id": "9ce7601a-296b-403a-813e-ea93169d6cbc",
+      "name": "Rename field"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-flash-lite-latest",
+        "options": {
+          "maxOutputTokens": 1000000
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        -208,
+        352
+      ],
+      "id": "f53b576e-5beb-49e3-969a-c582bd5e5b4b",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "WFZ2BlCNek2giAHX",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4.1-nano",
+          "mode": "list",
+          "cachedResultName": "gpt-4.1-nano"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        -16,
+        352
+      ],
+      "id": "0f3acf83-af39-4152-880d-c905d3c39ba8",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "SruARanD0aESnVY2",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "session-research"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        208,
+        352
+      ],
+      "id": "fa5fd9ee-9ab3-4eca-977b-749cc1662e08",
+      "name": "Window Buffer Memory",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "toolDescription": "Search for a particular phrase on the web. Each result has a URL, a description, and a score (which specifies the relevance of the result compared to the phrase searched for).",
+        "method": "POST",
+        "url": "https://api.tavily.com/search",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n    \"api_key\": \"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\",\n    \"query\": \"{phrase}\",\n    \"search_depth\": \"basic\",\n    \"include_answer\": true,\n    \"include_images\": true,\n    \"include_image_descriptions\": true,\n    \"include_raw_content\": false,\n    \"max_results\": 10,\n    \"include_domains\": [],\n    \"exclude_domains\": []\n}",
+        "placeholderDefinitions": {
+          "values": [
+            {
+              "name": "phrase",
+              "description": "The phrase to search for. This will be interpolated into JSON strings, so escape all quotes with slashes."
+            }
+          ]
+        },
+        "optimizeResponse": true
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        384,
+        352
+      ],
+      "id": "6303415c-2e3f-4428-9e01-1645f8e01f89",
+      "name": "Search the web"
+    },
+    {
+      "parameters": {
+        "toolDescription": "Get the HTML contents of a particular web page URL.",
+        "method": "POST",
+        "url": "https://api.tavily.com/extract",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n    \"api_key\": \"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\",\n    \"urls\": [\n        \"{search_result_url}\"\n    ]\n}",
+        "placeholderDefinitions": {
+          "values": [
+            {
+              "name": "search_result_url",
+              "description": "The search result URL to browse.",
+              "type": "string"
+            }
+          ]
+        },
+        "optimizeResponse": true
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        528,
+        240
+      ],
+      "id": "b05e031e-9d32-41b8-b3cc-63a25e84fe8a",
+      "name": "Get HTML content of URL"
+    },
+    {
+      "parameters": {
+        "toRecipients": "mathias.lorenzen@live.com",
+        "subject": "=Research result",
+        "bodyContent": "={{ $json.output }}",
+        "additionalFields": {
+          "bodyContentType": "html"
+        }
+      },
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        528,
+        -240
+      ],
+      "id": "611f71c8-dea2-44b9-af3e-56c9bf08884c",
+      "name": "Microsoft Outlook",
+      "webhookId": "60a324a1-296b-4fd5-9565-dfdb74336e42",
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "5EbfYO6xvm8zgVDT",
+          "name": "Microsoft Outlook account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "chooseBranch",
+        "useDataOfInput": 2
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        720,
+        -128
+      ],
+      "id": "8cd6c3bb-78f1-469e-8a15-c275b49283d6",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "13ed97a5-c9fe-4815-ab6c-7b9b1b42593c",
+        "authentication": "jwtAuth",
+        "responseMode": "lastNode",
+        "responseData": "allEntries",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -224,
+        -464
+      ],
+      "id": "ad764ecb-bed7-4496-ab79-fb3e74ca8d2d",
+      "name": "Webhook",
+      "webhookId": "59b98dc8-209a-478f-b1f8-7f4c95fdbebb",
+      "credentials": {
+        "jwtAuth": {
+          "id": "szLGCDKPgjCThsSA",
+          "name": "JWT Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1825af18-4210-4ad5-82f5-0121cf6c7806",
+              "name": "chatInput",
+              "value": "={{ $json.body.prompt }}",
+              "type": "string"
+            },
+            {
+              "id": "a7b6aee9-fda3-42a0-8a72-9ad63f1b791d",
+              "name": "sessionId",
+              "value": "jarvis",
+              "type": "string"
+            },
+            {
+              "id": "653d0163-2fb6-43f0-b5fd-8d183861cfce",
+              "name": "origin",
+              "value": "jarvis",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "include": "selected",
+        "includeFields": "subject,origin",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -48,
+        -464
+      ],
+      "id": "6567ccee-d874-48d7-bb31-b0abbe2f4760",
+      "name": "Transform prompt to chat input"
+    }
+  ],
+  "pinData": {
+    "When Executed by Another Workflow": [
+      {
+        "json": {
+          "prompt": "Provide a detailed explanation of what started the first India-Pakistan war in 1947-1948, including the political and territorial issues involved, and how the conflict escalated into war."
+        }
+      }
+    ],
+    "Webhook": [
+      {
+        "json": {
+          "headers": {
+            "host": "n8n-webhooks-home-assistant.ffmathy.org",
+            "x-real-ip": "172.30.32.1",
+            "x-forwarded-for": "34.59.11.47, 172.30.32.1",
+            "x-forwarded-proto": "http",
+            "x-forwarded-host": "n8n-webhooks-home-assistant.ffmathy.org",
+            "x-forwarded-port": "8081",
+            "origin": "http://n8n-webhooks-home-assistant.ffmathy.org",
+            "connection": "close",
+            "content-length": "87",
+            "user-agent": "Python/3.12 aiohttp/3.11.16",
+            "accept": "*/*",
+            "accept-encoding": "gzip, br",
+            "authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJob21lLWFzc2lzdGFudCIsImlhdCI6MTUxNjIzOTAyMn0.IkdeKmsXkXAUxyGiOOAQ6tTcJJjZavbnz-kw5QcYXwA",
+            "cdn-loop": "cloudflare; loops=1",
+            "cf-connecting-ip": "34.59.11.47",
+            "cf-ipcountry": "US",
+            "cf-ray": "964a1bb518b0c365-ORD",
+            "cf-visitor": "{\"scheme\":\"https\"}",
+            "cf-warp-tag-id": "8e78b82e-fd7a-453e-ada6-78b4305a5865",
+            "content-type": "application/json"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "prompt": "M8N workflow tool error response too long when fetching execution details"
+          },
+          "webhookUrl": "https://n8n-webhooks-home-assistant.ffmathy.org/webhook/13ed97a5-c9fe-4815-ab6c-7b9b1b42593c",
+          "executionMode": "production",
+          "jwtPayload": {
+            "sub": "home-assistant",
+            "iat": 1516239022
+          }
+        }
+      }
+    ]
+  },
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Rename field",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rename field": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Window Buffer Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search the web": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get HTML content of URL": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        []
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Microsoft Outlook",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Microsoft Outlook": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Transform prompt to chat input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transform prompt to chat input": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "54f3a9a3-85fd-4634-9dbd-8f577098982b",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "723d44f65fe0efd0af296531bfb800ffbcd5551996351a35c780b928a7eda99f"
+  },
+  "id": "PZEDfrADbNOoPLYi",
+  "tags": []
+}
