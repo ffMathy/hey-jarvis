@@ -8,7 +8,7 @@ let tunnelProcess: ChildProcess | null = null;
  */
 async function isTunnelRunning(): Promise<boolean> {
     try {
-        const response = await fetch(`https://${process.env.HEY_JARVIS_CLOUDFLARED_TUNNEL_URL}/api/mcp`, {
+        const response = await fetch(`${process.env.HEY_JARVIS_CLOUDFLARED_TUNNEL_URL}/api/mcp`, {
             method: 'GET',
         });
         console.log('️ Tunnel check response:', response.status);
