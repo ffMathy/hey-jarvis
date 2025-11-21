@@ -4,6 +4,7 @@
 
 # Configure git safe.directory to avoid ownership issues
 git config --global --add safe.directory /workspaces/hey-jarvis
+git config --global pull.rebase true
 
 echo "🔧 Installing dependencies with Bun..."
 bun install --frozen-lockfile || {

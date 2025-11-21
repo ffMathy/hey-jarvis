@@ -38,15 +38,13 @@ async function isMcpServerRunning(): Promise<boolean> {
 }
 
 /**
- * Starts the MCP server using nx serve:mcp:tsx target (bypasses 1Password wrapper).
- * Requires HEY_JARVIS_MCP_JWT_SECRET to be set.
+ * Starts the MCP server using run-with-env.sh directly with tsx.
+ * This ensures environment variables are properly loaded from 1Password CLI.
+ * CRITICAL: Must use run-with-env.sh to load secrets, but call tsx directly to avoid nested NX processes.
  */
 export async function startMcpServerForTestingPurposes(): Promise<void> {
     // Kill any existing servers first to ensure clean state
     await killProcessOnPort(MCP_PORT);
-
-    // Set required environment variables for tests
-    process.env['HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY'] = process.env['HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY'] || 'test-api-key';
 
     // Check if MCP server is already running
     if (await isMcpServerRunning()) {
@@ -54,16 +52,19 @@ export async function startMcpServerForTestingPurposes(): Promise<void> {
         return;
     }
 
-    console.log('🤖 Starting MCP server via nx serve:mcp:tsx...');
+    console.log('🤖 Starting MCP server via run-with-env.sh + tsx...');
 
-    // Start MCP server using nx serve:mcp:tsx target (bypasses 1Password wrapper)
-    mcpServerProcess = spawn('bunx', ['nx', 'serve:mcp:tsx', 'mcp'], {
+    // Start MCP server using run-with-env.sh to load 1Password secrets
+    // Call tsx directly to avoid nested NX process issues
+    mcpServerProcess = spawn('./.scripts/run-with-env.sh', [
+        'mcp/op.env',
+        'bunx',
+        'tsx',
+        'mcp/mastra/mcp-server.ts'
+    ], {
         detached: true,
         stdio: ['ignore', 'inherit', 'inherit'],
         cwd: '/workspaces/hey-jarvis',
-        env: {
-            ...process.env,
-        },
     });
 
     mcpServerProcess.on('error', (error) => {

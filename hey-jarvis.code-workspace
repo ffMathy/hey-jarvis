@@ -1,28 +1,28 @@
 {
   "folders": [
     {
-      "name": "⚙️ GitHub Workflows",
-      "path": "./.github"
-    },
-    {
-      "name": "🐳 DevContainer",
-      "path": "./.devcontainer"
+      "name": "🏠 Home Assistant Voice Firmware",
+      "path": "./home-assistant-voice-firmware"
     },
     {
       "name": "🗣️ ElevenLabs Integration",
       "path": "./elevenlabs"
     },
     {
-      "name": "🏠 Home Assistant Voice Firmware",
-      "path": "./home-assistant-voice-firmware"
+      "name": "🏠 Home Assistant Addon",
+      "path": "./home-assistant-addon"
     },
     {
       "name": "🤖 MCP Server",
       "path": "./mcp"
     },
     {
-      "name": "🏠 Home Assistant Addon",
-      "path": "./home-assistant-addon"
+      "name": "⚙️ GitHub Workflows",
+      "path": "./.github"
+    },
+    {
+      "name": "🐳 DevContainer",
+      "path": "./.devcontainer"
     }
   ],
   "settings": {

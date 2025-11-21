@@ -1,6 +1,5 @@
 import { spawn, ChildProcess, execSync } from 'child_process';
-import { retryWithBackoff } from '@mcp/tests/utils/retry-with-backoff';
-import { MCPClient } from '@mastra/mcp';
+import { retryWithBackoff } from 'mcp/tests/utils/retry-with-backoff.js';
 
 let tunnelProcess: ChildProcess | null = null;
 
