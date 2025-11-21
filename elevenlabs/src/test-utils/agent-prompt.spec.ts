@@ -20,7 +20,7 @@ describe('Agent Prompt Specifications', () => {
 
   // Skip all tests if API keys not configured
   // Run tests sequentially to avoid resource contention and flakiness
-  const runTest = apiKey && googleApiKey ? it : it.skip;
+  const runTest = agentId && apiKey && googleApiKey ? it : it.skip;
 
   describe('Personality & Tone', () => {
     runTest(
