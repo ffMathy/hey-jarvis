@@ -2,21 +2,27 @@ import { MCPClient } from '@mastra/mcp';
 import jwt from 'jsonwebtoken';
 import { createAuthenticatedMcpClient, startMcpServerForTestingPurposes, stopMcpServer } from './utils/mcp-server-manager';
 
-const JWT_SECRET = 'test-secret-for-jwt-authentication-minimum-32-chars';
 const MCP_SERVER_URL = 'http://localhost:4112/api/mcp';
 const SERVER_STARTUP_TIMEOUT = 120000;
 
 /**
- * Generate a JWT token for MCP server authentication
+ * Generate a JWT token for MCP server authentication using the real secret from environment.
+ * The server is started by run-with-env.sh which loads the real secret from 1Password,
+ * so we must use the same secret that's available in the test process environment.
  */
 function generateJwtToken(): string {
+    const jwtSecret = process.env.HEY_JARVIS_MCP_JWT_SECRET;
+    if (!jwtSecret) {
+        throw new Error('HEY_JARVIS_MCP_JWT_SECRET environment variable is required for tests');
+    }
+
     const now = Math.floor(Date.now() / 1000);
     const payload = {
         sub: 'mcp-client-test',
         iat: now,
         exp: now + 3600, // 1 hour expiry
     };
-    return jwt.sign(payload, JWT_SECRET);
+    return jwt.sign(payload, jwtSecret);
 }
 
 describe('MCP Server Connection Tests', () => {
@@ -24,11 +30,13 @@ describe('MCP Server Connection Tests', () => {
     let mcpClient: MCPClient | null = null;
 
     beforeAll(async () => {
-        // Set required environment variables
-        process.env.HEY_JARVIS_MCP_JWT_SECRET = JWT_SECRET;
-        process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY = 'temp-testing-key';
-        process.env.PORT = '4112';
-        process.env.HOST = '127.0.0.1';
+        // Verify required environment variables are set (loaded by run-with-env.sh)
+        if (!process.env.HEY_JARVIS_MCP_JWT_SECRET) {
+            throw new Error('HEY_JARVIS_MCP_JWT_SECRET not found - tests must be run via nx test which uses run-with-env.sh');
+        }
+        if (!process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY) {
+            throw new Error('HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY not found - tests must be run via nx test which uses run-with-env.sh');
+        }
 
         console.log('Starting MCP server programmatically...');
         await startMcpServerForTestingPurposes();

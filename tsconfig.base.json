@@ -20,7 +20,7 @@
     "allowSyntheticDefaultImports": true,
     "types": [],
     "paths": {
-      "@mcp/*": ["mcp/*"]
+      "mcp/*": ["mcp/*"]
     }
   },
   "exclude": ["node_modules", "tmp", "dist", ".nx"]

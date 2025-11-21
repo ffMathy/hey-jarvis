@@ -511,6 +511,50 @@ const getCurrentWeatherStep = createToolStep({
 bun install mastra --global
 ```
 
+### Testing Requirements
+
+**CRITICAL: Test Server Startup Must Use run-with-env.sh**
+
+When starting the MCP server for testing purposes, **ALWAYS use `run-with-env.sh` directly with tsx** to ensure proper environment variable loading from 1Password without nested NX process issues:
+
+✅ **CORRECT:**
+```bash
+# Tests should start the server using run-with-env.sh + tsx directly
+./.scripts/run-with-env.sh mcp/op.env bunx tsx mcp/mastra/mcp-server.ts
+```
+
+❌ **INCORRECT:**
+```bash
+# Don't use NX targets - they cause nested NX processes in test environment
+bunx nx serve:mcp mcp
+bunx nx serve:mcp:tsx mcp
+
+# Don't bypass run-with-env.sh - environment variables won't load
+bunx tsx mcp/mastra/mcp-server.ts
+```
+
+**Why This Matters:**
+- The `run-with-env.sh` script ensures 1Password CLI authentication and environment variable injection
+- Direct tsx execution avoids nested NX process issues that cause premature exit
+- Tests run in the same environment as development and need access to secrets
+- Without run-with-env.sh, required environment variables like `HEY_JARVIS_MCP_JWT_SECRET` won't be available
+- This approach provides the simplest, most direct path to a running server
+
+**Test Implementation Pattern:**
+```typescript
+// In test setup files (e.g., mcp-server-manager.ts)
+mcpServerProcess = spawn('./.scripts/run-with-env.sh', [
+    'mcp/op.env',
+    'bunx',
+    'tsx',
+    'mcp/mastra/mcp-server.ts'
+], {
+    detached: true,
+    stdio: ['ignore', 'inherit', 'inherit'],
+    cwd: '/workspaces/hey-jarvis',
+});
+```
+
 ### Running the Project
 ```bash
 # Start development server with playground
