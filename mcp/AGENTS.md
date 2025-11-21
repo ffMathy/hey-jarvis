@@ -1129,6 +1129,190 @@ const mcpExternalPort = 4112;
 
 **Golden Rule**: If removing the comment makes the code unclear, improve the code (better names, smaller functions, clearer structure) rather than adding a comment.
 
+### Code Reuse and External Libraries
+
+#### 🔄 **Don't Reinvent the Wheel**
+**CRITICAL: Always prefer well-maintained npm packages** over custom implementations:
+
+- **Search npm first**: Before writing custom code, search for existing packages
+- **Check maintenance**: Verify active maintenance, download statistics, and TypeScript support
+- **Use official libraries**: Prefer packages by recognized maintainers (e.g., Sindre Sorhus)
+- **Avoid platform-specific code**: Don't write shell commands (lsof, kill, grep) when cross-platform libraries exist
+
+**Example - Port-Based Process Killing:**
+
+❌ **BAD - Custom Shell Commands:**
+```typescript
+// ❌ Platform-specific, reinventing the wheel, ~60 lines of code
+export function killProcessOnPort(port: number): void {
+  try {
+    const lsofCmd = `lsof -ti:${port}`;
+    const pids = execSync(lsofCmd, { encoding: 'utf-8' }).trim().split('\n');
+    pids.forEach(pid => execSync(`kill -9 ${pid}`));
+  } catch (error) {
+    // Complex error handling for different platforms...
+  }
+}
+```
+
+✅ **GOOD - Use Existing Package:**
+```typescript
+// ✅ Cross-platform, maintained (182k downloads/week), ~15 lines
+import fkill from 'fkill';
+
+export async function killProcessOnPort(port: number): Promise<void> {
+  try {
+    await fkill(`:${port}`, { force: true, silent: true });
+    console.log(`🧹 Killed process(es) on port ${port}`);
+  } catch (error) {
+    // Silent failure - port may already be free
+  }
+}
+```
+
+**Package Selection Criteria:**
+- **Downloads/week**: >100k preferred (indicates wide adoption)
+- **Last publish**: Within last few months (actively maintained)
+- **TypeScript support**: Built-in types or @types package available
+- **Cross-platform**: Works on Linux, macOS, Windows
+- **Reputable author**: Known maintainer (e.g., sindresorhus, vercel, microsoft)
+
+**Common Patterns to Avoid:**
+- ❌ Custom file system watchers → Use `chokidar`
+- ❌ Custom process management → Use `fkill`, `cross-spawn`
+- ❌ Custom HTTP clients → Use `axios`, `node-fetch`, `got`
+- ❌ Custom date/time handling → Use `date-fns`, `dayjs`
+- ❌ Custom path manipulation → Use Node.js built-in `path` module
+- ❌ Custom validation → Use `zod`, `joi`, `yup`
+
+#### 🛡️ **TypeScript Type Safety**
+**CRITICAL: Never use `any` type** - it defeats TypeScript's purpose:
+
+- **Use proper types**: Define interfaces or types for all data structures
+- **Use `unknown` for truly unknown data**: Then narrow with type guards
+- **Use type assertions sparingly**: Only when you have verified the type
+- **Enable strict mode**: Configure `strict: true` in tsconfig.json where possible
+
+**Example - Error Handling:**
+
+❌ **BAD - Using `any`:**
+```typescript
+// ❌ Loses all type safety, no autocomplete, no compile-time checks
+server.on('error', (error: any) => {
+  console.error('Server error:', error.message);
+  if (error.details) {
+    console.error('Details:', error.details.message);
+  }
+});
+```
+
+✅ **GOOD - Proper Type Assertion:**
+```typescript
+// ✅ Type-safe with explicit shape, catches typos at compile time
+server.on('error', (error) => {
+  const typedError = error as Error & {
+    details?: { message?: string };
+  };
+  console.error('Server error:', typedError.message);
+  if (typedError.details?.message) {
+    console.error('Details:', typedError.details.message);
+  }
+});
+```
+
+✅ **EVEN BETTER - Type Guard:**
+```typescript
+// ✅ Runtime validation + type narrowing
+function isErrorWithDetails(error: unknown): error is Error & { details: { message: string } } {
+  return error instanceof Error &&
+    typeof (error as any).details === 'object' &&
+    typeof (error as any).details.message === 'string';
+}
+
+server.on('error', (error) => {
+  console.error('Server error:', error instanceof Error ? error.message : String(error));
+  if (isErrorWithDetails(error)) {
+    console.error('Details:', error.details.message);
+  }
+});
+```
+
+**Why `any` is Problematic:**
+- Disables all TypeScript checking for that value
+- No autocomplete in IDE
+- Typos and wrong property access caught only at runtime
+- Defeats the purpose of using TypeScript
+- Makes refactoring dangerous (no compile-time safety)
+
+**When to Use Type Assertions:**
+- Only after verifying the shape/type at runtime
+- When TypeScript can't infer but you know the type is correct
+- Use `as` assertions, not angle brackets (TSX compatibility)
+- Document why the assertion is safe
+
+#### 🎯 **Let Libraries Handle Complexity**
+**Don't add validation or routing logic that frameworks already handle:**
+
+- **Trust well-tested libraries**: They've handled edge cases you haven't thought of
+- **Don't pre-validate inputs**: Let the library validate and return proper errors
+- **Don't duplicate routing logic**: Let frameworks route requests to handlers
+- **Follow library conventions**: Don't fight the framework's design
+
+**Example - MCP Server Routing:**
+
+❌ **BAD - Unnecessary Validation:**
+```typescript
+// ❌ Manually validating path and method before passing to Mastra
+const requestUrl = new URL(req.url!, `http://${req.headers.host}`);
+
+if (requestUrl.pathname !== httpPath) {
+  res.writeHead(404, { 'Content-Type': 'text/plain' });
+  res.end('Not Found');
+  return;
+}
+
+if (req.method !== 'POST' && req.method !== 'GET') {
+  res.writeHead(405, { 'Content-Type': 'text/plain' });
+  res.end('Method Not Allowed');
+  return;
+}
+
+// Finally pass to Mastra
+mcpServer.startHTTP(req, res);
+```
+
+✅ **GOOD - Let Mastra Handle It:**
+```typescript
+// ✅ Pass all requests to Mastra - let it handle routing, methods, and paths
+const requestUrl = new URL(req.url!, `http://${req.headers.host}`);
+
+// Only handle health check (for container orchestration)
+if (requestUrl.pathname === '/health') {
+  res.writeHead(200, { 'Content-Type': 'text/plain' });
+  res.end('OK');
+  return;
+}
+
+// Let Mastra handle everything else (validates, routes, responds)
+mcpServer.startHTTP(req, res);
+```
+
+**Benefits:**
+- **Less code**: Fewer lines to maintain and test
+- **Better error handling**: Libraries return standard error formats
+- **More features**: Libraries handle edge cases (OPTIONS, HEAD, 404s, etc.)
+- **Easier updates**: Library improvements automatically benefit you
+- **Standard behavior**: Users get expected responses per protocol specs
+
+**When to Add Validation:**
+- ✅ Custom business logic specific to your domain
+- ✅ Authentication/authorization (but prefer middleware)
+- ✅ Rate limiting or quota enforcement
+- ✅ Custom health checks or monitoring endpoints
+- ❌ Standard HTTP method validation (framework handles it)
+- ❌ Standard path routing (framework handles it)
+- ❌ Standard content-type negotiation (framework handles it)
+
 ### File Creation Policy
 **CRITICAL**: When working on this project:
 
@@ -1162,6 +1346,45 @@ This project follows a strict "lean documentation" approach because:
 - **Multiple README files** violate the monorepo structure and NX conventions
 
 **If you feel documentation is needed, ALWAYS update this AGENTS.md file instead of creating new files. DO NOT CREATE ANY .md FILES UNDER ANY CIRCUMSTANCES.**
+
+### Command Execution with Timeouts
+**CRITICAL: ALWAYS use timeout for all commands** to prevent hanging processes:
+
+- **Always prefix commands with `timeout`**: Set a reasonable timeout value for every command
+- **Choose appropriate timeouts**: Based on expected execution time
+  - Quick operations (linting, formatting): 30-60 seconds
+  - Builds and compilation: 120-300 seconds (2-5 minutes)
+  - Tests: 120-300 seconds (2-5 minutes)
+  - Long-running operations (Docker builds): 600-900 seconds (10-15 minutes)
+- **Never run commands without timeout**: Prevents indefinite hangs and resource waste
+
+**Examples:**
+```bash
+# ✅ CORRECT: Commands with appropriate timeouts
+timeout 30 bunx nx lint mcp
+timeout 180 bunx nx build mcp
+timeout 180 bunx nx test mcp
+timeout 600 docker build -t myimage .
+
+# ❌ INCORRECT: Commands without timeout
+bunx nx test mcp  # Could hang forever
+docker build -t myimage .  # Could freeze indefinitely
+```
+
+**Why Timeouts Are Required:**
+- Prevents processes from hanging indefinitely
+- Ensures CI/CD pipelines don't freeze
+- Makes debugging easier by failing fast
+- Conserves system resources
+- Provides clear failure signals
+
+**Timeout Command Syntax:**
+```bash
+timeout <seconds> <command>
+# Example: timeout 120 bunx nx test mcp
+```
+
+If a command times out, it exits with code 124, making it easy to detect timeout failures.
 
 ### Build and Development Commands
 **CRITICAL: ALWAYS use NX commands** for this monorepo:

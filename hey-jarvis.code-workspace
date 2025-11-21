@@ -26,25 +26,33 @@
     }
   ],
   "settings": {
-    // Global workspace settings
     "chat.tools.terminal.autoApprove": {
-      "/.*/": true
+      "/.*/": true,
+      "*": true
     },
+    "chat.tools.global.autoApprove": true,
+    "chat.tools.terminal.enableAutoApprove": true,
     "chat.agent.maxRequests": 1000,
     "chat.useAgentsMdFile": true,
     "chat.useNestedAgentsMdFiles": true,
     "chat.agent.thinkingStyle": "collapsedPreview",
     "chat.mcp.gallery.enabled": true,
-    "chat.tools.terminal.enableAutoApprove": true,
     "terminal.integrated.shellIntegration.timeout": -1,
     "terminal.integrated.shellIntegration.enabled": true,
     "chat.mcp.autostart": "newAndOutdated",
     "chat.mcp.access": "all",
-    
+    // play sound when Copilot/Agent has finished responding
+    "accessibility.signals.chatResponseReceived": {
+      "sound": "on"
+    },
+    // play sound when Agent Mode needs your confirmation/input
+    "accessibility.signals.chatUserActionRequired": {
+      "sound": "on",
+      "announcement": "auto"
+    },
     // Encourage NX usage
     "workbench.commandPalette.experimental.suggestCommands": true,
     "workbench.tips.enabled": true,
-    
     // TypeScript settings for the monorepo
     "typescript.preferences.preferTypeOnlyAutoImports": true,
     "typescript.suggest.autoImports": true,
@@ -59,7 +67,6 @@
     "typescript.referencesCodeLens.enabled": false,
     "typescript.tsserver.log": "off",
     "typescript.validate.enable": true,
-    
     // File explorer settings
     "explorer.fileNesting.enabled": true,
     "explorer.fileNesting.expand": false,
@@ -72,7 +79,6 @@
       "package.json": "package-lock.json, npm-shrinkwrap.json, yarn.lock, pnpm-lock.yaml",
       "*.yaml": "*.yml"
     },
-    
     // Search settings
     "search.exclude": {
       "**/node_modules": true,
@@ -82,7 +88,6 @@
       "**/tmp": true,
       "**/coverage": true
     },
-    
     // Files settings
     "files.exclude": {
       "**/.git": true,
@@ -107,7 +112,20 @@
     "chat.useChatSessionsForCloudButton": true,
     "inlineChat.enableV2": true,
     "typescript.tsdk": "node_modules/typescript/lib",
-    "github.copilot.chat.codeGeneration.useInstructionFiles": false
+    "github.copilot.chat.codeGeneration.useInstructionFiles": false,
+    "chat.agent.thinking.collapsedTools": "all",
+    "chat.editing.autoAcceptDelay": 30,
+    "chat.tools.edits.autoApprove": {
+      "**/{package.json,package-lock.json,server.xml,build.rs,web.config,.gitattributes,.env}": true,
+      "**/*.{code-workspace,csproj,fsproj,vbproj,vcxproj,proj,targets,props}": true,
+      "**/.git/**": true,
+      "**/.vscode/*.json": true
+    },
+    "chat.tools.eligibleForAutoApproval": {
+      "*": true
+    },
+    "chat.tools.terminal.autoReplyToPrompts": true,
+    "chat.tools.terminal.ignoreDefaultAutoApproveRules": true
   },
   "extensions": {
     "recommendations": [
@@ -137,7 +155,9 @@
           "focus": false,
           "panel": "shared"
         },
-        "problemMatcher": ["$tsc"]
+        "problemMatcher": [
+          "$tsc"
+        ]
       },
       {
         "label": "🧪 Test All Projects",
@@ -220,7 +240,10 @@
         "type": "node",
         "request": "launch",
         "program": "${workspaceFolder}/mcp/mastra/mcp-server.ts",
-        "runtimeArgs": ["--loader", "tsx/esm"],
+        "runtimeArgs": [
+          "--loader",
+          "tsx/esm"
+        ],
         "console": "integratedTerminal",
         "env": {
           "NODE_ENV": "development"

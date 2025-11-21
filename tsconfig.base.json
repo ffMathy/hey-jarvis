@@ -18,7 +18,10 @@
     "tsBuildInfoFile": ".nx/cache/tsbuildinfo.json",
     "resolveJsonModule": true,
     "allowSyntheticDefaultImports": true,
-    "types": []
+    "types": [],
+    "paths": {
+      "mcp/*": ["mcp/*"]
+    }
   },
   "exclude": ["node_modules", "tmp", "dist", ".nx"]
 }

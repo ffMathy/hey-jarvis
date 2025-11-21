@@ -8,8 +8,9 @@ export default {
   moduleFileExtensions: ['js', 'json'],
   moduleNameMapper: {
     '^(\\.{1,2}/.*)\\.js$': '$1',
-    // Map cross-project import to built dist folder
+    // Map cross-project imports to built dist folder
     '^mcp/mastra/mcp-server\\.js$': '<rootDir>/dist/mcp/mastra/mcp-server.js',
+    '^mcp/tests/utils/mcp-server-manager$': '<rootDir>/dist/mcp/tests/utils/mcp-server-manager.js',
   },
   // No transform needed - running on compiled JavaScript
   transform: {},
