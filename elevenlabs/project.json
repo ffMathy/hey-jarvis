@@ -79,7 +79,7 @@
       "options": {
         "jestConfig": "elevenlabs/jest.config.ts",
         "bail": false,
-        "runInBand": false,
+        "runInBand": true,
         "passWithNoTests": false
       },
       "configurations": {
