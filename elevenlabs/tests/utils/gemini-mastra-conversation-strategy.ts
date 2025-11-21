@@ -3,7 +3,7 @@ import { Agent } from '@mastra/core/agent';
 import { readFile } from 'fs/promises';
 // eslint-disable-next-line @nx/enforce-module-boundaries
 import { getPublicAgents } from 'mcp/mastra/mcp-server.js';
-import agentConfig from '../assets/agent-config.json';
+import agentConfig from '../../src/assets/agent-config.json';
 import type { ConversationStrategy, ServerMessage, UserMessageEvent } from './conversation-strategy.js';
 
 export interface GeminiMastraConversationOptions {

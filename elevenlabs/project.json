@@ -109,11 +109,11 @@
         "outputPath": "dist/elevenlabs-test",
         "format": ["esm"],
         "bundle": true,
-        "main": "elevenlabs/src/test-utils/agent-prompt.spec.ts",
+        "main": "elevenlabs/tests/specs/agent-prompt.spec.ts",
         "additionalEntryPoints": [
-          "elevenlabs/src/**/*.spec.ts",
-          "elevenlabs/src/**/*.test.ts",
-          "elevenlabs/src/**/*.ts"
+          "elevenlabs/tests/**/*.spec.ts",
+          "elevenlabs/tests/**/*.test.ts",
+          "elevenlabs/tests/**/*.ts"
         ],
         "tsConfig": "elevenlabs/tsconfig.app.json",
         "assets": [
