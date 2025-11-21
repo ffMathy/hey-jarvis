@@ -4,6 +4,7 @@ export default {
     testMatch: ['<rootDir>/tests/**/*.spec.ts'],
     testTimeout: 180000, // 3 minutes for server startup + tests
     maxWorkers: 1, // Run tests sequentially to avoid port conflicts
+    forceExit: true, // Force Jest to exit after all tests complete
     moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx'],
     transform: {
         '^.+\\.tsx?$': ['@swc/jest', {

@@ -60,7 +60,11 @@ describe('MCP Server Connection Tests', () => {
 
     afterEach(async () => {
         if (mcpClient) {
-            await mcpClient.disconnect();
+            try {
+                await mcpClient.disconnect();
+            } catch (error) {
+                // Ignore disconnect errors during cleanup
+            }
             mcpClient = null;
         }
     });
