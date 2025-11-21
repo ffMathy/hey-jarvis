@@ -40,7 +40,7 @@ class ElevenLabsAgentManager {
     // Remove webhook URLs from tools as they contain secrets
     if (filtered.conversationConfig?.agent?.prompt?.tools) {
       filtered.conversationConfig.agent.prompt.tools = filtered.conversationConfig.agent.prompt.tools.map(
-        (tool: any) => {
+        (tool) => {
           if (tool.type === 'webhook' && tool.apiSchema?.url) {
             const toolCopy = { ...tool };
             // Remove the URL which contains webhook secrets
@@ -127,13 +127,7 @@ class ElevenLabsAgentManager {
       console.log(`🆔 Agent ID: ${response.agentId}`);
 
       // Extract and save prompt separately
-      let prompt = 'You are Jarvis, an advanced AI assistant.'; // fallback
-
-      if (response.conversationConfig?.agent?.prompt) {
-        prompt = response.conversationConfig.agent.prompt.prompt;
-      }
-
-      await this.savePrompt(prompt);
+      await this.savePrompt(response.conversationConfig?.agent?.prompt?.prompt || '');
 
       // Remove prompt from config before saving
       const configToSave = { ...response };
