@@ -4,7 +4,7 @@ export default {
   coverageDirectory: './coverage/elevenlabs',
   testMatch: ['<rootDir>/dist/elevenlabs-test/**/*.spec.js', '<rootDir>/dist/elevenlabs-test/**/*.test.js'],
   testTimeout: 60000,
-  maxWorkers: 10,
+  maxWorkers: 1,
   moduleFileExtensions: ['js', 'json'],
   moduleNameMapper: {
     '^(\\.{1,2}/.*)\\.js$': '$1',

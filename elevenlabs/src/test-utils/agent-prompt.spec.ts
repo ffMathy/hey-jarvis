@@ -1,4 +1,4 @@
-import { describe, it } from '@jest/globals';
+import { afterEach, describe, it } from '@jest/globals';
 import { TestConversation } from './test-conversation.js';
 
 /**
@@ -21,6 +21,12 @@ describe('Agent Prompt Specifications', () => {
   // Skip all tests if API keys not configured
   // Run tests sequentially to avoid resource contention and flakiness
   const runTest = agentId && apiKey && googleApiKey ? it : it.skip;
+
+  // Add delay between tests to prevent rate limiting and ensure proper cleanup
+  afterEach(async () => {
+    // Wait 2 seconds between tests to avoid hitting ElevenLabs capacity limits
+    await new Promise(resolve => setTimeout(resolve, 2000));
+  });
 
   describe('Personality & Tone', () => {
     runTest(
