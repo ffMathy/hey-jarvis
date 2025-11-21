@@ -22,12 +22,6 @@ describe('Agent Prompt Specifications', () => {
   // Run tests sequentially to avoid resource contention and flakiness
   const runTest = agentId && apiKey && googleApiKey ? it : it.skip;
 
-  // Add delay between tests to prevent rate limiting and ensure proper cleanup
-  afterEach(async () => {
-    // Wait 2 seconds between tests to avoid hitting ElevenLabs capacity limits
-    await new Promise(resolve => setTimeout(resolve, 2000));
-  });
-
   describe('Personality & Tone', () => {
     runTest(
       'should be condescending but remain loyal and helpful',
