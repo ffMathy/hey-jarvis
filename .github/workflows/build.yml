@@ -83,8 +83,7 @@ jobs:
         with:
           imageName: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
           cacheFrom: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
-          push: filter
-          refFilterForPush: refs/heads/main
+          push: never
           runCmd: nx affected --target=build,test --parallel 1
           env: |
             GITHUB_ACTIONS
