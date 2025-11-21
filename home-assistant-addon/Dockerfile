@@ -16,9 +16,7 @@ LABEL io.hass.url="https://github.com/ffMathy/hey-jarvis"
 
 # Install bashio for Home Assistant addon configuration parsing
 # Bashio is the standard library for Home Assistant addons
-# Also install nginx and nginx-mod-http-auth-jwt for JWT authentication
-# Using Alpine packages for smaller size
-RUN apk add --no-cache curl jq nginx nginx-mod-http-auth-jwt && \
+RUN apk add --no-cache curl jq && \
     curl -J -L -o /tmp/bashio.tar.gz \
     "https://github.com/hassio-addons/bashio/archive/v0.16.2.tar.gz" && \
     mkdir -p /tmp/bashio && \
@@ -27,25 +25,15 @@ RUN apk add --no-cache curl jq nginx nginx-mod-http-auth-jwt && \
     ln -s /usr/lib/bashio/bashio /usr/bin/bashio && \
     rm -rf /tmp/bashio /tmp/bashio.tar.gz
 
-# Copy nginx base configuration
-RUN mkdir -p /run/nginx
-COPY nginx.conf /etc/nginx/nginx.conf
-
-# Create default JWT auth configuration (disabled by default, overwritten by run.sh if configured)
-RUN echo "# JWT Authentication disabled by default" > /etc/nginx/jwt-auth.conf && \
-    echo "auth_jwt off;" >> /etc/nginx/jwt-auth.conf
-
 
 # we define this stage to simulate how Home Assistant's ingress works locally.
 FROM base AS home-assistant-addon-end-to-end-test
 
-# Copy test-specific nginx configuration (simulates Home Assistant ingress)
-# This gets included by the base nginx.conf via the include directive
-COPY tests/nginx.tests.conf /etc/nginx/hass-jarvis-test.conf
+# Copy test entrypoint script
 COPY tests/run-test.sh /run-test.sh
 RUN chmod +x /run-test.sh
 
-# Override entrypoint to start both nginx and the MCP server
+# Override entrypoint to start the MCP server
 ENTRYPOINT ["/run-test.sh"]
 
 
