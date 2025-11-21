@@ -26,14 +26,21 @@ async function killProcessOnPort(port: number): Promise<void> {
  * Checks if the MCP server is already running
  */
 async function isMcpServerRunning(): Promise<boolean> {
-    const client = await createAuthenticatedMcpClient();
+    let client: MCPClient | null = null;
     try {
+        client = await createAuthenticatedMcpClient();
         await client.listTools();
         return true;
     } catch (error) {
         return false;
     } finally {
-        await client.disconnect();
+        if (client) {
+            try {
+                await client.disconnect();
+            } catch (disconnectError) {
+                // Ignore disconnect errors during cleanup
+            }
+        }
     }
 }
 
@@ -102,8 +109,8 @@ export async function startMcpServerForTestingPurposes(): Promise<void> {
 export async function stopMcpServer(): Promise<void> {
     // Kill process via port - this is most reliable
     await killProcessOnPort(MCP_PORT);
-    // Give processes time to clean up
-    await new Promise(resolve => setTimeout(resolve, 500));
+    // Give processes time to clean up (increased for proper cleanup)
+    await new Promise(resolve => setTimeout(resolve, 1000));
     mcpServerProcess = null;
     console.log('🛑 MCP server stopped');
 }
