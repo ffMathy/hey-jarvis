@@ -1,7 +1,7 @@
 import { afterEach, beforeAll, describe, it } from '@jest/globals';
-import { TestConversation } from './test-conversation.js';
-import { ensureMcpServerRunning } from './mcp-server-manager.js';
-import { ensureTunnelRunning } from './tunnel-manager.js';
+import { TestConversation } from '../utils/test-conversation.js';
+import { ensureMcpServerRunning } from '../utils/mcp-server-manager.js';
+import { ensureTunnelRunning } from '../utils/tunnel-manager.js';
 
 /**
  * Agent Prompt Specification Tests
