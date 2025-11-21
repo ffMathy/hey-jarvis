@@ -185,6 +185,12 @@ class ElevenLabsAgentManager {
           console.log('🔧 Setting textOnly to true for test agent');
         }
         
+        // Replace MCP server IDs with local tunnel MCP server for testing
+        if (config.conversationConfig?.agent?.prompt) {
+          config.conversationConfig.agent.prompt.mcpServerIds = ['OvJ613BzWU43pnzrkOFe'];
+          console.log('🔧 Setting mcpServerIds to local tunnel MCP server for test agent');
+        }
+        
         // Suffix agent name with " (test)" to distinguish from production
         if (config.name && !config.name.endsWith(' (test)')) {
           config.name = `${config.name} (test)`;
