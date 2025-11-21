@@ -81,6 +81,18 @@ jobs:
             REGISTRY
             NX_BASE
             NX_HEAD
+            
+            HEY_JARVIS_ELEVENLABS_AGENT_ID
+            HEY_JARVIS_ELEVENLABS_API_KEY
+            HEY_JARVIS_ELEVENLABS_VOICE_ID
+            HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY
+            HEY_JARVIS_OPENWEATHERMAP_API_KEY
+            HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID
+            HEY_JARVIS_CLOUDFLARED_TUNNEL_URL
+            HEY_JARVIS_CLOUDFLARED_TUNNEL_TOKEN
+            
+            HEY_JARVIS_WIFI_SSID
+            HEY_JARVIS_WIFI_PASSWORD
 
   auto-merge:
     needs: build
