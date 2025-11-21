@@ -14,6 +14,17 @@ A TypeScript-based integration that connects ElevenLabs voice AI agents with the
 
 ## Testing Guidelines
 
+### Never Skip Tests
+
+**CRITICAL**: Tests must NEVER be skipped in CI/CD environments:
+
+- ❌ **NEVER** add logic to skip tests when credentials are missing
+- ❌ **NEVER** exit with code 0 when tests should fail due to missing credentials
+- ✅ **ALWAYS** let tests fail properly if requirements are not met
+- ✅ **ALWAYS** ensure required credentials are available in CI/CD pipelines
+
+**Rationale**: Skipping tests silently hides problems. If tests can't run due to missing credentials, the build should fail to alert developers that the environment is not properly configured.
+
 ### Test Score Requirements
 
 **CRITICAL**: All tests must use strict score requirements to ensure high-quality agent behavior:

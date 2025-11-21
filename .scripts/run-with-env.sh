@@ -27,12 +27,6 @@ if [ "$all_vars_present" = true ]; then
 else
     echo "Missing environment variables, so falling back to 1Password CLI: ${missing_vars[*]}..."
     
-    # In CI environments, if 1Password is not available, skip gracefully for optional tasks
-    if [ "${GITHUB_ACTIONS:-false}" = "true" ]; then
-        echo "⚠️  Running in GitHub Actions without 1Password - skipping optional command"
-        exit 0
-    fi
-    
     # Check if 1Password CLI is signed in
     op account get &> /dev/null
     if [ $? -ne 0 ]; then
