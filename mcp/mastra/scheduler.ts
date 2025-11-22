@@ -19,7 +19,7 @@ export function initializeScheduler(): WorkflowScheduler {
 
   // Weather monitoring - every hour
   scheduler.schedule({
-    workflowId: 'weather-monitoring-workflow',
+    workflowId: 'weatherMonitoringWorkflow',
     schedule: CronPatterns.EVERY_HOUR,
     name: 'Hourly Weather Check',
     inputData: {},
@@ -27,7 +27,7 @@ export function initializeScheduler(): WorkflowScheduler {
 
   // Weekly meal planning - every Sunday at 8am
   scheduler.schedule({
-    workflowId: 'weekly-meal-planning-workflow',
+    workflowId: 'weeklyMealPlanningWorkflow',
     schedule: CronPatterns.WEEKLY_SUNDAY_8AM,
     name: 'Weekly Meal Planning',
     inputData: {},
