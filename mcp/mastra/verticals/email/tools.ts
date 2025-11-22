@@ -80,7 +80,7 @@ const getMicrosoftAuth = async (): Promise<string> => {
     auth: {
       clientId,
       clientSecret,
-      authority: 'https://login.microsoftonline.com/common',
+      authority: 'https://login.microsoftonline.com/consumers',
     },
   });
 
