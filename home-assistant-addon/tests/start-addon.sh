@@ -42,6 +42,7 @@ DOCKER_ARGS=(
     --name home-assistant-addon-test
     -p "${MASTRA_UI_PORT}:${MASTRA_UI_PORT}"
     -p "${MCP_SERVER_PORT}:${MCP_SERVER_PORT}"
+    -p "${TEST_INGRESS_PORT}:${TEST_INGRESS_PORT}"
     -e ADDON_INFO_FALLBACK="$ADDON_INFO"
     -e CONFIG_FALLBACK="$CONFIG"
     -e INFO_FALLBACK="$INFO"

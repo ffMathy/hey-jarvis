@@ -1,5 +1,9 @@
 import { test, expect } from '@playwright/test';
 import { startContainer, ContainerStartupResult } from './helpers/container-startup';
+import { PORTS } from './helpers/ports';
+
+// Use centralized port configuration
+const TEST_INGRESS_PORT = 5000; // Defined in mcp/lib/ports.sh
 
 test.describe('Docker Container Integration Tests', () => {
   let container: ContainerStartupResult | undefined;
@@ -53,7 +57,7 @@ test.describe('Docker Container Integration Tests', () => {
     // 2. We're only testing the ingress proxy layer (nginx routing, headers, websockets)
     // 3. In production, Home Assistant handles the full request lifecycle differently
     // 4. The core functionality (API endpoints, WebSockets) work through ingress
-    await page.goto('http://localhost:5000/api/hassio_ingress/redacted/');
+    await page.goto(`http://localhost:${TEST_INGRESS_PORT}/api/hassio_ingress/redacted/`);
 
     // Wait for the DOM to be ready (don't wait for networkidle since SSE connections stay open)
     await page.waitForLoadState('domcontentloaded');
@@ -85,7 +89,7 @@ test.describe('Docker Container Integration Tests', () => {
     );
     expect(assetFailures).toHaveLength(0);
 
-    // Assert the page loaded successfully
-    expect(page.url()).toMatch(/localhost:(5000|5690)/);
+    // Assert the page loaded successfully (accept ingress port or direct Mastra UI port)
+    expect(page.url()).toMatch(new RegExp(`localhost:(${TEST_INGRESS_PORT}|${PORTS.MASTRA_UI})`));
   });
 });
