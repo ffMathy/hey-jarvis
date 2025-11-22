@@ -79,6 +79,7 @@
     "express": "^5.1.0",
     "express-jwt": "^8.5.1",
     "fkill": "^10.0.1",
+    "googleapis": "^166.0.0",
     "hono": "^4.10.6",
     "jsonwebtoken": "^9.0.2",
     "octokit": "^5.0.5",

@@ -47,11 +47,18 @@ DOCKER_ARGS=(
     -e INFO_FALLBACK="$INFO"
 )
 
-# Add any additional environment variables passed from the caller
-# Environment variables starting with JWT_ will be passed through
-if [ -n "$JWT_SECRET" ]; then
-    DOCKER_ARGS+=(-e JWT_SECRET="$JWT_SECRET")
-fi
+# Forward all HEY_JARVIS_* and JWT_SECRET environment variables to container
+# This allows tests to pass configuration without hardcoding
+while IFS='=' read -r name value; do
+    # Forward HEY_JARVIS_* prefixed variables
+    if [[ "$name" =~ ^HEY_JARVIS_ ]]; then
+        DOCKER_ARGS+=(-e "$name=$value")
+    fi
+    # Forward JWT_SECRET specifically
+    if [[ "$name" == "JWT_SECRET" ]]; then
+        DOCKER_ARGS+=(-e "$name=$value")
+    fi
+done < <(env)
 
 # Start the container in the background
 # (Test image is pre-built by the build target)

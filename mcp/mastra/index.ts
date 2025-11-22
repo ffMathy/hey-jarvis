@@ -3,7 +3,9 @@ import { PinoLogger } from '@mastra/loggers';
 import { Observability } from '@mastra/observability';
 import { getSqlStorageProvider } from './storage/index.js';
 import {
+  getCalendarAgent,
   getCodingAgent,
+  getEmailAgent,
   getMealPlanEmailFormatterAgent,
   getMealPlanGeneratorAgent,
   getMealPlanSelectorAgent,
@@ -12,10 +14,12 @@ import {
   getRequirementsInterviewerAgent,
   getShoppingListAgent,
   getShoppingListSummaryAgent,
+  getTodoListAgent,
   getWeatherAgent,
+  getWebResearchAgent,
   implementFeatureWorkflow,
   weatherMonitoringWorkflow,
-  weeklyMealPlanningWorkflow
+  weeklyMealPlanningWorkflow,
 } from './verticals/index.js';
 
 async function createMastra() {
@@ -35,6 +39,10 @@ async function createMastra() {
     notificationAgent,
     codingAgent,
     requirementsInterviewerAgent,
+    emailAgent,
+    todoListAgent,
+    calendarAgent,
+    webResearchAgent,
   ] = await Promise.all([
     getWeatherAgent(),
     getRecipeSearchAgent(),
@@ -46,6 +54,10 @@ async function createMastra() {
     getNotificationAgent(),
     getCodingAgent(),
     getRequirementsInterviewerAgent(),
+    getEmailAgent(),
+    getTodoListAgent(),
+    getCalendarAgent(),
+    getWebResearchAgent(),
   ]);
 
   return new Mastra({
@@ -71,6 +83,10 @@ async function createMastra() {
       notification: notificationAgent,
       coding: codingAgent,
       requirementsInterviewer: requirementsInterviewerAgent,
+      email: emailAgent,
+      todoList: todoListAgent,
+      calendar: calendarAgent,
+      webResearch: webResearchAgent,
     },
   });
 }
