@@ -24,6 +24,44 @@ interface ServiceDefinition {
   }>;
 }
 
+// Interface for Home Assistant device/entity state
+interface DeviceState {
+  id: string;
+  name: string;
+  labels: string[];
+  area: string | null;
+  last_changed: string;
+  entities: Array<{
+    id: string;
+    domain: string;
+    area: string | null;
+    labels: string[];
+    state: string;
+    attributes: Record<string, unknown>;
+    last_changed: string;
+  }>;
+}
+
+// Interface for changed device state (n8n format with device info)
+interface ChangedDeviceState {
+  device_id: string;
+  device_name: string;
+  device_label_ids: string[];
+  entity_id: string;
+  entity_label_ids: string[];
+  state: string;
+  last_changed: number;
+}
+
+// Interface for Home Assistant services API response
+interface ServicesApiResponse {
+  domain: string;
+  services: Record<string, ServiceDefinition>;
+}
+
+// Type for services grouped by domain
+type ServicesByDomain = Record<string, Record<string, ServiceDefinition>>
+
 // Get Home Assistant configuration from environment
 const getHomeAssistantConfig = () => {
   const url = process.env.HEY_JARVIS_HOME_ASSISTANT_URL;
@@ -141,52 +179,97 @@ export const getEntityLogbook = createTool({
 // Tool to get all devices (entities/states)
 export const getAllDevices = createTool({
   id: 'getAllDevices',
-  description: 'Get the current state of all devices (entities) in Home Assistant. Use this to discover available devices and their current states. Returns comprehensive device information including state, attributes, and timing information.',
+  description: 'Get all devices and their entities from Home Assistant. Returns devices grouped with their entities, including state, attributes, area, and labels. Use this to discover available devices and get comprehensive device information.',
   inputSchema: z.object({
-    domain: z.string().optional().describe('Optional domain filter to only get devices from a specific domain (e.g., "light", "switch", "sensor", "climate")'),
+    domain: z.string().optional().describe('Optional domain filter to only get devices with entities from a specific domain (e.g., "light", "switch", "sensor", "climate")'),
   }),
   outputSchema: z.object({
     devices: z.array(
       z.object({
-        entity_id: z.string(),
-        state: z.string(),
-        attributes: z.record(z.unknown()),
+        id: z.string(),
+        name: z.string(),
+        labels: z.array(z.string()),
+        area: z.string().nullable(),
         last_changed: z.string(),
-        last_updated: z.string(),
-        domain: z.string(),
+        entities: z.array(
+          z.object({
+            id: z.string(),
+            domain: z.string(),
+            area: z.string().nullable(),
+            labels: z.array(z.string()),
+            state: z.string(),
+            attributes: z.record(z.unknown()),
+            last_changed: z.string(),
+          })
+        ),
       })
     ),
   }),
   execute: async (inputData) => {
-    // Use Home Assistant template API to render device states
-    // This matches the n8n "Get all devices" node which uses resource: "template"
+    const domainFilter = inputData.domain ? `and st.domain == '${inputData.domain}'` : '';
+    
     const template = `
-{% set excluded_domains = ['update', 'hassio', 'frontend', 'logger', 'system_log'] %}
-{% set ns = namespace(devices=[]) %}
-{% for state in states %}
-  {% if state.domain not in excluded_domains %}
-    {% if not domain or state.domain == domain %}
-      {% set device = {
-        'entity_id': state.entity_id,
-        'state': state.state,
-        'attributes': state.attributes,
-        'last_changed': state.last_changed.isoformat(),
-        'last_updated': state.last_updated.isoformat(),
-        'domain': state.domain
-      } %}
-      {% set ns.devices = ns.devices + [device] %}
-    {% endif %}
-  {% endif %}
-{% endfor %}
-{{ ns.devices }}
-    `.trim();
+{%- set MAX_STR = 160 -%}
+{%- set MAX_LIST = 20 -%}
+{%- set devices = states|map(attribute='entity_id')|map('device_id')|unique|reject('eq',None)|list -%}
+{%- set ns = namespace(devices=[]) -%}
+{%- for d in devices -%}
+  {%- set ents = device_entities(d)|list -%}
+  {%- if ents -%}
+    {%- set latest = namespace(dt=none) -%}
+    {%- set ea = namespace(items=[]) -%}
+    {%- for e in ents -%}
+      {%- set st = states[e] -%}
+      {%- if st ${domainFilter} -%}
+        {%- set lc = st.last_changed -%}
+        {%- if latest.dt is none or lc > latest.dt -%}
+          {%- set latest.dt = lc -%}
+        {%- endif -%}
+        {%- set ad = namespace(obj={}) -%}
+        {%- for k in st.attributes|list -%}
+          {%- set v = state_attr(e,k) -%}
+          {%- if v is datetime -%}
+            {%- set v = v.isoformat() -%}
+          {%- elif v is set -%}
+            {%- set v = v|list -%}
+          {%- elif v is sequence and v is not string -%}
+            {%- set v = (v|list)[:MAX_LIST] -%}
+            {%- set tmp = [] -%}
+            {%- for it in v -%}
+              {%- set it = it.isoformat() if (it is datetime) else (it|list if (it is set) else (it|string if (it is not number and it is not boolean and it is not string and it is not none and (it is not sequence or it is string)) else it)) -%}
+              {%- if it is string and it|length > MAX_STR -%}
+                {%- set it = it[:MAX_STR] ~ '…' -%}
+              {%- endif -%}
+              {%- set tmp = tmp + [it] -%}
+            {%- endfor -%}
+            {%- set v = tmp -%}
+          {%- elif v is mapping -%}
+            {%- set v = v|string -%}
+          {%- elif v is not number and v is not boolean and v is not string and v is not none -%}
+            {%- set v = v|string -%}
+          {%- endif -%}
+          {%- if v is string and v|length > MAX_STR -%}
+            {%- set v = v[:MAX_STR] ~ '…' -%}
+          {%- endif -%}
+          {%- set ad.obj = ad.obj|combine({k:v}) -%}
+        {%- endfor -%}
+        {%- set state_val = st.state -%}
+        {%- if state_val is string and state_val|length > MAX_STR -%}
+          {%- set state_val = state_val[:MAX_STR] ~ '…' -%}
+        {%- endif -%}
+        {%- set ea.items = ea.items + [{"id":e,"domain":st.domain,"area":area_name(e),"labels":labels(e)|list,"state":state_val,"attributes":ad.obj,"last_changed":lc.isoformat()}] -%}
+      {%- endif -%}
+    {%- endfor -%}
+    {%- if ea.items|length > 0 -%}
+      {%- set ns.devices = ns.devices + [{"id":d,"name":device_name(d),"labels":labels(d)|list,"area":area_name(d),"last_changed":(latest.dt if latest.dt else now()).isoformat(),"entities":ea.items}] -%}
+    {%- endif -%}
+  {%- endif -%}
+{%- endfor -%}
+{{ ns.devices | to_json }}
+    `.split('\n').map(line => line.trim()).join('\n');
     
-    const templateWithDomain = inputData.domain 
-      ? template.replace('{% set ns = namespace(devices=[]) %}', `{% set domain = '${inputData.domain}' %}\n{% set ns = namespace(devices=[]) %}`)
-      : template.replace('not domain or ', '');
-    
-    const response = await callHomeAssistantApi('template', 'POST', { template: templateWithDomain });
-    const devices = typeof response === 'string' ? JSON.parse(response) : response;
+    const response = await callHomeAssistantApi('template', 'POST', { template });
+    const devices: DeviceState[] = typeof response === 'string' ? JSON.parse(response) : response;
     
     return {
       devices: Array.isArray(devices) ? devices : [],
@@ -209,10 +292,10 @@ export const getAllServices = createTool({
     }))),
   }),
   execute: async (inputData) => {
-    const response = await callHomeAssistantApi('services') as Array<{ domain: string; services: Record<string, ServiceDefinition> }>;
+    const response: ServicesApiResponse[] = await callHomeAssistantApi('services');
     
     const excludedDomains = ['update', 'hassio', 'frontend', 'logger', 'system_log'];
-    const filteredServices: Record<string, Record<string, ServiceDefinition>> = {};
+    const filteredServices: ServicesByDomain = {};
     
     for (const item of response) {
       if (item.domain && item.services && !excludedDomains.includes(item.domain) && (!inputData.domain || item.domain === inputData.domain)) {
@@ -221,74 +304,55 @@ export const getAllServices = createTool({
     }
     
     return {
-      services_by_domain: filteredServices as Record<string, Record<string, { name?: string; description?: string; fields?: Record<string, unknown> }>>,
+      services_by_domain: filteredServices,
     };
   },
 });
 
 // Tool to get devices that have changed since a specific time
-export const getChangedDevicesSinceLastTime = createTool({
-  id: 'getChangedDevicesSinceLastTime',
-  description: 'Get all devices (entities) that have changed state since a specific timestamp. Useful for monitoring recent activity or detecting what has changed in the home. This tool tracks state changes over time.',
+export const getChangedDevicesSince = createTool({
+  id: 'getChangedDevicesSince',
+  description: 'Get all devices (entities) that have changed state since a specific number of seconds ago. Useful for monitoring recent activity or detecting what has changed in the home. This tool tracks state changes over time.',
   inputSchema: z.object({
-    sinceTimestamp: z.string().describe('ISO 8601 timestamp to check changes since (e.g., "2025-11-22T10:00:00Z"). Only devices changed after this time will be returned.'),
+    sinceSeconds: z.number().describe('Number of seconds to look back (e.g., 60 for last minute, 3600 for last hour). Only devices changed within this time window will be returned.'),
     domain: z.string().optional().describe('Optional domain filter to only check devices from a specific domain (e.g., "light", "switch", "sensor")'),
   }),
   outputSchema: z.object({
     changed_devices: z.array(
       z.object({
+        device_id: z.string(),
+        device_name: z.string(),
+        device_label_ids: z.array(z.string()),
         entity_id: z.string(),
+        entity_label_ids: z.array(z.string()),
         state: z.string(),
-        attributes: z.record(z.unknown()),
-        last_changed: z.string(),
-        last_updated: z.string(),
-        domain: z.string(),
-        changed_at: z.string(),
+        last_changed: z.number(),
       })
     ),
-    since_timestamp: z.string(),
+    since_seconds: z.number(),
     total_changed: z.number(),
   }),
   execute: async (inputData) => {
-    // Use Home Assistant template API to filter changed devices
-    // This matches the n8n "Get changed devices since last time" node which uses resource: "template"
+    const domainFilter = inputData.domain ? `and s.domain == '${inputData.domain}'` : '';
+    
     const template = `
-{% set excluded_domains = ['update', 'hassio', 'frontend', 'logger', 'system_log'] %}
-{% set since_time = as_datetime('${inputData.sinceTimestamp}') %}
-{% set ns = namespace(devices=[]) %}
-{% for state in states %}
-  {% if state.domain not in excluded_domains %}
-    {% if not domain or state.domain == domain %}
-      {% if state.last_changed > since_time %}
-        {% set device = {
-          'entity_id': state.entity_id,
-          'state': state.state,
-          'attributes': state.attributes,
-          'last_changed': state.last_changed.isoformat(),
-          'last_updated': state.last_updated.isoformat(),
-          'domain': state.domain,
-          'changed_at': state.last_changed.isoformat()
-        } %}
-        {% set ns.devices = ns.devices + [device] %}
-      {% endif %}
-    {% endif %}
-  {% endif %}
-{% endfor %}
-{{ ns.devices }}
-    `.trim();
+{%- set nowts = as_timestamp(now()) -%}
+[
+{%- for s in states if (nowts - as_timestamp(s.last_changed)) <= ${inputData.sinceSeconds} ${domainFilter} -%}
+  {%- set did = device_id(s.entity_id) -%}
+  {"device_id":"{{ did }}","device_name":"{{ device_name(s.entity_id) }}","device_label_ids":{{ labels(did)|list|to_json }},"entity_id":"{{ s.entity_id }}","entity_label_ids":{{ labels(s.entity_id)|list|to_json }},"state":"{{ s.state }}","last_changed":{{ as_timestamp(s.last_changed)|int }}}
+  {%- if not loop.last -%},{%- endif -%}
+{%- endfor -%}
+]
+    `.split('\n').map(line => line.trim()).join('\n');
     
-    const templateWithDomain = inputData.domain 
-      ? template.replace('{% set ns = namespace(devices=[]) %}', `{% set domain = '${inputData.domain}' %}\n{% set ns = namespace(devices=[]) %}`)
-      : template.replace('not domain or ', '');
-    
-    const response = await callHomeAssistantApi('template', 'POST', { template: templateWithDomain });
-    const devices = typeof response === 'string' ? JSON.parse(response) : response;
-    const changedDevices = Array.isArray(devices) ? devices : [];
+    const response = await callHomeAssistantApi('template', 'POST', { template });
+    const changedDevices: ChangedDeviceState[] = typeof response === 'string' ? JSON.parse(response) : response;
     
     return {
-      changed_devices: changedDevices,
-      since_timestamp: inputData.sinceTimestamp,
-      total_changed: changedDevices.length,
+      changed_devices: Array.isArray(changedDevices) ? changedDevices : [],
+      since_seconds: inputData.sinceSeconds,
+      total_changed: Array.isArray(changedDevices) ? changedDevices.length : 0,
     };
   },
 });
@@ -299,5 +363,5 @@ export const homeAssistantTools = {
   getEntityLogbook,
   getAllDevices,
   getAllServices,
-  getChangedDevicesSinceLastTime,
+  getChangedDevicesSince,
 };
