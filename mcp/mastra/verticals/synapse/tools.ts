@@ -23,7 +23,7 @@ export const registerStateChange = createTool({
 
       // Trigger state change notification workflow
       if (context?.mastra) {
-        const workflow = context.mastra.getWorkflow('state-change-notification-workflow');
+        const workflow = context.mastra.getWorkflow('stateChangeNotificationWorkflow');
         if (workflow) {
           // Run workflow asynchronously (don't wait for completion)
           workflow

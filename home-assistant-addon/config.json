@@ -54,7 +54,8 @@
     "microsoft_refresh_token": "",
     "home_assistant_url": "",
     "home_assistant_token": "",
-    "tavily_api_key": ""
+    "tavily_api_key": "",
+    "meal_plan_notification_email": ""
   },
   "schema": {
     "log_level": "list(trace|debug|info|notice|warning|error|fatal)?",
@@ -76,7 +77,8 @@
     "microsoft_refresh_token": "password?",
     "home_assistant_url": "str?",
     "home_assistant_token": "password?",
-    "tavily_api_key": "password?"
+    "tavily_api_key": "password?",
+    "meal_plan_notification_email": "str?"
   },
   "environment": {
     "HOST": "0.0.0.0"

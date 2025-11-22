@@ -120,6 +120,12 @@ if bashio::config.has_value 'tavily_api_key'; then
     bashio::log.info "Tavily API key configured"
 fi
 
+# Meal plan notification email
+if bashio::config.has_value 'meal_plan_notification_email'; then
+    export HEY_JARVIS_MEAL_PLAN_NOTIFICATION_EMAIL=$(bashio::config 'meal_plan_notification_email')
+    bashio::log.info "Meal plan notification email configured"
+fi
+
 # Log level
 LOG_LEVEL=$(bashio::config 'log_level')
 bashio::log.info "Log level set to: ${LOG_LEVEL}"

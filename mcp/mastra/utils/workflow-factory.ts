@@ -38,7 +38,7 @@ import { z } from 'zod';
  * });
  *
  * export const myWorkflow = createWorkflow({
- *   id: 'my-workflow',
+ *   id: 'myWorkflow',
  *   stateSchema,
  *   inputSchema: z.object({}),
  *   outputSchema: z.object({ result: z.string() }),

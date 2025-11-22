@@ -5,7 +5,7 @@ import { createMemory } from '../../memory/index.js';
 // State change notification workflow
 // Receives state changes, saves to memory, and delegates to State Change Reactor agent for analysis
 export const stateChangeNotificationWorkflow = createWorkflow({
-  id: 'state-change-notification-workflow',
+  id: 'stateChangeNotificationWorkflow',
   inputSchema: z.object({
     source: z.string(),
     stateType: z.string(),

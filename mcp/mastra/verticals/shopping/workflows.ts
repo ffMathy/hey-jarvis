@@ -216,7 +216,7 @@ Provide a summary in Danish of what was changed.`;
 // State only used for values that span multiple steps (prompt, cartBefore)
 // All other values flow through context from step to step
 export const shoppingListWorkflow = createWorkflow({
-  id: 'shopping-list-workflow',
+  id: 'shoppingListWorkflow',
   stateSchema: workflowStateSchema,
   inputSchema: shoppingListInputSchema,
   outputSchema: shoppingListResultSchema,

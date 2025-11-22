@@ -431,6 +431,78 @@ export const deleteEmail = createTool({
   },
 });
 
+// Tool to send an email directly
+export const sendEmail = createTool({
+  id: 'sendEmail',
+  description: 'Send an email directly without creating a draft first. Content should be in HTML format.',
+  inputSchema: z.object({
+    subject: z.string().describe('Email subject'),
+    bodyContent: z.string().describe('Email body content in HTML format'),
+    toRecipients: z
+      .array(z.string())
+      .describe('Array of recipient email addresses (e.g., ["user@example.com"])'),
+    ccRecipients: z.array(z.string()).optional().describe('Array of CC recipient email addresses'),
+    bccRecipients: z.array(z.string()).optional().describe('Array of BCC recipient email addresses'),
+  }),
+  outputSchema: z.object({
+    messageId: z.string(),
+    subject: z.string(),
+    success: z.boolean(),
+    message: z.string(),
+  }),
+  execute: async (inputData) => {
+    const accessToken = await getMicrosoftAuth();
+    const { subject, bodyContent, toRecipients, ccRecipients, bccRecipients } = inputData;
+
+    const emailMessage = {
+      subject,
+      body: {
+        contentType: 'HTML',
+        content: bodyContent,
+      },
+      toRecipients: toRecipients.map((email) => ({
+        emailAddress: {
+          address: email,
+        },
+      })),
+      ...(ccRecipients && {
+        ccRecipients: ccRecipients.map((email) => ({
+          emailAddress: {
+            address: email,
+          },
+        })),
+      }),
+      ...(bccRecipients && {
+        bccRecipients: bccRecipients.map((email) => ({
+          emailAddress: {
+            address: email,
+          },
+        })),
+      }),
+    };
+
+    const response = await fetch(`${GRAPH_API_BASE}/me/sendMail`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ message: emailMessage }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to send email: ${response.status} ${response.statusText}`);
+    }
+
+    return {
+      messageId: 'sent',
+      subject,
+      success: true,
+      message: 'Email sent successfully',
+    };
+  },
+});
+
 // Export all tools together for convenience
 export const emailTools = {
   findEmails,
@@ -438,4 +510,5 @@ export const emailTools = {
   draftReply,
   updateDraft,
   deleteEmail,
+  sendEmail,
 };

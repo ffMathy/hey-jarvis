@@ -304,7 +304,7 @@ export function initializeScheduler(): WorkflowScheduler {
 
   // Add your scheduled workflow
   scheduler.schedule({
-    workflowId: 'my-workflow-id',
+    workflowId: 'myWorkflowId',
     schedule: CronPatterns.EVERY_HOUR, // or custom: '0 * * * *'
     name: 'My Scheduled Task',
     inputData: {},
@@ -343,12 +343,12 @@ export function initializeScheduler(): WorkflowScheduler {
 
 **Currently Scheduled Workflows:**
 1. **Weather Monitoring** - Runs every hour at minute 0
-   - Workflow: `weather-monitoring-workflow`
+   - Workflow: `weatherMonitoringWorkflow`
    - Schedule: `0 * * * *`
    - Purpose: Updates weather information and notifies other agents of changes
 
 2. **Weekly Meal Planning** - Runs every Sunday at 8:00 AM
-   - Workflow: `weekly-meal-planning-workflow`
+   - Workflow: `weeklyMealPlanningWorkflow`
    - Schedule: `0 8 * * 0`
    - Purpose: Generates weekly meal plan with Danish recipes
 
@@ -1541,7 +1541,7 @@ export const weatherTools = {
 Mastra's `/api/tools` endpoint requires tool keys to match their tool IDs. When tools are registered in the Mastra instance, the object keys become the tool identifiers used by the API. The tool ID, variable name, and export key must all be identical for tools to be properly exposed.
 
 #### **Workflow Naming**
-- **Workflow IDs**: Use `kebab-case` (e.g., `weather-monitoring-workflow`)
+- **Workflow IDs**: Use `camelCase` matching the export name (e.g., `weatherMonitoringWorkflow`)
 - **Workflow exports**: Use descriptive names (e.g., `weatherMonitoringWorkflow`, `weeklyMealPlanningWorkflow`)
 
 ### 📦 **Export Patterns**
@@ -1644,7 +1644,7 @@ export const calendarTools = {
 import { createWorkflow, createStep } from '../../utils/workflow-factory';
 
 export const calendarSyncWorkflow = createWorkflow({
-  id: 'calendar-sync-workflow',
+  id: 'calendarSyncWorkflow',
   // ... workflow config
 });
 
@@ -2219,7 +2219,7 @@ import { z } from 'zod';
 
 // Traditional custom step
 const myStep = createStep({
-  id: 'my-step',
+  id: 'myStep',
   description: 'A workflow step',
   inputSchema: z.object({}),
   outputSchema: z.object({ result: z.string() }),
@@ -2246,7 +2246,7 @@ const toolStep = createToolStep({
 });
 
 export const myWorkflow = createWorkflow({
-  id: 'my-workflow',
+  id: 'myWorkflow',
   inputSchema: z.object({}),
   outputSchema: z.object({ result: z.string() }),
 }).then(myStep);

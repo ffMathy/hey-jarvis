@@ -355,7 +355,7 @@ const formatFinalOutput = createStep({
  * Tool calls are isolated in dedicated createToolStep steps for better observability.
  */
 export const implementFeatureWorkflow = createWorkflow({
-    id: 'implement-feature-workflow',
+    id: 'implementFeatureWorkflow',
     stateSchema: workflowStateSchema,
     inputSchema: requirementsInputSchema,
     outputSchema: z.object({

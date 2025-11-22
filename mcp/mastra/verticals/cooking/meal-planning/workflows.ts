@@ -1,6 +1,7 @@
 import { z } from 'zod';
-import { createAgentStep, createToolStep, createWorkflow } from '../../../utils/workflow-factory.js';
+import { createAgentStep, createStep, createToolStep, createWorkflow } from '../../../utils/workflow-factory.js';
 import { getAllRecipes } from '../tools.js';
+import { sendEmail } from '../../email/tools.js';
 
 const mealPlanSchema = z.array(
   z.object({
@@ -66,10 +67,53 @@ Return only the HTML content without any additional text or markdown.`;
   },
 });
 
+// Step 4: Send email
+// Email content passed through context - no state needed
+const sendMealPlanEmail = createStep({
+  id: 'send-meal-plan-email',
+  description: 'Sends the meal plan email to configured recipients',
+  inputSchema: z.object({
+    htmlContent: z.string(),
+    subject: z.string(),
+  }),
+  outputSchema: z.object({
+    messageId: z.string(),
+    subject: z.string(),
+    success: z.boolean(),
+    message: z.string(),
+  }),
+  execute: async ({ inputData }) => {
+    const recipientEmails = process.env.HEY_JARVIS_MEAL_PLAN_NOTIFICATION_EMAIL;
+    if (!recipientEmails) {
+      throw new Error(
+        'HEY_JARVIS_MEAL_PLAN_NOTIFICATION_EMAIL environment variable is not set. ' +
+          'Please configure meal_plan_notification_email in the Home Assistant addon settings.',
+      );
+    }
+
+    // Split comma-separated emails and trim whitespace
+    const toRecipients = recipientEmails
+      .split(',')
+      .map((email) => email.trim())
+      .filter((email) => email.length > 0);
+
+    if (toRecipients.length === 0) {
+      throw new Error('No valid email recipients found in HEY_JARVIS_MEAL_PLAN_NOTIFICATION_EMAIL');
+    }
+
+    // Call the sendEmail tool
+    return await sendEmail.execute({
+      subject: inputData.subject,
+      bodyContent: inputData.htmlContent,
+      toRecipients,
+    });
+  },
+});
+
 // Main weekly meal planning workflow
 // No state needed - data flows directly through context from step to step
 export const weeklyMealPlanningWorkflow = createWorkflow({
-  id: 'weekly-meal-planning-workflow',
+  id: 'weeklyMealPlanningWorkflow',
   inputSchema: z.object({}),
   outputSchema: z.object({
     htmlContent: z.string(),
@@ -79,4 +123,5 @@ export const weeklyMealPlanningWorkflow = createWorkflow({
   .then(getRecipesForMealPlanning)
   .then(generateCompleteMealPlan)
   .then(generateMealPlanEmail)
+  .then(sendMealPlanEmail)
   .commit();
