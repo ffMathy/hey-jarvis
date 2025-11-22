@@ -1,0 +1,37 @@
+import { WorkflowScheduler, CronPatterns } from './utils/workflow-scheduler.js';
+import { mastra } from './index.js';
+
+/**
+ * Configure scheduled workflows
+ * 
+ * This file defines all workflows that should run on recurring schedules.
+ * Add new scheduled workflows here to enable automatic execution.
+ */
+export function initializeScheduler(): WorkflowScheduler {
+  const scheduler = new WorkflowScheduler(mastra, {
+    timezone: 'Europe/Copenhagen',
+    onError: (error, workflowId) => {
+      console.error(`\n🚨 Scheduled workflow error: ${workflowId}`);
+      console.error(`   ${error.message}`);
+      // Future: Could integrate with error reporting processor
+    },
+  });
+
+  // Weather monitoring - every hour
+  scheduler.schedule({
+    workflowId: 'weather-monitoring-workflow',
+    schedule: CronPatterns.EVERY_HOUR,
+    name: 'Hourly Weather Check',
+    inputData: {},
+  });
+
+  // Weekly meal planning - every Sunday at 8am
+  scheduler.schedule({
+    workflowId: 'weekly-meal-planning-workflow',
+    schedule: CronPatterns.WEEKLY_SUNDAY_8AM,
+    name: 'Weekly Meal Planning',
+    inputData: {},
+  });
+
+  return scheduler;
+}
