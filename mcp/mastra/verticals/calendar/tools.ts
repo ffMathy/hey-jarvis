@@ -1,21 +1,49 @@
 import { google } from 'googleapis';
+import type { OAuth2Client } from 'google-auth-library';
 import { z } from 'zod';
 import { createTool } from '../../utils/tool-factory.js';
 
-// Get OAuth2 credentials from environment
-const getGoogleAuth = () => {
+/**
+ * Creates and configures a Google OAuth2 client for Calendar API access.
+ * 
+ * The client automatically refreshes access tokens using the stored refresh token.
+ * Refresh tokens are long-lived (6+ months with regular use) and only need to be
+ * obtained once using the `nx generate-tokens mcp` command.
+ * 
+ * Required environment variables:
+ * - HEY_JARVIS_GOOGLE_CLIENT_ID: OAuth2 client ID from Google Cloud Console
+ * - HEY_JARVIS_GOOGLE_CLIENT_SECRET: OAuth2 client secret
+ * - HEY_JARVIS_GOOGLE_REFRESH_TOKEN: Long-lived refresh token (obtain via generate-tokens script)
+ * 
+ * @throws {Error} If required environment variables are missing
+ */
+const getGoogleAuth = (): OAuth2Client => {
   const clientId = process.env.HEY_JARVIS_GOOGLE_CLIENT_ID;
   const clientSecret = process.env.HEY_JARVIS_GOOGLE_CLIENT_SECRET;
   const refreshToken = process.env.HEY_JARVIS_GOOGLE_REFRESH_TOKEN;
 
   if (!clientId || !clientSecret || !refreshToken) {
     throw new Error(
-      'Google Calendar credentials not found. Please set HEY_JARVIS_GOOGLE_CLIENT_ID, HEY_JARVIS_GOOGLE_CLIENT_SECRET, and HEY_JARVIS_GOOGLE_REFRESH_TOKEN environment variables.',
+      'Missing required Google OAuth2 credentials. Please set:\n' +
+      '  - HEY_JARVIS_GOOGLE_CLIENT_ID\n' +
+      '  - HEY_JARVIS_GOOGLE_CLIENT_SECRET\n' +
+      '  - HEY_JARVIS_GOOGLE_REFRESH_TOKEN\n' +
+      '\n' +
+      'Run `nx generate-tokens mcp` to obtain a refresh token.',
     );
   }
 
   const oauth2Client = new google.auth.OAuth2(clientId, clientSecret);
   oauth2Client.setCredentials({ refresh_token: refreshToken });
+
+  // Log token refresh events (access tokens are auto-refreshed by the library)
+  oauth2Client.on('tokens', (tokens) => {
+    if (tokens.refresh_token) {
+      // This should rarely happen - refresh tokens only change if explicitly requested
+      console.warn('⚠️  New refresh token received. Update your stored credentials with:', tokens.refresh_token);
+    }
+    // Access token refresh is automatic and expected - no logging needed for normal operation
+  });
 
   return oauth2Client;
 };

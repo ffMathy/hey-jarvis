@@ -579,6 +579,7 @@ This project uses **1Password CLI** for secure environment variable management i
 All environment variables use the `HEY_JARVIS_` prefix for easy management and DevContainer forwarding. Store these in your 1Password vault:
 - **Weather**: `HEY_JARVIS_OPENWEATHERMAP_API_KEY` for weather data
 - **AI Models**: `HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY` for Gemini language models (explicitly configured in agent factory)
+- **Google OAuth2 (Calendar & Tasks)**: `HEY_JARVIS_GOOGLE_CLIENT_ID`, `HEY_JARVIS_GOOGLE_CLIENT_SECRET`, `HEY_JARVIS_GOOGLE_REFRESH_TOKEN` for accessing Google Calendar and Tasks APIs (see [Google OAuth2 Setup](#google-oauth2-setup) below)
 - **Shopping (Bilka)**: `HEY_JARVIS_BILKA_EMAIL`, `HEY_JARVIS_BILKA_PASSWORD`, `HEY_JARVIS_BILKA_API_KEY` for authentication
 - **Shopping (Search)**: `HEY_JARVIS_ALGOLIA_API_KEY`, `HEY_JARVIS_ALGOLIA_APPLICATION_ID`, `HEY_JARVIS_BILKA_USER_TOKEN` for product search
 - **ElevenLabs**: `HEY_JARVIS_ELEVENLABS_API_KEY`, `HEY_JARVIS_ELEVENLABS_AGENT_ID`, `HEY_JARVIS_ELEVENLABS_VOICE_ID` for voice AI
@@ -614,6 +615,273 @@ If you encounter 1Password CLI authentication issues:
 1. Run `op signin` to authenticate
 2. Verify your vault contains the referenced secret paths
 3. Check that the `.env` file references match your 1Password structure
+
+### Google OAuth2 Setup
+
+The Calendar and Todo-List verticals use Google's official `googleapis` NPM package for accessing Google Calendar and Google Tasks APIs. These APIs require OAuth2 authentication as they access private user data.
+
+#### Why OAuth2?
+- **Private Data Access**: Google Calendar and Tasks contain personal information that requires user consent
+- **API Key Limitation**: API keys only work for public data, not private calendars or task lists
+- **Automatic Token Refresh**: The `googleapis` library handles access token refresh automatically
+- **Long-Lived Tokens**: Refresh tokens remain valid for 6+ months with regular use
+
+#### Initial Setup (One-Time)
+
+**Step 1: Create Google Cloud Project**
+1. Go to [Google Cloud Console](https://console.cloud.google.com)
+2. Create a new project or select an existing one
+3. Enable the following APIs:
+   - Google Calendar API
+   - Google Tasks API
+
+**Step 2: Configure OAuth2 Credentials**
+1. Navigate to **APIs & Services** → **Credentials**
+2. Click **Create Credentials** → **OAuth 2.0 Client ID**
+3. Configure the OAuth consent screen (if prompted):
+   - Choose "Internal" for personal use or "External" for broader access
+   - Fill in application name and developer contact
+4. Select **Web application** as the application type
+5. Add authorized redirect URI: `http://localhost:3000/oauth2callback`
+6. Save the **Client ID** and **Client Secret**
+
+**Step 3: Generate Refresh Token**
+
+Run the token generation script to obtain your refresh token:
+
+```bash
+# Run the interactive token generator
+bunx nx generate-tokens mcp
+
+# This will:
+# 1. Open your browser for Google authorization
+# 2. Request access to Calendar and Tasks
+# 3. Generate and display your refresh token
+```
+
+The script will guide you through:
+- Opening the Google authorization page
+- Granting access to your Calendar and Tasks
+- Receiving your long-lived refresh token
+
+**Step 4: Store Credentials Securely**
+
+You have three options for storing your OAuth2 credentials:
+
+**Option 1: 1Password (Recommended for Development)**
+```bash
+# Store in your 1Password "Google OAuth" item in "Personal" vault:
+# - client id
+# - client secret  
+# - refresh token
+
+# Reference in mcp/op.env:
+HEY_JARVIS_GOOGLE_CLIENT_ID="op://Personal/Google OAuth/client id"
+HEY_JARVIS_GOOGLE_CLIENT_SECRET="op://Personal/Google OAuth/client secret"
+HEY_JARVIS_GOOGLE_REFRESH_TOKEN="op://Personal/Google OAuth/refresh token"
+```
+
+**Option 2: Environment Variables**
+```bash
+# Add to your mcp/op.env file (not recommended - less secure):
+HEY_JARVIS_GOOGLE_CLIENT_ID="your-client-id"
+HEY_JARVIS_GOOGLE_CLIENT_SECRET="your-client-secret"
+HEY_JARVIS_GOOGLE_REFRESH_TOKEN="your-refresh-token"
+```
+
+**Option 3: Home Assistant Addon**
+1. Go to **Supervisor** → **Hey Jarvis MCP Server** → **Configuration**
+2. Fill in the three fields:
+   - `google_client_id`
+   - `google_client_secret`
+   - `google_refresh_token`
+3. Save and restart the addon
+
+#### Token Lifecycle
+
+**Access Tokens**:
+- Short-lived (~1 hour)
+- Automatically refreshed by the `googleapis` library
+- No manual intervention needed
+
+**Refresh Tokens**:
+- Long-lived (6+ months with regular use)
+- Used to obtain new access tokens
+- Will not expire as long as:
+  - Used at least once every 6 months
+  - Not revoked at [Google Account Permissions](https://myaccount.google.com/permissions)
+  - Google Cloud Project credentials remain valid
+
+**Token Refresh Events**:
+Both Calendar and Todo-List verticals log when new refresh tokens are received (rare occurrence):
+```typescript
+oauth2Client.on('tokens', (tokens) => {
+  if (tokens.refresh_token) {
+    console.warn('⚠️  New refresh token received. Update your stored credentials');
+  }
+});
+```
+
+#### Troubleshooting
+
+**"No refresh token received" Error**:
+- This happens if you previously authorized the application
+- Solution:
+  1. Go to [Google Account Permissions](https://myaccount.google.com/permissions)
+  2. Remove this application
+  3. Run `bunx nx generate-tokens mcp` again
+
+**"Missing required Google OAuth2 credentials" Error**:
+- Verify all three environment variables are set:
+  - `HEY_JARVIS_GOOGLE_CLIENT_ID`
+  - `HEY_JARVIS_GOOGLE_CLIENT_SECRET`
+  - `HEY_JARVIS_GOOGLE_REFRESH_TOKEN`
+- If using 1Password: Run `eval $(op signin)` to authenticate
+
+**"Invalid grant" Error**:
+- Refresh token has been revoked or expired
+- Solution: Run `bunx nx generate-tokens mcp` to get a new token
+
+**Authorization Timeout**:
+- The token generator times out after 5 minutes
+- Solution: Run the script again and complete authorization promptly
+
+#### Security Best Practices
+
+- **Never commit credentials**: Always use 1Password or environment variables
+- **Rotate tokens periodically**: Generate new tokens if you suspect compromise
+- **Use internal consent screen**: For personal projects, use "Internal" OAuth consent screen
+- **Monitor token usage**: Check [Google Account Activity](https://myaccount.google.com/security) regularly
+- **Revoke old tokens**: Remove old application access from Google Account Permissions
+
+### Adding New OAuth Providers
+
+The token generation script (`mcp/scripts/generate-refresh-tokens.ts`) is designed to support multiple OAuth providers through a common interface. All configured providers will be processed automatically when the script runs.
+
+#### Provider Interface
+
+Each OAuth provider must implement the `OAuthProvider` interface:
+
+```typescript
+interface OAuthProvider {
+  name: string;                    // Display name (e.g., "Google", "Microsoft")
+  clientIdEnvVar: string;          // Environment variable for client ID
+  clientSecretEnvVar: string;      // Environment variable for client secret
+  refreshTokenEnvVar: string;      // Environment variable for refresh token
+  scopes: string[];                // OAuth scopes to request
+  setupInstructions: string[];     // Steps for initial provider setup
+  storageInstructions: string[];   // Instructions for storing credentials
+  createClient: (clientId: string, clientSecret: string) => any;
+  getAuthUrl: (client: any) => string;
+  exchangeCode: (client: any, code: string) => Promise<TokenResponse>;
+}
+```
+
+#### Example: Adding Microsoft OAuth
+
+```typescript
+import { ConfidentialClientApplication } from '@azure/msal-node';
+
+const microsoftProvider: OAuthProvider = {
+  name: 'Microsoft',
+  clientIdEnvVar: 'HEY_JARVIS_MICROSOFT_CLIENT_ID',
+  clientSecretEnvVar: 'HEY_JARVIS_MICROSOFT_CLIENT_SECRET',
+  refreshTokenEnvVar: 'HEY_JARVIS_MICROSOFT_REFRESH_TOKEN',
+  scopes: [
+    'https://graph.microsoft.com/Calendars.ReadWrite',
+    'https://graph.microsoft.com/Tasks.ReadWrite',
+    'offline_access', // Required for refresh token
+  ],
+  setupInstructions: [
+    'Go to Azure Portal > App Registrations',
+    'Create a new app registration',
+    'Add http://localhost:3000/oauth2callback to redirect URIs',
+    'Create a client secret in Certificates & secrets',
+  ],
+  storageInstructions: [
+    '1Password:',
+    '  - Store in "Microsoft OAuth" item',
+    '  - Fields: client id, client secret, refresh token',
+  ],
+  createClient: (clientId: string, clientSecret: string) => {
+    return new ConfidentialClientApplication({
+      auth: {
+        clientId,
+        clientSecret,
+        authority: 'https://login.microsoftonline.com/common',
+      },
+    });
+  },
+  getAuthUrl: (client) => {
+    return client.getAuthCodeUrl({
+      scopes: microsoftProvider.scopes,
+      redirectUri: REDIRECT_URI,
+    });
+  },
+  exchangeCode: async (client, code: string) => {
+    const result = await client.acquireTokenByCode({
+      code,
+      scopes: microsoftProvider.scopes,
+      redirectUri: REDIRECT_URI,
+    });
+    return {
+      access_token: result.accessToken,
+      refresh_token: result.refreshToken,
+      scope: result.scopes.join(' '),
+      token_type: result.tokenType,
+      expiry_date: result.expiresOn?.getTime() || 0,
+    };
+  },
+};
+
+// Add to PROVIDERS array
+const PROVIDERS: OAuthProvider[] = [
+  googleProvider,
+  microsoftProvider, // New provider
+];
+```
+
+#### Steps to Add a New Provider
+
+1. **Install Provider SDK**: Add the OAuth library to package.json
+   ```bash
+   bun add @provider/oauth-library
+   ```
+
+2. **Create Provider Configuration**: Define the provider object following the interface
+   - Set appropriate environment variable names
+   - Configure OAuth scopes for required APIs
+   - Implement client creation, auth URL generation, and token exchange
+
+3. **Add to PROVIDERS Array**: Add your provider to the array in `generate-refresh-tokens.ts`
+   ```typescript
+   const PROVIDERS: OAuthProvider[] = [
+     googleProvider,
+     yourNewProvider, // Add here
+   ];
+   ```
+
+4. **Update Environment Files**: Add new variables to `mcp/op.env`
+   ```bash
+   HEY_JARVIS_YOUR_PROVIDER_CLIENT_ID="op://Personal/Your Provider/client id"
+   HEY_JARVIS_YOUR_PROVIDER_CLIENT_SECRET="op://Personal/Your Provider/client secret"
+   HEY_JARVIS_YOUR_PROVIDER_REFRESH_TOKEN="op://Personal/Your Provider/refresh token"
+   ```
+
+5. **Run Token Generation**: Execute `bunx nx generate-tokens mcp`
+   - Script will process ALL providers automatically
+   - Skip any provider with missing credentials
+   - Each provider opens its own browser authorization flow
+
+6. **Update Documentation**: Add provider-specific notes to this AGENTS.md file
+
+#### Multi-Provider Benefits
+
+- **Automatic Processing**: All providers run sequentially without user intervention
+- **Graceful Skipping**: Providers without credentials are skipped automatically
+- **Consistent UX**: Same flow for all providers (open browser, authorize, receive token)
+- **Easy Maintenance**: Add providers without modifying core script logic
+- **Type Safety**: TypeScript ensures all providers implement the required interface
 
 ## MCP Server Authentication
 
