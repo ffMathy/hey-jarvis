@@ -847,8 +847,11 @@ The Email vertical uses Microsoft OAuth2 for accessing Outlook/Microsoft 365 ema
 **Step 1: Create Azure App Registration**
 1. Go to [Azure Portal → App Registrations](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps)
 2. Create a new app registration
-3. Select **Web** as the platform type
-4. Add redirect URI: `http://localhost:3000/oauth2callback`
+3. **IMPORTANT**: Under "Supported account types", select:
+   - "Accounts in any organizational directory and personal Microsoft accounts" (for `/consumers/` endpoint)
+   - OR "Personal Microsoft accounts only" (also uses `/consumers/` endpoint)
+4. Select **Web** as the platform type
+5. Add redirect URI: `http://localhost:3000/oauth2callback`
 
 **Step 2: Configure API Permissions**
 1. Navigate to **API permissions**

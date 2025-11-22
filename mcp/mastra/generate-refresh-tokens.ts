@@ -66,19 +66,22 @@ function startCallbackServer(provider: OAuthProvider, client: any): Promise<Toke
         if (url.pathname === '/oauth2callback') {
           const code = url.searchParams.get('code');
           const error = url.searchParams.get('error');
+          const errorDescription = url.searchParams.get('error_description');
 
           if (error) {
+            const errorMsg = errorDescription ? `${error}: ${errorDescription}` : error;
             res.writeHead(400, { 'Content-Type': 'text/html' });
             res.end(`
               <html>
                 <body>
-                  <h1>❌ Authorization Failed</h1>
+                  <h1>Authorization Failed</h1>
                   <p>Error: ${error}</p>
+                  ${errorDescription ? `<p>Description: ${errorDescription}</p>` : ''}
                   <p>You can close this window.</p>
                 </body>
               </html>
             `);
-            reject(new Error(`Authorization failed: ${error}`));
+            reject(new Error(`Authorization failed: ${errorMsg}`));
             server.close();
             return;
           }
@@ -88,7 +91,7 @@ function startCallbackServer(provider: OAuthProvider, client: any): Promise<Toke
             res.end(`
               <html>
                 <body>
-                  <h1>❌ Missing Authorization Code</h1>
+                  <h1>Missing Authorization Code</h1>
                   <p>You can close this window.</p>
                 </body>
               </html>
@@ -105,7 +108,7 @@ function startCallbackServer(provider: OAuthProvider, client: any): Promise<Toke
           res.end(`
             <html>
               <body>
-                <h1>✅ Authorization Successful!</h1>
+                <h1>Authorization Successful!</h1>
                 <p>You can close this window and return to the terminal.</p>
               </body>
             </html>
@@ -119,7 +122,7 @@ function startCallbackServer(provider: OAuthProvider, client: any): Promise<Toke
         res.end(`
           <html>
             <body>
-              <h1>❌ Server Error</h1>
+              <h1>Server Error</h1>
               <p>An error occurred processing your request.</p>
               <p>You can close this window.</p>
             </body>

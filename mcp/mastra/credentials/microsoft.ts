@@ -16,6 +16,7 @@ export const microsoftProvider: OAuthProvider = {
   setupInstructions: [
     'Go to Azure Portal → App Registrations (https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps)',
     'Create a new app registration',
+    'IMPORTANT: Under "Supported account types", select "Personal Microsoft accounts only" or "Accounts in any organizational directory and personal Microsoft accounts"',
     `Add ${REDIRECT_URI} to Redirect URIs under Authentication → Web`,
     'Create a client secret in Certificates & secrets',
   ],
@@ -33,7 +34,9 @@ export const microsoftProvider: OAuthProvider = {
       auth: {
         clientId,
         clientSecret,
-        authority: 'https://login.microsoftonline.com/common',
+        // Use /consumers/ endpoint for personal Microsoft accounts
+        // Use /common/ only if app is configured with "All" user audience in Azure
+        authority: 'https://login.microsoftonline.com/consumers',
       },
     });
   },
@@ -41,6 +44,10 @@ export const microsoftProvider: OAuthProvider = {
     const authCodeUrlParameters = {
       scopes: microsoftProvider.scopes,
       redirectUri: REDIRECT_URI,
+      // Explicitly request authorization code flow
+      responseMode: 'query' as const,
+      // Add prompt to ensure fresh consent (helps with debugging)
+      prompt: 'select_account' as const,
     };
     return await client.getAuthCodeUrl(authCodeUrlParameters);
   },
