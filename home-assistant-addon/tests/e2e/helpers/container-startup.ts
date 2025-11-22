@@ -1,6 +1,6 @@
 import { spawn, ChildProcess } from 'child_process';
 import { promisify } from 'util';
-import { getMastraUIUrl } from './ports';
+import { getMastraUIUrl, getMCPServerUrl } from './ports';
 
 const sleep = promisify(setTimeout);
 
@@ -85,10 +85,21 @@ export async function startContainer(options: ContainerStartupOptions = {}): Pro
     }
 
     try {
+      const response = await fetch(getMCPServerUrl());
+      if (response.status < 500) {
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        console.log(`MCP server is ready! (took ${elapsed}s)`);
+        break;
+      }
+    } catch {
+      // Container not ready yet
+    }
+
+    try {
       const response = await fetch(getMastraUIUrl());
       if (response.status < 500) {
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-        console.log(`Container is ready! (took ${elapsed}s)`);
+        console.log(`Mastra UI is ready! (took ${elapsed}s)`);
         break;
       }
     } catch {
@@ -123,7 +134,7 @@ export async function startContainer(options: ContainerStartupOptions = {}): Pro
     if (dockerProcess && dockerProcess.pid) {
       // Kill the process group to ensure cleanup
       try {
-        process.kill(-dockerProcess.pid, 'SIGTERM');
+        process.kill(dockerProcess.pid, 'SIGTERM');
       } catch (error) {
         console.log('Error killing Docker process:', error);
       }
