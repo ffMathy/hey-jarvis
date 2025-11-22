@@ -22,15 +22,6 @@ if [ -z "$HEY_JARVIS_MCP_JWT_SECRET" ]; then
     exit 1
 fi
 
-echo "JWT authentication configured for testing"
-
-# For E2E tests, directly export a test API key
-# In production, these would come from bashio config
-export HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY="test-api-key-for-e2e-tests"
-
-echo "Starting Hey Jarvis servers (Mastra on ${MASTRA_UI_PORT}, MCP on ${MCP_SERVER_PORT})..."
-echo "Google Generative AI API key configured (test mode)"
-
 # Start both servers in parallel using shared function
 echo "Executing start_mcp_servers function..."
 PIDS=$(start_mcp_servers) || {
