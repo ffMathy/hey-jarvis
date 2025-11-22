@@ -42,7 +42,7 @@ jobs:
   build:
     concurrency:
       group: build-${{ github.actor }}
-      cancel-in-progress: true
+      cancel-in-progress: ${{ github.actor != 'dependabot[bot]' }}
       
     runs-on: ubuntu-latest
     timeout-minutes: 60  # Increase timeout for ESP-IDF toolchain downloads
