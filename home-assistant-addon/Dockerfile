@@ -29,6 +29,12 @@ RUN apk add --no-cache curl jq && \
 # we define this stage to simulate how Home Assistant's ingress works locally.
 FROM base AS home-assistant-addon-end-to-end-test
 
+# Install nginx for ingress simulation
+RUN apk add --no-cache nginx
+
+# Copy nginx test configuration
+COPY tests/nginx.tests.conf /etc/nginx/http.d/default.conf
+
 # Copy test entrypoint script
 COPY tests/run-test.sh /run-test.sh
 RUN chmod +x /run-test.sh
