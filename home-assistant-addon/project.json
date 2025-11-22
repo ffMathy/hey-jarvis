@@ -4,6 +4,14 @@
   "projectType": "application",
   "tags": ["home-assistant", "addon", "docker"],
   "targets": {
+    "initialize": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "options": {
+        "command": "bunx playwright install chromium",
+        "cwd": "."
+      }
+    },
     "serve": {
       "executor": "nx:run-commands",
       "options": {
@@ -30,7 +38,7 @@
     },
     "test": {
       "executor": "nx:run-commands",
-      "dependsOn": ["build"],
+      "dependsOn": ["initialize", "build"],
       "options": {
         "command": "./.scripts/run-with-env.sh home-assistant-addon/op.env bunx playwright test --config=home-assistant-addon/playwright.config.ts",
         "cwd": "."
