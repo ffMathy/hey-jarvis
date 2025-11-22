@@ -132,15 +132,16 @@ export async function startMcpServer() {
   // Request logging middleware
   app.use((req, res, next) => {
     const startTime = Date.now();
-    const timestamp = new Date().toISOString();
+    const requestTimestamp = new Date().toISOString();
 
     // Log incoming request
-    console.log(`[${timestamp}] ${req.method} ${req.url}`);
+    console.log(`[${requestTimestamp}] ${req.method} ${req.url}`);
 
     // Log response when finished
     res.on('finish', () => {
+      const responseTimestamp = new Date().toISOString();
       const duration = Date.now() - startTime;
-      console.log(`[${timestamp}] ${req.method} ${req.url} - ${res.statusCode} (${duration}ms)`);
+      console.log(`[${responseTimestamp}] ${req.method} ${req.url} - ${res.statusCode} (${duration}ms)`);
     });
 
     next();

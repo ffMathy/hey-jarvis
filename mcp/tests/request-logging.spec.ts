@@ -3,6 +3,22 @@ import { startMcpServerForTestingPurposes, stopMcpServer } from './utils/mcp-ser
 const MCP_SERVER_URL = 'http://localhost:4112';
 const SERVER_STARTUP_TIMEOUT = 120000;
 
+/**
+ * Helper to capture console.log output during a test
+ */
+function captureConsoleLogs(testFn: (logs: string[]) => Promise<void>): Promise<void> {
+  const originalLog = console.log;
+  const logs: string[] = [];
+  console.log = (...args: unknown[]) => {
+    logs.push(args.join(' '));
+    originalLog(...args);
+  };
+
+  return testFn(logs).finally(() => {
+    console.log = originalLog;
+  });
+}
+
 describe('MCP Server Request Logging', () => {
   beforeAll(async () => {
     // Verify required environment variables are set (loaded by run-with-env.sh)
@@ -25,15 +41,7 @@ describe('MCP Server Request Logging', () => {
   });
 
   it('should log health check requests to stdout', async () => {
-    // Capture console.log output
-    const originalLog = console.log;
-    const logs: string[] = [];
-    console.log = (...args: any[]) => {
-      logs.push(args.join(' '));
-      originalLog(...args);
-    };
-
-    try {
+    await captureConsoleLogs(async (logs) => {
       // Make a request to the health endpoint
       const response = await fetch(`${MCP_SERVER_URL}/health`);
       expect(response.status).toBe(200);
@@ -52,22 +60,11 @@ describe('MCP Server Request Logging', () => {
       expect(responseLog).toMatch(/\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z\] GET \/health - 200 \(\d+ms\)/);
 
       console.log('✓ Health check request logging verified');
-    } finally {
-      // Restore console.log
-      console.log = originalLog;
-    }
+    });
   });
 
   it('should log MCP endpoint requests to stdout', async () => {
-    // Capture console.log output
-    const originalLog = console.log;
-    const logs: string[] = [];
-    console.log = (...args: any[]) => {
-      logs.push(args.join(' '));
-      originalLog(...args);
-    };
-
-    try {
+    await captureConsoleLogs(async (logs) => {
       // Make a request to the MCP endpoint (will fail auth, but should log)
       const response = await fetch(`${MCP_SERVER_URL}/api/mcp`);
       // Expect 401 because we didn't provide authentication
@@ -87,9 +84,6 @@ describe('MCP Server Request Logging', () => {
       expect(responseLog).toMatch(/\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z\] GET \/api\/mcp - 401 \(\d+ms\)/);
 
       console.log('✓ MCP endpoint request logging verified');
-    } finally {
-      // Restore console.log
-      console.log = originalLog;
-    }
+    });
   });
 });
