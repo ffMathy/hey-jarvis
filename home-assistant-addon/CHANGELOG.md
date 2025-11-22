@@ -5,6 +5,13 @@
 
 * **home-assistant-addon:** resolve static asset 404s under ingress proxy ([#191](https://github.com/ffMathy/hey-jarvis/issues/191)) ([d58603f](https://github.com/ffMathy/hey-jarvis/commit/d58603f6ede6e643cbcea5cd39d2abd83f2d78e3))
 
+## [0.11.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v0.10.1...home-assistant-addon-v0.11.0) (2025-11-22)
+
+
+### Features
+
+* send email on meal plan ([e9dd6e3](https://github.com/ffMathy/hey-jarvis/commit/e9dd6e34fd2d035e5b41ee84e3fb9ef949367b73))
+
 ## [0.10.1](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v0.10.0...home-assistant-addon-v0.10.1) (2025-11-22)
 
 
