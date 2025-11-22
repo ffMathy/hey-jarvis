@@ -32,7 +32,7 @@ const registerWeatherStateChange = createStep({
       source: 'weather',
       stateType: 'weather_update',
       stateData: {
-        location: 'Mathias, Denmark',
+        location: 'Aarhus, Denmark',
         weatherInfo: inputData.result,
         timestamp: new Date().toISOString(),
       },
@@ -46,7 +46,7 @@ const registerWeatherStateChange = createStep({
 // Scheduled weather monitoring workflow
 // Data flows through context and registers state changes for notification analysis
 export const weatherMonitoringWorkflow = createWorkflow({
-  id: 'weather-monitoring-workflow',
+  id: 'weatherMonitoringWorkflow',
   inputSchema: z.object({}),
   outputSchema: z.object({
     registered: z.boolean(),

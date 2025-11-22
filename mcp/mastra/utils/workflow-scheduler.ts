@@ -25,14 +25,14 @@ interface SchedulerOptions {
  * 
  * // Schedule weather monitoring every hour
  * scheduler.schedule({
- *   workflowId: 'weather-monitoring-workflow',
+ *   workflowId: 'weatherMonitoringWorkflow',
  *   schedule: '0 * * * *', // Every hour at minute 0
  *   name: 'Hourly Weather Check'
  * });
  * 
  * // Schedule meal planning every Sunday at 8am
  * scheduler.schedule({
- *   workflowId: 'weekly-meal-planning-workflow',
+ *   workflowId: 'weeklyMealPlanningWorkflow',
  *   schedule: '0 8 * * 0', // Sundays at 8:00am
  *   name: 'Weekly Meal Plan'
  * });

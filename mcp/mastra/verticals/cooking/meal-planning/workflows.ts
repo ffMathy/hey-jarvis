@@ -69,7 +69,7 @@ Return only the HTML content without any additional text or markdown.`;
 // Main weekly meal planning workflow
 // No state needed - data flows directly through context from step to step
 export const weeklyMealPlanningWorkflow = createWorkflow({
-  id: 'weekly-meal-planning-workflow',
+  id: 'weeklyMealPlanningWorkflow',
   inputSchema: z.object({}),
   outputSchema: z.object({
     htmlContent: z.string(),
