@@ -1,13 +1,6 @@
 import { z } from 'zod';
 import { createTool } from '../../utils/tool-factory.js';
 
-// Interface for Home Assistant service call response
-interface HomeAssistantServiceResponse {
-  success: boolean;
-  result?: unknown;
-  error?: string;
-}
-
 // Interface for Home Assistant logbook entry
 interface LogbookEntry {
   when: string;
@@ -19,21 +12,12 @@ interface LogbookEntry {
   context_user_id?: string;
 }
 
-// Interface for Home Assistant device/entity state
-interface EntityState {
-  entity_id: string;
-  state: string;
-  attributes: Record<string, unknown>;
-  last_changed: string;
-  last_updated: string;
-}
-
 // Interface for Home Assistant service definition
 interface ServiceDefinition {
-  name: string;
-  description: string;
-  fields: Record<string, {
-    description: string;
+  name?: string;
+  description?: string;
+  fields?: Record<string, {
+    description?: string;
     example?: unknown;
     required?: boolean;
     selector?: unknown;
@@ -154,79 +138,157 @@ export const getEntityLogbook = createTool({
   },
 });
 
-// Tool to get all states/entities
-export const getHomeAssistantStates = createTool({
-  id: 'getHomeAssistantStates',
-  description: 'Get the current state of all entities in Home Assistant. Use this to discover available devices and their current states.',
+// Tool to get all devices (entities/states)
+export const getAllDevices = createTool({
+  id: 'getAllDevices',
+  description: 'Get the current state of all devices (entities) in Home Assistant. Use this to discover available devices and their current states. Returns comprehensive device information including state, attributes, and timing information.',
   inputSchema: z.object({
-    domain: z.string().optional().describe('Optional domain filter to only get entities from a specific domain (e.g., "light", "switch", "sensor")'),
+    domain: z.string().optional().describe('Optional domain filter to only get devices from a specific domain (e.g., "light", "switch", "sensor", "climate")'),
   }),
   outputSchema: z.object({
-    states: z.array(
+    devices: z.array(
       z.object({
         entity_id: z.string(),
         state: z.string(),
         attributes: z.record(z.unknown()),
         last_changed: z.string(),
         last_updated: z.string(),
+        domain: z.string(),
       })
     ),
   }),
   execute: async (inputData) => {
-    const allStates = await callHomeAssistantApi('states') as EntityState[];
+    // Use Home Assistant template API to render device states
+    // This matches the n8n "Get all devices" node which uses resource: "template"
+    const template = `
+{% set excluded_domains = ['update', 'hassio', 'frontend', 'logger', 'system_log'] %}
+{% set ns = namespace(devices=[]) %}
+{% for state in states %}
+  {% if state.domain not in excluded_domains %}
+    {% if not domain or state.domain == domain %}
+      {% set device = {
+        'entity_id': state.entity_id,
+        'state': state.state,
+        'attributes': state.attributes,
+        'last_changed': state.last_changed.isoformat(),
+        'last_updated': state.last_updated.isoformat(),
+        'domain': state.domain
+      } %}
+      {% set ns.devices = ns.devices + [device] %}
+    {% endif %}
+  {% endif %}
+{% endfor %}
+{{ ns.devices }}
+    `.trim();
     
-    const filteredStates = inputData.domain
-      ? allStates.filter(state => state.entity_id.startsWith(`${inputData.domain}.`))
-      : allStates;
+    const templateWithDomain = inputData.domain 
+      ? template.replace('{% set ns = namespace(devices=[]) %}', `{% set domain = '${inputData.domain}' %}\n{% set ns = namespace(devices=[]) %}`)
+      : template.replace('not domain or ', '');
     
-    // Filter out excluded domains
-    const excludedDomains = ['update', 'hassio', 'frontend', 'logger', 'system_log'];
-    const finalStates = filteredStates.filter(state => {
-      const domain = state.entity_id.split('.')[0];
-      return !excludedDomains.includes(domain);
-    });
+    const response = await callHomeAssistantApi('template', 'POST', { template: templateWithDomain });
+    const devices = typeof response === 'string' ? JSON.parse(response) : response;
     
     return {
-      states: finalStates.map(state => ({
-        entity_id: state.entity_id,
-        state: state.state,
-        attributes: state.attributes,
-        last_changed: state.last_changed,
-        last_updated: state.last_updated,
-      })),
+      devices: Array.isArray(devices) ? devices : [],
     };
   },
 });
 
-// Tool to get available services
-export const getHomeAssistantServices = createTool({
-  id: 'getHomeAssistantServices',
-  description: 'Get all available services in Home Assistant grouped by domain. Use this to discover what actions you can perform.',
+// Tool to get all available services
+export const getAllServices = createTool({
+  id: 'getAllServices',
+  description: 'Get all available services in Home Assistant grouped by domain. Use this to discover what actions you can perform on devices. Services define the operations available for each domain (e.g., turn_on, turn_off for lights; set_temperature for climate).',
   inputSchema: z.object({
-    domain: z.string().optional().describe('Optional domain filter to only get services from a specific domain (e.g., "light", "switch")'),
+    domain: z.string().optional().describe('Optional domain filter to only get services from a specific domain (e.g., "light", "switch", "climate")'),
   }),
   outputSchema: z.object({
-    services: z.record(z.record(z.object({
+    services_by_domain: z.record(z.record(z.object({
       name: z.string().optional(),
-      description: z.string(),
-      fields: z.record(z.unknown()),
+      description: z.string().optional(),
+      fields: z.record(z.unknown()).optional(),
     }))),
   }),
   execute: async (inputData) => {
-    const allServices = await callHomeAssistantApi('services') as Record<string, Record<string, ServiceDefinition>>;
+    const response = await callHomeAssistantApi('services') as Array<{ domain: string; services: Record<string, ServiceDefinition> }>;
     
-    // Filter out excluded domains
     const excludedDomains = ['update', 'hassio', 'frontend', 'logger', 'system_log'];
     const filteredServices: Record<string, Record<string, ServiceDefinition>> = {};
     
-    for (const [domain, services] of Object.entries(allServices)) {
-      if (!excludedDomains.includes(domain) && (!inputData.domain || domain === inputData.domain)) {
-        filteredServices[domain] = services;
+    for (const item of response) {
+      if (item.domain && item.services && !excludedDomains.includes(item.domain) && (!inputData.domain || item.domain === inputData.domain)) {
+        filteredServices[item.domain] = item.services;
       }
     }
     
     return {
-      services: filteredServices as Record<string, Record<string, { name?: string; description: string; fields: Record<string, unknown> }>>,
+      services_by_domain: filteredServices as Record<string, Record<string, { name?: string; description?: string; fields?: Record<string, unknown> }>>,
+    };
+  },
+});
+
+// Tool to get devices that have changed since a specific time
+export const getChangedDevicesSinceLastTime = createTool({
+  id: 'getChangedDevicesSinceLastTime',
+  description: 'Get all devices (entities) that have changed state since a specific timestamp. Useful for monitoring recent activity or detecting what has changed in the home. This tool tracks state changes over time.',
+  inputSchema: z.object({
+    sinceTimestamp: z.string().describe('ISO 8601 timestamp to check changes since (e.g., "2025-11-22T10:00:00Z"). Only devices changed after this time will be returned.'),
+    domain: z.string().optional().describe('Optional domain filter to only check devices from a specific domain (e.g., "light", "switch", "sensor")'),
+  }),
+  outputSchema: z.object({
+    changed_devices: z.array(
+      z.object({
+        entity_id: z.string(),
+        state: z.string(),
+        attributes: z.record(z.unknown()),
+        last_changed: z.string(),
+        last_updated: z.string(),
+        domain: z.string(),
+        changed_at: z.string(),
+      })
+    ),
+    since_timestamp: z.string(),
+    total_changed: z.number(),
+  }),
+  execute: async (inputData) => {
+    // Use Home Assistant template API to filter changed devices
+    // This matches the n8n "Get changed devices since last time" node which uses resource: "template"
+    const template = `
+{% set excluded_domains = ['update', 'hassio', 'frontend', 'logger', 'system_log'] %}
+{% set since_time = as_datetime('${inputData.sinceTimestamp}') %}
+{% set ns = namespace(devices=[]) %}
+{% for state in states %}
+  {% if state.domain not in excluded_domains %}
+    {% if not domain or state.domain == domain %}
+      {% if state.last_changed > since_time %}
+        {% set device = {
+          'entity_id': state.entity_id,
+          'state': state.state,
+          'attributes': state.attributes,
+          'last_changed': state.last_changed.isoformat(),
+          'last_updated': state.last_updated.isoformat(),
+          'domain': state.domain,
+          'changed_at': state.last_changed.isoformat()
+        } %}
+        {% set ns.devices = ns.devices + [device] %}
+      {% endif %}
+    {% endif %}
+  {% endif %}
+{% endfor %}
+{{ ns.devices }}
+    `.trim();
+    
+    const templateWithDomain = inputData.domain 
+      ? template.replace('{% set ns = namespace(devices=[]) %}', `{% set domain = '${inputData.domain}' %}\n{% set ns = namespace(devices=[]) %}`)
+      : template.replace('not domain or ', '');
+    
+    const response = await callHomeAssistantApi('template', 'POST', { template: templateWithDomain });
+    const devices = typeof response === 'string' ? JSON.parse(response) : response;
+    const changedDevices = Array.isArray(devices) ? devices : [];
+    
+    return {
+      changed_devices: changedDevices,
+      since_timestamp: inputData.sinceTimestamp,
+      total_changed: changedDevices.length,
     };
   },
 });
@@ -235,6 +297,7 @@ export const getHomeAssistantServices = createTool({
 export const homeAssistantTools = {
   callHomeAssistantService,
   getEntityLogbook,
-  getHomeAssistantStates,
-  getHomeAssistantServices,
+  getAllDevices,
+  getAllServices,
+  getChangedDevicesSinceLastTime,
 };
