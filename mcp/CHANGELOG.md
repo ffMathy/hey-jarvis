@@ -5,6 +5,15 @@
 
 * **mcp:** Synchronize mcp versions
 
+## [0.10.1](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.10.0...mcp-v0.10.1) (2025-11-22)
+
+
+### Bug Fixes
+
+* workflow is now scheduled ([#274](https://github.com/ffMathy/hey-jarvis/issues/274)) ([78304e7](https://github.com/ffMathy/hey-jarvis/commit/78304e71a2177fcd88e73972d261f13a55ce2862))
+* workflow name ([9f48fe7](https://github.com/ffMathy/hey-jarvis/commit/9f48fe710422cd49e9594a75989c9c69728de958))
+* workflow scheduler fixed ([9bf07e7](https://github.com/ffMathy/hey-jarvis/commit/9bf07e79cd0ae7ee214ffeb9d2ce288c2b4e3304))
+
 ## [0.10.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.9.0...mcp-v0.10.0) (2025-11-22)
 
 
