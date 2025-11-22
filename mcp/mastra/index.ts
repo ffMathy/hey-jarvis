@@ -6,6 +6,7 @@ import {
   getCalendarAgent,
   getCodingAgent,
   getEmailAgent,
+  getHomeAssistantAgent,
   getMealPlanEmailFormatterAgent,
   getMealPlanGeneratorAgent,
   getMealPlanSelectorAgent,
@@ -14,10 +15,12 @@ import {
   getRequirementsInterviewerAgent,
   getShoppingListAgent,
   getShoppingListSummaryAgent,
+  getStateChangeReactorAgent,
   getTodoListAgent,
   getWeatherAgent,
   getWebResearchAgent,
   implementFeatureWorkflow,
+  stateChangeNotificationWorkflow,
   weatherMonitoringWorkflow,
   weeklyMealPlanningWorkflow,
 } from './verticals/index.js';
@@ -37,12 +40,14 @@ async function createMastra() {
     shoppingListAgent,
     shoppingListSummaryAgent,
     notificationAgent,
+    stateChangeReactorAgent,
     codingAgent,
     requirementsInterviewerAgent,
     emailAgent,
     todoListAgent,
     calendarAgent,
     webResearchAgent,
+    homeAssistantAgent,
   ] = await Promise.all([
     getWeatherAgent(),
     getRecipeSearchAgent(),
@@ -52,12 +57,14 @@ async function createMastra() {
     getShoppingListAgent(),
     getShoppingListSummaryAgent(),
     getNotificationAgent(),
+    getStateChangeReactorAgent(),
     getCodingAgent(),
     getRequirementsInterviewerAgent(),
     getEmailAgent(),
     getTodoListAgent(),
     getCalendarAgent(),
     getWebResearchAgent(),
+    getHomeAssistantAgent(),
   ]);
 
   return new Mastra({
@@ -71,6 +78,7 @@ async function createMastra() {
       weatherMonitoringWorkflow,
       weeklyMealPlanningWorkflow,
       implementFeatureWorkflow,
+      stateChangeNotificationWorkflow,
     },
     agents: {
       weather: weatherAgent,
@@ -81,12 +89,14 @@ async function createMastra() {
       shoppingList: shoppingListAgent,
       shoppingListSummary: shoppingListSummaryAgent,
       notification: notificationAgent,
+      stateChangeReactor: stateChangeReactorAgent,
       coding: codingAgent,
       requirementsInterviewer: requirementsInterviewerAgent,
       email: emailAgent,
       todoList: todoListAgent,
       calendar: calendarAgent,
       webResearch: webResearchAgent,
+      homeAssistant: homeAssistantAgent,
     },
   });
 }

@@ -75,36 +75,6 @@ echo "📦 Container ID: $CONTAINER_ID"
 # Give container a moment to start
 sleep 2
 
-# Check if container is actually running
-if ! docker ps | grep -q "home-assistant-addon-test"; then
-    echo "❌ Container failed to start or exited immediately!"
-    echo "📋 Container logs:"
-    docker logs home-assistant-addon-test 2>&1 || echo "Could not retrieve logs"
-    docker rm home-assistant-addon-test 2>/dev/null || true
-    exit 1
-fi
-
-# Wait for the container to be ready
-echo "⏳ Waiting for container to be ready..."
-max_attempts=60
-attempt=0
-
-while [ $attempt -lt $max_attempts ]; do
-    if curl -s -o /dev/null -w "%{http_code}" http://localhost:${MASTRA_UI_PORT} | grep -q "200\|404\|302"; then
-        echo "✅ Container is ready!"
-        break
-    fi
-    
-    echo "   Attempt $((attempt + 1))/$max_attempts - waiting..."
-    sleep 2
-    attempt=$((attempt + 1))
-done
-
-if [ $attempt -eq $max_attempts ]; then
-    echo "❌ Container failed to start within timeout period"
-    exit 1
-fi
-
 echo "🎯 Addon container is running and ready for testing!"
 echo "Press Ctrl+C to stop the container."
 
@@ -115,7 +85,7 @@ while true; do
     if ! docker ps -q --filter "id=$CONTAINER_ID" | grep -q .; then
         echo "❌ Container has stopped unexpectedly!"
         echo "📋 Container logs:"
-        docker logs "$CONTAINER_ID" 2>&1 | tail -50 || docker logs home-assistant-addon-test 2>&1 | tail -50
+        docker logs "$CONTAINER_ID" || docker logs home-assistant-addon-test
         exit 1
     fi
     

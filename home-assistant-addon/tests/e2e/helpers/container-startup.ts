@@ -31,40 +31,14 @@ export async function startContainer(options: ContainerStartupOptions = {}): Pro
   const startTime = Date.now();
   console.log('Starting Docker container using start-addon.sh...');
 
-  // Track if the startup script exits early (indicates failure)
-  let scriptExited = false;
-
   // Forward all process.env variables and merge with any additional ones
   const env = { ...process.env, ...environmentVariables };
 
   // Start the Docker container using start-addon.sh script
   const dockerProcess = spawn('bash', ['./home-assistant-addon/tests/start-addon.sh'], {
-    stdio: 'pipe',
-    detached: true,
+    stdio: 'inherit',
+    detached: false,
     env,
-  });
-
-  let dockerOutput = '';
-  let dockerErrors = '';
-
-  dockerProcess.stdout?.on('data', (data) => {
-    const output = data.toString();
-    dockerOutput += output;
-    console.log('Docker stdout:', output);
-  });
-
-  dockerProcess.stderr?.on('data', (data) => {
-    const output = data.toString();
-    dockerErrors += output;
-    console.log('Docker stderr:', output);
-  });
-
-  // Check if the process exits prematurely
-  let exitCode: number | null = null;
-  dockerProcess.on('exit', (code) => {
-    scriptExited = true;
-    exitCode = code;
-    console.error(`Docker startup script exited with code ${code}`);
   });
 
   // Wait for the container to be ready
@@ -73,17 +47,6 @@ export async function startContainer(options: ContainerStartupOptions = {}): Pro
   let waitTime = 0;
 
   while (waitTime < maxWaitTime) {
-    // Check if startup script exited (indicates failure)
-    if (scriptExited) {
-      console.error('Docker process exited prematurely!');
-      console.error('Exit code:', exitCode);
-      console.error('Last output:', dockerOutput);
-      console.error('Last errors:', dockerErrors);
-      throw new Error(
-        `Docker startup script exited with code ${exitCode} before container was ready - check logs above for details`,
-      );
-    }
-
     try {
       const response = await fetch(getMCPServerUrl());
       if (response.status < 500) {
@@ -119,8 +82,7 @@ export async function startContainer(options: ContainerStartupOptions = {}): Pro
   if (waitTime >= maxWaitTime) {
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
     console.error('Container startup timeout!');
-    console.error('Last output:', dockerOutput);
-    console.error('Last errors:', dockerErrors);
+
     throw new Error(`Container failed to start within timeout period (${elapsed}s elapsed)`);
   }
 
