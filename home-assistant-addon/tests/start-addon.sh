@@ -54,10 +54,6 @@ while IFS='=' read -r name value; do
     if [[ "$name" =~ ^HEY_JARVIS_ ]]; then
         DOCKER_ARGS+=(-e "$name=$value")
     fi
-    # Forward JWT_SECRET specifically
-    if [[ "$name" == "JWT_SECRET" ]]; then
-        DOCKER_ARGS+=(-e "$name=$value")
-    fi
 done < <(env)
 
 # Start the container in the background

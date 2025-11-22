@@ -32,7 +32,7 @@
       "executor": "nx:run-commands",
       "dependsOn": ["build"],
       "options": {
-        "command": "bunx playwright test --config=home-assistant-addon/playwright.config.ts",
+        "command": "./.scripts/run-with-env.sh home-assistant-addon/op.env bunx playwright test --config=home-assistant-addon/playwright.config.ts",
         "cwd": "."
       }
     },

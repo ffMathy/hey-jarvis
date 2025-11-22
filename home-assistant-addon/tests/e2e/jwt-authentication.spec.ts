@@ -4,16 +4,12 @@ import { startContainer, ContainerStartupResult } from './helpers/container-star
 import { getMastraUIUrl, getMCPServerUrl } from './helpers/ports';
 
 test.describe('JWT Authentication Tests', () => {
-  const JWT_SECRET = 'test-secret-for-jwt-authentication-minimum-32-chars';
   let container: ContainerStartupResult | undefined;
 
   test.beforeAll(async () => {
-    // Use the shared startContainer function with JWT environment variable
+    // Use the shared startContainer function
     container = await startContainer({
       additionalInitTime: 10000,
-      environmentVariables: {
-        JWT_SECRET: JWT_SECRET,
-      },
     });
   });
 
@@ -72,7 +68,11 @@ test.describe('JWT Authentication Tests', () => {
   });
 
   test('should deny MCP server access with expired JWT token', async () => {
-    const expiredToken = await generateExpiredToken(JWT_SECRET);
+    const jwtSecret = process.env.HEY_JARVIS_MCP_JWT_SECRET;
+    if (!jwtSecret) {
+      throw new Error('HEY_JARVIS_MCP_JWT_SECRET not found in environment');
+    }
+    const expiredToken = await generateExpiredToken(jwtSecret);
 
     const response = await fetch(getMCPServerUrl() + '/api/mcp', {
       method: 'POST',
@@ -93,7 +93,11 @@ test.describe('JWT Authentication Tests', () => {
   });
 
   test('should allow MCP server access with valid JWT token', async () => {
-    const validToken = await generateTestToken(JWT_SECRET);
+    const jwtSecret = process.env.HEY_JARVIS_MCP_JWT_SECRET;
+    if (!jwtSecret) {
+      throw new Error('HEY_JARVIS_MCP_JWT_SECRET not found in environment');
+    }
+    const validToken = await generateTestToken(jwtSecret);
 
     const response = await fetch(getMCPServerUrl() + '/api/mcp', {
       method: 'POST',
@@ -114,7 +118,11 @@ test.describe('JWT Authentication Tests', () => {
   });
 
   test('should allow MCP server access with JWT token without expiry', async () => {
-    const tokenWithoutExpiry = await generateTokenWithoutExpiry(JWT_SECRET);
+    const jwtSecret = process.env.HEY_JARVIS_MCP_JWT_SECRET;
+    if (!jwtSecret) {
+      throw new Error('HEY_JARVIS_MCP_JWT_SECRET not found in environment');
+    }
+    const tokenWithoutExpiry = await generateTokenWithoutExpiry(jwtSecret);
 
     const response = await fetch(getMCPServerUrl() + '/api/mcp', {
       method: 'POST',
@@ -135,7 +143,11 @@ test.describe('JWT Authentication Tests', () => {
   });
 
   test('should accept JWT token in Bearer format (case-insensitive)', async () => {
-    const validToken = await generateTestToken(JWT_SECRET);
+    const jwtSecret = process.env.HEY_JARVIS_MCP_JWT_SECRET;
+    if (!jwtSecret) {
+      throw new Error('HEY_JARVIS_MCP_JWT_SECRET not found in environment');
+    }
+    const validToken = await generateTestToken(jwtSecret);
 
     // Test with lowercase 'bearer'
     const response = await fetch(getMCPServerUrl() + '/api/mcp', {
@@ -168,7 +180,7 @@ test.describe('JWT Authentication Tests', () => {
 
 test.describe('JWT Authentication Disabled Tests', () => {
   test.skip('should allow access without JWT when authentication is disabled', async () => {
-    // This test would require starting a container without JWT_SECRET
+    // This test would require starting a container without HEY_JARVIS_MCP_JWT_SECRET
     // For now, we skip it as the default configuration in tests has JWT disabled
     // The graceful degradation is tested by the regular server startup tests
   });

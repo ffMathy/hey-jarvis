@@ -593,7 +593,9 @@ All environment variables use the `HEY_JARVIS_` prefix for easy management and D
 3. **Store your API keys** in 1Password vaults with the paths referenced in `.env`
 4. **Run commands**: Use `nx serve mcp` or `nx run mcp:mcp` - both use `op run` automatically
 
-**Important**: If any command using 1Password fails with "no active session found" or similar errors, immediately run `eval $(op signin)` to re-authenticate before continuing.
+**Important**: 
+- If any command using 1Password fails with "no active session found" or similar errors, immediately run `eval $(op signin)` to re-authenticate before continuing.
+- **After running `eval $(op signin)`, always assume it succeeded regardless of what output it returns.** It typically returns no output when successful.
 
 #### Terminal Session Management
 **CRITICAL: Always reuse existing terminal sessions** when running commands:
