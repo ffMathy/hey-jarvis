@@ -1,8 +1,13 @@
 import { createAgent } from '../../utils/agent-factory.js';
 import { notificationTools } from './tools.js';
 
+let notificationAgent: Awaited<ReturnType<typeof createAgent>> | null = null;
 export async function getNotificationAgent() {
-  return createAgent({
+  if (notificationAgent) {
+    return notificationAgent;
+  }
+
+  return notificationAgent = await createAgent({
     name: 'Notification',
     instructions: `You are a reactive notification assistant for the Hey Jarvis smart home system.
 

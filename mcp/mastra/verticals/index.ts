@@ -6,6 +6,7 @@ export * from './email/index.js';
 export * from './home-assistant/index.js';
 export * from './notification/index.js';
 export * from './shopping/index.js';
+export * from './synapse/index.js';
 export * from './todo-list/index.js';
 export * from './weather/index.js';
 export * from './web-research/index.js';
