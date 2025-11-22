@@ -6,17 +6,30 @@ import { MCPServer } from '@mastra/mcp';
 import express from 'express';
 import { expressjwt } from 'express-jwt';
 import { z } from 'zod';
+import { getCalendarAgent } from './verticals/calendar/index.js';
 import { getCodingAgent } from './verticals/coding/index.js';
+import { getEmailAgent } from './verticals/email/index.js';
 import { getShoppingListAgent } from './verticals/shopping/index.js';
+import { getTodoListAgent } from './verticals/todo-list/index.js';
 import { getWeatherAgent } from './verticals/weather/index.js';
 
 export async function getPublicAgents(): Promise<Record<string, Agent>> {
-  const [coding, weather, shopping] = await Promise.all([getCodingAgent(), getWeatherAgent(), getShoppingListAgent()]);
+  const [coding, weather, shopping, email, calendar, todoList] = await Promise.all([
+    getCodingAgent(),
+    getWeatherAgent(),
+    getShoppingListAgent(),
+    getEmailAgent(),
+    getCalendarAgent(),
+    getTodoListAgent(),
+  ]);
 
   return {
     coding,
     weather,
     shopping,
+    email,
+    calendar,
+    todoList,
   };
 }
 
@@ -52,7 +65,7 @@ export async function startMcpServer() {
   if (!jwtSecret) {
     throw new Error(
       'HEY_JARVIS_MCP_JWT_SECRET environment variable is required. ' +
-      'JWT authentication cannot be disabled for security reasons.'
+        'JWT authentication cannot be disabled for security reasons.',
     );
   }
 
@@ -63,17 +76,32 @@ export async function startMcpServer() {
     ask_weather: createSimplifiedAgentTool(
       'weather',
       agents.weather,
-      'Get weather information for a location. Ask about current conditions or forecasts.'
+      'Get weather information for a location. Ask about current conditions or forecasts.',
     ),
     ask_shopping: createSimplifiedAgentTool(
       'shopping',
       agents.shopping,
-      'Manage shopping lists and find products at Bilka online store.'
+      'Manage shopping lists and find products at Bilka online store.',
     ),
     ask_coding: createSimplifiedAgentTool(
       'coding',
       agents.coding,
-      'Get help with GitHub repositories, issues, and coding tasks.'
+      'Get help with GitHub repositories, issues, and coding tasks.',
+    ),
+    ask_email: createSimplifiedAgentTool(
+      'email',
+      agents.email,
+      'Search emails, create drafts, reply to messages, and manage your Microsoft Outlook inbox.',
+    ),
+    ask_calendar: createSimplifiedAgentTool(
+      'calendar',
+      agents.calendar,
+      'Manage Google Calendar events. Create, update, delete, or search calendar events.',
+    ),
+    ask_todoList: createSimplifiedAgentTool(
+      'todoList',
+      agents.todoList,
+      'Manage Google Tasks to-do lists. Create, update, delete, or retrieve tasks from your task lists.',
     ),
   };
 
@@ -128,7 +156,8 @@ export async function startMcpServer() {
           });
         }
       }
-    });
+    },
+  );
 
   // Express error handler for JWT authentication failures
   app.use((err: Error & { status?: number }, req, res, _next) => {
