@@ -14,7 +14,7 @@ function getDatabaseDirectory(): string {
   }
   
   // Development environment - use local directory
-  const localDir = path.join(process.cwd(), 'mcp');
+  const localDir = path.join('/tmp', 'mcp');
   console.log('📦 Using local development directory for storage:', localDir);
   return localDir;
 }
