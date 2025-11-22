@@ -47,7 +47,7 @@
       }
     }
   },
-  "appPort": [4111, 4112, 3000],
+  "appPort": [3000],
   "mounts": ["source=/dev,target=/dev,type=bind,consistency=cached"],
   "runArgs": ["--privileged", "--device=/dev:/dev"],
   "containerUser": "root",

@@ -11,7 +11,15 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 # Source centralized port configuration
 source "$(dirname "$(dirname "$SCRIPT_DIR")")/mcp/lib/ports.sh"
 
+# Source server functions for port management
+source "$(dirname "$(dirname "$SCRIPT_DIR")")/mcp/lib/server-functions.sh"
+
 echo "🐳 Starting home-assistant-addon addon container..."
+
+# Kill any processes on required ports before starting
+kill_process_on_port "${MASTRA_UI_PORT}"
+kill_process_on_port "${MCP_SERVER_PORT}"
+kill_process_on_port "${TEST_INGRESS_PORT}"
 
 # Function to cleanup Docker container
 cleanup() {

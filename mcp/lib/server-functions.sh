@@ -5,8 +5,26 @@
 # ==============================================================================
 
 # Source centralized port configuration
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/ports.sh"
+LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$LIB_DIR/ports.sh"
+
+# Kill any process listening on the specified port
+kill_process_on_port() {
+    local port=$1
+    local pids
+    
+    # Find PIDs listening on the port (works on Linux)
+    pids=$(lsof -ti ":${port}" 2>/dev/null || true)
+    
+    if [ -n "$pids" ]; then
+        echo "🧹 Killing process(es) on port ${port}: ${pids}" >&2
+        for pid in $pids; do
+            kill -9 "$pid" 2>/dev/null || true
+        done
+        # Give it a moment to clean up
+        sleep 0.5
+    fi
+}
 
 start_mcp_servers() {
     echo "Starting Mastra development server on port ${MASTRA_UI_PORT}..." >&2
