@@ -99,6 +99,7 @@ mcp/
 - **Thread-based conversations** with context preservation
 - **Vector database integration** for knowledge retrieval
 - **Working memory** for short-term context management
+- **Automatic backup in Home Assistant**: When running as addon, all data stored in `/data` directory (included in HA backups)
 
 ## Current Agents
 
