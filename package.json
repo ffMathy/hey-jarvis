@@ -75,7 +75,7 @@
     "@mastra/server": "1.0.0-beta.4",
     "@types/node-cron": "^3.0.11",
     "@types/node-fetch": "^2.6.13",
-    "ai": "^5.0.89",
+    "ai": "^5.0.91",
     "commander": "^14.0.2",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
