@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.12.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.11.1...mcp-v0.12.0) (2025-11-22)
+
+
+### Features
+
+* add request logging middleware to MCP server ([79a42c0](https://github.com/ffMathy/hey-jarvis/commit/79a42c0dd869a71283e9e906d6566e9cab3c5854))
+* add request logging middleware to MCP server ([#280](https://github.com/ffMathy/hey-jarvis/issues/280)) ([a1f5bf0](https://github.com/ffMathy/hey-jarvis/commit/a1f5bf02506c65fa88fafe325c4c4ba2ec4f59e6))
+
+
+### Bug Fixes
+
+* address code review feedback for request logging ([0e2a0aa](https://github.com/ffMathy/hey-jarvis/commit/0e2a0aa7f1265ce6509fdf1e3c80c93f1815167f))
+
 ## [0.11.1](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.11.0...mcp-v0.11.1) (2025-11-22)
 
 
