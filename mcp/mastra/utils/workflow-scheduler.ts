@@ -1,4 +1,4 @@
-import cron from 'node-cron';
+import cron, { type ScheduledTask } from 'node-cron';
 import type { Mastra } from '@mastra/core';
 import type { Workflow } from '@mastra/core/workflows';
 
@@ -51,7 +51,7 @@ interface SchedulerOptions {
  */
 export class WorkflowScheduler {
   private mastra: Mastra;
-  private scheduledTasks: Map<string, cron.ScheduledTask> = new Map();
+  private scheduledTasks: Map<string, ScheduledTask> = new Map();
   private options: SchedulerOptions;
 
   constructor(mastra: Mastra, options: SchedulerOptions = {}) {
@@ -86,7 +86,6 @@ export class WorkflowScheduler {
         await this.executeWorkflow(workflowId, inputData, name);
       },
       {
-        scheduled: false, // Don't start immediately
         timezone: this.options.timezone,
       }
     );
@@ -102,11 +101,10 @@ export class WorkflowScheduler {
    * Start all scheduled workflows
    */
   start(): void {
-    console.log(`\n🚀 Starting ${this.scheduledTasks.size} scheduled workflow(s)...`);
+    console.log(`\n🚀 ${this.scheduledTasks.size} scheduled workflow(s) are now active`);
     
     this.scheduledTasks.forEach((task, workflowId) => {
-      task.start();
-      console.log(`   ✅ Started: ${workflowId}`);
+      console.log(`   ✅ Active: ${workflowId}`);
     });
 
     console.log('\n⏰ Workflow scheduler is running\n');
@@ -166,8 +164,8 @@ export class WorkflowScheduler {
       console.log(`✅ Workflow completed successfully (${duration}ms)`);
       console.log(`   Status: ${result.status}`);
       
-      // Log result if it's not too large
-      if (result.result && JSON.stringify(result.result).length < 500) {
+      // Log result if it's not too large and workflow succeeded
+      if (result.status === 'success' && result.result && JSON.stringify(result.result).length < 500) {
         console.log(`   Result:`, result.result);
       }
     } catch (error) {
