@@ -34,7 +34,7 @@
     "@nx/node": "^22.1.0",
     "@playwright/test": "^1.56.1",
     "@swc-node/register": "^1.11.1",
-    "@swc/core": "^1.13.20",
+    "@swc/core": "^1.15.3",
     "@swc/helpers": "~0.5.11",
     "@swc/jest": "^0.2.39",
     "@types/express": "^5.0.5",
