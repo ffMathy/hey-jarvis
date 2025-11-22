@@ -5,6 +5,13 @@
 
 * **mcp:** Synchronize mcp versions
 
+## [0.9.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.8.0...mcp-v0.9.0) (2025-11-22)
+
+
+### Features
+
+* support scheduled workflows ([8d9efc5](https://github.com/ffMathy/hey-jarvis/commit/8d9efc5ec0116efdc2b27630778b64cd238e5e6c))
+
 ## [0.8.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.7.0...mcp-v0.8.0) (2025-11-22)
 
 
