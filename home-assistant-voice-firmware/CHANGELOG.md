@@ -5,6 +5,19 @@
 
 * home assistant voice building ([#187](https://github.com/ffMathy/hey-jarvis/issues/187)) ([9f17536](https://github.com/ffMathy/hey-jarvis/commit/9f17536aec616e71fee8a5654f3cf83a5113c7b8))
 
+## [0.4.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.3.0...home-assistant-voice-firmware-v0.4.0) (2025-11-22)
+
+
+### Features
+
+* allow for wifi flashing ([1a2507b](https://github.com/ffMathy/hey-jarvis/commit/1a2507b93ac31473419588f644fc115e72f7e185))
+
+
+### Bug Fixes
+
+* better stability for some projects ([33f8cf2](https://github.com/ffMathy/hey-jarvis/commit/33f8cf29daea5354090264d9b04974eafb3233be))
+* new progress on verticals ([4a5323f](https://github.com/ffMathy/hey-jarvis/commit/4a5323fe875aba3d0bb0cbef495ff926fca495a1))
+
 ## [0.3.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.2.0...home-assistant-voice-firmware-v0.3.0) (2025-11-20)
 
 

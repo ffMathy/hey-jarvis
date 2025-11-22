@@ -55,6 +55,43 @@
 
 * add parallelism ([3541485](https://github.com/ffMathy/hey-jarvis/commit/3541485c5ed86625dcf8a2c0b56c57de6fa5520b))
 
+## [0.5.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.4.0...elevenlabs-v0.5.0) (2025-11-22)
+
+
+### Features
+
+* **elevenlabs:** add initialize target to install Playwright and dependencies ([9af9ff6](https://github.com/ffMathy/hey-jarvis/commit/9af9ff63fc4a7f65fe3520651820648553c6c525))
+
+
+### Bug Fixes
+
+* better stability for some projects ([33f8cf2](https://github.com/ffMathy/hey-jarvis/commit/33f8cf29daea5354090264d9b04974eafb3233be))
+* broken import in retry-with-backoff ([c919099](https://github.com/ffMathy/hey-jarvis/commit/c9190995feaf6fc5f515ff043d2a8e280f502f9d))
+* **elevenlabs:** add support for test agent configuration and deployment ([30c4995](https://github.com/ffMathy/hey-jarvis/commit/30c4995acaf07c29a2e1bac2d86323ae14d04fc8))
+* **elevenlabs:** clarify direct answer requirement for simple queries ([3b4b258](https://github.com/ffMathy/hey-jarvis/commit/3b4b25887302348e8285ea0c496f8043e82694c8))
+* **elevenlabs:** enhance condescension requirement and accept home assistant for weather ([c8598e4](https://github.com/ffMathy/hey-jarvis/commit/c8598e489805b386832a5db387fa28f332b73035))
+* **elevenlabs:** remove rambling from time responses ([5054104](https://github.com/ffMathy/hey-jarvis/commit/50541047b1ba2f74a42c37ed31baf576fd50278c))
+* **elevenlabs:** resolve inconsistencies in agent prompt guidance ([8b3da31](https://github.com/ffMathy/hey-jarvis/commit/8b3da319d821bd4d8b5967c8c6ac5185fc1434a5))
+* **elevenlabs:** revert CI skip logic and document never skip tests policy ([94e4c1e](https://github.com/ffMathy/hey-jarvis/commit/94e4c1ee616edde48b7ed5a1e8e0f074dfa5998d))
+* **elevenlabs:** run tests sequentially to avoid ElevenLabs capacity limits ([94f1fc5](https://github.com/ffMathy/hey-jarvis/commit/94f1fc5a4f768ac3e48ce216e503b4111b41d91c))
+* **elevenlabs:** skip tests gracefully in CI when credentials missing ([1280068](https://github.com/ffMathy/hey-jarvis/commit/1280068eeadff9a3e4de625b05d83d5c4631afe5))
+* **elevenlabs:** strengthen personality requirement for all responses ([77558cd](https://github.com/ffMathy/hey-jarvis/commit/77558cd729c6b8fb93e8ef95105aef2107263e77))
+* **elevenlabs:** update agent prompt to fix tone and tool selection ([d1d6d13](https://github.com/ffMathy/hey-jarvis/commit/d1d6d13c8a874c4091ba63c01ffd58ebdead1928))
+* force exit for elevenlabs as well ([4f86835](https://github.com/ffMathy/hey-jarvis/commit/4f868355280b04e8dea6fd3c75e57824ff145543))
+* much better tests ([4f8bb0d](https://github.com/ffMathy/hey-jarvis/commit/4f8bb0dda96ab53fd6f695380ec25d0034f8e318))
+* never skip tests ([4c69eca](https://github.com/ffMathy/hey-jarvis/commit/4c69eca8e6f64c1b40a4a24af54f68dd07a49130))
+* new progress on verticals ([4a5323f](https://github.com/ffMathy/hey-jarvis/commit/4a5323fe875aba3d0bb0cbef495ff926fca495a1))
+* progress on agent prompt tunnel ([77a0f95](https://github.com/ffMathy/hey-jarvis/commit/77a0f9562bf7790b6fa55f743484971cc4f7bf33))
+* remove regular tools from agent ([7d8a39c](https://github.com/ffMathy/hey-jarvis/commit/7d8a39c9334b90f2dbfe030918f15a7a2eff0e54))
+* test suite stability ([7532fd2](https://github.com/ffMathy/hey-jarvis/commit/7532fd286ce1f17cc8df8a9abfd0d364dff559e8))
+* tests can now fully close the loop ([851c598](https://github.com/ffMathy/hey-jarvis/commit/851c5985a908d01a8e9e1f3c06fa65f9476ba7fd))
+* tests now use proper imports ([9f1f909](https://github.com/ffMathy/hey-jarvis/commit/9f1f909c0ab283c1adfb2501d069cd850fb97b9a))
+
+
+### Performance Improvements
+
+* remove delay ([14cd475](https://github.com/ffMathy/hey-jarvis/commit/14cd475306a03c2047272c96c8b28e76c68d4866))
+
 ## [0.4.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.3.0...elevenlabs-v0.4.0) (2025-11-20)
 
 

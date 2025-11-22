@@ -1,5 +1,63 @@
 # Changelog
 
+## [0.8.0](https://github.com/ffMathy/hey-jarvis/compare/root-v0.7.0...root-v0.8.0) (2025-11-22)
+
+
+### Features
+
+* add support for refreshing oauth tokens ([7e692fd](https://github.com/ffMathy/hey-jarvis/commit/7e692fd4b04cb6c0f85cca2d65c7b5a5419b8f1d))
+* allow for wifi flashing ([1a2507b](https://github.com/ffMathy/hey-jarvis/commit/1a2507b93ac31473419588f644fc115e72f7e185))
+* **elevenlabs:** add initialize target to install Playwright and dependencies ([9af9ff6](https://github.com/ffMathy/hey-jarvis/commit/9af9ff63fc4a7f65fe3520651820648553c6c525))
+* improved token generation ([6234c52](https://github.com/ffMathy/hey-jarvis/commit/6234c5221d46f168cea005246a5b0ff2c974d15a))
+* lots of new verticals and improvements ([dd5c04e](https://github.com/ffMathy/hey-jarvis/commit/dd5c04e67b88cd73a53c14510b122bf1dae5f195))
+
+
+### Bug Fixes
+
+* added missing environment variable references ([6b6cced](https://github.com/ffMathy/hey-jarvis/commit/6b6ccedf07c376799cb2d6adeac11531d5b0cc5b))
+* better API key ([d5d8b07](https://github.com/ffMathy/hey-jarvis/commit/d5d8b07198f0f42bab1cad561fac01596d0fe6b6))
+* better jwt integration ([d415819](https://github.com/ffMathy/hey-jarvis/commit/d415819c8fe7d7ccf1b1c6ad422ffb8002ca52fd))
+* better logging ([7e898c8](https://github.com/ffMathy/hey-jarvis/commit/7e898c86d6f735a130f7ade9f995a17f42a61a21))
+* better stability for some projects ([33f8cf2](https://github.com/ffMathy/hey-jarvis/commit/33f8cf29daea5354090264d9b04974eafb3233be))
+* better targets ([45f9994](https://github.com/ffMathy/hey-jarvis/commit/45f999493d71a372423b9556e2aa2d31d6850b5a))
+* better tests ([52407ff](https://github.com/ffMathy/hey-jarvis/commit/52407ffbdb8d711610ae907602c67fd835134938))
+* broken import in retry-with-backoff ([c919099](https://github.com/ffMathy/hey-jarvis/commit/c9190995feaf6fc5f515ff043d2a8e280f502f9d))
+* **ci:** pass test credentials into devcontainer environment ([279750f](https://github.com/ffMathy/hey-jarvis/commit/279750f9c6e71a6780cb12f51f90f8cdfed1bdf5))
+* **elevenlabs:** add support for test agent configuration and deployment ([30c4995](https://github.com/ffMathy/hey-jarvis/commit/30c4995acaf07c29a2e1bac2d86323ae14d04fc8))
+* **elevenlabs:** clarify direct answer requirement for simple queries ([3b4b258](https://github.com/ffMathy/hey-jarvis/commit/3b4b25887302348e8285ea0c496f8043e82694c8))
+* **elevenlabs:** enhance condescension requirement and accept home assistant for weather ([c8598e4](https://github.com/ffMathy/hey-jarvis/commit/c8598e489805b386832a5db387fa28f332b73035))
+* **elevenlabs:** remove rambling from time responses ([5054104](https://github.com/ffMathy/hey-jarvis/commit/50541047b1ba2f74a42c37ed31baf576fd50278c))
+* **elevenlabs:** resolve inconsistencies in agent prompt guidance ([8b3da31](https://github.com/ffMathy/hey-jarvis/commit/8b3da319d821bd4d8b5967c8c6ac5185fc1434a5))
+* **elevenlabs:** revert CI skip logic and document never skip tests policy ([94e4c1e](https://github.com/ffMathy/hey-jarvis/commit/94e4c1ee616edde48b7ed5a1e8e0f074dfa5998d))
+* **elevenlabs:** run tests sequentially to avoid ElevenLabs capacity limits ([94f1fc5](https://github.com/ffMathy/hey-jarvis/commit/94f1fc5a4f768ac3e48ce216e503b4111b41d91c))
+* **elevenlabs:** skip tests gracefully in CI when credentials missing ([1280068](https://github.com/ffMathy/hey-jarvis/commit/1280068eeadff9a3e4de625b05d83d5c4631afe5))
+* **elevenlabs:** strengthen personality requirement for all responses ([77558cd](https://github.com/ffMathy/hey-jarvis/commit/77558cd729c6b8fb93e8ef95105aef2107263e77))
+* **elevenlabs:** update agent prompt to fix tone and tool selection ([d1d6d13](https://github.com/ffMathy/hey-jarvis/commit/d1d6d13c8a874c4091ba63c01ffd58ebdead1928))
+* force exit for elevenlabs as well ([4f86835](https://github.com/ffMathy/hey-jarvis/commit/4f868355280b04e8dea6fd3c75e57824ff145543))
+* **home-assistant-addon:** add nginx to test container for ingress simulation ([106e1f0](https://github.com/ffMathy/hey-jarvis/commit/106e1f0843f5210fbddc9e816d78abec075c1711))
+* **home-assistant-addon:** allow expected asset 404s in ingress test ([7bfb06e](https://github.com/ffMathy/hey-jarvis/commit/7bfb06eca7ca6d9bbae7cc512d2107dba886722f))
+* **home-assistant-addon:** use centralized port config and add ingress port mapping ([c802938](https://github.com/ffMathy/hey-jarvis/commit/c802938210e5ee22f070658d7fcf21cdbcceb101))
+* improved logging ([dc8e125](https://github.com/ffMathy/hey-jarvis/commit/dc8e125e52906dae45962bad4f6483f397f2bb04))
+* kill ports ([55c415e](https://github.com/ffMathy/hey-jarvis/commit/55c415ee47ba6531eeec748bcbd2083d651afb9d))
+* much better tests ([4f8bb0d](https://github.com/ffMathy/hey-jarvis/commit/4f8bb0dda96ab53fd6f695380ec25d0034f8e318))
+* mute logging ([ac6aaf7](https://github.com/ffMathy/hey-jarvis/commit/ac6aaf72af4928e0650ecad2876988e16bf011c7))
+* never skip tests ([4c69eca](https://github.com/ffMathy/hey-jarvis/commit/4c69eca8e6f64c1b40a4a24af54f68dd07a49130))
+* new progress on verticals ([4a5323f](https://github.com/ffMathy/hey-jarvis/commit/4a5323fe875aba3d0bb0cbef495ff926fca495a1))
+* progress on agent prompt tunnel ([77a0f95](https://github.com/ffMathy/hey-jarvis/commit/77a0f9562bf7790b6fa55f743484971cc4f7bf33))
+* remove host mode ([19b3507](https://github.com/ffMathy/hey-jarvis/commit/19b350796b836740dd4f229f508a6322d913e52a))
+* remove regular tools from agent ([7d8a39c](https://github.com/ffMathy/hey-jarvis/commit/7d8a39c9334b90f2dbfe030918f15a7a2eff0e54))
+* test suite stability ([7532fd2](https://github.com/ffMathy/hey-jarvis/commit/7532fd286ce1f17cc8df8a9abfd0d364dff559e8))
+* tests can now fully close the loop ([851c598](https://github.com/ffMathy/hey-jarvis/commit/851c5985a908d01a8e9e1f3c06fa65f9476ba7fd))
+* tests now use proper imports ([9f1f909](https://github.com/ffMathy/hey-jarvis/commit/9f1f909c0ab283c1adfb2501d069cd850fb97b9a))
+* token issues ([e0fc2a9](https://github.com/ffMathy/hey-jarvis/commit/e0fc2a93126a0574f1d5880cd4d60d7310d7041a))
+* wait both for UI and MCP server ([cdfd5b1](https://github.com/ffMathy/hey-jarvis/commit/cdfd5b16264f435652e34fd6f5f52980666cc285))
+
+
+### Performance Improvements
+
+* introduce force exit to tests ([5caf436](https://github.com/ffMathy/hey-jarvis/commit/5caf436d9a6dc05fc079bae0ae1f030ee5c2f3db))
+* remove delay ([14cd475](https://github.com/ffMathy/hey-jarvis/commit/14cd475306a03c2047272c96c8b28e76c68d4866))
+
 ## [0.7.0](https://github.com/ffMathy/hey-jarvis/compare/root-v0.6.0...root-v0.7.0) (2025-11-20)
 
 
