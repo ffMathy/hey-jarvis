@@ -5,6 +5,20 @@
 
 * **home-assistant-addon:** resolve static asset 404s under ingress proxy ([#191](https://github.com/ffMathy/hey-jarvis/issues/191)) ([d58603f](https://github.com/ffMathy/hey-jarvis/commit/d58603f6ede6e643cbcea5cd39d2abd83f2d78e3))
 
+## [0.10.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v0.9.0...home-assistant-addon-v0.10.0) (2025-11-22)
+
+
+### Features
+
+* proactive memory ([de41c44](https://github.com/ffMathy/hey-jarvis/commit/de41c448a000542120e84d3a32a97970979c8979))
+* proactive memory ([be40bba](https://github.com/ffMathy/hey-jarvis/commit/be40bba6087c7d0cf871950c2229a7d176d6df39))
+
+
+### Bug Fixes
+
+* persistent storage across sessions ([d7d2140](https://github.com/ffMathy/hey-jarvis/commit/d7d2140915b8c3c2c3ded5d0a0226f0b796ea068))
+* persistent storage across sessions ([37ef179](https://github.com/ffMathy/hey-jarvis/commit/37ef17921f1d27197d5ef915c5ecc11d13fc6a8c))
+
 ## [0.9.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v0.8.0...home-assistant-addon-v0.9.0) (2025-11-22)
 
 
