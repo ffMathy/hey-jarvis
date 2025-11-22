@@ -8,10 +8,7 @@
       },
       "type": "n8n-nodes-base.executeWorkflowTrigger",
       "typeVersion": 1.1,
-      "position": [
-        -224,
-        -256
-      ],
+      "position": [-224, -256],
       "id": "0adda349-739c-4f72-867a-ae9e3142ca98",
       "name": "When Executed by Another Workflow"
     },
@@ -21,10 +18,7 @@
       },
       "type": "@n8n/n8n-nodes-langchain.chatTrigger",
       "typeVersion": 1.1,
-      "position": [
-        -224,
-        -16
-      ],
+      "position": [-224, -16],
       "id": "e3ffe398-66df-4415-8d3b-09c131b0acd9",
       "name": "When chat message received",
       "webhookId": "022ee358-c7c9-4b6e-bbf8-3c18d940b564"
@@ -38,10 +32,7 @@
       },
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 1.7,
-      "position": [
-        144,
-        -128
-      ],
+      "position": [144, -128],
       "id": "35f0d090-4ac7-4de6-91b5-5d0dff43018d",
       "name": "AI Agent",
       "alwaysOutputData": false
@@ -62,10 +53,7 @@
       },
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
-      "position": [
-        -48,
-        -256
-      ],
+      "position": [-48, -256],
       "id": "9ce7601a-296b-403a-813e-ea93169d6cbc",
       "name": "Rename field"
     },
@@ -78,10 +66,7 @@
       },
       "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
       "typeVersion": 1,
-      "position": [
-        -208,
-        352
-      ],
+      "position": [-208, 352],
       "id": "f53b576e-5beb-49e3-969a-c582bd5e5b4b",
       "name": "Google Gemini Chat Model",
       "credentials": {
@@ -103,10 +88,7 @@
       },
       "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
       "typeVersion": 1.2,
-      "position": [
-        -16,
-        352
-      ],
+      "position": [-16, 352],
       "id": "0f3acf83-af39-4152-880d-c905d3c39ba8",
       "name": "OpenAI Chat Model",
       "credentials": {
@@ -123,10 +105,7 @@
       },
       "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
       "typeVersion": 1.3,
-      "position": [
-        208,
-        352
-      ],
+      "position": [208, 352],
       "id": "fa5fd9ee-9ab3-4eca-977b-749cc1662e08",
       "name": "Window Buffer Memory",
       "disabled": true
@@ -151,10 +130,7 @@
       },
       "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
       "typeVersion": 1.1,
-      "position": [
-        384,
-        352
-      ],
+      "position": [384, 352],
       "id": "6303415c-2e3f-4428-9e01-1645f8e01f89",
       "name": "Search the web"
     },
@@ -179,10 +155,7 @@
       },
       "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
       "typeVersion": 1.1,
-      "position": [
-        528,
-        240
-      ],
+      "position": [528, 240],
       "id": "b05e031e-9d32-41b8-b3cc-63a25e84fe8a",
       "name": "Get HTML content of URL"
     },
@@ -197,10 +170,7 @@
       },
       "type": "n8n-nodes-base.microsoftOutlook",
       "typeVersion": 2,
-      "position": [
-        528,
-        -240
-      ],
+      "position": [528, -240],
       "id": "611f71c8-dea2-44b9-af3e-56c9bf08884c",
       "name": "Microsoft Outlook",
       "webhookId": "60a324a1-296b-4fd5-9565-dfdb74336e42",
@@ -218,10 +188,7 @@
       },
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3.2,
-      "position": [
-        720,
-        -128
-      ],
+      "position": [720, -128],
       "id": "8cd6c3bb-78f1-469e-8a15-c275b49283d6",
       "name": "Merge"
     },
@@ -236,10 +203,7 @@
       },
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [
-        -224,
-        -464
-      ],
+      "position": [-224, -464],
       "id": "ad764ecb-bed7-4496-ab79-fb3e74ca8d2d",
       "name": "Webhook",
       "webhookId": "59b98dc8-209a-478f-b1f8-7f4c95fdbebb",
@@ -281,10 +245,7 @@
       },
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
-      "position": [
-        -48,
-        -464
-      ],
+      "position": [-48, -464],
       "id": "6567ccee-d874-48d7-bb31-b0abbe2f4760",
       "name": "Transform prompt to chat input"
     }
@@ -416,9 +377,7 @@
       ]
     },
     "OpenAI Chat Model": {
-      "ai_languageModel": [
-        []
-      ]
+      "ai_languageModel": [[]]
     },
     "AI Agent": {
       "main": [

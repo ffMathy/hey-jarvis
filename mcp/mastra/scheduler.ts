@@ -1,9 +1,9 @@
-import { WorkflowScheduler, CronPatterns } from './utils/workflow-scheduler.js';
 import { mastra } from './index.js';
+import { CronPatterns, WorkflowScheduler } from './utils/workflow-scheduler.js';
 
 /**
  * Configure scheduled workflows
- * 
+ *
  * This file defines all workflows that should run on recurring schedules.
  * Add new scheduled workflows here to enable automatic execution.
  */

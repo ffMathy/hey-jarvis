@@ -39,19 +39,17 @@ class ElevenLabsAgentManager {
 
     // Remove webhook URLs from tools as they contain secrets
     if (filtered.conversationConfig?.agent?.prompt?.tools) {
-      filtered.conversationConfig.agent.prompt.tools = filtered.conversationConfig.agent.prompt.tools.map(
-        (tool) => {
-          if (tool.type === 'webhook' && tool.apiSchema?.url) {
-            const toolCopy = { ...tool };
-            // Remove the URL which contains webhook secrets
-            if (toolCopy.apiSchema) {
-              delete toolCopy.apiSchema.url;
-            }
-            return toolCopy;
+      filtered.conversationConfig.agent.prompt.tools = filtered.conversationConfig.agent.prompt.tools.map((tool) => {
+        if (tool.type === 'webhook' && tool.apiSchema?.url) {
+          const toolCopy = { ...tool };
+          // Remove the URL which contains webhook secrets
+          if (toolCopy.apiSchema) {
+            delete toolCopy.apiSchema.url;
           }
-          return tool;
-        },
-      );
+          return toolCopy;
+        }
+        return tool;
+      });
     }
 
     return filtered;
@@ -178,16 +176,16 @@ class ElevenLabsAgentManager {
           config.conversationConfig.conversation.textOnly = true;
           console.log('🔧 Setting textOnly to true for test agent');
         }
-        
+
         // Replace MCP server IDs with local tunnel MCP server for testing
         if (config.conversationConfig?.agent?.prompt) {
           config.conversationConfig.agent.prompt.mcpServerIds = ['OvJ613BzWU43pnzrkOFe'];
           console.log('🔧 Setting mcpServerIds to local tunnel MCP server for test agent');
-          
+
           config.conversationConfig.agent.prompt.tools = [];
           console.log('🔧 Clearing tools array for test agent');
         }
-        
+
         // Suffix agent name with " (test)" to distinguish from production
         if (config.name && !config.name.endsWith(' (test)')) {
           config.name = `${config.name} (test)`;

@@ -8,10 +8,7 @@
       },
       "type": "n8n-nodes-base.executeWorkflowTrigger",
       "typeVersion": 1.1,
-      "position": [
-        -96,
-        80
-      ],
+      "position": [-96, 80],
       "id": "",
       "name": "When Executed by Another Workflow"
     },
@@ -24,10 +21,7 @@
       },
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 1.7,
-      "position": [
-        272,
-        224
-      ],
+      "position": [272, 224],
       "id": "",
       "name": "AI Agent",
       "alwaysOutputData": false
@@ -41,10 +35,7 @@
       },
       "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
       "typeVersion": 1,
-      "position": [
-        0,
-        560
-      ],
+      "position": [0, 560],
       "id": "",
       "name": "Google Gemini Chat Model",
       "credentials": {
@@ -66,10 +57,7 @@
       },
       "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
       "typeVersion": 1.2,
-      "position": [
-        192,
-        560
-      ],
+      "position": [192, 560],
       "id": "",
       "name": "OpenAI Chat Model",
       "credentials": {
@@ -95,10 +83,7 @@
       },
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
-      "position": [
-        80,
-        80
-      ],
+      "position": [80, 80],
       "id": "",
       "name": "Rename field"
     },
@@ -112,10 +97,7 @@
       },
       "type": "n8n-nodes-base.googleTasksTool",
       "typeVersion": 1,
-      "position": [
-        528,
-        592
-      ],
+      "position": [528, 592],
       "id": "",
       "name": "Create task",
       "credentials": {
@@ -133,10 +115,7 @@
       },
       "type": "n8n-nodes-base.googleTasksTool",
       "typeVersion": 1,
-      "position": [
-        624,
-        688
-      ],
+      "position": [624, 688],
       "id": "",
       "name": "Delete task",
       "credentials": {
@@ -155,10 +134,7 @@
       },
       "type": "n8n-nodes-base.googleTasksTool",
       "typeVersion": 1,
-      "position": [
-        704,
-        560
-      ],
+      "position": [704, 560],
       "id": "",
       "name": "Get all tasks",
       "credentials": {
@@ -175,10 +151,7 @@
       },
       "type": "@n8n/n8n-nodes-langchain.memoryZep",
       "typeVersion": 1.3,
-      "position": [
-        336,
-        448
-      ],
+      "position": [336, 448],
       "id": "",
       "name": "Zep",
       "credentials": {
@@ -204,9 +177,7 @@
       ]
     },
     "OpenAI Chat Model": {
-      "ai_languageModel": [
-        []
-      ]
+      "ai_languageModel": [[]]
     },
     "Rename field": {
       "main": [

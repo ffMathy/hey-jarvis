@@ -109,7 +109,7 @@ Be concise but informative.`,
     description: 'Specialized agent for summarizing shopping list changes and providing user feedback',
     tools: undefined,
     workflows: {
-      shoppingListWorkflow
-    }
+      shoppingListWorkflow,
+    },
   });
 }

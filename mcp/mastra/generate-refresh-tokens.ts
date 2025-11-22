@@ -1,17 +1,17 @@
 #!/usr/bin/env bun
 /**
  * OAuth2 Refresh Token Generator
- * 
+ *
  * This script helps you obtain refresh tokens for multiple OAuth2 providers
  * by walking you through the authorization flow in your browser for each provider.
- * 
+ *
  * Tokens are automatically stored in Mastra storage (LibSQL database).
  * Client ID and secret must be set in environment variables.
- * 
+ *
  * Supported Providers:
  * - Google (Calendar, Tasks APIs)
  * - Microsoft (Outlook/Email via Graph API)
- * 
+ *
  * Usage:
  *   bunx nx generate-tokens mcp
  *   # OR directly:
@@ -19,17 +19,14 @@
  */
 
 import * as http from 'http';
-import { URL } from 'url';
 import open from 'open';
-import { getCredentialsStorage } from './storage/index.js';
+import { URL } from 'url';
 import { googleProvider, microsoftProvider, type OAuthProvider, type TokenResponse } from './credentials/index.js';
+import { getCredentialsStorage } from './storage/index.js';
 
 const PORT = 3000;
 
-const PROVIDERS: OAuthProvider[] = [
-  googleProvider,
-  microsoftProvider,
-];
+const PROVIDERS: OAuthProvider[] = [googleProvider, microsoftProvider];
 
 /**
  * Validates that required environment variables are set for a provider
@@ -62,7 +59,7 @@ function startCallbackServer(provider: OAuthProvider, client: any): Promise<Toke
         }
 
         const url = new URL(req.url, `http://localhost:${PORT}`);
-        
+
         if (url.pathname === '/oauth2callback') {
           const code = url.searchParams.get('code');
           const error = url.searchParams.get('error');
@@ -138,17 +135,22 @@ function startCallbackServer(provider: OAuthProvider, client: any): Promise<Toke
     });
 
     // Timeout after 5 minutes
-    setTimeout(() => {
-      server.close();
-      reject(new Error('Authorization timeout - no response received after 5 minutes'));
-    }, 5 * 60 * 1000);
+    setTimeout(
+      () => {
+        server.close();
+        reject(new Error('Authorization timeout - no response received after 5 minutes'));
+      },
+      5 * 60 * 1000,
+    );
   });
 }
 
 /**
  * Process a single OAuth provider
  */
-async function processProvider(provider: OAuthProvider): Promise<{ provider: string; credentials?: { clientId: string; clientSecret: string; refreshToken: string } }> {
+async function processProvider(
+  provider: OAuthProvider,
+): Promise<{ provider: string; credentials?: { clientId: string; clientSecret: string; refreshToken: string } }> {
   console.log(`\n${'='.repeat(70)}`);
   console.log(`🔐 ${provider.name} OAuth2 Setup`);
   console.log('='.repeat(70));
@@ -241,7 +243,6 @@ async function processProvider(provider: OAuthProvider): Promise<{ provider: str
         refreshToken: tokens.refresh_token,
       },
     };
-
   } catch (error) {
     console.error(`❌ Error during ${provider.name} authorization:`);
     console.error(error instanceof Error ? error.message : String(error));
@@ -255,7 +256,7 @@ async function processProvider(provider: OAuthProvider): Promise<{ provider: str
 async function main() {
   console.log('🔐 OAuth2 Refresh Token Generator');
   console.log('   Generate refresh tokens for all configured OAuth providers\n');
-  console.log(`📋 Configured providers: ${PROVIDERS.map(p => p.name).join(', ')}\n`);
+  console.log(`📋 Configured providers: ${PROVIDERS.map((p) => p.name).join(', ')}\n`);
   console.log('💡 Note: Refresh tokens remain valid for 6+ months with regular use\n');
   console.log('💾 Tokens will be stored in Mastra storage (mastra.sql.db)\n');
 
@@ -272,20 +273,20 @@ async function main() {
   console.log('\n' + '='.repeat(70));
   console.log('🎉 Token generation complete!');
   console.log('='.repeat(70));
-  
+
   // Summary
   console.log('\n📊 Summary:');
-  results.forEach(result => {
+  results.forEach((result) => {
     const icon = result.success ? '✅' : '⏭️';
     const status = result.success ? 'Success' : 'Skipped';
     console.log(`   ${icon} ${result.provider}: ${status}`);
   });
-  
+
   console.log('\n📌 Remember to:');
   console.log('   - Tokens are stored in Mastra storage (mastra.sql.db)');
   console.log('   - Set client ID and secret in environment variables');
   console.log('   - Restart the MCP server to use the new tokens\n');
-  
+
   console.log('💡 Tip: Your calendar/todo-list tools will automatically use stored credentials');
   console.log('   if environment variables are not set.\n');
 }

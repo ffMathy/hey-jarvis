@@ -1,4 +1,4 @@
-import { ConfidentialClientApplication, type AuthorizationCodeRequest } from '@azure/msal-node';
+import { type AuthorizationCodeRequest, ConfidentialClientApplication } from '@azure/msal-node';
 import type { OAuthProvider, TokenResponse } from './types.js';
 
 const REDIRECT_URI = 'http://localhost:3000/oauth2callback';
@@ -58,18 +58,18 @@ export const microsoftProvider: OAuthProvider = {
       redirectUri: REDIRECT_URI,
     };
     const response = await client.acquireTokenByCode(tokenRequest);
-    
+
     // MSAL v3+ stores refresh tokens in an internal cache
     // We need to serialize the cache to extract the refresh token
     const account = response.account;
     if (!account) {
       throw new Error('No account found in token response');
     }
-    
+
     // Get the token cache and serialize it
     const tokenCache = client.getTokenCache();
     const cacheState = await tokenCache.serialize();
-    
+
     // Parse the serialized cache to extract refresh token
     let refreshToken: string | undefined;
     if (cacheState) {
@@ -77,13 +77,11 @@ export const microsoftProvider: OAuthProvider = {
         const cache = JSON.parse(cacheState);
         // Refresh tokens are stored in the RefreshToken section
         const refreshTokens = cache.RefreshToken || {};
-        
+
         // Find the refresh token for this account
         // Key format: "<homeAccountId>-<environment>-refreshtoken-<clientId>--"
-        const refreshTokenKey = Object.keys(refreshTokens).find((key) =>
-          key.includes(account.homeAccountId)
-        );
-        
+        const refreshTokenKey = Object.keys(refreshTokens).find((key) => key.includes(account.homeAccountId));
+
         if (refreshTokenKey) {
           refreshToken = refreshTokens[refreshTokenKey].secret;
         }
@@ -91,11 +89,13 @@ export const microsoftProvider: OAuthProvider = {
         console.error('Failed to parse MSAL token cache:', err);
       }
     }
-    
+
     if (!refreshToken) {
-      throw new Error('Failed to extract refresh token from MSAL cache. The token may not have been stored with offline_access scope.');
+      throw new Error(
+        'Failed to extract refresh token from MSAL cache. The token may not have been stored with offline_access scope.',
+      );
     }
-    
+
     return {
       access_token: response.accessToken,
       refresh_token: refreshToken,

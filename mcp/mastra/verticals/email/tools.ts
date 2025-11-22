@@ -1,7 +1,7 @@
-import { z } from 'zod';
-import { createTool } from '../../utils/tool-factory.js';
 import { ConfidentialClientApplication } from '@azure/msal-node';
+import { z } from 'zod';
 import { getCredentialsStorage } from '../../storage/index.js';
+import { createTool } from '../../utils/tool-factory.js';
 
 // Interface for Microsoft Graph API responses
 interface GraphEmailMessage {
@@ -36,20 +36,20 @@ interface GraphEmailListResponse {
 
 /**
  * Creates and configures a Microsoft OAuth2 client for Graph API access.
- * 
+ *
  * The client automatically refreshes access tokens using the stored refresh token.
  * Refresh tokens are long-lived and only need to be obtained once using the
  * `nx generate-tokens mcp` command.
- * 
+ *
  * Credentials are loaded in this order:
  * 1. Environment variables (HEY_JARVIS_MICROSOFT_*)
  * 2. Mastra storage (oauth_credentials table)
- * 
+ *
  * @throws {Error} If credentials are not found in either location
  */
 const getMicrosoftAuth = async (): Promise<string> => {
-  let clientId = process.env.HEY_JARVIS_MICROSOFT_CLIENT_ID;
-  let clientSecret = process.env.HEY_JARVIS_MICROSOFT_CLIENT_SECRET;
+  const clientId = process.env.HEY_JARVIS_MICROSOFT_CLIENT_ID;
+  const clientSecret = process.env.HEY_JARVIS_MICROSOFT_CLIENT_SECRET;
   let refreshToken = process.env.HEY_JARVIS_MICROSOFT_REFRESH_TOKEN;
 
   // Fallback to Mastra storage for refresh token only
@@ -65,14 +65,14 @@ const getMicrosoftAuth = async (): Promise<string> => {
   if (!clientId || !clientSecret || !refreshToken) {
     throw new Error(
       'Missing required Microsoft OAuth2 credentials.\n' +
-      '\n' +
-      'Option 1: Set environment variables:\n' +
-      '  - HEY_JARVIS_MICROSOFT_CLIENT_ID\n' +
-      '  - HEY_JARVIS_MICROSOFT_CLIENT_SECRET\n' +
-      '  - HEY_JARVIS_MICROSOFT_REFRESH_TOKEN\n' +
-      '\n' +
-      'Option 2: Store refresh token in Mastra (client ID/secret still required in env):\n' +
-      '  Run `nx generate-tokens mcp`',
+        '\n' +
+        'Option 1: Set environment variables:\n' +
+        '  - HEY_JARVIS_MICROSOFT_CLIENT_ID\n' +
+        '  - HEY_JARVIS_MICROSOFT_CLIENT_SECRET\n' +
+        '  - HEY_JARVIS_MICROSOFT_REFRESH_TOKEN\n' +
+        '\n' +
+        'Option 2: Store refresh token in Mastra (client ID/secret still required in env):\n' +
+        '  Run `nx generate-tokens mcp`',
     );
   }
 
@@ -92,7 +92,7 @@ const getMicrosoftAuth = async (): Promise<string> => {
 
   try {
     const response = await msalClient.acquireTokenByRefreshToken(tokenRequest);
-    
+
     // Note: MSAL v3+ automatically manages refresh token rotation internally.
     // The refresh token is stored in MSAL's token cache and is not exposed in the response.
     // Token renewal happens automatically on subsequent acquireTokenByRefreshToken calls.
@@ -101,7 +101,7 @@ const getMicrosoftAuth = async (): Promise<string> => {
   } catch (error) {
     throw new Error(
       `Failed to acquire access token from Microsoft: ${error instanceof Error ? error.message : String(error)}\n` +
-      'Your refresh token may have expired. Run `nx generate-tokens mcp` to get a new one.',
+        'Your refresh token may have expired. Run `nx generate-tokens mcp` to get a new one.',
     );
   }
 };
@@ -119,11 +119,7 @@ export const findEmails = createTool({
       .string()
       .optional()
       .describe('Search query to find specific emails (searches subject and body content)'),
-    folder: z
-      .string()
-      .optional()
-      .default('inbox')
-      .describe('Email folder to search in (inbox, drafts, sent, etc.)'),
+    folder: z.string().optional().default('inbox').describe('Email folder to search in (inbox, drafts, sent, etc.)'),
     limit: z.number().optional().default(10).describe('Maximum number of emails to return (default: 10)'),
     isRead: z.boolean().optional().describe('Filter by read status'),
     hasAttachment: z.boolean().optional().describe('Filter emails with attachments'),
@@ -208,9 +204,7 @@ export const draftEmail = createTool({
   inputSchema: z.object({
     subject: z.string().describe('Email subject'),
     bodyContent: z.string().describe('Email body content in HTML format'),
-    toRecipients: z
-      .array(z.string())
-      .describe('Array of recipient email addresses (e.g., ["user@example.com"])'),
+    toRecipients: z.array(z.string()).describe('Array of recipient email addresses (e.g., ["user@example.com"])'),
     ccRecipients: z.array(z.string()).optional().describe('Array of CC recipient email addresses'),
     bccRecipients: z.array(z.string()).optional().describe('Array of BCC recipient email addresses'),
   }),
@@ -438,9 +432,7 @@ export const sendEmail = createTool({
   inputSchema: z.object({
     subject: z.string().describe('Email subject'),
     bodyContent: z.string().describe('Email body content in HTML format'),
-    toRecipients: z
-      .array(z.string())
-      .describe('Array of recipient email addresses (e.g., ["user@example.com"])'),
+    toRecipients: z.array(z.string()).describe('Array of recipient email addresses (e.g., ["user@example.com"])'),
     ccRecipients: z.array(z.string()).optional().describe('Array of CC recipient email addresses'),
     bccRecipients: z.array(z.string()).optional().describe('Array of BCC recipient email addresses'),
   }),

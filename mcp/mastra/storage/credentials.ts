@@ -1,11 +1,11 @@
 /**
  * OAuth Credentials Storage
- * 
+ *
  * Stores only OAuth2 refresh tokens in persistent storage.
  * Client IDs and secrets are always read from environment variables for security.
  */
 
-import { createClient, type Client } from '@libsql/client';
+import { type Client, createClient } from '@libsql/client';
 
 export class CredentialsStorage {
   private client: Client;
@@ -89,10 +89,7 @@ export class CredentialsStorage {
    * Update refresh token when renewed by OAuth provider
    * This is called automatically when the OAuth client receives a new refresh token
    */
-  async renewRefreshToken(
-    provider: string,
-    newRefreshToken: string
-  ): Promise<void> {
+  async renewRefreshToken(provider: string, newRefreshToken: string): Promise<void> {
     await this.initialize();
 
     // Use UPSERT pattern - same as setRefreshToken but with explicit renewal semantics
@@ -113,8 +110,8 @@ export class CredentialsStorage {
     await this.initialize();
 
     const result = await this.client.execute('SELECT provider FROM oauth_credentials');
-    
-    return result.rows.map(row => row.provider as string);
+
+    return result.rows.map((row) => row.provider as string);
   }
 
   /**

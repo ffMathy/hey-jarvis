@@ -1,4 +1,4 @@
-import { spawn, ChildProcess } from 'child_process';
+import { type ChildProcess, spawn } from 'child_process';
 import { promisify } from 'util';
 import { getMastraUIUrl, getMCPServerUrl } from './ports';
 

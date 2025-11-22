@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { createStep, createWorkflow } from '../../utils/workflow-factory.js';
 import { createMemory } from '../../memory/index.js';
+import { createStep, createWorkflow } from '../../utils/workflow-factory.js';
 
 // State change notification workflow
 // Receives state changes, saves to memory, and delegates to State Change Reactor agent for analysis

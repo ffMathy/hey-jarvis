@@ -1,6 +1,6 @@
-import { test, expect } from '@playwright/test';
-import { generateTestToken, generateExpiredToken, generateTokenWithoutExpiry } from './helpers/jwt-helper';
-import { startContainer, ContainerStartupResult } from './helpers/container-startup';
+import { expect, test } from '@playwright/test';
+import { type ContainerStartupResult, startContainer } from './helpers/container-startup';
+import { generateExpiredToken, generateTestToken, generateTokenWithoutExpiry } from './helpers/jwt-helper';
 import { getMastraUIUrl, getMCPServerUrl } from './helpers/ports';
 
 test.describe('JWT Authentication Tests', () => {

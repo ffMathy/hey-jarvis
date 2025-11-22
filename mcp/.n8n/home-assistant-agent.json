@@ -8,10 +8,7 @@
       },
       "type": "n8n-nodes-base.executeWorkflowTrigger",
       "typeVersion": 1.1,
-      "position": [
-        -752,
-        -848
-      ],
+      "position": [-752, -848],
       "id": "",
       "name": "When Executed by Another Workflow"
     },
@@ -21,10 +18,7 @@
       },
       "type": "@n8n/n8n-nodes-langchain.chatTrigger",
       "typeVersion": 1.1,
-      "position": [
-        -752,
-        -640
-      ],
+      "position": [-752, -640],
       "id": "",
       "name": "When chat message received",
       "webhookId": ""
@@ -38,10 +32,7 @@
       },
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 1.7,
-      "position": [
-        416,
-        -432
-      ],
+      "position": [416, -432],
       "id": "",
       "name": "AI Agent",
       "alwaysOutputData": false
@@ -55,10 +46,7 @@
       },
       "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
       "typeVersion": 1,
-      "position": [
-        240,
-        -240
-      ],
+      "position": [240, -240],
       "id": "",
       "name": "Google Gemini Chat Model",
       "credentials": {
@@ -79,10 +67,7 @@
       },
       "type": "@n8n/n8n-nodes-langchain.toolCode",
       "typeVersion": 1.1,
-      "position": [
-        640,
-        -208
-      ],
+      "position": [640, -208],
       "id": "",
       "name": "Call service",
       "onError": "continueErrorOutput"
@@ -103,10 +88,7 @@
       },
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
-      "position": [
-        -512,
-        -768
-      ],
+      "position": [-512, -768],
       "id": "",
       "name": "Rename field"
     },
@@ -124,10 +106,7 @@
       },
       "type": "n8n-nodes-base.homeAssistantTool",
       "typeVersion": 1,
-      "position": [
-        512,
-        -160
-      ],
+      "position": [512, -160],
       "id": "",
       "name": "List logbook entries for entity",
       "credentials": {
@@ -146,10 +125,7 @@
       },
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3.1,
-      "position": [
-        480,
-        -688
-      ],
+      "position": [480, -688],
       "id": "",
       "name": "Merge"
     },
@@ -160,10 +136,7 @@
       },
       "type": "n8n-nodes-base.homeAssistant",
       "typeVersion": 1,
-      "position": [
-        -256,
-        -416
-      ],
+      "position": [-256, -416],
       "id": "",
       "name": "Get all devices",
       "credentials": {
@@ -180,10 +153,7 @@
       },
       "type": "n8n-nodes-base.homeAssistant",
       "typeVersion": 1,
-      "position": [
-        -256,
-        -640
-      ],
+      "position": [-256, -640],
       "id": "",
       "name": "Get all services",
       "credentials": {
@@ -200,10 +170,7 @@
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        -64,
-        -416
-      ],
+      "position": [-64, -416],
       "id": "",
       "name": "Exclude AI prohibited devices"
     },
@@ -214,10 +181,7 @@
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        -64,
-        -640
-      ],
+      "position": [-64, -640],
       "id": "",
       "name": "Rename fields"
     },
@@ -234,10 +198,7 @@
       },
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [
-        -480,
-        -176
-      ],
+      "position": [-480, -176],
       "id": "",
       "name": "Trigger subconsciousness"
     },
@@ -248,10 +209,7 @@
       },
       "type": "n8n-nodes-base.homeAssistant",
       "typeVersion": 1,
-      "position": [
-        -272,
-        -176
-      ],
+      "position": [-272, -176],
       "id": "",
       "name": "Get changed devices since last time",
       "credentials": {
@@ -315,10 +273,7 @@
       },
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
-      "position": [
-        -64,
-        64
-      ],
+      "position": [-64, 64],
       "id": "",
       "name": "Execute Workflow"
     },
@@ -328,10 +283,7 @@
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        -480,
-        64
-      ],
+      "position": [-480, 64],
       "id": "",
       "name": "Code"
     },
@@ -342,10 +294,7 @@
       },
       "type": "n8n-nodes-base.splitOut",
       "typeVersion": 1,
-      "position": [
-        -64,
-        -176
-      ],
+      "position": [-64, -176],
       "id": "",
       "name": "Split Out"
     },
@@ -356,10 +305,7 @@
       },
       "type": "n8n-nodes-base.aggregate",
       "typeVersion": 1,
-      "position": [
-        -272,
-        64
-      ],
+      "position": [-272, 64],
       "id": "",
       "name": "Combine devices"
     },
@@ -371,10 +317,7 @@
       },
       "type": "n8n-nodes-base.aggregate",
       "typeVersion": 1,
-      "position": [
-        128,
-        -640
-      ],
+      "position": [128, -640],
       "id": "",
       "name": "Combine services"
     },
@@ -384,10 +327,7 @@
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        -512,
-        -544
-      ],
+      "position": [-512, -544],
       "id": "",
       "name": "Define excluded domains"
     }

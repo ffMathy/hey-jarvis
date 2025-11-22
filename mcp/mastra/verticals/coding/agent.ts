@@ -101,7 +101,7 @@ Gather complete, unambiguous requirements through interactive questioning.
 - Provides structured requirements output
 - Lists all questions asked during the session
 - Ensures completeness before implementation begins`,
-    tools: undefined
+    tools: undefined,
   });
 }
 
@@ -179,7 +179,7 @@ Manage GitHub repositories with two distinct modes: read operations via tools an
 - Applies default owner "ffMathy" and repo "hey-jarvis" when not specified`,
     tools: codingTools,
     workflows: {
-      implementFeatureWorkflow: implementFeatureWorkflow
-    }
+      implementFeatureWorkflow: implementFeatureWorkflow,
+    },
   });
 }

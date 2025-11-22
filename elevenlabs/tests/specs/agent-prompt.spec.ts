@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, it } from '@jest/globals';
-import { TestConversation } from '../utils/test-conversation.js';
 import { startMcpServerForTestingPurposes, stopMcpServer } from '../../../mcp/tests/utils/mcp-server-manager.js';
+import { TestConversation } from '../utils/test-conversation.js';
 import { ensureTunnelRunning, stopTunnel } from '../utils/tunnel-manager.js';
 
 /**
@@ -68,10 +68,10 @@ describe('Agent Prompt Specifications', () => {
           // First verify a weather tool was actually called by checking messages
           const messages = conversation.getMessages();
           const toolCalls = messages.filter(
-            (msg) => 
-              msg.type === 'mcp_tool_call' && 
+            (msg) =>
+              msg.type === 'mcp_tool_call' &&
               (msg.mcp_tool_call.tool_name.toLowerCase().includes('weather') ||
-               msg.mcp_tool_call.tool_name.toLowerCase().includes('home_assistant')),
+                msg.mcp_tool_call.tool_name.toLowerCase().includes('home_assistant')),
           );
 
           if (toolCalls.length === 0) {

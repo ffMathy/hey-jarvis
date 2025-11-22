@@ -4,10 +4,10 @@ import { synapseTools } from './tools.js';
 
 /**
  * State Change Reactor Agent
- * 
+ *
  * This agent acts as a coordinator that reacts to state changes from various verticals
  * and delegates analysis/action to appropriate specialized agents.
- * 
+ *
  * Currently delegates to:
  * - Notification Agent: For analyzing state changes and sending user notifications
  */
@@ -37,6 +37,6 @@ Think of yourself as a smart router that ensures state changes reach the right a
     tools: synapseTools,
     agents: {
       notificationAgent: await getNotificationAgent(),
-    }
+    },
   });
 }

@@ -1,5 +1,5 @@
 import { createTool as mastraCreateTool } from '@mastra/core/tools';
-import { z } from 'zod';
+import type { z } from 'zod';
 
 /**
  * Creates a new Mastra Tool with sensible defaults for the Hey Jarvis system.
