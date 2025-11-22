@@ -51,10 +51,12 @@ const shoppingListResultSchema = z.object({
 
 // Define workflow state schema
 // State only contains values that span multiple steps (>1 step apart)
-const workflowStateSchema = z.object({
-  prompt: z.string(), // Used by extraction (step 2) and summary (step 5) - spans 3 steps
-  cartBefore: z.any(), // Used by summary (step 5) - spans 4 steps
-}).partial();
+const workflowStateSchema = z
+  .object({
+    prompt: z.string(), // Used by extraction (step 2) and summary (step 5) - spans 3 steps
+    cartBefore: z.any(), // Used by summary (step 5) - spans 4 steps
+  })
+  .partial();
 
 // Step 1: Store prompt and prepare for cart tool
 const storePromptAndPrepare = createStep({

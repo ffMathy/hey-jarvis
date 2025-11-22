@@ -8,8 +8,12 @@ export const registerStateChange = createTool({
   description:
     'Registers a state change event and triggers the state change notification workflow. Use this when significant state changes occur that might warrant user notification.',
   inputSchema: z.object({
-    source: z.string().describe('The agent/vertical that detected the state change (e.g., "weather", "shopping", "calendar")'),
-    stateType: z.string().describe('Type of state change (e.g., "weather_update", "task_completed", "significant_temperature_change")'),
+    source: z
+      .string()
+      .describe('The agent/vertical that detected the state change (e.g., "weather", "shopping", "calendar")'),
+    stateType: z
+      .string()
+      .describe('Type of state change (e.g., "weather_update", "task_completed", "significant_temperature_change")'),
     stateData: z.record(z.unknown()).describe('State change data payload containing relevant information'),
   }),
   outputSchema: z.object({

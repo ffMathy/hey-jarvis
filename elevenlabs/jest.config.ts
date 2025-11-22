@@ -7,21 +7,24 @@ export default {
   forceExit: true, // Force Jest to exit after all tests complete
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx'],
   transform: {
-    '^.+\\.tsx?$': ['@swc/jest', {
-      jsc: {
-        parser: {
-          syntax: 'typescript',
-          decorators: true,
+    '^.+\\.tsx?$': [
+      '@swc/jest',
+      {
+        jsc: {
+          parser: {
+            syntax: 'typescript',
+            decorators: true,
+          },
+          target: 'es2022',
+          transform: {
+            decoratorMetadata: true,
+          },
         },
-        target: 'es2022',
-        transform: {
-          decoratorMetadata: true,
+        module: {
+          type: 'es6',
         },
       },
-      module: {
-        type: 'es6',
-      },
-    }],
+    ],
   },
   extensionsToTreatAsEsm: ['.ts'],
   moduleNameMapper: {

@@ -1,4 +1,4 @@
-import { Agent, AgentConfig } from '@mastra/core/agent';
+import { Agent, type AgentConfig } from '@mastra/core/agent';
 import type { OutputProcessor } from '@mastra/core/processors';
 import { createMemory } from '../memory/index.js';
 import { google } from './google-provider.js';

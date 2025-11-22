@@ -7,12 +7,12 @@ import { CredentialsStorage } from './credentials.js';
 // Home Assistant addon sets this to /data for automatic backups
 function getDatabaseDirectory(): string {
   const envPath = process.env.HEY_JARVIS_STORAGE_PATH;
-  
+
   if (envPath) {
     console.log('📦 Using configured storage directory (from HEY_JARVIS_STORAGE_PATH):', envPath);
     return envPath;
   }
-  
+
   // Development environment - use local directory
   const localDir = path.join('/tmp', 'mcp');
   console.log('📦 Using local development directory for storage:', localDir);

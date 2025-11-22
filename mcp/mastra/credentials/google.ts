@@ -1,5 +1,5 @@
-import { google } from 'googleapis';
 import type { OAuth2Client } from 'google-auth-library';
+import { google } from 'googleapis';
 import type { OAuthProvider, TokenResponse } from './types.js';
 
 const REDIRECT_URI = 'http://localhost:3000/oauth2callback';
@@ -9,10 +9,7 @@ export const googleProvider: OAuthProvider = {
   clientIdEnvVar: 'HEY_JARVIS_GOOGLE_CLIENT_ID',
   clientSecretEnvVar: 'HEY_JARVIS_GOOGLE_CLIENT_SECRET',
   refreshTokenEnvVar: 'HEY_JARVIS_GOOGLE_REFRESH_TOKEN',
-  scopes: [
-    'https://www.googleapis.com/auth/calendar',
-    'https://www.googleapis.com/auth/tasks',
-  ],
+  scopes: ['https://www.googleapis.com/auth/calendar', 'https://www.googleapis.com/auth/tasks'],
   setupInstructions: [
     'Create a Google Cloud Project at https://console.cloud.google.com',
     'Enable Google Calendar API and Google Tasks API',

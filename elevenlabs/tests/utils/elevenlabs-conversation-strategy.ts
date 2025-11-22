@@ -17,8 +17,8 @@ interface ConversationInitiationClientDataEvent {
   conversation_config_override?: {};
   dynamic_variables?: {};
   conversation?: {
-    text_only?: boolean
-  }
+    text_only?: boolean;
+  };
 }
 
 interface PongEvent {
@@ -128,8 +128,8 @@ export class ElevenLabsConversationStrategy implements ConversationStrategy {
       conversation_config_override: {},
       dynamic_variables: {},
       conversation: {
-        text_only: true
-      }
+        text_only: true,
+      },
     };
 
     this.ws.send(JSON.stringify(initEvent));

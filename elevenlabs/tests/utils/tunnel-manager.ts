@@ -1,6 +1,6 @@
-import { spawn, ChildProcess, execSync } from 'child_process';
-import { retryWithBackoff } from '../../../mcp/tests/utils/retry-with-backoff.js';
+import { type ChildProcess, execSync, spawn } from 'child_process';
 import { createAuthenticatedMcpClient, isMcpServerRunning } from '../../../mcp/tests/utils/mcp-server-manager.js';
+import { retryWithBackoff } from '../../../mcp/tests/utils/retry-with-backoff.js';
 
 let tunnelProcess: ChildProcess | null = null;
 
@@ -8,12 +8,12 @@ let tunnelProcess: ChildProcess | null = null;
  * Kills all existing cloudflared processes
  */
 function killExistingTunnels(): void {
-    try {
-        execSync('pkill -f cloudflared || true', { stdio: 'ignore' });
-        console.log('🧹 Killed any existing cloudflared processes');
-    } catch (error) {
-        // Ignore errors - process might not exist
-    }
+  try {
+    execSync('pkill -f cloudflared || true', { stdio: 'ignore' });
+    console.log('🧹 Killed any existing cloudflared processes');
+  } catch (error) {
+    // Ignore errors - process might not exist
+  }
 }
 
 /**
@@ -21,9 +21,9 @@ function killExistingTunnels(): void {
  * A 401 response means the tunnel is working but requires JWT authentication
  */
 async function isTunnelRunning(): Promise<boolean> {
-    return await isMcpServerRunning({
-        url: `${process.env.HEY_JARVIS_CLOUDFLARED_TUNNEL_URL!}/api/mcp`
-    });
+  return await isMcpServerRunning({
+    url: `${process.env.HEY_JARVIS_CLOUDFLARED_TUNNEL_URL!}/api/mcp`,
+  });
 }
 
 /**
@@ -33,61 +33,63 @@ async function isTunnelRunning(): Promise<boolean> {
  * Environment variables are expected to be already available via op run.
  */
 export async function ensureTunnelRunning(): Promise<void> {
-    // Kill any existing tunnels first to ensure clean state
-    killExistingTunnels();
-    await new Promise(resolve => setTimeout(resolve, 500)); // Wait for processes to die
-    
-    // Check if tunnel is already running
-    if (await isTunnelRunning()) {
-        console.log('✅ Cloudflared tunnel is already running');
-        return;
-    }
+  // Kill any existing tunnels first to ensure clean state
+  killExistingTunnels();
+  await new Promise((resolve) => setTimeout(resolve, 500)); // Wait for processes to die
 
-    console.log('🌐 Starting cloudflared tunnel...');
-    console.log(`🌐 Tunnel URL: ${process.env.HEY_JARVIS_CLOUDFLARED_TUNNEL_URL}`);
+  // Check if tunnel is already running
+  if (await isTunnelRunning()) {
+    console.log('✅ Cloudflared tunnel is already running');
+    return;
+  }
 
-    // Get the cloudflared token from environment (provided by op run)
-    const token = process.env.HEY_JARVIS_CLOUDFLARED_TUNNEL_TOKEN;
-    if (!token) {
-        throw new Error(
-            'HEY_JARVIS_CLOUDFLARED_TUNNEL_TOKEN environment variable is not set. ' +
-            'Make sure tests are run via: nx test elevenlabs'
-        );
-    }
+  console.log('🌐 Starting cloudflared tunnel...');
+  console.log(`🌐 Tunnel URL: ${process.env.HEY_JARVIS_CLOUDFLARED_TUNNEL_URL}`);
 
-    console.log(`🌐 Token length: ${token.length} characters`);
-
-    // Start cloudflared tunnel in background
-    tunnelProcess = spawn('cloudflared', ['tunnel', 'run', '--token', token], {
-        detached: false,
-        stdio: ['ignore', 'inherit', 'inherit'],
-    });
-
-    // Verify tunnel is running with retry logic (up to 30 seconds)
-    await retryWithBackoff(
-        async () => {
-            const isRunning = await isTunnelRunning();
-            if (!isRunning) {
-                throw new Error('Tunnel not ready yet');
-            }
-        },
-        {
-            maxRetries: 30,
-            initialDelay: 1000,
-            backoffMultiplier: 1, // Linear retry (1 second between attempts)
-            onRetry: (error, attempt, delay) => {
-                console.log(`🔍 Checking tunnel status (attempt ${attempt}/30) at ${process.env.HEY_JARVIS_CLOUDFLARED_TUNNEL_URL}/api/mcp...`);
-            },
-        }
+  // Get the cloudflared token from environment (provided by op run)
+  const token = process.env.HEY_JARVIS_CLOUDFLARED_TUNNEL_TOKEN;
+  if (!token) {
+    throw new Error(
+      'HEY_JARVIS_CLOUDFLARED_TUNNEL_TOKEN environment variable is not set. ' +
+        'Make sure tests are run via: nx test elevenlabs',
     );
+  }
 
-    console.log('✅ Cloudflared tunnel started successfully');
+  console.log(`🌐 Token length: ${token.length} characters`);
+
+  // Start cloudflared tunnel in background
+  tunnelProcess = spawn('cloudflared', ['tunnel', 'run', '--token', token], {
+    detached: false,
+    stdio: ['ignore', 'inherit', 'inherit'],
+  });
+
+  // Verify tunnel is running with retry logic (up to 30 seconds)
+  await retryWithBackoff(
+    async () => {
+      const isRunning = await isTunnelRunning();
+      if (!isRunning) {
+        throw new Error('Tunnel not ready yet');
+      }
+    },
+    {
+      maxRetries: 30,
+      initialDelay: 1000,
+      backoffMultiplier: 1, // Linear retry (1 second between attempts)
+      onRetry: (error, attempt, delay) => {
+        console.log(
+          `🔍 Checking tunnel status (attempt ${attempt}/30) at ${process.env.HEY_JARVIS_CLOUDFLARED_TUNNEL_URL}/api/mcp...`,
+        );
+      },
+    },
+  );
+
+  console.log('✅ Cloudflared tunnel started successfully');
 }
 
 /**
  * Stops the cloudflared tunnel if it was started by this process
  */
 export function stopTunnel(): void {
-    // Also kill any orphaned processes
-    killExistingTunnels();
+  // Also kill any orphaned processes
+  killExistingTunnels();
 }

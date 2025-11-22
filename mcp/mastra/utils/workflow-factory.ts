@@ -1,5 +1,12 @@
-import { createStep as mastraCreateStep, createWorkflow as mastraCreateWorkflow, type DefaultEngineType, type Step, type StepParams, type WorkflowConfig } from '@mastra/core/workflows';
-import { z } from 'zod';
+import {
+  type DefaultEngineType,
+  createStep as mastraCreateStep,
+  createWorkflow as mastraCreateWorkflow,
+  type Step,
+  type StepParams,
+  type WorkflowConfig,
+} from '@mastra/core/workflows';
+import type { z } from 'zod';
 
 /**
  * Creates a new Mastra Workflow with sensible defaults for the Hey Jarvis system.
@@ -50,7 +57,16 @@ export function createWorkflow<
   TState extends z.ZodObject<any> = z.ZodObject<any>,
   TInput extends z.ZodType<any> = z.ZodType<any>,
   TOutput extends z.ZodType<any> = z.ZodType<any>,
-  TSteps extends Step<string, any, any, any, any, any, DefaultEngineType>[] = Step<string, any, any, any, any, any, DefaultEngineType>[]>(config: WorkflowConfig<TWorkflowId, TState, TInput, TOutput, TSteps>) {
+  TSteps extends Step<string, any, any, any, any, any, DefaultEngineType>[] = Step<
+    string,
+    any,
+    any,
+    any,
+    any,
+    any,
+    DefaultEngineType
+  >[],
+>(config: WorkflowConfig<TWorkflowId, TState, TInput, TOutput, TSteps>) {
   // For now, this is a direct proxy to the Mastra createWorkflow function
   // Future enhancements could include:
   // - Automatic error handling and retry logic
@@ -117,8 +133,7 @@ export function createStep<
   TOutput extends z.ZodSchema = z.ZodSchema,
   TResume extends z.ZodSchema = z.ZodNever,
   TSuspend extends z.ZodSchema = z.ZodNever,
->(
-  config: StepParams<TStepId, TState, TInput, TOutput, TResume, TSuspend>) {
+>(config: StepParams<TStepId, TState, TInput, TOutput, TResume, TSuspend>) {
   return mastraCreateStep({
     id: config.id,
     stateSchema: config.stateSchema,

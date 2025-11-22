@@ -1,6 +1,6 @@
-import cron, { type ScheduledTask } from 'node-cron';
 import type { Mastra } from '@mastra/core';
 import type { Workflow } from '@mastra/core/workflows';
+import cron, { type ScheduledTask } from 'node-cron';
 
 interface ScheduledWorkflow {
   workflowId: string;
@@ -16,31 +16,31 @@ interface SchedulerOptions {
 
 /**
  * Workflow Scheduler for Mastra
- * 
+ *
  * Enables cron-based scheduling of Mastra workflows using node-cron.
- * 
+ *
  * @example
  * ```typescript
  * const scheduler = new WorkflowScheduler(mastra);
- * 
+ *
  * // Schedule weather monitoring every hour
  * scheduler.schedule({
  *   workflowId: 'weatherMonitoringWorkflow',
  *   schedule: '0 * * * *', // Every hour at minute 0
  *   name: 'Hourly Weather Check'
  * });
- * 
+ *
  * // Schedule meal planning every Sunday at 8am
  * scheduler.schedule({
  *   workflowId: 'weeklyMealPlanningWorkflow',
  *   schedule: '0 8 * * 0', // Sundays at 8:00am
  *   name: 'Weekly Meal Plan'
  * });
- * 
+ *
  * // Start all scheduled workflows
  * scheduler.start();
  * ```
- * 
+ *
  * Cron format: * * * * *
  *              │ │ │ │ │
  *              │ │ │ │ └─ Day of week (0-6, Sunday = 0)
@@ -87,7 +87,7 @@ export class WorkflowScheduler {
       },
       {
         timezone: this.options.timezone,
-      }
+      },
     );
 
     // Store task reference
@@ -102,7 +102,7 @@ export class WorkflowScheduler {
    */
   start(): void {
     console.log(`\n🚀 ${this.scheduledTasks.size} scheduled workflow(s) are now active`);
-    
+
     this.scheduledTasks.forEach((task, workflowId) => {
       console.log(`   ✅ Active: ${workflowId}`);
     });
@@ -115,7 +115,7 @@ export class WorkflowScheduler {
    */
   stop(): void {
     console.log('\n🛑 Stopping workflow scheduler...');
-    
+
     this.scheduledTasks.forEach((task, workflowId) => {
       task.stop();
       console.log(`   ⏹️  Stopped: ${workflowId}`);
@@ -146,11 +146,7 @@ export class WorkflowScheduler {
   /**
    * Execute a workflow
    */
-  private async executeWorkflow(
-    workflowId: string,
-    inputData: Record<string, any>,
-    name?: string
-  ): Promise<void> {
+  private async executeWorkflow(workflowId: string, inputData: Record<string, any>, name?: string): Promise<void> {
     const startTime = Date.now();
     console.log(`\n⚙️  Executing scheduled workflow: ${name || workflowId}`);
     console.log(`   Time: ${new Date().toISOString()}`);
@@ -163,7 +159,7 @@ export class WorkflowScheduler {
       const duration = Date.now() - startTime;
       console.log(`✅ Workflow completed successfully (${duration}ms)`);
       console.log(`   Status: ${result.status}`);
-      
+
       // Log result if it's not too large and workflow succeeded
       if (result.status === 'success' && result.result && JSON.stringify(result.result).length < 500) {
         console.log(`   Result:`, result.result);
@@ -171,7 +167,7 @@ export class WorkflowScheduler {
     } catch (error) {
       const duration = Date.now() - startTime;
       console.error(`❌ Workflow failed (${duration}ms):`, error);
-      
+
       if (this.options.onError && error instanceof Error) {
         this.options.onError(error, workflowId);
       }

@@ -6,6 +6,7 @@ import { MCPServer } from '@mastra/mcp';
 import express from 'express';
 import { expressjwt } from 'express-jwt';
 import { z } from 'zod';
+import { initializeScheduler } from './scheduler.js';
 import { getCalendarAgent } from './verticals/calendar/index.js';
 import { getCodingAgent } from './verticals/coding/index.js';
 import { getEmailAgent } from './verticals/email/index.js';
@@ -13,7 +14,6 @@ import { getHomeAssistantAgent } from './verticals/home-assistant/index.js';
 import { getShoppingListAgent } from './verticals/shopping/index.js';
 import { getTodoListAgent } from './verticals/todo-list/index.js';
 import { getWeatherAgent } from './verticals/weather/index.js';
-import { initializeScheduler } from './scheduler.js';
 
 export async function getPublicAgents(): Promise<Record<string, Agent>> {
   const [coding, weather, shopping, email, calendar, todoList, homeAssistant] = await Promise.all([

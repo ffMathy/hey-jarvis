@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { createAgentStep, createStep, createToolStep, createWorkflow } from '../../../utils/workflow-factory.js';
-import { getAllRecipes } from '../tools.js';
 import { sendEmail } from '../../email/tools.js';
+import { getAllRecipes } from '../tools.js';
 
 const mealPlanSchema = z.array(
   z.object({
@@ -26,20 +26,35 @@ const getRecipesForMealPlanning = createToolStep({
   inputSchema: z.object({}),
 });
 
+// Step 1b: Wrap recipes array in object for next step
+const wrapRecipesInObject = createStep({
+  id: 'wrap-recipes-in-object',
+  description: 'Wraps the recipes array in an object structure for the next step',
+  inputSchema: getAllRecipes.outputSchema,
+  outputSchema: z.object({
+    recipes: getAllRecipes.outputSchema,
+  }),
+  execute: async ({ inputData }) => {
+    return { recipes: inputData };
+  },
+});
+
 // Step 2: Generate complete meal plan
 // Recipes passed through context - no state needed since only used once
 const generateCompleteMealPlan = createAgentStep({
   id: 'generate-complete-meal-plan',
   description: 'Uses meal plan agents to select recipes and generate complete meal plan',
   agentName: 'mealPlanGenerator',
-  inputSchema: getAllRecipes.outputSchema,
+  inputSchema: z.object({
+    recipes: getAllRecipes.outputSchema,
+  }),
   outputSchema: z.object({
     mealplan: mealPlanSchema,
   }),
   prompt: ({ context }) => {
     return `Create a detailed weekly meal plan by first selecting 2 optimal recipes from the following options, then generating a complete meal plan with proper scheduling and scaled ingredients:
 
-${JSON.stringify(context, null, 2)}
+${JSON.stringify(context.recipes, null, 2)}
 
 Focus on dinner/evening meals (look for "aftensmad" or similar categories). Generate the complete meal plan with proper scheduling.`;
   },
@@ -121,6 +136,7 @@ export const weeklyMealPlanningWorkflow = createWorkflow({
   }),
 })
   .then(getRecipesForMealPlanning)
+  .then(wrapRecipesInObject)
   .then(generateCompleteMealPlan)
   .then(generateMealPlanEmail)
   .then(sendMealPlanEmail)

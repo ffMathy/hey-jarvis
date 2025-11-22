@@ -16,12 +16,15 @@ interface LogbookEntry {
 interface ServiceDefinition {
   name?: string;
   description?: string;
-  fields?: Record<string, {
-    description?: string;
-    example?: unknown;
-    required?: boolean;
-    selector?: unknown;
-  }>;
+  fields?: Record<
+    string,
+    {
+      description?: string;
+      example?: unknown;
+      required?: boolean;
+      selector?: unknown;
+    }
+  >;
 }
 
 // Interface for Home Assistant device/entity state
@@ -60,17 +63,19 @@ interface ServicesApiResponse {
 }
 
 // Type for services grouped by domain
-type ServicesByDomain = Record<string, Record<string, ServiceDefinition>>
+type ServicesByDomain = Record<string, Record<string, ServiceDefinition>>;
 
 // Get Home Assistant configuration from environment
 const getHomeAssistantConfig = () => {
   const url = process.env.HEY_JARVIS_HOME_ASSISTANT_URL;
   const token = process.env.HEY_JARVIS_HOME_ASSISTANT_TOKEN;
-  
+
   if (!url || !token) {
-    throw new Error('Home Assistant configuration not found. Please set HEY_JARVIS_HOME_ASSISTANT_URL and HEY_JARVIS_HOME_ASSISTANT_TOKEN environment variables.');
+    throw new Error(
+      'Home Assistant configuration not found. Please set HEY_JARVIS_HOME_ASSISTANT_URL and HEY_JARVIS_HOME_ASSISTANT_TOKEN environment variables.',
+    );
   }
-  
+
   return { url, token };
 };
 
@@ -78,31 +83,42 @@ const getHomeAssistantConfig = () => {
 async function callHomeAssistantApi(endpoint: string, method = 'GET', body?: unknown) {
   const { url, token } = getHomeAssistantConfig();
   const apiUrl = `${url}/api/${endpoint}`;
-  
+
   const response = await fetch(apiUrl, {
     method,
     headers: {
-      'Authorization': `Bearer ${token}`,
+      Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
     },
     body: body ? JSON.stringify(body) : undefined,
   });
-  
+
   if (!response.ok) {
     throw new Error(`Home Assistant API error: ${response.statusText}`);
   }
-  
+
   return response.json();
 }
 
 // Tool to call a Home Assistant service
 export const callHomeAssistantService = createTool({
   id: 'callHomeAssistantService',
-  description: 'Call a Home Assistant service to control devices or trigger actions. Use this to turn devices on/off, adjust settings, or perform any Home Assistant service action.',
+  description:
+    'Call a Home Assistant service to control devices or trigger actions. Use this to turn devices on/off, adjust settings, or perform any Home Assistant service action.',
   inputSchema: z.object({
-    domain: z.string().describe('The domain where the service is located (e.g., "light", "switch", "media_player", "climate", "scene")'),
-    serviceId: z.string().describe('The ID of the service to be called (e.g., "turn_on", "turn_off", "toggle", "set_temperature")'),
-    data: z.record(z.unknown()).describe('A parameter object containing the service data. Typically includes "entity_id" and service-specific parameters like "brightness_pct", "temperature", "rgb_color", etc.')
+    domain: z
+      .string()
+      .describe(
+        'The domain where the service is located (e.g., "light", "switch", "media_player", "climate", "scene")',
+      ),
+    serviceId: z
+      .string()
+      .describe('The ID of the service to be called (e.g., "turn_on", "turn_off", "toggle", "set_temperature")'),
+    data: z
+      .record(z.unknown())
+      .describe(
+        'A parameter object containing the service data. Typically includes "entity_id" and service-specific parameters like "brightness_pct", "temperature", "rgb_color", etc.',
+      ),
   }),
   outputSchema: z.object({
     success: z.boolean(),
@@ -115,7 +131,7 @@ export const callHomeAssistantService = createTool({
     try {
       const endpoint = `services/${inputData.domain}/${inputData.serviceId}`;
       await callHomeAssistantApi(endpoint, 'POST', inputData.data);
-      
+
       return {
         success: true,
         domain: inputData.domain,
@@ -138,11 +154,20 @@ export const callHomeAssistantService = createTool({
 // Tool to get logbook entries for an entity
 export const getEntityLogbook = createTool({
   id: 'getEntityLogbook',
-  description: 'Fetches the logbook entries for a given entity and time range. Use this to see how an entity has changed state over time. Only use this when you need historical data - never use it for current values.',
+  description:
+    'Fetches the logbook entries for a given entity and time range. Use this to see how an entity has changed state over time. Only use this when you need historical data - never use it for current values.',
   inputSchema: z.object({
-    entityId: z.string().describe('The entity ID to fetch logbook entries for (e.g., "light.living_room", "switch.bedroom")'),
-    startTime: z.string().optional().describe('ISO 8601 timestamp for the start of the time range (optional, defaults to 24 hours ago)'),
-    endTime: z.string().optional().describe('ISO 8601 timestamp for the end of the time range (optional, defaults to now)'),
+    entityId: z
+      .string()
+      .describe('The entity ID to fetch logbook entries for (e.g., "light.living_room", "switch.bedroom")'),
+    startTime: z
+      .string()
+      .optional()
+      .describe('ISO 8601 timestamp for the start of the time range (optional, defaults to 24 hours ago)'),
+    endTime: z
+      .string()
+      .optional()
+      .describe('ISO 8601 timestamp for the end of the time range (optional, defaults to now)'),
   }),
   outputSchema: z.object({
     entityId: z.string(),
@@ -153,19 +178,19 @@ export const getEntityLogbook = createTool({
         message: z.string().optional(),
         domain: z.string(),
         state: z.string().optional(),
-      })
+      }),
     ),
   }),
   execute: async (inputData) => {
     const endTime = inputData.endTime || new Date().toISOString();
     const startTime = inputData.startTime || new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    
+
     const endpoint = `logbook/${startTime}?entity=${inputData.entityId}&end_time=${endTime}`;
-    const entries = await callHomeAssistantApi(endpoint) as LogbookEntry[];
-    
+    const entries = (await callHomeAssistantApi(endpoint)) as LogbookEntry[];
+
     return {
       entityId: inputData.entityId,
-      entries: entries.map(entry => ({
+      entries: entries.map((entry) => ({
         when: entry.when,
         name: entry.name,
         message: entry.message,
@@ -179,9 +204,15 @@ export const getEntityLogbook = createTool({
 // Tool to get all devices (entities/states)
 export const getAllDevices = createTool({
   id: 'getAllDevices',
-  description: 'Get all devices and their entities from Home Assistant. Returns devices grouped with their entities, including state, attributes, area, and labels. Use this to discover available devices and get comprehensive device information.',
+  description:
+    'Get all devices and their entities from Home Assistant. Returns devices grouped with their entities, including state, attributes, area, and labels. Use this to discover available devices and get comprehensive device information.',
   inputSchema: z.object({
-    domain: z.string().optional().describe('Optional domain filter to only get devices with entities from a specific domain (e.g., "light", "switch", "sensor", "climate")'),
+    domain: z
+      .string()
+      .optional()
+      .describe(
+        'Optional domain filter to only get devices with entities from a specific domain (e.g., "light", "switch", "sensor", "climate")',
+      ),
   }),
   outputSchema: z.object({
     devices: z.array(
@@ -200,14 +231,14 @@ export const getAllDevices = createTool({
             state: z.string(),
             attributes: z.record(z.unknown()),
             last_changed: z.string(),
-          })
+          }),
         ),
-      })
+      }),
     ),
   }),
   execute: async (inputData) => {
     const domainFilter = inputData.domain ? `and st.domain == '${inputData.domain}'` : '';
-    
+
     const template = `
 {%- set MAX_STR = 160 -%}
 {%- set MAX_LIST = 20 -%}
@@ -266,11 +297,14 @@ export const getAllDevices = createTool({
   {%- endif -%}
 {%- endfor -%}
 {{ ns.devices | to_json }}
-    `.split('\n').map(line => line.trim()).join('\n');
-    
+    `
+      .split('\n')
+      .map((line) => line.trim())
+      .join('\n');
+
     const response = await callHomeAssistantApi('template', 'POST', { template });
     const devices: DeviceState[] = typeof response === 'string' ? JSON.parse(response) : response;
-    
+
     return {
       devices: Array.isArray(devices) ? devices : [],
     };
@@ -280,29 +314,44 @@ export const getAllDevices = createTool({
 // Tool to get all available services
 export const getAllServices = createTool({
   id: 'getAllServices',
-  description: 'Get all available services in Home Assistant grouped by domain. Use this to discover what actions you can perform on devices. Services define the operations available for each domain (e.g., turn_on, turn_off for lights; set_temperature for climate).',
+  description:
+    'Get all available services in Home Assistant grouped by domain. Use this to discover what actions you can perform on devices. Services define the operations available for each domain (e.g., turn_on, turn_off for lights; set_temperature for climate).',
   inputSchema: z.object({
-    domain: z.string().optional().describe('Optional domain filter to only get services from a specific domain (e.g., "light", "switch", "climate")'),
+    domain: z
+      .string()
+      .optional()
+      .describe(
+        'Optional domain filter to only get services from a specific domain (e.g., "light", "switch", "climate")',
+      ),
   }),
   outputSchema: z.object({
-    services_by_domain: z.record(z.record(z.object({
-      name: z.string().optional(),
-      description: z.string().optional(),
-      fields: z.record(z.unknown()).optional(),
-    }))),
+    services_by_domain: z.record(
+      z.record(
+        z.object({
+          name: z.string().optional(),
+          description: z.string().optional(),
+          fields: z.record(z.unknown()).optional(),
+        }),
+      ),
+    ),
   }),
   execute: async (inputData) => {
     const response: ServicesApiResponse[] = await callHomeAssistantApi('services');
-    
+
     const excludedDomains = ['update', 'hassio', 'frontend', 'logger', 'system_log'];
     const filteredServices: ServicesByDomain = {};
-    
+
     for (const item of response) {
-      if (item.domain && item.services && !excludedDomains.includes(item.domain) && (!inputData.domain || item.domain === inputData.domain)) {
+      if (
+        item.domain &&
+        item.services &&
+        !excludedDomains.includes(item.domain) &&
+        (!inputData.domain || item.domain === inputData.domain)
+      ) {
         filteredServices[item.domain] = item.services;
       }
     }
-    
+
     return {
       services_by_domain: filteredServices,
     };
@@ -312,10 +361,20 @@ export const getAllServices = createTool({
 // Tool to get devices that have changed since a specific time
 export const getChangedDevicesSince = createTool({
   id: 'getChangedDevicesSince',
-  description: 'Get all devices (entities) that have changed state since a specific number of seconds ago. Useful for monitoring recent activity or detecting what has changed in the home. This tool tracks state changes over time.',
+  description:
+    'Get all devices (entities) that have changed state since a specific number of seconds ago. Useful for monitoring recent activity or detecting what has changed in the home. This tool tracks state changes over time.',
   inputSchema: z.object({
-    sinceSeconds: z.number().describe('Number of seconds to look back (e.g., 60 for last minute, 3600 for last hour). Only devices changed within this time window will be returned.'),
-    domain: z.string().optional().describe('Optional domain filter to only check devices from a specific domain (e.g., "light", "switch", "sensor")'),
+    sinceSeconds: z
+      .number()
+      .describe(
+        'Number of seconds to look back (e.g., 60 for last minute, 3600 for last hour). Only devices changed within this time window will be returned.',
+      ),
+    domain: z
+      .string()
+      .optional()
+      .describe(
+        'Optional domain filter to only check devices from a specific domain (e.g., "light", "switch", "sensor")',
+      ),
   }),
   outputSchema: z.object({
     changed_devices: z.array(
@@ -327,14 +386,14 @@ export const getChangedDevicesSince = createTool({
         entity_label_ids: z.array(z.string()),
         state: z.string(),
         last_changed: z.number(),
-      })
+      }),
     ),
     since_seconds: z.number(),
     total_changed: z.number(),
   }),
   execute: async (inputData) => {
     const domainFilter = inputData.domain ? `and s.domain == '${inputData.domain}'` : '';
-    
+
     const template = `
 {%- set nowts = as_timestamp(now()) -%}
 [
@@ -344,11 +403,14 @@ export const getChangedDevicesSince = createTool({
   {%- if not loop.last -%},{%- endif -%}
 {%- endfor -%}
 ]
-    `.split('\n').map(line => line.trim()).join('\n');
-    
+    `
+      .split('\n')
+      .map((line) => line.trim())
+      .join('\n');
+
     const response = await callHomeAssistantApi('template', 'POST', { template });
     const changedDevices: ChangedDeviceState[] = typeof response === 'string' ? JSON.parse(response) : response;
-    
+
     return {
       changed_devices: Array.isArray(changedDevices) ? changedDevices : [],
       since_seconds: inputData.sinceSeconds,

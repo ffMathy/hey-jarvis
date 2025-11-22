@@ -2,8 +2,8 @@ import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { generateObject } from 'ai';
 import { z } from 'zod';
 import type { ConversationStrategy, ServerMessage } from './conversation-strategy';
-import { GeminiMastraConversationStrategy } from './gemini-mastra-conversation-strategy';
 import { ElevenLabsConversationStrategy } from './elevenlabs-conversation-strategy';
+import { GeminiMastraConversationStrategy } from './gemini-mastra-conversation-strategy';
 
 export interface ConversationOptions {
   agentId: string;
@@ -34,9 +34,9 @@ export class TestConversation {
     this.googleApiKey = options.googleApiKey || process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY;
 
     this.strategy = new ElevenLabsConversationStrategy({
-        agentId: options.agentId,
-        apiKey,
-      });
+      agentId: options.agentId,
+      apiKey,
+    });
   }
 
   async connect(): Promise<void> {

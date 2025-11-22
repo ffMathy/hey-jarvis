@@ -1,5 +1,5 @@
-import { test, expect } from '@playwright/test';
-import { startContainer, ContainerStartupResult } from './helpers/container-startup';
+import { expect, test } from '@playwright/test';
+import { type ContainerStartupResult, startContainer } from './helpers/container-startup';
 import { PORTS } from './helpers/ports';
 
 // Use centralized port configuration
@@ -92,10 +92,12 @@ test.describe('Docker Container Integration Tests', () => {
           req.url.endsWith('.css') ||
           req.url.endsWith('.svg')),
     );
-    
+
     if (assetFailures.length > 0) {
-      console.log(`Note: ${assetFailures.length} asset 404s (expected for ingress testing):`, 
-        assetFailures.map(f => f.url));
+      console.log(
+        `Note: ${assetFailures.length} asset 404s (expected for ingress testing):`,
+        assetFailures.map((f) => f.url),
+      );
     }
 
     // Assert the page loaded successfully (accept ingress port or direct Mastra UI port)

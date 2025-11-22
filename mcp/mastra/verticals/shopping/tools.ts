@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { createTool } from '../../utils/tool-factory.js';
 import { changeProductQuantity, clearCart, getCartContents, searchProductCatalog } from './bilka/client.js';
-import { CatalogProduct } from './bilka/types.js';
+import type { CatalogProduct } from './bilka/types.js';
 
 /**
  * Searches for products in the Bilka catalog using Algolia search
@@ -33,7 +33,7 @@ export const findProductInCatalog = createTool({
             ...hit,
             brand: `${hit.brand} ${hit.subBrand}`.trim(),
             attributes: hit.attributes.map((attr) => attr.attributeName),
-            price: hit.price / 100
+            price: hit.price / 100,
           };
 
           delete result['_highlightResult'];

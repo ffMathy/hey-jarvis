@@ -125,10 +125,7 @@ export const searchRecipes = createTool({
       data.data.result
         .slice(0, 25)
         .map((item) => item.post_id.toString())
-        .map(
-          async (id) =>
-            await getRecipeById.execute({ recipeId: id }, context),
-        ),
+        .map(async (id) => await getRecipeById.execute({ recipeId: id }, context)),
     );
 
     return {
