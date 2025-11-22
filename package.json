@@ -61,7 +61,7 @@
     "ws": "^8.18.3"
   },
   "dependencies": {
-    "@ai-sdk/google": "^2.0.29",
+    "@ai-sdk/google": "^2.0.42",
     "@azure/msal-node": "^3.8.3",
     "@elevenlabs/elevenlabs-js": "^2.25.0",
     "@hono/node-server": "^1.19.6",
