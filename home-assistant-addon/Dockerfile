@@ -14,6 +14,9 @@ LABEL io.hass.type="addon"
 LABEL maintainer="Mathias Lykkegaard Lorenzen <mathias.lorenzen@live.com>"
 LABEL io.hass.url="https://github.com/ffMathy/hey-jarvis"
 
+# Configure Mastra storage to use /data directory for Home Assistant backups
+ENV HEY_JARVIS_STORAGE_PATH=/data
+
 # Install bashio for Home Assistant addon configuration parsing
 # Bashio is the standard library for Home Assistant addons
 RUN apk add --no-cache curl jq && \

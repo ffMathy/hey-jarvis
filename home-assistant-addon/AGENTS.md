@@ -9,6 +9,7 @@ A Home Assistant addon that seamlessly hosts the Jarvis MCP server within your H
 ## Key Features
 - **Native Home Assistant Integration**: Runs as a standard Home Assistant addon
 - **MCP Server Hosting**: Hosts the Jarvis MCP server within Home Assistant
+- **Persistent Storage**: All Mastra data (memory, credentials, vector stores) stored in `/data` directory and automatically included in Home Assistant backups
 - **Docker Support**: Containerized deployment with proper Home Assistant integration
 - **Configuration UI**: Web-based configuration interface for addon settings
 - **Multi-architecture Support**: AMD64, ARMv7, and AArch64 compatibility
@@ -270,6 +271,29 @@ The addon has Home Assistant API access:
 - `"privileged": ["NET_ADMIN"]` - Network administration for MCP server
 - `"apparmor": true` - AppArmor security enabled
 - `"full_access": false` - Limited access (security best practice)
+
+### Persistent Storage and Backups
+The addon automatically stores all Mastra data in the `/data` directory, which is:
+- **Automatically backed up** by Home Assistant's backup system
+- **Persistent across restarts** and addon updates
+- **Includes all databases**:
+  - `mastra.sql.db` - Agent memory, credentials, and configuration
+  - `mastra.vector.db` - Vector embeddings for semantic search
+  
+**What gets backed up:**
+- All agent conversation history and memory
+- OAuth refresh tokens (Google, Microsoft)
+- Vector embeddings for semantic recall
+- Custom configuration and state
+
+**Backup verification:**
+When the addon starts, you'll see a log message indicating which directory is being used:
+```
+📦 Using Home Assistant data directory for storage (backed up automatically): /data
+```
+
+**Restoring from backup:**
+Simply restore your Home Assistant backup, and all Mastra data will be restored automatically. No manual steps required.
 
 ## Architecture
 

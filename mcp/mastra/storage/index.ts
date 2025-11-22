@@ -3,7 +3,23 @@ import { mkdir } from 'fs/promises';
 import path from 'path';
 import { CredentialsStorage } from './credentials.js';
 
-const databaseDirectory = path.join(process.cwd(), 'mcp');
+// Use HEY_JARVIS_STORAGE_PATH environment variable if set, otherwise use local mcp/ directory
+// Home Assistant addon sets this to /data for automatic backups
+function getDatabaseDirectory(): string {
+  const envPath = process.env.HEY_JARVIS_STORAGE_PATH;
+  
+  if (envPath) {
+    console.log('📦 Using configured storage directory (from HEY_JARVIS_STORAGE_PATH):', envPath);
+    return envPath;
+  }
+  
+  // Development environment - use local directory
+  const localDir = path.join(process.cwd(), 'mcp');
+  console.log('📦 Using local development directory for storage:', localDir);
+  return localDir;
+}
+
+const databaseDirectory = getDatabaseDirectory();
 
 export async function getSqlStorageProvider(): Promise<LibSQLStore> {
   await mkdir(databaseDirectory, { recursive: true });
