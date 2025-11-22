@@ -5,6 +5,13 @@
 
 * **mcp:** Synchronize mcp versions
 
+## [0.11.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.10.1...mcp-v0.11.0) (2025-11-22)
+
+
+### Features
+
+* send email on meal plan ([e9dd6e3](https://github.com/ffMathy/hey-jarvis/commit/e9dd6e34fd2d035e5b41ee84e3fb9ef949367b73))
+
 ## [0.10.1](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.10.0...mcp-v0.10.1) (2025-11-22)
 
 
