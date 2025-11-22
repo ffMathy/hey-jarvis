@@ -5,6 +5,19 @@
   "projectType": "application",
   "tags": [],
   "targets": {
+    "initialize": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "outputs": [],
+      "options": {
+        "commands": [
+          "bunx playwright install",
+          "bunx playwright install-deps"
+        ],
+        "parallel": false,
+        "cwd": "."
+      }
+    },
     "build": {
       "executor": "@nx/esbuild:esbuild",
       "outputs": ["{options.outputPath}"],
