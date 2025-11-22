@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { createAgentStep, createStep, createWorkflow } from '../../utils/workflow-factory.js';
+import { registerStateChange } from '../notification/tools.js';
 
 // Agent-as-step for scheduled weather check
 const scheduledWeatherCheck = createAgentStep({
@@ -13,64 +14,46 @@ const scheduledWeatherCheck = createAgentStep({
   prompt: () => 'Get current weather for Mathias, Denmark',
 });
 
-// Transform weather data into memory update format
-// Data flows through context - no state needed since result only used once
-const transformToMemoryUpdate = createStep({
-  id: 'transform-to-memory-update',
-  description: 'Transform weather data into memory update format',
+// Register weather state change for notification analysis
+const registerWeatherStateChange = createStep({
+  id: 'register-weather-state-change',
+  description: 'Register weather update as state change for notification system',
   inputSchema: z.object({
     result: z.string(),
   }),
   outputSchema: z.object({
-    memoryUpdate: z
-      .object({
-        context: z.string(),
-        events: z.array(
-          z.object({
-            type: z.string(),
-            information: z.any(),
-          }),
-        ),
-      })
-      .optional(),
+    registered: z.boolean(),
+    triggeredAnalysis: z.boolean(),
+    message: z.string(),
   }),
-  execute: async (params) => {
-    // Create memory update event from context (no state needed)
-    const memoryUpdate = {
-      context: 'The weather has changed.',
-      events: [
-        {
-          type: 'weather-changed',
-          information: params.inputData.result,
-        },
-      ],
+  execute: async ({ inputData, mastra }) => {
+    // Transform weather result into state change format
+    const stateChangeData = {
+      source: 'weather',
+      stateType: 'weather_update',
+      stateData: {
+        location: 'Mathias, Denmark',
+        weatherInfo: inputData.result,
+        timestamp: new Date().toISOString(),
+      },
     };
 
-    return {
-      memoryUpdate,
-    };
+    // Execute the registerStateChange tool
+    return await registerStateChange.execute(stateChangeData, mastra);
   },
 });
 
 // Scheduled weather monitoring workflow
-// No state needed - data flows directly through context from step to step
+// Data flows through context and registers state changes for notification analysis
 export const weatherMonitoringWorkflow = createWorkflow({
   id: 'weather-monitoring-workflow',
   inputSchema: z.object({}),
   outputSchema: z.object({
-    memoryUpdate: z
-      .object({
-        context: z.string(),
-        events: z.array(
-          z.object({
-            type: z.string(),
-            information: z.any(),
-          }),
-        ),
-      })
-      .optional(),
+    registered: z.boolean(),
+    triggeredAnalysis: z.boolean(),
+    message: z.string(),
   }),
 })
   .then(scheduledWeatherCheck)
-  .then(transformToMemoryUpdate)
+  .then(registerWeatherStateChange)
   .commit();
