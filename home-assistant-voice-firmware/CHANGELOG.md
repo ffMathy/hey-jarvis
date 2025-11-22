@@ -5,6 +5,14 @@
 
 * home assistant voice building ([#187](https://github.com/ffMathy/hey-jarvis/issues/187)) ([9f17536](https://github.com/ffMathy/hey-jarvis/commit/9f17536aec616e71fee8a5654f3cf83a5113c7b8))
 
+## [0.4.1](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.4.0...home-assistant-voice-firmware-v0.4.1) (2025-11-22)
+
+
+### Bug Fixes
+
+* **workflows:** wrap recipes array in object for meal plan validation ([26db98f](https://github.com/ffMathy/hey-jarvis/commit/26db98f924bf6cbf7e49de61a929f04c8ff0ce26))
+* **workflows:** wrap recipes array in object for step input validation ([#278](https://github.com/ffMathy/hey-jarvis/issues/278)) ([b393089](https://github.com/ffMathy/hey-jarvis/commit/b39308950160c513f29220d4f14dac310aa148f5))
+
 ## [0.4.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.3.0...home-assistant-voice-firmware-v0.4.0) (2025-11-22)
 
 
