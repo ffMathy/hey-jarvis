@@ -63,6 +63,13 @@
       "outputs": [
         "{workspaceRoot}/coverage/{projectRoot}"
       ]
+    },
+    "generate-tokens": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "./.scripts/run-with-env.sh mcp/op.env bun run mcp/scripts/generate-refresh-tokens.ts",
+        "cwd": "."
+      }
     }
   },
   "tags": []
