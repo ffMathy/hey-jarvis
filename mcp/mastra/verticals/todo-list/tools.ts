@@ -4,13 +4,13 @@ import { createTool } from '../../utils/tool-factory.js';
 
 // Get OAuth2 credentials from environment
 const getGoogleAuth = () => {
-  const clientId = process.env.GOOGLE_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
+  const clientId = process.env.HEY_JARVIS_GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.HEY_JARVIS_GOOGLE_CLIENT_SECRET;
+  const refreshToken = process.env.HEY_JARVIS_GOOGLE_REFRESH_TOKEN;
 
   if (!clientId || !clientSecret || !refreshToken) {
     throw new Error(
-      'Google Tasks credentials not found. Please set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REFRESH_TOKEN environment variables.',
+      'Google Tasks credentials not found. Please set HEY_JARVIS_GOOGLE_CLIENT_ID, HEY_JARVIS_GOOGLE_CLIENT_SECRET, and HEY_JARVIS_GOOGLE_REFRESH_TOKEN environment variables.',
     );
   }
 

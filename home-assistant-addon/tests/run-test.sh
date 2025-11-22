@@ -17,12 +17,11 @@ source /workspace/mcp/lib/server-functions.sh
 echo "Starting E2E test environment..."
 
 # JWT secret is required for security
-if [ -z "$JWT_SECRET" ]; then
-    echo "ERROR: JWT_SECRET environment variable is required"
+if [ -z "$HEY_JARVIS_MCP_JWT_SECRET" ]; then
+    echo "ERROR: HEY_JARVIS_MCP_JWT_SECRET environment variable is required"
     exit 1
 fi
 
-export HEY_JARVIS_MCP_JWT_SECRET="$JWT_SECRET"
 echo "JWT authentication configured for testing"
 
 # For E2E tests, directly export a test API key

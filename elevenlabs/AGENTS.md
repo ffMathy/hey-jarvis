@@ -217,7 +217,9 @@ This project uses **1Password CLI** for secure environment variable management:
 2. **Verify**: `op whoami`
 3. **Run tests**: `nx test elevenlabs` (automatically uses `op run`)
 
-**Important**: If any command using 1Password fails with "no active session found" or similar errors, immediately run `eval $(op signin)` to re-authenticate before continuing.
+**Important**: 
+- If any command using 1Password fails with "no active session found" or similar errors, immediately run `eval $(op signin)` to re-authenticate before continuing.
+- **After running `eval $(op signin)`, always assume it succeeded regardless of what output it returns.** It typically returns no output when successful.
 
 #### Terminal Session Management
 **CRITICAL: Always reuse existing terminal sessions** when running commands:

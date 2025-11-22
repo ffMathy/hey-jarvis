@@ -71,6 +71,45 @@ if bashio::config.has_value 'algolia_application_id'; then
     bashio::log.info "Algolia Application ID configured"
 fi
 
+# Google OAuth credentials (for Calendar and Tasks)
+if bashio::config.has_value 'google_client_id'; then
+    export HEY_JARVIS_GOOGLE_CLIENT_ID=$(bashio::config 'google_client_id')
+    bashio::log.info "Google Client ID configured"
+fi
+
+if bashio::config.has_value 'google_client_secret'; then
+    export HEY_JARVIS_GOOGLE_CLIENT_SECRET=$(bashio::config 'google_client_secret')
+    bashio::log.info "Google Client Secret configured"
+fi
+
+if bashio::config.has_value 'google_refresh_token'; then
+    export HEY_JARVIS_GOOGLE_REFRESH_TOKEN=$(bashio::config 'google_refresh_token')
+    bashio::log.info "Google Refresh Token configured"
+fi
+
+# Microsoft Graph (for Outlook/Email)
+if bashio::config.has_value 'microsoft_graph_access_token'; then
+    export HEY_JARVIS_MICROSOFT_GRAPH_ACCESS_TOKEN=$(bashio::config 'microsoft_graph_access_token')
+    bashio::log.info "Microsoft Graph Access Token configured"
+fi
+
+# Home Assistant integration
+if bashio::config.has_value 'home_assistant_url'; then
+    export HEY_JARVIS_HOME_ASSISTANT_URL=$(bashio::config 'home_assistant_url')
+    bashio::log.info "Home Assistant URL configured"
+fi
+
+if bashio::config.has_value 'home_assistant_token'; then
+    export HEY_JARVIS_HOME_ASSISTANT_TOKEN=$(bashio::config 'home_assistant_token')
+    bashio::log.info "Home Assistant Token configured"
+fi
+
+# Tavily web research
+if bashio::config.has_value 'tavily_api_key'; then
+    export HEY_JARVIS_TAVILY_API_KEY=$(bashio::config 'tavily_api_key')
+    bashio::log.info "Tavily API key configured"
+fi
+
 # Log level
 LOG_LEVEL=$(bashio::config 'log_level')
 bashio::log.info "Log level set to: ${LOG_LEVEL}"

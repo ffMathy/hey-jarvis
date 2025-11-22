@@ -45,7 +45,14 @@
     "bilka_api_key": "",
     "bilka_user_token": "",
     "algolia_api_key": "",
-    "algolia_application_id": ""
+    "algolia_application_id": "",
+    "google_client_id": "",
+    "google_client_secret": "",
+    "google_refresh_token": "",
+    "microsoft_graph_access_token": "",
+    "home_assistant_url": "",
+    "home_assistant_token": "",
+    "tavily_api_key": ""
   },
   "schema": {
     "log_level": "list(trace|debug|info|notice|warning|error|fatal)?",
@@ -58,7 +65,14 @@
     "bilka_api_key": "password?",
     "bilka_user_token": "password?",
     "algolia_api_key": "password?",
-    "algolia_application_id": "str?"
+    "algolia_application_id": "str?",
+    "google_client_id": "str?",
+    "google_client_secret": "password?",
+    "google_refresh_token": "password?",
+    "microsoft_graph_access_token": "password?",
+    "home_assistant_url": "str?",
+    "home_assistant_token": "password?",
+    "tavily_api_key": "password?"
   },
   "environment": {
     "HOST": "0.0.0.0"
