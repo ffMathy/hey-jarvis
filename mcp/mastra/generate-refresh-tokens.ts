@@ -5,95 +5,30 @@
  * This script helps you obtain refresh tokens for multiple OAuth2 providers
  * by walking you through the authorization flow in your browser for each provider.
  * 
+ * Tokens are automatically stored in Mastra storage (LibSQL database).
+ * Client ID and secret must be set in environment variables.
+ * 
  * Supported Providers:
  * - Google (Calendar, Tasks APIs)
+ * - Microsoft (Outlook/Email via Graph API)
  * 
  * Usage:
  *   bunx nx generate-tokens mcp
  *   # OR directly:
- *   bun run mcp/scripts/generate-refresh-tokens.ts
+ *   bun run mcp/mastra/generate-refresh-tokens.ts
  */
 
-import { google } from 'googleapis';
-import type { OAuth2Client } from 'google-auth-library';
 import * as http from 'http';
 import { URL } from 'url';
 import open from 'open';
+import { getCredentialsStorage } from './storage/index.js';
+import { googleProvider, microsoftProvider, type OAuthProvider, type TokenResponse } from './credentials/index.js';
 
 const PORT = 3000;
-const REDIRECT_URI = `http://localhost:${PORT}/oauth2callback`;
 
-interface TokenResponse {
-  access_token: string;
-  refresh_token?: string;
-  scope: string;
-  token_type: string;
-  expiry_date: number;
-}
-
-interface OAuthProvider {
-  name: string;
-  clientIdEnvVar: string;
-  clientSecretEnvVar: string;
-  refreshTokenEnvVar: string;
-  scopes: string[];
-  setupInstructions: string[];
-  storageInstructions: string[];
-  createClient: (clientId: string, clientSecret: string) => any;
-  getAuthUrl: (client: any) => string;
-  exchangeCode: (client: any, code: string) => Promise<TokenResponse>;
-}
-
-/**
- * Google OAuth2 Provider Configuration
- */
-const googleProvider: OAuthProvider = {
-  name: 'Google',
-  clientIdEnvVar: 'HEY_JARVIS_GOOGLE_CLIENT_ID',
-  clientSecretEnvVar: 'HEY_JARVIS_GOOGLE_CLIENT_SECRET',
-  refreshTokenEnvVar: 'HEY_JARVIS_GOOGLE_REFRESH_TOKEN',
-  scopes: [
-    'https://www.googleapis.com/auth/calendar',
-    'https://www.googleapis.com/auth/tasks',
-  ],
-  setupInstructions: [
-    'Create a Google Cloud Project at https://console.cloud.google.com',
-    'Enable Google Calendar API and Google Tasks API',
-    'Create OAuth 2.0 credentials (Web application type)',
-    `Add ${REDIRECT_URI} to authorized redirect URIs`,
-  ],
-  storageInstructions: [
-    '1Password (Recommended):',
-    '  - Store in "Google OAuth" item in "Personal" vault',
-    '  - Fields: client id, client secret, refresh token',
-    '',
-    'Home Assistant Addon:',
-    '  - Go to Supervisor → Hey Jarvis MCP Server → Configuration',
-    '  - Fields: google_client_id, google_client_secret, google_refresh_token',
-  ],
-  createClient: (clientId: string, clientSecret: string): OAuth2Client => {
-    return new google.auth.OAuth2(clientId, clientSecret, REDIRECT_URI);
-  },
-  getAuthUrl: (client: OAuth2Client): string => {
-    return client.generateAuthUrl({
-      access_type: 'offline',
-      prompt: 'consent',
-      scope: googleProvider.scopes,
-    });
-  },
-  exchangeCode: async (client: OAuth2Client, code: string): Promise<TokenResponse> => {
-    const { tokens } = await client.getToken(code);
-    return tokens as TokenResponse;
-  },
-};
-
-/**
- * All configured OAuth providers
- * Add new providers to this array to support additional services
- */
 const PROVIDERS: OAuthProvider[] = [
   googleProvider,
-  // Add more providers here in the future
+  microsoftProvider,
 ];
 
 /**
@@ -210,11 +145,26 @@ function startCallbackServer(provider: OAuthProvider, client: any): Promise<Toke
 /**
  * Process a single OAuth provider
  */
-async function processProvider(provider: OAuthProvider): Promise<void> {
+async function processProvider(provider: OAuthProvider): Promise<{ provider: string; credentials?: { clientId: string; clientSecret: string; refreshToken: string } }> {
   console.log(`\n${'='.repeat(70)}`);
   console.log(`🔐 ${provider.name} OAuth2 Setup`);
   console.log('='.repeat(70));
   console.log('');
+
+  // Check if token already exists in storage
+  try {
+    const credentialsStorage = await getCredentialsStorage();
+    const existingToken = await credentialsStorage.getRefreshToken(provider.name.toLowerCase());
+    if (existingToken) {
+      console.log('✅ Refresh token already exists in Mastra storage');
+      console.log('⏭️  Skipping token generation\n');
+      return { provider: provider.name };
+    }
+  } catch (error) {
+    // Storage check failed, continue with token generation
+    console.log('⚠️  Could not check storage, proceeding with token generation\n');
+  }
+
   console.log('📋 Prerequisites:');
   provider.setupInstructions.forEach((instruction, i) => {
     console.log(`   ${i + 1}. ${instruction}`);
@@ -227,12 +177,12 @@ async function processProvider(provider: OAuthProvider): Promise<void> {
     credentials = validateProviderCredentials(provider);
   } catch (error) {
     console.error(`⏭️  Skipping ${provider.name} - credentials not configured\n`);
-    return;
+    return { provider: provider.name };
   }
 
   // Create OAuth client
   const client = provider.createClient(credentials.clientId, credentials.clientSecret);
-  const authUrl = provider.getAuthUrl(client);
+  const authUrl = await provider.getAuthUrl(client);
 
   console.log('🌐 Opening authorization page in your browser...');
   console.log(`   If it doesn't open automatically, visit: ${authUrl}\n`);
@@ -251,7 +201,7 @@ async function processProvider(provider: OAuthProvider): Promise<void> {
       console.error('   To fix this:');
       console.error('   1. Revoke access in your account settings');
       console.error('   2. Run this script again');
-      return;
+      return { provider: provider.name };
     }
 
     console.log('✅ Authorization successful!\n');
@@ -261,16 +211,38 @@ async function processProvider(provider: OAuthProvider): Promise<void> {
     console.log('─'.repeat(70));
     console.log('');
 
-    console.log('💾 Store this token securely:\n');
+    // Always store in Mastra storage
+    try {
+      const credentialsStorage = await getCredentialsStorage();
+      await credentialsStorage.setRefreshToken(provider.name.toLowerCase(), tokens.refresh_token);
+      console.log('✅ Stored refresh token in Mastra storage (mastra.sql.db)');
+      console.log('⚠️  Note: Client ID and secret must still be set in environment variables\n');
+    } catch (error) {
+      console.error('⚠️  Failed to store in Mastra storage:');
+      console.error(error instanceof Error ? error.message : String(error));
+      console.log('');
+    }
+
+    console.log('💾 Token storage information:\n');
     provider.storageInstructions.forEach((instruction) => {
       console.log(`   ${instruction}`);
     });
     console.log('');
     console.log(`   Environment variable: ${provider.refreshTokenEnvVar}="${tokens.refresh_token}"\n`);
 
+    return {
+      provider: provider.name,
+      credentials: {
+        clientId: credentials.clientId,
+        clientSecret: credentials.clientSecret,
+        refreshToken: tokens.refresh_token,
+      },
+    };
+
   } catch (error) {
     console.error(`❌ Error during ${provider.name} authorization:`);
     console.error(error instanceof Error ? error.message : String(error));
+    return { provider: provider.name };
   }
 }
 
@@ -282,18 +254,37 @@ async function main() {
   console.log('   Generate refresh tokens for all configured OAuth providers\n');
   console.log(`📋 Configured providers: ${PROVIDERS.map(p => p.name).join(', ')}\n`);
   console.log('💡 Note: Refresh tokens remain valid for 6+ months with regular use\n');
+  console.log('💾 Tokens will be stored in Mastra storage (mastra.sql.db)\n');
+
+  const results: Array<{ provider: string; success: boolean }> = [];
 
   for (const provider of PROVIDERS) {
-    await processProvider(provider);
+    const result = await processProvider(provider);
+    results.push({
+      provider: result.provider,
+      success: !!result.credentials,
+    });
   }
 
   console.log('\n' + '='.repeat(70));
   console.log('🎉 Token generation complete!');
   console.log('='.repeat(70));
+  
+  // Summary
+  console.log('\n📊 Summary:');
+  results.forEach(result => {
+    const icon = result.success ? '✅' : '⏭️';
+    const status = result.success ? 'Success' : 'Skipped';
+    console.log(`   ${icon} ${result.provider}: ${status}`);
+  });
+  
   console.log('\n📌 Remember to:');
-  console.log('   - Store all tokens securely (1Password recommended)');
-  console.log('   - Update your environment configuration (mcp/op.env)');
+  console.log('   - Tokens are stored in Mastra storage (mastra.sql.db)');
+  console.log('   - Set client ID and secret in environment variables');
   console.log('   - Restart the MCP server to use the new tokens\n');
+  
+  console.log('💡 Tip: Your calendar/todo-list tools will automatically use stored credentials');
+  console.log('   if environment variables are not set.\n');
 }
 
 main().catch((error) => {

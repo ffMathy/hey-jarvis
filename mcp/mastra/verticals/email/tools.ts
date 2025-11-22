@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { createTool } from '../../utils/tool-factory.js';
+import { ConfidentialClientApplication } from '@azure/msal-node';
+import { getCredentialsStorage } from '../../storage/index.js';
 
 // Interface for Microsoft Graph API responses
 interface GraphEmailMessage {
@@ -32,15 +34,84 @@ interface GraphEmailListResponse {
   value: GraphEmailMessage[];
 }
 
-// Get Microsoft Graph API token from environment
-const getAccessToken = () => {
-  const token = process.env.HEY_JARVIS_MICROSOFT_GRAPH_ACCESS_TOKEN;
-  if (!token) {
+/**
+ * Creates and configures a Microsoft OAuth2 client for Graph API access.
+ * 
+ * The client automatically refreshes access tokens using the stored refresh token.
+ * Refresh tokens are long-lived and only need to be obtained once using the
+ * `nx generate-tokens mcp` command.
+ * 
+ * Credentials are loaded in this order:
+ * 1. Environment variables (HEY_JARVIS_MICROSOFT_*)
+ * 2. Mastra storage (oauth_credentials table)
+ * 
+ * @throws {Error} If credentials are not found in either location
+ */
+const getMicrosoftAuth = async (): Promise<string> => {
+  let clientId = process.env.HEY_JARVIS_MICROSOFT_CLIENT_ID;
+  let clientSecret = process.env.HEY_JARVIS_MICROSOFT_CLIENT_SECRET;
+  let refreshToken = process.env.HEY_JARVIS_MICROSOFT_REFRESH_TOKEN;
+
+  // Fallback to Mastra storage for refresh token only
+  if (!refreshToken) {
+    try {
+      const credentialsStorage = await getCredentialsStorage();
+      refreshToken = await credentialsStorage.getRefreshToken('microsoft');
+    } catch (error) {
+      // Storage error - continue to show helpful error message below
+    }
+  }
+
+  if (!clientId || !clientSecret || !refreshToken) {
     throw new Error(
-      'Microsoft Graph access token not found. Please set HEY_JARVIS_MICROSOFT_GRAPH_ACCESS_TOKEN environment variable.',
+      'Missing required Microsoft OAuth2 credentials.\n' +
+      '\n' +
+      'Option 1: Set environment variables:\n' +
+      '  - HEY_JARVIS_MICROSOFT_CLIENT_ID\n' +
+      '  - HEY_JARVIS_MICROSOFT_CLIENT_SECRET\n' +
+      '  - HEY_JARVIS_MICROSOFT_REFRESH_TOKEN\n' +
+      '\n' +
+      'Option 2: Store refresh token in Mastra (client ID/secret still required in env):\n' +
+      '  Run `nx generate-tokens mcp`',
     );
   }
-  return token;
+
+  const msalClient = new ConfidentialClientApplication({
+    auth: {
+      clientId,
+      clientSecret,
+      authority: 'https://login.microsoftonline.com/common',
+    },
+  });
+
+  // Exchange refresh token for access token
+  const tokenRequest = {
+    refreshToken,
+    scopes: ['https://graph.microsoft.com/Mail.ReadWrite', 'https://graph.microsoft.com/Mail.Send'],
+  };
+
+  try {
+    const response = await msalClient.acquireTokenByRefreshToken(tokenRequest);
+    
+    // Listen for token refresh and update storage
+    if (response.refreshToken && response.refreshToken !== refreshToken) {
+      console.log('🔄 New refresh token received from Microsoft - updating storage');
+      try {
+        const credentialsStorage = await getCredentialsStorage();
+        await credentialsStorage.renewRefreshToken('microsoft', response.refreshToken);
+        console.log('✅ Refresh token updated in storage');
+      } catch (error) {
+        console.error('❌ Failed to update refresh token in storage:', error);
+      }
+    }
+
+    return response.accessToken;
+  } catch (error) {
+    throw new Error(
+      `Failed to acquire access token from Microsoft: ${error instanceof Error ? error.message : String(error)}\n` +
+      'Your refresh token may have expired. Run `nx generate-tokens mcp` to get a new one.',
+    );
+  }
 };
 
 // Base URL for Microsoft Graph API
@@ -84,7 +155,7 @@ export const findEmails = createTool({
     totalCount: z.number(),
   }),
   execute: async (inputData) => {
-    const accessToken = getAccessToken();
+    const accessToken = await getMicrosoftAuth();
     const { searchQuery, folder, limit, isRead, hasAttachment } = inputData;
 
     // Build the filter query
@@ -158,7 +229,7 @@ export const draftEmail = createTool({
     message: z.string(),
   }),
   execute: async (inputData) => {
-    const accessToken = getAccessToken();
+    const accessToken = await getMicrosoftAuth();
     const { subject, bodyContent, toRecipients, ccRecipients, bccRecipients } = inputData;
 
     const draftMessage = {
@@ -227,7 +298,7 @@ export const draftReply = createTool({
     draftId: z.string().optional(),
   }),
   execute: async (inputData) => {
-    const accessToken = getAccessToken();
+    const accessToken = await getMicrosoftAuth();
     const { messageId, replyMessage, replyAll } = inputData;
 
     const endpoint = replyAll ? 'replyAll' : 'reply';
@@ -290,7 +361,7 @@ export const updateDraft = createTool({
     draftId: z.string(),
   }),
   execute: async (inputData) => {
-    const accessToken = getAccessToken();
+    const accessToken = await getMicrosoftAuth();
     const { draftId, subject, bodyContent, toRecipients } = inputData;
 
     const updateData: any = {};
@@ -347,7 +418,7 @@ export const deleteEmail = createTool({
     message: z.string(),
   }),
   execute: async (inputData) => {
-    const accessToken = getAccessToken();
+    const accessToken = await getMicrosoftAuth();
     const { messageId } = inputData;
 
     const response = await fetch(`${GRAPH_API_BASE}/me/messages/${messageId}`, {

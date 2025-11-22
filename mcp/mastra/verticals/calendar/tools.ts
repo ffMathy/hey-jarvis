@@ -2,6 +2,7 @@ import { google } from 'googleapis';
 import type { OAuth2Client } from 'google-auth-library';
 import { z } from 'zod';
 import { createTool } from '../../utils/tool-factory.js';
+import { getCredentialsStorage } from '../../storage/index.js';
 
 /**
  * Creates and configures a Google OAuth2 client for Calendar API access.
@@ -10,37 +11,56 @@ import { createTool } from '../../utils/tool-factory.js';
  * Refresh tokens are long-lived (6+ months with regular use) and only need to be
  * obtained once using the `nx generate-tokens mcp` command.
  * 
- * Required environment variables:
- * - HEY_JARVIS_GOOGLE_CLIENT_ID: OAuth2 client ID from Google Cloud Console
- * - HEY_JARVIS_GOOGLE_CLIENT_SECRET: OAuth2 client secret
- * - HEY_JARVIS_GOOGLE_REFRESH_TOKEN: Long-lived refresh token (obtain via generate-tokens script)
+ * Credentials are loaded in this order:
+ * 1. Environment variables (HEY_JARVIS_GOOGLE_*)
+ * 2. Mastra storage (oauth_credentials table)
  * 
- * @throws {Error} If required environment variables are missing
+ * @throws {Error} If credentials are not found in either location
  */
-const getGoogleAuth = (): OAuth2Client => {
-  const clientId = process.env.HEY_JARVIS_GOOGLE_CLIENT_ID;
-  const clientSecret = process.env.HEY_JARVIS_GOOGLE_CLIENT_SECRET;
-  const refreshToken = process.env.HEY_JARVIS_GOOGLE_REFRESH_TOKEN;
+const getGoogleAuth = async (): Promise<OAuth2Client> => {
+  let clientId = process.env.HEY_JARVIS_GOOGLE_CLIENT_ID;
+  let clientSecret = process.env.HEY_JARVIS_GOOGLE_CLIENT_SECRET;
+  let refreshToken = process.env.HEY_JARVIS_GOOGLE_REFRESH_TOKEN;
+
+  // Fallback to Mastra storage for refresh token only
+  if (!refreshToken) {
+    try {
+      const credentialsStorage = await getCredentialsStorage();
+      refreshToken = await credentialsStorage.getRefreshToken('google');
+    } catch (error) {
+      // Storage error - continue to show helpful error message below
+    }
+  }
 
   if (!clientId || !clientSecret || !refreshToken) {
     throw new Error(
-      'Missing required Google OAuth2 credentials. Please set:\n' +
+      'Missing required Google OAuth2 credentials.\n' +
+      '\n' +
+      'Option 1: Set environment variables:\n' +
       '  - HEY_JARVIS_GOOGLE_CLIENT_ID\n' +
       '  - HEY_JARVIS_GOOGLE_CLIENT_SECRET\n' +
       '  - HEY_JARVIS_GOOGLE_REFRESH_TOKEN\n' +
       '\n' +
-      'Run `nx generate-tokens mcp` to obtain a refresh token.',
+      'Option 2: Store refresh token in Mastra (client ID/secret still required in env):\n' +
+      '  Run `nx generate-tokens mcp`',
     );
   }
 
   const oauth2Client = new google.auth.OAuth2(clientId, clientSecret);
   oauth2Client.setCredentials({ refresh_token: refreshToken });
 
-  // Log token refresh events (access tokens are auto-refreshed by the library)
-  oauth2Client.on('tokens', (tokens) => {
+  // Listen for token refresh events and update storage automatically
+  oauth2Client.on('tokens', async (tokens) => {
     if (tokens.refresh_token) {
-      // This should rarely happen - refresh tokens only change if explicitly requested
-      console.warn('⚠️  New refresh token received. Update your stored credentials with:', tokens.refresh_token);
+      // OAuth provider has issued a new refresh token - update storage
+      console.log('🔄 New refresh token received from Google - updating storage');
+      try {
+        const credentialsStorage = await getCredentialsStorage();
+        await credentialsStorage.renewRefreshToken('google', tokens.refresh_token);
+        console.log('✅ Refresh token updated in storage');
+      } catch (error) {
+        console.error('❌ Failed to update refresh token in storage:', error);
+      }
     }
     // Access token refresh is automatic and expected - no logging needed for normal operation
   });
@@ -70,7 +90,7 @@ export const createCalendarEvent = createTool({
     status: z.string(),
   }),
   execute: async (inputData) => {
-    const auth = getGoogleAuth();
+    const auth = await getGoogleAuth();
     const calendar = google.calendar({ version: 'v3', auth });
 
     const event = {
@@ -117,7 +137,7 @@ export const deleteCalendarEvent = createTool({
     message: z.string(),
   }),
   execute: async (inputData) => {
-    const auth = getGoogleAuth();
+    const auth = await getGoogleAuth();
     const calendar = google.calendar({ version: 'v3', auth });
 
     await calendar.events.delete({
@@ -155,7 +175,7 @@ export const updateCalendarEvent = createTool({
     status: z.string(),
   }),
   execute: async (inputData) => {
-    const auth = getGoogleAuth();
+    const auth = await getGoogleAuth();
     const calendar = google.calendar({ version: 'v3', auth });
 
     // First, get the existing event
@@ -225,7 +245,7 @@ export const getCalendarEvents = createTool({
     ),
   }),
   execute: async (inputData) => {
-    const auth = getGoogleAuth();
+    const auth = await getGoogleAuth();
     const calendar = google.calendar({ version: 'v3', auth });
 
     const response = await calendar.events.list({
@@ -271,7 +291,7 @@ export const getAllCalendars = createTool({
     ),
   }),
   execute: async () => {
-    const auth = getGoogleAuth();
+    const auth = await getGoogleAuth();
     const calendar = google.calendar({ version: 'v3', auth });
 
     const response = await calendar.calendarList.list();

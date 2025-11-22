@@ -620,6 +620,23 @@ If you encounter 1Password CLI authentication issues:
 
 The Calendar and Todo-List verticals use Google's official `googleapis` NPM package for accessing Google Calendar and Google Tasks APIs. These APIs require OAuth2 authentication as they access private user data.
 
+#### Token Generation Behavior
+
+The token generation script **automatically skips providers** that already have refresh tokens stored in Mastra storage. This means:
+
+- ✅ **First run**: Generates tokens for all providers (opens browser for each)
+- ✅ **Subsequent runs**: Only generates tokens for providers without stored tokens
+- ✅ **Selective refresh**: Delete a specific provider's token from storage to regenerate only that one
+
+To regenerate a token for a specific provider, delete it from storage first:
+```bash
+# Remove Google token to force regeneration
+sqlite3 mcp/mastra.sql.db "DELETE FROM oauth_credentials WHERE provider='google';"
+
+# Then run the generator - will only regenerate Google token
+bunx nx generate-tokens mcp
+```
+
 #### Why OAuth2?
 - **Private Data Access**: Google Calendar and Tasks contain personal information that requires user consent
 - **API Key Limitation**: API keys only work for public data, not private calendars or task lists
@@ -666,30 +683,28 @@ The script will guide you through:
 
 **Step 4: Store Credentials Securely**
 
-You have three options for storing your OAuth2 credentials:
+You have four options for storing your OAuth2 credentials:
 
-**Option 1: 1Password (Recommended for Development)**
+**Mastra Storage (Default)**
 ```bash
-# Store in your 1Password "Google OAuth" item in "Personal" vault:
-# - client id
-# - client secret  
-# - refresh token
+# Generate tokens and store refresh token in Mastra's LibSQL database
+bunx nx generate-tokens mcp
 
-# Reference in mcp/op.env:
-HEY_JARVIS_GOOGLE_CLIENT_ID="op://Personal/Google OAuth/client id"
-HEY_JARVIS_GOOGLE_CLIENT_SECRET="op://Personal/Google OAuth/client secret"
-HEY_JARVIS_GOOGLE_REFRESH_TOKEN="op://Personal/Google OAuth/refresh token"
+# This will:
+# 1. Guide you through the OAuth flow
+# 2. Store ONLY the refresh token in oauth_credentials table
+# 3. Client ID and secret must still be set in environment variables
 ```
 
-**Option 2: Environment Variables**
-```bash
-# Add to your mcp/op.env file (not recommended - less secure):
-HEY_JARVIS_GOOGLE_CLIENT_ID="your-client-id"
-HEY_JARVIS_GOOGLE_CLIENT_SECRET="your-client-secret"
-HEY_JARVIS_GOOGLE_REFRESH_TOKEN="your-refresh-token"
-```
+**Benefits**:
+- Persistent refresh token across container restarts
+- Automatic token renewal when OAuth provider rotates tokens
+- Client ID/secret in env vars (more secure)
+- Single source for refresh tokens across deployments
 
-**Option 3: Home Assistant Addon**
+**Note**: Client ID and secret must always be provided via environment variables for security.
+
+**Alternative: Manual Configuration in Home Assistant Addon**
 1. Go to **Supervisor** → **Hey Jarvis MCP Server** → **Configuration**
 2. Fill in the three fields:
    - `google_client_id`
@@ -707,20 +722,73 @@ HEY_JARVIS_GOOGLE_REFRESH_TOKEN="your-refresh-token"
 **Refresh Tokens**:
 - Long-lived (6+ months with regular use)
 - Used to obtain new access tokens
+- Automatically renewed and stored when OAuth provider rotates them
 - Will not expire as long as:
   - Used at least once every 6 months
   - Not revoked at [Google Account Permissions](https://myaccount.google.com/permissions)
   - Google Cloud Project credentials remain valid
 
-**Token Refresh Events**:
-Both Calendar and Todo-List verticals log when new refresh tokens are received (rare occurrence):
+**Automatic Token Renewal**:
+Both Calendar and Todo-List verticals automatically update the stored refresh token when renewed:
 ```typescript
-oauth2Client.on('tokens', (tokens) => {
+oauth2Client.on('tokens', async (tokens) => {
   if (tokens.refresh_token) {
-    console.warn('⚠️  New refresh token received. Update your stored credentials');
+    const credentialsStorage = await getCredentialsStorage();
+    await credentialsStorage.renewRefreshToken('google', tokens.refresh_token);
+    console.log('✅ Refresh token updated in storage');
   }
 });
 ```
+
+#### Credential Management with Mastra Storage
+
+When using `--store-in-mastra`, credentials are persisted in the LibSQL database and tools automatically fall back to stored credentials when environment variables are not set.
+
+**Credential Lookup Order**:
+1. Environment variables (`HEY_JARVIS_GOOGLE_CLIENT_ID`, `HEY_JARVIS_GOOGLE_CLIENT_SECRET`, `HEY_JARVIS_GOOGLE_REFRESH_TOKEN`)
+2. Mastra storage (`oauth_credentials` table) - **refresh token only**
+
+**Note**: Client ID and secret are ALWAYS read from environment variables. Only the refresh token can be stored in Mastra.
+
+**Storage Schema**:
+```sql
+CREATE TABLE IF NOT EXISTS oauth_credentials (
+  provider TEXT PRIMARY KEY,
+  refresh_token TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+)
+```
+
+**Security Note**: Client IDs and secrets are intentionally NOT stored in the database. They must be provided via environment variables (`HEY_JARVIS_GOOGLE_CLIENT_ID` and `HEY_JARVIS_GOOGLE_CLIENT_SECRET`).
+
+**Programmatic Access**:
+```typescript
+import { getCredentialsStorage } from './mastra/storage';
+
+// Get stored refresh token
+const credentialsStorage = await getCredentialsStorage();
+const refreshToken = await credentialsStorage.getRefreshToken('google');
+
+// Store/update refresh token manually
+await credentialsStorage.setRefreshToken('google', newRefreshToken);
+
+// Renew refresh token (called automatically by OAuth handlers)
+await credentialsStorage.renewRefreshToken('google', renewedToken);
+
+// List all stored providers
+const providers = await credentialsStorage.listProviders();
+
+// Delete refresh token
+await credentialsStorage.deleteRefreshToken('google');
+```
+
+**Benefits**:
+- **Persistent**: Refresh tokens survive container restarts
+- **Automatic Fallback**: Tools check storage if refresh token env var is missing
+- **Secure**: Client ID/secret never stored in database
+- **Multi-Tenant**: Support multiple OAuth providers
+- **Programmatic**: Easy token rotation
 
 #### Troubleshooting
 
@@ -756,7 +824,173 @@ oauth2Client.on('tokens', (tokens) => {
 
 ### Adding New OAuth Providers
 
-The token generation script (`mcp/scripts/generate-refresh-tokens.ts`) is designed to support multiple OAuth providers through a common interface. All configured providers will be processed automatically when the script runs.
+The token generation script (`mcp/generate-refresh-tokens.ts`) is designed to support multiple OAuth providers through a common interface. All configured providers will be processed automatically when the script runs.
+
+OAuth provider configurations are defined in separate files under `mcp/mastra/credentials/`:
+- `mcp/mastra/credentials/google.ts` - Google Calendar and Tasks provider
+- `mcp/mastra/credentials/microsoft.ts` - Microsoft Outlook/Email provider
+- `mcp/mastra/credentials/types.ts` - Shared TypeScript interfaces
+- `mcp/mastra/credentials/index.ts` - Module exports
+
+### Microsoft OAuth2 Setup
+
+The Email vertical uses Microsoft OAuth2 for accessing Outlook/Microsoft 365 email through the Microsoft Graph API.
+
+#### Why OAuth2?
+- **Private Data Access**: Email contains personal information that requires user consent
+- **API Key Limitation**: Microsoft Graph doesn't support API keys for email access
+- **Automatic Token Refresh**: The `@azure/msal-node` library handles access token refresh automatically
+- **Long-Lived Tokens**: Refresh tokens remain valid for 90+ days with regular use
+
+#### Initial Setup (One-Time)
+
+**Step 1: Create Azure App Registration**
+1. Go to [Azure Portal → App Registrations](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps)
+2. Create a new app registration
+3. Select **Web** as the platform type
+4. Add redirect URI: `http://localhost:3000/oauth2callback`
+
+**Step 2: Configure API Permissions**
+1. Navigate to **API permissions**
+2. Click **Add a permission** → **Microsoft Graph**
+3. Select **Delegated permissions**
+4. Add the following permissions:
+   - `Mail.ReadWrite` - Read and write mail
+   - `Mail.Send` - Send mail
+   - `offline_access` - Required for refresh token
+5. Grant admin consent (if required by your organization)
+
+**Step 3: Create Client Secret**
+1. Navigate to **Certificates & secrets**
+2. Click **New client secret**
+3. Add a description and set expiration (recommended: 24 months)
+4. Save the **Client Secret Value** immediately (it won't be shown again)
+5. Note the **Application (client) ID** from the Overview page
+
+**Step 4: Generate Refresh Token**
+
+Run the token generation script:
+
+```bash
+# Run the interactive token generator
+bunx nx generate-tokens mcp
+
+# This will:
+# 1. Open your browser for Microsoft authorization
+# 2. Request access to your Email
+# 3. Generate and store your refresh token automatically
+```
+
+The script will guide you through:
+- Opening the Microsoft authorization page
+- Granting access to your Email
+- Receiving your long-lived refresh token
+
+**Step 5: Store Credentials Securely**
+
+Credentials are automatically stored in Mastra storage:
+
+**Mastra Storage (Default)**
+```bash
+# Generate tokens and store refresh token in Mastra's LibSQL database
+bunx nx generate-tokens mcp
+
+# This will:
+# 1. Guide you through the OAuth flow
+# 2. Store ONLY the refresh token in oauth_credentials table
+# 3. Client ID and secret must still be set in environment variables
+```
+
+**Benefits**:
+- Persistent refresh token across container restarts
+- Automatic token renewal when OAuth provider rotates tokens
+- Client ID/secret in env vars (more secure)
+- Single source for refresh tokens across deployments
+
+**Note**: Client ID and secret must always be provided via environment variables for security.
+
+**Alternative: Manual Configuration in Home Assistant Addon**
+1. Go to **Supervisor** → **Hey Jarvis MCP Server** → **Configuration**
+2. Fill in the three fields:
+   - `microsoft_client_id`
+   - `microsoft_client_secret`
+   - `microsoft_refresh_token`
+3. Save and restart the addon
+
+#### Token Lifecycle
+
+**Access Tokens**:
+- Short-lived (~1 hour)
+- Automatically refreshed by the `@azure/msal-node` library
+- No manual intervention needed
+
+**Refresh Tokens**:
+- Long-lived (90+ days with regular use, up to 6 months with continuous use)
+- Used to obtain new access tokens
+- Automatically renewed and stored when OAuth provider rotates them
+- Will not expire as long as:
+  - Used at least once every 90 days
+  - Not revoked at [Microsoft Account Permissions](https://account.microsoft.com/privacy/ad-settings)
+  - Azure App Registration remains active
+
+**Automatic Token Renewal**:
+The Email vertical automatically updates the stored refresh token when renewed:
+```typescript
+const response = await msalClient.acquireTokenByRefreshToken(tokenRequest);
+
+if (response.refreshToken && response.refreshToken !== refreshToken) {
+  const credentialsStorage = await getCredentialsStorage();
+  await credentialsStorage.renewRefreshToken('microsoft', response.refreshToken);
+  console.log('✅ Refresh token updated in storage');
+}
+```
+
+#### Troubleshooting
+
+**"No refresh token received" Error**:
+- Make sure you included `offline_access` scope in the app registration
+- Solution:
+  1. Go to Azure Portal → App Registrations → Your App → API permissions
+  2. Ensure `offline_access` is listed
+  3. Run `bunx nx generate-tokens mcp` again
+
+**"Missing required Microsoft OAuth2 credentials" Error**:
+- Verify all three environment variables are set:
+  - `HEY_JARVIS_MICROSOFT_CLIENT_ID`
+  - `HEY_JARVIS_MICROSOFT_CLIENT_SECRET`
+  - `HEY_JARVIS_MICROSOFT_REFRESH_TOKEN`
+- If using 1Password: Run `eval $(op signin)` to authenticate
+
+**"Invalid grant" Error**:
+- Refresh token has been revoked or expired
+- Solution: Run `bunx nx generate-tokens mcp` to get a new token
+
+**"AADSTS65001: User consent required" Error**:
+- Admin consent is required for your organization
+- Solution: Contact your IT administrator to grant consent for the app
+
+**Authorization Timeout**:
+- The token generator times out after 5 minutes
+- Solution: Run the script again and complete authorization promptly
+
+#### Security Best Practices
+
+- **Never commit credentials**: Always use 1Password or environment variables
+- **Rotate tokens periodically**: Generate new tokens if you suspect compromise
+- **Use appropriate scopes**: Only request the minimum permissions needed
+- **Monitor token usage**: Check [Microsoft Account Activity](https://account.microsoft.com/account) regularly
+- **Revoke old tokens**: Remove old application access from Microsoft Account Permissions
+- **Set client secret expiration**: Use shorter expiration periods (6-12 months) for better security
+
+### Adding New OAuth Providers
+
+The token generation script (`mcp/generate-refresh-tokens.ts`) is designed to support multiple OAuth providers through a common interface. All configured providers will be processed automatically when the script runs.
+
+OAuth provider configurations are defined in separate files under `mcp/mastra/credentials/`:
+- `mcp/mastra/credentials/google.ts` - Google Calendar and Tasks provider
+- `mcp/mastra/credentials/microsoft.ts` - Microsoft Outlook/Email provider
+- `mcp/mastra/credentials/types.ts` - Shared TypeScript interfaces
+- `mcp/mastra/credentials/index.ts` - Module exports
 
 #### Provider Interface
 
@@ -848,32 +1082,52 @@ const PROVIDERS: OAuthProvider[] = [
    bun add @provider/oauth-library
    ```
 
-2. **Create Provider Configuration**: Define the provider object following the interface
+2. **Create Provider Configuration**: Create a new provider file in `mcp/mastra/credentials/`
    - Set appropriate environment variable names
    - Configure OAuth scopes for required APIs
    - Implement client creation, auth URL generation, and token exchange
-
-3. **Add to PROVIDERS Array**: Add your provider to the array in `generate-refresh-tokens.ts`
    ```typescript
+   // mcp/mastra/credentials/your-provider.ts
+   import type { OAuthProvider, TokenResponse } from './types.js';
+   
+   export const yourProvider: OAuthProvider = {
+     name: 'YourProvider',
+     // ... provider configuration
+   };
+   ```
+
+3. **Export Provider**: Add your provider to `mcp/mastra/credentials/index.ts`
+   ```typescript
+   export * from './types.js';
+   export { googleProvider } from './google.js';
+   export { microsoftProvider } from './microsoft.js';
+   export { yourProvider } from './your-provider.js'; // Add here
+   ```
+
+4. **Register Provider**: Import and add to PROVIDERS array in `mcp/mastra/generate-refresh-tokens.ts`
+   ```typescript
+   import { googleProvider, microsoftProvider, yourProvider } from './credentials/index.js';
+   
    const PROVIDERS: OAuthProvider[] = [
      googleProvider,
-     yourNewProvider, // Add here
+     microsoftProvider,
+     yourProvider, // Add here
    ];
    ```
 
-4. **Update Environment Files**: Add new variables to `mcp/op.env`
+5. **Update Environment Files**: Add new variables to `mcp/op.env`
    ```bash
    HEY_JARVIS_YOUR_PROVIDER_CLIENT_ID="op://Personal/Your Provider/client id"
    HEY_JARVIS_YOUR_PROVIDER_CLIENT_SECRET="op://Personal/Your Provider/client secret"
    HEY_JARVIS_YOUR_PROVIDER_REFRESH_TOKEN="op://Personal/Your Provider/refresh token"
    ```
 
-5. **Run Token Generation**: Execute `bunx nx generate-tokens mcp`
+6. **Run Token Generation**: Execute `bunx nx generate-tokens mcp`
    - Script will process ALL providers automatically
    - Skip any provider with missing credentials
    - Each provider opens its own browser authorization flow
 
-6. **Update Documentation**: Add provider-specific notes to this AGENTS.md file
+7. **Update Documentation**: Add provider-specific notes to this AGENTS.md file
 
 #### Multi-Provider Benefits
 
