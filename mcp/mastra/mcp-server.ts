@@ -129,6 +129,23 @@ export async function startMcpServer() {
 
   const app = express();
 
+  // Request logging middleware
+  app.use((req, res, next) => {
+    const startTime = Date.now();
+    const timestamp = new Date().toISOString();
+
+    // Log incoming request
+    console.log(`[${timestamp}] ${req.method} ${req.url}`);
+
+    // Log response when finished
+    res.on('finish', () => {
+      const duration = Date.now() - startTime;
+      console.log(`[${timestamp}] ${req.method} ${req.url} - ${res.statusCode} (${duration}ms)`);
+    });
+
+    next();
+  });
+
   // Health check endpoint (no JWT required)
   app.get('/health', (_req, res) => {
     res.json({ status: 'healthy', version: '1.0.0' });
@@ -169,7 +186,7 @@ export async function startMcpServer() {
   );
 
   // Express error handler for JWT authentication failures
-  app.use((err: Error & { status?: number }, req, res, _next) => {
+  app.use((err: Error & { status?: number }, _req, res, _next) => {
     if (err.name === 'UnauthorizedError') {
       res.status(401).json({
         error: 'Unauthorized',
