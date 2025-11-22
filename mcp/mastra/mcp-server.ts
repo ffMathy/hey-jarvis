@@ -9,19 +9,21 @@ import { z } from 'zod';
 import { getCalendarAgent } from './verticals/calendar/index.js';
 import { getCodingAgent } from './verticals/coding/index.js';
 import { getEmailAgent } from './verticals/email/index.js';
+import { getHomeAssistantAgent } from './verticals/home-assistant/index.js';
 import { getShoppingListAgent } from './verticals/shopping/index.js';
 import { getTodoListAgent } from './verticals/todo-list/index.js';
 import { getWeatherAgent } from './verticals/weather/index.js';
 import { initializeScheduler } from './scheduler.js';
 
 export async function getPublicAgents(): Promise<Record<string, Agent>> {
-  const [coding, weather, shopping, email, calendar, todoList] = await Promise.all([
+  const [coding, weather, shopping, email, calendar, todoList, homeAssistant] = await Promise.all([
     getCodingAgent(),
     getWeatherAgent(),
     getShoppingListAgent(),
     getEmailAgent(),
     getCalendarAgent(),
     getTodoListAgent(),
+    getHomeAssistantAgent(),
   ]);
 
   return {
@@ -31,6 +33,7 @@ export async function getPublicAgents(): Promise<Record<string, Agent>> {
     email,
     calendar,
     todoList,
+    homeAssistant,
   };
 }
 
@@ -103,6 +106,11 @@ export async function startMcpServer() {
       'todoList',
       agents.todoList,
       'Manage Google Tasks to-do lists. Create, update, delete, or retrieve tasks from your task lists.',
+    ),
+    ask_homeAssistant: createSimplifiedAgentTool(
+      'homeAssistant',
+      agents.homeAssistant,
+      'Control and monitor Home Assistant smart home devices. Turn devices on/off, adjust settings, query device states, and view historical changes.',
     ),
   };
 

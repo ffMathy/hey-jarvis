@@ -138,8 +138,10 @@ Provides general cooking and recipe search capabilities:
 
 ### Notification Agent
 Provides proactive notification delivery to Home Assistant Voice Preview Edition devices:
-- **1 notification tool**: Sends voice notifications via ElevenLabs-enabled voice devices
+- **2 notification tools**: Send voice notifications and register state changes for reactive analysis
 - **Google Gemini model**: Uses `gemini-flash-latest` for natural language processing
+- **Reactive analysis**: Uses semantic recall to determine if state changes warrant user notification
+- **Agent network**: Employs Mastra Agent Network for intelligent notification decision-making
 - **Proactive messaging**: Triggers conversations without wake word activation
 - **Configurable timeout**: Default 5-second timeout after notification delivery
 - **Device targeting**: Can notify specific devices or broadcast to all available devices
@@ -147,18 +149,47 @@ Provides proactive notification delivery to Home Assistant Voice Preview Edition
 - **Error reporting**: Configured with error reporting processor (see Processors section)
 
 **Key Capabilities:**
-- Send notifications proactively without user initiation
-- Start interactive conversations after notification
-- Automatically timeout if no user response within configured period
-- Support for custom notification messages
-- Integration with Home Assistant automation system
-- Automatic error reporting to GitHub when failures occur
+- **State Change Registration** (`registerStateChange` tool):
+  - Accepts state changes from any vertical (weather, shopping, calendar, etc.)
+  - Persists state changes to semantic memory for context-aware analysis
+  - Triggers reactive notification workflow via agent network
+  - Free-form state types (e.g., "weather_update", "task_deadline_approaching")
+- **Proactive Notifications** (`notifyDevice` tool):
+  - Send notifications proactively without user initiation
+  - Start interactive conversations after notification
+  - Automatically timeout if no user response within configured period
+  - Support for custom notification messages
+  - Integration with Home Assistant automation system
+  - Automatic error reporting to GitHub when failures occur
+
+**Reactive Notification Pattern:**
+The notification agent uses an **agent network-based workflow** to analyze state changes:
+1. Other verticals call `registerStateChange` tool when significant events occur
+2. State change is saved to semantic memory for context preservation
+3. State change notification workflow is triggered asynchronously
+4. Agent network analyzes the state change using semantic recall
+5. Network determines if notification is warranted based on significance and context
+6. If needed, notification is sent automatically via `notifyDevice` tool
 
 **Example Use Cases:**
-- "Remind me about my meeting in 5 minutes"
-- "Notify me when the laundry is done"
-- "Alert me if the temperature drops below 18°C"
-- "Let me know when dinner is ready"
+- Weather vertical detects significant temperature change → automatic notification
+- Calendar vertical sees upcoming deadline → proactive reminder
+- Shopping vertical completes order → confirmation notification
+- Custom automation triggers state change → intelligent notification decision
+
+**Example State Change Registration:**
+```typescript
+// From weather monitoring workflow
+await registerStateChange.execute({
+  source: 'weather',
+  stateType: 'weather_update',
+  stateData: {
+    location: 'Mathias, Denmark',
+    weatherInfo: result,
+    timestamp: new Date().toISOString(),
+  },
+});
+```
 
 ### Coding Agent
 Manages GitHub repositories and coordinates feature implementation through requirements gathering workflows:
@@ -369,12 +400,62 @@ api:
             timeout: !lambda 'return timeout;'
 ```
 
+### State Change Notification Workflow
+Reactive notification workflow using agent network for intelligent state change analysis:
+- **`stateChangeNotificationWorkflow`**: Analyzes state changes and sends notifications when warranted
+- **Agent Network**: Uses Mastra Agent Network with notification agent for intelligent decision-making
+- **Semantic Recall**: Leverages memory to understand context and determine notification necessity
+- **Asynchronous Execution**: Triggered automatically by `registerStateChange` tool calls
+- **Smart Filtering**: Only notifies for significant, actionable, or time-sensitive changes
+
+**Workflow Steps:**
+1. **Analyze State Change**: Agent network examines state change data using semantic recall
+2. **Notification Decision**: Determines if user should be notified based on:
+   - Significance: Is this change important enough?
+   - Actionability: Can the user do something about it?
+   - Timing: Is this time-sensitive or urgent?
+   - Context: What else is happening (from semantic recall)?
+3. **Conditional Notification**: If warranted, sends notification via `notifyDevice` tool
+
+**Technical Implementation:**
+- Uses `AgentNetwork` from `@mastra/core` for multi-agent coordination
+- Streams agent analysis for real-time decision-making
+- Examines tool calls to detect if notification was actually sent
+- Logs reasoning and notification status for observability
+
+**Example Triggers:**
+```typescript
+// Weather vertical detects significant change
+await registerStateChange.execute({
+  source: 'weather',
+  stateType: 'significant_temperature_change',
+  stateData: { previousTemp: 15, currentTemp: 25, change: '+10°C' },
+});
+
+// Calendar vertical sees deadline approaching
+await registerStateChange.execute({
+  source: 'calendar',
+  stateType: 'task_deadline_approaching',
+  stateData: { task: 'Submit report', deadline: '2025-11-23T09:00:00Z' },
+});
+```
+
 ### Weather Workflow
-Multi-step weather processing workflow with two main components:
-- **`weatherWorkflow`**: Handles interactive weather requests from prompts or chat (replaces n8n ExecuteWorkflowTrigger + ChatTrigger)
-- **`weatherMonitoringWorkflow`**: Performs scheduled weather checks every hour with memory updates (replaces n8n ScheduleTrigger chain)
+Multi-step weather processing workflow with state change registration:
+- **`weatherWorkflow`**: Handles interactive weather requests from prompts or chat
+- **`weatherMonitoringWorkflow`**: Performs scheduled weather checks every hour with automatic state change registration
 - **Agent integration**: Seamlessly connects to the weather agent for tool execution
-- **Memory updates**: Automatically notifies other agents when weather conditions change
+- **State change registration**: Automatically registers weather updates for notification analysis
+
+**Workflow Steps:**
+1. **Scheduled Weather Check**: Weather agent gets current weather for Mathias, Denmark
+2. **Register State Change**: Calls `registerStateChange` tool to persist weather data and trigger notification analysis
+
+**Technical Implementation:**
+- Uses agent-as-step pattern for weather retrieval
+- Uses custom step with tool execution for state change registration
+- Transforms weather result into structured state change format
+- Triggers `stateChangeNotificationWorkflow` asynchronously
 
 ### Shopping List Workflow
 Multi-step shopping list processing workflow implementing the original n8n 3-agent architecture:
