@@ -87,10 +87,20 @@ if bashio::config.has_value 'google_refresh_token'; then
     bashio::log.info "Google Refresh Token configured"
 fi
 
-# Microsoft Graph (for Outlook/Email)
-if bashio::config.has_value 'microsoft_graph_access_token'; then
-    export HEY_JARVIS_MICROSOFT_GRAPH_ACCESS_TOKEN=$(bashio::config 'microsoft_graph_access_token')
-    bashio::log.info "Microsoft Graph Access Token configured"
+# Microsoft OAuth2 (for Outlook/Email)
+if bashio::config.has_value 'microsoft_client_id'; then
+    export HEY_JARVIS_MICROSOFT_CLIENT_ID=$(bashio::config 'microsoft_client_id')
+    bashio::log.info "Microsoft Client ID configured"
+fi
+
+if bashio::config.has_value 'microsoft_client_secret'; then
+    export HEY_JARVIS_MICROSOFT_CLIENT_SECRET=$(bashio::config 'microsoft_client_secret')
+    bashio::log.info "Microsoft Client Secret configured"
+fi
+
+if bashio::config.has_value 'microsoft_refresh_token'; then
+    export HEY_JARVIS_MICROSOFT_REFRESH_TOKEN=$(bashio::config 'microsoft_refresh_token')
+    bashio::log.info "Microsoft Refresh Token configured"
 fi
 
 # Home Assistant integration
