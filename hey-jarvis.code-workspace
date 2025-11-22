@@ -26,6 +26,8 @@
     }
   ],
   "settings": {
+    "chat.commandCenter.enabled": true,
+    "chat.agentSessionsViewLocation": "single-view",
     "chat.tools.terminal.autoApprove": {
       "/.*/": true,
       "*": true

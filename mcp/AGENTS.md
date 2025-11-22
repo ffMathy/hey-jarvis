@@ -247,6 +247,89 @@ Only stops when 100% certain about:
 
 ## Available Workflows
 
+### 📅 Workflow Scheduling
+
+Workflows can be executed on recurring cron schedules using the built-in `WorkflowScheduler`. The scheduler automatically starts when the MCP server launches and manages all scheduled workflows.
+
+**Key Features:**
+- **Cron-based scheduling**: Uses standard cron expressions for flexible timing
+- **Automatic execution**: Workflows run in the background without manual intervention
+- **Error handling**: Failed executions are logged with detailed error information
+- **Timezone support**: Configurable timezone (defaults to Europe/Copenhagen)
+- **Pre-defined patterns**: Common schedules available via `CronPatterns`
+
+**How to Schedule a Workflow:**
+
+Edit `mcp/mastra/scheduler.ts` to add new scheduled workflows:
+
+```typescript
+import { WorkflowScheduler, CronPatterns } from './utils/workflow-scheduler.js';
+
+export function initializeScheduler(): WorkflowScheduler {
+  const scheduler = new WorkflowScheduler(mastra, {
+    timezone: 'Europe/Copenhagen',
+  });
+
+  // Add your scheduled workflow
+  scheduler.schedule({
+    workflowId: 'my-workflow-id',
+    schedule: CronPatterns.EVERY_HOUR, // or custom: '0 * * * *'
+    name: 'My Scheduled Task',
+    inputData: {},
+  });
+
+  return scheduler;
+}
+```
+
+**Available Cron Patterns:**
+- `EVERY_MINUTE`: `* * * * *`
+- `EVERY_5_MINUTES`: `*/5 * * * *`
+- `EVERY_15_MINUTES`: `*/15 * * * *`
+- `EVERY_30_MINUTES`: `*/30 * * * *`
+- `EVERY_HOUR`: `0 * * * *`
+- `EVERY_2_HOURS`: `0 */2 * * *`
+- `EVERY_6_HOURS`: `0 */6 * * *`
+- `EVERY_12_HOURS`: `0 */12 * * *`
+- `DAILY_AT_MIDNIGHT`: `0 0 * * *`
+- `DAILY_AT_NOON`: `0 12 * * *`
+- `DAILY_AT_8AM`: `0 8 * * *`
+- `WEEKLY_SUNDAY_8AM`: `0 8 * * 0`
+- `WEEKLY_MONDAY_9AM`: `0 9 * * 1`
+- `MONTHLY_FIRST_DAY`: `0 0 1 * *`
+
+**Custom Cron Expressions:**
+```
+* * * * *
+│ │ │ │ │
+│ │ │ │ └─ Day of week (0-6, Sunday = 0)
+│ │ │ └─── Month (1-12)
+│ │ └───── Day of month (1-31)
+│ └─────── Hour (0-23)
+└───────── Minute (0-59)
+```
+
+**Currently Scheduled Workflows:**
+1. **Weather Monitoring** - Runs every hour at minute 0
+   - Workflow: `weather-monitoring-workflow`
+   - Schedule: `0 * * * *`
+   - Purpose: Updates weather information and notifies other agents of changes
+
+2. **Weekly Meal Planning** - Runs every Sunday at 8:00 AM
+   - Workflow: `weekly-meal-planning-workflow`
+   - Schedule: `0 8 * * 0`
+   - Purpose: Generates weekly meal plan with Danish recipes
+
+**Monitoring Scheduled Workflows:**
+
+View logs in the terminal when workflows execute:
+```
+⚙️  Executing scheduled workflow: Hourly Weather Check
+   Time: 2024-01-15T10:00:00.000Z
+✅ Workflow completed successfully (1234ms)
+   Status: success
+```
+
 ### Notification Workflow
 Proactive notification delivery workflow with validation and device targeting:
 - **`notificationWorkflow`**: Sends proactive voice notifications to Home Assistant Voice Preview Edition devices

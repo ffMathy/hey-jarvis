@@ -12,6 +12,7 @@ import { getEmailAgent } from './verticals/email/index.js';
 import { getShoppingListAgent } from './verticals/shopping/index.js';
 import { getTodoListAgent } from './verticals/todo-list/index.js';
 import { getWeatherAgent } from './verticals/weather/index.js';
+import { initializeScheduler } from './scheduler.js';
 
 export async function getPublicAgents(): Promise<Record<string, Agent>> {
   const [coding, weather, shopping, email, calendar, todoList] = await Promise.all([
@@ -176,6 +177,10 @@ export async function startMcpServer() {
 
   console.log(`JWT authentication enabled for ${mcpPath} with secret length: ${jwtSecret.length} characters`);
   console.log(`J.A.R.V.I.S. MCP Server listening on http://${host}:${port}${mcpPath}`);
+
+  // Initialize and start workflow scheduler
+  const scheduler = initializeScheduler();
+  scheduler.start();
 
   // Start the Express server
   return new Promise<void>((resolve) => {
