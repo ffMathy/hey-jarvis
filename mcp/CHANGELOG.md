@@ -5,6 +5,38 @@
 
 * **mcp:** Synchronize mcp versions
 
+## [0.8.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.7.0...mcp-v0.8.0) (2025-11-22)
+
+
+### Features
+
+* add support for refreshing oauth tokens ([7e692fd](https://github.com/ffMathy/hey-jarvis/commit/7e692fd4b04cb6c0f85cca2d65c7b5a5419b8f1d))
+* improved token generation ([6234c52](https://github.com/ffMathy/hey-jarvis/commit/6234c5221d46f168cea005246a5b0ff2c974d15a))
+* lots of new verticals and improvements ([dd5c04e](https://github.com/ffMathy/hey-jarvis/commit/dd5c04e67b88cd73a53c14510b122bf1dae5f195))
+
+
+### Bug Fixes
+
+* added missing environment variable references ([6b6cced](https://github.com/ffMathy/hey-jarvis/commit/6b6ccedf07c376799cb2d6adeac11531d5b0cc5b))
+* better jwt integration ([d415819](https://github.com/ffMathy/hey-jarvis/commit/d415819c8fe7d7ccf1b1c6ad422ffb8002ca52fd))
+* better logging ([7e898c8](https://github.com/ffMathy/hey-jarvis/commit/7e898c86d6f735a130f7ade9f995a17f42a61a21))
+* better stability for some projects ([33f8cf2](https://github.com/ffMathy/hey-jarvis/commit/33f8cf29daea5354090264d9b04974eafb3233be))
+* better targets ([45f9994](https://github.com/ffMathy/hey-jarvis/commit/45f999493d71a372423b9556e2aa2d31d6850b5a))
+* better tests ([52407ff](https://github.com/ffMathy/hey-jarvis/commit/52407ffbdb8d711610ae907602c67fd835134938))
+* improved logging ([dc8e125](https://github.com/ffMathy/hey-jarvis/commit/dc8e125e52906dae45962bad4f6483f397f2bb04))
+* kill ports ([55c415e](https://github.com/ffMathy/hey-jarvis/commit/55c415ee47ba6531eeec748bcbd2083d651afb9d))
+* much better tests ([4f8bb0d](https://github.com/ffMathy/hey-jarvis/commit/4f8bb0dda96ab53fd6f695380ec25d0034f8e318))
+* mute logging ([ac6aaf7](https://github.com/ffMathy/hey-jarvis/commit/ac6aaf72af4928e0650ecad2876988e16bf011c7))
+* new progress on verticals ([4a5323f](https://github.com/ffMathy/hey-jarvis/commit/4a5323fe875aba3d0bb0cbef495ff926fca495a1))
+* test suite stability ([7532fd2](https://github.com/ffMathy/hey-jarvis/commit/7532fd286ce1f17cc8df8a9abfd0d364dff559e8))
+* tests now use proper imports ([9f1f909](https://github.com/ffMathy/hey-jarvis/commit/9f1f909c0ab283c1adfb2501d069cd850fb97b9a))
+* token issues ([e0fc2a9](https://github.com/ffMathy/hey-jarvis/commit/e0fc2a93126a0574f1d5880cd4d60d7310d7041a))
+
+
+### Performance Improvements
+
+* introduce force exit to tests ([5caf436](https://github.com/ffMathy/hey-jarvis/commit/5caf436d9a6dc05fc079bae0ae1f030ee5c2f3db))
+
 ## [0.7.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.6.0...mcp-v0.7.0) (2025-11-20)
 
 
