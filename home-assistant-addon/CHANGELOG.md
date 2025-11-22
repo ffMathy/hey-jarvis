@@ -5,6 +5,14 @@
 
 * **home-assistant-addon:** resolve static asset 404s under ingress proxy ([#191](https://github.com/ffMathy/hey-jarvis/issues/191)) ([d58603f](https://github.com/ffMathy/hey-jarvis/commit/d58603f6ede6e643cbcea5cd39d2abd83f2d78e3))
 
+## [0.11.1](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v0.11.0...home-assistant-addon-v0.11.1) (2025-11-22)
+
+
+### Bug Fixes
+
+* **workflows:** wrap recipes array in object for meal plan validation ([26db98f](https://github.com/ffMathy/hey-jarvis/commit/26db98f924bf6cbf7e49de61a929f04c8ff0ce26))
+* **workflows:** wrap recipes array in object for step input validation ([#278](https://github.com/ffMathy/hey-jarvis/issues/278)) ([b393089](https://github.com/ffMathy/hey-jarvis/commit/b39308950160c513f29220d4f14dac310aa148f5))
+
 ## [0.11.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v0.10.1...home-assistant-addon-v0.11.0) (2025-11-22)
 
 
