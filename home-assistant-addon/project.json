@@ -8,7 +8,11 @@
       "executor": "nx:run-commands",
       "cache": true,
       "options": {
-        "command": "bunx playwright install chromium",
+        "commands": [
+          "bunx playwright install chromium",
+          "bunx playwright install-deps"
+        ],
+        "parallel": false,
         "cwd": "."
       }
     },

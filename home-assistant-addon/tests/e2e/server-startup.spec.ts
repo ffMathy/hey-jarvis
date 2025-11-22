@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { spawn } from 'child_process';
 import { startContainer, ContainerStartupResult } from './helpers/container-startup';
+import { getMastraUIUrl, PORTS } from './helpers/ports';
 
 test.describe('Server Startup Tests', () => {
   let container: ContainerStartupResult | undefined;
@@ -48,18 +49,18 @@ test.describe('Server Startup Tests', () => {
     expect(stdout).not.toContain('ERROR: MCP server failed to start or exited immediately');
     expect(stdout).not.toContain('ERROR: Mastra server failed to start or exited immediately');
 
-    // Verify Mastra server is accessible via nginx on port 5690
+    // Verify Mastra server is accessible
     let mastraAccessible = false;
     try {
-      const response = await fetch('http://localhost:5690/');
+      const response = await fetch(getMastraUIUrl());
       if (response.status < 500) {
         mastraAccessible = true;
-        console.log(`Mastra server is accessible with status: ${response.status}`);
+        console.log(`Mastra server is accessible at ${getMastraUIUrl()} with status: ${response.status}`);
       }
     } catch (error) {
       console.log(`Mastra server check error: ${error instanceof Error ? error.message : String(error)}`);
     }
 
-    expect(mastraAccessible, 'Mastra server should be accessible via nginx').toBe(true);
+    expect(mastraAccessible, 'Mastra server should be accessible').toBe(true);
   });
 });
