@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.10.0](https://github.com/ffMathy/hey-jarvis/compare/root-v0.9.0...root-v0.10.0) (2025-11-22)
+
+
+### Features
+
+* proactive memory ([66aca12](https://github.com/ffMathy/hey-jarvis/commit/66aca12a7435ce6ea32a9772f840920f6c256480))
+* proactive memory ([de41c44](https://github.com/ffMathy/hey-jarvis/commit/de41c448a000542120e84d3a32a97970979c8979))
+* proactive memory ([be40bba](https://github.com/ffMathy/hey-jarvis/commit/be40bba6087c7d0cf871950c2229a7d176d6df39))
+* synapse ([#273](https://github.com/ffMathy/hey-jarvis/issues/273)) ([594f170](https://github.com/ffMathy/hey-jarvis/commit/594f1708992ece6f9512339d9ada63a488c92888))
+
+
+### Bug Fixes
+
+* don't rebase ([19b9ff1](https://github.com/ffMathy/hey-jarvis/commit/19b9ff1d9cfbb2b5f0161f513e4e7209633bfd06))
+* getting all devices works ([4afcd0b](https://github.com/ffMathy/hey-jarvis/commit/4afcd0b44e40d652d435d2d43658d31471f2d99c))
+* getting all devices works ([eac5449](https://github.com/ffMathy/hey-jarvis/commit/eac5449164974c49681103083f311c8c831a355c))
+* home assistant tools are working ([20e3ede](https://github.com/ffMathy/hey-jarvis/commit/20e3ededa9786b6b39af871bf49efc0dce3f9abb))
+* home assistant tools are working ([e73a2bd](https://github.com/ffMathy/hey-jarvis/commit/e73a2bd028f479ac2f49975cdccc73699e975b2b))
+* persistent storage across sessions ([d7d2140](https://github.com/ffMathy/hey-jarvis/commit/d7d2140915b8c3c2c3ded5d0a0226f0b796ea068))
+* persistent storage across sessions ([37ef179](https://github.com/ffMathy/hey-jarvis/commit/37ef17921f1d27197d5ef915c5ecc11d13fc6a8c))
+* store data in tmp directory by default ([7055373](https://github.com/ffMathy/hey-jarvis/commit/7055373fed205d166db38087773e08b79d62ee76))
+* store data in tmp directory by default ([c422d60](https://github.com/ffMathy/hey-jarvis/commit/c422d60f7d1598af7c590e43a3485f42117036ff))
+
 ## [0.9.0](https://github.com/ffMathy/hey-jarvis/compare/root-v0.8.0...root-v0.9.0) (2025-11-22)
 
 
