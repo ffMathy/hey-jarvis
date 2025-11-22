@@ -22,6 +22,12 @@ if [ -z "$HEY_JARVIS_MCP_JWT_SECRET" ]; then
     exit 1
 fi
 
+# Start nginx for ingress simulation (in background)
+echo "Starting nginx for ingress simulation..."
+nginx -g "daemon off;" &
+NGINX_PID=$!
+echo "✓ nginx started (PID: $NGINX_PID) listening on port 5000"
+
 # Start both servers in parallel using shared function
 echo "Executing start_mcp_servers function..."
 PIDS=$(start_mcp_servers) || {
@@ -42,7 +48,7 @@ echo "✓ MCP server started (PID: $MCP_PID)"
 # Function to cleanup on exit
 cleanup() {
     echo "Shutting down servers..."
-    kill $MASTRA_PID $MCP_PID 2>/dev/null || true
+    kill $NGINX_PID $MASTRA_PID $MCP_PID 2>/dev/null || true
 }
 
 trap cleanup EXIT INT TERM
