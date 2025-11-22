@@ -2,6 +2,7 @@ import { startMcpServerForTestingPurposes, stopMcpServer } from './utils/mcp-ser
 
 const MCP_SERVER_URL = 'http://localhost:4112';
 const SERVER_STARTUP_TIMEOUT = 120000;
+const LOG_CAPTURE_DELAY_MS = 100; // Time to wait for logs to be captured
 
 /**
  * Helper to capture console.log output during a test
@@ -10,7 +11,9 @@ function captureConsoleLogs(testFn: (logs: string[]) => Promise<void>): Promise<
   const originalLog = console.log;
   const logs: string[] = [];
   console.log = (...args: unknown[]) => {
-    logs.push(args.join(' '));
+    const logEntry = args.join(' ');
+    logs.push(logEntry);
+    // Preserve original logging for debugging
     originalLog(...args);
   };
 
@@ -46,8 +49,8 @@ describe('MCP Server Request Logging', () => {
       const response = await fetch(`${MCP_SERVER_URL}/health`);
       expect(response.status).toBe(200);
 
-      // Wait a bit for the log to be captured
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      // Wait for logs to be captured
+      await new Promise((resolve) => setTimeout(resolve, LOG_CAPTURE_DELAY_MS));
 
       // Verify that request was logged
       const requestLog = logs.find((log) => log.includes('GET /health'));
@@ -70,8 +73,8 @@ describe('MCP Server Request Logging', () => {
       // Expect 401 because we didn't provide authentication
       expect(response.status).toBe(401);
 
-      // Wait a bit for the log to be captured
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      // Wait for logs to be captured
+      await new Promise((resolve) => setTimeout(resolve, LOG_CAPTURE_DELAY_MS));
 
       // Verify that request was logged
       const requestLog = logs.find((log) => log.includes('GET /api/mcp'));
