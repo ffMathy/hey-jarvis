@@ -275,6 +275,89 @@ Only stops when 100% certain about:
 - "What are the expected inputs and outputs?"
 - "Are there any existing patterns to follow?"
 
+### Calendar Agent
+Manages Google Calendar events with full CRUD operations:
+- **5 Google Calendar tools**: Create, delete, update, retrieve events, and list calendars
+- **Google Gemini model**: Uses `gemini-flash-latest` for natural language processing
+- **OAuth2 authentication**: Uses Google APIs with automatic token refresh
+- **Smart defaults**: Defaults to primary calendar and reasonable time assumptions
+- **Never asks questions**: Makes best-guess assumptions for seamless interaction
+- **Natural language parsing**: Understands "tomorrow at 3pm", "next Monday", "in 2 hours"
+- **Full event details**: Supports title, start/end times, location, description, and attendees
+
+**Key Capabilities:**
+- **Create events** (`createCalendarEvent` tool):
+  - Schedule meetings, appointments, and events
+  - Set title, start/end times, location, description
+  - Add attendees by email address
+  - Defaults to 1-hour duration if not specified
+- **Delete events** (`deleteCalendarEvent` tool):
+  - Remove events by event ID
+  - Clean cancellation handling
+- **Update events** (`updateCalendarEvent` tool):
+  - Modify existing event details
+  - Only updates specified fields (partial updates)
+  - Preserve unmodified attributes
+- **Retrieve events** (`getCalendarEvents` tool):
+  - Get events within specific time ranges
+  - Defaults to next 7 days if not specified
+  - Filter by calendar ID
+- **List calendars** (`getAllCalendars` tool):
+  - View all available calendars
+  - Get calendar IDs for targeting specific calendars
+
+**Example Use Cases:**
+- "Schedule a meeting tomorrow at 2pm with john@example.com"
+- "What's on my calendar for next week?"
+- "Cancel the dentist appointment"
+- "Move Friday's standup to 10am"
+- "Add reminder: Call mom on her birthday"
+
+### Todo List Agent
+Manages Google Tasks to-do lists with full task management capabilities:
+- **5 Google Tasks tools**: Create, delete, update, retrieve tasks, and list task lists
+- **Google Gemini model**: Uses `gemini-flash-latest` for natural language processing
+- **OAuth2 authentication**: Uses Google APIs with automatic token refresh
+- **Smart defaults**: Defaults to primary task list (@default)
+- **Never asks questions**: Makes best-guess assumptions for seamless interaction
+- **Natural language parsing**: Understands "tomorrow", "next Monday", "in 3 days"
+- **Status management**: Mark tasks as completed or needs action
+
+**Key Capabilities:**
+- **Create tasks** (`createTask` tool):
+  - Add new tasks with title, notes, and due dates
+  - Optional due dates (can be added later)
+  - ISO 8601 date format support
+- **Delete tasks** (`deleteTask` tool):
+  - Remove tasks by task ID
+  - Clean up completed or unwanted tasks
+- **Update tasks** (`updateTask` tool):
+  - Modify task title, notes, due date, or status
+  - Only updates specified fields (partial updates)
+  - Mark as completed or needs action
+- **Retrieve tasks** (`getAllTasks` tool):
+  - Get all tasks from a task list
+  - Filter by completion status
+  - Defaults to showing incomplete tasks only
+  - Configurable max results (default 100)
+- **List task lists** (`getAllTaskLists` tool):
+  - View all available task lists
+  - Get task list IDs for organizing tasks
+
+**Example Use Cases:**
+- "Add 'Buy groceries' to my todo list"
+- "What tasks do I have due this week?"
+- "Mark 'Finish report' as complete"
+- "Delete the task about car maintenance"
+- "Add a note to the dentist task: bring insurance card"
+- "Show me all my task lists"
+
+**Integration with Notifications:**
+Both Calendar and Todo-List agents can trigger proactive notifications through the Notification Agent. For example:
+- Calendar upcoming event reminders
+- Task deadline approaching notifications
+- State change registration for time-sensitive items
+
 *Note: Additional agents will be added as the project evolves.*
 
 ## Available Workflows
