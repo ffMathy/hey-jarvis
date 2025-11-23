@@ -4,7 +4,24 @@ import { createTool } from '../../utils/tool-factory.js';
 const getApiKey = () => {
   const apiKey = process.env.HEY_JARVIS_GOOGLE_MAPS_API_KEY;
   if (!apiKey) {
-    throw new Error('Google Maps API key not found. Please set HEY_JARVIS_GOOGLE_MAPS_API_KEY environment variable.');
+    throw new Error(
+      'Google Maps API key not found.\n' +
+        '\n' +
+        'Google Maps APIs require an API key (not OAuth2 credentials).\n' +
+        'If you already have a Google Cloud project for Calendar/Tasks:\n' +
+        '\n' +
+        '1. Go to Google Cloud Console (https://console.cloud.google.com)\n' +
+        '2. Select your existing project (same one used for Calendar/Tasks)\n' +
+        '3. Enable these APIs:\n' +
+        '   - Distance Matrix API\n' +
+        '   - Directions API\n' +
+        '   - Places API\n' +
+        '   - Geocoding API\n' +
+        '4. Go to "Credentials" → "Create Credentials" → "API Key"\n' +
+        '5. Set HEY_JARVIS_GOOGLE_MAPS_API_KEY environment variable\n' +
+        '\n' +
+        'Store in 1Password: op://Personal/Google Maps/API key',
+    );
   }
   return apiKey;
 };

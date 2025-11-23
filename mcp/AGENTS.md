@@ -265,11 +265,24 @@ Provides intelligent commute planning and navigation assistance using Google Map
 - "Find the closest gas stations within 10km"
 
 **Required Environment Variable:**
-- `HEY_JARVIS_GOOGLE_MAPS_API_KEY` - Google Maps API key with the following APIs enabled:
-  - Distance Matrix API
-  - Directions API
-  - Places API
-  - Geocoding API
+- `HEY_JARVIS_GOOGLE_MAPS_API_KEY` - Google Maps API key (separate from OAuth2 credentials)
+
+**Setup Instructions:**
+Google Maps APIs require an API key rather than OAuth2 credentials. If you already have a Google Cloud project for Calendar/Tasks, you can reuse the same project:
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com)
+2. Select your existing project (same one used for Calendar/Tasks OAuth2)
+3. Enable the required APIs:
+   - Distance Matrix API
+   - Directions API
+   - Places API (New)
+   - Geocoding API
+4. Go to **Credentials** → **Create Credentials** → **API Key**
+5. Store the API key in 1Password: `op://Personal/Google Maps/API key`
+6. Set environment variable: `HEY_JARVIS_GOOGLE_MAPS_API_KEY`
+
+**Why a separate API key?**
+Maps APIs are public services (no user data access) that use API keys for billing and quota management, while Calendar/Tasks APIs access private user data and require OAuth2 authentication. Both can be enabled in the same Google Cloud project.
 
 ### Requirements Interviewer Agent
 Specialized agent for interactive requirements gathering through structured interviews:
