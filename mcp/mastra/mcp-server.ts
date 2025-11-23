@@ -218,10 +218,7 @@ export async function startMcpServer() {
   });
 }
 
-// Only auto-start if this file is run directly (not imported)
-if (import.meta.main) {
-  startMcpServer().catch((error) => {
-    console.error('Failed to start servers:', error);
-    process.exit(1);
-  });
-}
+startMcpServer().catch((error) => {
+  console.error('Failed to start servers:', error);
+  process.exit(1);
+});

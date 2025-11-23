@@ -1,24 +1,28 @@
 import { MCPClient } from '@mastra/mcp';
-import { type ChildProcess, spawn } from 'child_process';
-import fkill from 'fkill';
+import * as path from 'path';
 import jwt from 'jsonwebtoken';
 import { retryWithBackoff } from './retry-with-backoff';
 
-let mcpServerProcess: ChildProcess | null = null;
+let mcpServerProcess: ReturnType<typeof Bun.spawn> | null = null;
 
 // JWT secret for authentication (must match server)
 const MCP_PORT = 4112;
 
+// Find workspace root (go up from mcp/tests/utils to workspace root)
+const WORKSPACE_ROOT = path.resolve(__dirname, '../../..');
+
 /**
- * Kills any process listening on the specified port.
+ * Kills any process listening on the specified port using the shared shell script function.
+ * This reuses the same kill_process_on_port function from mcp/lib/server-functions.sh
  */
 async function killProcessOnPort(port: number): Promise<void> {
-  try {
-    await fkill(`:${port}`, { force: true, silent: true });
-    console.log(`🧹 Killed process(es) on port ${port}`);
-  } catch (error) {
-    // Silent failure - port may already be free
-  }
+  const proc = Bun.spawn(['bash', '-c', `source ${WORKSPACE_ROOT}/mcp/lib/server-functions.sh && kill_process_on_port ${port}`], {
+    cwd: WORKSPACE_ROOT,
+    stdout: 'inherit',
+    stderr: 'inherit',
+  });
+  
+  await proc.exited;
 }
 
 /**
@@ -58,14 +62,15 @@ export async function startMcpServerForTestingPurposes(): Promise<void> {
     return;
   }
 
-  console.log('🤖 Starting MCP server via run-with-env.sh + tsx...');
+  console.log('🤖 Starting MCP server via run-with-env.sh + bun...');
 
   // Start MCP server using run-with-env.sh to load 1Password secrets
-  // Call tsx directly to avoid nested NX process issues
-  mcpServerProcess = spawn('./.scripts/run-with-env.sh', ['mcp/op.env', 'bunx', 'tsx', 'mcp/mastra/mcp-server.ts'], {
-    detached: false,
-    stdio: ['ignore', 'inherit', 'inherit'],
-    cwd: '/workspaces/hey-jarvis',
+  // Using Bun.spawn for simpler process management
+  mcpServerProcess = Bun.spawn(['./.scripts/run-with-env.sh', 'mcp/op.env', 'bun', 'run', 'mcp/mastra/mcp-server.ts'], {
+    cwd: WORKSPACE_ROOT,
+    stdin: 'ignore',
+    stdout: 'inherit',
+    stderr: 'inherit',
   });
 
   // Wait for server to be ready with exponential backoff

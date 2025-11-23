@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from '@jest/globals';
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { MCPClient } from '@mastra/mcp';
 import {
   createAuthenticatedMcpClient,
