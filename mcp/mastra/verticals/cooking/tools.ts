@@ -17,8 +17,15 @@ interface Recipe {
   url: string;
   media: string;
   fields: {
-    personer_maengde?: number;
-    tid?: string;
+    personer_maengde?: {
+      antal?: string;
+      maengde?: string;
+      note?: string;
+    };
+    tid?: {
+      arbejdstid?: string;
+      i_alt?: string;
+    };
   };
 }
 
@@ -129,7 +136,7 @@ export const searchRecipes = createTool({
     );
 
     return {
-      results: results,
+      results: results as z.infer<typeof getRecipeById.outputSchema>[],
     };
   },
 });
@@ -225,6 +232,14 @@ function mapValdemarsroRecipe(recipe: Recipe) {
     })
     .filter((item) => !!item);
 
+  // Extract preparation time from tid object (total time in minutes as string)
+  const preparationTime = recipe.fields.tid?.i_alt;
+
+  // Extract servings from personer_maengde object (antal as number)
+  const servings = recipe.fields.personer_maengde?.antal
+    ? parseInt(recipe.fields.personer_maengde.antal, 10)
+    : undefined;
+
   return {
     id: recipe.recipe_id,
     title: recipe.title,
@@ -234,7 +249,7 @@ function mapValdemarsroRecipe(recipe: Recipe) {
     ingredients,
     url: recipe.url,
     imageUrl: recipe.media,
-    preparationTime: recipe.fields.tid,
-    servings: recipe.fields.personer_maengde,
+    preparationTime,
+    servings,
   };
 }
