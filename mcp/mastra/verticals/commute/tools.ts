@@ -149,7 +149,14 @@ export const searchPlacesAlongRoute = createTool({
       );
     }
 
+    if (!directionsData.routes || directionsData.routes.length === 0) {
+      throw new Error('No route found between the specified locations');
+    }
+
     const route = directionsData.routes[0];
+    if (!route.legs || route.legs.length === 0) {
+      throw new Error('Route has no legs');
+    }
     const polyline = route.overview_polyline.points;
 
     const points: { lat: number; lng: number }[] = [];
@@ -283,6 +290,10 @@ export const searchPlacesByDistance = createTool({
 
     if (geocodeData.status !== 'OK') {
       throw new Error(`Geocoding error: ${geocodeData.status} - ${geocodeData.error_message || 'Unknown error'}`);
+    }
+
+    if (!geocodeData.results || geocodeData.results.length === 0) {
+      throw new Error(`Could not geocode location: ${location}`);
     }
 
     const centerLocation = geocodeData.results[0].geometry.location;
