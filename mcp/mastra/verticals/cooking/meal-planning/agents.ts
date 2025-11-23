@@ -61,7 +61,7 @@ export async function getMealPlanEmailFormatterAgent() {
 
 Your ONLY job is to convert meal plan data into properly formatted HTML emails.
 
-Format requirements:
+Format requirements (for every recipe in the plan):
 1. Recipe title: Large font, center-aligned, linked to recipe URL
 2. Days: Center-aligned below title
 3. Recipe image: Center-aligned, linked to recipe URL
@@ -75,14 +75,7 @@ Special features:
 - Use colors compatible with light/dark email themes
 - Include proper spacing between sections
 - Make HTML email-client compatible with inline styles
-- Write everything in Danish
-
-Output: Raw HTML body only, no additional text
-
-Do NOT:
-- Modify meal plan content or schedule
-- Search for additional recipe information
-- Make meal planning decisions`,
+- Write everything in Danish`,
 
     description: 'Specialized agent for formatting meal plans into HTML emails',
     tools: undefined,

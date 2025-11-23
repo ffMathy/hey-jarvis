@@ -266,14 +266,13 @@ export function createToolStep<
     execute: (inputData: z.infer<TToolInput>, context?: any) => Promise<z.infer<TToolOutput>>;
   };
   stateSchema?: TStateSchema;
-  inputSchema?: TInputSchema;
 }) {
   const inputSchema = config.tool.inputSchema;
 
   return createStep<TStepId, TStateSchema, typeof inputSchema, TToolOutput>({
     id: config.id,
     description: config.description,
-    inputSchema: inputSchema,
+    inputSchema: config.tool.inputSchema,
     outputSchema: config.tool.outputSchema,
     stateSchema: config.stateSchema,
     execute: async (params) => {

@@ -23,7 +23,6 @@ const getRecipesForMealPlanning = createToolStep({
   id: 'get-recipes-for-meal-planning',
   description: 'Fetches all recipes and filters for dinner recipes suitable for meal planning',
   tool: getAllRecipes,
-  inputSchema: z.object({}),
 });
 
 // Step 1b: Wrap recipes array in object for next step
@@ -45,9 +44,7 @@ const generateCompleteMealPlan = createAgentStep({
   id: 'generate-complete-meal-plan',
   description: 'Uses meal plan agents to select recipes and generate complete meal plan',
   agentName: 'mealPlanGenerator',
-  inputSchema: z.object({
-    recipes: getAllRecipes.outputSchema,
-  }),
+  inputSchema: wrapRecipesInObject.outputSchema,
   outputSchema: z.object({
     mealplan: mealPlanSchema,
   }),
@@ -66,9 +63,7 @@ const generateMealPlanEmail = createAgentStep({
   id: 'generate-meal-plan-email',
   description: 'Generates HTML email using the specialized email formatter agent',
   agentName: 'mealPlanEmailFormatter',
-  inputSchema: z.object({
-    mealplan: mealPlanSchema,
-  }),
+  inputSchema: generateCompleteMealPlan.outputSchema,
   outputSchema: z.object({
     htmlContent: z.string(),
     subject: z.string(),
@@ -87,10 +82,7 @@ Return only the HTML content without any additional text or markdown.`;
 const sendMealPlanEmail = createStep({
   id: 'send-meal-plan-email',
   description: 'Sends the meal plan email to configured recipients',
-  inputSchema: z.object({
-    htmlContent: z.string(),
-    subject: z.string(),
-  }),
+  inputSchema: generateMealPlanEmail.outputSchema,
   outputSchema: z.object({
     messageId: z.string(),
     subject: z.string(),
@@ -129,7 +121,7 @@ const sendMealPlanEmail = createStep({
 // No state needed - data flows directly through context from step to step
 export const weeklyMealPlanningWorkflow = createWorkflow({
   id: 'weeklyMealPlanningWorkflow',
-  inputSchema: z.object({}),
+  inputSchema: getRecipesForMealPlanning.inputSchema,
   outputSchema: z.object({
     htmlContent: z.string(),
     subject: z.string(),
