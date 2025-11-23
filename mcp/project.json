@@ -53,7 +53,7 @@
     "test": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "./.scripts/run-with-env.sh mcp/op.env bunx jest --config=mcp/jest.config.ts",
+        "command": "./.scripts/run-with-env.sh mcp/op.env bun test mcp/tests",
         "cwd": "."
       },
       "outputs": ["{workspaceRoot}/coverage/{projectRoot}"]

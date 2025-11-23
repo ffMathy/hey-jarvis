@@ -86,7 +86,7 @@
       "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
       "dependsOn": ["deploy:test"],
       "options": {
-        "command": "./.scripts/run-with-env.sh elevenlabs/op.env bunx jest --config=elevenlabs/jest.config.ts",
+        "command": "./.scripts/run-with-env.sh elevenlabs/op.env bun test elevenlabs/tests",
         "cwd": "."
       }
     },

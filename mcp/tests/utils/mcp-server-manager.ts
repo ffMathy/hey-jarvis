@@ -1,11 +1,8 @@
 import { MCPClient } from '@mastra/mcp';
-import { type ChildProcess, spawn, exec } from 'child_process';
-import { promisify } from 'util';
+import { type ChildProcess, spawn } from 'child_process';
 import * as path from 'path';
 import jwt from 'jsonwebtoken';
 import { retryWithBackoff } from './retry-with-backoff';
-
-const execAsync = promisify(exec);
 
 let mcpServerProcess: ChildProcess | null = null;
 
@@ -16,29 +13,20 @@ const MCP_PORT = 4112;
 const WORKSPACE_ROOT = path.resolve(__dirname, '../../..');
 
 /**
- * Kills any process listening on the specified port.
+ * Kills any process listening on the specified port using the shared shell script function.
+ * This reuses the same kill_process_on_port function from mcp/lib/server-functions.sh
  */
 async function killProcessOnPort(port: number): Promise<void> {
-  try {
-    if (process.platform === 'win32') {
-      // Windows approach
-      const { stdout } = await execAsync(`netstat -ano | findstr :${port}`);
-      const lines = stdout.split('\n');
-      for (const line of lines) {
-        const parts = line.trim().split(/\s+/);
-        const pid = parts[parts.length - 1];
-        if (pid && !isNaN(Number(pid))) {
-          await execAsync(`taskkill /F /PID ${pid}`).catch(() => {});
-        }
-      }
-    } else {
-      // Unix/Linux/macOS approach
-      await execAsync(`lsof -ti:${port} | xargs kill -9`).catch(() => {});
-    }
-    console.log(`🧹 Killed process(es) on port ${port}`);
-  } catch (error) {
-    // Silent failure - port may already be free
-  }
+  return new Promise((resolve) => {
+    const killScript = spawn('bash', ['-c', `source ${WORKSPACE_ROOT}/mcp/lib/server-functions.sh && kill_process_on_port ${port}`], {
+      cwd: WORKSPACE_ROOT,
+      stdio: 'inherit',
+    });
+    
+    killScript.on('close', () => {
+      resolve();
+    });
+  });
 }
 
 /**
