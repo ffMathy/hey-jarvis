@@ -219,7 +219,11 @@ export async function startMcpServer() {
 }
 
 // Only auto-start if this file is run directly (not imported)
-if (import.meta.main) {
+// Support both Bun (import.meta.main) and Node/tsx (checking URL against process.argv)
+const isMain =
+  import.meta.main ||
+  (process.argv[1] && import.meta.url && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/')));
+if (isMain) {
   startMcpServer().catch((error) => {
     console.error('Failed to start servers:', error);
     process.exit(1);
