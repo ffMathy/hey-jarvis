@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.12.1](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v0.12.0...home-assistant-addon-v0.12.1) (2025-11-23)
+
+
+### Bug Fixes
+
+* add nginx ingress proxy readiness check to container startup ([3d9f030](https://github.com/ffMathy/hey-jarvis/commit/3d9f0303705b210f2d6c3a7b3041e67732be020a))
+* switch to Bun test, leverage Bun features, fix Docker timing race, and server auto-start ([#286](https://github.com/ffMathy/hey-jarvis/issues/286)) ([7f436fa](https://github.com/ffMathy/hey-jarvis/commit/7f436fa1481017f7dcd8a0b55b8cb029b78f04d5))
+
 ## [0.12.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v0.11.1...home-assistant-addon-v0.12.0) (2025-11-22)
 
 
