@@ -147,6 +147,7 @@ export const getAllRecipes = createTool({
   description: 'Get all recipes from Valdemarsro with pagination support',
   inputSchema: z.object({
     fromDate: z.string().optional().describe('Optional from date filter'),
+    amount: z.number().optional().describe('Optional maximum number of recipes to retrieve, or all recipes if not set'),
   }),
   // Output schema is an array of recipes
   outputSchema: z
@@ -179,6 +180,10 @@ export const getAllRecipes = createTool({
 
       const recipes = page.data.map(mapValdemarsroRecipe);
       allRecipes.push(...recipes);
+
+      if( inputData.amount && allRecipes.length >= inputData.amount) {
+        return allRecipes.slice(0, inputData.amount);
+      }
 
       hasNext = page.pagination.page < page.pagination.max_pages;
     }
