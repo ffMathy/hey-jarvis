@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.12.3](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.12.2...mcp-v0.12.3) (2025-11-23)
+
+
+### Bug Fixes
+
+* general stability improvements ([#295](https://github.com/ffMathy/hey-jarvis/issues/295)) ([0cec2f6](https://github.com/ffMathy/hey-jarvis/commit/0cec2f652c6244d68d407a36454bf35bee69d3e8))
+* mcp tests now pass ([e0a9293](https://github.com/ffMathy/hey-jarvis/commit/e0a92930a7daf980b5274d2d566cc3f3ca13eddd))
+* workflow scheduling fix ([6e1e5ed](https://github.com/ffMathy/hey-jarvis/commit/6e1e5ed8912b3ec39107d68c6846ebbd776295d0))
+
 ## [0.12.2](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.12.1...mcp-v0.12.2) (2025-11-23)
 
 
