@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, describe, it } from '@jest/globals';
+import { afterAll, afterEach, beforeAll, describe, it } from 'bun:test';
 import { startMcpServerForTestingPurposes, stopMcpServer } from '../../../mcp/tests/utils/mcp-server-manager.js';
 import { TestConversation } from '../utils/test-conversation.js';
 import { ensureTunnelRunning, stopTunnel } from '../utils/tunnel-manager.js';

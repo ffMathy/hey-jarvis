@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { Mastra } from '@mastra/core';
 import { z } from 'zod';
 import { createStep, createWorkflow } from '../mastra/utils/workflow-factory';
