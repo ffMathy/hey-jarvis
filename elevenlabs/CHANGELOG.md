@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.3](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.5.2...elevenlabs-v0.5.3) (2025-11-23)
+
+
+### Bug Fixes
+
+* update mcp server ([420e431](https://github.com/ffMathy/hey-jarvis/commit/420e4315a6d7a7580680f0ce4bd9030545238731))
+* update mcp server ([#290](https://github.com/ffMathy/hey-jarvis/issues/290)) ([9f85a97](https://github.com/ffMathy/hey-jarvis/commit/9f85a97fac344107ef46c3de8d5e5957d4adb338))
+
 ## [0.5.2](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.5.1...elevenlabs-v0.5.2) (2025-11-23)
 
 
