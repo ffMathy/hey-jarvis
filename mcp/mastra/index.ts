@@ -5,6 +5,7 @@ import { getSqlStorageProvider } from './storage/index.js';
 import {
   getCalendarAgent,
   getCodingAgent,
+  getCommuteAgent,
   getEmailAgent,
   getHomeAssistantAgent,
   getMealPlanEmailFormatterAgent,
@@ -48,6 +49,7 @@ async function createMastra() {
     calendarAgent,
     webResearchAgent,
     homeAssistantAgent,
+    commuteAgent,
   ] = await Promise.all([
     getWeatherAgent(),
     getRecipeSearchAgent(),
@@ -65,6 +67,7 @@ async function createMastra() {
     getCalendarAgent(),
     getWebResearchAgent(),
     getHomeAssistantAgent(),
+    getCommuteAgent(),
   ]);
 
   return new Mastra({
@@ -97,6 +100,7 @@ async function createMastra() {
       calendar: calendarAgent,
       webResearch: webResearchAgent,
       homeAssistant: homeAssistantAgent,
+      commute: commuteAgent,
     },
   });
 }

@@ -1,6 +1,7 @@
 // Main verticals exports
 export * from './calendar/index.js';
 export * from './coding/index.js';
+export * from './commute/index.js';
 export * from './cooking/index.js';
 export * from './email/index.js';
 export * from './home-assistant/index.js';
