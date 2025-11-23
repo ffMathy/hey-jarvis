@@ -23,8 +23,11 @@ describe('Agent Prompt Specifications', () => {
   // Ensure MCP server and cloudflared tunnel are running before all tests
   beforeAll(async () => {
     await startMcpServerForTestingPurposes();
+    // Give MCP server extra time to be fully ready before starting tunnel
+    console.log('⏳ Waiting for MCP server to be fully ready...');
+    await new Promise((resolve) => setTimeout(resolve, 5000));
     await ensureTunnelRunning();
-  }, 90000);
+  }, 120000); // Increased timeout to 120 seconds
 
   // Clean up after all tests
   afterAll(() => {
