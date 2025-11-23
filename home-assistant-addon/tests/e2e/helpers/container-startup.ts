@@ -45,31 +45,41 @@ export async function startContainer(options: ContainerStartupOptions = {}): Pro
   console.log('Waiting for container to start...');
 
   let waitTime = 0;
-  let mcpOrMastraReady = false;
+  let mcpReady = false;
+  let mastraReady = false;
 
   while (waitTime < maxWaitTime) {
-    try {
-      const response = await fetch(getMCPServerUrl());
-      if (response.status < 500) {
-        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-        console.log(`MCP server is ready! (took ${elapsed}s)`);
-        mcpOrMastraReady = true;
-        break;
+    // Check MCP server if not yet ready
+    if (!mcpReady) {
+      try {
+        const response = await fetch(getMCPServerUrl());
+        if (response.status < 500) {
+          const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+          console.log(`MCP server is ready! (took ${elapsed}s)`);
+          mcpReady = true;
+        }
+      } catch {
+        // Container not ready yet
       }
-    } catch {
-      // Container not ready yet
     }
 
-    try {
-      const response = await fetch(getMastraUIUrl());
-      if (response.status < 500) {
-        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-        console.log(`Mastra UI is ready! (took ${elapsed}s)`);
-        mcpOrMastraReady = true;
-        break;
+    // Check Mastra UI if not yet ready
+    if (!mastraReady) {
+      try {
+        const response = await fetch(getMastraUIUrl());
+        if (response.status < 500) {
+          const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+          console.log(`Mastra UI is ready! (took ${elapsed}s)`);
+          mastraReady = true;
+        }
+      } catch {
+        // Container not ready yet
       }
-    } catch {
-      // Container not ready yet
+    }
+
+    // Break when BOTH are ready
+    if (mcpReady && mastraReady) {
+      break;
     }
 
     await sleep(checkInterval);
@@ -78,7 +88,7 @@ export async function startContainer(options: ContainerStartupOptions = {}): Pro
     // Log progress every 30 seconds
     if (waitTime % 30000 === 0) {
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-      console.log(`Still waiting for container... (${elapsed}s elapsed)`);
+      console.log(`Still waiting for container... (${elapsed}s elapsed) - MCP: ${mcpReady}, Mastra: ${mastraReady}`);
     }
   }
 
@@ -90,7 +100,7 @@ export async function startContainer(options: ContainerStartupOptions = {}): Pro
   }
 
   // Wait for nginx ingress proxy to be ready (separate check)
-  if (mcpOrMastraReady) {
+  if (mcpReady && mastraReady) {
     console.log('Waiting for nginx ingress proxy to be ready...');
     const ingressStartTime = Date.now();
     let ingressWaitTime = 0;
