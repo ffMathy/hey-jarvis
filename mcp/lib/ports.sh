@@ -11,3 +11,9 @@ export MCP_SERVER_PORT=4112
 
 # Test ingress port (for Home Assistant ingress simulation)
 export TEST_INGRESS_PORT=5000
+
+# Test external ports (different from service ports to avoid conflicts with devcontainer)
+# Using offset +10000 to avoid conflicts with devcontainer port forwarding
+export TEST_MASTRA_UI_PORT=14111
+export TEST_MCP_SERVER_PORT=14112
+export TEST_INGRESS_EXTERNAL_PORT=15000

@@ -22,7 +22,7 @@ export interface ContainerStartupOptions {
  */
 export async function startContainer(options: ContainerStartupOptions = {}): Promise<ContainerStartupResult> {
   const {
-    maxWaitTime = 60 * 1000 * 5, // 5 minutes default
+    maxWaitTime = 60 * 1000 * 1, // 1 minute default
     checkInterval = 2000, // 2 seconds default
     additionalInitTime = 5000, // 5 seconds default
     environmentVariables = {},
@@ -109,7 +109,8 @@ export async function startContainer(options: ContainerStartupOptions = {}): Pro
     while (ingressWaitTime < ingressMaxWaitTime) {
       try {
         // Check if the ingress path is working by making a request
-        const response = await fetch('http://localhost:5000/api/hassio_ingress/redacted/');
+        // Using test external ingress port (15000) which maps to container port 5000
+        const response = await fetch('http://localhost:15000/api/hassio_ingress/redacted/');
         if (response.status < 500) {
           const elapsed = ((Date.now() - ingressStartTime) / 1000).toFixed(1);
           console.log(`Nginx ingress proxy is ready! (took ${elapsed}s)`);

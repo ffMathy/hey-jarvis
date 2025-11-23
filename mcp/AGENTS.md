@@ -107,7 +107,7 @@ mcp/
 Provides intelligent weather information and forecasting capabilities:
 - **4 OpenWeatherMap tools**: Current weather and 5-day forecasts by city name or GPS coordinates
 - **Google Gemini model**: Uses `gemini-2.0-flash-exp` for natural language processing
-- **Smart defaults**: Automatically assumes Mathias, Denmark when no location is specified
+- **Smart defaults**: Automatically assumes Aarhus, Denmark when no location is specified
 - **Never asks questions**: Makes best-guess assumptions for seamless interaction
 - **Persistent memory**: Maintains conversation context with LibSQLStore
 - **Scheduled monitoring**: Hourly weather checks with automatic memory updates
@@ -185,7 +185,7 @@ await registerStateChange.execute({
   source: 'weather',
   stateType: 'weather_update',
   stateData: {
-    location: 'Mathias, Denmark',
+    location: 'Aarhus, Denmark',
     weatherInfo: result,
     timestamp: new Date().toISOString(),
   },
@@ -449,7 +449,7 @@ Multi-step weather processing workflow with state change registration:
 - **State change registration**: Automatically registers weather updates for notification analysis
 
 **Workflow Steps:**
-1. **Scheduled Weather Check**: Weather agent gets current weather for Mathias, Denmark
+1. **Scheduled Weather Check**: Weather agent gets current weather for Aarhus, Denmark
 2. **Register State Change**: Calls `registerStateChange` tool to persist weather data and trigger notification analysis
 
 **Technical Implementation:**

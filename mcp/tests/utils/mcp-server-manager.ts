@@ -2,6 +2,7 @@ import { MCPClient } from '@mastra/mcp';
 import * as path from 'path';
 import jwt from 'jsonwebtoken';
 import { retryWithBackoff } from './retry-with-backoff';
+import fkill from 'fkill';
 
 let mcpServerProcess: ReturnType<typeof Bun.spawn> | null = null;
 
@@ -12,17 +13,16 @@ const MCP_PORT = 4112;
 const WORKSPACE_ROOT = path.resolve(__dirname, '../../..');
 
 /**
- * Kills any process listening on the specified port using the shared shell script function.
- * This reuses the same kill_process_on_port function from mcp/lib/server-functions.sh
+ * Kills any process listening on the specified port using fkill.
+ * This is cross-platform and doesn't return non-zero exit codes.
  */
 async function killProcessOnPort(port: number): Promise<void> {
-  const proc = Bun.spawn(['bash', '-c', `source ${WORKSPACE_ROOT}/mcp/lib/server-functions.sh && kill_process_on_port ${port}`], {
-    cwd: WORKSPACE_ROOT,
-    stdout: 'inherit',
-    stderr: 'inherit',
-  });
-  
-  await proc.exited;
+  try {
+    await fkill(`:${port}`, { force: true, silent: true });
+    console.log(`🧹 Killed process(es) on port ${port}`);
+  } catch (error) {
+    // Silent failure - port may already be free
+  }
 }
 
 /**
@@ -72,6 +72,9 @@ export async function startMcpServerForTestingPurposes(): Promise<void> {
     stdout: 'inherit',
     stderr: 'inherit',
   });
+  
+  // Suppress process exit errors during cleanup - server is intentionally killed
+  mcpServerProcess.unref();
 
   // Wait for server to be ready with exponential backoff
   await retryWithBackoff(
@@ -103,6 +106,15 @@ export async function stopMcpServer(): Promise<void> {
   await killProcessOnPort(MCP_PORT);
   // Give processes time to clean up (increased for proper cleanup)
   await new Promise((resolve) => setTimeout(resolve, 1000));
+  
+  // Clean up process reference and suppress any exit code errors
+  if (mcpServerProcess && !mcpServerProcess.killed) {
+    try {
+      mcpServerProcess.kill();
+    } catch (error) {
+      // Ignore errors - process might already be dead
+    }
+  }
   mcpServerProcess = null;
   console.log('🛑 MCP server stopped');
 }

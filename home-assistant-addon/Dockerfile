@@ -36,13 +36,13 @@ FROM base AS home-assistant-addon-end-to-end-test
 RUN apk add --no-cache nginx
 
 # Copy nginx test configuration
-COPY home-assistant-addon/tests/nginx.tests.conf /etc/nginx/http.d/default.conf
+COPY tests/nginx.tests.conf /etc/nginx/http.d/default.conf
 
 # Copy test-specific supervisord configuration (includes nginx)
-COPY home-assistant-addon/tests/supervisord-test.conf /etc/supervisord-test.conf
+COPY tests/supervisord-test.conf /etc/supervisord-test.conf
 
 # Copy test entrypoint script
-COPY home-assistant-addon/tests/run-test.sh /run-test.sh
+COPY tests/run-test.sh /run-test.sh
 RUN chmod +x /run-test.sh
 
 # Override entrypoint to start the MCP server

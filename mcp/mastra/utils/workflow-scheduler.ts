@@ -6,7 +6,6 @@ interface ScheduledWorkflow {
   workflowId: string;
   schedule: string;
   inputData?: Record<string, any>;
-  name?: string;
 }
 
 interface SchedulerOptions {
@@ -66,7 +65,7 @@ export class WorkflowScheduler {
    * Schedule a workflow to run on a recurring cron schedule
    */
   schedule(config: ScheduledWorkflow): void {
-    const { workflowId, schedule, inputData = {}, name } = config;
+    const { workflowId, schedule, inputData = {} } = config;
 
     // Validate cron expression
     if (!cron.validate(schedule)) {
@@ -83,7 +82,7 @@ export class WorkflowScheduler {
     const task = cron.schedule(
       schedule,
       async () => {
-        await this.executeWorkflow(workflowId, inputData, name);
+        await this.executeWorkflow(workflowId, inputData);
       },
       {
         timezone: this.options.timezone,
@@ -93,7 +92,7 @@ export class WorkflowScheduler {
     // Store task reference
     this.scheduledTasks.set(workflowId, task);
 
-    console.log(`📅 Scheduled workflow: ${name || workflowId}`);
+    console.log(`📅 Scheduled workflow: ${workflowId}`);
     console.log(`   Schedule: ${schedule} (${this.options.timezone})`);
   }
 
@@ -146,9 +145,9 @@ export class WorkflowScheduler {
   /**
    * Execute a workflow
    */
-  private async executeWorkflow(workflowId: string, inputData: Record<string, any>, name?: string): Promise<void> {
+  private async executeWorkflow(workflowId: string, inputData: Record<string, any>): Promise<void> {
     const startTime = Date.now();
-    console.log(`\n⚙️  Executing scheduled workflow: ${name || workflowId}`);
+    console.log(`\n⚙️  Executing scheduled workflow: ${workflowId}`);
     console.log(`   Time: ${new Date().toISOString()}`);
 
     try {
