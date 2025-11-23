@@ -218,6 +218,7 @@ export function createAgentStep<
           structuredOutput: {
             schema: config.outputSchema,
           },
+          toolChoice: 'none',
         },
       );
 
