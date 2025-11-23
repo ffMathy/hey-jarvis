@@ -58,9 +58,9 @@ export async function ensureTunnelRunning(): Promise<void> {
   console.log(`🌐 Token length: ${token.length} characters`);
 
   // Start cloudflared tunnel in background
-  // Use full path since spawn might not have the same PATH as the shell
-  const cloudflaredPath = '/usr/local/bin/cloudflared';
-  tunnelProcess = spawn(cloudflaredPath, ['tunnel', 'run', '--token', token], {
+  // NOTE: Assumes cloudflared is installed globally and available in PATH
+  // Install with: curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb && sudo dpkg -i cloudflared.deb
+  tunnelProcess = spawn('cloudflared', ['tunnel', 'run', '--token', token], {
     detached: false,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
