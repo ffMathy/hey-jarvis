@@ -222,6 +222,55 @@ This agent follows the **workflow delegation pattern**. When a user requests a n
 - "Search for repositories about AI agents"
 - "I want to add email notifications" _(triggers requirements workflow)_
 
+### Commute Agent
+Provides intelligent commute planning and navigation assistance using Google Maps:
+- **4 Google Maps tools**: Travel time estimation, route-based place search, proximity-based place search, detailed place information
+- **Google Gemini model**: Uses `gemini-flash-latest` for natural language processing
+- **Traffic-aware routing**: Estimates travel time with real-time traffic data for driving mode
+- **Multi-modal support**: Handles driving, walking, bicycling, and transit modes
+- **Smart defaults**: Automatically assumes Mathias, Denmark (Aarhus area) when no location is specified
+- **Never asks questions**: Makes best-guess assumptions for seamless interaction
+
+**Key Capabilities:**
+- **Travel Time Estimation** (`getTravelTime` tool):
+  - Calculate distance and duration between two locations
+  - Optional real-time traffic data for driving routes
+  - Support for departure time specification for future travel planning
+  - Handles multiple travel modes (driving, walking, bicycling, transit)
+  - Returns both normal duration and traffic-adjusted duration
+  
+- **Route-Based Place Search** (`searchPlacesAlongRoute` tool):
+  - Find places along a route between origin and destination
+  - Useful for finding EV chargers, gas stations, rest stops, restaurants
+  - Searches near the midpoint of the route with 50km radius
+  - Returns name, address, GPS coordinates, ratings, and place types
+  
+- **Proximity-Based Place Search** (`searchPlacesByDistance` tool):
+  - Find places near a location, ordered by distance (closest first)
+  - Configurable search radius up to 50km
+  - Returns distance from center point in meters
+  - Perfect for "what's nearby" queries
+  
+- **Detailed Place Information** (`getPlaceDetails` tool):
+  - Get comprehensive information about specific places
+  - Includes ratings, reviews (top 5), opening hours, contact information
+  - Can search by Google Place ID or by name and location
+  - Returns phone numbers, websites, and current open/closed status
+
+**Example Use Cases:**
+- "How long will it take to drive from Aarhus to Copenhagen with traffic?"
+- "Find EV charging stations along my route to Copenhagen"
+- "What restaurants are near me?" (defaults to Aarhus)
+- "Show me the opening hours and reviews for [place name]"
+- "Find the closest gas stations within 10km"
+
+**Required Environment Variable:**
+- `HEY_JARVIS_GOOGLE_MAPS_API_KEY` - Google Maps API key with the following APIs enabled:
+  - Distance Matrix API
+  - Directions API
+  - Places API
+  - Geocoding API
+
 ### Requirements Interviewer Agent
 Specialized agent for interactive requirements gathering through structured interviews:
 - **No tools**: Pure conversation agent focused on questioning and clarification
@@ -744,6 +793,7 @@ This project uses **1Password CLI** for secure environment variable management i
 All environment variables use the `HEY_JARVIS_` prefix for easy management and DevContainer forwarding. Store these in your 1Password vault:
 - **Weather**: `HEY_JARVIS_OPENWEATHERMAP_API_KEY` for weather data
 - **AI Models**: `HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY` for Gemini language models (explicitly configured in agent factory)
+- **Google Maps**: `HEY_JARVIS_GOOGLE_MAPS_API_KEY` for navigation, travel time estimation, and place search (requires Distance Matrix API, Directions API, Places API, and Geocoding API)
 - **Google OAuth2 (Calendar & Tasks)**: `HEY_JARVIS_GOOGLE_CLIENT_ID`, `HEY_JARVIS_GOOGLE_CLIENT_SECRET`, `HEY_JARVIS_GOOGLE_REFRESH_TOKEN` for accessing Google Calendar and Tasks APIs (see [Google OAuth2 Setup](#google-oauth2-setup) below)
 - **Shopping (Bilka)**: `HEY_JARVIS_BILKA_EMAIL`, `HEY_JARVIS_BILKA_PASSWORD`, `HEY_JARVIS_BILKA_API_KEY` for authentication
 - **Shopping (Search)**: `HEY_JARVIS_ALGOLIA_API_KEY`, `HEY_JARVIS_ALGOLIA_APPLICATION_ID`, `HEY_JARVIS_BILKA_USER_TOKEN` for product search
