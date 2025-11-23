@@ -76,7 +76,7 @@
       }
     }
   },
-  "parallel": 3,
+  "parallel": 1,
   "cacheDirectory": ".nx/cache",
   "useDaemonProcess": true
 }
