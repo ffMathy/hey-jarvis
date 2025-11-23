@@ -131,23 +131,31 @@ LOG_LEVEL=$(bashio::config 'log_level')
 bashio::log.info "Log level set to: ${LOG_LEVEL}"
 
 # Start both servers in parallel using shared function
+# Note: If supervisord is available, this will exec and replace the process
+# The cleanup and wait logic below only runs if supervisord is not available
 PIDS=$(start_mcp_servers) || {
+    # Only reached if start_mcp_servers returns an error (not using exec)
     bashio::log.error "Failed to start MCP servers"
     exit 1
 }
-read -r MASTRA_PID MCP_PID <<< "$PIDS"
 
-# Function to cleanup on exit
-cleanup() {
-    bashio::log.info "Shutting down servers..."
-    kill $MASTRA_PID $MCP_PID 2>/dev/null || true
-}
-
-trap cleanup EXIT INT TERM
-
-# Wait for either process to exit and handle status
-wait_for_server_exit "$MASTRA_PID" "$MCP_PID"
-EXIT_CODE=$?
-
-bashio::log.error "A server process has exited with code ${EXIT_CODE}"
-exit $EXIT_CODE
+# The code below only runs if supervisord is not available (fallback mode)
+# In that case, start_mcp_servers returns PIDs
+if [ -n "$PIDS" ]; then
+    read -r MASTRA_PID MCP_PID <<< "$PIDS"
+    
+    # Function to cleanup on exit
+    cleanup() {
+        bashio::log.info "Shutting down servers..."
+        kill $MASTRA_PID $MCP_PID 2>/dev/null || true
+    }
+    
+    trap cleanup EXIT INT TERM
+    
+    # Wait for either process to exit and handle status
+    wait_for_server_exit "$MASTRA_PID" "$MCP_PID"
+    EXIT_CODE=$?
+    
+    bashio::log.error "A server process has exited with code ${EXIT_CODE}"
+    exit $EXIT_CODE
+fi
