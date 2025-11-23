@@ -22,8 +22,8 @@ ENV NODE_ENV=production
 
 WORKDIR /workspace
 
-# Install bash (required for run.sh script)
-RUN apk add --no-cache bash
+# Install bash and supervisor (required for run.sh script and process management)
+RUN apk add --no-cache bash supervisor
 
 # Copy package files
 COPY package.json bun.lock ./
@@ -35,6 +35,9 @@ RUN bun install --frozen-lockfile
 # Copy source code from builder
 COPY --from=builder /workspace/tsconfig.base.json ./
 COPY --from=builder /workspace/mcp/ ./mcp/
+
+# Copy supervisord configuration
+COPY mcp/supervisord.conf /etc/supervisord.conf
 
 # Expose ports for both services
 EXPOSE 4111 4112

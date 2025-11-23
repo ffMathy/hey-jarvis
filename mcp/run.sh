@@ -130,24 +130,6 @@ fi
 LOG_LEVEL=$(bashio::config 'log_level')
 bashio::log.info "Log level set to: ${LOG_LEVEL}"
 
-# Start both servers in parallel using shared function
-PIDS=$(start_mcp_servers) || {
-    bashio::log.error "Failed to start MCP servers"
-    exit 1
-}
-read -r MASTRA_PID MCP_PID <<< "$PIDS"
-
-# Function to cleanup on exit
-cleanup() {
-    bashio::log.info "Shutting down servers..."
-    kill $MASTRA_PID $MCP_PID 2>/dev/null || true
-}
-
-trap cleanup EXIT INT TERM
-
-# Wait for either process to exit and handle status
-wait_for_server_exit "$MASTRA_PID" "$MCP_PID"
-EXIT_CODE=$?
-
-bashio::log.error "A server process has exited with code ${EXIT_CODE}"
-exit $EXIT_CODE
+# Start both Mastra UI and MCP server using supervisord
+# This will exec and replace the current process, so code after this won't run
+start_mastra
