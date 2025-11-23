@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.12.1](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.12.0...mcp-v0.12.1) (2025-11-23)
+
+
+### Bug Fixes
+
+* add p-map to ESM transformIgnorePatterns and fix server auto-start ([17d90b7](https://github.com/ffMathy/hey-jarvis/commit/17d90b76c5515e401caa77e3bc0be4da99b5ac8a))
+* resolve ESM module issues in Jest and replace fkill ([1ae319d](https://github.com/ffMathy/hey-jarvis/commit/1ae319dc32c69173a4772cc733d3a6137b013b22))
+* switch to Bun test, leverage Bun features, fix Docker timing race, and server auto-start ([#286](https://github.com/ffMathy/hey-jarvis/issues/286)) ([7f436fa](https://github.com/ffMathy/hey-jarvis/commit/7f436fa1481017f7dcd8a0b55b8cb029b78f04d5))
+
 ## [0.12.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.11.1...mcp-v0.12.0) (2025-11-22)
 
 
