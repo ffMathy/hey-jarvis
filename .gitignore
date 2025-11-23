@@ -167,3 +167,4 @@ home-assistant-voice-firmware/dist/
 playwright-report/
 test-results/
 project-graph.json
+cloudflared.deb
