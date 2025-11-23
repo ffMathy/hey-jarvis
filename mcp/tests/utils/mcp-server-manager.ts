@@ -1,20 +1,40 @@
 import { MCPClient } from '@mastra/mcp';
-import { type ChildProcess, spawn } from 'child_process';
-import fkill from 'fkill';
+import { type ChildProcess, spawn, exec } from 'child_process';
+import { promisify } from 'util';
+import * as path from 'path';
 import jwt from 'jsonwebtoken';
 import { retryWithBackoff } from './retry-with-backoff';
+
+const execAsync = promisify(exec);
 
 let mcpServerProcess: ChildProcess | null = null;
 
 // JWT secret for authentication (must match server)
 const MCP_PORT = 4112;
 
+// Find workspace root (go up from mcp/tests/utils to workspace root)
+const WORKSPACE_ROOT = path.resolve(__dirname, '../../..');
+
 /**
  * Kills any process listening on the specified port.
  */
 async function killProcessOnPort(port: number): Promise<void> {
   try {
-    await fkill(`:${port}`, { force: true, silent: true });
+    if (process.platform === 'win32') {
+      // Windows approach
+      const { stdout } = await execAsync(`netstat -ano | findstr :${port}`);
+      const lines = stdout.split('\n');
+      for (const line of lines) {
+        const parts = line.trim().split(/\s+/);
+        const pid = parts[parts.length - 1];
+        if (pid && !isNaN(Number(pid))) {
+          await execAsync(`taskkill /F /PID ${pid}`).catch(() => {});
+        }
+      }
+    } else {
+      // Unix/Linux/macOS approach
+      await execAsync(`lsof -ti:${port} | xargs kill -9`).catch(() => {});
+    }
     console.log(`🧹 Killed process(es) on port ${port}`);
   } catch (error) {
     // Silent failure - port may already be free
@@ -65,7 +85,7 @@ export async function startMcpServerForTestingPurposes(): Promise<void> {
   mcpServerProcess = spawn('./.scripts/run-with-env.sh', ['mcp/op.env', 'bunx', 'tsx', 'mcp/mastra/mcp-server.ts'], {
     detached: false,
     stdio: ['ignore', 'inherit', 'inherit'],
-    cwd: '/workspaces/hey-jarvis',
+    cwd: WORKSPACE_ROOT,
   });
 
   // Wait for server to be ready with exponential backoff
