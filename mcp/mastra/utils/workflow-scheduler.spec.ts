@@ -2,8 +2,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { Mastra } from '@mastra/core';
 import { z } from 'zod';
-import { createStep, createWorkflow } from '../mastra/utils/workflow-factory';
-import { CronPatterns, validateCronExpression, WorkflowScheduler } from '../mastra/utils/workflow-scheduler';
+import { createStep, createWorkflow } from './workflow-factory';
+import { CronPatterns, validateCronExpression, WorkflowScheduler } from './workflow-scheduler';
 
 describe('WorkflowScheduler', () => {
   let scheduler: WorkflowScheduler;
