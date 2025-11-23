@@ -1,79 +1,53 @@
 // @ts-expect-error - Bun's test framework types are not available in TypeScript definitions
-import { beforeEach, describe, expect, it, mock } from 'bun:test';
+import { beforeAll, beforeEach, describe, expect, it } from 'bun:test';
 import { Mastra } from '@mastra/core';
-import type { Agent } from '@mastra/core/agent';
-import { z } from 'zod';
-import { createAgent } from '../../utils/index.js';
-import { createStep, createWorkflow } from '../../utils/workflow-factory.js';
+import { getSqlStorageProvider } from '../../storage/index.js';
+import { getNotificationAgent } from '../notification/agent.js';
+import { getStateChangeReactorAgent } from '../synapse/agent.js';
+import { stateChangeNotificationWorkflow } from '../synapse/workflows.js';
+import { getWeatherAgent } from './agent.js';
 import { weatherMonitoringWorkflow } from './workflows.js';
 
 describe('weatherMonitoringWorkflow', () => {
   let mastra: Mastra;
-  let mockWeatherAgent: Agent;
+
+  beforeAll(() => {
+    // Verify required environment variables
+    if (!process.env.HEY_JARVIS_OPENWEATHERMAP_API_KEY) {
+      throw new Error('HEY_JARVIS_OPENWEATHERMAP_API_KEY environment variable is required for weather workflow tests');
+    }
+    if (!process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY) {
+      throw new Error(
+        'HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY environment variable is required for weather workflow tests',
+      );
+    }
+  });
 
   beforeEach(async () => {
-    // Create a mock weather agent that returns a simple weather result
-    mockWeatherAgent = await createAgent({
-      name: 'weather',
-      instructions: 'Mock weather agent for testing',
-      description: 'Test agent',
-      tools: {},
-    });
+    // Set up Google API key as the main Mastra setup does
+    process.env.GOOGLE_GENERATIVE_AI_API_KEY = process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY || '';
 
-    // Mock the agent's stream method to return a structured response
-    mockWeatherAgent.stream = mock(async () => {
-      return {
-        object: Promise.resolve({
-          result: 'Current weather: 15°C, partly cloudy, humidity 65%',
-        }),
-      };
-    });
+    // Get storage provider
+    const sqlStorageProvider = await getSqlStorageProvider();
 
-    // Create a proper mock workflow for stateChangeNotificationWorkflow
-    // This is needed because registerStateChange tries to trigger it
-    const mockStateChangeStep = createStep({
-      id: 'mock-state-change-step',
-      inputSchema: z.object({
-        source: z.string(),
-        stateType: z.string(),
-        stateData: z.record(z.unknown()),
-      }),
-      outputSchema: z.object({
-        notificationSent: z.boolean(),
-        message: z.string(),
-      }),
-      execute: mock(async () => {
-        // Mock returns false notification for testing purposes
-        return {
-          notificationSent: false,
-          message: 'No notification needed',
-        };
-      }),
-    });
+    // Get real agents needed for the workflow
+    const [weatherAgent, notificationAgent, stateChangeReactorAgent] = await Promise.all([
+      getWeatherAgent(),
+      getNotificationAgent(),
+      getStateChangeReactorAgent(),
+    ]);
 
-    const mockStateChangeWorkflow = createWorkflow({
-      id: 'stateChangeNotificationWorkflow',
-      inputSchema: z.object({
-        source: z.string(),
-        stateType: z.string(),
-        stateData: z.record(z.unknown()),
-      }),
-      outputSchema: z.object({
-        notificationSent: z.boolean(),
-        message: z.string(),
-      }),
-    })
-      .then(mockStateChangeStep)
-      .commit();
-
-    // Initialize Mastra with the weather workflow and mock dependencies
+    // Initialize Mastra with the real workflows and agents
     mastra = new Mastra({
+      storage: sqlStorageProvider,
       workflows: {
         weatherMonitoringWorkflow,
-        stateChangeNotificationWorkflow: mockStateChangeWorkflow,
+        stateChangeNotificationWorkflow,
       },
       agents: {
-        weather: mockWeatherAgent,
+        weather: weatherAgent,
+        notification: notificationAgent,
+        stateChangeReactor: stateChangeReactorAgent,
       },
     });
   });
@@ -90,19 +64,7 @@ describe('weatherMonitoringWorkflow', () => {
     expect(execution.result.registered).toBeDefined();
     expect(typeof execution.result.registered).toBe('boolean');
     expect(typeof execution.result.message).toBe('string');
-
-    // Verify the result structure is valid
-    expect(execution.result.message).toBeDefined();
-  });
-
-  it('should call the weather agent', async () => {
-    const workflow = mastra.getWorkflow('weatherMonitoringWorkflow');
-    const run = await workflow.createRun();
-    await run.start({ inputData: {} });
-
-    // Verify the weather agent was called
-    expect(mockWeatherAgent.stream).toHaveBeenCalled();
-  });
+  }, 60000); // Increase timeout for real API calls
 
   it('should complete workflow with proper structure', async () => {
     const workflow = mastra.getWorkflow('weatherMonitoringWorkflow');
@@ -113,29 +75,10 @@ describe('weatherMonitoringWorkflow', () => {
     expect(execution.status).toBe('success');
     expect(execution.result).toBeDefined();
 
-    // Verify the result has the expected keys (even if values vary based on context)
+    // Verify the result has the expected keys
     expect('registered' in execution.result).toBe(true);
     expect('message' in execution.result).toBe(true);
-  });
-
-  it('should chain steps correctly', async () => {
-    const workflow = mastra.getWorkflow('weatherMonitoringWorkflow');
-    const run = await workflow.createRun();
-
-    // Execute the workflow
-    await run.start({ inputData: {} });
-
-    // Verify the agent was called (first step)
-    expect(mockWeatherAgent.stream).toHaveBeenCalledTimes(1);
-
-    // Verify the agent was called with correct parameters
-    const callArgs = mockWeatherAgent.stream.mock.calls[0];
-    expect(callArgs).toBeDefined();
-    expect(Array.isArray(callArgs[0])).toBe(true);
-    // Verify the prompt contains weather-related content
-    const promptContent = callArgs[0][0].content.toLowerCase();
-    expect(promptContent).toContain('weather');
-  });
+  }, 60000); // Increase timeout for real API calls
 
   it('should have correct workflow structure', () => {
     const workflow = mastra.getWorkflow('weatherMonitoringWorkflow');
