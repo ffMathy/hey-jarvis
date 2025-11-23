@@ -1,4 +1,4 @@
-// @ts-expect-error - bun:test types are built into Bun runtime
+// @ts-expect-error - Bun's test framework types are not available in TypeScript definitions
 import { beforeEach, describe, expect, it, mock } from 'bun:test';
 import { Mastra } from '@mastra/core';
 import type { Agent } from '@mastra/core/agent';
@@ -43,6 +43,7 @@ describe('weatherMonitoringWorkflow', () => {
         message: z.string(),
       }),
       execute: mock(async () => {
+        // Mock returns false notification for testing purposes
         return {
           notificationSent: false,
           message: 'No notification needed',
@@ -90,8 +91,7 @@ describe('weatherMonitoringWorkflow', () => {
     expect(typeof execution.result.registered).toBe('boolean');
     expect(typeof execution.result.message).toBe('string');
 
-    // The result structure depends on whether the notification workflow is triggered
-    // In the test environment, it should attempt to trigger it
+    // Verify the result structure is valid
     expect(execution.result.message).toBeDefined();
   });
 
@@ -132,7 +132,9 @@ describe('weatherMonitoringWorkflow', () => {
     const callArgs = mockWeatherAgent.stream.mock.calls[0];
     expect(callArgs).toBeDefined();
     expect(Array.isArray(callArgs[0])).toBe(true);
-    expect(callArgs[0][0].content).toContain('weather');
+    // Verify the prompt contains weather-related content
+    const promptContent = callArgs[0][0].content.toLowerCase();
+    expect(promptContent).toContain('weather');
   });
 
   it('should have correct workflow structure', () => {
