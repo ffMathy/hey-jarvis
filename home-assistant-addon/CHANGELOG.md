@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.12.2](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v0.12.1...home-assistant-addon-v0.12.2) (2025-11-23)
+
+
+### Bug Fixes
+
+* console log forwarding in Home Assistant addon using supervisord ([#289](https://github.com/ffMathy/hey-jarvis/issues/289)) ([bbaf18a](https://github.com/ffMathy/hey-jarvis/commit/bbaf18a1c588c95790127f0983b702be9192b58b))
+* implement supervisord for console log forwarding in MCP addon ([d70020d](https://github.com/ffMathy/hey-jarvis/commit/d70020d756503d8393908ba43ca5c25fe51bde46))
+
 ## [0.12.1](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v0.12.0...home-assistant-addon-v0.12.1) (2025-11-23)
 
 

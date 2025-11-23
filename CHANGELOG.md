@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.12.3](https://github.com/ffMathy/hey-jarvis/compare/root-v0.12.2...root-v0.12.3) (2025-11-23)
+
+
+### Bug Fixes
+
+* console log forwarding in Home Assistant addon using supervisord ([#289](https://github.com/ffMathy/hey-jarvis/issues/289)) ([bbaf18a](https://github.com/ffMathy/hey-jarvis/commit/bbaf18a1c588c95790127f0983b702be9192b58b))
+* cooking fixes ([ff61f4b](https://github.com/ffMathy/hey-jarvis/commit/ff61f4b69784654a7af748567e125d8362a3ec3c))
+* cooking fixes ([#294](https://github.com/ffMathy/hey-jarvis/issues/294)) ([24b1a50](https://github.com/ffMathy/hey-jarvis/commit/24b1a50584811d5466c7b300d87eeb5bf1c97320))
+* don't allow tools for agent steps ([e9171a3](https://github.com/ffMathy/hey-jarvis/commit/e9171a31e4a605334c579102b6244ffb5fc00302))
+* new tests and stability improvements ([#292](https://github.com/ffMathy/hey-jarvis/issues/292)) ([2abd311](https://github.com/ffMathy/hey-jarvis/commit/2abd311c2c4a2be3152d2a67281af9a7b3341916))
+
 ## [0.12.2](https://github.com/ffMathy/hey-jarvis/compare/root-v0.12.1...root-v0.12.2) (2025-11-23)
 
 
