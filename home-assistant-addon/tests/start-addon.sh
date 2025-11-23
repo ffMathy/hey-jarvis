@@ -16,10 +16,10 @@ source "$(dirname "$(dirname "$SCRIPT_DIR")")/mcp/lib/server-functions.sh"
 
 echo "🐳 Starting home-assistant-addon addon container..."
 
-# Kill any processes on required ports before starting
-kill_process_on_port "${MASTRA_UI_PORT}"
-kill_process_on_port "${MCP_SERVER_PORT}"
-kill_process_on_port "${TEST_INGRESS_PORT}"
+# Kill any processes on test external ports (not service ports which may be used by local dev)
+kill_process_on_port "${TEST_MASTRA_UI_PORT}"
+kill_process_on_port "${TEST_MCP_SERVER_PORT}"
+kill_process_on_port "${TEST_INGRESS_EXTERNAL_PORT}"
 
 # Function to cleanup Docker container
 cleanup() {
@@ -48,9 +48,9 @@ INFO=$(cat "$SCRIPT_DIR/supervisor/info.json")
 DOCKER_ARGS=(
     --detach
     --name home-assistant-addon-test
-    -p "${MASTRA_UI_PORT}:${MASTRA_UI_PORT}"
-    -p "${MCP_SERVER_PORT}:${MCP_SERVER_PORT}"
-    -p "${TEST_INGRESS_PORT}:${TEST_INGRESS_PORT}"
+    -p "${TEST_MASTRA_UI_PORT}:${MASTRA_UI_PORT}"
+    -p "${TEST_MCP_SERVER_PORT}:${MCP_SERVER_PORT}"
+    -p "${TEST_INGRESS_EXTERNAL_PORT}:${TEST_INGRESS_PORT}"
     -e ADDON_INFO_FALLBACK="$ADDON_INFO"
     -e CONFIG_FALLBACK="$CONFIG"
     -e INFO_FALLBACK="$INFO"
@@ -58,10 +58,12 @@ DOCKER_ARGS=(
 
 # Forward all HEY_JARVIS_* and JWT_SECRET environment variables to container
 # This allows tests to pass configuration without hardcoding
+echo "🔑 Environment variables being forwarded to container:"
 while IFS='=' read -r name value; do
     # Forward HEY_JARVIS_* prefixed variables
     if [[ "$name" =~ ^HEY_JARVIS_ ]]; then
         DOCKER_ARGS+=(-e "$name=$value")
+        echo "  ✓ $name"
     fi
 done < <(env)
 

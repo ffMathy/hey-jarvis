@@ -21,7 +21,6 @@ export function initializeScheduler(): WorkflowScheduler {
   scheduler.schedule({
     workflowId: 'weatherMonitoringWorkflow',
     schedule: CronPatterns.EVERY_HOUR,
-    name: 'Hourly Weather Check',
     inputData: {},
   });
 
@@ -29,7 +28,6 @@ export function initializeScheduler(): WorkflowScheduler {
   scheduler.schedule({
     workflowId: 'weeklyMealPlanningWorkflow',
     schedule: CronPatterns.WEEKLY_SUNDAY_8AM,
-    name: 'Weekly Meal Planning',
     inputData: {},
   });
 
