@@ -29,21 +29,14 @@ function generateJwtToken(): string {
   return jwt.sign(payload, jwtSecret);
 }
 
-describe('MCP Server Connection Tests', () => {
+// Check if required environment variables are available
+const hasRequiredEnvVars = 
+  !!process.env.HEY_JARVIS_MCP_JWT_SECRET && 
+  !!process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY;
+
+(hasRequiredEnvVars ? describe : describe.skip)('MCP Server Connection Tests', () => {
   let jwtToken: string;
   let mcpClient: MCPClient | null = null;
-
-  // Check if required environment variables are available
-  const hasRequiredEnvVars = 
-    !!process.env.HEY_JARVIS_MCP_JWT_SECRET && 
-    !!process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY;
-
-  if (!hasRequiredEnvVars) {
-    it.skip('Skipping tests - required environment variables not set (HEY_JARVIS_MCP_JWT_SECRET, HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY)', () => {
-      // Tests require environment variables
-    });
-    return;
-  }
 
   beforeAll(async () => {
     console.log('Starting MCP server programmatically...');

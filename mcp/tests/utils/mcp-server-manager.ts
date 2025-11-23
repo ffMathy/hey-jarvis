@@ -1,6 +1,5 @@
 import { MCPClient } from '@mastra/mcp';
 import { type ChildProcess, spawn } from 'child_process';
-import fkill from 'fkill';
 import jwt from 'jsonwebtoken';
 import { retryWithBackoff } from './retry-with-backoff';
 
@@ -14,6 +13,8 @@ const MCP_PORT = 4112;
  */
 async function killProcessOnPort(port: number): Promise<void> {
   try {
+    // Dynamic import to avoid Jest parsing issues with ES modules
+    const fkill = (await import('fkill')).default;
     await fkill(`:${port}`, { force: true, silent: true });
     console.log(`🧹 Killed process(es) on port ${port}`);
   } catch (error) {

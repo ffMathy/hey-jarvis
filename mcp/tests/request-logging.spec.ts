@@ -22,17 +22,10 @@ function captureConsoleLogs(testFn: (logs: string[]) => Promise<void>): Promise<
   });
 }
 
-describe('MCP Server Request Logging', () => {
-  // Check if required environment variables are available
-  const hasRequiredEnvVars = !!process.env.HEY_JARVIS_MCP_JWT_SECRET;
+// Check if required environment variables are available
+const hasRequiredEnvVars = !!process.env.HEY_JARVIS_MCP_JWT_SECRET;
 
-  if (!hasRequiredEnvVars) {
-    it.skip('Skipping tests - required environment variables not set (HEY_JARVIS_MCP_JWT_SECRET)', () => {
-      // Tests require environment variables
-    });
-    return;
-  }
-
+(hasRequiredEnvVars ? describe : describe.skip)('MCP Server Request Logging', () => {
   beforeAll(async () => {
     console.log('Starting MCP server programmatically...');
     await startMcpServerForTestingPurposes();
