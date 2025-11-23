@@ -1,7 +1,8 @@
+import { Client, type LatLngLiteral } from '@googlemaps/google-maps-services-js';
 import { z } from 'zod';
 import { createTool } from '../../utils/tool-factory.js';
 
-const getApiKey = () => {
+const getGoogleMapsClient = () => {
   const apiKey = process.env.HEY_JARVIS_GOOGLE_MAPS_API_KEY;
   if (!apiKey) {
     throw new Error(
@@ -23,23 +24,8 @@ const getApiKey = () => {
         'Store in 1Password: op://Personal/Google Maps/API key',
     );
   }
-  return apiKey;
+  return new Client({});
 };
-
-const GOOGLE_MAPS_API_BASE = 'https://maps.googleapis.com/maps/api';
-
-interface PlaceResult {
-  name: string;
-  address: string;
-  location: {
-    lat: number;
-    lng: number;
-  };
-  rating?: number;
-  userRatingsTotal?: number;
-  description?: string;
-  types?: string[];
-}
 
 export const getTravelTime = createTool({
   id: 'getTravelTime',
@@ -78,31 +64,38 @@ export const getTravelTime = createTool({
     mode: z.string(),
   }),
   execute: async ({ origin, destination, mode, departureTime, includeTraffic }) => {
-    const apiKey = getApiKey();
+    const client = getGoogleMapsClient();
+    const apiKey = process.env.HEY_JARVIS_GOOGLE_MAPS_API_KEY!;
 
-    const params = new URLSearchParams({
-      origin,
-      destination,
-      mode,
+    const params: {
+      origins: [string];
+      destinations: [string];
+      mode?: 'driving' | 'walking' | 'bicycling' | 'transit';
+      departure_time?: Date | number;
+      key: string;
+    } = {
+      origins: [origin],
+      destinations: [destination],
       key: apiKey,
-    });
+    };
+
+    if (mode === 'driving' || mode === 'walking' || mode === 'bicycling' || mode === 'transit') {
+      params.mode = mode;
+    }
 
     if (includeTraffic && mode === 'driving') {
-      params.append(
-        'departure_time',
-        departureTime ? Math.floor(new Date(departureTime).getTime() / 1000).toString() : 'now',
+      params.departure_time = departureTime ? new Date(departureTime) : new Date();
+    }
+
+    const response = await client.distancematrix({ params });
+
+    if (response.data.status !== 'OK') {
+      throw new Error(
+        `Google Maps API error: ${response.data.status} - ${response.data.error_message || 'Unknown error'}`,
       );
     }
 
-    const url = `${GOOGLE_MAPS_API_BASE}/distancematrix/json?${params.toString()}`;
-    const response = await fetch(url);
-    const data = await response.json();
-
-    if (data.status !== 'OK') {
-      throw new Error(`Google Maps API error: ${data.status} - ${data.error_message || 'Unknown error'}`);
-    }
-
-    const element = data.rows[0]?.elements[0];
+    const element = response.data.rows[0]?.elements[0];
     if (!element || element.status !== 'OK') {
       throw new Error(`Route calculation failed: ${element?.status || 'Unknown error'}`);
     }
@@ -111,8 +104,8 @@ export const getTravelTime = createTool({
       distance: element.distance,
       duration: element.duration,
       durationInTraffic: element.duration_in_traffic,
-      startAddress: data.origin_addresses[0],
-      endAddress: data.destination_addresses[0],
+      startAddress: response.data.origin_addresses[0],
+      endAddress: response.data.destination_addresses[0],
       mode,
     };
   },
@@ -148,113 +141,72 @@ export const searchPlacesAlongRoute = createTool({
     }),
   }),
   execute: async ({ origin, destination, searchQuery, maxResults }) => {
-    const apiKey = getApiKey();
+    const client = getGoogleMapsClient();
+    const apiKey = process.env.HEY_JARVIS_GOOGLE_MAPS_API_KEY!;
 
-    const directionsParams = new URLSearchParams({
-      origin,
-      destination,
-      key: apiKey,
+    const directionsResponse = await client.directions({
+      params: {
+        origin,
+        destination,
+        key: apiKey,
+      },
     });
 
-    const directionsUrl = `${GOOGLE_MAPS_API_BASE}/directions/json?${directionsParams.toString()}`;
-    const directionsResponse = await fetch(directionsUrl);
-    const directionsData = await directionsResponse.json();
-
-    if (directionsData.status !== 'OK') {
+    if (directionsResponse.data.status !== 'OK') {
       throw new Error(
-        `Directions API error: ${directionsData.status} - ${directionsData.error_message || 'Unknown error'}`,
+        `Directions API error: ${directionsResponse.data.status} - ${directionsResponse.data.error_message || 'Unknown error'}`,
       );
     }
 
-    if (!directionsData.routes || directionsData.routes.length === 0) {
+    if (!directionsResponse.data.routes || directionsResponse.data.routes.length === 0) {
       throw new Error('No route found between the specified locations');
     }
 
-    const route = directionsData.routes[0];
+    const route = directionsResponse.data.routes[0];
     if (!route.legs || route.legs.length === 0) {
       throw new Error('Route has no legs');
     }
-    const polyline = route.overview_polyline.points;
 
-    const points: { lat: number; lng: number }[] = [];
-    let index = 0;
-    let lat = 0;
-    let lng = 0;
+    const midpointIndex = Math.floor(route.legs.length / 2);
+    const midpointLeg = route.legs[midpointIndex];
+    const searchLocation: LatLngLiteral = {
+      lat: midpointLeg.start_location.lat,
+      lng: midpointLeg.start_location.lng,
+    };
 
-    while (index < polyline.length) {
-      let result = 0;
-      let shift = 0;
-      let byte: number;
-      do {
-        byte = polyline.charCodeAt(index++) - 63;
-        result |= (byte & 0x1f) << shift;
-        shift += 5;
-      } while (byte >= 0x20);
-      const deltaLat = result & 1 ? ~(result >> 1) : result >> 1;
-      lat += deltaLat;
-
-      result = 0;
-      shift = 0;
-      do {
-        byte = polyline.charCodeAt(index++) - 63;
-        result |= (byte & 0x1f) << shift;
-        shift += 5;
-      } while (byte >= 0x20);
-      const deltaLng = result & 1 ? ~(result >> 1) : result >> 1;
-      lng += deltaLng;
-
-      points.push({
-        lat: lat / 1e5,
-        lng: lng / 1e5,
-      });
-    }
-
-    const midpointIndex = Math.floor(points.length / 2);
-    const searchLocation = points[midpointIndex];
-
-    const placesParams = new URLSearchParams({
-      query: searchQuery,
-      location: `${searchLocation.lat},${searchLocation.lng}`,
-      radius: '50000',
-      key: apiKey,
+    const placesResponse = await client.textSearch({
+      params: {
+        query: searchQuery,
+        location: searchLocation,
+        radius: 50000,
+        key: apiKey,
+      },
     });
 
-    const placesUrl = `${GOOGLE_MAPS_API_BASE}/place/textsearch/json?${placesParams.toString()}`;
-    const placesResponse = await fetch(placesUrl);
-    const placesData = await placesResponse.json();
-
-    if (placesData.status !== 'OK' && placesData.status !== 'ZERO_RESULTS') {
-      throw new Error(`Places API error: ${placesData.status} - ${placesData.error_message || 'Unknown error'}`);
+    if (placesResponse.data.status !== 'OK' && placesResponse.data.status !== 'ZERO_RESULTS') {
+      throw new Error(
+        `Places API error: ${placesResponse.data.status} - ${placesResponse.data.error_message || 'Unknown error'}`,
+      );
     }
 
-    const places: PlaceResult[] = (placesData.results || []).slice(0, maxResults).map((place: unknown) => {
-      const p = place as {
-        name: string;
-        formatted_address: string;
-        geometry: { location: { lat: number; lng: number } };
-        rating?: number;
-        user_ratings_total?: number;
-        types?: string[];
-      };
-      return {
-        name: p.name,
-        address: p.formatted_address,
-        location: {
-          lat: p.geometry.location.lat,
-          lng: p.geometry.location.lng,
-        },
-        rating: p.rating,
-        userRatingsTotal: p.user_ratings_total,
-        description: p.types?.join(', '),
-        types: p.types,
-      };
-    });
+    const places = (placesResponse.data.results || []).slice(0, maxResults).map((place) => ({
+      name: place.name || '',
+      address: place.formatted_address || '',
+      location: {
+        lat: place.geometry?.location.lat || 0,
+        lng: place.geometry?.location.lng || 0,
+      },
+      rating: place.rating,
+      userRatingsTotal: place.user_ratings_total,
+      description: place.types?.join(', '),
+      types: place.types,
+    }));
 
     return {
       places,
       routeInfo: {
         origin: route.legs[0].start_address,
-        destination: route.legs[0].end_address,
+        destination: route.legs[route.legs.length - 1].end_address,
       },
     };
   },
@@ -294,41 +246,42 @@ export const searchPlacesByDistance = createTool({
     }),
   }),
   execute: async ({ location, searchQuery, radius, maxResults }) => {
-    const apiKey = getApiKey();
+    const client = getGoogleMapsClient();
+    const apiKey = process.env.HEY_JARVIS_GOOGLE_MAPS_API_KEY!;
 
-    const geocodeParams = new URLSearchParams({
-      address: location,
-      key: apiKey,
+    const geocodeResponse = await client.geocode({
+      params: {
+        address: location,
+        key: apiKey,
+      },
     });
 
-    const geocodeUrl = `${GOOGLE_MAPS_API_BASE}/geocode/json?${geocodeParams.toString()}`;
-    const geocodeResponse = await fetch(geocodeUrl);
-    const geocodeData = await geocodeResponse.json();
-
-    if (geocodeData.status !== 'OK') {
-      throw new Error(`Geocoding error: ${geocodeData.status} - ${geocodeData.error_message || 'Unknown error'}`);
+    if (geocodeResponse.data.status !== 'OK') {
+      throw new Error(
+        `Geocoding error: ${geocodeResponse.data.status} - ${geocodeResponse.data.error_message || 'Unknown error'}`,
+      );
     }
 
-    if (!geocodeData.results || geocodeData.results.length === 0) {
+    if (!geocodeResponse.data.results || geocodeResponse.data.results.length === 0) {
       throw new Error(`Could not geocode location: ${location}`);
     }
 
-    const centerLocation = geocodeData.results[0].geometry.location;
-    const centerAddress = geocodeData.results[0].formatted_address;
+    const centerLocation = geocodeResponse.data.results[0].geometry.location;
+    const centerAddress = geocodeResponse.data.results[0].formatted_address;
 
-    const placesParams = new URLSearchParams({
-      query: searchQuery,
-      location: `${centerLocation.lat},${centerLocation.lng}`,
-      radius: Math.min(radius, 50000).toString(),
-      key: apiKey,
+    const placesResponse = await client.textSearch({
+      params: {
+        query: searchQuery,
+        location: centerLocation,
+        radius: Math.min(radius, 50000),
+        key: apiKey,
+      },
     });
 
-    const placesUrl = `${GOOGLE_MAPS_API_BASE}/place/textsearch/json?${placesParams.toString()}`;
-    const placesResponse = await fetch(placesUrl);
-    const placesData = await placesResponse.json();
-
-    if (placesData.status !== 'OK' && placesData.status !== 'ZERO_RESULTS') {
-      throw new Error(`Places API error: ${placesData.status} - ${placesData.error_message || 'Unknown error'}`);
+    if (placesResponse.data.status !== 'OK' && placesResponse.data.status !== 'ZERO_RESULTS') {
+      throw new Error(
+        `Places API error: ${placesResponse.data.status} - ${placesResponse.data.error_message || 'Unknown error'}`,
+      );
     }
 
     const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
@@ -344,42 +297,32 @@ export const searchPlacesByDistance = createTool({
       return R * c;
     };
 
-    const places = (placesData.results || [])
-      .map((place: unknown) => {
-        const p = place as {
-          name: string;
-          formatted_address: string;
-          geometry: { location: { lat: number; lng: number } };
-          rating?: number;
-          user_ratings_total?: number;
-          types?: string[];
-        };
-        return {
-          name: p.name,
-          address: p.formatted_address,
-          location: {
-            lat: p.geometry.location.lat,
-            lng: p.geometry.location.lng,
-          },
-          rating: p.rating,
-          userRatingsTotal: p.user_ratings_total,
-          description: p.types?.join(', '),
-          types: p.types,
-          distanceFromCenter: calculateDistance(
-            centerLocation.lat,
-            centerLocation.lng,
-            p.geometry.location.lat,
-            p.geometry.location.lng,
-          ),
-        };
-      })
+    const places = (placesResponse.data.results || [])
+      .map((place) => ({
+        name: place.name || '',
+        address: place.formatted_address || '',
+        location: {
+          lat: place.geometry?.location.lat || 0,
+          lng: place.geometry?.location.lng || 0,
+        },
+        rating: place.rating,
+        userRatingsTotal: place.user_ratings_total,
+        description: place.types?.join(', '),
+        types: place.types,
+        distanceFromCenter: calculateDistance(
+          centerLocation.lat,
+          centerLocation.lng,
+          place.geometry?.location.lat || 0,
+          place.geometry?.location.lng || 0,
+        ),
+      }))
       .sort((a, b) => (a.distanceFromCenter || 0) - (b.distanceFromCenter || 0))
       .slice(0, maxResults);
 
     return {
       places,
       searchCenter: {
-        address: centerAddress,
+        address: centerAddress || '',
         location: centerLocation,
       },
     };
@@ -425,59 +368,66 @@ export const getPlaceDetails = createTool({
       .optional(),
   }),
   execute: async ({ placeId, placeName, location }) => {
-    const apiKey = getApiKey();
+    const client = getGoogleMapsClient();
+    const apiKey = process.env.HEY_JARVIS_GOOGLE_MAPS_API_KEY!;
 
     let actualPlaceId = placeId;
 
     if (!actualPlaceId && placeName) {
       const searchQuery = location ? `${placeName} ${location}` : placeName;
-      const findParams = new URLSearchParams({
-        input: searchQuery,
-        inputtype: 'textquery',
-        fields: 'place_id',
-        key: apiKey,
+      const findResponse = await client.findPlaceFromText({
+        params: {
+          input: searchQuery,
+          inputtype: 'textquery',
+          fields: ['place_id'],
+          key: apiKey,
+        },
       });
 
-      const findUrl = `${GOOGLE_MAPS_API_BASE}/place/findplacefromtext/json?${findParams.toString()}`;
-      const findResponse = await fetch(findUrl);
-      const findData = await findResponse.json();
-
-      if (findData.status !== 'OK' || !findData.candidates?.[0]?.place_id) {
+      if (findResponse.data.status !== 'OK' || !findResponse.data.candidates?.[0]?.place_id) {
         throw new Error(`Could not find place: ${placeName}`);
       }
 
-      actualPlaceId = findData.candidates[0].place_id;
+      actualPlaceId = findResponse.data.candidates[0].place_id;
     }
 
     if (!actualPlaceId) {
       throw new Error('Either placeId or placeName must be provided');
     }
 
-    const detailsParams = new URLSearchParams({
-      place_id: actualPlaceId,
-      fields:
-        'name,formatted_address,geometry,rating,user_ratings_total,type,formatted_phone_number,website,opening_hours,review',
-      key: apiKey,
+    const detailsResponse = await client.placeDetails({
+      params: {
+        place_id: actualPlaceId,
+        fields: [
+          'name',
+          'formatted_address',
+          'geometry',
+          'rating',
+          'user_ratings_total',
+          'type',
+          'formatted_phone_number',
+          'website',
+          'opening_hours',
+          'review',
+        ],
+        key: apiKey,
+      },
     });
 
-    const detailsUrl = `${GOOGLE_MAPS_API_BASE}/place/details/json?${detailsParams.toString()}`;
-    const detailsResponse = await fetch(detailsUrl);
-    const detailsData = await detailsResponse.json();
-
-    if (detailsData.status !== 'OK') {
+    if (detailsResponse.data.status !== 'OK') {
       throw new Error(
-        `Place Details API error: ${detailsData.status} - ${detailsData.error_message || 'Unknown error'}`,
+        `Place Details API error: ${detailsResponse.data.status} - ${detailsResponse.data.error_message || 'Unknown error'}`,
       );
     }
 
-    const place = detailsData.result;
+    const place = detailsResponse.data.result;
 
     return {
-      name: place.name,
-      address: place.formatted_address,
+      name: place.name || '',
+      address: place.formatted_address || '',
       location: {
-        lat: place.geometry.location.lat,
-        lng: place.geometry.location.lng,
+        lat: place.geometry?.location.lat || 0,
+        lng: place.geometry?.location.lng || 0,
       },
       rating: place.rating,
       userRatingsTotal: place.user_ratings_total,
@@ -491,20 +441,12 @@ export const getPlaceDetails = createTool({
             weekdayText: place.opening_hours.weekday_text,
           }
         : undefined,
-      reviews: place.reviews?.slice(0, 5).map((review: unknown) => {
-        const r = review as {
-          author_name: string;
-          rating: number;
-          text: string;
-          time: number;
-        };
-        return {
-          authorName: r.author_name,
-          rating: r.rating,
-          text: r.text,
-          time: r.time,
-        };
-      }),
+      reviews: place.reviews?.slice(0, 5).map((review) => ({
+        authorName: review.author_name || '',
+        rating: review.rating || 0,
+        text: review.text || '',
+        time: review.time || 0,
+      })),
     };
   },
 });
