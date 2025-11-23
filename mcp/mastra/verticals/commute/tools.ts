@@ -24,7 +24,7 @@ const getGoogleMapsClient = () => {
         'Store in 1Password: op://Personal/Google Maps/API key',
     );
   }
-  return new Client({});
+  return { client: new Client({}), apiKey };
 };
 
 export const getTravelTime = createTool({
@@ -64,8 +64,7 @@ export const getTravelTime = createTool({
     mode: z.string(),
   }),
   execute: async ({ origin, destination, mode, departureTime, includeTraffic }) => {
-    const client = getGoogleMapsClient();
-    const apiKey = process.env.HEY_JARVIS_GOOGLE_MAPS_API_KEY!;
+    const { client, apiKey } = getGoogleMapsClient();
 
     const params: {
       origins: [string];
@@ -141,8 +140,7 @@ export const searchPlacesAlongRoute = createTool({
     }),
   }),
   execute: async ({ origin, destination, searchQuery, maxResults }) => {
-    const client = getGoogleMapsClient();
-    const apiKey = process.env.HEY_JARVIS_GOOGLE_MAPS_API_KEY!;
+    const { client, apiKey } = getGoogleMapsClient();
 
     const directionsResponse = await client.directions({
       params: {
@@ -167,12 +165,21 @@ export const searchPlacesAlongRoute = createTool({
       throw new Error('Route has no legs');
     }
 
-    const midpointIndex = Math.floor(route.legs.length / 2);
-    const midpointLeg = route.legs[midpointIndex];
-    const searchLocation: LatLngLiteral = {
-      lat: midpointLeg.start_location.lat,
-      lng: midpointLeg.start_location.lng,
-    };
+    const allLocations: LatLngLiteral[] = [];
+    for (const leg of route.legs) {
+      if (leg.steps) {
+        for (const step of leg.steps) {
+          allLocations.push(step.start_location);
+        }
+      }
+    }
+
+    if (allLocations.length === 0) {
+      allLocations.push(route.legs[0].start_location);
+    }
+
+    const midpointIndex = Math.floor(allLocations.length / 2);
+    const searchLocation = allLocations[midpointIndex];
 
     const placesResponse = await client.textSearch({
       params: {
@@ -246,8 +253,7 @@ export const searchPlacesByDistance = createTool({
     }),
   }),
   execute: async ({ location, searchQuery, radius, maxResults }) => {
-    const client = getGoogleMapsClient();
-    const apiKey = process.env.HEY_JARVIS_GOOGLE_MAPS_API_KEY!;
+    const { client, apiKey } = getGoogleMapsClient();
 
     const geocodeResponse = await client.geocode({
       params: {
@@ -368,8 +374,7 @@ export const getPlaceDetails = createTool({
       .optional(),
   }),
   execute: async ({ placeId, placeName, location }) => {
-    const client = getGoogleMapsClient();
-    const apiKey = process.env.HEY_JARVIS_GOOGLE_MAPS_API_KEY!;
+    const { client, apiKey } = getGoogleMapsClient();
 
     let actualPlaceId = placeId;
 
