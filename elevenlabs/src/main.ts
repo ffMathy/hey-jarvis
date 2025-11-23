@@ -179,7 +179,7 @@ class ElevenLabsAgentManager {
 
         // Replace MCP server IDs with local tunnel MCP server for testing
         if (config.conversationConfig?.agent?.prompt) {
-          config.conversationConfig.agent.prompt.mcpServerIds = ['OvJ613BzWU43pnzrkOFe'];
+          config.conversationConfig.agent.prompt.mcpServerIds = ['B9KRUDBr74aksRgMYMyo'];
           console.log('🔧 Setting mcpServerIds to local tunnel MCP server for test agent');
 
           config.conversationConfig.agent.prompt.tools = [];

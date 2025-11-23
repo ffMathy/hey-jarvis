@@ -5,7 +5,9 @@
       "quality": "high",
       "provider": "scribe_realtime",
       "userInputAudioFormat": "pcm_16000",
-      "keywords": ["Jarvis"]
+      "keywords": [
+        "Jarvis"
+      ]
     },
     "turn": {
       "turnTimeout": 2,
@@ -20,13 +22,13 @@
     "tts": {
       "modelId": "eleven_flash_v2",
       "supportedVoices": [],
-      "suggested_audio_tags": [],
+      "suggestedAudioTags": [],
       "agentOutputAudioFormat": "pcm_16000",
       "optimizeStreamingLatency": 4,
       "stability": 0.4,
       "speed": 1,
       "similarityBoost": 0.75,
-      "text_normalisation_type": "system_prompt",
+      "textNormalisationType": "system_prompt",
       "pronunciationDictionaryLocators": []
     },
     "conversation": {
@@ -61,7 +63,7 @@
         "thinkingBudget": 0,
         "temperature": 0,
         "maxTokens": -1,
-        "toolIds": ["tool_8301k8g1705ee3gsa5asgbz3vd66", "tool_6501k8g1705fffdtb97r4x35nkqc"],
+        "toolIds": [],
         "builtInTools": {
           "endCall": {
             "type": "system",
@@ -111,7 +113,9 @@
             }
           }
         },
-        "mcpServerIds": ["SdzBBPUpxOBIISlpGGHU", "5Pi7GrX809qLoBvACWyF"],
+        "mcpServerIds": [
+          "shydsXnbngzjmGMmhPl2"
+        ],
         "nativeMcpServerIds": [],
         "knowledgeBase": [],
         "ignoreDefaultPersonality": true,
@@ -127,82 +131,6 @@
           "preference": "default"
         },
         "tools": [
-          {
-            "type": "webhook",
-            "name": "web_agent",
-            "description": "# Purpose\nBrowse and search the web for any information that is not about the user (Mathias or Julie).\n\n# When to use\nWhenever the user asks for any information (such as, but not limited to) factual, numerical, historical, scientific, medical, legal, political, cultural, or otherwise external knowledge, even if you think you already possess this information. Any question / concern / topic that can be answered by querying the web, can also be given by this tool.\n\n# Post-processing\nIntegrate, reason over, and cite the returned sources.",
-            "responseTimeoutSecs": 120,
-            "disableInterruptions": false,
-            "forcePreToolSpeech": true,
-            "assignments": [],
-            "toolCallSoundBehavior": "auto",
-            "dynamicVariables": {
-              "dynamicVariablePlaceholders": {}
-            },
-            "executionMode": "immediate",
-            "apiSchema": {
-              "method": "POST",
-              "pathParamsSchema": {},
-              "requestBodySchema": {
-                "type": "object",
-                "required": ["prompt"],
-                "description": "The request made by the user.",
-                "properties": {
-                  "prompt": {
-                    "type": "string",
-                    "description": "The agent prompt, as detailed as possible for the relevant contexts needed.",
-                    "isSystemProvided": false,
-                    "dynamicVariable": "",
-                    "constantValue": ""
-                  }
-                }
-              },
-              "requestHeaders": {
-                "authorization": {
-                  "secretId": "g3oPlq9xdWfy7mhZvEkH"
-                }
-              },
-              "contentType": "application/json"
-            }
-          },
-          {
-            "type": "webhook",
-            "name": "reflection_agent",
-            "description": "# Purpose  \nReflect on the assistant’s own mechanics.  \nUse this tool to **inspect the structure and logic of n8n workflows** and to **review recent execution logs** so you can explain how or why something happened internally.\n\n# When to use  \n- The user asks how a specific automation or decision was made (“Why did the lights turn off automatically last night?”).  \n- You need to debug unexpected behavior or verify that a workflow ran (or failed) as intended.  \n- The user requests insight into workflow design, triggers, branches, or data flow.  \n- A conversation must be flagged as a failure *and you need the precise reason* from the logs (note: use this tool **only** to retrieve the reason, not to flag).  \n- You suspect a fix or follow-up task is required and may need to create a to-do item afterward (consult **to_do_list_agent** for the actual task).\n\n# Post-processing  \n- **Read-only**: do not alter workflows or executions—observe and report.  \n- **Summarize** findings clearly, focusing on causes, outcomes, and any anomalies; avoid overwhelming technical detail unless requested.  \n- **Surface failure reasons** verbatim when relevant, then translate them into plain language.  \n- **Suggest next steps** (e.g., “Consider adding an error-handling node”) and, if an actionable follow-up is needed, create a to-do via *to_do_list_agent*.  \n- **Protect security**: do not expose sensitive credentials, tokens, or proprietary logic beyond what’s necessary to answer the user’s question.",
-            "responseTimeoutSecs": 120,
-            "disableInterruptions": false,
-            "forcePreToolSpeech": true,
-            "assignments": [],
-            "toolCallSoundBehavior": "auto",
-            "dynamicVariables": {
-              "dynamicVariablePlaceholders": {}
-            },
-            "executionMode": "immediate",
-            "apiSchema": {
-              "method": "POST",
-              "pathParamsSchema": {},
-              "requestBodySchema": {
-                "type": "object",
-                "required": [],
-                "description": "The agent prompt, as detailed as possible for the relevant contexts needed.",
-                "properties": {
-                  "prompt": {
-                    "type": "string",
-                    "description": "The request made by the user.",
-                    "isSystemProvided": false,
-                    "dynamicVariable": "",
-                    "constantValue": ""
-                  }
-                }
-              },
-              "requestHeaders": {
-                "authorization": {
-                  "secretId": "g3oPlq9xdWfy7mhZvEkH"
-                }
-              },
-              "contentType": "application/json"
-            }
-          },
           {
             "type": "system",
             "name": "end_call",
@@ -256,7 +184,7 @@
   },
   "metadata": {
     "createdAtUnixSecs": 1742778859,
-    "updatedAtUnixSecs": 1763578017
+    "updatedAtUnixSecs": 1763926628
   },
   "platformSettings": {
     "evaluation": {
@@ -334,7 +262,9 @@
     },
     "workspaceOverrides": {
       "webhooks": {
-        "events": ["transcript"],
+        "events": [
+          "transcript"
+        ],
         "sendAudio": false
       }
     },
@@ -432,5 +362,7 @@
     }
   },
   "tags": [],
+  "version_id": null,
+  "branch_id": null,
   "main_branch_id": null
 }
