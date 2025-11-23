@@ -14,9 +14,10 @@ const WORKSPACE_ROOT = path.resolve(__dirname, '../../..');
 /**
  * Kills any process listening on the specified port using the shared shell script function.
  * This reuses the same kill_process_on_port function from mcp/lib/server-functions.sh
+ * Note: We ignore the exit code since killing processes may return non-zero codes.
  */
 async function killProcessOnPort(port: number): Promise<void> {
-  const proc = Bun.spawn(['bash', '-c', `source ${WORKSPACE_ROOT}/mcp/lib/server-functions.sh && kill_process_on_port ${port}`], {
+  const proc = Bun.spawn(['bash', '-c', `source ${WORKSPACE_ROOT}/mcp/lib/server-functions.sh && kill_process_on_port ${port} || true`], {
     cwd: WORKSPACE_ROOT,
     stdout: 'inherit',
     stderr: 'inherit',
@@ -99,10 +100,22 @@ export async function startMcpServerForTestingPurposes(): Promise<void> {
  * Stops the MCP server if it was started by this process
  */
 export async function stopMcpServer(): Promise<void> {
-  // Kill process via port - this is most reliable
+  if (mcpServerProcess && !mcpServerProcess.killed) {
+    // Try graceful termination first (SIGTERM)
+    mcpServerProcess.kill();
+    // Wait a bit for graceful shutdown
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    
+    // Force kill if still running
+    if (!mcpServerProcess.killed) {
+      mcpServerProcess.kill(9); // SIGKILL
+    }
+  }
+  
+  // Also kill via port as backup - this ensures cleanup even if process tracking failed
   await killProcessOnPort(MCP_PORT);
   // Give processes time to clean up (increased for proper cleanup)
-  await new Promise((resolve) => setTimeout(resolve, 1000));
+  await new Promise((resolve) => setTimeout(resolve, 500));
   mcpServerProcess = null;
   console.log('🛑 MCP server stopped');
 }
