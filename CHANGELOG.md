@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.12.4](https://github.com/ffMathy/hey-jarvis/compare/root-v0.12.3...root-v0.12.4) (2025-11-23)
+
+
+### Bug Fixes
+
+* don't open HTML reports in playwright ([29403db](https://github.com/ffMathy/hey-jarvis/commit/29403dba3d65ad34443dcdba5007ccf1e6784748))
+* general stability improvements ([#295](https://github.com/ffMathy/hey-jarvis/issues/295)) ([0cec2f6](https://github.com/ffMathy/hey-jarvis/commit/0cec2f652c6244d68d407a36454bf35bee69d3e8))
+* mcp tests now pass ([e0a9293](https://github.com/ffMathy/hey-jarvis/commit/e0a92930a7daf980b5274d2d566cc3f3ca13eddd))
+* path broken for home assistant addon dockerfile ([f0a7b98](https://github.com/ffMathy/hey-jarvis/commit/f0a7b98ca3f396ef9c215a65b5c1537ac63ca13d))
+* workflow scheduling fix ([6e1e5ed](https://github.com/ffMathy/hey-jarvis/commit/6e1e5ed8912b3ec39107d68c6846ebbd776295d0))
+
+
+### Performance Improvements
+
+* reduced nx parallelism to improve stability ([774e42f](https://github.com/ffMathy/hey-jarvis/commit/774e42ff6cc3e1e5b13058787b1a28418ea355a2))
+
 ## [0.12.3](https://github.com/ffMathy/hey-jarvis/compare/root-v0.12.2...root-v0.12.3) (2025-11-23)
 
 

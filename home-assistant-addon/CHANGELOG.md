@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.12.3](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v0.12.2...home-assistant-addon-v0.12.3) (2025-11-23)
+
+
+### Bug Fixes
+
+* don't open HTML reports in playwright ([29403db](https://github.com/ffMathy/hey-jarvis/commit/29403dba3d65ad34443dcdba5007ccf1e6784748))
+* general stability improvements ([#295](https://github.com/ffMathy/hey-jarvis/issues/295)) ([0cec2f6](https://github.com/ffMathy/hey-jarvis/commit/0cec2f652c6244d68d407a36454bf35bee69d3e8))
+* path broken for home assistant addon dockerfile ([f0a7b98](https://github.com/ffMathy/hey-jarvis/commit/f0a7b98ca3f396ef9c215a65b5c1537ac63ca13d))
+* workflow scheduling fix ([6e1e5ed](https://github.com/ffMathy/hey-jarvis/commit/6e1e5ed8912b3ec39107d68c6846ebbd776295d0))
+
 ## [0.12.2](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v0.12.1...home-assistant-addon-v0.12.2) (2025-11-23)
 
 
