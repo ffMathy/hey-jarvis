@@ -125,7 +125,7 @@ All NX commands automatically use `op run` for secure credential injection.
 
 ### External Services
 - **ElevenLabs**: Voice interface integration
-- **Home Assistant**: Smart device control
+- **Internet of Things**: Smart device control
 - **OpenWeatherMap**: Weather data and forecasting
 - **Bilka**: Danish grocery shopping
 - **Valdemarsro**: Danish recipe database

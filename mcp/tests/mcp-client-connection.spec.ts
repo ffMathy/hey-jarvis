@@ -38,10 +38,8 @@ describe('MCP Server Connection Tests', () => {
     if (!process.env.HEY_JARVIS_MCP_JWT_SECRET) {
       throw new Error('HEY_JARVIS_MCP_JWT_SECRET not found - tests must be run via nx test which uses run-with-env.sh');
     }
-    if (!process.env.HEY_JARVIS_GOOGLE_API_KEY && !process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY) {
-      throw new Error(
-        'HEY_JARVIS_GOOGLE_API_KEY not found - tests must be run via nx test which uses run-with-env.sh',
-      );
+    if (!process.env.HEY_JARVIS_GOOGLE_API_KEY) {
+      throw new Error('HEY_JARVIS_GOOGLE_API_KEY not found - tests must be run via nx test which uses run-with-env.sh');
     }
 
     console.log('Starting MCP server programmatically...');

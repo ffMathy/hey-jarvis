@@ -10,7 +10,7 @@ import { initializeScheduler } from './scheduler.js';
 import { getCalendarAgent } from './verticals/calendar/index.js';
 import { getCodingAgent } from './verticals/coding/index.js';
 import { getEmailAgent } from './verticals/email/index.js';
-import { getHomeAssistantAgent } from './verticals/home-assistant/index.js';
+import { getInternetOfThingsAgent } from './verticals/internet-of-things/index.js';
 import { getShoppingListAgent } from './verticals/shopping/index.js';
 import { getTodoListAgent } from './verticals/todo-list/index.js';
 import { getWeatherAgent } from './verticals/weather/index.js';
@@ -23,7 +23,7 @@ export async function getPublicAgents(): Promise<Record<string, Agent>> {
     getEmailAgent(),
     getCalendarAgent(),
     getTodoListAgent(),
-    getHomeAssistantAgent(),
+    getInternetOfThingsAgent(),
   ]);
 
   return {
@@ -110,7 +110,7 @@ export async function startMcpServer() {
     ask_homeAssistant: createSimplifiedAgentTool(
       'homeAssistant',
       agents.homeAssistant,
-      'Control and monitor Home Assistant smart home devices. Turn devices on/off, adjust settings, query device states, and view historical changes.',
+      'Control and monitor Internet of Things (IoT) smart home devices. Turn devices on/off, adjust settings, query device states, and view historical changes.',
     ),
   };
 
