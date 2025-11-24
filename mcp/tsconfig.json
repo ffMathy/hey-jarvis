@@ -1,7 +1,12 @@
 {
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
-    "types": ["bun-types", "node"]
+    "types": ["bun-types", "node"],
+    "skipLibCheck": true,
+    "skipDefaultLibCheck": true,
+    "disableReferencedProjectLoad": true,
+    "disableSolutionSearching": true
   },
-  "include": ["mastra/**/*", "tests/**/*"]
+  "include": ["mastra/**/*", "tests/**/*"],
+  "exclude": ["**/node_modules", "**/.*/", "**/dist", "**/build", "**/*.spec.ts"]
 }
