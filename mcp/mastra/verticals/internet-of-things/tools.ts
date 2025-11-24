@@ -100,11 +100,11 @@ async function callHomeAssistantApi(endpoint: string, method = 'GET', body?: unk
   return response.json();
 }
 
-// Tool to call a Home Assistant service
-export const callHomeAssistantService = createTool({
-  id: 'callHomeAssistantService',
+// Tool to call an IoT service
+export const callIoTService = createTool({
+  id: 'callIoTService',
   description:
-    'Call a Home Assistant service to control devices or trigger actions. Use this to turn devices on/off, adjust settings, or perform any Home Assistant service action.',
+    'Call an IoT service to control devices or trigger actions. Use this to turn devices on/off, adjust settings, or perform any IoT service action.',
   inputSchema: z.object({
     domain: z
       .string()
@@ -205,7 +205,7 @@ export const getEntityLogbook = createTool({
 export const getAllDevices = createTool({
   id: 'getAllDevices',
   description:
-    'Get all devices and their entities from Home Assistant. Returns devices grouped with their entities, including state, attributes, area, and labels. Use this to discover available devices and get comprehensive device information.',
+    'Get all devices and their entities from the IoT system. Returns devices grouped with their entities, including state, attributes, area, and labels. Use this to discover available devices and get comprehensive device information.',
   inputSchema: z.object({
     domain: z
       .string()
@@ -315,7 +315,7 @@ export const getAllDevices = createTool({
 export const getAllServices = createTool({
   id: 'getAllServices',
   description:
-    'Get all available services in Home Assistant grouped by domain. Use this to discover what actions you can perform on devices. Services define the operations available for each domain (e.g., turn_on, turn_off for lights; set_temperature for climate).',
+    'Get all available services in the IoT system grouped by domain. Use this to discover what actions you can perform on devices. Services define the operations available for each domain (e.g., turn_on, turn_off for lights; set_temperature for climate).',
   inputSchema: z.object({
     domain: z
       .string()
@@ -420,8 +420,8 @@ export const getChangedDevicesSince = createTool({
 });
 
 // Export all tools together for convenience
-export const homeAssistantTools = {
-  callHomeAssistantService,
+export const internetOfThingsTools = {
+  callIoTService,
   getEntityLogbook,
   getAllDevices,
   getAllServices,

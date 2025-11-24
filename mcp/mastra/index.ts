@@ -7,7 +7,7 @@ import {
   getCodingAgent,
   getCommuteAgent,
   getEmailAgent,
-  getHomeAssistantAgent,
+  getInternetOfThingsAgent,
   getMealPlanEmailFormatterAgent,
   getMealPlanGeneratorAgent,
   getMealPlanSelectorAgent,
@@ -69,7 +69,7 @@ async function createMastra() {
     getTodoListAgent(),
     getCalendarAgent(),
     getWebResearchAgent(),
-    getHomeAssistantAgent(),
+    getInternetOfThingsAgent(),
     getCommuteAgent(),
   ]);
 
