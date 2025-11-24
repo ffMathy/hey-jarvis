@@ -1,5 +1,5 @@
-// @ts-ignore - bun:test types are built into Bun runtime
-import { describe, expect, it, beforeAll } from 'bun:test';
+// @ts-expect-error - bun:test types are built into Bun runtime
+import { beforeAll, describe, expect, it } from 'bun:test';
 import { cookingTools } from './tools';
 
 // Type guard to check if result is a validation error
@@ -11,9 +11,7 @@ describe('Cooking Tools Integration Tests', () => {
   beforeAll(() => {
     // Verify API key is configured
     if (!process.env.HEY_JARVIS_VALDEMARSRO_API_KEY) {
-      throw new Error(
-        'HEY_JARVIS_VALDEMARSRO_API_KEY environment variable is required for cooking tools tests',
-      );
+      throw new Error('HEY_JARVIS_VALDEMARSRO_API_KEY environment variable is required for cooking tools tests');
     }
   });
 
@@ -47,12 +45,7 @@ describe('Cooking Tools Integration Tests', () => {
       }
 
       console.log('✅ Recipe fetched successfully:', result.title);
-      console.log(
-        '   - preparationTime type:',
-        typeof result.preparationTime,
-        '=',
-        result.preparationTime,
-      );
+      console.log('   - preparationTime type:', typeof result.preparationTime, '=', result.preparationTime);
       console.log('   - servings type:', typeof result.servings, '=', result.servings);
     }, 30000);
   });
@@ -93,12 +86,7 @@ describe('Cooking Tools Integration Tests', () => {
 
       console.log(`✅ Found ${result.results.length} recipes for "kylling"`);
       console.log('   First recipe:', firstRecipe.title);
-      console.log(
-        '   - preparationTime type:',
-        typeof firstRecipe.preparationTime,
-        '=',
-        firstRecipe.preparationTime,
-      );
+      console.log('   - preparationTime type:', typeof firstRecipe.preparationTime, '=', firstRecipe.preparationTime);
       console.log('   - servings type:', typeof firstRecipe.servings, '=', firstRecipe.servings);
     }, 30000);
   });
@@ -165,9 +153,7 @@ describe('Cooking Tools Integration Tests', () => {
           console.log(
             `     preparationTime: ${typeof recipe.preparationTime} = ${JSON.stringify(recipe.preparationTime)}`,
           );
-          console.log(
-            `     servings: ${typeof recipe.servings} = ${JSON.stringify(recipe.servings)}`,
-          );
+          console.log(`     servings: ${typeof recipe.servings} = ${JSON.stringify(recipe.servings)}`);
         });
       }
 

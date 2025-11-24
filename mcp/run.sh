@@ -32,8 +32,10 @@ if bashio::config.has_value 'openweathermap_api_key'; then
 fi
 
 if bashio::config.has_value 'google_api_key'; then
+    export HEY_JARVIS_GOOGLE_API_KEY=$(bashio::config 'google_api_key')
+    # Set legacy variable for backward compatibility
     export HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY=$(bashio::config 'google_api_key')
-    bashio::log.info "Google Generative AI API key configured"
+    bashio::log.info "Google API key configured (Gemini AI and Maps)"
 fi
 
 if bashio::config.has_value 'valdemarsro_api_key'; then

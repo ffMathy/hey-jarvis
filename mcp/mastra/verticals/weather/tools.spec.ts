@@ -1,5 +1,5 @@
-// @ts-ignore - bun:test types are built into Bun runtime
-import { describe, expect, it, beforeAll } from 'bun:test';
+// @ts-expect-error - bun:test types are built into Bun runtime
+import { beforeAll, describe, expect, it } from 'bun:test';
 import { weatherTools } from './tools';
 
 // Type guard to check if result is a validation error
@@ -11,9 +11,7 @@ describe('Weather Tools Integration Tests', () => {
   beforeAll(() => {
     // Verify API key is configured
     if (!process.env.HEY_JARVIS_OPENWEATHERMAP_API_KEY) {
-      throw new Error(
-        'HEY_JARVIS_OPENWEATHERMAP_API_KEY environment variable is required for weather tools tests',
-      );
+      throw new Error('HEY_JARVIS_OPENWEATHERMAP_API_KEY environment variable is required for weather tools tests');
     }
   });
 
@@ -107,10 +105,7 @@ describe('Weather Tools Integration Tests', () => {
       expect(result.coordinates.lat).toBeCloseTo(56.1629, 1);
       expect(result.coordinates.lon).toBeCloseTo(10.2039, 1);
 
-      console.log(
-        '✅ Current weather fetched successfully for coordinates:',
-        result.location,
-      );
+      console.log('✅ Current weather fetched successfully for coordinates:', result.location);
       console.log('   - Temperature:', result.temperature, '°C');
       console.log('   - Condition:', result.condition, '-', result.description);
     }, 30000);
@@ -191,10 +186,7 @@ describe('Weather Tools Integration Tests', () => {
       expect(typeof firstEntry.temperature).toBe('number');
       expect(typeof firstEntry.condition).toBe('string');
 
-      console.log(
-        '✅ 5-day forecast fetched successfully for coordinates:',
-        result.location,
-      );
+      console.log('✅ 5-day forecast fetched successfully for coordinates:', result.location);
       console.log('   - Forecast entries:', result.forecast.length);
       console.log('   - First entry:', firstEntry.datetime);
     }, 30000);

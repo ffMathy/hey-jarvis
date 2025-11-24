@@ -181,7 +181,7 @@ export const getAllRecipes = createTool({
       const recipes = page.data.map(mapValdemarsroRecipe);
       allRecipes.push(...recipes);
 
-      if( inputData.amount && allRecipes.length >= inputData.amount) {
+      if (inputData.amount && allRecipes.length >= inputData.amount) {
         return allRecipes.slice(0, inputData.amount);
       }
 
