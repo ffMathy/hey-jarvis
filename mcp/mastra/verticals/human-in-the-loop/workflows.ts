@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { createAgentStep, createStep, createToolStep, createWorkflow } from '../../utils/workflow-factory.js';
+import { createStep, createWorkflow } from '../../utils/workflow-factory.js';
 import { sendEmail } from '../email/tools.js';
 
 /**
@@ -24,7 +24,7 @@ const sendAndWaitInputSchema = z.object({
 // Output schema - generic response object
 const sendAndWaitOutputSchema = z.object({
   senderEmail: z.string().describe('Email of the person who responded'),
-  response: z.record(z.any()).describe('The parsed response data'),
+  response: z.record(z.unknown()).describe('The parsed response data'),
 });
 
 // Step 1: Send email with form request
@@ -67,7 +67,7 @@ const sendFormRequestEmail = createStep({
       },
       params.mastra,
     );
-    
+
     // Pass recipientEmail through to next step
     return {
       ...emailResult,
@@ -88,7 +88,7 @@ const awaitEmailResponse = createStep({
     recipientEmail: z.string(), // Pass through for validation
   }),
   outputSchema: sendAndWaitOutputSchema,
-  resumeSchema: z.record(z.any()),
+  resumeSchema: z.record(z.unknown()),
   suspendSchema: z.object({
     message: z.string(),
   }),
@@ -97,10 +97,15 @@ const awaitEmailResponse = createStep({
 
     // If we have resume data, process it
     if (params.resumeData) {
-      const { senderEmail, ...responseData } = params.resumeData as any;
+      const { senderEmail, ...responseData } = params.resumeData;
 
       // Validate sender email
-      if (senderEmail && recipientEmail && senderEmail.toLowerCase() !== recipientEmail.toLowerCase()) {
+      if (
+        senderEmail &&
+        recipientEmail &&
+        typeof senderEmail === 'string' &&
+        senderEmail.toLowerCase() !== recipientEmail.toLowerCase()
+      ) {
         throw new Error(
           `Security validation failed: Email sender ${senderEmail} does not match expected recipient ${recipientEmail}`,
         );
@@ -108,7 +113,7 @@ const awaitEmailResponse = createStep({
 
       // Return the response data
       return {
-        senderEmail: senderEmail || '',
+        senderEmail: typeof senderEmail === 'string' ? senderEmail : '',
         response: responseData,
       };
     }
@@ -186,7 +191,12 @@ const workflowStateSchema = z
 
 // Input schema for the workflow - all fields optional with defaults
 const workflowInputSchema = z.object({
-  recipientEmail: z.string().email().optional().default('demo@example.com').describe('Email address to send form requests to'),
+  recipientEmail: z
+    .string()
+    .email()
+    .optional()
+    .default('demo@example.com')
+    .describe('Email address to send form requests to'),
   projectName: z.string().optional().default('Demo Project').describe('Name of the project requiring approval'),
   budgetAmount: z.number().optional().default(10000).describe('Budget amount in USD'),
 });
@@ -217,7 +227,7 @@ const initializeWorkflow = createStep({
 });
 
 // Step 2: Send budget approval email
-const sendBudgetApprovalEmail = createStep({
+const _sendBudgetApprovalEmail = createStep({
   id: 'send-budget-approval-email',
   description: 'Send email requesting budget approval',
   stateSchema: workflowStateSchema,
@@ -236,7 +246,7 @@ const sendBudgetApprovalEmail = createStep({
     const { recipientEmail, projectName, budgetAmount } = inputData;
     const timeoutDate = new Date();
     timeoutDate.setDate(timeoutDate.getDate() + 14);
-    
+
     const question = `Please approve the budget for project "${projectName}". Amount: $${budgetAmount.toLocaleString()}. Reply with "Yes" or "No" and optional comments.`;
     const subject = `Form Request [WF-${workflowId}]: ${question}`;
     const bodyContent = `
@@ -253,16 +263,19 @@ const sendBudgetApprovalEmail = createStep({
 </html>
     `.trim();
 
-    return await sendEmail.execute({
-      subject,
-      bodyContent,
-      toRecipients: [recipientEmail],
-    }, mastra);
+    return await sendEmail.execute(
+      {
+        subject,
+        bodyContent,
+        toRecipients: [recipientEmail],
+      },
+      mastra,
+    );
   },
 });
 
 // Step 3: Suspend and wait for budget approval response (will be resumed by email workflow)
-const awaitBudgetApprovalResponse = createStep({
+const _awaitBudgetApprovalResponse = createStep({
   id: 'await-budget-approval-response',
   description: 'Suspend workflow and wait for email response',
   stateSchema: workflowStateSchema,
@@ -322,7 +335,7 @@ const awaitBudgetApprovalResponse = createStep({
 });
 
 // Step 4: Check if budget was approved
-const checkBudgetApproval = createStep({
+const _checkBudgetApproval = createStep({
   id: 'check-budget-approval',
   description: 'Check if budget was approved and decide next step',
   stateSchema: workflowStateSchema,
@@ -358,7 +371,7 @@ const checkBudgetApproval = createStep({
 });
 
 // Step 5: Send vendor selection email
-const sendVendorSelectionEmail = createStep({
+const _sendVendorSelectionEmail = createStep({
   id: 'send-vendor-selection-email',
   description: 'Send email requesting vendor selection',
   stateSchema: workflowStateSchema,
@@ -384,7 +397,7 @@ const sendVendorSelectionEmail = createStep({
 
     const timeoutDate = new Date();
     timeoutDate.setDate(timeoutDate.getDate() + 14);
-    
+
     const question = 'Please select a vendor for this project. Provide the vendor name and a brief justification.';
     const subject = `Form Request [WF-${workflowId}]: ${question}`;
     const bodyContent = `
@@ -401,16 +414,19 @@ const sendVendorSelectionEmail = createStep({
 </html>
     `.trim();
 
-    return await sendEmail.execute({
-      subject,
-      bodyContent,
-      toRecipients: [state.recipientEmail],
-    }, mastra);
+    return await sendEmail.execute(
+      {
+        subject,
+        bodyContent,
+        toRecipients: [state.recipientEmail],
+      },
+      mastra,
+    );
   },
 });
 
 // Step 6: Suspend and wait for vendor selection response
-const awaitVendorSelectionResponse = createStep({
+const _awaitVendorSelectionResponse = createStep({
   id: 'await-vendor-selection-response',
   description: 'Suspend workflow and wait for vendor selection email response',
   stateSchema: workflowStateSchema,
@@ -471,7 +487,7 @@ const awaitVendorSelectionResponse = createStep({
 });
 
 // Step 7: Send final confirmation email
-const sendFinalConfirmationEmail = createStep({
+const _sendFinalConfirmationEmail = createStep({
   id: 'send-final-confirmation-email',
   description: 'Send email requesting final confirmation',
   stateSchema: workflowStateSchema,
@@ -494,7 +510,7 @@ const sendFinalConfirmationEmail = createStep({
 
     const timeoutDate = new Date();
     timeoutDate.setDate(timeoutDate.getDate() + 14);
-    
+
     const question = `Please confirm the final action. Selected vendor: ${state.step2Response.vendorName}. Reply with "Confirm" or "Cancel" and any final notes.`;
     const subject = `Form Request [WF-${workflowId}]: ${question}`;
     const bodyContent = `
@@ -511,16 +527,19 @@ const sendFinalConfirmationEmail = createStep({
 </html>
     `.trim();
 
-    return await sendEmail.execute({
-      subject,
-      bodyContent,
-      toRecipients: [state.recipientEmail],
-    }, mastra);
+    return await sendEmail.execute(
+      {
+        subject,
+        bodyContent,
+        toRecipients: [state.recipientEmail],
+      },
+      mastra,
+    );
   },
 });
 
 // Step 8: Suspend and wait for final confirmation response
-const awaitFinalConfirmationResponse = createStep({
+const _awaitFinalConfirmationResponse = createStep({
   id: 'await-final-confirmation-response',
   description: 'Suspend workflow and wait for final confirmation email response',
   stateSchema: workflowStateSchema,
@@ -696,7 +715,7 @@ const extractBudgetApprovalResponse = createStep({
   description: 'Extract approval decision and merge with context',
   inputSchema: z.object({
     senderEmail: z.string(),
-    response: z.record(z.any()),
+    response: z.record(z.unknown()),
   }),
   outputSchema: z.object({
     approved: z.boolean(),
@@ -705,10 +724,14 @@ const extractBudgetApprovalResponse = createStep({
   }),
   execute: async (params) => {
     const { response, senderEmail } = params.inputData;
-    
+
+    // Parse response with proper validation
+    const approved = typeof response.approved === 'boolean' ? response.approved : false;
+    const comments = typeof response.comments === 'string' ? response.comments : undefined;
+
     return {
-      approved: response.approved as boolean,
-      comments: response.comments as string | undefined,
+      approved,
+      comments,
       recipientEmail: senderEmail,
     };
   },
@@ -741,7 +764,7 @@ const mergeBudgetApprovalContext = createStep({
   },
 });
 
-// Step: Prepare vendor selection question  
+// Step: Prepare vendor selection question
 const prepareVendorSelectionQuestion = createStep({
   id: 'prepare-vendor-selection-question',
   description: 'Prepare vendor selection question',
@@ -758,11 +781,11 @@ const prepareVendorSelectionQuestion = createStep({
   }),
   execute: async (params) => {
     const { approved, recipientEmail, projectName } = params.inputData;
-    
+
     if (!approved) {
       throw new Error('Budget was not approved - workflow cannot continue');
     }
-    
+
     return {
       recipientEmail,
       question: `Please select a vendor for project "${projectName}". Reply with the vendor name and justification.`,
@@ -777,7 +800,7 @@ const extractVendorSelectionResponse = createStep({
   description: 'Extract vendor selection and merge with context',
   inputSchema: z.object({
     senderEmail: z.string(),
-    response: z.record(z.any()),
+    response: z.record(z.unknown()),
   }),
   outputSchema: z.object({
     vendorName: z.string(),
@@ -786,10 +809,14 @@ const extractVendorSelectionResponse = createStep({
   }),
   execute: async (params) => {
     const { response, senderEmail } = params.inputData;
-    
+
+    // Parse response with proper validation
+    const vendorName = typeof response.vendorName === 'string' ? response.vendorName : '';
+    const justification = typeof response.justification === 'string' ? response.justification : '';
+
     return {
-      vendorName: response.vendorName as string,
-      justification: response.justification as string,
+      vendorName,
+      justification,
       recipientEmail: senderEmail,
     };
   },
@@ -833,7 +860,7 @@ const prepareFinalConfirmationQuestion = createStep({
   }),
   execute: async (params) => {
     const { recipientEmail, projectName, vendorName } = params.inputData;
-    
+
     return {
       recipientEmail,
       question: `Final confirmation for project "${projectName}" with vendor "${vendorName}". Reply with "Confirm" or "Cancel" and optional notes.`,
@@ -848,7 +875,7 @@ const extractFinalConfirmationResponse = createStep({
   description: 'Extract final confirmation and format output',
   inputSchema: z.object({
     senderEmail: z.string(),
-    response: z.record(z.any()),
+    response: z.record(z.unknown()),
   }),
   outputSchema: z.object({
     confirmed: z.boolean(),
@@ -856,14 +883,17 @@ const extractFinalConfirmationResponse = createStep({
   }),
   execute: async (params) => {
     const { response } = params.inputData;
-    
+
+    // Parse response with proper validation
+    const confirmed = typeof response.confirmed === 'boolean' ? response.confirmed : false;
+    const finalNotes = typeof response.finalNotes === 'string' ? response.finalNotes : undefined;
+
     return {
-      confirmed: response.confirmed as boolean,
-      finalNotes: response.finalNotes as string | undefined,
+      confirmed,
+      finalNotes,
     };
   },
 });
-
 
 export const humanInTheLoopDemoWorkflow = createWorkflow({
   id: 'humanInTheLoopDemoWorkflow',
@@ -872,16 +902,15 @@ export const humanInTheLoopDemoWorkflow = createWorkflow({
 })
   .then(initializeWorkflow)
   .then(prepareBudgetApprovalQuestion)
-  .then(sendEmailAndAwaitResponseWorkflow as any) // ← Workflows-as-steps: TypeScript doesn't perfectly infer schema compatibility
+  .then(sendEmailAndAwaitResponseWorkflow)
   .then(extractBudgetApprovalResponse)
   .then(mergeBudgetApprovalContext)
   .then(prepareVendorSelectionQuestion)
-  .then(sendEmailAndAwaitResponseWorkflow as any) // ← Workflows-as-steps: TypeScript doesn't perfectly infer schema compatibility
+  .then(sendEmailAndAwaitResponseWorkflow)
   .then(extractVendorSelectionResponse)
   .then(mergeVendorSelectionContext)
   .then(prepareFinalConfirmationQuestion)
-  .then(sendEmailAndAwaitResponseWorkflow as any) // ← Workflows-as-steps: TypeScript doesn't perfectly infer schema compatibility
+  .then(sendEmailAndAwaitResponseWorkflow)
   .then(extractFinalConfirmationResponse)
-  .then(formatFinalOutput as any)
+  .then(formatFinalOutput)
   .commit();
-
