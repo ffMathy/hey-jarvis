@@ -1,5 +1,4 @@
 {
-  "release-as": "patch",
   "include-component-in-tag": true,
   "include-v-in-tag": true,
   "changelog-types": [
