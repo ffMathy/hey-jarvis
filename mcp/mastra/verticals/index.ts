@@ -4,7 +4,7 @@ export * from './coding/index.js';
 export * from './commute/index.js';
 export * from './cooking/index.js';
 export * from './email/index.js';
-export * from './home-assistant/index.js';
+export * from './internet-of-things/index.js';
 export * from './notification/index.js';
 export * from './shopping/index.js';
 export * from './synapse/index.js';

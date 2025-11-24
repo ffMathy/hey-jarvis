@@ -9,8 +9,7 @@ import { createGoogleGenerativeAI } from '@ai-sdk/google';
  */
 
 // Validate that the Google API key is available
-// Try the unified key first, fall back to the old key for backward compatibility
-const googleApiKey = process.env.HEY_JARVIS_GOOGLE_API_KEY || process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY;
+const googleApiKey = process.env.HEY_JARVIS_GOOGLE_API_KEY;
 if (!googleApiKey) {
   throw new Error('HEY_JARVIS_GOOGLE_API_KEY environment variable is required');
 }

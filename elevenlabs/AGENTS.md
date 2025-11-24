@@ -210,7 +210,7 @@ This project uses **1Password CLI** for secure environment variable management:
 - `HEY_JARVIS_ELEVENLABS_API_KEY` - ElevenLabs API key
 - `HEY_JARVIS_ELEVENLABS_AGENT_ID` - ElevenLabs agent ID
 - `HEY_JARVIS_ELEVENLABS_VOICE_ID` - ElevenLabs voice ID
-- `HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY` - Google Gemini API for test evaluations
+- `HEY_JARVIS_GOOGLE_API_KEY` - Google Gemini API for test evaluations
 
 #### 1Password Setup
 1. **Sign in**: `eval $(op signin)` - **CRITICAL: Always run this command when you get a 1Password authentication error or non-zero exit code from op commands**
