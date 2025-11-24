@@ -570,6 +570,105 @@ await mastra.workflows.implementFeatureWorkflow.execute({
 **Human-in-the-Loop:**
 The workflow uses Mastra's suspend/resume pattern in the Requirements Interviewer step, allowing the agent to ask questions and wait for user responses before proceeding.
 
+### Human-in-the-Loop Demo Workflow
+Demonstrates email-based workflow suspension and resumption with a 3-step approval process:
+- **`humanInTheLoopDemoWorkflow`**: Multi-step approval workflow with email-based human input
+- **Step 1 - Budget Approval**: Requests approval for project budget (Yes/No + comments)
+- **Step 2 - Vendor Selection**: Requests vendor selection (Vendor name + justification)
+- **Step 3 - Final Confirmation**: Requests final action confirmation (Confirm/Cancel + notes)
+- **Email integration**: Sends form request emails with embedded workflow IDs
+- **Security validation**: Validates sender email and workflow ID before resuming
+- **LLM parsing**: Uses Gemini to extract structured data from email responses
+- **14-day timeout**: Each suspend step times out after 14 days by default
+
+**Email Format:**
+- Subject: `Form Request [WF-{workflowId}]: {question}`
+- Body: Question + instructions + workflow ID + expiry date
+- Resume trigger: Reply email with matching workflow ID in subject
+
+**Workflow Steps:**
+1. **Initialize**: Store recipient email in workflow state
+2. **Request Budget Approval**: Send email, suspend workflow, wait for reply
+3. **Check Approval**: Validate response and decide if workflow continues
+4. **Request Vendor Selection**: If approved, send email, suspend, wait for reply
+5. **Request Final Confirmation**: Send email, suspend, wait for reply
+6. **Format Output**: Generate final result with all collected data
+
+**Security Features:**
+- Workflow ID embedded in email subject: `[WF-{id}]`
+- Sender email validation against expected recipient
+- Workflow state stores expected reply email
+- 14-day timeout prevents indefinite suspension
+
+**Usage Example:**
+```typescript
+const run = await humanInTheLoopDemoWorkflow.createRun();
+const result = await run.start({
+  inputData: {
+    recipientEmail: 'user@example.com',
+    projectName: 'New Website',
+    budgetAmount: 50000,
+  },
+});
+
+// Workflow suspends and sends email
+// User replies to email with answer
+// checkForFormRepliesWorkflow (runs every 5 minutes) detects reply and resumes workflow
+```
+
+**Helper Functions:**
+- `sendFormRequest()`: Sends email with workflow ID and suspends workflow
+- `parseEmailResponse()`: Uses LLM to extract structured data from email body
+
+### Email Checking Workflow
+Automatically processes incoming email replies to form requests and resumes suspended workflows:
+- **`checkForFormRepliesWorkflow`**: Scheduled workflow that runs every 5 minutes
+- **Step 1 - Search**: Searches inbox for unread emails
+- **Step 2 - Extract**: Extracts workflow IDs from email subjects using regex `[WF-{id}]`
+- **Step 3 - Process**: For each email with workflow ID:
+  - Gets workflow run by ID
+  - Parses email body using LLM
+  - Resumes workflow with parsed data
+  - Registers state change for tracking
+- **Step 4 - Summary**: Returns count of processed emails and resumed workflows
+
+**Scheduled Execution:**
+```typescript
+scheduler.schedule({
+  workflowId: 'checkForFormRepliesWorkflow',
+  schedule: CronPatterns.EVERY_5_MINUTES,
+  inputData: {},
+});
+```
+
+**State Change Registration:**
+When a form reply is successfully processed, registers a state change:
+```typescript
+await registerStateChange.execute({
+  source: 'email',
+  stateType: 'form_reply_processed',
+  stateData: {
+    workflowId,
+    senderEmail: email.from.address,
+    emailSubject: email.subject,
+    receivedDateTime: email.receivedDateTime,
+  },
+});
+```
+
+**Current Limitations:**
+- Workflow run retrieval not yet implemented (requires Mastra enhancement)
+- Uses email body preview instead of full body
+- Only supports `humanInTheLoopDemoWorkflow` (hardcoded workflow type)
+- Manual workflow resume implementation needed
+
+**Future Enhancements:**
+- Support multiple workflow types
+- Fetch full email body for better parsing
+- Implement workflow run registry for pending workflows
+- Add workflow type detection from email metadata
+- Support email threading for multi-turn conversations
+
 ## Processors
 
 ### 🔍 **Output Processors**
