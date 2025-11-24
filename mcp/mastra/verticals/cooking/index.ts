@@ -1,4 +1,7 @@
 // Cooking vertical exports
-export { getRecipeSearchAgent } from './agent.js';
-export * from './meal-planning/index.js';
+export {
+  getCookingAgent,
+  getMealPlanSelectorAgent,
+} from './agents.js';
+export { generateMealPlanWorkflow, weeklyMealPlanningWorkflow } from './workflows.js';
 export { cookingTools } from './tools.js';

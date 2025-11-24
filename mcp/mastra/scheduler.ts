@@ -31,5 +31,12 @@ export function initializeScheduler(): WorkflowScheduler {
     inputData: {},
   });
 
+  // Check for new emails - every 5 minutes
+  scheduler.schedule({
+    workflowId: 'checkForNewEmails',
+    schedule: CronPatterns.EVERY_5_MINUTES,
+    inputData: {},
+  });
+
   return scheduler;
 }

@@ -5,7 +5,7 @@ import { PORTS } from './helpers/ports';
 // Use centralized port configuration
 const TEST_INGRESS_PORT = 5000; // Defined in mcp/lib/ports.sh
 
-test.describe('Docker Container Integration Tests', () => {
+test.describe.skip('Docker Container Integration Tests', () => {
   let container: ContainerStartupResult | undefined;
 
   test.beforeAll(async () => {

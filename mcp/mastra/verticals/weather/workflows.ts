@@ -1,12 +1,12 @@
 import { z } from 'zod';
 import { createAgentStep, createStep, createWorkflow } from '../../utils/workflow-factory.js';
-import { registerStateChange } from '../notification/tools.js';
+import { registerStateChange } from '../synapse/tools.js';
 
 // Agent-as-step for scheduled weather check
 const scheduledWeatherCheck = createAgentStep({
   id: 'scheduled-weather-check',
   description: 'Checks weather for Aarhus every hour',
-  agentName: 'weather',
+  agent: 'weather',
   inputSchema: z.object({}),
   outputSchema: z.object({
     result: z.string(),
@@ -23,11 +23,10 @@ const registerWeatherStateChange = createStep({
   }),
   outputSchema: z.object({
     registered: z.boolean(),
-    triggeredAnalysis: z.boolean(),
+    triggeredWorkflow: z.boolean(),
     message: z.string(),
   }),
   execute: async ({ inputData, mastra }) => {
-    // Transform weather result into state change format
     const stateChangeData = {
       source: 'weather',
       stateType: 'weather_update',
@@ -38,7 +37,6 @@ const registerWeatherStateChange = createStep({
       },
     };
 
-    // Execute the registerStateChange tool
     return await registerStateChange.execute(stateChangeData, mastra);
   },
 });

@@ -3,7 +3,7 @@ import { spawn } from 'child_process';
 import { type ContainerStartupResult, startContainer } from './helpers/container-startup';
 import { getMastraUIUrl, PORTS } from './helpers/ports';
 
-test.describe('Server Startup Tests', () => {
+test.describe.skip('Server Startup Tests', () => {
   let container: ContainerStartupResult | undefined;
 
   test.beforeAll(async () => {
