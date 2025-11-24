@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.13.2](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.13.1...mcp-v0.13.2) (2025-11-24)
+
+
+### Bug Fixes
+
+* broken google key reference ([7930141](https://github.com/ffMathy/hey-jarvis/commit/7930141d881be8cd191f44f4132f702758ba3c0f))
+* more google maps fixes ([189f9e8](https://github.com/ffMathy/hey-jarvis/commit/189f9e831022a9305012eb7cea605a4ad47446e9))
+* more google maps fixes ([#309](https://github.com/ffMathy/hey-jarvis/issues/309)) ([1c9c1e2](https://github.com/ffMathy/hey-jarvis/commit/1c9c1e2803c1c12eac87ad61f64ac11ee2b6a02a))
+
 ## [0.13.1](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.13.0...mcp-v0.13.1) (2025-11-24)
 
 
