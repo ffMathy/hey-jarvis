@@ -1,4 +1,4 @@
-import type { Agent } from '@mastra/core/agent';
+import type { Agent, AgentConfig } from '@mastra/core/agent';
 import {
   type DefaultEngineType,
   createStep as mastraCreateStep,
@@ -8,6 +8,7 @@ import {
   type WorkflowConfig,
 } from '@mastra/core/workflows';
 import type { z } from 'zod';
+import { createAgent } from './agent-factory.js';
 
 /**
  * Creates a new Mastra Workflow with sensible defaults for the Hey Jarvis system.
@@ -152,6 +153,8 @@ export function createStep<
  * This implements the "agent-as-step" pattern where an existing agent
  * becomes a reusable workflow step.
  *
+ * The agent is created lazily during step execution to avoid top-level awaits.
+ *
  * @param config - The agent step configuration
  * @returns A Mastra workflow step that executes the specified agent
  *
@@ -165,7 +168,11 @@ export function createStep<
  * const weatherStep = createAgentStep<typeof stateSchema, typeof inputSchema, typeof outputSchema>({
  *   id: 'weather-check',
  *   description: 'Get weather using weather agent',
- *   agentName: 'weather',
+ *   agentConfig: {
+ *     name: 'Weather',
+ *     instructions: 'You are a weather assistant...',
+ *     tools: weatherTools,
+ *   },
  *   inputSchema: z.object({ location: z.string() }),
  *   outputSchema: z.object({ weather: z.string() }),
  *   prompt: ({ context, workflow }) => {
@@ -183,7 +190,11 @@ export function createAgentStep<
 >(config: {
   id: TStepId;
   description: string;
-  agent: Agent;
+  agentConfig: Omit<AgentConfig, 'model' | 'memory' | 'scorers'> & {
+    model?: AgentConfig['model'];
+    memory?: AgentConfig['memory'];
+    scorers?: AgentConfig['scorers'];
+  };
   stateSchema?: TStateSchema;
   inputSchema: TInputSchema;
   outputSchema: TOutputSchema;
@@ -201,7 +212,8 @@ export function createAgentStep<
     inputSchema: config.inputSchema,
     outputSchema: config.outputSchema,
     execute: async (params): Promise<TOutputSchema> => {
-      const agent = config.agent;
+      // Create agent lazily during execution to avoid top-level awaits
+      const agent = await createAgent(config.agentConfig);
       const prompt = config.prompt({ context: params });
 
       const response = await agent.stream(

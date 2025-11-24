@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { createAgentStep, createStep, createToolStep, createWorkflow } from '../../utils/workflow-factory.js';
-import { getCurrentCartContents } from './tools.js';
+import { getCurrentCartContents, shoppingTools } from './tools.js';
 
 // Schema for shopping list input
 const shoppingListInputSchema = z.object({
@@ -108,7 +108,18 @@ const extractProductInformation = createAgentStep({
   id: 'extract-product-information',
   description: 'Extracts structured product information from the user request using Information Extractor logic',
   stateSchema: workflowStateSchema,
-  agent: 'shoppingList',
+  agentConfig: {
+    name: 'ShoppingListExtractor',
+    instructions: `You are an expert extraction algorithm that deals with shopping lists.
+
+Your job is to convert the user's request into a machine-readable format.
+
+Be aware that the same product may be mentioned multiple times. Combine them into one product with the combined quantity.
+For fresh herbs and products listed multiple times with different quantities, use just one quantity.
+Get the operationType right: use "set" for new items or quantity changes, "remove" for removal, null if item already exists in correct quantity.`,
+    description: 'Specialized agent for extracting structured product information from shopping requests',
+    tools: undefined,
+  },
   inputSchema: z.object({}),
   outputSchema: extractedProductSchema,
   prompt: ({ workflow }) => {
@@ -148,7 +159,20 @@ const processExtractedProducts = createAgentStep({
   id: 'process-extracted-products',
   description: 'Processes each extracted product using the Shopping List Mutator Agent',
   stateSchema: workflowStateSchema,
-  agent: 'shoppingList',
+  agentConfig: {
+    name: 'ShoppingListMutator',
+    instructions: `You are a shopping-list mutator agent. Process products by adding or removing them from the cart.
+
+For each product with operationType:
+- "set": Add/update the product in the cart using your tools
+- "remove": Remove the product from the cart
+
+Use the find_product_in_catalog tool to search for products and set_product_basket_quantity to modify the cart.
+
+Return a summary of actions taken for each product.`,
+    description: 'Specialized agent for processing shopping cart mutations',
+    tools: shoppingTools,
+  },
   inputSchema: extractedProductSchema,
   outputSchema: z.object({
     mutationResults: z.array(z.string()),
@@ -195,7 +219,23 @@ const generateSummary = createAgentStep({
   id: 'generate-summary',
   description: 'Generates a summary of changes using the Summarization Agent',
   stateSchema: workflowStateSchema,
-  agent: 'shoppingListSummary',
+  agentConfig: {
+    name: 'ShoppingListSummary',
+    instructions: `You are an evaluator agent that takes in a query from a user that has been processed by other agents, along with a "before" and "after" version of shopping basket contents.
+
+Your job is to answer the query based on the information you have and provide a clear summary of what was changed.
+
+Format your response in a friendly, conversational way in Danish. Include:
+- What items were successfully added
+- What items were successfully removed  
+- What items couldn't be found or added
+- Current total items in basket
+- Any relevant notes about product selections (e.g., organic vs regular, size choices)
+
+Be concise but informative.`,
+    description: 'Specialized agent for summarizing shopping list changes and providing user feedback',
+    tools: undefined,
+  },
   inputSchema: cartSnapshotSchema,
   outputSchema: shoppingListResultSchema,
   prompt: (params) => {
