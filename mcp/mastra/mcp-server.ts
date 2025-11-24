@@ -14,9 +14,10 @@ import { getInternetOfThingsAgent } from './verticals/internet-of-things/index.j
 import { getShoppingListAgent } from './verticals/shopping/index.js';
 import { getTodoListAgent } from './verticals/todo-list/index.js';
 import { getWeatherAgent } from './verticals/weather/index.js';
+import { getCommuteAgent } from './verticals/index.js';
 
-export async function getPublicAgents(): Promise<Record<string, Agent>> {
-  const [coding, weather, shopping, email, calendar, todoList, homeAssistant] = await Promise.all([
+export async function getPublicAgents() {
+  return await Promise.all([
     getCodingAgent(),
     getWeatherAgent(),
     getShoppingListAgent(),
@@ -24,27 +25,18 @@ export async function getPublicAgents(): Promise<Record<string, Agent>> {
     getCalendarAgent(),
     getTodoListAgent(),
     getInternetOfThingsAgent(),
+    getCommuteAgent()
   ]);
-
-  return {
-    coding,
-    weather,
-    shopping,
-    email,
-    calendar,
-    todoList,
-    homeAssistant,
-  };
 }
 
 /**
  * Creates a simplified tool that wraps an agent and returns clean text responses
  * without verbose error metadata
  */
-function createSimplifiedAgentTool(name: string, agent: Agent, description: string) {
+function createSimplifiedAgentTool(agent: Agent) {
   return createTool({
-    id: `ask_${name}`,
-    description,
+    id: `ask_${agent.name}`,
+    description: agent.getDescription(),
     inputSchema: z.object({
       message: z.string().describe('The question or request to send to the agent'),
     }),
@@ -75,44 +67,12 @@ export async function startMcpServer() {
 
   const agents = await getPublicAgents();
 
-  // Create simplified tools that return clean text responses
-  const tools = {
-    ask_weather: createSimplifiedAgentTool(
-      'weather',
-      agents.weather,
-      'Get weather information for a location. Ask about current conditions or forecasts.',
-    ),
-    ask_shopping: createSimplifiedAgentTool(
-      'shopping',
-      agents.shopping,
-      'Manage shopping lists and find products at Bilka online store.',
-    ),
-    ask_coding: createSimplifiedAgentTool(
-      'coding',
-      agents.coding,
-      'Get help with GitHub repositories, issues, and coding tasks.',
-    ),
-    ask_email: createSimplifiedAgentTool(
-      'email',
-      agents.email,
-      'Search emails, create drafts, reply to messages, and manage your Microsoft Outlook inbox.',
-    ),
-    ask_calendar: createSimplifiedAgentTool(
-      'calendar',
-      agents.calendar,
-      'Manage Google Calendar events. Create, update, delete, or search calendar events.',
-    ),
-    ask_todoList: createSimplifiedAgentTool(
-      'todoList',
-      agents.todoList,
-      'Manage Google Tasks to-do lists. Create, update, delete, or retrieve tasks from your task lists.',
-    ),
-    ask_homeAssistant: createSimplifiedAgentTool(
-      'homeAssistant',
-      agents.homeAssistant,
-      'Control and monitor Internet of Things (IoT) smart home devices. Turn devices on/off, adjust settings, query device states, and view historical changes.',
-    ),
-  };
+  //dynamically construct tools from agents
+  const tools = {};
+  for(const agent of agents) {
+    const tool = createSimplifiedAgentTool(agent);
+    tools[tool.id] = tool;
+  }
 
   const mcpServer = new MCPServer({
     name: 'J.A.R.V.I.S. Assistant',
