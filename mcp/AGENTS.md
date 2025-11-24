@@ -265,10 +265,10 @@ Provides intelligent commute planning and navigation assistance using Google Map
 - "Find the closest gas stations within 10km"
 
 **Required Environment Variable:**
-- `HEY_JARVIS_GOOGLE_MAPS_API_KEY` - Google Maps API key (separate from OAuth2 credentials)
+- `HEY_JARVIS_GOOGLE_API_KEY` - Google Maps API key (same as used for Gemini AI)
 
 **Setup Instructions:**
-Google Maps APIs require an API key rather than OAuth2 credentials. If you already have a Google Cloud project for Calendar/Tasks, you can reuse the same project:
+Google Maps APIs require an API key rather than OAuth2 credentials. If you already have a Google Cloud project for Calendar/Tasks, you can reuse the same project and the same API key for both Gemini AI and Maps:
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com)
 2. Select your existing project (same one used for Calendar/Tasks OAuth2)
@@ -277,11 +277,11 @@ Google Maps APIs require an API key rather than OAuth2 credentials. If you alrea
    - Directions API
    - Places API (New)
    - Geocoding API
-4. Go to **Credentials** → **Create Credentials** → **API Key**
-5. Store the API key in 1Password: `op://Personal/Google Maps/API key`
-6. Set environment variable: `HEY_JARVIS_GOOGLE_MAPS_API_KEY`
+4. Go to **Credentials** → **Create Credentials** → **API Key** (or reuse existing)
+5. Store the API key in 1Password: `op://Personal/Google/Hey Jarvis API key`
+6. Set environment variable: `HEY_JARVIS_GOOGLE_API_KEY`
 
-**Why a separate API key?**
+**Note:**
 Maps APIs are public services (no user data access) that use API keys for billing and quota management, while Calendar/Tasks APIs access private user data and require OAuth2 authentication. Both can be enabled in the same Google Cloud project.
 
 ### Requirements Interviewer Agent
@@ -806,7 +806,7 @@ This project uses **1Password CLI** for secure environment variable management i
 All environment variables use the `HEY_JARVIS_` prefix for easy management and DevContainer forwarding. Store these in your 1Password vault:
 - **Weather**: `HEY_JARVIS_OPENWEATHERMAP_API_KEY` for weather data
 - **AI Models**: `HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY` for Gemini language models (explicitly configured in agent factory)
-- **Google Maps**: `HEY_JARVIS_GOOGLE_MAPS_API_KEY` for navigation, travel time estimation, and place search (requires Distance Matrix API, Directions API, Places API, and Geocoding API)
+- **Google Maps**: `HEY_JARVIS_GOOGLE_API_KEY` for navigation, travel time estimation, and place search (requires Distance Matrix API, Directions API, Places API, and Geocoding API) - same key as used for Gemini AI
 - **Google OAuth2 (Calendar & Tasks)**: `HEY_JARVIS_GOOGLE_CLIENT_ID`, `HEY_JARVIS_GOOGLE_CLIENT_SECRET`, `HEY_JARVIS_GOOGLE_REFRESH_TOKEN` for accessing Google Calendar and Tasks APIs (see [Google OAuth2 Setup](#google-oauth2-setup) below)
 - **Shopping (Bilka)**: `HEY_JARVIS_BILKA_EMAIL`, `HEY_JARVIS_BILKA_PASSWORD`, `HEY_JARVIS_BILKA_API_KEY` for authentication
 - **Shopping (Search)**: `HEY_JARVIS_ALGOLIA_API_KEY`, `HEY_JARVIS_ALGOLIA_APPLICATION_ID`, `HEY_JARVIS_BILKA_USER_TOKEN` for product search

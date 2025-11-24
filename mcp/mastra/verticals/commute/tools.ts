@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { createTool } from '../../utils/tool-factory.js';
 
 const getGoogleMapsClient = () => {
-  const apiKey = process.env.HEY_JARVIS_GOOGLE_MAPS_API_KEY;
+  const apiKey = process.env.HEY_JARVIS_GOOGLE_API_KEY;
   if (!apiKey) {
     throw new Error(
       'Google Maps API key not found.\n' +
@@ -20,9 +20,9 @@ const getGoogleMapsClient = () => {
         '   - Places API\n' +
         '   - Geocoding API\n' +
         '4. Go to "Credentials" → "Create Credentials" → "API Key"\n' +
-        '5. Set HEY_JARVIS_GOOGLE_MAPS_API_KEY environment variable\n' +
+        '5. Set HEY_JARVIS_GOOGLE_API_KEY environment variable\n' +
         '\n' +
-        'Store in 1Password: op://Personal/Google Maps/API key',
+        'Store in 1Password: op://Personal/Google/Hey Jarvis API key',
     );
   }
   return { client: new Client({}), apiKey };
