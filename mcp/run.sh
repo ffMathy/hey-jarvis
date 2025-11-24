@@ -36,6 +36,11 @@ if bashio::config.has_value 'google_api_key'; then
     bashio::log.info "Google Generative AI API key configured"
 fi
 
+if bashio::config.has_value 'google_maps_api_key'; then
+    export HEY_JARVIS_GOOGLE_MAPS_API_KEY=$(bashio::config 'google_maps_api_key')
+    bashio::log.info "Google Maps API key configured"
+fi
+
 if bashio::config.has_value 'valdemarsro_api_key'; then
     export HEY_JARVIS_VALDEMARSRO_API_KEY=$(bashio::config 'valdemarsro_api_key')
     bashio::log.info "Valdemarsro API key configured"

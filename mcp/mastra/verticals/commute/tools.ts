@@ -1,4 +1,5 @@
 import { Client, type LatLngLiteral } from '@googlemaps/google-maps-services-js';
+import { getDistance } from 'geolib';
 import { z } from 'zod';
 import { createTool } from '../../utils/tool-factory.js';
 
@@ -165,6 +166,7 @@ export const searchPlacesAlongRoute = createTool({
       throw new Error('Route has no legs');
     }
 
+    // Collect all step locations along the route
     const allLocations: LatLngLiteral[] = [];
     for (const leg of route.legs) {
       if (leg.steps) {
@@ -178,36 +180,50 @@ export const searchPlacesAlongRoute = createTool({
       allLocations.push(route.legs[0].start_location);
     }
 
-    const midpointIndex = Math.floor(allLocations.length / 2);
-    const searchLocation = allLocations[midpointIndex];
-
-    const placesResponse = await client.textSearch({
-      params: {
-        query: searchQuery,
-        location: searchLocation,
-        radius: 50000,
-        key: apiKey,
-      },
+    // Search at 0%, 25%, 50%, and 75% of the route
+    const searchPercentages = [0, 0.25, 0.5, 0.75];
+    const searchLocations = searchPercentages.map((percentage) => {
+      const index = Math.floor(allLocations.length * percentage);
+      return allLocations[Math.min(index, allLocations.length - 1)];
     });
 
-    if (placesResponse.data.status !== 'OK' && placesResponse.data.status !== 'ZERO_RESULTS') {
-      throw new Error(
-        `Places API error: ${placesResponse.data.status} - ${placesResponse.data.error_message || 'Unknown error'}`,
-      );
+    // Perform searches at all locations and combine unique results
+    const allPlacesMap = new Map<string, typeof placesResponse.data.results[0]>(); // Use place_id as key to avoid duplicates
+
+    for (const searchLocation of searchLocations) {
+      const placesResponse = await client.textSearch({
+        params: {
+          query: searchQuery,
+          location: searchLocation,
+          radius: 50000,
+          key: apiKey,
+        },
+      });
+
+      if (placesResponse.data.status === 'OK') {
+        for (const place of placesResponse.data.results || []) {
+          if (place.place_id && !allPlacesMap.has(place.place_id)) {
+            allPlacesMap.set(place.place_id, place);
+          }
+        }
+      }
     }
 
-    const places = (placesResponse.data.results || []).slice(0, maxResults).map((place) => ({
-      name: place.name || '',
-      address: place.formatted_address || '',
-      location: {
-        lat: place.geometry?.location.lat || 0,
-        lng: place.geometry?.location.lng || 0,
-      },
-      rating: place.rating,
-      userRatingsTotal: place.user_ratings_total,
-      description: place.types?.join(', '),
-      types: place.types,
-    }));
+    // Convert map to array and limit results
+    const places = Array.from(allPlacesMap.values())
+      .slice(0, maxResults)
+      .map((place) => ({
+        name: place.name || '',
+        address: place.formatted_address || '',
+        location: {
+          lat: place.geometry?.location.lat || 0,
+          lng: place.geometry?.location.lng || 0,
+        },
+        rating: place.rating,
+        userRatingsTotal: place.user_ratings_total,
+        description: place.types?.join(', '),
+        types: place.types,
+      }));
 
     return {
       places,
@@ -290,19 +306,6 @@ export const searchPlacesByDistance = createTool({
       );
     }
 
-    const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
-      const R = 6371000;
-      const φ1 = (lat1 * Math.PI) / 180;
-      const φ2 = (lat2 * Math.PI) / 180;
-      const Δφ = ((lat2 - lat1) * Math.PI) / 180;
-      const Δλ = ((lon2 - lon1) * Math.PI) / 180;
-
-      const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-      return R * c;
-    };
-
     const places = (placesResponse.data.results || [])
       .map((place) => ({
         name: place.name || '',
@@ -315,11 +318,9 @@ export const searchPlacesByDistance = createTool({
         userRatingsTotal: place.user_ratings_total,
         description: place.types?.join(', '),
         types: place.types,
-        distanceFromCenter: calculateDistance(
-          centerLocation.lat,
-          centerLocation.lng,
-          place.geometry?.location.lat || 0,
-          place.geometry?.location.lng || 0,
+        distanceFromCenter: getDistance(
+          { latitude: centerLocation.lat, longitude: centerLocation.lng },
+          { latitude: place.geometry?.location.lat || 0, longitude: place.geometry?.location.lng || 0 },
         ),
       }))
       .sort((a, b) => (a.distanceFromCenter || 0) - (b.distanceFromCenter || 0))
