@@ -24,7 +24,6 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
     this.apiKey =
       options.apiKey ||
       process.env.HEY_JARVIS_GOOGLE_API_KEY ||
-      process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY ||
       '';
 
     if (!this.apiKey) {

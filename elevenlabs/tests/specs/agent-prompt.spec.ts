@@ -18,7 +18,7 @@ import { ensureTunnelRunning, stopTunnel } from '../utils/tunnel-manager.js';
 describe('Agent Prompt Specifications', () => {
   const agentId = process.env.HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID;
   const apiKey = process.env.HEY_JARVIS_ELEVENLABS_API_KEY;
-  const googleApiKey = process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY;
+  const googleApiKey = process.env.HEY_JARVIS_GOOGLE_API_KEY;
 
   // Ensure MCP server and cloudflared tunnel are running before all tests
   beforeAll(async () => {

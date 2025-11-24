@@ -2328,7 +2328,7 @@ export const badWorkflow = createWorkflow({ ... }); // ❌
 
 #### 🎯 **Factory Pattern Benefits**:
 - **Consistent Defaults**: All agents automatically get `gemini-flash-latest` model and shared memory
-- **Explicit API Configuration**: Google provider is explicitly configured with `HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY`
+- **Explicit API Configuration**: Google provider is explicitly configured with `HEY_JARVIS_GOOGLE_API_KEY`
 - **Future-Proof**: Easy to add logging, error handling, or observability across all entities
 - **Type Safety**: Better TypeScript support with optional parameters for common defaults
 - **Maintainability**: Single point of configuration for system-wide changes

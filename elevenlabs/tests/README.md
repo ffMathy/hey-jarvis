@@ -45,6 +45,6 @@ nx test elevenlabs --verbose
 Tests require the following environment variables (managed via 1Password):
 - `HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID` - Test agent ID
 - `HEY_JARVIS_ELEVENLABS_API_KEY` - ElevenLabs API key
-- `HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY` - Google Gemini API key for evaluations
+- `HEY_JARVIS_GOOGLE_API_KEY` - Google Gemini API key for evaluations
 
 Tests automatically start the MCP server and Cloudflare tunnel before running.
