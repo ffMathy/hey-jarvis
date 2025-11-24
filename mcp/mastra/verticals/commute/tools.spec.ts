@@ -4,7 +4,9 @@ import { commuteTools } from './tools';
 
 // Type guard to check if result is a validation error
 function isValidationError(result: unknown): result is { error: true; message: string } {
-  return typeof result === 'object' && result !== null && 'error' in result && (result as { error: boolean }).error === true;
+  return (
+    typeof result === 'object' && result !== null && 'error' in result && (result as { error: boolean }).error === true
+  );
 }
 
 describe('Commute Tools Integration Tests', () => {

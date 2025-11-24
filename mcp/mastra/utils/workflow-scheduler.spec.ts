@@ -1,4 +1,4 @@
-// @ts-ignore - bun:test types are built into Bun runtime
+// @ts-expect-error - bun:test types are built into Bun runtime
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { Mastra } from '@mastra/core';
 import { z } from 'zod';

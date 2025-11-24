@@ -27,7 +27,10 @@ import {
 } from './verticals/index.js';
 
 async function createMastra() {
-  process.env['GOOGLE_GENERATIVE_AI_API_KEY'] = process.env['HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY'] || '';
+  // Set up the Google AI SDK environment variable
+  // Use the unified key, fall back to the old key for backward compatibility
+  process.env['GOOGLE_GENERATIVE_AI_API_KEY'] =
+    process.env['HEY_JARVIS_GOOGLE_API_KEY'] || process.env['HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY'] || '';
 
   const sqlStorageProvider = await getSqlStorageProvider();
 
