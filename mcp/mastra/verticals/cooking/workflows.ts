@@ -2,7 +2,6 @@ import { z } from 'zod';
 import { createAgentStep, createStep, createToolStep, createWorkflow } from '../../utils/workflow-factory.js';
 import { sendEmail } from '../email/tools.js';
 import { getAllRecipes } from './tools.js';
-import { createAgent } from '../../utils/agent-factory.js';
 
 const mealPlanSchema = z.array(
   z.object({
@@ -69,9 +68,9 @@ export const generateMealPlanWorkflow = createWorkflow({
       id: 'generate-complete-meal-plan',
       description: 'Uses meal plan agents to select recipes and generate complete meal plan',
       stateSchema: generateMealPlanStateSchema,
-      agent: await createAgent({
-          name: 'MealPlanGenerator',
-          instructions: `You are a meal scheduling specialist.
+      agentConfig: {
+        name: 'MealPlanGenerator',
+        instructions: `You are a meal scheduling specialist.
       
       Your ONLY job is to take selected recipes and create a weekly schedule.
       
@@ -88,9 +87,9 @@ export const generateMealPlanWorkflow = createWorkflow({
       - Search for new recipes
       - Select different recipes
       - Format for email presentation`,
-          description: 'Specialized agent for creating weekly meal plan schedules',
-          tools: undefined,
-        }),
+        description: 'Specialized agent for creating weekly meal plan schedules',
+        tools: undefined,
+      },
       inputSchema: getAllRecipes.outputSchema,
       outputSchema: z.object({
         mealplan: mealPlanSchema,
@@ -158,7 +157,7 @@ const generateMealPlanEmail = createAgentStep({
   id: 'generate-meal-plan-email',
   description: 'Generates HTML email using the specialized email formatter agent',
   stateSchema: generateMealPlanStateSchema,
-  agent: await createAgent({
+  agentConfig: {
     name: 'EmailFormatter',
     instructions: `You are an HTML email formatting specialist for meal plans.
 
@@ -179,10 +178,9 @@ Special features:
 - Include proper spacing between sections
 - Make HTML email-client compatible with inline styles
 - Write everything in Danish`,
-
     description: 'Specialized agent for formatting meal plans into HTML emails',
     tools: undefined,
-  }),
+  },
   inputSchema: z.object({
     mealplan: mealPlanSchema,
   }),
