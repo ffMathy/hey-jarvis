@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.13.4](https://github.com/ffMathy/hey-jarvis/compare/root-v0.13.3...root-v0.13.4) (2025-11-24)
+
+
+### Bug Fixes
+
+* include commute in MCP ([e458480](https://github.com/ffMathy/hey-jarvis/commit/e458480ff2da87af7d2783332958f10af1e29973))
+* include commute in MCP ([#311](https://github.com/ffMathy/hey-jarvis/issues/311)) ([7d5e712](https://github.com/ffMathy/hey-jarvis/commit/7d5e7126efd68c83c58c565f3f92249a303faa3e))
+
 ## [0.13.3](https://github.com/ffMathy/hey-jarvis/compare/root-v0.13.2...root-v0.13.3) (2025-11-24)
 
 
