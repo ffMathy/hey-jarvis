@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.13.2](https://github.com/ffMathy/hey-jarvis/compare/root-v0.13.1...root-v0.13.2) (2025-11-24)
+
+
+### Bug Fixes
+
+* improvements to commute agent ([54ca7c6](https://github.com/ffMathy/hey-jarvis/commit/54ca7c6590123d48d0a04bbc1aa6a5fe95eaeed3))
+* improvements to commute agent ([#307](https://github.com/ffMathy/hey-jarvis/issues/307)) ([dcc0d84](https://github.com/ffMathy/hey-jarvis/commit/dcc0d841eccba1bdd2ec3b8d8ff92a679fffa058))
+
+## [0.13.1](https://github.com/ffMathy/hey-jarvis/compare/root-v0.13.0...root-v0.13.1) (2025-11-24)
+
+
+### Bug Fixes
+
+* include refactor as a true release ([06a6afb](https://github.com/ffMathy/hey-jarvis/commit/06a6afb1454e8ec25daa3d56d52771de640c8643))
+* include refactor as a true release ([#304](https://github.com/ffMathy/hey-jarvis/issues/304)) ([44e0546](https://github.com/ffMathy/hey-jarvis/commit/44e0546bdd59b296236c1a253f6febdba7e18ce1))
+* release please patch release-as removed ([034f3ef](https://github.com/ffMathy/hey-jarvis/commit/034f3ef9c1d5507b8e225db6a2a70e80cb7563bc))
+* release please patch release-as removed ([#305](https://github.com/ffMathy/hey-jarvis/issues/305)) ([0545a34](https://github.com/ffMathy/hey-jarvis/commit/0545a3472e2adf344a63905c9e3adcc822e80741))
+
 ## [0.13.0](https://github.com/ffMathy/hey-jarvis/compare/root-v0.12.4...root-v0.13.0) (2025-11-24)
 
 
