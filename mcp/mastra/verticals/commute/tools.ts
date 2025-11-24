@@ -1,4 +1,4 @@
-import { Client, type LatLngLiteral } from '@googlemaps/google-maps-services-js';
+import { Client, type LatLngLiteral, type PlaceResult } from '@googlemaps/google-maps-services-js';
 import { getDistance } from 'geolib';
 import { z } from 'zod';
 import { createTool } from '../../utils/tool-factory.js';
@@ -188,7 +188,7 @@ export const searchPlacesAlongRoute = createTool({
     });
 
     // Perform searches at all locations and combine unique results
-    const allPlacesMap = new Map<string, typeof placesResponse.data.results[0]>(); // Use place_id as key to avoid duplicates
+    const allPlacesMap = new Map<string, PlaceResult>(); // Use place_id as key to avoid duplicates
 
     for (const searchLocation of searchLocations) {
       const placesResponse = await client.textSearch({
