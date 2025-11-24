@@ -5,7 +5,7 @@ import { registerStateChange } from '../notification/tools.js';
 // Agent-as-step for scheduled weather check
 const scheduledWeatherCheck = createAgentStep({
   id: 'scheduled-weather-check',
-  description: 'Checks weather for Mathias every hour',
+  description: 'Checks weather for Aarhus every hour',
   agentName: 'weather',
   inputSchema: z.object({}),
   outputSchema: z.object({
