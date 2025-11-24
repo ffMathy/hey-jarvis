@@ -26,7 +26,7 @@
     {
       "parameters": {
         "options": {
-          "systemMessage": "You are a weather agent which can provide weather insights via tools (current weather information and 5-day future prognosises for certain locations).\n\nNever ask questions. Always make best-guess assumptions.\n\nIf no location is given, assume the city Mathias in Denmark, where Mathias and Julie lives.",
+          "systemMessage": "You are a weather agent which can provide weather insights via tools (current weather information and 5-day future prognosises for certain locations).\n\nNever ask questions. Always make best-guess assumptions.\n\nIf no location is given, assume the city Aarhus in Denmark, where Mathias and Julie lives.",
           "maxIterations": 30
         }
       },
@@ -114,7 +114,7 @@
         "descriptionType": "manual",
         "toolDescription": "Get future weather information, given a city.",
         "operation": "5DayForecast",
-        "cityName": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('City', `The city to find the language for, in format \"berlin,de\" for Berlin in Germany (DE) or \"aarhus,dk\" for Mathias in Denmark (DK).`, 'string') }}",
+        "cityName": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('City', `The city to find the language for, in format \"berlin,de\" for Berlin in Germany (DE) or \"aarhus,dk\" for Mathias' location in Denmark (DK).`, 'string') }}",
         "language": "en"
       },
       "type": "n8n-nodes-base.openWeatherMapTool",
@@ -154,7 +154,7 @@
       "parameters": {
         "descriptionType": "manual",
         "toolDescription": "Get current information, given a city.",
-        "cityName": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('City', `The city to find the language for, in format \"berlin,de\" for Berlin in Germany (DE) or \"aarhus,dk\" for Mathias in Denmark (DK).`, 'string') }}",
+        "cityName": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('City', `The city to find the language for, in format \"berlin,de\" for Berlin in Germany (DE) or \"aarhus,dk\" for Mathias' location in Denmark (DK).`, 'string') }}",
         "language": "en"
       },
       "type": "n8n-nodes-base.openWeatherMapTool",

@@ -1,7 +1,8 @@
-import { Client, PlaceInputType, TravelMode, type LatLngLiteral, type PlaceData } from '@googlemaps/google-maps-services-js';
+import { Client, PlaceInputType, Status, TravelMode, type LatLngLiteral, type PlaceData } from '@googlemaps/google-maps-services-js';
 import { getDistance } from 'geolib';
 import { z } from 'zod';
 import { createTool } from '../../utils/tool-factory.js';
+import { chain, sumBy } from 'lodash-es';
 
 const getGoogleMapsClient = () => {
   const apiKey = process.env.HEY_JARVIS_GOOGLE_API_KEY;
@@ -94,8 +95,13 @@ export const getTravelTime = createTool({
         `Google Maps API error: ${response.data.status} - ${response.data.error_message || 'Unknown error'}`,
       );
     }
-
-    const element = response.data.rows[0]?.elements[0];
+    
+    const element = chain(response.data.rows)
+      .flatMap(x => x.elements)
+      .filter(x => x.status === Status.OK)
+      .orderBy(x => x.duration_in_traffic)
+      .first()
+      .value();
     if (!element || element.status !== 'OK') {
       throw new Error(`Route calculation failed: ${element?.status || 'Unknown error'}`);
     }
@@ -139,6 +145,7 @@ export const searchPlacesAlongRoute = createTool({
     routeInfo: z.object({
       origin: z.string(),
       destination: z.string(),
+      summary: z.string().describe('Brief summary of the route'),
     }),
   }),
   execute: async ({ origin, destination, searchQuery, maxResults }) => {
@@ -158,20 +165,18 @@ export const searchPlacesAlongRoute = createTool({
       );
     }
 
-    if (!directionsResponse.data.routes || directionsResponse.data.routes.length === 0) {
+    const shortestRoute = chain(directionsResponse.data.routes)
+      .orderBy(route => sumBy(route.legs, leg => leg.duration_in_traffic?.value || leg.duration?.value || Infinity))
+      .first()
+      .value();
+
+    if (!shortestRoute) {
       throw new Error('No route found between the specified locations');
-    }
-
-    console.log('Directions response:', directionsResponse.data);
-
-    const route = directionsResponse.data.routes[0];
-    if (!route.legs || route.legs.length === 0) {
-      throw new Error('Route has no legs');
     }
 
     // Collect all step locations along the route
     let allLocations: LatLngLiteral[] = [];
-    for (const leg of route.legs) {
+    for (const leg of shortestRoute.legs) {
       if (leg.steps) {
         for (const step of leg.steps) {
           allLocations.push(step.start_location);
@@ -180,8 +185,8 @@ export const searchPlacesAlongRoute = createTool({
     }
 
     if (allLocations.length === 0) {
-      allLocations.push(route.legs[0].start_location);
-      allLocations.push(route.legs[0].end_location);
+      allLocations.push(shortestRoute.legs[0].start_location);
+      allLocations.push(shortestRoute.legs[0].end_location);
     }
 
     // distinct values
@@ -260,8 +265,9 @@ export const searchPlacesAlongRoute = createTool({
     return {
       places,
       routeInfo: {
-        origin: route.legs[0].start_address,
-        destination: route.legs[route.legs.length - 1].end_address,
+        summary: shortestRoute.summary,
+        origin: shortestRoute.legs[0].start_address,
+        destination: shortestRoute.legs[shortestRoute.legs.length - 1].end_address,
       },
     };
   }
