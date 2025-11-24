@@ -95,7 +95,7 @@ jobs:
           imageName: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
           cacheFrom: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
           push: never
-          runCmd: nx affected --target=build,test --parallel 1
+          runCmd: nx affected --target=build,test
           env: |
             GITHUB_ACTIONS
             GITHUB_TOKEN

@@ -11,7 +11,7 @@ const scheduledWeatherCheck = createAgentStep({
   outputSchema: z.object({
     result: z.string(),
   }),
-  prompt: () => 'Get current weather for Mathias, Denmark',
+  prompt: () => 'Get current weather for Aarhus, Denmark',
 });
 
 // Register weather state change for notification analysis
