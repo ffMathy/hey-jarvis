@@ -1,4 +1,4 @@
-import { Client, type LatLngLiteral, type PlaceResult } from '@googlemaps/google-maps-services-js';
+import { Client, PlaceInputType, TravelMode, type LatLngLiteral, type PlaceData } from '@googlemaps/google-maps-services-js';
 import { getDistance } from 'geolib';
 import { z } from 'zod';
 import { createTool } from '../../utils/tool-factory.js';
@@ -70,7 +70,7 @@ export const getTravelTime = createTool({
     const params: {
       origins: [string];
       destinations: [string];
-      mode?: 'driving' | 'walking' | 'bicycling' | 'transit';
+      mode?: TravelMode;
       departure_time?: Date | number;
       key: string;
     } = {
@@ -80,7 +80,7 @@ export const getTravelTime = createTool({
     };
 
     if (mode === 'driving' || mode === 'walking' || mode === 'bicycling' || mode === 'transit') {
-      params.mode = mode;
+      params.mode = TravelMode[mode];
     }
 
     if (includeTraffic && mode === 'driving') {
@@ -133,6 +133,7 @@ export const searchPlacesAlongRoute = createTool({
         userRatingsTotal: z.number().optional(),
         description: z.string().optional(),
         types: z.array(z.string()).optional(),
+        distanceFromRoute: z.number().optional().describe('Distance in meters from the closest point on the route'),
       }),
     ),
     routeInfo: z.object({
@@ -161,34 +162,49 @@ export const searchPlacesAlongRoute = createTool({
       throw new Error('No route found between the specified locations');
     }
 
+    console.log('Directions response:', directionsResponse.data);
+
     const route = directionsResponse.data.routes[0];
     if (!route.legs || route.legs.length === 0) {
       throw new Error('Route has no legs');
     }
 
     // Collect all step locations along the route
-    const allLocations: LatLngLiteral[] = [];
+    let allLocations: LatLngLiteral[] = [];
     for (const leg of route.legs) {
       if (leg.steps) {
         for (const step of leg.steps) {
           allLocations.push(step.start_location);
-        }
+          allLocations.push(step.end_location);
       }
     }
 
     if (allLocations.length === 0) {
       allLocations.push(route.legs[0].start_location);
+      allLocations.push(route.legs[0].end_location);
     }
+
+    // distinct values
+    allLocations = allLocations.filter(
+      (location, index, self) =>
+        index === self.findIndex((loc) => loc.lat === location.lat && loc.lng === location.lng),
+    );
 
     // Search at 0%, 25%, 50%, and 75% of the route
     const searchPercentages = [0, 0.25, 0.5, 0.75];
-    const searchLocations = searchPercentages.map((percentage) => {
+    let searchLocations = searchPercentages.map((percentage) => {
       const index = Math.floor(allLocations.length * percentage);
       return allLocations[Math.min(index, allLocations.length - 1)];
     });
 
+    //distinct values
+    searchLocations = searchLocations.filter(
+      (location, index, self) =>
+        index === self.findIndex((loc) => loc.lat === location.lat && loc.lng === location.lng),
+    );
+
     // Perform searches at all locations and combine unique results
-    const allPlacesMap = new Map<string, PlaceResult>(); // Use place_id as key to avoid duplicates
+    const allPlacesMap = new Map<string, Partial<PlaceData>>(); // Use place_id as key to avoid duplicates
 
     for (const searchLocation of searchLocations) {
       const placesResponse = await client.textSearch({
@@ -209,21 +225,37 @@ export const searchPlacesAlongRoute = createTool({
       }
     }
 
-    // Convert map to array and limit results
+    // Convert map to array, calculate distance to route, sort by distance, and limit results
     const places = Array.from(allPlacesMap.values())
-      .slice(0, maxResults)
-      .map((place) => ({
-        name: place.name || '',
-        address: place.formatted_address || '',
-        location: {
-          lat: place.geometry?.location.lat || 0,
-          lng: place.geometry?.location.lng || 0,
-        },
-        rating: place.rating,
-        userRatingsTotal: place.user_ratings_total,
-        description: place.types?.join(', '),
-        types: place.types,
-      }));
+      .map((place) => {
+        const placeLocation = {
+          latitude: place.geometry?.location.lat || 0,
+          longitude: place.geometry?.location.lng || 0,
+        };
+
+        // Calculate minimum distance from place to all points along the route
+        const minDistance = Math.min(
+          ...allLocations.map((routePoint) =>
+            getDistance(placeLocation, { latitude: routePoint.lat, longitude: routePoint.lng }),
+          ),
+        );
+
+        return {
+          name: place.name || '',
+          address: place.formatted_address || '',
+          location: {
+            lat: place.geometry?.location.lat || 0,
+            lng: place.geometry?.location.lng || 0,
+          },
+          rating: place.rating,
+          userRatingsTotal: place.user_ratings_total,
+          description: place.types?.join(', '),
+          types: place.types,
+          distanceFromRoute: minDistance,
+        };
+      })
+      .sort((a, b) => (a.distanceFromRoute || 0) - (b.distanceFromRoute || 0))
+      .slice(0, maxResults);
 
     return {
       places,
@@ -232,8 +264,8 @@ export const searchPlacesAlongRoute = createTool({
         destination: route.legs[route.legs.length - 1].end_address,
       },
     };
-  },
-});
+  }
+}});
 
 export const searchPlacesByDistance = createTool({
   id: 'searchPlacesByDistance',
@@ -368,8 +400,8 @@ export const getPlaceDetails = createTool({
         z.object({
           authorName: z.string(),
           rating: z.number(),
-          text: z.string(),
-          time: z.number(),
+          text: z.string().optional(),
+          time: z.string().optional(),
         }),
       )
       .optional(),
@@ -384,7 +416,7 @@ export const getPlaceDetails = createTool({
       const findResponse = await client.findPlaceFromText({
         params: {
           input: searchQuery,
-          inputtype: 'textquery',
+          inputtype: PlaceInputType.textQuery,
           fields: ['place_id'],
           key: apiKey,
         },
@@ -450,8 +482,8 @@ export const getPlaceDetails = createTool({
       reviews: place.reviews?.slice(0, 5).map((review) => ({
         authorName: review.author_name || '',
         rating: review.rating || 0,
-        text: review.text || '',
-        time: review.time || 0,
+        text: review.text,
+        time: review.time,
       })),
     };
   },

@@ -228,7 +228,7 @@ Provides intelligent commute planning and navigation assistance using Google Map
 - **Google Gemini model**: Uses `gemini-flash-latest` for natural language processing
 - **Traffic-aware routing**: Estimates travel time with real-time traffic data for driving mode
 - **Multi-modal support**: Handles driving, walking, bicycling, and transit modes
-- **Smart defaults**: Automatically assumes Mathias, Denmark (Aarhus area) when no location is specified
+- **Smart defaults**: Automatically assumes Aarhus, Denmark when no location is specified
 - **Never asks questions**: Makes best-guess assumptions for seamless interaction
 
 **Key Capabilities:**
@@ -242,8 +242,10 @@ Provides intelligent commute planning and navigation assistance using Google Map
 - **Route-Based Place Search** (`searchPlacesAlongRoute` tool):
   - Find places along a route between origin and destination
   - Useful for finding EV chargers, gas stations, rest stops, restaurants
-  - Searches near the midpoint of the route with 50km radius
-  - Returns name, address, GPS coordinates, ratings, and place types
+  - Searches at multiple points along the route (0%, 25%, 50%, 75%)
+  - Returns distance from route in meters for each place
+  - Results ordered by distance from route (closest first)
+  - Returns name, address, GPS coordinates, ratings, place types, and distance from route
   
 - **Proximity-Based Place Search** (`searchPlacesByDistance` tool):
   - Find places near a location, ordered by distance (closest first)

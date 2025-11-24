@@ -129,6 +129,16 @@ describe('Commute Tools Integration Tests', () => {
       expect(firstPlace.location).toBeDefined();
       expect(typeof firstPlace.location.lat).toBe('number');
       expect(typeof firstPlace.location.lng).toBe('number');
+      expect(typeof firstPlace.distanceFromRoute).toBe('number');
+
+      // Verify places are ordered by distance from route (closest first)
+      for (let i = 0; i < result.places.length - 1; i++) {
+        const currentDistance = result.places[i].distanceFromRoute;
+        const nextDistance = result.places[i + 1].distanceFromRoute;
+        if (currentDistance !== undefined && nextDistance !== undefined) {
+          expect(currentDistance).toBeLessThanOrEqual(nextDistance);
+        }
+      }
 
       console.log('✅ Places along route fetched successfully');
       console.log('   - Found:', result.places.length, 'charging stations');
@@ -136,6 +146,9 @@ describe('Commute Tools Integration Tests', () => {
       console.log('   - Address:', firstPlace.address);
       if (firstPlace.rating) {
         console.log('   - Rating:', firstPlace.rating, '⭐');
+      }
+      if (firstPlace.distanceFromRoute !== undefined) {
+        console.log('   - Distance from route:', (firstPlace.distanceFromRoute / 1000).toFixed(2), 'km');
       }
     }, 45000); // Longer timeout as this makes multiple API calls
 

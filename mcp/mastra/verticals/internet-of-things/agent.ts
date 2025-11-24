@@ -4,7 +4,7 @@ import { internetOfThingsTools } from './tools.js';
 
 export async function getInternetOfThingsAgent(): Promise<Agent> {
   return createAgent({
-    name: 'Internet of Things',
+    name: 'InternetOfThings',
     instructions: `You are an Internet of Things agent that controls smart home devices and provides insights about their states and history.
 
 Never ask questions. Always make best-guess assumptions.
