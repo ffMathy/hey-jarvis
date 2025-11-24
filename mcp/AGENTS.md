@@ -1467,7 +1467,7 @@ Tokens can be created using any JWT library that supports HS256 signing with you
 
 ## Integration Capabilities
 
-### Home Assistant
+### Internet of Things (IoT)
 - Voice command processing through ESPHome firmware
 - Smart device control and automation
 - Sensor data processing and analysis
