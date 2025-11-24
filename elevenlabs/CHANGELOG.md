@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.5.3...elevenlabs-v0.6.0) (2025-11-24)
+
+
+### Features
+
+* add commute agent with Google Maps integration ([#297](https://github.com/ffMathy/hey-jarvis/issues/297)) ([32ae363](https://github.com/ffMathy/hey-jarvis/commit/32ae36385ffc8a853794e26bf71f4e06a7980ddc))
+
 ## [0.5.3](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.5.2...elevenlabs-v0.5.3) (2025-11-23)
 
 

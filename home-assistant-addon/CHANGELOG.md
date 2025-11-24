@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.13.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v0.12.3...home-assistant-addon-v0.13.0) (2025-11-24)
+
+
+### Features
+
+* add commute agent with Google Maps integration ([#297](https://github.com/ffMathy/hey-jarvis/issues/297)) ([32ae363](https://github.com/ffMathy/hey-jarvis/commit/32ae36385ffc8a853794e26bf71f4e06a7980ddc))
+* **commute:** search at multiple route points and use geolib for distance calculation ([259d3e7](https://github.com/ffMathy/hey-jarvis/commit/259d3e7792ac71a9df71160b8acc1ce2266a4e97))
+
 ## [0.12.3](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v0.12.2...home-assistant-addon-v0.12.3) (2025-11-23)
 
 
