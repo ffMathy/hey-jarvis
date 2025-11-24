@@ -109,7 +109,7 @@ export async function startMcpServer() {
 
   // Health check endpoint (no JWT required)
   app.get('/health', (_req, res) => {
-    res.json({ status: 'healthy', version: '1.0.0' });
+    res.json({ status: 'healthy' });
   });
 
   // MCP endpoint - handles both GET (for initial connection) and POST (for messages)
