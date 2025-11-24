@@ -128,7 +128,7 @@ The addon supports configuring all required API keys and service credentials thr
 The addon uses a startup script (`run.sh`) that reads user configuration from `/data/options.json` (provided by Home Assistant) and exports them as environment variables before starting the Mastra MCP server. This follows the standard Home Assistant addon pattern using Bashio for configuration parsing.
 
 **Supported Configuration Options**:
-- `google_api_key` → `HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY` (**REQUIRED**)
+- `google_api_key` → `HEY_JARVIS_GOOGLE_API_KEY` (**REQUIRED**)
 - `openweathermap_api_key` → `HEY_JARVIS_OPENWEATHERMAP_API_KEY` (optional)
 - `valdemarsro_api_key` → `HEY_JARVIS_VALDEMARSRO_API_KEY` (optional)
 - `bilka_email` → `HEY_JARVIS_BILKA_EMAIL` (optional)

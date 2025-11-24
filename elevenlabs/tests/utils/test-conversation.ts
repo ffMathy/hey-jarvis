@@ -31,7 +31,7 @@ export class TestConversation {
   constructor(options: ConversationOptions) {
     const apiKey = options.apiKey || process.env.HEY_JARVIS_ELEVENLABS_API_KEY!;
 
-    this.googleApiKey = options.googleApiKey || process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY;
+    this.googleApiKey = options.googleApiKey || process.env.HEY_JARVIS_GOOGLE_API_KEY;
 
     this.strategy = new ElevenLabsConversationStrategy({
       agentId: options.agentId,

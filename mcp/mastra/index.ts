@@ -7,7 +7,7 @@ import {
   getCodingAgent,
   getCommuteAgent,
   getEmailAgent,
-  getHomeAssistantAgent,
+  getInternetOfThingsAgent,
   getMealPlanEmailFormatterAgent,
   getMealPlanGeneratorAgent,
   getMealPlanSelectorAgent,
@@ -28,9 +28,7 @@ import {
 
 async function createMastra() {
   // Set up the Google AI SDK environment variable
-  // Use the unified key, fall back to the old key for backward compatibility
-  process.env['GOOGLE_GENERATIVE_AI_API_KEY'] =
-    process.env['HEY_JARVIS_GOOGLE_API_KEY'] || process.env['HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY'] || '';
+  process.env['GOOGLE_GENERATIVE_AI_API_KEY'] = process.env['HEY_JARVIS_GOOGLE_API_KEY'] || '';
 
   const sqlStorageProvider = await getSqlStorageProvider();
 
@@ -69,7 +67,7 @@ async function createMastra() {
     getTodoListAgent(),
     getCalendarAgent(),
     getWebResearchAgent(),
-    getHomeAssistantAgent(),
+    getInternetOfThingsAgent(),
     getCommuteAgent(),
   ]);
 

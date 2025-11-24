@@ -1,8 +1,8 @@
 import { MCPClient } from '@mastra/mcp';
-import * as path from 'path';
-import jwt from 'jsonwebtoken';
-import { retryWithBackoff } from './retry-with-backoff';
 import fkill from 'fkill';
+import jwt from 'jsonwebtoken';
+import * as path from 'path';
+import { retryWithBackoff } from './retry-with-backoff';
 
 let mcpServerProcess: ReturnType<typeof Bun.spawn> | null = null;
 
@@ -72,7 +72,7 @@ export async function startMcpServerForTestingPurposes(): Promise<void> {
     stdout: 'inherit',
     stderr: 'inherit',
   });
-  
+
   // Suppress process exit errors during cleanup - server is intentionally killed
   mcpServerProcess.unref();
 
@@ -106,7 +106,7 @@ export async function stopMcpServer(): Promise<void> {
   await killProcessOnPort(MCP_PORT);
   // Give processes time to clean up (increased for proper cleanup)
   await new Promise((resolve) => setTimeout(resolve, 1000));
-  
+
   // Clean up process reference and suppress any exit code errors
   if (mcpServerProcess && !mcpServerProcess.killed) {
     try {
