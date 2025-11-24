@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.13.2](https://github.com/ffMathy/hey-jarvis/compare/root-v0.13.1...root-v0.13.2) (2025-11-24)
+
+
+### Bug Fixes
+
+* improvements to commute agent ([54ca7c6](https://github.com/ffMathy/hey-jarvis/commit/54ca7c6590123d48d0a04bbc1aa6a5fe95eaeed3))
+* improvements to commute agent ([#307](https://github.com/ffMathy/hey-jarvis/issues/307)) ([dcc0d84](https://github.com/ffMathy/hey-jarvis/commit/dcc0d841eccba1bdd2ec3b8d8ff92a679fffa058))
+
 ## [0.13.1](https://github.com/ffMathy/hey-jarvis/compare/root-v0.13.0...root-v0.13.1) (2025-11-24)
 
 
