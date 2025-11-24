@@ -3,7 +3,7 @@ import { createAgent } from '../../utils/agent-factory.js';
 
 export async function getEmailParsingAgent() {
   return createAgent({
-    name: 'Email Response Parser',
+    name: 'EmailResponseParser',
     instructions: `You are an expert at parsing email responses and extracting structured information.
 
 Your role is to:

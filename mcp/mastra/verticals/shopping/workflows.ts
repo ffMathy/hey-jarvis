@@ -108,7 +108,7 @@ const extractProductInformation = createAgentStep({
   id: 'extract-product-information',
   description: 'Extracts structured product information from the user request using Information Extractor logic',
   stateSchema: workflowStateSchema,
-  agentName: 'shoppingList',
+  agent: 'shoppingList',
   inputSchema: z.object({}),
   outputSchema: extractedProductSchema,
   prompt: ({ workflow }) => {
@@ -148,7 +148,7 @@ const processExtractedProducts = createAgentStep({
   id: 'process-extracted-products',
   description: 'Processes each extracted product using the Shopping List Mutator Agent',
   stateSchema: workflowStateSchema,
-  agentName: 'shoppingList',
+  agent: 'shoppingList',
   inputSchema: extractedProductSchema,
   outputSchema: z.object({
     mutationResults: z.array(z.string()),
@@ -195,7 +195,7 @@ const generateSummary = createAgentStep({
   id: 'generate-summary',
   description: 'Generates a summary of changes using the Summarization Agent',
   stateSchema: workflowStateSchema,
-  agentName: 'shoppingListSummary',
+  agent: 'shoppingListSummary',
   inputSchema: cartSnapshotSchema,
   outputSchema: shoppingListResultSchema,
   prompt: (params) => {

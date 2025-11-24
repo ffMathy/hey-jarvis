@@ -1,3 +1,4 @@
+import type { Agent } from '@mastra/core/agent';
 import {
   type DefaultEngineType,
   createStep as mastraCreateStep,
@@ -182,7 +183,7 @@ export function createAgentStep<
 >(config: {
   id: TStepId;
   description: string;
-  agentName: string;
+  agent: Agent;
   stateSchema?: TStateSchema;
   inputSchema: TInputSchema;
   outputSchema: TOutputSchema;
@@ -200,11 +201,7 @@ export function createAgentStep<
     inputSchema: config.inputSchema,
     outputSchema: config.outputSchema,
     execute: async (params): Promise<TOutputSchema> => {
-      const agent = params.mastra?.getAgent(config.agentName);
-      if (!agent) {
-        throw new Error(`Agent '${config.agentName}' not found`);
-      }
-
+      const agent = config.agent;
       const prompt = config.prompt({ context: params });
 
       const response = await agent.stream(
@@ -254,7 +251,6 @@ export function createAgentStep<
 export function createToolStep<
   TStepId extends string = string,
   TStateSchema extends z.ZodObject<any> = z.ZodObject<any>,
-  TInputSchema extends z.ZodSchema = z.ZodSchema,
   TToolInput extends z.ZodSchema = z.ZodSchema,
   TToolOutput extends z.ZodSchema = z.ZodSchema,
 >(config: {

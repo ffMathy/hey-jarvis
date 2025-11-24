@@ -6,7 +6,7 @@ import { registerStateChange } from '../synapse/tools.js';
 const scheduledWeatherCheck = createAgentStep({
   id: 'scheduled-weather-check',
   description: 'Checks weather for Aarhus every hour',
-  agentName: 'weather',
+  agent: 'weather',
   inputSchema: z.object({}),
   outputSchema: z.object({
     result: z.string(),

@@ -286,7 +286,7 @@ const parentWorkflowStateSchema = z.object({
       }),
     )
     .default([]),
-});
+}).partial();
 
 // Step 1: Search for unread emails (reused from child workflow)
 const searchEmailsForParent = createToolStep({

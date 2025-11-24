@@ -3,27 +3,12 @@ import { PinoLogger } from '@mastra/loggers';
 import { Observability } from '@mastra/observability';
 import { getSqlStorageProvider } from './storage/index.js';
 import {
-  getCalendarAgent,
-  getCodingAgent,
-  getCommuteAgent,
-  getEmailAgent,
-  getEmailParsingAgent,
-  getInternetOfThingsAgent,
-  getMealPlanEmailFormatterAgent,
-  getMealPlanGeneratorAgent,
-  getMealPlanSelectorAgent,
-  getNotificationAgent,
-  getRecipeSearchAgent,
-  getRequirementsInterviewerAgent,
-  getShoppingListAgent,
-  getShoppingListSummaryAgent,
-  getStateChangeReactorAgent,
-  getTodoListAgent,
-  getWeatherAgent,
-  getWebResearchAgent,
+  getPublicAgents,
   checkForFormRepliesWorkflow,
   checkForNewEmails,
+  generateMealPlanWorkflow,
   humanInTheLoopDemoWorkflow,
+  sendEmailAndAwaitResponseWorkflow,
   implementFeatureWorkflow,
   stateChangeNotificationWorkflow,
   weatherMonitoringWorkflow,
@@ -36,46 +21,15 @@ async function createMastra() {
 
   const sqlStorageProvider = await getSqlStorageProvider();
 
-  // Get all agents
-  const [
-    weatherAgent,
-    recipeSearchAgent,
-    mealPlanSelectorAgent,
-    mealPlanGeneratorAgent,
-    mealPlanEmailFormatterAgent,
-    shoppingListAgent,
-    shoppingListSummaryAgent,
-    notificationAgent,
-    stateChangeReactorAgent,
-    codingAgent,
-    requirementsInterviewerAgent,
-    emailAgent,
-    emailParsingAgent,
-    todoListAgent,
-    calendarAgent,
-    webResearchAgent,
-    homeAssistantAgent,
-    commuteAgent,
-  ] = await Promise.all([
-    getWeatherAgent(),
-    getRecipeSearchAgent(),
-    getMealPlanSelectorAgent(),
-    getMealPlanGeneratorAgent(),
-    getMealPlanEmailFormatterAgent(),
-    getShoppingListAgent(),
-    getShoppingListSummaryAgent(),
-    getNotificationAgent(),
-    getStateChangeReactorAgent(),
-    getCodingAgent(),
-    getRequirementsInterviewerAgent(),
-    getEmailAgent(),
-    getEmailParsingAgent(),
-    getTodoListAgent(),
-    getCalendarAgent(),
-    getWebResearchAgent(),
-    getInternetOfThingsAgent(),
-    getCommuteAgent(),
-  ]);
+  // Get public agents (for MCP server)
+  const publicAgents = await getPublicAgents();
+
+  // Build agents object dynamically using agent IDs
+  const agentsByName = publicAgents.reduce((acc, agent) => {
+    const agentId = agent.id;
+    acc[agentId] = agent;
+    return acc;
+  }, {} as Record<string, typeof publicAgents[0]>);
 
   return new Mastra({
     storage: sqlStorageProvider,
@@ -86,33 +40,16 @@ async function createMastra() {
     observability: new Observability({ default: { enabled: true } }),
     workflows: {
       weatherMonitoringWorkflow,
+      generateMealPlanWorkflow,
       weeklyMealPlanningWorkflow,
       implementFeatureWorkflow,
       stateChangeNotificationWorkflow,
       humanInTheLoopDemoWorkflow,
+      sendEmailAndAwaitResponseWorkflow,
       checkForFormRepliesWorkflow,
       checkForNewEmails,
     },
-    agents: {
-      weather: weatherAgent,
-      recipeSearch: recipeSearchAgent,
-      mealPlanSelector: mealPlanSelectorAgent,
-      mealPlanGenerator: mealPlanGeneratorAgent,
-      mealPlanEmailFormatter: mealPlanEmailFormatterAgent,
-      shoppingList: shoppingListAgent,
-      shoppingListSummary: shoppingListSummaryAgent,
-      notification: notificationAgent,
-      stateChangeReactor: stateChangeReactorAgent,
-      coding: codingAgent,
-      requirementsInterviewer: requirementsInterviewerAgent,
-      email: emailAgent,
-      emailResponseParser: emailParsingAgent,
-      todoList: todoListAgent,
-      calendar: calendarAgent,
-      webResearch: webResearchAgent,
-      homeAssistant: homeAssistantAgent,
-      commute: commuteAgent,
-    },
+    agents: agentsByName,
   });
 }
 

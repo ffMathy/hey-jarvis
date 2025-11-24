@@ -7,27 +7,7 @@ import express from 'express';
 import { expressjwt } from 'express-jwt';
 import { z } from 'zod';
 import { initializeScheduler } from './scheduler.js';
-import { getCalendarAgent } from './verticals/calendar/index.js';
-import { getCodingAgent } from './verticals/coding/index.js';
-import { getEmailAgent } from './verticals/email/index.js';
-import { getInternetOfThingsAgent } from './verticals/internet-of-things/index.js';
-import { getShoppingListAgent } from './verticals/shopping/index.js';
-import { getTodoListAgent } from './verticals/todo-list/index.js';
-import { getWeatherAgent } from './verticals/weather/index.js';
-import { getCommuteAgent } from './verticals/index.js';
-
-export async function getPublicAgents() {
-  return await Promise.all([
-    getCodingAgent(),
-    getWeatherAgent(),
-    getShoppingListAgent(),
-    getEmailAgent(),
-    getCalendarAgent(),
-    getTodoListAgent(),
-    getInternetOfThingsAgent(),
-    getCommuteAgent()
-  ]);
-}
+import { getPublicAgents } from './verticals/index.js';
 
 /**
  * Creates a simplified tool that wraps an agent and returns clean text responses
