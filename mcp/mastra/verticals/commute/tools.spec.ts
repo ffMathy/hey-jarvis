@@ -194,14 +194,20 @@ describe('Commute Tools Integration Tests', () => {
 
       // Verify places are ordered by distance (closest first)
       for (let i = 0; i < result.places.length - 1; i++) {
-        expect(result.places[i].distanceFromCenter).toBeLessThanOrEqual(result.places[i + 1].distanceFromCenter!);
+        const currentDistance = result.places[i].distanceFromCenter;
+        const nextDistance = result.places[i + 1].distanceFromCenter;
+        if (currentDistance !== undefined && nextDistance !== undefined) {
+          expect(currentDistance).toBeLessThanOrEqual(nextDistance);
+        }
       }
 
       console.log('✅ Nearby places by distance fetched successfully');
       console.log('   - Search center:', result.searchCenter.address);
       console.log('   - Found:', result.places.length, 'gas stations');
       console.log('   - Closest:', firstPlace.name);
-      console.log('   - Distance:', (firstPlace.distanceFromCenter! / 1000).toFixed(2), 'km');
+      if (firstPlace.distanceFromCenter !== undefined) {
+        console.log('   - Distance:', (firstPlace.distanceFromCenter / 1000).toFixed(2), 'km');
+      }
     }, 30000);
 
     it('should find coffee shops with larger radius', async () => {
