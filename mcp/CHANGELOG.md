@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.13.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.12.3...mcp-v0.13.0) (2025-11-24)
+
+
+### Features
+
+* add commute agent with Google Maps integration ([#297](https://github.com/ffMathy/hey-jarvis/issues/297)) ([32ae363](https://github.com/ffMathy/hey-jarvis/commit/32ae36385ffc8a853794e26bf71f4e06a7980ddc))
+* **commute:** search at multiple route points and use geolib for distance calculation ([259d3e7](https://github.com/ffMathy/hey-jarvis/commit/259d3e7792ac71a9df71160b8acc1ce2266a4e97))
+
+
+### Bug Fixes
+
+* **commute:** improve null safety in distance comparison test ([48a1b96](https://github.com/ffMathy/hey-jarvis/commit/48a1b96c30cbd15d46748af7a35d7edfeb6f093c))
+* **commute:** use proper PlaceResult type from Google Maps library ([3e8b86e](https://github.com/ffMathy/hey-jarvis/commit/3e8b86ea4e1aa99dd066403cbf2af2c127c5e146))
+
 ## [0.12.3](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.12.2...mcp-v0.12.3) (2025-11-23)
 
 
