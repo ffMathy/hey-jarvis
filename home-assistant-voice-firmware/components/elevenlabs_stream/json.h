@@ -11,16 +11,27 @@
 namespace esphome {
 namespace elevenlabs_stream {
 
-// Allocator for PSRAM
+// Allocator for PSRAM with fallback to regular heap
+// Note: No logging in allocator to avoid header dependency issues
 struct PSRAMAllocator {
     void *allocate(size_t size) {
-        return heap_caps_malloc(size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        // Try PSRAM first, fallback to regular heap if it fails
+        void* ptr = heap_caps_malloc(size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        if (!ptr) {
+            ptr = heap_caps_malloc(size, MALLOC_CAP_8BIT);
+        }
+        return ptr;
     }
     void deallocate(void *pointer) {
         heap_caps_free(pointer);
     }
     void *reallocate(void *ptr, size_t new_size) {
-        return heap_caps_realloc(ptr, new_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        // Try PSRAM first, fallback to regular heap if it fails
+        void* new_ptr = heap_caps_realloc(ptr, new_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        if (!new_ptr) {
+            new_ptr = heap_caps_realloc(ptr, new_size, MALLOC_CAP_8BIT);
+        }
+        return new_ptr;
     }
 };
 

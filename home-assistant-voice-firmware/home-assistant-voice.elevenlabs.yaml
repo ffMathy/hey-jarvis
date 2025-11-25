@@ -45,6 +45,8 @@ esp32:
   framework:
     type: esp-idf
     version: latest
+    # advanced:
+    #   enable_idf_experimental_features: true
     sdkconfig_options:
       CONFIG_ESP32S3_DATA_CACHE_64KB: "y"
       CONFIG_ESP32S3_DATA_CACHE_LINE_64B: "y"
@@ -73,6 +75,9 @@ esp32:
         path: components/esp_websocket_client
         ref: websocket-v1.5.0
 
+network:
+  enable_high_performance: false
+
 external_components:
   - source:
       type: git
@@ -91,7 +96,6 @@ wifi:
   ssid: ${HEY_JARVIS_WIFI_SSID}
   password: ${HEY_JARVIS_WIFI_PASSWORD}
   id: wifi_id
-  fast_connect: ${hidden_ssid}
   on_connect:
     - lambda: id(improv_ble_in_progress) = false;
     - script.execute: control_leds

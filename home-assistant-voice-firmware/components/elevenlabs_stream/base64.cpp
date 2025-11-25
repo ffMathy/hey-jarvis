@@ -51,10 +51,28 @@ uint8_t* base64_decode(const char* base64_data, size_t& out_len) {
     ESP_LOGE(TAG, "base64_decode: Failed to get output length: %d", ret);
     return nullptr;
   }
+  
+  // Log PSRAM before allocation
+  size_t psram_before = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+  ESP_LOGD(TAG, "base64_decode: Allocating %zu bytes, PSRAM Free=%zuKB", 
+           required_output_len, psram_before / 1024);
+  
   uint8_t* buffer = (uint8_t*) heap_caps_malloc(required_output_len, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
   if (!buffer) {
-    ESP_LOGE(TAG, "base64_decode: Failed to allocate %zu bytes in PSRAM", required_output_len);
+    size_t psram_after_fail = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+    ESP_LOGE(TAG, "base64_decode: Failed to allocate %zu bytes in PSRAM (Free=%zuKB)", 
+             required_output_len, psram_after_fail / 1024);
     return nullptr;
+  }
+  
+  // Log PSRAM after successful allocation
+  size_t psram_after = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+  size_t psram_delta = psram_before - psram_after;
+  ESP_LOGD(TAG, "base64_decode: Allocated successfully, PSRAM Free=%zuKB (-%zuKB)", 
+           psram_after / 1024, psram_delta / 1024);
+  
+  if (psram_after < 1024 * 1024) {
+    ESP_LOGW(TAG, "base64_decode: LOW MEMORY WARNING: PSRAM Free=%zuKB", psram_after / 1024);
   }
   size_t output_len = 0;
   ret = mbedtls_base64_decode(buffer, required_output_len, &output_len, (const unsigned char*)base64_data, input_len);
