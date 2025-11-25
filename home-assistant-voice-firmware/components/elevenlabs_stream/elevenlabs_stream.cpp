@@ -7,6 +7,7 @@
 #include "esphome/components/speaker/speaker.h"
 #include "esphome/components/microphone/microphone.h"
 #include "esphome/components/audio/audio.h"
+#include "esphome/components/network/util.h"
 
 #include "elevenlabs_stream.h"
 #include "json.h"
@@ -320,6 +321,13 @@ void ElevenLabsStream::renew_signed_url_if_needed() {
   if (!this->client_) {
     return;
   }
+  
+  // Check if WiFi is connected before attempting HTTP requests
+  if (!network::is_connected()) {
+    ESP_LOGV(TAG, "RENEW: Skipping renewal - WiFi not connected");
+    return;
+  }
+  
   uint32_t current_time = millis();
   bool should_renew = false;
   if (this->signed_url_.empty()) {
