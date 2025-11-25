@@ -57,19 +57,39 @@ bool ElevenLabsStream::decode_and_play_base64_audio(const char* base64_data) {
     return false;
   }
 
+  // Log PSRAM before decode
+  size_t psram_before_decode = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+  ESP_LOGD(TAG, "DECODE_B64: Starting decode, input_len=%zu, PSRAM Free=%zuKB", 
+           input_len, psram_before_decode / 1024);
+  
   size_t decoded_len = 0;
   uint8_t* decoded = base64_decode(base64_data, decoded_len);
   if (!decoded || decoded_len == 0) {
     ESP_LOGE(TAG, "DECODE_B64: Failed to decode base64 audio data (input len: %zu)", input_len);
     return false;
   }
-  ESP_LOGD(TAG, "DECODE_B64: Decoded %zu bytes of audio (PSRAM)", decoded_len);
+  
+  // Log PSRAM after allocation
+  size_t psram_after_decode = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+  size_t psram_decode_delta = psram_before_decode - psram_after_decode;
+  ESP_LOGD(TAG, "DECODE_B64: Decoded %zu bytes of audio (PSRAM), PSRAM Free=%zuKB (-%zuKB)", 
+           decoded_len, psram_after_decode / 1024, psram_decode_delta / 1024);
+  
+  if (psram_after_decode < 1024 * 1024) {
+    ESP_LOGW(TAG, "DECODE_B64: LOW MEMORY WARNING: PSRAM Free=%zuKB", psram_after_decode / 1024);
+  }
 
   size_t written = elevenlabs_speaker_->play(decoded, decoded_len);
   ESP_LOGD(TAG, "DECODE_B64: Played %zu bytes from decoded buffer (expected %zu)", written, decoded_len);
 
   if (decoded) {
     heap_caps_free(decoded);
+    
+    // Log PSRAM after freeing
+    size_t psram_after_free = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+    size_t psram_freed = psram_after_free - psram_after_decode;
+    ESP_LOGD(TAG, "DECODE_B64: Buffer freed, PSRAM Free=%zuKB (+%zuKB)", 
+             psram_after_free / 1024, psram_freed / 1024);
   }
 
   if (written != decoded_len) {
@@ -101,6 +121,14 @@ void ElevenLabsStream::setup() {
   ESP_LOGD(TAG, "SETUP: Component instance created at %p", this);
   ESP_LOGD(TAG, "SETUP: Agent ID: '%s'", this->agent_id_.c_str());
   ESP_LOGD(TAG, "SETUP: API Key configured: %s", this->api_key_.empty() ? "NO" : "YES");
+  
+  // Track PSRAM baseline for memory monitoring
+  this->psram_baseline_ = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+  size_t psram_total = heap_caps_get_total_size(MALLOC_CAP_SPIRAM);
+  size_t heap_free = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+  size_t heap_total = heap_caps_get_total_size(MALLOC_CAP_8BIT);
+  ESP_LOGCONFIG(TAG, "SETUP: PSRAM Total=%zuKB, Free=%zuKB", psram_total / 1024, this->psram_baseline_ / 1024);
+  ESP_LOGCONFIG(TAG, "SETUP: Regular Heap Total=%zuKB, Free=%zuKB", heap_total / 1024, heap_free / 1024);
   
   if (this->agent_id_.empty()) {
     ESP_LOGE(TAG, "SETUP: Agent ID not configured - SETUP FAILED");
@@ -139,6 +167,12 @@ void ElevenLabsStream::setup() {
 void ElevenLabsStream::dump_config() {
   ESP_LOGCONFIG(TAG, "ElevenLabs Stream:");
   ESP_LOGCONFIG(TAG, "  Agent ID: %s", this->agent_id_.c_str());
+  
+  // Report PSRAM status
+  size_t psram_free = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+  size_t psram_total = heap_caps_get_total_size(MALLOC_CAP_SPIRAM);
+  ESP_LOGCONFIG(TAG, "  PSRAM: Total=%zuKB, Free=%zuKB, Used=%zuKB", 
+                psram_total / 1024, psram_free / 1024, (psram_total - psram_free) / 1024);
 }
 
 void ElevenLabsStream::loop() {
@@ -166,6 +200,22 @@ void ElevenLabsStream::loop() {
     last_watchdog_feed = millis();
     ESP_LOGV(TAG, "LOOP: Watchdog fed at loop count %d, state=%s", 
              loop_count, this->state_ == StreamState::OFF ? "OFF" : "ON");
+  }
+  
+  // Log PSRAM status every 10 seconds
+  static uint32_t last_psram_log = 0;
+  if (millis() - last_psram_log > 10000) {
+    size_t psram_free = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+    size_t psram_used = this->psram_baseline_ - psram_free;
+    int percent_remaining = (psram_free * 100) / this->psram_baseline_;
+    ESP_LOGI(TAG, "LOOP: PSRAM Free=%zuKB, Used=%zuKB (%d%% of baseline remaining)", 
+             psram_free / 1024, psram_used / 1024, percent_remaining);
+    
+    if (psram_free < 1024 * 1024) {
+      ESP_LOGW(TAG, "LOOP: LOW MEMORY WARNING: PSRAM Free=%zuKB", psram_free / 1024);
+    }
+    
+    last_psram_log = millis();
   }
   
   // Check for conversation timeout if configured
@@ -365,12 +415,23 @@ bool ElevenLabsStream::send_websocket_message(const std::string &message) {
 }
 
 void ElevenLabsStream::parse_json_message_from_buffer(const uint8_t *buffer, size_t length) {
+  // Log PSRAM before parsing
+  size_t psram_free_before = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+  ESP_LOGD(TAG, "PARSE_JSON_BUF: Processing message, length=%zu, PSRAM Free=%zuKB", 
+           length, psram_free_before / 1024);
+  
   // Use new JsonDeserializer class
   auto json_doc = JsonDeserializer::parse(buffer, length);
   if (!json_doc) {
     ESP_LOGE(TAG, "PARSE_JSON_BUF: Failed to parse JSON buffer of length %zu", length);
     return;
   }
+  
+  // Log PSRAM after parsing
+  size_t psram_free_after = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+  size_t psram_delta = psram_free_before - psram_free_after;
+  ESP_LOGD(TAG, "PARSE_JSON_BUF: JSON parsed, PSRAM Free=%zuKB (-%zuKB)", 
+           psram_free_after / 1024, psram_delta / 1024);
   JsonObject root = json_doc->as<JsonObject>();
   const char* type = root["type"];
   if (!type) {
@@ -453,6 +514,9 @@ void ElevenLabsStream::parse_json_message_from_buffer(const uint8_t *buffer, siz
       
       if (audio_base64) {
         size_t base64_len = strlen(audio_base64);
+        size_t psram_before_audio = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+        ESP_LOGD(TAG, "AUDIO_EVENT: Processing audio chunk, base64_len=%zu, PSRAM Free=%zuKB", 
+                 base64_len, psram_before_audio / 1024);
         
         // Update timing for state management
         this->last_audio_response_time_ = millis();
@@ -471,6 +535,12 @@ void ElevenLabsStream::parse_json_message_from_buffer(const uint8_t *buffer, siz
         if (!decode_success) {
           ESP_LOGW(TAG, "PARSE_JSON_BUF: Failed to decode audio data");
         }
+        
+        // Log PSRAM after audio processing
+        size_t psram_after_audio = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+        size_t psram_audio_delta = psram_before_audio - psram_after_audio;
+        ESP_LOGD(TAG, "AUDIO_EVENT: Audio processed, PSRAM Free=%zuKB (-%zuKB)", 
+                 psram_after_audio / 1024, psram_audio_delta / 1024);
       }
     }
     return;

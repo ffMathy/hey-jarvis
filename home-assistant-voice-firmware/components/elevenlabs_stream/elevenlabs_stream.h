@@ -144,6 +144,9 @@ public:
   // Initial audio stream info
   esphome::audio::AudioStreamInfo activation_speaker_audio_stream_info{};
   bool activation_speaker_audio_stream_infoset_ = false;
+  
+  // PSRAM monitoring baseline
+  size_t psram_baseline_{0};  // Initial free PSRAM at setup for tracking memory usage trends
 };
 
 // Actions

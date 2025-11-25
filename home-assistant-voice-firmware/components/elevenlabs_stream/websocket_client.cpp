@@ -11,8 +11,30 @@ namespace elevenlabs_stream {
 WebsocketMessageAssembler::WebsocketMessageAssembler(size_t maxBytes)
     : kMax(maxBytes)
 {
+    size_t psram_before = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+    ESP_LOGD("websocket_assembler", "Allocating WebSocket buffer: %zu bytes, PSRAM Free=%zuKB", 
+             kMax, psram_before / 1024);
+    
+    // Try PSRAM first
     buf_ = static_cast<uint8_t*>(heap_caps_malloc(kMax, MALLOC_CAP_SPIRAM));
-    assert(buf_ && "PSRAM alloc failed");
+    
+    if (!buf_) {
+        // Fallback to regular heap if PSRAM fails
+        ESP_LOGW("websocket_assembler", "PSRAM allocation failed, trying regular heap");
+        buf_ = static_cast<uint8_t*>(heap_caps_malloc(kMax, MALLOC_CAP_8BIT));
+        
+        if (!buf_) {
+            ESP_LOGE("websocket_assembler", "Failed to allocate %zu bytes in any heap", kMax);
+            assert(buf_ && "WebSocket buffer allocation failed");
+        } else {
+            ESP_LOGW("websocket_assembler", "Using regular heap for WebSocket buffer");
+        }
+    }
+    
+    size_t psram_after = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+    size_t psram_delta = psram_before - psram_after;
+    ESP_LOGD("websocket_assembler", "WebSocket buffer allocated, PSRAM Free=%zuKB (-%zuKB)", 
+             psram_after / 1024, psram_delta / 1024);
 }
 WebsocketMessageAssembler::~WebsocketMessageAssembler() { if (buf_) free(buf_); }
 bool WebsocketMessageAssembler::add(const esp_websocket_event_data_t* e) {
