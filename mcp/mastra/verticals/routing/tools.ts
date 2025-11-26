@@ -1,6 +1,22 @@
 import { z } from 'zod';
 import { createTool } from '../../utils/tool-factory.js';
 
+// Helper function to generate unique IDs
+function generateId(prefix: string): string {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+}
+
+// Type for a task in the execution plan
+type Task = {
+  runId: string;
+  description: string;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  dependsOn?: string[];
+  result?: unknown;
+  error?: string;
+  promise?: Promise<unknown>;
+};
+
 // Schema for a single task in the execution plan
 const taskSchema = z.object({
   runId: z.string().describe('The unique identifier for this task run'),
@@ -23,18 +39,7 @@ const activePlans = new Map<
   {
     planId: string;
     query: string;
-    tasks: Map<
-      string,
-      {
-        runId: string;
-        description: string;
-        status: 'pending' | 'running' | 'completed' | 'failed';
-        dependsOn?: string[];
-        result?: unknown;
-        error?: string;
-        promise?: Promise<unknown>;
-      }
-    >;
+    tasks: Map<string, Task>;
     startedAt: string;
   }
 >();
@@ -73,7 +78,7 @@ You can then use getPlanResult to check on the status and results of individual 
   }),
   execute: async (inputData, context) => {
     const { query } = inputData;
-    const planId = `plan-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    const planId = generateId('plan');
 
     try {
       if (!context?.mastra) {
@@ -102,32 +107,13 @@ You can then use getPlanResult to check on the status and results of individual 
       const plan = {
         planId,
         query,
-        tasks: new Map<
-          string,
-          {
-            runId: string;
-            description: string;
-            status: 'pending' | 'running' | 'completed' | 'failed';
-            dependsOn?: string[];
-            result?: unknown;
-            error?: string;
-            promise?: Promise<unknown>;
-          }
-        >(),
+        tasks: new Map<string, Task>(),
         startedAt: new Date().toISOString(),
       };
 
       // Create a single task to track the network execution
-      const mainTaskId = `task-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-      const mainTask: {
-        runId: string;
-        description: string;
-        status: 'pending' | 'running' | 'completed' | 'failed';
-        dependsOn: string[];
-        result: unknown;
-        error: string | undefined;
-        promise: Promise<unknown> | undefined;
-      } = {
+      const mainTaskId = generateId('task');
+      const mainTask: Task = {
         runId: mainTaskId,
         description: `Execute query: ${query.substring(0, 100)}${query.length > 100 ? '...' : ''}`,
         status: 'running',
@@ -138,10 +124,13 @@ You can then use getPlanResult to check on the status and results of individual 
       };
 
       // Process the network stream asynchronously (fire-and-forget)
+      // We capture the final result from the network stream which represents the complete execution output
       mainTask.promise = (async () => {
         try {
           let finalResult: unknown = null;
           for await (const chunk of networkStream) {
+            // The network-execution-event-step-finish event contains the final aggregated result
+            // from the agent network execution, which is what we want to return
             if (chunk.type === 'network-execution-event-step-finish') {
               finalResult = chunk.payload?.result;
             }
@@ -221,17 +210,7 @@ The tool will:
 
     try {
       // Find the plan containing this run ID
-      let foundTask:
-        | {
-            runId: string;
-            description: string;
-            status: 'pending' | 'running' | 'completed' | 'failed';
-            dependsOn?: string[];
-            result?: unknown;
-            error?: string;
-            promise?: Promise<unknown>;
-          }
-        | undefined;
+      let foundTask: Task | undefined;
       let foundPlanId: string | undefined;
 
       for (const [planId, plan] of activePlans) {
