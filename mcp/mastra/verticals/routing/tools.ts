@@ -1,10 +1,6 @@
+import { find, truncate, uniqueId } from 'lodash-es';
 import { z } from 'zod';
 import { createTool } from '../../utils/tool-factory.js';
-
-// Helper function to generate unique IDs
-function generateId(prefix: string): string {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-}
 
 // Type for a task in the execution plan
 type Task = {
@@ -15,6 +11,14 @@ type Task = {
   result?: unknown;
   error?: string;
   promise?: Promise<unknown>;
+};
+
+// Type for a plan in the active plans store
+type Plan = {
+  planId: string;
+  query: string;
+  tasks: Map<string, Task>;
+  startedAt: string;
 };
 
 // Schema for a single task in the execution plan
@@ -34,15 +38,16 @@ const executionPlanSchema = z.object({
 });
 
 // Store for active execution plans (in-memory for now, could be persisted)
-const activePlans = new Map<
-  string,
-  {
-    planId: string;
-    query: string;
-    tasks: Map<string, Task>;
-    startedAt: string;
-  }
->();
+const activePlans = new Map<string, Plan>();
+
+/**
+ * Finds the next dependent task that is in progress but not yet finished.
+ * Returns the first task that depends on the given task and is still running.
+ */
+function findNextDependentTask(plan: Plan, completedTaskId: string): Task | undefined {
+  const tasks = Array.from(plan.tasks.values());
+  return find(tasks, (task) => task.dependsOn?.includes(completedTaskId) && task.status === 'running');
+}
 
 /**
  * executePlan tool
@@ -78,7 +83,7 @@ You can then use getPlanResult to check on the status and results of individual 
   }),
   execute: async (inputData, context) => {
     const { query } = inputData;
-    const planId = generateId('plan');
+    const planId = uniqueId('plan-');
 
     try {
       if (!context?.mastra) {
@@ -100,11 +105,10 @@ You can then use getPlanResult to check on the status and results of individual 
       }
 
       // Use the routing agent's network capability to analyze and execute the query
-      // The routing agent has access to all other agents and can orchestrate them
       const networkStream = await routingAgent.network(query);
 
       // Create a plan entry to track this execution
-      const plan = {
+      const plan: Plan = {
         planId,
         query,
         tasks: new Map<string, Task>(),
@@ -112,10 +116,10 @@ You can then use getPlanResult to check on the status and results of individual 
       };
 
       // Create a single task to track the network execution
-      const mainTaskId = generateId('task');
+      const mainTaskId = uniqueId('task-');
       const mainTask: Task = {
         runId: mainTaskId,
-        description: `Execute query: ${query.substring(0, 100)}${query.length > 100 ? '...' : ''}`,
+        description: truncate(`Execute query: ${query}`, { length: 100 }),
         status: 'running',
         dependsOn: [],
         result: undefined,
@@ -181,20 +185,23 @@ You can then use getPlanResult to check on the status and results of individual 
  *
  * This tool retrieves the result of a specific task from an execution plan.
  * It waits synchronously for the task to complete and returns the result.
+ * When a task completes, it also returns the ID of the next dependent task (if any).
  */
 export const getPlanResult = createTool({
   id: 'getPlanResult',
-  description: `Get the result of a specific task from an execution plan. This tool waits for the task to complete (if it hasn't already) and returns the result.
+  description: `Get the result of a specific task from an execution plan. This tool waits for the task to complete (if it hasn't already) and returns the result along with the next dependent task ID if available.
 
 Use this tool when you need to:
 - Check if a task has completed
 - Get the result of a completed task
 - Wait for a specific task to finish before proceeding
+- Get the next task ID to check after this one completes
 
 The tool will:
 1. Find the task by its run ID
 2. Wait for the task to complete if it's still running
-3. Return the result or error message`,
+3. Return the result or error message
+4. Return the next dependent task ID (first in-progress task that depends on this one)`,
   inputSchema: z.object({
     runId: z.string().describe('The run ID of the task to retrieve the result for'),
   }),
@@ -203,6 +210,7 @@ The tool will:
     status: z.enum(['pending', 'running', 'completed', 'failed']).optional(),
     result: z.unknown().optional(),
     error: z.string().optional(),
+    nextTaskId: z.string().optional().describe('The run ID of the next dependent task that is in progress'),
     message: z.string(),
   }),
   execute: async (inputData) => {
@@ -211,18 +219,18 @@ The tool will:
     try {
       // Find the plan containing this run ID
       let foundTask: Task | undefined;
-      let foundPlanId: string | undefined;
+      let foundPlan: Plan | undefined;
 
-      for (const [planId, plan] of activePlans) {
+      for (const [, plan] of activePlans) {
         const task = plan.tasks.get(runId);
         if (task) {
           foundTask = task;
-          foundPlanId = planId;
+          foundPlan = plan;
           break;
         }
       }
 
-      if (!foundTask || !foundPlanId) {
+      if (!foundTask || !foundPlan) {
         return {
           success: false,
           message: `Task with runId "${runId}" not found. Make sure the runId is correct and the plan is still active.`,
@@ -238,25 +246,34 @@ The tool will:
         }
       }
 
-      // Return the result
+      // Find the next dependent task that is in progress
+      const nextTask = findNextDependentTask(foundPlan, runId);
+      const nextTaskId = nextTask?.runId;
+
+      // Return the result with nextTaskId
       if (foundTask.status === 'completed') {
         return {
           success: true,
           status: foundTask.status,
           result: foundTask.result,
-          message: `Task completed successfully.`,
+          nextTaskId,
+          message: nextTaskId
+            ? `Task completed successfully. Next task in progress: ${nextTaskId}`
+            : `Task completed successfully.`,
         };
       } else if (foundTask.status === 'failed') {
         return {
           success: false,
           status: foundTask.status,
           error: foundTask.error,
+          nextTaskId,
           message: `Task failed: ${foundTask.error}`,
         };
       } else {
         return {
           success: true,
           status: foundTask.status,
+          nextTaskId,
           message: `Task is still ${foundTask.status}.`,
         };
       }

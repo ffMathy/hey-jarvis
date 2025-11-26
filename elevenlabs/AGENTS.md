@@ -159,8 +159,25 @@ The agent prompt in `src/assets/agent-prompt.md` defines:
 #### DRY (Don't Repeat Yourself)
 - ✅ **Extract repeated code into reusable functions**
 - ✅ **Create helper methods for common patterns** (e.g., ServerMessage creation)
+- ✅ **Use lodash-es for common utility functions** (array/object manipulation, string handling)
 - ❌ **NEVER copy-paste code blocks** - refactor into functions instead
 - ❌ **NEVER duplicate logic** - centralize common functionality
+
+#### Use lodash-es for Utilities
+This project uses `lodash-es` for common utility functions. Always prefer lodash-es over custom implementations:
+
+```typescript
+import { find, uniqueId, truncate, chain, groupBy } from 'lodash-es';
+
+// Generate unique IDs
+const id = uniqueId('prefix-');  // Returns 'prefix-1', 'prefix-2', etc.
+
+// Find items in collections
+const item = find(items, item => item.active);
+
+// Truncate long strings
+const short = truncate(longText, { length: 100 });
+```
 
 #### Clean Code
 - ✅ **Single Responsibility**: Each function should do one thing well
