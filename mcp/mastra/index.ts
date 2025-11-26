@@ -1,6 +1,7 @@
 import { Mastra } from '@mastra/core';
 import { PinoLogger } from '@mastra/loggers';
 import { Observability } from '@mastra/observability';
+import { keyBy } from 'lodash-es';
 import { getSqlStorageProvider } from './storage/index.js';
 import {
   checkForFormRepliesWorkflow,
@@ -29,17 +30,10 @@ async function createMastra() {
   const routingAgent = await getRoutingAgent();
 
   // Build agents object dynamically using agent IDs
-  const agentsByName = publicAgents.reduce(
-    (acc, agent) => {
-      const agentId = agent.id;
-      acc[agentId] = agent;
-      return acc;
-    },
-    {} as Record<string, (typeof publicAgents)[0]>,
-  );
-
-  // Add routing agent
-  agentsByName[routingAgent.id] = routingAgent;
+  const agentsByName = {
+    ...keyBy(publicAgents, 'id'),
+    [routingAgent.id]: routingAgent,
+  };
 
   return new Mastra({
     storage: sqlStorageProvider,

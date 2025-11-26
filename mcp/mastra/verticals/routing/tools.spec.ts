@@ -1,12 +1,11 @@
 // @ts-expect-error - bun:test types are built into Bun runtime
 import { beforeAll, describe, expect, it } from 'bun:test';
-import { Agent } from '@mastra/core/agent';
+import type { Agent } from '@mastra/core/agent';
 import { Mastra } from '@mastra/core';
-import { Memory } from '@mastra/memory';
 import { z } from 'zod';
+import { filter } from 'lodash-es';
 import { createTool } from '../../utils/tool-factory.js';
-import { google } from '../../utils/google-provider.js';
-import { getSqlStorageProvider, getVectorStorageProvider } from '../../storage/index.js';
+import { getRoutingAgent } from './agent.js';
 import { retryWithBackoff } from '../../../tests/utils/retry-with-backoff.js';
 import { executePlan, getPlanResult } from './tools.js';
 
@@ -55,7 +54,7 @@ function recordInvocation(tool: string, input: unknown) {
 }
 
 function getInvocationsForTool(toolName: string): ToolInvocation[] {
-  return toolInvocations.filter((inv) => inv.tool === toolName);
+  return filter(toolInvocations, (inv) => inv.tool === toolName);
 }
 
 function wasToolCalled(toolName: string): boolean {
@@ -63,27 +62,11 @@ function wasToolCalled(toolName: string): boolean {
 }
 
 /**
- * Wait for a specific tool to be called using retry with backoff
- */
-async function waitForToolCall(toolName: string, maxRetries = 10, initialDelay = 500): Promise<ToolInvocation> {
-  return retryWithBackoff(
-    async () => {
-      const invocations = getInvocationsForTool(toolName);
-      if (invocations.length === 0) {
-        throw new Error(`Tool ${toolName} has not been called yet`);
-      }
-      return invocations[0];
-    },
-    { maxRetries, initialDelay, backoffMultiplier: 1.5 },
-  );
-}
-
-/**
- * Wait for all specified tools to be called
+ * Wait for all specified tools to be called using retry with backoff
  */
 async function waitForAllToolCalls(
   toolNames: string[],
-  maxRetries = 15,
+  maxRetries = 20,
   initialDelay = 500,
 ): Promise<Map<string, ToolInvocation[]>> {
   return retryWithBackoff(
@@ -172,52 +155,8 @@ const getCalendarEvents = createTool({
 const mockTools = { getCurrentLocation, getWeatherForLocation, getCalendarEvents };
 
 // ============================================================================
-// TEST SETUP
+// TEST SETUP - Uses real routing agent with mock tools
 // ============================================================================
-
-async function createTestMemory(): Promise<Memory> {
-  const sqlStorageProvider = await getSqlStorageProvider();
-  const vectorStorageProvider = await getVectorStorageProvider();
-
-  return new Memory({
-    storage: sqlStorageProvider,
-    vector: vectorStorageProvider,
-    embedder: google.textEmbeddingModel('text-embedding-004'),
-    options: {
-      lastMessages: 10,
-      workingMemory: { enabled: false },
-      semanticRecall: { topK: 5, messageRange: 2, scope: 'resource' },
-    },
-  });
-}
-
-async function createTestRoutingAgent(memory: Memory): Promise<Agent> {
-  return new Agent({
-    name: 'RoutingAgent',
-    model: google('gemini-flash-latest'),
-    memory,
-    instructions: `You are a routing agent that executes multi-step queries by calling the appropriate tools.
-
-## Available Tools
-1. **getCurrentLocation**: Gets the user's current GPS coordinates. No input required.
-2. **getWeatherForLocation**: Gets weather for coordinates. REQUIRES latitude and longitude from getCurrentLocation.
-3. **getCalendarEvents**: Gets today's calendar events. No input required.
-
-## CRITICAL RULES
-- For weather queries: ALWAYS call getCurrentLocation FIRST, then use those coordinates to call getWeatherForLocation
-- For calendar queries: Call getCalendarEvents directly
-- For combined queries: Execute BOTH tracks - calendar is independent, weather requires location first
-
-## Example: "Check weather for my location and check my calendar"
-You MUST call ALL THREE tools:
-1. Call getCalendarEvents (independent, no dependencies)
-2. Call getCurrentLocation (to get coordinates)
-3. Call getWeatherForLocation with the coordinates from step 2
-
-ALWAYS complete ALL requested tasks before responding.`,
-    tools: mockTools,
-  });
-}
 
 function createTestMastra(routingAgent: Agent): Mastra {
   return new Mastra({
@@ -234,15 +173,14 @@ function createTestMastra(routingAgent: Agent): Mastra {
 describe('Routing Agent Integration Tests', () => {
   let testAgent: Agent;
   let testMastra: Mastra;
-  let testMemory: Memory;
 
   beforeAll(async () => {
     if (!process.env.HEY_JARVIS_GOOGLE_API_KEY) {
       throw new Error('HEY_JARVIS_GOOGLE_API_KEY environment variable is required');
     }
 
-    testMemory = await createTestMemory();
-    testAgent = await createTestRoutingAgent(testMemory);
+    // Use the real routing agent but with mock tools
+    testAgent = await getRoutingAgent({ tools: mockTools });
     testMastra = createTestMastra(testAgent);
   });
 
@@ -287,11 +225,11 @@ describe('Routing Agent Integration Tests', () => {
   });
 
   describe('Single Tool Queries', () => {
-    it('should call getCalendarEvents for calendar query', async () => {
+    it('should call calendar tool for calendar query', async () => {
       clearInvocations();
 
       const planResult = await executePlan.execute(
-        { query: 'What events do I have on my calendar today? Use getCalendarEvents tool.' },
+        { query: 'What events do I have on my calendar today?' },
         { mastra: testMastra },
       );
 
@@ -301,41 +239,35 @@ describe('Routing Agent Integration Tests', () => {
       const taskId = planResult.plan!.tasks[0].runId;
       await getPlanResult.execute({ runId: taskId }, {});
 
-      // Wait for the calendar tool to be called with retry
-      await waitForToolCall('getCalendarEvents');
+      // Wait for the calendar tool to be called
+      await waitForAllToolCalls(['getCalendarEvents']);
 
       expect(wasToolCalled('getCalendarEvents')).toBe(true);
     }, 60000);
 
-    it('should call getCurrentLocation for location query', async () => {
+    it('should call location tool for location query', async () => {
       clearInvocations();
 
-      const planResult = await executePlan.execute(
-        { query: 'Where am I right now? Use getCurrentLocation tool.' },
-        { mastra: testMastra },
-      );
+      const planResult = await executePlan.execute({ query: 'Where am I right now?' }, { mastra: testMastra });
 
       expect(planResult.success).toBe(true);
 
       const taskId = planResult.plan!.tasks[0].runId;
       await getPlanResult.execute({ runId: taskId }, {});
 
-      // Wait for the location tool to be called with retry
-      await waitForToolCall('getCurrentLocation');
+      // Wait for the location tool to be called
+      await waitForAllToolCalls(['getCurrentLocation']);
 
       expect(wasToolCalled('getCurrentLocation')).toBe(true);
     }, 60000);
   });
 
-  describe('Sequential Dependency: Location → Weather', () => {
-    it('should call getCurrentLocation before getWeatherForLocation', async () => {
+  describe('Weather Query (requires location)', () => {
+    it('should call both location and weather tools for weather query', async () => {
       clearInvocations();
 
       const planResult = await executePlan.execute(
-        {
-          query:
-            'What is the weather at my current location? First call getCurrentLocation to get coordinates, then call getWeatherForLocation with those coordinates.',
-        },
+        { query: 'What is the weather at my current location?' },
         { mastra: testMastra },
       );
 
@@ -345,36 +277,26 @@ describe('Routing Agent Integration Tests', () => {
       await getPlanResult.execute({ runId: taskId }, {});
 
       // Wait for both tools to be called
-      const invocations = await waitForAllToolCalls(['getCurrentLocation', 'getWeatherForLocation']);
+      await waitForAllToolCalls(['getCurrentLocation', 'getWeatherForLocation']);
 
       // Verify both tools were called
-      expect(invocations.has('getCurrentLocation')).toBe(true);
-      expect(invocations.has('getWeatherForLocation')).toBe(true);
+      expect(wasToolCalled('getCurrentLocation')).toBe(true);
+      expect(wasToolCalled('getWeatherForLocation')).toBe(true);
 
-      // Verify location was called before weather (dependency ordering)
-      const locationInvocations = invocations.get('getCurrentLocation')!;
-      const weatherInvocations = invocations.get('getWeatherForLocation')!;
-
-      expect(locationInvocations[0].timestamp).toBeLessThanOrEqual(weatherInvocations[0].timestamp);
-
-      // Verify weather received coordinates from location
+      // Verify weather received correct coordinates from location
+      const weatherInvocations = getInvocationsForTool('getWeatherForLocation');
       const weatherInput = weatherInvocations[0].input as { latitude?: number; longitude?: number };
       expect(weatherInput.latitude).toBe(MOCK_LOCATION.latitude);
       expect(weatherInput.longitude).toBe(MOCK_LOCATION.longitude);
     }, 90000);
   });
 
-  describe('Parallel Execution: Calendar + (Location → Weather)', () => {
+  describe('Combined Query (calendar + weather)', () => {
     it('should call all three tools for combined query', async () => {
       clearInvocations();
 
-      // This is the core test from the GitHub issue - be very explicit about what tools to call
-      const query = `You MUST execute exactly these 3 tool calls in order:
-1. getCalendarEvents - to get my calendar events (no parameters needed)
-2. getCurrentLocation - to get my GPS coordinates (no parameters needed)
-3. getWeatherForLocation - using the latitude and longitude from step 2
-
-Do not skip any tools. Execute all 3 tools.`;
+      // Natural query without specifying tool names or order
+      const query = 'Check the weather for my current location and also check my calendar for today.';
 
       const planResult = await executePlan.execute({ query }, { mastra: testMastra });
 
@@ -382,74 +304,56 @@ Do not skip any tools. Execute all 3 tools.`;
       expect(planResult.plan).toBeDefined();
 
       const taskId = planResult.plan!.tasks[0].runId;
-      
-      // Wait for the plan to complete
-      const result = await getPlanResult.execute({ runId: taskId }, {});
-      expect(['completed', 'failed']).toContain(result.status);
+      await getPlanResult.execute({ runId: taskId }, {});
 
-      // Now check which tools were called
-      const locationCalls = getInvocationsForTool('getCurrentLocation');
-      const weatherCalls = getInvocationsForTool('getWeatherForLocation');
-      const calendarCalls = getInvocationsForTool('getCalendarEvents');
+      // Wait for all three tools to be called
+      await waitForAllToolCalls(['getCurrentLocation', 'getWeatherForLocation', 'getCalendarEvents']);
 
-      // The agent should call at least location (which is required for weather)
-      // and should attempt to call calendar as it's independent
-      expect(locationCalls.length).toBeGreaterThan(0);
-
-      // If all three tools were called, verify the ordering
-      if (weatherCalls.length > 0 && calendarCalls.length > 0) {
-        // Location must be called before weather
-        expect(locationCalls[0].timestamp).toBeLessThanOrEqual(weatherCalls[0].timestamp);
-
-        // Weather should receive coordinates from location
-        const weatherInput = weatherCalls[0].input as { latitude?: number; longitude?: number };
-        expect(weatherInput.latitude).toBe(MOCK_LOCATION.latitude);
-        expect(weatherInput.longitude).toBe(MOCK_LOCATION.longitude);
-
-        // Calendar should be independent (no input)
-        expect(calendarCalls[0].input).toEqual({});
-      } else if (weatherCalls.length > 0) {
-        // Weather was called, verify location was called first
-        expect(locationCalls[0].timestamp).toBeLessThanOrEqual(weatherCalls[0].timestamp);
-      }
-
-      // At minimum, location should always be called for this query
+      // Verify all tools were called
       expect(wasToolCalled('getCurrentLocation')).toBe(true);
-    }, 90000);
+      expect(wasToolCalled('getWeatherForLocation')).toBe(true);
+      expect(wasToolCalled('getCalendarEvents')).toBe(true);
 
-    it('should execute calendar independently from weather track', async () => {
+      // Verify weather received correct coordinates
+      const weatherInvocations = getInvocationsForTool('getWeatherForLocation');
+      const weatherInput = weatherInvocations[0].input as { latitude?: number; longitude?: number };
+      expect(weatherInput.latitude).toBe(MOCK_LOCATION.latitude);
+      expect(weatherInput.longitude).toBe(MOCK_LOCATION.longitude);
+
+      // Verify calendar was called with no input (independent)
+      const calendarInvocations = getInvocationsForTool('getCalendarEvents');
+      expect(calendarInvocations[0].input).toEqual({});
+    }, 120000);
+
+    it('should handle calendar and weather independently', async () => {
       clearInvocations();
 
-      const query =
-        'Call getCalendarEvents to show my schedule, and also call getCurrentLocation then getWeatherForLocation for the weather.';
+      const query = "Show my schedule and tell me what the weather is like where I am.";
 
       const planResult = await executePlan.execute({ query }, { mastra: testMastra });
       expect(planResult.success).toBe(true);
 
       const taskId = planResult.plan!.tasks[0].runId;
-      
-      // Wait for the plan to complete
-      const result = await getPlanResult.execute({ runId: taskId }, {});
-      expect(['completed', 'failed']).toContain(result.status);
+      await getPlanResult.execute({ runId: taskId }, {});
 
-      // Calendar should be called
-      expect(wasToolCalled('getCalendarEvents')).toBe(true);
-      
-      // Calendar should be called with no input (independent)
-      const calendarCalls = getInvocationsForTool('getCalendarEvents');
-      expect(calendarCalls[0].input).toEqual({});
+      // Wait for all tools to be called
+      await waitForAllToolCalls(['getCurrentLocation', 'getWeatherForLocation', 'getCalendarEvents']);
 
-      // Location should also be called for the weather request
-      expect(wasToolCalled('getCurrentLocation')).toBe(true);
-    }, 90000);
+      // Calendar should be called with no input (it's independent)
+      const calendarInvocations = getInvocationsForTool('getCalendarEvents');
+      expect(calendarInvocations[0].input).toEqual({});
+
+      // Weather should have received coordinates
+      const weatherInvocations = getInvocationsForTool('getWeatherForLocation');
+      const weatherInput = weatherInvocations[0].input as { latitude?: number; longitude?: number };
+      expect(weatherInput.latitude).toBe(MOCK_LOCATION.latitude);
+      expect(weatherInput.longitude).toBe(MOCK_LOCATION.longitude);
+    }, 120000);
   });
 
   describe('Plan Structure', () => {
     it('should return proper plan structure with planId and tasks', async () => {
-      const planResult = await executePlan.execute(
-        { query: 'Check my calendar using getCalendarEvents' },
-        { mastra: testMastra },
-      );
+      const planResult = await executePlan.execute({ query: 'Check my calendar' }, { mastra: testMastra });
 
       expect(planResult.success).toBe(true);
       expect(planResult.plan).toBeDefined();
@@ -465,10 +369,7 @@ Do not skip any tools. Execute all 3 tools.`;
     }, 60000);
 
     it('should track task status correctly through completion', async () => {
-      const planResult = await executePlan.execute(
-        { query: 'Where am I? Use getCurrentLocation.' },
-        { mastra: testMastra },
-      );
+      const planResult = await executePlan.execute({ query: 'Where am I?' }, { mastra: testMastra });
       expect(planResult.success).toBe(true);
 
       const taskId = planResult.plan!.tasks[0].runId;

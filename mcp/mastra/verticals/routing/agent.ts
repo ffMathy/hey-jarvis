@@ -1,7 +1,19 @@
 import type { Agent } from '@mastra/core/agent';
+import type { Tool } from '@mastra/core/tools';
+import { keyBy } from 'lodash-es';
 import { createAgent } from '../../utils/index.js';
 import { getPublicAgents } from '../index.js';
 import { routingTools } from './tools.js';
+
+/**
+ * Routing Agent Configuration Options
+ */
+export interface RoutingAgentOptions {
+  /**
+   * Override the default tools with custom tools (useful for testing)
+   */
+  tools?: Record<string, Tool>;
+}
 
 /**
  * Routing Agent
@@ -15,19 +27,15 @@ import { routingTools } from './tools.js';
  * tasks to them as needed. It uses the executePlan and getPlanResult
  * tools to provide fire-and-forget execution with result retrieval.
  */
-export async function getRoutingAgent(): Promise<Agent> {
+export async function getRoutingAgent(options: RoutingAgentOptions = {}): Promise<Agent> {
   // Get all public agents to make them available for the network
   const publicAgents = await getPublicAgents();
 
   // Build agents object dynamically using agent IDs
-  const agentsById = publicAgents.reduce(
-    (acc, agent) => {
-      const agentId = agent.id;
-      acc[agentId] = agent;
-      return acc;
-    },
-    {} as Record<string, (typeof publicAgents)[0]>,
-  );
+  const agentsById = keyBy(publicAgents, 'id');
+
+  // Use provided tools or default routing tools
+  const tools = options.tools ?? routingTools;
 
   return createAgent({
     name: 'RoutingAgent',
@@ -66,7 +74,7 @@ For a query like "Check the weather for my current location, check my calendar, 
 - Handle failures gracefully and continue with remaining tasks if possible
 - Be efficient - don't make unnecessary agent calls`,
     description: `Orchestrates complex multi-step queries by coordinating multiple specialized agents. This agent analyzes user requests, identifies dependencies between tasks, and executes them in the optimal order (parallel when possible, sequential when dependent). Use this agent for queries that require multiple steps or coordination between different capabilities.`,
-    tools: routingTools,
+    tools,
     agents: agentsById,
   });
 }
