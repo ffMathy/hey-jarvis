@@ -3,13 +3,14 @@ import { PinoLogger } from '@mastra/loggers';
 import { Observability } from '@mastra/observability';
 import { getSqlStorageProvider } from './storage/index.js';
 import {
-  getPublicAgents,
   checkForFormRepliesWorkflow,
   checkForNewEmails,
   generateMealPlanWorkflow,
+  getPublicAgents,
+  getRoutingAgent,
   humanInTheLoopDemoWorkflow,
-  sendEmailAndAwaitResponseWorkflow,
   implementFeatureWorkflow,
+  sendEmailAndAwaitResponseWorkflow,
   stateChangeNotificationWorkflow,
   weatherMonitoringWorkflow,
   weeklyMealPlanningWorkflow,
@@ -24,12 +25,21 @@ async function createMastra() {
   // Get public agents (for MCP server)
   const publicAgents = await getPublicAgents();
 
+  // Get the routing agent for async orchestration
+  const routingAgent = await getRoutingAgent();
+
   // Build agents object dynamically using agent IDs
-  const agentsByName = publicAgents.reduce((acc, agent) => {
-    const agentId = agent.id;
-    acc[agentId] = agent;
-    return acc;
-  }, {} as Record<string, typeof publicAgents[0]>);
+  const agentsByName = publicAgents.reduce(
+    (acc, agent) => {
+      const agentId = agent.id;
+      acc[agentId] = agent;
+      return acc;
+    },
+    {} as Record<string, (typeof publicAgents)[0]>,
+  );
+
+  // Add routing agent
+  agentsByName[routingAgent.id] = routingAgent;
 
   return new Mastra({
     storage: sqlStorageProvider,
