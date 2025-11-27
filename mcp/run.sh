@@ -128,6 +128,12 @@ if bashio::config.has_value 'meal_plan_notification_email'; then
     bashio::log.info "Meal plan notification email configured"
 fi
 
+# GitHub API token (for coding tools)
+if bashio::config.has_value 'github_api_token'; then
+    export HEY_JARVIS_GITHUB_API_TOKEN=$(bashio::config 'github_api_token')
+    bashio::log.info "GitHub API token configured"
+fi
+
 # Log level
 LOG_LEVEL=$(bashio::config 'log_level')
 bashio::log.info "Log level set to: ${LOG_LEVEL}"

@@ -55,7 +55,8 @@
     "home_assistant_url": "",
     "home_assistant_token": "",
     "tavily_api_key": "",
-    "meal_plan_notification_email": ""
+    "meal_plan_notification_email": "",
+    "github_api_token": ""
   },
   "schema": {
     "log_level": "list(trace|debug|info|notice|warning|error|fatal)?",
@@ -78,7 +79,8 @@
     "home_assistant_url": "str?",
     "home_assistant_token": "password?",
     "tavily_api_key": "password?",
-    "meal_plan_notification_email": "str?"
+    "meal_plan_notification_email": "str?",
+    "github_api_token": "password?"
   },
   "environment": {
     "HOST": "0.0.0.0"
