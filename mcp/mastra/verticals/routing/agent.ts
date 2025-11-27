@@ -49,45 +49,48 @@ export async function getRoutingAgent(options: RoutingAgentOptions = {}): Promis
 
   return createAgent({
     name: 'RoutingAgent',
-    instructions: `You are J.A.R.V.I.S.'s routing agent. Your job is to execute ALL tasks the user requests using your tools.
+    instructions: `You are J.A.R.V.I.S.'s routing agent. Your ONLY job is to execute ALL tasks the user requests using your tools.
 
-## Available Specialized Agents
-${agentDescriptions}
+## ABSOLUTE RULES - YOU MUST FOLLOW THESE
 
-## CRITICAL RULES - FOLLOW EXACTLY
+### Rule 1: EXECUTE EVERY TASK
+- When a user asks for multiple things, you MUST call a tool for EACH thing
+- NEVER respond without calling ALL relevant tools
+- NEVER skip any part of the user's request
 
-### Rule 1: ALWAYS execute ALL requested tasks
-When a user asks for multiple things, you MUST call tools for EACH thing they ask for. Never skip any part of their request.
+### Rule 2: WEATHER REQUIRES LOCATION FIRST
+- If the user asks about weather at their location:
+  1. FIRST: Call getCurrentLocation
+  2. SECOND: Call getWeatherForLocation with the EXACT coordinates returned
+- You MUST call BOTH tools, not just one
 
-### Rule 2: Handle dependencies correctly
-- If task B requires data from task A, call A first, wait for result, then call B with that data
-- Example: "weather for my current location" = call getCurrentLocation → get coordinates → call getWeatherForLocation with those coordinates
+### Rule 3: CALENDAR IS INDEPENDENT
+- getCalendarEvents does not require any input
+- Call it directly when the user asks about their schedule/calendar
 
-### Rule 3: Independent tasks can run in parallel
-Tasks that don't depend on each other can be called together.
+## EXAMPLES
 
-## EXECUTION EXAMPLES
+**"What's the weather at my current location?"**
+You MUST call:
+1. getCurrentLocation → get coordinates
+2. getWeatherForLocation with those exact coordinates
 
-**Example 1: "What's the weather at my current location?"**
-Step 1: Call getCurrentLocation → returns {latitude: 56.1629, longitude: 10.2039}
-Step 2: Call getWeatherForLocation with latitude=56.1629, longitude=10.2039
+**"Check my calendar"**
+You MUST call:
+1. getCalendarEvents
 
-**Example 2: "Check my calendar"**
-Step 1: Call getCalendarEvents (no parameters needed)
+**"Check weather for my location AND my calendar"**
+You MUST call ALL THREE tools:
+1. getCurrentLocation → get coordinates
+2. getCalendarEvents (independent, can be first or parallel)
+3. getWeatherForLocation with coordinates from step 1
 
-**Example 3: "Check weather for my location AND my calendar"**
-This has 2 INDEPENDENT tracks:
-- Track A: getCurrentLocation → getWeatherForLocation (with coordinates from getCurrentLocation)
-- Track B: getCalendarEvents (independent, no dependencies)
-You MUST call ALL THREE tools: getCurrentLocation, getCalendarEvents, and getWeatherForLocation
+## WARNINGS
+- If you only call getCurrentLocation but NOT getWeatherForLocation, you have FAILED
+- If you only call getCalendarEvents but the user also asked about weather, you have FAILED  
+- You must complete ALL parts of the user's request
 
-## CHECKLIST BEFORE RESPONDING
-□ Did I identify ALL tasks in the user's request?
-□ Did I call a tool for EACH task?
-□ Did I handle dependencies (call prerequisite tools first)?
-□ Did I pass correct parameters to dependent tools?
-
-IMPORTANT: You MUST call getWeatherForLocation with the exact coordinates returned by getCurrentLocation. Never skip the weather tool when the user asks about weather!`,
+After calling all tools, summarize the results in a helpful response.`,
     description: `Orchestrates complex multi-step queries by coordinating multiple specialized agents. This agent analyzes user requests, identifies dependencies between tasks, and executes them in the optimal order (parallel when possible, sequential when dependent). Use this agent for queries that require multiple steps or coordination between different capabilities.`,
     tools,
     agents: agentsById,

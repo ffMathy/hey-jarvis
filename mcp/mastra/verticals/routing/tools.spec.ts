@@ -10,6 +10,19 @@ import { retryWithBackoff } from '../../../tests/utils/retry-with-backoff.js';
 import { executePlan, getPlanResult } from './tools.js';
 
 // ============================================================================
+// TEST CONFIGURATION CONSTANTS
+// ============================================================================
+
+/** Maximum number of retries when waiting for tool calls */
+const TOOL_WAIT_MAX_RETRIES = 120;
+
+/** Initial delay in milliseconds between tool wait retries */
+const TOOL_WAIT_INITIAL_DELAY_MS = 2000;
+
+/** Timeout for combined query tests in milliseconds (5 minutes) */
+const COMBINED_QUERY_TIMEOUT_MS = 300000;
+
+// ============================================================================
 // MOCK DATA - Hardcoded responses for testing
 // ============================================================================
 
@@ -312,7 +325,11 @@ describe('Routing Agent Integration Tests', () => {
       await getPlanResult.execute({ runId: taskId }, {});
 
       // Wait for all three tools to be called (increased timeout for LLM response variability)
-      await waitForAllToolCalls(['getCurrentLocation', 'getWeatherForLocation', 'getCalendarEvents'], 120, 2000);
+      await waitForAllToolCalls(
+        ['getCurrentLocation', 'getWeatherForLocation', 'getCalendarEvents'],
+        TOOL_WAIT_MAX_RETRIES,
+        TOOL_WAIT_INITIAL_DELAY_MS,
+      );
 
       // Verify all tools were called
       expect(wasToolCalled('getCurrentLocation')).toBe(true);
@@ -328,7 +345,7 @@ describe('Routing Agent Integration Tests', () => {
       // Verify calendar was called with no input (independent)
       const calendarInvocations = getInvocationsForTool('getCalendarEvents');
       expect(calendarInvocations[0].input).toEqual({});
-    }, 300000);
+    }, COMBINED_QUERY_TIMEOUT_MS);
 
     it('should handle calendar and weather independently', async () => {
       clearInvocations();
@@ -342,7 +359,11 @@ describe('Routing Agent Integration Tests', () => {
       await getPlanResult.execute({ runId: taskId }, {});
 
       // Wait for all tools to be called (increased timeout for LLM response variability)
-      await waitForAllToolCalls(['getCurrentLocation', 'getWeatherForLocation', 'getCalendarEvents'], 120, 2000);
+      await waitForAllToolCalls(
+        ['getCurrentLocation', 'getWeatherForLocation', 'getCalendarEvents'],
+        TOOL_WAIT_MAX_RETRIES,
+        TOOL_WAIT_INITIAL_DELAY_MS,
+      );
 
       // Calendar should be called with no input (it's independent)
       const calendarInvocations = getInvocationsForTool('getCalendarEvents');
@@ -353,7 +374,7 @@ describe('Routing Agent Integration Tests', () => {
       const weatherInput = weatherInvocations[0].input as { latitude?: number; longitude?: number };
       expect(weatherInput.latitude).toBe(MOCK_LOCATION.latitude);
       expect(weatherInput.longitude).toBe(MOCK_LOCATION.longitude);
-    }, 300000);
+    }, COMBINED_QUERY_TIMEOUT_MS);
   });
 
   describe('Plan Structure', () => {
