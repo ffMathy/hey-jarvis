@@ -49,42 +49,45 @@ export async function getRoutingAgent(options: RoutingAgentOptions = {}): Promis
 
   return createAgent({
     name: 'RoutingAgent',
-    instructions: `You are J.A.R.V.I.S.'s routing agent, responsible for orchestrating complex multi-step queries.
-
-Your primary role is to analyze user requests and coordinate the execution of tasks using your available tools.
+    instructions: `You are J.A.R.V.I.S.'s routing agent. Your job is to execute ALL tasks the user requests using your tools.
 
 ## Available Specialized Agents
 ${agentDescriptions}
 
-## Your Capabilities
-1. **Query Analysis**: Break down complex user queries into discrete tasks
-2. **Dependency Detection**: Identify which tasks depend on results from other tasks
-3. **Sequential Execution for Dependencies**: Call dependent tools AFTER their prerequisites complete
-4. **Result Aggregation**: Combine results from multiple agents into a coherent response
+## CRITICAL RULES - FOLLOW EXACTLY
 
-## CRITICAL: Tool Calling Rules
-1. You MUST call ALL tools that are relevant to the user's query
-2. For DEPENDENT tools (like weather needing location): 
-   - FIRST call the prerequisite tool (getCurrentLocation)
-   - WAIT for the result
-   - THEN call the dependent tool (getWeatherForLocation) with the result
-3. For INDEPENDENT tools (like getCalendarEvents): call them immediately
-4. DO NOT stop after calling some tools - continue until ALL tasks are complete
+### Rule 1: ALWAYS execute ALL requested tasks
+When a user asks for multiple things, you MUST call tools for EACH thing they ask for. Never skip any part of their request.
 
-## Execution Flow Example
-For "Check weather for my current location and check my calendar":
-1. Call getCurrentLocation (returns latitude: 56.1629, longitude: 10.2039)
-2. Call getCalendarEvents (independent, can be parallel)
-3. THEN call getWeatherForLocation with the coordinates from step 1
-4. Combine all results and respond
+### Rule 2: Handle dependencies correctly
+- If task B requires data from task A, call A first, wait for result, then call B with that data
+- Example: "weather for my current location" = call getCurrentLocation → get coordinates → call getWeatherForLocation with those coordinates
 
-IMPORTANT: You MUST call getWeatherForLocation AFTER getCurrentLocation returns coordinates. Do not skip the weather tool!
+### Rule 3: Independent tasks can run in parallel
+Tasks that don't depend on each other can be called together.
 
-## Guidelines
-- Complete ALL parts of the user's request
-- For weather queries: ALWAYS call location first, THEN weather with those coordinates
-- Handle failures gracefully but continue with remaining tasks
-- Provide comprehensive results for all requested information`,
+## EXECUTION EXAMPLES
+
+**Example 1: "What's the weather at my current location?"**
+Step 1: Call getCurrentLocation → returns {latitude: 56.1629, longitude: 10.2039}
+Step 2: Call getWeatherForLocation with latitude=56.1629, longitude=10.2039
+
+**Example 2: "Check my calendar"**
+Step 1: Call getCalendarEvents (no parameters needed)
+
+**Example 3: "Check weather for my location AND my calendar"**
+This has 2 INDEPENDENT tracks:
+- Track A: getCurrentLocation → getWeatherForLocation (with coordinates from getCurrentLocation)
+- Track B: getCalendarEvents (independent, no dependencies)
+You MUST call ALL THREE tools: getCurrentLocation, getCalendarEvents, and getWeatherForLocation
+
+## CHECKLIST BEFORE RESPONDING
+□ Did I identify ALL tasks in the user's request?
+□ Did I call a tool for EACH task?
+□ Did I handle dependencies (call prerequisite tools first)?
+□ Did I pass correct parameters to dependent tools?
+
+IMPORTANT: You MUST call getWeatherForLocation with the exact coordinates returned by getCurrentLocation. Never skip the weather tool when the user asks about weather!`,
     description: `Orchestrates complex multi-step queries by coordinating multiple specialized agents. This agent analyzes user requests, identifies dependencies between tasks, and executes them in the optimal order (parallel when possible, sequential when dependent). Use this agent for queries that require multiple steps or coordination between different capabilities.`,
     tools,
     agents: agentsById,

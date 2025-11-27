@@ -104,8 +104,9 @@ You can then use getPlanResult to check on the status and results of individual 
         };
       }
 
-      // Use the routing agent's network capability to analyze and execute the query
-      const networkStream = await routingAgent.network(query);
+      // Use the routing agent to analyze and execute the query
+      // Using generate() with increased maxSteps to ensure all tool calls complete
+      const resultPromise = routingAgent.generate(query, { maxSteps: 10 });
 
       // Create a plan entry to track this execution
       const plan: Plan = {
@@ -115,7 +116,7 @@ You can then use getPlanResult to check on the status and results of individual 
         startedAt: new Date().toISOString(),
       };
 
-      // Create a single task to track the network execution
+      // Create a single task to track the execution
       const mainTaskId = uniqueId('task-');
       const mainTask: Task = {
         runId: mainTaskId,
@@ -127,21 +128,13 @@ You can then use getPlanResult to check on the status and results of individual 
         promise: undefined,
       };
 
-      // Process the network stream asynchronously (fire-and-forget)
-      // We capture the final result from the network stream which represents the complete execution output
+      // Process the result asynchronously (fire-and-forget)
       mainTask.promise = (async () => {
         try {
-          let finalResult: unknown = null;
-          for await (const chunk of networkStream) {
-            // The network-execution-event-step-finish event contains the final aggregated result
-            // from the agent network execution, which is what we want to return
-            if (chunk.type === 'network-execution-event-step-finish') {
-              finalResult = chunk.payload?.result;
-            }
-          }
+          const result = await resultPromise;
           mainTask.status = 'completed';
-          mainTask.result = finalResult;
-          return finalResult;
+          mainTask.result = result;
+          return result;
         } catch (error) {
           mainTask.status = 'failed';
           mainTask.error = error instanceof Error ? error.message : String(error);

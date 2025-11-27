@@ -296,13 +296,8 @@ describe('Routing Agent Integration Tests', () => {
   });
 
   describe('Combined Query (calendar + weather)', () => {
-    // Note: These tests are marked as .skip because they require the LLM to:
-    // 1. Call independent tools (location + calendar)
-    // 2. Then call dependent tools (weather with location coords)
-    // This multi-step behavior is sometimes unreliable with current LLM behavior.
-    // The individual tests in "Single Tool Queries" and "Weather Query" demonstrate
-    // that each capability works correctly in isolation.
-    it.skip('should call all three tools for combined query', async () => {
+    // These tests verify the routing agent can handle multi-tool queries with dependencies
+    it('should call all three tools for combined query', async () => {
       clearInvocations();
 
       // Natural query without specifying tool names or order
@@ -316,8 +311,8 @@ describe('Routing Agent Integration Tests', () => {
       const taskId = planResult.plan!.tasks[0].runId;
       await getPlanResult.execute({ runId: taskId }, {});
 
-      // Wait for all three tools to be called
-      await waitForAllToolCalls(['getCurrentLocation', 'getWeatherForLocation', 'getCalendarEvents']);
+      // Wait for all three tools to be called (increased timeout for LLM response variability)
+      await waitForAllToolCalls(['getCurrentLocation', 'getWeatherForLocation', 'getCalendarEvents'], 120, 2000);
 
       // Verify all tools were called
       expect(wasToolCalled('getCurrentLocation')).toBe(true);
@@ -333,9 +328,9 @@ describe('Routing Agent Integration Tests', () => {
       // Verify calendar was called with no input (independent)
       const calendarInvocations = getInvocationsForTool('getCalendarEvents');
       expect(calendarInvocations[0].input).toEqual({});
-    }, 180000);
+    }, 300000);
 
-    it.skip('should handle calendar and weather independently', async () => {
+    it('should handle calendar and weather independently', async () => {
       clearInvocations();
 
       const query = "Show my schedule and tell me what the weather is like where I am.";
@@ -346,8 +341,8 @@ describe('Routing Agent Integration Tests', () => {
       const taskId = planResult.plan!.tasks[0].runId;
       await getPlanResult.execute({ runId: taskId }, {});
 
-      // Wait for all tools to be called
-      await waitForAllToolCalls(['getCurrentLocation', 'getWeatherForLocation', 'getCalendarEvents']);
+      // Wait for all tools to be called (increased timeout for LLM response variability)
+      await waitForAllToolCalls(['getCurrentLocation', 'getWeatherForLocation', 'getCalendarEvents'], 120, 2000);
 
       // Calendar should be called with no input (it's independent)
       const calendarInvocations = getInvocationsForTool('getCalendarEvents');
@@ -358,7 +353,7 @@ describe('Routing Agent Integration Tests', () => {
       const weatherInput = weatherInvocations[0].input as { latitude?: number; longitude?: number };
       expect(weatherInput.latitude).toBe(MOCK_LOCATION.latitude);
       expect(weatherInput.longitude).toBe(MOCK_LOCATION.longitude);
-    }, 180000);
+    }, 300000);
   });
 
   describe('Plan Structure', () => {
