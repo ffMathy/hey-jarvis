@@ -489,7 +489,7 @@ export const getPlaceDetails = createTool({
         authorName: review.author_name || '',
         rating: review.rating || 0,
         text: review.text,
-        time: review.time,
+        time: review.time !== undefined ? String(review.time) : undefined,
       })),
     };
   },
