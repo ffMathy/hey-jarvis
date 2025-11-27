@@ -179,8 +179,8 @@ describe('Routing Agent Integration Tests', () => {
       throw new Error('HEY_JARVIS_GOOGLE_API_KEY environment variable is required');
     }
 
-    // Use the real routing agent but with mock tools
-    testAgent = await getRoutingAgent({ tools: mockTools });
+    // Use the real routing agent but with mock tools and no agents (empty)
+    testAgent = await getRoutingAgent({ tools: mockTools, agents: {} });
     testMastra = createTestMastra(testAgent);
   });
 

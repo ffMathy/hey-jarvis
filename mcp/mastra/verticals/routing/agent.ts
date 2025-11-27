@@ -13,6 +13,10 @@ export interface RoutingAgentOptions {
    * Override the default tools with custom tools (useful for testing)
    */
   tools?: Record<string, Tool>;
+  /**
+   * Override the default agents with custom agents (useful for testing, can be set to empty object)
+   */
+  agents?: Record<string, Agent>;
 }
 
 /**
@@ -28,24 +32,29 @@ export interface RoutingAgentOptions {
  * tools to provide fire-and-forget execution with result retrieval.
  */
 export async function getRoutingAgent(options: RoutingAgentOptions = {}): Promise<Agent> {
-  // Get all public agents to make them available for the network
-  const publicAgents = await getPublicAgents();
+  // Get all public agents to make them available for the network (unless overridden)
+  const publicAgents = options.agents !== undefined ? [] : await getPublicAgents();
 
-  // Build agents object dynamically using agent IDs
-  const agentsById = keyBy(publicAgents, 'id');
+  // Build agents object dynamically using agent IDs, or use provided agents
+  const agentsById = options.agents ?? keyBy(publicAgents, 'id');
 
   // Use provided tools or default routing tools
   const tools = options.tools ?? routingTools;
+
+  // Build agent descriptions for the prompt
+  const agentDescriptions =
+    publicAgents.length > 0
+      ? publicAgents.map((a) => `- **${a.name}**: ${a.getDescription()}`).join('\n')
+      : 'No specialized agents available. Use your tools directly.';
 
   return createAgent({
     name: 'RoutingAgent',
     instructions: `You are J.A.R.V.I.S.'s routing agent, responsible for orchestrating complex multi-step queries.
 
-Your primary role is to analyze user requests and coordinate the execution of tasks across multiple specialized agents.
+Your primary role is to analyze user requests and coordinate the execution of tasks using your available tools.
 
 ## Available Specialized Agents
-You have access to the following agents that you can delegate tasks to:
-${publicAgents.map((a) => `- **${a.name}**: ${a.getDescription()}`).join('\n')}
+${agentDescriptions}
 
 ## Your Capabilities
 1. **Query Analysis**: Break down complex user queries into discrete tasks
