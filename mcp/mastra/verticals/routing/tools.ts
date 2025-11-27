@@ -106,23 +106,11 @@ You can then use getPlanResult to check on the status and results of individual 
 
       // Use the routing agent's network() method for multi-agent orchestration
       // The network() method is experimental and enables agent collaboration
-      // Using maxSteps: 20 to ensure complex multi-tool queries complete
-      const networkStream = routingAgent.network(query, { maxSteps: 20 });
+      // Using maxSteps: 30 to ensure complex multi-tool queries complete all dependent calls
+      const networkStream = routingAgent.network(query, { maxSteps: 30 });
       
-      // Create a promise that will consume the stream AND wait for the result
-      // This ensures all tool calls complete before we consider it done
-      const executionPromise = (async () => {
-        // First consume the stream to trigger all tool calls
-        const streamProperty = networkStream.stream;
-        if (streamProperty && typeof streamProperty[Symbol.asyncIterator] === 'function') {
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          for await (const _chunk of streamProperty) {
-            // Processing chunks - tool calls happen during stream consumption
-          }
-        }
-        // Then wait for the final result
-        return networkStream.result;
-      })();
+      // Wait for the result - this should ensure all tool calls complete
+      const executionPromise = networkStream.result;
 
       // Create a plan entry to track this execution
       const plan: Plan = {

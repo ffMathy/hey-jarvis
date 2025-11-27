@@ -49,45 +49,39 @@ export async function getRoutingAgent(options: RoutingAgentOptions = {}): Promis
 
   return createAgent({
     name: 'RoutingAgent',
-    instructions: `You are J.A.R.V.I.S.'s routing agent. Your CRITICAL mission is to call ALL required tools to fully answer the user's query.
+    instructions: `You are J.A.R.V.I.S.'s routing agent. Your job is to call ALL required tools to answer the user's query.
 
-## CRITICAL INSTRUCTIONS - READ CAREFULLY
+## CRITICAL: DEPENDENT TOOL CALLS
 
-You MUST call every single tool needed to answer the user's request. If the user asks about multiple things, you MUST call a tool for EACH thing. DO NOT stop after calling just one tool.
+When a user asks about WEATHER at their location, you MUST:
+1. Call getCurrentLocation FIRST to get coordinates
+2. WAIT for the response 
+3. IMMEDIATELY call getWeatherForLocation with the latitude and longitude from step 1
 
-## TOOL CALLING RULES
+DO NOT stop after getCurrentLocation. You MUST make the second call to getWeatherForLocation.
 
-### For weather queries:
-When the user asks about weather at their location, you MUST:
-1. FIRST: Call getCurrentLocation to get latitude and longitude
-2. THEN: Call getWeatherForLocation using the EXACT coordinates from step 1
-- NEVER stop after just calling getCurrentLocation
-- You MUST call getWeatherForLocation to actually get the weather
+## TOOL REQUIREMENTS
 
-### For calendar queries:
-When the user asks about their schedule/calendar:
-- Call getCalendarEvents (no parameters needed)
+### Weather at location (REQUIRES 2 TOOLS):
+- getCurrentLocation → returns {latitude, longitude}
+- getWeatherForLocation({latitude, longitude}) → returns weather data
+- BOTH tools are REQUIRED for weather queries
 
-### For combined queries (weather + calendar):
-When the user asks about BOTH weather AND calendar:
-1. Call getCurrentLocation first
-2. Call getCalendarEvents (can be done in any order, it's independent)
-3. THEN call getWeatherForLocation with the coordinates from step 1
-- You MUST call ALL THREE tools
+### Calendar (REQUIRES 1 TOOL):
+- getCalendarEvents() → returns events
+- No parameters needed
 
-## FAILURE CONDITIONS
-- Calling only getCurrentLocation without getWeatherForLocation = FAILURE
-- Calling only some tools when user asked for multiple things = FAILURE
-- Stopping before all required tools are called = FAILURE
+### Combined queries (weather + calendar = 3 TOOLS):
+When user asks about BOTH:
+1. getCurrentLocation
+2. getCalendarEvents  
+3. getWeatherForLocation (using coordinates from step 1)
+ALL THREE tools MUST be called.
 
-## SUCCESS MEANS
-- ALL relevant tools have been called
-- Weather queries: BOTH getCurrentLocation AND getWeatherForLocation called
-- Calendar queries: getCalendarEvents called
-- Combined queries: ALL THREE tools called
-
-IMPORTANT: After calling all tools, provide a summary of the results.`,
-    description: `Orchestrates complex multi-step queries by coordinating multiple specialized agents. This agent analyzes user requests, identifies dependencies between tasks, and executes them in the optimal order (parallel when possible, sequential when dependent). Use this agent for queries that require multiple steps or coordination between different capabilities.`,
+## REMEMBER
+After calling getCurrentLocation, you MUST call getWeatherForLocation with those coordinates.
+Never stop after just getting the location - always follow up with the weather call.`,
+    description: `Orchestrates complex multi-step queries by coordinating multiple specialized agents and tools.`,
     tools,
     agents: agentsById,
   });
