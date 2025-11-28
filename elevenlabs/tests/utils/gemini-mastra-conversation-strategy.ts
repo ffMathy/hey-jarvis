@@ -21,10 +21,7 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
   private agent?: Agent;
 
   constructor(options: GeminiMastraConversationOptions = {}) {
-    this.apiKey =
-      options.apiKey ||
-      process.env.HEY_JARVIS_GOOGLE_API_KEY ||
-      '';
+    this.apiKey = options.apiKey || process.env.HEY_JARVIS_GOOGLE_API_KEY || '';
 
     if (!this.apiKey) {
       throw new Error('Google API key required: set HEY_JARVIS_GOOGLE_API_KEY or pass apiKey');

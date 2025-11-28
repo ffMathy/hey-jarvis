@@ -33,7 +33,7 @@ Key rules:
     description: 'Comprehensive cooking agent for recipe search and meal planning',
     tools: cookingTools,
     workflows: {
-        generateMealPlanWorkflow
-    }
+      generateMealPlanWorkflow,
+    },
   });
 }
