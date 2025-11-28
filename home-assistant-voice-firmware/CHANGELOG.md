@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.5.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.4.2...home-assistant-voice-firmware-v0.5.0) (2025-11-28)
+
+
+### Features
+
+* human in the loop ([#313](https://github.com/ffMathy/hey-jarvis/issues/313)) ([c047d6c](https://github.com/ffMathy/hey-jarvis/commit/c047d6cff761256ae38b9a26a8df1563f1b14678))
+* introduce human in the loop ([9f1b714](https://github.com/ffMathy/hey-jarvis/commit/9f1b714a3786be2fc2858eeafeb22d08792339de))
+* **mcp:** add async orchestration routing vertical ([#331](https://github.com/ffMathy/hey-jarvis/issues/331)) ([79d5c76](https://github.com/ffMathy/hey-jarvis/commit/79d5c76eea37b74a9fc195006f51d8885ac81c90))
+
+
+### Bug Fixes
+
+* latest memory fixes ([7848a51](https://github.com/ffMathy/hey-jarvis/commit/7848a519b896185c16ced33feafefe47ef117615))
+* more memory fixes ([f6e07a7](https://github.com/ffMathy/hey-jarvis/commit/f6e07a739a6090bcf6b08591af11a1873069266d))
+* switch to new MCP setup and make windows versions of scripts ([740b855](https://github.com/ffMathy/hey-jarvis/commit/740b8554447f016dbda32296391ee6092fe369dd))
+* various elevenlabs and home assistant firmware fixes ([#324](https://github.com/ffMathy/hey-jarvis/issues/324)) ([c197be0](https://github.com/ffMathy/hey-jarvis/commit/c197be0a3de502dfa5042288dc9a71a3547ba5a9))
+
 ## [0.4.2](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.4.1...home-assistant-voice-firmware-v0.4.2) (2025-11-22)
 
 
