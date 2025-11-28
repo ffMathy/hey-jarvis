@@ -15,7 +15,7 @@ import {
   weatherMonitoringWorkflow,
   weeklyMealPlanningWorkflow,
 } from './verticals/index.js';
-import { getCurrentDagWorkflow, routePromptWorkflow } from './verticals/routing/workflows.js';
+import { getCurrentDagWorkflow, getNextInstructionsWorkflow, routePromptWorkflow } from './verticals/routing/workflows.js';
 
 async function createMastra() {
   // Set up the Google AI SDK environment variable
@@ -49,7 +49,8 @@ async function createMastra() {
       checkForFormRepliesWorkflow,
       checkForNewEmails,
       routePromptWorkflow,
-      getCurrentDagWorkflow
+      getCurrentDagWorkflow,
+      getNextInstructionsWorkflow
     },
     agents: agentsByName,
   });

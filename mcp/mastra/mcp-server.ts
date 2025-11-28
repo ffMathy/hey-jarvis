@@ -7,33 +7,7 @@ import express from 'express';
 import { expressjwt } from 'express-jwt';
 import { z } from 'zod';
 import { initializeScheduler } from './scheduler.js';
-import { getPublicAgents, routePromptWorkflow } from './verticals/index.js';
-
-/**
- * Creates a simplified tool that wraps an agent and returns clean text responses
- * without verbose error metadata
- */
-function createSimplifiedAgentTool(agent: Agent) {
-  return createTool({
-    id: `ask_${agent.name}`,
-    description: agent.getDescription(),
-    inputSchema: z.object({
-      message: z.string().describe('The question or request to send to the agent'),
-    }),
-    outputSchema: z.object({
-      response: z.string().describe('The agent response text'),
-    }),
-    execute: async (input) => {
-      try {
-        const result = await agent.generate(input.message);
-        return { response: result.text || 'No response generated' };
-      } catch (error) {
-        const err = error as Error & { details?: { message?: string } };
-        return { response: err.message || err.details?.message || 'An error occurred' };
-      }
-    },
-  });
-}
+import { getNextInstructionsWorkflow, routePromptWorkflow } from './verticals/routing/workflows.js';
 
 export async function startMcpServer() {
   const jwtSecret = process.env.HEY_JARVIS_MCP_JWT_SECRET;
@@ -50,7 +24,8 @@ export async function startMcpServer() {
     version: '1.0.0',
     agents: {},
     workflows: {
-      routePromptWorkflow
+      routePromptWorkflow,
+      getNextInstructionsWorkflow
     },
     tools: {}
   });

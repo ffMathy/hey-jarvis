@@ -23,6 +23,20 @@ const inputSchema = z.object({
     userQuery: z.string().describe("The user's routing query").default("I'd like to check the weather for my current location, and check my calendar for today. If I have any calendars regarding my workplace, I'd like to infer when I typically go to work, and check the traffic conditions for that time. Additionally, I am planning on making a lasagna, so please fetch the recipes for that and add a reminder to my to-do list with the ingredients, for when I get home from work."),
 });
 
+const dagSchema = outputSchema.extend({
+    executionPromise: z.promise(z.void()).optional().describe("Internal promise tracking DAG execution"),
+    tasks: z.array(outputTaskSchema.extend({
+        executionPromise: z.promise(outputTaskSchema).optional().describe("Internal promise tracking task execution"),
+        result: z.any().optional().describe("Result of the task execution"),
+        reported: z.boolean().optional().describe("Whether the task result has been reported back to Jarvis"),
+    }))
+});
+
+const currentDAG: z.infer<typeof dagSchema> = {
+    tasks: [],
+    executionPromise: undefined,
+};
+
 const listAvailableAgentsStep = createStep({
     id: 'list-available-agents',
     description: 'List all available agents for routing',
@@ -45,19 +59,6 @@ const listAvailableAgentsStep = createStep({
     }
 });
 
-const dagSchema = outputSchema.extend({
-    executionPromise: z.promise(z.void()).optional().describe("Internal promise tracking DAG execution"),
-    tasks: z.array(outputTaskSchema.extend({
-        executionPromise: z.promise(z.void()).optional().describe("Internal promise tracking task execution"),
-        result: z.any().optional().describe("Result of the task execution"),
-    }))
-});
-
-const currentDAG: z.infer<typeof dagSchema> = {
-    tasks: [],
-    executionPromise: undefined,
-};
-
 function truncateLog(text: string, maxLength: number): string {
     if (!text)
         return '';
@@ -74,7 +75,7 @@ async function startDagExecution() {
     const agentsById = keyBy(publicAgents, 'id');
     const tasks = currentDAG.tasks;
 
-    const executeTask = async (task: typeof tasks[0]): Promise<void> => {
+    const executeTask = async (task: typeof tasks[0]) => {
         const agent = agentsById[task.agent];
         if (!agent) {
             throw new Error(`Agent with ID ${task.agent} not found`);
@@ -105,6 +106,8 @@ async function startDagExecution() {
         task.result = output || '';
 
         console.log(`${task.agent}->${task.id} completed: ${truncateLog(output, 100)}`);
+
+        return task;
     };
 
     while(true) {
@@ -312,12 +315,19 @@ const startDagExecutionStep = createStep({
     description: 'Start execution of DAG tasks',
     inputSchema: optimizeDagStep.outputSchema,
     stateSchema: stateSchema,
-    outputSchema: outputSchema,
+    outputSchema: z.object({
+        taskIdsInProgress: z.array(z.string()).describe("IDs of tasks currently in progress"),
+    }),
     execute: async () => {
         if (!currentDAG.executionPromise) {
             currentDAG.executionPromise = startDagExecution();
         }
-        return currentDAG;
+        
+        return {
+            taskIdsInProgress: currentDAG.tasks
+                .filter(t => t.result === undefined)
+                .map(t => t.id),
+        }
     }
 });
 
@@ -335,6 +345,76 @@ export const getCurrentDagWorkflow = createWorkflow({
             return currentDAG;
         }
     }))
+    .commit();
+
+const instructionsOutputSchema = z.object({
+    instructions: z.string().describe("Instructions for Jarvis to follow"),
+    completedTaskResults: z.array(z.object({
+        id: z.string().describe("The unique task ID"),
+        result: z.any().describe("Result of the task execution"),
+    })).optional().describe("Results of completed tasks, if any"),
+    taskIdsInProgress: z.array(z.string()).optional().describe("IDs of tasks still pending"),
+});
+
+const getNextInstructionsStep = createStep({
+    id: 'get-next-instructions',
+    description: 'Get next instructions based on DAG state',
+    inputSchema: z.object({}),
+    outputSchema: instructionsOutputSchema,
+    execute: async () => {
+        async function waitForNextInstructions(): Promise<z.infer<typeof instructionsOutputSchema>> {
+            const tasks = currentDAG.tasks;
+
+            const completedUnreportedTasks = tasks.filter(t => t.result !== undefined && !t.reported);
+            if(completedUnreportedTasks.length === 0) {
+                const completedTask = await Promise.race(completedUnreportedTasks.map(t => t.executionPromise));
+                completedUnreportedTasks.push(completedTask);
+            }
+
+            const allResults = completedUnreportedTasks
+                .map(t => ({
+                    task: t,
+                    isLeaf: !tasks.some(other => other.dependsOn.includes(t.id)),
+                }));
+
+            //we want to report leaves first if they exist, because leaves contain the *final* information that the user asked for. other nodes are just intermediary.
+            const leafResults = allResults.filter(x => x.isLeaf);
+            const resultsToUse = leafResults.length > 0 ? leafResults : allResults;
+            for(const result of resultsToUse) {
+                result.task.reported = true;
+            }
+
+            const areAllTasksCompleted = tasks.every(t => t.result !== undefined);
+            
+            return {
+                instructions: areAllTasksCompleted
+                    ? "All tasks have completed. Summarize the final results in a detailed manner."
+                    : "More tasks have finished since last time, but not all tasks have completed yet. Summarize only the key bits of the preliminary findings very briefly, then call getNextInstructionsWorkflow again.",
+                completedTaskResults: allResults.map(x => ({ 
+                    id: x.task.id, 
+                    result: x.task.result 
+                })),
+                taskIdsInProgress: tasks.filter(t => t.result === undefined).map(t => t.id),
+            };
+        }
+
+        const result = await Promise.race([
+            waitForNextInstructions(),
+            new Promise(resolve => setTimeout(() => resolve({
+                instructions: "Still processing your request. Call getNextInstructionsWorkflow again to wait a bit longer for it to complete."
+            }), 10000))
+        ]);
+
+        return result;
+    }
+});
+
+export const getNextInstructionsWorkflow = createWorkflow({
+    id: "getNextInstructionsWorkflow",
+    inputSchema: z.object({}),
+    outputSchema: instructionsOutputSchema,
+})
+    .then(getNextInstructionsStep)
     .commit();
 
 export const routePromptWorkflow = createWorkflow({
