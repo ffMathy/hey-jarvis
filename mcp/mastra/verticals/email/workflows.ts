@@ -126,7 +126,7 @@ const processEmails = createStep({
   execute: async (params) => {
     const { unreadEmails } = params.state;
     let emailsProcessed = 0;
-    const workflowsResumed = 0;
+    let workflowsResumed = 0;
     const errors: string[] = [];
 
     console.log(`🔍 Processing ${unreadEmails.length} unread email(s)...`);
@@ -157,7 +157,7 @@ const processEmails = createStep({
         // Note: Mastra doesn't expose getRunById directly, we need to use the workflow execution context
         // For now, we'll store pending workflows in a simple map or skip this validation
         // In a production system, you'd want to maintain a registry of pending workflows
-
+        
         // For demo purposes, we'll try to resume any workflow with the matching ID
         // The workflow itself will validate sender email and handle errors
         const workflow = params.mastra.getWorkflow('humanInTheLoopDemoWorkflow');
@@ -268,27 +268,25 @@ export const checkForFormRepliesWorkflow = createWorkflow({
  */
 
 // State schema for the parent workflow
-const parentWorkflowStateSchema = z
-  .object({
-    unreadEmails: z
-      .array(
-        z.object({
-          id: z.string(),
-          subject: z.string(),
-          bodyPreview: z.string(),
-          from: z.object({
-            name: z.string(),
-            address: z.string(),
-          }),
-          receivedDateTime: z.string(),
-          isRead: z.boolean(),
-          hasAttachments: z.boolean(),
-          isDraft: z.boolean(),
+const parentWorkflowStateSchema = z.object({
+  unreadEmails: z
+    .array(
+      z.object({
+        id: z.string(),
+        subject: z.string(),
+        bodyPreview: z.string(),
+        from: z.object({
+          name: z.string(),
+          address: z.string(),
         }),
-      )
-      .default([]),
-  })
-  .partial();
+        receivedDateTime: z.string(),
+        isRead: z.boolean(),
+        hasAttachments: z.boolean(),
+        isDraft: z.boolean(),
+      }),
+    )
+    .default([]),
+}).partial();
 
 // Step 1: Search for unread emails (reused from child workflow)
 const searchEmailsForParent = createToolStep({
@@ -364,12 +362,12 @@ const processFormReplies = createStep({
 
     // Execute the child workflow
     console.log('🔄 Delegating to checkForFormRepliesWorkflow...');
-
+    
     // Note: In a real implementation, we'd execute the child workflow here
     // For now, we'll just return placeholder values since Mastra doesn't
     // provide a built-in way to execute workflows from within workflows
     // The actual form reply processing happens in the scheduled checkForFormRepliesWorkflow
-
+    
     return {
       emailsProcessed: params.inputData.emailCount,
       workflowsResumed: 0,
@@ -393,28 +391,27 @@ const registerNewEmailsStateChange = createStep({
   }),
   execute: async ({ state }) => {
     // Only register if there are emails
-    const stateChangeData =
-      state.unreadEmails.length === 0
-        ? {
-            source: 'email',
-            stateType: 'no_new_emails',
-            stateData: {
-              timestamp: new Date().toISOString(),
-            },
-          }
-        : {
-            source: 'email',
-            stateType: 'new_emails_received',
-            stateData: {
-              emailCount: state.unreadEmails.length,
-              emails: state.unreadEmails.map((email) => ({
-                subject: email.subject,
-                from: email.from.address,
-                receivedDateTime: email.receivedDateTime,
-              })),
-              timestamp: new Date().toISOString(),
-            },
-          };
+    const stateChangeData = state.unreadEmails.length === 0
+      ? {
+          source: 'email',
+          stateType: 'no_new_emails',
+          stateData: {
+            timestamp: new Date().toISOString(),
+          },
+        }
+      : {
+          source: 'email',
+          stateType: 'new_emails_received',
+          stateData: {
+            emailCount: state.unreadEmails.length,
+            emails: state.unreadEmails.map((email) => ({
+              subject: email.subject,
+              from: email.from.address,
+              receivedDateTime: email.receivedDateTime,
+            })),
+            timestamp: new Date().toISOString(),
+          },
+        };
 
     return await registerStateChange.execute(stateChangeData);
   },

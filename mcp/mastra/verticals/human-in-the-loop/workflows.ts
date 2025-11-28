@@ -67,7 +67,7 @@ const sendFormRequestEmail = createStep({
       },
       params.mastra,
     );
-
+    
     // Pass recipientEmail through to next step
     return {
       ...emailResult,
@@ -186,12 +186,7 @@ const workflowStateSchema = z
 
 // Input schema for the workflow - all fields optional with defaults
 const workflowInputSchema = z.object({
-  recipientEmail: z
-    .string()
-    .email()
-    .optional()
-    .default('demo@example.com')
-    .describe('Email address to send form requests to'),
+  recipientEmail: z.string().email().optional().default('demo@example.com').describe('Email address to send form requests to'),
   projectName: z.string().optional().default('Demo Project').describe('Name of the project requiring approval'),
   budgetAmount: z.number().optional().default(10000).describe('Budget amount in USD'),
 });
@@ -241,7 +236,7 @@ const sendBudgetApprovalEmail = createStep({
     const { recipientEmail, projectName, budgetAmount } = inputData;
     const timeoutDate = new Date();
     timeoutDate.setDate(timeoutDate.getDate() + 14);
-
+    
     const question = `Please approve the budget for project "${projectName}". Amount: $${budgetAmount.toLocaleString()}. Reply with "Yes" or "No" and optional comments.`;
     const subject = `Form Request [WF-${workflowId}]: ${question}`;
     const bodyContent = `
@@ -258,14 +253,11 @@ const sendBudgetApprovalEmail = createStep({
 </html>
     `.trim();
 
-    return await sendEmail.execute(
-      {
-        subject,
-        bodyContent,
-        toRecipients: [recipientEmail],
-      },
-      mastra,
-    );
+    return await sendEmail.execute({
+      subject,
+      bodyContent,
+      toRecipients: [recipientEmail],
+    }, mastra);
   },
 });
 
@@ -392,7 +384,7 @@ const sendVendorSelectionEmail = createStep({
 
     const timeoutDate = new Date();
     timeoutDate.setDate(timeoutDate.getDate() + 14);
-
+    
     const question = 'Please select a vendor for this project. Provide the vendor name and a brief justification.';
     const subject = `Form Request [WF-${workflowId}]: ${question}`;
     const bodyContent = `
@@ -409,14 +401,11 @@ const sendVendorSelectionEmail = createStep({
 </html>
     `.trim();
 
-    return await sendEmail.execute(
-      {
-        subject,
-        bodyContent,
-        toRecipients: [state.recipientEmail],
-      },
-      mastra,
-    );
+    return await sendEmail.execute({
+      subject,
+      bodyContent,
+      toRecipients: [state.recipientEmail],
+    }, mastra);
   },
 });
 
@@ -505,7 +494,7 @@ const sendFinalConfirmationEmail = createStep({
 
     const timeoutDate = new Date();
     timeoutDate.setDate(timeoutDate.getDate() + 14);
-
+    
     const question = `Please confirm the final action. Selected vendor: ${state.step2Response.vendorName}. Reply with "Confirm" or "Cancel" and any final notes.`;
     const subject = `Form Request [WF-${workflowId}]: ${question}`;
     const bodyContent = `
@@ -522,14 +511,11 @@ const sendFinalConfirmationEmail = createStep({
 </html>
     `.trim();
 
-    return await sendEmail.execute(
-      {
-        subject,
-        bodyContent,
-        toRecipients: [state.recipientEmail],
-      },
-      mastra,
-    );
+    return await sendEmail.execute({
+      subject,
+      bodyContent,
+      toRecipients: [state.recipientEmail],
+    }, mastra);
   },
 });
 
@@ -719,7 +705,7 @@ const extractBudgetApprovalResponse = createStep({
   }),
   execute: async (params) => {
     const { response, senderEmail } = params.inputData;
-
+    
     return {
       approved: response.approved as boolean,
       comments: response.comments as string | undefined,
@@ -755,7 +741,7 @@ const mergeBudgetApprovalContext = createStep({
   },
 });
 
-// Step: Prepare vendor selection question
+// Step: Prepare vendor selection question  
 const prepareVendorSelectionQuestion = createStep({
   id: 'prepare-vendor-selection-question',
   description: 'Prepare vendor selection question',
@@ -772,11 +758,11 @@ const prepareVendorSelectionQuestion = createStep({
   }),
   execute: async (params) => {
     const { approved, recipientEmail, projectName } = params.inputData;
-
+    
     if (!approved) {
       throw new Error('Budget was not approved - workflow cannot continue');
     }
-
+    
     return {
       recipientEmail,
       question: `Please select a vendor for project "${projectName}". Reply with the vendor name and justification.`,
@@ -800,7 +786,7 @@ const extractVendorSelectionResponse = createStep({
   }),
   execute: async (params) => {
     const { response, senderEmail } = params.inputData;
-
+    
     return {
       vendorName: response.vendorName as string,
       justification: response.justification as string,
@@ -847,7 +833,7 @@ const prepareFinalConfirmationQuestion = createStep({
   }),
   execute: async (params) => {
     const { recipientEmail, projectName, vendorName } = params.inputData;
-
+    
     return {
       recipientEmail,
       question: `Final confirmation for project "${projectName}" with vendor "${vendorName}". Reply with "Confirm" or "Cancel" and optional notes.`,
@@ -870,13 +856,14 @@ const extractFinalConfirmationResponse = createStep({
   }),
   execute: async (params) => {
     const { response } = params.inputData;
-
+    
     return {
       confirmed: response.confirmed as boolean,
       finalNotes: response.finalNotes as string | undefined,
     };
   },
 });
+
 
 export const humanInTheLoopDemoWorkflow = createWorkflow({
   id: 'humanInTheLoopDemoWorkflow',
@@ -897,3 +884,4 @@ export const humanInTheLoopDemoWorkflow = createWorkflow({
   .then(extractFinalConfirmationResponse)
   .then(formatFinalOutput as any)
   .commit();
+

@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 
 import type { Agent } from '@mastra/core/agent';
-import type { Workflow } from '@mastra/core/workflows';
 import { MCPServer } from '@mastra/mcp';
 import express from 'express';
 import { expressjwt } from 'express-jwt';
 import { z } from 'zod';
 import { initializeScheduler } from './scheduler.js';
-import { createTool } from './utils/tool-factory.js';
 import { getNextInstructionsWorkflow, routePromptWorkflow } from './verticals/routing/workflows.js';
+import type { Workflow } from '@mastra/core/workflows';
+import { createTool } from './utils/tool-factory.js';
 
 function createSimplifiedWorkflowTool(workflow: Workflow) {
   return createTool({
@@ -18,13 +18,15 @@ function createSimplifiedWorkflowTool(workflow: Workflow) {
     outputSchema: workflow.outputSchema,
     execute: async (context) => {
       console.log(`Executing workflow tool: ${workflow.id ?? workflow.name}`);
-
+      
       const run = await workflow.createRun();
       const result = await run.start({
-        inputData: context,
+        inputData: context
       });
-      if (result.status !== 'success') {
-        throw new Error(`Workflow ${workflow.id ?? workflow.name} failed with status ${result.status}`);
+      if (result.status !== "success") {
+        throw new Error(
+          `Workflow ${workflow.id ?? workflow.name} failed with status ${result.status}`
+        );
       }
 
       return result.result;
@@ -49,7 +51,7 @@ export async function startMcpServer() {
     tools: {
       routePromptWorkflow: createSimplifiedWorkflowTool(routePromptWorkflow),
       getNextInstructionsWorkflow: createSimplifiedWorkflowTool(getNextInstructionsWorkflow),
-    },
+    }
   });
 
   console.log('Starting J.A.R.V.I.S. MCP Server...');
