@@ -168,3 +168,37 @@ export function stopTunnel(): void {
   // Also kill any orphaned processes
   killExistingTunnels();
 }
+
+/**
+ * Starts the tunnel and keeps it running until interrupted.
+ * Used when running this file directly via `bun tunnel-manager.ts`
+ */
+async function runStandalone(): Promise<void> {
+  console.log('🚀 Starting cloudflared tunnel in standalone mode...');
+
+  await ensureTunnelRunning();
+
+  console.log('✅ Tunnel is running. Press Ctrl+C to stop.');
+
+  // Keep the process running until interrupted
+  await new Promise<void>((resolve) => {
+    process.on('SIGINT', () => {
+      console.log('\n🛑 Received SIGINT, stopping tunnel...');
+      stopTunnel();
+      resolve();
+    });
+    process.on('SIGTERM', () => {
+      console.log('\n🛑 Received SIGTERM, stopping tunnel...');
+      stopTunnel();
+      resolve();
+    });
+  });
+}
+
+// Detect if this file is being run directly
+if (import.meta.main) {
+  runStandalone().catch((error) => {
+    console.error('❌ Failed to start tunnel:', error);
+    process.exit(1);
+  });
+}
