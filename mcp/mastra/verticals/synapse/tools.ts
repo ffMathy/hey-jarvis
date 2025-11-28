@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { createTool } from '../../utils/tool-factory.js';
+import { stateChangeNotificationWorkflow } from './workflows.js';
 
 // Register state change tool for reactive notifications
 // This tool simply forwards the state change to the workflow for processing
@@ -21,37 +22,22 @@ export const registerStateChange = createTool({
     triggeredWorkflow: z.boolean(),
     message: z.string(),
   }),
-  execute: async (inputData, context) => {
+  execute: async (inputData) => {
     try {
       console.log(`📝 Registering state change: ${inputData.stateType} from ${inputData.source}`);
 
-      // Trigger state change notification workflow
-      if (context?.mastra) {
-        const workflow = context.mastra.getWorkflow('stateChangeNotificationWorkflow');
-        if (workflow) {
-          // Run workflow asynchronously (don't wait for completion)
-          workflow
-            .execute({
-              source: inputData.source,
-              stateType: inputData.stateType,
-              stateData: inputData.stateData,
-            })
-            .catch((error: Error) => {
-              console.error(`❌ State change workflow error:`, error);
-            });
-
-          return {
-            registered: true,
-            triggeredWorkflow: true,
-            message: `State change ${inputData.stateType} registered and workflow triggered`,
-          };
-        }
-      }
+      const run = await stateChangeNotificationWorkflow.createRun();
+      run.start({
+        inputData
+      })
+        .catch((error: Error) => {
+          console.error(`❌ State change workflow error:`, error);
+        });
 
       return {
-        registered: false,
-        triggeredWorkflow: false,
-        message: `Failed to trigger workflow: Mastra instance or workflow not available`,
+        registered: true,
+        triggeredWorkflow: true,
+        message: `State change ${inputData.stateType} registered and workflow triggered`,
       };
     } catch (error) {
       console.error('❌ Failed to register state change:', error);

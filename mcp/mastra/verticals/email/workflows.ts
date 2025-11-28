@@ -389,7 +389,7 @@ const registerNewEmailsStateChange = createStep({
     triggeredWorkflow: z.boolean(),
     message: z.string(),
   }),
-  execute: async ({ state, mastra }) => {
+  execute: async ({ state }) => {
     // Only register if there are emails
     const stateChangeData = state.unreadEmails.length === 0
       ? {
@@ -413,7 +413,7 @@ const registerNewEmailsStateChange = createStep({
           },
         };
 
-    return await registerStateChange.execute(stateChangeData, mastra);
+    return await registerStateChange.execute(stateChangeData);
   },
 });
 

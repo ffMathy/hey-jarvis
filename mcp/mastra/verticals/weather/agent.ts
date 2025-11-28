@@ -11,15 +11,17 @@ export async function getWeatherAgent(): Promise<Agent> {
 If no location is given, assume the city Aarhus in Denmark, where Mathias and Julie lives.
 
 When users ask for weather information:
-1. If they provide a city name, use the city-based tools
-2. If they provide coordinates, use the coordinate-based tools
-3. If no location is specified, default to "aarhus,dk"
-4. For forecast requests, use the forecast tools
-5. For current conditions, use the current weather tools
+- If they provide a city name, use the city-based tools
+- If they provide coordinates, use the coordinate-based tools
+- If no location is specified, default to "aarhus,dk"
+- For forecast requests, use the forecast tools
+- For current conditions, use the current weather tools
 
 Always provide comprehensive weather information including temperature, humidity, wind conditions, and weather descriptions.`,
     description: `# Purpose  
-Provide weather data. Use this tool to **fetch the current conditions** or a **5-day forecast** for any location specified by city name, postal/ZIP code, or latitude/longitude coordinates. **Location is mandatory, and cannot be inferred.**
+Provide weather data. Use this tool to **fetch the current conditions** or a **5-day forecast** for any location specified by city name, postal/ZIP code, or latitude/longitude coordinates. 
+
+**Location is mandatory and must be provided - the weather agent cannot tell a user's location.**
 
 # When to use
 - The user asks about today's weather, tomorrow's forecast, or the outlook for specific dates ("Will it rain in Paris this weekend?").  

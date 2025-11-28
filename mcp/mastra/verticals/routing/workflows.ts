@@ -1,3 +1,4 @@
+import { Agent } from "@mastra/core/agent";
 import { chain, keyBy, take } from "lodash-es";
 import { getPublicAgents } from "..";
 import { createAgentStep, createStep, createWorkflow, google } from "../../utils";
@@ -10,8 +11,7 @@ const outputTaskSchema = z.object({
     dependsOn: z.array(z.string()).describe("IDs of tasks this task depends on"),
 });
 
-const outputSchema = z.object({
-    isAsync: z.boolean().default(false),
+export const outputSchema = z.object({
     tasks: z.array(outputTaskSchema)
 }).describe("The generated DAG of tasks to fulfill the routing query");
 
@@ -19,23 +19,43 @@ const stateSchema = z.object({
     userQuery: z.string().describe("The user's routing query"),
 }).partial();
 
-const inputSchema = z.object({
+export const inputSchema = z.object({
     userQuery: z.string().describe("The user's routing query").default("I'd like to check the weather for my current location, and check my calendar for today. If I have any calendars regarding my workplace, I'd like to infer when I typically go to work, and check the traffic conditions for that time. Additionally, I am planning on making a lasagna, so please fetch the recipes for that and add a reminder to my to-do list with the ingredients, for when I get home from work."),
 });
 
-const dagSchema = outputSchema.extend({
+export const dagSchema = outputSchema.extend({
     executionPromise: z.promise(z.void()).optional().describe("Internal promise tracking DAG execution"),
     tasks: z.array(outputTaskSchema.extend({
         executionPromise: z.promise(outputTaskSchema).optional().describe("Internal promise tracking task execution"),
         result: z.any().optional().describe("Result of the task execution"),
         reported: z.boolean().optional().describe("Whether the task result has been reported back to Jarvis"),
-    }))
+    })),
 });
 
-const currentDAG: z.infer<typeof dagSchema> = {
-    tasks: [],
-    executionPromise: undefined,
-};
+export type AgentProvider = () => Promise<Agent[]>;
+
+let agentProvider: AgentProvider = getPublicAgents;
+
+export function setAgentProvider(provider: AgentProvider): void {
+    agentProvider = provider;
+}
+
+export function resetAgentProvider(): void {
+    agentProvider = getPublicAgents;
+}
+
+const taskCompletedListeners = new Array<(task: z.infer<typeof outputTaskSchema>) => void>();
+
+export function getTaskCompletedListenersCount(): number {
+    return taskCompletedListeners.length;
+}
+
+export function clearTaskCompletedListeners(): void {
+    taskCompletedListeners.length = 0;
+}
+
+let currentDAG: z.infer<typeof dagSchema>;
+resetCurrentDAG();
 
 const listAvailableAgentsStep = createStep({
     id: 'list-available-agents',
@@ -53,11 +73,38 @@ const listAvailableAgentsStep = createStep({
             userQuery: context.inputData.userQuery,
         });
 
-        const publicAgents = Object.values(await getPublicAgents());
+        const publicAgents = Object.values(await agentProvider());
         const agentsById = publicAgents.map(x => ({ id: x.id || x.name, description: x.getDescription() }));
         return { agents: agentsById };
     }
 });
+
+export function resetCurrentDAG() {
+    currentDAG = {
+        tasks: [],
+        executionPromise: undefined,
+    };
+}
+
+export function getCurrentDAG(): z.infer<typeof dagSchema> {
+    return currentDAG;
+}
+
+export function injectTask(task: z.infer<typeof outputTaskSchema>): void {
+    currentDAG.tasks.push(task as z.infer<typeof dagSchema>["tasks"][0]);
+}
+
+export function simulateTaskCompletion(taskId: string, result: unknown): void {
+    const task = currentDAG.tasks.find(t => t.id === taskId);
+    if (!task) {
+        throw new Error(`Task with ID ${taskId} not found`);
+    }
+    task.result = result;
+    
+    for (const listener of taskCompletedListeners) {
+        listener(task);
+    }
+}
 
 function truncateLog(text: string, maxLength: number): string {
     if (!text)
@@ -70,8 +117,59 @@ function truncateLog(text: string, maxLength: number): string {
     return text.slice(0, maxLength) + '...';
 }
 
+function drawDAGAsASCIIArt(): void {
+    const tasks = currentDAG.tasks;
+    if (tasks.length === 0) {
+        console.log('(empty DAG)');
+        return;
+    }
+
+    const taskIds = new Set(tasks.map(t => t.id));
+    const rootTasks = tasks.filter(t => 
+        t.dependsOn.length === 0 || t.dependsOn.every(dep => !taskIds.has(dep))
+    );
+
+    const childrenMap = new Map<string, string[]>();
+    for (const task of tasks) {
+        for (const parentId of task.dependsOn) {
+            if (taskIds.has(parentId)) {
+                const children = childrenMap.get(parentId) || [];
+                children.push(task.id);
+                childrenMap.set(parentId, children);
+            }
+        }
+    }
+
+    const lines: string[] = [];
+
+    const drawTask = (taskId: string, prefix: string, isLast: boolean) => {
+        const connector = isLast ? '└── ' : '├── ';
+        lines.push(prefix + connector + taskId);
+
+        const children = childrenMap.get(taskId) || [];
+        const childPrefix = prefix + (isLast ? '    ' : '│   ');
+        children.forEach((childId, index) => {
+            drawTask(childId, childPrefix, index === children.length - 1);
+        });
+    };
+
+    rootTasks.forEach((task, index) => {
+        const isLast = index === rootTasks.length - 1;
+        const connector = isLast ? '└── ' : '├── ';
+        lines.push(connector + task.id);
+
+        const children = childrenMap.get(task.id) || [];
+        const childPrefix = isLast ? '    ' : '│   ';
+        children.forEach((childId, childIndex) => {
+            drawTask(childId, childPrefix, childIndex === children.length - 1);
+        });
+    });
+
+    console.log('\n' + lines.join('\n') + '\n');
+}
+
 async function startDagExecution() {
-    const publicAgents = Object.values(await getPublicAgents());
+    const publicAgents = Object.values(await agentProvider());
     const agentsById = keyBy(publicAgents, 'id');
     const tasks = currentDAG.tasks;
 
@@ -107,8 +205,15 @@ async function startDagExecution() {
 
         console.log(`${task.agent}->${task.id} completed: ${truncateLog(output, 100)}`);
 
+        for (const listener of taskCompletedListeners) {
+            listener(task);
+        }
+
         return task;
     };
+
+    console.log('Executing DAG...');
+    drawDAGAsASCIIArt();
 
     while(true) {
         const tasksWithoutPromises = chain(currentDAG.tasks)
@@ -146,15 +251,45 @@ const generateDagStep = createAgentStep({
         model: google('gemini-flash-lite-latest'),
         id: 'dag-agent',
         name: 'DagAgent',
-        instructions: `
-                You will be given a prompt that you need to decompose into a series of tasks (in DAG-like format) to be executed using available agents. 
-                Each task in the DAG should have a unique ID, specify which tool to use, and list any dependencies on other tasks.
-                You must not instruct a agent to do or ask about something something that it does not have the capability to do.
-                If an agent needs something that you have not yet been provided with from any agent, you must include another task in the DAG to obtain that information first from a different agent, and list that task as a dependency via \`dependsOn\`.
-                The prompts must not contain any meta information about the DAG or its tasks themselves, as the agents cannot access that information.
-                If the user is in a rush or states that it's not important to wait for the information to come back, then set \`isAsync\` to true.
-                You will also be given a list of tasks that are already running. Only create new tasks for things that are not already being handled by existing tasks.
-                `,
+        instructions: `You are a task decomposition specialist that converts user queries into Directed Acyclic Graphs (DAGs) of executable tasks.
+
+# Your Role
+Analyze the user's query and decompose it into discrete, executable tasks that can be assigned to available agents. Each task forms a node in a DAG where edges represent data dependencies.
+
+# Task Structure Requirements
+Each task MUST have:
+- \`id\`: A unique, descriptive kebab-case identifier
+- \`agent\`: The exact agent ID from the available agents list (case-sensitive match required)
+- \`prompt\`: A self-contained instruction that provides ALL context the agent needs
+- \`dependsOn\`: Array of task IDs whose outputs are required as input for this task
+
+# Critical Rules
+
+**Agent Capability Matching:**
+- ONLY assign tasks that match an agent's stated capabilities in their description
+- If no agent can handle a sub-task, DO NOT create that task - omit it entirely
+- Never assume capabilities not explicitly mentioned in the agent description
+
+**Dependency Graph Construction:**
+- If Task B needs data from Task A, Task B MUST list Task A's ID in \`dependsOn\`
+- Tasks with no dependencies have empty \`dependsOn: []\` and can run in parallel
+- Avoid circular dependencies - the graph must be acyclic
+
+**Prompt Isolation:**
+- Each prompt must be fully self-contained - agents cannot see the DAG structure
+- Include all necessary context, parameters, and constraints within the prompt itself
+- Reference specific data needs: "Get weather for Aarhus, Denmark" not "Get the weather"
+- Never reference task IDs, other agents, or DAG metadata in prompts
+
+**Incremental Updates:**
+- You will receive a list of already-running tasks - DO NOT recreate them
+- Only add NEW tasks for uncovered aspects of the user's query
+- If the user's request is fully covered by existing tasks, return empty tasks array
+
+# Output Quality
+- Prefer fewer, well-scoped tasks over many granular ones
+- Combine related operations for the same agent when logical
+- Ensure leaf tasks (those with no dependents) directly address user-facing needs`,
     },
     inputSchema: listAvailableAgentsStep.outputSchema,
     outputSchema: outputSchema,
@@ -195,6 +330,7 @@ const mergeDagStep = createStep({
         }
 
         currentDAG.tasks = mergedTasks;
+
         return currentDAG;
     }
 });
@@ -367,7 +503,7 @@ const getNextInstructionsStep = createStep({
 
             const completedUnreportedTasks = tasks.filter(t => t.result !== undefined && !t.reported);
             if(completedUnreportedTasks.length === 0) {
-                const completedTask = await Promise.race(completedUnreportedTasks.map(t => t.executionPromise));
+                const completedTask = await waitForNextCompletedTask();
                 completedUnreportedTasks.push(completedTask);
             }
 
@@ -384,17 +520,32 @@ const getNextInstructionsStep = createStep({
                 result.task.reported = true;
             }
 
+            const isLeaf = resultsToUse.some(x => x.isLeaf);
+
             const areAllTasksCompleted = tasks.every(t => t.result !== undefined);
+            if(areAllTasksCompleted) {
+                //reset DAG for next time
+                setTimeout(() => resetCurrentDAG(), 10_000);
+            }
+
+            const summarizeCompletedTasksInstruction = 'Summarize the new completed task results in a detailed manner.';
+
+            let instructions = '';
+            if(areAllTasksCompleted) {
+                instructions = `All tasks have completed. ${summarizeCompletedTasksInstruction}`;
+            } else {
+                instructions = `More tasks have finished since last time, but not all tasks have completed yet. `;
+                instructions += isLeaf ? `${summarizeCompletedTasksInstruction}` : 'Mention briefly that you have received the information in less than 5 words.';
+                instructions += `, then call getNextInstructionsWorkflow again.`;
+            }
             
             return {
-                instructions: areAllTasksCompleted
-                    ? "All tasks have completed. Summarize the final results in a detailed manner."
-                    : "More tasks have finished since last time, but not all tasks have completed yet. Summarize only the key bits of the preliminary findings very briefly, then call getNextInstructionsWorkflow again.",
+                instructions: instructions,
                 completedTaskResults: allResults.map(x => ({ 
                     id: x.task.id, 
-                    result: x.task.result 
+                    ...(isLeaf ? { result: x.task.result } : {})
                 })),
-                taskIdsInProgress: tasks.filter(t => t.result === undefined).map(t => t.id),
+                taskIdsInProgress: isLeaf ? tasks.filter(t => t.result === undefined).map(t => t.id) : undefined,
             };
         }
 
@@ -402,8 +553,9 @@ const getNextInstructionsStep = createStep({
             waitForNextInstructions(),
             new Promise(resolve => setTimeout(() => resolve({
                 instructions: "Still processing your request. Call getNextInstructionsWorkflow again to wait a bit longer for it to complete."
-            }), 10000))
+            }), 15000))
         ]);
+        console.log("getNextInstructionsWorkflow result:", result);
 
         return result;
     }
@@ -411,6 +563,7 @@ const getNextInstructionsStep = createStep({
 
 export const getNextInstructionsWorkflow = createWorkflow({
     id: "getNextInstructionsWorkflow",
+    description: "Workflow to wait for next instructions based on DAG state",
     inputSchema: z.object({}),
     outputSchema: instructionsOutputSchema,
 })
@@ -419,8 +572,9 @@ export const getNextInstructionsWorkflow = createWorkflow({
 
 export const routePromptWorkflow = createWorkflow({
     id: "routePromptWorkflow",
+    description: "Workflow to route a user prompt to appropriate agents via a DAG of tasks",
     inputSchema: inputSchema,
-    outputSchema: outputSchema,
+    outputSchema: startDagExecutionStep.outputSchema,
     stateSchema: stateSchema
 })
     .then(listAvailableAgentsStep)
@@ -429,3 +583,18 @@ export const routePromptWorkflow = createWorkflow({
     .then(optimizeDagStep)
     .then(startDagExecutionStep)
     .commit();
+
+async function waitForNextCompletedTask() {
+    return new Promise<z.infer<typeof outputTaskSchema>>(resolve => {
+        var listener = (task: z.infer<typeof outputTaskSchema>) => {
+            console.log('Next completed task', task.id);
+            resolve(task);
+
+            const index = taskCompletedListeners.indexOf(listener);
+            if (index !== -1) {
+                taskCompletedListeners.splice(index, 1);
+            }
+        };
+        taskCompletedListeners.push(listener);
+    });
+}

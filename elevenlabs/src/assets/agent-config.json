@@ -5,10 +5,12 @@
       "quality": "high",
       "provider": "scribe_realtime",
       "userInputAudioFormat": "pcm_16000",
-      "keywords": ["Jarvis"]
+      "keywords": [
+        "Jarvis"
+      ]
     },
     "turn": {
-      "turnTimeout": 2,
+      "turnTimeout": -1,
       "silenceEndCallTimeout": 30,
       "softTimeoutConfig": {
         "timeoutSeconds": -1,
@@ -76,27 +78,6 @@
               "systemToolType": "end_call"
             }
           },
-          "transferToAgent": {
-            "type": "system",
-            "name": "transfer_to_agent",
-            "description": "",
-            "responseTimeoutSecs": 20,
-            "disableInterruptions": false,
-            "forcePreToolSpeech": false,
-            "assignments": [],
-            "toolCallSoundBehavior": "auto",
-            "params": {
-              "systemToolType": "transfer_to_agent",
-              "transfers": [
-                {
-                  "agentId": "z4g4WNWujnQwKSvCgJjx",
-                  "condition": "If the user (Mathias) wants to speak to themselves.",
-                  "delayMs": 0,
-                  "enableTransferredAgentFirstMessage": false
-                }
-              ]
-            }
-          },
           "skipTurn": {
             "type": "system",
             "name": "skip_turn",
@@ -111,7 +92,9 @@
             }
           }
         },
-        "mcpServerIds": ["shydsXnbngzjmGMmhPl2"],
+        "mcpServerIds": [
+          "lEHHz7v2aiZKdIwh9axo"
+        ],
         "nativeMcpServerIds": [],
         "knowledgeBase": [],
         "ignoreDefaultPersonality": true,
@@ -142,27 +125,6 @@
           },
           {
             "type": "system",
-            "name": "transfer_to_agent",
-            "description": "",
-            "responseTimeoutSecs": 20,
-            "disableInterruptions": false,
-            "forcePreToolSpeech": false,
-            "assignments": [],
-            "toolCallSoundBehavior": "auto",
-            "params": {
-              "systemToolType": "transfer_to_agent",
-              "transfers": [
-                {
-                  "agentId": "z4g4WNWujnQwKSvCgJjx",
-                  "condition": "If the user (Mathias) wants to speak to themselves.",
-                  "delayMs": 0,
-                  "enableTransferredAgentFirstMessage": false
-                }
-              ]
-            }
-          },
-          {
-            "type": "system",
             "name": "skip_turn",
             "description": "Skip a turn when the user explicitly indicates they need a moment to think or perform an action.\nDo not respond verbally after calling this function; simply wait for the user to speak again.\nUse this function for utterances similar to:\n- \"Give me a second\"\n- \"Let me think\"\n- \"Hold on, let me check\"\n\nDo not call this function if the user is silent without expressing an intention to pause, or if they pose a direct question that requires a response.",
             "responseTimeoutSecs": 20,
@@ -180,7 +142,7 @@
   },
   "metadata": {
     "createdAtUnixSecs": 1742778859,
-    "updatedAtUnixSecs": 1763926628
+    "updatedAtUnixSecs": 1764330385
   },
   "platformSettings": {
     "evaluation": {
@@ -220,7 +182,15 @@
       "textInputEnabled": false,
       "defaultExpanded": false,
       "alwaysExpanded": false,
-      "textContents": {},
+      "textContents": {
+        "initiate_feedback": null,
+        "request_follow_up_feedback": null,
+        "thanks_for_feedback": null,
+        "thanks_for_feedback_details": null,
+        "follow_up_feedback_placeholder": null,
+        "submit": null,
+        "go_back": null
+      },
       "styles": {},
       "languageSelector": false,
       "supportsTextOnly": false,
@@ -258,7 +228,9 @@
     },
     "workspaceOverrides": {
       "webhooks": {
-        "events": ["transcript"],
+        "events": [
+          "transcript"
+        ],
         "sendAudio": false
       }
     },
@@ -353,7 +325,8 @@
         },
         "edgeOrder": []
       }
-    }
+    },
+    "prevent_subagent_loops": false
   },
   "tags": [],
   "version_id": null,
