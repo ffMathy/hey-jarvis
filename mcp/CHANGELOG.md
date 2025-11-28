@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.14.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.13.3...mcp-v0.14.0) (2025-11-28)
+
+
+### Features
+
+* add github_api_token to Home Assistant addon config ([b91aaa7](https://github.com/ffMathy/hey-jarvis/commit/b91aaa7d2e5b5ebdac711063282815a8c8225f06))
+* add github_api_token to Home Assistant addon config ([#330](https://github.com/ffMathy/hey-jarvis/issues/330)) ([8adb6f3](https://github.com/ffMathy/hey-jarvis/commit/8adb6f30e1ea9633da8f2474fb833cacf4e974db))
+* human in the loop ([#313](https://github.com/ffMathy/hey-jarvis/issues/313)) ([c047d6c](https://github.com/ffMathy/hey-jarvis/commit/c047d6cff761256ae38b9a26a8df1563f1b14678))
+* introduce human in the loop ([9f1b714](https://github.com/ffMathy/hey-jarvis/commit/9f1b714a3786be2fc2858eeafeb22d08792339de))
+* jarvis routing agent ([2a17251](https://github.com/ffMathy/hey-jarvis/commit/2a172514f4f43bd7e4a0f146d7f62b1ef28a0112))
+* **mcp:** add agents option to routing agent for testing ([d6a2f38](https://github.com/ffMathy/hey-jarvis/commit/d6a2f38576e40e089fe555a18d694f7d293a4b4f))
+* **mcp:** add async orchestration routing vertical ([#331](https://github.com/ffMathy/hey-jarvis/issues/331)) ([79d5c76](https://github.com/ffMathy/hey-jarvis/commit/79d5c76eea37b74a9fc195006f51d8885ac81c90))
+* **mcp:** add async orchestration routing vertical with executePlan and getPlanResult tools ([8c1c9d8](https://github.com/ffMathy/hey-jarvis/commit/8c1c9d82e3f439221de17e9040928c8cd03f6756))
+
+
+### Bug Fixes
+
+* improve agents workflows ([ea7d4f8](https://github.com/ffMathy/hey-jarvis/commit/ea7d4f871afb85a93ef998becfe3437db8d0361d))
+* improvements to agent handling ([3397a24](https://github.com/ffMathy/hey-jarvis/commit/3397a24ad672dea5ec6e7ee4f66e07cc77497b8c))
+* **mcp:** fix commute tool review time type and skip flaky routing tests ([d4432cc](https://github.com/ffMathy/hey-jarvis/commit/d4432ccda50185cf2c0bb4dfb39f8330ae4f06cd))
+* **mcp:** fix routing tests with generate() and maxSteps, add cloudflared to copilot setup ([a342d95](https://github.com/ffMathy/hey-jarvis/commit/a342d95e9c377f0dcb5708d9171d0422f7a6870c))
+* **mcp:** include mcp/mastra tests in test runner ([242a4f3](https://github.com/ffMathy/hey-jarvis/commit/242a4f3cabe23effdf9de0394eb8af91166873b6))
+* **mcp:** simplify network() call and improve routing agent prompt ([3b17023](https://github.com/ffMathy/hey-jarvis/commit/3b17023ffe653aa923498cc50149770af21518b1))
+* **mcp:** use network() with proper stream consumption for routing agent ([19a1a47](https://github.com/ffMathy/hey-jarvis/commit/19a1a4718360c05f53c6192aa3e432a906811142))
+* much better DAG ([4b3851d](https://github.com/ffMathy/hey-jarvis/commit/4b3851dd41b596b510a27d27d2052aca432075a9))
+
 ## [0.13.3](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.13.2...mcp-v0.13.3) (2025-11-24)
 
 

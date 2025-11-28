@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.14.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v0.13.3...home-assistant-addon-v0.14.0) (2025-11-28)
+
+
+### Features
+
+* add github_api_token to Home Assistant addon config ([b91aaa7](https://github.com/ffMathy/hey-jarvis/commit/b91aaa7d2e5b5ebdac711063282815a8c8225f06))
+* add github_api_token to Home Assistant addon config ([#330](https://github.com/ffMathy/hey-jarvis/issues/330)) ([8adb6f3](https://github.com/ffMathy/hey-jarvis/commit/8adb6f30e1ea9633da8f2474fb833cacf4e974db))
+* human in the loop ([#313](https://github.com/ffMathy/hey-jarvis/issues/313)) ([c047d6c](https://github.com/ffMathy/hey-jarvis/commit/c047d6cff761256ae38b9a26a8df1563f1b14678))
+* **mcp:** add async orchestration routing vertical ([#331](https://github.com/ffMathy/hey-jarvis/issues/331)) ([79d5c76](https://github.com/ffMathy/hey-jarvis/commit/79d5c76eea37b74a9fc195006f51d8885ac81c90))
+
+
+### Bug Fixes
+
+* skip certain tests ([4a3bf75](https://github.com/ffMathy/hey-jarvis/commit/4a3bf75d6e302f1f5cb265cda4e786789c4ba235))
+
 ## [0.13.3](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v0.13.2...home-assistant-addon-v0.13.3) (2025-11-24)
 
 

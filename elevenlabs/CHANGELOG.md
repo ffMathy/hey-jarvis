@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.7.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.6.0...elevenlabs-v0.7.0) (2025-11-28)
+
+
+### Features
+
+* jarvis routing agent ([2a17251](https://github.com/ffMathy/hey-jarvis/commit/2a172514f4f43bd7e4a0f146d7f62b1ef28a0112))
+* **mcp:** add async orchestration routing vertical ([#331](https://github.com/ffMathy/hey-jarvis/issues/331)) ([79d5c76](https://github.com/ffMathy/hey-jarvis/commit/79d5c76eea37b74a9fc195006f51d8885ac81c90))
+* support starting a tunnel from terminal ([7fd17a1](https://github.com/ffMathy/hey-jarvis/commit/7fd17a1083c3c8c46ed9997ec01fc05bd8848cbb))
+
+
+### Bug Fixes
+
+* **elevenlabs:** improve cloudflared tunnel reliability and diagnostics ([81f45e8](https://github.com/ffMathy/hey-jarvis/commit/81f45e85cb291339bb173fdd646f85506999746e))
+* switch to new MCP setup and make windows versions of scripts ([740b855](https://github.com/ffMathy/hey-jarvis/commit/740b8554447f016dbda32296391ee6092fe369dd))
+* various elevenlabs and home assistant firmware fixes ([#324](https://github.com/ffMathy/hey-jarvis/issues/324)) ([c197be0](https://github.com/ffMathy/hey-jarvis/commit/c197be0a3de502dfa5042288dc9a71a3547ba5a9))
+
 ## [0.6.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.5.3...elevenlabs-v0.6.0) (2025-11-24)
 
 
