@@ -2037,6 +2037,41 @@ const mcpExternalPort = 4112;
 - **Check maintenance**: Verify active maintenance, download statistics, and TypeScript support
 - **Use official libraries**: Prefer packages by recognized maintainers (e.g., Sindre Sorhus)
 - **Avoid platform-specific code**: Don't write shell commands (lsof, kill, grep) when cross-platform libraries exist
+- **Use lodash-es for utility functions**: This project uses `lodash-es` for common utility functions like array/object manipulation, string handling, and collection operations
+
+**Example - Using lodash-es:**
+
+✅ **GOOD - Use lodash-es for cleaner code:**
+```typescript
+import { find, uniqueId, truncate, chain, sumBy, groupBy } from 'lodash-es';
+
+// Generate unique IDs
+const taskId = uniqueId('task-');  // Returns 'task-1', 'task-2', etc.
+
+// Truncate long strings
+const description = truncate(longText, { length: 100 });
+
+// Find items in collections
+const task = find(tasks, task => task.status === 'running');
+
+// Chain operations
+const result = chain(items)
+  .filter(item => item.active)
+  .sortBy('priority')
+  .take(5)
+  .value();
+```
+
+❌ **BAD - Custom implementations:**
+```typescript
+// ❌ Don't write custom ID generators
+function generateId(prefix: string): string {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+}
+
+// ❌ Don't write custom truncate functions
+const desc = `${text.substring(0, 100)}${text.length > 100 ? '...' : ''}`;
+```
 
 **Example - Port-Based Process Killing:**
 
@@ -2083,6 +2118,7 @@ export async function killProcessOnPort(port: number): Promise<void> {
 - ❌ Custom date/time handling → Use `date-fns`, `dayjs`
 - ❌ Custom path manipulation → Use Node.js built-in `path` module
 - ❌ Custom validation → Use `zod`, `joi`, `yup`
+- ❌ Custom array/object utilities → Use `lodash-es`
 
 #### 🛡️ **TypeScript Type Safety**
 **CRITICAL: Never use `any` type** - it defeats TypeScript's purpose:

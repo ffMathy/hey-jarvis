@@ -8,10 +8,9 @@ const scheduledWeatherCheck = createAgentStep({
   id: 'scheduled-weather-check',
   description: 'Checks weather for Aarhus every hour',
   agentConfig: {
+    id: 'weather',
     name: 'Weather',
     instructions: `You are a weather agent which can provide weather insights via tools (current weather information and 5-day future prognosises for certain locations).
-
-Never ask questions. Always make best-guess assumptions.
 
 If no location is given, assume the city Aarhus in Denmark, where Mathias and Julie lives.
 

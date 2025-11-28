@@ -53,7 +53,7 @@
     "test": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "./.scripts/run-with-env.sh mcp/op.env bun test mcp/tests",
+        "command": "./.scripts/run-with-env.sh mcp/op.env bun test mcp/tests mcp/mastra",
         "cwd": "."
       },
       "outputs": ["{workspaceRoot}/coverage/{projectRoot}"]

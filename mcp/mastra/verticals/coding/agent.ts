@@ -18,6 +18,7 @@ import { implementFeatureWorkflow } from './workflows.js';
  */
 export async function getRequirementsInterviewerAgent(): Promise<Agent> {
   return createAgent({
+    id: 'requirementsInterviewer',
     name: 'RequirementsInterviewer',
     instructions: `You are an expert requirements analyst conducting an interview to gather complete, unambiguous requirements.
 
@@ -107,6 +108,7 @@ Gather complete, unambiguous requirements through interactive questioning.
 
 export async function getCodingAgent(): Promise<Agent> {
   return createAgent({
+    id: 'coding',
     name: 'Coding',
     instructions: `You are a GitHub repository management agent with two primary modes of operation:
 

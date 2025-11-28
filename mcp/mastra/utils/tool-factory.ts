@@ -1,4 +1,5 @@
 import { createTool as mastraCreateTool } from '@mastra/core/tools';
+import type { InferZodLikeSchema, ZodLikeSchema } from 'node_modules/@mastra/core/dist/types/zod-compat';
 import type { z } from 'zod';
 
 /**
@@ -32,20 +33,4 @@ import type { z } from 'zod';
  * });
  * ```
  */
-export function createTool<TInputSchema extends z.ZodSchema, TOutputSchema extends z.ZodSchema>(config: {
-  id: string;
-  description: string;
-  inputSchema: TInputSchema;
-  outputSchema: TOutputSchema;
-  execute: (inputData: z.infer<TInputSchema>, context?: any) => Promise<z.infer<TOutputSchema>>;
-}) {
-  // For now, this is a direct proxy to the Mastra createTool function
-  // Future enhancements could include:
-  // - Automatic error handling and retry logic
-  // - Logging and observability
-  // - Input/output validation
-  // - Rate limiting
-  // - Caching layer
-
-  return mastraCreateTool(config);
-}
+export const createTool = mastraCreateTool;

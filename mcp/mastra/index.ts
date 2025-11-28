@@ -1,19 +1,21 @@
 import { Mastra } from '@mastra/core';
 import { PinoLogger } from '@mastra/loggers';
 import { Observability } from '@mastra/observability';
+import { keyBy } from 'lodash-es';
 import { getSqlStorageProvider } from './storage/index.js';
 import {
-  getPublicAgents,
   checkForFormRepliesWorkflow,
   checkForNewEmails,
   generateMealPlanWorkflow,
+  getPublicAgents,
   humanInTheLoopDemoWorkflow,
-  sendEmailAndAwaitResponseWorkflow,
   implementFeatureWorkflow,
+  sendEmailAndAwaitResponseWorkflow,
   stateChangeNotificationWorkflow,
   weatherMonitoringWorkflow,
   weeklyMealPlanningWorkflow,
 } from './verticals/index.js';
+import { getCurrentDagWorkflow, getNextInstructionsWorkflow, routePromptWorkflow } from './verticals/routing/workflows.js';
 
 async function createMastra() {
   // Set up the Google AI SDK environment variable
@@ -25,11 +27,9 @@ async function createMastra() {
   const publicAgents = await getPublicAgents();
 
   // Build agents object dynamically using agent IDs
-  const agentsByName = publicAgents.reduce((acc, agent) => {
-    const agentId = agent.id;
-    acc[agentId] = agent;
-    return acc;
-  }, {} as Record<string, typeof publicAgents[0]>);
+  const agentsByName = {
+    ...keyBy(publicAgents, 'id'),
+  };
 
   return new Mastra({
     storage: sqlStorageProvider,
@@ -48,6 +48,9 @@ async function createMastra() {
       sendEmailAndAwaitResponseWorkflow,
       checkForFormRepliesWorkflow,
       checkForNewEmails,
+      routePromptWorkflow,
+      getCurrentDagWorkflow,
+      getNextInstructionsWorkflow
     },
     agents: agentsByName,
   });

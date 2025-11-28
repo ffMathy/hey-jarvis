@@ -1,36 +1,35 @@
 #!/usr/bin/env node
 
 import type { Agent } from '@mastra/core/agent';
-import { createTool } from '@mastra/core/tools';
 import { MCPServer } from '@mastra/mcp';
 import express from 'express';
 import { expressjwt } from 'express-jwt';
 import { z } from 'zod';
 import { initializeScheduler } from './scheduler.js';
-import { getPublicAgents } from './verticals/index.js';
+import { getNextInstructionsWorkflow, routePromptWorkflow } from './verticals/routing/workflows.js';
+import type { Workflow } from '@mastra/core/workflows';
+import { createTool } from './utils/tool-factory.js';
 
-/**
- * Creates a simplified tool that wraps an agent and returns clean text responses
- * without verbose error metadata
- */
-function createSimplifiedAgentTool(agent: Agent) {
+function createSimplifiedWorkflowTool(workflow: Workflow) {
   return createTool({
-    id: `ask_${agent.name}`,
-    description: agent.getDescription(),
-    inputSchema: z.object({
-      message: z.string().describe('The question or request to send to the agent'),
-    }),
-    outputSchema: z.object({
-      response: z.string().describe('The agent response text'),
-    }),
-    execute: async (input) => {
-      try {
-        const result = await agent.generate(input.message);
-        return { response: result.text || 'No response generated' };
-      } catch (error) {
-        const err = error as Error & { details?: { message?: string } };
-        return { response: err.message || err.details?.message || 'An error occurred' };
+    id: workflow.name,
+    description: workflow.description,
+    inputSchema: workflow.inputSchema,
+    outputSchema: workflow.outputSchema,
+    execute: async (context) => {
+      console.log(`Executing workflow tool: ${workflow.id ?? workflow.name}`);
+      
+      const run = await workflow.createRun();
+      const result = await run.start({
+        inputData: context
+      });
+      if (result.status !== "success") {
+        throw new Error(
+          `Workflow ${workflow.id ?? workflow.name} failed with status ${result.status}`
+        );
       }
+
+      return result.result;
     },
   });
 }
@@ -45,20 +44,14 @@ export async function startMcpServer() {
     );
   }
 
-  const agents = await getPublicAgents();
-
-  //dynamically construct tools from agents
-  const tools = {};
-  for(const agent of agents) {
-    const tool = createSimplifiedAgentTool(agent);
-    tools[tool.id] = tool;
-  }
-
   const mcpServer = new MCPServer({
     name: 'J.A.R.V.I.S. Assistant',
     version: '1.0.0',
     agents: {},
-    tools,
+    tools: {
+      routePromptWorkflow: createSimplifiedWorkflowTool(routePromptWorkflow),
+      getNextInstructionsWorkflow: createSimplifiedWorkflowTool(getNextInstructionsWorkflow),
+    }
   });
 
   console.log('Starting J.A.R.V.I.S. MCP Server...');

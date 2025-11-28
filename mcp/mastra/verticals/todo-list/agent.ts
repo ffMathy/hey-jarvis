@@ -4,10 +4,9 @@ import { todoListTools } from './tools.js';
 
 export async function getTodoListAgent(): Promise<Agent> {
   return createAgent({
-    name: 'Todo List',
+    id: 'todoList',
+    name: 'TodoList',
     instructions: `You are a task management agent that can help users manage their Google Tasks to-do lists.
-
-Never ask questions. Always make best-guess assumptions.
 
 Your capabilities include:
 1. Creating new tasks with title, notes, and due dates

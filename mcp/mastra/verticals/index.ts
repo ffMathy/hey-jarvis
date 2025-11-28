@@ -7,6 +7,7 @@ import { getInternetOfThingsAgent } from './internet-of-things/agent.js';
 import { getShoppingListAgent } from './shopping/agents.js';
 import { getTodoListAgent } from './todo-list/agent.js';
 import { getWeatherAgent } from './weather/agent.js';
+import { getWebResearchAgent } from './web-research/agent.js';
 
 // Main verticals exports
 export * from './calendar/index.js';
@@ -35,5 +36,6 @@ export async function getPublicAgents() {
     getTodoListAgent(),
     getInternetOfThingsAgent(),
     getCommuteAgent(),
+    getWebResearchAgent(),
   ]);
 }

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { createMemory } from '../../memory/index.js';
 import { createStep, createWorkflow } from '../../utils/workflow-factory.js';
+import { getStateChangeReactorAgent } from './agent.js';
 
 // State change notification workflow
 // Receives state changes, saves to memory, and delegates to State Change Reactor agent for analysis
@@ -93,10 +94,7 @@ export const stateChangeNotificationWorkflow = createWorkflow({
         }
 
         // Get the State Change Reactor agent
-        const reactorAgent = mastra.getAgent('stateChangeReactor');
-        if (!reactorAgent) {
-          throw new Error('State Change Reactor agent not found');
-        }
+        const reactorAgent = await getStateChangeReactorAgent();
 
         // Construct delegation prompt with state change context
         const delegationPrompt = `A state change has been detected and saved to memory:

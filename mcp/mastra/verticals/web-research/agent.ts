@@ -4,6 +4,7 @@ import { webResearchTools } from './tools.js';
 
 export async function getWebResearchAgent(): Promise<Agent> {
   return createAgent({
+    id: 'webResearch',
     name: 'WebResearch',
     instructions: `You are a research agent that can search for things on the web, and fetch their HTML content.
 

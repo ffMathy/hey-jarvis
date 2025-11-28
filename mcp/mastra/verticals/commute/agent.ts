@@ -4,10 +4,9 @@ import { commuteTools } from './tools.js';
 
 export async function getCommuteAgent(): Promise<Agent> {
   return createAgent({
+    id: 'commute',
     name: 'Commute',
     instructions: `You are a commute and travel planning agent that helps users with navigation, route planning, and finding places along routes or near locations.
-
-Never ask questions. Always make best-guess assumptions.
 
 If no locations are specified, assume the user is in Aarhus, Denmark.
 

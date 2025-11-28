@@ -38,3 +38,9 @@ jobs:
         run: |
           bun install -g nx
           echo "$(bun global bin)" >> $GITHUB_PATH
+
+      - name: Install cloudflared
+        run: |
+          curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+          sudo dpkg -i cloudflared.deb
+          cloudflared --version

@@ -389,6 +389,22 @@ Apply YAGNI principle to addon development:
 
 **Example**: Docker build scripts simply build and push multi-arch images. No PUSH flags, no local-vs-production modes, no optional behaviors - just do the one thing that's actually needed.
 
+#### 🔧 **Use lodash-es for Utilities**
+This project uses `lodash-es` for common utility functions. Always prefer lodash-es over custom implementations:
+
+```typescript
+import { find, uniqueId, truncate, chain, groupBy } from 'lodash-es';
+
+// Generate unique IDs
+const id = uniqueId('prefix-');
+
+// Find items in collections
+const item = find(items, item => item.active);
+
+// Truncate long strings
+const short = truncate(longText, { length: 100 });
+```
+
 ### File Creation Policy
 **CRITICAL**: When working on this project:
 

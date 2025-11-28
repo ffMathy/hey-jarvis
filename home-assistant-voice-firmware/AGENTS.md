@@ -100,6 +100,19 @@ Apply YAGNI principle to firmware and embedded systems development:
 - **Feature Flags**: Avoid configuration options for features that aren't implemented yet
 - **Libraries**: Don't include libraries until they solve a specific problem
 
+#### 🔧 **Use lodash-es for Utilities (TypeScript code)**
+For any TypeScript/JavaScript code in this project, use `lodash-es` for common utility functions:
+
+```typescript
+import { find, uniqueId, truncate, chain, groupBy } from 'lodash-es';
+
+// Generate unique IDs
+const id = uniqueId('prefix-');
+
+// Find items in collections
+const item = find(items, item => item.active);
+```
+
 ## Development
 The firmware is built using C++17 and follows NX monorepo conventions. All source code is located in the `src/` directory. The build system uses g++ for compilation.
 

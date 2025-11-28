@@ -18,6 +18,7 @@ export async function createAgent(
     model: google('gemini-flash-latest'),
     // Use default scorers for comprehensive evaluation
     scorers: getDefaultScorers(),
+    instructions: `${config.instructions}\n\n# Additional context and guidelines\nNever ask questions. Always make best-guess assumptions.\nThe time is currently: \`${new Date().toString()}\`.`,
     inputProcessors: [],
     outputProcessors: [
       // Add error reporting processor to all agents by default

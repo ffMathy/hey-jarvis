@@ -6,11 +6,10 @@ import { shoppingListWorkflow } from './workflows.js';
 // Main shopping list agent for managing Bilka shopping cart
 export async function getShoppingListAgent(): Promise<Agent> {
   return createAgent({
+    id: 'shoppingList',
     name: 'ShoppingList',
     instructions: `# Role & Scope
 You are a shopping-list agent. For every user request, you will either add or remove items on the list.
-
-No follow-up questions.
 
 Make best-guess assumptions when information is missing.
 
@@ -92,6 +91,7 @@ The products might be written in Danish.
 // Specialized agent for summarizing shopping list changes
 export async function getShoppingListSummaryAgent(): Promise<Agent> {
   return createAgent({
+    id: 'shoppingListSummary',
     name: 'ShoppingListSummary',
     instructions: `You are an evaluator agent that takes in a query from a user that has been processed by other agents, along with a "before" and "after" version of shopping basket contents.
 
