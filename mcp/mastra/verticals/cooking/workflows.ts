@@ -69,6 +69,7 @@ export const generateMealPlanWorkflow = createWorkflow({
       description: 'Uses meal plan agents to select recipes and generate complete meal plan',
       stateSchema: generateMealPlanStateSchema,
       agentConfig: {
+        id: 'mealPlanGenerator',
         name: 'MealPlanGenerator',
         instructions: `You are a meal scheduling specialist.
       
@@ -158,6 +159,7 @@ const generateMealPlanEmail = createAgentStep({
   description: 'Generates HTML email using the specialized email formatter agent',
   stateSchema: generateMealPlanStateSchema,
   agentConfig: {
+    id: 'emailFormatter',
     name: 'EmailFormatter',
     instructions: `You are an HTML email formatting specialist for meal plans.
 

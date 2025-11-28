@@ -8,7 +8,6 @@ import {
   checkForNewEmails,
   generateMealPlanWorkflow,
   getPublicAgents,
-  getRoutingAgent,
   humanInTheLoopDemoWorkflow,
   implementFeatureWorkflow,
   sendEmailAndAwaitResponseWorkflow,
@@ -16,6 +15,7 @@ import {
   weatherMonitoringWorkflow,
   weeklyMealPlanningWorkflow,
 } from './verticals/index.js';
+import { getCurrentDagWorkflow, routePromptWorkflow } from './verticals/routing/workflows.js';
 
 async function createMastra() {
   // Set up the Google AI SDK environment variable
@@ -26,13 +26,9 @@ async function createMastra() {
   // Get public agents (for MCP server)
   const publicAgents = await getPublicAgents();
 
-  // Get the routing agent for async orchestration
-  const routingAgent = await getRoutingAgent();
-
   // Build agents object dynamically using agent IDs
   const agentsByName = {
     ...keyBy(publicAgents, 'id'),
-    [routingAgent.id]: routingAgent,
   };
 
   return new Mastra({
@@ -52,6 +48,8 @@ async function createMastra() {
       sendEmailAndAwaitResponseWorkflow,
       checkForFormRepliesWorkflow,
       checkForNewEmails,
+      routePromptWorkflow,
+      getCurrentDagWorkflow
     },
     agents: agentsByName,
   });

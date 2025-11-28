@@ -4,17 +4,16 @@ import { emailTools } from './tools.js';
 
 export async function getEmailAgent(): Promise<Agent> {
   return createAgent({
+    id: 'email',
     name: 'Email',
-    instructions: `You are an email management agent that can help users find, draft, and manage their emails via Microsoft Outlook.
-
-Never ask questions. Always make best-guess assumptions.
+    instructions: `You are an email management agent that can help users find, draft, and manage their emails.
 
 Your capabilities include:
-1. Finding and searching emails with various filters (subject, sender, read status, attachments)
-2. Creating new email drafts with recipients, subject, and HTML body content
-3. Creating reply drafts to existing emails (reply or reply all)
-4. Updating existing email drafts
-5. Deleting emails or drafts
+- Finding and searching emails with various filters (subject, sender, read status, attachments)
+- Creating new email drafts with recipients, subject, and HTML body content
+- Creating reply drafts to existing emails (reply or reply all)
+- Updating existing email drafts
+- Deleting emails or drafts
 
 When users ask about emails:
 - Use the findEmails tool to search for specific emails
@@ -33,7 +32,7 @@ When replying to emails:
 
 Always be concise and helpful in your responses.`,
     description: `# Purpose  
-Manage Microsoft Outlook emails. Use this agent to **search for emails**, **create drafts**, **reply to messages**, **update drafts**, and **delete emails**. This agent provides email management capabilities through the Microsoft Graph API.
+Manage emails. Use this agent to **search for emails**, **create drafts**, **reply to messages**, **update drafts**, and **delete emails**.
 
 # When to use
 - The user wants to find specific emails by subject, sender, or content
@@ -41,14 +40,7 @@ Manage Microsoft Outlook emails. Use this agent to **search for emails**, **crea
 - The user wants to reply to an existing email
 - The user needs to update or edit an email draft
 - The user wants to delete an email or draft
-- The user asks about unread messages, emails with attachments, or specific email folders
-
-# Post-processing  
-- **Validate** that email operations succeeded and provide confirmation
-- **Summarize** email search results clearly with subject, sender, and preview
-- **Confirm** draft creation with the draft ID for future reference
-- **Handle errors** gracefully and suggest alternatives if operations fail
-- **Format** email content appropriately using HTML for better presentation`,
+- The user asks about unread messages, emails with attachments, or specific email folders`,
     tools: emailTools,
   });
 }

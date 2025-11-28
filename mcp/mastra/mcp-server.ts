@@ -7,7 +7,7 @@ import express from 'express';
 import { expressjwt } from 'express-jwt';
 import { z } from 'zod';
 import { initializeScheduler } from './scheduler.js';
-import { getPublicAgents, routingTools } from './verticals/index.js';
+import { getPublicAgents, routePromptWorkflow } from './verticals/index.js';
 
 /**
  * Creates a simplified tool that wraps an agent and returns clean text responses
@@ -45,25 +45,14 @@ export async function startMcpServer() {
     );
   }
 
-  const agents = await getPublicAgents();
-
-  //dynamically construct tools from agents
-  const tools = {};
-  for (const agent of agents) {
-    const tool = createSimplifiedAgentTool(agent);
-    tools[tool.id] = tool;
-  }
-
-  // Add routing tools for async orchestration
-  for (const [toolId, tool] of Object.entries(routingTools)) {
-    tools[toolId] = tool;
-  }
-
   const mcpServer = new MCPServer({
     name: 'J.A.R.V.I.S. Assistant',
     version: '1.0.0',
     agents: {},
-    tools,
+    workflows: {
+      routePromptWorkflow
+    },
+    tools: {}
   });
 
   console.log('Starting J.A.R.V.I.S. MCP Server...');

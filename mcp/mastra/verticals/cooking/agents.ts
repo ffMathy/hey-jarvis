@@ -6,6 +6,7 @@ import { generateMealPlanWorkflow } from './workflows.js';
 // Main cooking agent with access to meal planning workflow and recipe search
 export async function getCookingAgent(): Promise<Agent> {
   return createAgent({
+    id: 'cooking',
     name: 'Cooking',
     instructions: `You are a comprehensive cooking and meal planning assistant specializing in Danish recipes from Valdemarsro.
 

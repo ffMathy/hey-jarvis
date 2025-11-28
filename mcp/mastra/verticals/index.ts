@@ -17,7 +17,6 @@ export * from './email/index.js';
 export * from './human-in-the-loop/index.js';
 export * from './internet-of-things/index.js';
 export * from './notification/index.js';
-export * from './routing/index.js';
 export * from './shopping/index.js';
 export * from './synapse/index.js';
 export * from './todo-list/index.js';

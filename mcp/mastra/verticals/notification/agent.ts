@@ -8,6 +8,7 @@ export async function getNotificationAgent() {
   }
 
   return (notificationAgent = await createAgent({
+    id: 'notification',
     name: 'Notification',
     instructions: `You are a reactive notification assistant for the Hey Jarvis smart home system.
 
@@ -50,6 +51,7 @@ Be thoughtful and judicious in your notification decisions.`,
  */
 export async function getStateChangeReactorAgent() {
   return createAgent({
+    id: 'stateChangeReactor',
     name: 'StateChangeReactor',
     instructions: `You are the State Change Reactor - a coordination agent for the Hey Jarvis smart home system.
 

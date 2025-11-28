@@ -1,13 +1,15 @@
 import type { Agent, AgentConfig } from '@mastra/core/agent';
 import {
   type DefaultEngineType,
+  type ExecuteFunction,
+  type ExecuteFunctionParams,
   createStep as mastraCreateStep,
   createWorkflow as mastraCreateWorkflow,
   type Step,
   type StepParams,
   type WorkflowConfig,
 } from '@mastra/core/workflows';
-import type { z } from 'zod';
+import type { TypeOf, z } from 'zod';
 import { createAgent } from './agent-factory.js';
 
 /**
@@ -76,7 +78,6 @@ export function createWorkflow<
   // - Performance monitoring
   // - Workflow versioning
   // - Automatic step validation
-
   return mastraCreateWorkflow(config);
 }
 
@@ -187,24 +188,15 @@ export function createAgentStep<
   TStateSchema extends z.ZodObject<any> = z.ZodObject<any>,
   TInputSchema extends z.ZodSchema = z.ZodSchema,
   TOutputSchema extends z.ZodSchema = z.ZodSchema,
->(config: {
-  id: TStepId;
-  description: string;
+  TResumeSchema extends z.ZodSchema = z.ZodSchema,
+  TSuspendSchema extends z.ZodSchema = z.ZodSchema,
+>(config: Pick<StepParams<TStepId, TStateSchema, TInputSchema, TOutputSchema, TResumeSchema, TSuspendSchema>, 'id' | 'description' | 'stateSchema' | 'inputSchema' | 'outputSchema' | 'resumeSchema' | 'suspendSchema'> & {
   agentConfig: Omit<AgentConfig, 'model' | 'memory' | 'scorers'> & {
     model?: AgentConfig['model'];
     memory?: AgentConfig['memory'];
     scorers?: AgentConfig['scorers'];
   };
-  stateSchema?: TStateSchema;
-  inputSchema: TInputSchema;
-  outputSchema: TOutputSchema;
-  prompt: (params: {
-    context: z.infer<TInputSchema>;
-    workflow?: {
-      state: z.infer<TStateSchema>;
-      setState: (state: z.infer<TStateSchema>) => void;
-    };
-  }) => string;
+  prompt: (params: ExecuteFunctionParams<TypeOf<TStateSchema>, TypeOf<TInputSchema>, TResumeSchema, TSuspendSchema, DefaultEngineType>) => string | Promise<string>;
 }) {
   return createStep<TStepId, TStateSchema, TInputSchema, TOutputSchema>({
     id: config.id,
@@ -214,7 +206,10 @@ export function createAgentStep<
     execute: async (params): Promise<TOutputSchema> => {
       // Create agent lazily during execution to avoid top-level awaits
       const agent = await createAgent(config.agentConfig);
-      const prompt = config.prompt({ context: params });
+      const prompt = (await Promise.resolve(config.prompt(params))).split('\n')
+        .map(line => line.trim())
+        .join('\n')
+        .trim();
 
       const response = await agent.stream(
         [

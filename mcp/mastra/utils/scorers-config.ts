@@ -40,27 +40,27 @@ function getScorerModel() {
 function createDefaultScorers() {
   const model = getScorerModel();
   return {
-    answerRelevancy: {
-      scorer: createAnswerRelevancyScorer({ model }),
-      sampling: { type: 'ratio' as const, rate: DEFAULT_SAMPLING_RATE },
-    },
-    hallucination: {
-      scorer: createHallucinationScorer({ model }),
-      sampling: { type: 'ratio' as const, rate: DEFAULT_SAMPLING_RATE },
-    },
-    completeness: {
-      scorer: createCompletenessScorer(),
-      sampling: { type: 'ratio' as const, rate: DEFAULT_SAMPLING_RATE },
-    },
-    promptAlignment: {
-      scorer: createPromptAlignmentScorerLLM({ model }),
-      sampling: { type: 'ratio' as const, rate: DEFAULT_SAMPLING_RATE },
-    },
-    bias: {
-      scorer: createBiasScorer({ model }),
-      sampling: { type: 'ratio' as const, rate: DEFAULT_SAMPLING_RATE },
-    },
-  };
+    // answerRelevancy: {
+    //   scorer: createAnswerRelevancyScorer({ model }),
+    //   sampling: { type: 'ratio' as const, rate: DEFAULT_SAMPLING_RATE },
+    // },
+    // hallucination: {
+    //   scorer: createHallucinationScorer({ model }),
+    //   sampling: { type: 'ratio' as const, rate: DEFAULT_SAMPLING_RATE },
+    // },
+    // completeness: {
+    //   scorer: createCompletenessScorer(),
+    //   sampling: { type: 'ratio' as const, rate: DEFAULT_SAMPLING_RATE },
+    // },
+    // promptAlignment: {
+    //   scorer: createPromptAlignmentScorerLLM({ model }),
+    //   sampling: { type: 'ratio' as const, rate: DEFAULT_SAMPLING_RATE },
+    // },
+    // bias: {
+    //   scorer: createBiasScorer({ model }),
+    //   sampling: { type: 'ratio' as const, rate: DEFAULT_SAMPLING_RATE },
+    // },
+  } as const;
 }
 
 /**
