@@ -416,10 +416,19 @@ const mealPlanFeedbackIterationWorkflow = createWorkflow({
     preferences: z.string().optional(),
   }),
 })
-  .then(generateMealPlanWorkflow as any) // Generate meal plan (with preferences if any)
+  // Map input to generateMealPlanWorkflow input schema
+  .map(async ({ inputData }) => ({
+    preferences: inputData.preferences,
+  }))
+  .then(generateMealPlanWorkflow) // Generate meal plan (with preferences if any)
   .then(generateMealPlanEmail) // Format as HTML email
   .then(prepareMealPlanFeedbackQuestion) // Prepare feedback question
-  .then(sendEmailAndAwaitResponseWorkflow as any) // Send email and wait for human response
+  // Map to sendEmailAndAwaitResponseWorkflow input schema
+  .map(async ({ inputData }) => ({
+    recipientEmail: inputData.recipientEmail,
+    question: inputData.question,
+  }))
+  .then(sendEmailAndAwaitResponseWorkflow) // Send email and wait for human response
   .then(extractMealPlanFeedbackResponse) // Analyze the response
   .then(processMealPlanFeedback) // Update state and prepare output
   .then(prepareForRegeneration) // Prepare for potential next iteration
@@ -461,9 +470,13 @@ export const weeklyMealPlanningWorkflow = createWorkflow({
     }),
   )
   // Keep iterating until approved
-  .dowhile(mealPlanFeedbackIterationWorkflow as any, async ({ inputData }) => !inputData.isApproved)
+  .dowhile(mealPlanFeedbackIterationWorkflow, async ({ inputData }) => !inputData.isApproved)
   // Once approved, add ingredients to shopping list
   .then(prepareShoppingListPrompt)
-  .then(shoppingListWorkflow as any)
+  // Map to shoppingListWorkflow input schema
+  .map(async ({ inputData }) => ({
+    prompt: inputData.prompt,
+  }))
+  .then(shoppingListWorkflow)
   .then(formatFinalOutput)
   .commit();
