@@ -1,13 +1,21 @@
 {
-  "servers": {
+  "mcpServers": {
     "mastra": {
       "command": "npx",
       "args": ["-y", "@mastra/mcp-docs-server"],
-      "type": "stdio"
+      "type": "stdio",
+      "tools": ["*"]
     },
-    "github/github-mcp-server": {
+    "github-mcp-server": {
+      "tools": ["*"],
       "type": "http",
       "url": "https://api.githubcopilot.com/mcp/"
+    },
+    "nx-mcp": {
+      "type": "stdio",
+      "tools": ["*"],
+      "command": "npx",
+      "args": ["nx-mcp@latest"]
     }
   }
 }
