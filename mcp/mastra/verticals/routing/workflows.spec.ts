@@ -1,13 +1,10 @@
 import type { Agent } from '@mastra/core/agent';
 import {
   type AgentProvider,
-  clearTaskCompletedListeners,
   getCurrentDAG,
   getNextInstructionsWorkflow,
   getTaskCompletedListenersCount,
   injectTask,
-  resetAgentProvider,
-  resetCurrentDAG,
   routePromptWorkflow,
   setAgentProvider,
   setWorkflowState,
