@@ -10,6 +10,7 @@ import {
   resetCurrentDAG,
   routePromptWorkflow,
   setAgentProvider,
+  setWorkflowState,
   simulateTaskCompletion,
 } from './workflows.js';
 
@@ -33,15 +34,13 @@ function assertWorkflowSuccess<T>(workflowResult: { status: string; result?: T }
 
 describe('Routing Workflows', () => {
   beforeEach(() => {
-    resetCurrentDAG();
-    clearTaskCompletedListeners();
-    resetAgentProvider();
+    // Reset all workflow state in one call
+    setWorkflowState();
   });
 
   afterEach(() => {
-    resetCurrentDAG();
-    clearTaskCompletedListeners();
-    resetAgentProvider();
+    // Reset all workflow state in one call
+    setWorkflowState();
   });
 
   describe('getNextInstructionsWorkflow', () => {
@@ -236,8 +235,12 @@ describe('Routing Workflows', () => {
 
         await instructionsPromise;
 
+        // DAG reset happens after a 10 second delay via setTimeout
+        // Wait for the reset to occur
+        await new Promise((resolve) => setTimeout(resolve, 10100));
+
         expect(getCurrentDAG().tasks).toHaveLength(0);
-      });
+      }, 15000);
 
       it('should not reset DAG when tasks are still pending', async () => {
         const mockAgent = createMockAgent('weather', 'Provides weather information');
