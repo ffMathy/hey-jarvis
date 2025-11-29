@@ -379,7 +379,7 @@ const extractFinalConfirmationResponse = createStep({
   inputSchema: z.object({
     senderEmail: z.string(),
     response: z.record(z.any()),
-    vendorName: z.string(), // From upstream context (prepareFinalConfirmationQuestion)
+    vendorName: z.string(), // Passed through from prepareFinalConfirmationQuestion step output
   }),
   outputSchema: z.object({
     confirmed: z.boolean(),
