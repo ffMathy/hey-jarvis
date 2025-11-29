@@ -1,9 +1,9 @@
 {
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
-    "outDir": "dist-spec",
+    "outDir": "../dist/mcp-spec",
     "rootDir": ".",
-    "tsBuildInfoFile": "dist-spec/tsconfig.spec.tsbuildinfo",
+    "tsBuildInfoFile": "../dist/mcp-spec/tsconfig.spec.tsbuildinfo",
     "types": ["bun-types", "node", "jest"]
   },
   "include": ["tests/**/*"],

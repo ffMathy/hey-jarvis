@@ -259,14 +259,14 @@ Change request indicators:
     requestedChanges: z.string().optional(),
     mealplan: mealPlanSchema,
   }),
-  prompt: ({ context, workflow }) => {
-    const feedbackHistory = workflow?.state?.feedbackHistory || [];
-    const mealplan = workflow?.state?.mealplan || [];
+  prompt: ({ inputData, state }) => {
+    const feedbackHistory = state?.feedbackHistory || [];
+    const mealplan = state?.mealplan || [];
     const historyContext = feedbackHistory.length > 0 ? `\n\nPrevious feedback:\n${feedbackHistory.join('\n')}` : '';
 
     return `Analyze this meal plan feedback response:
 
-Response data: ${JSON.stringify(context.response)}
+Response data: ${JSON.stringify(inputData.response)}
 
 Current meal plan: ${JSON.stringify(mealplan, null, 2)}
 ${historyContext}

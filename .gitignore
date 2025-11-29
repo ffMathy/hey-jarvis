@@ -168,3 +168,6 @@ playwright-report/
 test-results/
 project-graph.json
 cloudflared.deb
+
+# TypeScript build output for specs
+dist-spec

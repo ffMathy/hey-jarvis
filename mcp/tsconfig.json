@@ -1,9 +1,9 @@
 {
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
-    "outDir": "dist",
+    "outDir": "../dist/mcp",
     "rootDir": ".",
-    "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo",
+    "tsBuildInfoFile": "../dist/mcp/tsconfig.tsbuildinfo",
     "types": ["bun-types", "node"]
   },
   "include": ["mastra/**/*", "lib/**/*"],

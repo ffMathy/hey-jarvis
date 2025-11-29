@@ -1,9 +1,9 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "outDir": "dist-spec",
+    "outDir": "../dist/elevenlabs-spec",
     "rootDir": "..",
-    "tsBuildInfoFile": "dist-spec/tsconfig.spec.tsbuildinfo",
+    "tsBuildInfoFile": "../dist/elevenlabs-spec/tsconfig.spec.tsbuildinfo",
     "types": ["bun-types", "node"]
   },
   "include": ["tests/**/*.ts", "src/**/*.json"],
