@@ -332,10 +332,11 @@ const prepareForRegeneration = createStep({
     isApproved: z.boolean(),
   }),
   execute: async ({ inputData, state }) => {
-    // Combine new preferences with any accumulated feedback history
+    // Combine new preferences with recent feedback history (limit to last 3 to avoid token limits)
     const feedbackHistory = state?.feedbackHistory || [];
+    const recentFeedback = feedbackHistory.slice(-3);
     const combinedPreferences = inputData.preferences
-      ? `${inputData.preferences}\n\nPrevious feedback: ${feedbackHistory.join('; ')}`
+      ? `${inputData.preferences}\n\nRecent feedback: ${recentFeedback.join('; ')}`
       : undefined;
 
     return {
@@ -393,9 +394,10 @@ const formatFinalOutput = createStep({
     message: z.string(),
   }),
   execute: async ({ inputData }) => {
+    const shoppingMessage = inputData.message || 'Shopping list updated.';
     return {
       success: inputData.success,
-      message: `Madplan godkendt og ingredienser tilføjet til indkøbslisten. ${inputData.message}`,
+      message: `Madplan godkendt og ingredienser tilføjet til indkøbslisten. ${shoppingMessage}`,
     };
   },
 });
