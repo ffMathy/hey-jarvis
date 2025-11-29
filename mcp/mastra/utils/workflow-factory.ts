@@ -10,7 +10,7 @@ import {
   type WorkflowConfig,
 } from '@mastra/core/workflows';
 import type { TypeOf, z } from 'zod';
-import { createAgent } from './agent-factory.js';
+import { createAgent, createLightAgent } from './agent-factory.js';
 
 /**
  * Creates a new Mastra Workflow with sensible defaults for the Hey Jarvis system.
@@ -150,6 +150,84 @@ export function createStep<
 }
 
 /**
+ * Type for agent step configuration shared between createAgentStep and createLightAgentStep
+ */
+type AgentStepConfig<
+  TStepId extends string,
+  TStateSchema extends z.ZodObject<any>,
+  TInputSchema extends z.ZodSchema,
+  TOutputSchema extends z.ZodSchema,
+  TResumeSchema extends z.ZodSchema,
+  TSuspendSchema extends z.ZodSchema,
+> = Pick<
+  StepParams<TStepId, TStateSchema, TInputSchema, TOutputSchema, TResumeSchema, TSuspendSchema>,
+  'id' | 'description' | 'stateSchema' | 'inputSchema' | 'outputSchema' | 'resumeSchema' | 'suspendSchema'
+> & {
+  agentConfig: Omit<AgentConfig, 'model' | 'memory' | 'scorers'> & {
+    model?: AgentConfig['model'];
+    memory?: AgentConfig['memory'];
+    scorers?: AgentConfig['scorers'];
+  };
+  prompt: (
+    params: ExecuteFunctionParams<
+      TypeOf<TStateSchema>,
+      TypeOf<TInputSchema>,
+      TResumeSchema,
+      TSuspendSchema,
+      DefaultEngineType
+    >,
+  ) => string | Promise<string>;
+};
+
+/**
+ * Internal helper to create an agent step with a specified agent factory
+ */
+function createAgentStepWithFactory<
+  TStepId extends string = string,
+  TStateSchema extends z.ZodObject<any> = z.ZodObject<any>,
+  TInputSchema extends z.ZodSchema = z.ZodSchema,
+  TOutputSchema extends z.ZodSchema = z.ZodSchema,
+  TResumeSchema extends z.ZodSchema = z.ZodSchema,
+  TSuspendSchema extends z.ZodSchema = z.ZodSchema,
+>(
+  config: AgentStepConfig<TStepId, TStateSchema, TInputSchema, TOutputSchema, TResumeSchema, TSuspendSchema>,
+  agentFactory: typeof createAgent,
+) {
+  return createStep<TStepId, TStateSchema, TInputSchema, TOutputSchema>({
+    id: config.id,
+    description: config.description,
+    inputSchema: config.inputSchema,
+    outputSchema: config.outputSchema,
+    execute: async (params): Promise<TOutputSchema> => {
+      // Create agent lazily during execution to avoid top-level awaits
+      const agent = await agentFactory(config.agentConfig);
+      const prompt = (await Promise.resolve(config.prompt(params)))
+        .split('\n')
+        .map((line) => line.trim())
+        .join('\n')
+        .trim();
+
+      const response = await agent.stream(
+        [
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+        {
+          structuredOutput: {
+            schema: config.outputSchema,
+          },
+          toolChoice: 'none',
+        },
+      );
+
+      return await response.object;
+    },
+  });
+}
+
+/**
  * Creates a workflow step that uses an agent as the step execution.
  * This implements the "agent-as-step" pattern where an existing agent
  * becomes a reusable workflow step.
@@ -190,45 +268,54 @@ export function createAgentStep<
   TOutputSchema extends z.ZodSchema = z.ZodSchema,
   TResumeSchema extends z.ZodSchema = z.ZodSchema,
   TSuspendSchema extends z.ZodSchema = z.ZodSchema,
->(config: Pick<StepParams<TStepId, TStateSchema, TInputSchema, TOutputSchema, TResumeSchema, TSuspendSchema>, 'id' | 'description' | 'stateSchema' | 'inputSchema' | 'outputSchema' | 'resumeSchema' | 'suspendSchema'> & {
-  agentConfig: Omit<AgentConfig, 'model' | 'memory' | 'scorers'> & {
-    model?: AgentConfig['model'];
-    memory?: AgentConfig['memory'];
-    scorers?: AgentConfig['scorers'];
-  };
-  prompt: (params: ExecuteFunctionParams<TypeOf<TStateSchema>, TypeOf<TInputSchema>, TResumeSchema, TSuspendSchema, DefaultEngineType>) => string | Promise<string>;
-}) {
-  return createStep<TStepId, TStateSchema, TInputSchema, TOutputSchema>({
-    id: config.id,
-    description: config.description,
-    inputSchema: config.inputSchema,
-    outputSchema: config.outputSchema,
-    execute: async (params): Promise<TOutputSchema> => {
-      // Create agent lazily during execution to avoid top-level awaits
-      const agent = await createAgent(config.agentConfig);
-      const prompt = (await Promise.resolve(config.prompt(params))).split('\n')
-        .map(line => line.trim())
-        .join('\n')
-        .trim();
+>(config: AgentStepConfig<TStepId, TStateSchema, TInputSchema, TOutputSchema, TResumeSchema, TSuspendSchema>) {
+  return createAgentStepWithFactory(config, createAgent);
+}
 
-      const response = await agent.stream(
-        [
-          {
-            role: 'user',
-            content: prompt,
-          },
-        ],
-        {
-          structuredOutput: {
-            schema: config.outputSchema,
-          },
-          toolChoice: 'none',
-        },
-      );
-
-      return await response.object;
-    },
-  });
+/**
+ * Creates a workflow step that uses a light agent (Gemma 3) as the step execution.
+ * This implements the "agent-as-step" pattern optimized for scheduled/automated tasks.
+ *
+ * The agent is created lazily during step execution to avoid top-level awaits.
+ *
+ * Recommended for:
+ * - Scheduled workflow steps
+ * - Background processing tasks
+ * - Tasks where cost-efficiency is preferred over maximum capability
+ *
+ * @param config - The agent step configuration
+ * @returns A Mastra workflow step that executes the specified light agent
+ *
+ * @example
+ * ```typescript
+ * // Define state schema
+ * const stateSchema = z.object({
+ *   location: z.string(),
+ * });
+ *
+ * const scheduledWeatherStep = createLightAgentStep({
+ *   id: 'scheduled-weather-check',
+ *   description: 'Get weather using light agent for scheduled tasks',
+ *   agentConfig: {
+ *     name: 'Weather',
+ *     instructions: 'You are a weather assistant...',
+ *     tools: weatherTools,
+ *   },
+ *   inputSchema: z.object({}),
+ *   outputSchema: z.object({ weather: z.string() }),
+ *   prompt: () => 'Get current weather for Aarhus',
+ * });
+ * ```
+ */
+export function createLightAgentStep<
+  TStepId extends string = string,
+  TStateSchema extends z.ZodObject<any> = z.ZodObject<any>,
+  TInputSchema extends z.ZodSchema = z.ZodSchema,
+  TOutputSchema extends z.ZodSchema = z.ZodSchema,
+  TResumeSchema extends z.ZodSchema = z.ZodSchema,
+  TSuspendSchema extends z.ZodSchema = z.ZodSchema,
+>(config: AgentStepConfig<TStepId, TStateSchema, TInputSchema, TOutputSchema, TResumeSchema, TSuspendSchema>) {
+  return createAgentStepWithFactory(config, createLightAgent);
 }
 
 /**

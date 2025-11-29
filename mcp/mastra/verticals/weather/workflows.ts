@@ -1,10 +1,10 @@
 import { z } from 'zod';
-import { createAgentStep, createStep, createWorkflow } from '../../utils/workflow-factory.js';
+import { createLightAgentStep, createStep, createWorkflow } from '../../utils/workflow-factory.js';
 import { registerStateChange } from '../synapse/tools.js';
 import { weatherTools } from './tools.js';
 
-// Agent-as-step for scheduled weather check
-const scheduledWeatherCheck = createAgentStep({
+// Agent-as-step for scheduled weather check (uses light model for cost-efficiency)
+const scheduledWeatherCheck = createLightAgentStep({
   id: 'scheduled-weather-check',
   description: 'Checks weather for Aarhus every hour',
   agentConfig: {

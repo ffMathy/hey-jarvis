@@ -4,18 +4,24 @@ import { createMemory } from '../memory/index.js';
 import { google } from './google-provider.js';
 import { getDefaultScorers } from './scorers-config.js';
 
-export async function createAgent(
-  config: Omit<AgentConfig, 'model' | 'memory' | 'scorers'> & {
-    model?: AgentConfig['model'];
-    memory?: AgentConfig['memory'];
-    scorers?: AgentConfig['scorers'];
-  },
-): Promise<Agent> {
+/**
+ * Type for agent configuration used by both createAgent and createLightAgent
+ */
+type AgentConfigInput = Omit<AgentConfig, 'model' | 'memory' | 'scorers'> & {
+  model?: AgentConfig['model'];
+  memory?: AgentConfig['memory'];
+  scorers?: AgentConfig['scorers'];
+};
+
+/**
+ * Internal helper to create an agent with a specified model
+ */
+async function createAgentWithModel(config: AgentConfigInput, defaultModel: AgentConfig['model']): Promise<Agent> {
   const DEFAULT_AGENT_CONFIG: Partial<AgentConfig> = {
     // Use shared memory instance by default
     memory: await createMemory(),
-    // Use Google Gemini Flash Latest as the default model with our configured provider
-    model: google('gemini-flash-latest'),
+    // Use the specified default model
+    model: defaultModel,
     // Use default scorers for comprehensive evaluation
     scorers: getDefaultScorers(),
     instructions: `${config.instructions}\n\n# Additional context and guidelines\nNever ask questions. Always make best-guess assumptions.\nThe time is currently: \`${new Date().toString()}\`.`,
@@ -42,4 +48,25 @@ export async function createAgent(
   } as AgentConfig;
 
   return new Agent(mergedConfig);
+}
+
+/**
+ * Creates an agent using the default model (Gemini Flash Latest).
+ * Use this for interactive agents that require high-quality responses.
+ */
+export async function createAgent(config: AgentConfigInput): Promise<Agent> {
+  return createAgentWithModel(config, google('gemini-flash-latest'));
+}
+
+/**
+ * Creates an agent using a light model (Gemma 3 27B).
+ * Use this for automated/scheduled tasks where cost-efficiency is preferred.
+ *
+ * Recommended for:
+ * - State change reactor agents
+ * - Scheduler-triggered workflow agents
+ * - Background processing tasks
+ */
+export async function createLightAgent(config: AgentConfigInput): Promise<Agent> {
+  return createAgentWithModel(config, google('gemma-3-27b-it'));
 }
