@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist-spec",
+    "rootDir": ".",
+    "tsBuildInfoFile": "dist-spec/tsconfig.spec.tsbuildinfo",
+    "types": ["bun-types", "node", "jest"]
+  },
+  "include": ["tests/**/*"],
+  "exclude": ["**/node_modules", "**/dist", "**/build"],
+  "references": [{ "path": "./tsconfig.json" }]
+}

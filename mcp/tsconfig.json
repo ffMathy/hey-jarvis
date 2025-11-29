@@ -1,12 +1,11 @@
 {
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
-    "types": ["bun-types", "node"],
-    "skipLibCheck": true,
-    "skipDefaultLibCheck": true,
-    "disableReferencedProjectLoad": true,
-    "disableSolutionSearching": true
+    "outDir": "dist",
+    "rootDir": ".",
+    "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo",
+    "types": ["bun-types", "node"]
   },
-  "include": ["mastra/**/*", "tests/**/*"],
-  "exclude": ["**/node_modules", "**/.*/", "**/dist", "**/build", "**/*.spec.ts"]
+  "include": ["mastra/**/*", "lib/**/*"],
+  "exclude": ["**/node_modules", "**/.*/", "**/dist", "**/build", "**/*.spec.ts", "tests/**/*"]
 }

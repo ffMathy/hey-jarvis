@@ -3,7 +3,9 @@
   "compilerOptions": {
     "rootDir": ".",
     "sourceMap": true,
-    "declaration": false,
+    "declaration": true,
+    "declarationMap": true,
+    "composite": true,
     "moduleResolution": "bundler",
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
@@ -15,7 +17,6 @@
     "skipDefaultLibCheck": true,
     "baseUrl": ".",
     "incremental": true,
-    "tsBuildInfoFile": ".nx/cache/tsbuildinfo.json",
     "resolveJsonModule": true,
     "allowSyntheticDefaultImports": true,
     "types": [],

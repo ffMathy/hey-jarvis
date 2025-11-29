@@ -1,1 +1,2 @@
-export { createErrorReportingProcessor, type ErrorReportingProcessorOptions } from './error-reporting.js';
+// Placeholder - error-reporting processor not implemented yet
+export type ErrorReportingProcessorOptions = Record<string, never>;

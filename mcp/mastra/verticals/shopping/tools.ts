@@ -36,8 +36,8 @@ export const findProductInCatalog = createTool({
             price: hit.price / 100,
           };
 
-          delete result['_highlightResult'];
-          delete result['subBrand'];
+          delete result._highlightResult;
+          delete result.subBrand;
 
           return result as Omit<CatalogProduct, 'subBrand' | 'attributes'> & {
             attributes: string[];
@@ -73,7 +73,7 @@ export const setProductBasketQuantity = createTool({
     message: z.string().optional(),
   }),
   execute: async (inputData) => {
-    const result = await changeProductQuantity(inputData.object_id, inputData.quantity, inputData.product_name);
+    const _result = await changeProductQuantity(inputData.object_id, inputData.quantity, inputData.product_name);
     return {
       success: true,
       message: `Updated ${inputData.product_name} quantity to ${inputData.quantity}`,

@@ -1,4 +1,3 @@
-import { z } from 'zod';
 import { createAgent } from '../../utils/agent-factory.js';
 
 export async function getEmailParsingAgent() {

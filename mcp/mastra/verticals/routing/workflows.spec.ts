@@ -277,7 +277,7 @@ describe('Routing Workflows', () => {
       const mockAgentProvider: AgentProvider = async () => [weatherAgent, calendarAgent];
       setAgentProvider(mockAgentProvider);
 
-      const result = await routePromptWorkflow.createRun().then((run) =>
+      const _result = await routePromptWorkflow.createRun().then((run) =>
         run.start({
           inputData: {
             userQuery: 'What is the weather in Aarhus?',

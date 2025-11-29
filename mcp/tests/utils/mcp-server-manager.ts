@@ -20,7 +20,7 @@ async function killProcessOnPort(port: number): Promise<void> {
   try {
     await fkill(`:${port}`, { force: true, silent: true });
     console.log(`🧹 Killed process(es) on port ${port}`);
-  } catch (error) {
+  } catch (_error) {
     // Silent failure - port may already be free
   }
 }
@@ -34,13 +34,13 @@ export async function isMcpServerRunning(args?: AuthenticatedMcpClientArgs): Pro
     client = await createAuthenticatedMcpClient(args);
     await client.listTools();
     return true;
-  } catch (error) {
+  } catch (_error) {
     return false;
   } finally {
     if (client) {
       try {
         await client.disconnect();
-      } catch (disconnectError) {
+      } catch (_disconnectError) {
         // Ignore disconnect errors during cleanup
       }
     }
@@ -91,7 +91,7 @@ export async function startMcpServerForTestingPurposes(): Promise<void> {
       maxRetries: 5,
       initialDelay: 1000,
       backoffMultiplier: 5,
-      onRetry: (error, attempt, delayMs) => {
+      onRetry: (_error, attempt, _delayMs) => {
         console.log(`🔍 Checking MCP server status (attempt ${attempt}/30)...`);
       },
     },
@@ -111,7 +111,7 @@ export async function stopMcpServer(): Promise<void> {
   if (mcpServerProcess && !mcpServerProcess.killed) {
     try {
       mcpServerProcess.kill();
-    } catch (error) {
+    } catch (_error) {
       // Ignore errors - process might already be dead
     }
   }

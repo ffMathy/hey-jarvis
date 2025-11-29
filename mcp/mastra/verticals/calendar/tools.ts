@@ -27,7 +27,7 @@ const getGoogleAuth = async (): Promise<OAuth2Client> => {
     try {
       const credentialsStorage = await getCredentialsStorage();
       refreshToken = await credentialsStorage.getRefreshToken('google');
-    } catch (error) {
+    } catch (_error) {
       // Storage error - continue to show helpful error message below
     }
   }

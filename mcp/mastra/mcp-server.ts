@@ -1,14 +1,16 @@
 #!/usr/bin/env node
 
-import type { Agent } from '@mastra/core/agent';
 import type { Workflow } from '@mastra/core/workflows';
 import { MCPServer } from '@mastra/mcp';
 import express from 'express';
 import { expressjwt } from 'express-jwt';
-import { z } from 'zod';
 import { initializeScheduler } from './scheduler.js';
 import { createTool } from './utils/tool-factory.js';
+import { getPublicAgents } from './verticals/index.js';
 import { getNextInstructionsWorkflow, routePromptWorkflow } from './verticals/routing/workflows.js';
+
+// Re-export for cross-project imports
+export { getPublicAgents };
 
 function createSimplifiedWorkflowTool(workflow: Workflow) {
   return createTool({
