@@ -190,14 +190,27 @@ export function createAgentStep<
   TOutputSchema extends z.ZodSchema = z.ZodSchema,
   TResumeSchema extends z.ZodSchema = z.ZodSchema,
   TSuspendSchema extends z.ZodSchema = z.ZodSchema,
->(config: Pick<StepParams<TStepId, TStateSchema, TInputSchema, TOutputSchema, TResumeSchema, TSuspendSchema>, 'id' | 'description' | 'stateSchema' | 'inputSchema' | 'outputSchema' | 'resumeSchema' | 'suspendSchema'> & {
-  agentConfig: Omit<AgentConfig, 'model' | 'memory' | 'scorers'> & {
-    model?: AgentConfig['model'];
-    memory?: AgentConfig['memory'];
-    scorers?: AgentConfig['scorers'];
-  };
-  prompt: (params: ExecuteFunctionParams<TypeOf<TStateSchema>, TypeOf<TInputSchema>, TResumeSchema, TSuspendSchema, DefaultEngineType>) => string | Promise<string>;
-}) {
+>(
+  config: Pick<
+    StepParams<TStepId, TStateSchema, TInputSchema, TOutputSchema, TResumeSchema, TSuspendSchema>,
+    'id' | 'description' | 'stateSchema' | 'inputSchema' | 'outputSchema' | 'resumeSchema' | 'suspendSchema'
+  > & {
+    agentConfig: Omit<AgentConfig, 'model' | 'memory' | 'scorers'> & {
+      model?: AgentConfig['model'];
+      memory?: AgentConfig['memory'];
+      scorers?: AgentConfig['scorers'];
+    };
+    prompt: (
+      params: ExecuteFunctionParams<
+        TypeOf<TStateSchema>,
+        TypeOf<TInputSchema>,
+        TResumeSchema,
+        TSuspendSchema,
+        DefaultEngineType
+      >,
+    ) => string | Promise<string>;
+  },
+) {
   return createStep<TStepId, TStateSchema, TInputSchema, TOutputSchema>({
     id: config.id,
     description: config.description,
@@ -206,8 +219,9 @@ export function createAgentStep<
     execute: async (params): Promise<TOutputSchema> => {
       // Create agent lazily during execution to avoid top-level awaits
       const agent = await createAgent(config.agentConfig);
-      const prompt = (await Promise.resolve(config.prompt(params))).split('\n')
-        .map(line => line.trim())
+      const prompt = (await Promise.resolve(config.prompt(params)))
+        .split('\n')
+        .map((line) => line.trim())
         .join('\n')
         .trim();
 
