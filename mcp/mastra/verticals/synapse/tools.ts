@@ -27,9 +27,10 @@ export const registerStateChange = createTool({
       console.log(`📝 Registering state change: ${inputData.stateType} from ${inputData.source}`);
 
       const run = await stateChangeNotificationWorkflow.createRun();
-      run.start({
-        inputData
-      })
+      run
+        .start({
+          inputData,
+        })
         .catch((error: Error) => {
           console.error(`❌ State change workflow error:`, error);
         });
