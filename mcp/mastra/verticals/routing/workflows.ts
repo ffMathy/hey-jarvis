@@ -53,28 +53,68 @@ export const dagSchema = outputSchema.extend({
 
 export type AgentProvider = () => Promise<Agent[]>;
 
-let agentProvider: AgentProvider = getPublicAgents;
+/**
+ * Workflow state that contains all globally needed state for routing workflows.
+ * This can be replaced by tests for mocking purposes.
+ */
+export interface WorkflowState {
+  agentProvider: AgentProvider;
+  taskCompletedListeners: Array<(task: z.infer<typeof outputTaskSchema>) => void>;
+  currentDAG: z.infer<typeof dagSchema>;
+}
+
+function createDefaultWorkflowState(): WorkflowState {
+  return {
+    agentProvider: getPublicAgents,
+    taskCompletedListeners: [],
+    currentDAG: {
+      tasks: [],
+      executionPromise: undefined,
+    },
+  };
+}
+
+let workflowState: WorkflowState = createDefaultWorkflowState();
+
+/**
+ * Sets the entire workflow state. Use this in tests to inject mock state.
+ * If no state is provided, resets to the default state.
+ */
+export function setWorkflowState(state?: Partial<WorkflowState>): void {
+  if (!state) {
+    workflowState = createDefaultWorkflowState();
+  } else {
+    workflowState = {
+      ...createDefaultWorkflowState(),
+      ...state,
+    };
+  }
+}
+
+/**
+ * Gets the current workflow state. Primarily useful for tests.
+ */
+export function getWorkflowState(): WorkflowState {
+  return workflowState;
+}
+
+// Backward-compatible accessors - delegating to workflowState
 
 export function setAgentProvider(provider: AgentProvider): void {
-  agentProvider = provider;
+  workflowState.agentProvider = provider;
 }
 
 export function resetAgentProvider(): void {
-  agentProvider = getPublicAgents;
+  workflowState.agentProvider = getPublicAgents;
 }
 
-const taskCompletedListeners: ((task: z.infer<typeof outputTaskSchema>) => void)[] = [];
-
 export function getTaskCompletedListenersCount(): number {
-  return taskCompletedListeners.length;
+  return workflowState.taskCompletedListeners.length;
 }
 
 export function clearTaskCompletedListeners(): void {
-  taskCompletedListeners.length = 0;
+  workflowState.taskCompletedListeners.length = 0;
 }
-
-let currentDAG: z.infer<typeof dagSchema>;
-resetCurrentDAG();
 
 const listAvailableAgentsStep = createStep({
   id: 'list-available-agents',
@@ -95,35 +135,35 @@ const listAvailableAgentsStep = createStep({
       async: context.inputData.async,
     });
 
-    const publicAgents = Object.values(await agentProvider());
+    const publicAgents = Object.values(await workflowState.agentProvider());
     const agentsById = publicAgents.map((x) => ({ id: x.id || x.name, description: x.getDescription() }));
     return { agents: agentsById };
   },
 });
 
 export function resetCurrentDAG() {
-  currentDAG = {
+  workflowState.currentDAG = {
     tasks: [],
     executionPromise: undefined,
   };
 }
 
 export function getCurrentDAG(): z.infer<typeof dagSchema> {
-  return currentDAG;
+  return workflowState.currentDAG;
 }
 
 export function injectTask(task: z.infer<typeof outputTaskSchema>): void {
-  currentDAG.tasks.push(task as z.infer<typeof dagSchema>['tasks'][0]);
+  workflowState.currentDAG.tasks.push(task as z.infer<typeof dagSchema>['tasks'][0]);
 }
 
 export function simulateTaskCompletion(taskId: string, result: unknown): void {
-  const task = currentDAG.tasks.find((t) => t.id === taskId);
+  const task = workflowState.currentDAG.tasks.find((t) => t.id === taskId);
   if (!task) {
     throw new Error(`Task with ID ${taskId} not found`);
   }
   task.result = result;
 
-  for (const listener of taskCompletedListeners) {
+  for (const listener of workflowState.taskCompletedListeners) {
     listener(task);
   }
 }
@@ -143,7 +183,7 @@ function truncateLog(text: string, maxLength: number): string {
 }
 
 function drawDAGAsASCIIArt(): void {
-  const tasks = currentDAG.tasks;
+  const tasks = workflowState.currentDAG.tasks;
   if (tasks.length === 0) {
     console.log('(empty DAG)');
     return;
@@ -192,9 +232,9 @@ function drawDAGAsASCIIArt(): void {
 }
 
 async function startDagExecution() {
-  const publicAgents = Object.values(await agentProvider());
+  const publicAgents = Object.values(await workflowState.agentProvider());
   const agentsById = keyBy(publicAgents, 'id');
-  const tasks = currentDAG.tasks;
+  const tasks = workflowState.currentDAG.tasks;
 
   const executeTask = async (task: (typeof tasks)[0]) => {
     const agent = agentsById[task.agent];
@@ -230,7 +270,7 @@ async function startDagExecution() {
 
     console.log(`${task.agent}->${task.id} completed: ${truncateLog(output, 100)}`);
 
-    for (const listener of taskCompletedListeners) {
+    for (const listener of workflowState.taskCompletedListeners) {
       listener(task);
     }
 
@@ -241,7 +281,7 @@ async function startDagExecution() {
   drawDAGAsASCIIArt();
 
   while (true) {
-    const tasksWithoutPromises = chain(currentDAG.tasks)
+    const tasksWithoutPromises = chain(workflowState.currentDAG.tasks)
       .filter((t) => !t.executionPromise)
       .orderBy((x) => x.dependsOn.length)
       .value();
@@ -253,7 +293,7 @@ async function startDagExecution() {
       const dependencies = task.dependsOn;
       const dependencyPromise = Promise.all(
         dependencies.map((dependencyId) => {
-          const dependencyTask = currentDAG.tasks.find((t) => t.id === dependencyId);
+          const dependencyTask = workflowState.currentDAG.tasks.find((t) => t.id === dependencyId);
           if (!dependencyTask || !dependencyTask.executionPromise) {
             throw new Error(`Dependency task with ID ${dependencyId} not found or not started for task ${task.id}`);
           }
@@ -264,11 +304,11 @@ async function startDagExecution() {
     }
   }
 
-  await Promise.all(currentDAG.tasks.map((t) => t.executionPromise));
+  await Promise.all(workflowState.currentDAG.tasks.map((t) => t.executionPromise));
 
   console.log('DAG execution complete.');
 
-  currentDAG.executionPromise = undefined;
+  workflowState.currentDAG.executionPromise = undefined;
 }
 
 const generateDagStep = createAgentStep({
@@ -333,7 +373,7 @@ Each task MUST have:
 
             # Current tasks
             \`\`\`json
-            ${JSON.stringify(currentDAG.tasks, null, 2)}
+            ${JSON.stringify(workflowState.currentDAG.tasks, null, 2)}
             \`\`\`
         `;
   },
@@ -347,7 +387,7 @@ const mergeDagStep = createStep({
   outputSchema: outputSchema,
   execute: async (context) => {
     const newTasks = context.inputData.tasks;
-    const mergedTasks = [...currentDAG.tasks];
+    const mergedTasks = [...workflowState.currentDAG.tasks];
 
     const existingTaskIds = new Set(mergedTasks.map((t) => t.id));
     for (const newTask of newTasks) {
@@ -356,9 +396,9 @@ const mergeDagStep = createStep({
       }
     }
 
-    currentDAG.tasks = mergedTasks;
+    workflowState.currentDAG.tasks = mergedTasks;
 
-    return currentDAG;
+    return workflowState.currentDAG;
   },
 });
 
@@ -369,7 +409,7 @@ const optimizeDagStep = createStep({
   stateSchema: stateSchema,
   outputSchema: outputSchema,
   execute: async (context) => {
-    const tasks = currentDAG.tasks;
+    const tasks = workflowState.currentDAG.tasks;
 
     const tasksByAgent = new Map<string, typeof tasks>();
     for (const task of tasks) {
@@ -466,9 +506,9 @@ const optimizeDagStep = createStep({
       ...task,
       dependsOn: task.dependsOn.map((depId) => mergedTaskIds.get(depId) || depId),
     }));
-    currentDAG.tasks = finalTasks;
+    workflowState.currentDAG.tasks = finalTasks;
 
-    return currentDAG;
+    return workflowState.currentDAG;
   },
 });
 
@@ -482,12 +522,12 @@ const startDagExecutionStep = createStep({
     taskIdsInProgress: z.array(z.string()).describe('IDs of tasks currently in progress'),
   }),
   execute: async (context) => {
-    if (!currentDAG.executionPromise) {
-      currentDAG.executionPromise = startDagExecution();
+    if (!workflowState.currentDAG.executionPromise) {
+      workflowState.currentDAG.executionPromise = startDagExecution();
     }
 
     const isAsync = context.state.async === true;
-    const taskIdsInProgress = currentDAG.tasks.filter((t) => t.result === undefined).map((t) => t.id);
+    const taskIdsInProgress = workflowState.currentDAG.tasks.filter((t) => t.result === undefined).map((t) => t.id);
 
     if (isAsync) {
       return {
@@ -517,7 +557,7 @@ export const getCurrentDagWorkflow = createWorkflow({
       inputSchema: z.object({}),
       outputSchema: dagSchema,
       execute: async () => {
-        return currentDAG;
+        return workflowState.currentDAG;
       },
     }),
   )
@@ -544,7 +584,7 @@ const getNextInstructionsStep = createStep({
   outputSchema: instructionsOutputSchema,
   execute: async () => {
     async function waitForNextInstructions(): Promise<z.infer<typeof instructionsOutputSchema>> {
-      const tasks = currentDAG.tasks;
+      const tasks = workflowState.currentDAG.tasks;
 
       const completedUnreportedTasks = tasks.filter((t) => t.result !== undefined && !t.reported);
       if (completedUnreportedTasks.length === 0) {
@@ -643,11 +683,11 @@ async function waitForNextCompletedTask() {
       console.log('Next completed task', task.id);
       resolve(task);
 
-      const index = taskCompletedListeners.indexOf(listener);
+      const index = workflowState.taskCompletedListeners.indexOf(listener);
       if (index !== -1) {
-        taskCompletedListeners.splice(index, 1);
+        workflowState.taskCompletedListeners.splice(index, 1);
       }
     };
-    taskCompletedListeners.push(listener);
+    workflowState.taskCompletedListeners.push(listener);
   });
 }
