@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.15.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.14.0...mcp-v0.15.0) (2025-11-29)
+
+
+### Features
+
+* add async DAG mode and update prompt wording per review feedback ([f7b02a3](https://github.com/ffMathy/hey-jarvis/commit/f7b02a3ef5730275a8248ef194866a8e118068e1))
+* add human-in-the-loop feedback to weekly meal planning workflow ([274271f](https://github.com/ffMathy/hey-jarvis/commit/274271f617a7098f69d1e8f5b061a3f917bdc9a7))
+* add instructions property to routePromptWorkflow and update elevenlabs prompt ([84e7d6f](https://github.com/ffMathy/hey-jarvis/commit/84e7d6f591493f1249b1b0ace731520aad921ea0))
+* add lint-staged to husky pre-commit and global lint dependencies ([4bb4777](https://github.com/ffMathy/hey-jarvis/commit/4bb4777aeb8e9db1e5537b25c81ebd3249e3eb0e))
+* add lint-staged to husky pre-commit and global lint dependencies ([#343](https://github.com/ffMathy/hey-jarvis/issues/343)) ([83f5fe8](https://github.com/ffMathy/hey-jarvis/commit/83f5fe8c630ece3f2086baeb9e81e28ddcae2d98))
+* add local Gemma 3 LLM via Ollama for scheduler-triggered agents ([6534d27](https://github.com/ffMathy/hey-jarvis/commit/6534d272703c5ca65893aa9cbca0aa3920e1c755))
+* add local Gemma 3 LLM via Ollama for scheduler-triggered agents ([#339](https://github.com/ffMathy/hey-jarvis/issues/339)) ([761b201](https://github.com/ffMathy/hey-jarvis/commit/761b201c173cf16fb4318c7978a6206278e98bb8))
+* configure Ollama models to store in /data/llm/models with backup exclusion ([#348](https://github.com/ffMathy/hey-jarvis/issues/348)) ([a486d19](https://github.com/ffMathy/hey-jarvis/commit/a486d194817683d4d50a990cb22baf4077b8c1fc))
+* implement TypeScript project linking in the monorepo ([a09787e](https://github.com/ffMathy/hey-jarvis/commit/a09787e2afd61e11700975e85d215c38057b1918))
+* **mcp:** add LLM-evaluated tests for routing workflows DAG generation ([318cba4](https://github.com/ffMathy/hey-jarvis/commit/318cba435b427cc72264cbbf76a45161464f2031))
+* **mcp:** add LLM-evaluated tests for routing workflows DAG generation ([#336](https://github.com/ffMathy/hey-jarvis/issues/336)) ([b87c264](https://github.com/ffMathy/hey-jarvis/commit/b87c264a18c9522a3b5f3393f322a40f3989caec))
+* **mcp:** configure Ollama models directory to /data/llm/models ([05a778e](https://github.com/ffMathy/hey-jarvis/commit/05a778e6515c3a2121f0acb26be61afc28f8fcc6))
+* simplify elevenlabs prompt to single tool with instructions-driven flow ([#340](https://github.com/ffMathy/hey-jarvis/issues/340)) ([58fb497](https://github.com/ffMathy/hey-jarvis/commit/58fb497e32ec6a7fdfd20337c2bc6ad84b166492))
+* switch state change reactor and scheduler agents to Gemma 3 ([57e7074](https://github.com/ffMathy/hey-jarvis/commit/57e7074d5ebe174d4c0b46b09a1d16feafe0a1c6))
+
+
+### Bug Fixes
+
+* limit feedback history and add message fallback ([07560f4](https://github.com/ffMathy/hey-jarvis/commit/07560f491052f4758d190e2dcabdc0e0e8ec3c9e))
+* remove all any casts using .map() for type-safe data transformation ([0d89196](https://github.com/ffMathy/hey-jarvis/commit/0d89196f0b01c48ded8041ae417b8d96c3510e6a))
+* remove dist-spec build artifacts and use global dist folder ([c70d21e](https://github.com/ffMathy/hey-jarvis/commit/c70d21ebb2cafb1f6915489b3a6ca379e890a1ac))
+* remove docker-package.json by using jq to modify package.json inline ([7168a81](https://github.com/ffMathy/hey-jarvis/commit/7168a811b4731987334e573aab5366d47e7f8c1a))
+* resolve merge conflict in routing workflows formatting ([f87758b](https://github.com/ffMathy/hey-jarvis/commit/f87758b35c1ae06e054a051615eab5ed80ae42e0))
+* resolve merge conflicts with main branch ([ea1145d](https://github.com/ffMathy/hey-jarvis/commit/ea1145d2ac9d500a592afe3f508d82bc6fbce4d8))
+* revert unintentional formatting changes and remove cloudflared.deb ([aa47eaf](https://github.com/ffMathy/hey-jarvis/commit/aa47eafa733892a4663f76a9c888551d2d9591c6))
+
 ## [0.14.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.13.3...mcp-v0.14.0) (2025-11-28)
 
 
