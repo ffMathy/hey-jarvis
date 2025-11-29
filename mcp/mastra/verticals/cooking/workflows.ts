@@ -53,7 +53,7 @@ export const generateMealPlanWorkflow = createWorkflow({
         }
         return {};
       },
-    })
+    }),
   )
   .then(
     createToolStep({
@@ -61,7 +61,7 @@ export const generateMealPlanWorkflow = createWorkflow({
       description: 'Fetches all recipes for meal planning',
       stateSchema: generateMealPlanStateSchema,
       tool: getAllRecipes,
-    })
+    }),
   )
   .then(
     createAgentStep({
@@ -106,7 +106,7 @@ ${JSON.stringify(context, null, 2)}
 
 Focus on dinner/evening meals (look for "aftensmad" or similar categories). Generate the complete meal plan with proper scheduling.${preferencesText}`;
       },
-    })
+    }),
   )
   .commit();
 

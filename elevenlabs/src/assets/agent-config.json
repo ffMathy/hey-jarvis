@@ -5,9 +5,7 @@
       "quality": "high",
       "provider": "scribe_realtime",
       "userInputAudioFormat": "pcm_16000",
-      "keywords": [
-        "Jarvis"
-      ]
+      "keywords": ["Jarvis"]
     },
     "turn": {
       "turnTimeout": -1,
@@ -92,9 +90,7 @@
             }
           }
         },
-        "mcpServerIds": [
-          "lEHHz7v2aiZKdIwh9axo"
-        ],
+        "mcpServerIds": ["lEHHz7v2aiZKdIwh9axo"],
         "nativeMcpServerIds": [],
         "knowledgeBase": [],
         "ignoreDefaultPersonality": true,
@@ -228,9 +224,7 @@
     },
     "workspaceOverrides": {
       "webhooks": {
-        "events": [
-          "transcript"
-        ],
+        "events": ["transcript"],
         "sendAudio": false
       }
     },

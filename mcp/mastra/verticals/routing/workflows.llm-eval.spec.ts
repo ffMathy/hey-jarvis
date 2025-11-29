@@ -4,13 +4,12 @@ import { generateObject } from 'ai';
 import { z } from 'zod';
 import {
   type AgentProvider,
-  clearTaskCompletedListeners,
   type dagSchema,
   getCurrentDAG,
-  resetAgentProvider,
   resetCurrentDAG,
   routePromptWorkflow,
   setAgentProvider,
+  setWorkflowState,
 } from './workflows.js';
 
 /**
@@ -176,15 +175,13 @@ async function runWorkflowWithRetry(userQuery: string, maxAttempts = 5): Promise
 
 describe('Routing Workflows - LLM Evaluated', () => {
   beforeEach(() => {
-    resetCurrentDAG();
-    clearTaskCompletedListeners();
-    resetAgentProvider();
+    // Reset all workflow state in one call
+    setWorkflowState();
   });
 
   afterEach(() => {
-    resetCurrentDAG();
-    clearTaskCompletedListeners();
-    resetAgentProvider();
+    // Reset all workflow state in one call
+    setWorkflowState();
   });
 
   describe('DAG Generation with Location-Based Weather Query', () => {
