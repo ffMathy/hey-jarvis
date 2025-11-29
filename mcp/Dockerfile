@@ -22,7 +22,7 @@ ENV NODE_ENV=production
 
 # Ollama configuration
 ENV OLLAMA_HOST=0.0.0.0
-ENV OLLAMA_MODELS=/workspace/.ollama/models
+ENV OLLAMA_MODELS=/data/llm/models
 
 WORKDIR /workspace
 
@@ -53,13 +53,13 @@ COPY mcp/supervisord.conf /etc/supervisord.conf
 
 # Create directory for Ollama models
 # Mount a volume here to persist models between container restarts
-RUN mkdir -p /workspace/.ollama/models
+RUN mkdir -p /data/llm/models
 
 # Note: The Gemma 3 model (gemma3:27b, ~16GB) is NOT pre-pulled to keep image size manageable.
 # The model will be automatically pulled on first use by the agents.
 # For faster startup, you can pre-pull the model by running:
 #   docker exec <container> ollama pull gemma3:27b
-# Or mount a volume with pre-downloaded models to /workspace/.ollama/models
+# Or mount a volume with pre-downloaded models to /data/llm/models
 
 # Expose ports for services (4111: Mastra UI, 4112: MCP Server, 11434: Ollama)
 EXPOSE 4111 4112 11434
