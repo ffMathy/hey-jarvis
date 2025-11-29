@@ -291,7 +291,7 @@ describe('Routing Workflows', () => {
       expect(weatherTask).toBeDefined();
     });
 
-    it('should start DAG execution and return tasks in progress', async () => {
+    it('should start DAG execution and return tasks in progress with instructions', async () => {
       const weatherAgent = createMockAgent('weather', 'Provides weather information for any location');
       const mockAgentProvider: AgentProvider = async () => [weatherAgent];
       setAgentProvider(mockAgentProvider);
@@ -307,6 +307,30 @@ describe('Routing Workflows', () => {
       const result = assertWorkflowSuccess(workflowResult);
       expect(result.taskIdsInProgress).toBeDefined();
       expect(Array.isArray(result.taskIdsInProgress)).toBe(true);
+      expect(result.instructions).toBeDefined();
+      expect(typeof result.instructions).toBe('string');
+      expect(result.instructions).toContain('getNextInstructionsWorkflow');
+    });
+
+    it('should return end call instructions when async flag is true', async () => {
+      const weatherAgent = createMockAgent('weather', 'Provides weather information for any location');
+      const mockAgentProvider: AgentProvider = async () => [weatherAgent];
+      setAgentProvider(mockAgentProvider);
+
+      const workflowResult = await routePromptWorkflow.createRun().then((run) =>
+        run.start({
+          inputData: {
+            userQuery: 'What is the weather?',
+            async: true,
+          },
+        }),
+      );
+
+      const result = assertWorkflowSuccess(workflowResult);
+      expect(result.taskIdsInProgress).toBeDefined();
+      expect(result.instructions).toBeDefined();
+      expect(result.instructions).toContain('End the call');
+      expect(result.instructions).not.toContain('getNextInstructionsWorkflow');
     });
   });
 
