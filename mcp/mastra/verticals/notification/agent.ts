@@ -1,7 +1,8 @@
-import { createLightAgent } from '../../utils/agent-factory.js';
+import { createAgent } from '../../utils/agent-factory.js';
+import { google } from '../../utils/google-provider.js';
 import { notificationTools } from './tools.js';
 
-let notificationAgent: Awaited<ReturnType<typeof createLightAgent>> | null = null;
+let notificationAgent: Awaited<ReturnType<typeof createAgent>> | null = null;
 
 /**
  * Notification Agent
@@ -15,7 +16,8 @@ export async function getNotificationAgent() {
     return notificationAgent;
   }
 
-  return (notificationAgent = await createLightAgent({
+  return (notificationAgent = await createAgent({
+    model: google('gemma-3-27b-it'),
     id: 'notification',
     name: 'Notification',
     instructions: `You are a reactive notification assistant for the Hey Jarvis smart home system.

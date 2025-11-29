@@ -1,4 +1,5 @@
-import { createLightAgent } from '../../utils/agent-factory.js';
+import { createAgent } from '../../utils/agent-factory.js';
+import { google } from '../../utils/google-provider.js';
 import { getNotificationAgent } from '../notification/agent.js';
 import { synapseTools } from './tools.js';
 
@@ -14,7 +15,8 @@ import { synapseTools } from './tools.js';
  * - Notification Agent: For analyzing state changes and sending user notifications
  */
 export async function getStateChangeReactorAgent() {
-  return createLightAgent({
+  return createAgent({
+    model: google('gemma-3-27b-it'),
     id: 'stateChangeReactor',
     name: 'StateChangeReactor',
     instructions: `You are the State Change Reactor - a coordination agent for the Hey Jarvis smart home system.
