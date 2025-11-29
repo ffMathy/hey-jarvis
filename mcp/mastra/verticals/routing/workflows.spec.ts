@@ -312,6 +312,27 @@ describe('Routing Workflows', () => {
       expect(typeof result.instructions).toBe('string');
       expect(result.instructions).toContain('getNextInstructionsWorkflow');
     });
+
+    it('should return end call instructions when async flag is true', async () => {
+      const weatherAgent = createMockAgent('weather', 'Provides weather information for any location');
+      const mockAgentProvider: AgentProvider = async () => [weatherAgent];
+      setAgentProvider(mockAgentProvider);
+
+      const workflowResult = await routePromptWorkflow.createRun().then((run) =>
+        run.start({
+          inputData: {
+            userQuery: 'What is the weather?',
+            async: true,
+          },
+        }),
+      );
+
+      const result = assertWorkflowSuccess(workflowResult);
+      expect(result.taskIdsInProgress).toBeDefined();
+      expect(result.instructions).toBeDefined();
+      expect(result.instructions).toContain('End the call');
+      expect(result.instructions).not.toContain('getNextInstructionsWorkflow');
+    });
   });
 
   describe('integration: calling getNextInstructionsWorkflow before routePromptWorkflow', () => {
