@@ -29,15 +29,14 @@ export const findProductInCatalog = createTool({
       const results = response.results
         .flatMap((x) => x.hits)
         .map((hit) => {
+          // Destructure to exclude Algolia-specific _highlightResult and subBrand properties
+          const { _highlightResult, subBrand, ...restHit } = hit as typeof hit & { _highlightResult?: unknown };
           const result = {
-            ...hit,
+            ...restHit,
             brand: `${hit.brand} ${hit.subBrand}`.trim(),
             attributes: hit.attributes.map((attr) => attr.attributeName),
             price: hit.price / 100,
           };
-
-          delete result._highlightResult;
-          delete result.subBrand;
 
           return result as Omit<CatalogProduct, 'subBrand' | 'attributes'> & {
             attributes: string[];

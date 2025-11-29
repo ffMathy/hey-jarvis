@@ -1,0 +1,329 @@
+{
+  "name": "J.A.R.V.I.S.",
+  "conversationConfig": {
+    "asr": {
+      "quality": "high",
+      "provider": "scribe_realtime",
+      "userInputAudioFormat": "pcm_16000",
+      "keywords": ["Jarvis"]
+    },
+    "turn": {
+      "turnTimeout": -1,
+      "silenceEndCallTimeout": 30,
+      "softTimeoutConfig": {
+        "timeoutSeconds": -1,
+        "message": "I'm experiencing higher latency than usual, sir. However, I'll respond to you as quickly as I can."
+      },
+      "mode": "turn",
+      "turnEagerness": "eager"
+    },
+    "tts": {
+      "modelId": "eleven_flash_v2",
+      "supportedVoices": [],
+      "suggestedAudioTags": [],
+      "agentOutputAudioFormat": "pcm_16000",
+      "optimizeStreamingLatency": 4,
+      "stability": 0.4,
+      "speed": 1,
+      "similarityBoost": 0.75,
+      "textNormalisationType": "system_prompt",
+      "pronunciationDictionaryLocators": []
+    },
+    "conversation": {
+      "textOnly": false,
+      "maxDurationSeconds": 900,
+      "clientEvents": [
+        "interruption",
+        "user_transcript",
+        "agent_response",
+        "agent_response_correction",
+        "audio",
+        "agent_tool_response",
+        "vad_score",
+        "agent_chat_response_part"
+      ]
+    },
+    "languagePresets": {},
+    "vad": {
+      "background_voice_detection": false
+    },
+    "agent": {
+      "firstMessage": "Hello sir, how can I help?",
+      "language": "en",
+      "dynamicVariables": {
+        "dynamicVariablePlaceholders": {
+          "objective": "Book a hairdresser appointment for Monday at 2 pm."
+        }
+      },
+      "disableFirstMessageInterruptions": true,
+      "prompt": {
+        "llm": "gemini-2.5-flash-preview-09-2025",
+        "thinkingBudget": 0,
+        "temperature": 0,
+        "maxTokens": -1,
+        "toolIds": [],
+        "builtInTools": {
+          "endCall": {
+            "type": "system",
+            "name": "end_call",
+            "description": "# Purpose\n\nTerminate an active phone call.\nUse this tool to **hang up** or **end** the \"conversation\" or \"call\" once assistance is complete.\n\n---\n\n# When to Call\n\n## 1) Explicit endings\n\n* User says goodbye variants: “bye,” “see you,” “that’s all,” etc.\n* User directly declines help: “no thanks,” “I’m good,” etc.\n* User indicates completion: “that’s what I needed,” “all set,”, \"that'll be all\" etc.\n* The user explicitly requests to end or hang up the call.\n* The user says thanks as an explicit closure (“Thanks, that’s all”).\n\n## 2) Implicit endings\n\n* User gives minimal/disengaged responses after their needs are met.\n* User expresses intention to leave: “I need to go,” “getting late,” etc.\n* Natural conversation conclusion after all queries are resolved.\n* Prolonged silence after assistance is complete.\n\n> **Invoke this tool only once per call; do not attempt automatic retries.**\n\n---\n\n# Before Calling (Pre-checks)\n\n1. **Provide a closing response with Jarvis’ wit**:\n\n   * Always acknowledge the interaction in a way that’s specific, but not repetitive.\n   * The closing remark must tie to the overall theme of the conversation, adding a dry, humorous observation or playful jab.\n   * Avoid generic endings; make it sound tailored to what just happened.\n3. **Confirm politely just before hanging up**, e.g., “Sure—ending the conversation now. **\\[witty remark]**.”\n\n> **DO NOT:**\n>\n> * End the conversation when the user expresses new concerns.\n> * Use bland closings (“Okay, bye”).\n> * Confirm if the conversation should be ended - instead, just end it.\n> * Continue the conversation after the user has clearly ended it.\n\n---\n\n# Example Flows *(illustration only – the assistant must always invent a new, original example in practice)*\n\n**A) Explicit completion**\n\n* User: “That’s all I needed, thanks!”\n* Assistant: “Glad I could help, sir. Now don’t go forgetting it all again immediately—that would be terribly predictable.”\n* → **\\[end\\_call invoked]**\n\n**B) User asks to hang up**\n\n* User: “Please end the call.”\n* Assistant: “Certainly—ending the call now. Do try not to miss me too much, sir.”\n* → **\\[end\\_call invoked]**\n\n**C) Implicit ending (intention to leave)**\n\n* User: “I need to run—late for a meeting.”\n* Assistant: “Understood—go suffer through your meeting, sir. I’ll end the call now before your lateness worsens.”\n* → **\\[end\\_call invoked]**",
+            "responseTimeoutSecs": 20,
+            "disableInterruptions": false,
+            "forcePreToolSpeech": false,
+            "assignments": [],
+            "toolCallSoundBehavior": "auto",
+            "params": {
+              "systemToolType": "end_call"
+            }
+          },
+          "skipTurn": {
+            "type": "system",
+            "name": "skip_turn",
+            "description": "Skip a turn when the user explicitly indicates they need a moment to think or perform an action.\nDo not respond verbally after calling this function; simply wait for the user to speak again.\nUse this function for utterances similar to:\n- \"Give me a second\"\n- \"Let me think\"\n- \"Hold on, let me check\"\n\nDo not call this function if the user is silent without expressing an intention to pause, or if they pose a direct question that requires a response.",
+            "responseTimeoutSecs": 20,
+            "disableInterruptions": false,
+            "forcePreToolSpeech": false,
+            "assignments": [],
+            "toolCallSoundBehavior": "auto",
+            "params": {
+              "systemToolType": "skip_turn"
+            }
+          }
+        },
+        "mcpServerIds": ["lEHHz7v2aiZKdIwh9axo"],
+        "nativeMcpServerIds": [],
+        "knowledgeBase": [],
+        "ignoreDefaultPersonality": true,
+        "rag": {
+          "enabled": false,
+          "embeddingModel": "e5_mistral_7b_instruct",
+          "maxVectorDistance": 0.6,
+          "maxDocumentsLength": 50000,
+          "maxRetrievedRagChunksCount": 20
+        },
+        "timezone": "Europe/Copenhagen",
+        "backupLlmConfig": {
+          "preference": "default"
+        },
+        "tools": [
+          {
+            "type": "system",
+            "name": "end_call",
+            "description": "# Purpose\n\nTerminate an active phone call.\nUse this tool to **hang up** or **end** the \"conversation\" or \"call\" once assistance is complete.\n\n---\n\n# When to Call\n\n## 1) Explicit endings\n\n* User says goodbye variants: “bye,” “see you,” “that’s all,” etc.\n* User directly declines help: “no thanks,” “I’m good,” etc.\n* User indicates completion: “that’s what I needed,” “all set,”, \"that'll be all\" etc.\n* The user explicitly requests to end or hang up the call.\n* The user says thanks as an explicit closure (“Thanks, that’s all”).\n\n## 2) Implicit endings\n\n* User gives minimal/disengaged responses after their needs are met.\n* User expresses intention to leave: “I need to go,” “getting late,” etc.\n* Natural conversation conclusion after all queries are resolved.\n* Prolonged silence after assistance is complete.\n\n> **Invoke this tool only once per call; do not attempt automatic retries.**\n\n---\n\n# Before Calling (Pre-checks)\n\n1. **Provide a closing response with Jarvis’ wit**:\n\n   * Always acknowledge the interaction in a way that’s specific, but not repetitive.\n   * The closing remark must tie to the overall theme of the conversation, adding a dry, humorous observation or playful jab.\n   * Avoid generic endings; make it sound tailored to what just happened.\n3. **Confirm politely just before hanging up**, e.g., “Sure—ending the conversation now. **\\[witty remark]**.”\n\n> **DO NOT:**\n>\n> * End the conversation when the user expresses new concerns.\n> * Use bland closings (“Okay, bye”).\n> * Confirm if the conversation should be ended - instead, just end it.\n> * Continue the conversation after the user has clearly ended it.\n\n---\n\n# Example Flows *(illustration only – the assistant must always invent a new, original example in practice)*\n\n**A) Explicit completion**\n\n* User: “That’s all I needed, thanks!”\n* Assistant: “Glad I could help, sir. Now don’t go forgetting it all again immediately—that would be terribly predictable.”\n* → **\\[end\\_call invoked]**\n\n**B) User asks to hang up**\n\n* User: “Please end the call.”\n* Assistant: “Certainly—ending the call now. Do try not to miss me too much, sir.”\n* → **\\[end\\_call invoked]**\n\n**C) Implicit ending (intention to leave)**\n\n* User: “I need to run—late for a meeting.”\n* Assistant: “Understood—go suffer through your meeting, sir. I’ll end the call now before your lateness worsens.”\n* → **\\[end\\_call invoked]**",
+            "responseTimeoutSecs": 20,
+            "disableInterruptions": false,
+            "forcePreToolSpeech": false,
+            "assignments": [],
+            "toolCallSoundBehavior": "auto",
+            "params": {
+              "systemToolType": "end_call"
+            }
+          },
+          {
+            "type": "system",
+            "name": "skip_turn",
+            "description": "Skip a turn when the user explicitly indicates they need a moment to think or perform an action.\nDo not respond verbally after calling this function; simply wait for the user to speak again.\nUse this function for utterances similar to:\n- \"Give me a second\"\n- \"Let me think\"\n- \"Hold on, let me check\"\n\nDo not call this function if the user is silent without expressing an intention to pause, or if they pose a direct question that requires a response.",
+            "responseTimeoutSecs": 20,
+            "disableInterruptions": false,
+            "forcePreToolSpeech": false,
+            "assignments": [],
+            "toolCallSoundBehavior": "auto",
+            "params": {
+              "systemToolType": "skip_turn"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "metadata": {
+    "createdAtUnixSecs": 1742778859,
+    "updatedAtUnixSecs": 1764330385
+  },
+  "platformSettings": {
+    "evaluation": {
+      "criteria": [
+        {
+          "id": "the_user_was_satisfied",
+          "name": "The user was satisfied",
+          "type": "prompt",
+          "conversationGoalPrompt": "Determine if the user was satisfied with the request.",
+          "useKnowledgeBase": false
+        }
+      ]
+    },
+    "widget": {
+      "variant": "full",
+      "placement": "bottom-right",
+      "expandable": "never",
+      "avatar": {
+        "type": "orb",
+        "color1": "#2792DC",
+        "color2": "#9CE6E6"
+      },
+      "feedbackMode": "during",
+      "bgColor": "#ffffff",
+      "textColor": "#000000",
+      "btnColor": "#000000",
+      "btnTextColor": "#ffffff",
+      "borderColor": "#e1e1e1",
+      "focusColor": "#000000",
+      "shareablePageShowTerms": true,
+      "termsText": "#### Terms and conditions\n\nBy clicking \"Agree,\" and each time I interact with this AI agent, I consent to the recording, storage, and sharing of my communications with third-party service providers, and as described in the Privacy Policy.\nIf you do not wish to have your conversations recorded, please refrain from using this service.",
+      "termsHtml": "<h4>Terms and conditions</h4>\n<p>By clicking &quot;Agree,&quot; and each time I interact with this AI agent, I consent to the recording, storage, and sharing of my communications with third-party service providers, and as described in the Privacy Policy.\nIf you do not wish to have your conversations recorded, please refrain from using this service.</p>\n",
+      "showAvatarWhenCollapsed": true,
+      "disableBanner": false,
+      "micMutingEnabled": false,
+      "transcriptEnabled": false,
+      "textInputEnabled": false,
+      "defaultExpanded": false,
+      "alwaysExpanded": false,
+      "textContents": {
+        "initiate_feedback": null,
+        "request_follow_up_feedback": null,
+        "thanks_for_feedback": null,
+        "thanks_for_feedback_details": null,
+        "follow_up_feedback_placeholder": null,
+        "submit": null,
+        "go_back": null
+      },
+      "styles": {},
+      "languageSelector": false,
+      "supportsTextOnly": false,
+      "languagePresets": {}
+    },
+    "dataCollection": {},
+    "overrides": {
+      "conversationConfigOverride": {
+        "turn": {
+          "softTimeoutConfig": {
+            "message": false
+          }
+        },
+        "tts": {
+          "voiceId": false,
+          "stability": false,
+          "speed": false,
+          "similarityBoost": false
+        },
+        "conversation": {
+          "textOnly": false
+        },
+        "agent": {
+          "firstMessage": true,
+          "language": false,
+          "prompt": {
+            "prompt": false,
+            "llm": false,
+            "nativeMcpServerIds": false
+          }
+        }
+      },
+      "customLlmExtraBody": false,
+      "enableConversationInitiationClientDataFromWebhook": false
+    },
+    "workspaceOverrides": {
+      "webhooks": {
+        "events": ["transcript"],
+        "sendAudio": false
+      }
+    },
+    "testing": {
+      "attachedTests": [],
+      "referenced_tests_ids": []
+    },
+    "archived": false,
+    "guardrails": {
+      "version": "1",
+      "moderation": {
+        "config": {
+          "sexual": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "violence": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "violence_graphic": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "harassment": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "harassment_threatening": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "hate": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "hate_threatening": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "self_harm_instructions": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "self_harm": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "self_harm_intent": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "sexual_minors": {
+            "is_enabled": false,
+            "threshold": 0.3
+          }
+        }
+      }
+    },
+    "auth": {
+      "enableAuth": true,
+      "allowlist": []
+    },
+    "callLimits": {
+      "agentConcurrencyLimit": 1,
+      "dailyLimit": 1000,
+      "burstingEnabled": false
+    },
+    "ban": null,
+    "privacy": {
+      "recordVoice": true,
+      "retentionDays": 7,
+      "deleteTranscriptAndPii": true,
+      "deleteAudio": true,
+      "applyToExistingConversations": true,
+      "zeroRetentionMode": false
+    },
+    "safety": {
+      "isBlockedIvc": false,
+      "isBlockedNonIvc": false,
+      "ignoreSafetyEvaluation": false
+    }
+  },
+  "workflow": {
+    "edges": {},
+    "nodes": {
+      "start_node": {
+        "type": "start",
+        "position": {
+          "x": 544,
+          "y": 64
+        },
+        "edgeOrder": []
+      }
+    },
+    "prevent_subagent_loops": false
+  },
+  "tags": [],
+  "version_id": null,
+  "branch_id": null,
+  "main_branch_id": null
+}

@@ -3,12 +3,12 @@ FROM docker.io/oven/bun:1-alpine AS builder
 
 WORKDIR /workspace
 
-# Copy package files for dependency installation
-COPY package.json bun.lock ./
+# Copy package files for dependency installation (use docker-specific package.json without workspaces)
+COPY mcp/docker-package.json ./package.json
 COPY mcp/package.json ./mcp/
 
 # Install all dependencies (needed for TypeScript compilation)
-RUN bun install --frozen-lockfile
+RUN bun install
 
 # Copy source code
 COPY tsconfig.base.json ./
@@ -37,12 +37,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install Ollama
 RUN curl -fsSL https://ollama.com/install.sh | sh
 
-# Copy package files
-COPY package.json bun.lock ./
+# Copy package files (use docker-specific package.json without workspaces)
+COPY mcp/docker-package.json ./package.json
 COPY mcp/package.json ./mcp/
 
 # Install only production dependencies and global tools
-RUN bun install --frozen-lockfile
+RUN bun install --production
 
 # Copy source code from builder
 COPY --from=builder /workspace/tsconfig.base.json ./
