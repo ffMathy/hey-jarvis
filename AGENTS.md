@@ -3,6 +3,16 @@
 ## Overview
 This is the root-level guidelines document for the Hey Jarvis monorepo. All projects in this repository should follow these shared conventions.
 
+## Technology Stack
+- **Runtime**: Bun (not Node.js)
+- **Package Manager**: Bun (use `bun install`, never npm)
+- **Build System**: NX monorepo
+- **Language**: TypeScript (strict mode)
+- **AI Framework**: Mastra (V1 beta)
+- **LLM Provider**: Google Gemini (gemini-flash-latest)
+- **Linting**: Biome
+- **Testing**: Jest
+
 ## Repository Structure
 This is an NX monorepo containing intelligent voice assistant components:
 
@@ -231,3 +241,39 @@ All contributions should:
 - Apply YAGNI principle
 - Include proper testing
 - Update relevant AGENTS.md files
+
+## Common Tasks
+
+### Adding a New Mastra Agent
+1. Create a new vertical in `mcp/mastra/verticals/<name>/`
+2. Add `agent.ts`, `tools.ts`, `workflows.ts`, and `index.ts`
+3. Export from `mcp/mastra/verticals/index.ts`
+4. Register in `mcp/mastra/index.ts`
+5. Document in `mcp/AGENTS.md`
+
+### Adding a New Tool
+1. Create tool in appropriate vertical's `tools.ts`
+2. Use `createTool()` factory function
+3. Use kebab-case for tool IDs
+4. Export in the vertical's `index.ts`
+
+### Running the Development Server
+```bash
+bunx nx serve mcp
+# Access playground at http://localhost:4111/agents
+```
+
+### Building for Production
+```bash
+bunx nx build mcp
+bunx nx build home-assistant-addon
+```
+
+### Testing Changes
+```bash
+# Test specific project
+bunx nx test mcp
+
+# Test affected projects
+bunx nx affected --target=test
+```
