@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import { ollama } from '../../utils/ollama-provider.js';
 import { createAgentStep, createStep, createToolStep, createWorkflow } from '../../utils/workflow-factory.js';
-import { sendEmail } from '../email/tools.js';
+import { sendEmailAndAwaitResponseWorkflow } from '../human-in-the-loop/workflows.js';
+import { shoppingListWorkflow } from '../shopping/workflows.js';
 import { getAllRecipes } from './tools.js';
 
 const mealPlanSchema = z.array(
@@ -111,50 +112,6 @@ Focus on dinner/evening meals (look for "aftensmad" or similar categories). Gene
   )
   .commit();
 
-// Step 4: Send email
-// Email content passed through context - no state needed
-const sendMealPlanEmail = createStep({
-  id: 'send-meal-plan-email',
-  description: 'Sends the meal plan email to configured recipients',
-  inputSchema: z.object({
-    htmlContent: z.string(),
-    subject: z.string(),
-    mealplan: mealPlanSchema,
-  }),
-  outputSchema: z.object({
-    messageId: z.string(),
-    subject: z.string(),
-    success: z.boolean(),
-    message: z.string(),
-  }),
-  execute: async ({ inputData }) => {
-    const recipientEmails = process.env.HEY_JARVIS_MEAL_PLAN_NOTIFICATION_EMAIL;
-    if (!recipientEmails) {
-      throw new Error(
-        'HEY_JARVIS_MEAL_PLAN_NOTIFICATION_EMAIL environment variable is not set. ' +
-          'Please configure meal_plan_notification_email in the Home Assistant addon settings.',
-      );
-    }
-
-    // Split comma-separated emails and trim whitespace
-    const toRecipients = recipientEmails
-      .split(',')
-      .map((email) => email.trim())
-      .filter((email) => email.length > 0);
-
-    if (toRecipients.length === 0) {
-      throw new Error('No valid email recipients found in HEY_JARVIS_MEAL_PLAN_NOTIFICATION_EMAIL');
-    }
-
-    // Call the sendEmail tool
-    return await sendEmail.execute({
-      subject: inputData.subject,
-      bodyContent: inputData.htmlContent,
-      toRecipients,
-    });
-  },
-});
-
 // Uses local Gemma 3 via Ollama for cost-efficiency in scheduled tasks
 const generateMealPlanEmail = createAgentStep({
   id: 'generate-meal-plan-email',
@@ -202,19 +159,322 @@ ${JSON.stringify(inputData.mealplan, null, 2)}
 Return only the HTML content without any additional text or markdown.`;
   },
 });
-// Main weekly meal planning workflow
-// Uses generateMealPlanWorkflow then sends email
+
+// State schema for the weekly meal planning workflow with human-in-the-loop
+const weeklyMealPlanningStateSchema = z
+  .object({
+    mealplan: mealPlanSchema, // Current meal plan being reviewed
+    isApproved: z.boolean(), // Whether the meal plan has been approved
+    feedbackHistory: z.array(z.string()), // History of feedback for context
+  })
+  .partial();
+
+// Step: Prepare email question for human feedback
+const prepareMealPlanFeedbackQuestion = createStep({
+  id: 'prepare-meal-plan-feedback-question',
+  description: 'Prepares the question for requesting meal plan feedback',
+  stateSchema: weeklyMealPlanningStateSchema,
+  inputSchema: z.object({
+    htmlContent: z.string(),
+    subject: z.string(),
+    mealplan: mealPlanSchema,
+  }),
+  outputSchema: z.object({
+    recipientEmail: z.string(),
+    question: z.string(),
+  }),
+  execute: async ({ inputData, setState, state }) => {
+    const recipientEmails = process.env.HEY_JARVIS_MEAL_PLAN_NOTIFICATION_EMAIL;
+    if (!recipientEmails) {
+      throw new Error(
+        'HEY_JARVIS_MEAL_PLAN_NOTIFICATION_EMAIL environment variable is not set. ' +
+          'Please configure meal_plan_notification_email in the Home Assistant addon settings.',
+      );
+    }
+
+    // Get the first email for the feedback request
+    const recipientEmail = recipientEmails.split(',')[0].trim();
+
+    // Store the current meal plan in state for later steps to access
+    setState({
+      ...state,
+      mealplan: inputData.mealplan,
+      isApproved: false,
+    });
+
+    // Create a question that includes the meal plan HTML
+    const question = `
+Ugentlig madplan til gennemgang:
+
+${inputData.htmlContent}
+
+---
+
+Svar venligst med:
+- "Godkendt" eller "OK" for at godkende madplanen og tilføje ingredienser til indkøbslisten
+- Eller beskriv de ændringer du ønsker (f.eks. "Byt ret X ud med noget med kylling")
+    `.trim();
+
+    return {
+      recipientEmail,
+      question,
+    };
+  },
+});
+
+// Step: Extract feedback response and determine if approved or changes needed
+const extractMealPlanFeedbackResponse = createAgentStep({
+  id: 'extract-meal-plan-feedback-response',
+  description: 'Analyzes the human feedback to determine if approved or changes requested',
+  stateSchema: weeklyMealPlanningStateSchema,
+  agentConfig: {
+    model: ollama('gemma3:27b'),
+    id: 'feedbackAnalyzer',
+    name: 'FeedbackAnalyzer',
+    instructions: `You are an expert at analyzing human feedback for meal plans.
+
+Your job is to:
+1. Determine if the user has approved the meal plan
+2. Extract any requested changes or modifications
+3. Identify specific preferences mentioned
+
+Approval indicators (Danish and English):
+- "Godkendt", "OK", "Ser godt ud", "Fint", "Approved", "Looks good", "Perfect"
+
+Change request indicators:
+- Mentions of specific dishes to replace
+- Requests for different ingredients
+- Dietary concerns or preferences
+- Any feedback that isn't pure approval`,
+    description: 'Specialized agent for analyzing meal plan feedback',
+    tools: undefined,
+  },
+  inputSchema: z.object({
+    senderEmail: z.string(),
+    response: z.record(z.any()),
+  }),
+  outputSchema: z.object({
+    isApproved: z.boolean(),
+    feedbackText: z.string(),
+    requestedChanges: z.string().optional(),
+    mealplan: mealPlanSchema,
+  }),
+  prompt: ({ context, workflow }) => {
+    const feedbackHistory = workflow?.state?.feedbackHistory || [];
+    const mealplan = workflow?.state?.mealplan || [];
+    const historyContext = feedbackHistory.length > 0 ? `\n\nPrevious feedback:\n${feedbackHistory.join('\n')}` : '';
+
+    return `Analyze this meal plan feedback response:
+
+Response data: ${JSON.stringify(context.response)}
+
+Current meal plan: ${JSON.stringify(mealplan, null, 2)}
+${historyContext}
+
+Determine:
+1. Is the meal plan approved? (isApproved: true/false)
+2. What is the feedback text? (feedbackText: the user's response)
+3. If changes are requested, what are they? (requestedChanges: description of changes or undefined if approved)
+
+Return the structured analysis. Also return the current mealplan unmodified.`;
+  },
+});
+
+// Step: Update state with feedback and prepare for potential regeneration
+const processMealPlanFeedback = createStep({
+  id: 'process-meal-plan-feedback',
+  description: 'Updates workflow state based on feedback analysis',
+  stateSchema: weeklyMealPlanningStateSchema,
+  inputSchema: z.object({
+    isApproved: z.boolean(),
+    feedbackText: z.string(),
+    requestedChanges: z.string().optional(),
+    mealplan: mealPlanSchema,
+  }),
+  outputSchema: z.object({
+    isApproved: z.boolean(),
+    preferences: z.string().optional(),
+    mealplan: mealPlanSchema,
+  }),
+  execute: async ({ inputData, setState, state }) => {
+    const feedbackHistory = state?.feedbackHistory || [];
+
+    // Update state with feedback
+    setState({
+      ...state,
+      isApproved: inputData.isApproved,
+      feedbackHistory: [...feedbackHistory, inputData.feedbackText],
+    });
+
+    return {
+      isApproved: inputData.isApproved,
+      // If changes requested, pass them as preferences for regeneration
+      preferences: inputData.requestedChanges,
+      mealplan: inputData.mealplan,
+    };
+  },
+});
+
+// Step: Prepare for regeneration with new preferences
+const prepareForRegeneration = createStep({
+  id: 'prepare-for-regeneration',
+  description: 'Prepares input for meal plan regeneration with updated preferences',
+  stateSchema: weeklyMealPlanningStateSchema,
+  inputSchema: z.object({
+    isApproved: z.boolean(),
+    preferences: z.string().optional(),
+    mealplan: mealPlanSchema,
+  }),
+  outputSchema: z.object({
+    preferences: z.string().optional(),
+    isApproved: z.boolean(),
+  }),
+  execute: async ({ inputData, state }) => {
+    // Combine new preferences with recent feedback history (limit to last 3 to avoid token limits)
+    const feedbackHistory = state?.feedbackHistory || [];
+    const recentFeedback = feedbackHistory.slice(-3);
+    const combinedPreferences = inputData.preferences
+      ? `${inputData.preferences}\n\nRecent feedback: ${recentFeedback.join('; ')}`
+      : undefined;
+
+    return {
+      preferences: combinedPreferences,
+      isApproved: inputData.isApproved,
+    };
+  },
+});
+
+// Step: Extract ingredients and prepare shopping list prompt
+const prepareShoppingListPrompt = createStep({
+  id: 'prepare-shopping-list-prompt',
+  description: 'Extracts all ingredients from approved meal plan for shopping list',
+  stateSchema: weeklyMealPlanningStateSchema,
+  inputSchema: z.object({
+    isApproved: z.boolean(),
+    preferences: z.string().optional(),
+  }),
+  outputSchema: z.object({
+    prompt: z.string(),
+  }),
+  execute: async ({ state }) => {
+    // Get the meal plan from state (stored during prepare-meal-plan-feedback-question step)
+    const mealplan = state?.mealplan || [];
+
+    // Extract all ingredients from all recipes
+    const allIngredients: string[] = [];
+    for (const day of mealplan) {
+      if (day.recipe?.ingredients) {
+        allIngredients.push(...day.recipe.ingredients);
+      }
+    }
+
+    // Create a prompt for the shopping list workflow
+    const prompt = `Tilføj følgende ingredienser til indkøbslisten (fra denne uges madplan):
+
+${allIngredients.join('\n')}`;
+
+    return { prompt };
+  },
+});
+
+// Step: Format final output after shopping list is updated
+const formatFinalOutput = createStep({
+  id: 'format-final-output',
+  description: 'Formats the final workflow output',
+  stateSchema: weeklyMealPlanningStateSchema,
+  inputSchema: z.object({
+    success: z.boolean(),
+    message: z.string(),
+    itemsProcessed: z.number().optional(),
+  }),
+  outputSchema: z.object({
+    success: z.boolean(),
+    message: z.string(),
+  }),
+  execute: async ({ inputData }) => {
+    const shoppingMessage = inputData.message || 'Shopping list updated.';
+    return {
+      success: inputData.success,
+      message: `Madplan godkendt og ingredienser tilføjet til indkøbslisten. ${shoppingMessage}`,
+    };
+  },
+});
+
+// Sub-workflow for the feedback loop iteration
+// This generates meal plan, formats email, requests feedback
+const mealPlanFeedbackIterationWorkflow = createWorkflow({
+  id: 'mealPlanFeedbackIterationWorkflow',
+  stateSchema: weeklyMealPlanningStateSchema,
+  inputSchema: z.object({
+    preferences: z.string().optional(),
+    isApproved: z.boolean().optional(),
+  }),
+  outputSchema: z.object({
+    isApproved: z.boolean(),
+    preferences: z.string().optional(),
+  }),
+})
+  // Map input to generateMealPlanWorkflow input schema
+  .map(async ({ inputData }) => ({
+    preferences: inputData.preferences,
+  }))
+  .then(generateMealPlanWorkflow) // Generate meal plan (with preferences if any)
+  .then(generateMealPlanEmail) // Format as HTML email
+  .then(prepareMealPlanFeedbackQuestion) // Prepare feedback question
+  // Map to sendEmailAndAwaitResponseWorkflow input schema
+  .map(async ({ inputData }) => ({
+    recipientEmail: inputData.recipientEmail,
+    question: inputData.question,
+  }))
+  .then(sendEmailAndAwaitResponseWorkflow) // Send email and wait for human response
+  .then(extractMealPlanFeedbackResponse) // Analyze the response
+  .then(processMealPlanFeedback) // Update state and prepare output
+  .then(prepareForRegeneration) // Prepare for potential next iteration
+  .commit();
+
+// Main weekly meal planning workflow with human-in-the-loop feedback
+// Uses dowhile to keep iterating until the meal plan is approved
+// When approved, adds ingredients to shopping list
 export const weeklyMealPlanningWorkflow = createWorkflow({
   id: 'weeklyMealPlanningWorkflow',
+  stateSchema: weeklyMealPlanningStateSchema,
   inputSchema: z.object({}).partial(),
   outputSchema: z.object({
-    messageId: z.string(),
-    subject: z.string(),
     success: z.boolean(),
     message: z.string(),
   }),
 })
-  .then(generateMealPlanWorkflow)
-  .then(generateMealPlanEmail)
-  .then(sendMealPlanEmail)
+  // Initialize with no preferences and not approved
+  .then(
+    createStep({
+      id: 'initialize-workflow',
+      description: 'Initializes the workflow with default values',
+      stateSchema: weeklyMealPlanningStateSchema,
+      inputSchema: z.object({}).partial(),
+      outputSchema: z.object({
+        preferences: z.string().optional(),
+        isApproved: z.boolean(),
+      }),
+      execute: async ({ setState }) => {
+        setState({
+          isApproved: false,
+          feedbackHistory: [],
+        });
+        return {
+          preferences: undefined,
+          isApproved: false,
+        };
+      },
+    }),
+  )
+  // Keep iterating until approved
+  .dowhile(mealPlanFeedbackIterationWorkflow, async ({ inputData }) => !inputData.isApproved)
+  // Once approved, add ingredients to shopping list
+  .then(prepareShoppingListPrompt)
+  // Map to shoppingListWorkflow input schema
+  .map(async ({ inputData }) => ({
+    prompt: inputData.prompt,
+  }))
+  .then(shoppingListWorkflow)
+  .then(formatFinalOutput)
   .commit();
