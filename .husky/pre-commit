@@ -1,1 +1,1 @@
-# Pre-commit checks placeholder
+bunx lint-staged

@@ -4,6 +4,7 @@
   "projectType": "application",
   "tags": ["home-assistant", "addon", "docker"],
   "targets": {
+    "lint": {},
     "initialize": {
       "executor": "nx:run-commands",
       "cache": true,
@@ -22,7 +23,7 @@
     },
     "build": {
       "executor": "nx:run-commands",
-      "dependsOn": ["mcp:build"],
+      "dependsOn": ["lint", "mcp:build"],
       "options": {
         "commands": ["./home-assistant-addon/.scripts/build.sh", "./home-assistant-addon/.scripts/build-test-image.sh"],
         "parallel": false,
@@ -39,7 +40,7 @@
     },
     "test": {
       "executor": "nx:run-commands",
-      "dependsOn": ["initialize", "build"],
+      "dependsOn": ["lint", "initialize", "build"],
       "options": {
         "command": "./.scripts/run-with-env.sh home-assistant-addon/op.env bunx playwright test --config=home-assistant-addon/playwright.config.ts",
         "cwd": "."
