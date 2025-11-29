@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.6.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.5.0...home-assistant-voice-firmware-v0.6.0) (2025-11-29)
+
+
+### Features
+
+* add lint-staged to husky pre-commit and global lint dependencies ([4bb4777](https://github.com/ffMathy/hey-jarvis/commit/4bb4777aeb8e9db1e5537b25c81ebd3249e3eb0e))
+* add lint-staged to husky pre-commit and global lint dependencies ([#343](https://github.com/ffMathy/hey-jarvis/issues/343)) ([83f5fe8](https://github.com/ffMathy/hey-jarvis/commit/83f5fe8c630ece3f2086baeb9e81e28ddcae2d98))
+* **mcp:** add LLM-evaluated tests for routing workflows DAG generation ([318cba4](https://github.com/ffMathy/hey-jarvis/commit/318cba435b427cc72264cbbf76a45161464f2031))
+
+
+### Bug Fixes
+
+* revert unintentional formatting changes and remove cloudflared.deb ([aa47eaf](https://github.com/ffMathy/hey-jarvis/commit/aa47eafa733892a4663f76a9c888551d2d9591c6))
+
+
+### Documentation
+
+* consolidate shared guidelines into root AGENTS.md ([323c906](https://github.com/ffMathy/hey-jarvis/commit/323c906419c4fde60aa0ffcdb5b0c55317143ccc))
+* consolidate shared guidelines into root AGENTS.md ([#345](https://github.com/ffMathy/hey-jarvis/issues/345)) ([5d5366c](https://github.com/ffMathy/hey-jarvis/commit/5d5366c1fe074d90c0a8dd7a5520c3932a361139))
+
 ## [0.5.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.4.2...home-assistant-voice-firmware-v0.5.0) (2025-11-28)
 
 
