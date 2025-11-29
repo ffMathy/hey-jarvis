@@ -142,7 +142,7 @@ const listAvailableAgentsStep = createStep({
 });
 
 export function resetCurrentDAG() {
-  workflowState.currentDAG = {
+  workflowState.workflowState.currentDAG = {
     tasks: [],
     executionPromise: undefined,
   };
