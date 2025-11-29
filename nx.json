@@ -17,14 +17,20 @@
     "sharedGlobals": ["{workspaceRoot}/biome.json"]
   },
   "targetDefaults": {
+    "build": {
+      "dependsOn": ["lint", "^build"]
+    },
+    "test": {
+      "dependsOn": ["lint"]
+    },
     "@nx/esbuild:esbuild": {
       "cache": true,
-      "dependsOn": ["^build"],
+      "dependsOn": ["lint", "^build"],
       "inputs": ["default", "^default"]
     },
     "@nx/js:tsc": {
       "cache": true,
-      "dependsOn": ["^build"],
+      "dependsOn": ["lint", "^build"],
       "inputs": ["default", "^default"]
     },
     "lint": {
@@ -32,7 +38,7 @@
       "inputs": ["default", "{workspaceRoot}/biome.json"],
       "executor": "nx:run-commands",
       "options": {
-        "command": "biome lint --write {projectRoot}"
+        "command": "biome check --write {projectRoot}"
       }
     },
     "format": {

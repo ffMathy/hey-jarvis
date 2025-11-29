@@ -179,8 +179,49 @@ docker buildx build \
 - ✅ Use `nx build home-assistant-addon` instead of running build directly
 - ✅ Use `nx deploy home-assistant-addon` instead of running deploy script directly
 - ✅ Use `nx docker:build home-assistant-addon` for Docker builds
+- ✅ Use `nx lint home-assistant-addon` to lint the project
+- ✅ Use `nx test home-assistant-addon` to run tests
 - ❌ **NEVER use npm commands** in this Bun-powered monorepo
 - ❌ **NEVER run commands directly** - always use NX for project commands
+
+### Mandatory Linting and Testing After Code Changes
+**CRITICAL: ALWAYS run lint and tests after making any code changes:**
+
+#### 🔧 **After Every Code Change**
+1. **Lint all affected files**: Run `bunx nx lint home-assistant-addon` to check for code quality issues
+2. **Run tests**: Run `bunx nx test home-assistant-addon` to ensure changes don't break existing functionality
+3. **Build the project**: Run `bunx nx build home-assistant-addon` to verify the build succeeds
+
+#### 📋 **Required Workflow**
+```bash
+# After making changes to home-assistant-addon project
+bunx nx lint home-assistant-addon
+bunx nx test home-assistant-addon
+bunx nx build home-assistant-addon
+```
+
+#### ⚠️ **Why This is Mandatory**
+- **Lint-staged runs on commit**: The pre-commit hook runs biome via lint-staged, but this only catches staged files
+- **Build depends on lint**: The NX configuration ensures build targets depend on lint, but running lint early catches issues faster
+- **Tests validate behavior**: Tests ensure your changes don't introduce regressions
+- **CI will fail**: If you skip local validation, CI will catch issues and block the PR
+
+#### 🏕️ **Boy Scout Rule - Always Leave Code Better Than You Found It**
+**CRITICAL: Always fix issues you encounter, even if unrelated to your current task:**
+
+- ✅ **Fix ALL lint errors** you encounter in any file, not just files you're modifying
+- ✅ **Fix ALL failing tests** you discover, even if they were already broken before your changes
+- ✅ **Fix formatting issues** in any file you touch or view
+- ✅ **Update outdated code patterns** when you see them
+- ✅ **Remove dead code** and unused imports you notice
+- ✅ **Improve code quality** whenever you have the opportunity
+
+**Why This Matters:**
+- Technical debt accumulates when issues are ignored
+- Broken windows invite more broken windows
+- Every developer is responsible for overall code health
+- Small improvements compound into significant quality gains
+- CI/CD pipelines should always be green
 
 ### 1Password Authentication
 If this project uses 1Password CLI for environment variables:

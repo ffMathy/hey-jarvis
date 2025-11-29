@@ -2348,6 +2348,74 @@ bunx nx build home-assistant-voice-firmware --skip-nx-cache
 # Check output for "Running target [target] for project [name] and X tasks it depends on"
 ```
 
+### Mandatory Linting and Testing After Code Changes
+**CRITICAL: ALWAYS run lint and tests after making any code changes:**
+
+#### 🔧 **After Every Code Change**
+1. **Lint all affected files**: Run `bunx nx lint <project>` to check for code quality issues
+2. **Run tests**: Run `bunx nx test <project>` to ensure changes don't break existing functionality
+3. **Build the project**: Run `bunx nx build <project>` to verify the build succeeds
+
+#### 📋 **Required Workflow**
+```bash
+# After making changes to mcp project
+bunx nx lint mcp
+bunx nx test mcp
+bunx nx build mcp
+
+# Or use affected commands to lint/test all impacted projects
+bunx nx affected --target=lint
+bunx nx affected --target=test
+bunx nx affected --target=build
+```
+
+#### ⚠️ **Why This is Mandatory**
+- **Lint-staged runs on commit**: The pre-commit hook runs biome via lint-staged, but this only catches staged files
+- **Build depends on lint**: The NX configuration ensures build targets depend on lint, but running lint early catches issues faster
+- **Tests validate behavior**: Tests ensure your changes don't introduce regressions
+- **CI will fail**: If you skip local validation, CI will catch issues and block the PR
+
+#### 🚀 **Quick Validation Command**
+For a complete validation of your changes:
+```bash
+# Validate everything for a specific project
+bunx nx run-many --target=lint,test,build --projects=mcp
+
+# Or validate all affected projects
+bunx nx affected --target=lint && bunx nx affected --target=test && bunx nx affected --target=build
+```
+
+#### 🏕️ **Boy Scout Rule - Always Leave Code Better Than You Found It**
+**CRITICAL: Always fix issues you encounter, even if unrelated to your current task:**
+
+- ✅ **Fix ALL lint errors** you encounter in any file, not just files you're modifying
+- ✅ **Fix ALL failing tests** you discover, even if they were already broken before your changes
+- ✅ **Fix formatting issues** in any file you touch or view
+- ✅ **Update outdated code patterns** when you see them
+- ✅ **Remove dead code** and unused imports you notice
+- ✅ **Improve code quality** whenever you have the opportunity
+
+**Why This Matters:**
+- Technical debt accumulates when issues are ignored
+- Broken windows invite more broken windows
+- Every developer is responsible for overall code health
+- Small improvements compound into significant quality gains
+- CI/CD pipelines should always be green
+
+**Example Workflow:**
+```bash
+# You're working on a feature in mcp project
+bunx nx lint mcp
+# Lint shows 3 errors - 1 from your changes, 2 pre-existing
+# ✅ CORRECT: Fix ALL 3 errors
+# ❌ WRONG: Only fix the 1 error from your changes
+
+bunx nx test mcp  
+# Tests show 1 failure unrelated to your changes
+# ✅ CORRECT: Investigate and fix the failing test
+# ❌ WRONG: Ignore it because "it was already broken"
+```
+
 ### Tool ID Naming Conventions
 **CRITICAL**: All tool IDs must follow kebab-case naming conventions:
 
