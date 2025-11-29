@@ -43,6 +43,27 @@
     "terminal.integrated.shellIntegration.enabled": true,
     "chat.mcp.autostart": "newAndOutdated",
     "chat.mcp.access": "all",
+    "mcp": {
+      "servers": {
+        "mastra": {
+          "command": "npx",
+          "args": ["-y", "@mastra/mcp-docs-server"],
+          "type": "stdio",
+          "tools": ["*"]
+        },
+        "github-mcp-server": {
+          "tools": ["*"],
+          "type": "http",
+          "url": "https://api.githubcopilot.com/mcp/"
+        },
+        "nx-mcp": {
+          "type": "stdio",
+          "tools": ["*"],
+          "command": "npx",
+          "args": ["nx-mcp@latest"]
+        }
+      }
+    },
     // play sound when Copilot/Agent has finished responding
     "accessibility.signals.chatResponseReceived": {
       "sound": "on"
