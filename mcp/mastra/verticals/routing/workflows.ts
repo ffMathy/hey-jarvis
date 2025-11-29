@@ -20,6 +20,7 @@ export const outputSchema = z
 const stateSchema = z
   .object({
     userQuery: z.string().describe("The user's routing query"),
+    async: z.boolean().describe('Whether the DAG is running asynchronously (fire-and-forget)'),
   })
   .partial();
 
@@ -29,6 +30,13 @@ export const inputSchema = z.object({
     .describe("The user's routing query")
     .default(
       "I'd like to check the weather for my current location, and check my calendar for today. If I have any calendars regarding my workplace, I'd like to infer when I typically go to work, and check the traffic conditions for that time. Additionally, I am planning on making a lasagna, so please fetch the recipes for that and add a reminder to my to-do list with the ingredients, for when I get home from work.",
+    ),
+  async: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe(
+      'Whether to run the DAG asynchronously (fire-and-forget). If true, the instructions will tell Jarvis to end the call immediately.',
     ),
 });
 
@@ -84,6 +92,7 @@ const listAvailableAgentsStep = createStep({
   execute: async (context) => {
     context.setState({
       userQuery: context.inputData.userQuery,
+      async: context.inputData.async,
     });
 
     const publicAgents = Object.values(await agentProvider());
@@ -469,15 +478,29 @@ const startDagExecutionStep = createStep({
   inputSchema: optimizeDagStep.outputSchema,
   stateSchema: stateSchema,
   outputSchema: z.object({
+    instructions: z.string().describe('Instructions for Jarvis to follow'),
     taskIdsInProgress: z.array(z.string()).describe('IDs of tasks currently in progress'),
   }),
-  execute: async () => {
+  execute: async (context) => {
     if (!currentDAG.executionPromise) {
       currentDAG.executionPromise = startDagExecution();
     }
 
+    const isAsync = context.state.async === true;
+    const taskIdsInProgress = currentDAG.tasks.filter((t) => t.result === undefined).map((t) => t.id);
+
+    if (isAsync) {
+      return {
+        instructions:
+          'The request is being processed in the background and will complete on its own. End the call now.',
+        taskIdsInProgress,
+      };
+    }
+
     return {
-      taskIdsInProgress: currentDAG.tasks.filter((t) => t.result === undefined).map((t) => t.id),
+      instructions:
+        'The request is now being processed in the background. Call getNextInstructionsWorkflow to check on the status and receive the next instructions.',
+      taskIdsInProgress,
     };
   },
 });
