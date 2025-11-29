@@ -1,4 +1,5 @@
 import { createAgent } from '../../utils/agent-factory.js';
+import { ollama } from '../../utils/ollama-provider.js';
 import { getNotificationAgent } from '../notification/agent.js';
 import { synapseTools } from './tools.js';
 
@@ -8,11 +9,14 @@ import { synapseTools } from './tools.js';
  * This agent acts as a coordinator that reacts to state changes from various verticals
  * and delegates analysis/action to appropriate specialized agents.
  *
+ * Uses a local Gemma 3 model via Ollama for cost-efficiency in scheduled/automated workflows.
+ *
  * Currently delegates to:
  * - Notification Agent: For analyzing state changes and sending user notifications
  */
 export async function getStateChangeReactorAgent() {
   return createAgent({
+    model: ollama('gemma3:27b'),
     id: 'stateChangeReactor',
     name: 'StateChangeReactor',
     instructions: `You are the State Change Reactor - a coordination agent for the Hey Jarvis smart home system.

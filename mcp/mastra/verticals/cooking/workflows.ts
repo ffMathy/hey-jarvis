@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ollama } from '../../utils/ollama-provider.js';
 import { createAgentStep, createStep, createToolStep, createWorkflow } from '../../utils/workflow-factory.js';
 import { sendEmail } from '../email/tools.js';
 import { getAllRecipes } from './tools.js';
@@ -20,6 +21,7 @@ const mealPlanSchema = z.array(
 
 // Meal plan generation workflow (without email sending)
 // Can be used by agents or other workflows to generate meal plans
+// Uses light model (Gemma 3) for cost-efficiency in scheduled tasks
 const generateMealPlanStateSchema = z
   .object({
     preferences: z.string(), // Used by generate-complete-meal-plan step
@@ -53,7 +55,7 @@ export const generateMealPlanWorkflow = createWorkflow({
         }
         return {};
       },
-    })
+    }),
   )
   .then(
     createToolStep({
@@ -61,7 +63,7 @@ export const generateMealPlanWorkflow = createWorkflow({
       description: 'Fetches all recipes for meal planning',
       stateSchema: generateMealPlanStateSchema,
       tool: getAllRecipes,
-    })
+    }),
   )
   .then(
     createAgentStep({
@@ -69,6 +71,7 @@ export const generateMealPlanWorkflow = createWorkflow({
       description: 'Uses meal plan agents to select recipes and generate complete meal plan',
       stateSchema: generateMealPlanStateSchema,
       agentConfig: {
+        model: ollama('gemma3:27b'),
         id: 'mealPlanGenerator',
         name: 'MealPlanGenerator',
         instructions: `You are a meal scheduling specialist.
@@ -106,7 +109,7 @@ ${JSON.stringify(context, null, 2)}
 
 Focus on dinner/evening meals (look for "aftensmad" or similar categories). Generate the complete meal plan with proper scheduling.${preferencesText}`;
       },
-    })
+    }),
   )
   .commit();
 
@@ -154,11 +157,13 @@ const sendMealPlanEmail = createStep({
   },
 });
 
+// Uses local Gemma 3 via Ollama for cost-efficiency in scheduled tasks
 const generateMealPlanEmail = createAgentStep({
   id: 'generate-meal-plan-email',
   description: 'Generates HTML email using the specialized email formatter agent',
   stateSchema: generateMealPlanStateSchema,
   agentConfig: {
+    model: ollama('gemma3:27b'),
     id: 'emailFormatter',
     name: 'EmailFormatter',
     instructions: `You are an HTML email formatting specialist for meal plans.
