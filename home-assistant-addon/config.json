@@ -81,5 +81,6 @@
     "HOST": "0.0.0.0"
   },
   "map": ["config:rw", "share:rw", "media:rw"],
+  "backup_exclude": ["llm/models"],
   "image": "ghcr.io/ffmathy/home-assistant-addon"
 }
