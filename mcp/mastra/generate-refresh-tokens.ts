@@ -48,6 +48,82 @@ function validateProviderCredentials(provider: OAuthProvider): { clientId: strin
 }
 
 /**
+ * Sends an HTML error response
+ */
+function sendErrorResponse(
+  res: http.ServerResponse,
+  statusCode: number,
+  title: string,
+  message: string,
+  details?: string,
+): void {
+  res.writeHead(statusCode, { 'Content-Type': 'text/html' });
+  res.end(`
+    <html>
+      <body>
+        <h1>${title}</h1>
+        <p>${message}</p>
+        ${details ? `<p>${details}</p>` : ''}
+        <p>You can close this window.</p>
+      </body>
+    </html>
+  `);
+}
+
+/**
+ * Sends an HTML success response
+ */
+function sendSuccessResponse(res: http.ServerResponse): void {
+  res.writeHead(200, { 'Content-Type': 'text/html' });
+  res.end(`
+    <html>
+      <body>
+        <h1>Authorization Successful!</h1>
+        <p>You can close this window and return to the terminal.</p>
+      </body>
+    </html>
+  `);
+}
+
+/**
+ * Handles the OAuth callback request
+ */
+async function handleOAuthCallback(
+  url: URL,
+  res: http.ServerResponse,
+  provider: OAuthProvider,
+  client: any,
+  server: http.Server,
+  resolve: (value: TokenResponse) => void,
+  reject: (reason: Error) => void,
+): Promise<void> {
+  const code = url.searchParams.get('code');
+  const error = url.searchParams.get('error');
+  const errorDescription = url.searchParams.get('error_description');
+
+  if (error) {
+    const errorMsg = errorDescription ? `${error}: ${errorDescription}` : error;
+    sendErrorResponse(res, 400, 'Authorization Failed', `Error: ${error}`, errorDescription);
+    reject(new Error(`Authorization failed: ${errorMsg}`));
+    server.close();
+    return;
+  }
+
+  if (!code) {
+    sendErrorResponse(res, 400, 'Missing Authorization Code', 'No authorization code received');
+    reject(new Error('No authorization code received'));
+    server.close();
+    return;
+  }
+
+  // Exchange authorization code for tokens
+  const tokens = await provider.exchangeCode(client, code);
+  sendSuccessResponse(res);
+  resolve(tokens as TokenResponse);
+  server.close();
+}
+
+/**
  * Starts a local HTTP server to receive the OAuth2 callback
  */
 function startCallbackServer(provider: OAuthProvider, client: any): Promise<TokenResponse> {
@@ -61,70 +137,10 @@ function startCallbackServer(provider: OAuthProvider, client: any): Promise<Toke
         const url = new URL(req.url, `http://localhost:${PORT}`);
 
         if (url.pathname === '/oauth2callback') {
-          const code = url.searchParams.get('code');
-          const error = url.searchParams.get('error');
-          const errorDescription = url.searchParams.get('error_description');
-
-          if (error) {
-            const errorMsg = errorDescription ? `${error}: ${errorDescription}` : error;
-            res.writeHead(400, { 'Content-Type': 'text/html' });
-            res.end(`
-              <html>
-                <body>
-                  <h1>Authorization Failed</h1>
-                  <p>Error: ${error}</p>
-                  ${errorDescription ? `<p>Description: ${errorDescription}</p>` : ''}
-                  <p>You can close this window.</p>
-                </body>
-              </html>
-            `);
-            reject(new Error(`Authorization failed: ${errorMsg}`));
-            server.close();
-            return;
-          }
-
-          if (!code) {
-            res.writeHead(400, { 'Content-Type': 'text/html' });
-            res.end(`
-              <html>
-                <body>
-                  <h1>Missing Authorization Code</h1>
-                  <p>You can close this window.</p>
-                </body>
-              </html>
-            `);
-            reject(new Error('No authorization code received'));
-            server.close();
-            return;
-          }
-
-          // Exchange authorization code for tokens
-          const tokens = await provider.exchangeCode(client, code);
-
-          res.writeHead(200, { 'Content-Type': 'text/html' });
-          res.end(`
-            <html>
-              <body>
-                <h1>Authorization Successful!</h1>
-                <p>You can close this window and return to the terminal.</p>
-              </body>
-            </html>
-          `);
-
-          resolve(tokens as TokenResponse);
-          server.close();
+          await handleOAuthCallback(url, res, provider, client, server, resolve, reject);
         }
       } catch (err) {
-        res.writeHead(500, { 'Content-Type': 'text/html' });
-        res.end(`
-          <html>
-            <body>
-              <h1>Server Error</h1>
-              <p>An error occurred processing your request.</p>
-              <p>You can close this window.</p>
-            </body>
-          </html>
-        `);
+        sendErrorResponse(res, 500, 'Server Error', 'An error occurred processing your request.');
         reject(err);
         server.close();
       }
@@ -165,7 +181,7 @@ async function processProvider(
       console.log('⏭️  Skipping token generation\n');
       return { provider: provider.name };
     }
-  } catch (error) {
+  } catch (_error) {
     // Storage check failed, continue with token generation
     console.log('⚠️  Could not check storage, proceeding with token generation\n');
   }
@@ -180,7 +196,7 @@ async function processProvider(
   let credentials: { clientId: string; clientSecret: string };
   try {
     credentials = validateProviderCredentials(provider);
-  } catch (error) {
+  } catch (_error) {
     console.error(`⏭️  Skipping ${provider.name} - credentials not configured\n`);
     return { provider: provider.name };
   }
@@ -270,7 +286,7 @@ async function main() {
     });
   }
 
-  console.log('\n' + '='.repeat(70));
+  console.log(`\n${'='.repeat(70)}`);
   console.log('🎉 Token generation complete!');
   console.log('='.repeat(70));
 

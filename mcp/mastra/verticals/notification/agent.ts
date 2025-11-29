@@ -16,7 +16,7 @@ export async function getNotificationAgent() {
     return notificationAgent;
   }
 
-  return (notificationAgent = await createAgent({
+  notificationAgent = await createAgent({
     model: ollama('gemma3:27b'),
     id: 'notification',
     name: 'Notification',
@@ -47,5 +47,7 @@ When explicitly asked to send a notification:
 
 Be thoughtful and judicious in your notification decisions.`,
     tools: notificationTools,
-  }));
+  });
+
+  return notificationAgent;
 }

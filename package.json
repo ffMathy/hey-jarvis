@@ -3,6 +3,11 @@
   "version": "0.14.0",
   "description": "My digital assistant that runs the house",
   "main": "index.js",
+  "workspaces": [
+    "mcp",
+    "elevenlabs",
+    "home-assistant-addon"
+  ],
   "scripts": {
     "build": "nx affected --target=build",
     "serve": "nx affected --target=serve",

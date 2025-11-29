@@ -65,7 +65,8 @@
         "buildTarget": "docker:build",
         "runTarget": "docker:run"
       }
-    }
+    },
+    "@nx/js/typescript"
   ],
   "generators": {
     "@nx/js": {

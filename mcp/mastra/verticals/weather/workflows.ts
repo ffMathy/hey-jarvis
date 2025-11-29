@@ -60,7 +60,7 @@ const registerWeatherStateChange = createStep({
     triggeredWorkflow: z.boolean(),
     message: z.string(),
   }),
-  execute: async ({ inputData, mastra }) => {
+  execute: async ({ inputData }) => {
     const stateChangeData = {
       source: 'weather',
       stateType: 'weather_update',
@@ -71,7 +71,7 @@ const registerWeatherStateChange = createStep({
       },
     };
 
-    return await registerStateChange.execute(stateChangeData, mastra);
+    return await registerStateChange.execute(stateChangeData);
   },
 });
 

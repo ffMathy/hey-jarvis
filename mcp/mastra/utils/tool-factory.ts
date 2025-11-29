@@ -1,6 +1,4 @@
 import { createTool as mastraCreateTool } from '@mastra/core/tools';
-import type { InferZodLikeSchema, ZodLikeSchema } from 'node_modules/@mastra/core/dist/types/zod-compat';
-import type { z } from 'zod';
 
 /**
  * Creates a new Mastra Tool with sensible defaults for the Hey Jarvis system.

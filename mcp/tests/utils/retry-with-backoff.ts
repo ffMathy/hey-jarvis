@@ -17,6 +17,23 @@ export interface RetryOptions {
 }
 
 /**
+ * Calculate delay with exponential backoff: initialDelay * (backoffMultiplier ^ (attempt - 1))
+ * Use integer arithmetic to avoid floating-point precision issues
+ */
+function calculateBackoffDelay(
+  attempt: number,
+  initialDelay: number,
+  maxDelay: number,
+  backoffMultiplier: number,
+): number {
+  let delayMs = initialDelay;
+  for (let i = 1; i < attempt; i++) {
+    delayMs = Math.min(delayMs * backoffMultiplier, maxDelay);
+  }
+  return delayMs;
+}
+
+/**
  * Execute an async function with exponential backoff retry logic
  *
  * NOTE: For Vercel AI SDK calls (generateObject, generateText, etc.), use the built-in
@@ -78,12 +95,7 @@ export async function retryWithBackoff<T>(fn: () => Promise<T>, options: RetryOp
         break;
       }
 
-      // Calculate delay with exponential backoff: initialDelay * (backoffMultiplier ^ (attempt - 1))
-      // Use integer arithmetic to avoid floating-point precision issues
-      let delayMs = initialDelay;
-      for (let i = 1; i < attempt; i++) {
-        delayMs = Math.min(delayMs * backoffMultiplier, maxDelay);
-      }
+      const delayMs = calculateBackoffDelay(attempt, initialDelay, maxDelay, backoffMultiplier);
 
       // Call the retry callback if provided
       if (onRetry) {

@@ -1,10 +1,3 @@
-import {
-  createAnswerRelevancyScorer,
-  createBiasScorer,
-  createCompletenessScorer,
-  createHallucinationScorer,
-  createPromptAlignmentScorerLLM,
-} from '@mastra/evals/scorers/prebuilt';
 import { google } from './google-provider.js';
 
 /**
@@ -38,7 +31,7 @@ function getScorerModel() {
  * - **bias**: Detection of potential biases in outputs
  */
 function createDefaultScorers() {
-  const model = getScorerModel();
+  const _model = getScorerModel();
   return {
     // answerRelevancy: {
     //   scorer: createAnswerRelevancyScorer({ model }),
@@ -132,13 +125,16 @@ export function createScorersConfig(
 
   // Apply custom sampling rate to all default scorers if specified
   const scorersWithCustomRate = Object.fromEntries(
-    Object.entries(defaultScorers).map(([key, config]) => [
-      key,
-      {
-        ...config,
-        sampling: { ...config.sampling, rate: samplingRate },
-      },
-    ]),
+    Object.entries(defaultScorers).map(([key, config]) => {
+      const typedConfig = config as { scorer: unknown; sampling: { type: 'ratio'; rate: number } };
+      return [
+        key,
+        {
+          ...typedConfig,
+          sampling: { ...typedConfig.sampling, rate: samplingRate },
+        },
+      ];
+    }),
   );
 
   return {

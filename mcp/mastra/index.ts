@@ -23,7 +23,7 @@ import {
 
 async function createMastra() {
   // Set up the Google AI SDK environment variable
-  process.env['GOOGLE_GENERATIVE_AI_API_KEY'] = process.env['HEY_JARVIS_GOOGLE_API_KEY'] || '';
+  process.env.GOOGLE_GENERATIVE_AI_API_KEY = process.env.HEY_JARVIS_GOOGLE_API_KEY || '';
 
   const sqlStorageProvider = await getSqlStorageProvider();
 

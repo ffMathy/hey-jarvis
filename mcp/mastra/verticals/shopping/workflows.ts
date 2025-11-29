@@ -109,6 +109,7 @@ const extractProductInformation = createAgentStep({
   description: 'Extracts structured product information from the user request using Information Extractor logic',
   stateSchema: workflowStateSchema,
   agentConfig: {
+    id: 'shopping-list-extractor',
     name: 'ShoppingListExtractor',
     instructions: `You are an expert extraction algorithm that deals with shopping lists.
 
@@ -122,8 +123,7 @@ Get the operationType right: use "set" for new items or quantity changes, "remov
   },
   inputSchema: z.object({}),
   outputSchema: extractedProductSchema,
-  prompt: ({ workflow }) => {
-    const state = workflow.state;
+  prompt: ({ state }) => {
     return `Act as an expert extraction algorithm that deals with shopping lists.
 
 Your job is to convert the user's request into a machine-readable format.
@@ -160,6 +160,7 @@ const processExtractedProducts = createAgentStep({
   description: 'Processes each extracted product using the Shopping List Mutator Agent',
   stateSchema: workflowStateSchema,
   agentConfig: {
+    id: 'shopping-list-mutator',
     name: 'ShoppingListMutator',
     instructions: `You are a shopping-list mutator agent. Process products by adding or removing them from the cart.
 
@@ -177,10 +178,10 @@ Return a summary of actions taken for each product.`,
   outputSchema: z.object({
     mutationResults: z.array(z.string()),
   }),
-  prompt: ({ context }) => {
+  prompt: ({ inputData }) => {
     return `Process each of these products that need action (operationType is not null) by adding or removing them from the cart:
 
-${JSON.stringify(context.products.filter((p: any) => p.operationType !== null))}
+${JSON.stringify(inputData.products.filter((p: any) => p.operationType !== null))}
 
 For each product:
 1. If operationType is "set": Add/update the product in the cart
@@ -220,6 +221,7 @@ const generateSummary = createAgentStep({
   description: 'Generates a summary of changes using the Summarization Agent',
   stateSchema: workflowStateSchema,
   agentConfig: {
+    id: 'shopping-list-summary',
     name: 'ShoppingListSummary',
     instructions: `You are an evaluator agent that takes in a query from a user that has been processed by other agents, along with a "before" and "after" version of shopping basket contents.
 
@@ -239,16 +241,16 @@ Be concise but informative.`,
   inputSchema: cartSnapshotSchema,
   outputSchema: shoppingListResultSchema,
   prompt: (params) => {
-    const state = params.workflow.state;
+    const currentState = params.state;
     return `Summarize the shopping list changes in Danish:
 
-Original request: ${state.prompt}
+Original request: ${currentState.prompt}
 
 Basket contents before:
-${JSON.stringify(state.cartBefore)}
+${JSON.stringify(currentState.cartBefore)}
 
 Basket contents after:
-${JSON.stringify(params.context)}
+${JSON.stringify(params.inputData)}
 
 Provide a summary in Danish of what was changed.`;
   },

@@ -17,7 +17,7 @@ let cachedTokens: {
  */
 export async function authenticateWithBilka(): Promise<AuthTokens> {
   const cacheDurationInMinutes = 5;
-  if (cachedTokens && cachedTokens.refreshTime.getTime() + cacheDurationInMinutes * 60 * 1000 > new Date().getTime()) {
+  if (cachedTokens && cachedTokens.refreshTime.getTime() + cacheDurationInMinutes * 60 * 1000 > Date.now()) {
     if (!cachedTokens.tokens) {
       throw new Error('Could not sign in.');
     }

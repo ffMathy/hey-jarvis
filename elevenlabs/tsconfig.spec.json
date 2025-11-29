@@ -1,14 +1,11 @@
 {
   "extends": "./tsconfig.json",
-  "include": [
-    "**/*.test.ts",
-    "**/*.spec.ts",
-    "**/*.test.tsx",
-    "**/*.spec.tsx",
-    "**/*.test.js",
-    "**/*.spec.js",
-    "**/*.test.jsx",
-    "**/*.spec.jsx",
-    "**/*.d.ts"
-  ]
+  "compilerOptions": {
+    "outDir": "../dist/elevenlabs-spec",
+    "rootDir": "..",
+    "tsBuildInfoFile": "../dist/elevenlabs-spec/tsconfig.spec.tsbuildinfo",
+    "types": ["bun-types", "node"]
+  },
+  "include": ["tests/**/*.ts", "src/**/*.json"],
+  "references": [{ "path": "./tsconfig.app.json" }, { "path": "../mcp/tsconfig.spec.json" }]
 }

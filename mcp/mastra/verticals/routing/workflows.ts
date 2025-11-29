@@ -1,5 +1,5 @@
 import type { Agent } from '@mastra/core/agent';
-import { chain, keyBy, take } from 'lodash-es';
+import { chain, keyBy } from 'lodash-es';
 import z from 'zod';
 import { createAgentStep, createStep, createWorkflow, google } from '../../utils';
 import { getPublicAgents } from '..';
@@ -179,7 +179,7 @@ function truncateLog(text: string, maxLength: number): string {
   if (text.length <= maxLength) {
     return text;
   }
-  return text.slice(0, maxLength) + '...';
+  return `${text.slice(0, maxLength)}...`;
 }
 
 function drawDAGAsASCIIArt(): void {
@@ -228,7 +228,7 @@ function drawDAGAsASCIIArt(): void {
     });
   });
 
-  console.log('\n' + lines.join('\n') + '\n');
+  console.log(`\n${lines.join('\n')}\n`);
 }
 
 async function startDagExecution() {
@@ -246,7 +246,7 @@ async function startDagExecution() {
     const contextParts: string[] = [];
     for (const dependencyId of task.dependsOn) {
       const dependencyTask = tasks.find((t) => t.id === dependencyId);
-      if (dependencyTask && dependencyTask.result) {
+      if (dependencyTask?.result) {
         contextParts.push(
           `## ${dependencyTask.id} result\n\`\`\`json\n${JSON.stringify(dependencyTask.result)}\n\`\`\``,
         );
@@ -408,7 +408,7 @@ const optimizeDagStep = createStep({
   inputSchema: mergeDagStep.outputSchema,
   stateSchema: stateSchema,
   outputSchema: outputSchema,
-  execute: async (context) => {
+  execute: async (_context) => {
     const tasks = workflowState.currentDAG.tasks;
 
     const tasksByAgent = new Map<string, typeof tasks>();

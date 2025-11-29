@@ -1,5 +1,4 @@
 import type { Mastra } from '@mastra/core';
-import type { Workflow } from '@mastra/core/workflows';
 import cron, { type ScheduledTask } from 'node-cron';
 
 interface ScheduledWorkflow {
@@ -102,7 +101,7 @@ export class WorkflowScheduler {
   start(): void {
     console.log(`\n🚀 ${this.scheduledTasks.size} scheduled workflow(s) are now active`);
 
-    this.scheduledTasks.forEach((task, workflowId) => {
+    this.scheduledTasks.forEach((_task, workflowId) => {
       console.log(`   ✅ Active: ${workflowId}`);
     });
 

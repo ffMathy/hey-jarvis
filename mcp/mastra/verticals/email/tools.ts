@@ -57,7 +57,7 @@ const getMicrosoftAuth = async (): Promise<string> => {
     try {
       const credentialsStorage = await getCredentialsStorage();
       refreshToken = await credentialsStorage.getRefreshToken('microsoft');
-    } catch (error) {
+    } catch (_error) {
       // Storage error - continue to show helpful error message below
     }
   }
@@ -287,7 +287,7 @@ export const draftReply = createTool({
     const accessToken = await getMicrosoftAuth();
     const { messageId, replyMessage, replyAll } = inputData;
 
-    const endpoint = replyAll ? 'replyAll' : 'reply';
+    const _endpoint = replyAll ? 'replyAll' : 'reply';
 
     // Create reply draft
     const response = await fetch(`${GRAPH_API_BASE}/me/messages/${messageId}/createReply`, {

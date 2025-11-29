@@ -1,7 +1,6 @@
-import type { Agent, AgentConfig } from '@mastra/core/agent';
+import type { AgentConfig } from '@mastra/core/agent';
 import {
   type DefaultEngineType,
-  type ExecuteFunction,
   type ExecuteFunctionParams,
   createStep as mastraCreateStep,
   createWorkflow as mastraCreateWorkflow,

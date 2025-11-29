@@ -3,12 +3,19 @@ FROM docker.io/oven/bun:1-alpine AS builder
 
 WORKDIR /workspace
 
+# Install jq for JSON manipulation
+RUN apk add --no-cache jq
+
 # Copy package files for dependency installation
-COPY package.json bun.lock ./
+COPY package.json ./package.json.original
 COPY mcp/package.json ./mcp/
 
+# Remove workspaces field and husky prepare script from package.json 
+# since Docker context doesn't include all workspace packages
+RUN jq 'del(.workspaces) | del(.scripts.prepare)' package.json.original > package.json && rm package.json.original
+
 # Install all dependencies (needed for TypeScript compilation)
-RUN bun install --frozen-lockfile
+RUN bun install
 
 # Copy source code
 COPY tsconfig.base.json ./
@@ -26,23 +33,28 @@ ENV OLLAMA_MODELS=/data/llm/models
 
 WORKDIR /workspace
 
-# Install bash, supervisor, curl (for Ollama installation), and other dependencies
+# Install bash, supervisor, curl (for Ollama installation), jq, and other dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
     supervisor \
     curl \
     ca-certificates \
+    jq \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Ollama
 RUN curl -fsSL https://ollama.com/install.sh | sh
 
 # Copy package files
-COPY package.json bun.lock ./
+COPY package.json ./package.json.original
 COPY mcp/package.json ./mcp/
 
+# Remove workspaces field and husky prepare script from package.json
+# since Docker context doesn't include all workspace packages
+RUN jq 'del(.workspaces) | del(.scripts.prepare)' package.json.original > package.json && rm package.json.original
+
 # Install only production dependencies and global tools
-RUN bun install --frozen-lockfile
+RUN bun install --production
 
 # Copy source code from builder
 COPY --from=builder /workspace/tsconfig.base.json ./

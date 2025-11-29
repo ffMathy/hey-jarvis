@@ -59,14 +59,11 @@ const sendFormRequestEmail = createStep({
 </html>
     `.trim();
 
-    const emailResult = await sendEmail.execute(
-      {
-        subject,
-        bodyContent,
-        toRecipients: [recipientEmail],
-      },
-      params.mastra,
-    );
+    const emailResult = await sendEmail.execute({
+      subject,
+      bodyContent,
+      toRecipients: [recipientEmail],
+    });
 
     // Pass recipientEmail through to next step
     return {

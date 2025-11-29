@@ -1,5 +1,10 @@
 {
   "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "../dist/elevenlabs",
+    "rootDir": "src",
+    "tsBuildInfoFile": "../dist/elevenlabs/tsconfig.app.tsbuildinfo"
+  },
   "include": ["src/**/*.ts"],
   "exclude": ["**/*.spec.ts", "**/*.test.ts"]
 }

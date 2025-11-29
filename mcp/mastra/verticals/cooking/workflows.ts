@@ -99,14 +99,12 @@ export const generateMealPlanWorkflow = createWorkflow({
       outputSchema: z.object({
         mealplan: mealPlanSchema,
       }),
-      prompt: ({ context, workflow }) => {
-        const preferencesText = workflow?.state?.preferences
-          ? `\n\nUser preferences: ${workflow.state.preferences}`
-          : '';
+      prompt: ({ inputData, state }) => {
+        const preferencesText = state?.preferences ? `\n\nUser preferences: ${state.preferences}` : '';
 
         return `Create a detailed weekly meal plan by first selecting 2 optimal recipes from the following options, then generating a complete meal plan with proper scheduling and scaled ingredients:
 
-${JSON.stringify(context, null, 2)}
+${JSON.stringify(inputData, null, 2)}
 
 Focus on dinner/evening meals (look for "aftensmad" or similar categories). Generate the complete meal plan with proper scheduling.${preferencesText}`;
       },
@@ -153,10 +151,10 @@ Special features:
     subject: z.string(),
     mealplan: mealPlanSchema,
   }),
-  prompt: ({ context }) => {
+  prompt: ({ inputData }) => {
     return `Format this meal plan into a professional HTML email:
 
-${JSON.stringify(context.mealplan, null, 2)}
+${JSON.stringify(inputData.mealplan, null, 2)}
 
 Return only the HTML content without any additional text or markdown.`;
   },
@@ -261,14 +259,14 @@ Change request indicators:
     requestedChanges: z.string().optional(),
     mealplan: mealPlanSchema,
   }),
-  prompt: ({ context, workflow }) => {
-    const feedbackHistory = workflow?.state?.feedbackHistory || [];
-    const mealplan = workflow?.state?.mealplan || [];
+  prompt: ({ inputData, state }) => {
+    const feedbackHistory = state?.feedbackHistory || [];
+    const mealplan = state?.mealplan || [];
     const historyContext = feedbackHistory.length > 0 ? `\n\nPrevious feedback:\n${feedbackHistory.join('\n')}` : '';
 
     return `Analyze this meal plan feedback response:
 
-Response data: ${JSON.stringify(context.response)}
+Response data: ${JSON.stringify(inputData.response)}
 
 Current meal plan: ${JSON.stringify(mealplan, null, 2)}
 ${historyContext}

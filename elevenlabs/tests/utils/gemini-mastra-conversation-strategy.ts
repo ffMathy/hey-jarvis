@@ -44,11 +44,17 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
       });
 
       const agentPrompt = await this.readAgentPrompt();
-      const agents = await getPublicAgents();
+      const agentsArray = await getPublicAgents();
+
+      // Convert agents array to Record<string, Agent>
+      const agents: Record<string, Agent> = {};
+      for (const agent of agentsArray) {
+        agents[agent.name] = agent;
+      }
 
       // Extract tools from all agents
       const tools: Record<string, any> = {};
-      for (const [agentName, agent] of Object.entries(agents)) {
+      for (const agent of agentsArray) {
         const agentTools = await agent.listTools();
         if (agentTools) {
           // Merge tools from each agent into the tools object
@@ -57,6 +63,7 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
       }
 
       this.agent = new Agent({
+        id: 'jarvis',
         name: 'J.A.R.V.I.S.',
         instructions: agentPrompt,
         model: googleProvider(agentConfig.conversationConfig.agent.prompt.llm),
