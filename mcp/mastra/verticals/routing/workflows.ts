@@ -35,7 +35,9 @@ export const inputSchema = z.object({
     .boolean()
     .optional()
     .default(false)
-    .describe('Whether to run the DAG asynchronously (fire-and-forget). If true, the instructions will tell Jarvis to end the call immediately.'),
+    .describe(
+      'Whether to run the DAG asynchronously (fire-and-forget). If true, the instructions will tell Jarvis to end the call immediately.',
+    ),
 });
 
 export const dagSchema = outputSchema.extend({

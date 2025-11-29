@@ -4,6 +4,7 @@
   "sourceRoot": "mcp/src",
   "projectType": "application",
   "targets": {
+    "lint": {},
     "initialize": {
       "executor": "nx:run-commands",
       "cache": true,
@@ -36,7 +37,7 @@
     },
     "build": {
       "executor": "nx:run-commands",
-      "dependsOn": ["initialize"],
+      "dependsOn": ["lint", "initialize"],
       "options": {
         "command": "./mcp/.scripts/build.sh",
         "cwd": "."

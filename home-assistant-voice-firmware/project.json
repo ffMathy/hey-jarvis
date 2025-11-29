@@ -4,6 +4,7 @@
   "projectType": "application",
   "sourceRoot": "home-assistant-voice-firmware/src",
   "targets": {
+    "lint": {},
     "initialize": {
       "executor": "nx:run-commands",
       "cache": true,
@@ -15,7 +16,7 @@
     },
     "build": {
       "executor": "nx:run-commands",
-      "dependsOn": ["initialize"],
+      "dependsOn": ["lint", "initialize"],
       "cache": true,
       "outputs": ["{projectRoot}/.esphome/build"],
       "options": {
