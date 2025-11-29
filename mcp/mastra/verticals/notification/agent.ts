@@ -1,5 +1,5 @@
 import { createAgent } from '../../utils/agent-factory.js';
-import { google } from '../../utils/google-provider.js';
+import { ollama } from '../../utils/ollama-provider.js';
 import { notificationTools } from './tools.js';
 
 let notificationAgent: Awaited<ReturnType<typeof createAgent>> | null = null;
@@ -8,7 +8,7 @@ let notificationAgent: Awaited<ReturnType<typeof createAgent>> | null = null;
  * Notification Agent
  *
  * This agent handles notification decisions for the Hey Jarvis smart home system.
- * Uses a light model (Gemma 3) since it operates as part of scheduled/automated workflows
+ * Uses a local Gemma 3 model via Ollama for cost-efficiency in scheduled/automated workflows
  * triggered by the State Change Reactor.
  */
 export async function getNotificationAgent() {
@@ -17,7 +17,7 @@ export async function getNotificationAgent() {
   }
 
   return (notificationAgent = await createAgent({
-    model: google('gemma-3-27b-it'),
+    model: ollama('gemma3:27b'),
     id: 'notification',
     name: 'Notification',
     instructions: `You are a reactive notification assistant for the Hey Jarvis smart home system.

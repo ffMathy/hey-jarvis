@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { google } from '../../utils/google-provider.js';
+import { ollama } from '../../utils/ollama-provider.js';
 import { createAgentStep, createStep, createToolStep, createWorkflow } from '../../utils/workflow-factory.js';
 import { sendEmail } from '../email/tools.js';
 import { getAllRecipes } from './tools.js';
@@ -71,7 +71,7 @@ export const generateMealPlanWorkflow = createWorkflow({
       description: 'Uses meal plan agents to select recipes and generate complete meal plan',
       stateSchema: generateMealPlanStateSchema,
       agentConfig: {
-        model: google('gemma-3-27b-it'),
+        model: ollama('gemma3:27b'),
         id: 'mealPlanGenerator',
         name: 'MealPlanGenerator',
         instructions: `You are a meal scheduling specialist.
@@ -157,13 +157,13 @@ const sendMealPlanEmail = createStep({
   },
 });
 
-// Uses light model (Gemma 3) for cost-efficiency in scheduled tasks
+// Uses local Gemma 3 via Ollama for cost-efficiency in scheduled tasks
 const generateMealPlanEmail = createAgentStep({
   id: 'generate-meal-plan-email',
   description: 'Generates HTML email using the specialized email formatter agent',
   stateSchema: generateMealPlanStateSchema,
   agentConfig: {
-    model: google('gemma-3-27b-it'),
+    model: ollama('gemma3:27b'),
     id: 'emailFormatter',
     name: 'EmailFormatter',
     instructions: `You are an HTML email formatting specialist for meal plans.
