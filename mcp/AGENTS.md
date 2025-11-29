@@ -1,32 +1,19 @@
 # Jarvis Mastra AI Agents
 
+> **Note:** See the root [AGENTS.md](../AGENTS.md) for shared conventions (NX commands, commit standards, 1Password, etc.)
+
 ## Overview
-This project is a Mastra-powered AI agent framework that enables intelligent home automation, voice interactions, and Model Context Protocol (MCP) integrations within the Hey Jarvis ecosystem.
+Mastra-powered AI agent framework for intelligent home automation, voice interactions, and Model Context Protocol (MCP) integrations.
 
 ## About Mastra
-[Mastra](https://mastra.ai) is a TypeScript agent framework designed to build production-ready AI applications. It provides unified interfaces for multiple LLM providers, persistent agent memory, tool calling capabilities, and graph-based workflows.
+[Mastra](https://mastra.ai) is a TypeScript agent framework for production-ready AI applications with unified LLM interfaces, persistent memory, tool calling, and graph-based workflows.
 
-**This project uses Mastra V1 beta** (v1.0.0-beta.2), which is the upcoming stable release with standardized APIs and improved production readiness.
+**This project uses Mastra V1 beta** (v1.0.0-beta.2).
 
-### Mastra V1 Migration
-As of the latest update, this project has been migrated to Mastra V1 beta:
-- **@mastra/core**: 1.0.0-beta.2 (previously 0.24.0)
-- **mastra CLI**: 1.0.0-beta.1 (previously 0.18.0)
-- **Supporting packages**: Continue using stable versions until V1 beta releases are available
-  - @mastra/memory: 0.15.11
-  - @mastra/libsql: 0.16.2
-  - @mastra/loggers: 0.10.19
-  - @mastra/mcp: 0.14.2
-  - @mastra/evals: 0.14.4
-
-**Key API changes:**
-- `streamVNext()` → `stream()` - Now the standard streaming API
-- `generateVNext()` → `generate()` - Now the standard generation API
+### Key API Changes from V0
+- `streamVNext()` → `stream()` - Standard streaming API
+- `generateVNext()` → `generate()` - Standard generation API
 - Full AI SDK v5 compatibility
-- Enhanced structured output options
-- Unified API signatures across the framework
-
-For more details, see the [official migration guide](https://mastra.ai/guides/v1/migrations/upgrade-to-v1/overview).
 
 ## Project Structure
 The project follows a vertical-based organization structure for better cohesion:
@@ -2282,140 +2269,6 @@ This project follows a strict "lean documentation" approach because:
 
 **If you feel documentation is needed, ALWAYS update this AGENTS.md file instead of creating new files. DO NOT CREATE ANY .md FILES UNDER ANY CIRCUMSTANCES.**
 
-### Command Execution with Timeouts
-**CRITICAL: ALWAYS use timeout for all commands** to prevent hanging processes:
-
-- **Always prefix commands with `timeout`**: Set a reasonable timeout value for every command
-- **Choose appropriate timeouts**: Based on expected execution time
-  - Quick operations (linting, formatting): 30-60 seconds
-  - Builds and compilation: 120-300 seconds (2-5 minutes)
-  - Tests: 120-300 seconds (2-5 minutes)
-  - Long-running operations (Docker builds): 600-900 seconds (10-15 minutes)
-- **Never run commands without timeout**: Prevents indefinite hangs and resource waste
-
-**Examples:**
-```bash
-# ✅ CORRECT: Commands with appropriate timeouts
-timeout 30 bunx nx lint mcp
-timeout 180 bunx nx build mcp
-timeout 180 bunx nx test mcp
-timeout 600 docker build -t myimage .
-
-# ❌ INCORRECT: Commands without timeout
-bunx nx test mcp  # Could hang forever
-docker build -t myimage .  # Could freeze indefinitely
-```
-
-**Why Timeouts Are Required:**
-- Prevents processes from hanging indefinitely
-- Ensures CI/CD pipelines don't freeze
-- Makes debugging easier by failing fast
-- Conserves system resources
-- Provides clear failure signals
-
-**Timeout Command Syntax:**
-```bash
-timeout <seconds> <command>
-# Example: timeout 120 bunx nx test mcp
-```
-
-If a command times out, it exits with code 124, making it easy to detect timeout failures.
-
-### Build and Development Commands
-**CRITICAL: ALWAYS use NX commands** for this monorepo:
-- ✅ Use `nx serve mcp` instead of running dev directly
-- ✅ Use `nx build mcp` instead of running build directly
-- ✅ Use `nx test mcp` instead of running test directly
-- ✅ Use `nx lint mcp` instead of running lint directly
-- ✅ Use `bun install` for package installations at the workspace level
-- ❌ **NEVER use npm commands** in this Bun-powered monorepo
-- ❌ **NEVER run commands directly** - always use NX for project commands
-
-**Why NX is Required:**
-- NX provides intelligent caching and dependency management
-- Ensures consistent builds across the monorepo
-- Manages project dependencies and task orchestration
-- Prevents conflicts between different project configurations
-
-**Testing NX Targets:**
-After modifying NX target configurations (project.json), always test through NX:
-```bash
-# Test with cache disabled to verify dependencies work
-bunx nx build mcp --skip-nx-cache
-bunx nx build home-assistant-voice-firmware --skip-nx-cache
-
-# Verify that dependent targets (e.g., initialize) run automatically
-# Check output for "Running target [target] for project [name] and X tasks it depends on"
-```
-
-### Mandatory Linting and Testing After Code Changes
-**CRITICAL: ALWAYS run lint and tests after making any code changes:**
-
-#### 🔧 **After Every Code Change**
-1. **Lint all affected files**: Run `bunx nx lint <project>` to check for code quality issues
-2. **Run tests**: Run `bunx nx test <project>` to ensure changes don't break existing functionality
-3. **Build the project**: Run `bunx nx build <project>` to verify the build succeeds
-
-#### 📋 **Required Workflow**
-```bash
-# After making changes to mcp project
-bunx nx lint mcp
-bunx nx test mcp
-bunx nx build mcp
-
-# Or use affected commands to lint/test all impacted projects
-bunx nx affected --target=lint
-bunx nx affected --target=test
-bunx nx affected --target=build
-```
-
-#### ⚠️ **Why This is Mandatory**
-- **Lint-staged runs on commit**: The pre-commit hook runs biome via lint-staged, but this only catches staged files
-- **Build depends on lint**: The NX configuration ensures build targets depend on lint, but running lint early catches issues faster
-- **Tests validate behavior**: Tests ensure your changes don't introduce regressions
-- **CI will fail**: If you skip local validation, CI will catch issues and block the PR
-
-#### 🚀 **Quick Validation Command**
-For a complete validation of your changes:
-```bash
-# Validate everything for a specific project
-bunx nx run-many --target=lint,test,build --projects=mcp
-
-# Or validate all affected projects
-bunx nx affected --target=lint && bunx nx affected --target=test && bunx nx affected --target=build
-```
-
-#### 🏕️ **Boy Scout Rule - Always Leave Code Better Than You Found It**
-**CRITICAL: Always fix issues you encounter, even if unrelated to your current task:**
-
-- ✅ **Fix ALL lint errors** you encounter in any file, not just files you're modifying
-- ✅ **Fix ALL failing tests** you discover, even if they were already broken before your changes
-- ✅ **Fix formatting issues** in any file you touch or view
-- ✅ **Update outdated code patterns** when you see them
-- ✅ **Remove dead code** and unused imports you notice
-- ✅ **Improve code quality** whenever you have the opportunity
-
-**Why This Matters:**
-- Technical debt accumulates when issues are ignored
-- Broken windows invite more broken windows
-- Every developer is responsible for overall code health
-- Small improvements compound into significant quality gains
-- CI/CD pipelines should always be green
-
-**Example Workflow:**
-```bash
-# You're working on a feature in mcp project
-bunx nx lint mcp
-# Lint shows 3 errors - 1 from your changes, 2 pre-existing
-# ✅ CORRECT: Fix ALL 3 errors
-# ❌ WRONG: Only fix the 1 error from your changes
-
-bunx nx test mcp  
-# Tests show 1 failure unrelated to your changes
-# ✅ CORRECT: Investigate and fix the failing test
-# ❌ WRONG: Ignore it because "it was already broken"
-```
-
 ### Tool ID Naming Conventions
 **CRITICAL**: All tool IDs must follow kebab-case naming conventions:
 
@@ -2819,78 +2672,16 @@ When refactoring or creating agents:
 - **Update the main Mastra index** to register all new specialized agents
 - **Test agent interactions** using the Mastra playground at `http://localhost:4111/agents`
 
-This keeps the project lean, properly structured, and aligned with NX monorepo best practices.
-
 ## Contributing
-This project is part of the Hey Jarvis monorepo and follows Mastra's development patterns. Contributions should:
 - Follow TypeScript best practices
 - Include proper agent memory management
 - Implement comprehensive tool validation
 - Add appropriate workflow testing
-- Document new capabilities thoroughly
-- **Apply YAGNI principle**: Only add features and configuration options when actually needed
+- Apply YAGNI principle
 
-### Commit Message Standards
-
-**CRITICAL: ALWAYS follow Conventional Commits** for all commit messages:
-
-#### Format
-```
-<type>(<scope>): <subject>
-
-<body>
-
-<footer>
-```
-
-#### Required Components
-- **type**: Category of the change (REQUIRED)
-- **scope**: Component affected (optional but recommended)
-- **subject**: Brief description (REQUIRED, lowercase, no period)
-- **body**: Detailed explanation (optional)
-- **footer**: Breaking changes, issue references (optional)
-
-#### Commit Types
-- **feat**: New feature for the user
-- **fix**: Bug fix for the user
-- **docs**: Documentation only changes
-- **style**: Formatting, missing semicolons, etc. (no code change)
-- **refactor**: Code change that neither fixes a bug nor adds a feature
-- **perf**: Performance improvement
-- **test**: Adding or refactoring tests
-- **chore**: Maintenance tasks, dependency updates
-- **build**: Build system or external dependency changes
-- **ci**: CI configuration changes
-
-#### Examples
-```bash
-# Feature addition
-feat(mcp): add calendar agent for scheduling
-
-# Bug fix with scope
-fix(shopping): correct product quantity calculation
-
-# Documentation update
-docs(agents): update workflow examples
-
-# Breaking change
-feat(api)!: change authentication method
-
-BREAKING CHANGE: Auth now requires API key instead of password
-```
-
-#### Scope Guidelines
-Use project names or component names:
+### Scope Guidelines for Commits
+Use MCP-specific scopes:
 - `mcp`, `agents`, `workflows`, `tools`
 - `weather`, `shopping`, `cooking`
-- `build`, `ci`, `deps`
-
-#### Best Practices
-- Keep subject line under 72 characters
-- Use imperative mood ("add" not "added")
-- Don't capitalize first letter of subject
-- No period at end of subject
-- Use body to explain "what" and "why" vs. "how"
-- Reference issues in footer: `Closes #123`
 
 For more information about Mastra development, visit the [official documentation](https://mastra.ai/docs).

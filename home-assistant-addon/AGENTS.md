@@ -1,260 +1,39 @@
-# Home Assistant Addon Agents
+# Home Assistant Addon
+
+> **Note:** See the root [AGENTS.md](../AGENTS.md) for shared conventions (NX commands, commit standards, 1Password, etc.)
 
 ## Overview
-This document describes the automation capabilities and development guidelines for the Home Assistant Addon project in the Hey Jarvis monorepo.
-
-## Project Description
-A Home Assistant addon that seamlessly hosts the Jarvis MCP server within your Home Assistant instance, providing intelligent voice assistant capabilities directly integrated with your smart home.
+Home Assistant addon for seamlessly hosting the Jarvis MCP server within your Home Assistant instance.
 
 ## Key Features
-- **Native Home Assistant Integration**: Runs as a standard Home Assistant addon
-- **MCP Server Hosting**: Hosts the Jarvis MCP server within Home Assistant
-- **Persistent Storage**: All Mastra data (memory, credentials, vector stores) stored in `/data` directory and automatically included in Home Assistant backups
-- **Docker Support**: Containerized deployment with proper Home Assistant integration
-- **Configuration UI**: Web-based configuration interface for addon settings
-- **Multi-architecture Support**: AMD64, ARMv7, and AArch64 compatibility
+- **Native Home Assistant Integration**: Runs as a standard addon
+- **MCP Server Hosting**: Hosts the Jarvis MCP server
+- **Persistent Storage**: All Mastra data in `/data` (included in HA backups)
+- **Multi-architecture Support**: AMD64, ARMv7, and AArch64
 
-## GitHub Integration
-
-### GitHub MCP Tools Usage
-**CRITICAL: Always use GitHub MCP tools** for all repository operations:
-
-#### Available Tools
-- `mcp_github_github_list_releases` - List all releases in repository
-- `mcp_github_github_get_release_by_tag` - Get specific release by tag name
-- `mcp_github_github_get_latest_release` - Get the latest published release
-- `mcp_github_github_list_tags` - List all tags in repository
-- `mcp_github_github_create_branch` - Create a new branch
-- `mcp_github_github_push_files` - Push multiple files in single commit
-
-#### Docker Image Verification
-**Before updating `config.json` image references**, always verify the Docker image exists in GHCR:
-
-```typescript
-// ✅ CORRECT: Verify release and Docker image exist
-const release = await mcp_github_github_get_release_by_tag({
-  owner: 'ffmathy',
-  repo: 'hey-jarvis',
-  tag: 'home-assistant-addon-v0.2.2'
-});
-
-// Check if Docker images were pushed by examining GitHub Actions logs
-// The deploy script should have pushed: ghcr.io/ffmathy/home-assistant-addon:v0.2.2
-
-// ❌ INCORRECT: Don't use curl or assume images exist
-exec('docker pull ghcr.io/ffmathy/home-assistant-addon:0.2.2');
+## NX Commands
+```bash
+bunx nx serve home-assistant-addon    # Start locally
+bunx nx build home-assistant-addon    # Build the addon
+bunx nx deploy home-assistant-addon   # Deploy to registry
+bunx nx docker:build home-assistant-addon  # Docker build
+bunx nx lint home-assistant-addon     # Lint the project
+bunx nx test home-assistant-addon     # Run tests
 ```
-
-#### Common Use Cases
-
-**Checking Available Versions**:
-```typescript
-// List all addon releases
-const releases = await mcp_github_github_list_releases({
-  owner: 'ffmathy',
-  repo: 'hey-jarvis',
-  perPage: 50
-});
-
-const addonReleases = releases.filter(r => 
-  r.tag_name.startsWith('home-assistant-addon-v')
-);
-
-// Get the latest addon version
-const latestVersion = addonReleases[0].tag_name.replace('home-assistant-addon-v', '');
-```
-
-**Verifying Multi-Architecture Images**:
-The deployment script (`scripts/deploy.sh`) should push images for all architectures:
-- `ghcr.io/ffmathy/home-assistant-addon:v{version}`
-- `ghcr.io/ffmathy/home-assistant-addon:latest`
-- `ghcr.io/ffmathy/home-assistant-addon:{sha}`
-
-However, **current limitation**: The deploy script only pushes single-arch images. Multi-arch support requires `docker buildx`.
 
 ## Configuration Management
 
 ### config.json Schema
-The addon configuration follows Home Assistant's schema:
-
-```json
-{
-  "name": "Hey Jarvis MCP Server",
-  "version": "0.2.2",
-  "slug": "hey-jarvis-mcp",
-  "description": "AI-powered home assistant...",
-  "arch": ["amd64", "armv7", "aarch64"],
-  "startup": "application",
-  "boot": "auto",
-  "ports": { "4111/tcp": 4111 },
-  "ingress": true,
-  "ingress_port": 4111,
-  "image": "ghcr.io/ffmathy/home-assistant-addon",
-  "options": {
-    "log_level": "info",
-    "openweathermap_api_key": "",
-    "google_api_key": "",
-    "valdemarsro_api_key": "",
-    "bilka_email": "",
-    "bilka_password": "",
-    "bilka_api_key": "",
-    "bilka_user_token": "",
-    "algolia_api_key": "",
-    "algolia_application_id": ""
-  },
-  "schema": {
-    "log_level": "list(trace|debug|info|notice|warning|error|fatal)?",
-    "openweathermap_api_key": "password?",
-    "google_api_key": "password",
-    "valdemarsro_api_key": "password?",
-    "bilka_email": "str?",
-    "bilka_password": "password?",
-    "bilka_api_key": "password?",
-    "bilka_user_token": "password?",
-    "algolia_api_key": "password?",
-    "algolia_application_id": "str?"
-  },
-  "environment": {
-    "HOST": "0.0.0.0",
-    "PORT": "4111"
-  }
-}
-```
-
-### Environment Variable Configuration
-
-The addon supports configuring all required API keys and service credentials through the Home Assistant UI. Configuration options are defined in the `options` and `schema` fields of `config.json`.
-
-The addon uses a startup script (`run.sh`) that reads user configuration from `/data/options.json` (provided by Home Assistant) and exports them as environment variables before starting the Mastra MCP server. This follows the standard Home Assistant addon pattern using Bashio for configuration parsing.
-
-**Supported Configuration Options**:
+The addon configuration follows Home Assistant's schema. Key fields:
 - `google_api_key` → `HEY_JARVIS_GOOGLE_API_KEY` (**REQUIRED**)
-- `openweathermap_api_key` → `HEY_JARVIS_OPENWEATHERMAP_API_KEY` (optional)
-- `valdemarsro_api_key` → `HEY_JARVIS_VALDEMARSRO_API_KEY` (optional)
-- `bilka_email` → `HEY_JARVIS_BILKA_EMAIL` (optional)
-- `bilka_password` → `HEY_JARVIS_BILKA_PASSWORD` (optional)
-- `bilka_api_key` → `HEY_JARVIS_BILKA_API_KEY` (optional)
-- `bilka_user_token` → `HEY_JARVIS_BILKA_USER_TOKEN` (optional)
-- `algolia_api_key` → `HEY_JARVIS_ALGOLIA_API_KEY` (optional)
-- `algolia_application_id` → `HEY_JARVIS_ALGOLIA_APPLICATION_ID` (optional)
-
-The Google Generative AI API key is required for the addon to start. All other values are optional - the addon will start without them, but features requiring those credentials won't function.
+- Other API keys are optional
 
 ### Image Field Usage
-
-**Option 1: Build from Dockerfile (Recommended for Development)**
-- Remove the `image` field entirely
-- Home Assistant will build the image locally using the Dockerfile
-- Best for development and testing
-
-**Option 2: Use Pre-built Images (Recommended for Production)**
-- Set `image` to GHCR repository: `"image": "ghcr.io/ffmathy/home-assistant-addon"`
-- Requires images to be pushed to GHCR via CI/CD
-- Requires multi-architecture image support
-
-### Multi-Architecture Image Building
-
-**Current Issue**: The deploy script doesn't build multi-arch images yet.
-
-**Solution Needed**: Update `scripts/deploy.sh` to use Docker buildx:
-
-```bash
-# Enable buildx
-docker buildx create --use
-
-# Build and push multi-arch images
-docker buildx build \
-  --platform linux/amd64,linux/arm64,linux/arm/v7 \
-  --tag ghcr.io/ffmathy/home-assistant-addon:v$VERSION \
-  --tag ghcr.io/ffmathy/home-assistant-addon:latest \
-  --push \
-  .
-```
-
-## Development Commands
-
-### NX Commands
-**CRITICAL: ALWAYS use NX commands** for this monorepo:
-- ✅ Use `nx serve home-assistant-addon` instead of running dev directly
-- ✅ Use `nx build home-assistant-addon` instead of running build directly
-- ✅ Use `nx deploy home-assistant-addon` instead of running deploy script directly
-- ✅ Use `nx docker:build home-assistant-addon` for Docker builds
-- ✅ Use `nx lint home-assistant-addon` to lint the project
-- ✅ Use `nx test home-assistant-addon` to run tests
-- ❌ **NEVER use npm commands** in this Bun-powered monorepo
-- ❌ **NEVER run commands directly** - always use NX for project commands
-
-### Mandatory Linting and Testing After Code Changes
-**CRITICAL: ALWAYS run lint and tests after making any code changes:**
-
-#### 🔧 **After Every Code Change**
-1. **Lint all affected files**: Run `bunx nx lint home-assistant-addon` to check for code quality issues
-2. **Run tests**: Run `bunx nx test home-assistant-addon` to ensure changes don't break existing functionality
-3. **Build the project**: Run `bunx nx build home-assistant-addon` to verify the build succeeds
-
-#### 📋 **Required Workflow**
-```bash
-# After making changes to home-assistant-addon project
-bunx nx lint home-assistant-addon
-bunx nx test home-assistant-addon
-bunx nx build home-assistant-addon
-```
-
-#### ⚠️ **Why This is Mandatory**
-- **Lint-staged runs on commit**: The pre-commit hook runs biome via lint-staged, but this only catches staged files
-- **Build depends on lint**: The NX configuration ensures build targets depend on lint, but running lint early catches issues faster
-- **Tests validate behavior**: Tests ensure your changes don't introduce regressions
-- **CI will fail**: If you skip local validation, CI will catch issues and block the PR
-
-#### 🏕️ **Boy Scout Rule - Always Leave Code Better Than You Found It**
-**CRITICAL: Always fix issues you encounter, even if unrelated to your current task:**
-
-- ✅ **Fix ALL lint errors** you encounter in any file, not just files you're modifying
-- ✅ **Fix ALL failing tests** you discover, even if they were already broken before your changes
-- ✅ **Fix formatting issues** in any file you touch or view
-- ✅ **Update outdated code patterns** when you see them
-- ✅ **Remove dead code** and unused imports you notice
-- ✅ **Improve code quality** whenever you have the opportunity
-
-**Why This Matters:**
-- Technical debt accumulates when issues are ignored
-- Broken windows invite more broken windows
-- Every developer is responsible for overall code health
-- Small improvements compound into significant quality gains
-- CI/CD pipelines should always be green
-
-### 1Password Authentication
-If this project uses 1Password CLI for environment variables:
-1. **Sign in**: `eval $(op signin)` - **CRITICAL: Always run this command when you get a 1Password authentication error or non-zero exit code from op commands**
-2. **Verify**: `op whoami`
-
-**Important**: 
-- If any command using 1Password fails with "no active session found" or similar errors, immediately run `eval $(op signin)` to re-authenticate before continuing.
-- **After running `eval $(op signin)`, always assume it succeeded regardless of what output it returns.** It typically returns no output when successful.
-
-### Terminal Session Management
-**CRITICAL: Always reuse existing terminal sessions** when running commands:
-- Check `get_terminal_output` to see what terminals are available
-- Reuse the same terminal ID for related commands instead of creating new terminals
-- This maintains context, environment variables, and reduces resource usage
+- **Development**: Remove `image` field (builds locally)
+- **Production**: Use `"image": "ghcr.io/ffmathy/home-assistant-addon"`
 
 ### Build Dependencies
-The addon depends on `mcp` project:
-```bash
-# The build automatically depends on mcp:docker:build
-nx build home-assistant-addon  # Also builds mcp first
-```
-
-This is configured in `project.json`:
-```json
-{
-  "targets": {
-    "build": {
-      "dependsOn": ["mcp:docker:build"]
-    }
-  }
-}
-```
+The addon depends on `mcp` project - builds are handled via NX dependency graph.
 
 ## Deployment Pipeline
 
@@ -418,51 +197,11 @@ cat home-assistant-addon/scripts/deploy.sh
 
 ## Development Guidelines
 
-### Core Development Principles
-
-#### 🎯 **YAGNI (You Aren't Gonna Need It)**
-Apply YAGNI principle to addon development:
+### Addon-Specific YAGNI Guidelines
+Apply YAGNI to addon development:
 - **Configuration Options**: Only add options users actually need
-- **Build Scripts**: Keep scripts simple - if it always pushes multi-arch to registry, don't add flags for "local mode" or other scenarios
+- **Build Scripts**: Keep simple - no "local mode" flags or optional behaviors
 - **Features**: Keep addon focused on core MCP server hosting
-- **Complexity**: Avoid over-engineering - no speculative features or "what if" scenarios
-- **Abstraction**: Don't abstract until you have multiple concrete use cases
-
-**Example**: Docker build scripts simply build and push multi-arch images. No PUSH flags, no local-vs-production modes, no optional behaviors - just do the one thing that's actually needed.
-
-#### 🔧 **Use lodash-es for Utilities**
-This project uses `lodash-es` for common utility functions. Always prefer lodash-es over custom implementations:
-
-```typescript
-import { find, uniqueId, truncate, chain, groupBy } from 'lodash-es';
-
-// Generate unique IDs
-const id = uniqueId('prefix-');
-
-// Find items in collections
-const item = find(items, item => item.active);
-
-// Truncate long strings
-const short = truncate(longText, { length: 100 });
-```
-
-### File Creation Policy
-**CRITICAL**: When working on this project:
-
-#### ❌ ABSOLUTELY PROHIBITED FILES:
-- **ANY new .md files** (except this AGENTS.md)
-- **ANY documentation artifacts**
-- **ANY example or demo scripts** unless explicitly requested
-- **ANY configuration files** not directly required
-
-#### ✅ ALLOWED FILE CREATION:
-- **Core addon files**: config.json, Dockerfile, scripts
-- **Package configuration**: Only when required
-
-#### 📝 DOCUMENTATION UPDATES:
-- **UPDATE this AGENTS.md file** instead of creating new documentation
-- **Add inline comments** in configuration files
-- **Use the Home Assistant addon documentation** for examples
 
 ### Version Synchronization
 
@@ -505,74 +244,13 @@ const short = truncate(longText, { length: 100 });
 - **Integration tests** with Home Assistant
 
 ## Contributing
-
 - Follow Home Assistant addon best practices
 - Use NX commands exclusively
 - Test on actual Home Assistant installation before release
 - Update this AGENTS.md file with any changes
 - Verify Docker images are pushed before releasing
 
-### Commit Message Standards
-
-**CRITICAL: ALWAYS follow Conventional Commits** for all commit messages:
-
-#### Format
-```
-<type>(<scope>): <subject>
-
-<body>
-
-<footer>
-```
-
-#### Required Components
-- **type**: Category of the change (REQUIRED)
-- **scope**: Component affected (optional but recommended)
-- **subject**: Brief description (REQUIRED, lowercase, no period)
-- **body**: Detailed explanation (optional)
-- **footer**: Breaking changes, issue references (optional)
-
-#### Commit Types
-- **feat**: New feature for the user
-- **fix**: Bug fix for the user
-- **docs**: Documentation only changes
-- **style**: Formatting, missing semicolons, etc. (no code change)
-- **refactor**: Code change that neither fixes a bug nor adds a feature
-- **perf**: Performance improvement
-- **test**: Adding or refactoring tests
-- **chore**: Maintenance tasks, dependency updates
-- **build**: Build system or external dependency changes
-- **ci**: CI configuration changes
-
-#### Examples
-```bash
-# Feature addition
-feat(addon): add configuration option for custom port
-
-# Bug fix with scope
-fix(docker): correct multi-arch image building
-
-# Documentation update
-docs(addon): update installation instructions
-
-# Breaking change
-feat(config)!: change environment variable names
-
-BREAKING CHANGE: All env vars now use HEY_JARVIS_ prefix
-```
-
-#### Scope Guidelines
-Use project names or component names:
+### Scope Guidelines for Commits
+Use addon-specific scopes:
 - `addon`, `config`, `docker`
 - `deployment`, `ingress`
-- `build`, `ci`, `deps`
-
-#### Best Practices
-- Keep subject line under 72 characters
-- Use imperative mood ("add" not "added")
-- Don't capitalize first letter of subject
-- No period at end of subject
-- Use body to explain "what" and "why" vs. "how"
-- Reference issues in footer: `Closes #123`
-
-For more information on the complete Jarvis ecosystem, see the project root AGENTS.md files and documentation.
