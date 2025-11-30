@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import type { Step, Workflow } from '@mastra/core/workflows';
 import { MCPServer } from '@mastra/mcp';
 import type { NextFunction, Request, Response } from 'express';
 import express from 'express';
@@ -13,26 +14,16 @@ import { getNextInstructionsWorkflow, routePromptWorkflow } from './verticals/ro
 // Re-export for cross-project imports
 export { getPublicAgents };
 
-// Define a minimal workflow interface for our tool wrapper
-// This matches the subset of Mastra Workflow properties we need
-interface WorkflowLike {
-  id: string;
+// Type for any step - satisfies the Workflow's TSteps constraint
+type AnyStep = Step<string, z.ZodObject<z.ZodRawShape>, z.ZodType, z.ZodType, z.ZodType, z.ZodType>;
+
+// Type alias for workflows - uses Pick to extract the properties we need
+type WorkflowLike = Pick<
+  Workflow<unknown, AnyStep[], string, z.ZodObject<z.ZodRawShape>, z.ZodType, z.ZodType, z.ZodType>,
+  'id' | 'description' | 'inputSchema' | 'outputSchema' | 'createRun'
+> & {
   name?: string;
-  description?: string;
-  inputSchema?: z.ZodType;
-  outputSchema?: z.ZodType;
-  createRun(options?: { runId?: string; resourceId?: string; disableScorers?: boolean }): Promise<RunLike>;
-}
-
-interface WorkflowResultLike {
-  status: string;
-  result?: unknown;
-  error?: Error;
-}
-
-interface RunLike {
-  start(args: { inputData?: unknown }): Promise<WorkflowResultLike>;
-}
+};
 
 function createSimplifiedWorkflowTool(workflow: WorkflowLike) {
   const workflowName = workflow.name ?? workflow.id;
@@ -49,7 +40,10 @@ function createSimplifiedWorkflowTool(workflow: WorkflowLike) {
         inputData: context,
       });
       if (result.status !== 'success') {
-        const errorMessage = result.error?.message ?? `Workflow failed with status ${result.status}`;
+        const errorMessage =
+          'error' in result && result.error instanceof Error
+            ? result.error.message
+            : `Workflow failed with status ${result.status}`;
         throw new Error(`Workflow ${workflowName} failed: ${errorMessage}`);
       }
 

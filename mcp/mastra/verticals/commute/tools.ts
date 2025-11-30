@@ -7,7 +7,7 @@ import {
   TravelMode,
 } from '@googlemaps/google-maps-services-js';
 import { getDistance } from 'geolib';
-import { chain, sumBy } from 'lodash-es';
+import { chain, isEqual, sumBy, uniqWith } from 'lodash-es';
 import { z } from 'zod';
 import { createTool } from '../../utils/tool-factory.js';
 
@@ -197,10 +197,10 @@ export const searchPlacesAlongRoute = createTool({
       allLocations.push(shortestRoute.legs[0].end_location);
     }
 
-    // distinct values
-    allLocations = allLocations.filter(
-      (location, index, self) =>
-        index === self.findIndex((loc) => loc.lat === location.lat && loc.lng === location.lng),
+    // Use lodash uniqWith for distinct locations by lat/lng comparison
+    allLocations = uniqWith(
+      allLocations,
+      (locationA, locationB) => locationA.lat === locationB.lat && locationA.lng === locationB.lng,
     );
 
     // Search at 0%, 25%, 50%, and 75% of the route
@@ -210,10 +210,10 @@ export const searchPlacesAlongRoute = createTool({
       return allLocations[Math.min(index, allLocations.length - 1)];
     });
 
-    //distinct values
-    searchLocations = searchLocations.filter(
-      (location, index, self) =>
-        index === self.findIndex((loc) => loc.lat === location.lat && loc.lng === location.lng),
+    // Use lodash uniqWith for distinct search locations
+    searchLocations = uniqWith(
+      searchLocations,
+      (locationA, locationB) => locationA.lat === locationB.lat && locationA.lng === locationB.lng,
     );
 
     // Perform searches at all locations and combine unique results

@@ -1,4 +1,5 @@
 import type { AgentConfig } from '@mastra/core/agent';
+import type { OutputSchema } from '@mastra/core/stream';
 import {
   type DefaultEngineType,
   type ExecuteFunctionParams,
@@ -233,7 +234,9 @@ export function createAgentStep<
         ],
         {
           structuredOutput: {
-            schema: config.outputSchema as z.ZodSchema,
+            // The schema type is TOutputSchema which extends z.ZodSchema
+            // Mastra's internal types use a conditional that TypeScript can't verify in generic context
+            schema: config.outputSchema as NonNullable<OutputSchema>,
           },
           toolChoice: 'none',
         },

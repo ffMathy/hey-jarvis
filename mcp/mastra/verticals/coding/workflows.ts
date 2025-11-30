@@ -185,26 +185,30 @@ const prepareIssueCreationData = createStep({
     }
 
     // Format requirements as markdown
-    const reqList = requirements.requirements ?? [];
-    const acList = requirements.acceptanceCriteria ?? [];
-    const impl = requirements.implementation;
-    const deps = impl?.dependencies ?? [];
-    const edgeCases = impl?.edgeCases ?? [];
-    const questions = requirements.questionsAsked ?? [];
+    const requirementsList = requirements.requirements ?? [];
+    const acceptanceCriteriaList = requirements.acceptanceCriteria ?? [];
+    const implementation = requirements.implementation;
+    const dependencies = implementation?.dependencies ?? [];
+    const edgeCases = implementation?.edgeCases ?? [];
+    const questionsAsked = requirements.questionsAsked ?? [];
 
-    const requirementsSection = reqList.map((req: string) => `- ${req}`).join('\n');
-    const acceptanceCriteriaSection = acList.map((ac: string) => `- [ ] ${ac}`).join('\n');
+    const requirementsSection = requirementsList.map((requirement: string) => `- ${requirement}`).join('\n');
+    const acceptanceCriteriaSection = acceptanceCriteriaList
+      .map((criterion: string) => `- [ ] ${criterion}`)
+      .join('\n');
     const implementationSection = `
-**Location**: ${impl?.location ?? 'Not specified'}
+**Location**: ${implementation?.location ?? 'Not specified'}
 
 **Dependencies**:
-${deps.map((dep: string) => `- ${dep}`).join('\n') || '- None'}
+${dependencies.map((dependency: string) => `- ${dependency}`).join('\n') || '- None'}
 
 **Edge Cases**:
-${edgeCases.map((edge: string) => `- ${edge}`).join('\n') || '- None'}
+${edgeCases.map((edgeCase: string) => `- ${edgeCase}`).join('\n') || '- None'}
 `;
 
-    const discussionSection = questions.map((q: string, idx: number) => `**Q${idx + 1}**: ${q}`).join('\n\n');
+    const discussionSection = questionsAsked
+      .map((question: string, index: number) => `**Q${index + 1}**: ${question}`)
+      .join('\n\n');
 
     const finalBody = `## Requirements
 ${requirementsSection}
