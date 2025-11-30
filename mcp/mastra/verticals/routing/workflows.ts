@@ -635,9 +635,9 @@ const getNextInstructionsStep = createStep({
       };
     }
 
-    const result = await Promise.race([
+    const result = await Promise.race<z.infer<typeof instructionsOutputSchema>>([
       waitForNextInstructions(),
-      new Promise((resolve) =>
+      new Promise<z.infer<typeof instructionsOutputSchema>>((resolve) =>
         setTimeout(
           () =>
             resolve({

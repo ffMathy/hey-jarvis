@@ -7,7 +7,7 @@ import {
   TravelMode,
 } from '@googlemaps/google-maps-services-js';
 import { getDistance } from 'geolib';
-import { chain, sumBy } from 'lodash-es';
+import { chain, isEqual, sumBy, uniqWith } from 'lodash-es';
 import { z } from 'zod';
 import { createTool } from '../../utils/tool-factory.js';
 
@@ -190,94 +190,88 @@ export const searchPlacesAlongRoute = createTool({
           allLocations.push(step.end_location);
         }
       }
+    }
 
-      if (allLocations.length === 0) {
-        allLocations.push(shortestRoute.legs[0].start_location);
-        allLocations.push(shortestRoute.legs[0].end_location);
-      }
+    if (allLocations.length === 0) {
+      allLocations.push(shortestRoute.legs[0].start_location);
+      allLocations.push(shortestRoute.legs[0].end_location);
+    }
 
-      // distinct values
-      allLocations = allLocations.filter(
-        (location, index, self) =>
-          index === self.findIndex((loc) => loc.lat === location.lat && loc.lng === location.lng),
-      );
+    // Use lodash uniqWith with isEqual for distinct locations
+    allLocations = uniqWith(allLocations, isEqual);
 
-      // Search at 0%, 25%, 50%, and 75% of the route
-      const searchPercentages = [0, 0.25, 0.5, 0.75];
-      let searchLocations = searchPercentages.map((percentage) => {
-        const index = Math.floor(allLocations.length * percentage);
-        return allLocations[Math.min(index, allLocations.length - 1)];
+    // Search at 0%, 25%, 50%, and 75% of the route
+    const searchPercentages = [0, 0.25, 0.5, 0.75];
+    let searchLocations = searchPercentages.map((percentage) => {
+      const index = Math.floor(allLocations.length * percentage);
+      return allLocations[Math.min(index, allLocations.length - 1)];
+    });
+
+    // Use lodash uniqWith with isEqual for distinct search locations
+    searchLocations = uniqWith(searchLocations, isEqual);
+
+    // Perform searches at all locations and combine unique results
+    const allPlacesMap = new Map<string, Partial<PlaceData>>(); // Use place_id as key to avoid duplicates
+
+    for (const searchLocation of searchLocations) {
+      const placesResponse = await client.textSearch({
+        params: {
+          query: searchQuery,
+          location: searchLocation,
+          radius: 50000,
+          key: apiKey,
+        },
       });
 
-      //distinct values
-      searchLocations = searchLocations.filter(
-        (location, index, self) =>
-          index === self.findIndex((loc) => loc.lat === location.lat && loc.lng === location.lng),
-      );
-
-      // Perform searches at all locations and combine unique results
-      const allPlacesMap = new Map<string, Partial<PlaceData>>(); // Use place_id as key to avoid duplicates
-
-      for (const searchLocation of searchLocations) {
-        const placesResponse = await client.textSearch({
-          params: {
-            query: searchQuery,
-            location: searchLocation,
-            radius: 50000,
-            key: apiKey,
-          },
-        });
-
-        if (placesResponse.data.status === 'OK') {
-          for (const place of placesResponse.data.results || []) {
-            if (place.place_id && !allPlacesMap.has(place.place_id)) {
-              allPlacesMap.set(place.place_id, place);
-            }
+      if (placesResponse.data.status === 'OK') {
+        for (const place of placesResponse.data.results || []) {
+          if (place.place_id && !allPlacesMap.has(place.place_id)) {
+            allPlacesMap.set(place.place_id, place);
           }
         }
       }
-
-      // Convert map to array, calculate distance to route, sort by distance, and limit results
-      const places = Array.from(allPlacesMap.values())
-        .map((place) => {
-          const placeLocation = {
-            latitude: place.geometry?.location.lat || 0,
-            longitude: place.geometry?.location.lng || 0,
-          };
-
-          // Calculate minimum distance from place to all points along the route
-          const minDistance = Math.min(
-            ...allLocations.map((routePoint) =>
-              getDistance(placeLocation, { latitude: routePoint.lat, longitude: routePoint.lng }),
-            ),
-          );
-
-          return {
-            name: place.name || '',
-            address: place.formatted_address || '',
-            location: {
-              lat: place.geometry?.location.lat || 0,
-              lng: place.geometry?.location.lng || 0,
-            },
-            rating: place.rating,
-            userRatingsTotal: place.user_ratings_total,
-            description: place.types?.join(', '),
-            types: place.types,
-            distanceFromRoute: minDistance,
-          };
-        })
-        .sort((a, b) => (a.distanceFromRoute || 0) - (b.distanceFromRoute || 0))
-        .slice(0, maxResults);
-
-      return {
-        places,
-        routeInfo: {
-          summary: shortestRoute.summary,
-          origin: shortestRoute.legs[0].start_address,
-          destination: shortestRoute.legs[shortestRoute.legs.length - 1].end_address,
-        },
-      };
     }
+
+    // Convert map to array, calculate distance to route, sort by distance, and limit results
+    const places = Array.from(allPlacesMap.values())
+      .map((place) => {
+        const placeLocation = {
+          latitude: place.geometry?.location.lat || 0,
+          longitude: place.geometry?.location.lng || 0,
+        };
+
+        // Calculate minimum distance from place to all points along the route
+        const minDistance = Math.min(
+          ...allLocations.map((routePoint) =>
+            getDistance(placeLocation, { latitude: routePoint.lat, longitude: routePoint.lng }),
+          ),
+        );
+
+        return {
+          name: place.name || '',
+          address: place.formatted_address || '',
+          location: {
+            lat: place.geometry?.location.lat || 0,
+            lng: place.geometry?.location.lng || 0,
+          },
+          rating: place.rating,
+          userRatingsTotal: place.user_ratings_total,
+          description: place.types?.join(', '),
+          types: place.types?.map((t) => String(t)),
+          distanceFromRoute: minDistance,
+        };
+      })
+      .sort((a, b) => (a.distanceFromRoute || 0) - (b.distanceFromRoute || 0))
+      .slice(0, maxResults);
+
+    return {
+      places,
+      routeInfo: {
+        summary: shortestRoute.summary,
+        origin: shortestRoute.legs[0].start_address,
+        destination: shortestRoute.legs[shortestRoute.legs.length - 1].end_address,
+      },
+    };
   },
 });
 

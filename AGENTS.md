@@ -123,6 +123,13 @@ const task = find(tasks, task => task.status === 'running');
 - Use `unknown` for truly unknown data, then narrow with type guards
 - Use type assertions sparingly and only when verified
 
+### 📛 Variable Naming
+**CRITICAL: Never shorten variable names** - clarity is more important than brevity:
+- ✅ Use `requirements`, `acceptanceCriteria`, `implementation`, `dependencies`
+- ❌ Never use `req`, `ac`, `impl`, `deps`
+- Variable names should be self-documenting and immediately understandable
+- Longer descriptive names are preferred over short abbreviated ones
+
 ### 🔄 Don't Reinvent the Wheel
 **ALWAYS prefer well-maintained npm packages** over custom implementations:
 - Search npm first before writing custom code

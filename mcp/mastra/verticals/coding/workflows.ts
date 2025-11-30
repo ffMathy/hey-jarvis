@@ -105,7 +105,7 @@ const askRequirementsQuestion = createStep({
     const state = params.state;
 
     // If we have resume data, add the user's answer to conversation history
-    let conversationHistory = state.conversationHistory;
+    let conversationHistory = state.conversationHistory ?? [];
     if (params.resumeData?.userAnswer) {
       conversationHistory = [
         ...conversationHistory,
@@ -178,22 +178,37 @@ const prepareIssueCreationData = createStep({
   }),
   execute: async (params) => {
     const state = params.state;
-    const { requirements } = state.response;
+    const requirements = state.response?.requirements;
+
+    if (!requirements) {
+      throw new Error('No requirements found in workflow state');
+    }
 
     // Format requirements as markdown
-    const requirementsSection = requirements.requirements.map((req) => `- ${req}`).join('\n');
-    const acceptanceCriteriaSection = requirements.acceptanceCriteria.map((ac) => `- [ ] ${ac}`).join('\n');
+    const requirementsList = requirements.requirements ?? [];
+    const acceptanceCriteriaList = requirements.acceptanceCriteria ?? [];
+    const implementation = requirements.implementation;
+    const dependencies = implementation?.dependencies ?? [];
+    const edgeCases = implementation?.edgeCases ?? [];
+    const questionsAsked = requirements.questionsAsked ?? [];
+
+    const requirementsSection = requirementsList.map((requirement: string) => `- ${requirement}`).join('\n');
+    const acceptanceCriteriaSection = acceptanceCriteriaList
+      .map((criterion: string) => `- [ ] ${criterion}`)
+      .join('\n');
     const implementationSection = `
-**Location**: ${requirements.implementation.location}
+**Location**: ${implementation?.location ?? 'Not specified'}
 
 **Dependencies**:
-${requirements.implementation.dependencies.map((dep) => `- ${dep}`).join('\n') || '- None'}
+${dependencies.map((dependency: string) => `- ${dependency}`).join('\n') || '- None'}
 
 **Edge Cases**:
-${requirements.implementation.edgeCases.map((edge) => `- ${edge}`).join('\n') || '- None'}
+${edgeCases.map((edgeCase: string) => `- ${edgeCase}`).join('\n') || '- None'}
 `;
 
-    const discussionSection = requirements.questionsAsked.map((q, idx) => `**Q${idx + 1}**: ${q}`).join('\n\n');
+    const discussionSection = questionsAsked
+      .map((question: string, index: number) => `**Q${index + 1}**: ${question}`)
+      .join('\n\n');
 
     const finalBody = `## Requirements
 ${requirementsSection}
@@ -210,8 +225,8 @@ ${discussionSection}
 
     return {
       owner: state.owner,
-      repo: state.repository,
-      title: requirements.title,
+      repo: state.repository ?? 'hey-jarvis',
+      title: requirements.title ?? 'Feature Implementation',
       body: finalBody,
       labels: ['ready', 'requirements-complete'],
     };
@@ -286,6 +301,10 @@ const prepareCopilotAssignmentData = createStep({
   }),
   execute: async (params) => {
     const state = params.state;
+
+    if (!state.repository || !state.issueNumber) {
+      throw new Error('Missing repository or issue number in workflow state');
+    }
 
     return {
       owner: state.owner,

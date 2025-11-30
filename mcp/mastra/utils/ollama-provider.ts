@@ -1,10 +1,13 @@
-import { createOllama } from 'ollama-ai-provider';
+import { createOllama } from 'ollama-ai-provider-v2';
 
 /**
  * Creates an Ollama provider instance for local LLM inference.
  *
  * This provider connects to the local Ollama server running in the container.
- * The server runs on port 11434 by default and serves models like Gemma 3.
+ * The server runs on port 11434 by default and serves models like Qwen3.
+ *
+ * Uses ollama-ai-provider-v2 which is compatible with AI SDK v5 (LanguageModelV2).
+ * This ensures compatibility with Mastra's .stream() method.
  *
  * Environment variables:
  * - OLLAMA_HOST: The host where Ollama is running (default: localhost)
@@ -20,3 +23,37 @@ const ollamaBaseUrl = `http://${ollamaHost}:${ollamaPort}/api`;
 export const ollama = createOllama({
   baseURL: ollamaBaseUrl,
 });
+
+/**
+ * Default Ollama model for scheduled/automated workflows.
+ * Uses Qwen3 with 0.6 billion parameters for optimal performance.
+ * This model is used by the workflow scheduler for all internal operations.
+ */
+export const OLLAMA_MODEL = 'qwen3:0.6b';
+
+/**
+ * Pre-configured Ollama model instance for use in agents and workflows.
+ * This is the recommended way to use Ollama in scheduled tasks.
+ */
+export const ollamaModel = ollama(OLLAMA_MODEL);
+
+/**
+ * Get the Ollama base URL for health checks and API calls.
+ */
+export function getOllamaBaseUrl(): string {
+  return ollamaBaseUrl;
+}
+
+/**
+ * Get the Ollama host configuration.
+ */
+export function getOllamaHost(): string {
+  return ollamaHost;
+}
+
+/**
+ * Get the Ollama port configuration.
+ */
+export function getOllamaPort(): string {
+  return ollamaPort;
+}

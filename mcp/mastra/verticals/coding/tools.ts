@@ -1,3 +1,4 @@
+import { pick } from 'lodash-es';
 import { Octokit } from 'octokit';
 import { z } from 'zod';
 import { createTool } from '../../utils/tool-factory.js';
@@ -16,6 +17,28 @@ type OctokitRepo = OctokitRepoListResponse['data'][0];
 type OctokitSearchResponse = Awaited<ReturnType<typeof octokit.rest.search.repos>>;
 type OctokitSearchRepo = OctokitSearchResponse['data']['items'][0];
 
+// Fields we want to pick from repository objects
+const REPO_FIELDS = [
+  'id',
+  'name',
+  'full_name',
+  'description',
+  'html_url',
+  'stargazers_count',
+  'language',
+  'updated_at',
+  'topics',
+] as const;
+
+// Type for the picked repository fields
+type PickedRepoFields = (typeof REPO_FIELDS)[number];
+type TransformedRepo = Pick<OctokitRepo, PickedRepoFields> & {
+  stargazers_count: number;
+  language: string | null;
+  updated_at: string;
+  topics: string[];
+};
+
 // Helper function to create Zod schema from Octokit repo response
 // This preserves the subset of fields we care about for the agent
 const createRepoSchema = () =>
@@ -31,18 +54,17 @@ const createRepoSchema = () =>
     topics: z.array(z.string()).optional(),
   });
 
-// Helper function to transform Octokit repo to our schema format
-const transformRepo = (repo: OctokitRepo | OctokitSearchRepo) => ({
-  id: repo.id,
-  name: repo.name,
-  full_name: repo.full_name,
-  description: repo.description,
-  html_url: repo.html_url,
-  stargazers_count: repo.stargazers_count,
-  language: repo.language,
-  updated_at: repo.updated_at,
-  topics: repo.topics || [],
-});
+// Helper function to transform Octokit repo to our schema format using lodash pick
+const transformRepo = (repo: OctokitRepo | OctokitSearchRepo): TransformedRepo => {
+  const picked = pick(repo, REPO_FIELDS);
+  return {
+    ...picked,
+    stargazers_count: picked.stargazers_count ?? 0,
+    language: picked.language ?? null,
+    updated_at: picked.updated_at ?? '',
+    topics: picked.topics || [],
+  };
+};
 
 // GitHub Repository Schema (inferred from Octokit types)
 const GitHubRepositorySchema = createRepoSchema();
@@ -65,6 +87,17 @@ const GitHubIssueSchema = z.object({
     )
     .optional(),
 });
+
+// Type alias for GitHub issue update parameters
+type IssueUpdateParams = {
+  owner: string;
+  repo: string;
+  issue_number: number;
+  title?: string;
+  body?: string;
+  labels?: string[];
+  state?: 'open' | 'closed';
+};
 
 /**
  * Tool to list all repositories for a GitHub user
@@ -135,7 +168,7 @@ export const listRepositoryIssues = createTool({
         title: issue.title,
         state: issue.state,
         html_url: issue.html_url,
-        body: issue.body,
+        body: issue.body ?? null,
         created_at: issue.created_at,
         updated_at: issue.updated_at,
         labels:
@@ -295,7 +328,7 @@ export const updateGitHubIssue = createTool({
     const owner = inputData.owner || 'ffMathy';
 
     try {
-      const updateData: any = {
+      const updateData: IssueUpdateParams = {
         owner,
         repo: inputData.repo,
         issue_number: inputData.issue_number,

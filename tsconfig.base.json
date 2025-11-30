@@ -22,7 +22,16 @@
     "types": [],
     "paths": {
       "mcp/*": ["mcp/*"]
-    }
+    },
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "strictBindCallApply": true,
+    "strictPropertyInitialization": true,
+    "noImplicitThis": true,
+    "useUnknownInCatchVariables": true,
+    "alwaysStrict": true
   },
   "exclude": ["node_modules", "tmp", "dist", ".nx"]
 }

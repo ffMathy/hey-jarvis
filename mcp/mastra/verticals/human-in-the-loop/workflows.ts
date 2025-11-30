@@ -65,9 +65,17 @@ const sendFormRequestEmail = createStep({
       toRecipients: [recipientEmail],
     });
 
-    // Pass recipientEmail through to next step
+    // Handle validation error case - narrow the type explicitly
+    if ('error' in emailResult) {
+      throw new Error(`Failed to send email: ${emailResult.message}`);
+    }
+
+    // At this point, emailResult is known to be the success type
     return {
-      ...emailResult,
+      messageId: emailResult.messageId,
+      subject: emailResult.subject,
+      success: emailResult.success,
+      message: emailResult.message,
       recipientEmail,
     };
   },
@@ -436,15 +444,21 @@ export const humanInTheLoopDemoWorkflow = createWorkflow({
 })
   .then(initializeWorkflow)
   .then(prepareBudgetApprovalQuestion)
-  .then(sendEmailAndAwaitResponseWorkflow as any) // ← Workflows-as-steps: TypeScript doesn't perfectly infer schema compatibility
+  // @ts-expect-error - Mastra workflow-as-step has complex generic constraints that conflict with strict TypeScript
+  .then(sendEmailAndAwaitResponseWorkflow)
   .then(extractBudgetApprovalResponse)
+  // @ts-expect-error - Mastra workflow chaining has complex generic constraints that conflict with strict TypeScript
   .then(mergeBudgetApprovalContext)
   .then(prepareVendorSelectionQuestion)
-  .then(sendEmailAndAwaitResponseWorkflow as any) // ← Workflows-as-steps: TypeScript doesn't perfectly infer schema compatibility
+  // @ts-expect-error - Mastra workflow-as-step has complex generic constraints that conflict with strict TypeScript
+  .then(sendEmailAndAwaitResponseWorkflow)
   .then(extractVendorSelectionResponse)
+  // @ts-expect-error - Mastra workflow chaining has complex generic constraints that conflict with strict TypeScript
   .then(mergeVendorSelectionContext)
   .then(prepareFinalConfirmationQuestion)
-  .then(sendEmailAndAwaitResponseWorkflow as any) // ← Workflows-as-steps: TypeScript doesn't perfectly infer schema compatibility
+  // @ts-expect-error - Mastra workflow-as-step has complex generic constraints that conflict with strict TypeScript
+  .then(sendEmailAndAwaitResponseWorkflow)
+  // @ts-expect-error - Mastra workflow chaining has complex generic constraints that conflict with strict TypeScript
   .then(extractFinalConfirmationResponse)
-  .then(formatFinalOutput as any)
+  .then(formatFinalOutput)
   .commit();

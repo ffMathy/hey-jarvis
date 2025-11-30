@@ -92,7 +92,7 @@ async function handleOAuthCallback(
   url: URL,
   res: http.ServerResponse,
   provider: OAuthProvider,
-  client: any,
+  client: unknown,
   server: http.Server,
   resolve: (value: TokenResponse) => void,
   reject: (reason: Error) => void,
@@ -103,7 +103,7 @@ async function handleOAuthCallback(
 
   if (error) {
     const errorMsg = errorDescription ? `${error}: ${errorDescription}` : error;
-    sendErrorResponse(res, 400, 'Authorization Failed', `Error: ${error}`, errorDescription);
+    sendErrorResponse(res, 400, 'Authorization Failed', `Error: ${error}`, errorDescription ?? undefined);
     reject(new Error(`Authorization failed: ${errorMsg}`));
     server.close();
     return;
@@ -126,7 +126,7 @@ async function handleOAuthCallback(
 /**
  * Starts a local HTTP server to receive the OAuth2 callback
  */
-function startCallbackServer(provider: OAuthProvider, client: any): Promise<TokenResponse> {
+function startCallbackServer(provider: OAuthProvider, client: unknown): Promise<TokenResponse> {
   return new Promise((resolve, reject) => {
     const server = http.createServer(async (req, res) => {
       try {
