@@ -56,7 +56,7 @@ const getMicrosoftAuth = async (): Promise<string> => {
   if (!refreshToken) {
     try {
       const credentialsStorage = await getCredentialsStorage();
-      refreshToken = await credentialsStorage.getRefreshToken('microsoft');
+      refreshToken = (await credentialsStorage.getRefreshToken('microsoft')) ?? undefined;
     } catch (_error) {
       // Storage error - continue to show helpful error message below
     }
@@ -96,6 +96,10 @@ const getMicrosoftAuth = async (): Promise<string> => {
     // Note: MSAL v3+ automatically manages refresh token rotation internally.
     // The refresh token is stored in MSAL's token cache and is not exposed in the response.
     // Token renewal happens automatically on subsequent acquireTokenByRefreshToken calls.
+
+    if (!response) {
+      throw new Error('No response received from Microsoft token endpoint');
+    }
 
     return response.accessToken;
   } catch (error) {

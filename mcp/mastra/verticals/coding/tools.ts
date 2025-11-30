@@ -135,7 +135,7 @@ export const listRepositoryIssues = createTool({
         title: issue.title,
         state: issue.state,
         html_url: issue.html_url,
-        body: issue.body,
+        body: issue.body ?? null,
         created_at: issue.created_at,
         updated_at: issue.updated_at,
         labels:

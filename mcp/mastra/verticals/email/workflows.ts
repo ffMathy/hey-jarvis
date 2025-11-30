@@ -246,6 +246,7 @@ export const checkForFormRepliesWorkflow = createWorkflow({
   inputSchema: workflowInputSchema,
   outputSchema: workflowOutputSchema,
 })
+  // @ts-expect-error - Mastra workflow chaining has complex generic constraints that conflict with strict TypeScript
   .then(searchUnreadEmails)
   .then(storeUnreadEmails)
   .then(processEmails)
@@ -392,9 +393,10 @@ const registerNewEmailsStateChange = createStep({
     message: z.string(),
   }),
   execute: async ({ state }) => {
+    const emails = state.unreadEmails ?? [];
     // Only register if there are emails
     const stateChangeData =
-      state.unreadEmails.length === 0
+      emails.length === 0
         ? {
             source: 'email',
             stateType: 'no_new_emails',
@@ -406,8 +408,8 @@ const registerNewEmailsStateChange = createStep({
             source: 'email',
             stateType: 'new_emails_received',
             stateData: {
-              emailCount: state.unreadEmails.length,
-              emails: state.unreadEmails.map((email) => ({
+              emailCount: emails.length,
+              emails: emails.map((email) => ({
                 subject: email.subject,
                 from: email.from.address,
                 receivedDateTime: email.receivedDateTime,
@@ -416,7 +418,14 @@ const registerNewEmailsStateChange = createStep({
             },
           };
 
-    return await registerStateChange.execute(stateChangeData);
+    const result = await registerStateChange.execute(stateChangeData);
+
+    // Handle validation error case - narrow the type explicitly
+    if ('error' in result) {
+      throw new Error(`Failed to register state change: ${result.message}`);
+    }
+
+    return result;
   },
 });
 
@@ -444,9 +453,10 @@ const formatParentOutput = createStep({
   }),
   execute: async (params) => {
     const stateChangeResult = params.inputData['register-new-emails-state-change'];
+    const emails = params.state.unreadEmails ?? [];
 
     return {
-      emailsFound: params.state.unreadEmails.length,
+      emailsFound: emails.length,
       stateChangeRegistered: stateChangeResult.registered,
       message: stateChangeResult.message,
     };
@@ -487,6 +497,7 @@ export const checkForNewEmails = createWorkflow({
     message: z.string(),
   }),
 })
+  // @ts-expect-error - Mastra workflow chaining has complex generic constraints that conflict with strict TypeScript
   .then(searchEmailsForParent)
   .then(storeEmailsInParentState)
   .parallel([processFormReplies, registerNewEmailsStateChange])

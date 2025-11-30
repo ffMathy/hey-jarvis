@@ -71,7 +71,14 @@ const registerWeatherStateChange = createStep({
       },
     };
 
-    return await registerStateChange.execute(stateChangeData);
+    const result = await registerStateChange.execute(stateChangeData);
+
+    // Handle validation error case - narrow the type explicitly
+    if ('error' in result) {
+      throw new Error(`Failed to register state change: ${result.message}`);
+    }
+
+    return result;
   },
 });
 

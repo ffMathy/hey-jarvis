@@ -59,6 +59,7 @@ export const generateMealPlanWorkflow = createWorkflow({
     }),
   )
   .then(
+    // @ts-expect-error - Mastra workflow types have complex generic constraints that don't fully align with strict TypeScript
     createToolStep({
       id: 'get-all-recipes',
       description: 'Fetches all recipes for meal planning',
@@ -418,7 +419,9 @@ const mealPlanFeedbackIterationWorkflow = createWorkflow({
   .map(async ({ inputData }) => ({
     preferences: inputData.preferences,
   }))
+  // @ts-expect-error - Mastra workflow chaining has complex generic constraints that conflict with strict TypeScript
   .then(generateMealPlanWorkflow) // Generate meal plan (with preferences if any)
+  // @ts-expect-error - Mastra workflow chaining has complex generic constraints that conflict with strict TypeScript
   .then(generateMealPlanEmail) // Format as HTML email
   .then(prepareMealPlanFeedbackQuestion) // Prepare feedback question
   // Map to sendEmailAndAwaitResponseWorkflow input schema
@@ -426,6 +429,7 @@ const mealPlanFeedbackIterationWorkflow = createWorkflow({
     recipientEmail: inputData.recipientEmail,
     question: inputData.question,
   }))
+  // @ts-expect-error - Mastra workflow chaining has complex generic constraints that conflict with strict TypeScript
   .then(sendEmailAndAwaitResponseWorkflow) // Send email and wait for human response
   .then(extractMealPlanFeedbackResponse) // Analyze the response
   .then(processMealPlanFeedback) // Update state and prepare output
@@ -468,6 +472,7 @@ export const weeklyMealPlanningWorkflow = createWorkflow({
     }),
   )
   // Keep iterating until approved
+  // @ts-expect-error - Mastra dowhile has complex generic constraints that conflict with strict TypeScript
   .dowhile(mealPlanFeedbackIterationWorkflow, async ({ inputData }) => !inputData.isApproved)
   // Once approved, add ingredients to shopping list
   .then(prepareShoppingListPrompt)
@@ -475,6 +480,7 @@ export const weeklyMealPlanningWorkflow = createWorkflow({
   .map(async ({ inputData }) => ({
     prompt: inputData.prompt,
   }))
+  // @ts-expect-error - Mastra workflow chaining has complex generic constraints that conflict with strict TypeScript
   .then(shoppingListWorkflow)
   .then(formatFinalOutput)
   .commit();
