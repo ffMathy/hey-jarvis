@@ -1,5 +1,5 @@
 import { createAgent } from '../../utils/agent-factory.js';
-import { ollama } from '../../utils/ollama-provider.js';
+import { ollamaModel } from '../../utils/ollama-provider.js';
 import { notificationTools } from './tools.js';
 
 let notificationAgent: Awaited<ReturnType<typeof createAgent>> | null = null;
@@ -17,7 +17,7 @@ export async function getNotificationAgent() {
   }
 
   notificationAgent = await createAgent({
-    model: ollama('gemma3:27b'),
+    model: ollamaModel,
     id: 'notification',
     name: 'Notification',
     instructions: `You are a reactive notification assistant for the Hey Jarvis smart home system.

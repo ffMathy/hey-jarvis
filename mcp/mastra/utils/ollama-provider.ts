@@ -23,3 +23,16 @@ const ollamaBaseUrl = `http://${ollamaHost}:${ollamaPort}/api`;
 export const ollama = createOllama({
   baseURL: ollamaBaseUrl,
 });
+
+/**
+ * Default Ollama model for scheduled/automated workflows.
+ * Uses Gemma 3 with 1 billion parameters for optimal performance.
+ * This model is used by the workflow scheduler for all internal operations.
+ */
+export const OLLAMA_MODEL = 'gemma3:1b';
+
+/**
+ * Pre-configured Ollama model instance for use in agents and workflows.
+ * This is the recommended way to use Ollama in scheduled tasks.
+ */
+export const ollamaModel = ollama(OLLAMA_MODEL);

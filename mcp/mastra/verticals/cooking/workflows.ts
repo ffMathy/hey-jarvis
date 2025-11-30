@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ollama } from '../../utils/ollama-provider.js';
+import { ollamaModel } from '../../utils/ollama-provider.js';
 import { createAgentStep, createStep, createToolStep, createWorkflow } from '../../utils/workflow-factory.js';
 import { sendEmailAndAwaitResponseWorkflow } from '../human-in-the-loop/workflows.js';
 import { shoppingListWorkflow } from '../shopping/workflows.js';
@@ -73,7 +73,7 @@ export const generateMealPlanWorkflow = createWorkflow({
       description: 'Uses meal plan agents to select recipes and generate complete meal plan',
       stateSchema: generateMealPlanStateSchema,
       agentConfig: {
-        model: ollama('gemma3:27b'),
+        model: ollamaModel,
         id: 'mealPlanGenerator',
         name: 'MealPlanGenerator',
         instructions: `You are a meal scheduling specialist.
@@ -119,7 +119,7 @@ const generateMealPlanEmail = createAgentStep({
   description: 'Generates HTML email using the specialized email formatter agent',
   stateSchema: generateMealPlanStateSchema,
   agentConfig: {
-    model: ollama('gemma3:27b'),
+    model: ollamaModel,
     id: 'emailFormatter',
     name: 'EmailFormatter',
     instructions: `You are an HTML email formatting specialist for meal plans.
@@ -229,7 +229,7 @@ const extractMealPlanFeedbackResponse = createAgentStep({
   description: 'Analyzes the human feedback to determine if approved or changes requested',
   stateSchema: weeklyMealPlanningStateSchema,
   agentConfig: {
-    model: ollama('gemma3:27b'),
+    model: ollamaModel,
     id: 'feedbackAnalyzer',
     name: 'FeedbackAnalyzer',
     instructions: `You are an expert at analyzing human feedback for meal plans.

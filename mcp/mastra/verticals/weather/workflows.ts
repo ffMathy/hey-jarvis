@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ollama } from '../../utils/ollama-provider.js';
+import { ollamaModel } from '../../utils/ollama-provider.js';
 import { createAgentStep, createStep, createWorkflow } from '../../utils/workflow-factory.js';
 import { registerStateChange } from '../synapse/tools.js';
 import { weatherTools } from './tools.js';
@@ -9,7 +9,7 @@ const scheduledWeatherCheck = createAgentStep({
   id: 'scheduled-weather-check',
   description: 'Checks weather for Aarhus every hour',
   agentConfig: {
-    model: ollama('gemma3:27b'),
+    model: ollamaModel,
     id: 'weather',
     name: 'Weather',
     instructions: `You are a weather agent which can provide weather insights via tools (current weather information and 5-day future prognosises for certain locations).
