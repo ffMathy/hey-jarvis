@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v0.15.0...home-assistant-addon-v0.16.0) (2025-11-30)
+
+
+### Bug Fixes
+
+* warnings and errors from building and linting the project ([#350](https://github.com/ffMathy/hey-jarvis/issues/350)) ([594c658](https://github.com/ffMathy/hey-jarvis/commit/594c658cacf0937cdff05b2887ade91795317ea6))
+
 ## [0.15.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v0.14.0...home-assistant-addon-v0.15.0) (2025-11-29)
 
 

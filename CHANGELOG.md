@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.16.0](https://github.com/ffMathy/hey-jarvis/compare/root-v0.15.0...root-v0.16.0) (2025-11-30)
+
+
+### Features
+
+* switch Ollama to gemma3:1b for better performance ([91f6993](https://github.com/ffMathy/hey-jarvis/commit/91f699361ef873b48d41aa88b04410cbf1fd4b7e))
+* switch to qwen3:0.6b and add Ollama integration tests ([7f9989c](https://github.com/ffMathy/hey-jarvis/commit/7f9989c75828ab4d547cc8f8c216d846a9a8168d))
+
+
+### Bug Fixes
+
+* enable strict mode and fix multiple TypeScript errors ([8256b36](https://github.com/ffMathy/hey-jarvis/commit/8256b3666d34e24aa5ab160e7a0915db4243d683))
+* resolve remaining TypeScript strict mode errors ([7b84732](https://github.com/ffMathy/hey-jarvis/commit/7b84732e943d10b35852350592bbfc389032602f))
+* restore /api suffix in Ollama baseURL ([b91d7d2](https://github.com/ffMathy/hey-jarvis/commit/b91d7d2eed1f96cedf40c4f0dec3609d72dbeac2))
+* upgrade to ollama-ai-provider-v2 for AI SDK v5 compatibility ([a4ead0f](https://github.com/ffMathy/hey-jarvis/commit/a4ead0f9b6993933033192d13f1bc20a222ddf77))
+* use Gemini Flash for cooking workflows instead of Ollama ([d733e5d](https://github.com/ffMathy/hey-jarvis/commit/d733e5daf1a8a4c452144a0474f5ac8184c08a1c))
+* warnings and errors from building and linting the project ([#350](https://github.com/ffMathy/hey-jarvis/issues/350)) ([594c658](https://github.com/ffMathy/hey-jarvis/commit/594c658cacf0937cdff05b2887ade91795317ea6))
+
 ## [0.15.0](https://github.com/ffMathy/hey-jarvis/compare/root-v0.14.0...root-v0.15.0) (2025-11-29)
 
 
