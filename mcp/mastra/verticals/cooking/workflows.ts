@@ -1,9 +1,12 @@
 import { z } from 'zod';
-import { ollamaModel } from '../../utils/ollama-provider.js';
+import { google } from '../../utils/google-provider.js';
 import { createAgentStep, createStep, createToolStep, createWorkflow } from '../../utils/workflow-factory.js';
 import { sendEmailAndAwaitResponseWorkflow } from '../human-in-the-loop/workflows.js';
 import { shoppingListWorkflow } from '../shopping/workflows.js';
 import { getAllRecipes } from './tools.js';
+
+// Use Gemini Flash for cooking workflows - better quality for recipe processing
+const cookingModel = google('gemini-flash-latest');
 
 const mealPlanSchema = z.array(
   z.object({
@@ -22,7 +25,7 @@ const mealPlanSchema = z.array(
 
 // Meal plan generation workflow (without email sending)
 // Can be used by agents or other workflows to generate meal plans
-// Uses light model (Qwen3) for cost-efficiency in scheduled tasks
+// Uses Gemini Flash for cooking workflow - better quality for recipe processing
 const generateMealPlanStateSchema = z
   .object({
     preferences: z.string(), // Used by generate-complete-meal-plan step
@@ -73,7 +76,7 @@ export const generateMealPlanWorkflow = createWorkflow({
       description: 'Uses meal plan agents to select recipes and generate complete meal plan',
       stateSchema: generateMealPlanStateSchema,
       agentConfig: {
-        model: ollamaModel,
+        model: cookingModel,
         id: 'mealPlanGenerator',
         name: 'MealPlanGenerator',
         instructions: `You are a meal scheduling specialist.
@@ -113,13 +116,13 @@ Focus on dinner/evening meals (look for "aftensmad" or similar categories). Gene
   )
   .commit();
 
-// Uses local Qwen3 via Ollama for cost-efficiency in scheduled tasks
+// Uses Gemini Flash for cooking workflow - better quality for recipe processing
 const generateMealPlanEmail = createAgentStep({
   id: 'generate-meal-plan-email',
   description: 'Generates HTML email using the specialized email formatter agent',
   stateSchema: generateMealPlanStateSchema,
   agentConfig: {
-    model: ollamaModel,
+    model: cookingModel,
     id: 'emailFormatter',
     name: 'EmailFormatter',
     instructions: `You are an HTML email formatting specialist for meal plans.
@@ -229,7 +232,7 @@ const extractMealPlanFeedbackResponse = createAgentStep({
   description: 'Analyzes the human feedback to determine if approved or changes requested',
   stateSchema: weeklyMealPlanningStateSchema,
   agentConfig: {
-    model: ollamaModel,
+    model: cookingModel,
     id: 'feedbackAnalyzer',
     name: 'FeedbackAnalyzer',
     instructions: `You are an expert at analyzing human feedback for meal plans.
