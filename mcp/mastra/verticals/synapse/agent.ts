@@ -9,7 +9,7 @@ import { synapseTools } from './tools.js';
  * This agent acts as a coordinator that reacts to state changes from various verticals
  * and delegates analysis/action to appropriate specialized agents.
  *
- * Uses a local Gemma 3 model via Ollama for cost-efficiency in scheduled/automated workflows.
+ * Uses a local Qwen3 model via Ollama for cost-efficiency in scheduled/automated workflows.
  *
  * Currently delegates to:
  * - Notification Agent: For analyzing state changes and sending user notifications

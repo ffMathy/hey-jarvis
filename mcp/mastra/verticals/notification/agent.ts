@@ -8,7 +8,7 @@ let notificationAgent: Awaited<ReturnType<typeof createAgent>> | null = null;
  * Notification Agent
  *
  * This agent handles notification decisions for the Hey Jarvis smart home system.
- * Uses a local Gemma 3 model via Ollama for cost-efficiency in scheduled/automated workflows
+ * Uses a local Qwen3 model via Ollama for cost-efficiency in scheduled/automated workflows
  * triggered by the State Change Reactor.
  */
 export async function getNotificationAgent() {

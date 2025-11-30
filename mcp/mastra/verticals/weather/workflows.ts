@@ -4,7 +4,7 @@ import { createAgentStep, createStep, createWorkflow } from '../../utils/workflo
 import { registerStateChange } from '../synapse/tools.js';
 import { weatherTools } from './tools.js';
 
-// Agent-as-step for scheduled weather check (uses local Gemma 3 via Ollama for cost-efficiency)
+// Agent-as-step for scheduled weather check (uses local Qwen3 via Ollama for cost-efficiency)
 const scheduledWeatherCheck = createAgentStep({
   id: 'scheduled-weather-check',
   description: 'Checks weather for Aarhus every hour',

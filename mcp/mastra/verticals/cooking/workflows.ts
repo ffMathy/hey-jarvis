@@ -22,7 +22,7 @@ const mealPlanSchema = z.array(
 
 // Meal plan generation workflow (without email sending)
 // Can be used by agents or other workflows to generate meal plans
-// Uses light model (Gemma 3) for cost-efficiency in scheduled tasks
+// Uses light model (Qwen3) for cost-efficiency in scheduled tasks
 const generateMealPlanStateSchema = z
   .object({
     preferences: z.string(), // Used by generate-complete-meal-plan step
@@ -113,7 +113,7 @@ Focus on dinner/evening meals (look for "aftensmad" or similar categories). Gene
   )
   .commit();
 
-// Uses local Gemma 3 via Ollama for cost-efficiency in scheduled tasks
+// Uses local Qwen3 via Ollama for cost-efficiency in scheduled tasks
 const generateMealPlanEmail = createAgentStep({
   id: 'generate-meal-plan-email',
   description: 'Generates HTML email using the specialized email formatter agent',
