@@ -2,8 +2,24 @@
 import { beforeAll, describe, expect, it } from 'bun:test';
 import { mastra } from '../../index.js';
 
+// Check if Ollama is available
+async function isOllamaAvailable(): Promise<boolean> {
+  try {
+    const ollamaHost = process.env.OLLAMA_HOST || 'localhost';
+    const ollamaPort = process.env.OLLAMA_PORT || '11434';
+    const response = await fetch(`http://${ollamaHost}:${ollamaPort}/api/tags`, {
+      signal: AbortSignal.timeout(2000),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
 describe('weatherMonitoringWorkflow', () => {
-  beforeAll(() => {
+  let ollamaAvailable = false;
+
+  beforeAll(async () => {
     // Verify required environment variables
     if (!process.env.HEY_JARVIS_OPENWEATHERMAP_API_KEY) {
       throw new Error('HEY_JARVIS_OPENWEATHERMAP_API_KEY environment variable is required for weather workflow tests');
@@ -11,9 +27,20 @@ describe('weatherMonitoringWorkflow', () => {
     if (!process.env.HEY_JARVIS_GOOGLE_API_KEY) {
       throw new Error('HEY_JARVIS_GOOGLE_API_KEY environment variable is required for weather workflow tests');
     }
+
+    // Check Ollama availability
+    ollamaAvailable = await isOllamaAvailable();
+    if (!ollamaAvailable) {
+      console.log('⚠️ Ollama is not available - integration tests requiring Ollama will be skipped');
+    }
   });
 
   it('should execute the workflow successfully', async () => {
+    if (!ollamaAvailable) {
+      console.log('Skipping test: Ollama is not available');
+      return;
+    }
+
     const workflow = mastra.getWorkflow('weatherMonitoringWorkflow');
     const run = await workflow.createRun();
     const execution = await run.start({ inputData: {} });
@@ -28,6 +55,11 @@ describe('weatherMonitoringWorkflow', () => {
   }, 60000); // Increase timeout for real API calls
 
   it('should complete workflow with proper structure', async () => {
+    if (!ollamaAvailable) {
+      console.log('Skipping test: Ollama is not available');
+      return;
+    }
+
     const workflow = mastra.getWorkflow('weatherMonitoringWorkflow');
     const run = await workflow.createRun();
     const execution = await run.start({ inputData: {} });
