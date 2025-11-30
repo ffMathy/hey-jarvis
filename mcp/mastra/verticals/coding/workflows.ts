@@ -105,7 +105,7 @@ const askRequirementsQuestion = createStep({
     const state = params.state;
 
     // If we have resume data, add the user's answer to conversation history
-    let conversationHistory = state.conversationHistory;
+    let conversationHistory = state.conversationHistory ?? [];
     if (params.resumeData?.userAnswer) {
       conversationHistory = [
         ...conversationHistory,
@@ -178,22 +178,33 @@ const prepareIssueCreationData = createStep({
   }),
   execute: async (params) => {
     const state = params.state;
-    const { requirements } = state.response;
+    const requirements = state.response?.requirements;
+
+    if (!requirements) {
+      throw new Error('No requirements found in workflow state');
+    }
 
     // Format requirements as markdown
-    const requirementsSection = requirements.requirements.map((req) => `- ${req}`).join('\n');
-    const acceptanceCriteriaSection = requirements.acceptanceCriteria.map((ac) => `- [ ] ${ac}`).join('\n');
+    const reqList = requirements.requirements ?? [];
+    const acList = requirements.acceptanceCriteria ?? [];
+    const impl = requirements.implementation;
+    const deps = impl?.dependencies ?? [];
+    const edgeCases = impl?.edgeCases ?? [];
+    const questions = requirements.questionsAsked ?? [];
+
+    const requirementsSection = reqList.map((req: string) => `- ${req}`).join('\n');
+    const acceptanceCriteriaSection = acList.map((ac: string) => `- [ ] ${ac}`).join('\n');
     const implementationSection = `
-**Location**: ${requirements.implementation.location}
+**Location**: ${impl?.location ?? 'Not specified'}
 
 **Dependencies**:
-${requirements.implementation.dependencies.map((dep) => `- ${dep}`).join('\n') || '- None'}
+${deps.map((dep: string) => `- ${dep}`).join('\n') || '- None'}
 
 **Edge Cases**:
-${requirements.implementation.edgeCases.map((edge) => `- ${edge}`).join('\n') || '- None'}
+${edgeCases.map((edge: string) => `- ${edge}`).join('\n') || '- None'}
 `;
 
-    const discussionSection = requirements.questionsAsked.map((q, idx) => `**Q${idx + 1}**: ${q}`).join('\n\n');
+    const discussionSection = questions.map((q: string, idx: number) => `**Q${idx + 1}**: ${q}`).join('\n\n');
 
     const finalBody = `## Requirements
 ${requirementsSection}
@@ -210,8 +221,8 @@ ${discussionSection}
 
     return {
       owner: state.owner,
-      repo: state.repository,
-      title: requirements.title,
+      repo: state.repository ?? 'hey-jarvis',
+      title: requirements.title ?? 'Feature Implementation',
       body: finalBody,
       labels: ['ready', 'requirements-complete'],
     };
@@ -286,6 +297,10 @@ const prepareCopilotAssignmentData = createStep({
   }),
   execute: async (params) => {
     const state = params.state;
+
+    if (!state.repository || !state.issueNumber) {
+      throw new Error('Missing repository or issue number in workflow state');
+    }
 
     return {
       owner: state.owner,

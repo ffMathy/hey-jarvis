@@ -26,7 +26,7 @@ const getGoogleAuth = async (): Promise<OAuth2Client> => {
   if (!refreshToken) {
     try {
       const credentialsStorage = await getCredentialsStorage();
-      refreshToken = await credentialsStorage.getRefreshToken('google');
+      refreshToken = (await credentialsStorage.getRefreshToken('google')) ?? undefined;
     } catch (_error) {
       // Storage error - continue to show helpful error message below
     }
@@ -107,8 +107,8 @@ export const createTask = createTool({
     return {
       id: response.data.id!,
       title: response.data.title!,
-      notes: response.data.notes,
-      due: response.data.due,
+      notes: response.data.notes ?? undefined,
+      due: response.data.due ?? undefined,
       status: response.data.status!,
       selfLink: response.data.selfLink!,
     };
@@ -185,10 +185,10 @@ export const getAllTasks = createTool({
       tasks: taskItems.map((task) => ({
         id: task.id!,
         title: task.title!,
-        notes: task.notes,
-        due: task.due,
+        notes: task.notes ?? undefined,
+        due: task.due ?? undefined,
         status: task.status!,
-        completed: task.completed,
+        completed: task.completed ?? undefined,
         selfLink: task.selfLink!,
       })),
     };
@@ -248,10 +248,10 @@ export const updateTask = createTool({
     return {
       id: response.data.id!,
       title: response.data.title!,
-      notes: response.data.notes,
-      due: response.data.due,
+      notes: response.data.notes ?? undefined,
+      due: response.data.due ?? undefined,
       status: response.data.status!,
-      completed: response.data.completed,
+      completed: response.data.completed ?? undefined,
       selfLink: response.data.selfLink!,
     };
   },

@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 
-import type { Workflow } from '@mastra/core/workflows';
 import { MCPServer } from '@mastra/mcp';
+import type { NextFunction, Request, Response } from 'express';
 import express from 'express';
 import { expressjwt } from 'express-jwt';
+import { z } from 'zod';
 import { initializeScheduler } from './scheduler.js';
 import { createTool } from './utils/tool-factory.js';
 import { getPublicAgents } from './verticals/index.js';
@@ -12,21 +13,44 @@ import { getNextInstructionsWorkflow, routePromptWorkflow } from './verticals/ro
 // Re-export for cross-project imports
 export { getPublicAgents };
 
-function createSimplifiedWorkflowTool(workflow: Workflow) {
+// Define a minimal workflow interface for our tool wrapper
+// This matches the subset of Mastra Workflow properties we need
+interface WorkflowLike {
+  id: string;
+  name?: string;
+  description?: string;
+  inputSchema?: z.ZodType;
+  outputSchema?: z.ZodType;
+  createRun(options?: { runId?: string; resourceId?: string; disableScorers?: boolean }): Promise<RunLike>;
+}
+
+interface WorkflowResultLike {
+  status: string;
+  result?: unknown;
+  error?: Error;
+}
+
+interface RunLike {
+  start(args: { inputData?: unknown }): Promise<WorkflowResultLike>;
+}
+
+function createSimplifiedWorkflowTool(workflow: WorkflowLike) {
+  const workflowName = workflow.name ?? workflow.id;
   return createTool({
-    id: workflow.name,
-    description: workflow.description,
-    inputSchema: workflow.inputSchema,
-    outputSchema: workflow.outputSchema,
+    id: workflowName,
+    description: workflow.description ?? '',
+    inputSchema: workflow.inputSchema ?? z.object({}),
+    outputSchema: workflow.outputSchema ?? z.unknown(),
     execute: async (context) => {
-      console.log(`Executing workflow tool: ${workflow.id ?? workflow.name}`);
+      console.log(`Executing workflow tool: ${workflowName}`);
 
       const run = await workflow.createRun();
       const result = await run.start({
         inputData: context,
       });
       if (result.status !== 'success') {
-        throw new Error(`Workflow ${workflow.id ?? workflow.name} failed with status ${result.status}`);
+        const errorMessage = result.error?.message ?? `Workflow failed with status ${result.status}`;
+        throw new Error(`Workflow ${workflowName} failed: ${errorMessage}`);
       }
 
       return result.result;
@@ -110,9 +134,10 @@ export async function startMcpServer() {
       } catch (err) {
         console.error('Error handling MCP HTTP connection', err);
         if (!res.headersSent) {
+          const errorMessage = err instanceof Error ? err.message : 'Unknown error';
           res.status(500).json({
             error: 'Failed to establish MCP connection',
-            details: (err as Error).message,
+            details: errorMessage,
           });
         }
       }
@@ -120,7 +145,7 @@ export async function startMcpServer() {
   );
 
   // Express error handler for JWT authentication failures
-  app.use((err: Error & { status?: number }, _req, res, _next) => {
+  app.use((err: Error & { status?: number }, _req: Request, res: Response, _next: NextFunction) => {
     if (err.name === 'UnauthorizedError') {
       res.status(401).json({
         error: 'Unauthorized',

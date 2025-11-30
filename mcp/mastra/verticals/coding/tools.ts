@@ -38,9 +38,9 @@ const transformRepo = (repo: OctokitRepo | OctokitSearchRepo) => ({
   full_name: repo.full_name,
   description: repo.description,
   html_url: repo.html_url,
-  stargazers_count: repo.stargazers_count,
-  language: repo.language,
-  updated_at: repo.updated_at,
+  stargazers_count: repo.stargazers_count ?? 0,
+  language: repo.language ?? null,
+  updated_at: repo.updated_at ?? '',
   topics: repo.topics || [],
 });
 
@@ -295,7 +295,15 @@ export const updateGitHubIssue = createTool({
     const owner = inputData.owner || 'ffMathy';
 
     try {
-      const updateData: any = {
+      const updateData: {
+        owner: string;
+        repo: string;
+        issue_number: number;
+        title?: string;
+        body?: string;
+        labels?: string[];
+        state?: 'open' | 'closed';
+      } = {
         owner,
         repo: inputData.repo,
         issue_number: inputData.issue_number,

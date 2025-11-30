@@ -233,7 +233,7 @@ export function createAgentStep<
         ],
         {
           structuredOutput: {
-            schema: config.outputSchema,
+            schema: config.outputSchema as z.ZodSchema,
           },
           toolChoice: 'none',
         },

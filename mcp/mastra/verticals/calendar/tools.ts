@@ -26,7 +26,7 @@ const getGoogleAuth = async (): Promise<OAuth2Client> => {
   if (!refreshToken) {
     try {
       const credentialsStorage = await getCredentialsStorage();
-      refreshToken = await credentialsStorage.getRefreshToken('google');
+      refreshToken = (await credentialsStorage.getRefreshToken('google')) ?? undefined;
     } catch (_error) {
       // Storage error - continue to show helpful error message below
     }
@@ -265,8 +265,8 @@ export const getCalendarEvents = createTool({
         summary: event.summary || '',
         start: event.start?.dateTime || event.start?.date || '',
         end: event.end?.dateTime || event.end?.date || '',
-        description: event.description,
-        location: event.location,
+        description: event.description ?? undefined,
+        location: event.location ?? undefined,
         status: event.status!,
         htmlLink: event.htmlLink!,
       })),
@@ -302,9 +302,9 @@ export const getAllCalendars = createTool({
       calendars: calendars.map((cal) => ({
         id: cal.id!,
         summary: cal.summary!,
-        description: cal.description,
-        primary: cal.primary,
-        backgroundColor: cal.backgroundColor,
+        description: cal.description ?? undefined,
+        primary: cal.primary ?? undefined,
+        backgroundColor: cal.backgroundColor ?? undefined,
       })),
     };
   },

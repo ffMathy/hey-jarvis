@@ -6,6 +6,10 @@ export interface TokenResponse {
   expiry_date: number;
 }
 
+/**
+ * OAuth provider interface. This is a unified interface that works
+ * both for typed implementations and for arrays of mixed providers.
+ */
 export interface OAuthProvider {
   name: string;
   clientIdEnvVar: string;
@@ -14,7 +18,10 @@ export interface OAuthProvider {
   scopes: string[];
   setupInstructions: string[];
   storageInstructions: string[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   createClient: (clientId: string, clientSecret: string) => any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   getAuthUrl: (client: any) => string | Promise<string>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   exchangeCode: (client: any, code: string) => Promise<TokenResponse>;
 }
