@@ -197,11 +197,8 @@ export const searchPlacesAlongRoute = createTool({
       allLocations.push(shortestRoute.legs[0].end_location);
     }
 
-    // Use lodash uniqWith for distinct locations by lat/lng comparison
-    allLocations = uniqWith(
-      allLocations,
-      (locationA, locationB) => locationA.lat === locationB.lat && locationA.lng === locationB.lng,
-    );
+    // Use lodash uniqWith with isEqual for distinct locations
+    allLocations = uniqWith(allLocations, isEqual);
 
     // Search at 0%, 25%, 50%, and 75% of the route
     const searchPercentages = [0, 0.25, 0.5, 0.75];
@@ -210,11 +207,8 @@ export const searchPlacesAlongRoute = createTool({
       return allLocations[Math.min(index, allLocations.length - 1)];
     });
 
-    // Use lodash uniqWith for distinct search locations
-    searchLocations = uniqWith(
-      searchLocations,
-      (locationA, locationB) => locationA.lat === locationB.lat && locationA.lng === locationB.lng,
-    );
+    // Use lodash uniqWith with isEqual for distinct search locations
+    searchLocations = uniqWith(searchLocations, isEqual);
 
     // Perform searches at all locations and combine unique results
     const allPlacesMap = new Map<string, Partial<PlaceData>>(); // Use place_id as key to avoid duplicates
