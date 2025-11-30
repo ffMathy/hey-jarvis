@@ -17,7 +17,7 @@ import { createOllama } from 'ollama-ai-provider-v2';
 // Get Ollama configuration from environment or use defaults
 const ollamaHost = process.env.OLLAMA_HOST || 'localhost';
 const ollamaPort = process.env.OLLAMA_PORT || '11434';
-const ollamaBaseUrl = `http://${ollamaHost}:${ollamaPort}`;
+const ollamaBaseUrl = `http://${ollamaHost}:${ollamaPort}/api`;
 
 // Create and export the configured Ollama provider instance
 export const ollama = createOllama({
