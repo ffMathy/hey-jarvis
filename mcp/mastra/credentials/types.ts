@@ -9,6 +9,11 @@ export interface TokenResponse {
 /**
  * OAuth provider interface. This is a unified interface that works
  * both for typed implementations and for arrays of mixed providers.
+ *
+ * The 'any' type is used intentionally because different OAuth providers
+ * (Google, Microsoft, etc.) have incompatible client types that cannot
+ * be unified into a single generic type without losing type safety in
+ * the individual provider implementations.
  */
 export interface OAuthProvider {
   name: string;
@@ -18,10 +23,10 @@ export interface OAuthProvider {
   scopes: string[];
   setupInstructions: string[];
   storageInstructions: string[];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // biome-ignore lint/suspicious/noExplicitAny: OAuth client types vary per provider and cannot be unified
   createClient: (clientId: string, clientSecret: string) => any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // biome-ignore lint/suspicious/noExplicitAny: OAuth client types vary per provider and cannot be unified
   getAuthUrl: (client: any) => string | Promise<string>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // biome-ignore lint/suspicious/noExplicitAny: OAuth client types vary per provider and cannot be unified
   exchangeCode: (client: any, code: string) => Promise<TokenResponse>;
 }

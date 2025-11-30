@@ -12,13 +12,19 @@ export function createSimplifiedAgentWrapper(agent: Agent) {
 
         // Return just the text content
         return result.text || 'No response generated';
-      } catch (error: any) {
+      } catch (error: unknown) {
         // Extract just the error message without all the metadata
-        if (error.message) {
+        if (error instanceof Error) {
           return error.message;
         }
-        if (error.details?.message) {
-          return error.details.message;
+        if (
+          typeof error === 'object' &&
+          error !== null &&
+          'details' in error &&
+          typeof (error as { details?: { message?: string } }).details === 'object' &&
+          (error as { details?: { message?: string } }).details?.message
+        ) {
+          return (error as { details: { message: string } }).details.message;
         }
         return 'An error occurred';
       }
