@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v0.19.0...home-assistant-addon-v0.20.0) (2025-12-01)
+
+
+### Features
+
+* **phone,iot,notification:** add text messaging and user location tools ([#367](https://github.com/ffMathy/hey-jarvis/issues/367)) ([51fb660](https://github.com/ffMathy/hey-jarvis/commit/51fb660594d2fc7cdd1d263bd88b7897f379f6d7))
+
 ## [0.19.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v0.18.0...home-assistant-addon-v0.19.0) (2025-12-01)
 
 

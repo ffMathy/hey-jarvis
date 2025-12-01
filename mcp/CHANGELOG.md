@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.20.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.19.0...mcp-v0.20.0) (2025-12-01)
+
+
+### Features
+
+* **mcp:** add logging and CPU limiting for Ollama inference calls ([2b2fc54](https://github.com/ffMathy/hey-jarvis/commit/2b2fc542c6d0ba10aeaa9a2e07519122f52afacd))
+* **mcp:** add logging and CPU limiting for Ollama inference calls ([#370](https://github.com/ffMathy/hey-jarvis/issues/370)) ([1ee0c0b](https://github.com/ffMathy/hey-jarvis/commit/1ee0c0b6f8258d50db59e8fea4ca6c887e1bcd9d))
+* **mcp:** add token metrics (tokens/sec) to Ollama inference logging ([e55f36e](https://github.com/ffMathy/hey-jarvis/commit/e55f36e615d02ea3ffd0b592b1469f7e1608fbe5))
+* **phone,iot,notification:** add text messaging and user location tools ([2984654](https://github.com/ffMathy/hey-jarvis/commit/29846545abe3784bb75a86b2e49ddf1b1ea45ed3))
+* **phone,iot,notification:** add text messaging and user location tools ([#367](https://github.com/ffMathy/hey-jarvis/issues/367)) ([51fb660](https://github.com/ffMathy/hey-jarvis/commit/51fb660594d2fc7cdd1d263bd88b7897f379f6d7))
+* **synapse:** add console.log to output full JSON serialized changes in state change reactor workflow ([6c9328e](https://github.com/ffMathy/hey-jarvis/commit/6c9328e67bcada71196a2e4d73008631fbd5a7aa))
+* **synapse:** log full JSON state changes in reactor workflow ([#372](https://github.com/ffMathy/hey-jarvis/issues/372)) ([35f2ee6](https://github.com/ffMathy/hey-jarvis/commit/35f2ee620304724176b98eb7113cffb5ab677a8b))
+
+
+### Bug Fixes
+
+* **mcp:** add @mastra/core to bundler externals to fix Docker module resolution ([#368](https://github.com/ffMathy/hey-jarvis/issues/368)) ([fe926aa](https://github.com/ffMathy/hey-jarvis/commit/fe926aa75ea31c2948b074e18683f1d07d14b23d))
+* **mcp:** add @mastra/core to bundler externals to fix module resolution error ([261f20a](https://github.com/ffMathy/hey-jarvis/commit/261f20a6039d99da8c1f3dc8762592974d0141bf))
+* **mcp:** add comment explaining bundler externals workaround ([8774b24](https://github.com/ffMathy/hey-jarvis/commit/8774b24cacd1698c83f6368600c1567fac8b4bd9))
+* **mcp:** address code review - avoid mutation and ensure consistent fetch params ([e3ce96d](https://github.com/ffMathy/hey-jarvis/commit/e3ce96de4bd00dfa291d22822f2eb954a264c676))
+
 ## [0.19.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.18.0...mcp-v0.19.0) (2025-12-01)
 
 
