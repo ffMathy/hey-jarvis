@@ -53,6 +53,21 @@ interface OllamaRequestBody {
 }
 
 /**
+ * Response type for Ollama API inference calls
+ */
+interface OllamaInferenceResponse {
+  model?: string;
+  response?: string;
+  done?: boolean;
+  eval_count?: number;
+  eval_duration?: number;
+  prompt_eval_count?: number;
+  prompt_eval_duration?: number;
+  total_duration?: number;
+  load_duration?: number;
+}
+
+/**
  * Extracts URL string from various input types.
  */
 function extractUrl(input: RequestInfo | URL): string {
@@ -115,12 +130,59 @@ function logInferenceStart(
 }
 
 /**
- * Logs the successful completion of an inference call.
+ * Token metrics from Ollama inference response
  */
-function logInferenceSuccess(modelName: string, duration: number, status: number, statusText: string): void {
+interface TokenMetrics {
+  inputTokens: number | null;
+  outputTokens: number | null;
+  totalTokens: number | null;
+  tokensPerSecond: number | null;
+}
+
+/**
+ * Extracts token metrics from Ollama response body.
+ */
+function extractTokenMetrics(responseBody: OllamaInferenceResponse | null, durationMs: number): TokenMetrics {
+  if (!responseBody) {
+    return { inputTokens: null, outputTokens: null, totalTokens: null, tokensPerSecond: null };
+  }
+
+  const inputTokens = responseBody.prompt_eval_count ?? null;
+  const outputTokens = responseBody.eval_count ?? null;
+  const totalTokens = inputTokens !== null || outputTokens !== null ? (inputTokens ?? 0) + (outputTokens ?? 0) : null;
+
+  let tokensPerSecond: number | null = null;
+  if (outputTokens !== null && durationMs > 0) {
+    tokensPerSecond = Math.round((outputTokens / durationMs) * 1000 * 10) / 10;
+  }
+
+  return { inputTokens, outputTokens, totalTokens, tokensPerSecond };
+}
+
+/**
+ * Logs the successful completion of an inference call with token metrics.
+ */
+function logInferenceSuccess(
+  modelName: string,
+  duration: number,
+  status: number,
+  statusText: string,
+  metrics: TokenMetrics,
+): void {
   console.log(`✅ [OLLAMA] Inference completed in ${duration}ms`);
   console.log(`   Model: ${modelName}`);
   console.log(`   Status: ${status} ${statusText}`);
+
+  if (metrics.inputTokens !== null || metrics.outputTokens !== null) {
+    const inputStr = metrics.inputTokens !== null ? `${metrics.inputTokens} input` : '';
+    const outputStr = metrics.outputTokens !== null ? `${metrics.outputTokens} output` : '';
+    const separator = inputStr && outputStr ? ', ' : '';
+    console.log(`   Tokens: ${inputStr}${separator}${outputStr}`);
+  }
+
+  if (metrics.tokensPerSecond !== null) {
+    console.log(`   Speed: ${metrics.tokensPerSecond} tokens/sec`);
+  }
 }
 
 /**
@@ -130,6 +192,20 @@ function logInferenceError(modelName: string, duration: number, errorMessage: st
   console.error(`❌ [OLLAMA] Inference failed after ${duration}ms`);
   console.error(`   Model: ${modelName}`);
   console.error(`   Error: ${errorMessage}`);
+}
+
+/**
+ * Extracts token metrics from a cloned response body.
+ * Returns null if the response cannot be parsed.
+ */
+async function parseResponseForMetrics(response: Response): Promise<OllamaInferenceResponse | null> {
+  try {
+    const clonedResponse = response.clone();
+    const body = await clonedResponse.json();
+    return body as OllamaInferenceResponse;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -161,7 +237,9 @@ function createLoggingFetch(): FetchFunction {
       const duration = Date.now() - startTime;
 
       if (isInferenceCall) {
-        logInferenceSuccess(modelName, duration, response.status, response.statusText);
+        const responseBody = await parseResponseForMetrics(response);
+        const metrics = extractTokenMetrics(responseBody, duration);
+        logInferenceSuccess(modelName, duration, response.status, response.statusText, metrics);
       }
 
       return response;
