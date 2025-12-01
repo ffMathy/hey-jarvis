@@ -57,6 +57,9 @@ async function createMastra() {
       getNextInstructionsWorkflow,
     },
     agents: agentsByName,
+    bundler: {
+      externals: ['@mastra/core'],
+    },
   });
 }
 
