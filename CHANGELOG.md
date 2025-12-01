@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.21.0](https://github.com/ffMathy/hey-jarvis/compare/root-v0.20.0...root-v0.21.0) (2025-12-01)
+
+
+### Features
+
+* **mcp:** add Ollama request queue for serial processing with max pending limit ([0a92467](https://github.com/ffMathy/hey-jarvis/commit/0a92467f237cd6578f353fbdfa5adb32b8dc4bda))
+* **mcp:** add Ollama request queue for serial processing with max pending limit ([#373](https://github.com/ffMathy/hey-jarvis/issues/373)) ([a547ff2](https://github.com/ffMathy/hey-jarvis/commit/a547ff25a818100153d05c77a1e733e2ad65cd42))
+
 ## [0.20.0](https://github.com/ffMathy/hey-jarvis/compare/root-v0.19.0...root-v0.20.0) (2025-12-01)
 
 
