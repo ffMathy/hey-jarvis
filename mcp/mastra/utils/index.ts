@@ -2,9 +2,14 @@
 export { createAgent } from './agent-factory.js';
 export { google } from './google-provider.js';
 export {
+  ensureModelAvailable,
+  getOllamaApiUrl,
   getOllamaBaseUrl,
   getOllamaHost,
   getOllamaPort,
+  isModelAvailable,
+  isOllamaAvailable,
+  listModels,
   OLLAMA_MODEL,
   ollama,
   ollamaModel,

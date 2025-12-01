@@ -67,17 +67,18 @@ COPY mcp/supervisord.conf /etc/supervisord.conf
 # Mount a volume here to persist models between container restarts
 RUN mkdir -p /data/llm/models
 
-# Note: The Gemma 3 model (gemma3:27b, ~16GB) is NOT pre-pulled to keep image size manageable.
-# The model will be automatically pulled on first use by the agents.
+# Note: The Ollama models (qwen3:0.6b) are NOT pre-pulled to keep image size manageable.
+# Models will be automatically pulled on first use by the lazy loading mechanism,
+# or pulled at container startup via the pull-ollama-models.sh script.
 # For faster startup, you can pre-pull the model by running:
-#   docker exec <container> ollama pull gemma3:27b
+#   docker exec <container> ollama pull qwen3:0.6b
 # Or mount a volume with pre-downloaded models to /data/llm/models
 
 # Expose ports for services (4111: Mastra UI, 4112: MCP Server, 11434: Ollama)
 EXPOSE 4111 4112 11434
 
-# Make run script executable
-RUN chmod a+x ./mcp/run.sh
+# Make scripts executable
+RUN chmod a+x ./mcp/run.sh ./mcp/lib/pull-ollama-models.sh
 
 # Override the base image's entrypoint and use the run script
 ENTRYPOINT [ "./mcp/run.sh" ]
