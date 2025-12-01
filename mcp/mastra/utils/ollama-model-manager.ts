@@ -270,12 +270,7 @@ class OllamaQueue {
     }
 
     this.isProcessing = true;
-    const request = this.queue.shift();
-
-    if (!request) {
-      this.isProcessing = false;
-      return;
-    }
+    const request = this.queue.shift()!;
 
     try {
       console.log(`🔄 [OLLAMA QUEUE] Processing request. Remaining in queue: ${this.queue.length}`);
