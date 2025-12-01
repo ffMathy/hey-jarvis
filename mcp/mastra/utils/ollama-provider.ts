@@ -2,6 +2,8 @@ import {
   createLazyOllamaProvider,
   ensureModelAvailable,
   getOllamaApiUrl,
+  getOllamaQueueLength,
+  getOllamaQueueStats,
   isModelAvailable,
   isOllamaAvailable,
   listModels,
@@ -24,6 +26,9 @@ import {
  *
  * **CPU Thread Limiting**: By default, Ollama uses 50% of available CPU cores to prevent
  * system overload. This can be customized via the OLLAMA_NUM_THREADS environment variable.
+ *
+ * **Request Queue**: Inference requests are processed serially to prevent Ollama overload.
+ * When the queue reaches its maximum size (10), new requests are dropped with an error.
  *
  * Environment variables:
  * - OLLAMA_HOST: The host where Ollama is running (default: localhost)
@@ -78,4 +83,12 @@ export function getOllamaPort(): string {
 }
 
 // Re-export model manager functions for convenience
-export { ensureModelAvailable, getOllamaApiUrl, isModelAvailable, isOllamaAvailable, listModels };
+export {
+  ensureModelAvailable,
+  getOllamaApiUrl,
+  getOllamaQueueLength,
+  getOllamaQueueStats,
+  isModelAvailable,
+  isOllamaAvailable,
+  listModels,
+};

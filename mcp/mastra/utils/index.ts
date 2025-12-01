@@ -14,6 +14,8 @@ export {
   getOllamaBaseUrl,
   getOllamaHost,
   getOllamaPort,
+  getOllamaQueueLength,
+  getOllamaQueueStats,
   isModelAvailable,
   isOllamaAvailable,
   listModels,
