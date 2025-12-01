@@ -31,10 +31,17 @@ export function initializeScheduler(): WorkflowScheduler {
     inputData: {},
   });
 
-  // Check for new emails - every 5 minutes
+  // Check for new emails - every 30 minutes
   scheduler.schedule({
     workflowId: 'checkForNewEmails',
     schedule: CronPatterns.EVERY_30_MINUTES,
+    inputData: {},
+  });
+
+  // IoT device monitoring - every 5 minutes
+  scheduler.schedule({
+    workflowId: 'iotMonitoringWorkflow',
+    schedule: CronPatterns.EVERY_5_MINUTES,
     inputData: {},
   });
 
