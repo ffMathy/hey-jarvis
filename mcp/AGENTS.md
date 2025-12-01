@@ -46,10 +46,13 @@ mcp/
 │   │   │   ├── tools.ts
 │   │   │   ├── workflows.ts
 │   │   │   └── index.ts
-│   │   └── notification/    # Proactive notifications
+│   │   ├── notification/    # Proactive notifications
 │   │       ├── agent.ts
 │   │       ├── tools.ts
 │   │       ├── workflows.ts
+│   │       └── index.ts
+│   │   └── phone/           # Phone calls (tools only)
+│   │       ├── tools.ts
 │   │       └── index.ts
 │   ├── processors/      # Output processors for post-processing
 │   │   ├── error-reporting.ts
@@ -178,6 +181,44 @@ await registerStateChange.execute({
   },
 });
 ```
+
+### Phone Vertical (Tools Only)
+Provides outbound phone call capabilities via ElevenLabs Twilio integration:
+- **1 phone tool**: Initiate outbound phone calls using ElevenLabs conversational agents
+- **No agents or workflows**: This vertical exposes only the tool for use by other agents
+- **Twilio integration**: Uses ElevenLabs Conversational AI platform with Twilio for phone calls
+- **Custom first message**: Each call can specify a custom greeting message for the recipient
+- **Conversation support**: After the initial message, the agent can engage in conversation with the recipient
+
+**Available Tool:**
+- **`initiatePhoneCall`**: Initiates an outbound phone call to a specified phone number
+  - Requires phone number in E.164 format (e.g., "+1234567890")
+  - Accepts a custom first message for the agent to speak
+  - Returns conversation ID and call SID on success
+  - Uses ElevenLabs conversational agent for the phone interaction
+
+**Required Environment Variables:**
+- `HEY_JARVIS_ELEVENLABS_API_KEY`: ElevenLabs API key for authentication
+- `HEY_JARVIS_ELEVENLABS_AGENT_ID`: ID of the ElevenLabs conversational agent to use
+- `HEY_JARVIS_ELEVENLABS_PHONE_NUMBER_ID`: ID of the Twilio phone number configured in ElevenLabs for outbound calls
+
+**Example Usage:**
+```typescript
+// Initiate a phone call with custom greeting
+await phoneTools.initiatePhoneCall.execute({
+  phoneNumber: '+1234567890',
+  firstMessage: 'Hello, this is Jarvis calling to remind you about your upcoming appointment.',
+});
+```
+
+**Setup Requirements:**
+1. Create an ElevenLabs account and obtain an API key
+2. Create a conversational agent in ElevenLabs
+3. Configure a Twilio phone number in ElevenLabs for outbound calls
+4. Store the credentials in 1Password:
+   - `op://Personal/ElevenLabs/API key`
+   - `op://Personal/ElevenLabs/Jarvis agent ID`
+   - `op://Personal/ElevenLabs/phone number ID`
 
 ### Coding Agent
 Manages GitHub repositories and coordinates feature implementation through requirements gathering workflows:
@@ -897,7 +938,7 @@ All environment variables use the `HEY_JARVIS_` prefix for easy management and D
 - **Google OAuth2 (Calendar & Tasks)**: `HEY_JARVIS_GOOGLE_CLIENT_ID`, `HEY_JARVIS_GOOGLE_CLIENT_SECRET`, `HEY_JARVIS_GOOGLE_REFRESH_TOKEN` for accessing Google Calendar and Tasks APIs (see [Google OAuth2 Setup](#google-oauth2-setup) below)
 - **Shopping (Bilka)**: `HEY_JARVIS_BILKA_EMAIL`, `HEY_JARVIS_BILKA_PASSWORD`, `HEY_JARVIS_BILKA_API_KEY` for authentication
 - **Shopping (Search)**: `HEY_JARVIS_ALGOLIA_API_KEY`, `HEY_JARVIS_ALGOLIA_APPLICATION_ID`, `HEY_JARVIS_BILKA_USER_TOKEN` for product search
-- **ElevenLabs**: `HEY_JARVIS_ELEVENLABS_API_KEY`, `HEY_JARVIS_ELEVENLABS_AGENT_ID`, `HEY_JARVIS_ELEVENLABS_VOICE_ID` for voice AI
+- **ElevenLabs**: `HEY_JARVIS_ELEVENLABS_API_KEY`, `HEY_JARVIS_ELEVENLABS_AGENT_ID`, `HEY_JARVIS_ELEVENLABS_VOICE_ID` for voice AI, and `HEY_JARVIS_ELEVENLABS_PHONE_NUMBER_ID` for outbound phone calls via Twilio
 - **Recipes**: `HEY_JARVIS_VALDEMARSRO_API_KEY` for Danish recipe data
 - **GitHub**: `HEY_JARVIS_GITHUB_API_TOKEN` for GitHub API access (coding agent and error reporting processor)
 - **WiFi**: `HEY_JARVIS_WIFI_SSID`, `HEY_JARVIS_WIFI_PASSWORD` for Home Assistant Voice Firmware
