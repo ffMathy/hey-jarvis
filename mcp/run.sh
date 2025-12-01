@@ -134,6 +134,22 @@ if bashio::config.has_value 'github_api_token'; then
     bashio::log.info "GitHub API token configured"
 fi
 
+# Twilio (for SMS notifications)
+if bashio::config.has_value 'twilio_account_sid'; then
+    export HEY_JARVIS_TWILIO_ACCOUNT_SID=$(bashio::config 'twilio_account_sid')
+    bashio::log.info "Twilio Account SID configured"
+fi
+
+if bashio::config.has_value 'twilio_auth_token'; then
+    export HEY_JARVIS_TWILIO_AUTH_TOKEN=$(bashio::config 'twilio_auth_token')
+    bashio::log.info "Twilio Auth Token configured"
+fi
+
+if bashio::config.has_value 'twilio_phone_number'; then
+    export HEY_JARVIS_TWILIO_PHONE_NUMBER=$(bashio::config 'twilio_phone_number')
+    bashio::log.info "Twilio Phone Number configured"
+fi
+
 # Log level
 LOG_LEVEL=$(bashio::config 'log_level')
 bashio::log.info "Log level set to: ${LOG_LEVEL}"

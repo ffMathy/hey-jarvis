@@ -4,10 +4,7 @@
   "slug": "hey-jarvis-mcp",
   "description": "AI-powered home assistant with Mastra agents for weather, shopping, cooking, and more via Model Context Protocol",
   "url": "https://github.com/ffMathy/hey-jarvis",
-  "arch": [
-    "amd64",
-    "aarch64"
-  ],
+  "arch": ["amd64", "aarch64"],
   "startup": "application",
   "boot": "auto",
   "init": false,
@@ -29,9 +26,7 @@
   "hassio_api": true,
   "hassio_role": "default",
   "homeassistant_api": true,
-  "privileged": [
-    "NET_ADMIN"
-  ],
+  "privileged": ["NET_ADMIN"],
   "full_access": false,
   "apparmor": true,
   "options": {
@@ -56,7 +51,10 @@
     "home_assistant_token": "",
     "tavily_api_key": "",
     "meal_plan_notification_email": "",
-    "github_api_token": ""
+    "github_api_token": "",
+    "twilio_account_sid": "",
+    "twilio_auth_token": "",
+    "twilio_phone_number": ""
   },
   "schema": {
     "log_level": "list(trace|debug|info|notice|warning|error|fatal)?",
@@ -80,18 +78,15 @@
     "home_assistant_token": "password?",
     "tavily_api_key": "password?",
     "meal_plan_notification_email": "str?",
-    "github_api_token": "password?"
+    "github_api_token": "password?",
+    "twilio_account_sid": "str?",
+    "twilio_auth_token": "password?",
+    "twilio_phone_number": "str?"
   },
   "environment": {
     "HOST": "0.0.0.0"
   },
-  "map": [
-    "config:rw",
-    "share:rw",
-    "media:rw"
-  ],
-  "backup_exclude": [
-    "llm/models"
-  ],
+  "map": ["config:rw", "share:rw", "media:rw"],
+  "backup_exclude": ["llm/models"],
   "image": "ghcr.io/ffmathy/home-assistant-addon"
 }

@@ -1,3 +1,4 @@
+import { getDistance } from 'geolib';
 import { z } from 'zod';
 import { createTool } from '../../utils/tool-factory.js';
 
@@ -429,7 +430,6 @@ interface UserLocation {
   gpsAccuracy: number | null;
   lastChanged: string;
   source: string;
-  isHome: boolean;
   distancesFromZones: Array<{
     zoneName: string;
     zoneId: string;
@@ -475,7 +475,6 @@ export const inferUserLocation = createTool({
         gpsAccuracy: z.number().nullable(),
         lastChanged: z.string(),
         source: z.string(),
-        isHome: z.boolean(),
         distancesFromZones: z.array(
           z.object({
             zoneName: z.string(),
@@ -562,18 +561,10 @@ export const inferUserLocation = createTool({
             let isInZone = false;
 
             if (person.latitude !== null && person.longitude !== null) {
-              // Haversine formula for distance calculation
-              const R = 6371000; // Earth's radius in meters
-              const lat1 = (person.latitude * Math.PI) / 180;
-              const lat2 = (zone.latitude * Math.PI) / 180;
-              const deltaLat = ((zone.latitude - person.latitude) * Math.PI) / 180;
-              const deltaLon = ((zone.longitude - person.longitude) * Math.PI) / 180;
-
-              const a =
-                Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
-                Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLon / 2) * Math.sin(deltaLon / 2);
-              const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-              distanceMeters = Math.round(R * c);
+              distanceMeters = getDistance(
+                { latitude: person.latitude, longitude: person.longitude },
+                { latitude: zone.latitude, longitude: zone.longitude },
+              );
 
               isInZone = distanceMeters <= zone.radius;
             }
@@ -600,7 +591,6 @@ export const inferUserLocation = createTool({
             gpsAccuracy: person.gps_accuracy,
             lastChanged: person.last_changed,
             source: person.source,
-            isHome: person.state.toLowerCase() === 'home',
             distancesFromZones,
           };
         },
