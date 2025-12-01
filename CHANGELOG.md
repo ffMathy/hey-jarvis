@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.18.0](https://github.com/ffMathy/hey-jarvis/compare/root-v0.17.0...root-v0.18.0) (2025-12-01)
+
+
+### Features
+
+* **iot:** add device state tracking and monitoring workflow ([d355cf2](https://github.com/ffMathy/hey-jarvis/commit/d355cf2f133f73c7c9cfad1d5aae8e7f9b7e2ead))
+* **iot:** add device state tracking and monitoring workflow ([#360](https://github.com/ffMathy/hey-jarvis/issues/360)) ([8acf6fb](https://github.com/ffMathy/hey-jarvis/commit/8acf6fbc6ce1779dd6c3297163020cc42d4a026a))
+* **mcp:** add GitHub Models support for CI/testing and DevContainer environments ([#354](https://github.com/ffMathy/hey-jarvis/issues/354)) ([45a9257](https://github.com/ffMathy/hey-jarvis/commit/45a9257602f46d5a0bc1d042bd78f8b923c4c9e3))
+* **phone:** add phone vertical with initiatePhoneCall tool using ElevenLabs Twilio API ([9d791e7](https://github.com/ffMathy/hey-jarvis/commit/9d791e7fa59ba59c9bc25cd8fffad681f52c0a22))
+* **phone:** add phone vertical with initiatePhoneCall tool using ElevenLabs Twilio API ([#361](https://github.com/ffMathy/hey-jarvis/issues/361)) ([7673c5f](https://github.com/ffMathy/hey-jarvis/commit/7673c5f56ef86c935cb6e8c75d4549463333bfa4))
+
+
+### Bug Fixes
+
+* disable working memory for State Change Reactor agent and fix ElevenLabs TS errors ([b794e48](https://github.com/ffMathy/hey-jarvis/commit/b794e48c66e567f8dbdfc8f82cba5c52ba741c54))
+* make State Change Reactor the decision-maker with working memory for intelligent notification routing ([#359](https://github.com/ffMathy/hey-jarvis/issues/359)) ([ab9f8f1](https://github.com/ffMathy/hey-jarvis/commit/ab9f8f13d7a7b116139585f435596066c8a8767e))
+* make State Change Reactor the decision-maker with working memory re-enabled ([8f4395f](https://github.com/ffMathy/hey-jarvis/commit/8f4395fa9960499e0bfd1c47d3aeb9dc3f30dc62))
+* **phone:** address review feedback - hardcode phone number ID, throw errors, prefer test agent ID ([14dcf2f](https://github.com/ffMathy/hey-jarvis/commit/14dcf2f74d52c21e026915fd01ff5afc2ce0be85))
+* replace .network() with .generate() in synapse workflow to avoid agent/tool confusion ([7c95aea](https://github.com/ffMathy/hey-jarvis/commit/7c95aea8ef074f77425e384d03eab90068b226f7))
+
 ## [0.17.0](https://github.com/ffMathy/hey-jarvis/compare/root-v0.16.2...root-v0.17.0) (2025-12-01)
 
 
