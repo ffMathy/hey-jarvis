@@ -42,6 +42,7 @@ export function initializeScheduler(): WorkflowScheduler {
     workflow: checkForNewEmails,
     schedule: CronPatterns.EVERY_30_MINUTES,
     inputData: {},
+    runOnStartup: true,
   });
 
   // IoT device monitoring - every 5 minutes
@@ -49,6 +50,7 @@ export function initializeScheduler(): WorkflowScheduler {
     workflow: iotMonitoringWorkflow,
     schedule: CronPatterns.EVERY_5_MINUTES,
     inputData: {},
+    runOnStartup: true,
   });
 
   return scheduler;

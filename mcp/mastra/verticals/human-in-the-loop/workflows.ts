@@ -21,24 +21,21 @@ const sendAndWaitInputSchema = z.object({
   question: z.string().describe('Question to ask in the email'),
 });
 
-// Output schema - generic response object
-const sendAndWaitOutputSchema = z.object({
-  senderEmail: z.string().describe('Email of the person who responded'),
-  response: z.record(z.any()).describe('The parsed response data'),
+// Intermediate schema for email sending step output
+const emailSentSchema = z.object({
+  messageId: z.string(),
+  subject: z.string(),
+  success: z.boolean(),
+  message: z.string(),
+  recipientEmail: z.string(),
 });
 
-// Step 1: Send email with form request
+// Step 1: Send email with form request (static, not dependent on response schema)
 const sendFormRequestEmail = createStep({
   id: 'send-form-request-email',
   description: 'Send email with embedded workflow ID',
   inputSchema: sendAndWaitInputSchema,
-  outputSchema: z.object({
-    messageId: z.string(),
-    subject: z.string(),
-    success: z.boolean(),
-    message: z.string(),
-    recipientEmail: z.string(), // Pass through for next step
-  }),
+  outputSchema: emailSentSchema,
   execute: async (params) => {
     const { recipientEmail, question } = params.inputData;
     const timeoutDate = new Date();
@@ -81,61 +78,91 @@ const sendFormRequestEmail = createStep({
   },
 });
 
-// Step 2: Suspend and wait for email response
-const awaitEmailResponse = createStep({
-  id: 'await-email-response',
-  description: 'Suspend workflow and wait for email response',
-  inputSchema: z.object({
-    messageId: z.string(),
-    subject: z.string(),
-    success: z.boolean(),
-    message: z.string(),
-    recipientEmail: z.string(), // Pass through for validation
-  }),
-  outputSchema: sendAndWaitOutputSchema,
-  resumeSchema: z.record(z.any()),
-  suspendSchema: z.object({
-    message: z.string(),
-  }),
-  execute: async (params) => {
-    const { recipientEmail } = params.state;
+/**
+ * Creates the await email response step with a typed response schema.
+ * This is a factory function that generates a step with the correct output types.
+ */
+function createAwaitEmailResponseStep<TResponseSchema extends z.ZodObject<z.ZodRawShape>>(
+  responseSchema: TResponseSchema,
+) {
+  const outputSchema = z.object({
+    senderEmail: z.string().describe('Email of the person who responded'),
+    response: responseSchema.describe('The parsed response data'),
+  });
 
-    // If we have resume data, process it
-    if (params.resumeData) {
-      const { senderEmail, ...responseData } = params.resumeData as any;
+  return createStep({
+    id: 'await-email-response',
+    description: 'Suspend workflow and wait for email response',
+    inputSchema: emailSentSchema,
+    outputSchema,
+    resumeSchema: outputSchema,
+    suspendSchema: z.object({}),
+    execute: async ({ inputData, resumeData, suspend }) => {
+      const { recipientEmail } = inputData;
 
-      // Validate sender email
-      if (senderEmail && recipientEmail && senderEmail.toLowerCase() !== recipientEmail.toLowerCase()) {
-        throw new Error(
-          `Security validation failed: Email sender ${senderEmail} does not match expected recipient ${recipientEmail}`,
-        );
+      // If we have resume data, process it and return
+      if (resumeData) {
+        const { senderEmail, response } = resumeData as z.infer<typeof outputSchema>;
+
+        // Validate sender email
+        if (senderEmail && recipientEmail && senderEmail.toLowerCase() !== recipientEmail.toLowerCase()) {
+          throw new Error(
+            `Security validation failed: Email sender ${senderEmail} does not match expected recipient ${recipientEmail}`,
+          );
+        }
+
+        // Return the response data with proper typing
+        return {
+          senderEmail: senderEmail || '',
+          response: response as z.infer<TResponseSchema>,
+        };
       }
 
-      // Return the response data
-      return {
-        senderEmail: senderEmail || '',
-        response: responseData,
-      };
-    }
+      // Suspend workflow - will be resumed by checkForFormRepliesWorkflow
+      return await suspend({});
+    },
+  });
+}
 
-    // Suspend workflow - will be resumed by checkForFormRepliesWorkflow
-    await params.suspend({
-      message: 'Waiting for email response...',
-    });
+/**
+ * Creates a reusable send-email-and-await-response workflow with strongly-typed response.
+ *
+ * @param slug - Unique identifier for this workflow instance
+ * @param responseSchema - Zod schema defining the expected response structure
+ * @returns A workflow that sends an email and waits for a typed response
+ *
+ * @example
+ * ```typescript
+ * const budgetApprovalResponseSchema = z.object({
+ *   approved: z.boolean(),
+ *   comments: z.string().optional(),
+ * });
+ *
+ * const workflow = getSendEmailAndAwaitResponseWorkflow(
+ *   'budgetApproval',
+ *   budgetApprovalResponseSchema
+ * );
+ * // Output type is { senderEmail: string; response: { approved: boolean; comments?: string } }
+ * ```
+ */
+export function getSendEmailAndAwaitResponseWorkflow<TResponseSchema extends z.ZodObject<z.ZodRawShape>>(
+  slug: string,
+  responseSchema: TResponseSchema,
+) {
+  const outputSchema = z.object({
+    senderEmail: z.string().describe('Email of the person who responded'),
+    response: responseSchema.describe('The parsed response data'),
+  });
 
-    throw new Error('Workflow resumed without resume data');
-  },
-});
-
-// Export the reusable workflow - no state schema means it can be used in any parent workflow
-export const sendEmailAndAwaitResponseWorkflow = createWorkflow({
-  id: 'sendEmailAndAwaitResponseWorkflow',
-  inputSchema: sendAndWaitInputSchema,
-  outputSchema: sendAndWaitOutputSchema,
-})
-  .then(sendFormRequestEmail)
-  .then(awaitEmailResponse)
-  .commit();
+  return createWorkflow({
+    id: `sendEmailAndAwaitResponseWorkflow-${slug}`,
+    inputSchema: sendAndWaitInputSchema,
+    outputSchema,
+  })
+    .then(sendFormRequestEmail)
+    .then(createAwaitEmailResponseStep(responseSchema))
+    .commit();
+}
 
 /**
  * Human-in-the-Loop Demo Workflow
@@ -181,6 +208,22 @@ const workflowOutputSchema = z.object({
   approvalGranted: z.boolean().optional(),
   vendorSelected: z.string().optional(),
   finalConfirmation: z.boolean().optional(),
+});
+
+// Response schemas for each human-in-the-loop step
+const budgetApprovalResponseSchema = z.object({
+  approved: z.boolean(),
+  comments: z.string().optional(),
+});
+
+const vendorSelectionResponseSchema = z.object({
+  vendorName: z.string(),
+  justification: z.string(),
+});
+
+const finalConfirmationResponseSchema = z.object({
+  confirmed: z.boolean(),
+  finalNotes: z.string().optional(),
 });
 
 // Step 1: Initialize workflow state
@@ -231,7 +274,7 @@ const extractBudgetApprovalResponse = createStep({
   description: 'Extract approval decision and merge with context',
   inputSchema: z.object({
     senderEmail: z.string(),
-    response: z.record(z.any()),
+    response: budgetApprovalResponseSchema,
   }),
   outputSchema: z.object({
     approved: z.boolean(),
@@ -242,8 +285,8 @@ const extractBudgetApprovalResponse = createStep({
     const { response, senderEmail } = params.inputData;
 
     return {
-      approved: response.approved as boolean,
-      comments: response.comments as string | undefined,
+      approved: response.approved,
+      comments: response.comments,
       recipientEmail: senderEmail,
     };
   },
@@ -312,7 +355,7 @@ const extractVendorSelectionResponse = createStep({
   description: 'Extract vendor selection and merge with context',
   inputSchema: z.object({
     senderEmail: z.string(),
-    response: z.record(z.any()),
+    response: vendorSelectionResponseSchema,
   }),
   outputSchema: z.object({
     vendorName: z.string(),
@@ -323,8 +366,8 @@ const extractVendorSelectionResponse = createStep({
     const { response, senderEmail } = params.inputData;
 
     return {
-      vendorName: response.vendorName as string,
-      justification: response.justification as string,
+      vendorName: response.vendorName,
+      justification: response.justification,
       recipientEmail: senderEmail,
     };
   },
@@ -383,7 +426,7 @@ const extractFinalConfirmationResponse = createStep({
   description: 'Extract final confirmation and merge with vendor context',
   inputSchema: z.object({
     senderEmail: z.string(),
-    response: z.record(z.any()),
+    response: finalConfirmationResponseSchema,
     vendorName: z.string(), // Passed through from prepareFinalConfirmationQuestion step output
   }),
   outputSchema: z.object({
@@ -395,8 +438,8 @@ const extractFinalConfirmationResponse = createStep({
     const { response, vendorName } = params.inputData;
 
     return {
-      confirmed: response.confirmed as boolean,
-      finalNotes: response.finalNotes as string | undefined,
+      confirmed: response.confirmed,
+      finalNotes: response.finalNotes,
       vendorName,
     };
   },
@@ -445,19 +488,19 @@ export const humanInTheLoopDemoWorkflow = createWorkflow({
   .then(initializeWorkflow)
   .then(prepareBudgetApprovalQuestion)
   // @ts-expect-error - Mastra workflow-as-step has complex generic constraints that conflict with strict TypeScript
-  .then(sendEmailAndAwaitResponseWorkflow)
+  .then(getSendEmailAndAwaitResponseWorkflow('budgetApproval', budgetApprovalResponseSchema)) // Send email and wait for human response
   .then(extractBudgetApprovalResponse)
   // @ts-expect-error - Mastra workflow chaining has complex generic constraints that conflict with strict TypeScript
   .then(mergeBudgetApprovalContext)
   .then(prepareVendorSelectionQuestion)
   // @ts-expect-error - Mastra workflow-as-step has complex generic constraints that conflict with strict TypeScript
-  .then(sendEmailAndAwaitResponseWorkflow)
+  .then(getSendEmailAndAwaitResponseWorkflow('vendorSelection', vendorSelectionResponseSchema))
   .then(extractVendorSelectionResponse)
   // @ts-expect-error - Mastra workflow chaining has complex generic constraints that conflict with strict TypeScript
   .then(mergeVendorSelectionContext)
   .then(prepareFinalConfirmationQuestion)
   // @ts-expect-error - Mastra workflow-as-step has complex generic constraints that conflict with strict TypeScript
-  .then(sendEmailAndAwaitResponseWorkflow)
+  .then(getSendEmailAndAwaitResponseWorkflow('finalConfirmation', finalConfirmationResponseSchema))
   // @ts-expect-error - Mastra workflow chaining has complex generic constraints that conflict with strict TypeScript
   .then(extractFinalConfirmationResponse)
   .then(formatFinalOutput)

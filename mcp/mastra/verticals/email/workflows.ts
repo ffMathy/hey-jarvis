@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import { createStep, createToolStep, createWorkflow } from '../../utils/workflow-factory.js';
+import { createStep, createWorkflow } from '../../utils/workflow-factory.js';
 import { registerStateChange } from '../synapse/tools.js';
-import { findEmails } from './tools.js';
+import { findEmails, findNewEmailsSinceLastCheck, updateLastSeenEmail } from './tools.js';
 
 /**
  * Check for Form Replies Workflow
@@ -63,11 +63,42 @@ const workflowStateSchema = z.object({
 });
 
 // Step 1: Search for unread emails
-const searchUnreadEmails = createToolStep({
+const searchUnreadEmails = createStep({
   id: 'search-unread-emails',
   description: 'Search for unread emails in the inbox',
-  tool: findEmails,
   stateSchema: workflowStateSchema,
+  inputSchema: z.object({}),
+  outputSchema: z.object({
+    emails: z.array(
+      z.object({
+        id: z.string(),
+        subject: z.string(),
+        bodyPreview: z.string(),
+        from: z.object({
+          name: z.string(),
+          address: z.string(),
+        }),
+        receivedDateTime: z.string(),
+        isRead: z.boolean(),
+        hasAttachments: z.boolean(),
+        isDraft: z.boolean(),
+      }),
+    ),
+    totalCount: z.number(),
+  }),
+  execute: async () => {
+    const result = await findEmails.execute({
+      folder: 'inbox',
+      limit: 50,
+      isRead: false,
+    });
+
+    if ('error' in result) {
+      throw new Error(`Failed to search emails: ${result.message}`);
+    }
+
+    return result;
+  },
 });
 
 // Step 2: Store emails in workflow state
@@ -246,7 +277,6 @@ export const checkForFormRepliesWorkflow = createWorkflow({
   inputSchema: workflowInputSchema,
   outputSchema: workflowOutputSchema,
 })
-  // @ts-expect-error - Mastra workflow chaining has complex generic constraints that conflict with strict TypeScript
   .then(searchUnreadEmails)
   .then(storeUnreadEmails)
   .then(processEmails)
@@ -257,13 +287,17 @@ export const checkForFormRepliesWorkflow = createWorkflow({
  * Check for New Emails Workflow (Parent Workflow)
  *
  * This workflow orchestrates email processing by:
- * 1. Searching for unread emails
+ * 1. Searching for NEW emails since the last check (using persistent storage)
  * 2. Processing form replies (resume suspended workflows)
  * 3. Registering new emails as state changes for notification analysis
+ * 4. Updating the last seen email state to avoid reprocessing
  *
  * This is a parent workflow that combines form reply processing with
  * notification system integration, ensuring all new emails are tracked
  * and potentially notified to users.
+ *
+ * The workflow uses persistent storage to track the last seen email,
+ * so only genuinely new emails are processed on each run.
  *
  * Scheduled to run every 5 minutes via the workflow scheduler.
  */
@@ -271,7 +305,7 @@ export const checkForFormRepliesWorkflow = createWorkflow({
 // State schema for the parent workflow
 const parentWorkflowStateSchema = z
   .object({
-    unreadEmails: z
+    newEmails: z
       .array(
         z.object({
           id: z.string(),
@@ -288,21 +322,48 @@ const parentWorkflowStateSchema = z
         }),
       )
       .default([]),
+    isFirstCheck: z.boolean().default(false),
+    lastCheckTimestamp: z.string().optional(),
+    mostRecentEmailId: z.string().optional(),
+    mostRecentEmailReceivedDateTime: z.string().optional(),
   })
   .partial();
 
-// Step 1: Search for unread emails (reused from child workflow)
-const searchEmailsForParent = createToolStep({
-  id: 'search-emails-for-parent',
-  description: 'Search for unread emails in the inbox',
-  tool: findEmails,
+// Step 1: Search for NEW emails since last check (uses persistent storage)
+const searchNewEmailsForParent = createStep({
+  id: 'search-new-emails-for-parent',
+  description: 'Search for new emails received since the last workflow run',
   stateSchema: parentWorkflowStateSchema,
+  inputSchema: z.object({}),
+  outputSchema: z.object({
+    emails: z.array(
+      z.object({
+        id: z.string(),
+        subject: z.string(),
+        bodyPreview: z.string(),
+        from: z.object({
+          name: z.string(),
+          address: z.string(),
+        }),
+        receivedDateTime: z.string(),
+        isRead: z.boolean(),
+        hasAttachments: z.boolean(),
+        isDraft: z.boolean(),
+      }),
+    ),
+    totalCount: z.number(),
+    isFirstCheck: z.boolean(),
+    lastCheckTimestamp: z.string().optional(),
+  }),
+  execute: async () => {
+    return await findNewEmailsSinceLastCheck('inbox', 50);
+  },
 });
 
-// Step 2: Store emails in parent workflow state
-const storeEmailsInParentState = createStep({
-  id: 'store-emails-in-parent-state',
-  description: 'Store unread emails in parent workflow state',
+// Step 2: Store emails in parent workflow state and track the most recent one
+const storeNewEmailsInParentState = createStep({
+  id: 'store-new-emails-in-parent-state',
+  description: 'Store new emails in parent workflow state and track the most recent email for later update',
   stateSchema: parentWorkflowStateSchema,
   inputSchema: z.object({
     emails: z.array(
@@ -321,20 +382,33 @@ const storeEmailsInParentState = createStep({
       }),
     ),
     totalCount: z.number(),
+    isFirstCheck: z.boolean(),
+    lastCheckTimestamp: z.string().optional(),
   }),
   outputSchema: z.object({
     emailCount: z.number(),
   }),
   execute: async (params) => {
-    console.log(`📬 Parent workflow found ${params.inputData.emails.length} unread email(s)`);
+    const { emails, isFirstCheck, lastCheckTimestamp } = params.inputData;
+
+    console.log(
+      `📬 Parent workflow found ${emails.length} new email(s)${isFirstCheck ? ' (first check)' : ` since ${lastCheckTimestamp}`}`,
+    );
+
+    // Find the most recent email (they're already sorted by receivedDateTime desc)
+    const mostRecentEmail = emails.length > 0 ? emails[0] : undefined;
 
     params.setState({
       ...params.state,
-      unreadEmails: params.inputData.emails,
+      newEmails: emails,
+      isFirstCheck,
+      lastCheckTimestamp,
+      mostRecentEmailId: mostRecentEmail?.id,
+      mostRecentEmailReceivedDateTime: mostRecentEmail?.receivedDateTime,
     });
 
     return {
-      emailCount: params.inputData.emails.length,
+      emailCount: emails.length,
     };
   },
 });
@@ -393,7 +467,7 @@ const registerNewEmailsStateChange = createStep({
     message: z.string(),
   }),
   execute: async ({ state }) => {
-    const emails = state.unreadEmails ?? [];
+    const emails = state.newEmails ?? [];
     // Only register if there are emails
     const stateChangeData =
       emails.length === 0
@@ -429,10 +503,10 @@ const registerNewEmailsStateChange = createStep({
   },
 });
 
-// Step 5: Format parent workflow output
-const formatParentOutput = createStep({
-  id: 'format-parent-output',
-  description: 'Format the parent workflow output',
+// Step 5: Update last seen email state (after parallel processing is done)
+const updateLastSeenEmailStep = createStep({
+  id: 'update-last-seen-email',
+  description: 'Update the last seen email state after processing',
   stateSchema: parentWorkflowStateSchema,
   inputSchema: z.object({
     'process-form-replies': z.object({
@@ -447,18 +521,58 @@ const formatParentOutput = createStep({
     }),
   }),
   outputSchema: z.object({
+    success: z.boolean(),
+    message: z.string(),
+    folder: z.string(),
+    previousLastSeenId: z.string().optional(),
+    newLastSeenId: z.string(),
+  }),
+  execute: async ({ state }) => {
+    // Only update if we have a most recent email
+    if (!state.mostRecentEmailId || !state.mostRecentEmailReceivedDateTime) {
+      return {
+        success: false,
+        message: 'No new emails to track',
+        folder: 'inbox',
+        newLastSeenId: '',
+      };
+    }
+
+    // Call the updateLastSeenEmail function directly
+    return await updateLastSeenEmail('inbox', state.mostRecentEmailId, state.mostRecentEmailReceivedDateTime);
+  },
+});
+
+// Step 6: Format parent workflow output
+const formatParentOutput = createStep({
+  id: 'format-parent-output',
+  description: 'Format the parent workflow output',
+  stateSchema: parentWorkflowStateSchema,
+  inputSchema: z.object({
+    success: z.boolean(),
+    message: z.string(),
+    folder: z.string(),
+    previousLastSeenId: z.string().optional(),
+    newLastSeenId: z.string(),
+  }),
+  outputSchema: z.object({
     emailsFound: z.number(),
     stateChangeRegistered: z.boolean(),
+    lastSeenEmailUpdated: z.boolean(),
     message: z.string(),
   }),
   execute: async (params) => {
-    const stateChangeResult = params.inputData['register-new-emails-state-change'];
-    const emails = params.state.unreadEmails ?? [];
+    const emails = params.state.newEmails ?? [];
+    const updateResult = params.inputData;
 
     return {
       emailsFound: emails.length,
-      stateChangeRegistered: stateChangeResult.registered,
-      message: stateChangeResult.message,
+      stateChangeRegistered: true,
+      lastSeenEmailUpdated: updateResult.success && updateResult.newLastSeenId !== '',
+      message:
+        emails.length === 0
+          ? 'No new emails since last check'
+          : `Found ${emails.length} new email(s)${updateResult.success && updateResult.newLastSeenId !== '' ? `, updated last seen to ${updateResult.newLastSeenId}` : ''}`,
     };
   },
 });
@@ -467,13 +581,19 @@ const formatParentOutput = createStep({
  * Check for New Emails Workflow
  *
  * Parent workflow that orchestrates:
- * 1. Email discovery (find unread emails)
+ * 1. Email discovery (find NEW emails since last check using persistent storage)
  * 2. Form reply processing (via checkForFormRepliesWorkflow)
  * 3. State change registration (for notification system)
+ * 4. Update last seen email state (to avoid reprocessing on next run)
  *
  * This workflow ensures all new emails are:
  * - Processed for form replies (resume suspended workflows)
  * - Registered with the notification system for potential user alerts
+ * - Tracked so they won't be processed again on the next run
+ *
+ * The workflow uses persistent storage (email_last_seen table) to track
+ * which emails have already been processed, ensuring each email is only
+ * handled once even if it remains unread.
  *
  * Scheduled to run every 5 minutes via the workflow scheduler.
  *
@@ -494,12 +614,13 @@ export const checkForNewEmails = createWorkflow({
   outputSchema: z.object({
     emailsFound: z.number(),
     stateChangeRegistered: z.boolean(),
+    lastSeenEmailUpdated: z.boolean(),
     message: z.string(),
   }),
 })
-  // @ts-expect-error - Mastra workflow chaining has complex generic constraints that conflict with strict TypeScript
-  .then(searchEmailsForParent)
-  .then(storeEmailsInParentState)
+  .then(searchNewEmailsForParent)
+  .then(storeNewEmailsInParentState)
   .parallel([processFormReplies, registerNewEmailsStateChange])
+  .then(updateLastSeenEmailStep)
   .then(formatParentOutput)
   .commit();

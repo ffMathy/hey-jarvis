@@ -1,11 +1,17 @@
 import { z } from 'zod';
 import { createAgentStep, createStep, createToolStep, createWorkflow, getModel } from '../../utils/index.js';
-import { sendEmailAndAwaitResponseWorkflow } from '../human-in-the-loop/workflows.js';
+import { getSendEmailAndAwaitResponseWorkflow } from '../human-in-the-loop/workflows.js';
 import { shoppingListWorkflow } from '../shopping/workflows.js';
 import { getAllRecipes } from './tools.js';
 
 // Use Gemini Flash for cooking workflows - better quality for recipe processing
 const cookingModel = getModel('gemini-flash-latest');
+
+// Response schema for meal plan feedback - captures the human's free-form response
+const mealPlanFeedbackResponseSchema = z.object({
+  feedbackText: z.string().describe('The human feedback text about the meal plan'),
+  isApprovalIntent: z.boolean().optional().describe('Initial assessment if this seems like an approval'),
+});
 
 const mealPlanSchema = z.array(
   z.object({
@@ -254,7 +260,7 @@ Change request indicators:
   },
   inputSchema: z.object({
     senderEmail: z.string(),
-    response: z.record(z.any()),
+    response: mealPlanFeedbackResponseSchema,
   }),
   outputSchema: z.object({
     isApproved: z.boolean(),
@@ -269,7 +275,8 @@ Change request indicators:
 
     return `Analyze this meal plan feedback response:
 
-Response data: ${JSON.stringify(inputData.response)}
+Feedback text: ${inputData.response.feedbackText}
+Initial approval assessment: ${inputData.response.isApprovalIntent ?? 'unknown'}
 
 Current meal plan: ${JSON.stringify(mealplan, null, 2)}
 ${historyContext}
@@ -432,7 +439,7 @@ const mealPlanFeedbackIterationWorkflow = createWorkflow({
     question: inputData.question,
   }))
   // @ts-expect-error - Mastra workflow chaining has complex generic constraints that conflict with strict TypeScript
-  .then(sendEmailAndAwaitResponseWorkflow) // Send email and wait for human response
+  .then(getSendEmailAndAwaitResponseWorkflow('mealPlanFeedback', mealPlanFeedbackResponseSchema)) // Send email and wait for human response
   .then(extractMealPlanFeedbackResponse) // Analyze the response
   .then(processMealPlanFeedback) // Update state and prepare output
   .then(prepareForRegeneration) // Prepare for potential next iteration

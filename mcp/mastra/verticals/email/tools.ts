@@ -1,6 +1,6 @@
 import { ConfidentialClientApplication } from '@azure/msal-node';
 import { z } from 'zod';
-import { getCredentialsStorage } from '../../storage/index.js';
+import { getCredentialsStorage, getEmailStateStorage } from '../../storage/index.js';
 import { createTool } from '../../utils/tool-factory.js';
 
 // Interface for Microsoft Graph API responses
@@ -499,7 +499,177 @@ export const sendEmail = createTool({
   },
 });
 
-// Export all tools together for convenience
+// Email state types
+export interface EmailMessage {
+  id: string;
+  subject: string;
+  bodyPreview: string;
+  from: {
+    name: string;
+    address: string;
+  };
+  receivedDateTime: string;
+  isRead: boolean;
+  hasAttachments: boolean;
+  isDraft: boolean;
+}
+
+export interface FindNewEmailsResult {
+  emails: EmailMessage[];
+  totalCount: number;
+  isFirstCheck: boolean;
+  lastCheckTimestamp?: string;
+}
+
+/**
+ * Find emails received since the last check.
+ * Uses persistent storage to track the last seen email.
+ * First call returns recent emails; subsequent calls return only new emails.
+ */
+export async function findNewEmailsSinceLastCheck(folder = 'inbox', limit = 50): Promise<FindNewEmailsResult> {
+  const accessToken = await getMicrosoftAuth();
+
+  const emailStateStorage = await getEmailStateStorage();
+  const lastSeenState = await emailStateStorage.getLastSeenEmail(folder);
+
+  let url = `${GRAPH_API_BASE}/me/mailFolders/${folder}/messages?$top=${limit}&$orderby=receivedDateTime desc`;
+
+  // If we have a last seen timestamp, filter for emails received after that time
+  if (lastSeenState) {
+    const filterDate = lastSeenState.lastEmailReceivedDateTime;
+    url += `&$filter=receivedDateTime gt ${filterDate}`;
+  }
+
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch emails: ${response.status} ${response.statusText}`);
+  }
+
+  const data = (await response.json()) as GraphEmailListResponse;
+
+  // Filter out the last seen email itself (since we used 'gt', not 'ge', this shouldn't be needed, but just in case)
+  const filteredEmails = lastSeenState
+    ? data.value.filter((email) => email.id !== lastSeenState.lastEmailId)
+    : data.value;
+
+  const emails = filteredEmails.map((email) => ({
+    id: email.id,
+    subject: email.subject,
+    bodyPreview: email.bodyPreview,
+    from: {
+      name: email.from.emailAddress.name,
+      address: email.from.emailAddress.address,
+    },
+    receivedDateTime: email.receivedDateTime,
+    isRead: email.isRead,
+    hasAttachments: email.hasAttachments,
+    isDraft: email.isDraft,
+  }));
+
+  return {
+    emails,
+    totalCount: emails.length,
+    isFirstCheck: !lastSeenState,
+    lastCheckTimestamp: lastSeenState?.lastEmailReceivedDateTime,
+  };
+}
+
+export interface UpdateLastSeenEmailResult {
+  success: boolean;
+  message: string;
+  folder: string;
+  previousLastSeenId?: string;
+  newLastSeenId: string;
+}
+
+/**
+ * Update the last seen email state after processing emails.
+ * Call this after successfully processing emails from findNewEmailsSinceLastCheck to mark them as seen.
+ */
+export async function updateLastSeenEmail(
+  folder: string,
+  emailId: string,
+  receivedDateTime: string,
+): Promise<UpdateLastSeenEmailResult> {
+  const emailStateStorage = await getEmailStateStorage();
+  const previousState = await emailStateStorage.getLastSeenEmail(folder);
+
+  await emailStateStorage.setLastSeenEmail(folder, emailId, receivedDateTime);
+
+  return {
+    success: true,
+    message: `Updated last seen email for folder "${folder}"`,
+    folder,
+    previousLastSeenId: previousState?.lastEmailId,
+    newLastSeenId: emailId,
+  };
+}
+
+export interface LastSeenEmailStateResult {
+  hasState: boolean;
+  folder: string;
+  lastEmailId?: string;
+  lastEmailReceivedDateTime?: string;
+  updatedAt?: string;
+}
+
+/**
+ * Get the current last seen email state for a folder without fetching any emails.
+ */
+export async function getLastSeenEmailState(folder = 'inbox'): Promise<LastSeenEmailStateResult> {
+  const emailStateStorage = await getEmailStateStorage();
+  const state = await emailStateStorage.getLastSeenEmail(folder);
+
+  if (!state) {
+    return {
+      hasState: false,
+      folder,
+    };
+  }
+
+  return {
+    hasState: true,
+    folder: state.folder,
+    lastEmailId: state.lastEmailId,
+    lastEmailReceivedDateTime: state.lastEmailReceivedDateTime,
+    updatedAt: state.updatedAt,
+  };
+}
+
+export interface ClearLastSeenEmailStateResult {
+  success: boolean;
+  message: string;
+}
+
+/**
+ * Clear the last seen email state for a folder.
+ * Next call to findNewEmailsSinceLastCheck will return recent emails as if it were the first check.
+ */
+export async function clearLastSeenEmailState(folder?: string): Promise<ClearLastSeenEmailStateResult> {
+  const emailStateStorage = await getEmailStateStorage();
+
+  if (folder) {
+    await emailStateStorage.clearLastSeenEmail(folder);
+    return {
+      success: true,
+      message: `Cleared last seen email state for folder "${folder}"`,
+    };
+  }
+
+  await emailStateStorage.clearAllLastSeenEmails();
+  return {
+    success: true,
+    message: 'Cleared last seen email state for all folders',
+  };
+}
+
+// Export all tools together for convenience (email state functions are NOT tools)
 export const emailTools = {
   findEmails,
   draftEmail,

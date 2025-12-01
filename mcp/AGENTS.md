@@ -377,6 +377,7 @@ Workflows can be executed on recurring cron schedules using the built-in `Workfl
 **Key Features:**
 - **Cron-based scheduling**: Uses standard cron expressions for flexible timing
 - **Automatic execution**: Workflows run in the background without manual intervention
+- **Run on startup**: Optionally execute workflows immediately when the scheduler starts
 - **Error handling**: Failed executions are logged with detailed error information
 - **Timezone support**: Configurable timezone (defaults to Europe/Copenhagen)
 - **Pre-defined patterns**: Common schedules available via `CronPatterns`
@@ -395,10 +396,17 @@ export function initializeScheduler(): WorkflowScheduler {
 
   // Add your scheduled workflow
   scheduler.schedule({
-    workflowId: 'myWorkflowId',
+    workflow: myWorkflow,
     schedule: CronPatterns.EVERY_HOUR, // or custom: '0 * * * *'
-    name: 'My Scheduled Task',
     inputData: {},
+  });
+
+  // Add workflow that also runs immediately on startup
+  scheduler.schedule({
+    workflow: myStartupWorkflow,
+    schedule: CronPatterns.EVERY_30_MINUTES,
+    inputData: {},
+    runOnStartup: true, // Execute immediately when scheduler starts
   });
 
   return scheduler;
@@ -442,6 +450,18 @@ export function initializeScheduler(): WorkflowScheduler {
    - Workflow: `weeklyMealPlanningWorkflow`
    - Schedule: `0 8 * * 0`
    - Purpose: Generates weekly meal plan with Danish recipes
+
+3. **Check for New Emails** - Runs every 30 minutes + on startup
+   - Workflow: `checkForNewEmails`
+   - Schedule: `*/30 * * * *`
+   - Run on startup: **Yes**
+   - Purpose: Checks for new emails and processes form replies
+
+4. **IoT Device Monitoring** - Runs every 5 minutes + on startup
+   - Workflow: `iotMonitoringWorkflow`
+   - Schedule: `*/5 * * * *`
+   - Run on startup: **Yes**
+   - Purpose: Monitors Home Assistant devices and registers state changes
 
 **Monitoring Scheduled Workflows:**
 
@@ -646,6 +666,50 @@ const result = await run.start({
 **Helper Functions:**
 - `sendFormRequest()`: Sends email with workflow ID and suspends workflow
 - `parseEmailResponse()`: Uses LLM to extract structured data from email body
+
+### Check for New Emails Workflow
+Parent workflow that orchestrates email discovery, form reply processing, and state change registration with **persistent tracking** of the last seen email:
+- **`checkForNewEmails`**: Scheduled workflow that runs every 30 minutes + on startup
+- **Step 1 - Search NEW Emails**: Uses `findNewEmailsSinceLastCheck` function with persistent storage to fetch only emails received since the last workflow run
+- **Step 2 - Store in State**: Stores new emails in workflow state and tracks the most recent email ID/timestamp
+- **Step 3 - Parallel Processing**:
+  - Process form replies (delegates to checkForFormRepliesWorkflow)
+  - Register state changes for notification system
+- **Step 4 - Update Last Seen**: Updates the `email_last_seen` database table with the most recent email
+- **Step 5 - Format Output**: Returns summary with email count and update status
+
+**Key Feature - Persistent Email Tracking:**
+The workflow uses the `email_last_seen` database table to track which emails have been processed:
+- **First run**: Returns recent emails (up to limit), stores the most recent as "last seen"
+- **Subsequent runs**: Only returns emails received AFTER the last seen timestamp
+- **Avoids reprocessing**: Each email is processed only once, even if it remains unread
+- **Persists across restarts**: State is stored in LibSQL database (backed up in Home Assistant)
+
+**Email State Functions:**
+These are internal functions (not exposed as agent tools) for tracking email state:
+```typescript
+// Find only NEW emails since last check (used by workflow)
+const result = await findNewEmailsSinceLastCheck('inbox', 50);
+
+// Manually update last seen state
+await updateLastSeenEmail('inbox', 'email-id-123', '2025-12-01T10:00:00Z');
+
+// Get current last seen state
+const state = await getLastSeenEmailState('inbox');
+
+// Reset state (next run fetches recent emails again)
+await clearLastSeenEmailState('inbox');
+```
+
+**Scheduled Execution:**
+```typescript
+scheduler.schedule({
+  workflow: checkForNewEmails,
+  schedule: CronPatterns.EVERY_30_MINUTES,
+  inputData: {},
+  runOnStartup: true,
+});
+```
 
 ### Email Checking Workflow
 Automatically processes incoming email replies to form requests and resumes suspended workflows:
