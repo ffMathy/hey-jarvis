@@ -116,6 +116,11 @@ export function clearTaskCompletedListeners(): void {
   workflowState.taskCompletedListeners.length = 0;
 }
 
+const toolInfoSchema = z.object({
+  name: z.string().describe('The tool name/ID'),
+  inputParams: z.array(z.string()).describe('Names of input parameters the tool accepts'),
+});
+
 const listAvailableAgentsStep = createStep({
   id: 'list-available-agents',
   description: 'List all available agents for routing',
@@ -126,6 +131,7 @@ const listAvailableAgentsStep = createStep({
       z.object({
         id: z.string(),
         description: z.string(),
+        tools: z.array(toolInfoSchema).describe('Tools available to this agent'),
       }),
     ),
   }),
@@ -136,7 +142,27 @@ const listAvailableAgentsStep = createStep({
     });
 
     const publicAgents = Object.values(await workflowState.agentProvider());
-    const agentsById = publicAgents.map((x) => ({ id: x.id || x.name, description: x.getDescription() }));
+    const agentsById = await Promise.all(
+      publicAgents.map(async (agent) => {
+        const tools = await agent.listTools();
+        const toolsInfo = Object.entries(tools || {}).map(([toolName, tool]) => {
+          let inputParams: string[] = [];
+          const inputSchema = (tool as { inputSchema?: { shape?: Record<string, unknown> } }).inputSchema;
+          if (inputSchema && typeof inputSchema === 'object' && 'shape' in inputSchema) {
+            inputParams = Object.keys(inputSchema.shape as Record<string, unknown>);
+          }
+          return {
+            name: toolName,
+            inputParams,
+          };
+        });
+        return {
+          id: agent.id || agent.name,
+          description: agent.getDescription(),
+          tools: toolsInfo,
+        };
+      }),
+    );
     return { agents: agentsById };
   },
 });
@@ -334,8 +360,15 @@ Each task MUST have:
 
 **Agent Capability Matching:**
 - ONLY assign tasks that match an agent's stated capabilities in their description
-- If no agent can handle a sub-task, DO NOT create that task - omit it entirely
-- Never assume capabilities not explicitly mentioned in the agent description
+- Review each agent's \`tools\` array to understand EXACTLY what the agent can do
+- Each tool has a \`name\` and \`inputParams\` - use these to determine if the agent can fulfill a task
+- If no agent has a tool that can handle a sub-task, DO NOT create that task - omit it entirely
+- Never assume capabilities not supported by the agent's available tools
+
+**Tool-Based Decision Making:**
+- When routing, prefer agents whose tools directly match the required functionality
+- If a task requires specific parameters (e.g., location, date), ensure the relevant tool accepts those parameters via its \`inputParams\`
+- Multiple tools on an agent mean the agent can perform multiple related actions
 
 **Dependency Graph Construction:**
 - If Task B needs data from Task A, Task B MUST list Task A's ID in \`dependsOn\`

@@ -74,8 +74,8 @@ export const GITHUB_MODELS_DEFAULT_MODEL = 'gpt-4o-mini';
  */
 export const GEMINI_TO_GITHUB_MODEL_MAP: Record<string, string> = {
   'gemini-flash-latest': 'gpt-4o-mini',
-  'gemini-pro-latest': 'gpt-4o',
   'gemini-flash-lite-latest': 'gpt-4o-mini',
+  'gemini-pro-latest': 'gpt-4o',
 };
 
 /**
@@ -96,7 +96,8 @@ export function getModel(geminiModel: string) {
   if (shouldUseGitHubModels()) {
     const githubProvider = getGitHubModelsProvider();
     const modelId = getEquivalentGitHubModel(geminiModel);
-    return githubProvider(modelId);
+    // GitHub Models only supports the chat completions API, not the responses API
+    return githubProvider.chat(modelId);
   }
   return google(geminiModel);
 }

@@ -134,12 +134,32 @@ async function assertDAGCriteria(
   return result;
 }
 
-function createMockAgent(id: string, description: string): Agent {
+interface MockToolConfig {
+  name: string;
+  inputParams: string[];
+}
+
+function createMockAgent(id: string, description: string, tools?: MockToolConfig[]): Agent {
+  const mockTools: Record<string, { inputSchema?: { shape: Record<string, unknown> } }> = {};
+
+  if (tools) {
+    for (const tool of tools) {
+      const shape: Record<string, unknown> = {};
+      for (const param of tool.inputParams) {
+        shape[param] = z.string();
+      }
+      mockTools[tool.name] = {
+        inputSchema: { shape },
+      };
+    }
+  }
+
   const mockAgent = {
     id,
     name: id,
     getDescription: () => description,
     generate: jest.fn().mockResolvedValue({ text: `Mock response from ${id}` }),
+    listTools: jest.fn().mockResolvedValue(mockTools),
   } as unknown as Agent;
   return mockAgent;
 }
