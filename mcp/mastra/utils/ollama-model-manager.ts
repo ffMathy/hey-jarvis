@@ -63,6 +63,7 @@ function extractUrl(input: RequestInfo | URL): string {
 
 /**
  * Parses and modifies the request body to inject num_thread option.
+ * Creates a new object to avoid mutating the original request body.
  */
 function processRequestBody(
   init: RequestInit | undefined,
@@ -73,17 +74,20 @@ function processRequestBody(
   }
 
   try {
-    const requestBody = JSON.parse(init.body) as OllamaRequestBody;
-    requestBody.options = {
-      ...requestBody.options,
-      num_thread: numThreads,
+    const parsedBody = JSON.parse(init.body) as OllamaRequestBody;
+    const modifiedBody: OllamaRequestBody = {
+      ...parsedBody,
+      options: {
+        ...parsedBody.options,
+        num_thread: numThreads,
+      },
     };
 
     return {
-      requestBody,
+      requestBody: modifiedBody,
       modifiedInit: {
         ...init,
-        body: JSON.stringify(requestBody),
+        body: JSON.stringify(modifiedBody),
       },
     };
   } catch {
@@ -152,7 +156,8 @@ function createLoggingFetch(): FetchFunction {
     }
 
     try {
-      const response = await fetch(input, modifiedInit);
+      // Use URL string with modifiedInit to ensure consistency when body is modified
+      const response = await fetch(url, modifiedInit);
       const duration = Date.now() - startTime;
 
       if (isInferenceCall) {
