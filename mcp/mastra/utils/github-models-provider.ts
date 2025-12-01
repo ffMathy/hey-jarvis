@@ -23,13 +23,15 @@ const GITHUB_MODELS_BASE_URL = 'https://models.inference.ai.azure.com';
 /**
  * Checks if GitHub Models should be used based on environment.
  * Returns true if:
- * - Running in GitHub Actions (GITHUB_ACTIONS === 'true')
- * - HEY_JARVIS_GITHUB_MODELS_TOKEN or GITHUB_TOKEN is available
+ * - Running in GitHub Actions (GITHUB_ACTIONS === 'true'), OR
+ * - Running in a DevContainer (HEY_JARVIS_USE_GITHUB_MODELS === 'true')
+ * - AND HEY_JARVIS_GITHUB_MODELS_TOKEN or GITHUB_TOKEN is available
  */
 export function shouldUseGitHubModels(): boolean {
   const isGitHubActions = process.env.GITHUB_ACTIONS === 'true';
+  const isDevContainerWithGitHubModels = process.env.HEY_JARVIS_USE_GITHUB_MODELS === 'true';
   const hasGitHubToken = Boolean(process.env.HEY_JARVIS_GITHUB_MODELS_TOKEN || process.env.GITHUB_TOKEN);
-  return isGitHubActions && hasGitHubToken;
+  return (isGitHubActions || isDevContainerWithGitHubModels) && hasGitHubToken;
 }
 
 /**
@@ -74,7 +76,6 @@ export const GEMINI_TO_GITHUB_MODEL_MAP: Record<string, string> = {
   'gemini-flash-latest': 'gpt-4o-mini',
   'gemini-pro-latest': 'gpt-4o',
   'gemini-flash-lite-latest': 'gpt-4o-mini',
-  'gemini-2.0-flash-exp': 'gpt-4o-mini',
 };
 
 /**

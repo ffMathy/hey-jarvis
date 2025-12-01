@@ -18,8 +18,9 @@ describe('GitHub Models Provider', () => {
   });
 
   describe('shouldUseGitHubModels', () => {
-    it('should return false when not in GitHub Actions', () => {
+    it('should return false when not in GitHub Actions and not in DevContainer', () => {
       delete process.env.GITHUB_ACTIONS;
+      delete process.env.HEY_JARVIS_USE_GITHUB_MODELS;
       process.env.GITHUB_TOKEN = 'test-token';
       expect(shouldUseGitHubModels()).toBe(false);
     });
@@ -42,6 +43,21 @@ describe('GitHub Models Provider', () => {
       process.env.HEY_JARVIS_GITHUB_MODELS_TOKEN = 'test-token';
       expect(shouldUseGitHubModels()).toBe(true);
     });
+
+    it('should return true when HEY_JARVIS_USE_GITHUB_MODELS is true with GITHUB_TOKEN', () => {
+      delete process.env.GITHUB_ACTIONS;
+      process.env.HEY_JARVIS_USE_GITHUB_MODELS = 'true';
+      process.env.GITHUB_TOKEN = 'test-token';
+      expect(shouldUseGitHubModels()).toBe(true);
+    });
+
+    it('should return false when HEY_JARVIS_USE_GITHUB_MODELS is true but no token', () => {
+      delete process.env.GITHUB_ACTIONS;
+      process.env.HEY_JARVIS_USE_GITHUB_MODELS = 'true';
+      delete process.env.GITHUB_TOKEN;
+      delete process.env.HEY_JARVIS_GITHUB_MODELS_TOKEN;
+      expect(shouldUseGitHubModels()).toBe(false);
+    });
   });
 
   describe('getEquivalentGitHubModel', () => {
@@ -57,10 +73,6 @@ describe('GitHub Models Provider', () => {
       expect(getEquivalentGitHubModel('gemini-flash-lite-latest')).toBe('gpt-4o-mini');
     });
 
-    it('should map gemini-2.0-flash-exp to gpt-4o-mini', () => {
-      expect(getEquivalentGitHubModel('gemini-2.0-flash-exp')).toBe('gpt-4o-mini');
-    });
-
     it('should return default model for unknown Gemini model', () => {
       expect(getEquivalentGitHubModel('unknown-model')).toBe(GITHUB_MODELS_DEFAULT_MODEL);
     });
@@ -72,7 +84,6 @@ describe('GitHub Models Provider', () => {
       expect(keys).toContain('gemini-flash-latest');
       expect(keys).toContain('gemini-pro-latest');
       expect(keys).toContain('gemini-flash-lite-latest');
-      expect(keys).toContain('gemini-2.0-flash-exp');
     });
   });
 

@@ -945,12 +945,12 @@ When `GITHUB_ACTIONS=true` is detected and a GitHub token is available, the syst
 | `gemini-flash-latest` | `gpt-4o-mini` |
 | `gemini-pro-latest` | `gpt-4o` |
 | `gemini-flash-lite-latest` | `gpt-4o-mini` |
-| `gemini-2.0-flash-exp` | `gpt-4o-mini` |
 
 #### Environment Variables
 
 - **`GITHUB_TOKEN`**: Automatically available in GitHub Actions (used by default)
 - **`HEY_JARVIS_GITHUB_MODELS_TOKEN`**: Optional custom token (takes precedence if set)
+- **`HEY_JARVIS_USE_GITHUB_MODELS`**: Set to `true` to enable GitHub Models in DevContainer or local development
 
 #### Using GitHub Models in Code
 
