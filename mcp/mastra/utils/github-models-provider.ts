@@ -24,14 +24,14 @@ const GITHUB_MODELS_BASE_URL = 'https://models.inference.ai.azure.com';
  * Checks if GitHub Models should be used based on environment.
  * Returns true if:
  * - Running in GitHub Actions (GITHUB_ACTIONS === 'true'), OR
- * - Running in a DevContainer (HEY_JARVIS_USE_GITHUB_MODELS === 'true')
+ * - Running in a DevContainer (IS_DEVCONTAINER === 'true')
  * - AND HEY_JARVIS_GITHUB_MODELS_TOKEN or GITHUB_TOKEN is available
  */
 export function shouldUseGitHubModels(): boolean {
   const isGitHubActions = process.env.GITHUB_ACTIONS === 'true';
-  const isDevContainerWithGitHubModels = process.env.HEY_JARVIS_USE_GITHUB_MODELS === 'true';
+  const isDevContainer = process.env.IS_DEVCONTAINER === 'true';
   const hasGitHubToken = Boolean(process.env.HEY_JARVIS_GITHUB_MODELS_TOKEN || process.env.GITHUB_TOKEN);
-  return (isGitHubActions || isDevContainerWithGitHubModels) && hasGitHubToken;
+  return (isGitHubActions || isDevContainer) && hasGitHubToken;
 }
 
 /**

@@ -20,7 +20,7 @@ describe('GitHub Models Provider', () => {
   describe('shouldUseGitHubModels', () => {
     it('should return false when not in GitHub Actions and not in DevContainer', () => {
       delete process.env.GITHUB_ACTIONS;
-      delete process.env.HEY_JARVIS_USE_GITHUB_MODELS;
+      delete process.env.IS_DEVCONTAINER;
       process.env.GITHUB_TOKEN = 'test-token';
       expect(shouldUseGitHubModels()).toBe(false);
     });
@@ -44,16 +44,16 @@ describe('GitHub Models Provider', () => {
       expect(shouldUseGitHubModels()).toBe(true);
     });
 
-    it('should return true when HEY_JARVIS_USE_GITHUB_MODELS is true with GITHUB_TOKEN', () => {
+    it('should return true when IS_DEVCONTAINER is true with GITHUB_TOKEN', () => {
       delete process.env.GITHUB_ACTIONS;
-      process.env.HEY_JARVIS_USE_GITHUB_MODELS = 'true';
+      process.env.IS_DEVCONTAINER = 'true';
       process.env.GITHUB_TOKEN = 'test-token';
       expect(shouldUseGitHubModels()).toBe(true);
     });
 
-    it('should return false when HEY_JARVIS_USE_GITHUB_MODELS is true but no token', () => {
+    it('should return false when IS_DEVCONTAINER is true but no token', () => {
       delete process.env.GITHUB_ACTIONS;
-      process.env.HEY_JARVIS_USE_GITHUB_MODELS = 'true';
+      process.env.IS_DEVCONTAINER = 'true';
       delete process.env.GITHUB_TOKEN;
       delete process.env.HEY_JARVIS_GITHUB_MODELS_TOKEN;
       expect(shouldUseGitHubModels()).toBe(false);
