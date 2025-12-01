@@ -1,4 +1,11 @@
-import { createOllama } from 'ollama-ai-provider-v2';
+import {
+  createLazyOllamaProvider,
+  ensureModelAvailable,
+  getOllamaApiUrl,
+  isModelAvailable,
+  isOllamaAvailable,
+  listModels,
+} from './ollama-model-manager.js';
 
 /**
  * Creates an Ollama provider instance for local LLM inference.
@@ -8,6 +15,9 @@ import { createOllama } from 'ollama-ai-provider-v2';
  *
  * Uses ollama-ai-provider-v2 which is compatible with AI SDK v5 (LanguageModelV2).
  * This ensures compatibility with Mastra's .stream() method.
+ *
+ * **Lazy Model Loading**: Models are automatically pulled on first use if not already available.
+ * This provides a seamless experience even if models aren't pre-installed.
  *
  * Environment variables:
  * - OLLAMA_HOST: The host where Ollama is running (default: localhost)
@@ -19,10 +29,11 @@ const ollamaHost = process.env.OLLAMA_HOST || 'localhost';
 const ollamaPort = process.env.OLLAMA_PORT || '11434';
 const ollamaBaseUrl = `http://${ollamaHost}:${ollamaPort}/api`;
 
-// Create and export the configured Ollama provider instance
-export const ollama = createOllama({
-  baseURL: ollamaBaseUrl,
-});
+/**
+ * Ollama provider with lazy model loading.
+ * Models are automatically pulled on first use if not already available.
+ */
+export const ollama = createLazyOllamaProvider();
 
 /**
  * Default Ollama model for scheduled/automated workflows.
@@ -34,6 +45,7 @@ export const OLLAMA_MODEL = 'qwen3:0.6b';
 /**
  * Pre-configured Ollama model instance for use in agents and workflows.
  * This is the recommended way to use Ollama in scheduled tasks.
+ * Models are automatically pulled on first use if not available.
  */
 export const ollamaModel = ollama(OLLAMA_MODEL);
 
@@ -57,3 +69,6 @@ export function getOllamaHost(): string {
 export function getOllamaPort(): string {
   return ollamaPort;
 }
+
+// Re-export model manager functions for convenience
+export { ensureModelAvailable, getOllamaApiUrl, isModelAvailable, isOllamaAvailable, listModels };
