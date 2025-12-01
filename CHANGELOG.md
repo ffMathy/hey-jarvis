@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.17.0](https://github.com/ffMathy/hey-jarvis/compare/root-v0.16.2...root-v0.17.0) (2025-12-01)
+
+
+### Features
+
+* **mcp:** add Ollama lazy model loading and automatic model pull on Docker startup ([#357](https://github.com/ffMathy/hey-jarvis/issues/357)) ([7d1fb7a](https://github.com/ffMathy/hey-jarvis/commit/7d1fb7af13e7d3d1d8d1896a8eebb3f7fb4f54df))
+* **mcp:** add Ollama lazy model loading and startup model pull ([38bf02e](https://github.com/ffMathy/hey-jarvis/commit/38bf02ee78851eb201bc32ed183d74b8151b8f08))
+
+
+### Bug Fixes
+
+* **mcp:** address code review feedback for Ollama lazy loading ([1906833](https://github.com/ffMathy/hey-jarvis/commit/19068339714815585d3061647cacac5162767bc3))
+* **mcp:** improve Ollama model manager and update tests ([f1c7e90](https://github.com/ffMathy/hey-jarvis/commit/f1c7e90137fff29855a8100af692de2fb61ae3ef))
+
 ## [0.16.2](https://github.com/ffMathy/hey-jarvis/compare/root-v0.16.1...root-v0.16.2) (2025-12-01)
 
 
