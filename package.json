@@ -97,7 +97,7 @@
     "fkill": "^10.0.1",
     "geolib": "^3.3.4",
     "googleapis": "^166.0.0",
-    "hono": "^4.10.6",
+    "hono": "^4.10.7",
     "jsonwebtoken": "^9.0.2",
     "lodash-es": "^4.17.21",
     "node-cron": "^4.2.1",
