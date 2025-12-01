@@ -11,6 +11,7 @@ import { createOllama } from 'ollama-ai-provider-v2';
  * - Model status monitoring
  * - Request logging with timing information
  * - CPU usage limiting via num_thread
+ * - Request queue for serial processing to prevent Ollama overload
  *
  * This module ensures that Ollama models are automatically pulled when needed,
  * providing a seamless experience even if models aren't pre-installed.
@@ -209,8 +210,130 @@ async function parseResponseForMetrics(response: Response): Promise<OllamaInfere
 }
 
 /**
- * Creates a logging fetch wrapper that logs all Ollama API calls with timing information
- * and injects CPU thread limiting options.
+ * Maximum number of pending requests in the Ollama queue.
+ * When the queue is full, new requests will be dropped.
+ */
+const MAX_QUEUE_LENGTH = 10;
+
+/**
+ * A queued request waiting to be processed.
+ */
+interface QueuedRequest {
+  url: string;
+  init: RequestInit | undefined;
+  resolve: (value: Response) => void;
+  reject: (error: Error) => void;
+}
+
+/**
+ * Statistics about dropped requests for monitoring.
+ */
+interface QueueStats {
+  droppedCount: number;
+  processedCount: number;
+}
+
+/**
+ * Queue for serial processing of Ollama inference requests.
+ * Processes one request at a time and drops requests when the queue is full.
+ */
+class OllamaQueue {
+  private queue: QueuedRequest[] = [];
+  private isProcessing = false;
+  private stats: QueueStats = { droppedCount: 0, processedCount: 0 };
+
+  /**
+   * Add a request to the queue.
+   * Returns a promise that resolves with the response or rejects if dropped/failed.
+   */
+  async enqueue(url: string, init: RequestInit | undefined): Promise<Response> {
+    if (this.queue.length >= MAX_QUEUE_LENGTH) {
+      this.stats.droppedCount++;
+      const errorMessage = `Queue full (${MAX_QUEUE_LENGTH} pending). Request dropped. Total dropped: ${this.stats.droppedCount}`;
+      console.error(`⚠️ [OLLAMA QUEUE] ${errorMessage}`);
+      throw new Error(errorMessage);
+    }
+
+    return new Promise<Response>((resolve, reject) => {
+      this.queue.push({ url, init, resolve, reject });
+      console.log(`📥 [OLLAMA QUEUE] Request queued. Queue size: ${this.queue.length}/${MAX_QUEUE_LENGTH}`);
+      this.processNext();
+    });
+  }
+
+  /**
+   * Process the next request in the queue if not already processing.
+   */
+  private async processNext(): Promise<void> {
+    if (this.isProcessing || this.queue.length === 0) {
+      return;
+    }
+
+    this.isProcessing = true;
+    const request = this.queue.shift();
+
+    if (!request) {
+      this.isProcessing = false;
+      return;
+    }
+
+    try {
+      console.log(`🔄 [OLLAMA QUEUE] Processing request. Remaining in queue: ${this.queue.length}`);
+      const response = await fetch(request.url, request.init);
+      this.stats.processedCount++;
+      request.resolve(response);
+    } catch (error) {
+      request.reject(error instanceof Error ? error : new Error(String(error)));
+    } finally {
+      this.isProcessing = false;
+      this.processNext();
+    }
+  }
+
+  /**
+   * Get current queue statistics.
+   */
+  getStats(): QueueStats {
+    return { ...this.stats };
+  }
+
+  /**
+   * Get current queue length.
+   */
+  getQueueLength(): number {
+    return this.queue.length;
+  }
+
+  /**
+   * Check if the queue is currently processing a request.
+   */
+  isCurrentlyProcessing(): boolean {
+    return this.isProcessing;
+  }
+}
+
+/**
+ * Global Ollama request queue instance for serial processing.
+ */
+const ollamaQueue = new OllamaQueue();
+
+/**
+ * Get the current Ollama queue statistics.
+ */
+export function getOllamaQueueStats(): QueueStats {
+  return ollamaQueue.getStats();
+}
+
+/**
+ * Get the current Ollama queue length.
+ */
+export function getOllamaQueueLength(): number {
+  return ollamaQueue.getQueueLength();
+}
+
+/**
+ * Creates a logging fetch wrapper that logs all Ollama API calls with timing information,
+ * injects CPU thread limiting options, and uses a queue for serial processing of inference calls.
  */
 function createLoggingFetch(): FetchFunction {
   const numThreads = getOllamaNumThreads();
@@ -232,8 +355,9 @@ function createLoggingFetch(): FetchFunction {
     }
 
     try {
-      // Use URL string with modifiedInit to ensure consistency when body is modified
-      const response = await fetch(url, modifiedInit);
+      // Inference calls go through the queue for serial processing
+      // Non-inference calls (like model list, pull) bypass the queue
+      const response = isInferenceCall ? await ollamaQueue.enqueue(url, modifiedInit) : await fetch(url, modifiedInit);
       const duration = Date.now() - startTime;
 
       if (isInferenceCall) {

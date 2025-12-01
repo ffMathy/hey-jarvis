@@ -3,6 +3,8 @@ import { describe, expect, it } from 'bun:test';
 import {
   ensureModelAvailable,
   getOllamaApiUrl,
+  getOllamaQueueLength,
+  getOllamaQueueStats,
   isModelAvailable,
   isOllamaAvailable,
   listModels,
@@ -36,11 +38,6 @@ describe('Ollama Model Manager - Unit Tests', () => {
   });
 
   it('should return false for non-existent Ollama server', async () => {
-    // This test works because there's no Ollama server running in CI
-    // Unless OLLAMA_HOST is specifically configured
-    const ollamaHost = process.env.OLLAMA_HOST || 'localhost';
-    const ollamaPort = process.env.OLLAMA_PORT || '11434';
-
     // If not running in Docker with Ollama, this should return false
     const available = await isOllamaAvailable();
 
@@ -66,5 +63,29 @@ describe('Ollama Model Manager - Unit Tests', () => {
       const modelAvailable = await isModelAvailable('definitely-not-a-real-model:v9999');
       expect(modelAvailable).toBe(false);
     }
+  });
+});
+
+describe('Ollama Queue - Unit Tests', () => {
+  it('should export getOllamaQueueStats function', () => {
+    expect(typeof getOllamaQueueStats).toBe('function');
+  });
+
+  it('should export getOllamaQueueLength function', () => {
+    expect(typeof getOllamaQueueLength).toBe('function');
+  });
+
+  it('should return queue stats with correct structure', () => {
+    const stats = getOllamaQueueStats();
+    expect(typeof stats.droppedCount).toBe('number');
+    expect(typeof stats.processedCount).toBe('number');
+    expect(stats.droppedCount).toBeGreaterThanOrEqual(0);
+    expect(stats.processedCount).toBeGreaterThanOrEqual(0);
+  });
+
+  it('should return queue length as a number', () => {
+    const length = getOllamaQueueLength();
+    expect(typeof length).toBe('number');
+    expect(length).toBeGreaterThanOrEqual(0);
   });
 });

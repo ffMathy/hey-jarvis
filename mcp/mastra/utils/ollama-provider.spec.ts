@@ -8,6 +8,8 @@ import {
   getOllamaBaseUrl,
   getOllamaHost,
   getOllamaPort,
+  getOllamaQueueLength,
+  getOllamaQueueStats,
   isModelAvailable,
   isOllamaAvailable,
   listModels,
@@ -35,6 +37,11 @@ describe('Ollama Provider Configuration', () => {
     expect(typeof listModels).toBe('function');
   });
 
+  it('should export queue management functions', () => {
+    expect(typeof getOllamaQueueStats).toBe('function');
+    expect(typeof getOllamaQueueLength).toBe('function');
+  });
+
   it('should return correct default configuration values', () => {
     // Default values when environment variables are not set
     const host = getOllamaHost();
@@ -58,6 +65,18 @@ describe('Ollama Provider Configuration', () => {
 
   it('should export pre-configured ollamaModel instance', () => {
     expect(ollamaModel).toBeDefined();
+  });
+
+  it('should return valid queue statistics', () => {
+    const stats = getOllamaQueueStats();
+    expect(typeof stats.droppedCount).toBe('number');
+    expect(typeof stats.processedCount).toBe('number');
+  });
+
+  it('should return valid queue length', () => {
+    const length = getOllamaQueueLength();
+    expect(typeof length).toBe('number');
+    expect(length).toBeGreaterThanOrEqual(0);
   });
 });
 
