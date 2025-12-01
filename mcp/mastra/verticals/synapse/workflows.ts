@@ -1,10 +1,10 @@
 import { z } from 'zod';
 import { createMemory } from '../../memory/index.js';
 import { createStep, createWorkflow } from '../../utils/workflow-factory.js';
-import { getStateChangeReactorAgent } from './agent.js';
+import { getNotificationAgent } from '../notification/agent.js';
 
 // State change notification workflow
-// Receives state changes, saves to memory, and delegates to State Change Reactor agent for analysis
+// Receives state changes, saves to memory, and delegates to Notification agent for analysis
 export const stateChangeNotificationWorkflow = createWorkflow({
   id: 'stateChangeNotificationWorkflow',
   inputSchema: z.object({
@@ -74,8 +74,8 @@ export const stateChangeNotificationWorkflow = createWorkflow({
   )
   .then(
     createStep({
-      id: 'delegate-to-reactor',
-      description: 'Delegates state change to State Change Reactor agent for coordination',
+      id: 'analyze-state-change',
+      description: 'Analyzes state change with Notification agent and determines if user notification is needed',
       inputSchema: z.object({
         source: z.string(),
         stateType: z.string(),
@@ -88,40 +88,29 @@ export const stateChangeNotificationWorkflow = createWorkflow({
         notificationSent: z.boolean().optional(),
         reasoning: z.string().optional(),
       }),
-      execute: async ({ inputData, mastra }) => {
-        if (!mastra) {
-          throw new Error('Mastra instance not available');
-        }
+      execute: async ({ inputData }) => {
+        // Get the Notification agent directly
+        const notificationAgent = await getNotificationAgent();
 
-        // Get the State Change Reactor agent
-        const reactorAgent = await getStateChangeReactorAgent();
-
-        // Construct delegation prompt with state change context
-        const delegationPrompt = `A state change has been detected and saved to memory:
+        // Construct analysis prompt with state change context
+        const analysisPrompt = `A state change has been detected and saved to memory:
 
 Source: ${inputData.source}
 Type: ${inputData.stateType}
 Data: ${JSON.stringify(inputData.stateData, null, 2)}
 
-Please delegate this to the Notification agent for analysis and potential user notification.`;
+Please analyze this state change and determine if the user should be notified. 
+Consider the context from semantic recall and only notify for significant, actionable changes.
+If you decide to notify, use the notifyDevice tool to send the notification.
+Always explain your reasoning.`;
 
-        // Execute agent network to delegate to notification agent
-        const networkStream = await reactorAgent.network(delegationPrompt);
-
-        // Wait for the network execution to complete
-        const workflowResult = await networkStream.result;
-
-        if (!workflowResult) {
-          return {
-            registered: true,
-            analyzed: false,
-            reasoning: 'No result from agent network',
-          };
-        }
+        // Use generate() directly instead of network() to avoid routing complexity
+        const result = await notificationAgent.generate(analysisPrompt);
 
         return {
           registered: true,
           analyzed: true,
+          reasoning: result.text,
         };
       },
     }),
