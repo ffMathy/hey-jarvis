@@ -25,23 +25,23 @@ const GITHUB_MODELS_BASE_URL = 'https://models.inference.ai.azure.com';
  * Returns true if:
  * - Running in GitHub Actions (GITHUB_ACTIONS === 'true'), OR
  * - Running in a DevContainer (IS_DEVCONTAINER === 'true')
- * - AND HEY_JARVIS_GITHUB_MODELS_TOKEN or GITHUB_TOKEN is available
+ * - AND HEY_JARVIS_GITHUB_API_TOKEN is available
  */
 export function shouldUseGitHubModels(): boolean {
   const isGitHubActions = process.env.GITHUB_ACTIONS === 'true';
   const isDevContainer = process.env.IS_DEVCONTAINER === 'true';
-  const hasGitHubToken = Boolean(process.env.HEY_JARVIS_GITHUB_MODELS_TOKEN || process.env.GITHUB_TOKEN);
+  const hasGitHubToken = Boolean(process.env.HEY_JARVIS_GITHUB_API_TOKEN);
   return (isGitHubActions || isDevContainer) && hasGitHubToken;
 }
 
 /**
  * Gets the GitHub Models token from environment variables.
- * Prefers HEY_JARVIS_GITHUB_MODELS_TOKEN, falls back to GITHUB_TOKEN.
+ * Uses HEY_JARVIS_GITHUB_API_TOKEN for authentication.
  */
 function getGitHubModelsToken(): string {
-  const token = process.env.HEY_JARVIS_GITHUB_MODELS_TOKEN || process.env.GITHUB_TOKEN;
+  const token = process.env.HEY_JARVIS_GITHUB_API_TOKEN;
   if (!token) {
-    throw new Error('GitHub Models token not found. Set HEY_JARVIS_GITHUB_MODELS_TOKEN or GITHUB_TOKEN.');
+    throw new Error('GitHub Models token not found. Set HEY_JARVIS_GITHUB_API_TOKEN.');
   }
   return token;
 }

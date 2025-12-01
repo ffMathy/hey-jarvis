@@ -948,8 +948,7 @@ When `GITHUB_ACTIONS=true` is detected and a GitHub token is available, the syst
 
 #### Environment Variables
 
-- **`GITHUB_TOKEN`**: Automatically available in GitHub Actions (used by default)
-- **`HEY_JARVIS_GITHUB_MODELS_TOKEN`**: Optional custom token (takes precedence if set)
+- **`HEY_JARVIS_GITHUB_API_TOKEN`**: GitHub API token for authenticating with GitHub Models
 - **`IS_DEVCONTAINER`**: Automatically set to `true` in DevContainers to enable GitHub Models
 
 #### Using GitHub Models in Code

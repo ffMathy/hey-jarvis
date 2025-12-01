@@ -21,41 +21,33 @@ describe('GitHub Models Provider', () => {
     it('should return false when not in GitHub Actions and not in DevContainer', () => {
       delete process.env.GITHUB_ACTIONS;
       delete process.env.IS_DEVCONTAINER;
-      process.env.GITHUB_TOKEN = 'test-token';
+      process.env.HEY_JARVIS_GITHUB_API_TOKEN = 'test-token';
       expect(shouldUseGitHubModels()).toBe(false);
     });
 
     it('should return false when no GitHub token is available', () => {
       process.env.GITHUB_ACTIONS = 'true';
-      delete process.env.GITHUB_TOKEN;
-      delete process.env.HEY_JARVIS_GITHUB_MODELS_TOKEN;
+      delete process.env.HEY_JARVIS_GITHUB_API_TOKEN;
       expect(shouldUseGitHubModels()).toBe(false);
     });
 
-    it('should return true when in GitHub Actions with GITHUB_TOKEN', () => {
+    it('should return true when in GitHub Actions with HEY_JARVIS_GITHUB_API_TOKEN', () => {
       process.env.GITHUB_ACTIONS = 'true';
-      process.env.GITHUB_TOKEN = 'test-token';
+      process.env.HEY_JARVIS_GITHUB_API_TOKEN = 'test-token';
       expect(shouldUseGitHubModels()).toBe(true);
     });
 
-    it('should return true when in GitHub Actions with HEY_JARVIS_GITHUB_MODELS_TOKEN', () => {
-      process.env.GITHUB_ACTIONS = 'true';
-      process.env.HEY_JARVIS_GITHUB_MODELS_TOKEN = 'test-token';
-      expect(shouldUseGitHubModels()).toBe(true);
-    });
-
-    it('should return true when IS_DEVCONTAINER is true with GITHUB_TOKEN', () => {
+    it('should return true when IS_DEVCONTAINER is true with HEY_JARVIS_GITHUB_API_TOKEN', () => {
       delete process.env.GITHUB_ACTIONS;
       process.env.IS_DEVCONTAINER = 'true';
-      process.env.GITHUB_TOKEN = 'test-token';
+      process.env.HEY_JARVIS_GITHUB_API_TOKEN = 'test-token';
       expect(shouldUseGitHubModels()).toBe(true);
     });
 
     it('should return false when IS_DEVCONTAINER is true but no token', () => {
       delete process.env.GITHUB_ACTIONS;
       process.env.IS_DEVCONTAINER = 'true';
-      delete process.env.GITHUB_TOKEN;
-      delete process.env.HEY_JARVIS_GITHUB_MODELS_TOKEN;
+      delete process.env.HEY_JARVIS_GITHUB_API_TOKEN;
       expect(shouldUseGitHubModels()).toBe(false);
     });
   });
