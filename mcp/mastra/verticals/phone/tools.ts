@@ -2,6 +2,8 @@ import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import { z } from 'zod';
 import { createTool } from '../../utils/tool-factory.js';
 
+const ELEVENLABS_PHONE_NUMBER_ID = 'Q8MKRgesP6ZKPi4NMyKu';
+
 /**
  * Tool to initiate an outbound phone call via ElevenLabs Twilio integration.
  *
@@ -11,8 +13,7 @@ import { createTool } from '../../utils/tool-factory.js';
  *
  * Required environment variables:
  * - HEY_JARVIS_ELEVENLABS_API_KEY: Your ElevenLabs API key
- * - HEY_JARVIS_ELEVENLABS_AGENT_ID: The ID of the ElevenLabs conversational agent
- * - HEY_JARVIS_ELEVENLABS_PHONE_NUMBER_ID: The ID of the phone number configured in ElevenLabs for outbound calls
+ * - HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID or HEY_JARVIS_ELEVENLABS_AGENT_ID: The ID of the ElevenLabs conversational agent
  */
 export const initiatePhoneCall = createTool({
   id: 'initiatePhoneCall',
@@ -37,36 +38,23 @@ export const initiatePhoneCall = createTool({
       const { phoneNumber, firstMessage } = inputData;
 
       const apiKey = process.env.HEY_JARVIS_ELEVENLABS_API_KEY;
-      const agentId = process.env.HEY_JARVIS_ELEVENLABS_AGENT_ID;
-      const phoneNumberId = process.env.HEY_JARVIS_ELEVENLABS_PHONE_NUMBER_ID;
+      const agentId = process.env.HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID || process.env.HEY_JARVIS_ELEVENLABS_AGENT_ID;
 
       if (!apiKey) {
-        return {
-          success: false,
-          message: 'ElevenLabs API key not configured. Set HEY_JARVIS_ELEVENLABS_API_KEY environment variable.',
-        };
+        throw new Error('ElevenLabs API key not configured. Set HEY_JARVIS_ELEVENLABS_API_KEY environment variable.');
       }
 
       if (!agentId) {
-        return {
-          success: false,
-          message: 'ElevenLabs agent ID not configured. Set HEY_JARVIS_ELEVENLABS_AGENT_ID environment variable.',
-        };
-      }
-
-      if (!phoneNumberId) {
-        return {
-          success: false,
-          message:
-            'ElevenLabs phone number ID not configured. Set HEY_JARVIS_ELEVENLABS_PHONE_NUMBER_ID environment variable.',
-        };
+        throw new Error(
+          'ElevenLabs agent ID not configured. Set HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID or HEY_JARVIS_ELEVENLABS_AGENT_ID environment variable.',
+        );
       }
 
       const client = new ElevenLabsClient({ apiKey });
 
       const response = await client.conversationalAi.twilio.outboundCall({
         agentId,
-        agentPhoneNumberId: phoneNumberId,
+        agentPhoneNumberId: ELEVENLABS_PHONE_NUMBER_ID,
         toNumber: phoneNumber,
         conversationInitiationClientData: {
           conversationConfigOverride: {

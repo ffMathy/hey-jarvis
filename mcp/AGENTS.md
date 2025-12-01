@@ -199,8 +199,7 @@ Provides outbound phone call capabilities via ElevenLabs Twilio integration:
 
 **Required Environment Variables:**
 - `HEY_JARVIS_ELEVENLABS_API_KEY`: ElevenLabs API key for authentication
-- `HEY_JARVIS_ELEVENLABS_AGENT_ID`: ID of the ElevenLabs conversational agent to use
-- `HEY_JARVIS_ELEVENLABS_PHONE_NUMBER_ID`: ID of the Twilio phone number configured in ElevenLabs for outbound calls
+- `HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID` or `HEY_JARVIS_ELEVENLABS_AGENT_ID`: ID of the ElevenLabs conversational agent to use (test agent ID takes precedence if set)
 
 **Example Usage:**
 ```typescript
@@ -218,7 +217,6 @@ await phoneTools.initiatePhoneCall.execute({
 4. Store the credentials in 1Password:
    - `op://Personal/ElevenLabs/API key`
    - `op://Personal/ElevenLabs/Jarvis agent ID`
-   - `op://Personal/ElevenLabs/phone number ID`
 
 ### Coding Agent
 Manages GitHub repositories and coordinates feature implementation through requirements gathering workflows:
@@ -938,7 +936,7 @@ All environment variables use the `HEY_JARVIS_` prefix for easy management and D
 - **Google OAuth2 (Calendar & Tasks)**: `HEY_JARVIS_GOOGLE_CLIENT_ID`, `HEY_JARVIS_GOOGLE_CLIENT_SECRET`, `HEY_JARVIS_GOOGLE_REFRESH_TOKEN` for accessing Google Calendar and Tasks APIs (see [Google OAuth2 Setup](#google-oauth2-setup) below)
 - **Shopping (Bilka)**: `HEY_JARVIS_BILKA_EMAIL`, `HEY_JARVIS_BILKA_PASSWORD`, `HEY_JARVIS_BILKA_API_KEY` for authentication
 - **Shopping (Search)**: `HEY_JARVIS_ALGOLIA_API_KEY`, `HEY_JARVIS_ALGOLIA_APPLICATION_ID`, `HEY_JARVIS_BILKA_USER_TOKEN` for product search
-- **ElevenLabs**: `HEY_JARVIS_ELEVENLABS_API_KEY`, `HEY_JARVIS_ELEVENLABS_AGENT_ID`, `HEY_JARVIS_ELEVENLABS_VOICE_ID` for voice AI, and `HEY_JARVIS_ELEVENLABS_PHONE_NUMBER_ID` for outbound phone calls via Twilio
+- **ElevenLabs**: `HEY_JARVIS_ELEVENLABS_API_KEY`, `HEY_JARVIS_ELEVENLABS_AGENT_ID`, `HEY_JARVIS_ELEVENLABS_VOICE_ID` for voice AI (test agent ID `HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID` takes precedence for phone calls)
 - **Recipes**: `HEY_JARVIS_VALDEMARSRO_API_KEY` for Danish recipe data
 - **GitHub**: `HEY_JARVIS_GITHUB_API_TOKEN` for GitHub API access (coding agent and error reporting processor)
 - **WiFi**: `HEY_JARVIS_WIFI_SSID`, `HEY_JARVIS_WIFI_PASSWORD` for Home Assistant Voice Firmware
