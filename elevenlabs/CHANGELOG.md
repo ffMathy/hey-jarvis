@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.1](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.8.0...elevenlabs-v0.8.1) (2025-12-01)
+
+
+### Bug Fixes
+
+* disable working memory for State Change Reactor agent and fix ElevenLabs TS errors ([b794e48](https://github.com/ffMathy/hey-jarvis/commit/b794e48c66e567f8dbdfc8f82cba5c52ba741c54))
+* make State Change Reactor the decision-maker with working memory for intelligent notification routing ([#359](https://github.com/ffMathy/hey-jarvis/issues/359)) ([ab9f8f1](https://github.com/ffMathy/hey-jarvis/commit/ab9f8f13d7a7b116139585f435596066c8a8767e))
+
 ## [0.8.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.7.0...elevenlabs-v0.8.0) (2025-11-29)
 
 
