@@ -65,9 +65,10 @@ mcp/
 
 ### 🤖 Intelligent Agents
 - **TypeScript-based agents** with persistent memory and tool calling
-- **Multi-provider LLM support** via Vercel AI SDK (OpenAI, Anthropic, Google Gemini)
+- **Multi-provider LLM support** via Vercel AI SDK (OpenAI, Anthropic, Google Gemini, GitHub Models)
 - **Structured output** generation with Zod validation
 - **Real-time streaming** responses with step-by-step visibility
+- **GitHub Models for CI/Testing**: Automatic model switching in GitHub Actions to reduce token costs
 
 ### 🔧 Tool Ecosystem
 - **Model Context Protocol (MCP)** server integrations
@@ -930,6 +931,60 @@ If you encounter 1Password CLI authentication issues:
 1. Run `op signin` to authenticate
 2. Verify your vault contains the referenced secret paths
 3. Check that the `.env` file references match your 1Password structure
+
+### GitHub Models for CI/Testing
+
+The project automatically uses [GitHub Models](https://docs.github.com/en/github-models) when running in GitHub Actions. This reduces token usage costs by leveraging GitHub's free AI model inference service.
+
+#### How It Works
+
+When `GITHUB_ACTIONS=true` is detected and a GitHub token is available, the system automatically switches from Google Gemini to GitHub Models equivalents:
+
+| Gemini Model | GitHub Model Equivalent |
+|--------------|------------------------|
+| `gemini-flash-latest` | `gpt-4o-mini` |
+| `gemini-pro-latest` | `gpt-4o` |
+| `gemini-flash-lite-latest` | `gpt-4o-mini` |
+
+#### Environment Variables
+
+- **`HEY_JARVIS_GITHUB_API_TOKEN`**: GitHub API token for authenticating with GitHub Models
+- **`IS_DEVCONTAINER`**: Automatically set to `true` in DevContainers to enable GitHub Models
+
+#### Using GitHub Models in Code
+
+The `getModel()` helper function automatically handles provider selection:
+
+```typescript
+import { getModel } from './utils/github-models-provider.js';
+
+// Returns GitHub Models in CI, Google Gemini otherwise
+const model = getModel('gemini-flash-latest');
+
+// Use directly in agent config
+const agent = await createAgent({
+  name: 'MyAgent',
+  instructions: '...',
+  model: getModel('gemini-pro-latest'),
+});
+```
+
+#### Benefits
+
+- **Zero Configuration**: Works automatically in GitHub Actions
+- **Cost Reduction**: Uses GitHub's free model inference instead of paid APIs
+- **Seamless Fallback**: Uses Google Gemini in development and production
+- **Model Equivalence**: Maps to capable GPT-4o models for consistent quality
+
+#### Available GitHub Models
+
+GitHub Models supports various models including:
+- OpenAI: `gpt-4o`, `gpt-4o-mini`, `o1`, `o1-mini`
+- Microsoft: `Phi-3`, `Phi-3.5`
+- Mistral AI: `Mistral`, `Mixtral`
+- Meta: `Llama 3.x`
+
+See the full list at [GitHub Marketplace Models](https://github.com/marketplace/models).
 
 ### Google OAuth2 Setup
 

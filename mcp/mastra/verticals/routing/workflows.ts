@@ -1,7 +1,7 @@
 import type { Agent } from '@mastra/core/agent';
 import { chain, keyBy } from 'lodash-es';
 import z from 'zod';
-import { createAgentStep, createStep, createWorkflow, google } from '../../utils';
+import { createAgentStep, createStep, createWorkflow, getModel } from '../../utils';
 import { getPublicAgents } from '..';
 
 const outputTaskSchema = z.object({
@@ -315,7 +315,7 @@ const generateDagStep = createAgentStep({
   id: 'generate-dag',
   description: 'Generate DAG of tasks to fulfill routing query',
   agentConfig: {
-    model: google('gemini-flash-lite-latest'),
+    model: getModel('gemini-flash-lite-latest'),
     id: 'dag-agent',
     name: 'DagAgent',
     instructions: `You are a task decomposition specialist that converts user queries into Directed Acyclic Graphs (DAGs) of executable tasks.

@@ -14,6 +14,7 @@
     "ghcr.io/devcontainers-extra/features/cloudflared:1": {}
   },
   "remoteEnv": {
+    "IS_DEVCONTAINER": "true",
     "HEY_JARVIS_OPENWEATHERMAP_API_KEY": "${localEnv:HEY_JARVIS_OPENWEATHERMAP_API_KEY}",
     "HEY_JARVIS_GOOGLE_API_KEY": "${localEnv:HEY_JARVIS_GOOGLE_API_KEY}",
     "HEY_JARVIS_VALDEMARSRO_API_KEY": "${localEnv:HEY_JARVIS_VALDEMARSRO_API_KEY}",
