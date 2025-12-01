@@ -1,5 +1,11 @@
 import { mastra } from './index.js';
 import { CronPatterns, WorkflowScheduler } from './utils/workflow-scheduler.js';
+import {
+  checkForNewEmails,
+  iotMonitoringWorkflow,
+  weatherMonitoringWorkflow,
+  weeklyMealPlanningWorkflow,
+} from './verticals/index.js';
 
 /**
  * Configure scheduled workflows
@@ -19,28 +25,28 @@ export function initializeScheduler(): WorkflowScheduler {
 
   // Weather monitoring - every hour
   scheduler.schedule({
-    workflowId: 'weatherMonitoringWorkflow',
+    workflow: weatherMonitoringWorkflow,
     schedule: CronPatterns.EVERY_HOUR,
     inputData: {},
   });
 
   // Weekly meal planning - every Sunday at 8am
   scheduler.schedule({
-    workflowId: 'weeklyMealPlanningWorkflow',
+    workflow: weeklyMealPlanningWorkflow,
     schedule: CronPatterns.WEEKLY_SUNDAY_8AM,
     inputData: {},
   });
 
   // Check for new emails - every 30 minutes
   scheduler.schedule({
-    workflowId: 'checkForNewEmails',
+    workflow: checkForNewEmails,
     schedule: CronPatterns.EVERY_30_MINUTES,
     inputData: {},
   });
 
   // IoT device monitoring - every 5 minutes
   scheduler.schedule({
-    workflowId: 'iotMonitoringWorkflow',
+    workflow: iotMonitoringWorkflow,
     schedule: CronPatterns.EVERY_5_MINUTES,
     inputData: {},
   });

@@ -8,6 +8,7 @@ import { CronPatterns, validateCronExpression, WorkflowScheduler } from './workf
 describe('WorkflowScheduler', () => {
   let scheduler: WorkflowScheduler;
   let mastra: Mastra;
+  let testWorkflow: ReturnType<ReturnType<typeof createWorkflow>['commit']>;
 
   beforeEach(() => {
     // Create a simple test step
@@ -19,7 +20,7 @@ describe('WorkflowScheduler', () => {
     });
 
     // Create a simple test workflow with the step
-    const testWorkflow = createWorkflow({
+    testWorkflow = createWorkflow({
       id: 'testWorkflow', // ID must match the key in workflows object
       inputSchema: z.object({}),
       outputSchema: z.object({ result: z.string() }),
@@ -47,9 +48,8 @@ describe('WorkflowScheduler', () => {
     it('should schedule a workflow with valid cron expression', () => {
       expect(() => {
         scheduler.schedule({
-          workflowId: 'testWorkflow',
+          workflow: testWorkflow,
           schedule: CronPatterns.EVERY_HOUR,
-          name: 'Test Workflow',
         });
       }).not.toThrow();
     });
@@ -57,19 +57,23 @@ describe('WorkflowScheduler', () => {
     it('should throw error for invalid cron expression', () => {
       expect(() => {
         scheduler.schedule({
-          workflowId: 'testWorkflow',
+          workflow: testWorkflow,
           schedule: 'invalid cron',
-          name: 'Test Workflow',
         });
       }).toThrow('Invalid cron expression');
     });
 
-    it('should throw error for non-existent workflow', () => {
+    it('should throw error for non-registered workflow', () => {
+      const unregisteredWorkflow = createWorkflow({
+        id: 'unregisteredWorkflow',
+        inputSchema: z.object({}),
+        outputSchema: z.object({}),
+      }).commit();
+
       expect(() => {
         scheduler.schedule({
-          workflowId: 'non-existent-workflow',
+          workflow: unregisteredWorkflow,
           schedule: CronPatterns.EVERY_HOUR,
-          name: 'Non-existent Workflow',
         });
       }).toThrow(/Workflow.*not found/);
     });
@@ -78,9 +82,8 @@ describe('WorkflowScheduler', () => {
   describe('start and stop', () => {
     it('should start all scheduled workflows', () => {
       scheduler.schedule({
-        workflowId: 'testWorkflow',
+        workflow: testWorkflow,
         schedule: CronPatterns.EVERY_HOUR,
-        name: 'Test Workflow',
       });
 
       expect(() => scheduler.start()).not.toThrow();
@@ -88,9 +91,8 @@ describe('WorkflowScheduler', () => {
 
     it('should stop all scheduled workflows', () => {
       scheduler.schedule({
-        workflowId: 'testWorkflow',
+        workflow: testWorkflow,
         schedule: CronPatterns.EVERY_HOUR,
-        name: 'Test Workflow',
       });
 
       scheduler.start();
@@ -101,9 +103,8 @@ describe('WorkflowScheduler', () => {
   describe('getScheduledWorkflows', () => {
     it('should return list of scheduled workflows', () => {
       scheduler.schedule({
-        workflowId: 'testWorkflow',
+        workflow: testWorkflow,
         schedule: CronPatterns.EVERY_HOUR,
-        name: 'Test Workflow',
       });
 
       const scheduled = scheduler.getScheduledWorkflows();
@@ -115,9 +116,8 @@ describe('WorkflowScheduler', () => {
   describe('stopWorkflow', () => {
     it('should stop a specific workflow', () => {
       scheduler.schedule({
-        workflowId: 'testWorkflow',
+        workflow: testWorkflow,
         schedule: CronPatterns.EVERY_HOUR,
-        name: 'Test Workflow',
       });
 
       scheduler.start();

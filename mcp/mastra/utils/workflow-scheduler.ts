@@ -1,10 +1,11 @@
 import type { Mastra } from '@mastra/core';
+import type { Workflow } from '@mastra/core/workflows';
 import cron, { type ScheduledTask } from 'node-cron';
 
 interface ScheduledWorkflow {
-  workflowId: string;
+  workflow: Workflow;
   schedule: string;
-  inputData?: Record<string, any>;
+  inputData?: Record<string, unknown>;
 }
 
 interface SchedulerOptions {
@@ -19,20 +20,20 @@ interface SchedulerOptions {
  *
  * @example
  * ```typescript
+ * import { weatherMonitoringWorkflow, weeklyMealPlanningWorkflow } from './verticals';
+ *
  * const scheduler = new WorkflowScheduler(mastra);
  *
  * // Schedule weather monitoring every hour
  * scheduler.schedule({
- *   workflowId: 'weatherMonitoringWorkflow',
+ *   workflow: weatherMonitoringWorkflow,
  *   schedule: '0 * * * *', // Every hour at minute 0
- *   name: 'Hourly Weather Check'
  * });
  *
  * // Schedule meal planning every Sunday at 8am
  * scheduler.schedule({
- *   workflowId: 'weeklyMealPlanningWorkflow',
+ *   workflow: weeklyMealPlanningWorkflow,
  *   schedule: '0 8 * * 0', // Sundays at 8:00am
- *   name: 'Weekly Meal Plan'
  * });
  *
  * // Start all scheduled workflows
@@ -64,17 +65,18 @@ export class WorkflowScheduler {
    * Schedule a workflow to run on a recurring cron schedule
    */
   schedule(config: ScheduledWorkflow): void {
-    const { workflowId, schedule, inputData = {} } = config;
+    const { workflow, schedule, inputData = {} } = config;
+    const workflowId = workflow.id;
 
     // Validate cron expression
     if (!cron.validate(schedule)) {
       throw new Error(`Invalid cron expression: ${schedule}`);
     }
 
-    // Check if workflow exists
-    const workflow = this.mastra.getWorkflow(workflowId);
-    if (!workflow) {
-      throw new Error(`Workflow not found: ${workflowId}`);
+    // Check if workflow is registered in Mastra
+    const registeredWorkflow = this.mastra.getWorkflow(workflowId);
+    if (!registeredWorkflow) {
+      throw new Error(`Workflow not found in Mastra: ${workflowId}`);
     }
 
     // Create scheduled task
@@ -144,7 +146,7 @@ export class WorkflowScheduler {
   /**
    * Execute a workflow
    */
-  private async executeWorkflow(workflowId: string, inputData: Record<string, any>): Promise<void> {
+  private async executeWorkflow(workflowId: string, inputData: Record<string, unknown>): Promise<void> {
     const startTime = Date.now();
     console.log(`\n⚙️  Executing scheduled workflow: ${workflowId}`);
     console.log(`   Time: ${new Date().toISOString()}`);

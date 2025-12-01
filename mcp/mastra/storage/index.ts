@@ -22,17 +22,25 @@ function getDatabaseDirectory(): string {
 
 const databaseDirectory = getDatabaseDirectory();
 
-export async function getSqlStorageProvider(): Promise<LibSQLStore> {
+async function ensureDatabaseDirectory(): Promise<void> {
   await mkdir(databaseDirectory, { recursive: true });
+}
+
+function getSqlDatabasePath(): string {
+  return path.join(databaseDirectory, 'mastra.sql.db');
+}
+
+export async function getSqlStorageProvider(): Promise<LibSQLStore> {
+  await ensureDatabaseDirectory();
 
   return new LibSQLStore({
     id: 'hey-jarvis-sql-storage',
-    url: `file:${path.join(databaseDirectory, 'mastra.sql.db')}`,
+    url: `file:${getSqlDatabasePath()}`,
   });
 }
 
 export async function getVectorStorageProvider(): Promise<LibSQLVector> {
-  await mkdir(databaseDirectory, { recursive: true });
+  await ensureDatabaseDirectory();
 
   return new LibSQLVector({
     id: 'hey-jarvis-vector-storage',
@@ -44,8 +52,8 @@ let credentialsStorageInstance: CredentialsStorage | null = null;
 
 export async function getCredentialsStorage(): Promise<CredentialsStorage> {
   if (!credentialsStorageInstance) {
-    await mkdir(databaseDirectory, { recursive: true });
-    credentialsStorageInstance = new CredentialsStorage(path.join(databaseDirectory, 'mastra.sql.db'));
+    await ensureDatabaseDirectory();
+    credentialsStorageInstance = new CredentialsStorage(getSqlDatabasePath());
   }
   return credentialsStorageInstance;
 }
@@ -54,8 +62,8 @@ let deviceStateStorageInstance: DeviceStateStorage | null = null;
 
 export async function getDeviceStateStorage(): Promise<DeviceStateStorage> {
   if (!deviceStateStorageInstance) {
-    await mkdir(databaseDirectory, { recursive: true });
-    deviceStateStorageInstance = new DeviceStateStorage(path.join(databaseDirectory, 'mastra.sql.db'));
+    await ensureDatabaseDirectory();
+    deviceStateStorageInstance = new DeviceStateStorage(getSqlDatabasePath());
   }
   return deviceStateStorageInstance;
 }
