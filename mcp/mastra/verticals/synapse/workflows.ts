@@ -4,7 +4,7 @@ import { createStep, createWorkflow } from '../../utils/workflow-factory.js';
 import { getStateChangeReactorAgent } from './agent.js';
 
 // State change notification workflow
-// Receives state changes, saves to memory, and delegates to State Change Reactor agent for analysis
+// Receives state changes, saves to memory, and delegates to State Change Reactor agent for decision-making
 export const stateChangeNotificationWorkflow = createWorkflow({
   id: 'stateChangeNotificationWorkflow',
   inputSchema: z.object({
@@ -74,8 +74,8 @@ export const stateChangeNotificationWorkflow = createWorkflow({
   )
   .then(
     createStep({
-      id: 'delegate-to-reactor',
-      description: 'Delegates state change to State Change Reactor agent for coordination',
+      id: 'analyze-and-decide',
+      description: 'State Change Reactor analyzes the change and decides what actions to take',
       inputSchema: z.object({
         source: z.string(),
         stateType: z.string(),
@@ -96,33 +96,42 @@ export const stateChangeNotificationWorkflow = createWorkflow({
         // Get the State Change Reactor agent
         const reactorAgent = await getStateChangeReactorAgent();
 
-        // Construct delegation prompt with state change context
-        const delegationPrompt = `A state change has been detected and saved to memory:
+        // Construct the analysis prompt - the reactor will decide what to do
+        const analysisPrompt = `A state change has been detected:
 
 Source: ${inputData.source}
 Type: ${inputData.stateType}
 Data: ${JSON.stringify(inputData.stateData, null, 2)}
 
-Please delegate this to the Notification agent for analysis and potential user notification.`;
+Analyze this state change using your working memory and context. Decide if the user should be notified or if any other action is needed. If you decide to notify, delegate to the Notification agent with a clear message to send.`;
 
-        // Execute agent network to delegate to notification agent
-        const networkStream = await reactorAgent.network(delegationPrompt);
+        try {
+          // Execute agent network - the reactor will decide and potentially call notification agent
+          const networkStream = await reactorAgent.network(analysisPrompt);
 
-        // Wait for the network execution to complete
-        const workflowResult = await networkStream.result;
+          // Wait for the network execution to complete
+          const workflowResult = await networkStream.result;
 
-        if (!workflowResult) {
+          if (!workflowResult) {
+            return {
+              registered: true,
+              analyzed: false,
+              reasoning: 'No result from agent network',
+            };
+          }
+
+          return {
+            registered: true,
+            analyzed: true,
+          };
+        } catch (error) {
+          mastra.getLogger()?.error('Failed to execute agent network:', error);
           return {
             registered: true,
             analyzed: false,
-            reasoning: 'No result from agent network',
+            reasoning: `Network execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
           };
         }
-
-        return {
-          registered: true,
-          analyzed: true,
-        };
       },
     }),
   )

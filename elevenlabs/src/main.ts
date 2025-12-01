@@ -25,7 +25,8 @@ class ElevenLabsAgentManager {
   private filterSensitiveData(
     config: GetAgentResponseModel,
   ): Omit<GetAgentResponseModel, 'phoneNumbers' | 'accessInfo' | 'agentId'> {
-    const filtered = { ...config };
+    // Use type assertion for mutable operations since we're intentionally removing properties
+    const filtered = { ...config } as Partial<GetAgentResponseModel>;
 
     // Remove sensitive data that should not be persisted
     delete filtered.phoneNumbers;
@@ -34,7 +35,7 @@ class ElevenLabsAgentManager {
 
     // Remove nested sensitive data if it exists (voice_id might be added dynamically)
     if (filtered.conversationConfig?.tts) {
-      delete filtered.conversationConfig.tts.voiceId;
+      delete (filtered.conversationConfig.tts as Partial<typeof filtered.conversationConfig.tts>).voiceId;
     }
 
     // Remove webhook URLs from tools as they contain secrets
@@ -44,7 +45,7 @@ class ElevenLabsAgentManager {
           const toolCopy = { ...tool };
           // Remove the URL which contains webhook secrets
           if (toolCopy.apiSchema) {
-            delete toolCopy.apiSchema.url;
+            delete (toolCopy.apiSchema as Partial<typeof toolCopy.apiSchema>).url;
           }
           return toolCopy;
         }
@@ -52,7 +53,7 @@ class ElevenLabsAgentManager {
       });
     }
 
-    return filtered;
+    return filtered as Omit<GetAgentResponseModel, 'phoneNumbers' | 'accessInfo' | 'agentId'>;
   }
 
   private async saveConfig(config: GetAgentResponseModel): Promise<void> {
@@ -129,8 +130,10 @@ class ElevenLabsAgentManager {
 
       // Remove prompt from config before saving
       const configToSave = { ...response };
-      if (configToSave.conversationConfig?.agent) {
-        delete configToSave.conversationConfig.agent.prompt.prompt;
+      if (configToSave.conversationConfig?.agent?.prompt) {
+        delete (
+          configToSave.conversationConfig.agent.prompt as Partial<typeof configToSave.conversationConfig.agent.prompt>
+        ).prompt;
       }
 
       await this.saveConfig(configToSave);
