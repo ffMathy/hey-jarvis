@@ -1,6 +1,5 @@
 import { z } from 'zod';
-import { getModel } from '../../utils/github-models-provider.js';
-import { createAgentStep, createStep, createToolStep, createWorkflow } from '../../utils/workflow-factory.js';
+import { createAgentStep, createStep, createToolStep, createWorkflow, getModel } from '../../utils/index.js';
 import { sendEmailAndAwaitResponseWorkflow } from '../human-in-the-loop/workflows.js';
 import { shoppingListWorkflow } from '../shopping/workflows.js';
 import { getAllRecipes } from './tools.js';
