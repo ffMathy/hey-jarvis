@@ -1,2 +1,2 @@
 // Phone vertical exports
-export { phoneTools } from './tools.js';
+export { initiatePhoneCall, phoneTools, sendTextMessage } from './tools.js';
