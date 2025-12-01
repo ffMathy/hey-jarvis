@@ -1,4 +1,5 @@
-import { createAgent } from '../../utils/agent-factory.js';
+import { Agent } from '@mastra/core/agent';
+import { createMemory } from '../../memory/index.js';
 import { ollamaModel } from '../../utils/ollama-provider.js';
 import { getNotificationAgent } from '../notification/agent.js';
 
@@ -10,14 +11,21 @@ import { getNotificationAgent } from '../notification/agent.js';
  *
  * Uses a local Qwen3 model via Ollama for cost-efficiency in scheduled/automated workflows.
  *
+ * Note: Working memory is disabled for this agent to prevent the updateWorkingMemory tool
+ * from being injected into network routing, which can confuse smaller models.
+ *
  * Currently delegates to:
  * - Notification Agent: For analyzing state changes and sending user notifications
  */
 export async function getStateChangeReactorAgent() {
-  return createAgent({
+  // Create memory without working memory to avoid tool injection in network routing
+  const memory = await createMemory({ enableWorkingMemory: false });
+
+  return new Agent({
     model: ollamaModel,
     id: 'stateChangeReactor',
     name: 'StateChangeReactor',
+    memory,
     instructions: `You are the State Change Reactor - a coordination agent for the Hey Jarvis smart home system.
 
 Your role is to receive state change events from various verticals (weather, shopping, calendar, etc.) and delegate analysis to the appropriate specialized agents.
