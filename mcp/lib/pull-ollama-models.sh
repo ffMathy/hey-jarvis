@@ -46,10 +46,11 @@ is_model_available() {
   local model_name="$1"
   local base_name="${model_name%%:*}"
   
-  local models=$(curl -s "${OLLAMA_API}/api/tags" 2>/dev/null | grep -o '"name":"[^"]*"' | cut -d'"' -f4)
+  # Use jq for robust JSON parsing (jq is already installed in the container)
+  local models=$(curl -s "${OLLAMA_API}/api/tags" 2>/dev/null | jq -r '.models[]?.name // empty' 2>/dev/null)
   
   for m in $models; do
-    if [ "$m" = "$model_name" ] || [[ "$m" == "${base_name}:"* ]]; then
+    if [[ "$m" == "$model_name" ]] || [[ "$m" == "${base_name}:"* ]]; then
       return 0
     fi
   done

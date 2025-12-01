@@ -146,12 +146,17 @@ async function pullModel(modelName: string): Promise<void> {
     throw new Error(`Failed to pull model ${modelName}: ${response.status} ${errorText}`);
   }
 
-  // When stream is false, Ollama returns the final status after pull completes
-  // The response body contains the pull result
+  // When stream is false, Ollama returns the final status after pull completes.
+  // The response format depends on the Ollama version:
+  // - Newer versions may return: {"status": "success"} or {"digest": "sha256:..."}
+  // - Some versions return empty object {} when model is already present
+  // We consider the pull successful if:
+  // 1. HTTP status was 200 OK (already checked above)
+  // 2. Either status is 'success' OR we got a digest (indicates download complete)
   const result = (await response.json()) as OllamaPullResponse;
 
-  // A successful pull will have status 'success' at the end
-  // But it might just return empty or with different status messages
+  // Only fail if we got an explicit non-success status without a digest
+  // A missing status or empty response is acceptable (model may already exist)
   if (result.status && result.status !== 'success' && !result.digest) {
     throw new Error(`Model pull did not complete successfully: ${result.status}`);
   }
@@ -188,13 +193,19 @@ export function createLazyOllamaProvider() {
   return function lazyOllama(modelId: string) {
     const model = baseOllama(modelId);
 
+    // Methods that initiate model inference and need the model to be available.
+    // These are the standard LanguageModelV2 interface methods from the AI SDK.
+    // If the ollama-ai-provider-v2 library changes these method names, this code
+    // will need to be updated accordingly.
+    const inferenceMethodNames = new Set(['doGenerate', 'doStream']);
+
     // Create a proxy that intercepts method calls to ensure model is available
     return new Proxy(model, {
       get(target, prop, receiver) {
         const originalValue = Reflect.get(target, prop, receiver);
 
         // Intercept method calls that generate completions
-        if (typeof originalValue === 'function' && (prop === 'doGenerate' || prop === 'doStream')) {
+        if (typeof originalValue === 'function' && typeof prop === 'string' && inferenceMethodNames.has(prop)) {
           return async (...args: unknown[]) => {
             await ensureModelAvailable(modelId);
             return (originalValue as (...args: unknown[]) => Promise<unknown>).apply(target, args);
