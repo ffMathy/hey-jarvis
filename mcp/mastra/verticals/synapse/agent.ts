@@ -9,6 +9,8 @@ import { getNotificationAgent } from '../notification/agent.js';
  * (weather, shopping, calendar, etc.) and decides what actions should be taken.
  *
  * Uses working memory to track user preferences, habits, and context for making informed decisions.
+ * Note: Working memory is enabled by default via createAgent factory.
+ *
  * Uses a local Qwen3 model via Ollama for cost-efficiency in scheduled/automated workflows.
  *
  * Decision responsibilities:
@@ -20,6 +22,7 @@ import { getNotificationAgent } from '../notification/agent.js';
  * - Notification Agent: For sending user notifications (when this agent decides notification is warranted)
  */
 export async function getStateChangeReactorAgent() {
+  // createAgent factory provides memory with working memory enabled by default
   return createAgent({
     model: ollamaModel,
     id: 'stateChangeReactor',

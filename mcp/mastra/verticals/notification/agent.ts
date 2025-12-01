@@ -22,6 +22,7 @@ export async function getNotificationAgent() {
     model: ollamaModel,
     id: 'notification',
     name: 'Notification',
+    // Description is used by agent networks to help the routing agent understand this agent's purpose
     description: 'Sends notifications to users. Always sends the notification when asked.',
     instructions: `You are a notification delivery agent for the Hey Jarvis smart home system.
 
