@@ -35,6 +35,8 @@ export const stateChangeNotificationWorkflow = createWorkflow({
         memorySaved: z.boolean(),
       }),
       execute: async ({ inputData }) => {
+        console.log('🔄 State change reactor processing:', JSON.stringify(inputData, null, 2));
+
         try {
           // Save to memory for semantic recall
           const memory = await createMemory();
