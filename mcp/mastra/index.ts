@@ -57,6 +57,12 @@ async function createMastra() {
       getNextInstructionsWorkflow,
     },
     agents: agentsByName,
+    // Workaround for mastra CLI bundler bug: the bundler fails to properly optimize
+    // @mastra/core/evals/scoreTraces during the "Optimizing dependencies" step in Docker.
+    // Adding @mastra/core to externals bypasses this problematic optimization.
+    bundler: {
+      externals: ['@mastra/core'],
+    },
   });
 }
 
