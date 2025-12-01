@@ -146,9 +146,13 @@ async function pullModel(modelName: string): Promise<void> {
     throw new Error(`Failed to pull model ${modelName}: ${response.status} ${errorText}`);
   }
 
-  // Wait for the pull to complete
+  // When stream is false, Ollama returns the final status after pull completes
+  // The response body contains the pull result
   const result = (await response.json()) as OllamaPullResponse;
-  if (result.status !== 'success') {
+
+  // A successful pull will have status 'success' at the end
+  // But it might just return empty or with different status messages
+  if (result.status && result.status !== 'success' && !result.digest) {
     throw new Error(`Model pull did not complete successfully: ${result.status}`);
   }
 }
