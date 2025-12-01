@@ -1,7 +1,6 @@
 import { createAgent } from '../../utils/agent-factory.js';
 import { ollamaModel } from '../../utils/ollama-provider.js';
 import { getNotificationAgent } from '../notification/agent.js';
-import { synapseTools } from './tools.js';
 
 /**
  * State Change Reactor Agent
@@ -39,7 +38,6 @@ Your role is to receive state change events from various verticals (weather, sho
 - Be clear and structured in your delegation
 
 Think of yourself as a smart router that ensures state changes reach the right agents for proper handling.`,
-    tools: synapseTools,
     agents: {
       notificationAgent: await getNotificationAgent(),
     },
