@@ -1,7 +1,7 @@
 import { Agent, type AgentConfig } from '@mastra/core/agent';
 import type { OutputProcessor } from '@mastra/core/processors';
 import { createMemory } from '../memory/index.js';
-import { google } from './google-provider.js';
+import { getModel } from './github-models-provider.js';
 import { getDefaultScorers } from './scorers-config.js';
 
 export async function createAgent(
@@ -14,8 +14,8 @@ export async function createAgent(
   const DEFAULT_AGENT_CONFIG: Partial<AgentConfig> = {
     // Use shared memory instance by default
     memory: await createMemory(),
-    // Use Google Gemini Flash Latest as the default model with our configured provider
-    model: google('gemini-flash-latest'),
+    // Use GitHub Models in CI or Google Gemini for production
+    model: getModel('gemini-flash-latest'),
     // Use default scorers for comprehensive evaluation
     scorers: getDefaultScorers(),
     instructions: `${config.instructions}\n\n# Additional context and guidelines\nNever ask questions. Always make best-guess assumptions.\nThe time is currently: \`${new Date().toString()}\`.`,
