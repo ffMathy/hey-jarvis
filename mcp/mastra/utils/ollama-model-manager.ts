@@ -1,3 +1,5 @@
+import os from 'node:os';
+import type { FetchFunction } from '@ai-sdk/provider-utils';
 import { createOllama } from 'ollama-ai-provider-v2';
 
 /**
@@ -7,6 +9,8 @@ import { createOllama } from 'ollama-ai-provider-v2';
  * - Checking if models are available
  * - Lazy model pulling (pull on first use)
  * - Model status monitoring
+ * - Request logging with timing information
+ * - CPU usage limiting via num_thread
  *
  * This module ensures that Ollama models are automatically pulled when needed,
  * providing a seamless experience even if models aren't pre-installed.
@@ -16,6 +20,183 @@ import { createOllama } from 'ollama-ai-provider-v2';
 const ollamaHost = process.env.OLLAMA_HOST || 'localhost';
 const ollamaPort = process.env.OLLAMA_PORT || '11434';
 const ollamaApiBaseUrl = `http://${ollamaHost}:${ollamaPort}`;
+
+/**
+ * Get the number of CPU threads to use for Ollama inference.
+ * Defaults to 50% of available CPU cores to prevent system overload.
+ * Can be overridden via OLLAMA_NUM_THREADS environment variable.
+ */
+function getOllamaNumThreads(): number {
+  const envThreads = process.env.OLLAMA_NUM_THREADS;
+  if (envThreads) {
+    const parsed = Number.parseInt(envThreads, 10);
+    if (!Number.isNaN(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+  const cpuCount = os.cpus().length;
+  return Math.max(1, Math.floor(cpuCount / 2));
+}
+
+/**
+ * Request body type for Ollama API calls
+ */
+interface OllamaRequestBody {
+  model?: string;
+  prompt?: string;
+  messages?: Array<{ role: string; content: string }>;
+  options?: {
+    num_thread?: number;
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
+
+/**
+ * Extracts URL string from various input types.
+ */
+function extractUrl(input: RequestInfo | URL): string {
+  if (typeof input === 'string') return input;
+  if (input instanceof URL) return input.toString();
+  return input.url;
+}
+
+/**
+ * Parses and modifies the request body to inject num_thread option.
+ */
+function processRequestBody(
+  init: RequestInit | undefined,
+  numThreads: number,
+): { requestBody: OllamaRequestBody | null; modifiedInit: RequestInit | undefined } {
+  if (!init?.body || typeof init.body !== 'string') {
+    return { requestBody: null, modifiedInit: init };
+  }
+
+  try {
+    const requestBody = JSON.parse(init.body) as OllamaRequestBody;
+    requestBody.options = {
+      ...requestBody.options,
+      num_thread: numThreads,
+    };
+
+    return {
+      requestBody,
+      modifiedInit: {
+        ...init,
+        body: JSON.stringify(requestBody),
+      },
+    };
+  } catch {
+    return { requestBody: null, modifiedInit: init };
+  }
+}
+
+/**
+ * Logs the start of an inference call.
+ */
+function logInferenceStart(
+  modelName: string,
+  method: string,
+  url: string,
+  promptPreview: string | null,
+  numThreads: number,
+): void {
+  console.log(`🤖 [OLLAMA] Starting inference call`);
+  console.log(`   Model: ${modelName}`);
+  console.log(`   Endpoint: ${method} ${url}`);
+  if (promptPreview) {
+    console.log(`   Prompt: ${promptPreview}`);
+  }
+  console.log(`   Threads: ${numThreads}`);
+}
+
+/**
+ * Logs the successful completion of an inference call.
+ */
+function logInferenceSuccess(modelName: string, duration: number, status: number, statusText: string): void {
+  console.log(`✅ [OLLAMA] Inference completed in ${duration}ms`);
+  console.log(`   Model: ${modelName}`);
+  console.log(`   Status: ${status} ${statusText}`);
+}
+
+/**
+ * Logs a failed inference call.
+ */
+function logInferenceError(modelName: string, duration: number, errorMessage: string): void {
+  console.error(`❌ [OLLAMA] Inference failed after ${duration}ms`);
+  console.error(`   Model: ${modelName}`);
+  console.error(`   Error: ${errorMessage}`);
+}
+
+/**
+ * Creates a logging fetch wrapper that logs all Ollama API calls with timing information
+ * and injects CPU thread limiting options.
+ */
+function createLoggingFetch(): FetchFunction {
+  const numThreads = getOllamaNumThreads();
+  console.log(`🔧 Ollama configured to use ${numThreads} CPU threads (of ${os.cpus().length} available)`);
+
+  return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const startTime = Date.now();
+    const url = extractUrl(input);
+    const method = init?.method || 'GET';
+
+    const { requestBody, modifiedInit } = processRequestBody(init, numThreads);
+
+    const modelName = requestBody?.model || 'unknown';
+    const promptPreview = extractPromptPreview(requestBody);
+    const isInferenceCall = url.includes('/chat') || url.includes('/generate');
+
+    if (isInferenceCall) {
+      logInferenceStart(modelName, method, url, promptPreview, numThreads);
+    }
+
+    try {
+      const response = await fetch(input, modifiedInit);
+      const duration = Date.now() - startTime;
+
+      if (isInferenceCall) {
+        logInferenceSuccess(modelName, duration, response.status, response.statusText);
+      }
+
+      return response;
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+
+      if (isInferenceCall) {
+        logInferenceError(modelName, duration, errorMessage);
+      }
+
+      throw error;
+    }
+  };
+}
+
+/**
+ * Extracts a preview of the prompt from the request body for logging.
+ * Truncates long prompts to avoid log flooding.
+ */
+function extractPromptPreview(body: OllamaRequestBody | null): string | null {
+  if (!body) return null;
+
+  const maxLength = 100;
+
+  if (body.prompt) {
+    const prompt = body.prompt;
+    return prompt.length > maxLength ? `${prompt.substring(0, maxLength)}...` : prompt;
+  }
+
+  if (body.messages && body.messages.length > 0) {
+    const lastMessage = body.messages[body.messages.length - 1];
+    if (lastMessage?.content) {
+      const content = lastMessage.content;
+      return content.length > maxLength ? `${content.substring(0, maxLength)}...` : content;
+    }
+  }
+
+  return null;
+}
 
 // Track models that are currently being pulled to avoid duplicate pulls
 const pullsInProgress = new Map<string, Promise<void>>();
@@ -182,11 +363,15 @@ export async function listModels(): Promise<string[]> {
 
 /**
  * Create an Ollama provider that lazily pulls models on first use.
- * This wraps the standard Ollama provider with automatic model pulling.
+ * This wraps the standard Ollama provider with automatic model pulling,
+ * request logging with timing information, and CPU thread limiting.
  */
 export function createLazyOllamaProvider() {
+  const loggingFetch = createLoggingFetch();
+
   const baseOllama = createOllama({
     baseURL: `${ollamaApiBaseUrl}/api`,
+    fetch: loggingFetch,
   });
 
   // Wrap the provider function to ensure model is available before use

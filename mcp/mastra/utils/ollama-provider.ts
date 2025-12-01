@@ -19,9 +19,16 @@ import {
  * **Lazy Model Loading**: Models are automatically pulled on first use if not already available.
  * This provides a seamless experience even if models aren't pre-installed.
  *
+ * **Request Logging**: All inference calls are logged with timing information including
+ * model name, prompt preview, and duration in milliseconds.
+ *
+ * **CPU Thread Limiting**: By default, Ollama uses 50% of available CPU cores to prevent
+ * system overload. This can be customized via the OLLAMA_NUM_THREADS environment variable.
+ *
  * Environment variables:
  * - OLLAMA_HOST: The host where Ollama is running (default: localhost)
  * - OLLAMA_PORT: The port Ollama is listening on (default: 11434)
+ * - OLLAMA_NUM_THREADS: Number of CPU threads for inference (default: 50% of CPU cores)
  */
 
 // Get Ollama configuration from environment or use defaults
