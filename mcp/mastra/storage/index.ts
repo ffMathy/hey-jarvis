@@ -3,6 +3,7 @@ import { mkdir } from 'fs/promises';
 import path from 'path';
 import { CredentialsStorage } from './credentials.js';
 import { DeviceStateStorage } from './device-state.js';
+import { EmailStateStorage } from './email-state.js';
 
 // Use HEY_JARVIS_STORAGE_PATH environment variable if set, otherwise use local mcp/ directory
 // Home Assistant addon sets this to /data for automatic backups
@@ -68,5 +69,16 @@ export async function getDeviceStateStorage(): Promise<DeviceStateStorage> {
   return deviceStateStorageInstance;
 }
 
+let emailStateStorageInstance: EmailStateStorage | null = null;
+
+export async function getEmailStateStorage(): Promise<EmailStateStorage> {
+  if (!emailStateStorageInstance) {
+    await ensureDatabaseDirectory();
+    emailStateStorageInstance = new EmailStateStorage(getSqlDatabasePath());
+  }
+  return emailStateStorageInstance;
+}
+
 export { CredentialsStorage } from './credentials.js';
 export { type DeviceStateChange, DeviceStateStorage, type StoredDeviceState } from './device-state.js';
+export { EmailStateStorage, type LastEmailState } from './email-state.js';

@@ -6,6 +6,7 @@ interface ScheduledWorkflow {
   workflow: Workflow;
   schedule: string;
   inputData?: Record<string, unknown>;
+  runOnStartup?: boolean;
 }
 
 interface SchedulerOptions {
@@ -51,6 +52,7 @@ interface SchedulerOptions {
 export class WorkflowScheduler {
   private mastra: Mastra;
   private scheduledTasks: Map<string, ScheduledTask> = new Map();
+  private startupWorkflows: Map<string, Record<string, unknown>> = new Map();
   private options: SchedulerOptions;
 
   constructor(mastra: Mastra, options: SchedulerOptions = {}) {
@@ -65,7 +67,7 @@ export class WorkflowScheduler {
    * Schedule a workflow to run on a recurring cron schedule
    */
   schedule(config: ScheduledWorkflow): void {
-    const { workflow, schedule, inputData = {} } = config;
+    const { workflow, schedule, inputData = {}, runOnStartup = false } = config;
     const workflowId = workflow.id;
 
     // Validate cron expression
@@ -93,8 +95,16 @@ export class WorkflowScheduler {
     // Store task reference
     this.scheduledTasks.set(workflowId, task);
 
+    // Track startup workflows
+    if (runOnStartup) {
+      this.startupWorkflows.set(workflowId, inputData);
+    }
+
     console.log(`📅 Scheduled workflow: ${workflowId}`);
     console.log(`   Schedule: ${schedule} (${this.options.timezone})`);
+    if (runOnStartup) {
+      console.log(`   Run on startup: enabled`);
+    }
   }
 
   /**
@@ -106,6 +116,17 @@ export class WorkflowScheduler {
     this.scheduledTasks.forEach((_task, workflowId) => {
       console.log(`   ✅ Active: ${workflowId}`);
     });
+
+    // Execute startup workflows immediately (don't await - run in background)
+    if (this.startupWorkflows.size > 0) {
+      console.log(`\n🏃 Executing ${this.startupWorkflows.size} startup workflow(s)...`);
+      this.startupWorkflows.forEach((inputData, workflowId) => {
+        console.log(`   🚀 Running on startup: ${workflowId}`);
+        this.executeWorkflow(workflowId, inputData).catch((error) => {
+          console.error(`   ❌ Startup workflow ${workflowId} failed:`, error);
+        });
+      });
+    }
 
     console.log('\n⏰ Workflow scheduler is running\n');
   }
