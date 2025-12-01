@@ -9,9 +9,14 @@ export {
 } from './github-models-provider.js';
 export { google } from './google-provider.js';
 export {
+  ensureModelAvailable,
+  getOllamaApiUrl,
   getOllamaBaseUrl,
   getOllamaHost,
   getOllamaPort,
+  isModelAvailable,
+  isOllamaAvailable,
+  listModels,
   OLLAMA_MODEL,
   ollama,
   ollamaModel,

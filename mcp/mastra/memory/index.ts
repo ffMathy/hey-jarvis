@@ -2,7 +2,20 @@ import { Memory } from '@mastra/memory';
 import { getSqlStorageProvider, getVectorStorageProvider } from '../storage/index.js';
 import { google } from '../utils/google-provider.js';
 
-export async function createMemory() {
+export interface CreateMemoryOptions {
+  /**
+   * Whether to enable working memory for the agent.
+   * Default: true
+   *
+   * Disable for coordination agents that use .network() to avoid
+   * the updateWorkingMemory tool being injected into network routing.
+   */
+  enableWorkingMemory?: boolean;
+}
+
+export async function createMemory(options: CreateMemoryOptions = {}) {
+  const { enableWorkingMemory = true } = options;
+
   const sqlStorageProvider = await getSqlStorageProvider();
   const vectorStorageProvider = await getVectorStorageProvider();
 
@@ -12,15 +25,19 @@ export async function createMemory() {
     embedder: google.textEmbeddingModel('text-embedding-004'),
     options: {
       lastMessages: 10,
-      workingMemory: {
-        enabled: true,
-        template: `Track user preferences, habits, and key personal details.`,
-        version: 'vnext', // Enable the improved/experimental tool
-      },
+      workingMemory: enableWorkingMemory
+        ? {
+            enabled: true,
+            template: `Track user preferences, habits, and key personal details.`,
+            version: 'vnext',
+          }
+        : {
+            enabled: false,
+          },
       semanticRecall: {
-        topK: 10, // Retrieve 10 most similar messages
-        messageRange: 3, // Include 3 messages before and after each match
-        scope: 'resource', // Search across all threads for this user
+        topK: 10,
+        messageRange: 3,
+        scope: 'resource',
       },
     },
   });

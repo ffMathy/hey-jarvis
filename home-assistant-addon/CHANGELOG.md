@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.17.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v0.16.2...home-assistant-addon-v0.17.0) (2025-12-01)
+
+
+### Miscellaneous Chores
+
+* **home-assistant-addon:** Synchronize mcp versions
+
+## [0.16.2](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v0.16.1...home-assistant-addon-v0.16.2) (2025-12-01)
+
+
+### Miscellaneous Chores
+
+* **home-assistant-addon:** Synchronize mcp versions
+
+## [0.16.1](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v0.16.0...home-assistant-addon-v0.16.1) (2025-12-01)
+
+
+### Bug Fixes
+
+* **home-assistant-addon:** use apt-get instead of apk for Debian base image ([47e4a78](https://github.com/ffMathy/hey-jarvis/commit/47e4a7829eea0377ef31ba941be3d99cb352e50d))
+* **home-assistant-addon:** use apt-get instead of apk for Debian base image ([#352](https://github.com/ffMathy/hey-jarvis/issues/352)) ([eddae4c](https://github.com/ffMathy/hey-jarvis/commit/eddae4cfd8551c479588698029f1679459979fae))
+
 ## [0.16.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v0.15.0...home-assistant-addon-v0.16.0) (2025-11-30)
 
 

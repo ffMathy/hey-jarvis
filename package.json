@@ -1,6 +1,6 @@
 {
   "name": "hey-jarvis",
-  "version": "0.16.0",
+  "version": "0.17.0",
   "description": "My digital assistant that runs the house",
   "main": "index.js",
   "workspaces": [
@@ -86,6 +86,7 @@
     "@mastra/memory": "1.0.0-beta.2",
     "@mastra/observability": "1.0.0-beta.1",
     "@mastra/server": "1.0.0-beta.5",
+    "@opentelemetry/auto-instrumentations-node": "^0.62.1",
     "@types/lodash-es": "^4.17.12",
     "@types/node-cron": "^3.0.11",
     "@types/node-fetch": "^2.6.13",

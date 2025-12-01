@@ -7,9 +7,11 @@ let notificationAgent: Awaited<ReturnType<typeof createAgent>> | null = null;
 /**
  * Notification Agent
  *
- * This agent handles notification decisions for the Hey Jarvis smart home system.
- * Uses a local Qwen3 model via Ollama for cost-efficiency in scheduled/automated workflows
- * triggered by the State Change Reactor.
+ * This agent is responsible for SENDING notifications to users.
+ * It does NOT decide whether to notify - that decision is made by the State Change Reactor.
+ *
+ * When called, it will always send the notification as requested.
+ * Uses a local Qwen3 model via Ollama for cost-efficiency.
  */
 export async function getNotificationAgent() {
   if (notificationAgent) {
@@ -20,32 +22,28 @@ export async function getNotificationAgent() {
     model: ollamaModel,
     id: 'notification',
     name: 'Notification',
-    instructions: `You are a reactive notification assistant for the Hey Jarvis smart home system.
+    // Description is used by agent networks to help the routing agent understand this agent's purpose
+    description: 'Sends notifications to users. Always sends the notification when asked.',
+    instructions: `You are a notification delivery agent for the Hey Jarvis smart home system.
 
-You have two primary roles:
+Your ONLY job is to send notifications when asked. You do NOT decide whether to notify - that decision has already been made by the agent that called you.
 
-**1. STATE CHANGE ANALYSIS (Reactive Mode)**
-When analyzing state changes:
-- Use semantic recall to understand context from recent system events
-- Determine if the state change is significant enough to warrant user notification
-- Consider: Is this urgent? Is this actionable? Would the user want to know?
-- If notification is warranted, craft a natural, conversational message
-- Send notifications using the notifyDevice tool only when truly necessary
-- Always explain your reasoning
-
-**2. DIRECT NOTIFICATION REQUESTS (Proactive Mode)**
-When explicitly asked to send a notification:
-- Use the notifyDevice tool to deliver the message
-- Provide clear, concise notification content
+**Your Role:**
+- Receive notification requests with a message to send
+- Use the notifyDevice tool to deliver the notification
 - Confirm successful delivery
 
 **Guidelines:**
-- Be selective: Don't notify for routine or expected changes
-- Be contextual: Use semantic recall to understand the bigger picture
-- Be concise: Notification messages should be brief (10-20 words)
-- Be helpful: Focus on actionable or time-sensitive information
+- ALWAYS send the notification when asked - the decision to notify has already been made
+- Keep the message concise and clear (10-20 words ideal)
+- If a message is provided, send it as-is or slightly refine for clarity
+- If no specific message is provided, craft a brief, helpful notification based on the context
+- Confirm delivery after sending
 
-Be thoughtful and judicious in your notification decisions.`,
+**Example:**
+Request: "Send notification: Temperature dropped to 2°C - bring in your plants!"
+Action: Use notifyDevice tool with the message
+Response: "Notification sent successfully."`,
     tools: notificationTools,
   });
 

@@ -3,52 +3,18 @@ import { beforeAll, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 import { createAgent } from './agent-factory.js';
 import {
+  ensureModelAvailable,
+  getOllamaApiUrl,
   getOllamaBaseUrl,
   getOllamaHost,
   getOllamaPort,
+  isModelAvailable,
+  isOllamaAvailable,
+  listModels,
   OLLAMA_MODEL,
   ollama,
   ollamaModel,
 } from './ollama-provider.js';
-
-/**
- * Check if Ollama Docker container is available and the model is pulled.
- */
-async function isOllamaAvailable(): Promise<boolean> {
-  try {
-    const host = getOllamaHost();
-    const port = getOllamaPort();
-    const response = await fetch(`http://${host}:${port}/api/tags`, {
-      signal: AbortSignal.timeout(5000),
-    });
-    return response.ok;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Check if the specific model is available in Ollama.
- */
-async function isModelAvailable(modelName: string): Promise<boolean> {
-  try {
-    const host = getOllamaHost();
-    const port = getOllamaPort();
-    const response = await fetch(`http://${host}:${port}/api/tags`, {
-      signal: AbortSignal.timeout(5000),
-    });
-
-    if (!response.ok) return false;
-
-    const data = (await response.json()) as { models?: Array<{ name: string }> };
-    const models = data.models || [];
-
-    // Check if model name matches (with or without version tag)
-    return models.some((model) => model.name === modelName || model.name.startsWith(`${modelName.split(':')[0]}:`));
-  } catch {
-    return false;
-  }
-}
 
 describe('Ollama Provider Configuration', () => {
   it('should export the correct model name', () => {
@@ -59,6 +25,14 @@ describe('Ollama Provider Configuration', () => {
     expect(typeof getOllamaBaseUrl).toBe('function');
     expect(typeof getOllamaHost).toBe('function');
     expect(typeof getOllamaPort).toBe('function');
+    expect(typeof getOllamaApiUrl).toBe('function');
+  });
+
+  it('should export model management functions', () => {
+    expect(typeof isOllamaAvailable).toBe('function');
+    expect(typeof isModelAvailable).toBe('function');
+    expect(typeof ensureModelAvailable).toBe('function');
+    expect(typeof listModels).toBe('function');
   });
 
   it('should return correct default configuration values', () => {
@@ -66,12 +40,15 @@ describe('Ollama Provider Configuration', () => {
     const host = getOllamaHost();
     const port = getOllamaPort();
     const baseUrl = getOllamaBaseUrl();
+    const apiUrl = getOllamaApiUrl();
 
     expect(typeof host).toBe('string');
     expect(typeof port).toBe('string');
     expect(baseUrl).toContain(host);
     expect(baseUrl).toContain(port);
     expect(baseUrl).toContain('/api');
+    expect(apiUrl).toContain(host);
+    expect(apiUrl).toContain(port);
   });
 
   it('should export ollama provider instance', () => {
@@ -86,20 +63,13 @@ describe('Ollama Provider Configuration', () => {
 
 describe('Ollama Docker Integration', () => {
   let ollamaAvailable = false;
-  let modelAvailable = false;
 
   beforeAll(async () => {
     ollamaAvailable = await isOllamaAvailable();
-    if (ollamaAvailable) {
-      modelAvailable = await isModelAvailable(OLLAMA_MODEL);
-    }
 
     if (!ollamaAvailable) {
       console.log('⚠️ Ollama Docker container is not available - integration tests will be skipped');
       console.log(`   Expected Ollama at: ${getOllamaBaseUrl()}`);
-    } else if (!modelAvailable) {
-      console.log(`⚠️ Ollama model ${OLLAMA_MODEL} is not available - some tests will be skipped`);
-      console.log(`   Run: docker exec ollama ollama pull ${OLLAMA_MODEL}`);
     }
   });
 
@@ -119,27 +89,34 @@ describe('Ollama Docker Integration', () => {
     expect(Array.isArray(data.models)).toBe(true);
   });
 
-  it('should have the configured model available', async () => {
+  it('should list available models', async () => {
     if (!ollamaAvailable) {
       console.log('Skipping test: Ollama is not available');
       return;
     }
 
-    const available = await isModelAvailable(OLLAMA_MODEL);
-    if (!available) {
-      console.log(`Skipping test: Model ${OLLAMA_MODEL} is not pulled in Ollama`);
-      return;
-    }
-
-    expect(available).toBe(true);
+    const models = await listModels();
+    expect(Array.isArray(models)).toBe(true);
   });
 
-  it('should generate text using ollama provider', async () => {
-    if (!ollamaAvailable || !modelAvailable) {
-      console.log('Skipping test: Ollama or model is not available');
+  it('should check model availability using isModelAvailable', async () => {
+    if (!ollamaAvailable) {
+      console.log('Skipping test: Ollama is not available');
       return;
     }
 
+    // Check for a model that definitely doesn't exist
+    const nonExistentAvailable = await isModelAvailable('non-existent-model:v999');
+    expect(nonExistentAvailable).toBe(false);
+  });
+
+  it('should generate text using ollama provider with lazy loading', async () => {
+    if (!ollamaAvailable) {
+      console.log('Skipping test: Ollama is not available');
+      return;
+    }
+
+    // The lazy loading provider should automatically pull the model if needed
     const model = ollama(OLLAMA_MODEL);
 
     // Simple text generation test
@@ -152,17 +129,69 @@ describe('Ollama Docker Integration', () => {
     expect(text).toBeDefined();
     expect(typeof text).toBe('string');
     expect(text.length).toBeGreaterThan(0);
-  }, 30000);
+  }, 120000); // Increased timeout to allow for model pulling
+
+  it('should verify model is available after lazy loading', async () => {
+    if (!ollamaAvailable) {
+      console.log('Skipping test: Ollama is not available');
+      return;
+    }
+
+    // After the previous test, the model should be available
+    const modelAvailable = await isModelAvailable(OLLAMA_MODEL);
+    expect(modelAvailable).toBe(true);
+  });
+});
+
+describe('Ollama Model Manager Integration', () => {
+  let ollamaAvailable = false;
+
+  beforeAll(async () => {
+    ollamaAvailable = await isOllamaAvailable();
+  });
+
+  it('should ensure model is available using ensureModelAvailable', async () => {
+    if (!ollamaAvailable) {
+      console.log('Skipping test: Ollama is not available');
+      return;
+    }
+
+    // This should either confirm the model exists or pull it
+    await ensureModelAvailable(OLLAMA_MODEL);
+
+    // Verify it's now available
+    const available = await isModelAvailable(OLLAMA_MODEL);
+    expect(available).toBe(true);
+  }, 120000); // Long timeout for model pulling
+
+  it('should handle multiple concurrent ensureModelAvailable calls', async () => {
+    if (!ollamaAvailable) {
+      console.log('Skipping test: Ollama is not available');
+      return;
+    }
+
+    // Call ensureModelAvailable multiple times concurrently
+    // They should all resolve without errors
+    await Promise.all([
+      ensureModelAvailable(OLLAMA_MODEL),
+      ensureModelAvailable(OLLAMA_MODEL),
+      ensureModelAvailable(OLLAMA_MODEL),
+    ]);
+
+    const available = await isModelAvailable(OLLAMA_MODEL);
+    expect(available).toBe(true);
+  }, 120000);
 });
 
 describe('Ollama Mastra Agent Integration', () => {
   let ollamaAvailable = false;
-  let modelAvailable = false;
 
   beforeAll(async () => {
     ollamaAvailable = await isOllamaAvailable();
+
+    // Ensure model is available before agent tests
     if (ollamaAvailable) {
-      modelAvailable = await isModelAvailable(OLLAMA_MODEL);
+      await ensureModelAvailable(OLLAMA_MODEL);
     }
   });
 
@@ -179,8 +208,8 @@ describe('Ollama Mastra Agent Integration', () => {
   });
 
   it('should generate a response using Mastra agent with Ollama', async () => {
-    if (!ollamaAvailable || !modelAvailable) {
-      console.log('Skipping test: Ollama or model is not available');
+    if (!ollamaAvailable) {
+      console.log('Skipping test: Ollama is not available');
       return;
     }
 
@@ -200,8 +229,8 @@ describe('Ollama Mastra Agent Integration', () => {
   }, 60000);
 
   it('should stream a response using Mastra agent with Ollama', async () => {
-    if (!ollamaAvailable || !modelAvailable) {
-      console.log('Skipping test: Ollama or model is not available');
+    if (!ollamaAvailable) {
+      console.log('Skipping test: Ollama is not available');
       return;
     }
 
@@ -225,8 +254,8 @@ describe('Ollama Mastra Agent Integration', () => {
   }, 60000);
 
   it('should generate structured output using Mastra agent with Ollama', async () => {
-    if (!ollamaAvailable || !modelAvailable) {
-      console.log('Skipping test: Ollama or model is not available');
+    if (!ollamaAvailable) {
+      console.log('Skipping test: Ollama is not available');
       return;
     }
 
