@@ -102,7 +102,6 @@ export async function isModelAvailable(modelName: string): Promise<boolean> {
 export async function ensureModelAvailable(modelName: string): Promise<void> {
   // Check if model is already available
   if (await isModelAvailable(modelName)) {
-    console.log(`✅ Ollama model ${modelName} is already available`);
     return;
   }
 
@@ -208,6 +207,7 @@ export function createLazyOllamaProvider() {
         if (typeof originalValue === 'function' && typeof prop === 'string' && inferenceMethodNames.has(prop)) {
           return async (...args: unknown[]) => {
             await ensureModelAvailable(modelId);
+            console.log('ollama call', prop, args);
             return (originalValue as (...args: unknown[]) => Promise<unknown>).apply(target, args);
           };
         }
