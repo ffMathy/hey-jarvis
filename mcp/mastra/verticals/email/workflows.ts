@@ -63,11 +63,42 @@ const workflowStateSchema = z.object({
 });
 
 // Step 1: Search for unread emails
-const searchUnreadEmails = createToolStep({
+const searchUnreadEmails = createStep({
   id: 'search-unread-emails',
   description: 'Search for unread emails in the inbox',
-  tool: findEmails,
   stateSchema: workflowStateSchema,
+  inputSchema: z.object({}),
+  outputSchema: z.object({
+    emails: z.array(
+      z.object({
+        id: z.string(),
+        subject: z.string(),
+        bodyPreview: z.string(),
+        from: z.object({
+          name: z.string(),
+          address: z.string(),
+        }),
+        receivedDateTime: z.string(),
+        isRead: z.boolean(),
+        hasAttachments: z.boolean(),
+        isDraft: z.boolean(),
+      }),
+    ),
+    totalCount: z.number(),
+  }),
+  execute: async () => {
+    const result = await findEmails.execute({
+      folder: 'inbox',
+      limit: 50,
+      isRead: false,
+    });
+
+    if ('error' in result) {
+      throw new Error(`Failed to search emails: ${result.message}`);
+    }
+
+    return result;
+  },
 });
 
 // Step 2: Store emails in workflow state
@@ -246,7 +277,6 @@ export const checkForFormRepliesWorkflow = createWorkflow({
   inputSchema: workflowInputSchema,
   outputSchema: workflowOutputSchema,
 })
-  // @ts-expect-error - Mastra workflow chaining has complex generic constraints that conflict with strict TypeScript
   .then(searchUnreadEmails)
   .then(storeUnreadEmails)
   .then(processEmails)
@@ -588,7 +618,6 @@ export const checkForNewEmails = createWorkflow({
     message: z.string(),
   }),
 })
-  // @ts-expect-error - Mastra workflow chaining has complex generic constraints that conflict with strict TypeScript
   .then(searchNewEmailsForParent)
   .then(storeNewEmailsInParentState)
   .parallel([processFormReplies, registerNewEmailsStateChange])
