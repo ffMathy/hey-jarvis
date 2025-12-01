@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.19.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.18.0...mcp-v0.19.0) (2025-12-01)
+
+
+### Features
+
+* implement email state storage and enhance email processing workflows with persistent tracking ([fa4664c](https://github.com/ffMathy/hey-jarvis/commit/fa4664c94a850f8031d3d78fdacabb513bc7c368))
+
+
+### Bug Fixes
+
+* tests now pass ([f9d4778](https://github.com/ffMathy/hey-jarvis/commit/f9d47787b76c773bb766ea91e6482e8dd0f6d83e))
+* tests now pass ([#363](https://github.com/ffMathy/hey-jarvis/issues/363)) ([5d16d8c](https://github.com/ffMathy/hey-jarvis/commit/5d16d8c5775654bd1688d11a38cb57bb27c800d3))
+* typing issue ([e1f6b91](https://github.com/ffMathy/hey-jarvis/commit/e1f6b914c55282dc3b1e0cff4cbe2b3c3cbb342d))
+
 ## [0.18.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.17.0...mcp-v0.18.0) (2025-12-01)
 
 
