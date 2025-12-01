@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.16.2](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.16.1...mcp-v0.16.2) (2025-12-01)
+
+
+### Bug Fixes
+
+* resolve circular dependency and add missing opentelemetry package ([bc1a71f](https://github.com/ffMathy/hey-jarvis/commit/bc1a71ff8ae748c9ec52778670bd7b8ff39ae94a))
+* resolve circular dependency and add missing opentelemetry package ([#355](https://github.com/ffMathy/hey-jarvis/issues/355)) ([9bcd2c3](https://github.com/ffMathy/hey-jarvis/commit/9bcd2c3567c88ed075bb398b7418efb7a063274a))
+
 ## [0.16.1](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.16.0...mcp-v0.16.1) (2025-12-01)
 
 
