@@ -1,3 +1,4 @@
+import { getDistance } from 'geolib';
 import { z } from 'zod';
 import { createTool } from '../../utils/tool-factory.js';
 
@@ -419,6 +420,196 @@ export const getChangedDevicesSince = createTool({
   },
 });
 
+// Interface for user location data
+interface UserLocation {
+  userId: string;
+  userName: string;
+  state: string;
+  latitude: number | null;
+  longitude: number | null;
+  gpsAccuracy: number | null;
+  lastChanged: string;
+  source: string;
+  distancesFromZones: Array<{
+    zoneName: string;
+    zoneId: string;
+    distanceMeters: number | null;
+    isInZone: boolean;
+  }>;
+}
+
+// Interface for zone data
+interface ZoneData {
+  entityId: string;
+  friendlyName: string;
+  latitude: number;
+  longitude: number;
+  radius: number;
+}
+
+/**
+ * Tool to infer user locations from Home Assistant.
+ *
+ * This tool fetches the current locations of all users from Home Assistant by looking at
+ * person entities (which aggregate device trackers) and calculating their distances from
+ * all configured zones on the map.
+ */
+export const inferUserLocation = createTool({
+  id: 'inferUserLocation',
+  description:
+    'Fetch current user locations from Home Assistant. Returns all person entities with their GPS coordinates (if available), current zone/state, and distances from all configured zones. Use this to determine if users are home, at work, or elsewhere for location-based automations and notifications.',
+  inputSchema: z.object({
+    userName: z
+      .string()
+      .optional()
+      .describe('Optional: Filter to a specific user name. If not provided, returns all users.'),
+  }),
+  outputSchema: z.object({
+    users: z.array(
+      z.object({
+        userId: z.string(),
+        userName: z.string(),
+        state: z.string(),
+        latitude: z.number().nullable(),
+        longitude: z.number().nullable(),
+        gpsAccuracy: z.number().nullable(),
+        lastChanged: z.string(),
+        source: z.string(),
+        distancesFromZones: z.array(
+          z.object({
+            zoneName: z.string(),
+            zoneId: z.string(),
+            distanceMeters: z.number().nullable(),
+            isInZone: z.boolean(),
+          }),
+        ),
+      }),
+    ),
+    zones: z.array(
+      z.object({
+        entityId: z.string(),
+        friendlyName: z.string(),
+        latitude: z.number(),
+        longitude: z.number(),
+        radius: z.number(),
+      }),
+    ),
+    timestamp: z.string(),
+  }),
+  execute: async (inputData) => {
+    // Fetch all person entities and zones using a Jinja template
+    const template = `
+{%- set persons = states.person | list -%}
+{%- set zones_list = states.zone | list -%}
+{
+  "persons": [
+    {%- for p in persons -%}
+    {
+      "entity_id": "{{ p.entity_id }}",
+      "state": "{{ p.state }}",
+      "friendly_name": "{{ p.attributes.friendly_name | default(p.entity_id) }}",
+      "latitude": {{ p.attributes.latitude | default('null') }},
+      "longitude": {{ p.attributes.longitude | default('null') }},
+      "gps_accuracy": {{ p.attributes.gps_accuracy | default('null') }},
+      "source": "{{ p.attributes.source | default('') }}",
+      "last_changed": "{{ p.last_changed.isoformat() }}"
+    }{%- if not loop.last -%},{%- endif -%}
+    {%- endfor -%}
+  ],
+  "zones": [
+    {%- for z in zones_list -%}
+    {
+      "entity_id": "{{ z.entity_id }}",
+      "friendly_name": "{{ z.attributes.friendly_name | default(z.entity_id) }}",
+      "latitude": {{ z.attributes.latitude | default(0) }},
+      "longitude": {{ z.attributes.longitude | default(0) }},
+      "radius": {{ z.attributes.radius | default(100) }}
+    }{%- if not loop.last -%},{%- endif -%}
+    {%- endfor -%}
+  ]
+}
+    `
+      .split('\n')
+      .map((line) => line.trim())
+      .join('\n');
+
+    const response = await callHomeAssistantApi('template', 'POST', { template });
+    const data = typeof response === 'string' ? JSON.parse(response) : response;
+
+    const persons = data.persons || [];
+    const zones: ZoneData[] = data.zones || [];
+
+    // Calculate distances from each person to each zone
+    const users: UserLocation[] = persons
+      .filter((person: { friendly_name: string }) => {
+        if (!inputData.userName) return true;
+        return person.friendly_name.toLowerCase().includes(inputData.userName.toLowerCase());
+      })
+      .map(
+        (person: {
+          entity_id: string;
+          friendly_name: string;
+          state: string;
+          latitude: number | null;
+          longitude: number | null;
+          gps_accuracy: number | null;
+          source: string;
+          last_changed: string;
+        }) => {
+          const distancesFromZones = zones.map((zone) => {
+            let distanceMeters: number | null = null;
+            let isInZone = false;
+
+            if (person.latitude !== null && person.longitude !== null) {
+              distanceMeters = getDistance(
+                { latitude: person.latitude, longitude: person.longitude },
+                { latitude: zone.latitude, longitude: zone.longitude },
+              );
+
+              isInZone = distanceMeters <= zone.radius;
+            }
+
+            // Also check if the person's state matches the zone name
+            if (person.state.toLowerCase() === zone.friendlyName.toLowerCase()) {
+              isInZone = true;
+            }
+
+            return {
+              zoneName: zone.friendlyName,
+              zoneId: zone.entityId,
+              distanceMeters,
+              isInZone,
+            };
+          });
+
+          return {
+            userId: person.entity_id,
+            userName: person.friendly_name,
+            state: person.state,
+            latitude: person.latitude,
+            longitude: person.longitude,
+            gpsAccuracy: person.gps_accuracy,
+            lastChanged: person.last_changed,
+            source: person.source,
+            distancesFromZones,
+          };
+        },
+      );
+
+    return {
+      users,
+      zones: zones.map((z) => ({
+        entityId: z.entityId,
+        friendlyName: z.friendlyName,
+        latitude: z.latitude,
+        longitude: z.longitude,
+        radius: z.radius,
+      })),
+      timestamp: new Date().toISOString(),
+    };
+  },
+});
+
 // Export all tools together for convenience
 export const internetOfThingsTools = {
   callIoTService,
@@ -426,4 +617,5 @@ export const internetOfThingsTools = {
   getAllDevices,
   getAllServices,
   getChangedDevicesSince,
+  inferUserLocation,
 };

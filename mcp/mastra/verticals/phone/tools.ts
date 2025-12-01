@@ -1,8 +1,80 @@
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
+import twilio from 'twilio';
 import { z } from 'zod';
 import { createTool } from '../../utils/tool-factory.js';
 
 const ELEVENLABS_PHONE_NUMBER_ID = 'Q8MKRgesP6ZKPi4NMyKu';
+
+/**
+ * Tool to send a text message (SMS) via Twilio.
+ *
+ * This tool uses Twilio's official SDK to send SMS messages to phone numbers.
+ *
+ * Required environment variables:
+ * - HEY_JARVIS_TWILIO_ACCOUNT_SID: Your Twilio Account SID
+ * - HEY_JARVIS_TWILIO_AUTH_TOKEN: Your Twilio Auth Token
+ * - HEY_JARVIS_TWILIO_PHONE_NUMBER: The Twilio phone number to send from (in E.164 format)
+ */
+export const sendTextMessage = createTool({
+  id: 'sendTextMessage',
+  description:
+    'Send a text message (SMS) to a phone number using Twilio. Use this for non-urgent notifications when the user is away from home, or when a message does not require immediate attention.',
+  inputSchema: z.object({
+    phoneNumber: z
+      .string()
+      .describe(
+        'The phone number to send the SMS to in E.164 format (e.g., "+1234567890"). Must include country code.',
+      ),
+    message: z
+      .string()
+      .describe('The text message content to send. Should be concise (SMS has a 160 character limit per segment).'),
+  }),
+  outputSchema: z.object({
+    success: z.boolean(),
+    message: z.string(),
+    messageSid: z.string().optional(),
+  }),
+  execute: async (inputData) => {
+    try {
+      const { phoneNumber, message } = inputData;
+
+      const accountSid = process.env.HEY_JARVIS_TWILIO_ACCOUNT_SID;
+      const authToken = process.env.HEY_JARVIS_TWILIO_AUTH_TOKEN;
+      const fromNumber = process.env.HEY_JARVIS_TWILIO_PHONE_NUMBER;
+
+      if (!accountSid) {
+        throw new Error('Twilio Account SID not configured. Set HEY_JARVIS_TWILIO_ACCOUNT_SID environment variable.');
+      }
+
+      if (!authToken) {
+        throw new Error('Twilio Auth Token not configured. Set HEY_JARVIS_TWILIO_AUTH_TOKEN environment variable.');
+      }
+
+      if (!fromNumber) {
+        throw new Error('Twilio phone number not configured. Set HEY_JARVIS_TWILIO_PHONE_NUMBER environment variable.');
+      }
+
+      const client = twilio(accountSid, authToken);
+
+      const response = await client.messages.create({
+        body: message,
+        from: fromNumber,
+        to: phoneNumber,
+      });
+
+      return {
+        success: true,
+        message: `Text message sent successfully to ${phoneNumber}`,
+        messageSid: response.sid,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: `Error sending text message: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+  },
+});
 
 /**
  * Tool to initiate an outbound phone call via ElevenLabs Twilio integration.
@@ -91,4 +163,5 @@ export const initiatePhoneCall = createTool({
 
 export const phoneTools = {
   initiatePhoneCall,
+  sendTextMessage,
 };
