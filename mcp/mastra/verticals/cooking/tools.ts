@@ -149,7 +149,6 @@ export const getAllRecipes = createTool({
     fromDate: z.string().optional().describe('Optional from date filter'),
     amount: z.number().optional().describe('Optional maximum number of recipes to retrieve, or all recipes if not set'),
   }),
-  // Output schema is an array of recipes
   outputSchema: z
     .array(getRecipeById.outputSchema)
     .describe('Array of all recipes from Valdemarsro suitable for meal planning'),
