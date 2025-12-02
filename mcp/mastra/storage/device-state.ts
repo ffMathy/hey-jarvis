@@ -175,7 +175,7 @@ export class DeviceStateStorage {
       previousState.state !== state ||
       !isEqual(filteredPreviousAttributes, filteredCurrentAttributes);
 
-    // Always update the last_updated timestamp (store full attributes for reference)
+    // Store full attributes in database (filtered attrs only used for change detection above)
     await this.client.execute({
       sql: `
         INSERT INTO iot_device_states (entity_id, state, attributes, last_changed, last_updated)
