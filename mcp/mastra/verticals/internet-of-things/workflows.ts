@@ -64,11 +64,14 @@ const fetchRecentlyChangedDevices = createStep({
         });
       }
 
-      deviceMap.get(deviceId)!.entities.push({
-        id: item.entity_id,
-        newState: item.state,
-        lastChanged: new Date(item.last_changed * 1000).toISOString(),
-      });
+      const device = deviceMap.get(deviceId);
+      if (device) {
+        device.entities.push({
+          id: item.entity_id,
+          newState: item.state,
+          lastChanged: new Date(item.last_changed * 1000).toISOString(),
+        });
+      }
     }
 
     const devices = Array.from(deviceMap.values());
