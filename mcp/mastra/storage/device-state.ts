@@ -6,6 +6,7 @@
  */
 
 import { type Client, createClient } from '@libsql/client';
+import { isEqual } from 'lodash-es';
 
 export interface StoredDeviceState {
   entityId: string;
@@ -172,7 +173,7 @@ export class DeviceStateStorage {
     const stateChanged =
       !previousState ||
       previousState.state !== state ||
-      JSON.stringify(filteredPreviousAttributes) !== JSON.stringify(filteredCurrentAttributes);
+      !isEqual(filteredPreviousAttributes, filteredCurrentAttributes);
 
     // Always update the last_updated timestamp (store full attributes for reference)
     await this.client.execute({
