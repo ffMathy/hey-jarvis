@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.22.1](https://github.com/ffMathy/hey-jarvis/compare/root-v0.22.0...root-v0.22.1) (2025-12-02)
+
+
+### Bug Fixes
+
+* address code review comments for state change batcher ([065918d](https://github.com/ffMathy/hey-jarvis/commit/065918d7207eba3b34023ad84fcf184718316825))
+* correct Ollama tokens/sec metric and add state change batching ([#379](https://github.com/ffMathy/hey-jarvis/issues/379)) ([804a7b9](https://github.com/ffMathy/hey-jarvis/commit/804a7b9a23fa419eaf3bf1188e3204edd1ce1d72))
+* correct tokens per second metric to use total tokens ([ce72523](https://github.com/ffMathy/hey-jarvis/commit/ce725233f93c4cbcb18c77fbb4787fc34aa237de))
+
 ## [0.22.0](https://github.com/ffMathy/hey-jarvis/compare/root-v0.21.0...root-v0.22.0) (2025-12-02)
 
 
