@@ -57,11 +57,21 @@ async function createMastra() {
       getNextInstructionsWorkflow,
     },
     agents: agentsByName,
-    // Workaround for mastra CLI bundler bug: the bundler fails to properly optimize
-    // @mastra/core/evals/scoreTraces during the "Optimizing dependencies" step in Docker.
-    // Adding @mastra/core to externals bypasses this problematic optimization.
+    // Workaround for mastra CLI bundler bug: the bundler incorrectly resolves
+    // @mastra/core/evals/scoreTraces to @mastra/core/eval (singular) during the
+    // "Optimizing dependencies" step, causing "Cannot find module" errors in Docker.
+    // Adding @mastra/core, @mastra/evals and related paths to externals bypasses this issue.
+    // Note: This workaround is applied but may not fully work due to a bug where
+    // externals are only used in bundleExternals, not in captureDependenciesToOptimize.
     bundler: {
-      externals: ['@mastra/core'],
+      externals: [
+        '@mastra/core',
+        '@mastra/core/evals',
+        '@mastra/core/evals/scoreTraces',
+        '@mastra/evals',
+        '@mastra/evals/scorers/prebuilt',
+        '@mastra/evals/scorers/utils',
+      ],
     },
   });
 }
