@@ -151,7 +151,9 @@ Special features:
 - Use colors compatible with light/dark email themes
 - Include proper spacing between sections
 - Make HTML email-client compatible with inline styles
-- Write everything in Danish`,
+- Write everything in Danish
+
+IMPORTANT: The subject line must be plain text only - no HTML tags or formatting allowed. Only the body (htmlContent) should contain HTML.`,
     description: 'Specialized agent for formatting meal plans into HTML emails',
     tools: undefined,
   },
