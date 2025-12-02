@@ -45,12 +45,12 @@ export function initializeScheduler(): WorkflowScheduler {
     runOnStartup: true,
   });
 
-  // IoT device monitoring - every minute
-  // Polls Home Assistant for state changes in the last 60 seconds,
-  // matching the old n8n behavior. Filters out devices/entities with 'sensitive' label.
+  // IoT device monitoring - every 15 minutes
+  // Polls Home Assistant for state changes, matching the old n8n behavior.
+  // Filters out devices/entities with 'sensitive' label.
   scheduler.schedule({
     workflow: iotMonitoringWorkflow,
-    schedule: CronPatterns.EVERY_MINUTE,
+    schedule: CronPatterns.EVERY_15_MINUTES,
     inputData: {},
     runOnStartup: true,
   });
