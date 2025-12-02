@@ -6,7 +6,6 @@
  */
 
 import { type Client, createClient } from '@libsql/client';
-import { isEqual } from 'lodash-es';
 
 export interface StoredDeviceState {
   entityId: string;
@@ -23,56 +22,6 @@ export interface DeviceStateChange {
   previousAttributes: Record<string, unknown>;
   currentAttributes: Record<string, unknown>;
   changedAt: string;
-}
-
-/**
- * Attributes that change frequently but are not meaningful for state change detection.
- * These are filtered out to prevent excessive notifications.
- */
-const NOISY_ATTRIBUTES = new Set([
-  // GPS/Location attributes that change constantly
-  'latitude',
-  'longitude',
-  'gps_accuracy',
-  'altitude',
-  'speed',
-  'bearing',
-  'course',
-  'vertical_accuracy',
-  // Timestamp attributes
-  'last_seen',
-  'last_updated',
-  'last_changed',
-  'last_triggered',
-  // Battery/signal attributes that fluctuate
-  'battery_level',
-  'signal_strength',
-  'rssi',
-  'linkquality',
-  // Media player position that constantly updates
-  'media_position',
-  'media_position_updated_at',
-  // Other frequently changing attributes
-  'uptime',
-  'cpu_percent',
-  'memory_percent',
-  'memory_free',
-  'disk_free',
-  'temperature',
-]);
-
-/**
- * Filter out noisy attributes that shouldn't trigger state change notifications.
- * Returns a new object with only meaningful attributes for comparison.
- */
-function filterNoisyAttributes(attributes: Record<string, unknown>): Record<string, unknown> {
-  const filtered: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(attributes)) {
-    if (!NOISY_ATTRIBUTES.has(key.toLowerCase())) {
-      filtered[key] = value;
-    }
-  }
-  return filtered;
 }
 
 export class DeviceStateStorage {
@@ -165,17 +114,13 @@ export class DeviceStateStorage {
     const now = new Date().toISOString();
     const previousState = await this.getState(entityId);
 
-    // Filter out noisy attributes for comparison to reduce false positives
-    const filteredCurrentAttributes = filterNoisyAttributes(attributes);
-    const filteredPreviousAttributes = previousState ? filterNoisyAttributes(previousState.attributes) : {};
-
-    // Check if state actually changed (using filtered attributes for comparison)
+    // Check if state actually changed
     const stateChanged =
       !previousState ||
       previousState.state !== state ||
-      !isEqual(filteredPreviousAttributes, filteredCurrentAttributes);
+      JSON.stringify(previousState.attributes) !== JSON.stringify(attributes);
 
-    // Store full attributes in database (filtered attrs only used for change detection above)
+    // Always update the last_updated timestamp
     await this.client.execute({
       sql: `
         INSERT INTO iot_device_states (entity_id, state, attributes, last_changed, last_updated)
@@ -194,7 +139,7 @@ export class DeviceStateStorage {
       args: [entityId, state, JSON.stringify(attributes), lastChanged, now],
     });
 
-    // Return the change if state actually changed (only for meaningful changes)
+    // Return the change if state actually changed
     if (stateChanged && previousState) {
       return {
         entityId,

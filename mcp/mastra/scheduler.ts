@@ -12,10 +12,6 @@ import {
  *
  * This file defines all workflows that should run on recurring schedules.
  * Add new scheduled workflows here to enable automatic execution.
- *
- * Note: Intervals have been increased to reduce Ollama queue pressure.
- * Each workflow triggers LLM inference, so frequent scheduling can overwhelm
- * the local Ollama instance.
  */
 export function initializeScheduler(): WorkflowScheduler {
   const scheduler = new WorkflowScheduler(mastra, {
@@ -27,7 +23,7 @@ export function initializeScheduler(): WorkflowScheduler {
     },
   });
 
-  // Weather monitoring - every 2 hours (reduced from every hour)
+  // Weather monitoring - every 2 hours
   scheduler.schedule({
     workflow: weatherMonitoringWorkflow,
     schedule: CronPatterns.EVERY_2_HOURS,
@@ -41,7 +37,7 @@ export function initializeScheduler(): WorkflowScheduler {
     inputData: {},
   });
 
-  // Check for new emails - every hour (reduced from every 30 minutes)
+  // Check for new emails - every hour
   scheduler.schedule({
     workflow: checkForNewEmails,
     schedule: CronPatterns.EVERY_HOUR,
@@ -49,11 +45,12 @@ export function initializeScheduler(): WorkflowScheduler {
     runOnStartup: true,
   });
 
-  // IoT device monitoring - every 30 minutes (reduced from every 5 minutes)
-  // Note: Noisy attribute filtering in device-state.ts reduces false positives
+  // IoT device monitoring - every minute
+  // Polls Home Assistant for state changes in the last 60 seconds,
+  // matching the old n8n behavior. Filters out devices/entities with 'sensitive' label.
   scheduler.schedule({
     workflow: iotMonitoringWorkflow,
-    schedule: CronPatterns.EVERY_30_MINUTES,
+    schedule: CronPatterns.EVERY_MINUTE,
     inputData: {},
     runOnStartup: true,
   });
