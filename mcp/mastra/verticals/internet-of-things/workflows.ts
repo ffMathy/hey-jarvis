@@ -1,13 +1,24 @@
 import { z } from 'zod';
-import { type DeviceStateChange, getDeviceStateStorage } from '../../storage/index.js';
 import { createStep, createWorkflow } from '../../utils/workflow-factory.js';
 import { registerStateChange } from '../synapse/tools.js';
-import { getAllDevices } from './tools.js';
+import { getChangedDevicesSince } from './tools.js';
 
-// Fetch all device states from Home Assistant
-const fetchDeviceStates = createStep({
-  id: 'fetch-device-states',
-  description: 'Fetches all device states from Home Assistant',
+/**
+ * Label used to mark devices/entities that should be excluded from state change monitoring.
+ * This matches the old n8n behavior where 'sensitive' labeled items were filtered out.
+ */
+const SENSITIVE_LABEL = 'sensitive';
+
+/**
+ * Time window in seconds to look back for state changes.
+ * Set to 15 minutes (900 seconds) to match the scheduler interval.
+ */
+const STATE_CHANGE_WINDOW_SECONDS = 900;
+
+// Fetch recently changed device states from Home Assistant
+const fetchRecentlyChangedDevices = createStep({
+  id: 'fetch-recently-changed-devices',
+  description: 'Fetches devices that changed state in the last 15 minutes from Home Assistant',
   inputSchema: z.object({}),
   outputSchema: z.object({
     devices: z.array(
@@ -17,10 +28,8 @@ const fetchDeviceStates = createStep({
         entities: z.array(
           z.object({
             id: z.string(),
-            domain: z.string(),
-            state: z.string(),
-            attributes: z.record(z.unknown()),
-            last_changed: z.string(),
+            newState: z.string(),
+            lastChanged: z.string(),
           }),
         ),
       }),
@@ -28,85 +37,52 @@ const fetchDeviceStates = createStep({
     timestamp: z.string(),
   }),
   execute: async () => {
-    const result = await getAllDevices.execute({});
+    const result = await getChangedDevicesSince.execute({
+      sinceSeconds: STATE_CHANGE_WINDOW_SECONDS,
+    });
 
-    return {
-      devices: result.devices.map((device) => ({
-        id: device.id,
-        name: device.name,
-        entities: device.entities.map((entity) => ({
-          id: entity.id,
-          domain: entity.domain,
-          state: entity.state,
-          attributes: entity.attributes,
-          last_changed: entity.last_changed,
-        })),
-      })),
-      timestamp: new Date().toISOString(),
-    };
-  },
-});
+    // Group by device and filter out sensitive labels (matching old n8n behavior)
+    const deviceMap = new Map<
+      string,
+      { id: string; name: string; entities: Array<{ id: string; newState: string; lastChanged: string }> }
+    >();
 
-// Compare with stored states and detect changes
-const detectStateChanges = createStep({
-  id: 'detect-state-changes',
-  description: 'Compares current device states with stored states and detects changes',
-  inputSchema: z.object({
-    devices: z.array(
-      z.object({
-        id: z.string(),
-        name: z.string(),
-        entities: z.array(
-          z.object({
-            id: z.string(),
-            domain: z.string(),
-            state: z.string(),
-            attributes: z.record(z.unknown()),
-            last_changed: z.string(),
-          }),
-        ),
-      }),
-    ),
-    timestamp: z.string(),
-  }),
-  outputSchema: z.object({
-    changes: z.array(
-      z.object({
-        entityId: z.string(),
-        previousState: z.string(),
-        currentState: z.string(),
-        previousAttributes: z.record(z.unknown()),
-        currentAttributes: z.record(z.unknown()),
-        changedAt: z.string(),
-      }),
-    ),
-    totalEntities: z.number(),
-    timestamp: z.string(),
-  }),
-  execute: async ({ inputData }) => {
-    const storage = await getDeviceStateStorage();
+    for (const item of result.changed_devices) {
+      // Skip if device or entity has the sensitive label
+      if (item.device_label_ids?.includes(SENSITIVE_LABEL) || item.entity_label_ids?.includes(SENSITIVE_LABEL)) {
+        continue;
+      }
 
-    // Flatten all entities from all devices
-    const currentStates = inputData.devices.flatMap((device) =>
-      device.entities.map((entity) => ({
-        entityId: entity.id,
-        state: entity.state,
-        attributes: entity.attributes,
-        lastChanged: entity.last_changed,
-      })),
-    );
+      const deviceId = item.device_id || 'unknown';
+      const deviceName = item.device_name || 'Unknown Device';
 
-    // Update storage and get changes
-    const changes = await storage.updateStates(currentStates);
+      if (!deviceMap.has(deviceId)) {
+        deviceMap.set(deviceId, {
+          id: deviceId,
+          name: deviceName,
+          entities: [],
+        });
+      }
+
+      const device = deviceMap.get(deviceId);
+      if (device) {
+        device.entities.push({
+          id: item.entity_id,
+          newState: item.state,
+          lastChanged: new Date(item.last_changed * 1000).toISOString(),
+        });
+      }
+    }
+
+    const devices = Array.from(deviceMap.values());
 
     console.log(
-      `📊 IoT Monitoring: ${currentStates.length} entities tracked, ${changes.length} state change(s) detected`,
+      `📊 IoT Monitoring: ${result.total_changed} entities changed in last ${STATE_CHANGE_WINDOW_SECONDS}s, ${devices.length} non-sensitive device(s) with changes`,
     );
 
     return {
-      changes,
-      totalEntities: currentStates.length,
-      timestamp: inputData.timestamp,
+      devices,
+      timestamp: new Date().toISOString(),
     };
   },
 });
@@ -116,17 +92,19 @@ const triggerStateChangeNotifications = createStep({
   id: 'trigger-state-change-notifications',
   description: 'Triggers state change notifications for detected IoT device changes',
   inputSchema: z.object({
-    changes: z.array(
+    devices: z.array(
       z.object({
-        entityId: z.string(),
-        previousState: z.string(),
-        currentState: z.string(),
-        previousAttributes: z.record(z.unknown()),
-        currentAttributes: z.record(z.unknown()),
-        changedAt: z.string(),
+        id: z.string(),
+        name: z.string(),
+        entities: z.array(
+          z.object({
+            id: z.string(),
+            newState: z.string(),
+            lastChanged: z.string(),
+          }),
+        ),
       }),
     ),
-    totalEntities: z.number(),
     timestamp: z.string(),
   }),
   outputSchema: z.object({
@@ -135,36 +113,37 @@ const triggerStateChangeNotifications = createStep({
     timestamp: z.string(),
   }),
   execute: async ({ inputData }) => {
+    let changesProcessed = 0;
     let notificationsTriggered = 0;
 
-    for (const change of inputData.changes) {
-      try {
-        await registerStateChange.execute({
-          source: 'internet-of-things',
-          stateType: 'device_state_change',
-          stateData: {
-            entityId: change.entityId,
-            previousState: change.previousState,
-            currentState: change.currentState,
-            previousAttributes: change.previousAttributes,
-            currentAttributes: change.currentAttributes,
-            changedAt: change.changedAt,
-            detectedAt: inputData.timestamp,
-          },
-        });
+    for (const device of inputData.devices) {
+      for (const entity of device.entities) {
+        changesProcessed++;
+        try {
+          await registerStateChange.execute({
+            source: 'internet-of-things',
+            stateType: 'device_state_change',
+            stateData: {
+              deviceId: device.id,
+              deviceName: device.name,
+              entityId: entity.id,
+              newState: entity.newState,
+              lastChanged: entity.lastChanged,
+              detectedAt: inputData.timestamp,
+            },
+          });
 
-        notificationsTriggered++;
+          notificationsTriggered++;
 
-        console.log(
-          `🔔 State change registered: ${change.entityId} changed from "${change.previousState}" to "${change.currentState}"`,
-        );
-      } catch (error) {
-        console.error(`❌ Failed to register state change for ${change.entityId}:`, error);
+          console.log(`🔔 State change registered: ${entity.id} on ${device.name} changed to "${entity.newState}"`);
+        } catch (error) {
+          console.error(`❌ Failed to register state change for ${entity.id}:`, error);
+        }
       }
     }
 
     return {
-      changesProcessed: inputData.changes.length,
+      changesProcessed,
       notificationsTriggered,
       timestamp: inputData.timestamp,
     };
@@ -172,8 +151,9 @@ const triggerStateChangeNotifications = createStep({
 });
 
 // IoT Monitoring Workflow
-// Polls all device states, compares with stored states, detects changes,
-// and triggers the state change notification system
+// Uses Home Assistant's last_changed timestamp to detect recent state changes,
+// filters out sensitive devices/entities, and triggers state change notifications.
+// This matches the old n8n behavior of polling for changes in the last 60 seconds.
 export const iotMonitoringWorkflow = createWorkflow({
   id: 'iotMonitoringWorkflow',
   inputSchema: z.object({}),
@@ -183,7 +163,6 @@ export const iotMonitoringWorkflow = createWorkflow({
     timestamp: z.string(),
   }),
 })
-  .then(fetchDeviceStates)
-  .then(detectStateChanges)
+  .then(fetchRecentlyChangedDevices)
   .then(triggerStateChangeNotifications)
   .commit();

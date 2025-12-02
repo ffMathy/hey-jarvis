@@ -23,10 +23,10 @@ export function initializeScheduler(): WorkflowScheduler {
     },
   });
 
-  // Weather monitoring - every hour
+  // Weather monitoring - every 2 hours
   scheduler.schedule({
     workflow: weatherMonitoringWorkflow,
-    schedule: CronPatterns.EVERY_HOUR,
+    schedule: CronPatterns.EVERY_2_HOURS,
     inputData: {},
   });
 
@@ -37,18 +37,20 @@ export function initializeScheduler(): WorkflowScheduler {
     inputData: {},
   });
 
-  // Check for new emails - every 30 minutes
+  // Check for new emails - every hour
   scheduler.schedule({
     workflow: checkForNewEmails,
-    schedule: CronPatterns.EVERY_30_MINUTES,
+    schedule: CronPatterns.EVERY_HOUR,
     inputData: {},
     runOnStartup: true,
   });
 
-  // IoT device monitoring - every 5 minutes
+  // IoT device monitoring - every 15 minutes
+  // Polls Home Assistant for state changes, matching the old n8n behavior.
+  // Filters out devices/entities with 'sensitive' label.
   scheduler.schedule({
     workflow: iotMonitoringWorkflow,
-    schedule: CronPatterns.EVERY_5_MINUTES,
+    schedule: CronPatterns.EVERY_15_MINUTES,
     inputData: {},
     runOnStartup: true,
   });
