@@ -151,7 +151,9 @@ Special features:
 - Use colors compatible with light/dark email themes
 - Include proper spacing between sections
 - Make HTML email-client compatible with inline styles
-- Write everything in Danish`,
+- Write everything in Danish
+
+IMPORTANT: The subject line must be plain text only - no HTML tags or formatting allowed. Only the body (htmlContent) should contain HTML.`,
     description: 'Specialized agent for formatting meal plans into HTML emails',
     tools: undefined,
   },
@@ -160,7 +162,7 @@ Special features:
   }),
   outputSchema: z.object({
     htmlContent: z.string(),
-    subject: z.string(),
+    subject: z.string().describe('Plain text email subject line - no HTML allowed'),
     mealplan: mealPlanSchema,
   }),
   prompt: ({ inputData }) => {
@@ -168,7 +170,7 @@ Special features:
 
 ${JSON.stringify(inputData.mealplan, null, 2)}
 
-Return only the HTML content without any additional text or markdown.`;
+Return the HTML content for the email body, and a plain text subject line. Do not include any markdown or additional text.`;
   },
 });
 
