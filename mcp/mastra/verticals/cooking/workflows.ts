@@ -162,7 +162,7 @@ IMPORTANT: The subject line must be plain text only - no HTML tags or formatting
   }),
   outputSchema: z.object({
     htmlContent: z.string(),
-    subject: z.string(),
+    subject: z.string().describe('Plain text email subject line - no HTML allowed'),
     mealplan: mealPlanSchema,
   }),
   prompt: ({ inputData }) => {
