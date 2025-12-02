@@ -20,7 +20,9 @@ export const registerStateChange = createTool({
   }),
   outputSchema: z.object({
     registered: z.boolean(),
-    triggeredWorkflow: z.boolean(),
+    batched: z
+      .boolean()
+      .describe('True if the change is waiting in the batch queue, false if it was processed immediately'),
     message: z.string(),
   }),
   execute: async (inputData) => {
@@ -37,7 +39,7 @@ export const registerStateChange = createTool({
       const stats = stateChangeBatcher.getStats();
       return {
         registered: true,
-        triggeredWorkflow: stats.pendingCount === 0,
+        batched: stats.pendingCount > 0,
         message: `State change ${inputData.stateType} registered. Batch: ${stats.pendingCount} pending, ${stats.totalProcessed} processed`,
       };
     } catch (error) {
@@ -84,6 +86,7 @@ export const getStateChangeBatcherStats = createTool({
     batchesProcessed: z.number(),
     pendingCount: z.number(),
     isProcessing: z.boolean(),
+    droppedCount: z.number().describe('Number of state changes dropped after exceeding retry limit'),
   }),
   execute: async () => {
     return stateChangeBatcher.getStats();

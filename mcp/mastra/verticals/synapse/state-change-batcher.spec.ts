@@ -54,11 +54,13 @@ describe('StateChangeBatcher', () => {
     expect(stats).toHaveProperty('batchesProcessed');
     expect(stats).toHaveProperty('pendingCount');
     expect(stats).toHaveProperty('isProcessing');
+    expect(stats).toHaveProperty('droppedCount');
     expect(typeof stats.totalReceived).toBe('number');
     expect(typeof stats.totalProcessed).toBe('number');
     expect(typeof stats.batchesProcessed).toBe('number');
     expect(typeof stats.pendingCount).toBe('number');
     expect(typeof stats.isProcessing).toBe('boolean');
+    expect(typeof stats.droppedCount).toBe('number');
   });
 
   it('should increment totalReceived when adding state changes', async () => {

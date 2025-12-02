@@ -1,6 +1,10 @@
-import { z } from 'zod';
 import { createMemory } from '../../memory/index.js';
 import { getStateChangeReactorAgent } from './agent.js';
+
+/**
+ * Maximum number of retries for a failed batch before dropping changes
+ */
+const MAX_RETRY_ATTEMPTS = 3;
 
 /**
  * State Change data type
@@ -16,6 +20,7 @@ export interface StateChange {
  */
 interface PendingStateChange extends StateChange {
   timestamp: Date;
+  retryCount: number;
 }
 
 /**
@@ -37,6 +42,7 @@ export class StateChangeBatcher {
     totalReceived: 0,
     totalProcessed: 0,
     batchesProcessed: 0,
+    droppedCount: 0,
   };
 
   constructor(
@@ -55,6 +61,7 @@ export class StateChangeBatcher {
     this.pendingChanges.push({
       ...stateChange,
       timestamp: new Date(),
+      retryCount: 0,
     });
 
     console.log(`📦 [BATCHER] Batch size: ${this.pendingChanges.length}/${this.maxBatchSize}`);
@@ -125,11 +132,40 @@ export class StateChangeBatcher {
       );
     } catch (error) {
       console.error('❌ [BATCHER] Failed to process batch:', error);
-      // Re-queue failed changes for retry
-      this.pendingChanges = [...changesToProcess, ...this.pendingChanges];
-      this.resetTimer();
+      this.handleFailedBatch(changesToProcess);
     } finally {
       this.isProcessing = false;
+    }
+  }
+
+  /**
+   * Handle failed batch by re-queuing changes with retry limit
+   */
+  private handleFailedBatch(failedChanges: PendingStateChange[]): void {
+    const toRetry: PendingStateChange[] = [];
+    const toDrop: PendingStateChange[] = [];
+
+    for (const change of failedChanges) {
+      change.retryCount++;
+      if (change.retryCount < MAX_RETRY_ATTEMPTS) {
+        toRetry.push(change);
+      } else {
+        toDrop.push(change);
+      }
+    }
+
+    if (toDrop.length > 0) {
+      this.stats.droppedCount += toDrop.length;
+      console.error(`⚠️ [BATCHER] Dropping ${toDrop.length} state changes after ${MAX_RETRY_ATTEMPTS} retry attempts`);
+      for (const dropped of toDrop) {
+        console.error(`   Dropped: ${dropped.stateType} from ${dropped.source}`);
+      }
+    }
+
+    if (toRetry.length > 0) {
+      console.log(`🔄 [BATCHER] Re-queuing ${toRetry.length} changes for retry`);
+      this.pendingChanges = [...toRetry, ...this.pendingChanges];
+      this.resetTimer();
     }
   }
 
@@ -158,12 +194,9 @@ export class StateChangeBatcher {
   }
 
   /**
-   * Analyze all state changes together in a single LLM call
+   * Build the batch analysis prompt from state changes
    */
-  private async analyzeChanges(changes: PendingStateChange[]): Promise<void> {
-    const reactorAgent = await getStateChangeReactorAgent();
-
-    // Build a single prompt with all state changes
+  private buildBatchPrompt(changes: PendingStateChange[]): string {
     const changesDescription = changes
       .map(
         (change, index) =>
@@ -174,7 +207,7 @@ export class StateChangeBatcher {
       )
       .join('\n\n');
 
-    const batchPrompt = `Multiple state changes have been detected. Analyze them together for efficiency:
+    return `Multiple state changes have been detected. Analyze them together for efficiency:
 
 ${changesDescription}
 
@@ -184,6 +217,14 @@ For each state change, decide if the user should be notified or if any action is
 - Which ones are important enough to notify about?
 
 If multiple notifications are warranted, you can combine related ones into a single message where appropriate. Delegate to the Notification agent as needed.`;
+  }
+
+  /**
+   * Analyze all state changes together in a single LLM call
+   */
+  private async analyzeChanges(changes: PendingStateChange[]): Promise<void> {
+    const reactorAgent = await getStateChangeReactorAgent();
+    const batchPrompt = this.buildBatchPrompt(changes);
 
     try {
       const networkStream = await reactorAgent.network(batchPrompt);
@@ -204,6 +245,7 @@ If multiple notifications are warranted, you can combine related ones into a sin
     batchesProcessed: number;
     pendingCount: number;
     isProcessing: boolean;
+    droppedCount: number;
   } {
     return {
       ...this.stats,
