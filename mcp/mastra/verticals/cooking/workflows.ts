@@ -170,7 +170,7 @@ IMPORTANT: The subject line must be plain text only - no HTML tags or formatting
 
 ${JSON.stringify(inputData.mealplan, null, 2)}
 
-Return only the HTML content without any additional text or markdown.`;
+Return the HTML content for the email body, and a plain text subject line. Do not include any markdown or additional text.`;
   },
 });
 
