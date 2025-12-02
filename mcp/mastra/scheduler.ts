@@ -12,6 +12,10 @@ import {
  *
  * This file defines all workflows that should run on recurring schedules.
  * Add new scheduled workflows here to enable automatic execution.
+ *
+ * Note: Intervals have been increased to reduce Ollama queue pressure.
+ * Each workflow triggers LLM inference, so frequent scheduling can overwhelm
+ * the local Ollama instance.
  */
 export function initializeScheduler(): WorkflowScheduler {
   const scheduler = new WorkflowScheduler(mastra, {
@@ -23,10 +27,10 @@ export function initializeScheduler(): WorkflowScheduler {
     },
   });
 
-  // Weather monitoring - every hour
+  // Weather monitoring - every 2 hours (reduced from every hour)
   scheduler.schedule({
     workflow: weatherMonitoringWorkflow,
-    schedule: CronPatterns.EVERY_HOUR,
+    schedule: CronPatterns.EVERY_2_HOURS,
     inputData: {},
   });
 
@@ -37,18 +41,19 @@ export function initializeScheduler(): WorkflowScheduler {
     inputData: {},
   });
 
-  // Check for new emails - every 30 minutes
+  // Check for new emails - every hour (reduced from every 30 minutes)
   scheduler.schedule({
     workflow: checkForNewEmails,
-    schedule: CronPatterns.EVERY_30_MINUTES,
+    schedule: CronPatterns.EVERY_HOUR,
     inputData: {},
     runOnStartup: true,
   });
 
-  // IoT device monitoring - every 5 minutes
+  // IoT device monitoring - every 30 minutes (reduced from every 5 minutes)
+  // Note: Noisy attribute filtering in device-state.ts reduces false positives
   scheduler.schedule({
     workflow: iotMonitoringWorkflow,
-    schedule: CronPatterns.EVERY_5_MINUTES,
+    schedule: CronPatterns.EVERY_30_MINUTES,
     inputData: {},
     runOnStartup: true,
   });

@@ -234,6 +234,30 @@ interface QueueStats {
 }
 
 /**
+ * Extracts the full prompt from the request body for logging when requests are dropped.
+ * Unlike extractPromptPreview, this returns the complete prompt without truncation.
+ */
+function extractFullPrompt(init: RequestInit | undefined): string | null {
+  if (!init?.body || typeof init.body !== 'string') return null;
+
+  try {
+    const body = JSON.parse(init.body) as OllamaRequestBody;
+
+    if (body.prompt) {
+      return body.prompt;
+    }
+
+    if (body.messages && body.messages.length > 0) {
+      return body.messages.map((m) => `[${m.role}]: ${m.content}`).join('\n');
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+/**
  * Queue for serial processing of Ollama inference requests.
  * Processes one request at a time and drops requests when the queue is full.
  */
@@ -251,6 +275,13 @@ class OllamaQueue {
       this.stats.droppedCount++;
       const errorMessage = `Queue full (${MAX_QUEUE_LENGTH} pending). Request dropped. Total dropped: ${this.stats.droppedCount}`;
       console.error(`⚠️ [OLLAMA QUEUE] ${errorMessage}`);
+
+      // Log the full prompt without truncation for debugging
+      const fullPrompt = extractFullPrompt(init);
+      if (fullPrompt) {
+        console.error(`⚠️ [OLLAMA QUEUE] Dropped request full prompt:\n${fullPrompt}`);
+      }
+
       throw new Error(errorMessage);
     }
 
