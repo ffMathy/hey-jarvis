@@ -153,8 +153,8 @@ function extractTokenMetrics(responseBody: OllamaInferenceResponse | null, durat
   const totalTokens = inputTokens !== null || outputTokens !== null ? (inputTokens ?? 0) + (outputTokens ?? 0) : null;
 
   let tokensPerSecond: number | null = null;
-  if (outputTokens !== null && durationMs > 0) {
-    tokensPerSecond = Math.round((outputTokens / durationMs) * 1000 * 10) / 10;
+  if (totalTokens !== null && durationMs > 0) {
+    tokensPerSecond = Math.round((totalTokens / durationMs) * 1000 * 10) / 10;
   }
 
   return { inputTokens, outputTokens, totalTokens, tokensPerSecond };
