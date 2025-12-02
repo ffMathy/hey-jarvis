@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.22.2](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.22.1...mcp-v0.22.2) (2025-12-02)
+
+
+### Bug Fixes
+
+* better local testing of cooking ([4547cda](https://github.com/ffMathy/hey-jarvis/commit/4547cdadb8cba4e625f2b4c19deac118534f8afe))
+* better local testing of cooking ([#382](https://github.com/ffMathy/hey-jarvis/issues/382)) ([37b4c99](https://github.com/ffMathy/hey-jarvis/commit/37b4c9992023d8242d3e232222005e539bf87288))
+
 ## [0.22.1](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.22.0...mcp-v0.22.1) (2025-12-02)
 
 
