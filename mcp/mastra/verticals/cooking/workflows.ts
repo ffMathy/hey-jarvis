@@ -73,6 +73,9 @@ export const generateMealPlanWorkflow = createWorkflow({
       description: 'Fetches all recipes for meal planning',
       stateSchema: generateMealPlanStateSchema,
       tool: getAllRecipes,
+      inputOverrides: {
+        amount: process.env.IS_DEVCONTAINER ? 10 : undefined,
+      },
     }),
   )
   .then(

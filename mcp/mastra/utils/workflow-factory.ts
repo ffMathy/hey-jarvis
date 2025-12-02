@@ -285,6 +285,7 @@ export function createToolStep<
     execute: (inputData: z.infer<TToolInput>, context?: any) => Promise<z.infer<TToolOutput>>;
   };
   stateSchema?: TStateSchema;
+  inputOverrides?: z.infer<TToolInput>;
 }) {
   const inputSchema = config.tool.inputSchema;
 
@@ -295,7 +296,13 @@ export function createToolStep<
     outputSchema: config.tool.outputSchema,
     stateSchema: config.stateSchema,
     execute: async (params) => {
-      return await config.tool.execute(params.inputData, params.mastra);
+      return await config.tool.execute(
+        {
+          ...params.inputData,
+          ...(config.inputOverrides ?? {}),
+        },
+        params.mastra,
+      );
     },
   });
 }
