@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.22.0](https://github.com/ffMathy/hey-jarvis/compare/root-v0.21.0...root-v0.22.0) (2025-12-02)
+
+
+### Features
+
+* **mcp:** optimize Ollama queue overflow handling and reduce IoT monitoring frequency ([902e71f](https://github.com/ffMathy/hey-jarvis/commit/902e71f39c8bc0dd752786cb264f10e857501073))
+
+
+### Bug Fixes
+
+* disable mastra dev due to bundler bug causing module resolution error ([8eb8e67](https://github.com/ffMathy/hey-jarvis/commit/8eb8e67445ba6d8e844102214561b42368355eb9))
+* disable mastra dev due to bundler bug causing module resolution error ([#375](https://github.com/ffMathy/hey-jarvis/issues/375)) ([4f930e8](https://github.com/ffMathy/hey-jarvis/commit/4f930e8b37b2d942cf705c85f25eaf912d10bea4))
+* **mcp:** change IoT monitoring interval to every 15 minutes ([1152d04](https://github.com/ffMathy/hey-jarvis/commit/1152d04cb9cc33d4409b37c935c1535996d770b4))
+* **mcp:** replace non-null assertion with safe access pattern ([c1624af](https://github.com/ffMathy/hey-jarvis/commit/c1624af3ee81e5532af781f21b2ba7f7c769a194))
+* remove TODO placeholder from supervisord comment ([2ef4a01](https://github.com/ffMathy/hey-jarvis/commit/2ef4a01f158405d6191ddc29e759d41581b6ba7c))
+
 ## [0.21.0](https://github.com/ffMathy/hey-jarvis/compare/root-v0.20.0...root-v0.21.0) (2025-12-01)
 
 
