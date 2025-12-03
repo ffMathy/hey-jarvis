@@ -1,7 +1,9 @@
 // Utils exports
 export { createAgent } from './agent-factory.js';
 export {
+  GEMMA_MODEL,
   GITHUB_MODELS_DEFAULT_MODEL,
+  gemmaModel,
   getEquivalentGitHubModel,
   getGitHubModelsProvider,
   getModel,

@@ -1,15 +1,15 @@
 import { z } from 'zod';
-import { ollamaModel } from '../../utils/ollama-provider.js';
+import { gemmaModel } from '../../utils/github-models-provider.js';
 import { createAgentStep, createStep, createWorkflow } from '../../utils/workflow-factory.js';
 import { registerStateChange } from '../synapse/tools.js';
 import { weatherTools } from './tools.js';
 
-// Agent-as-step for scheduled weather check (uses local Qwen3 via Ollama for cost-efficiency)
+// Agent-as-step for scheduled weather check (uses Google's Gemma 3 for cost-efficiency)
 const scheduledWeatherCheck = createAgentStep({
   id: 'scheduled-weather-check',
   description: 'Checks weather for Aarhus every hour',
   agentConfig: {
-    model: ollamaModel,
+    model: gemmaModel,
     id: 'weather',
     name: 'Weather',
     instructions: `You are a weather agent which can provide weather insights via tools (current weather information and 5-day future prognosises for certain locations).

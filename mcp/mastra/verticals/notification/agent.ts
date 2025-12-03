@@ -1,5 +1,5 @@
 import { createAgent } from '../../utils/agent-factory.js';
-import { ollamaModel } from '../../utils/ollama-provider.js';
+import { gemmaModel } from '../../utils/github-models-provider.js';
 import { inferUserLocation } from '../internet-of-things/tools.js';
 import { initiatePhoneCall, sendTextMessage } from '../phone/tools.js';
 import { notificationTools } from './tools.js';
@@ -17,7 +17,7 @@ let notificationAgent: Awaited<ReturnType<typeof createAgent>> | null = null;
  * - Text messages via Twilio (when user is away, non-urgent)
  * - Phone calls via ElevenLabs/Twilio (when user is away, urgent)
  *
- * Uses a local Qwen3 model via Ollama for cost-efficiency.
+ * Uses Google's Gemma 3 model for cost-efficiency.
  */
 export async function getNotificationAgent() {
   if (notificationAgent) {
@@ -25,7 +25,7 @@ export async function getNotificationAgent() {
   }
 
   notificationAgent = await createAgent({
-    model: ollamaModel,
+    model: gemmaModel,
     id: 'notification',
     name: 'Notification',
     description: 'Sends notifications to users via the most appropriate channel based on their location and urgency.',

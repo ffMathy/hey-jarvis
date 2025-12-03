@@ -1,5 +1,5 @@
 import { createAgent } from '../../utils/agent-factory.js';
-import { ollamaModel } from '../../utils/ollama-provider.js';
+import { gemmaModel } from '../../utils/github-models-provider.js';
 import { getNotificationAgent } from '../notification/agent.js';
 
 /**
@@ -11,7 +11,7 @@ import { getNotificationAgent } from '../notification/agent.js';
  * Uses working memory to track user preferences, habits, and context for making informed decisions.
  * Note: Working memory is enabled by default via createAgent factory.
  *
- * Uses a local Qwen3 model via Ollama for cost-efficiency in scheduled/automated workflows.
+ * Uses Google's Gemma 3 model for cost-efficiency in scheduled/automated workflows.
  *
  * Decision responsibilities:
  * - Analyze incoming state changes against user preferences and context
@@ -24,7 +24,7 @@ import { getNotificationAgent } from '../notification/agent.js';
 export async function getStateChangeReactorAgent() {
   // createAgent factory provides memory with working memory enabled by default
   return createAgent({
-    model: ollamaModel,
+    model: gemmaModel,
     id: 'stateChangeReactor',
     name: 'StateChangeReactor',
     instructions: `You are the State Change Reactor - the central decision-maker for the Hey Jarvis smart home system.

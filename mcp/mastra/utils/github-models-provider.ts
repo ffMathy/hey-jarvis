@@ -2,6 +2,28 @@ import { createOpenAI } from '@ai-sdk/openai';
 import { google } from './google-provider.js';
 
 /**
+ * Default Gemma 3 model for scheduled/automated workflows.
+ * Uses Gemma 3 with 4 billion parameters for a good balance of capability and speed.
+ * This is a free model via Google AI API (same API key as Gemini).
+ *
+ * Available Gemma 3 models:
+ * - gemma-3-27b-it (27B params - most capable, slower)
+ * - gemma-3-12b-it (12B params)
+ * - gemma-3-4b-it (4B params - good balance)
+ * - gemma-3-1b-it (1B params - fastest, less capable)
+ *
+ * See: https://ai.google.dev/gemini-api/docs/pricing#gemma-3
+ */
+export const GEMMA_MODEL = 'gemma-3-4b-it';
+
+/**
+ * Pre-configured Gemma 3 model instance for use in agents and workflows.
+ * This is the recommended model for scheduled/automated tasks.
+ * Uses the Google AI API which is free for Gemma 3 models.
+ */
+export const gemmaModel = google(GEMMA_MODEL);
+
+/**
  * Creates a GitHub Models provider instance for use in CI/testing environments.
  *
  * GitHub Models uses an OpenAI-compatible API endpoint at models.inference.ai.azure.com.
