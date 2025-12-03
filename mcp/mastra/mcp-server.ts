@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import type { Step, Workflow } from '@mastra/core/workflows';
+import type { Workflow } from '@mastra/core/workflows';
 import { MCPServer } from '@mastra/mcp';
 import type { NextFunction, Request, Response } from 'express';
 import express from 'express';
@@ -14,18 +14,7 @@ import { getNextInstructionsWorkflow, routePromptWorkflow } from './verticals/ro
 // Re-export for cross-project imports
 export { getPublicAgents };
 
-// Type for any step - satisfies the Workflow's TSteps constraint
-type AnyStep = Step<string, z.ZodObject<z.ZodRawShape>, z.ZodType, z.ZodType, z.ZodType, z.ZodType>;
-
-// Type alias for workflows - uses Pick to extract the properties we need
-type WorkflowLike = Pick<
-  Workflow<unknown, AnyStep[], string, z.ZodObject<z.ZodRawShape>, z.ZodType, z.ZodType, z.ZodType>,
-  'id' | 'description' | 'inputSchema' | 'outputSchema' | 'createRun'
-> & {
-  name?: string;
-};
-
-function createSimplifiedWorkflowTool(workflow: WorkflowLike) {
+function createSimplifiedWorkflowTool<TWorkflow extends Workflow>(workflow: TWorkflow) {
   const workflowName = workflow.name ?? workflow.id;
   return createTool({
     id: workflowName,

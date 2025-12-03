@@ -1,23 +1,7 @@
-import type { Step, Workflow } from '@mastra/core/workflows';
+import type { Workflow } from '@mastra/core/workflows';
 import type { NextFunction, Request, Response, Router } from 'express';
-import type { z } from 'zod';
+import type { ZodError } from 'zod';
 import { shoppingListWorkflow } from '../shopping/workflows.js';
-
-/**
- * Type for any workflow step - satisfies the Workflow's TSteps constraint
- */
-type AnyStep = Step<string, z.ZodObject<z.ZodRawShape>, z.ZodType, z.ZodType, z.ZodType, z.ZodType>;
-
-/**
- * Type alias for workflows that can be converted to API endpoints.
- * Uses Pick to extract only the properties needed for API handling.
- */
-type WorkflowLike = Pick<
-  Workflow<unknown, AnyStep[], string, z.ZodObject<z.ZodRawShape>, z.ZodType, z.ZodType, z.ZodType>,
-  'id' | 'description' | 'inputSchema' | 'outputSchema' | 'createRun'
-> & {
-  name?: string;
-};
 
 /**
  * Standard API response structure for workflow endpoints.
@@ -27,6 +11,32 @@ interface WorkflowApiResponse<T = unknown> {
   message: string;
   data?: T;
   error?: string;
+}
+
+/**
+ * Result type from workflow execution
+ */
+interface WorkflowResult {
+  status: string;
+  result?: unknown;
+  error?: Error;
+}
+
+/**
+ * Formats Zod validation errors into a human-readable string.
+ */
+function formatValidationErrors(zodError: ZodError): string {
+  return zodError.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ');
+}
+
+/**
+ * Extracts an error message from a workflow result.
+ */
+function extractWorkflowError(result: WorkflowResult): string {
+  if ('error' in result && result.error instanceof Error) {
+    return result.error.message;
+  }
+  return `Workflow failed with status ${result.status}`;
 }
 
 /**
@@ -42,7 +52,7 @@ interface WorkflowApiResponse<T = unknown> {
  * router.post('/api/shopping-list', handler);
  * ```
  */
-export function createWorkflowApiHandler(workflow: WorkflowLike) {
+export function createWorkflowApiHandler<TWorkflow extends Workflow>(workflow: TWorkflow) {
   const workflowName = workflow.name ?? workflow.id;
 
   return async (req: Request, res: Response, next: NextFunction) => {
@@ -53,10 +63,10 @@ export function createWorkflowApiHandler(workflow: WorkflowLike) {
         const parseResult = inputSchema.safeParse(req.body);
 
         if (!parseResult.success) {
-          const errorMessages = parseResult.error.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ');
+          const errorMessage = formatValidationErrors(parseResult.error);
           res.status(400).json({
             success: false,
-            message: `Validation failed: ${errorMessages}`,
+            message: `Validation failed: ${errorMessage}`,
           } satisfies WorkflowApiResponse);
           return;
         }
@@ -70,10 +80,7 @@ export function createWorkflowApiHandler(workflow: WorkflowLike) {
       });
 
       if (result.status !== 'success') {
-        const errorMessage =
-          'error' in result && result.error instanceof Error
-            ? result.error.message
-            : `Workflow failed with status ${result.status}`;
+        const errorMessage = extractWorkflowError(result);
         console.error(`[API] ${workflowName} workflow failed: ${errorMessage}`);
         res.status(500).json({
           success: false,
@@ -100,11 +107,11 @@ export function createWorkflowApiHandler(workflow: WorkflowLike) {
 /**
  * Configuration for registering a workflow as an API endpoint.
  */
-interface WorkflowApiConfig {
+interface WorkflowApiConfig<TWorkflow extends Workflow> {
   /** The URL path for the API endpoint (e.g., '/api/shopping-list') */
   path: string;
   /** The workflow to expose at this endpoint */
-  workflow: WorkflowLike;
+  workflow: TWorkflow;
   /** Optional description for logging purposes */
   description?: string;
 }
@@ -114,22 +121,27 @@ interface WorkflowApiConfig {
  *
  * @param router - The Express router to register the route on
  * @param config - Configuration for the workflow API endpoint
+ * @returns The registered path for tracking purposes
  *
  * @example
  * ```typescript
- * registerWorkflowApi(router, {
+ * const path = registerWorkflowApi(router, {
  *   path: '/api/shopping-list',
  *   workflow: shoppingListWorkflow,
  *   description: 'Add items to the shopping list',
  * });
  * ```
  */
-export function registerWorkflowApi(router: Router, config: WorkflowApiConfig) {
+export function registerWorkflowApi<TWorkflow extends Workflow>(
+  router: Router,
+  config: WorkflowApiConfig<TWorkflow>,
+): string {
   const handler = createWorkflowApiHandler(config.workflow);
   router.post(config.path, handler);
   console.log(
     `[API] Registered workflow endpoint: POST ${config.path} -> ${config.workflow.name ?? config.workflow.id}`,
   );
+  return config.path;
 }
 
 /**
@@ -143,16 +155,17 @@ export function registerApiRoutes(router: Router): string[] {
   const registeredPaths: string[] = [];
 
   // Shopping List API - triggers shoppingListWorkflow
-  registerWorkflowApi(router, {
-    path: '/api/shopping-list',
-    workflow: shoppingListWorkflow,
-    description: 'Add items to the shopping list using natural language',
-  });
-  registeredPaths.push('/api/shopping-list');
+  registeredPaths.push(
+    registerWorkflowApi(router, {
+      path: '/api/shopping-list',
+      workflow: shoppingListWorkflow,
+      description: 'Add items to the shopping list using natural language',
+    }),
+  );
 
   // Add more workflow APIs here as needed:
-  // registerWorkflowApi(router, { path: '/api/weather', workflow: weatherWorkflow });
-  // registerWorkflowApi(router, { path: '/api/meal-plan', workflow: mealPlanWorkflow });
+  // registeredPaths.push(registerWorkflowApi(router, { path: '/api/weather', workflow: weatherWorkflow }));
+  // registeredPaths.push(registerWorkflowApi(router, { path: '/api/meal-plan', workflow: mealPlanWorkflow }));
 
   return registeredPaths;
 }
