@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.22.3](https://github.com/ffMathy/hey-jarvis/compare/root-v0.22.2...root-v0.22.3) (2025-12-02)
+
+
+### Bug Fixes
+
+* **cooking:** add plain text description to subject field in outputSchema ([7e95a60](https://github.com/ffMathy/hey-jarvis/commit/7e95a603c14947f11d1bfded9c9b4f383313eac3))
+* **cooking:** clarify prompt to return HTML body and plain text subject ([473ca0e](https://github.com/ffMathy/hey-jarvis/commit/473ca0eadf1b3862f088943b64ed04876a05df08))
+* **cooking:** ensure meal plan email subject is plain text only ([c716d28](https://github.com/ffMathy/hey-jarvis/commit/c716d28276db3f7fd43fb9dc6f270d6b21bedb27))
+* **cooking:** ensure meal plan email subject is plain text only ([#384](https://github.com/ffMathy/hey-jarvis/issues/384)) ([7909336](https://github.com/ffMathy/hey-jarvis/commit/7909336441070af72e2c623504e0e1e3a8bdc080))
+
 ## [0.22.2](https://github.com/ffMathy/hey-jarvis/compare/root-v0.22.1...root-v0.22.2) (2025-12-02)
 
 
