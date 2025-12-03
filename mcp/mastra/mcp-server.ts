@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import type { Step, Workflow } from '@mastra/core/workflows';
+import type { Workflow } from '@mastra/core/workflows';
 import { MCPServer } from '@mastra/mcp';
 import type { NextFunction, Request, Response } from 'express';
 import express from 'express';
@@ -8,24 +8,13 @@ import { expressjwt } from 'express-jwt';
 import { z } from 'zod';
 import { initializeScheduler } from './scheduler.js';
 import { createTool } from './utils/tool-factory.js';
-import { getPublicAgents } from './verticals/index.js';
+import { getPublicAgents, registerApiRoutes } from './verticals/index.js';
 import { getNextInstructionsWorkflow, routePromptWorkflow } from './verticals/routing/workflows.js';
 
 // Re-export for cross-project imports
 export { getPublicAgents };
 
-// Type for any step - satisfies the Workflow's TSteps constraint
-type AnyStep = Step<string, z.ZodObject<z.ZodRawShape>, z.ZodType, z.ZodType, z.ZodType, z.ZodType>;
-
-// Type alias for workflows - uses Pick to extract the properties we need
-type WorkflowLike = Pick<
-  Workflow<unknown, AnyStep[], string, z.ZodObject<z.ZodRawShape>, z.ZodType, z.ZodType, z.ZodType>,
-  'id' | 'description' | 'inputSchema' | 'outputSchema' | 'createRun'
-> & {
-  name?: string;
-};
-
-function createSimplifiedWorkflowTool(workflow: WorkflowLike) {
+function createSimplifiedWorkflowTool<TWorkflow extends Workflow>(workflow: TWorkflow) {
   const workflowName = workflow.name ?? workflow.id;
   return createTool({
     id: workflowName,
@@ -80,6 +69,9 @@ export async function startMcpServer() {
 
   const app = express();
 
+  // JSON body parsing middleware for API routes
+  app.use(express.json());
+
   // Request logging middleware
   app.use((req, res, next) => {
     const startTime = Date.now();
@@ -102,6 +94,20 @@ export async function startMcpServer() {
   app.get('/health', (_req, res) => {
     res.json({ status: 'healthy' });
   });
+
+  // Create a router for JWT-protected API routes
+  const apiRouter = express.Router();
+  apiRouter.use(
+    expressjwt({
+      secret: jwtSecret,
+      algorithms: ['HS256'],
+      credentialsRequired: true,
+    }),
+  );
+
+  // Register API routes (shopping list, etc.) and get the registered paths
+  const registeredApiPaths = registerApiRoutes(apiRouter);
+  app.use(apiRouter);
 
   // MCP endpoint - handles both GET (for initial connection) and POST (for messages)
   app.all(
@@ -155,6 +161,9 @@ export async function startMcpServer() {
 
   console.log(`JWT authentication enabled for ${mcpPath} with secret length: ${jwtSecret.length} characters`);
   console.log(`J.A.R.V.I.S. MCP Server listening on http://${host}:${port}${mcpPath}`);
+  for (const apiPath of registeredApiPaths) {
+    console.log(`API endpoint available: POST http://${host}:${port}${apiPath}`);
+  }
 
   // Initialize and start workflow scheduler
   const scheduler = initializeScheduler();

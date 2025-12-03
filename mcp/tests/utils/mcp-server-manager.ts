@@ -26,9 +26,30 @@ async function killProcessOnPort(port: number): Promise<void> {
 }
 
 /**
- * Checks if the MCP server is already running
+ * Checks if the server is healthy via the health endpoint
+ */
+async function isServerHealthy(): Promise<boolean> {
+  try {
+    const response = await fetch(`http://localhost:${MCP_PORT}/health`, {
+      signal: AbortSignal.timeout(2000),
+    });
+    return response.ok;
+  } catch (_error) {
+    return false;
+  }
+}
+
+/**
+ * Checks if the MCP server is already running.
+ * First checks the health endpoint, then attempts full MCP client connection.
  */
 export async function isMcpServerRunning(args?: AuthenticatedMcpClientArgs): Promise<boolean> {
+  // First, quick health check to see if server is up
+  if (!(await isServerHealthy())) {
+    return false;
+  }
+
+  // Then try the full MCP client connection
   let client: MCPClient | null = null;
   try {
     client = await createAuthenticatedMcpClient(args);
@@ -77,6 +98,8 @@ export async function startMcpServerForTestingPurposes(): Promise<void> {
   mcpServerProcess.unref();
 
   // Wait for server to be ready with exponential backoff
+  // Server needs time to initialize: load environment, start Express, initialize scheduler
+  const maxRetries = 30;
   await retryWithBackoff(
     async () => {
       if (await isMcpServerRunning()) {
@@ -88,11 +111,12 @@ export async function startMcpServerForTestingPurposes(): Promise<void> {
       throw new Error('MCP server not ready yet');
     },
     {
-      maxRetries: 5,
-      initialDelay: 1000,
-      backoffMultiplier: 5,
+      maxRetries,
+      initialDelay: 2000,
+      maxDelay: 5000,
+      backoffMultiplier: 1.5,
       onRetry: (_error, attempt, _delayMs) => {
-        console.log(`🔍 Checking MCP server status (attempt ${attempt}/30)...`);
+        console.log(`🔍 Checking MCP server status (attempt ${attempt}/${maxRetries})...`);
       },
     },
   );
