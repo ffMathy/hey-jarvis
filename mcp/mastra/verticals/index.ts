@@ -10,6 +10,7 @@ import { getWeatherAgent } from './weather/agent.js';
 import { getWebResearchAgent } from './web-research/agent.js';
 
 // Main verticals exports
+export * from './api/index.js';
 export * from './calendar/index.js';
 export * from './coding/index.js';
 export * from './commute/index.js';
