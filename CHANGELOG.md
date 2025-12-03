@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.23.0](https://github.com/ffMathy/hey-jarvis/compare/root-v0.22.3...root-v0.23.0) (2025-12-03)
+
+
+### Features
+
+* **mcp:** add REST API endpoints for workflow invocation ([#387](https://github.com/ffMathy/hey-jarvis/issues/387)) ([8893863](https://github.com/ffMathy/hey-jarvis/commit/889386345f91447e588592b7bc8345a3b0f256ea))
+* **mcp:** add shopping list API endpoint with Zod validation ([f6de36b](https://github.com/ffMathy/hey-jarvis/commit/f6de36bb5d237365e5f63276294a09a9c7c01daa))
+
+
+### Bug Fixes
+
+* **mcp:** improve MCP server startup reliability for tests ([4b9431a](https://github.com/ffMathy/hey-jarvis/commit/4b9431ac90bb4adc7ab68e191a761d7c1eb9a442))
+
 ## [0.22.3](https://github.com/ffMathy/hey-jarvis/compare/root-v0.22.2...root-v0.22.3) (2025-12-02)
 
 

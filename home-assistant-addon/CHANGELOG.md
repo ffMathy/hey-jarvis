@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v0.22.3...home-assistant-addon-v0.23.0) (2025-12-03)
+
+
+### Miscellaneous Chores
+
+* **home-assistant-addon:** Synchronize mcp versions
+
 ## [0.22.3](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v0.22.2...home-assistant-addon-v0.22.3) (2025-12-02)
 
 
