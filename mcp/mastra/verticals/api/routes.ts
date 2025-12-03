@@ -1,51 +1,72 @@
+import type { Step, Workflow } from '@mastra/core/workflows';
 import type { NextFunction, Request, Response, Router } from 'express';
-import { z } from 'zod';
+import type { z } from 'zod';
 import { shoppingListWorkflow } from '../shopping/workflows.js';
-import { addToShoppingListSchema, type ShoppingListResponse } from './schemas.js';
 
 /**
- * Registers all API routes on the provided Express router.
- * These routes are intended to be called from Home Assistant via REST calls.
- *
- * @param router - The Express router to register routes on
+ * Type for any workflow step - satisfies the Workflow's TSteps constraint
  */
-export function registerApiRoutes(router: Router) {
-  /**
-   * POST /api/shopping-list
-   * Adds items to the shopping list using natural language.
-   *
-   * Request body:
-   * {
-   *   "prompt": "Add 2 liters of milk and 500g of cheese"
-   * }
-   *
-   * Response:
-   * {
-   *   "success": true,
-   *   "message": "Successfully processed shopping list request",
-   *   "itemsProcessed": 2
-   * }
-   */
-  router.post('/api/shopping-list', async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const parseResult = addToShoppingListSchema.safeParse(req.body);
+type AnyStep = Step<string, z.ZodObject<z.ZodRawShape>, z.ZodType, z.ZodType, z.ZodType, z.ZodType>;
 
-      if (!parseResult.success) {
-        const errorMessages = parseResult.error.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ');
-        res.status(400).json({
-          success: false,
-          message: `Validation failed: ${errorMessages}`,
-        } satisfies ShoppingListResponse);
-        return;
+/**
+ * Type alias for workflows that can be converted to API endpoints.
+ * Uses Pick to extract only the properties needed for API handling.
+ */
+type WorkflowLike = Pick<
+  Workflow<unknown, AnyStep[], string, z.ZodObject<z.ZodRawShape>, z.ZodType, z.ZodType, z.ZodType>,
+  'id' | 'description' | 'inputSchema' | 'outputSchema' | 'createRun'
+> & {
+  name?: string;
+};
+
+/**
+ * Standard API response structure for workflow endpoints.
+ */
+interface WorkflowApiResponse<T = unknown> {
+  success: boolean;
+  message: string;
+  data?: T;
+  error?: string;
+}
+
+/**
+ * Creates an Express request handler that validates input using the workflow's
+ * input schema and executes the workflow.
+ *
+ * @param workflow - The Mastra workflow to expose as an API endpoint
+ * @returns Express middleware function that handles the workflow execution
+ *
+ * @example
+ * ```typescript
+ * const handler = createWorkflowApiHandler(shoppingListWorkflow);
+ * router.post('/api/shopping-list', handler);
+ * ```
+ */
+export function createWorkflowApiHandler(workflow: WorkflowLike) {
+  const workflowName = workflow.name ?? workflow.id;
+
+  return async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const inputSchema = workflow.inputSchema;
+
+      if (inputSchema) {
+        const parseResult = inputSchema.safeParse(req.body);
+
+        if (!parseResult.success) {
+          const errorMessages = parseResult.error.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ');
+          res.status(400).json({
+            success: false,
+            message: `Validation failed: ${errorMessages}`,
+          } satisfies WorkflowApiResponse);
+          return;
+        }
       }
 
-      const { prompt } = parseResult.data;
+      console.log(`[API] ${workflowName} request received`);
 
-      console.log(`[API] Shopping list request received: ${prompt}`);
-
-      const run = await shoppingListWorkflow.createRun();
+      const run = await workflow.createRun();
       const result = await run.start({
-        inputData: { prompt },
+        inputData: req.body,
       });
 
       if (result.status !== 'success') {
@@ -53,25 +74,85 @@ export function registerApiRoutes(router: Router) {
           'error' in result && result.error instanceof Error
             ? result.error.message
             : `Workflow failed with status ${result.status}`;
-        console.error(`[API] Shopping list workflow failed: ${errorMessage}`);
+        console.error(`[API] ${workflowName} workflow failed: ${errorMessage}`);
         res.status(500).json({
           success: false,
-          message: `Failed to process shopping list: ${errorMessage}`,
-        } satisfies ShoppingListResponse);
+          message: `Failed to execute ${workflowName}`,
+          error: errorMessage,
+        } satisfies WorkflowApiResponse);
         return;
       }
 
-      console.log('[API] Shopping list workflow completed successfully');
+      console.log(`[API] ${workflowName} workflow completed successfully`);
 
-      const workflowResult = result.result as ShoppingListResponse | undefined;
       res.json({
-        success: workflowResult?.success ?? true,
-        message: workflowResult?.message ?? 'Shopping list request processed successfully',
-        itemsProcessed: workflowResult?.itemsProcessed,
-      } satisfies ShoppingListResponse);
+        success: true,
+        message: `${workflowName} completed successfully`,
+        data: result.result,
+      } satisfies WorkflowApiResponse);
     } catch (error) {
-      console.error('[API] Unexpected error in shopping list endpoint:', error);
+      console.error(`[API] Unexpected error in ${workflowName} endpoint:`, error);
       next(error);
     }
+  };
+}
+
+/**
+ * Configuration for registering a workflow as an API endpoint.
+ */
+interface WorkflowApiConfig {
+  /** The URL path for the API endpoint (e.g., '/api/shopping-list') */
+  path: string;
+  /** The workflow to expose at this endpoint */
+  workflow: WorkflowLike;
+  /** Optional description for logging purposes */
+  description?: string;
+}
+
+/**
+ * Registers a workflow as a POST API endpoint on the provided router.
+ *
+ * @param router - The Express router to register the route on
+ * @param config - Configuration for the workflow API endpoint
+ *
+ * @example
+ * ```typescript
+ * registerWorkflowApi(router, {
+ *   path: '/api/shopping-list',
+ *   workflow: shoppingListWorkflow,
+ *   description: 'Add items to the shopping list',
+ * });
+ * ```
+ */
+export function registerWorkflowApi(router: Router, config: WorkflowApiConfig) {
+  const handler = createWorkflowApiHandler(config.workflow);
+  router.post(config.path, handler);
+  console.log(
+    `[API] Registered workflow endpoint: POST ${config.path} -> ${config.workflow.name ?? config.workflow.id}`,
+  );
+}
+
+/**
+ * Registers all API routes on the provided Express router.
+ * These routes are intended to be called from Home Assistant via REST calls.
+ *
+ * @param router - The Express router to register routes on
+ * @returns Array of registered API paths for logging purposes
+ */
+export function registerApiRoutes(router: Router): string[] {
+  const registeredPaths: string[] = [];
+
+  // Shopping List API - triggers shoppingListWorkflow
+  registerWorkflowApi(router, {
+    path: '/api/shopping-list',
+    workflow: shoppingListWorkflow,
+    description: 'Add items to the shopping list using natural language',
   });
+  registeredPaths.push('/api/shopping-list');
+
+  // Add more workflow APIs here as needed:
+  // registerWorkflowApi(router, { path: '/api/weather', workflow: weatherWorkflow });
+  // registerWorkflowApi(router, { path: '/api/meal-plan', workflow: mealPlanWorkflow });
+
+  return registeredPaths;
 }

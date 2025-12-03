@@ -116,8 +116,8 @@ export async function startMcpServer() {
     }),
   );
 
-  // Register API routes (shopping list, etc.)
-  registerApiRoutes(apiRouter);
+  // Register API routes (shopping list, etc.) and get the registered paths
+  const registeredApiPaths = registerApiRoutes(apiRouter);
   app.use(apiRouter);
 
   // MCP endpoint - handles both GET (for initial connection) and POST (for messages)
@@ -172,7 +172,9 @@ export async function startMcpServer() {
 
   console.log(`JWT authentication enabled for ${mcpPath} with secret length: ${jwtSecret.length} characters`);
   console.log(`J.A.R.V.I.S. MCP Server listening on http://${host}:${port}${mcpPath}`);
-  console.log(`API endpoint available: POST http://${host}:${port}/api/shopping-list`);
+  for (const apiPath of registeredApiPaths) {
+    console.log(`API endpoint available: POST http://${host}:${port}${apiPath}`);
+  }
 
   // Initialize and start workflow scheduler
   const scheduler = initializeScheduler();
