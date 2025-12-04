@@ -69,9 +69,9 @@ export async function startMcpServer() {
 
   const app = express();
 
-  // JSON body parsing middleware for API routes (exclude MCP endpoint which reads raw body)
+  // JSON body parsing middleware for API routes (exclude MCP endpoint and subpaths which read raw body)
   app.use((req, res, next) => {
-    if (req.path === mcpPath) {
+    if (req.path === mcpPath || req.path.startsWith(`${mcpPath}/`)) {
       next();
     } else {
       express.json()(req, res, next);
