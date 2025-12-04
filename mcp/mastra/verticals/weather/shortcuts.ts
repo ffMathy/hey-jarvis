@@ -8,6 +8,23 @@ import { inferUserLocation } from '../internet-of-things/tools.js';
  * its own domain-specific interface.
  */
 
+interface UserLocationInfo {
+  userId: string;
+  userName: string;
+  state: string;
+  latitude: number | null;
+  longitude: number | null;
+  gpsAccuracy: number | null;
+  lastChanged: string;
+  source: string;
+  distancesFromZones: Array<{
+    zoneName: string;
+    zoneId: string;
+    distanceMeters: number | null;
+    isInZone: boolean;
+  }>;
+}
+
 /**
  * Get the user's current location for weather-related queries.
  * This shortcut uses the IoT vertical's inferUserLocation tool to determine
@@ -61,7 +78,7 @@ export const getUserCurrentLocation = createTool({
       };
     }
 
-    const mapUserToLocation = (user: (typeof locationResult.users)[0]) => {
+    const mapUserToLocation = (user: UserLocationInfo) => {
       const currentZone = user.distancesFromZones.find((zone) => zone.isInZone);
       return {
         userName: user.userName,

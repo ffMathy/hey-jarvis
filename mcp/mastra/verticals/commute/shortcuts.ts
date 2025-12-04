@@ -8,6 +8,43 @@ import { getAllDevices } from '../internet-of-things/tools.js';
  * its own domain-specific interface.
  */
 
+const CAR_DEVICE_KEYWORDS = [
+  'car',
+  'vehicle',
+  'auto',
+  'tesla',
+  'bmw',
+  'audi',
+  'mercedes',
+  'volvo',
+  'ford',
+  'toyota',
+  'honda',
+  'nissan',
+  'hyundai',
+  'kia',
+  'chevrolet',
+  'volkswagen',
+  'porsche',
+  'lexus',
+  'mazda',
+  'subaru',
+  'jeep',
+  'rivian',
+  'lucid',
+  'polestar',
+];
+
+function safeGetNumber(attributes: Record<string, unknown>, key: string): number | undefined {
+  const value = attributes[key];
+  return typeof value === 'number' ? value : undefined;
+}
+
+function safeGetString(attributes: Record<string, unknown>, key: string): string | undefined {
+  const value = attributes[key];
+  return typeof value === 'string' ? value : undefined;
+}
+
 /**
  * Get the current navigation destination from a car's infotainment system.
  * This shortcut uses the IoT vertical's getAllDevices tool to query
@@ -39,7 +76,6 @@ export const getCarNavigationDestination = createTool({
   execute: async (inputData) => {
     const devicesResult = await getAllDevices.execute({ domain: 'device_tracker' });
 
-    const carKeywords = ['car', 'vehicle', 'auto', 'tesla', 'bmw', 'audi', 'mercedes', 'volvo', 'ford', 'toyota'];
     const carDevices = devicesResult.devices.filter((device) => {
       const deviceNameLower = device.name.toLowerCase();
 
@@ -47,7 +83,7 @@ export const getCarNavigationDestination = createTool({
         return deviceNameLower.includes(inputData.carDeviceName.toLowerCase());
       }
 
-      return carKeywords.some((keyword) => deviceNameLower.includes(keyword));
+      return CAR_DEVICE_KEYWORDS.some((keyword) => deviceNameLower.includes(keyword));
     });
 
     if (carDevices.length === 0) {
@@ -79,8 +115,8 @@ export const getCarNavigationDestination = createTool({
         navigationState: 'no_active_navigation',
         destination: locationEntity
           ? {
-              latitude: locationEntity.attributes.latitude as number | undefined,
-              longitude: locationEntity.attributes.longitude as number | undefined,
+              latitude: safeGetNumber(locationEntity.attributes, 'latitude'),
+              longitude: safeGetNumber(locationEntity.attributes, 'longitude'),
             }
           : undefined,
         message: `Found car "${carDevice.name}" but no active navigation destination is set. Current location may be available.`,
@@ -92,8 +128,8 @@ export const getCarNavigationDestination = createTool({
       carName: carDevice.name,
       destination: {
         address: navigationEntity.state !== 'unknown' ? navigationEntity.state : undefined,
-        latitude: navigationEntity.attributes.destination_latitude as number | undefined,
-        longitude: navigationEntity.attributes.destination_longitude as number | undefined,
+        latitude: safeGetNumber(navigationEntity.attributes, 'destination_latitude'),
+        longitude: safeGetNumber(navigationEntity.attributes, 'destination_longitude'),
       },
       navigationState: 'active',
       message: `Found navigation destination for "${carDevice.name}"`,
