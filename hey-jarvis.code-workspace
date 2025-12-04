@@ -131,6 +131,22 @@
       "**/tmp/**": true,
       "**/coverage/**": true
     },
+    "files.associations": {
+      "**/.vscode/*.json": "jsonc",
+      "**/home-assistant-voice-firmware/**/*.yaml": "yaml"
+    },
+    // ESPHome YAML settings - allows ESPHome-specific YAML tags without false positive errors
+    "yaml.customTags": [
+      "!secret scalar",
+      "!lambda scalar",
+      "!extend scalar",
+      "!remove scalar",
+      "!include_dir_named scalar",
+      "!include_dir_list scalar",
+      "!include_dir_merge_list scalar",
+      "!include_dir_merge_named scalar",
+      "!include scalar"
+    ],
     "chat.edits2.enabled": true,
     "chat.useChatSessionsForCloudButton": true,
     "inlineChat.enableV2": true,
@@ -161,7 +177,10 @@
       "ms-python.isort",
       "bradlc.vscode-tailwindcss",
       "esbenp.prettier-vscode",
-      "ms-vscode.vscode-typescript-next"
+      "ms-vscode.vscode-typescript-next",
+      "redhat.vscode-yaml",
+      "esphome.esphome-vscode",
+      "editorconfig.editorconfig"
     ]
   },
   "tasks": {

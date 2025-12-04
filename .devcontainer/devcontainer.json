@@ -41,7 +41,10 @@
         "1Password.op-vscode",
         "github.vscode-github-actions",
         "GitHub.copilot",
-        "GitHub.copilot-chat"
+        "GitHub.copilot-chat",
+        "redhat.vscode-yaml",
+        "esphome.esphome-vscode",
+        "editorconfig.editorconfig"
       ],
       "settings": {
         //don't put settings here - instead, put them in hey-jarvis.code-workspace in the root of the repo
