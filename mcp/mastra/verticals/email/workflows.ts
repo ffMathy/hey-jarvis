@@ -4,6 +4,24 @@ import { registerStateChange } from '../synapse/tools.js';
 import { findNewEmailsSinceLastCheck, updateLastSeenEmail } from './tools.js';
 
 /**
+ * Regex pattern to extract workflow ID from email subjects.
+ * Matches: [WF-{workflowId}]
+ * Example: "Re: Form Request [WF-abc123]: Please approve..."
+ */
+const WORKFLOW_ID_REGEX = /\[WF-([^\]]+)\]/;
+
+/**
+ * Creates an empty form reply processing result.
+ * Used for early returns when there are no emails to process.
+ */
+const createEmptyFormReplyResult = () => ({
+  emailsProcessed: 0,
+  formRepliesFound: 0,
+  workflowsResumed: 0,
+  errors: [] as string[],
+});
+
+/**
  * Shared Email Schema
  *
  * Common email object schema used across all email workflows.
@@ -238,18 +256,16 @@ const processFormReplies = createStep({
 
     if (newEmails.length === 0) {
       console.log('⏭️  No emails to process for form replies');
-      return { emailsProcessed: 0, formRepliesFound: 0, workflowsResumed: 0, errors: [] };
+      return createEmptyFormReplyResult();
     }
 
     console.log(`🔍 Processing ${newEmails.length} email(s) for form replies...`);
-
-    const workflowIdRegex = /\[WF-([^\]]+)\]/;
 
     for (const email of newEmails) {
       try {
         emailsProcessed++;
 
-        const match = email.subject.match(workflowIdRegex);
+        const match = email.subject.match(WORKFLOW_ID_REGEX);
         if (!match) {
           continue;
         }
@@ -367,8 +383,7 @@ const formatFormRepliesOutput = createStep({
   execute: async (params) => {
     const emails = params.state.newEmails ?? [];
 
-    const workflowIdRegex = /\[WF-([^\]]+)\]/;
-    const formRepliesCount = emails.filter((email) => workflowIdRegex.test(email.subject)).length;
+    const formRepliesCount = emails.filter((email) => WORKFLOW_ID_REGEX.test(email.subject)).length;
 
     return {
       emailsFound: emails.length,
