@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { createStep, createWorkflow } from '../../utils/workflow-factory.js';
 import { registerStateChange } from '../synapse/tools.js';
 import { findEmails, findNewEmailsSinceLastCheck, updateLastSeenEmail } from './tools.js';
+import { processEmailTriggers } from './triggers.js';
 
 /**
  * Check for Form Replies Workflow
@@ -463,7 +464,7 @@ const registerNewEmailsStateChange = createStep({
   }),
   outputSchema: z.object({
     registered: z.boolean(),
-    triggeredWorkflow: z.boolean(),
+    batched: z.boolean(),
     message: z.string(),
   }),
   execute: async ({ state }) => {
@@ -503,6 +504,56 @@ const registerNewEmailsStateChange = createStep({
   },
 });
 
+// Step 4b: Process email triggers
+const processEmailTriggersStep = createStep({
+  id: 'process-email-triggers',
+  description: 'Process emails against registered email triggers',
+  stateSchema: parentWorkflowStateSchema,
+  inputSchema: z.object({
+    emailCount: z.number(),
+  }),
+  outputSchema: z.object({
+    triggersProcessed: z.number(),
+    triggersMatched: z.number(),
+    matchedTriggerIds: z.array(z.string()),
+  }),
+  execute: async ({ state }) => {
+    const emails = state.newEmails ?? [];
+
+    if (emails.length === 0) {
+      return {
+        triggersProcessed: 0,
+        triggersMatched: 0,
+        matchedTriggerIds: [],
+      };
+    }
+
+    console.log(`📧 Processing ${emails.length} email(s) against registered triggers...`);
+
+    const allMatchedIds: string[] = [];
+
+    for (const email of emails) {
+      const matchedIds = await processEmailTriggers({
+        id: email.id,
+        subject: email.subject,
+        bodyPreview: email.bodyPreview,
+        from: email.from,
+        receivedDateTime: email.receivedDateTime,
+      });
+
+      allMatchedIds.push(...matchedIds);
+    }
+
+    console.log(`📧 Triggers matched: ${allMatchedIds.length} for ${emails.length} email(s)`);
+
+    return {
+      triggersProcessed: emails.length,
+      triggersMatched: allMatchedIds.length,
+      matchedTriggerIds: allMatchedIds,
+    };
+  },
+});
+
 // Step 5: Update last seen email state (after parallel processing is done)
 const updateLastSeenEmailStep = createStep({
   id: 'update-last-seen-email',
@@ -516,8 +567,13 @@ const updateLastSeenEmailStep = createStep({
     }),
     'register-new-emails-state-change': z.object({
       registered: z.boolean(),
-      triggeredWorkflow: z.boolean(),
+      batched: z.boolean(),
       message: z.string(),
+    }),
+    'process-email-triggers': z.object({
+      triggersProcessed: z.number(),
+      triggersMatched: z.number(),
+      matchedTriggerIds: z.array(z.string()),
     }),
   }),
   outputSchema: z.object({
@@ -620,7 +676,7 @@ export const checkForNewEmails = createWorkflow({
 })
   .then(searchNewEmailsForParent)
   .then(storeNewEmailsInParentState)
-  .parallel([processFormReplies, registerNewEmailsStateChange])
+  .parallel([processFormReplies, registerNewEmailsStateChange, processEmailTriggersStep])
   .then(updateLastSeenEmailStep)
   .then(formatParentOutput)
   .commit();
