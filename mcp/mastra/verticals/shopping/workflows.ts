@@ -4,7 +4,10 @@ import { getCurrentCartContents, shoppingTools } from './tools.js';
 
 // Schema for shopping list input
 const shoppingListInputSchema = z.object({
-  prompt: z.string().describe('The user request for adding/removing items from the shopping list'),
+  prompt: z
+    .string()
+    .min(1, 'Prompt is required')
+    .describe('The user request for adding/removing items from the shopping list'),
 });
 
 // Schema for extracted product information

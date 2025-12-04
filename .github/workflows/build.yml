@@ -53,6 +53,7 @@ jobs:
     permissions:
       contents: read
       packages: read
+      models: read
 
     steps:
       - name: Free Disk Space (Ubuntu)
