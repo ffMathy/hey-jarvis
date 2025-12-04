@@ -503,22 +503,15 @@ const registerNewEmailsStateChange = createStep({
   },
 });
 
-// Step 5: Update last seen email state (after parallel processing is done)
+// Step 5: Update last seen email state (after form replies processing is done)
 const updateLastSeenEmailStep = createStep({
   id: 'update-last-seen-email',
   description: 'Update the last seen email state after processing',
   stateSchema: parentWorkflowStateSchema,
   inputSchema: z.object({
-    'process-form-replies': z.object({
-      emailsProcessed: z.number(),
-      workflowsResumed: z.number(),
-      errors: z.array(z.string()),
-    }),
-    'register-new-emails-state-change': z.object({
-      registered: z.boolean(),
-      triggeredWorkflow: z.boolean(),
-      message: z.string(),
-    }),
+    emailsProcessed: z.number(),
+    workflowsResumed: z.number(),
+    errors: z.array(z.string()),
   }),
   outputSchema: z.object({
     success: z.boolean(),
@@ -557,7 +550,6 @@ const formatParentOutput = createStep({
   }),
   outputSchema: z.object({
     emailsFound: z.number(),
-    stateChangeRegistered: z.boolean(),
     lastSeenEmailUpdated: z.boolean(),
     message: z.string(),
   }),
@@ -567,7 +559,6 @@ const formatParentOutput = createStep({
 
     return {
       emailsFound: emails.length,
-      stateChangeRegistered: true,
       lastSeenEmailUpdated: updateResult.success && updateResult.newLastSeenId !== '',
       message:
         emails.length === 0
@@ -578,31 +569,32 @@ const formatParentOutput = createStep({
 });
 
 /**
- * Check for New Emails Workflow
+ * Check for New Emails Workflow (Form Replies Detection)
  *
  * Parent workflow that orchestrates:
  * 1. Email discovery (find NEW emails since last check using persistent storage)
  * 2. Form reply processing (via checkForFormRepliesWorkflow)
- * 3. State change registration (for notification system)
- * 4. Update last seen email state (to avoid reprocessing on next run)
+ * 3. Update last seen email state (to avoid reprocessing on next run)
  *
  * This workflow ensures all new emails are:
  * - Processed for form replies (resume suspended workflows)
- * - Registered with the notification system for potential user alerts
  * - Tracked so they won't be processed again on the next run
  *
  * The workflow uses persistent storage (email_last_seen table) to track
  * which emails have already been processed, ensuring each email is only
  * handled once even if it remains unread.
  *
- * Scheduled to run every 5 minutes via the workflow scheduler.
+ * Scheduled to run every minute via the workflow scheduler for quick form reply detection.
+ *
+ * Note: State change registration (for notification system) is handled by
+ * the separate emailStateChangeNotificationWorkflow which runs hourly.
  *
  * Usage:
  * ```typescript
  * // Scheduled execution (via scheduler.ts)
  * scheduler.schedule({
  *   workflowId: 'checkForNewEmails',
- *   schedule: CronPatterns.EVERY_5_MINUTES,
+ *   schedule: CronPatterns.EVERY_MINUTE,
  *   inputData: {},
  * });
  * ```
@@ -613,14 +605,101 @@ export const checkForNewEmails = createWorkflow({
   inputSchema: z.object({}),
   outputSchema: z.object({
     emailsFound: z.number(),
-    stateChangeRegistered: z.boolean(),
     lastSeenEmailUpdated: z.boolean(),
     message: z.string(),
   }),
 })
   .then(searchNewEmailsForParent)
   .then(storeNewEmailsInParentState)
-  .parallel([processFormReplies, registerNewEmailsStateChange])
+  .then(processFormReplies)
   .then(updateLastSeenEmailStep)
   .then(formatParentOutput)
+  .commit();
+
+/**
+ * Email State Change Notification Workflow
+ *
+ * Separate workflow that handles state change registration for new emails.
+ * This workflow runs hourly to trigger the state reactor/notification system.
+ *
+ * The workflow:
+ * 1. Searches for new emails since last check
+ * 2. Stores emails in workflow state
+ * 3. Registers the state change with the notification system
+ *
+ * This separation allows form reply detection to run every minute (for quick
+ * response to workflow emails) while the state reactor only processes
+ * email notifications hourly (to avoid overwhelming the notification system).
+ *
+ * Usage:
+ * ```typescript
+ * scheduler.schedule({
+ *   workflowId: 'emailStateChangeNotificationWorkflow',
+ *   schedule: CronPatterns.EVERY_HOUR,
+ *   inputData: {},
+ * });
+ * ```
+ */
+
+// Step for state change notification workflow - register state change and return output
+const registerAndFormatStateChange = createStep({
+  id: 'register-and-format-state-change',
+  description: 'Register new emails as state change and format output',
+  stateSchema: parentWorkflowStateSchema,
+  inputSchema: z.object({
+    emailCount: z.number(),
+  }),
+  outputSchema: z.object({
+    registered: z.boolean(),
+    triggeredWorkflow: z.boolean(),
+    message: z.string(),
+  }),
+  execute: async ({ state }) => {
+    const emails = state.newEmails ?? [];
+    const stateChangeData =
+      emails.length === 0
+        ? {
+            source: 'email',
+            stateType: 'no_new_emails',
+            stateData: {
+              timestamp: new Date().toISOString(),
+            },
+          }
+        : {
+            source: 'email',
+            stateType: 'new_emails_received',
+            stateData: {
+              emailCount: emails.length,
+              emails: emails.map((email) => ({
+                subject: email.subject,
+                from: email.from.address,
+                receivedDateTime: email.receivedDateTime,
+              })),
+              timestamp: new Date().toISOString(),
+            },
+          };
+
+    const result = await registerStateChange.execute(stateChangeData);
+
+    if ('error' in result) {
+      throw new Error(`Failed to register state change: ${result.message}`);
+    }
+
+    return result;
+  },
+});
+
+export const emailStateChangeNotificationWorkflow = createWorkflow({
+  id: 'emailStateChangeNotificationWorkflow',
+  stateSchema: parentWorkflowStateSchema,
+  inputSchema: z.object({}),
+  outputSchema: z.object({
+    registered: z.boolean(),
+    triggeredWorkflow: z.boolean(),
+    message: z.string(),
+  }),
+})
+  .then(searchNewEmailsForParent)
+  .then(storeNewEmailsInParentState)
+  .then(registerAndFormatStateChange)
   .commit();

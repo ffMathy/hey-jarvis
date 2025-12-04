@@ -2,6 +2,7 @@ import { mastra } from './index.js';
 import { CronPatterns, WorkflowScheduler } from './utils/workflow-scheduler.js';
 import {
   checkForNewEmails,
+  emailStateChangeNotificationWorkflow,
   iotMonitoringWorkflow,
   weatherMonitoringWorkflow,
   weeklyMealPlanningWorkflow,
@@ -19,14 +20,13 @@ export function initializeScheduler(): WorkflowScheduler {
     onError: (error, workflowId) => {
       console.error(`\n🚨 Scheduled workflow error: ${workflowId}`);
       console.error(`   ${error.message}`);
-      // Future: Could integrate with error reporting processor
     },
   });
 
-  // Weather monitoring - every 2 hours
+  // Weather monitoring - every 3 hours
   scheduler.schedule({
     workflow: weatherMonitoringWorkflow,
-    schedule: CronPatterns.EVERY_2_HOURS,
+    schedule: CronPatterns.EVERY_3_HOURS,
     inputData: {},
   });
 
@@ -37,20 +37,29 @@ export function initializeScheduler(): WorkflowScheduler {
     inputData: {},
   });
 
-  // Check for new emails - every hour
+  // Check for new emails (form reply detection) - every minute
+  // Quick detection of form replies for resuming suspended workflows
   scheduler.schedule({
     workflow: checkForNewEmails,
-    schedule: CronPatterns.EVERY_HOUR,
+    schedule: CronPatterns.EVERY_MINUTE,
     inputData: {},
     runOnStartup: true,
   });
 
-  // IoT device monitoring - every 15 minutes
+  // Email state change notification - every hour
+  // Triggers the state reactor for new emails (separated from form reply detection)
+  scheduler.schedule({
+    workflow: emailStateChangeNotificationWorkflow,
+    schedule: CronPatterns.EVERY_HOUR,
+    inputData: {},
+  });
+
+  // IoT device monitoring - every 3 hours
   // Polls Home Assistant for state changes, matching the old n8n behavior.
   // Filters out devices/entities with 'sensitive' label.
   scheduler.schedule({
     workflow: iotMonitoringWorkflow,
-    schedule: CronPatterns.EVERY_15_MINUTES,
+    schedule: CronPatterns.EVERY_3_HOURS,
     inputData: {},
     runOnStartup: true,
   });
