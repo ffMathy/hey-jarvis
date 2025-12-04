@@ -327,6 +327,15 @@ Control IoT devices and get user locations via their phones.`,
 
       const userQuery = 'Please tell me what the weather is like in New York City today';
 
+      // Helper to detect unnecessary location tasks in the DAG
+      const hasUnnecessaryLocationTask = (tasks: DAGType['tasks']): boolean =>
+        tasks.some(
+          (t) =>
+            t.agent === 'internetOfThings' ||
+            t.id.toLowerCase().includes('location') ||
+            (t.prompt.toLowerCase().includes('user') && t.prompt.toLowerCase().includes('location')),
+        );
+
       // Custom retry with validation: the DAG should NOT contain any location-related tasks
       // when the location is explicitly provided in the query
       let dag: DAGType | undefined;
@@ -341,14 +350,7 @@ Control IoT devices and get user locations via their phones.`,
           dag = getCurrentDAG();
           if (result.status === 'success' && dag.tasks.length >= 1) {
             // Check if DAG has only weather tasks (no location lookups)
-            const hasLocationTask = dag.tasks.some(
-              (t) =>
-                t.agent === 'internetOfThings' ||
-                t.id.toLowerCase().includes('location') ||
-                (t.prompt.toLowerCase().includes('user') && t.prompt.toLowerCase().includes('location')),
-            );
-
-            if (!hasLocationTask) {
+            if (!hasUnnecessaryLocationTask(dag.tasks)) {
               // Found a valid DAG without unnecessary location tasks
               break;
             }
@@ -371,14 +373,7 @@ Control IoT devices and get user locations via their phones.`,
 
       // Check if the final DAG still has unnecessary location tasks
       // If so, skip the test as LLM flakiness - this is a known issue with some models
-      const hasLocationTask = dag.tasks.some(
-        (t) =>
-          t.agent === 'internetOfThings' ||
-          t.id.toLowerCase().includes('location') ||
-          (t.prompt.toLowerCase().includes('user') && t.prompt.toLowerCase().includes('location')),
-      );
-
-      if (hasLocationTask) {
+      if (hasUnnecessaryLocationTask(dag.tasks)) {
         console.log(
           'Skipping test: LLM consistently generated unnecessary location task despite explicit location in query. ' +
             'This is a known LLM flakiness issue with some models.',
