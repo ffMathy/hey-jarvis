@@ -3,6 +3,7 @@ import { getCodingAgent } from './coding/agent.js';
 import { getCommuteAgent } from './commute/agent.js';
 import { getCookingAgent } from './cooking/agents.js';
 import { getEmailAgent } from './email/agent.js';
+import { getEntertainmentAgent } from './entertainment/agent.js';
 import { getInternetOfThingsAgent } from './internet-of-things/agent.js';
 import { getShoppingListAgent } from './shopping/agents.js';
 import { getTodoListAgent } from './todo-list/agent.js';
@@ -16,6 +17,7 @@ export * from './coding/index.js';
 export * from './commute/index.js';
 export * from './cooking/index.js';
 export * from './email/index.js';
+export * from './entertainment/index.js';
 export * from './human-in-the-loop/index.js';
 export * from './internet-of-things/index.js';
 export * from './notification/index.js';
@@ -39,5 +41,6 @@ export async function getPublicAgents() {
     getInternetOfThingsAgent(),
     getCommuteAgent(),
     getWebResearchAgent(),
+    getEntertainmentAgent(),
   ]);
 }
