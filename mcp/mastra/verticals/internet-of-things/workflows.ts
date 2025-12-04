@@ -11,14 +11,14 @@ const SENSITIVE_LABEL = 'sensitive';
 
 /**
  * Time window in seconds to look back for state changes.
- * Set to 15 minutes (900 seconds) to match the scheduler interval.
+ * Set to 3 hours (10800 seconds) to match the scheduler interval.
  */
-const STATE_CHANGE_WINDOW_SECONDS = 900;
+const STATE_CHANGE_WINDOW_SECONDS = 10800;
 
 // Fetch recently changed device states from Home Assistant
 const fetchRecentlyChangedDevices = createStep({
   id: 'fetch-recently-changed-devices',
-  description: 'Fetches devices that changed state in the last 15 minutes from Home Assistant',
+  description: 'Fetches devices that changed state in the last 3 hours from Home Assistant',
   inputSchema: z.object({}),
   outputSchema: z.object({
     devices: z.array(

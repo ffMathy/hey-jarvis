@@ -1,327 +1,35 @@
 import { z } from 'zod';
 import { createStep, createWorkflow } from '../../utils/workflow-factory.js';
 import { registerStateChange } from '../synapse/tools.js';
-import { findEmails, findNewEmailsSinceLastCheck, updateLastSeenEmail } from './tools.js';
+import { findNewEmailsSinceLastCheck, updateLastSeenEmail } from './tools.js';
 
 /**
- * Check for Form Replies Workflow
+ * Shared Email Schema
  *
- * This workflow runs on a periodic schedule (every 5 minutes) to:
- * 1. Search for unread emails in the inbox
- * 2. Extract workflow IDs from email subjects using regex pattern [WF-{id}]
- * 3. Parse email responses using LLM based on expected schemas
- * 4. Resume suspended workflows with parsed data
- * 5. Register state changes for tracking
- *
- * The workflow is designed to handle replies to form request emails sent by
- * human-in-the-loop workflows. It validates workflow IDs and sender emails
- * before resuming workflows.
- *
- * Security:
- * - Only processes emails with valid [WF-{id}] pattern in subject
- * - Validates sender email matches expected recipient (stored in workflow state)
- * - Uses LLM to parse responses, reducing risk of injection attacks
- *
- * Workflow ID Format:
- * - Email subject must contain: [WF-{workflowId}]
- * - Example: "Re: Form Request [WF-abc123]: Please approve..."
- * - Regex pattern: /\[WF-([^\]]+)\]/
+ * Common email object schema used across all email workflows.
  */
-
-// Workflow input schema (empty - runs on schedule)
-const workflowInputSchema = z.object({});
-
-// Workflow output schema
-const workflowOutputSchema = z.object({
-  emailsProcessed: z.number().describe('Number of emails processed'),
-  workflowsResumed: z.number().describe('Number of workflows resumed'),
-  errors: z.array(z.string()).describe('List of errors encountered'),
-});
-
-// Workflow state schema
-const workflowStateSchema = z.object({
-  emailsProcessed: z.number().default(0),
-  workflowsResumed: z.number().default(0),
-  errors: z.array(z.string()).default([]),
-  unreadEmails: z
-    .array(
-      z.object({
-        id: z.string(),
-        subject: z.string(),
-        bodyPreview: z.string(),
-        from: z.object({
-          name: z.string(),
-          address: z.string(),
-        }),
-        receivedDateTime: z.string(),
-        isRead: z.boolean(),
-        hasAttachments: z.boolean(),
-        isDraft: z.boolean(),
-      }),
-    )
-    .default([]),
-});
-
-// Step 1: Search for unread emails
-const searchUnreadEmails = createStep({
-  id: 'search-unread-emails',
-  description: 'Search for unread emails in the inbox',
-  stateSchema: workflowStateSchema,
-  inputSchema: z.object({}),
-  outputSchema: z.object({
-    emails: z.array(
-      z.object({
-        id: z.string(),
-        subject: z.string(),
-        bodyPreview: z.string(),
-        from: z.object({
-          name: z.string(),
-          address: z.string(),
-        }),
-        receivedDateTime: z.string(),
-        isRead: z.boolean(),
-        hasAttachments: z.boolean(),
-        isDraft: z.boolean(),
-      }),
-    ),
-    totalCount: z.number(),
+const emailObjectSchema = z.object({
+  id: z.string(),
+  subject: z.string(),
+  bodyPreview: z.string(),
+  from: z.object({
+    name: z.string(),
+    address: z.string(),
   }),
-  execute: async () => {
-    const result = await findEmails.execute({
-      folder: 'inbox',
-      limit: 50,
-      isRead: false,
-    });
-
-    if ('error' in result) {
-      throw new Error(`Failed to search emails: ${result.message}`);
-    }
-
-    return result;
-  },
-});
-
-// Step 2: Store emails in workflow state
-const storeUnreadEmails = createStep({
-  id: 'store-unread-emails',
-  description: 'Store unread emails in workflow state for processing',
-  stateSchema: workflowStateSchema,
-  inputSchema: z.object({
-    emails: z.array(
-      z.object({
-        id: z.string(),
-        subject: z.string(),
-        bodyPreview: z.string(),
-        from: z.object({
-          name: z.string(),
-          address: z.string(),
-        }),
-        receivedDateTime: z.string(),
-        isRead: z.boolean(),
-        hasAttachments: z.boolean(),
-        isDraft: z.boolean(),
-      }),
-    ),
-    totalCount: z.number(),
-  }),
-  outputSchema: z.object({
-    emailCount: z.number(),
-  }),
-  execute: async (params) => {
-    console.log(`📬 Found ${params.inputData.emails.length} unread email(s)`);
-
-    params.setState({
-      ...params.state,
-      unreadEmails: params.inputData.emails,
-    });
-
-    return {
-      emailCount: params.inputData.emails.length,
-    };
-  },
-});
-
-// Step 3: Process each email and extract workflow IDs
-const processEmails = createStep({
-  id: 'process-emails',
-  description: 'Process emails to extract workflow IDs and resume workflows',
-  stateSchema: workflowStateSchema,
-  inputSchema: z.object({
-    emailCount: z.number(),
-  }),
-  outputSchema: z.object({
-    emailsProcessed: z.number(),
-    workflowsResumed: z.number(),
-    errors: z.array(z.string()),
-  }),
-  execute: async (params) => {
-    const { unreadEmails } = params.state;
-    let emailsProcessed = 0;
-    const workflowsResumed = 0;
-    const errors: string[] = [];
-
-    console.log(`🔍 Processing ${unreadEmails.length} unread email(s)...`);
-
-    // Regex to extract workflow ID from subject: [WF-{id}]
-    const workflowIdRegex = /\[WF-([^\]]+)\]/;
-
-    for (const email of unreadEmails) {
-      try {
-        emailsProcessed++;
-
-        // Extract workflow ID from subject
-        const match = email.subject.match(workflowIdRegex);
-        if (!match) {
-          console.log(`⏭️  Email "${email.subject}" does not contain workflow ID, skipping`);
-          continue;
-        }
-
-        const workflowId = match[1];
-        console.log(`✅ Found workflow ID: ${workflowId} in email from ${email.from.address}`);
-
-        // Get the workflow instance
-        if (!params.mastra) {
-          throw new Error('Mastra instance not available');
-        }
-
-        // Try to get workflow run by ID
-        // Note: Mastra doesn't expose getRunById directly, we need to use the workflow execution context
-        // For now, we'll store pending workflows in a simple map or skip this validation
-        // In a production system, you'd want to maintain a registry of pending workflows
-
-        // For demo purposes, we'll try to resume any workflow with the matching ID
-        // The workflow itself will validate sender email and handle errors
-        const workflow = params.mastra.getWorkflow('humanInTheLoopDemoWorkflow');
-        if (!workflow) {
-          errors.push(`Workflow 'humanInTheLoopDemoWorkflow' not found for ID ${workflowId}`);
-          continue;
-        }
-
-        // Note: We can't easily get a specific workflow run by ID in Mastra
-        // The workflow resume functionality would need to be implemented differently
-        // For now, we'll log this and skip
-        console.log(`⚠️  Workflow run retrieval not yet implemented. Skipping workflow ${workflowId}`);
-        errors.push(`Workflow run retrieval not implemented for ${workflowId}`);
-      } catch (error) {
-        const errorMessage = `Error processing email "${email.subject}": ${error instanceof Error ? error.message : String(error)}`;
-        errors.push(errorMessage);
-        console.error(`❌ ${errorMessage}`);
-      }
-    }
-
-    console.log(`\n📊 Email processing summary:`);
-    console.log(`   Emails processed: ${emailsProcessed}`);
-    console.log(`   Workflows resumed: ${workflowsResumed}`);
-    console.log(`   Errors: ${errors.length}`);
-
-    return {
-      emailsProcessed,
-      workflowsResumed,
-      errors,
-    };
-  },
-});
-
-// Step 4: Format final output
-const formatOutput = createStep({
-  id: 'format-output',
-  description: 'Format the final workflow output',
-  stateSchema: workflowStateSchema,
-  inputSchema: z.object({
-    emailsProcessed: z.number(),
-    workflowsResumed: z.number(),
-    errors: z.array(z.string()),
-  }),
-  outputSchema: workflowOutputSchema,
-  execute: async (params) => {
-    return {
-      emailsProcessed: params.inputData.emailsProcessed,
-      workflowsResumed: params.inputData.workflowsResumed,
-      errors: params.inputData.errors,
-    };
-  },
+  receivedDateTime: z.string(),
+  isRead: z.boolean(),
+  hasAttachments: z.boolean(),
+  isDraft: z.boolean(),
 });
 
 /**
- * Check for Form Replies Workflow
+ * Shared State Schema for Email Workflows
  *
- * Automatically processes incoming email replies to form requests and resumes
- * suspended workflows with parsed response data.
- *
- * Scheduled to run every 5 minutes via the workflow scheduler.
- *
- * Workflow Steps:
- * 1. Search for unread emails
- * 2. Store emails in workflow state
- * 3. Process each email:
- *    - Extract workflow ID from subject [WF-{id}]
- *    - Get workflow run by ID
- *    - Parse email body using LLM
- *    - Resume workflow with parsed data
- *    - Register state change
- * 4. Format and return summary
- *
- * Usage:
- * ```typescript
- * // Scheduled execution (via scheduler.ts)
- * scheduler.schedule({
- *   workflowId: 'checkForFormRepliesWorkflow',
- *   schedule: CronPatterns.EVERY_5_MINUTES,
- *   inputData: {},
- * });
- * ```
+ * Common state schema used by both email checking and form replies workflows.
  */
-export const checkForFormRepliesWorkflow = createWorkflow({
-  id: 'checkForFormRepliesWorkflow',
-  stateSchema: workflowStateSchema,
-  inputSchema: workflowInputSchema,
-  outputSchema: workflowOutputSchema,
-})
-  .then(searchUnreadEmails)
-  .then(storeUnreadEmails)
-  .then(processEmails)
-  .then(formatOutput)
-  .commit();
-
-/**
- * Check for New Emails Workflow (Parent Workflow)
- *
- * This workflow orchestrates email processing by:
- * 1. Searching for NEW emails since the last check (using persistent storage)
- * 2. Processing form replies (resume suspended workflows)
- * 3. Registering new emails as state changes for notification analysis
- * 4. Updating the last seen email state to avoid reprocessing
- *
- * This is a parent workflow that combines form reply processing with
- * notification system integration, ensuring all new emails are tracked
- * and potentially notified to users.
- *
- * The workflow uses persistent storage to track the last seen email,
- * so only genuinely new emails are processed on each run.
- *
- * Scheduled to run every 5 minutes via the workflow scheduler.
- */
-
-// State schema for the parent workflow
-const parentWorkflowStateSchema = z
+const sharedEmailStateSchema = z
   .object({
-    newEmails: z
-      .array(
-        z.object({
-          id: z.string(),
-          subject: z.string(),
-          bodyPreview: z.string(),
-          from: z.object({
-            name: z.string(),
-            address: z.string(),
-          }),
-          receivedDateTime: z.string(),
-          isRead: z.boolean(),
-          hasAttachments: z.boolean(),
-          isDraft: z.boolean(),
-        }),
-      )
-      .default([]),
+    newEmails: z.array(emailObjectSchema).default([]),
     isFirstCheck: z.boolean().default(false),
     lastCheckTimestamp: z.string().optional(),
     mostRecentEmailId: z.string().optional(),
@@ -329,28 +37,22 @@ const parentWorkflowStateSchema = z
   })
   .partial();
 
-// Step 1: Search for NEW emails since last check (uses persistent storage)
-const searchNewEmailsForParent = createStep({
-  id: 'search-new-emails-for-parent',
+// ============================================================================
+// SHARED STEPS - Reused by both workflows
+// ============================================================================
+
+/**
+ * Shared Step: Search for new emails since last check
+ *
+ * Uses persistent storage to find only emails received since the last workflow run.
+ */
+const searchNewEmails = createStep({
+  id: 'search-new-emails',
   description: 'Search for new emails received since the last workflow run',
-  stateSchema: parentWorkflowStateSchema,
+  stateSchema: sharedEmailStateSchema,
   inputSchema: z.object({}),
   outputSchema: z.object({
-    emails: z.array(
-      z.object({
-        id: z.string(),
-        subject: z.string(),
-        bodyPreview: z.string(),
-        from: z.object({
-          name: z.string(),
-          address: z.string(),
-        }),
-        receivedDateTime: z.string(),
-        isRead: z.boolean(),
-        hasAttachments: z.boolean(),
-        isDraft: z.boolean(),
-      }),
-    ),
+    emails: z.array(emailObjectSchema),
     totalCount: z.number(),
     isFirstCheck: z.boolean(),
     lastCheckTimestamp: z.string().optional(),
@@ -360,42 +62,32 @@ const searchNewEmailsForParent = createStep({
   },
 });
 
-// Step 2: Store emails in parent workflow state and track the most recent one
-const storeNewEmailsInParentState = createStep({
-  id: 'store-new-emails-in-parent-state',
-  description: 'Store new emails in parent workflow state and track the most recent email for later update',
-  stateSchema: parentWorkflowStateSchema,
+/**
+ * Shared Step: Store new emails in workflow state
+ *
+ * Stores emails in state and tracks the most recent email for later update.
+ */
+const storeNewEmailsInState = createStep({
+  id: 'store-new-emails-in-state',
+  description: 'Store new emails in workflow state and track the most recent email for later update',
+  stateSchema: sharedEmailStateSchema,
   inputSchema: z.object({
-    emails: z.array(
-      z.object({
-        id: z.string(),
-        subject: z.string(),
-        bodyPreview: z.string(),
-        from: z.object({
-          name: z.string(),
-          address: z.string(),
-        }),
-        receivedDateTime: z.string(),
-        isRead: z.boolean(),
-        hasAttachments: z.boolean(),
-        isDraft: z.boolean(),
-      }),
-    ),
+    emails: z.array(emailObjectSchema),
     totalCount: z.number(),
     isFirstCheck: z.boolean(),
     lastCheckTimestamp: z.string().optional(),
   }),
   outputSchema: z.object({
     emailCount: z.number(),
+    isFirstCheck: z.boolean(),
   }),
   execute: async (params) => {
     const { emails, isFirstCheck, lastCheckTimestamp } = params.inputData;
 
     console.log(
-      `📬 Parent workflow found ${emails.length} new email(s)${isFirstCheck ? ' (first check)' : ` since ${lastCheckTimestamp}`}`,
+      `📬 Found ${emails.length} new email(s)${isFirstCheck ? ' (first check)' : ` since ${lastCheckTimestamp}`}`,
     );
 
-    // Find the most recent email (they're already sorted by receivedDateTime desc)
     const mostRecentEmail = emails.length > 0 ? emails[0] : undefined;
 
     params.setState({
@@ -409,116 +101,23 @@ const storeNewEmailsInParentState = createStep({
 
     return {
       emailCount: emails.length,
+      isFirstCheck,
     };
   },
 });
 
-// Step 3: Process form replies (delegates to child workflow)
-const processFormReplies = createStep({
-  id: 'process-form-replies',
-  description: 'Process form replies by executing child workflow',
-  stateSchema: parentWorkflowStateSchema,
-  inputSchema: z.object({
-    emailCount: z.number(),
-  }),
-  outputSchema: z.object({
-    emailsProcessed: z.number(),
-    workflowsResumed: z.number(),
-    errors: z.array(z.string()),
-  }),
-  execute: async (params) => {
-    // If no emails, skip processing
-    if (params.inputData.emailCount === 0) {
-      console.log('⏭️  No emails to process, skipping form reply processing');
-      return {
-        emailsProcessed: 0,
-        workflowsResumed: 0,
-        errors: [],
-      };
-    }
-
-    // Execute the child workflow
-    console.log('🔄 Delegating to checkForFormRepliesWorkflow...');
-
-    // Note: In a real implementation, we'd execute the child workflow here
-    // For now, we'll just return placeholder values since Mastra doesn't
-    // provide a built-in way to execute workflows from within workflows
-    // The actual form reply processing happens in the scheduled checkForFormRepliesWorkflow
-
-    return {
-      emailsProcessed: params.inputData.emailCount,
-      workflowsResumed: 0,
-      errors: [],
-    };
-  },
-});
-
-// Step 4: Register new emails as state change
-const registerNewEmailsStateChange = createStep({
-  id: 'register-new-emails-state-change',
-  description: 'Register new emails as state change for notification system',
-  stateSchema: parentWorkflowStateSchema,
-  inputSchema: z.object({
-    emailCount: z.number(),
-  }),
-  outputSchema: z.object({
-    registered: z.boolean(),
-    triggeredWorkflow: z.boolean(),
-    message: z.string(),
-  }),
-  execute: async ({ state }) => {
-    const emails = state.newEmails ?? [];
-    // Only register if there are emails
-    const stateChangeData =
-      emails.length === 0
-        ? {
-            source: 'email',
-            stateType: 'no_new_emails',
-            stateData: {
-              timestamp: new Date().toISOString(),
-            },
-          }
-        : {
-            source: 'email',
-            stateType: 'new_emails_received',
-            stateData: {
-              emailCount: emails.length,
-              emails: emails.map((email) => ({
-                subject: email.subject,
-                from: email.from.address,
-                receivedDateTime: email.receivedDateTime,
-              })),
-              timestamp: new Date().toISOString(),
-            },
-          };
-
-    const result = await registerStateChange.execute(stateChangeData);
-
-    // Handle validation error case - narrow the type explicitly
-    if ('error' in result) {
-      throw new Error(`Failed to register state change: ${result.message}`);
-    }
-
-    return result;
-  },
-});
-
-// Step 5: Update last seen email state (after parallel processing is done)
+/**
+ * Shared Step: Update last seen email state
+ *
+ * Updates the persistent storage to track which emails have been processed.
+ */
 const updateLastSeenEmailStep = createStep({
   id: 'update-last-seen-email',
   description: 'Update the last seen email state after processing',
-  stateSchema: parentWorkflowStateSchema,
+  stateSchema: sharedEmailStateSchema,
   inputSchema: z.object({
-    'process-form-replies': z.object({
-      emailsProcessed: z.number(),
-      workflowsResumed: z.number(),
-      errors: z.array(z.string()),
-    }),
-    'register-new-emails-state-change': z.object({
-      registered: z.boolean(),
-      triggeredWorkflow: z.boolean(),
-      message: z.string(),
-    }),
+    emailCount: z.number(),
+    isFirstCheck: z.boolean(),
   }),
   outputSchema: z.object({
     success: z.boolean(),
@@ -528,7 +127,6 @@ const updateLastSeenEmailStep = createStep({
     newLastSeenId: z.string(),
   }),
   execute: async ({ state }) => {
-    // Only update if we have a most recent email
     if (!state.mostRecentEmailId || !state.mostRecentEmailReceivedDateTime) {
       return {
         success: false,
@@ -538,16 +136,21 @@ const updateLastSeenEmailStep = createStep({
       };
     }
 
-    // Call the updateLastSeenEmail function directly
     return await updateLastSeenEmail('inbox', state.mostRecentEmailId, state.mostRecentEmailReceivedDateTime);
   },
 });
 
-// Step 6: Format parent workflow output
-const formatParentOutput = createStep({
-  id: 'format-parent-output',
-  description: 'Format the parent workflow output',
-  stateSchema: parentWorkflowStateSchema,
+// ============================================================================
+// EMAIL CHECKING WORKFLOW (Every minute)
+// ============================================================================
+
+/**
+ * Format output for email checking workflow
+ */
+const formatEmailCheckingOutput = createStep({
+  id: 'format-email-checking-output',
+  description: 'Format the email checking workflow output',
+  stateSchema: sharedEmailStateSchema,
   inputSchema: z.object({
     success: z.boolean(),
     message: z.string(),
@@ -557,7 +160,6 @@ const formatParentOutput = createStep({
   }),
   outputSchema: z.object({
     emailsFound: z.number(),
-    stateChangeRegistered: z.boolean(),
     lastSeenEmailUpdated: z.boolean(),
     message: z.string(),
   }),
@@ -567,7 +169,6 @@ const formatParentOutput = createStep({
 
     return {
       emailsFound: emails.length,
-      stateChangeRegistered: true,
       lastSeenEmailUpdated: updateResult.success && updateResult.newLastSeenId !== '',
       message:
         emails.length === 0
@@ -578,49 +179,255 @@ const formatParentOutput = createStep({
 });
 
 /**
- * Check for New Emails Workflow
+ * Email Checking Workflow
  *
- * Parent workflow that orchestrates:
- * 1. Email discovery (find NEW emails since last check using persistent storage)
- * 2. Form reply processing (via checkForFormRepliesWorkflow)
- * 3. State change registration (for notification system)
- * 4. Update last seen email state (to avoid reprocessing on next run)
+ * Simple workflow that checks for new emails every minute and updates tracking.
+ * This workflow does NOT trigger the state reactor - it only tracks emails.
  *
- * This workflow ensures all new emails are:
- * - Processed for form replies (resume suspended workflows)
- * - Registered with the notification system for potential user alerts
- * - Tracked so they won't be processed again on the next run
+ * Scheduled to run every minute via the workflow scheduler.
  *
- * The workflow uses persistent storage (email_last_seen table) to track
- * which emails have already been processed, ensuring each email is only
- * handled once even if it remains unread.
- *
- * Scheduled to run every 5 minutes via the workflow scheduler.
- *
- * Usage:
- * ```typescript
- * // Scheduled execution (via scheduler.ts)
- * scheduler.schedule({
- *   workflowId: 'checkForNewEmails',
- *   schedule: CronPatterns.EVERY_5_MINUTES,
- *   inputData: {},
- * });
- * ```
+ * Workflow Steps:
+ * 1. Search for new emails since last check
+ * 2. Store emails in state
+ * 3. Update last seen email tracking
+ * 4. Format output
  */
-export const checkForNewEmails = createWorkflow({
-  id: 'checkForNewEmails',
-  stateSchema: parentWorkflowStateSchema,
+export const emailCheckingWorkflow = createWorkflow({
+  id: 'emailCheckingWorkflow',
+  stateSchema: sharedEmailStateSchema,
   inputSchema: z.object({}),
   outputSchema: z.object({
     emailsFound: z.number(),
-    stateChangeRegistered: z.boolean(),
     lastSeenEmailUpdated: z.boolean(),
     message: z.string(),
   }),
 })
-  .then(searchNewEmailsForParent)
-  .then(storeNewEmailsInParentState)
-  .parallel([processFormReplies, registerNewEmailsStateChange])
+  .then(searchNewEmails)
+  .then(storeNewEmailsInState)
   .then(updateLastSeenEmailStep)
-  .then(formatParentOutput)
+  .then(formatEmailCheckingOutput)
   .commit();
+
+// ============================================================================
+// FORM REPLIES DETECTION WORKFLOW (Every 3 hours)
+// ============================================================================
+
+/**
+ * Process form replies and extract workflow IDs
+ */
+const processFormReplies = createStep({
+  id: 'process-form-replies',
+  description: 'Process emails to extract workflow IDs and attempt to resume workflows',
+  stateSchema: sharedEmailStateSchema,
+  inputSchema: z.object({
+    emailCount: z.number(),
+    isFirstCheck: z.boolean(),
+  }),
+  outputSchema: z.object({
+    emailsProcessed: z.number(),
+    formRepliesFound: z.number(),
+    workflowsResumed: z.number(),
+    errors: z.array(z.string()),
+  }),
+  execute: async (params) => {
+    const { newEmails = [] } = params.state;
+    let emailsProcessed = 0;
+    let formRepliesFound = 0;
+    const workflowsResumed = 0;
+    const errors: string[] = [];
+
+    if (newEmails.length === 0) {
+      console.log('⏭️  No emails to process for form replies');
+      return { emailsProcessed: 0, formRepliesFound: 0, workflowsResumed: 0, errors: [] };
+    }
+
+    console.log(`🔍 Processing ${newEmails.length} email(s) for form replies...`);
+
+    const workflowIdRegex = /\[WF-([^\]]+)\]/;
+
+    for (const email of newEmails) {
+      try {
+        emailsProcessed++;
+
+        const match = email.subject.match(workflowIdRegex);
+        if (!match) {
+          continue;
+        }
+
+        formRepliesFound++;
+        const workflowId = match[1];
+        console.log(`✅ Found form reply with workflow ID: ${workflowId} from ${email.from.address}`);
+
+        if (!params.mastra) {
+          throw new Error('Mastra instance not available');
+        }
+
+        const workflow = params.mastra.getWorkflow('humanInTheLoopDemoWorkflow');
+        if (!workflow) {
+          errors.push(`Workflow 'humanInTheLoopDemoWorkflow' not found for ID ${workflowId}`);
+          continue;
+        }
+
+        console.log(`⚠️  Workflow run retrieval not yet implemented. Skipping workflow ${workflowId}`);
+        errors.push(`Workflow run retrieval not implemented for ${workflowId}`);
+      } catch (error) {
+        const errorMessage = `Error processing email "${email.subject}": ${error instanceof Error ? error.message : String(error)}`;
+        errors.push(errorMessage);
+        console.error(`❌ ${errorMessage}`);
+      }
+    }
+
+    console.log(`\n📊 Form reply processing summary:`);
+    console.log(`   Emails processed: ${emailsProcessed}`);
+    console.log(`   Form replies found: ${formRepliesFound}`);
+    console.log(`   Workflows resumed: ${workflowsResumed}`);
+    console.log(`   Errors: ${errors.length}`);
+
+    return { emailsProcessed, formRepliesFound, workflowsResumed, errors };
+  },
+});
+
+/**
+ * Register emails as state change for notification system
+ *
+ * This step triggers the state reactor to analyze emails and potentially notify users.
+ */
+const registerEmailsStateChange = createStep({
+  id: 'register-emails-state-change',
+  description: 'Register new emails as state change for notification system (triggers state reactor)',
+  stateSchema: sharedEmailStateSchema,
+  inputSchema: z.object({
+    emailsProcessed: z.number(),
+    formRepliesFound: z.number(),
+    workflowsResumed: z.number(),
+    errors: z.array(z.string()),
+  }),
+  outputSchema: z.object({
+    registered: z.boolean(),
+    batched: z.boolean(),
+    message: z.string(),
+  }),
+  execute: async ({ state, inputData }) => {
+    const emails = state.newEmails ?? [];
+
+    if (emails.length === 0) {
+      console.log('⏭️  No emails to register with state reactor');
+      return {
+        registered: false,
+        batched: false,
+        message: 'No emails to register',
+      };
+    }
+
+    const stateChangeData = {
+      source: 'email',
+      stateType: 'new_emails_received',
+      stateData: {
+        emailCount: emails.length,
+        formRepliesFound: inputData.formRepliesFound,
+        workflowsResumed: inputData.workflowsResumed,
+        emails: emails.map((email) => ({
+          subject: email.subject,
+          from: email.from.address,
+          receivedDateTime: email.receivedDateTime,
+        })),
+        timestamp: new Date().toISOString(),
+      },
+    };
+
+    console.log(`📝 Registering ${emails.length} email(s) with state reactor...`);
+    const result = await registerStateChange.execute(stateChangeData);
+
+    if ('error' in result) {
+      throw new Error(`Failed to register state change: ${result.message}`);
+    }
+
+    return result;
+  },
+});
+
+/**
+ * Format output for form replies detection workflow
+ */
+const formatFormRepliesOutput = createStep({
+  id: 'format-form-replies-output',
+  description: 'Format the form replies detection workflow output',
+  stateSchema: sharedEmailStateSchema,
+  inputSchema: z.object({
+    registered: z.boolean(),
+    batched: z.boolean(),
+    message: z.string(),
+  }),
+  outputSchema: z.object({
+    emailsFound: z.number(),
+    formRepliesDetected: z.number(),
+    stateChangeRegistered: z.boolean(),
+    message: z.string(),
+  }),
+  execute: async (params) => {
+    const emails = params.state.newEmails ?? [];
+
+    const workflowIdRegex = /\[WF-([^\]]+)\]/;
+    const formRepliesCount = emails.filter((email) => workflowIdRegex.test(email.subject)).length;
+
+    return {
+      emailsFound: emails.length,
+      formRepliesDetected: formRepliesCount,
+      stateChangeRegistered: params.inputData.registered,
+      message:
+        emails.length === 0
+          ? 'No new emails to analyze'
+          : `Analyzed ${emails.length} email(s), found ${formRepliesCount} form ${formRepliesCount === 1 ? 'reply' : 'replies'}`,
+    };
+  },
+});
+
+/**
+ * Form Replies Detection Workflow
+ *
+ * Workflow that processes emails for form replies and triggers the state reactor.
+ * This workflow runs less frequently (every 3 hours) and is responsible for:
+ * 1. Detecting form reply emails (with [WF-{id}] pattern)
+ * 2. Attempting to resume suspended workflows
+ * 3. Registering state changes to trigger notifications
+ *
+ * Scheduled to run every 3 hours via the workflow scheduler.
+ *
+ * Workflow Steps:
+ * 1. Search for new emails since last check
+ * 2. Store emails in state
+ * 3. Process form replies (extract workflow IDs, resume workflows)
+ * 4. Register state change (triggers state reactor for notifications)
+ * 5. Format output
+ */
+export const formRepliesDetectionWorkflow = createWorkflow({
+  id: 'formRepliesDetectionWorkflow',
+  stateSchema: sharedEmailStateSchema,
+  inputSchema: z.object({}),
+  outputSchema: z.object({
+    emailsFound: z.number(),
+    formRepliesDetected: z.number(),
+    stateChangeRegistered: z.boolean(),
+    message: z.string(),
+  }),
+})
+  .then(searchNewEmails)
+  .then(storeNewEmailsInState)
+  .then(processFormReplies)
+  .then(registerEmailsStateChange)
+  .then(formatFormRepliesOutput)
+  .commit();
+
+// ============================================================================
+// LEGACY EXPORTS (for backward compatibility)
+// ============================================================================
+
+/**
+ * @deprecated Use emailCheckingWorkflow instead
+ */
+export const checkForNewEmails = emailCheckingWorkflow;
+
+/**
+ * @deprecated Use formRepliesDetectionWorkflow instead
+ */
+export const checkForFormRepliesWorkflow = formRepliesDetectionWorkflow;
