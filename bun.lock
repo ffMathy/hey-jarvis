@@ -15,7 +15,7 @@
         "@mastra/evals": "1.0.0-beta.1",
         "@mastra/libsql": "1.0.0-beta.2",
         "@mastra/loggers": "1.0.0-beta.1",
-        "@mastra/mcp": "1.0.0-beta.3",
+        "@mastra/mcp": "1.0.0-beta.4",
         "@mastra/memory": "1.0.0-beta.2",
         "@mastra/observability": "1.0.0-beta.1",
         "@mastra/server": "1.0.0-beta.5",
@@ -89,11 +89,11 @@
     },
     "home-assistant-addon": {
       "name": "home-assistant-addon",
-      "version": "0.19.0",
+      "version": "0.23.0",
     },
     "mcp": {
       "name": "mcp",
-      "version": "0.19.0",
+      "version": "0.23.0",
       "devDependencies": {
         "bun-types": "^1.3.3",
       },
@@ -616,7 +616,7 @@
 
     "@mastra/loggers": ["@mastra/loggers@1.0.0-beta.1", "", { "dependencies": { "pino": "^10.1.0", "pino-pretty": "^13.0.0" }, "peerDependencies": { "@mastra/core": ">=1.0.0-0 <2.0.0-0" } }, "sha512-WW6BsUsXiSS2ztiRHz963JYAY8pVUA6f2L+EOFq44rGEQQDM+00mO0O4BrwbVWXnP4wtsFBpzCUeR7MB+PRUmw=="],
 
-    "@mastra/mcp": ["@mastra/mcp@1.0.0-beta.3", "", { "dependencies": { "@apidevtools/json-schema-ref-parser": "^14.2.1", "@modelcontextprotocol/sdk": "^1.17.5", "exit-hook": "^4.0.0", "fast-deep-equal": "^3.1.3", "uuid": "^11.1.0", "zod-from-json-schema": "^0.5.0", "zod-from-json-schema-v3": "npm:zod-from-json-schema@^0.0.5" }, "peerDependencies": { "@mastra/core": ">=1.0.0-0 <2.0.0-0", "zod": "^3.25.0 || ^4.0.0" } }, "sha512-RATJ+SzTk0opmYELI1GfyxJ0+KZ1L6gdbhCW/FBa546GPU9Ud66Qmh8UdSNoVjtOgxRSxQwCV6VZh5FVuNdWKA=="],
+    "@mastra/mcp": ["@mastra/mcp@1.0.0-beta.4", "", { "dependencies": { "@apidevtools/json-schema-ref-parser": "^14.2.1", "@modelcontextprotocol/sdk": "^1.17.5", "exit-hook": "^4.0.0", "fast-deep-equal": "^3.1.3", "uuid": "^11.1.0", "zod-from-json-schema": "^0.5.0", "zod-from-json-schema-v3": "npm:zod-from-json-schema@^0.0.5" }, "peerDependencies": { "@mastra/core": ">=1.0.0-0 <2.0.0-0", "zod": "^3.25.0 || ^4.0.0" } }, "sha512-M4Bq4Zzz1wpb4Ry/aJpjarl3RLYBPXoGisMw8wrQ1e9wGKbnJ6Y9LYR7JCbgK2polPDi7iaIBQWiT1tkgG0S7A=="],
 
     "@mastra/memory": ["@mastra/memory@1.0.0-beta.2", "", { "dependencies": { "@mastra/schema-compat": "1.0.0-beta.1", "ai": "^4.3.19", "ai-v5": "npm:ai@5.0.60", "async-mutex": "^0.5.0", "js-tiktoken": "^1.0.20", "json-schema": "^0.4.0", "xxhash-wasm": "^1.1.0" }, "peerDependencies": { "@mastra/core": ">=1.0.0-0 <2.0.0-0", "zod": "^3.25.0 || ^4.0.0" } }, "sha512-NgP8s06r8zRYxy+Sg3Des+7eoeNxaDHt8NQQ6OapRGGWJZoeI2nwxkDUE+ARiAkfyrFGzpnsUhRFfjoPkuRrLA=="],
 
