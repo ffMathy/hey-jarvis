@@ -18,6 +18,17 @@
   "yaml.schemas": {
     "https://esphome.io/schemas/esphome.json": "*.yaml"
   },
+  "yaml.customTags": [
+    "!secret scalar",
+    "!lambda scalar",
+    "!extend scalar",
+    "!remove scalar",
+    "!include_dir_named scalar",
+    "!include_dir_list scalar",
+    "!include_dir_merge_list scalar",
+    "!include_dir_merge_named scalar",
+    "!include scalar"
+  ],
   "C_Cpp.default.cppStandard": "c++17",
   "C_Cpp.default.compilerPath": "/usr/bin/gcc"
 }
