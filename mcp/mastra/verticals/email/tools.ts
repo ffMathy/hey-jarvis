@@ -580,6 +580,69 @@ export async function findNewEmailsSinceLastCheck(folder = 'inbox', limit = 50):
   };
 }
 
+export interface FindEmailsSinceHoursAgoResult {
+  emails: EmailMessage[];
+  totalCount: number;
+  sinceTimestamp: string;
+}
+
+/**
+ * Find emails received since a given number of hours ago.
+ * This is a simpler approach that doesn't rely on persistent storage,
+ * just fetches emails from the last N hours.
+ *
+ * @param folder - The folder to search in (default: 'inbox')
+ * @param hoursAgo - Number of hours to look back (default: 1)
+ * @param limit - Maximum number of emails to return (default: 50)
+ */
+export async function findEmailsSinceHoursAgo(
+  folder = 'inbox',
+  hoursAgo = 1,
+  limit = 50,
+): Promise<FindEmailsSinceHoursAgoResult> {
+  const accessToken = await getMicrosoftAuth();
+
+  // Calculate the timestamp for N hours ago
+  const sinceDate = new Date();
+  sinceDate.setHours(sinceDate.getHours() - hoursAgo);
+  const sinceTimestamp = sinceDate.toISOString();
+
+  const url = `${GRAPH_API_BASE}/me/mailFolders/${folder}/messages?$top=${limit}&$orderby=receivedDateTime desc&$filter=receivedDateTime gt ${sinceTimestamp}`;
+
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch emails: ${response.status} ${response.statusText}`);
+  }
+
+  const data = (await response.json()) as GraphEmailListResponse;
+
+  const emails = data.value.map((email) => ({
+    id: email.id,
+    subject: email.subject,
+    bodyPreview: email.bodyPreview,
+    from: {
+      name: email.from.emailAddress.name,
+      address: email.from.emailAddress.address,
+    },
+    receivedDateTime: email.receivedDateTime,
+    isRead: email.isRead,
+    hasAttachments: email.hasAttachments,
+    isDraft: email.isDraft,
+  }));
+
+  return {
+    emails,
+    totalCount: emails.length,
+    sinceTimestamp,
+  };
+}
+
 export interface UpdateLastSeenEmailResult {
   success: boolean;
   message: string;

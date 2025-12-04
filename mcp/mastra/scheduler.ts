@@ -2,7 +2,6 @@ import { mastra } from './index.js';
 import { CronPatterns, WorkflowScheduler } from './utils/workflow-scheduler.js';
 import {
   checkForNewEmails,
-  emailStateChangeNotificationWorkflow,
   iotMonitoringWorkflow,
   weatherMonitoringWorkflow,
   weeklyMealPlanningWorkflow,
@@ -39,19 +38,21 @@ export function initializeScheduler(): WorkflowScheduler {
 
   // Check for new emails (form reply detection) - every minute
   // Quick detection of form replies for resuming suspended workflows
+  // Looks back 1 hour, does NOT trigger state reactor
   scheduler.schedule({
     workflow: checkForNewEmails,
     schedule: CronPatterns.EVERY_MINUTE,
-    inputData: {},
+    inputData: { hoursAgo: 1, triggerStateReactor: false },
     runOnStartup: true,
   });
 
-  // Email state change notification - every hour
-  // Triggers the state reactor for new emails (separated from form reply detection)
+  // Check for new emails (state reactor) - every hour
+  // Triggers the state reactor for new emails for notification analysis
+  // Looks back 1 hour, DOES trigger state reactor
   scheduler.schedule({
-    workflow: emailStateChangeNotificationWorkflow,
+    workflow: checkForNewEmails,
     schedule: CronPatterns.EVERY_HOUR,
-    inputData: {},
+    inputData: { hoursAgo: 1, triggerStateReactor: true },
   });
 
   // IoT device monitoring - every 3 hours

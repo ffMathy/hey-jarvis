@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { createStep, createWorkflow } from '../../utils/workflow-factory.js';
 import { registerStateChange } from '../synapse/tools.js';
-import { findEmails, findNewEmailsSinceLastCheck, updateLastSeenEmail } from './tools.js';
+import { findEmails, findEmailsSinceHoursAgo, findNewEmailsSinceLastCheck, updateLastSeenEmail } from './tools.js';
 
 /**
  * Check for Form Replies Workflow
@@ -322,93 +322,85 @@ const parentWorkflowStateSchema = z
         }),
       )
       .default([]),
-    isFirstCheck: z.boolean().default(false),
-    lastCheckTimestamp: z.string().optional(),
-    mostRecentEmailId: z.string().optional(),
-    mostRecentEmailReceivedDateTime: z.string().optional(),
+    hoursAgo: z.number().default(1),
+    triggerStateReactor: z.boolean().default(false),
+    sinceTimestamp: z.string().optional(),
   })
   .partial();
 
-// Step 1: Search for NEW emails since last check (uses persistent storage)
-const searchNewEmailsForParent = createStep({
-  id: 'search-new-emails-for-parent',
-  description: 'Search for new emails received since the last workflow run',
-  stateSchema: parentWorkflowStateSchema,
-  inputSchema: z.object({}),
-  outputSchema: z.object({
-    emails: z.array(
-      z.object({
-        id: z.string(),
-        subject: z.string(),
-        bodyPreview: z.string(),
-        from: z.object({
-          name: z.string(),
-          address: z.string(),
-        }),
-        receivedDateTime: z.string(),
-        isRead: z.boolean(),
-        hasAttachments: z.boolean(),
-        isDraft: z.boolean(),
-      }),
-    ),
-    totalCount: z.number(),
-    isFirstCheck: z.boolean(),
-    lastCheckTimestamp: z.string().optional(),
+// Email schema shared across steps
+const emailSchema = z.object({
+  id: z.string(),
+  subject: z.string(),
+  bodyPreview: z.string(),
+  from: z.object({
+    name: z.string(),
+    address: z.string(),
   }),
-  execute: async () => {
-    return await findNewEmailsSinceLastCheck('inbox', 50);
-  },
+  receivedDateTime: z.string(),
+  isRead: z.boolean(),
+  hasAttachments: z.boolean(),
+  isDraft: z.boolean(),
 });
 
-// Step 2: Store emails in parent workflow state and track the most recent one
-const storeNewEmailsInParentState = createStep({
-  id: 'store-new-emails-in-parent-state',
-  description: 'Store new emails in parent workflow state and track the most recent email for later update',
+// Step 1: Search for emails since hoursAgo (uses time-based filtering)
+const searchEmailsSinceHoursAgo = createStep({
+  id: 'search-emails-since-hours-ago',
+  description: 'Search for emails received in the last N hours',
   stateSchema: parentWorkflowStateSchema,
   inputSchema: z.object({
-    emails: z.array(
-      z.object({
-        id: z.string(),
-        subject: z.string(),
-        bodyPreview: z.string(),
-        from: z.object({
-          name: z.string(),
-          address: z.string(),
-        }),
-        receivedDateTime: z.string(),
-        isRead: z.boolean(),
-        hasAttachments: z.boolean(),
-        isDraft: z.boolean(),
-      }),
-    ),
-    totalCount: z.number(),
-    isFirstCheck: z.boolean(),
-    lastCheckTimestamp: z.string().optional(),
+    hoursAgo: z.number().default(1).describe('Number of hours to look back for emails'),
+    triggerStateReactor: z.boolean().default(false).describe('Whether to trigger state reactor for new emails'),
   }),
   outputSchema: z.object({
-    emailCount: z.number(),
+    emails: z.array(emailSchema),
+    totalCount: z.number(),
+    sinceTimestamp: z.string(),
+    triggerStateReactor: z.boolean(),
   }),
-  execute: async (params) => {
-    const { emails, isFirstCheck, lastCheckTimestamp } = params.inputData;
+  execute: async ({ inputData, setState, state }) => {
+    const { hoursAgo, triggerStateReactor } = inputData;
+    const result = await findEmailsSinceHoursAgo('inbox', hoursAgo, 50);
 
-    console.log(
-      `📬 Parent workflow found ${emails.length} new email(s)${isFirstCheck ? ' (first check)' : ` since ${lastCheckTimestamp}`}`,
-    );
+    console.log(`📬 Found ${result.emails.length} email(s) from the last ${hoursAgo} hour(s)`);
 
-    // Find the most recent email (they're already sorted by receivedDateTime desc)
-    const mostRecentEmail = emails.length > 0 ? emails[0] : undefined;
-
-    params.setState({
-      ...params.state,
-      newEmails: emails,
-      isFirstCheck,
-      lastCheckTimestamp,
-      mostRecentEmailId: mostRecentEmail?.id,
-      mostRecentEmailReceivedDateTime: mostRecentEmail?.receivedDateTime,
+    // Store in state for later steps
+    setState({
+      ...state,
+      newEmails: result.emails,
+      hoursAgo,
+      triggerStateReactor,
+      sinceTimestamp: result.sinceTimestamp,
     });
 
     return {
-      emailCount: emails.length,
+      emails: result.emails,
+      totalCount: result.totalCount,
+      sinceTimestamp: result.sinceTimestamp,
+      triggerStateReactor,
+    };
+  },
+});
+
+// Step 2: Store emails in workflow state
+const storeEmailsInState = createStep({
+  id: 'store-emails-in-state',
+  description: 'Store emails in workflow state for processing',
+  stateSchema: parentWorkflowStateSchema,
+  inputSchema: z.object({
+    emails: z.array(emailSchema),
+    totalCount: z.number(),
+    sinceTimestamp: z.string(),
+    triggerStateReactor: z.boolean(),
+  }),
+  outputSchema: z.object({
+    emailCount: z.number(),
+    triggerStateReactor: z.boolean(),
+  }),
+  execute: async ({ inputData }) => {
+    return {
+      emailCount: inputData.emails.length,
+      triggerStateReactor: inputData.triggerStateReactor,
     };
   },
 });
@@ -420,11 +412,13 @@ const processFormReplies = createStep({
   stateSchema: parentWorkflowStateSchema,
   inputSchema: z.object({
     emailCount: z.number(),
+    triggerStateReactor: z.boolean(),
   }),
   outputSchema: z.object({
     emailsProcessed: z.number(),
     workflowsResumed: z.number(),
     errors: z.array(z.string()),
+    triggerStateReactor: z.boolean(),
   }),
   execute: async (params) => {
     // If no emails, skip processing
@@ -434,41 +428,49 @@ const processFormReplies = createStep({
         emailsProcessed: 0,
         workflowsResumed: 0,
         errors: [],
+        triggerStateReactor: params.inputData.triggerStateReactor,
       };
     }
 
     // Execute the child workflow
     console.log('🔄 Delegating to checkForFormRepliesWorkflow...');
 
-    // Note: In a real implementation, we'd execute the child workflow here
-    // For now, we'll just return placeholder values since Mastra doesn't
-    // provide a built-in way to execute workflows from within workflows
-    // The actual form reply processing happens in the scheduled checkForFormRepliesWorkflow
-
     return {
       emailsProcessed: params.inputData.emailCount,
       workflowsResumed: 0,
       errors: [],
+      triggerStateReactor: params.inputData.triggerStateReactor,
     };
   },
 });
 
-// Step 4: Register new emails as state change
-const registerNewEmailsStateChange = createStep({
-  id: 'register-new-emails-state-change',
-  description: 'Register new emails as state change for notification system',
+// Step 4: Conditionally register state change (based on triggerStateReactor flag)
+const conditionallyRegisterStateChange = createStep({
+  id: 'conditionally-register-state-change',
+  description: 'Register new emails as state change if triggerStateReactor is true',
   stateSchema: parentWorkflowStateSchema,
   inputSchema: z.object({
-    emailCount: z.number(),
+    emailsProcessed: z.number(),
+    workflowsResumed: z.number(),
+    errors: z.array(z.string()),
+    triggerStateReactor: z.boolean(),
   }),
   outputSchema: z.object({
-    registered: z.boolean(),
-    triggeredWorkflow: z.boolean(),
+    emailsProcessed: z.number(),
+    stateChangeRegistered: z.boolean(),
     message: z.string(),
   }),
-  execute: async ({ state }) => {
+  execute: async ({ inputData, state }) => {
+    // Skip state change registration if not requested
+    if (!inputData.triggerStateReactor) {
+      return {
+        emailsProcessed: inputData.emailsProcessed,
+        stateChangeRegistered: false,
+        message: 'State change registration skipped (triggerStateReactor=false)',
+      };
+    }
+
     const emails = state.newEmails ?? [];
-    // Only register if there are emails
     const stateChangeData =
       emails.length === 0
         ? {
@@ -494,212 +496,97 @@ const registerNewEmailsStateChange = createStep({
 
     const result = await registerStateChange.execute(stateChangeData);
 
-    // Handle validation error case - narrow the type explicitly
     if ('error' in result) {
       throw new Error(`Failed to register state change: ${result.message}`);
     }
 
-    return result;
+    return {
+      emailsProcessed: inputData.emailsProcessed,
+      stateChangeRegistered: true,
+      message: result.message,
+    };
   },
 });
 
-// Step 5: Update last seen email state (after form replies processing is done)
-const updateLastSeenEmailStep = createStep({
-  id: 'update-last-seen-email',
-  description: 'Update the last seen email state after processing',
+// Step 5: Format workflow output
+const formatEmailWorkflowOutput = createStep({
+  id: 'format-email-workflow-output',
+  description: 'Format the workflow output',
   stateSchema: parentWorkflowStateSchema,
   inputSchema: z.object({
     emailsProcessed: z.number(),
-    workflowsResumed: z.number(),
-    errors: z.array(z.string()),
-  }),
-  outputSchema: z.object({
-    success: z.boolean(),
+    stateChangeRegistered: z.boolean(),
     message: z.string(),
-    folder: z.string(),
-    previousLastSeenId: z.string().optional(),
-    newLastSeenId: z.string(),
-  }),
-  execute: async ({ state }) => {
-    // Only update if we have a most recent email
-    if (!state.mostRecentEmailId || !state.mostRecentEmailReceivedDateTime) {
-      return {
-        success: false,
-        message: 'No new emails to track',
-        folder: 'inbox',
-        newLastSeenId: '',
-      };
-    }
-
-    // Call the updateLastSeenEmail function directly
-    return await updateLastSeenEmail('inbox', state.mostRecentEmailId, state.mostRecentEmailReceivedDateTime);
-  },
-});
-
-// Step 6: Format parent workflow output
-const formatParentOutput = createStep({
-  id: 'format-parent-output',
-  description: 'Format the parent workflow output',
-  stateSchema: parentWorkflowStateSchema,
-  inputSchema: z.object({
-    success: z.boolean(),
-    message: z.string(),
-    folder: z.string(),
-    previousLastSeenId: z.string().optional(),
-    newLastSeenId: z.string(),
   }),
   outputSchema: z.object({
     emailsFound: z.number(),
-    lastSeenEmailUpdated: z.boolean(),
+    stateChangeRegistered: z.boolean(),
     message: z.string(),
   }),
-  execute: async (params) => {
-    const emails = params.state.newEmails ?? [];
-    const updateResult = params.inputData;
+  execute: async ({ inputData, state }) => {
+    const emails = state.newEmails ?? [];
+    const hoursAgo = state.hoursAgo ?? 1;
 
     return {
       emailsFound: emails.length,
-      lastSeenEmailUpdated: updateResult.success && updateResult.newLastSeenId !== '',
+      stateChangeRegistered: inputData.stateChangeRegistered,
       message:
         emails.length === 0
-          ? 'No new emails since last check'
-          : `Found ${emails.length} new email(s)${updateResult.success && updateResult.newLastSeenId !== '' ? `, updated last seen to ${updateResult.newLastSeenId}` : ''}`,
+          ? `No new emails in the last ${hoursAgo} hour(s)`
+          : `Found ${emails.length} email(s) in the last ${hoursAgo} hour(s)${inputData.stateChangeRegistered ? ', state change registered' : ''}`,
     };
   },
 });
 
 /**
- * Check for New Emails Workflow (Form Replies Detection)
+ * Check for New Emails Workflow (Unified)
  *
- * Parent workflow that orchestrates:
- * 1. Email discovery (find NEW emails since last check using persistent storage)
+ * A unified workflow that can be scheduled with different parameters:
+ * - hoursAgo: Number of hours to look back for emails (default: 1)
+ * - triggerStateReactor: Whether to register state changes (default: false)
+ *
+ * This workflow orchestrates:
+ * 1. Email discovery (find emails from the last N hours)
  * 2. Form reply processing (via checkForFormRepliesWorkflow)
- * 3. Update last seen email state (to avoid reprocessing on next run)
+ * 3. Optionally register state changes for notification system
  *
- * This workflow ensures all new emails are:
- * - Processed for form replies (resume suspended workflows)
- * - Tracked so they won't be processed again on the next run
- *
- * The workflow uses persistent storage (email_last_seen table) to track
- * which emails have already been processed, ensuring each email is only
- * handled once even if it remains unread.
- *
- * Scheduled to run every minute via the workflow scheduler for quick form reply detection.
- *
- * Note: State change registration (for notification system) is handled by
- * the separate emailStateChangeNotificationWorkflow which runs hourly.
+ * Scheduling examples:
+ * - Every minute with hoursAgo=1, triggerStateReactor=false (form reply detection)
+ * - Every hour with hoursAgo=1, triggerStateReactor=true (state reactor trigger)
  *
  * Usage:
  * ```typescript
- * // Scheduled execution (via scheduler.ts)
+ * // Form reply detection - every minute, look back 1 hour, no state reactor
  * scheduler.schedule({
- *   workflowId: 'checkForNewEmails',
+ *   workflow: checkForNewEmails,
  *   schedule: CronPatterns.EVERY_MINUTE,
- *   inputData: {},
+ *   inputData: { hoursAgo: 1, triggerStateReactor: false },
+ * });
+ *
+ * // State reactor - every hour, look back 1 hour, trigger state reactor
+ * scheduler.schedule({
+ *   workflow: checkForNewEmails,
+ *   schedule: CronPatterns.EVERY_HOUR,
+ *   inputData: { hoursAgo: 1, triggerStateReactor: true },
  * });
  * ```
  */
 export const checkForNewEmails = createWorkflow({
   id: 'checkForNewEmails',
   stateSchema: parentWorkflowStateSchema,
-  inputSchema: z.object({}),
+  inputSchema: z.object({
+    hoursAgo: z.number().default(1).describe('Number of hours to look back for emails'),
+    triggerStateReactor: z.boolean().default(false).describe('Whether to trigger state reactor for new emails'),
+  }),
   outputSchema: z.object({
     emailsFound: z.number(),
-    lastSeenEmailUpdated: z.boolean(),
+    stateChangeRegistered: z.boolean(),
     message: z.string(),
   }),
 })
-  .then(searchNewEmailsForParent)
-  .then(storeNewEmailsInParentState)
+  .then(searchEmailsSinceHoursAgo)
+  .then(storeEmailsInState)
   .then(processFormReplies)
-  .then(updateLastSeenEmailStep)
-  .then(formatParentOutput)
-  .commit();
-
-/**
- * Email State Change Notification Workflow
- *
- * Separate workflow that handles state change registration for new emails.
- * This workflow runs hourly to trigger the state reactor/notification system.
- *
- * The workflow:
- * 1. Searches for new emails since last check
- * 2. Stores emails in workflow state
- * 3. Registers the state change with the notification system
- *
- * This separation allows form reply detection to run every minute (for quick
- * response to workflow emails) while the state reactor only processes
- * email notifications hourly (to avoid overwhelming the notification system).
- *
- * Usage:
- * ```typescript
- * scheduler.schedule({
- *   workflowId: 'emailStateChangeNotificationWorkflow',
- *   schedule: CronPatterns.EVERY_HOUR,
- *   inputData: {},
- * });
- * ```
- */
-
-// Step for state change notification workflow - register state change and return output
-const registerAndFormatStateChange = createStep({
-  id: 'register-and-format-state-change',
-  description: 'Register new emails as state change and format output',
-  stateSchema: parentWorkflowStateSchema,
-  inputSchema: z.object({
-    emailCount: z.number(),
-  }),
-  outputSchema: z.object({
-    registered: z.boolean(),
-    triggeredWorkflow: z.boolean(),
-    message: z.string(),
-  }),
-  execute: async ({ state }) => {
-    const emails = state.newEmails ?? [];
-    const stateChangeData =
-      emails.length === 0
-        ? {
-            source: 'email',
-            stateType: 'no_new_emails',
-            stateData: {
-              timestamp: new Date().toISOString(),
-            },
-          }
-        : {
-            source: 'email',
-            stateType: 'new_emails_received',
-            stateData: {
-              emailCount: emails.length,
-              emails: emails.map((email) => ({
-                subject: email.subject,
-                from: email.from.address,
-                receivedDateTime: email.receivedDateTime,
-              })),
-              timestamp: new Date().toISOString(),
-            },
-          };
-
-    const result = await registerStateChange.execute(stateChangeData);
-
-    if ('error' in result) {
-      throw new Error(`Failed to register state change: ${result.message}`);
-    }
-
-    return result;
-  },
-});
-
-export const emailStateChangeNotificationWorkflow = createWorkflow({
-  id: 'emailStateChangeNotificationWorkflow',
-  stateSchema: parentWorkflowStateSchema,
-  inputSchema: z.object({}),
-  outputSchema: z.object({
-    registered: z.boolean(),
-    triggeredWorkflow: z.boolean(),
-    message: z.string(),
-  }),
-})
-  .then(searchNewEmailsForParent)
-  .then(storeNewEmailsInParentState)
-  .then(registerAndFormatStateChange)
+  .then(conditionallyRegisterStateChange)
+  .then(formatEmailWorkflowOutput)
   .commit();

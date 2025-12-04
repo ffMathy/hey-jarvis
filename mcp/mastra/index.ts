@@ -6,7 +6,6 @@ import { getSqlStorageProvider } from './storage/index.js';
 import {
   checkForFormRepliesWorkflow,
   checkForNewEmails,
-  emailStateChangeNotificationWorkflow,
   generateMealPlanWorkflow,
   getPublicAgents,
   humanInTheLoopDemoWorkflow,
@@ -52,7 +51,6 @@ async function createMastra() {
       humanInTheLoopDemoWorkflow,
       checkForFormRepliesWorkflow,
       checkForNewEmails,
-      emailStateChangeNotificationWorkflow,
       iotMonitoringWorkflow,
       routePromptWorkflow,
       getCurrentDagWorkflow,
