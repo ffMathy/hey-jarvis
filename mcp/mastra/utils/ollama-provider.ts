@@ -12,8 +12,9 @@ import {
 /**
  * Creates an Ollama provider instance for local LLM inference.
  *
- * This provider connects to the local Ollama server running in the container.
- * The server runs on port 11434 by default and serves models like Qwen3.
+ * This provider connects to the Ollama server running as a separate Home Assistant
+ * extension at homeassistant.local:11434 by default. For local development and testing,
+ * set OLLAMA_HOST=localhost to connect to a locally running Ollama instance.
  *
  * Uses ollama-ai-provider-v2 which is compatible with AI SDK v5 (LanguageModelV2).
  * This ensures compatibility with Mastra's .stream() method.
@@ -31,13 +32,14 @@ import {
  * When the queue reaches its maximum size (10), new requests are dropped with an error.
  *
  * Environment variables:
- * - OLLAMA_HOST: The host where Ollama is running (default: localhost)
+ * - OLLAMA_HOST: The host where Ollama is running (default: homeassistant.local)
  * - OLLAMA_PORT: The port Ollama is listening on (default: 11434)
  * - OLLAMA_NUM_THREADS: Number of CPU threads for inference (default: 50% of CPU cores)
  */
 
 // Get Ollama configuration from environment or use defaults
-const ollamaHost = process.env.OLLAMA_HOST || 'localhost';
+// Default to homeassistant.local since Ollama runs as a separate Home Assistant extension
+const ollamaHost = process.env.OLLAMA_HOST || 'homeassistant.local';
 const ollamaPort = process.env.OLLAMA_PORT || '11434';
 const ollamaBaseUrl = `http://${ollamaHost}:${ollamaPort}/api`;
 

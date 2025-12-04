@@ -18,7 +18,8 @@ import { createOllama } from 'ollama-ai-provider-v2';
  */
 
 // Get Ollama configuration from environment or use defaults
-const ollamaHost = process.env.OLLAMA_HOST || 'localhost';
+// Default to homeassistant.local since Ollama runs as a separate Home Assistant extension
+const ollamaHost = process.env.OLLAMA_HOST || 'homeassistant.local';
 const ollamaPort = process.env.OLLAMA_PORT || '11434';
 const ollamaApiBaseUrl = `http://${ollamaHost}:${ollamaPort}`;
 
