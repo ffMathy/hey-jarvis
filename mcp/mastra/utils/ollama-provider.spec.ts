@@ -6,8 +6,6 @@ import {
   ensureModelAvailable,
   getOllamaApiUrl,
   getOllamaBaseUrl,
-  getOllamaHost,
-  getOllamaPort,
   getOllamaQueueLength,
   getOllamaQueueStats,
   isModelAvailable,
@@ -25,8 +23,6 @@ describe('Ollama Provider Configuration', () => {
 
   it('should export configuration helper functions', () => {
     expect(typeof getOllamaBaseUrl).toBe('function');
-    expect(typeof getOllamaHost).toBe('function');
-    expect(typeof getOllamaPort).toBe('function');
     expect(typeof getOllamaApiUrl).toBe('function');
   });
 
@@ -42,20 +38,13 @@ describe('Ollama Provider Configuration', () => {
     expect(typeof getOllamaQueueLength).toBe('function');
   });
 
-  it('should return correct default configuration values', () => {
-    // Default values when environment variables are not set
-    const host = getOllamaHost();
-    const port = getOllamaPort();
+  it('should return correct hardcoded URL values', () => {
     const baseUrl = getOllamaBaseUrl();
     const apiUrl = getOllamaApiUrl();
 
-    expect(typeof host).toBe('string');
-    expect(typeof port).toBe('string');
-    expect(baseUrl).toContain(host);
-    expect(baseUrl).toContain(port);
-    expect(baseUrl).toContain('/api');
-    expect(apiUrl).toContain(host);
-    expect(apiUrl).toContain(port);
+    // URL should be hardcoded to homeassistant.local:11434
+    expect(baseUrl).toBe('http://homeassistant.local:11434/api');
+    expect(apiUrl).toBe('http://homeassistant.local:11434');
   });
 
   it('should export ollama provider instance', () => {
@@ -87,7 +76,7 @@ describe('Ollama Docker Integration', () => {
     ollamaAvailable = await isOllamaAvailable();
 
     if (!ollamaAvailable) {
-      console.log('⚠️ Ollama Docker container is not available - integration tests will be skipped');
+      console.log('⚠️ Ollama is not available - integration tests will be skipped');
       console.log(`   Expected Ollama at: ${getOllamaBaseUrl()}`);
     }
   });
@@ -98,9 +87,7 @@ describe('Ollama Docker Integration', () => {
       return;
     }
 
-    const host = getOllamaHost();
-    const port = getOllamaPort();
-    const response = await fetch(`http://${host}:${port}/api/tags`);
+    const response = await fetch(`${getOllamaApiUrl()}/api/tags`);
 
     expect(response.ok).toBe(true);
     const data = (await response.json()) as { models?: unknown[] };

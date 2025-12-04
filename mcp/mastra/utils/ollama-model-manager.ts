@@ -17,10 +17,10 @@ import { createOllama } from 'ollama-ai-provider-v2';
  * providing a seamless experience even if models aren't pre-installed.
  */
 
-// Get Ollama configuration from environment or use defaults
-const ollamaHost = process.env.OLLAMA_HOST || 'localhost';
-const ollamaPort = process.env.OLLAMA_PORT || '11434';
-const ollamaApiBaseUrl = `http://${ollamaHost}:${ollamaPort}`;
+/**
+ * Hardcoded Ollama URL - Ollama runs as a separate Home Assistant extension
+ */
+export const OLLAMA_BASE_URL = 'http://homeassistant.local:11434';
 
 /**
  * Get the number of CPU threads to use for Ollama inference.
@@ -463,7 +463,7 @@ interface OllamaPullResponse {
  */
 export async function isOllamaAvailable(): Promise<boolean> {
   try {
-    const response = await fetch(`${ollamaApiBaseUrl}/api/tags`, {
+    const response = await fetch(`${OLLAMA_BASE_URL}/api/tags`, {
       signal: AbortSignal.timeout(5000),
     });
     return response.ok;
@@ -483,7 +483,7 @@ export async function isModelAvailable(modelName: string): Promise<boolean> {
   }
 
   try {
-    const response = await fetch(`${ollamaApiBaseUrl}/api/tags`, {
+    const response = await fetch(`${OLLAMA_BASE_URL}/api/tags`, {
       signal: AbortSignal.timeout(5000),
     });
 
@@ -547,7 +547,7 @@ export async function ensureModelAvailable(modelName: string): Promise<void> {
  * @param modelName The name of the model to pull
  */
 async function pullModel(modelName: string): Promise<void> {
-  const response = await fetch(`${ollamaApiBaseUrl}/api/pull`, {
+  const response = await fetch(`${OLLAMA_BASE_URL}/api/pull`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -581,7 +581,7 @@ async function pullModel(modelName: string): Promise<void> {
  */
 export async function listModels(): Promise<string[]> {
   try {
-    const response = await fetch(`${ollamaApiBaseUrl}/api/tags`, {
+    const response = await fetch(`${OLLAMA_BASE_URL}/api/tags`, {
       signal: AbortSignal.timeout(5000),
     });
 
@@ -603,7 +603,7 @@ export function createLazyOllamaProvider() {
   const loggingFetch = createLoggingFetch();
 
   const baseOllama = createOllama({
-    baseURL: `${ollamaApiBaseUrl}/api`,
+    baseURL: `${OLLAMA_BASE_URL}/api`,
     fetch: loggingFetch,
   });
 
@@ -640,5 +640,5 @@ export function createLazyOllamaProvider() {
  * Get the Ollama API base URL.
  */
 export function getOllamaApiUrl(): string {
-  return ollamaApiBaseUrl;
+  return OLLAMA_BASE_URL;
 }
