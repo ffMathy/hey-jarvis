@@ -49,6 +49,8 @@ Always respond in Danish with a clear, concise summary.`,
   inputSchema: emailInputSchema,
   outputSchema: orderChangesSchema,
   prompt: ({ inputData }) => {
+    // Email content is passed to the AI agent for extraction
+    // The structured output schema constrains what the agent can return
     return `Analyser denne e-mail fra Bilka kundeservice og udtræk ændringerne i ordren:
 
 E-mail emne: ${inputData.email.subject}
@@ -64,6 +66,35 @@ Besvar med:
 Hvis du ikke kan identificere specifikke ændringer, så beskriv generelt hvad e-mailen handler om.`;
   },
 });
+
+/**
+ * Sanitizes a string for use in voice notifications.
+ * Removes potentially harmful or unwanted characters/patterns.
+ */
+function sanitizeForVoiceNotification(text: string): string {
+  let sanitized = text;
+
+  // Remove HTML tags iteratively to handle nested/malformed tags
+  let previousLength: number;
+  do {
+    previousLength = sanitized.length;
+    sanitized = sanitized.replace(/<[^>]*>/g, '');
+  } while (sanitized.length < previousLength);
+
+  // Remove any remaining angle brackets to prevent partial tags
+  sanitized = sanitized.replace(/[<>]/g, '');
+
+  return (
+    sanitized
+      // Remove URLs
+      .replace(/https?:\/\/[^\s]+/g, '')
+      // Remove excessive whitespace
+      .replace(/\s+/g, ' ')
+      // Truncate to reasonable length for voice
+      .substring(0, 500)
+      .trim()
+  );
+}
 
 // Step 2: Send notification about order changes
 const notifyOrderChanges = createStep({
@@ -82,10 +113,14 @@ const notifyOrderChanges = createStep({
       };
     }
 
+    // Sanitize the AI-extracted content before using in voice notification
+    const sanitizedChanges = inputData.changes.map(sanitizeForVoiceNotification);
+    const sanitizedSummary = sanitizeForVoiceNotification(inputData.summary);
+
     const notificationMessage =
-      inputData.changes.length > 0
-        ? `Sir, din Bilka ordre har følgende ændringer: ${inputData.changes.join('. ')}`
-        : `Sir, ${inputData.summary}`;
+      sanitizedChanges.length > 0
+        ? `Sir, din Bilka ordre har følgende ændringer: ${sanitizedChanges.join('. ')}`
+        : `Sir, ${sanitizedSummary}`;
 
     const result = await notifyDevice.execute({
       message: notificationMessage,

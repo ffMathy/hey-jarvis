@@ -120,13 +120,7 @@ export async function processEmailTriggers(email: TriggerableEmail): Promise<str
         const run = await trigger.workflow.createRun();
         await run.start({
           inputData: {
-            email: {
-              id: email.id,
-              subject: email.subject,
-              bodyPreview: email.bodyPreview,
-              from: email.from,
-              receivedDateTime: email.receivedDateTime,
-            },
+            email,
           },
         });
 
