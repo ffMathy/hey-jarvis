@@ -58,7 +58,7 @@ COPY mcp/supervisord.conf /etc/supervisord.conf
 EXPOSE 4111 4112
 
 # Make scripts executable
-RUN chmod a+x ./mcp/run.sh
+RUN chmod +x ./mcp/run.sh
 
 # Override the base image's entrypoint and use the run script
 ENTRYPOINT [ "./mcp/run.sh" ]
