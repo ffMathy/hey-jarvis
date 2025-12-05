@@ -1013,8 +1013,16 @@ All environment variables use the `HEY_JARVIS_` prefix for easy management and D
 1. **Documentation**: Update the list above in this AGENTS.md file
 2. **Build CI**: Add to `.github/workflows/build.yml` in both the `env:` section at the top AND the `env:` block under devcontainers/ci
 3. **Release CI**: Add to `.github/workflows/release.yml` in both the `env:` section at the top AND the `env:` block under devcontainers/ci
-4. **1Password**: Store the secret in 1Password vault and reference in `mcp/op.env`
+4. **1Password op.env**: Add the variable to `mcp/op.env` with the 1Password reference path (e.g., `HEY_JARVIS_EXAMPLE_KEY="op://Personal/Example/API key"`)
 5. **GitHub Secrets**: Add the secret to the GitHub repository settings
+
+#### OAuth-Based Integrations
+When creating new integrations that use OAuth with user consent (requiring refresh tokens), you must:
+1. **Register as OAuth Provider**: Add the provider to `mcp/mastra/credentials/` following the pattern of `google.ts` or `microsoft.ts`
+2. **Update Provider List**: Add the provider to the `PROVIDERS` array in `mcp/mastra/generate-refresh-tokens.ts`
+3. **Add Environment Variables**: Include client ID, client secret, and refresh token variables in all locations listed above
+
+**Note**: Integrations using OAuth client credentials flow (app-level auth without user consent, like Spotify) do NOT need to register as OAuth providers - they only need client ID and secret in the environment variables.
 
 #### Development Setup
 1. **Install 1Password CLI**: Follow [1Password CLI installation guide](https://developer.1password.com/docs/cli/get-started/)
