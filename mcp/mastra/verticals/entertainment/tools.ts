@@ -2,41 +2,46 @@ import { SpotifyApi } from '@spotify/web-api-ts-sdk';
 import { z } from 'zod';
 import { createTool } from '../../utils/tool-factory.js';
 
-// IMDb API types
-interface IMDbSearchResult {
-  id: string;
-  title: string;
-  year: number;
-  type: 'movie' | 'series';
-  poster?: string;
-}
+// IMDb API response schemas for runtime validation
+const imdbTitleSchema = z.object({
+  id: z.string(),
+  type: z.string(),
+  primaryTitle: z.string(),
+  originalTitle: z.string().optional(),
+  primaryImage: z
+    .object({
+      url: z.string(),
+      width: z.number().optional(),
+      height: z.number().optional(),
+    })
+    .optional()
+    .nullable(),
+  startYear: z.number().optional(),
+  endYear: z.number().optional(),
+  runtimeSeconds: z.number().optional(),
+  genres: z.array(z.string()).optional(),
+  rating: z
+    .object({
+      aggregateRating: z.number(),
+      voteCount: z.number(),
+    })
+    .optional()
+    .nullable(),
+  plot: z.string().optional(),
+});
 
-interface IMDbSearchResponse {
-  results: IMDbSearchResult[];
-  total: number;
-}
+const imdbListResponseSchema = z.object({
+  titles: z.array(imdbTitleSchema).optional(),
+  totalCount: z.number().optional(),
+  nextPageToken: z.string().optional(),
+});
 
-interface IMDbTitleDetails {
-  id: string;
-  title: string;
-  year: number;
-  type: 'movie' | 'series';
-  rating?: number;
-  votes?: number;
-  plot?: string;
-  genres?: string[];
-  runtime?: number;
-  poster?: string;
-}
-
-// Spotify client management
+// Spotify client management with credential tracking
 let spotifyClient: SpotifyApi | null = null;
+let cachedClientId: string | null = null;
+let cachedClientSecret: string | null = null;
 
 function getSpotifyClient(): SpotifyApi {
-  if (spotifyClient) {
-    return spotifyClient;
-  }
-
   const clientId = process.env.HEY_JARVIS_SPOTIFY_CLIENT_ID;
   const clientSecret = process.env.HEY_JARVIS_SPOTIFY_CLIENT_SECRET;
 
@@ -46,16 +51,30 @@ function getSpotifyClient(): SpotifyApi {
     );
   }
 
+  // Re-create client if credentials have changed
+  if (spotifyClient && cachedClientId === clientId && cachedClientSecret === clientSecret) {
+    return spotifyClient;
+  }
+
   spotifyClient = SpotifyApi.withClientCredentials(clientId, clientSecret);
+  cachedClientId = clientId;
+  cachedClientSecret = clientSecret;
   return spotifyClient;
+}
+
+// Map IMDb type to a simplified type
+function mapIMDbType(type: string): 'movie' | 'series' {
+  if (type === 'movie' || type === 'tvMovie' || type === 'short' || type === 'video') {
+    return 'movie';
+  }
+  return 'series';
 }
 
 // IMDb Search Tool
 export const searchIMDb = createTool({
   id: 'searchIMDb',
-  description: 'Search for movies or TV series on IMDb by title query',
+  description: 'Search for movies or TV series on IMDb. Returns popular titles matching the search criteria.',
   inputSchema: z.object({
-    query: z.string().describe('The search query (movie or series title to search for)'),
     type: z
       .enum(['movie', 'series'])
       .optional()
@@ -67,20 +86,25 @@ export const searchIMDb = createTool({
       z.object({
         id: z.string(),
         title: z.string(),
-        year: z.number(),
+        year: z.number().optional(),
         type: z.enum(['movie', 'series']),
         poster: z.string().optional(),
+        rating: z.number().optional(),
+        genres: z.array(z.string()).optional(),
+        plot: z.string().optional(),
       }),
     ),
     total: z.number(),
-    query: z.string(),
   }),
   execute: async (inputData) => {
     const limit = Math.min(inputData.limit || 10, 50);
-    let url = `https://imdbapi.dev/api/search?query=${encodeURIComponent(inputData.query)}&limit=${limit}`;
+    let url = `https://api.imdbapi.dev/titles?pageSize=${limit}`;
 
-    if (inputData.type) {
-      url += `&type=${inputData.type}`;
+    // Map type filter to IMDb API types
+    if (inputData.type === 'movie') {
+      url += '&types=MOVIE';
+    } else if (inputData.type === 'series') {
+      url += '&types=TV_SERIES&types=TV_MINI_SERIES';
     }
 
     const response = await fetch(url);
@@ -88,18 +112,28 @@ export const searchIMDb = createTool({
       throw new Error(`IMDb API request failed: ${response.statusText}`);
     }
 
-    const data = (await response.json()) as IMDbSearchResponse;
+    const rawData = await response.json();
+    const parseResult = imdbListResponseSchema.safeParse(rawData);
+
+    if (!parseResult.success) {
+      throw new Error(`IMDb API returned unexpected response format: ${parseResult.error.message}`);
+    }
+
+    const data = parseResult.data;
+    const titles = data.titles || [];
 
     return {
-      results: data.results.map((item) => ({
+      results: titles.map((item) => ({
         id: item.id,
-        title: item.title,
-        year: item.year,
-        type: item.type,
-        poster: item.poster,
+        title: item.primaryTitle,
+        year: item.startYear,
+        type: mapIMDbType(item.type),
+        poster: item.primaryImage?.url,
+        rating: item.rating?.aggregateRating,
+        genres: item.genres,
+        plot: item.plot,
       })),
-      total: data.total,
-      query: inputData.query,
+      total: data.totalCount || titles.length,
     };
   },
 });
@@ -114,36 +148,43 @@ export const getIMDbTitleDetails = createTool({
   outputSchema: z.object({
     id: z.string(),
     title: z.string(),
-    year: z.number(),
+    year: z.number().optional(),
     type: z.enum(['movie', 'series']),
     rating: z.number().optional(),
     votes: z.number().optional(),
     plot: z.string().optional(),
     genres: z.array(z.string()).optional(),
-    runtime: z.number().optional(),
+    runtimeMinutes: z.number().optional(),
     poster: z.string().optional(),
   }),
   execute: async (inputData) => {
-    const url = `https://imdbapi.dev/api/title/${inputData.titleId}`;
+    const url = `https://api.imdbapi.dev/titles/${inputData.titleId}`;
 
     const response = await fetch(url);
     if (!response.ok) {
       throw new Error(`IMDb API request failed: ${response.statusText}`);
     }
 
-    const data = (await response.json()) as IMDbTitleDetails;
+    const rawData = await response.json();
+    const parseResult = imdbTitleSchema.safeParse(rawData);
+
+    if (!parseResult.success) {
+      throw new Error(`IMDb API returned unexpected response format: ${parseResult.error.message}`);
+    }
+
+    const data = parseResult.data;
 
     return {
       id: data.id,
-      title: data.title,
-      year: data.year,
-      type: data.type,
-      rating: data.rating,
-      votes: data.votes,
+      title: data.primaryTitle,
+      year: data.startYear,
+      type: mapIMDbType(data.type),
+      rating: data.rating?.aggregateRating,
+      votes: data.rating?.voteCount,
       plot: data.plot,
       genres: data.genres,
-      runtime: data.runtime,
-      poster: data.poster,
+      runtimeMinutes: data.runtimeSeconds ? Math.round(data.runtimeSeconds / 60) : undefined,
+      poster: data.primaryImage?.url,
     };
   },
 });
@@ -174,28 +215,40 @@ export const searchSpotifyTracks = createTool({
     query: z.string(),
   }),
   execute: async (inputData) => {
-    const client = getSpotifyClient();
-    const limit = Math.min(inputData.limit || 10, 50);
+    try {
+      const client = getSpotifyClient();
+      const limit = Math.min(inputData.limit || 10, 50);
 
-    const searchResults = await client.search(inputData.query, ['track'], undefined, limit);
+      const searchResults = await client.search(inputData.query, ['track'], undefined, limit);
 
-    const tracks = searchResults.tracks.items.map((track) => ({
-      id: track.id,
-      name: track.name,
-      artists: track.artists.map((artist) => artist.name),
-      album: track.album.name,
-      releaseDate: track.album.release_date,
-      durationMs: track.duration_ms,
-      previewUrl: track.preview_url,
-      externalUrl: track.external_urls.spotify,
-      popularity: track.popularity,
-    }));
+      if (!searchResults.tracks) {
+        throw new Error('No track results returned from Spotify.');
+      }
 
-    return {
-      tracks,
-      total: searchResults.tracks.total,
-      query: inputData.query,
-    };
+      const tracks = searchResults.tracks.items.map((track) => ({
+        id: track.id,
+        name: track.name,
+        artists: track.artists.map((artist) => artist.name),
+        album: track.album.name,
+        releaseDate: track.album.release_date,
+        durationMs: track.duration_ms,
+        previewUrl: track.preview_url,
+        externalUrl: track.external_urls.spotify,
+        popularity: track.popularity,
+      }));
+
+      return {
+        tracks,
+        total: searchResults.tracks.total,
+        query: inputData.query,
+      };
+    } catch (error) {
+      throw new Error(
+        error && typeof error === 'object' && 'message' in error
+          ? `Failed to search Spotify: ${(error as Error).message}`
+          : 'Failed to search Spotify.',
+      );
+    }
   },
 });
 
@@ -221,24 +274,35 @@ export const getSpotifyTrackDetails = createTool({
     trackNumber: z.number(),
   }),
   execute: async (inputData) => {
-    const client = getSpotifyClient();
+    try {
+      const client = getSpotifyClient();
+      const track = await client.tracks.get(inputData.trackId);
 
-    const track = await client.tracks.get(inputData.trackId);
+      if (!track) {
+        throw new Error('Track not found on Spotify.');
+      }
 
-    return {
-      id: track.id,
-      name: track.name,
-      artists: track.artists.map((artist) => artist.name),
-      album: track.album.name,
-      releaseDate: track.album.release_date,
-      durationMs: track.duration_ms,
-      previewUrl: track.preview_url,
-      externalUrl: track.external_urls.spotify,
-      popularity: track.popularity,
-      isExplicit: track.explicit,
-      discNumber: track.disc_number,
-      trackNumber: track.track_number,
-    };
+      return {
+        id: track.id,
+        name: track.name,
+        artists: track.artists.map((artist) => artist.name),
+        album: track.album.name,
+        releaseDate: track.album.release_date,
+        durationMs: track.duration_ms,
+        previewUrl: track.preview_url,
+        externalUrl: track.external_urls.spotify,
+        popularity: track.popularity,
+        isExplicit: track.explicit,
+        discNumber: track.disc_number,
+        trackNumber: track.track_number,
+      };
+    } catch (error) {
+      throw new Error(
+        error && typeof error === 'object' && 'message' in error
+          ? `Failed to fetch track details from Spotify: ${(error as Error).message}`
+          : 'Failed to fetch track details from Spotify.',
+      );
+    }
   },
 });
 

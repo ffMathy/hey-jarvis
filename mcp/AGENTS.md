@@ -1003,9 +1003,18 @@ All environment variables use the `HEY_JARVIS_` prefix for easy management and D
 - **Shopping (Search)**: `HEY_JARVIS_ALGOLIA_API_KEY`, `HEY_JARVIS_ALGOLIA_APPLICATION_ID`, `HEY_JARVIS_BILKA_USER_TOKEN` for product search
 - **ElevenLabs**: `HEY_JARVIS_ELEVENLABS_API_KEY`, `HEY_JARVIS_ELEVENLABS_AGENT_ID`, `HEY_JARVIS_ELEVENLABS_VOICE_ID` for voice AI (test agent ID `HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID` takes precedence for phone calls)
 - **Recipes**: `HEY_JARVIS_VALDEMARSRO_API_KEY` for Danish recipe data
+- **Entertainment (Spotify)**: `HEY_JARVIS_SPOTIFY_CLIENT_ID`, `HEY_JARVIS_SPOTIFY_CLIENT_SECRET` for Spotify API access (music search and track details)
 - **GitHub**: `HEY_JARVIS_GITHUB_API_TOKEN` for GitHub API access (coding agent and error reporting processor)
 - **WiFi**: `HEY_JARVIS_WIFI_SSID`, `HEY_JARVIS_WIFI_PASSWORD` for Home Assistant Voice Firmware
 - **Authentication**: `HEY_JARVIS_MCP_JWT_SECRET` for JWT-based HTTP authentication of the MCP server (Mastra UI is protected by Home Assistant ingress)
+
+#### Adding New Environment Variables
+**CRITICAL**: When adding new environment variables for a vertical, you must add them to **ALL** of the following locations:
+1. **Documentation**: Update the list above in this AGENTS.md file
+2. **Build CI**: Add to `.github/workflows/build.yml` in both the `env:` section at the top AND the `env:` block under devcontainers/ci
+3. **Release CI**: Add to `.github/workflows/release.yml` in both the `env:` section at the top AND the `env:` block under devcontainers/ci
+4. **1Password**: Store the secret in 1Password vault and reference in `mcp/op.env`
+5. **GitHub Secrets**: Add the secret to the GitHub repository settings
 
 #### Development Setup
 1. **Install 1Password CLI**: Follow [1Password CLI installation guide](https://developer.1password.com/docs/cli/get-started/)
