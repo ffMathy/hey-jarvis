@@ -28,6 +28,10 @@ export interface TriggerableEmail {
   id: string;
   subject: string;
   bodyPreview: string;
+  body: {
+    contentType: string;
+    content: string;
+  };
   from: {
     name: string;
     address: string;

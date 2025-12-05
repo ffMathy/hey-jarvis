@@ -1,15 +1,18 @@
-import { convert } from 'html-to-text';
 import { z } from 'zod';
 import { createStep, createWorkflow } from '../../utils/workflow-factory.js';
 import { registerEmailTrigger } from '../email/triggers.js';
 import { getNotificationAgent } from '../notification/agent.js';
 
-// Email schema for incoming trigger emails
+// Email schema for incoming trigger emails (includes full HTML body)
 const emailInputSchema = z.object({
   email: z.object({
     id: z.string(),
     subject: z.string(),
     bodyPreview: z.string(),
+    body: z.object({
+      contentType: z.string(),
+      content: z.string(),
+    }),
     from: z.object({
       name: z.string(),
       address: z.string(),
@@ -24,20 +27,6 @@ const notificationOutputSchema = z.object({
   message: z.string(),
 });
 
-/**
- * Converts HTML content to plain text using html-to-text library.
- */
-function htmlToPlainText(html: string): string {
-  return convert(html, {
-    wordwrap: false,
-    preserveNewlines: true,
-    selectors: [
-      { selector: 'a', options: { ignoreHref: true } },
-      { selector: 'img', format: 'skip' },
-    ],
-  });
-}
-
 // Step: Send notification about order changes via the notification agent
 const notifyOrderChanges = createStep({
   id: 'notify-order-changes',
@@ -45,19 +34,16 @@ const notifyOrderChanges = createStep({
   inputSchema: emailInputSchema,
   outputSchema: notificationOutputSchema,
   execute: async ({ inputData }) => {
-    // Convert HTML email body to plain text
-    const plainTextBody = htmlToPlainText(inputData.email.bodyPreview);
-
     // Get the notification agent
     const notificationAgent = await getNotificationAgent();
 
-    // Let the notification agent handle the notification with the email content
+    // Let the notification agent handle the notification with the full email content
     const notificationPrompt = `Send a notification to the user about this Bilka order change:
 
 Subject: ${inputData.email.subject}
 
-Email content:
-${plainTextBody}
+Email content (HTML):
+${inputData.email.body.content}
 
 Summarize the key changes and notify the user in Danish.`;
 
@@ -86,8 +72,7 @@ Summarize the key changes and notify the user in Danish.`;
  * customer service with a subject indicating order changes.
  *
  * Steps:
- * 1. Convert email HTML to plain text
- * 2. Send notification via the notification agent
+ * 1. Send notification via the notification agent with full HTML content
  */
 export const orderChangedWorkflow = createWorkflow({
   id: 'orderChangedWorkflow',

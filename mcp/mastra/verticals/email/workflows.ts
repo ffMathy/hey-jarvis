@@ -5,6 +5,28 @@ import { findEmails, findNewEmailsSinceLastCheck, updateLastSeenEmail } from './
 import { processEmailTriggers } from './triggers.js';
 
 /**
+ * Reusable schema for email objects with full body content.
+ * Used across multiple workflow steps for consistency.
+ */
+const emailWithBodySchema = z.object({
+  id: z.string(),
+  subject: z.string(),
+  bodyPreview: z.string(),
+  body: z.object({
+    contentType: z.string(),
+    content: z.string(),
+  }),
+  from: z.object({
+    name: z.string(),
+    address: z.string(),
+  }),
+  receivedDateTime: z.string(),
+  isRead: z.boolean(),
+  hasAttachments: z.boolean(),
+  isDraft: z.boolean(),
+});
+
+/**
  * Check for Form Replies Workflow
  *
  * This workflow runs on a periodic schedule (every 5 minutes) to:
@@ -306,23 +328,7 @@ export const checkForFormRepliesWorkflow = createWorkflow({
 // State schema for the parent workflow
 const parentWorkflowStateSchema = z
   .object({
-    newEmails: z
-      .array(
-        z.object({
-          id: z.string(),
-          subject: z.string(),
-          bodyPreview: z.string(),
-          from: z.object({
-            name: z.string(),
-            address: z.string(),
-          }),
-          receivedDateTime: z.string(),
-          isRead: z.boolean(),
-          hasAttachments: z.boolean(),
-          isDraft: z.boolean(),
-        }),
-      )
-      .default([]),
+    newEmails: z.array(emailWithBodySchema).default([]),
     isFirstCheck: z.boolean().default(false),
     lastCheckTimestamp: z.string().optional(),
     mostRecentEmailId: z.string().optional(),
@@ -337,21 +343,7 @@ const searchNewEmailsForParent = createStep({
   stateSchema: parentWorkflowStateSchema,
   inputSchema: z.object({}),
   outputSchema: z.object({
-    emails: z.array(
-      z.object({
-        id: z.string(),
-        subject: z.string(),
-        bodyPreview: z.string(),
-        from: z.object({
-          name: z.string(),
-          address: z.string(),
-        }),
-        receivedDateTime: z.string(),
-        isRead: z.boolean(),
-        hasAttachments: z.boolean(),
-        isDraft: z.boolean(),
-      }),
-    ),
+    emails: z.array(emailWithBodySchema),
     totalCount: z.number(),
     isFirstCheck: z.boolean(),
     lastCheckTimestamp: z.string().optional(),
@@ -367,21 +359,7 @@ const storeNewEmailsInParentState = createStep({
   description: 'Store new emails in parent workflow state and track the most recent email for later update',
   stateSchema: parentWorkflowStateSchema,
   inputSchema: z.object({
-    emails: z.array(
-      z.object({
-        id: z.string(),
-        subject: z.string(),
-        bodyPreview: z.string(),
-        from: z.object({
-          name: z.string(),
-          address: z.string(),
-        }),
-        receivedDateTime: z.string(),
-        isRead: z.boolean(),
-        hasAttachments: z.boolean(),
-        isDraft: z.boolean(),
-      }),
-    ),
+    emails: z.array(emailWithBodySchema),
     totalCount: z.number(),
     isFirstCheck: z.boolean(),
     lastCheckTimestamp: z.string().optional(),
@@ -537,6 +515,7 @@ const processEmailTriggersStep = createStep({
         id: email.id,
         subject: email.subject,
         bodyPreview: email.bodyPreview,
+        body: email.body,
         from: email.from,
         receivedDateTime: email.receivedDateTime,
       });
