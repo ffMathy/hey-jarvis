@@ -43,17 +43,32 @@ function isTessieCarDevice(device: { entities: Array<{ id: string; domain: strin
 }
 
 /**
+ * Checks if an entity is navigation-related for Tessie vehicles.
+ */
+function isNavigationEntity(entity: { id: string; domain: string }): boolean {
+  const entityId = entity.id.toLowerCase();
+  return (
+    Object.values(TESSIE_NAVIGATION_ENTITIES).some((suffix) => entityId.endsWith(suffix)) ||
+    Object.values(TESSIE_LOCATION_ENTITIES).some((suffix) => entityId.endsWith(suffix)) ||
+    entity.domain === 'device_tracker'
+  );
+}
+
+/**
  * Get the current navigation destination from a connected Tesla via Tessie.
  * This shortcut uses the IoT vertical's getAllDevices tool to query
  * the car's navigation system state using Tessie-specific entity patterns.
+ *
+ * The shortcut searches all domains to find Tessie devices, then filters
+ * to only return navigation-related entities.
  */
 export const getCarNavigationDestination = createShortcut({
   id: 'getCarNavigationDestination',
   description:
     "Get the current navigation destination from a connected Tesla via Tessie integration. Uses IoT device integration to query the car's navigation system for destination, distance to arrival, time to arrival, and traffic delay.",
   tool: getAllDevices,
-  execute: async (input) => {
-    const devicesResult = await getAllDevices.execute(input);
+  execute: async () => {
+    const devicesResult = await getAllDevices.execute({});
 
     const carDevices = devicesResult.devices.filter(isTessieCarDevice);
 
@@ -66,14 +81,7 @@ export const getCarNavigationDestination = createShortcut({
     return {
       devices: carDevices.map((device) => ({
         ...device,
-        entities: device.entities.filter((entity) => {
-          const entityId = entity.id.toLowerCase();
-          return (
-            Object.values(TESSIE_NAVIGATION_ENTITIES).some((suffix) => entityId.endsWith(suffix)) ||
-            Object.values(TESSIE_LOCATION_ENTITIES).some((suffix) => entityId.endsWith(suffix)) ||
-            entity.domain === 'device_tracker'
-          );
-        }),
+        entities: device.entities.filter(isNavigationEntity),
       })),
     };
   },
