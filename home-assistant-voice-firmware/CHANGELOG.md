@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.6.0...home-assistant-voice-firmware-v0.7.0) (2025-12-05)
+
+
+### Features
+
+* **devcontainer:** add ESPHome-friendly VS Code settings for syntax highlighting ([c667d40](https://github.com/ffMathy/hey-jarvis/commit/c667d403f504e1e3187313a7f7323116e9acf6c7))
+* **devcontainer:** Add ESPHome-friendly VS Code settings for syntax highlighting ([#396](https://github.com/ffMathy/hey-jarvis/issues/396)) ([b3aee6e](https://github.com/ffMathy/hey-jarvis/commit/b3aee6e3dcddf068d91a03baa37f5b351ead2404))
+
 ## [0.6.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.5.0...home-assistant-voice-firmware-v0.6.0) (2025-11-29)
 
 

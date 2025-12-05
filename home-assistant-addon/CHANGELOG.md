@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.24.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v0.23.0...home-assistant-addon-v0.24.0) (2025-12-05)
+
+
+### Bug Fixes
+
+* **mcp:** add min(1) validation to shopping list input schema and fix CI test failures ([#390](https://github.com/ffMathy/hey-jarvis/issues/390)) ([74f4afa](https://github.com/ffMathy/hey-jarvis/commit/74f4afa7278390fe5b57e5e71cbc9257d9e8567b))
+* **mcp:** add min(1) validation to shopping list input schema to reject empty prompts ([84e9620](https://github.com/ffMathy/hey-jarvis/commit/84e962094198de88daac1ed40a7a3b4980bb24ca))
+
 ## [0.23.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v0.22.3...home-assistant-addon-v0.23.0) (2025-12-03)
 
 
