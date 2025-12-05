@@ -1818,31 +1818,27 @@ mastra/verticals/commute/
 ```
 
 **Example shortcuts:**
-- **Commute vertical** → `getCarNavigationDestination`: Queries IoT devices to get the car's current navigation destination
+- **Commute vertical** → `getCarNavigationDestination`: Queries IoT devices to get the Tesla's current navigation destination via Tessie integration
 - **Weather vertical** → `getUserCurrentLocation`: Uses IoT device tracking to find user location for weather queries
 
 **Shortcut implementation pattern:**
+Shortcuts must use the `createShortcut` utility which automatically reuses the input and output schemas from the underlying tool:
+
 ```typescript
 // shortcuts.ts
-import { z } from 'zod';
-import { createTool } from '../../utils/tool-factory.js';
+import { createShortcut } from '../../utils/shortcut-factory.js';
 import { someToolFromOtherVertical } from '../other-vertical/tools.js';
 
-export const myShortcut = createTool({
+export const myShortcut = createShortcut({
   id: 'myShortcut',
   description: 'Domain-specific description of what this shortcut does',
-  inputSchema: z.object({
-    // Domain-specific input parameters
-  }),
-  outputSchema: z.object({
-    // Domain-specific output
-  }),
-  execute: async (inputData) => {
-    // Call the other vertical's tool and transform the result
-    const result = await someToolFromOtherVertical.execute({ /* params */ });
+  tool: someToolFromOtherVertical,
+  execute: async (input) => {
+    // Call the underlying tool (schemas are inherited)
+    const result = await someToolFromOtherVertical.execute(input);
     
-    // Transform to domain-specific format
-    return { /* transformed result */ };
+    // Optionally filter/transform the result while maintaining schema compatibility
+    return result;
   },
 });
 
