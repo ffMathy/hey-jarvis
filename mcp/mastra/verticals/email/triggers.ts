@@ -111,30 +111,42 @@ export function getRegisteredEmailTriggers(): RegisteredEmailTrigger[] {
  * @returns Array of trigger IDs that matched and were executed
  */
 export async function processEmailTriggers(email: TriggerableEmail): Promise<string[]> {
-  const matchedTriggerIds: string[] = [];
   const senderAddress = email.from.address.toLowerCase();
+
+  const workflowPromises: Promise<string | null>[] = [];
 
   for (const trigger of emailTriggerRegistry.values()) {
     const triggerSender = trigger.sender.toLowerCase();
-
     if (senderAddress === triggerSender && trigger.subjectFilter(email.subject)) {
       console.log(`📧 Email trigger matched: ${trigger.id} for email "${email.subject}"`);
-
-      try {
-        const run = await trigger.workflow.createRun();
-        await run.start({
-          inputData: {
-            email,
-          },
-        });
-
-        matchedTriggerIds.push(trigger.id);
-        console.log(`✅ Successfully executed workflow for trigger ${trigger.id}`);
-      } catch (error) {
-        console.error(`❌ Failed to execute workflow for trigger ${trigger.id}:`, error);
-      }
+      workflowPromises.push(
+        (async () => {
+          try {
+            const run = await trigger.workflow.createRun();
+            const result = await run.start({
+              inputData: {
+                email,
+              },
+            });
+            if (result.status === 'success') {
+              console.log(`✅ Successfully executed workflow for trigger ${trigger.id}`);
+              return trigger.id;
+            }
+            console.error(`❌ Workflow execution failed for trigger ${trigger.id} with status: ${result.status}`);
+            return null;
+          } catch (error) {
+            console.error(`❌ Failed to execute workflow for trigger ${trigger.id}:`, error);
+            return null;
+          }
+        })(),
+      );
     }
   }
+
+  const results = await Promise.allSettled(workflowPromises);
+  const matchedTriggerIds = results
+    .filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled' && r.value !== null)
+    .map((r) => r.value);
 
   return matchedTriggerIds;
 }

@@ -56,7 +56,7 @@ Summarize the key changes and notify the user in Danish.`;
         message: response.text ?? 'Notification sent via agent',
       };
     } catch (error) {
-      console.error('Failed to send notification via agent:', error);
+      console.error('❌ Failed to send notification via agent:', error);
       return {
         notificationSent: false,
         message: error instanceof Error ? error.message : 'Unknown error',
