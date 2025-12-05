@@ -70,15 +70,25 @@ function mapIMDbType(type: string): 'movie' | 'series' {
   return 'series';
 }
 
-// IMDb Search Tool
+// IMDb Browse Tool (note: the free IMDb API doesn't support text search, only filtering)
 export const searchIMDb = createTool({
   id: 'searchIMDb',
-  description: 'Search for movies or TV series on IMDb. Returns popular titles matching the search criteria.',
+  description:
+    'Browse popular movies or TV series on IMDb. Returns trending/popular titles sorted by popularity. Use filters to narrow down by type (movie/series), genre, or year range. Note: This is a browse API, not a text search.',
   inputSchema: z.object({
     type: z
       .enum(['movie', 'series'])
       .optional()
       .describe('Filter by type: movie or series. If not specified, returns both.'),
+    genre: z
+      .string()
+      .optional()
+      .describe(
+        'Filter by genre (e.g., "Action", "Comedy", "Drama", "Horror", "Sci-Fi", "Romance", "Thriller", "Animation").',
+      ),
+    startYear: z.number().optional().describe('Filter titles released on or after this year.'),
+    endYear: z.number().optional().describe('Filter titles released on or before this year.'),
+    minRating: z.number().optional().describe('Filter titles with rating at or above this value (0-10).'),
     limit: z.number().optional().default(10).describe('Maximum number of results to return (default: 10, max: 50)'),
   }),
   outputSchema: z.object({
@@ -105,6 +115,24 @@ export const searchIMDb = createTool({
       url += '&types=MOVIE';
     } else if (inputData.type === 'series') {
       url += '&types=TV_SERIES&types=TV_MINI_SERIES';
+    }
+
+    // Add genre filter
+    if (inputData.genre) {
+      url += `&genres=${encodeURIComponent(inputData.genre)}`;
+    }
+
+    // Add year range filters
+    if (inputData.startYear) {
+      url += `&startYear=${inputData.startYear}`;
+    }
+    if (inputData.endYear) {
+      url += `&endYear=${inputData.endYear}`;
+    }
+
+    // Add rating filter
+    if (inputData.minRating) {
+      url += `&minRating=${inputData.minRating}`;
     }
 
     const response = await fetch(url);
