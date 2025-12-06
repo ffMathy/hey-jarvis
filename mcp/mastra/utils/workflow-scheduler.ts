@@ -222,6 +222,7 @@ export const CronPatterns = {
   EVERY_30_MINUTES: '*/30 * * * *',
   EVERY_HOUR: '0 * * * *',
   EVERY_2_HOURS: '0 */2 * * *',
+  EVERY_3_HOURS: '0 */3 * * *',
   EVERY_6_HOURS: '0 */6 * * *',
   EVERY_12_HOURS: '0 */12 * * *',
   DAILY_AT_MIDNIGHT: '0 0 * * *',

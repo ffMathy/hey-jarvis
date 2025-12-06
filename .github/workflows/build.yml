@@ -47,7 +47,7 @@ env:
 jobs:
   build:
     concurrency:
-      group: build-${{ github.actor }}
+      group: build-${{ github.actor }}-${{ github.head_ref || github.ref }}
       cancel-in-progress: ${{ github.actor != 'dependabot[bot]' }}
       
     runs-on: ubuntu-latest

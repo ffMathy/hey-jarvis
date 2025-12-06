@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.24.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.23.0...mcp-v0.24.0) (2025-12-05)
+
+
+### Features
+
+* **mcp:** add createShortcut utility and update shortcuts to use Tessie patterns ([f32b4af](https://github.com/ffMathy/hey-jarvis/commit/f32b4af3e048bc36ce5e16769e119a18f2f53e95))
+* **mcp:** add shortcuts.ts pattern for cross-vertical tool re-use ([0856e9a](https://github.com/ffMathy/hey-jarvis/commit/0856e9aec5b89bac0f75863e06a4c4625cbeaf7d))
+* **mcp:** add shortcuts.ts pattern for cross-vertical tool re-use ([#401](https://github.com/ffMathy/hey-jarvis/issues/401)) ([662b0db](https://github.com/ffMathy/hey-jarvis/commit/662b0dbd5b36a9746ea21eb6387f75e445aa569e))
+* **mcp:** change Ollama default URL to homeassistant.local and remove Ollama from Docker ([53cd0fa](https://github.com/ffMathy/hey-jarvis/commit/53cd0fad20c202ed2c2f3f13df79488da9ff60ea))
+
+
+### Bug Fixes
+
+* change Ollama provider to use homeassistant.local and remove from Docker image ([#394](https://github.com/ffMathy/hey-jarvis/issues/394)) ([ff8e4e4](https://github.com/ffMathy/hey-jarvis/commit/ff8e4e40521087dcb179b2d7a170e8dc283554b6))
+* **mcp:** add min(1) validation to shopping list input schema and fix CI test failures ([#390](https://github.com/ffMathy/hey-jarvis/issues/390)) ([74f4afa](https://github.com/ffMathy/hey-jarvis/commit/74f4afa7278390fe5b57e5e71cbc9257d9e8567b))
+* **mcp:** add min(1) validation to shopping list input schema to reject empty prompts ([84e9620](https://github.com/ffMathy/hey-jarvis/commit/84e962094198de88daac1ed40a7a3b4980bb24ca))
+* **mcp:** add retry with validation for flaky LLM test that checks explicit location handling ([af62c50](https://github.com/ffMathy/hey-jarvis/commit/af62c50ad72eac8fc0eac5864b5e20a647a1ff5d))
+* **mcp:** address code review feedback for shortcuts ([11c7fd3](https://github.com/ffMathy/hey-jarvis/commit/11c7fd378a788596ae3350117859aed9da808076))
+* **mcp:** also exclude MCP subpaths from JSON body parsing middleware ([d437c28](https://github.com/ffMathy/hey-jarvis/commit/d437c28538863ca7fe4ff09384744c6c9755a8bc))
+* **mcp:** exclude MCP endpoint from express.json middleware ([#389](https://github.com/ffMathy/hey-jarvis/issues/389)) ([610d4b1](https://github.com/ffMathy/hey-jarvis/commit/610d4b1e6af99e367d779edb1b985e7f030c99bf))
+* **mcp:** exclude MCP endpoint from express.json middleware to fix body consumption issue ([b6a6a49](https://github.com/ffMathy/hey-jarvis/commit/b6a6a49f351b8b9659b1c3ab5ae69c30b615e966))
+* **mcp:** remove getOllamaHost and getOllamaPort exports from index.ts ([178f63e](https://github.com/ffMathy/hey-jarvis/commit/178f63e3fdf77eec1db1f709410e3b15b4d928b0))
+
 ## [0.23.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.22.3...mcp-v0.23.0) (2025-12-03)
 
 
