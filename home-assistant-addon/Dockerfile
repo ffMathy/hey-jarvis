@@ -20,10 +20,8 @@ ENV HEY_JARVIS_STORAGE_PATH=/data
 # Install bashio for Home Assistant addon configuration parsing
 # Bashio is the standard library for Home Assistant addons
 # Note: Using apk since the base MCP image uses Alpine Linux (bun:1-alpine)
-RUN apk add --no-cache \
-    curl \
-    jq \
-    && curl -J -L -o /tmp/bashio.tar.gz \
+RUN apk add --no-cache curl jq && \
+    curl -J -L -o /tmp/bashio.tar.gz \
     "https://github.com/hassio-addons/bashio/archive/v0.16.2.tar.gz" && \
     mkdir -p /tmp/bashio && \
     tar zxvf /tmp/bashio.tar.gz --strip 1 -C /tmp/bashio && \
