@@ -19,11 +19,10 @@ ENV HEY_JARVIS_STORAGE_PATH=/data
 
 # Install bashio for Home Assistant addon configuration parsing
 # Bashio is the standard library for Home Assistant addons
-# Note: Using apt-get since the base MCP image uses Debian (bun:1-debian)
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Note: Using apk since the base MCP image uses Alpine Linux (bun:1-alpine)
+RUN apk add --no-cache \
     curl \
     jq \
-    && rm -rf /var/lib/apt/lists/* \
     && curl -J -L -o /tmp/bashio.tar.gz \
     "https://github.com/hassio-addons/bashio/archive/v0.16.2.tar.gz" && \
     mkdir -p /tmp/bashio && \
@@ -37,12 +36,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 FROM base AS home-assistant-addon-end-to-end-test
 
 # Install nginx for ingress simulation
-# Note: Using apt-get since the base MCP image uses Debian (bun:1-debian)
-RUN apt-get update && apt-get install -y --no-install-recommends nginx && rm -rf /var/lib/apt/lists/*
+# Note: Using apk since the base MCP image uses Alpine Linux (bun:1-alpine)
+RUN apk add --no-cache nginx
 
 # Copy nginx test configuration
-# Note: Using /etc/nginx/conf.d/ for Debian (vs /etc/nginx/http.d/ for Alpine)
-COPY tests/nginx.tests.conf /etc/nginx/conf.d/default.conf
+# Note: Using /etc/nginx/http.d/ for Alpine (the default nginx config directory in Alpine)
+COPY tests/nginx.tests.conf /etc/nginx/http.d/default.conf
 
 # Copy test-specific supervisord configuration (includes nginx)
 COPY tests/supervisord-test.conf /etc/supervisord-test.conf
