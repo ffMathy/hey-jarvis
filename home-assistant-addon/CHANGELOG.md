@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.25.1](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v0.25.0...home-assistant-addon-v0.25.1) (2025-12-06)
+
+
+### Bug Fixes
+
+* **home-assistant-addon:** replace apt-get with apk for Alpine Linux base ([d40cfe5](https://github.com/ffMathy/hey-jarvis/commit/d40cfe5a0456ed9ff3b3f9498b598755f0a514e4))
+* **home-assistant-addon:** use apk instead of apt-get for Alpine base image ([#404](https://github.com/ffMathy/hey-jarvis/issues/404)) ([129ad13](https://github.com/ffMathy/hey-jarvis/commit/129ad1382246b07052ae0d1751226ffa732dd4c7))
+
 ## [0.25.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v0.24.0...home-assistant-addon-v0.25.0) (2025-12-06)
 
 
