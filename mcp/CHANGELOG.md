@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.25.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.24.0...mcp-v0.25.0) (2025-12-06)
+
+
+### Features
+
+* **email:** Add email trigger capability for programmatic workflow execution ([68642ea](https://github.com/ffMathy/hey-jarvis/commit/68642ea01d92d95ea75b2738681d810526046fdc))
+* **email:** add email trigger system for programmatic workflow execution ([#403](https://github.com/ffMathy/hey-jarvis/issues/403)) ([9c4fe30](https://github.com/ffMathy/hey-jarvis/commit/9c4fe30ca62c4a65cd282e986aa0900eab9af284))
+
+
+### Bug Fixes
+
+* **ci:** scope build cancellation to same branch per actor ([490693c](https://github.com/ffMathy/hey-jarvis/commit/490693c271cc7288d84db4276cf61ad00863ce41))
+* **mcp:** use separate storage keys for email workflows to prevent race condition ([490693c](https://github.com/ffMathy/hey-jarvis/commit/490693c271cc7288d84db4276cf61ad00863ce41))
+
 ## [0.24.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.23.0...mcp-v0.24.0) (2025-12-05)
 
 
