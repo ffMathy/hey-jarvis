@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.25.1](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.25.0...mcp-v0.25.1) (2025-12-06)
+
+
+### Miscellaneous Chores
+
+* **mcp:** Synchronize mcp versions
+
 ## [0.25.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.24.0...mcp-v0.25.0) (2025-12-06)
 
 
