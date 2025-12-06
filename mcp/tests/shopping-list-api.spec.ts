@@ -138,5 +138,5 @@ describe('Shopping List API Tests', () => {
       expect(data.success).toBe(false);
       console.log('✓ Shopping list API accepted request (workflow failed - likely missing Bilka credentials)');
     }
-  });
+  }, 30000);
 });

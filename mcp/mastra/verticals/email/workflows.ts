@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { createStep, createWorkflow } from '../../utils/workflow-factory.js';
 import { registerStateChange } from '../synapse/tools.js';
 import { findNewEmailsSinceLastCheck, updateLastSeenEmail } from './tools.js';
+import { processEmailTriggers } from './triggers.js';
 
 /**
  * Regex pattern to extract workflow ID from email subjects.
@@ -30,6 +31,10 @@ const emailObjectSchema = z.object({
   id: z.string(),
   subject: z.string(),
   bodyPreview: z.string(),
+  body: z.object({
+    contentType: z.string(),
+    content: z.string(),
+  }),
   from: z.object({
     name: z.string(),
     address: z.string(),
@@ -398,6 +403,62 @@ const registerEmailsStateChange = createStep({
 });
 
 /**
+ * Process email triggers step
+ *
+ * This step processes emails against registered email triggers and executes
+ * matching workflows in parallel.
+ */
+const processEmailTriggersStep = createStep({
+  id: 'process-email-triggers',
+  description: 'Process emails against registered email triggers',
+  stateSchema: sharedEmailStateSchema,
+  inputSchema: z.object({
+    emailCount: z.number(),
+  }),
+  outputSchema: z.object({
+    triggersProcessed: z.number(),
+    triggersMatched: z.number(),
+    matchedTriggerIds: z.array(z.string()),
+  }),
+  execute: async ({ state }) => {
+    const emails = state.newEmails ?? [];
+
+    if (emails.length === 0) {
+      return {
+        triggersProcessed: 0,
+        triggersMatched: 0,
+        matchedTriggerIds: [],
+      };
+    }
+
+    console.log(`📧 Processing ${emails.length} email(s) against registered triggers...`);
+
+    const allMatchedIds: string[] = [];
+
+    for (const email of emails) {
+      const matchedIds = await processEmailTriggers({
+        id: email.id,
+        subject: email.subject,
+        bodyPreview: email.bodyPreview,
+        body: email.body,
+        from: email.from,
+        receivedDateTime: email.receivedDateTime,
+      });
+
+      allMatchedIds.push(...matchedIds);
+    }
+
+    console.log(`📧 Triggers matched: ${allMatchedIds.length} for ${emails.length} email(s)`);
+
+    return {
+      triggersProcessed: emails.length,
+      triggersMatched: allMatchedIds.length,
+      matchedTriggerIds: allMatchedIds,
+    };
+  },
+});
+
+/**
  * Format output for form replies detection workflow
  */
 const formatFormRepliesOutput = createStep({
@@ -471,6 +532,7 @@ export const formRepliesDetectionWorkflow = createWorkflow({
   .then(storeNewEmailsInState)
   .then(processFormReplies)
   .then(registerEmailsStateChange)
+  .then(processEmailTriggersStep)
   .then(updateLastSeenEmailForFormReplies)
   .then(formatFormRepliesOutput)
   .commit();
