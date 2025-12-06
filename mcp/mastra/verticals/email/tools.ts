@@ -504,6 +504,10 @@ export interface EmailMessage {
   id: string;
   subject: string;
   bodyPreview: string;
+  body: {
+    contentType: string;
+    content: string;
+  };
   from: {
     name: string;
     address: string;
@@ -562,6 +566,10 @@ export async function findNewEmailsSinceLastCheck(folder = 'inbox', limit = 50):
     id: email.id,
     subject: email.subject,
     bodyPreview: email.bodyPreview,
+    body: {
+      contentType: email.body.contentType,
+      content: email.body.content,
+    },
     from: {
       name: email.from.emailAddress.name,
       address: email.from.emailAddress.address,

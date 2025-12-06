@@ -8,7 +8,7 @@ import { expressjwt } from 'express-jwt';
 import { z } from 'zod';
 import { initializeScheduler } from './scheduler.js';
 import { createTool } from './utils/tool-factory.js';
-import { getPublicAgents, registerApiRoutes } from './verticals/index.js';
+import { getPublicAgents, registerApiRoutes, registerShoppingTriggers } from './verticals/index.js';
 import { getNextInstructionsWorkflow, routePromptWorkflow } from './verticals/routing/workflows.js';
 
 // Re-export for cross-project imports
@@ -170,6 +170,9 @@ export async function startMcpServer() {
   for (const apiPath of registeredApiPaths) {
     console.log(`API endpoint available: POST http://${host}:${port}${apiPath}`);
   }
+
+  // Register email triggers for shopping notifications
+  registerShoppingTriggers();
 
   // Initialize and start workflow scheduler
   const scheduler = initializeScheduler();
