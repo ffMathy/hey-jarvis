@@ -56,29 +56,80 @@ const sharedEmailStateSchema = z
   .partial();
 
 // ============================================================================
+// FOLDER KEYS - Separate tracking for each workflow
+// ============================================================================
+
+/**
+ * Folder key for email checking workflow (runs every minute).
+ * This workflow uses its own storage key to track which emails have been seen.
+ */
+const EMAIL_CHECKING_FOLDER_KEY = 'inbox';
+
+/**
+ * Folder key for form replies detection workflow (runs every 3 hours).
+ * Uses a separate storage key so it maintains its own "last seen" state
+ * independent of the email checking workflow.
+ */
+const FORM_REPLIES_FOLDER_KEY = 'inbox-form-replies';
+
+// ============================================================================
 // SHARED STEPS - Reused by both workflows
 // ============================================================================
 
 /**
- * Shared Step: Search for new emails since last check
- *
- * Uses persistent storage to find only emails received since the last workflow run.
+ * Creates a step to search for new emails since last check.
+ * Each workflow uses its own folder key to track emails independently.
  */
-const searchNewEmails = createStep({
-  id: 'search-new-emails',
-  description: 'Search for new emails received since the last workflow run',
-  stateSchema: sharedEmailStateSchema,
-  inputSchema: z.object({}),
-  outputSchema: z.object({
-    emails: z.array(emailObjectSchema),
-    totalCount: z.number(),
-    isFirstCheck: z.boolean(),
-    lastCheckTimestamp: z.string().optional(),
-  }),
-  execute: async () => {
-    return await findNewEmailsSinceLastCheck('inbox', 50);
-  },
-});
+const createSearchNewEmailsStep = (folderKey: string, stepId: string) =>
+  createStep({
+    id: stepId,
+    description: 'Search for new emails received since the last workflow run',
+    stateSchema: sharedEmailStateSchema,
+    inputSchema: z.object({}),
+    outputSchema: z.object({
+      emails: z.array(emailObjectSchema),
+      totalCount: z.number(),
+      isFirstCheck: z.boolean(),
+      lastCheckTimestamp: z.string().optional(),
+    }),
+    execute: async () => {
+      return await findNewEmailsSinceLastCheck(folderKey, 50);
+    },
+  });
+
+/**
+ * Creates a step to update the last seen email state.
+ * Each workflow uses its own folder key to maintain independent tracking.
+ */
+const createUpdateLastSeenEmailStep = (folderKey: string, stepId: string) =>
+  createStep({
+    id: stepId,
+    description: 'Update the last seen email state after processing',
+    stateSchema: sharedEmailStateSchema,
+    inputSchema: z.object({
+      emailCount: z.number(),
+      isFirstCheck: z.boolean(),
+    }),
+    outputSchema: z.object({
+      success: z.boolean(),
+      message: z.string(),
+      folder: z.string(),
+      previousLastSeenId: z.string().optional(),
+      newLastSeenId: z.string(),
+    }),
+    execute: async ({ state }) => {
+      if (!state.mostRecentEmailId || !state.mostRecentEmailReceivedDateTime) {
+        return {
+          success: false,
+          message: 'No new emails to track',
+          folder: folderKey,
+          newLastSeenId: '',
+        };
+      }
+
+      return await updateLastSeenEmail(folderKey, state.mostRecentEmailId, state.mostRecentEmailReceivedDateTime);
+    },
+  });
 
 /**
  * Shared Step: Store new emails in workflow state
@@ -124,39 +175,22 @@ const storeNewEmailsInState = createStep({
   },
 });
 
-/**
- * Shared Step: Update last seen email state
- *
- * Updates the persistent storage to track which emails have been processed.
- */
-const updateLastSeenEmailStep = createStep({
-  id: 'update-last-seen-email',
-  description: 'Update the last seen email state after processing',
-  stateSchema: sharedEmailStateSchema,
-  inputSchema: z.object({
-    emailCount: z.number(),
-    isFirstCheck: z.boolean(),
-  }),
-  outputSchema: z.object({
-    success: z.boolean(),
-    message: z.string(),
-    folder: z.string(),
-    previousLastSeenId: z.string().optional(),
-    newLastSeenId: z.string(),
-  }),
-  execute: async ({ state }) => {
-    if (!state.mostRecentEmailId || !state.mostRecentEmailReceivedDateTime) {
-      return {
-        success: false,
-        message: 'No new emails to track',
-        folder: 'inbox',
-        newLastSeenId: '',
-      };
-    }
+// Create workflow-specific steps for email checking
+const searchNewEmailsForChecking = createSearchNewEmailsStep(EMAIL_CHECKING_FOLDER_KEY, 'search-new-emails-checking');
+const updateLastSeenEmailForChecking = createUpdateLastSeenEmailStep(
+  EMAIL_CHECKING_FOLDER_KEY,
+  'update-last-seen-email-checking',
+);
 
-    return await updateLastSeenEmail('inbox', state.mostRecentEmailId, state.mostRecentEmailReceivedDateTime);
-  },
-});
+// Create workflow-specific steps for form replies detection
+const searchNewEmailsForFormReplies = createSearchNewEmailsStep(
+  FORM_REPLIES_FOLDER_KEY,
+  'search-new-emails-form-replies',
+);
+const updateLastSeenEmailForFormReplies = createUpdateLastSeenEmailStep(
+  FORM_REPLIES_FOLDER_KEY,
+  'update-last-seen-email-form-replies',
+);
 
 // ============================================================================
 // EMAIL CHECKING WORKFLOW (Every minute)
@@ -201,6 +235,7 @@ const formatEmailCheckingOutput = createStep({
  *
  * Simple workflow that checks for new emails every minute and updates tracking.
  * This workflow does NOT trigger the state reactor - it only tracks emails.
+ * Uses its own storage key ('inbox') to track which emails have been seen.
  *
  * Scheduled to run every minute via the workflow scheduler.
  *
@@ -220,9 +255,9 @@ export const emailCheckingWorkflow = createWorkflow({
     message: z.string(),
   }),
 })
-  .then(searchNewEmails)
+  .then(searchNewEmailsForChecking)
   .then(storeNewEmailsInState)
-  .then(updateLastSeenEmailStep)
+  .then(updateLastSeenEmailForChecking)
   .then(formatEmailCheckingOutput)
   .commit();
 
@@ -370,9 +405,11 @@ const formatFormRepliesOutput = createStep({
   description: 'Format the form replies detection workflow output',
   stateSchema: sharedEmailStateSchema,
   inputSchema: z.object({
-    registered: z.boolean(),
-    batched: z.boolean(),
+    success: z.boolean(),
     message: z.string(),
+    folder: z.string(),
+    previousLastSeenId: z.string().optional(),
+    newLastSeenId: z.string(),
   }),
   outputSchema: z.object({
     emailsFound: z.number(),
@@ -388,7 +425,7 @@ const formatFormRepliesOutput = createStep({
     return {
       emailsFound: emails.length,
       formRepliesDetected: formRepliesCount,
-      stateChangeRegistered: params.inputData.registered,
+      stateChangeRegistered: emails.length > 0,
       message:
         emails.length === 0
           ? 'No new emails to analyze'
@@ -406,6 +443,9 @@ const formatFormRepliesOutput = createStep({
  * 2. Attempting to resume suspended workflows
  * 3. Registering state changes to trigger notifications
  *
+ * Uses its own storage key ('inbox-form-replies') to track which emails have been
+ * processed, independent of the email checking workflow.
+ *
  * Scheduled to run every 3 hours via the workflow scheduler.
  *
  * Workflow Steps:
@@ -413,7 +453,8 @@ const formatFormRepliesOutput = createStep({
  * 2. Store emails in state
  * 3. Process form replies (extract workflow IDs, resume workflows)
  * 4. Register state change (triggers state reactor for notifications)
- * 5. Format output
+ * 5. Update last seen email tracking
+ * 6. Format output
  */
 export const formRepliesDetectionWorkflow = createWorkflow({
   id: 'formRepliesDetectionWorkflow',
@@ -426,10 +467,11 @@ export const formRepliesDetectionWorkflow = createWorkflow({
     message: z.string(),
   }),
 })
-  .then(searchNewEmails)
+  .then(searchNewEmailsForFormReplies)
   .then(storeNewEmailsInState)
   .then(processFormReplies)
   .then(registerEmailsStateChange)
+  .then(updateLastSeenEmailForFormReplies)
   .then(formatFormRepliesOutput)
   .commit();
 
