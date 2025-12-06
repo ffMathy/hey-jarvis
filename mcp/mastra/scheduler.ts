@@ -1,7 +1,8 @@
 import { mastra } from './index.js';
 import { CronPatterns, WorkflowScheduler } from './utils/workflow-scheduler.js';
 import {
-  checkForNewEmails,
+  emailCheckingWorkflow,
+  formRepliesDetectionWorkflow,
   iotMonitoringWorkflow,
   weatherMonitoringWorkflow,
   weeklyMealPlanningWorkflow,
@@ -19,14 +20,13 @@ export function initializeScheduler(): WorkflowScheduler {
     onError: (error, workflowId) => {
       console.error(`\n🚨 Scheduled workflow error: ${workflowId}`);
       console.error(`   ${error.message}`);
-      // Future: Could integrate with error reporting processor
     },
   });
 
-  // Weather monitoring - every 2 hours
+  // Weather monitoring - every 3 hours
   scheduler.schedule({
     workflow: weatherMonitoringWorkflow,
-    schedule: CronPatterns.EVERY_2_HOURS,
+    schedule: CronPatterns.EVERY_3_HOURS,
     inputData: {},
   });
 
@@ -37,20 +37,29 @@ export function initializeScheduler(): WorkflowScheduler {
     inputData: {},
   });
 
-  // Check for new emails - every hour
+  // Email checking - every minute
+  // Checks for new emails and updates tracking (does NOT trigger state reactor)
   scheduler.schedule({
-    workflow: checkForNewEmails,
-    schedule: CronPatterns.EVERY_HOUR,
+    workflow: emailCheckingWorkflow,
+    schedule: CronPatterns.EVERY_MINUTE,
     inputData: {},
     runOnStartup: true,
   });
 
-  // IoT device monitoring - every 15 minutes
-  // Polls Home Assistant for state changes, matching the old n8n behavior.
-  // Filters out devices/entities with 'sensitive' label.
+  // Form replies detection - every 3 hours
+  // Processes form reply emails and triggers state reactor for notifications
+  scheduler.schedule({
+    workflow: formRepliesDetectionWorkflow,
+    schedule: CronPatterns.EVERY_3_HOURS,
+    inputData: {},
+    runOnStartup: true,
+  });
+
+  // IoT device monitoring - every 3 hours
+  // Polls Home Assistant for state changes, filters out devices/entities with 'sensitive' label.
   scheduler.schedule({
     workflow: iotMonitoringWorkflow,
-    schedule: CronPatterns.EVERY_15_MINUTES,
+    schedule: CronPatterns.EVERY_3_HOURS,
     inputData: {},
     runOnStartup: true,
   });
