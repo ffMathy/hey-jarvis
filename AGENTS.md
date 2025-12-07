@@ -172,6 +172,48 @@ exec('curl -H "Authorization: Bearer $GITHUB_TOKEN" ...');
 - `mcp_github_github_create_or_update_file` - Create/update files
 - `mcp_github_github_push_files` - Push multiple files
 
+## Web Search and Information Retrieval
+
+### Gemini Grounding MCP Tools
+**CRITICAL: Always use the `search_with_grounding` tool** when you need to fetch information online or search the web:
+
+The Gemini grounding MCP server provides access to real-time web search capabilities through Google's Gemini API with grounding. Use this tool to:
+- Search for current information online
+- Fetch real-time data from the web
+- Find documentation, tutorials, or examples
+- Get up-to-date information about packages, libraries, or APIs
+
+**Available Tools:**
+- `search_with_grounding` - Perform web searches with Gemini grounding
+
+**Example Usage:**
+```typescript
+// Search for information online
+const results = await search_with_grounding({
+  query: "latest TypeScript best practices 2024"
+});
+```
+
+### Playwright MCP Tools
+**Use Playwright tools** when you need to fetch content from a specific URL or interact with web pages:
+
+The Playwright MCP server provides browser automation capabilities for:
+- Fetching the content of a single URL
+- Extracting data from web pages
+- Taking screenshots of web pages
+- Interacting with dynamic web content
+
+**Available Tools:**
+- All Playwright MCP tools including navigation, content extraction, and browser automation
+
+**Example Usage:**
+```typescript
+// Navigate to a URL and get its content
+const content = await playwright_browser_navigate({
+  url: "https://example.com"
+});
+```
+
 ## File Creation Policy
 
 ### ❌ PROHIBITED FILES:
