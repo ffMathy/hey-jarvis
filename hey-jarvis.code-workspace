@@ -61,6 +61,23 @@
           "tools": ["*"],
           "command": "npx",
           "args": ["nx-mcp@latest"]
+        },
+        "gemini-grounding": {
+          "command": "npx",
+          "type": "stdio",
+          "tools": ["search_with_grounding"],
+          "args": ["-y", "gemini-grounding"],
+          "env": {
+            "GEMINI_API_KEY": "${HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY}"
+          }
+        },
+        "playwright": {
+          "type": "stdio",
+          "tools": ["*"],
+          "command": "npx",
+          "args": [
+            "@playwright/mcp@latest"
+          ]
         }
       }
     },
