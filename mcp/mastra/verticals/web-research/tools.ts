@@ -1,27 +1,22 @@
 /**
  * Web Research Tools
  *
- * NOTE: Tavily-based tools have been PERMANENTLY DISABLED in favor of Google Search Grounding.
- * Google Search Grounding is integrated directly into the agent's model (gemini-2.0-flash-exp)
- * and provides real-time web search with automatic source citations without needing separate tools.
- *
- * The web research agent now uses Google Search grounding through providerOptions:
- * {
- *   google: {
- *     groundingConfig: {
- *       googleSearchRetrieval: {}
- *     }
- *   }
- * }
+ * NOTE: Tavily-based tools have been PERMANENTLY DISABLED in favor of Google Search tool.
+ * The Google Search tool (google.tools.googleSearch) provides real-time web search with
+ * source citations that the agent can use.
  *
  * This provides:
- * - Real-time web search integrated into model responses
- * - Automatic source citations and grounding metadata
- * - No separate API calls or tools needed
- * - Better integration between search and response generation
+ * - Real-time web search via googleSearch tool
+ * - Source citations and URLs in search results
+ * - Agent can perform multiple searches for comprehensive research
+ * - Better control over search queries and result processing
  *
  * The Tavily API key is no longer required for this agent.
  */
 
-// No tools are exported - the agent uses Google Search grounding instead
-export const webResearchTools = {};
+import { google } from '../../utils/google-provider.js';
+
+// Export the Google Search tool for the web research agent
+export const webResearchTools = {
+  googleSearch: google.tools.googleSearch({}),
+};
