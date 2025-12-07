@@ -162,11 +162,13 @@ export const findEmails = createTool({
     let url = `${GRAPH_API_BASE}/me/mailFolders/${folder}/messages?$top=${limit}&$orderby=receivedDateTime desc`;
 
     if (filters.length > 0) {
-      url += `&$filter=${filters.join(' and ')}`;
+      // URL encode the filter expression to handle special characters
+      const filterExpression = filters.join(' and ');
+      url += `&$filter=${encodeURIComponent(filterExpression)}`;
     }
 
     if (searchQuery) {
-      url += `&$search="${searchQuery}"`;
+      url += `&$search="${encodeURIComponent(searchQuery)}"`;
     }
 
     const response = await fetch(url, {
@@ -177,7 +179,10 @@ export const findEmails = createTool({
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to fetch emails: ${response.status} ${response.statusText}`);
+      const errorBody = await response.text();
+      throw new Error(
+        `Failed to fetch emails: ${response.status} ${response.statusText}. URL: ${url}. Response: ${errorBody}`,
+      );
     }
 
     const data = (await response.json()) as GraphEmailListResponse;
