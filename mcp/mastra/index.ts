@@ -2,7 +2,7 @@ import { Mastra } from '@mastra/core';
 import { PinoLogger } from '@mastra/loggers';
 import { CloudExporter, DefaultExporter } from '@mastra/observability/exporters';
 import { keyBy } from 'lodash-es';
-import { getSqlStorageProvider } from './storage/index.js';
+import { getSqlStorageProvider, getTokenUsageStorage } from './storage/index.js';
 import { TokenTrackingProcessor, TokenUsageExporter } from './utils/token-usage-exporter.js';
 import {
   checkForFormRepliesWorkflow,
@@ -26,7 +26,9 @@ import {
 
 async function createMastra() {
   // Set up the Google AI SDK environment variable
-  process.env.GOOGLE_GENERATIVE_AI_API_KEY = process.env.HEY_JARVIS_GOOGLE_API_KEY || '';
+  // Prioritize HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY over HEY_JARVIS_GOOGLE_API_KEY
+  process.env.GOOGLE_GENERATIVE_AI_API_KEY =
+    process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY || process.env.HEY_JARVIS_GOOGLE_API_KEY || '';
 
   const sqlStorageProvider = await getSqlStorageProvider();
 
@@ -97,3 +99,26 @@ async function createMastra() {
 }
 
 export const mastra = await createMastra();
+
+// Log cumulative token usage on startup
+try {
+  const tokenStorage = await getTokenUsageStorage();
+  const totalUsage = await tokenStorage.getTotalUsage();
+  const modelUsage = await tokenStorage.getAllModelUsage();
+
+  console.log('📊 Token Usage Summary:');
+  console.log(`   Total: ${totalUsage.totalTokens.toLocaleString()} tokens (${totalUsage.requestCount} requests)`);
+  console.log(
+    `   Prompt: ${totalUsage.totalPromptTokens.toLocaleString()} | Completion: ${totalUsage.totalCompletionTokens.toLocaleString()}`,
+  );
+
+  if (modelUsage.length > 0) {
+    console.log('   By Model:');
+    for (const usage of modelUsage) {
+      console.log(`   - ${usage.model}: ${usage.totalTokens.toLocaleString()} tokens (${usage.requestCount} requests)`);
+    }
+  }
+} catch (error) {
+  // Silently ignore errors during token usage logging to not block startup
+  console.error('⚠️  Failed to load token usage statistics:', error instanceof Error ? error.message : String(error));
+}

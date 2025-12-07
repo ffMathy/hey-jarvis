@@ -99,7 +99,7 @@ mcp/
 - **Usage monitoring**: Query current usage, remaining quota, and percentage used
 - **Database persistence**: Token usage stored in SQLite for historical tracking and reporting
 - **AI Trace integration**: Seamlessly integrates with Mastra's observability pipeline
-- **Available via Coding Agent**: Use tools like `get-token-usage`, `check-token-quota`, `set-token-quota`
+- **Startup summary**: Cumulative token usage displayed in console on system startup
 
 ## Current Agents
 
@@ -229,14 +229,11 @@ await phoneTools.initiatePhoneCall.execute({
    - `op://Personal/ElevenLabs/Jarvis agent ID`
 
 ### Coding Agent
-Manages GitHub repositories, coordinates feature implementation, and monitors token usage:
+Manages GitHub repositories and coordinates feature implementation:
 - **6 GitHub tools**: List repositories, list issues, search repositories, create/update GitHub issues, assign Copilot
-- **4 Token usage tools**: Get usage statistics, check quotas, set quota limits, view recent usage
 - **Google Gemini model**: Uses `gemini-flash-latest` for natural language processing
 - **Repository management**: Browse and search repositories for any GitHub user
 - **Issue tracking**: View open, closed, or all issues for repositories
-- **Token monitoring**: Track LLM token consumption across all models and check against quotas
-- **Quota management**: Set and monitor token budgets to control API costs
 - **Workflow coordination**: Triggers requirements gathering workflow for new feature requests
 - **Smart defaults**: Defaults to "ffMathy" owner and "hey-jarvis" repository when not specified
 
@@ -247,17 +244,6 @@ Manages GitHub repositories, coordinates feature implementation, and monitors to
 - Create and update GitHub issues programmatically
 - Trigger requirements gathering workflow for new implementations
 - Provide GitHub URLs for quick access to repositories and issues
-- Query token usage by model and date range
-- Check remaining quota and usage percentage
-- Set token quotas with daily/monthly/yearly reset periods
-- View detailed usage logs with trace IDs
-
-**Token Usage Management:**
-The Coding Agent includes comprehensive token tracking capabilities:
-- **Get Token Usage** (`get-token-usage`): View usage statistics for specific models or all models, with optional date filtering
-- **Check Quota** (`check-token-quota`): See current usage vs quota limits, remaining tokens, and over-quota alerts
-- **Set Quota** (`set-token-quota`): Configure token limits per model with automatic reset periods
-- **Recent Usage** (`get-recent-token-usage`): View detailed logs of recent API calls with metadata
 
 **Architecture Pattern:**
 This agent follows the **workflow delegation pattern**. When a user requests a new feature implementation, instead of gathering requirements itself, it delegates to the `implementFeatureWorkflow`, which:
@@ -2888,7 +2874,7 @@ Automatic token tracking is built into the observability pipeline:
 1. **TokenUsageExporter**: Custom AI tracing exporter that listens for `MODEL_GENERATION` spans
 2. **TokenTrackingProcessor**: Span processor that enriches traces with agent/workflow IDs
 3. **TokenUsageStorage**: SQLite-based storage layer for historical token usage data
-4. **Token Tools**: Four tools exposed via the Coding Agent for querying and managing usage
+4. **Startup Logging**: Cumulative usage statistics displayed in console on system startup
 
 **Database Schema:**
 ```sql
@@ -2915,19 +2901,25 @@ CREATE TABLE token_quotas (
 );
 ```
 
-**Available Tools:**
-- `get-token-usage`: Query usage by model and date range
-- `check-token-quota`: Check usage against configured quotas
-- `set-token-quota`: Configure token limits and reset periods
-- `get-recent-token-usage`: View recent usage logs with full metadata
+**Startup Display:**
+On system startup, cumulative token usage is logged to the console:
+```
+📊 Token Usage Summary:
+   Total: 150,000 tokens (42 requests)
+   Prompt: 100,000 | Completion: 50,000
+   By Model:
+   - gemini-flash-latest: 120,000 tokens (35 requests)
+   - gpt-4: 30,000 tokens (7 requests)
+```
 
-**Example Usage:**
+**Programmatic Access:**
+Token usage can be queried programmatically via the `TokenUsageStorage` API:
 ```typescript
-// Ask the Coding Agent:
-"How many tokens have I used today?"
-"Set a quota of 1 million tokens per month for gemini-flash-latest"
-"Am I over quota for any models?"
-"Show me my recent token usage"
+import { getTokenUsageStorage } from './storage';
+
+const storage = await getTokenUsageStorage();
+const totalUsage = await storage.getTotalUsage();
+const modelUsage = await storage.getAllModelUsage();
 ```
 
 #### 🔧 **Customizing Scorers**:
