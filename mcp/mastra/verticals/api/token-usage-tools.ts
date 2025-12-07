@@ -37,6 +37,20 @@ Use this tool when:
     const startDate = inputData.startDate ? new Date(inputData.startDate) : undefined;
     const endDate = inputData.endDate ? new Date(inputData.endDate) : undefined;
 
+    // Validate date formats
+    if (startDate && isNaN(startDate.getTime())) {
+      return {
+        success: false,
+        message: `Invalid start date format: ${inputData.startDate}`,
+      };
+    }
+    if (endDate && isNaN(endDate.getTime())) {
+      return {
+        success: false,
+        message: `Invalid end date format: ${inputData.endDate}`,
+      };
+    }
+
     if (inputData.model) {
       // Get usage for specific model
       const usage = await storage.getModelUsage(inputData.model, startDate, endDate);

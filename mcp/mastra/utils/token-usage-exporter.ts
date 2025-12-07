@@ -42,7 +42,7 @@ export class TokenUsageExporter implements AITracingExporter {
 
     const usage = attributes.usage;
 
-    // Ensure we have token counts
+    // Ensure we have non-zero token counts (skip calls with no tokens)
     if (!usage.totalTokens && !usage.promptTokens && !usage.completionTokens) {
       return;
     }

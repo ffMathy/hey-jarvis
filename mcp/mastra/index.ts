@@ -119,6 +119,6 @@ try {
     }
   }
 } catch (error) {
-  // Silently ignore errors during token usage logging to not block startup
+  // Log errors during token usage logging, but do not block startup
   console.error('⚠️  Failed to load token usage statistics:', error instanceof Error ? error.message : String(error));
 }

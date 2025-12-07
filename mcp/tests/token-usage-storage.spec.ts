@@ -19,7 +19,14 @@ describe('Token Usage Storage Tests', () => {
   });
 
   afterEach(async () => {
-    // Clean up test database
+    // Close database connection first
+    try {
+      await storage.close();
+    } catch {
+      // Ignore errors if already closed
+    }
+
+    // Clean up test database files
     try {
       await unlink(TEST_DB_PATH);
       await unlink(`${TEST_DB_PATH}-shm`);

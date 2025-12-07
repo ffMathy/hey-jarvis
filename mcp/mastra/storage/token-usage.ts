@@ -305,14 +305,55 @@ export class TokenUsageStorage {
   async getAllQuotaInfo(): Promise<QuotaInfo[]> {
     await this.initialize();
 
-    const quotaResult = await this.client.execute('SELECT model FROM token_quotas');
+    // Fetch all quota configurations in one query
+    const quotaResult = await this.client.execute(
+      'SELECT model, max_tokens, reset_period, last_reset FROM token_quotas',
+    );
+
+    if (quotaResult.rows.length === 0) {
+      return [];
+    }
+
+    // Get all models that have quotas
+    const models = quotaResult.rows.map((row) => row.model as string);
+
+    // Fetch all usage data in one query with grouping
+    const usageQuery = `
+      SELECT 
+        model,
+        SUM(total_tokens) as total_tokens
+      FROM token_usage
+      WHERE model IN (${models.map(() => '?').join(',')})
+      GROUP BY model
+    `;
 
     const quotaInfos: QuotaInfo[] = [];
-    for (const row of quotaResult.rows) {
-      const info = await this.getQuotaInfo(row.model as string);
-      if (info) {
-        quotaInfos.push(info);
-      }
+
+    for (const quotaRow of quotaResult.rows) {
+      const model = quotaRow.model as string;
+      const maxQuota = Number(quotaRow.max_tokens);
+      const resetPeriod = quotaRow.reset_period as string;
+      const lastReset = new Date(quotaRow.last_reset as string);
+
+      // Calculate the start date based on reset period
+      const startDate = this.getResetStartDate(resetPeriod, lastReset);
+
+      // Get usage for this specific model since last reset
+      const usage = await this.getModelUsage(model, startDate);
+      const currentUsage = usage?.totalTokens ?? 0;
+
+      const remainingTokens = Math.max(0, maxQuota - currentUsage);
+      const percentUsed = maxQuota > 0 ? (currentUsage / maxQuota) * 100 : 0;
+      const isOverQuota = currentUsage > maxQuota;
+
+      quotaInfos.push({
+        model,
+        currentUsage,
+        maxQuota,
+        remainingTokens,
+        percentUsed,
+        isOverQuota,
+      });
     }
 
     return quotaInfos;
@@ -366,6 +407,13 @@ export class TokenUsageStorage {
 
   /**
    * Calculate the start date for quota reset based on reset period
+   *
+   * Note: Currently uses calendar-based resets (start of day/month/year) rather than
+   * rolling periods from lastReset. This means quotas reset at fixed calendar boundaries.
+   * For example, a monthly quota set on March 15th resets on April 1st, not April 15th.
+   *
+   * TODO: Consider implementing rolling reset periods using lastReset parameter for more
+   * granular control (e.g., reset exactly 30 days after lastReset for monthly quotas).
    */
   private getResetStartDate(resetPeriod: string, lastReset: Date): Date {
     const now = new Date();
@@ -455,5 +503,13 @@ export class TokenUsageStorage {
       totalTokens: Number(row.total_tokens ?? 0),
       requestCount: Number(row.request_count ?? 0),
     };
+  }
+
+  /**
+   * Close the database connection
+   * Should be called when the storage is no longer needed (e.g., in tests)
+   */
+  async close(): Promise<void> {
+    await this.client.close();
   }
 }
