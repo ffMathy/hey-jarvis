@@ -12,65 +12,54 @@ function isValidationError(result: unknown): result is { error: true; message: s
 describe('Calendar Tools Integration Tests', () => {
   beforeAll(() => {
     // Verify Google OAuth credentials are configured
-    const hasCredentials =
-      process.env.HEY_JARVIS_GOOGLE_CLIENT_ID &&
-      process.env.HEY_JARVIS_GOOGLE_CLIENT_SECRET &&
-      process.env.HEY_JARVIS_GOOGLE_REFRESH_TOKEN;
-
-    if (!hasCredentials) {
-      console.log('⚠️  Google OAuth credentials not configured - tests will validate error handling');
+    if (
+      !process.env.HEY_JARVIS_GOOGLE_CLIENT_ID ||
+      !process.env.HEY_JARVIS_GOOGLE_CLIENT_SECRET ||
+      !process.env.HEY_JARVIS_GOOGLE_REFRESH_TOKEN
+    ) {
+      throw new Error(
+        'Google OAuth credentials are required for calendar tools tests. Set HEY_JARVIS_GOOGLE_CLIENT_ID, HEY_JARVIS_GOOGLE_CLIENT_SECRET, and HEY_JARVIS_GOOGLE_REFRESH_TOKEN environment variables.',
+      );
     }
   });
 
   describe('getAllCalendars', () => {
-    it('should handle missing credentials gracefully', async () => {
-      try {
-        const result = await getAllCalendars.execute({});
+    it('should retrieve all calendars', async () => {
+      const result = await getAllCalendars.execute({});
 
-        // Check for validation errors
-        if (isValidationError(result)) {
-          throw new Error(`Validation failed: ${result.message}`);
-        }
-
-        // If credentials are configured, validate structure
-        expect(result).toBeDefined();
-        expect(Array.isArray(result.calendars)).toBe(true);
-
-        console.log('✅ Calendars retrieved successfully');
-        console.log('   - Calendar count:', result.calendars.length);
-      } catch (error) {
-        // Should fail gracefully if credentials not configured
-        expect(error).toBeDefined();
-        console.log('✅ getAllCalendars handled missing credentials gracefully');
+      // Check for validation errors
+      if (isValidationError(result)) {
+        throw new Error(`Validation failed: ${result.message}`);
       }
+
+      // Validate structure
+      expect(result).toBeDefined();
+      expect(Array.isArray(result.calendars)).toBe(true);
+
+      console.log('✅ Calendars retrieved successfully');
+      console.log('   - Calendar count:', result.calendars.length);
     }, 30000);
   });
 
   describe('getCalendarEvents', () => {
-    it('should handle missing credentials gracefully', async () => {
-      try {
-        const result = await getCalendarEvents.execute({
-          calendarId: 'primary',
-          maxResults: 5,
-        });
+    it('should retrieve calendar events', async () => {
+      const result = await getCalendarEvents.execute({
+        calendarId: 'primary',
+        maxResults: 5,
+      });
 
-        // Check for validation errors
-        if (isValidationError(result)) {
-          throw new Error(`Validation failed: ${result.message}`);
-        }
-
-        // If credentials are configured, validate structure
-        expect(result).toBeDefined();
-        expect(Array.isArray(result.events)).toBe(true);
-
-        console.log('✅ Calendar events retrieved successfully');
-        console.log('   - Event count:', result.events.length);
-        // Do not log event details as they may contain sensitive information
-      } catch (error) {
-        // Should fail gracefully if credentials not configured
-        expect(error).toBeDefined();
-        console.log('✅ getCalendarEvents handled missing credentials gracefully');
+      // Check for validation errors
+      if (isValidationError(result)) {
+        throw new Error(`Validation failed: ${result.message}`);
       }
+
+      // Validate structure
+      expect(result).toBeDefined();
+      expect(Array.isArray(result.events)).toBe(true);
+
+      console.log('✅ Calendar events retrieved successfully');
+      console.log('   - Event count:', result.events.length);
+      // Do not log event details as they may contain sensitive information
     }, 30000);
   });
 });

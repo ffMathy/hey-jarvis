@@ -13,7 +13,9 @@ describe('Coding Tools Integration Tests', () => {
   beforeAll(() => {
     // Verify GitHub token is configured
     if (!process.env.HEY_JARVIS_GITHUB_TOKEN) {
-      console.log('⚠️  GitHub token not configured - tests will validate error handling');
+      throw new Error(
+        'GitHub token is required for coding tools tests. Set HEY_JARVIS_GITHUB_TOKEN environment variable.',
+      );
     }
   });
 
@@ -26,10 +28,7 @@ describe('Coding Tools Integration Tests', () => {
 
       // Check for validation errors
       if (isValidationError(result)) {
-        // If GitHub token is not configured, should fail gracefully
-        expect(result.error).toBe(true);
-        console.log('✅ searchRepositories handled missing config gracefully');
-        return;
+        throw new Error(`Validation failed: ${result.message}`);
       }
 
       // Validate structure
@@ -51,21 +50,17 @@ describe('Coding Tools Integration Tests', () => {
   });
 
   describe('listUserRepositories', () => {
-    it('should handle authentication gracefully', async () => {
+    it('should list user repositories', async () => {
       const result = await listUserRepositories.execute({
         maxResults: 5,
       });
 
       // Check for validation errors
       if (isValidationError(result)) {
-        // If GitHub token is not configured, should fail gracefully
-        expect(result.error).toBe(true);
-        expect(result.message).toBeDefined();
-        console.log('✅ listUserRepositories handled missing auth gracefully');
-        return;
+        throw new Error(`Validation failed: ${result.message}`);
       }
 
-      // If authenticated, validate structure
+      // Validate structure
       expect(result).toBeDefined();
       expect(Array.isArray(result.repositories)).toBe(true);
 

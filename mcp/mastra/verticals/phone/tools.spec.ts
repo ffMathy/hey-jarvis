@@ -12,13 +12,19 @@ function isValidationError(result: unknown): result is { error: true; message: s
 describe('Phone Tools Integration Tests', () => {
   beforeAll(() => {
     // Check if Twilio credentials are configured
-    if (!process.env.HEY_JARVIS_TWILIO_ACCOUNT_SID) {
-      console.log('⚠️  Twilio credentials not configured - tests will validate error handling');
+    if (
+      !process.env.HEY_JARVIS_TWILIO_ACCOUNT_SID ||
+      !process.env.HEY_JARVIS_TWILIO_AUTH_TOKEN ||
+      !process.env.HEY_JARVIS_TWILIO_PHONE_NUMBER
+    ) {
+      throw new Error(
+        'Twilio credentials are required for phone tools tests. Set HEY_JARVIS_TWILIO_ACCOUNT_SID, HEY_JARVIS_TWILIO_AUTH_TOKEN, and HEY_JARVIS_TWILIO_PHONE_NUMBER environment variables.',
+      );
     }
   });
 
   describe('sendTextMessage', () => {
-    it('should handle missing Twilio credentials gracefully', async () => {
+    it('should send a text message via Twilio', async () => {
       const result = await sendTextMessage.execute({
         phoneNumber: '+1234567890',
         message: 'Test message',
@@ -34,13 +40,7 @@ describe('Phone Tools Integration Tests', () => {
       expect(typeof result.success).toBe('boolean');
       expect(typeof result.message).toBe('string');
 
-      // If Twilio is not configured, should fail gracefully
-      // Allow various error messages (missing config or invalid phone number)
-      if (!result.success) {
-        expect(result.message.length).toBeGreaterThan(0);
-      }
-
-      console.log('✅ SMS tool handled gracefully');
+      console.log('✅ SMS tool executed');
       console.log('   - Success:', result.success);
       // Do not log message content as it may contain error details with config paths
     }, 10000);

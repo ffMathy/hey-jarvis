@@ -13,7 +13,9 @@ describe('Shopping Tools Integration Tests', () => {
   beforeAll(() => {
     // These tools use the Bilka API which may require specific environment setup
     if (!process.env.HEY_JARVIS_BILKA_SESSION) {
-      console.log('⚠️  Bilka session not configured - tests will validate error handling');
+      throw new Error(
+        'Bilka session is required for shopping tools tests. Set HEY_JARVIS_BILKA_SESSION environment variable.',
+      );
     }
   });
 
