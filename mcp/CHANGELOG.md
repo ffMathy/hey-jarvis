@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.26.1](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.26.0...mcp-v0.26.1) (2025-12-07)
+
+
+### Bug Fixes
+
+* 400 Bad Request in email workflow due to unencoded OData filters ([#411](https://github.com/ffMathy/hey-jarvis/issues/411)) ([631e135](https://github.com/ffMathy/hey-jarvis/commit/631e135bd03d3422ba400625a4b0bef558dad64a))
+* **email:** add URL encoding for receivedDateTime filter to prevent 400 errors ([2a1d79e](https://github.com/ffMathy/hey-jarvis/commit/2a1d79e6d9aada60b8d8dad7ba99b6f616beac7f))
+* **email:** add URL encoding for search filters and improve error logging ([844eee6](https://github.com/ffMathy/hey-jarvis/commit/844eee63c41a9eac8b3fd65f54d542ece97687fd))
+
 ## [0.26.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.25.1...mcp-v0.26.0) (2025-12-07)
 
 
