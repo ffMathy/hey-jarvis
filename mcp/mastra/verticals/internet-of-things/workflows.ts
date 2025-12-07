@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { logger } from '../../utils/logger.js';
 import { createStep, createWorkflow } from '../../utils/workflow-factory.js';
 import { registerStateChange } from '../synapse/tools.js';
 import { getChangedDevicesSince } from './tools.js';
@@ -76,9 +77,11 @@ const fetchRecentlyChangedDevices = createStep({
 
     const devices = Array.from(deviceMap.values());
 
-    console.log(
-      `📊 IoT Monitoring: ${result.total_changed} entities changed in last ${STATE_CHANGE_WINDOW_SECONDS}s, ${devices.length} non-sensitive device(s) with changes`,
-    );
+    logger.info('IoT Monitoring: entities changed', {
+      totalChanged: result.total_changed,
+      windowSeconds: STATE_CHANGE_WINDOW_SECONDS,
+      devicesWithChanges: devices.length,
+    });
 
     return {
       devices,
@@ -135,9 +138,16 @@ const triggerStateChangeNotifications = createStep({
 
           notificationsTriggered++;
 
-          console.log(`🔔 State change registered: ${entity.id} on ${device.name} changed to "${entity.newState}"`);
+          logger.info('State change registered', {
+            entityId: entity.id,
+            deviceName: device.name,
+            // Do not log newState value as it may contain sensitive data
+          });
         } catch (error) {
-          console.error(`❌ Failed to register state change for ${entity.id}:`, error);
+          logger.error('Failed to register state change', {
+            entityId: entity.id,
+            error,
+          });
         }
       }
     }

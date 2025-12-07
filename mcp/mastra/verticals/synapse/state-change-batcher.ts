@@ -1,4 +1,5 @@
 import { createMemory } from '../../memory/index.js';
+import { logger } from '../../utils/logger.js';
 import { getStateChangeReactorAgent } from './agent.js';
 
 /**
@@ -56,7 +57,10 @@ export class StateChangeBatcher {
    */
   async add(stateChange: StateChange): Promise<void> {
     this.stats.totalReceived++;
-    console.log(`📥 [BATCHER] State change received: ${stateChange.stateType} from ${stateChange.source}`);
+    logger.info('[BATCHER] State change received', {
+      stateType: stateChange.stateType,
+      source: stateChange.source,
+    });
 
     this.pendingChanges.push({
       ...stateChange,
@@ -64,11 +68,14 @@ export class StateChangeBatcher {
       retryCount: 0,
     });
 
-    console.log(`📦 [BATCHER] Batch size: ${this.pendingChanges.length}/${this.maxBatchSize}`);
+    logger.info('[BATCHER] Batch size', {
+      current: this.pendingChanges.length,
+      max: this.maxBatchSize,
+    });
 
     // Process immediately if batch is full
     if (this.pendingChanges.length >= this.maxBatchSize) {
-      console.log(`📦 [BATCHER] Batch full, processing immediately`);
+      logger.info('[BATCHER] Batch full, processing immediately');
       this.clearTimer();
       await this.processBatch();
       return;
@@ -95,7 +102,7 @@ export class StateChangeBatcher {
     this.clearTimer();
     this.batchTimer = setTimeout(() => {
       this.processBatch().catch((error) => {
-        console.error('❌ [BATCHER] Error processing batch:', error);
+        logger.error('[BATCHER] Error processing batch', { error });
       });
     }, this.batchDelayMs);
   }
@@ -115,7 +122,9 @@ export class StateChangeBatcher {
     const changesToProcess = [...this.pendingChanges];
     this.pendingChanges = [];
 
-    console.log(`🔄 [BATCHER] Processing batch of ${changesToProcess.length} state changes`);
+    logger.info('[BATCHER] Processing batch', {
+      count: changesToProcess.length,
+    });
 
     try {
       // Save all changes to memory
@@ -127,11 +136,13 @@ export class StateChangeBatcher {
       this.stats.totalProcessed += changesToProcess.length;
       this.stats.batchesProcessed++;
 
-      console.log(
-        `✅ [BATCHER] Batch processed. Total: ${this.stats.totalProcessed}/${this.stats.totalReceived}, Batches: ${this.stats.batchesProcessed}`,
-      );
+      logger.info('[BATCHER] Batch processed', {
+        totalProcessed: this.stats.totalProcessed,
+        totalReceived: this.stats.totalReceived,
+        batchesProcessed: this.stats.batchesProcessed,
+      });
     } catch (error) {
-      console.error('❌ [BATCHER] Failed to process batch:', error);
+      logger.error('[BATCHER] Failed to process batch', { error });
       this.handleFailedBatch(changesToProcess);
     } finally {
       this.isProcessing = false;
@@ -156,14 +167,17 @@ export class StateChangeBatcher {
 
     if (toDrop.length > 0) {
       this.stats.droppedCount += toDrop.length;
-      console.error(`⚠️ [BATCHER] Dropping ${toDrop.length} state changes after ${MAX_RETRY_ATTEMPTS} retry attempts`);
-      for (const dropped of toDrop) {
-        console.error(`   Dropped: ${dropped.stateType} from ${dropped.source}`);
-      }
+      logger.error('[BATCHER] Dropping state changes after retry limit', {
+        count: toDrop.length,
+        maxRetries: MAX_RETRY_ATTEMPTS,
+        dropped: toDrop.map((d) => ({ stateType: d.stateType, source: d.source })),
+      });
     }
 
     if (toRetry.length > 0) {
-      console.log(`🔄 [BATCHER] Re-queuing ${toRetry.length} changes for retry`);
+      logger.info('[BATCHER] Re-queuing changes for retry', {
+        count: toRetry.length,
+      });
       this.pendingChanges = [...toRetry, ...this.pendingChanges];
       this.resetTimer();
     }
@@ -190,7 +204,9 @@ export class StateChangeBatcher {
     }));
 
     await memory.saveMessages({ messages });
-    console.log(`💾 [BATCHER] Saved ${changes.length} state changes to memory`);
+    logger.info('[BATCHER] Saved state changes to memory', {
+      count: changes.length,
+    });
   }
 
   /**
@@ -229,9 +245,11 @@ If multiple notifications are warranted, you can combine related ones into a sin
     try {
       const networkStream = await reactorAgent.network(batchPrompt);
       await networkStream.result;
-      console.log(`🤖 [BATCHER] Agent analysis completed for batch of ${changes.length} changes`);
+      logger.info('[BATCHER] Agent analysis completed', {
+        changesCount: changes.length,
+      });
     } catch (error) {
-      console.error('❌ [BATCHER] Agent analysis failed:', error);
+      logger.error('[BATCHER] Agent analysis failed', { error });
       throw error;
     }
   }

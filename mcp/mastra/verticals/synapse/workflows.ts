@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { createMemory } from '../../memory/index.js';
+import { logger } from '../../utils/logger.js';
 import { createStep, createWorkflow } from '../../utils/workflow-factory.js';
 import { getStateChangeReactorAgent } from './agent.js';
 
@@ -35,7 +36,10 @@ export const stateChangeNotificationWorkflow = createWorkflow({
         memorySaved: z.boolean(),
       }),
       execute: async ({ inputData }) => {
-        console.log('🔄 State change reactor processing:', JSON.stringify(inputData, null, 2));
+        logger.info('State change reactor processing', {
+          source: inputData.source,
+          stateType: inputData.stateType,
+        });
 
         try {
           // Save to memory for semantic recall
@@ -59,7 +63,10 @@ export const stateChangeNotificationWorkflow = createWorkflow({
             ],
           });
 
-          console.log(`✅ State change saved to memory: ${inputData.stateType} from ${inputData.source}`);
+          logger.info('State change saved to memory', {
+            stateType: inputData.stateType,
+            source: inputData.source,
+          });
 
           return {
             source: inputData.source,
@@ -68,7 +75,7 @@ export const stateChangeNotificationWorkflow = createWorkflow({
             memorySaved: true,
           };
         } catch (error) {
-          console.error('❌ Failed to save state change to memory:', error);
+          logger.error('Failed to save state change to memory', { error });
           throw error;
         }
       },
