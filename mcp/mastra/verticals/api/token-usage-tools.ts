@@ -5,8 +5,8 @@
  */
 
 import { z } from 'zod';
-import { getTokenUsageStorage } from '../storage/index.js';
-import { createTool } from '../utils/index.js';
+import { getTokenUsageStorage } from '../../storage/index.js';
+import { createTool } from '../../utils/index.js';
 
 /**
  * Get token usage summary for a specific model or all models
