@@ -1,8 +1,9 @@
 import { Mastra } from '@mastra/core';
+import { CloudExporter, DefaultExporter } from '@mastra/core/ai-tracing';
 import { PinoLogger } from '@mastra/loggers';
-import { Observability } from '@mastra/observability';
 import { keyBy } from 'lodash-es';
 import { getSqlStorageProvider } from './storage/index.js';
+import { TokenTrackingProcessor, TokenUsageExporter } from './utils/token-usage-exporter.js';
 import {
   checkForFormRepliesWorkflow,
   checkForNewEmails,
@@ -43,7 +44,22 @@ async function createMastra() {
       name: 'Mastra',
       level: 'info',
     }),
-    observability: new Observability({ default: { enabled: true } }),
+    observability: {
+      configs: {
+        default: {
+          serviceName: 'hey-jarvis',
+          sampling: { type: 'always' },
+          exporters: [
+            new DefaultExporter(),
+            new CloudExporter(),
+            new TokenUsageExporter(), // Track token usage for quota management
+          ],
+          processors: [
+            new TokenTrackingProcessor(), // Enrich spans with agent/workflow context
+          ],
+        },
+      },
+    },
     workflows: {
       weatherMonitoringWorkflow,
       generateMealPlanWorkflow,
