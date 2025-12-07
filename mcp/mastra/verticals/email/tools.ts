@@ -115,6 +115,10 @@ const GRAPH_API_BASE = 'https://graph.microsoft.com/v1.0';
 
 /**
  * Helper function to build a Graph API URL with properly encoded filter parameters
+ * @param baseUrl - The base URL with existing query parameters (must already contain '?')
+ * @param filterExpression - Optional OData filter expression to add (will be URL-encoded)
+ * @param searchQuery - Optional search query to add (will be quoted and URL-encoded)
+ * @returns The complete URL with properly encoded filter and search parameters
  */
 function buildGraphApiUrlWithFilter(baseUrl: string, filterExpression?: string, searchQuery?: string): string {
   let url = baseUrl;
