@@ -92,6 +92,15 @@ mcp/
 - **Working memory** for short-term context management
 - **Automatic backup in Home Assistant**: When running as addon, all data stored in `/data` directory (included in HA backups)
 
+### 📊 Token Usage Tracking & Quota Management
+- **Automatic token tracking**: Captures token usage from all LLM interactions via AI tracing
+- **Per-model statistics**: Track prompt tokens, completion tokens, and total usage by model and provider
+- **Quota management**: Set token limits per model with daily, monthly, or yearly reset periods
+- **Usage monitoring**: Query current usage, remaining quota, and percentage used
+- **Database persistence**: Token usage stored in SQLite for historical tracking and reporting
+- **AI Trace integration**: Seamlessly integrates with Mastra's observability pipeline
+- **Available via Coding Agent**: Use tools like `get-token-usage`, `check-token-quota`, `set-token-quota`
+
 ## Current Agents
 
 ### Weather Agent
@@ -220,11 +229,14 @@ await phoneTools.initiatePhoneCall.execute({
    - `op://Personal/ElevenLabs/Jarvis agent ID`
 
 ### Coding Agent
-Manages GitHub repositories and coordinates feature implementation through requirements gathering workflows:
+Manages GitHub repositories, coordinates feature implementation, and monitors token usage:
 - **6 GitHub tools**: List repositories, list issues, search repositories, create/update GitHub issues, assign Copilot
+- **4 Token usage tools**: Get usage statistics, check quotas, set quota limits, view recent usage
 - **Google Gemini model**: Uses `gemini-flash-latest` for natural language processing
 - **Repository management**: Browse and search repositories for any GitHub user
 - **Issue tracking**: View open, closed, or all issues for repositories
+- **Token monitoring**: Track LLM token consumption across all models and check against quotas
+- **Quota management**: Set and monitor token budgets to control API costs
 - **Workflow coordination**: Triggers requirements gathering workflow for new feature requests
 - **Smart defaults**: Defaults to "ffMathy" owner and "hey-jarvis" repository when not specified
 
@@ -235,6 +247,17 @@ Manages GitHub repositories and coordinates feature implementation through requi
 - Create and update GitHub issues programmatically
 - Trigger requirements gathering workflow for new implementations
 - Provide GitHub URLs for quick access to repositories and issues
+- Query token usage by model and date range
+- Check remaining quota and usage percentage
+- Set token quotas with daily/monthly/yearly reset periods
+- View detailed usage logs with trace IDs
+
+**Token Usage Management:**
+The Coding Agent includes comprehensive token tracking capabilities:
+- **Get Token Usage** (`get-token-usage`): View usage statistics for specific models or all models, with optional date filtering
+- **Check Quota** (`check-token-quota`): See current usage vs quota limits, remaining tokens, and over-quota alerts
+- **Set Quota** (`set-token-quota`): Configure token limits per model with automatic reset periods
+- **Recent Usage** (`get-recent-token-usage`): View detailed logs of recent API calls with metadata
 
 **Architecture Pattern:**
 This agent follows the **workflow delegation pattern**. When a user requests a new feature implementation, instead of gathering requirements itself, it delegates to the `implementFeatureWorkflow`, which:
@@ -2850,11 +2873,62 @@ export const myWorkflow = createWorkflow({
 
 #### 📊 **AI Tracing and Observability**:
 The project now uses **Mastra AI Tracing** instead of the deprecated telemetry system:
-- **AI Tracing**: Enabled via `observability: { default: { enabled: true } }` in Mastra config
+- **AI Tracing**: Enabled via custom observability config in Mastra setup
 - **Structured Logging**: Uses PinoLogger for comprehensive log management
 - **Trace Storage**: All traces and scorer results automatically stored in LibSQL database
 - **DefaultExporter**: Persists traces locally for viewing in Studio
 - **CloudExporter**: Optionally sends traces to Mastra Cloud (requires `MASTRA_CLOUD_ACCESS_TOKEN`)
+- **TokenUsageExporter**: Custom exporter that captures and persists token usage from model generations
+- **TokenTrackingProcessor**: Enriches spans with agent/workflow context for accurate attribution
+
+#### 💰 **Token Usage Tracking**:
+Automatic token tracking is built into the observability pipeline:
+
+**Architecture:**
+1. **TokenUsageExporter**: Custom AI tracing exporter that listens for `MODEL_GENERATION` spans
+2. **TokenTrackingProcessor**: Span processor that enriches traces with agent/workflow IDs
+3. **TokenUsageStorage**: SQLite-based storage layer for historical token usage data
+4. **Token Tools**: Four tools exposed via the Coding Agent for querying and managing usage
+
+**Database Schema:**
+```sql
+-- Token usage records table
+CREATE TABLE token_usage (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  model TEXT NOT NULL,              -- e.g., "gemini-flash-latest"
+  provider TEXT NOT NULL,           -- e.g., "google"
+  prompt_tokens INTEGER DEFAULT 0,
+  completion_tokens INTEGER DEFAULT 0,
+  total_tokens INTEGER NOT NULL,
+  timestamp TEXT NOT NULL,
+  trace_id TEXT,                    -- Links to AI trace
+  agent_id TEXT,                    -- Agent that made the call
+  workflow_id TEXT                  -- Workflow that made the call
+);
+
+-- Quota configuration table
+CREATE TABLE token_quotas (
+  model TEXT PRIMARY KEY,
+  max_tokens INTEGER NOT NULL,
+  reset_period TEXT DEFAULT 'monthly',  -- daily/monthly/yearly
+  last_reset TEXT NOT NULL
+);
+```
+
+**Available Tools:**
+- `get-token-usage`: Query usage by model and date range
+- `check-token-quota`: Check usage against configured quotas
+- `set-token-quota`: Configure token limits and reset periods
+- `get-recent-token-usage`: View recent usage logs with full metadata
+
+**Example Usage:**
+```typescript
+// Ask the Coding Agent:
+"How many tokens have I used today?"
+"Set a quota of 1 million tokens per month for gemini-flash-latest"
+"Am I over quota for any models?"
+"Show me my recent token usage"
+```
 
 #### 🔧 **Customizing Scorers**:
 ```typescript
