@@ -1,5 +1,4 @@
 import type { Agent } from '@mastra/core/agent';
-import { google } from '../../utils/google-provider.js';
 import { createAgent } from '../../utils/index.js';
 import { webResearchTools } from './tools.js';
 
