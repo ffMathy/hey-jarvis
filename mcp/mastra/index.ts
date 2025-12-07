@@ -1,6 +1,6 @@
 import { Mastra } from '@mastra/core';
-import { CloudExporter, DefaultExporter } from '@mastra/core/ai-tracing';
 import { PinoLogger } from '@mastra/loggers';
+import { CloudExporter, DefaultExporter } from '@mastra/observability/exporters';
 import { keyBy } from 'lodash-es';
 import { getSqlStorageProvider } from './storage/index.js';
 import { TokenTrackingProcessor, TokenUsageExporter } from './utils/token-usage-exporter.js';

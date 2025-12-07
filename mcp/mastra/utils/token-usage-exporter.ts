@@ -5,8 +5,8 @@
  * and persists them to the token usage storage for quota tracking.
  */
 
-import type { AISpanProcessor, AITracingEvent, AITracingExporter, AnyAISpan } from '@mastra/core/ai-tracing';
 import type { IMastraLogger } from '@mastra/core/logger';
+import type { AISpanProcessor, AITracingEvent, AITracingExporter, AnyAISpan } from '@mastra/observability';
 import { getTokenUsageStorage } from '../storage/index.js';
 
 export class TokenUsageExporter implements AITracingExporter {
