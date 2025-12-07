@@ -1,7 +1,7 @@
 /**
  * Web Research Tools
  *
- * NOTE: Tavily-based tools have been temporarily disabled in favor of Google Search Grounding.
+ * NOTE: Tavily-based tools have been PERMANENTLY DISABLED in favor of Google Search Grounding.
  * Google Search Grounding is integrated directly into the agent's model (gemini-2.0-flash-exp)
  * and provides real-time web search with automatic source citations without needing separate tools.
  *
@@ -19,6 +19,8 @@
  * - Automatic source citations and grounding metadata
  * - No separate API calls or tools needed
  * - Better integration between search and response generation
+ *
+ * The Tavily API key is no longer required for this agent.
  */
 
 // No tools are exported - the agent uses Google Search grounding instead
