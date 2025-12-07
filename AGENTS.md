@@ -3,6 +3,50 @@
 ## Overview
 This is the root-level guidelines document for the Hey Jarvis monorepo. All projects in this repository should follow these shared conventions.
 
+## 🔍 Research Before Implementation
+
+**CRITICAL: ALWAYS perform web searches before starting any task:**
+
+### Mandatory Research Protocol
+- **Minimum 1 web search** is REQUIRED before beginning any implementation
+- **Perform as many searches as possible** to gather comprehensive information
+- Use the `search_with_grounding` tool extensively for:
+  - Current best practices and patterns
+  - Latest library versions and APIs
+  - Security considerations and common pitfalls
+  - Existing solutions and examples
+  - Documentation and tutorials
+
+### When to Search
+- ✅ Before implementing any new feature
+- ✅ Before choosing a library or dependency
+- ✅ Before making architectural decisions
+- ✅ When encountering errors or issues
+- ✅ When uncertain about best practices
+- ✅ Before writing complex algorithms
+- ✅ When working with unfamiliar APIs or frameworks
+
+### Example Research Flow
+```typescript
+// STEP 1: Research (REQUIRED)
+const bestPractices = await search_with_grounding({
+  query: "TypeScript async error handling best practices 2024"
+});
+
+const libraryComparison = await search_with_grounding({
+  query: "best SQLite libraries for Node.js TypeScript 2024"
+});
+
+const securityConsiderations = await search_with_grounding({
+  query: "SQL injection prevention TypeScript parameterized queries"
+});
+
+// STEP 2: Implement based on research
+// ... your implementation here
+```
+
+**Remember**: More research = Better implementation. Never skip this step!
+
 ## Technology Stack
 - **Runtime**: Bun (not Node.js)
 - **Package Manager**: Bun (use `bun install`, never npm)
