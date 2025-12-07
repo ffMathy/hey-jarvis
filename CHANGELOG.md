@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.26.0](https://github.com/ffMathy/hey-jarvis/compare/root-v0.25.1...root-v0.26.0) (2025-12-07)
+
+
+### Features
+
+* add token usage tracking with startup logging and quota management via AI tracing ([#406](https://github.com/ffMathy/hey-jarvis/issues/406)) ([ce76b31](https://github.com/ffMathy/hey-jarvis/commit/ce76b3159fcf6a88cd0b06b37ff5742fe70365a7))
+* **mcp:** add Gemini grounding and Playwright MCP servers ([3e80c78](https://github.com/ffMathy/hey-jarvis/commit/3e80c7880e6f402ed86acfc49bc5c048d3a4a2d4))
+* **mcp:** add Gemini grounding and Playwright MCP servers ([#408](https://github.com/ffMathy/hey-jarvis/issues/408)) ([61a4e8f](https://github.com/ffMathy/hey-jarvis/commit/61a4e8f1cab8232acf28e6c1dbdb18f51d1a06f8))
+* migrate web research agent from Tavily API to Google Search tool ([#407](https://github.com/ffMathy/hey-jarvis/issues/407)) ([fd6eb85](https://github.com/ffMathy/hey-jarvis/commit/fd6eb857617cbb8f7fab71f055a10ec4acbc7563))
+* **token-usage:** add token usage tracking and quota management ([aa1ac5f](https://github.com/ffMathy/hey-jarvis/commit/aa1ac5f630e2edec5a80c098c276b70144aaecd1))
+* **web-research:** migrate to Google Search Grounding ([3947b73](https://github.com/ffMathy/hey-jarvis/commit/3947b73a5f0dc386de1a500fb0381a2e8861b76c))
+
+
+### Bug Fixes
+
+* **observability:** correct import path for exporters ([747689e](https://github.com/ffMathy/hey-jarvis/commit/747689ec24147b65cbc3c0f08f6b2c2145802a4c))
+* remove HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY ([11c4f33](https://github.com/ffMathy/hey-jarvis/commit/11c4f334929d7ab93952302997a28dda830ad0cb))
+* remove HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY ([#410](https://github.com/ffMathy/hey-jarvis/issues/410)) ([b161f44](https://github.com/ffMathy/hey-jarvis/commit/b161f449b400448943da7698e93cc248e7998903))
+* **tests:** fix unused variable warning in token usage tests ([b139933](https://github.com/ffMathy/hey-jarvis/commit/b139933c5c890861427981d662417008bc475dbd))
+* **token-usage:** address code review feedback ([3c380c4](https://github.com/ffMathy/hey-jarvis/commit/3c380c4e590c423e77e16bad3fb0416d09fab5e0))
+* **token-usage:** correct import paths in token-usage-tools.ts ([579dc77](https://github.com/ffMathy/hey-jarvis/commit/579dc775498a4be32eda5c1ab85d0e73761f0bdb))
+* **web-research:** use google.tools.googleSearch instead of grounding ([cf46ad8](https://github.com/ffMathy/hey-jarvis/commit/cf46ad8accdc1418cd8149ea78b3a53064f33678))
+
 ## [0.25.1](https://github.com/ffMathy/hey-jarvis/compare/root-v0.25.0...root-v0.25.1) (2025-12-06)
 
 
