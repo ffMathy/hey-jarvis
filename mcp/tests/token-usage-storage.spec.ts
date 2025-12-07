@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdir, unlink } from 'fs/promises';
 import path from 'path';
-import { TokenUsageStorage } from '../mastra/storage/token-usage';
+import { TokenUsageStorage } from '../mastra/storage/token-usage.js';
 
 // Use a test-specific database file
 const TEST_DB_DIR = '/tmp/token-usage-tests';
