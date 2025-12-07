@@ -43,7 +43,7 @@ describe('Token Usage Storage Tests', () => {
     });
 
     test('should calculate total tokens if not provided', async () => {
-      const id = await storage.recordUsage({
+      const _id = await storage.recordUsage({
         model: 'gpt-4',
         provider: 'openai',
         promptTokens: 200,
