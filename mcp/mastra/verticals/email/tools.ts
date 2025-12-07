@@ -541,7 +541,10 @@ export async function findNewEmailsSinceLastCheck(folder = 'inbox', limit = 50):
   // If we have a last seen timestamp, filter for emails received after that time
   if (lastSeenState) {
     const filterDate = lastSeenState.lastEmailReceivedDateTime;
-    url += `&$filter=receivedDateTime gt ${filterDate}`;
+    // URL encode the entire filter expression to handle special characters
+    const filterExpression = `receivedDateTime gt ${filterDate}`;
+    const encodedFilter = encodeURIComponent(filterExpression);
+    url += `&$filter=${encodedFilter}`;
   }
 
   const response = await fetch(url, {
@@ -552,7 +555,10 @@ export async function findNewEmailsSinceLastCheck(folder = 'inbox', limit = 50):
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to fetch emails: ${response.status} ${response.statusText}`);
+    const errorBody = await response.text();
+    throw new Error(
+      `Failed to fetch emails: ${response.status} ${response.statusText}. URL: ${url}. Response: ${errorBody}`,
+    );
   }
 
   const data = (await response.json()) as GraphEmailListResponse;
