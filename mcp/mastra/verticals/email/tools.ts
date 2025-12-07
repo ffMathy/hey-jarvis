@@ -113,6 +113,24 @@ const getMicrosoftAuth = async (): Promise<string> => {
 // Base URL for Microsoft Graph API
 const GRAPH_API_BASE = 'https://graph.microsoft.com/v1.0';
 
+/**
+ * Helper function to build a Graph API URL with properly encoded filter parameters
+ */
+function buildGraphApiUrlWithFilter(baseUrl: string, filterExpression?: string, searchQuery?: string): string {
+  let url = baseUrl;
+
+  if (filterExpression) {
+    url += `&$filter=${encodeURIComponent(filterExpression)}`;
+  }
+
+  if (searchQuery) {
+    // For $search parameter, the query needs to be quoted and then the whole thing encoded
+    url += `&$search=${encodeURIComponent(`"${searchQuery}"`)}`;
+  }
+
+  return url;
+}
+
 // Tool to find/search emails
 export const findEmails = createTool({
   id: 'findEmails',
@@ -159,17 +177,9 @@ export const findEmails = createTool({
       filters.push(`hasAttachments eq ${hasAttachment}`);
     }
 
-    let url = `${GRAPH_API_BASE}/me/mailFolders/${folder}/messages?$top=${limit}&$orderby=receivedDateTime desc`;
-
-    if (filters.length > 0) {
-      // URL encode the filter expression to handle special characters
-      const filterExpression = filters.join(' and ');
-      url += `&$filter=${encodeURIComponent(filterExpression)}`;
-    }
-
-    if (searchQuery) {
-      url += `&$search="${encodeURIComponent(searchQuery)}"`;
-    }
+    const baseUrl = `${GRAPH_API_BASE}/me/mailFolders/${folder}/messages?$top=${limit}&$orderby=receivedDateTime desc`;
+    const filterExpression = filters.length > 0 ? filters.join(' and ') : undefined;
+    const url = buildGraphApiUrlWithFilter(baseUrl, filterExpression, searchQuery);
 
     const response = await fetch(url, {
       headers: {
@@ -541,16 +551,11 @@ export async function findNewEmailsSinceLastCheck(folder = 'inbox', limit = 50):
   const emailStateStorage = await getEmailStateStorage();
   const lastSeenState = await emailStateStorage.getLastSeenEmail(folder);
 
-  let url = `${GRAPH_API_BASE}/me/mailFolders/${folder}/messages?$top=${limit}&$orderby=receivedDateTime desc`;
+  const baseUrl = `${GRAPH_API_BASE}/me/mailFolders/${folder}/messages?$top=${limit}&$orderby=receivedDateTime desc`;
 
   // If we have a last seen timestamp, filter for emails received after that time
-  if (lastSeenState) {
-    const filterDate = lastSeenState.lastEmailReceivedDateTime;
-    // URL encode the entire filter expression to handle special characters
-    const filterExpression = `receivedDateTime gt ${filterDate}`;
-    const encodedFilter = encodeURIComponent(filterExpression);
-    url += `&$filter=${encodedFilter}`;
-  }
+  const filterExpression = lastSeenState ? `receivedDateTime gt ${lastSeenState.lastEmailReceivedDateTime}` : undefined;
+  const url = buildGraphApiUrlWithFilter(baseUrl, filterExpression);
 
   const response = await fetch(url, {
     headers: {
