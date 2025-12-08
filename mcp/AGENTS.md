@@ -92,6 +92,15 @@ mcp/
 - **Working memory** for short-term context management
 - **Automatic backup in Home Assistant**: When running as addon, all data stored in `/data` directory (included in HA backups)
 
+### 📊 Token Usage Tracking & Quota Management
+- **Automatic token tracking**: Captures token usage from all LLM interactions via AI tracing
+- **Per-model statistics**: Track prompt tokens, completion tokens, and total usage by model and provider
+- **Quota management**: Set token limits per model with daily, monthly, or yearly reset periods
+- **Usage monitoring**: Query current usage, remaining quota, and percentage used
+- **Database persistence**: Token usage stored in SQLite for historical tracking and reporting
+- **AI Trace integration**: Seamlessly integrates with Mastra's observability pipeline
+- **Startup summary**: Cumulative token usage displayed in console on system startup
+
 ## Current Agents
 
 ### Weather Agent
@@ -220,7 +229,7 @@ await phoneTools.initiatePhoneCall.execute({
    - `op://Personal/ElevenLabs/Jarvis agent ID`
 
 ### Coding Agent
-Manages GitHub repositories and coordinates feature implementation through requirements gathering workflows:
+Manages GitHub repositories and coordinates feature implementation:
 - **6 GitHub tools**: List repositories, list issues, search repositories, create/update GitHub issues, assign Copilot
 - **Google Gemini model**: Uses `gemini-flash-latest` for natural language processing
 - **Repository management**: Browse and search repositories for any GitHub user
@@ -2867,11 +2876,68 @@ export const myWorkflow = createWorkflow({
 
 #### 📊 **AI Tracing and Observability**:
 The project now uses **Mastra AI Tracing** instead of the deprecated telemetry system:
-- **AI Tracing**: Enabled via `observability: { default: { enabled: true } }` in Mastra config
+- **AI Tracing**: Enabled via custom observability config in Mastra setup
 - **Structured Logging**: Uses PinoLogger for comprehensive log management
 - **Trace Storage**: All traces and scorer results automatically stored in LibSQL database
 - **DefaultExporter**: Persists traces locally for viewing in Studio
 - **CloudExporter**: Optionally sends traces to Mastra Cloud (requires `MASTRA_CLOUD_ACCESS_TOKEN`)
+- **TokenUsageExporter**: Custom exporter that captures and persists token usage from model generations
+- **TokenTrackingProcessor**: Enriches spans with agent/workflow context for accurate attribution
+
+#### 💰 **Token Usage Tracking**:
+Automatic token tracking is built into the observability pipeline:
+
+**Architecture:**
+1. **TokenUsageExporter**: Custom AI tracing exporter that listens for `MODEL_GENERATION` spans
+2. **TokenTrackingProcessor**: Span processor that enriches traces with agent/workflow IDs
+3. **TokenUsageStorage**: SQLite-based storage layer for historical token usage data
+4. **Startup Logging**: Cumulative usage statistics displayed in console on system startup
+
+**Database Schema:**
+```sql
+-- Token usage records table
+CREATE TABLE token_usage (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  model TEXT NOT NULL,              -- e.g., "gemini-flash-latest"
+  provider TEXT NOT NULL,           -- e.g., "google"
+  prompt_tokens INTEGER DEFAULT 0,
+  completion_tokens INTEGER DEFAULT 0,
+  total_tokens INTEGER NOT NULL,
+  timestamp TEXT NOT NULL,
+  trace_id TEXT,                    -- Links to AI trace
+  agent_id TEXT,                    -- Agent that made the call
+  workflow_id TEXT                  -- Workflow that made the call
+);
+
+-- Quota configuration table
+CREATE TABLE token_quotas (
+  model TEXT PRIMARY KEY,
+  max_tokens INTEGER NOT NULL,
+  reset_period TEXT DEFAULT 'monthly',  -- daily/monthly/yearly
+  last_reset TEXT NOT NULL
+);
+```
+
+**Startup Display:**
+On system startup, cumulative token usage is logged to the console:
+```
+📊 Token Usage Summary:
+   Total: 150,000 tokens (42 requests)
+   Prompt: 100,000 | Completion: 50,000
+   By Model:
+   - gemini-flash-latest: 120,000 tokens (35 requests)
+   - gpt-4: 30,000 tokens (7 requests)
+```
+
+**Programmatic Access:**
+Token usage can be queried programmatically via the `TokenUsageStorage` API:
+```typescript
+import { getTokenUsageStorage } from './storage';
+
+const storage = await getTokenUsageStorage();
+const totalUsage = await storage.getTotalUsage();
+const modelUsage = await storage.getAllModelUsage();
+```
 
 #### 🔧 **Customizing Scorers**:
 ```typescript

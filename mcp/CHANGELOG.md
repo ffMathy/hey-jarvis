@@ -1,5 +1,54 @@
 # Changelog
 
+## [0.26.1](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.26.0...mcp-v0.26.1) (2025-12-07)
+
+
+### Bug Fixes
+
+* 400 Bad Request in email workflow due to unencoded OData filters ([#411](https://github.com/ffMathy/hey-jarvis/issues/411)) ([631e135](https://github.com/ffMathy/hey-jarvis/commit/631e135bd03d3422ba400625a4b0bef558dad64a))
+* **email:** add URL encoding for receivedDateTime filter to prevent 400 errors ([2a1d79e](https://github.com/ffMathy/hey-jarvis/commit/2a1d79e6d9aada60b8d8dad7ba99b6f616beac7f))
+* **email:** add URL encoding for search filters and improve error logging ([844eee6](https://github.com/ffMathy/hey-jarvis/commit/844eee63c41a9eac8b3fd65f54d542ece97687fd))
+
+## [0.26.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.25.1...mcp-v0.26.0) (2025-12-07)
+
+
+### Features
+
+* add token usage tracking with startup logging and quota management via AI tracing ([#406](https://github.com/ffMathy/hey-jarvis/issues/406)) ([ce76b31](https://github.com/ffMathy/hey-jarvis/commit/ce76b3159fcf6a88cd0b06b37ff5742fe70365a7))
+* migrate web research agent from Tavily API to Google Search tool ([#407](https://github.com/ffMathy/hey-jarvis/issues/407)) ([fd6eb85](https://github.com/ffMathy/hey-jarvis/commit/fd6eb857617cbb8f7fab71f055a10ec4acbc7563))
+* **token-usage:** add token usage tracking and quota management ([aa1ac5f](https://github.com/ffMathy/hey-jarvis/commit/aa1ac5f630e2edec5a80c098c276b70144aaecd1))
+* **web-research:** migrate to Google Search Grounding ([3947b73](https://github.com/ffMathy/hey-jarvis/commit/3947b73a5f0dc386de1a500fb0381a2e8861b76c))
+
+
+### Bug Fixes
+
+* **observability:** correct import path for exporters ([747689e](https://github.com/ffMathy/hey-jarvis/commit/747689ec24147b65cbc3c0f08f6b2c2145802a4c))
+* **tests:** fix unused variable warning in token usage tests ([b139933](https://github.com/ffMathy/hey-jarvis/commit/b139933c5c890861427981d662417008bc475dbd))
+* **token-usage:** address code review feedback ([3c380c4](https://github.com/ffMathy/hey-jarvis/commit/3c380c4e590c423e77e16bad3fb0416d09fab5e0))
+* **token-usage:** correct import paths in token-usage-tools.ts ([579dc77](https://github.com/ffMathy/hey-jarvis/commit/579dc775498a4be32eda5c1ab85d0e73761f0bdb))
+* **web-research:** use google.tools.googleSearch instead of grounding ([cf46ad8](https://github.com/ffMathy/hey-jarvis/commit/cf46ad8accdc1418cd8149ea78b3a53064f33678))
+
+## [0.25.1](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.25.0...mcp-v0.25.1) (2025-12-06)
+
+
+### Miscellaneous Chores
+
+* **mcp:** Synchronize mcp versions
+
+## [0.25.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.24.0...mcp-v0.25.0) (2025-12-06)
+
+
+### Features
+
+* **email:** Add email trigger capability for programmatic workflow execution ([68642ea](https://github.com/ffMathy/hey-jarvis/commit/68642ea01d92d95ea75b2738681d810526046fdc))
+* **email:** add email trigger system for programmatic workflow execution ([#403](https://github.com/ffMathy/hey-jarvis/issues/403)) ([9c4fe30](https://github.com/ffMathy/hey-jarvis/commit/9c4fe30ca62c4a65cd282e986aa0900eab9af284))
+
+
+### Bug Fixes
+
+* **ci:** scope build cancellation to same branch per actor ([490693c](https://github.com/ffMathy/hey-jarvis/commit/490693c271cc7288d84db4276cf61ad00863ce41))
+* **mcp:** use separate storage keys for email workflows to prevent race condition ([490693c](https://github.com/ffMathy/hey-jarvis/commit/490693c271cc7288d84db4276cf61ad00863ce41))
+
 ## [0.24.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.23.0...mcp-v0.24.0) (2025-12-05)
 
 

@@ -3,6 +3,50 @@
 ## Overview
 This is the root-level guidelines document for the Hey Jarvis monorepo. All projects in this repository should follow these shared conventions.
 
+## 🔍 Research Before Implementation
+
+**CRITICAL: ALWAYS perform web searches before starting any task:**
+
+### Mandatory Research Protocol
+- **Minimum 1 web search** is REQUIRED before beginning any implementation
+- **Perform as many searches as possible** to gather comprehensive information
+- Use the `search_with_grounding` tool extensively for:
+  - Current best practices and patterns
+  - Latest library versions and APIs
+  - Security considerations and common pitfalls
+  - Existing solutions and examples
+  - Documentation and tutorials
+
+### When to Search
+- ✅ Before implementing any new feature
+- ✅ Before choosing a library or dependency
+- ✅ Before making architectural decisions
+- ✅ When encountering errors or issues
+- ✅ When uncertain about best practices
+- ✅ Before writing complex algorithms
+- ✅ When working with unfamiliar APIs or frameworks
+
+### Example Research Flow
+```typescript
+// STEP 1: Research (REQUIRED)
+const bestPractices = await search_with_grounding({
+  query: "TypeScript async error handling best practices 2024"
+});
+
+const libraryComparison = await search_with_grounding({
+  query: "best SQLite libraries for Node.js TypeScript 2024"
+});
+
+const securityConsiderations = await search_with_grounding({
+  query: "SQL injection prevention TypeScript parameterized queries"
+});
+
+// STEP 2: Implement based on research
+// ... your implementation here
+```
+
+**Remember**: More research = Better implementation. Never skip this step!
+
 ## Technology Stack
 - **Runtime**: Bun (not Node.js)
 - **Package Manager**: Bun (use `bun install`, never npm)
@@ -171,6 +215,48 @@ exec('curl -H "Authorization: Bearer $GITHUB_TOKEN" ...');
 - `mcp_github_github_create_branch` - Create new branch
 - `mcp_github_github_create_or_update_file` - Create/update files
 - `mcp_github_github_push_files` - Push multiple files
+
+## Web Search and Information Retrieval
+
+### Gemini Grounding MCP Tools
+**CRITICAL: Always use the `search_with_grounding` tool** when you need to fetch information online or search the web:
+
+The Gemini grounding MCP server provides access to real-time web search capabilities through Google's Gemini API with grounding. Use this tool to:
+- Search for current information online
+- Fetch real-time data from the web
+- Find documentation, tutorials, or examples
+- Get up-to-date information about packages, libraries, or APIs
+
+**Available Tools:**
+- `search_with_grounding` - Perform web searches with Gemini grounding
+
+**Example Usage:**
+```typescript
+// Search for information online
+const results = await search_with_grounding({
+  query: "latest TypeScript best practices 2024"
+});
+```
+
+### Playwright MCP Tools
+**Use Playwright tools** when you need to fetch content from a specific URL or interact with web pages:
+
+The Playwright MCP server provides browser automation capabilities for:
+- Fetching the content of a single URL
+- Extracting data from web pages
+- Taking screenshots of web pages
+- Interacting with dynamic web content
+
+**Available Tools:**
+- All Playwright MCP tools including navigation, content extraction, and browser automation
+
+**Example Usage:**
+```typescript
+// Navigate to a URL and get its content
+const content = await playwright_browser_navigate({
+  url: "https://example.com"
+});
+```
 
 ## File Creation Policy
 
