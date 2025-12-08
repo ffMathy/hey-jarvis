@@ -1,6 +1,6 @@
 import { type ChildProcess, spawn } from 'child_process';
 import { promisify } from 'util';
-import { getMastraUIUrl, getMCPServerUrl } from './ports';
+import { getMastraServerUrl, getMCPServerUrl } from './ports';
 
 const sleep = promisify(setTimeout);
 
@@ -66,7 +66,7 @@ export async function startContainer(options: ContainerStartupOptions = {}): Pro
     // Check Mastra UI if not yet ready
     if (!mastraReady) {
       try {
-        const response = await fetch(getMastraUIUrl());
+        const response = await fetch(getMastraServerUrl());
         if (response.status < 500) {
           const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
           console.log(`Mastra UI is ready! (took ${elapsed}s)`);

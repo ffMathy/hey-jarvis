@@ -54,3 +54,16 @@ ENTRYPOINT ["/run-test.sh"]
 
 # the last stage is the final image used by Home Assistant.
 FROM base AS final
+
+# Install bash and lsof (needed by run.sh and server-functions.sh)
+RUN apk add --no-cache bash lsof
+
+# Copy run.sh and lib directory from the mcp project context
+COPY ../mcp/run.sh /workspace/mcp/run.sh
+COPY ../mcp/lib/ /workspace/mcp/lib/
+
+# Make run.sh executable
+RUN chmod +x /workspace/mcp/run.sh
+
+# Override CMD to use run.sh for Home Assistant addon
+CMD ["/workspace/mcp/run.sh"]

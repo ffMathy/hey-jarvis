@@ -1,27 +1,8 @@
 import type { NextFunction, Request, Response, Router } from 'express';
-import type { ZodError, ZodType } from 'zod';
+import type { ZodError } from 'zod';
 import { logger } from '../../utils/logger.js';
+import type { AnyWorkflow, AnyWorkflowResult, NamedWorkflow } from '../../utils/workflow-types.js';
 import { shoppingListWorkflow } from '../shopping/workflows.js';
-
-/**
- * Interface for workflow run result.
- */
-interface WorkflowRun {
-  start(params: { inputData?: unknown }): Promise<{ status: string; result?: unknown; error?: unknown }>;
-}
-
-/**
- * Interface for workflow-like objects used in API routes.
- * Uses duck-typing to avoid strict generic type constraints.
- */
-interface WorkflowLike {
-  id: string;
-  name?: string;
-  description?: string;
-  inputSchema?: ZodType;
-  outputSchema?: ZodType;
-  createRun(): Promise<WorkflowRun>;
-}
 
 /**
  * Standard API response structure for workflow endpoints.
@@ -34,15 +15,6 @@ interface WorkflowApiResponse<T = unknown> {
 }
 
 /**
- * Result type from workflow execution
- */
-interface WorkflowResult {
-  status: string;
-  result?: unknown;
-  error?: unknown;
-}
-
-/**
  * Formats Zod validation errors into a human-readable string.
  */
 function formatValidationErrors(zodError: ZodError): string {
@@ -52,7 +24,7 @@ function formatValidationErrors(zodError: ZodError): string {
 /**
  * Extracts an error message from a workflow result.
  */
-function extractWorkflowError(result: WorkflowResult): string {
+function extractWorkflowError(result: AnyWorkflowResult): string {
   if ('error' in result && result.error instanceof Error) {
     return result.error.message;
   }
@@ -72,7 +44,7 @@ function extractWorkflowError(result: WorkflowResult): string {
  * router.post('/api/shopping-list', handler);
  * ```
  */
-export function createWorkflowApiHandler(workflow: WorkflowLike) {
+export function createWorkflowApiHandler(workflow: NamedWorkflow) {
   const workflowName = workflow.name ?? workflow.id;
 
   return async (req: Request, res: Response, next: NextFunction) => {
@@ -137,7 +109,7 @@ interface WorkflowApiConfig {
   /** The URL path for the API endpoint (e.g., '/api/shopping-list') */
   path: string;
   /** The workflow to expose at this endpoint */
-  workflow: WorkflowLike;
+  workflow: NamedWorkflow;
   /** Optional description for logging purposes */
   description?: string;
 }

@@ -1,4 +1,4 @@
-import { mastra } from './index.js';
+import { getMastra } from './index.js';
 import { CronPatterns, WorkflowScheduler } from './utils/workflow-scheduler.js';
 import {
   emailCheckingWorkflow,
@@ -14,7 +14,8 @@ import {
  * This file defines all workflows that should run on recurring schedules.
  * Add new scheduled workflows here to enable automatic execution.
  */
-export function initializeScheduler(): WorkflowScheduler {
+export async function initializeScheduler(): Promise<WorkflowScheduler> {
+  const mastra = await getMastra();
   const scheduler = new WorkflowScheduler(mastra, {
     timezone: 'Europe/Copenhagen',
     onError: (error, workflowId) => {

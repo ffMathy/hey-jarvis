@@ -4,29 +4,18 @@ import { MCPServer } from '@mastra/mcp';
 import type { NextFunction, Request, Response } from 'express';
 import express from 'express';
 import { expressjwt } from 'express-jwt';
-import { type ZodType, z } from 'zod';
+import { z } from 'zod';
+import { logTokenUsageSummary } from './index.js';
 import { initializeScheduler } from './scheduler.js';
 import { createTool } from './utils/tool-factory.js';
+import type { NamedWorkflow } from './utils/workflow-types.js';
 import { getPublicAgents, registerApiRoutes, registerShoppingTriggers } from './verticals/index.js';
 import { getNextInstructionsWorkflow, routePromptWorkflow } from './verticals/routing/workflows.js';
 
 // Re-export for cross-project imports
 export { getPublicAgents };
 
-interface WorkflowRun {
-  start(params: { inputData?: unknown }): Promise<{ status: string; result?: unknown; error?: unknown }>;
-}
-
-interface WorkflowLike {
-  id: string;
-  name?: string;
-  description?: string;
-  inputSchema?: ZodType;
-  outputSchema?: ZodType;
-  createRun(): Promise<WorkflowRun>;
-}
-
-function createSimplifiedWorkflowTool(workflow: WorkflowLike) {
+function createSimplifiedWorkflowTool(workflow: NamedWorkflow) {
   const workflowName = workflow.name ?? workflow.id;
   return createTool({
     id: workflowName,
@@ -186,8 +175,11 @@ export async function startMcpServer() {
   // Register email triggers for shopping notifications
   registerShoppingTriggers();
 
+  // Log token usage summary on startup
+  await logTokenUsageSummary();
+
   // Initialize and start workflow scheduler
-  const scheduler = initializeScheduler();
+  const scheduler = await initializeScheduler();
   scheduler.start();
 
   // Start the Express server

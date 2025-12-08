@@ -1,12 +1,14 @@
 import { Mastra } from '@mastra/core';
+import { MastraServer } from '@mastra/hono';
 import { PinoLogger } from '@mastra/loggers';
 import { CloudExporter, DefaultExporter, Observability, SamplingStrategyType } from '@mastra/observability';
+//this export is required by "mastra build". it must be called `mastra` and be a Mastra instance.
+//it should never be deferred for that reason.
+import { Hono } from 'hono';
 import { keyBy } from 'lodash-es';
 import { getSqlStorageProvider, getTokenUsageStorage } from './storage/index.js';
 import { TokenTrackingProcessor, TokenUsageExporter } from './utils/token-usage-exporter.js';
 import {
-  checkForFormRepliesWorkflow,
-  checkForNewEmails,
   emailCheckingWorkflow,
   formRepliesDetectionWorkflow,
   generateMealPlanWorkflow,
@@ -24,7 +26,11 @@ import {
   routePromptWorkflow,
 } from './verticals/routing/workflows.js';
 
-async function createMastra() {
+/**
+ * Creates and initializes the Mastra instance.
+ * This is called lazily to support bun compile which doesn't allow top-level await.
+ */
+async function createMastraInstance(): Promise<Mastra> {
   // Set up the Google AI SDK environment variable
   // Prioritize HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY over HEY_JARVIS_GOOGLE_API_KEY
   process.env.GOOGLE_GENERATIVE_AI_API_KEY =
@@ -63,8 +69,6 @@ async function createMastra() {
       implementFeatureWorkflow,
       stateChangeNotificationWorkflow,
       humanInTheLoopDemoWorkflow,
-      checkForFormRepliesWorkflow,
-      checkForNewEmails,
       emailCheckingWorkflow,
       formRepliesDetectionWorkflow,
       iotMonitoringWorkflow,
@@ -73,46 +77,68 @@ async function createMastra() {
       getNextInstructionsWorkflow,
     },
     agents: agentsByName,
-    // Workaround for mastra CLI bundler bug: the bundler incorrectly resolves
-    // @mastra/core/evals/scoreTraces to @mastra/core/eval (singular) during the
-    // "Optimizing dependencies" step, causing "Cannot find module" errors in Docker.
-    // Adding @mastra/core, @mastra/evals and related paths to externals bypasses this issue.
-    // Note: This workaround is applied but may not fully work due to a bug where
-    // externals are only used in bundleExternals, not in captureDependenciesToOptimize.
     bundler: {
-      externals: [
-        '@mastra/core',
-        '@mastra/core/evals',
-        '@mastra/core/evals/scoreTraces',
-        '@mastra/evals',
-        '@mastra/evals/scorers/prebuilt',
-        '@mastra/evals/scorers/utils',
-      ],
+      externals: ['@elevenlabs/elevenlabs-js'],
     },
   });
 }
 
-export const mastra = await createMastra();
+/**
+ * Logs cumulative token usage statistics to the console.
+ * Called during startup to show token usage summary.
+ */
+export async function logTokenUsageSummary(): Promise<void> {
+  try {
+    const tokenStorage = await getTokenUsageStorage();
+    const totalUsage = await tokenStorage.getTotalUsage();
+    const modelUsage = await tokenStorage.getAllModelUsage();
 
-// Log cumulative token usage on startup
-try {
-  const tokenStorage = await getTokenUsageStorage();
-  const totalUsage = await tokenStorage.getTotalUsage();
-  const modelUsage = await tokenStorage.getAllModelUsage();
+    console.log('📊 Token Usage Summary:');
+    console.log(`   Total: ${totalUsage.totalTokens.toLocaleString()} tokens (${totalUsage.requestCount} requests)`);
+    console.log(
+      `   Prompt: ${totalUsage.totalPromptTokens.toLocaleString()} | Completion: ${totalUsage.totalCompletionTokens.toLocaleString()}`,
+    );
 
-  console.log('📊 Token Usage Summary:');
-  console.log(`   Total: ${totalUsage.totalTokens.toLocaleString()} tokens (${totalUsage.requestCount} requests)`);
-  console.log(
-    `   Prompt: ${totalUsage.totalPromptTokens.toLocaleString()} | Completion: ${totalUsage.totalCompletionTokens.toLocaleString()}`,
-  );
-
-  if (modelUsage.length > 0) {
-    console.log('   By Model:');
-    for (const usage of modelUsage) {
-      console.log(`   - ${usage.model}: ${usage.totalTokens.toLocaleString()} tokens (${usage.requestCount} requests)`);
+    if (modelUsage.length > 0) {
+      console.log('   By Model:');
+      for (const usage of modelUsage) {
+        console.log(
+          `   - ${usage.model}: ${usage.totalTokens.toLocaleString()} tokens (${usage.requestCount} requests)`,
+        );
+      }
     }
+  } catch (error) {
+    console.error('⚠️  Failed to load token usage statistics:', error instanceof Error ? error.message : String(error));
   }
-} catch (error) {
-  // Log errors during token usage logging, but do not block startup
-  console.error('⚠️  Failed to load token usage statistics:', error instanceof Error ? error.message : String(error));
 }
+
+// 1. Initialize the Hono Application
+// We do not need any special adapters for Bun here; Hono works out of the box.
+const app = new Hono();
+
+// 3. Initialize the Mastra Server Adapter
+// This class wraps our Hono app and injects the Mastra capabilities.
+const mastraServer = new MastraServer({
+  playground: true,
+  isDev: true,
+  app: app,
+  mastra: await createMastraInstance(),
+  openapiPath: '/openapi.json',
+  bodyLimitOptions: {
+    maxSize: 10 * 1024 * 1024, // 10MB
+    onError: (err) => ({ error: 'Payload too large', maxSize: '10MB' }),
+  },
+  streamOptions: { redact: true },
+});
+
+// 4. Initialize Routes
+// This awaits the registration of all agents and workflows as HTTP endpoints.
+await mastraServer.init();
+
+// 5. Add Custom Routes (Post-Init)
+// We can add routes that leverage the Mastra context.
+app.get('/health', (c) => c.json({ status: 'ok', runtime: 'bun' }));
+
+// 6. Export for Bun
+// Bun.serve looks for a default export with a 'fetch' handler.
+export default app;

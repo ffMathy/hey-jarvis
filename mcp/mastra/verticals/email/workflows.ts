@@ -573,17 +573,3 @@ export const formRepliesDetectionWorkflow = createWorkflow({
   .then(updateLastSeenEmailForFormReplies)
   .then(formatFormRepliesOutput)
   .commit();
-
-// ============================================================================
-// LEGACY EXPORTS (for backward compatibility)
-// ============================================================================
-
-/**
- * @deprecated Use emailCheckingWorkflow instead
- */
-export const checkForNewEmails = emailCheckingWorkflow;
-
-/**
- * @deprecated Use formRepliesDetectionWorkflow instead
- */
-export const checkForFormRepliesWorkflow = formRepliesDetectionWorkflow;
