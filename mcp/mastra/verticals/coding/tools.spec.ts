@@ -12,9 +12,9 @@ function isValidationError(result: unknown): result is { error: true; message: s
 describe('Coding Tools Integration Tests', () => {
   beforeAll(() => {
     // Verify GitHub token is configured
-    if (!process.env.HEY_JARVIS_GITHUB_TOKEN) {
+    if (!process.env.HEY_JARVIS_GITHUB_API_TOKEN) {
       throw new Error(
-        'GitHub token is required for coding tools tests. Set HEY_JARVIS_GITHUB_TOKEN environment variable.',
+        'GitHub token is required for coding tools tests. Set HEY_JARVIS_GITHUB_API_TOKEN environment variable.',
       );
     }
   });
