@@ -1,6 +1,6 @@
 import { Mastra } from '@mastra/core';
 import { PinoLogger } from '@mastra/loggers';
-import { CloudExporter, DefaultExporter } from '@mastra/observability';
+import { CloudExporter, DefaultExporter, Observability, SamplingStrategyType } from '@mastra/observability';
 import { keyBy } from 'lodash-es';
 import { getSqlStorageProvider, getTokenUsageStorage } from './storage/index.js';
 import { TokenTrackingProcessor, TokenUsageExporter } from './utils/token-usage-exporter.js';
@@ -46,22 +46,16 @@ async function createMastra() {
       name: 'Mastra',
       level: 'info',
     }),
-    observability: {
+    observability: new Observability({
       configs: {
         default: {
           serviceName: 'hey-jarvis',
-          sampling: { type: 'always' },
-          exporters: [
-            new DefaultExporter(),
-            new CloudExporter(),
-            new TokenUsageExporter(), // Track token usage for quota management
-          ],
-          processors: [
-            new TokenTrackingProcessor(), // Enrich spans with agent/workflow context
-          ],
+          sampling: { type: SamplingStrategyType.ALWAYS },
+          exporters: [new DefaultExporter(), new CloudExporter(), new TokenUsageExporter()],
+          spanOutputProcessors: [new TokenTrackingProcessor()],
         },
       },
-    },
+    }),
     workflows: {
       weatherMonitoringWorkflow,
       generateMealPlanWorkflow,

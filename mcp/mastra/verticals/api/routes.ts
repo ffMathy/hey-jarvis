@@ -1,8 +1,27 @@
-import type { Workflow } from '@mastra/core/workflows';
 import type { NextFunction, Request, Response, Router } from 'express';
-import type { ZodError } from 'zod';
+import type { ZodError, ZodType } from 'zod';
 import { logger } from '../../utils/logger.js';
 import { shoppingListWorkflow } from '../shopping/workflows.js';
+
+/**
+ * Interface for workflow run result.
+ */
+interface WorkflowRun {
+  start(params: { inputData?: unknown }): Promise<{ status: string; result?: unknown; error?: unknown }>;
+}
+
+/**
+ * Interface for workflow-like objects used in API routes.
+ * Uses duck-typing to avoid strict generic type constraints.
+ */
+interface WorkflowLike {
+  id: string;
+  name?: string;
+  description?: string;
+  inputSchema?: ZodType;
+  outputSchema?: ZodType;
+  createRun(): Promise<WorkflowRun>;
+}
 
 /**
  * Standard API response structure for workflow endpoints.
@@ -20,7 +39,7 @@ interface WorkflowApiResponse<T = unknown> {
 interface WorkflowResult {
   status: string;
   result?: unknown;
-  error?: Error;
+  error?: unknown;
 }
 
 /**
@@ -53,7 +72,7 @@ function extractWorkflowError(result: WorkflowResult): string {
  * router.post('/api/shopping-list', handler);
  * ```
  */
-export function createWorkflowApiHandler<TWorkflow extends Workflow>(workflow: TWorkflow) {
+export function createWorkflowApiHandler(workflow: WorkflowLike) {
   const workflowName = workflow.name ?? workflow.id;
 
   return async (req: Request, res: Response, next: NextFunction) => {
@@ -114,11 +133,11 @@ export function createWorkflowApiHandler<TWorkflow extends Workflow>(workflow: T
 /**
  * Configuration for registering a workflow as an API endpoint.
  */
-interface WorkflowApiConfig<TWorkflow extends Workflow> {
+interface WorkflowApiConfig {
   /** The URL path for the API endpoint (e.g., '/api/shopping-list') */
   path: string;
   /** The workflow to expose at this endpoint */
-  workflow: TWorkflow;
+  workflow: WorkflowLike;
   /** Optional description for logging purposes */
   description?: string;
 }
@@ -139,10 +158,7 @@ interface WorkflowApiConfig<TWorkflow extends Workflow> {
  * });
  * ```
  */
-export function registerWorkflowApi<TWorkflow extends Workflow>(
-  router: Router,
-  config: WorkflowApiConfig<TWorkflow>,
-): string {
+export function registerWorkflowApi(router: Router, config: WorkflowApiConfig): string {
   const handler = createWorkflowApiHandler(config.workflow);
   router.post(config.path, handler);
   logger.info('[API] Registered workflow endpoint', {

@@ -31,7 +31,7 @@ Use this tool when:
       .describe('Optional start date in ISO format (e.g., 2024-01-01T00:00:00Z) to filter usage from this date'),
     endDate: z.string().optional().describe('Optional end date in ISO format to filter usage until this date'),
   }),
-  execute: async ({ inputData }) => {
+  execute: async (inputData) => {
     const storage = await getTokenUsageStorage();
 
     const startDate = inputData.startDate ? new Date(inputData.startDate) : undefined;
@@ -123,7 +123,7 @@ Use this tool when:
       .optional()
       .describe('Optional model name to check quota for. If not provided, checks all models.'),
   }),
-  execute: async ({ inputData }) => {
+  execute: async (inputData) => {
     const storage = await getTokenUsageStorage();
 
     if (inputData.model) {
@@ -195,7 +195,7 @@ Use this tool when:
       .default('monthly')
       .describe('How often the quota resets (daily, monthly, or yearly)'),
   }),
-  execute: async ({ inputData }) => {
+  execute: async (inputData) => {
     const storage = await getTokenUsageStorage();
 
     await storage.setQuota(inputData.model, inputData.maxTokens, inputData.resetPeriod);
@@ -227,7 +227,7 @@ Use this tool when:
   inputSchema: z.object({
     limit: z.number().optional().default(20).describe('Number of records to return (default: 20, max: 100)'),
   }),
-  execute: async ({ inputData }) => {
+  execute: async (inputData) => {
     const storage = await getTokenUsageStorage();
     const limit = Math.min(inputData.limit ?? 20, 100);
 

@@ -192,10 +192,45 @@ const searchNewEmailsForFormReplies = createSearchNewEmailsStep(
   FORM_REPLIES_FOLDER_KEY,
   'search-new-emails-form-replies',
 );
-const updateLastSeenEmailForFormReplies = createUpdateLastSeenEmailStep(
-  FORM_REPLIES_FOLDER_KEY,
-  'update-last-seen-email-form-replies',
-);
+
+/**
+ * Update last seen email step for form replies workflow.
+ * Custom step (not using factory) because it comes after processEmailTriggersStep
+ * which has a different output schema.
+ */
+const updateLastSeenEmailForFormReplies = createStep({
+  id: 'update-last-seen-email-form-replies',
+  description: 'Update the last seen email state after processing form replies',
+  stateSchema: sharedEmailStateSchema,
+  inputSchema: z.object({
+    triggersProcessed: z.number(),
+    triggersMatched: z.number(),
+    matchedTriggerIds: z.array(z.string()),
+  }),
+  outputSchema: z.object({
+    success: z.boolean(),
+    message: z.string(),
+    folder: z.string(),
+    previousLastSeenId: z.string().optional(),
+    newLastSeenId: z.string(),
+  }),
+  execute: async ({ state }) => {
+    if (!state.mostRecentEmailId || !state.mostRecentEmailReceivedDateTime) {
+      return {
+        success: false,
+        message: 'No new emails to track',
+        folder: FORM_REPLIES_FOLDER_KEY,
+        newLastSeenId: '',
+      };
+    }
+
+    return await updateLastSeenEmail(
+      FORM_REPLIES_FOLDER_KEY,
+      state.mostRecentEmailId,
+      state.mostRecentEmailReceivedDateTime,
+    );
+  },
+});
 
 // ============================================================================
 // EMAIL CHECKING WORKFLOW (Every minute)
@@ -413,7 +448,9 @@ const processEmailTriggersStep = createStep({
   description: 'Process emails against registered email triggers',
   stateSchema: sharedEmailStateSchema,
   inputSchema: z.object({
-    emailCount: z.number(),
+    registered: z.boolean(),
+    batched: z.boolean(),
+    message: z.string(),
   }),
   outputSchema: z.object({
     triggersProcessed: z.number(),

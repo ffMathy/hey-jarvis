@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isValidationError } from '../../utils/index.js';
 import { logger } from '../../utils/logger.js';
 import { createStep, createWorkflow } from '../../utils/workflow-factory.js';
 import { registerStateChange } from '../synapse/tools.js';
@@ -41,6 +42,15 @@ const fetchRecentlyChangedDevices = createStep({
     const result = await getChangedDevicesSince.execute({
       sinceSeconds: STATE_CHANGE_WINDOW_SECONDS,
     });
+
+    // Handle ValidationError case using type guard for proper type narrowing
+    if (isValidationError(result)) {
+      logger.error('IoT Monitoring: failed to fetch changed devices', { message: result.message });
+      return {
+        devices: [],
+        timestamp: new Date().toISOString(),
+      };
+    }
 
     // Group by device and filter out sensitive labels (matching old n8n behavior)
     const deviceMap = new Map<

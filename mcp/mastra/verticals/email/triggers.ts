@@ -1,5 +1,25 @@
-import type { Workflow } from '@mastra/core/workflows';
+import type { ZodType } from 'zod';
 import { logger } from '../../utils/logger.js';
+
+/**
+ * Interface for workflow run result.
+ */
+interface WorkflowRun {
+  start(params: { inputData?: unknown }): Promise<{ status: string; result?: unknown; error?: unknown }>;
+}
+
+/**
+ * Interface for workflow-like objects used in email triggers.
+ * Uses duck-typing to avoid strict generic type constraints.
+ */
+interface WorkflowLike {
+  id: string;
+  name?: string;
+  description?: string;
+  inputSchema?: ZodType;
+  outputSchema?: ZodType;
+  createRun(): Promise<WorkflowRun>;
+}
 
 /**
  * Configuration for registering an email trigger.
@@ -11,7 +31,7 @@ export interface EmailTriggerConfig {
   /** Function to filter emails by subject line */
   subjectFilter: (subject: string) => boolean;
   /** The workflow to trigger when a matching email is received */
-  workflow: Workflow;
+  workflow: WorkflowLike;
 }
 
 /**

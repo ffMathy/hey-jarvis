@@ -1,9 +1,8 @@
 import type { Mastra } from '@mastra/core';
-import type { Workflow } from '@mastra/core/workflows';
 import cron, { type ScheduledTask } from 'node-cron';
 
 interface ScheduledWorkflow {
-  workflow: Workflow;
+  workflow: { id: string };
   schedule: string;
   inputData?: Record<string, unknown>;
   runOnStartup?: boolean;

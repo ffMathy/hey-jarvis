@@ -24,5 +24,6 @@ export {
 export { createScorersConfig, getDefaultScorers } from './scorers-config.js';
 export { createShortcut } from './shortcut-factory.js';
 export { createTool } from './tool-factory.js';
+export { isValidationError, type ValidationError } from './validation-error.js';
 export { createAgentStep, createStep, createToolStep, createWorkflow } from './workflow-factory.js';
 export { CronPatterns, validateCronExpression, WorkflowScheduler } from './workflow-scheduler.js';

@@ -1,11 +1,10 @@
 #!/usr/bin/env node
 
-import type { Workflow } from '@mastra/core/workflows';
 import { MCPServer } from '@mastra/mcp';
 import type { NextFunction, Request, Response } from 'express';
 import express from 'express';
 import { expressjwt } from 'express-jwt';
-import { z } from 'zod';
+import { type ZodType, z } from 'zod';
 import { initializeScheduler } from './scheduler.js';
 import { createTool } from './utils/tool-factory.js';
 import { getPublicAgents, registerApiRoutes, registerShoppingTriggers } from './verticals/index.js';
@@ -14,7 +13,20 @@ import { getNextInstructionsWorkflow, routePromptWorkflow } from './verticals/ro
 // Re-export for cross-project imports
 export { getPublicAgents };
 
-function createSimplifiedWorkflowTool<TWorkflow extends Workflow>(workflow: TWorkflow) {
+interface WorkflowRun {
+  start(params: { inputData?: unknown }): Promise<{ status: string; result?: unknown; error?: unknown }>;
+}
+
+interface WorkflowLike {
+  id: string;
+  name?: string;
+  description?: string;
+  inputSchema?: ZodType;
+  outputSchema?: ZodType;
+  createRun(): Promise<WorkflowRun>;
+}
+
+function createSimplifiedWorkflowTool(workflow: WorkflowLike) {
   const workflowName = workflow.name ?? workflow.id;
   return createTool({
     id: workflowName,
