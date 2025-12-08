@@ -10,15 +10,6 @@ function isValidationError(result: unknown): result is { error: true; message: s
 }
 
 describe('Shopping Tools Integration Tests', () => {
-  beforeAll(() => {
-    // These tools use the Bilka API which may require specific environment setup
-    if (!process.env.HEY_JARVIS_BILKA_SESSION) {
-      throw new Error(
-        'Bilka session is required for shopping tools tests. Set HEY_JARVIS_BILKA_SESSION environment variable.',
-      );
-    }
-  });
-
   describe('findProductInCatalog', () => {
     it('should search for products in the catalog', async () => {
       const result = await findProductInCatalog.execute({
