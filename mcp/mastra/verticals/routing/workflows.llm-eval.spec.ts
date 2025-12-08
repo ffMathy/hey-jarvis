@@ -193,9 +193,7 @@ async function runWorkflowWithRetry(userQuery: string, maxAttempts = 5): Promise
   return dag;
 }
 
-// TODO: Re-enable once Mastra fixes memory.getInputProcessors bug in beta.8+
-// See: https://github.com/ffMathy/hey-jarvis/pull/XXX#issuecomment-3625023063
-describe.skip('Routing Workflows - LLM Evaluated', () => {
+describe('Routing Workflows - LLM Evaluated', () => {
   beforeEach(() => {
     // Reset all workflow state in one call
     setWorkflowState();
