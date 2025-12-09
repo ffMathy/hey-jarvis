@@ -68,28 +68,6 @@ export const mastra = new Mastra({
 });
 
 /**
- * Initialize storage and agents for the Mastra instance.
- * This must be called before the server starts to ensure everything is ready.
- */
-async function initializeMastraInstance(): Promise<void> {
-  const sqlStorageProvider = await getSqlStorageProvider();
-
-  // Get public agents (for MCP server)
-  const publicAgents = await getPublicAgents();
-
-  // Build agents object dynamically using agent IDs
-  const agentsByName = {
-    ...keyBy(publicAgents, 'id'),
-  };
-
-  // Update mastra instance with storage and agents
-  // @ts-expect-error - Mastra doesn't expose a public API for this, but it works
-  mastra.storage = sqlStorageProvider;
-  // @ts-expect-error - Mastra doesn't expose a public API for this, but it works
-  mastra.agents = agentsByName;
-}
-
-/**
  * Logs cumulative token usage statistics to the console.
  * Called during startup to show token usage summary.
  */
@@ -122,12 +100,9 @@ export async function logTokenUsageSummary(): Promise<void> {
 // We do not need any special adapters for Bun here; Hono works out of the box.
 const app = new Hono();
 
-// 2. Initialize Mastra storage and agents, then start the server
+// 2. Initialize Mastra server in an async IIFE
 // This async IIFE allows us to use await without top-level await
 (async () => {
-  // Initialize storage and agents
-  await initializeMastraInstance();
-
   // 3. Initialize the Mastra Server Adapter
   // This class wraps our Hono app and injects the Mastra capabilities.
   const mastraServer = new MastraServer({
