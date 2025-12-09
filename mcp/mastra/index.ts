@@ -5,14 +5,12 @@ import { CloudExporter, DefaultExporter, Observability, SamplingStrategyType } f
 //this export is required by "mastra build". it must be called `mastra` and be a Mastra instance.
 //it should never be deferred for that reason.
 import { Hono } from 'hono';
-import { keyBy } from 'lodash-es';
-import { getSqlStorageProvider, getTokenUsageStorage } from './storage/index.js';
+import { getTokenUsageStorage } from './storage/index.js';
 import { TokenTrackingProcessor, TokenUsageExporter } from './utils/token-usage-exporter.js';
 import {
   emailCheckingWorkflow,
   formRepliesDetectionWorkflow,
   generateMealPlanWorkflow,
-  getPublicAgents,
   humanInTheLoopDemoWorkflow,
   implementFeatureWorkflow,
   iotMonitoringWorkflow,

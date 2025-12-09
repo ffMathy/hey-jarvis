@@ -1,4 +1,3 @@
-// @ts-expect-error - bun:test types are built into Bun runtime
 import { describe, expect, it } from 'bun:test';
 import { notifyDevice } from './tools';
 

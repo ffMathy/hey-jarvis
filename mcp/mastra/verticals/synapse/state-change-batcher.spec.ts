@@ -1,4 +1,3 @@
-// @ts-expect-error - Bun's test framework types are not available in TypeScript definitions
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
 import { type StateChange, StateChangeBatcher } from './state-change-batcher.js';
 

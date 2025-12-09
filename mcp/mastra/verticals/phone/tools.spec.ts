@@ -1,4 +1,3 @@
-// @ts-expect-error - bun:test types are built into Bun runtime
 import { beforeAll, describe, expect, it } from 'bun:test';
 import { sendTextMessage } from './tools';
 

@@ -1,4 +1,3 @@
-// @ts-expect-error - Bun's test framework types are not available in TypeScript definitions
 import { describe, expect, it } from 'bun:test';
 import {
   ensureModelAvailable,

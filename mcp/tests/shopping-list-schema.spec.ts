@@ -40,7 +40,7 @@ describe('Shopping List API Schema Tests', () => {
     });
 
     test('should accept long prompt', () => {
-      const longPrompt = 'Add ' + 'milk '.repeat(100);
+      const longPrompt = `Add ${'milk '.repeat(100)}`;
       const result = addToShoppingListSchema.safeParse({ prompt: longPrompt });
       expect(result.success).toBe(true);
     });
