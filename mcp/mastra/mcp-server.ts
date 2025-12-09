@@ -53,6 +53,7 @@ export async function startMcpServer() {
   }
 
   const mcpServer = new MCPServer({
+    id: 'jarvis-mcp-server',
     name: 'J.A.R.V.I.S. Assistant',
     version: '1.0.0',
     agents: {},

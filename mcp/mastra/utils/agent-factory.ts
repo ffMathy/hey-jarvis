@@ -39,6 +39,8 @@ export async function createAgent(
     ...config,
     // Merge output processors instead of replacing
     outputProcessors: [...defaultProcessors, ...customProcessors],
+    // Use name as id if id not provided
+    id: config.id || config.name || 'default-agent',
   } as AgentConfig;
 
   return new Agent(mergedConfig);

@@ -67,7 +67,6 @@ export const generateMealPlanWorkflow = createWorkflow({
     }),
   )
   .then(
-    // @ts-expect-error - Mastra workflow types have complex generic constraints that don't fully align with strict TypeScript
     createToolStep({
       id: 'get-all-recipes',
       description: 'Fetches all recipes for meal planning',

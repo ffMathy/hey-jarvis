@@ -487,19 +487,16 @@ export const humanInTheLoopDemoWorkflow = createWorkflow({
 })
   .then(initializeWorkflow)
   .then(prepareBudgetApprovalQuestion)
-  // @ts-expect-error - Mastra workflow-as-step has complex generic constraints that conflict with strict TypeScript
   .then(getSendEmailAndAwaitResponseWorkflow('budgetApproval', budgetApprovalResponseSchema)) // Send email and wait for human response
   .then(extractBudgetApprovalResponse)
   // @ts-expect-error - Mastra workflow chaining has complex generic constraints that conflict with strict TypeScript
   .then(mergeBudgetApprovalContext)
   .then(prepareVendorSelectionQuestion)
-  // @ts-expect-error - Mastra workflow-as-step has complex generic constraints that conflict with strict TypeScript
   .then(getSendEmailAndAwaitResponseWorkflow('vendorSelection', vendorSelectionResponseSchema))
   .then(extractVendorSelectionResponse)
   // @ts-expect-error - Mastra workflow chaining has complex generic constraints that conflict with strict TypeScript
   .then(mergeVendorSelectionContext)
   .then(prepareFinalConfirmationQuestion)
-  // @ts-expect-error - Mastra workflow-as-step has complex generic constraints that conflict with strict TypeScript
   .then(getSendEmailAndAwaitResponseWorkflow('finalConfirmation', finalConfirmationResponseSchema))
   // @ts-expect-error - Mastra workflow chaining has complex generic constraints that conflict with strict TypeScript
   .then(extractFinalConfirmationResponse)
