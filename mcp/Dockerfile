@@ -41,6 +41,8 @@ FROM docker.io/alpine:3.21 AS production
 
 ENV HOST=0.0.0.0
 ENV NODE_ENV=production
+ENV MASTRA_SERVER_PORT=4111
+ENV MCP_SERVER_PORT=4112
 
 WORKDIR /workspace
 
