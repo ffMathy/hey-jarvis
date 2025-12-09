@@ -25,13 +25,14 @@ COPY mcp/ ./mcp/
 # This creates .mastra/output/ with bundled Hono server
 RUN cd mcp && bunx mastra build --dir ./mastra
 
-# Compile Mastra output to native binary with bytecode for faster startup
-RUN bun build --compile --minify --bytecode \
+# Compile Mastra output to native binary with bytecode for faster startup and smaller size
+# Using --target=bun ensures compatibility with Bun runtime features
+RUN bun build --compile --minify --bytecode --target=bun \
     ./mcp/.mastra/output/index.mjs \
     --outfile ./mcp/mastra-server
 
-# Compile MCP server to native binary with bytecode for faster startup
-RUN bun build --compile --minify --bytecode \
+# Compile MCP server to native binary with bytecode for faster startup and smaller size
+RUN bun build --compile --minify --bytecode --target=bun \
     ./mcp/mastra/mcp-server.ts \
     --outfile ./mcp/mcp-server
 

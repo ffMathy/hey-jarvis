@@ -26,16 +26,52 @@ import {
   routePromptWorkflow,
 } from './verticals/routing/workflows.js';
 
-/**
- * Creates and initializes the Mastra instance.
- * This is called lazily to support bun compile which doesn't allow top-level await.
- */
-async function createMastraInstance(): Promise<Mastra> {
-  // Set up the Google AI SDK environment variable
-  // Prioritize HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY over HEY_JARVIS_GOOGLE_API_KEY
-  process.env.GOOGLE_GENERATIVE_AI_API_KEY =
-    process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY || process.env.HEY_JARVIS_GOOGLE_API_KEY || '';
+// Set up the Google AI SDK environment variable immediately
+// Prioritize HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY over HEY_JARVIS_GOOGLE_API_KEY
+process.env.GOOGLE_GENERATIVE_AI_API_KEY =
+  process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY || process.env.HEY_JARVIS_GOOGLE_API_KEY || '';
 
+// Export mastra instance synchronously as required by mastra build command
+// The storage and agents will be lazily initialized when first accessed
+export const mastra = new Mastra({
+  logger: new PinoLogger({
+    name: 'Mastra',
+    level: 'info',
+  }),
+  observability: new Observability({
+    configs: {
+      default: {
+        serviceName: 'hey-jarvis',
+        sampling: { type: SamplingStrategyType.ALWAYS },
+        exporters: [new DefaultExporter(), new CloudExporter(), new TokenUsageExporter()],
+        spanOutputProcessors: [new TokenTrackingProcessor()],
+      },
+    },
+  }),
+  workflows: {
+    weatherMonitoringWorkflow,
+    generateMealPlanWorkflow,
+    weeklyMealPlanningWorkflow,
+    implementFeatureWorkflow,
+    stateChangeNotificationWorkflow,
+    humanInTheLoopDemoWorkflow,
+    emailCheckingWorkflow,
+    formRepliesDetectionWorkflow,
+    iotMonitoringWorkflow,
+    routePromptWorkflow,
+    getCurrentDagWorkflow,
+    getNextInstructionsWorkflow,
+  },
+  bundler: {
+    externals: ['@elevenlabs/elevenlabs-js'],
+  },
+});
+
+/**
+ * Initialize storage and agents for the Mastra instance.
+ * This must be called before the server starts to ensure everything is ready.
+ */
+async function initializeMastraInstance(): Promise<void> {
   const sqlStorageProvider = await getSqlStorageProvider();
 
   // Get public agents (for MCP server)
@@ -46,41 +82,11 @@ async function createMastraInstance(): Promise<Mastra> {
     ...keyBy(publicAgents, 'id'),
   };
 
-  return new Mastra({
-    storage: sqlStorageProvider,
-    logger: new PinoLogger({
-      name: 'Mastra',
-      level: 'info',
-    }),
-    observability: new Observability({
-      configs: {
-        default: {
-          serviceName: 'hey-jarvis',
-          sampling: { type: SamplingStrategyType.ALWAYS },
-          exporters: [new DefaultExporter(), new CloudExporter(), new TokenUsageExporter()],
-          spanOutputProcessors: [new TokenTrackingProcessor()],
-        },
-      },
-    }),
-    workflows: {
-      weatherMonitoringWorkflow,
-      generateMealPlanWorkflow,
-      weeklyMealPlanningWorkflow,
-      implementFeatureWorkflow,
-      stateChangeNotificationWorkflow,
-      humanInTheLoopDemoWorkflow,
-      emailCheckingWorkflow,
-      formRepliesDetectionWorkflow,
-      iotMonitoringWorkflow,
-      routePromptWorkflow,
-      getCurrentDagWorkflow,
-      getNextInstructionsWorkflow,
-    },
-    agents: agentsByName,
-    bundler: {
-      externals: ['@elevenlabs/elevenlabs-js'],
-    },
-  });
+  // Update mastra instance with storage and agents
+  // @ts-expect-error - Mastra doesn't expose a public API for this, but it works
+  mastra.storage = sqlStorageProvider;
+  // @ts-expect-error - Mastra doesn't expose a public API for this, but it works
+  mastra.agents = agentsByName;
 }
 
 /**
@@ -116,28 +122,35 @@ export async function logTokenUsageSummary(): Promise<void> {
 // We do not need any special adapters for Bun here; Hono works out of the box.
 const app = new Hono();
 
-// 3. Initialize the Mastra Server Adapter
-// This class wraps our Hono app and injects the Mastra capabilities.
-const mastraServer = new MastraServer({
-  playground: true,
-  isDev: true,
-  app: app,
-  mastra: await createMastraInstance(),
-  openapiPath: '/openapi.json',
-  bodyLimitOptions: {
-    maxSize: 10 * 1024 * 1024, // 10MB
-    onError: (err) => ({ error: 'Payload too large', maxSize: '10MB' }),
-  },
-  streamOptions: { redact: true },
-});
+// 2. Initialize Mastra storage and agents, then start the server
+// This async IIFE allows us to use await without top-level await
+(async () => {
+  // Initialize storage and agents
+  await initializeMastraInstance();
 
-// 4. Initialize Routes
-// This awaits the registration of all agents and workflows as HTTP endpoints.
-await mastraServer.init();
+  // 3. Initialize the Mastra Server Adapter
+  // This class wraps our Hono app and injects the Mastra capabilities.
+  const mastraServer = new MastraServer({
+    playground: true,
+    isDev: true,
+    app: app,
+    mastra: mastra,
+    openapiPath: '/openapi.json',
+    bodyLimitOptions: {
+      maxSize: 10 * 1024 * 1024, // 10MB
+      onError: (err) => ({ error: 'Payload too large', maxSize: '10MB' }),
+    },
+    streamOptions: { redact: true },
+  });
 
-// 5. Add Custom Routes (Post-Init)
-// We can add routes that leverage the Mastra context.
-app.get('/health', (c) => c.json({ status: 'ok', runtime: 'bun' }));
+  // 4. Initialize Routes
+  // This awaits the registration of all agents and workflows as HTTP endpoints.
+  await mastraServer.init();
+
+  // 5. Add Custom Routes (Post-Init)
+  // We can add routes that leverage the Mastra context.
+  app.get('/health', (c) => c.json({ status: 'ok', runtime: 'bun' }));
+})();
 
 // 6. Export for Bun
 // Bun.serve looks for a default export with a 'fetch' handler.
