@@ -218,7 +218,9 @@ export function createAgentStep<
     outputSchema: config.outputSchema,
     execute: async (params): Promise<TOutputSchema> => {
       // Create agent lazily during execution to avoid top-level awaits
-      const agent = await createAgent(config.agentConfig);
+      // Explicitly set memory to undefined to bypass Mastra v1 beta.10+ bug
+      // where memory.getInputProcessors() is called but doesn't exist
+      const agent = await createAgent({ ...config.agentConfig, memory: undefined });
       const prompt = (await Promise.resolve(config.prompt(params)))
         .split('\n')
         .map((line) => line.trim())

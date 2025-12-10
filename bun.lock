@@ -11,15 +11,15 @@
         "@elevenlabs/elevenlabs-js": "^2.25.0",
         "@googlemaps/google-maps-services-js": "^3.4.2",
         "@hono/node-server": "^1.19.6",
-        "@mastra/core": "^1.0.0-beta.10",
+        "@mastra/core": "1.0.0-beta.10",
         "@mastra/evals": "1.0.0-beta.2",
         "@mastra/hono": "0.0.2-beta.3",
-        "@mastra/libsql": "1.0.0-beta.5",
+        "@mastra/libsql": "1.0.0-beta.7",
         "@mastra/loggers": "1.0.0-beta.3",
-        "@mastra/mcp": "1.0.0-beta.5",
-        "@mastra/memory": "^1.0.0-beta.4",
-        "@mastra/observability": "1.0.0-beta.3",
-        "@mastra/server": "^1.0.0-beta.10",
+        "@mastra/mcp": "1.0.0-beta.6",
+        "@mastra/memory": "1.0.0-beta.4",
+        "@mastra/observability": "1.0.0-beta.4",
+        "@mastra/server": "1.0.0-beta.10",
         "@opentelemetry/auto-instrumentations-node": "^0.62.1",
         "@types/lodash-es": "^4.17.12",
         "@types/node-cron": "^3.0.11",
@@ -70,7 +70,7 @@
         "jest-environment-node": "^30.0.2",
         "jest-util": "^30.0.2",
         "lint-staged": "^16.2.7",
-        "mastra": "^1.0.0-beta.8",
+        "mastra": "1.0.0-beta.8",
         "nx": "^22.1.1",
         "prettier": "^3.6.2",
         "ts-jest": "^29.4.5",
@@ -614,15 +614,15 @@
 
     "@mastra/hono": ["@mastra/hono@0.0.2-beta.3", "", { "dependencies": { "@mastra/server": "1.0.0-beta.8", "fetch-to-node": "^2.1.0" }, "peerDependencies": { "@mastra/core": ">=1.0.0-0 <2.0.0-0", "@types/express": "^5.0.5", "express": "^5.1.0" } }, "sha512-B6GJqnNLI7yE4QDy1b/9xA3/Rxz5MMkCZmFiy9UnU8LfKupwV4n8KMOYTM7xrjZQlsMMOepa/NbUl29q/xCLHQ=="],
 
-    "@mastra/libsql": ["@mastra/libsql@1.0.0-beta.5", "", { "dependencies": { "@libsql/client": "^0.15.15" }, "peerDependencies": { "@mastra/core": ">=1.0.0-0 <2.0.0-0" } }, "sha512-73dffS4itFYxrpgPSdhkXnbxoXOIwI/vPQ10De7Bi1uA+P+Jq2O3ngUkFwVFLljWkwCbP83koMTWxHnQSrpnxg=="],
+    "@mastra/libsql": ["@mastra/libsql@1.0.0-beta.7", "", { "dependencies": { "@libsql/client": "^0.15.15" }, "peerDependencies": { "@mastra/core": ">=1.0.0-0 <2.0.0-0" } }, "sha512-ahUvS4CZmCTcxpSkV6xxdmvsgJFzIpOaiygch1St00ZIdMDGlmVgcb42l0R51OxQkEA0BEDDMVP1/kRXjtO+jw=="],
 
     "@mastra/loggers": ["@mastra/loggers@1.0.0-beta.3", "", { "dependencies": { "pino": "^10.1.0", "pino-pretty": "^13.0.0" }, "peerDependencies": { "@mastra/core": ">=1.0.0-0 <2.0.0-0" } }, "sha512-+gAjvyCcntGx3sCMmlKZuMMpgoZLTGgttYtAHWAsa6/rCpbeK0d3m2a2VBD+gIgH25bpf9UGVuhUa2DGGNAHHQ=="],
 
-    "@mastra/mcp": ["@mastra/mcp@1.0.0-beta.5", "", { "dependencies": { "@apidevtools/json-schema-ref-parser": "^14.2.1", "@modelcontextprotocol/sdk": "^1.17.5", "exit-hook": "^4.0.0", "fast-deep-equal": "^3.1.3", "uuid": "^11.1.0", "zod-from-json-schema": "^0.5.0", "zod-from-json-schema-v3": "npm:zod-from-json-schema@^0.0.5" }, "peerDependencies": { "@mastra/core": ">=1.0.0-0 <2.0.0-0", "zod": "^3.25.0 || ^4.0.0" } }, "sha512-H3OGb4PL6i2qWt//CXaxH+NyiWYWIRp2s2sAmbraa7XZsziOlLu73/BGtTCkwf0HCu8kSx7bMEwN27Jvcrxbqg=="],
+    "@mastra/mcp": ["@mastra/mcp@1.0.0-beta.6", "", { "dependencies": { "@apidevtools/json-schema-ref-parser": "^14.2.1", "@modelcontextprotocol/sdk": "^1.17.5", "exit-hook": "^4.0.0", "fast-deep-equal": "^3.1.3", "uuid": "^11.1.0", "zod-from-json-schema": "^0.5.0", "zod-from-json-schema-v3": "npm:zod-from-json-schema@^0.0.5" }, "peerDependencies": { "@mastra/core": ">=1.0.0-0 <2.0.0-0", "zod": "^3.25.0 || ^4.0.0" } }, "sha512-gxlzR2gLA09FwvYPzzV4+LDppb50YgQKpuo+5IQw/Cbk67HtFKUAeR/eCfgbSDMWxVEwNzKS5E4zPOvgVGsH3A=="],
 
     "@mastra/memory": ["@mastra/memory@1.0.0-beta.4", "", { "dependencies": { "@mastra/schema-compat": "1.0.0-beta.2", "ai": "^4.3.19", "ai-v5": "npm:ai@5.0.60", "async-mutex": "^0.5.0", "js-tiktoken": "^1.0.20", "json-schema": "^0.4.0", "lru-cache": "^11.2.2", "xxhash-wasm": "^1.1.0" }, "peerDependencies": { "@mastra/core": ">=1.0.0-0 <2.0.0-0", "zod": "^3.25.0 || ^4.0.0" } }, "sha512-TFxxTuCbG2t2Z3CBuqrNoKvSzc7o2+Rw49bhesv0VbHWT3l6vRI2FU6IyJR70yJ/hAXeMC7bRR09WpQzetoTfA=="],
 
-    "@mastra/observability": ["@mastra/observability@1.0.0-beta.3", "", { "dependencies": { "zod": "^3.25.76" }, "peerDependencies": { "@mastra/core": ">=1.0.0-0 <2.0.0-0" } }, "sha512-Q0fMFUQQsUoNG9NLhMmFshCndgt5vKtksdpIvBx9eWaIPlRRIKSd5nEbVhpcKiqi8UyWDMzPxt8VxYoL1TiqYw=="],
+    "@mastra/observability": ["@mastra/observability@1.0.0-beta.4", "", { "dependencies": { "zod": "^3.25.76" }, "peerDependencies": { "@mastra/core": ">=1.0.0-0 <2.0.0-0" } }, "sha512-YV857GArYYuocebmJGHc8ERPnZcgnFyzyRD4kmg4nuq1USM7/DCm2BbooNapWNzZN3OfJahmpQMdU5UhtajroQ=="],
 
     "@mastra/schema-compat": ["@mastra/schema-compat@1.0.0-beta.2", "", { "dependencies": { "json-schema": "^0.4.0", "json-schema-to-zod": "^2.7.0", "zod-from-json-schema": "^0.5.0", "zod-from-json-schema-v3": "npm:zod-from-json-schema@^0.0.5", "zod-to-json-schema": "^3.24.6" }, "peerDependencies": { "zod": "^3.25.0 || ^4.0.0" } }, "sha512-I2vdaTP3EnY3DEVWdUboQWqax2B0sv97DHx7zz9pMHbZj6rv0RdWPVLtXJdgQXOQQ2p56vZELYHPjPX/paOkEA=="],
 
