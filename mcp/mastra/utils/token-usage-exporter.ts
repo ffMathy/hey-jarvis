@@ -50,13 +50,14 @@ export class TokenUsageExporter implements ObservabilityExporter {
     const usage = attributes.usage;
 
     // Ensure we have non-zero token counts (skip calls with no tokens)
-    if (!usage.totalTokens && !usage.promptTokens && !usage.completionTokens) {
+    // Mastra v1 beta.10+ uses inputTokens/outputTokens instead of promptTokens/completionTokens
+    if (!usage.inputTokens && !usage.outputTokens) {
       return;
     }
 
-    const promptTokens = usage.promptTokens ?? 0;
-    const completionTokens = usage.completionTokens ?? 0;
-    const totalTokens = usage.totalTokens ?? promptTokens + completionTokens;
+    const promptTokens = usage.inputTokens ?? 0;
+    const completionTokens = usage.outputTokens ?? 0;
+    const totalTokens = promptTokens + completionTokens;
 
     // Get model and provider information
     const model = attributes.model ?? 'unknown';
