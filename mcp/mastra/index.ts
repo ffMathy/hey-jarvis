@@ -61,7 +61,24 @@ export const mastra = new Mastra({
     getNextInstructionsWorkflow,
   },
   bundler: {
-    externals: ['@elevenlabs/elevenlabs-js', 'twilio'],
+    externals: [
+      // Native module and CommonJS packages that should not be bundled
+      '@elevenlabs/elevenlabs-js',
+      'twilio',
+      'node-cron',
+      'express',
+      'express-jwt',
+      'jsonwebtoken',
+      'googleapis',
+      'octokit',
+      'fkill',
+      'open',
+      'geolib',
+      // Mastra packages to avoid version conflicts with deployer
+      '@mastra/server',
+      '@mastra/deployer',
+      '@mastra/hono',
+    ],
   },
 });
 
