@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.0.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.26.1...mcp-v1.0.0) (2025-12-11)
+
+
+### ⚠ BREAKING CHANGES
+
+* None - this is a workaround for an internal Mastra bug
+
+### Features
+
+* upgrade Mastra packages to beta.9 and run v1 codemod ([02255f3](https://github.com/ffMathy/hey-jarvis/commit/02255f36cfc3bc098e5d65f5197c47b7040c04a2))
+* upgrade to Mastra v1 beta.10 and fix UsageStats API changes ([21ec867](https://github.com/ffMathy/hey-jarvis/commit/21ec867a30bda1a4b1a63bd592696e0c94ab5233))
+
+
+### Bug Fixes
+
+* add Home Assistant addon support and Docker health checks ([c2165c5](https://github.com/ffMathy/hey-jarvis/commit/c2165c55f49700419bb9e4992c180b9568a3f62a))
+* add missing CI env vars and skip broken routing workflow test ([f90affe](https://github.com/ffMathy/hey-jarvis/commit/f90affe954186919f99e0e5f77dd5555188cf6c0))
+* add missing port environment variables to MCP Dockerfile ([e311605](https://github.com/ffMathy/hey-jarvis/commit/e31160511cb3ae388d475a850b6dbb3e8bdb1f97))
+* better bundling ([a9973f2](https://github.com/ffMathy/hey-jarvis/commit/a9973f29c8e88d6d36df07e146c3a6905cea1d64))
+* bypass Mastra memory.getInputProcessors bug in workflow agents ([48524e6](https://github.com/ffMathy/hey-jarvis/commit/48524e6e6d6f2b1337b7b67ee04f09e778d7e45a))
+* compile issues resolved ([6e58099](https://github.com/ffMathy/hey-jarvis/commit/6e580993b752fa94581399bf8beebe10723376b9))
+* downgrade Mastra packages to beta.5 to restore routing workflow test compatibility ([2f40ea6](https://github.com/ffMathy/hey-jarvis/commit/2f40ea6ac8d5dba40a2062063055b0794b8ffa96))
+* fix broken reference ([96c02c8](https://github.com/ffMathy/hey-jarvis/commit/96c02c87372c4bd949950bdc5c19764ba42e0e05))
+* remove readonly property assignments but mastra build still fails due to version conflict ([1fb8fcf](https://github.com/ffMathy/hey-jarvis/commit/1fb8fcf539b4aaffb614f067d9995e293f17069d))
+* remove unnecessary HEY_JARVIS_BILKA_SESSION environment variable requirement ([f2d5efc](https://github.com/ffMathy/hey-jarvis/commit/f2d5efc0ea0ac885e398c3bc279e87dffe618c6b))
+* resolve all unnecessary [@ts-expect-error](https://github.com/ts-expect-error) directives ([040e0ed](https://github.com/ffMathy/hey-jarvis/commit/040e0ed274c1bde657082f9e79ee103cdc09155e))
+* resolve mastra build error by deferring async initialization ([b60d1e3](https://github.com/ffMathy/hey-jarvis/commit/b60d1e3d35449539132ee48c925439f20779ae5f))
+
 ## [0.26.1](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.26.0...mcp-v0.26.1) (2025-12-07)
 
 
