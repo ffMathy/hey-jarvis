@@ -61,7 +61,7 @@ export const mastra = new Mastra({
     getNextInstructionsWorkflow,
   },
   bundler: {
-    externals: ['@elevenlabs/elevenlabs-js'],
+    externals: ['@elevenlabs/elevenlabs-js', 'twilio'],
   },
 });
 
