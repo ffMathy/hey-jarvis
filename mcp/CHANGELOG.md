@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.1](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.0.0...mcp-v1.0.1) (2025-12-11)
+
+
+### Bug Fixes
+
+* **mcp:** add twilio to bundler externals ([#415](https://github.com/ffMathy/hey-jarvis/issues/415)) ([d1772a7](https://github.com/ffMathy/hey-jarvis/commit/d1772a71db2ed437f339ce3cecd662e222d1a6e3))
+* **mcp:** add twilio to Mastra bundler externals to fix build failure ([0856143](https://github.com/ffMathy/hey-jarvis/commit/0856143df8701b7025f26c8beaf46d7291a67952))
+
 ## [1.0.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v0.26.1...mcp-v1.0.0) (2025-12-11)
 
 
