@@ -6,9 +6,10 @@ WORKDIR /workspace
 # Install jq for JSON manipulation
 RUN apk add --no-cache jq
 
-# Copy package files for dependency installation
+# Copy package files and postinstall script for dependency installation
 COPY package.json ./package.json.original
 COPY mcp/package.json ./mcp/
+COPY .scripts/ ./.scripts/
 
 # Remove workspaces field and husky prepare script from package.json 
 # since Docker context doesn't include all workspace packages
