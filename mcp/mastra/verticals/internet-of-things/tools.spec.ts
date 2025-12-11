@@ -10,10 +10,15 @@ function isValidationError(result: unknown): result is { error: true; message: s
 
 describe('IoT Tools Integration Tests', () => {
   beforeAll(() => {
-    // These tools require Home Assistant environment
-    if (!process.env.SUPERVISOR_TOKEN) {
+    // These tools require Home Assistant configuration
+    // In production (addon): SUPERVISOR_TOKEN is used and converted to HEY_JARVIS_HOME_ASSISTANT_* by run.sh
+    // In tests: HEY_JARVIS_HOME_ASSISTANT_URL and HEY_JARVIS_HOME_ASSISTANT_TOKEN are used directly
+    const hasHomeAssistantConfig =
+      process.env.HEY_JARVIS_HOME_ASSISTANT_URL && process.env.HEY_JARVIS_HOME_ASSISTANT_TOKEN;
+
+    if (!hasHomeAssistantConfig) {
       throw new Error(
-        'Home Assistant Supervisor token is required for IoT tools tests. Set SUPERVISOR_TOKEN environment variable.',
+        'Home Assistant configuration is required for IoT tools tests. Set HEY_JARVIS_HOME_ASSISTANT_URL and HEY_JARVIS_HOME_ASSISTANT_TOKEN environment variables.',
       );
     }
   });

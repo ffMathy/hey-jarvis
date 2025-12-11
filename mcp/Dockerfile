@@ -47,8 +47,8 @@ ENV MCP_SERVER_PORT=4112
 
 WORKDIR /workspace
 
-# Install only supervisor for process management
-RUN apk add --no-cache supervisor
+# Install supervisor for process management and wget for healthcheck
+RUN apk add --no-cache supervisor wget
 
 # Copy compiled Mastra server binary from builder
 COPY --from=builder /workspace/mcp/mastra-server ./mcp/mastra-server
@@ -58,12 +58,17 @@ COPY --from=builder /workspace/mcp/mcp-server ./mcp/mcp-server
 
 # Copy runtime scripts and configuration
 COPY mcp/supervisord.conf /etc/supervisord.conf
+COPY mcp/healthcheck.sh /workspace/healthcheck.sh
 
 # Expose ports for services (4111: Mastra Server, 4112: MCP Server)
 EXPOSE 4111 4112
 
-# Make binaries executable
-RUN chmod +x ./mcp/mastra-server ./mcp/mcp-server
+# Make binaries and healthcheck executable
+RUN chmod +x ./mcp/mastra-server ./mcp/mcp-server /workspace/healthcheck.sh
+
+# Health check to verify both services are running
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD ["/workspace/healthcheck.sh"]
 
 # Run supervisord directly (no bash needed)
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]
