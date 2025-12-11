@@ -1,6 +1,6 @@
 import { Memory } from '@mastra/memory';
 import { getSqlStorageProvider, getVectorStorageProvider } from '../storage/index.js';
-import { google } from '../utils/google-provider.js';
+import { google } from '../utils/providers/google-provider.js';
 
 export interface CreateMemoryOptions {
   /**

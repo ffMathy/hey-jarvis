@@ -102,6 +102,6 @@ test.describe
       }
 
       // Assert the page loaded successfully (accept ingress port or direct Mastra UI port)
-      expect(page.url()).toMatch(new RegExp(`localhost:(${TEST_INGRESS_PORT}|${PORTS.MASTRA_UI})`));
+      expect(page.url()).toMatch(new RegExp(`localhost:(${TEST_INGRESS_PORT}|${PORTS.MASTRA_SERVER})`));
     });
   });

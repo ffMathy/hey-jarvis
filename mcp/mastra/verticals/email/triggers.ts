@@ -1,4 +1,5 @@
-import type { Workflow } from '@mastra/core/workflows';
+import { logger } from '../../utils/logger.js';
+import type { AnyWorkflow, AnyWorkflowResult } from '../../utils/workflows/workflow-types.js';
 
 /**
  * Configuration for registering an email trigger.
@@ -10,7 +11,7 @@ export interface EmailTriggerConfig {
   /** Function to filter emails by subject line */
   subjectFilter: (subject: string) => boolean;
   /** The workflow to trigger when a matching email is received */
-  workflow: Workflow;
+  workflow: AnyWorkflow;
 }
 
 /**
@@ -73,7 +74,10 @@ export function registerEmailTrigger(config: EmailTriggerConfig): string {
 
   emailTriggerRegistry.set(id, trigger);
 
-  console.log(`📧 Registered email trigger: ${id} for sender "${config.sender}"`);
+  logger.info('Registered email trigger', {
+    triggerId: id,
+    sender: config.sender,
+  });
 
   return id;
 }
@@ -88,7 +92,7 @@ export function unregisterEmailTrigger(triggerId: string): boolean {
   const removed = emailTriggerRegistry.delete(triggerId);
 
   if (removed) {
-    console.log(`📧 Unregistered email trigger: ${triggerId}`);
+    logger.info('Unregistered email trigger', { triggerId });
   }
 
   return removed;
@@ -118,7 +122,11 @@ export async function processEmailTriggers(email: TriggerableEmail): Promise<str
   for (const trigger of emailTriggerRegistry.values()) {
     const triggerSender = trigger.sender.toLowerCase();
     if (senderAddress === triggerSender && trigger.subjectFilter(email.subject)) {
-      console.log(`📧 Email trigger matched: ${trigger.id} for email "${email.subject}"`);
+      // PRIVACY: Do not log email subject or content
+      logger.info('Email trigger matched', {
+        triggerId: trigger.id,
+        sender: senderAddress,
+      });
       workflowPromises.push(
         (async () => {
           try {
@@ -129,13 +137,21 @@ export async function processEmailTriggers(email: TriggerableEmail): Promise<str
               },
             });
             if (result.status === 'success') {
-              console.log(`✅ Successfully executed workflow for trigger ${trigger.id}`);
+              logger.info('Successfully executed workflow for trigger', {
+                triggerId: trigger.id,
+              });
               return trigger.id;
             }
-            console.error(`❌ Workflow execution failed for trigger ${trigger.id} with status: ${result.status}`);
+            logger.error('Workflow execution failed for trigger', {
+              triggerId: trigger.id,
+              status: result.status,
+            });
             return null;
           } catch (error) {
-            console.error(`❌ Failed to execute workflow for trigger ${trigger.id}:`, error);
+            logger.error('Failed to execute workflow for trigger', {
+              triggerId: trigger.id,
+              error,
+            });
             return null;
           }
         })(),
@@ -157,5 +173,5 @@ export async function processEmailTriggers(email: TriggerableEmail): Promise<str
  */
 export function clearEmailTriggers(): void {
   emailTriggerRegistry.clear();
-  console.log('📧 Cleared all email triggers');
+  logger.info('Cleared all email triggers');
 }

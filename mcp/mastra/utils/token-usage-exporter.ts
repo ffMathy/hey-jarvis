@@ -6,10 +6,17 @@
  */
 
 import type { IMastraLogger } from '@mastra/core/logger';
-import type { AISpanProcessor, AITracingEvent, AITracingExporter, AnyAISpan } from '@mastra/observability';
+import type {
+  AnyExportedSpan,
+  AnySpan,
+  ModelGenerationAttributes,
+  ObservabilityExporter,
+  SpanOutputProcessor,
+  TracingEvent,
+} from '@mastra/core/observability';
 import { getTokenUsageStorage } from '../storage/index.js';
 
-export class TokenUsageExporter implements AITracingExporter {
+export class TokenUsageExporter implements ObservabilityExporter {
   name = 'token-usage-exporter';
   private logger?: IMastraLogger;
 
@@ -17,25 +24,25 @@ export class TokenUsageExporter implements AITracingExporter {
     // Initialization if needed
   }
 
-  setLogger(logger: IMastraLogger): void {
+  __setLogger(logger: IMastraLogger): void {
     this.logger = logger;
   }
 
-  async exportEvent(event: AITracingEvent): Promise<void> {
+  async exportTracingEvent(event: TracingEvent): Promise<void> {
     // Only process span_ended events for model generations
     if (event.type !== 'span_ended') {
       return;
     }
 
-    const span = event.exportedSpan;
+    const span: AnyExportedSpan = event.exportedSpan;
 
     // Only track MODEL_GENERATION spans
     if (span.type !== 'model_generation') {
       return;
     }
 
-    // Extract token usage from span attributes
-    const attributes = span.attributes;
+    // Cast attributes to ModelGenerationAttributes (safe after type guard)
+    const attributes = span.attributes as ModelGenerationAttributes | undefined;
     if (!attributes || !attributes.usage) {
       return;
     }
@@ -43,13 +50,14 @@ export class TokenUsageExporter implements AITracingExporter {
     const usage = attributes.usage;
 
     // Ensure we have non-zero token counts (skip calls with no tokens)
-    if (!usage.totalTokens && !usage.promptTokens && !usage.completionTokens) {
+    // Mastra v1 beta.10+ uses inputTokens/outputTokens instead of promptTokens/completionTokens
+    if (!usage.inputTokens && !usage.outputTokens) {
       return;
     }
 
-    const promptTokens = usage.promptTokens ?? 0;
-    const completionTokens = usage.completionTokens ?? 0;
-    const totalTokens = usage.totalTokens ?? promptTokens + completionTokens;
+    const promptTokens = usage.inputTokens ?? 0;
+    const completionTokens = usage.outputTokens ?? 0;
+    const totalTokens = promptTokens + completionTokens;
 
     // Get model and provider information
     const model = attributes.model ?? 'unknown';
@@ -104,35 +112,44 @@ export class TokenUsageExporter implements AITracingExporter {
 /**
  * Processor that enriches spans with agent/workflow context for token tracking
  */
-export class TokenTrackingProcessor implements AISpanProcessor {
+export class TokenTrackingProcessor implements SpanOutputProcessor {
   name = 'token-tracking-processor';
 
-  process(span?: AnyAISpan): AnyAISpan | undefined {
+  process(span?: AnySpan): AnySpan | undefined {
     if (!span) return undefined;
 
     // For AGENT_RUN spans, add agentId to metadata
-    if (span.type === 'agent_run' && span.attributes?.agentId) {
-      span.metadata = {
-        ...span.metadata,
-        agentId: span.attributes.agentId,
-      };
+    if (span.type === 'agent_run') {
+      const agentRunSpan = span as AnySpan & { attributes?: { agentId?: string } };
+      if (agentRunSpan.attributes?.agentId) {
+        span.metadata = {
+          ...span.metadata,
+          agentId: agentRunSpan.attributes.agentId,
+        };
+      }
     }
 
     // For WORKFLOW_RUN spans, add workflowId to metadata
-    if (span.type === 'workflow_run' && span.attributes?.workflowId) {
-      span.metadata = {
-        ...span.metadata,
-        workflowId: span.attributes.workflowId,
-      };
+    if (span.type === 'workflow_run') {
+      const workflowRunSpan = span as AnySpan & { attributes?: { workflowId?: string } };
+      if (workflowRunSpan.attributes?.workflowId) {
+        span.metadata = {
+          ...span.metadata,
+          workflowId: workflowRunSpan.attributes.workflowId,
+        };
+      }
     }
 
     // For MODEL_GENERATION spans, inherit context from parent
-    if (span.type === 'model_generation' && span.parent?.metadata) {
-      span.metadata = {
-        ...span.metadata,
-        agentId: span.parent.metadata.agentId,
-        workflowId: span.parent.metadata.workflowId,
-      };
+    if (span.type === 'model_generation') {
+      const parent = (span as AnySpan & { parent?: { metadata?: Record<string, unknown> } }).parent;
+      if (parent?.metadata) {
+        span.metadata = {
+          ...span.metadata,
+          agentId: parent.metadata.agentId,
+          workflowId: parent.metadata.workflowId,
+        };
+      }
     }
 
     return span;

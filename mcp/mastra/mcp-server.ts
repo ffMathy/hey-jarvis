@@ -1,20 +1,21 @@
 #!/usr/bin/env node
 
-import type { Workflow } from '@mastra/core/workflows';
 import { MCPServer } from '@mastra/mcp';
 import type { NextFunction, Request, Response } from 'express';
 import express from 'express';
 import { expressjwt } from 'express-jwt';
 import { z } from 'zod';
+import { logTokenUsageSummary } from './index.js';
 import { initializeScheduler } from './scheduler.js';
 import { createTool } from './utils/tool-factory.js';
+import type { NamedWorkflow } from './utils/workflows/workflow-types.js';
 import { getPublicAgents, registerApiRoutes, registerShoppingTriggers } from './verticals/index.js';
 import { getNextInstructionsWorkflow, routePromptWorkflow } from './verticals/routing/workflows.js';
 
 // Re-export for cross-project imports
 export { getPublicAgents };
 
-function createSimplifiedWorkflowTool<TWorkflow extends Workflow>(workflow: TWorkflow) {
+function createSimplifiedWorkflowTool(workflow: NamedWorkflow) {
   const workflowName = workflow.name ?? workflow.id;
   return createTool({
     id: workflowName,
@@ -52,6 +53,7 @@ export async function startMcpServer() {
   }
 
   const mcpServer = new MCPServer({
+    id: 'jarvis-mcp-server',
     name: 'J.A.R.V.I.S. Assistant',
     version: '1.0.0',
     agents: {},
@@ -174,8 +176,11 @@ export async function startMcpServer() {
   // Register email triggers for shopping notifications
   registerShoppingTriggers();
 
+  // Log token usage summary on startup
+  await logTokenUsageSummary();
+
   // Initialize and start workflow scheduler
-  const scheduler = initializeScheduler();
+  const scheduler = await initializeScheduler();
   scheduler.start();
 
   // Start the Express server

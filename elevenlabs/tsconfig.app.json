@@ -6,5 +6,10 @@
     "tsBuildInfoFile": "../dist/elevenlabs/tsconfig.app.tsbuildinfo"
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["**/*.spec.ts", "**/*.test.ts"]
+  "exclude": ["**/*.spec.ts", "**/*.test.ts"],
+  "references": [
+    {
+      "path": "../mcp/tsconfig.app.json"
+    }
+  ]
 }

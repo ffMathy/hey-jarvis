@@ -1,0 +1,60 @@
+import { beforeAll, describe, expect, it } from 'bun:test';
+import { isValidationError } from '../../utils/test-helpers/validation-error.js';
+import { findEmails } from './tools';
+
+describe('Email Tools Integration Tests', () => {
+  beforeAll(() => {
+    // Verify Microsoft OAuth credentials are configured
+    if (
+      !process.env.HEY_JARVIS_MICROSOFT_CLIENT_ID ||
+      !process.env.HEY_JARVIS_MICROSOFT_CLIENT_SECRET ||
+      !process.env.HEY_JARVIS_MICROSOFT_REFRESH_TOKEN
+    ) {
+      throw new Error(
+        'Microsoft OAuth credentials are required for email tools tests. Set HEY_JARVIS_MICROSOFT_CLIENT_ID, HEY_JARVIS_MICROSOFT_CLIENT_SECRET, and HEY_JARVIS_MICROSOFT_REFRESH_TOKEN environment variables.',
+      );
+    }
+  });
+
+  describe('findEmails', () => {
+    it('should retrieve emails', async () => {
+      const result = await findEmails.execute({
+        maxResults: 5,
+      });
+
+      // Check for validation errors
+      if (isValidationError(result)) {
+        throw new Error(`Validation failed: ${result.message}`);
+      }
+
+      // Validate structure
+      expect(result).toBeDefined();
+      expect(Array.isArray(result.emails)).toBe(true);
+
+      console.log('✅ Emails retrieved successfully');
+      console.log('   - Email count:', result.emails.length);
+      // CRITICAL: Do not log email subjects, senders, or any email content
+      // This is sensitive private information
+    }, 30000);
+
+    it('should support filtering by sender', async () => {
+      const result = await findEmails.execute({
+        from: 'noreply@example.com',
+        maxResults: 5,
+      });
+
+      // Check for validation errors
+      if (isValidationError(result)) {
+        throw new Error(`Validation failed: ${result.message}`);
+      }
+
+      // Validate structure
+      expect(result).toBeDefined();
+      expect(Array.isArray(result.emails)).toBe(true);
+
+      console.log('✅ Email filtering by sender works');
+      console.log('   - Filtered results:', result.emails.length);
+      // CRITICAL: Do not log any email details
+    }, 30000);
+  });
+});

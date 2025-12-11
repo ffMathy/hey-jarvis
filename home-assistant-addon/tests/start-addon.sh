@@ -17,7 +17,7 @@ source "$(dirname "$(dirname "$SCRIPT_DIR")")/mcp/lib/server-functions.sh"
 echo "🐳 Starting home-assistant-addon addon container..."
 
 # Kill any processes on test external ports (not service ports which may be used by local dev)
-kill_process_on_port "${TEST_MASTRA_UI_PORT}"
+kill_process_on_port "${TEST_MASTRA_SERVER_PORT}"
 kill_process_on_port "${TEST_MCP_SERVER_PORT}"
 kill_process_on_port "${TEST_INGRESS_EXTERNAL_PORT}"
 
@@ -48,7 +48,7 @@ INFO=$(cat "$SCRIPT_DIR/supervisor/info.json")
 DOCKER_ARGS=(
     --detach
     --name home-assistant-addon-test
-    -p "${TEST_MASTRA_UI_PORT}:${MASTRA_UI_PORT}"
+    -p "${TEST_MASTRA_SERVER_PORT}:${MASTRA_SERVER_PORT}"
     -p "${TEST_MCP_SERVER_PORT}:${MCP_SERVER_PORT}"
     -p "${TEST_INGRESS_EXTERNAL_PORT}:${TEST_INGRESS_PORT}"
     -e ADDON_INFO_FALLBACK="$ADDON_INFO"

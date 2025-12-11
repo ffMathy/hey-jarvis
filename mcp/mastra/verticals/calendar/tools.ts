@@ -2,6 +2,7 @@ import type { OAuth2Client } from 'google-auth-library';
 import { google } from 'googleapis';
 import { z } from 'zod';
 import { getCredentialsStorage } from '../../storage/index.js';
+import { logger } from '../../utils/logger.js';
 import { createTool } from '../../utils/tool-factory.js';
 
 /**
@@ -53,13 +54,13 @@ const getGoogleAuth = async (): Promise<OAuth2Client> => {
   oauth2Client.on('tokens', async (tokens) => {
     if (tokens.refresh_token) {
       // OAuth provider has issued a new refresh token - update storage
-      console.log('🔄 New refresh token received from Google - updating storage');
+      logger.info('New refresh token received from Google - updating storage');
       try {
         const credentialsStorage = await getCredentialsStorage();
         await credentialsStorage.renewRefreshToken('google', tokens.refresh_token);
-        console.log('✅ Refresh token updated in storage');
+        logger.info('Refresh token updated in storage');
       } catch (error) {
-        console.error('❌ Failed to update refresh token in storage:', error);
+        logger.error('Failed to update refresh token in storage', { error });
       }
     }
     // Access token refresh is automatic and expected - no logging needed for normal operation

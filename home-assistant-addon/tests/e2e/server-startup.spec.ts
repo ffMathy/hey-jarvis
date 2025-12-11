@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { spawn } from 'child_process';
 import { type ContainerStartupResult, startContainer } from './helpers/container-startup';
-import { getMastraUIUrl, PORTS } from './helpers/ports';
+import { getMastraServerUrl, PORTS } from './helpers/ports';
 
 test.describe
   .skip('Server Startup Tests', () => {

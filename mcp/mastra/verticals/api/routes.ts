@@ -1,6 +1,7 @@
-import type { Workflow } from '@mastra/core/workflows';
 import type { NextFunction, Request, Response, Router } from 'express';
 import type { ZodError } from 'zod';
+import { logger } from '../../utils/logger.js';
+import type { AnyWorkflow, AnyWorkflowResult, NamedWorkflow } from '../../utils/workflows/workflow-types.js';
 import { shoppingListWorkflow } from '../shopping/workflows.js';
 
 /**
@@ -14,15 +15,6 @@ interface WorkflowApiResponse<T = unknown> {
 }
 
 /**
- * Result type from workflow execution
- */
-interface WorkflowResult {
-  status: string;
-  result?: unknown;
-  error?: Error;
-}
-
-/**
  * Formats Zod validation errors into a human-readable string.
  */
 function formatValidationErrors(zodError: ZodError): string {
@@ -32,7 +24,7 @@ function formatValidationErrors(zodError: ZodError): string {
 /**
  * Extracts an error message from a workflow result.
  */
-function extractWorkflowError(result: WorkflowResult): string {
+function extractWorkflowError(result: AnyWorkflowResult): string {
   if ('error' in result && result.error instanceof Error) {
     return result.error.message;
   }
@@ -52,7 +44,7 @@ function extractWorkflowError(result: WorkflowResult): string {
  * router.post('/api/shopping-list', handler);
  * ```
  */
-export function createWorkflowApiHandler<TWorkflow extends Workflow>(workflow: TWorkflow) {
+export function createWorkflowApiHandler(workflow: NamedWorkflow) {
   const workflowName = workflow.name ?? workflow.id;
 
   return async (req: Request, res: Response, next: NextFunction) => {
@@ -81,7 +73,10 @@ export function createWorkflowApiHandler<TWorkflow extends Workflow>(workflow: T
 
       if (result.status !== 'success') {
         const errorMessage = extractWorkflowError(result);
-        console.error(`[API] ${workflowName} workflow failed: ${errorMessage}`);
+        logger.error('[API] Workflow failed', {
+          workflowName,
+          error: errorMessage,
+        });
         res.status(500).json({
           success: false,
           message: `Failed to execute ${workflowName}`,
@@ -90,7 +85,7 @@ export function createWorkflowApiHandler<TWorkflow extends Workflow>(workflow: T
         return;
       }
 
-      console.log(`[API] ${workflowName} workflow completed successfully`);
+      logger.info('[API] Workflow completed successfully', { workflowName });
 
       res.json({
         success: true,
@@ -98,7 +93,10 @@ export function createWorkflowApiHandler<TWorkflow extends Workflow>(workflow: T
         data: result.result,
       } satisfies WorkflowApiResponse);
     } catch (error) {
-      console.error(`[API] Unexpected error in ${workflowName} endpoint:`, error);
+      logger.error('[API] Unexpected error in endpoint', {
+        workflowName,
+        error,
+      });
       next(error);
     }
   };
@@ -107,11 +105,11 @@ export function createWorkflowApiHandler<TWorkflow extends Workflow>(workflow: T
 /**
  * Configuration for registering a workflow as an API endpoint.
  */
-interface WorkflowApiConfig<TWorkflow extends Workflow> {
+interface WorkflowApiConfig {
   /** The URL path for the API endpoint (e.g., '/api/shopping-list') */
   path: string;
   /** The workflow to expose at this endpoint */
-  workflow: TWorkflow;
+  workflow: NamedWorkflow;
   /** Optional description for logging purposes */
   description?: string;
 }
@@ -132,15 +130,14 @@ interface WorkflowApiConfig<TWorkflow extends Workflow> {
  * });
  * ```
  */
-export function registerWorkflowApi<TWorkflow extends Workflow>(
-  router: Router,
-  config: WorkflowApiConfig<TWorkflow>,
-): string {
+export function registerWorkflowApi(router: Router, config: WorkflowApiConfig): string {
   const handler = createWorkflowApiHandler(config.workflow);
   router.post(config.path, handler);
-  console.log(
-    `[API] Registered workflow endpoint: POST ${config.path} -> ${config.workflow.name ?? config.workflow.id}`,
-  );
+  logger.info('[API] Registered workflow endpoint', {
+    method: 'POST',
+    path: config.path,
+    workflow: config.workflow.name ?? config.workflow.id,
+  });
   return config.path;
 }
 

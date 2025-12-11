@@ -1,4 +1,4 @@
-import { getModel } from './github-models-provider.js';
+import { getModel } from './providers/github-models-provider.js';
 
 /**
  * Default sampling rate for live evaluations.

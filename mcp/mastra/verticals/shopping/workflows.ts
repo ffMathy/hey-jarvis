@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { createAgentStep, createStep, createToolStep, createWorkflow } from '../../utils/workflow-factory.js';
+import { createAgentStep, createStep, createToolStep, createWorkflow } from '../../utils/workflows/workflow-factory.js';
 import { getCurrentCartContents, shoppingTools } from './tools.js';
 
 // Schema for shopping list input

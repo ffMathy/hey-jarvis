@@ -68,12 +68,23 @@ type ServicesByDomain = Record<string, Record<string, ServiceDefinition>>;
 
 // Get Home Assistant configuration from environment
 const getHomeAssistantConfig = () => {
-  const url = process.env.HEY_JARVIS_HOME_ASSISTANT_URL;
-  const token = process.env.HEY_JARVIS_HOME_ASSISTANT_TOKEN;
+  let url = process.env.HEY_JARVIS_HOME_ASSISTANT_URL;
+  let token = process.env.HEY_JARVIS_HOME_ASSISTANT_TOKEN;
+
+  // In Home Assistant addon mode, SUPERVISOR_TOKEN is provided
+  // We use it to connect to the local Home Assistant instance
+  if (!url || !token) {
+    const supervisorToken = process.env.SUPERVISOR_TOKEN;
+    if (supervisorToken) {
+      // When running as addon, Home Assistant is available at supervisor's core API
+      url = 'http://supervisor/core';
+      token = supervisorToken;
+    }
+  }
 
   if (!url || !token) {
     throw new Error(
-      'Home Assistant configuration not found. Please set HEY_JARVIS_HOME_ASSISTANT_URL and HEY_JARVIS_HOME_ASSISTANT_TOKEN environment variables.',
+      'Home Assistant configuration not found. Please set HEY_JARVIS_HOME_ASSISTANT_URL and HEY_JARVIS_HOME_ASSISTANT_TOKEN environment variables, or run as a Home Assistant addon with SUPERVISOR_TOKEN.',
     );
   }
 
