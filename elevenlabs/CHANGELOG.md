@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.2](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.8.1...elevenlabs-v0.8.2) (2025-12-11)
+
+
+### Bug Fixes
+
+* add typecheck ([400778a](https://github.com/ffMathy/hey-jarvis/commit/400778a4703ca698eec4b9ddfce94bf9050a141c))
+* compile issues resolved ([6e58099](https://github.com/ffMathy/hey-jarvis/commit/6e580993b752fa94581399bf8beebe10723376b9))
+
 ## [0.8.1](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.8.0...elevenlabs-v0.8.1) (2025-12-01)
 
 
