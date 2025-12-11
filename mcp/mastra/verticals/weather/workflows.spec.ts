@@ -1,15 +1,12 @@
 import { beforeAll, describe, expect, it } from 'bun:test';
-import type { Mastra } from '@mastra/core';
-import { getMastra } from '../../index.js';
-import { ensureModelAvailable, isOllamaAvailable, OLLAMA_MODEL } from '../../utils/ollama-provider.js';
+import { mastra } from '../../index.js';
+import { ensureModelAvailable, isOllamaAvailable, OLLAMA_MODEL } from '../../utils/providers/ollama-provider.js';
 
 describe('weatherMonitoringWorkflow', () => {
   let ollamaAvailable = false;
-  let mastra: Mastra;
 
   beforeAll(async () => {
-    // Initialize Mastra
-    mastra = await getMastra();
+    // Mastra is already initialized synchronously in index.ts
 
     // Verify required environment variables
     if (!process.env.HEY_JARVIS_OPENWEATHERMAP_API_KEY) {

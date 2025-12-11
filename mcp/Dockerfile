@@ -25,14 +25,16 @@ COPY mcp/ ./mcp/
 # This creates .mastra/output/ with bundled Hono server
 RUN cd mcp && bunx mastra build --dir ./mastra
 
-# Compile Mastra output to native binary with bytecode for faster startup and smaller size
+# Compile Mastra output to native binary for faster startup and smaller size
 # Using --target=bun ensures compatibility with Bun runtime features
-RUN bun build --compile --minify --bytecode --target=bun \
+# Note: --bytecode flag removed due to CJS compatibility issues (https://github.com/oven-sh/bun/issues/14412)
+RUN bun build --compile --minify --target=bun \
     ./mcp/.mastra/output/index.mjs \
     --outfile ./mcp/mastra-server
 
-# Compile MCP server to native binary with bytecode for faster startup and smaller size
-RUN bun build --compile --minify --bytecode --target=bun \
+# Compile MCP server to native binary for faster startup and smaller size
+# Note: --bytecode flag removed due to CJS compatibility issues (https://github.com/oven-sh/bun/issues/14412)
+RUN bun build --compile --minify --target=bun \
     ./mcp/mastra/mcp-server.ts \
     --outfile ./mcp/mcp-server
 
