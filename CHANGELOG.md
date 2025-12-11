@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.0.2](https://github.com/ffMathy/hey-jarvis/compare/root-v1.0.1...root-v1.0.2) (2025-12-11)
+
+
+### Bug Fixes
+
+* **mcp:** correct import path for ollama-provider in weather workflow tests ([3fb6ec0](https://github.com/ffMathy/hey-jarvis/commit/3fb6ec02f46262f65fcfaa95b308c20d3a7386f4))
+* **mcp:** fix test failures for weather workflow and IoT tests ([1fb1cad](https://github.com/ffMathy/hey-jarvis/commit/1fb1cad439e50f55afddd0597b3c6520f3a0eceb))
+* **mcp:** remove --bytecode flag from Docker build commands ([#418](https://github.com/ffMathy/hey-jarvis/issues/418)) ([fa03673](https://github.com/ffMathy/hey-jarvis/commit/fa03673e67b0e232986b6555fca00ce7224688c1))
+* **mcp:** remove bytecode flag from Dockerfile to fix build failure ([594fe1f](https://github.com/ffMathy/hey-jarvis/commit/594fe1fdca684bd4d9b51d7b1886667d6d48bcd2))
+
 ## [1.0.1](https://github.com/ffMathy/hey-jarvis/compare/root-v1.0.0...root-v1.0.1) (2025-12-11)
 
 
