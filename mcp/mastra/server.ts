@@ -3,7 +3,7 @@ process.env.SKIP_AUTO_INIT = 'true';
 
 import { MastraServer } from '@mastra/hono';
 import { Hono } from 'hono';
-import { logTokenUsageSummary, mastra } from './index.js';
+import { BODY_LIMIT_OPTIONS, logTokenUsageSummary, mastra } from './index.js';
 
 // Initialize server
 (async () => {
@@ -18,18 +18,12 @@ import { logTokenUsageSummary, mastra } from './index.js';
     app: app,
     mastra: mastra,
     openapiPath: '/openapi.json',
-    bodyLimitOptions: {
-      maxSize: 10 * 1024 * 1024, // 10MB
-      onError: (_err) => ({ error: 'Payload too large', maxSize: '10MB' }),
-    },
+    bodyLimitOptions: BODY_LIMIT_OPTIONS,
     streamOptions: { redact: true },
   });
 
-  // Initialize routes
+  // Initialize routes (including health check)
   await mastraServer.init();
-
-  // Add health check
-  app.get('/health', (c) => c.json({ status: 'ok', runtime: 'bun' }));
 
   // Start the Bun server
   const port = Number.parseInt(process.env.MASTRA_SERVER_PORT || '4111', 10);

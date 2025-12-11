@@ -94,6 +94,12 @@ export async function logTokenUsageSummary(): Promise<void> {
   }
 }
 
+// Body limit configuration for Mastra server
+export const BODY_LIMIT_OPTIONS = {
+  maxSize: 10 * 1024 * 1024, // 10MB
+  onError: (_err: unknown) => ({ error: 'Payload too large', maxSize: '10MB' }),
+};
+
 // 1. Initialize the Hono Application
 // We do not need any special adapters for Bun here; Hono works out of the box.
 const app = new Hono();
@@ -104,10 +110,7 @@ const mastraServer = new MastraServer({
   app: app,
   mastra: mastra,
   openapiPath: '/openapi.json',
-  bodyLimitOptions: {
-    maxSize: 10 * 1024 * 1024, // 10MB
-    onError: (err) => ({ error: 'Payload too large', maxSize: '10MB' }),
-  },
+  bodyLimitOptions: BODY_LIMIT_OPTIONS,
   streamOptions: { redact: true },
 });
 
