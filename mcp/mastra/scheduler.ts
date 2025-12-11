@@ -1,5 +1,5 @@
 import { mastra } from './index.js';
-import { CronPatterns, WorkflowScheduler } from './utils/workflow-scheduler.js';
+import { CronPatterns, WorkflowScheduler } from './utils/workflows/workflow-scheduler.js';
 import {
   emailCheckingWorkflow,
   formRepliesDetectionWorkflow,

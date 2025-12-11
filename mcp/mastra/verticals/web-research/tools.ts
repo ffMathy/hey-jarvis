@@ -14,7 +14,7 @@
  * The Tavily API key is no longer required for this agent.
  */
 
-import { google } from '../../utils/google-provider.js';
+import { google } from '../../utils/providers/google-provider.js';
 
 // Export the Google Search tool for the web research agent
 export const webResearchTools = {

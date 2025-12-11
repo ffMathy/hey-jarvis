@@ -1,10 +1,6 @@
 import { beforeAll, describe, expect, it } from 'bun:test';
+import { isValidationError } from '../../utils/test-helpers/validation-error.js';
 import { cookingTools } from './tools';
-
-// Type guard to check if result is a validation error
-function isValidationError(result: any): result is { error: true; message: string } {
-  return result && result.error === true;
-}
 
 describe('Cooking Tools Integration Tests', () => {
   beforeAll(() => {

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { createStep, createWorkflow } from '../../utils/workflow-factory.js';
+import { createStep, createWorkflow } from '../../utils/workflows/workflow-factory.js';
 import { registerStateChange } from '../synapse/tools.js';
 import { findNewEmailsSinceLastCheck, updateLastSeenEmail } from './tools.js';
 import { processEmailTriggers } from './triggers.js';

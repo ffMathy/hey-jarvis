@@ -8,7 +8,7 @@ import { z } from 'zod';
 import { logTokenUsageSummary } from './index.js';
 import { initializeScheduler } from './scheduler.js';
 import { createTool } from './utils/tool-factory.js';
-import type { NamedWorkflow } from './utils/workflow-types.js';
+import type { NamedWorkflow } from './utils/workflows/workflow-types.js';
 import { getPublicAgents, registerApiRoutes, registerShoppingTriggers } from './verticals/index.js';
 import { getNextInstructionsWorkflow, routePromptWorkflow } from './verticals/routing/workflows.js';
 

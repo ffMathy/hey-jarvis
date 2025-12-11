@@ -10,7 +10,7 @@ import {
   type WorkflowConfig,
 } from '@mastra/core/workflows';
 import type { TypeOf, z } from 'zod';
-import { createAgent } from './agent-factory.js';
+import { createAgent } from '../agent-factory.js';
 
 /**
  * Creates a new Mastra Workflow with sensible defaults for the Hey Jarvis system.

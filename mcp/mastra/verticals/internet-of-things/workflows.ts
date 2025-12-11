@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { isValidationError } from '../../utils/index.js';
 import { logger } from '../../utils/logger.js';
-import { createStep, createWorkflow } from '../../utils/workflow-factory.js';
+import { createStep, createWorkflow } from '../../utils/workflows/workflow-factory.js';
 import { registerStateChange } from '../synapse/tools.js';
 import { getChangedDevicesSince } from './tools.js';
 

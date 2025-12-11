@@ -1,7 +1,7 @@
 import { Agent, type AgentConfig } from '@mastra/core/agent';
 import type { OutputProcessor } from '@mastra/core/processors';
 import { createMemory } from '../memory/index.js';
-import { getModel } from './github-models-provider.js';
+import { getModel } from './providers/github-models-provider.js';
 import { getDefaultScorers } from './scorers-config.js';
 
 export async function createAgent(

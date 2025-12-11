@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import { ollamaModel } from '../../utils/ollama-provider.js';
+import { ollamaModel } from '../../utils/providers/ollama-provider.js';
 import { isValidationError } from '../../utils/validation-error.js';
-import { createAgentStep, createStep, createWorkflow } from '../../utils/workflow-factory.js';
+import { createAgentStep, createStep, createWorkflow } from '../../utils/workflows/workflow-factory.js';
 import { registerStateChange } from '../synapse/tools.js';
 import { weatherTools } from './tools.js';
 

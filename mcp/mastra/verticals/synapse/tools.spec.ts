@@ -1,12 +1,6 @@
 import { describe, expect, it } from 'bun:test';
+import { isValidationError } from '../../utils/test-helpers/validation-error.js';
 import { synapseTools } from './tools';
-
-// Type guard to check if result is a validation error
-function isValidationError(result: unknown): result is { error: true; message: string } {
-  return (
-    typeof result === 'object' && result !== null && 'error' in result && (result as { error: boolean }).error === true
-  );
-}
 
 describe('Synapse Tools Integration Tests', () => {
   describe('registerStateChange', () => {

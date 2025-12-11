@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { createMemory } from '../../memory/index.js';
 import { logger } from '../../utils/logger.js';
-import { createStep, createWorkflow } from '../../utils/workflow-factory.js';
+import { createStep, createWorkflow } from '../../utils/workflows/workflow-factory.js';
 import { getStateChangeReactorAgent } from './agent.js';
 
 // State change notification workflow

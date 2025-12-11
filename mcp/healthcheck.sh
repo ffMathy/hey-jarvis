@@ -4,12 +4,19 @@
 
 set -e
 
-echo "Checking Mastra UI server on port 4111..."
-if ! wget --spider --timeout=5 --tries=1 http://localhost:4111 2>/dev/null; then
-    echo "ERROR: Mastra UI server (port 4111) is not responding"
+echo "Checking Mastra server API on port 4111..."
+if ! wget --spider --timeout=5 --tries=1 http://localhost:4111/health 2>/dev/null; then
+    echo "ERROR: Mastra server API (port 4111) is not responding"
     exit 1
 fi
-echo "✓ Mastra UI server is healthy"
+echo "✓ Mastra server API is healthy"
+
+echo "Checking Mastra UI on port 4111..."
+if ! wget --spider --timeout=5 --tries=1 http://localhost:4111/ 2>/dev/null; then
+    echo "ERROR: Mastra UI (port 4111) is not responding"
+    exit 1
+fi
+echo "✓ Mastra UI is healthy"
 
 echo "Checking MCP server on port 4112..."
 if ! wget --spider --timeout=5 --tries=1 http://localhost:4112 2>/dev/null; then

@@ -1,5 +1,5 @@
 import { createAgent } from '../../utils/agent-factory.js';
-import { ollamaModel } from '../../utils/ollama-provider.js';
+import { ollamaModel } from '../../utils/providers/ollama-provider.js';
 import { inferUserLocation } from '../internet-of-things/tools.js';
 import { initiatePhoneCall, sendTextMessage } from '../phone/tools.js';
 import { notificationTools } from './tools.js';

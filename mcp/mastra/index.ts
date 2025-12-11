@@ -98,33 +98,27 @@ export async function logTokenUsageSummary(): Promise<void> {
 // We do not need any special adapters for Bun here; Hono works out of the box.
 const app = new Hono();
 
-// 2. Initialize Mastra server in an async IIFE
-// This async IIFE allows us to use await without top-level await
-(async () => {
-  // 3. Initialize the Mastra Server Adapter
-  // This class wraps our Hono app and injects the Mastra capabilities.
-  const mastraServer = new MastraServer({
-    playground: true,
-    isDev: true,
-    app: app,
-    mastra: mastra,
-    openapiPath: '/openapi.json',
-    bodyLimitOptions: {
-      maxSize: 10 * 1024 * 1024, // 10MB
-      onError: (err) => ({ error: 'Payload too large', maxSize: '10MB' }),
-    },
-    streamOptions: { redact: true },
-  });
+// 2. Initialize the Mastra Server Adapter
+// This class wraps our Hono app and injects the Mastra capabilities.
+const mastraServer = new MastraServer({
+  app: app,
+  mastra: mastra,
+  openapiPath: '/openapi.json',
+  bodyLimitOptions: {
+    maxSize: 10 * 1024 * 1024, // 10MB
+    onError: (err) => ({ error: 'Payload too large', maxSize: '10MB' }),
+  },
+  streamOptions: { redact: true },
+});
 
-  // 4. Initialize Routes
-  // This awaits the registration of all agents and workflows as HTTP endpoints.
-  await mastraServer.init();
+// 3. Initialize Routes
+// Top-level await is supported in Bun and works correctly even with mastra build
+await mastraServer.init();
 
-  // 5. Add Custom Routes (Post-Init)
-  // We can add routes that leverage the Mastra context.
-  app.get('/health', (c) => c.json({ status: 'ok', runtime: 'bun' }));
-})();
+// 4. Add Custom Routes (Post-Init)
+// We can add routes that leverage the Mastra context.
+app.get('/health', (c) => c.json({ status: 'ok', runtime: 'bun' }));
 
-// 6. Export for Bun
+// 5. Export for Bun
 // Bun.serve looks for a default export with a 'fetch' handler.
 export default app;
