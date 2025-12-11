@@ -16,7 +16,8 @@
     "lint": "nx run-many --target=lint --all",
     "format": "bunx biome format --write .",
     "check": "bunx biome check --write .",
-    "prepare": "husky"
+    "prepare": "husky",
+    "postinstall": "node .scripts/patch-mastra-deployer.js"
   },
   "repository": {
     "type": "git",

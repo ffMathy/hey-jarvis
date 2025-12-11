@@ -74,10 +74,17 @@ export const mastra = new Mastra({
       'fkill',
       'open',
       'geolib',
-      // Mastra packages to avoid version conflicts with deployer
+      // All Mastra packages to avoid version conflicts and bundling issues
+      '@mastra/core',
       '@mastra/server',
       '@mastra/deployer',
       '@mastra/hono',
+      '@mastra/evals',
+      '@mastra/libsql',
+      '@mastra/loggers',
+      '@mastra/mcp',
+      '@mastra/memory',
+      '@mastra/observability',
     ],
   },
 });
