@@ -14,31 +14,33 @@ COPY mcp/package.json ./mcp/
 # since Docker context doesn't include all workspace packages
 RUN jq 'del(.workspaces) | del(.scripts.prepare)' package.json.original > package.json && rm package.json.original
 
-# Install all dependencies (needed for TypeScript compilation and mastra build)
+# Install all dependencies (needed for runtime compilation)
 RUN bun install
 
 # Copy source code
 COPY tsconfig.base.json ./
 COPY mcp/ ./mcp/
 
-# Build Mastra application using official mastra build command
-# This creates .mastra/output/ with bundled Hono server
-RUN cd mcp && bunx mastra build --dir ./mastra
+# Bundle the Mastra server without compilation (allows top-level await)
+# This creates a single bundled file with all dependencies
+# Note: Cannot use bun build --compile because it doesn't support top-level await
+# Skipping mastra build to avoid deployer dependency issues
+RUN bun build ./mcp/mastra/server.ts \
+    --target=bun \
+    --format=esm \
+    --minify \
+    --outfile=./mcp/mastra-server.js
 
-# Compile Mastra output to native binary with bytecode for faster startup and smaller size
-# Using --target=bun ensures compatibility with Bun runtime features
-RUN bun build --compile --minify --bytecode --target=bun \
-    ./mcp/.mastra/output/index.mjs \
-    --outfile ./mcp/mastra-server
+# Bundle MCP server (also cannot compile due to potential top-level await)
+RUN bun build ./mcp/mastra/mcp-server.ts \
+    --target=bun \
+    --format=esm \
+    --minify \
+    --outfile=./mcp/mcp-server.js
 
-# Compile MCP server to native binary with bytecode for faster startup and smaller size
-RUN bun build --compile --minify --bytecode --target=bun \
-    ./mcp/mastra/mcp-server.ts \
-    --outfile ./mcp/mcp-server
-
-# Production stage - use Alpine for smaller image size
-# No need for Bun runtime since we're running native compiled binaries
-FROM docker.io/alpine:3.21 AS production
+# Production stage - use Bun Alpine image for runtime
+# Need Bun runtime to execute bundled JS (cannot compile due to top-level await)
+FROM docker.io/oven/bun:1-alpine AS production
 
 ENV HOST=0.0.0.0
 ENV NODE_ENV=production
@@ -50,11 +52,9 @@ WORKDIR /workspace
 # Install supervisor for process management and wget for healthcheck
 RUN apk add --no-cache supervisor wget
 
-# Copy compiled Mastra server binary from builder
-COPY --from=builder /workspace/mcp/mastra-server ./mcp/mastra-server
-
-# Copy compiled MCP server binary from builder
-COPY --from=builder /workspace/mcp/mcp-server ./mcp/mcp-server
+# Copy bundled server scripts from builder
+COPY --from=builder /workspace/mcp/mastra-server.js ./mcp/mastra-server.js
+COPY --from=builder /workspace/mcp/mcp-server.js ./mcp/mcp-server.js
 
 # Copy runtime scripts and configuration
 COPY mcp/supervisord.conf /etc/supervisord.conf
@@ -63,8 +63,8 @@ COPY mcp/healthcheck.sh /workspace/healthcheck.sh
 # Expose ports for services (4111: Mastra Server, 4112: MCP Server)
 EXPOSE 4111 4112
 
-# Make binaries and healthcheck executable
-RUN chmod +x ./mcp/mastra-server ./mcp/mcp-server /workspace/healthcheck.sh
+# Make healthcheck executable
+RUN chmod +x /workspace/healthcheck.sh
 
 # Health check to verify both services are running
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \

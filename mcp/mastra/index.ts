@@ -111,14 +111,24 @@ const mastraServer = new MastraServer({
   streamOptions: { redact: true },
 });
 
-// 3. Initialize Routes
-// Top-level await is supported in Bun and works correctly even with mastra build
-await mastraServer.init();
+/**
+ * Initializes the Mastra server routes.
+ * Must be called before the server starts serving requests.
+ */
+export async function initializeMastraServer(): Promise<void> {
+  await mastraServer.init();
 
-// 4. Add Custom Routes (Post-Init)
-// We can add routes that leverage the Mastra context.
-app.get('/health', (c) => c.json({ status: 'ok', runtime: 'bun' }));
+  // Add Custom Routes (Post-Init)
+  // We can add routes that leverage the Mastra context.
+  app.get('/health', (c) => c.json({ status: 'ok', runtime: 'bun' }));
+}
 
-// 5. Export for Bun
+// Only initialize if not being imported by server.ts (which will handle initialization)
+// This allows for backwards compatibility with mastra build and direct Bun execution
+if (!process.env.SKIP_AUTO_INIT) {
+  await initializeMastraServer();
+}
+
+// Export for Bun
 // Bun.serve looks for a default export with a 'fetch' handler.
 export default app;
