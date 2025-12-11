@@ -1,6 +1,6 @@
 import type { MessageInput } from '@mastra/core/agent/message-list';
 import { z } from 'zod';
-import { createStep, createToolStep, createWorkflow } from '../../utils/workflow-factory.js';
+import { createStep, createToolStep, createWorkflow } from '../../utils/workflows/workflow-factory.js';
 import { assignCopilotToIssue, createGitHubIssue } from './tools.js';
 
 // Schema for requirements gathering input

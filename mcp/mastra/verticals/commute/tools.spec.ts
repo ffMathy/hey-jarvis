@@ -1,13 +1,6 @@
-// @ts-expect-error - bun:test types are built into Bun runtime
 import { beforeAll, describe, expect, it } from 'bun:test';
+import { isValidationError } from '../../utils/test-helpers/validation-error.js';
 import { commuteTools } from './tools';
-
-// Type guard to check if result is a validation error
-function isValidationError(result: unknown): result is { error: true; message: string } {
-  return (
-    typeof result === 'object' && result !== null && 'error' in result && (result as { error: boolean }).error === true
-  );
-}
 
 describe('Commute Tools Integration Tests', () => {
   beforeAll(() => {

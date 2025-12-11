@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { createStep, createWorkflow } from '../../utils/workflow-factory.js';
+import { createStep, createWorkflow } from '../../utils/workflows/workflow-factory.js';
 import { registerEmailTrigger } from '../email/triggers.js';
 import { getNotificationAgent } from '../notification/agent.js';
 

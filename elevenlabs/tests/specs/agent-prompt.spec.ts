@@ -16,12 +16,16 @@ import { ensureTunnelRunning, stopTunnel } from '../utils/tunnel-manager.js';
  * - Teasing user inefficiencies while remaining charming and helpful
  */
 describe('Agent Prompt Specifications', () => {
-  const agentId = process.env.HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID;
+  // Non-null assertion safe here because beforeAll throws if these are undefined
+  const agentId = process.env.HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID!;
   const apiKey = process.env.HEY_JARVIS_ELEVENLABS_API_KEY;
   const googleApiKey = process.env.HEY_JARVIS_GOOGLE_API_KEY;
 
   // Ensure MCP server and cloudflared tunnel are running before all tests
   beforeAll(async () => {
+    if (!process.env.HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID) {
+      throw new Error('HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID environment variable is required');
+    }
     await startMcpServerForTestingPurposes();
     await ensureTunnelRunning();
   }, 90000);

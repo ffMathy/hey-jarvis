@@ -1,7 +1,7 @@
 import { Agent, type AgentConfig } from '@mastra/core/agent';
 import type { OutputProcessor } from '@mastra/core/processors';
 import { createMemory } from '../memory/index.js';
-import { getModel } from './github-models-provider.js';
+import { getModel } from './providers/github-models-provider.js';
 import { getDefaultScorers } from './scorers-config.js';
 
 export async function createAgent(
@@ -39,6 +39,8 @@ export async function createAgent(
     ...config,
     // Merge output processors instead of replacing
     outputProcessors: [...defaultProcessors, ...customProcessors],
+    // Use name as id if id not provided
+    id: config.id || config.name || 'default-agent',
   } as AgentConfig;
 
   return new Agent(mergedConfig);

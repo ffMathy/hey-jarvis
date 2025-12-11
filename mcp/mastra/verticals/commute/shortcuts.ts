@@ -1,3 +1,4 @@
+import type { z } from 'zod';
 import { createShortcut } from '../../utils/shortcut-factory.js';
 import { getAllDevices } from '../internet-of-things/tools.js';
 
@@ -9,6 +10,10 @@ import { getAllDevices } from '../internet-of-things/tools.js';
  * Shortcuts use createShortcut which automatically reuses the input and output
  * schemas from the underlying tool they wrap.
  */
+
+// Type for device from getAllDevices output schema
+type Device = z.infer<typeof getAllDevices.outputSchema>['devices'][number];
+type Entity = Device['entities'][number];
 
 /**
  * Tessie integration entity patterns for Tesla vehicles in Home Assistant.
@@ -31,7 +36,7 @@ const TESSIE_LOCATION_ENTITIES = {
  * Detects if a device is a car by checking for Tessie integration patterns.
  * Tessie devices have specific entity naming patterns for Tesla vehicles.
  */
-function isTessieCarDevice(device: { entities: Array<{ id: string; domain: string }> }): boolean {
+function isTessieCarDevice(device: Device): boolean {
   return device.entities.some((entity) => {
     const entityId = entity.id.toLowerCase();
     return (
@@ -45,7 +50,7 @@ function isTessieCarDevice(device: { entities: Array<{ id: string; domain: strin
 /**
  * Checks if an entity is navigation-related for Tessie vehicles.
  */
-function isNavigationEntity(entity: { id: string; domain: string }): boolean {
+function isNavigationEntity(entity: Entity): boolean {
   const entityId = entity.id.toLowerCase();
   return (
     Object.values(TESSIE_NAVIGATION_ENTITIES).some((suffix) => entityId.endsWith(suffix)) ||
@@ -70,7 +75,16 @@ export const getCarNavigationDestination = createShortcut({
   execute: async () => {
     const devicesResult = await getAllDevices.execute({});
 
-    const carDevices = devicesResult.devices.filter(isTessieCarDevice);
+    // Handle ValidationError case - check for error property that ValidationError has
+    if ('error' in devicesResult) {
+      return {
+        devices: [],
+      };
+    }
+
+    // TypeScript now knows this is not a ValidationError
+    const allDevices: Device[] = devicesResult.devices;
+    const carDevices = allDevices.filter(isTessieCarDevice);
 
     if (carDevices.length === 0) {
       return {

@@ -1,5 +1,7 @@
 import { z } from 'zod';
-import { createStep, createWorkflow } from '../../utils/workflow-factory.js';
+import { isValidationError } from '../../utils/index.js';
+import { logger } from '../../utils/logger.js';
+import { createStep, createWorkflow } from '../../utils/workflows/workflow-factory.js';
 import { registerStateChange } from '../synapse/tools.js';
 import { getChangedDevicesSince } from './tools.js';
 
@@ -41,6 +43,15 @@ const fetchRecentlyChangedDevices = createStep({
       sinceSeconds: STATE_CHANGE_WINDOW_SECONDS,
     });
 
+    // Handle ValidationError case using type guard for proper type narrowing
+    if (isValidationError(result)) {
+      logger.error('IoT Monitoring: failed to fetch changed devices', { message: result.message });
+      return {
+        devices: [],
+        timestamp: new Date().toISOString(),
+      };
+    }
+
     // Group by device and filter out sensitive labels (matching old n8n behavior)
     const deviceMap = new Map<
       string,
@@ -76,9 +87,11 @@ const fetchRecentlyChangedDevices = createStep({
 
     const devices = Array.from(deviceMap.values());
 
-    console.log(
-      `📊 IoT Monitoring: ${result.total_changed} entities changed in last ${STATE_CHANGE_WINDOW_SECONDS}s, ${devices.length} non-sensitive device(s) with changes`,
-    );
+    logger.info('IoT Monitoring: entities changed', {
+      totalChanged: result.total_changed,
+      windowSeconds: STATE_CHANGE_WINDOW_SECONDS,
+      devicesWithChanges: devices.length,
+    });
 
     return {
       devices,
@@ -135,9 +148,16 @@ const triggerStateChangeNotifications = createStep({
 
           notificationsTriggered++;
 
-          console.log(`🔔 State change registered: ${entity.id} on ${device.name} changed to "${entity.newState}"`);
+          logger.info('State change registered', {
+            entityId: entity.id,
+            deviceName: device.name,
+            // Do not log newState value as it may contain sensitive data
+          });
         } catch (error) {
-          console.error(`❌ Failed to register state change for ${entity.id}:`, error);
+          logger.error('Failed to register state change', {
+            entityId: entity.id,
+            error,
+          });
         }
       }
     }

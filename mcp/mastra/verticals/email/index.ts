@@ -11,9 +11,6 @@ export {
   unregisterEmailTrigger,
 } from './triggers.js';
 export {
-  // Legacy exports for backward compatibility
-  checkForFormRepliesWorkflow,
-  checkForNewEmails,
   emailCheckingWorkflow,
   formRepliesDetectionWorkflow,
 } from './workflows.js';

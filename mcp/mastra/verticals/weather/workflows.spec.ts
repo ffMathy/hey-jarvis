@@ -1,12 +1,16 @@
-// @ts-expect-error - Bun's test framework types are not available in TypeScript definitions
 import { beforeAll, describe, expect, it } from 'bun:test';
-import { mastra } from '../../index.js';
+import type { Mastra } from '@mastra/core';
+import { getMastra } from '../../index.js';
 import { ensureModelAvailable, isOllamaAvailable, OLLAMA_MODEL } from '../../utils/ollama-provider.js';
 
 describe('weatherMonitoringWorkflow', () => {
   let ollamaAvailable = false;
+  let mastra: Mastra;
 
   beforeAll(async () => {
+    // Initialize Mastra
+    mastra = await getMastra();
+
     // Verify required environment variables
     if (!process.env.HEY_JARVIS_OPENWEATHERMAP_API_KEY) {
       throw new Error('HEY_JARVIS_OPENWEATHERMAP_API_KEY environment variable is required for weather workflow tests');

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { logger } from '../../utils/logger.js';
 import { createTool } from '../../utils/tool-factory.js';
 import { stateChangeBatcher } from './state-change-batcher.js';
 import { stateChangeNotificationWorkflow } from './workflows.js';
@@ -27,7 +28,10 @@ export const registerStateChange = createTool({
   }),
   execute: async (inputData) => {
     try {
-      console.log(`📝 Registering state change: ${inputData.stateType} from ${inputData.source}`);
+      logger.info('Registering state change', {
+        stateType: inputData.stateType,
+        source: inputData.source,
+      });
 
       // Add to batcher for optimized processing
       await stateChangeBatcher.add({
@@ -43,7 +47,7 @@ export const registerStateChange = createTool({
         message: `State change ${inputData.stateType} registered. Batch: ${stats.pendingCount} pending, ${stats.totalProcessed} processed`,
       };
     } catch (error) {
-      console.error('❌ Failed to register state change:', error);
+      logger.error('Failed to register state change', { error });
       throw error;
     }
   },

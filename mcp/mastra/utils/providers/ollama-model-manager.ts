@@ -365,7 +365,7 @@ function createLoggingFetch(): FetchFunction {
   const numThreads = getOllamaNumThreads();
   console.log(`🔧 Ollama configured to use ${numThreads} CPU threads (of ${os.cpus().length} available)`);
 
-  return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+  const loggingFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const startTime = Date.now();
     const url = extractUrl(input);
     const method = init?.method || 'GET';
@@ -404,6 +404,9 @@ function createLoggingFetch(): FetchFunction {
       throw error;
     }
   };
+
+  // Cast to FetchFunction (Node.js fetch has additional properties like preconnect)
+  return loggingFetch as unknown as FetchFunction;
 }
 
 /**

@@ -191,7 +191,8 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
         await this.sendToAgent(agent, JSON.stringify(inProgressResult), 'tool', 'tool-in-progress-' + toolCall.runId);
 
         // Step 2: Emit the actual tool result
-        const toolResultText = toolCall.payload.result['text'] || JSON.stringify(toolCall.payload.result);
+        const result = toolCall.payload.result as Record<string, unknown> | undefined;
+        const toolResultText = (result?.['text'] as string) || JSON.stringify(toolCall.payload.result);
         const toolMessage = this.createToolCallMessage(toolCall.payload.toolName, toolCall.runId, toolResultText);
         this.messages.push(toolMessage);
 

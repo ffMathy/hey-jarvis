@@ -14,51 +14,61 @@ COPY mcp/package.json ./mcp/
 # since Docker context doesn't include all workspace packages
 RUN jq 'del(.workspaces) | del(.scripts.prepare)' package.json.original > package.json && rm package.json.original
 
-# Install all dependencies (needed for TypeScript compilation)
+# Install all dependencies (needed for TypeScript compilation and mastra build)
 RUN bun install
 
 # Copy source code
 COPY tsconfig.base.json ./
 COPY mcp/ ./mcp/
 
-# Production stage - use Bun Alpine for smaller image size
-# Ollama is now installed as a separate Home Assistant extension
-FROM docker.io/oven/bun:1-alpine AS production
+# Build Mastra application using official mastra build command
+# This creates .mastra/output/ with bundled Hono server
+RUN cd mcp && bunx mastra build --dir ./mastra
+
+# Compile Mastra output to native binary with bytecode for faster startup and smaller size
+# Using --target=bun ensures compatibility with Bun runtime features
+RUN bun build --compile --minify --bytecode --target=bun \
+    ./mcp/.mastra/output/index.mjs \
+    --outfile ./mcp/mastra-server
+
+# Compile MCP server to native binary with bytecode for faster startup and smaller size
+RUN bun build --compile --minify --bytecode --target=bun \
+    ./mcp/mastra/mcp-server.ts \
+    --outfile ./mcp/mcp-server
+
+# Production stage - use Alpine for smaller image size
+# No need for Bun runtime since we're running native compiled binaries
+FROM docker.io/alpine:3.21 AS production
 
 ENV HOST=0.0.0.0
 ENV NODE_ENV=production
+ENV MASTRA_SERVER_PORT=4111
+ENV MCP_SERVER_PORT=4112
 
 WORKDIR /workspace
 
-# Install bash, supervisor, and jq for runtime needs
-RUN apk add --no-cache \
-    bash \
-    supervisor \
-    jq
+# Install supervisor for process management and wget for healthcheck
+RUN apk add --no-cache supervisor wget
 
-# Copy package files
-COPY package.json ./package.json.original
-COPY mcp/package.json ./mcp/
+# Copy compiled Mastra server binary from builder
+COPY --from=builder /workspace/mcp/mastra-server ./mcp/mastra-server
 
-# Remove workspaces field and husky prepare script from package.json
-# since Docker context doesn't include all workspace packages
-RUN jq 'del(.workspaces) | del(.scripts.prepare)' package.json.original > package.json && rm package.json.original
+# Copy compiled MCP server binary from builder
+COPY --from=builder /workspace/mcp/mcp-server ./mcp/mcp-server
 
-# Install only production dependencies and global tools
-RUN bun install --production
-
-# Copy source code from builder
-COPY --from=builder /workspace/tsconfig.base.json ./
-COPY --from=builder /workspace/mcp/ ./mcp/
-
-# Copy supervisord configuration
+# Copy runtime scripts and configuration
 COPY mcp/supervisord.conf /etc/supervisord.conf
+COPY mcp/healthcheck.sh /workspace/healthcheck.sh
 
-# Expose ports for services (4111: Mastra UI, 4112: MCP Server)
+# Expose ports for services (4111: Mastra Server, 4112: MCP Server)
 EXPOSE 4111 4112
 
-# Make scripts executable
-RUN chmod +x ./mcp/run.sh
+# Make binaries and healthcheck executable
+RUN chmod +x ./mcp/mastra-server ./mcp/mcp-server /workspace/healthcheck.sh
 
-# Override the base image's entrypoint and use the run script
-ENTRYPOINT [ "./mcp/run.sh" ]
+# Health check to verify both services are running
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD ["/workspace/healthcheck.sh"]
+
+# Run supervisord directly (no bash needed)
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]

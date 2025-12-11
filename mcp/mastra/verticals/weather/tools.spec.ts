@@ -1,11 +1,6 @@
-// @ts-expect-error - bun:test types are built into Bun runtime
 import { beforeAll, describe, expect, it } from 'bun:test';
+import { isValidationError } from '../../utils/test-helpers/validation-error.js';
 import { weatherTools } from './tools';
-
-// Type guard to check if result is a validation error
-function isValidationError(result: any): result is { error: true; message: string } {
-  return result && result.error === true;
-}
 
 describe('Weather Tools Integration Tests', () => {
   beforeAll(() => {

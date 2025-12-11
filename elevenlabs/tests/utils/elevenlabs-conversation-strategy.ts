@@ -239,13 +239,13 @@ export class ElevenLabsConversationStrategy implements ConversationStrategy {
     let message: Partial<ServerMessage> | null = {};
     while (message !== null) {
       timeout = 15000;
-      if (message?.type === 'mcp_tool_call' && message.mcp_tool_call.state === 'loading') {
+      if (message?.type === 'mcp_tool_call' && message.mcp_tool_call?.state === 'loading') {
         timeout = 60000; // Wait longer for agent response
       }
 
       message = await Promise.race([
         waitForNextMessage(),
-        new Promise<never>((resolve) =>
+        new Promise<null>((resolve) =>
           setTimeout(() => {
             resolve(null);
           }, timeout),
