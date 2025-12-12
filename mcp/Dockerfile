@@ -6,10 +6,9 @@ WORKDIR /workspace
 # Install jq for JSON manipulation
 RUN apk add --no-cache jq
 
-# Copy package files and postinstall script for dependency installation
+# Copy package files for dependency installation
 COPY package.json ./package.json.original
 COPY mcp/package.json ./mcp/
-COPY .scripts/ ./.scripts/
 
 # Remove workspaces field and husky prepare script from package.json 
 # since Docker context doesn't include all workspace packages
@@ -22,15 +21,32 @@ RUN bun install
 COPY tsconfig.base.json ./
 COPY mcp/ ./mcp/
 
-# Build Mastra application using official mastra build command
-# This creates .mastra/output/ with bundled Hono server
-RUN cd mcp && bunx mastra build --dir ./mastra
-
-# Compile Mastra output to native binary for faster startup and smaller size
+# Build Mastra server directly using bun (no mastra CLI dependency)
+# This compiles the TypeScript entry point to a native binary
 # Using --target=bun ensures compatibility with Bun runtime features
-# Note: --bytecode flag removed due to CJS compatibility issues (https://github.com/oven-sh/bun/issues/14412)
+# Externalizing all dependencies keeps the binary small and avoids bundling issues
 RUN bun build --compile --minify --target=bun \
-    ./mcp/.mastra/output/index.mjs \
+    --external '@elevenlabs/elevenlabs-js' \
+    --external 'twilio' \
+    --external 'node-cron' \
+    --external 'express' \
+    --external 'express-jwt' \
+    --external 'jsonwebtoken' \
+    --external 'googleapis' \
+    --external 'octokit' \
+    --external 'fkill' \
+    --external 'open' \
+    --external 'geolib' \
+    --external '@mastra/core' \
+    --external '@mastra/server' \
+    --external '@mastra/hono' \
+    --external '@mastra/evals' \
+    --external '@mastra/libsql' \
+    --external '@mastra/loggers' \
+    --external '@mastra/mcp' \
+    --external '@mastra/memory' \
+    --external '@mastra/observability' \
+    ./mcp/mastra/server.ts \
     --outfile ./mcp/mastra-server
 
 # Compile MCP server to native binary for faster startup and smaller size
