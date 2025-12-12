@@ -22,7 +22,7 @@ COPY tsconfig.base.json ./
 COPY mcp/ ./mcp/
 
 # Build Mastra server directly using bun with all external dependencies
-# The server.ts entry point uses MastraServer which includes the UI/Studio
+# MastraServer provides the API routes; Studio UI is a dev-only tool
 # Using --target=bun ensures compatibility with Bun runtime features
 RUN bun build --compile --minify --target=bun \
     --external '@elevenlabs/elevenlabs-js' \
