@@ -80,6 +80,7 @@
     "@googlemaps/google-maps-services-js": "^3.4.2",
     "@hono/node-server": "^1.19.6",
     "@mastra/core": "1.0.0-beta.10",
+    "@mastra/deployer": "1.0.0-beta.11",
     "@mastra/evals": "1.0.0-beta.2",
     "@mastra/hono": "0.0.2-beta.3",
     "@mastra/libsql": "1.0.0-beta.7",

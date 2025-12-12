@@ -21,10 +21,9 @@ RUN bun install
 COPY tsconfig.base.json ./
 COPY mcp/ ./mcp/
 
-# Build Mastra server directly using bun (no mastra CLI dependency)
-# This compiles the TypeScript entry point to a native binary
+# Build Mastra server directly using bun with all external dependencies
+# The server.ts entry point uses MastraServer which includes the UI/Studio
 # Using --target=bun ensures compatibility with Bun runtime features
-# Externalizing all dependencies keeps the binary small and avoids bundling issues
 RUN bun build --compile --minify --target=bun \
     --external '@elevenlabs/elevenlabs-js' \
     --external 'twilio' \
