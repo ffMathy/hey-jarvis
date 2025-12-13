@@ -21,15 +21,31 @@ RUN bun install
 COPY tsconfig.base.json ./
 COPY mcp/ ./mcp/
 
-# Build Mastra application using official mastra build command
-# This creates .mastra/output/ with bundled Hono server
-RUN cd mcp && bunx mastra build --dir ./mastra
-
-# Compile Mastra output to native binary for faster startup and smaller size
+# Build Mastra server directly using bun with all external dependencies
+# MastraServer provides the API routes; Studio UI is a dev-only tool
 # Using --target=bun ensures compatibility with Bun runtime features
-# Note: --bytecode flag removed due to CJS compatibility issues (https://github.com/oven-sh/bun/issues/14412)
 RUN bun build --compile --minify --target=bun \
-    ./mcp/.mastra/output/index.mjs \
+    --external '@elevenlabs/elevenlabs-js' \
+    --external 'twilio' \
+    --external 'node-cron' \
+    --external 'express' \
+    --external 'express-jwt' \
+    --external 'jsonwebtoken' \
+    --external 'googleapis' \
+    --external 'octokit' \
+    --external 'fkill' \
+    --external 'open' \
+    --external 'geolib' \
+    --external '@mastra/core' \
+    --external '@mastra/server' \
+    --external '@mastra/hono' \
+    --external '@mastra/evals' \
+    --external '@mastra/libsql' \
+    --external '@mastra/loggers' \
+    --external '@mastra/mcp' \
+    --external '@mastra/memory' \
+    --external '@mastra/observability' \
+    ./mcp/mastra/server.ts \
     --outfile ./mcp/mastra-server
 
 # Compile MCP server to native binary for faster startup and smaller size

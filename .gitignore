@@ -171,3 +171,4 @@ cloudflared.deb
 
 # TypeScript build output for specs
 dist-spec
+mcp/.mastra-build
