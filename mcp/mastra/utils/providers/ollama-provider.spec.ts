@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
-import { createAgent } from './agent-factory.js';
+import { createAgent } from '../agent-factory.js';
 import {
   ensureModelAvailable,
   getOllamaApiUrl,
