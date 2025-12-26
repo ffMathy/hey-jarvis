@@ -38,14 +38,14 @@ RUN bun build --compile --minify --target=bun \
     ./mcp/mastra/mcp-server.ts \
     --outfile ./mcp/mcp-server
 
-# Production stage - use Alpine for smaller image size
-# No need for Bun runtime since we're running native compiled binaries
-FROM docker.io/alpine:3.21 AS production
+# Production stage - use Bun Alpine for runtime (needed for mastra studio CLI)
+FROM docker.io/oven/bun:1-alpine AS production
 
 ENV HOST=0.0.0.0
 ENV NODE_ENV=production
 ENV MASTRA_SERVER_PORT=4111
 ENV MCP_SERVER_PORT=4112
+ENV MASTRA_STUDIO_PORT=3000
 
 WORKDIR /workspace
 
@@ -58,17 +58,24 @@ COPY --from=builder /workspace/mcp/mastra-server ./mcp/mastra-server
 # Copy compiled MCP server binary from builder
 COPY --from=builder /workspace/mcp/mcp-server ./mcp/mcp-server
 
+# Copy node_modules and package files for mastra studio CLI
+COPY --from=builder /workspace/node_modules ./node_modules
+COPY --from=builder /workspace/package.json ./package.json
+
+# Copy mastra source files (needed for mastra studio)
+COPY --from=builder /workspace/mcp/mastra ./mcp/mastra
+
 # Copy runtime scripts and configuration
 COPY mcp/supervisord.conf /etc/supervisord.conf
 COPY mcp/healthcheck.sh /workspace/healthcheck.sh
 
-# Expose ports for services (4111: Mastra Server, 4112: MCP Server)
-EXPOSE 4111 4112
+# Expose ports for services (4111: Mastra Server, 4112: MCP Server, 3000: Studio UI)
+EXPOSE 4111 4112 3000
 
 # Make binaries and healthcheck executable
 RUN chmod +x ./mcp/mastra-server ./mcp/mcp-server /workspace/healthcheck.sh
 
-# Health check to verify both services are running
+# Health check to verify all services are running
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
   CMD ["/workspace/healthcheck.sh"]
 
