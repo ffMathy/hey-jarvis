@@ -8,25 +8,12 @@ Mastra-powered AI agent framework for intelligent home automation, voice interac
 ## About Mastra
 [Mastra](https://mastra.ai) is a TypeScript agent framework for production-ready AI applications with unified LLM interfaces, persistent memory, tool calling, and graph-based workflows.
 
-**This project uses Mastra V1 beta** (v1.0.0-beta.17+).
+**This project uses Mastra V1 beta** (v1.0.0-beta.2).
 
 ### Key API Changes from V0
 - `streamVNext()` → `stream()` - Standard streaming API
 - `generateVNext()` → `generate()` - Standard generation API
 - Full AI SDK v5 compatibility
-
-### Mastra Studio UI
-See [STUDIO.md](./STUDIO.md) for comprehensive documentation on using the Mastra Studio UI for testing and debugging agents, workflows, and tools. Studio provides:
-- Interactive agent testing with chat interface
-- Visual workflow execution and debugging
-- Tool testing in isolation
-- Real-time observability and tracing
-- Performance evaluation with scorers
-
-**Quick Access:**
-- Studio UI: http://localhost:3000 (when running)
-- Mastra API: http://localhost:4111
-- Swagger UI: http://localhost:4111/swagger-ui
 
 ## Project Structure
 The project follows a vertical-based organization structure for better cohesion:
