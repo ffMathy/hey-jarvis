@@ -1,5 +1,8 @@
 import { expect, test } from '@playwright/test';
 
+// Configure screenshot base directory
+const SCREENSHOTS_DIR = process.env.SCREENSHOTS_DIR || 'mcp/screenshots';
+
 test.describe('Mastra Studio UI', () => {
   test.beforeEach(async ({ page }) => {
     // Navigate to the Mastra Studio UI
@@ -11,7 +14,7 @@ test.describe('Mastra Studio UI', () => {
     await page.waitForLoadState('networkidle');
 
     // Take a screenshot of the homepage
-    await page.screenshot({ path: 'mcp/screenshots/studio-homepage.png', fullPage: true });
+    await page.screenshot({ path: `${SCREENSHOTS_DIR}/studio-homepage.png`, fullPage: true });
 
     // Verify the page loaded successfully
     expect(page.url()).toContain('localhost:3000');
@@ -29,7 +32,7 @@ test.describe('Mastra Studio UI', () => {
       await page.waitForLoadState('networkidle');
 
       // Take screenshot of agents page
-      await page.screenshot({ path: 'mcp/screenshots/studio-agents.png', fullPage: true });
+      await page.screenshot({ path: `${SCREENSHOTS_DIR}/studio-agents.png`, fullPage: true });
     }
   });
 
@@ -44,7 +47,7 @@ test.describe('Mastra Studio UI', () => {
       await page.waitForLoadState('networkidle');
 
       // Take screenshot of workflows page
-      await page.screenshot({ path: 'mcp/screenshots/studio-workflows.png', fullPage: true });
+      await page.screenshot({ path: `${SCREENSHOTS_DIR}/studio-workflows.png`, fullPage: true });
     }
   });
 
@@ -56,12 +59,11 @@ test.describe('Mastra Studio UI', () => {
     const errorMessages = page.getByText(/cannot connect|connection failed|error/i);
     const hasErrors = (await errorMessages.count()) > 0;
 
-    if (!hasErrors) {
-      console.log('✓ Studio UI successfully connected to Mastra server API');
-    }
+    // Assert that there are no connection errors
+    expect(hasErrors).toBe(false);
 
     // Take screenshot
-    await page.screenshot({ path: 'mcp/screenshots/studio-api-status.png', fullPage: true });
+    await page.screenshot({ path: `${SCREENSHOTS_DIR}/studio-api-status.png`, fullPage: true });
   });
 });
 
@@ -79,7 +81,7 @@ test.describe('Mastra Server API', () => {
     await page.waitForLoadState('networkidle');
 
     // Take screenshot of Swagger UI
-    await page.screenshot({ path: 'mcp/screenshots/swagger-ui.png', fullPage: true });
+    await page.screenshot({ path: `${SCREENSHOTS_DIR}/swagger-ui.png`, fullPage: true });
 
     expect(page.url()).toContain('swagger-ui');
   });
