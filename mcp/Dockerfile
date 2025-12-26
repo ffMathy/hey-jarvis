@@ -62,8 +62,9 @@ COPY --from=builder /workspace/mcp/mcp-server ./mcp/mcp-server
 COPY --from=builder /workspace/node_modules ./node_modules
 COPY --from=builder /workspace/package.json ./package.json
 
-# Copy mastra source files (needed for mastra studio)
+# Copy mastra source files and built output (needed for mastra studio CLI)
 COPY --from=builder /workspace/mcp/mastra ./mcp/mastra
+COPY --from=builder /workspace/mcp/.mastra ./mcp/.mastra
 
 # Copy runtime scripts and configuration
 COPY mcp/supervisord.conf /etc/supervisord.conf
