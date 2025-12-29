@@ -12,7 +12,7 @@ fi
 echo "✓ Mastra server API is healthy"
 
 echo "Checking MCP server on port 4112..."
-if ! wget --spider --timeout=5 --tries=1 http://localhost:4112 2>/dev/null; then
+if ! nc -z localhost 4112 2>/dev/null; then
     echo "ERROR: MCP server (port 4112) is not responding"
     exit 1
 fi
