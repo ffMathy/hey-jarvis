@@ -20,11 +20,10 @@ echo "✓ MCP server is healthy"
 
 echo "Checking Mastra Studio UI on port 3000..."
 if ! wget --spider --timeout=5 --tries=1 http://localhost:3000 2>/dev/null; then
-    echo "⚠ Mastra Studio UI (port 3000) is not responding (optional service)"
-    # Don't exit 1 here since Studio is optional
-else
-    echo "✓ Mastra Studio UI is healthy"
+    echo "ERROR: Mastra Studio UI (port 3000) is not responding"
+    exit 1
 fi
+echo "✓ Mastra Studio UI is healthy"
 
-echo "✓ All required services are healthy"
+echo "✓ All services are healthy"
 exit 0
