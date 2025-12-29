@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.1](https://github.com/ffMathy/hey-jarvis/compare/root-v1.1.0...root-v1.1.1) (2025-12-29)
+
+
+### Bug Fixes
+
+* **ci:** add missing environment variables to deploy job ([aece9d6](https://github.com/ffMathy/hey-jarvis/commit/aece9d62b82d7223ac3649ab2a8d701de55b732b))
+* **ci:** pass missing environment variables to deploy devcontainer ([#425](https://github.com/ffMathy/hey-jarvis/issues/425)) ([e1936ff](https://github.com/ffMathy/hey-jarvis/commit/e1936ff07047dacd8d488db3e76f91a29aa41a13))
+
 ## [1.1.0](https://github.com/ffMathy/hey-jarvis/compare/root-v1.0.2...root-v1.1.0) (2025-12-29)
 
 
