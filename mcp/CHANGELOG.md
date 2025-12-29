@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.1.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.0.2...mcp-v1.1.0) (2025-12-29)
+
+
+### Features
+
+* **mcp:** add Mastra Studio UI support to Docker and local development ([a5f4420](https://github.com/ffMathy/hey-jarvis/commit/a5f442084d8dac58f06c1c994b20758e2fbb8a05))
+* **mcp:** add Mastra v1 Studio UI with Docker support (verified working) ([#423](https://github.com/ffMathy/hey-jarvis/issues/423)) ([d7dc6b0](https://github.com/ffMathy/hey-jarvis/commit/d7dc6b068c398e9b009862dc968719c10cb8bfa4))
+
+
+### Bug Fixes
+
+* **mcp:** make Studio UI health check mandatory ([edc2360](https://github.com/ffMathy/hey-jarvis/commit/edc236078f949c4918e44f8b6507338951e0148d))
+* **mcp:** resolve Docker build and make services work without mastra build ([caaab48](https://github.com/ffMathy/hey-jarvis/commit/caaab480b2a3d6d1316bed205c0a9854a7d161c6))
+
 ## [1.0.2](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.0.1...mcp-v1.0.2) (2025-12-11)
 
 
