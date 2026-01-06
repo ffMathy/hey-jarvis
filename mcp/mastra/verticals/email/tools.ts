@@ -548,14 +548,22 @@ export interface FindNewEmailsResult {
  * Find emails received since the last check.
  * Uses persistent storage to track the last seen email.
  * First call returns recent emails; subsequent calls return only new emails.
+ *
+ * @param storageKey - Key for tracking which emails have been seen (e.g., 'inbox', 'inbox-form-replies')
+ * @param mailboxFolder - Actual mailbox folder name in Microsoft Graph (default: 'inbox')
+ * @param limit - Maximum number of emails to return
  */
-export async function findNewEmailsSinceLastCheck(folder = 'inbox', limit = 50): Promise<FindNewEmailsResult> {
+export async function findNewEmailsSinceLastCheck(
+  storageKey = 'inbox',
+  mailboxFolder = 'inbox',
+  limit = 50,
+): Promise<FindNewEmailsResult> {
   const accessToken = await getMicrosoftAuth();
 
   const emailStateStorage = await getEmailStateStorage();
-  const lastSeenState = await emailStateStorage.getLastSeenEmail(folder);
+  const lastSeenState = await emailStateStorage.getLastSeenEmail(storageKey);
 
-  const baseUrl = `${GRAPH_API_BASE}/me/mailFolders/${folder}/messages?$top=${limit}&$orderby=receivedDateTime desc`;
+  const baseUrl = `${GRAPH_API_BASE}/me/mailFolders/${mailboxFolder}/messages?$top=${limit}&$orderby=receivedDateTime desc`;
 
   // If we have a last seen timestamp, filter for emails received after that time
   const filterExpression = lastSeenState ? `receivedDateTime gt ${lastSeenState.lastEmailReceivedDateTime}` : undefined;

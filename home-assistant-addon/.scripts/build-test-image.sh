@@ -15,10 +15,11 @@ echo "🧪 Building Hey Jarvis Home Assistant Addon Test Image..."
 # Build Docker test image
 echo "🐳 Building Docker test image with nginx..."
 docker build \
+    -f home-assistant-addon/Dockerfile \
     --build-arg NGINX_ALLOWED_IP=all \
     --target home-assistant-addon-end-to-end-test \
     -t home-assistant-addon-test \
-    home-assistant-addon
+    .
 
 echo "✅ Test image build complete!"
 echo "📦 Test image: home-assistant-addon-test"

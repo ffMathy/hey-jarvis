@@ -19,7 +19,8 @@
       "options": {
         "command": "./home-assistant-addon/.scripts/serve.sh",
         "cwd": "."
-      }
+      },
+      "dependsOn": ["build"]
     },
     "build": {
       "executor": "nx:run-commands",

@@ -127,16 +127,10 @@ describe('Shopping List API Tests', () => {
 
     // Accept either success (workflow completed) or 500 (workflow failed due to missing credentials)
     // but the endpoint should not return 401 or 400
-    expect([200, 500]).toContain(response.status);
+    expect([200]).toContain(response.status);
 
-    if (response.status === 200) {
-      expect(data.success).toBeDefined();
-      expect(data.message).toBeDefined();
-      console.log('✓ Shopping list API accepted request and workflow completed successfully');
-    } else {
-      // Workflow failed but API endpoint worked correctly
-      expect(data.success).toBe(false);
-      console.log('✓ Shopping list API accepted request (workflow failed - likely missing Bilka credentials)');
-    }
+    expect(data.success).toBeDefined();
+    expect(data.message).toBeDefined();
+    console.log('✓ Shopping list API accepted request and workflow completed successfully');
   }, 30000);
 });
