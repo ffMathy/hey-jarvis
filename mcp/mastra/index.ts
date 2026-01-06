@@ -113,7 +113,6 @@ export async function getMastra(): Promise<Mastra> {
       ...synapseTools,
       ...todoListTools,
       ...weatherTools,
-      ...webResearchTools,
     },
     bundler: {
       externals: ['@elevenlabs/elevenlabs-js', 'twilio'],
