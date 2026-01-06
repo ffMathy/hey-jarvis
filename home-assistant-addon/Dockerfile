@@ -33,9 +33,12 @@ RUN apk add --no-cache curl jq && \
 # we define this stage to simulate how Home Assistant's ingress works locally.
 FROM base AS home-assistant-addon-end-to-end-test
 
-# Install nginx for ingress simulation
+# Install bash, lsof, and nginx for test environment
 # Note: Using apk since the base MCP image uses Alpine Linux (bun:1-alpine)
-RUN apk add --no-cache nginx
+RUN apk add --no-cache bash lsof nginx
+
+# Copy lib directory from the mcp project context (needed by server-functions.sh)
+COPY mcp/lib/ /workspace/mcp/lib/
 
 # Copy nginx test configuration
 # Note: Using /etc/nginx/http.d/ for Alpine (the default nginx config directory in Alpine)
@@ -54,12 +57,6 @@ ENTRYPOINT ["/run-test.sh"]
 
 # the last stage is the final image used by Home Assistant.
 FROM base AS final
-
-# Install bash and lsof (needed by run.sh and server-functions.sh)
-RUN apk add --no-cache bash lsof
-
-# Copy lib directory from the mcp project context
-COPY mcp/lib/ /workspace/mcp/lib/
 
 # Copy addon's run.sh script
 COPY home-assistant-addon/run.sh /workspace/home-assistant-addon/run.sh

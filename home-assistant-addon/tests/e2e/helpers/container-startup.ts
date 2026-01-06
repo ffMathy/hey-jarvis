@@ -1,9 +1,39 @@
-import { type ChildProcess, spawn } from 'child_process';
+import { type ChildProcess, execSync, spawn } from 'child_process';
 import { promisify } from 'util';
-import { getMastraServerUrl, getMCPServerUrl } from './ports';
+import { PORTS } from './ports';
 
 const sleep = promisify(setTimeout);
+/**
+ * Get the container's IP address for direct Docker network access.
+ *
+ * In devcontainer environments with Docker-in-Docker, port forwarding to localhost doesn't work
+ * because the mapped ports are on the HOST machine, not accessible within the devcontainer.
+ * The solution is to access containers directly via their Docker bridge network IP address.
+ */
+async function getContainerIP(): Promise<string> {
+  const { execSync } = await import('child_process');
 
+  const maxRetries = 60; // 30 seconds total
+  const retryInterval = 500; // ms
+
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const result = execSync("docker inspect --format='{{.NetworkSettings.IPAddress}}' home-assistant-addon-test", {
+        encoding: 'utf-8',
+      }).trim();
+
+      if (result && result !== '<no value>') {
+        return result;
+      }
+    } catch {
+      // Container may not be ready yet
+    }
+
+    await sleep(retryInterval);
+  }
+
+  throw new Error('Failed to get container IP address after 30 seconds');
+}
 export interface ContainerStartupResult {
   dockerProcess: ChildProcess;
   cleanup: () => Promise<void>;
@@ -17,127 +47,96 @@ export interface ContainerStartupOptions {
 }
 
 /**
- * Starts the Docker container using the start-addon.sh script and waits for it to be ready.
- * Returns the docker process and a cleanup function.
+ * Check if a server is ready by making a health check request
  */
-export async function startContainer(options: ContainerStartupOptions = {}): Promise<ContainerStartupResult> {
-  const {
-    maxWaitTime = 60 * 1000 * 1, // 1 minute default
-    checkInterval = 2000, // 2 seconds default
-    additionalInitTime = 5000, // 5 seconds default
-    environmentVariables = {},
-  } = options;
+async function isServerReady(url: string): Promise<boolean> {
+  try {
+    const response = await fetch(url);
+    return response.status < 500;
+  } catch {
+    return false;
+  }
+}
 
-  const startTime = Date.now();
-  console.log('Starting Docker container using start-addon.sh...');
-
-  // Forward all process.env variables and merge with any additional ones
-  const env = { ...process.env, ...environmentVariables };
-
-  // Start the Docker container using start-addon.sh script
-  const dockerProcess = spawn('bash', ['./home-assistant-addon/tests/start-addon.sh'], {
-    stdio: 'inherit',
-    detached: false,
-    env,
-  });
-
-  // Wait for the container to be ready
-  console.log('Waiting for container to start...');
-
+/**
+ * Wait for both MCP and Mastra servers to be ready
+ */
+async function waitForServers(startTime: number, maxWaitTime: number, checkInterval: number): Promise<void> {
   let waitTime = 0;
-  let mcpReady = false;
-  let mastraReady = false;
+  const readyStatus = { mcp: false, mastra: false };
+
+  // Get container IP for Docker network access (required in Docker-in-Docker/devcontainer)
+  const containerIP = await getContainerIP();
+  const mcpUrl = `http://${containerIP}:${PORTS.MCP_SERVER}`;
+  const mastraUrl = `http://${containerIP}:${PORTS.MASTRA_SERVER}`;
+
+  console.log(`Accessing servers via Docker bridge network IP: ${containerIP}`);
+  console.log(`  MCP server: ${mcpUrl}`);
+  console.log(`  Mastra server: ${mastraUrl}`);
 
   while (waitTime < maxWaitTime) {
-    // Check MCP server if not yet ready
-    if (!mcpReady) {
-      try {
-        const response = await fetch(getMCPServerUrl());
-        if (response.status < 500) {
-          const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-          console.log(`MCP server is ready! (took ${elapsed}s)`);
-          mcpReady = true;
-        }
-      } catch {
-        // Container not ready yet
-      }
+    if (!readyStatus.mcp && (await isServerReady(mcpUrl))) {
+      readyStatus.mcp = true;
+      console.log(`MCP server is ready! (took ${((Date.now() - startTime) / 1000).toFixed(1)}s)`);
     }
 
-    // Check Mastra UI if not yet ready
-    if (!mastraReady) {
-      try {
-        const response = await fetch(getMastraServerUrl());
-        if (response.status < 500) {
-          const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-          console.log(`Mastra UI is ready! (took ${elapsed}s)`);
-          mastraReady = true;
-        }
-      } catch {
-        // Container not ready yet
-      }
+    if (!readyStatus.mastra && (await isServerReady(mastraUrl))) {
+      readyStatus.mastra = true;
+      console.log(`Mastra UI is ready! (took ${((Date.now() - startTime) / 1000).toFixed(1)}s)`);
     }
 
-    // Break when BOTH are ready
-    if (mcpReady && mastraReady) {
-      break;
+    if (readyStatus.mcp && readyStatus.mastra) {
+      return;
     }
 
     await sleep(checkInterval);
     waitTime += checkInterval;
 
-    // Log progress every 30 seconds
     if (waitTime % 30000 === 0) {
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-      console.log(`Still waiting for container... (${elapsed}s elapsed) - MCP: ${mcpReady}, Mastra: ${mastraReady}`);
+      console.log(`Still waiting... (${elapsed}s) - MCP: ${readyStatus.mcp}, Mastra: ${readyStatus.mastra}`);
     }
   }
 
-  if (waitTime >= maxWaitTime) {
-    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-    console.error('Container startup timeout!');
+  throw new Error(`Container failed to start within timeout (${((Date.now() - startTime) / 1000).toFixed(1)}s)`);
+}
 
-    throw new Error(`Container failed to start within timeout period (${elapsed}s elapsed)`);
-  }
+/**
+ * Wait for nginx ingress proxy to be ready
+ */
+async function waitForIngressProxy(checkInterval: number): Promise<void> {
+  console.log('Waiting for nginx ingress proxy to be ready...');
+  const ingressStartTime = Date.now();
+  let ingressWaitTime = 0;
+  const ingressMaxWaitTime = 30000;
 
-  // Wait for nginx ingress proxy to be ready (separate check)
-  if (mcpReady && mastraReady) {
-    console.log('Waiting for nginx ingress proxy to be ready...');
-    const ingressStartTime = Date.now();
-    let ingressWaitTime = 0;
-    const ingressMaxWaitTime = 30000; // 30 seconds max for nginx to start
+  const containerIP = await getContainerIP();
+  const ingressUrl = `http://${containerIP}:${PORTS.TEST_INGRESS_PORT}/api/hassio_ingress/redacted/`;
+  console.log(`Checking ingress at: ${ingressUrl}`);
 
-    while (ingressWaitTime < ingressMaxWaitTime) {
-      try {
-        // Check if the ingress path is working by making a request
-        // Using test external ingress port (15000) which maps to container port 5000
-        const response = await fetch('http://localhost:15000/api/hassio_ingress/redacted/');
-        if (response.status < 500) {
-          const elapsed = ((Date.now() - ingressStartTime) / 1000).toFixed(1);
-          console.log(`Nginx ingress proxy is ready! (took ${elapsed}s)`);
-          break;
-        }
-      } catch {
-        // Ingress not ready yet
-      }
-
-      await sleep(checkInterval);
-      ingressWaitTime += checkInterval;
+  while (ingressWaitTime < ingressMaxWaitTime) {
+    const ready = await isServerReady(ingressUrl);
+    if (ready) {
+      const elapsed = ((Date.now() - ingressStartTime) / 1000).toFixed(1);
+      console.log(`Nginx ingress proxy is ready! (took ${elapsed}s)`);
+      return;
     }
 
-    if (ingressWaitTime >= ingressMaxWaitTime) {
-      console.warn('Nginx ingress proxy did not respond within timeout, continuing anyway...');
-    }
+    await sleep(checkInterval);
+    ingressWaitTime += checkInterval;
   }
 
-  // Give it additional time to fully initialize
-  await sleep(additionalInitTime);
+  console.warn('Nginx ingress proxy did not respond within timeout, continuing anyway...');
+}
 
-  // Create cleanup function
-  const cleanup = async () => {
+/**
+ * Create cleanup function for Docker container
+ */
+function createCleanupFunction(dockerProcess: ChildProcess): () => Promise<void> {
+  return async () => {
     console.log('Cleaning up Docker container...');
 
-    if (dockerProcess && dockerProcess.pid) {
-      // Kill the process group to ensure cleanup
+    if (dockerProcess?.pid) {
       try {
         process.kill(dockerProcess.pid, 'SIGTERM');
       } catch (error) {
@@ -145,7 +144,6 @@ export async function startContainer(options: ContainerStartupOptions = {}): Pro
       }
     }
 
-    // Also run docker cleanup commands
     try {
       const cleanupProcess = spawn('docker', ['stop', 'home-assistant-addon-test'], {
         stdio: 'inherit',
@@ -160,11 +158,43 @@ export async function startContainer(options: ContainerStartupOptions = {}): Pro
       console.log('Docker cleanup error:', error);
     }
 
-    await sleep(5000); // Wait for cleanup
+    await sleep(5000);
   };
+}
+
+/**
+ * Starts the Docker container using the start-addon.sh script and waits for it to be ready.
+ * Returns the docker process and a cleanup function.
+ */
+export async function startContainer(options: ContainerStartupOptions = {}): Promise<ContainerStartupResult> {
+  const {
+    maxWaitTime = 60 * 1000 * 1,
+    checkInterval = 2000,
+    additionalInitTime = 5000,
+    environmentVariables = {},
+  } = options;
+
+  const startTime = Date.now();
+  console.log('Starting Docker container using start-addon.sh...');
+
+  const env = { ...process.env, ...environmentVariables };
+
+  // Use absolute path from project root
+  const scriptPath = '/workspaces/hey-jarvis/home-assistant-addon/tests/start-addon.sh';
+  const dockerProcess = spawn('bash', [scriptPath], {
+    stdio: 'inherit',
+    detached: false,
+    env,
+  });
+
+  console.log('Waiting for container to start...');
+
+  await waitForServers(startTime, maxWaitTime, checkInterval);
+  await waitForIngressProxy(checkInterval);
+  await sleep(additionalInitTime);
 
   return {
     dockerProcess,
-    cleanup,
+    cleanup: createCleanupFunction(dockerProcess),
   };
 }
