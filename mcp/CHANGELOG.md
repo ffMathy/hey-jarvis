@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.1.1](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.1.0...mcp-v1.1.1) (2026-01-06)
+
+
+### Bug Fixes
+
+* better base URL support ([9e6bfdf](https://github.com/ffMathy/hey-jarvis/commit/9e6bfdf7e19f4a56ff9d073f32236bae6c2dd31d))
+* better project startup ([a41faaa](https://github.com/ffMathy/hey-jarvis/commit/a41faaac498b893d656b9a9d730471b81ab0e843))
+* better start_mastra function ([60c27c3](https://github.com/ffMathy/hey-jarvis/commit/60c27c321ed5235dfaa3c3634385513d5d4d5792))
+* build failures ([428d5c0](https://github.com/ffMathy/hey-jarvis/commit/428d5c0e84a17347d9263ecea34e1447c940a5a9))
+* docker build ([f2467eb](https://github.com/ffMathy/hey-jarvis/commit/f2467eb4ae22e55a74ad2befd1e7db868c9d18e2))
+* jarvis stability ([#427](https://github.com/ffMathy/hey-jarvis/issues/427)) ([35298b1](https://github.com/ffMathy/hey-jarvis/commit/35298b10d354015eeab9e7059dfa64ba54304460))
+* skip ollama tests ([b541c04](https://github.com/ffMathy/hey-jarvis/commit/b541c0498b8bca5a0c87343be8211c2b8df8d8b9))
+* test ([1145c47](https://github.com/ffMathy/hey-jarvis/commit/1145c47bac24d7c1c6cd8664389f54891bdf221d))
+* updates to stability ([8215965](https://github.com/ffMathy/hey-jarvis/commit/8215965e8818c22d6a94cc4b0d399063d39c2612))
+
 ## [1.1.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.0.2...mcp-v1.1.0) (2025-12-29)
 
 
