@@ -118,6 +118,9 @@ export async function getMastra(): Promise<Mastra> {
     bundler: {
       externals: ['@elevenlabs/elevenlabs-js', 'twilio'],
     },
+    server: {
+      studioBase: process.env.MASTRA_STUDIO_BASE_URL,
+    },
   });
 }
 
