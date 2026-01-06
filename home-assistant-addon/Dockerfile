@@ -66,4 +66,4 @@ COPY ../mcp/lib/ /workspace/mcp/lib/
 RUN chmod +x /workspace/mcp/run.sh
 
 # Override CMD to use run.sh for Home Assistant addon
-CMD ["/workspace/mcp/run.sh"]
+CMD ["/workspace/home-assistant-addon/run.sh"]
