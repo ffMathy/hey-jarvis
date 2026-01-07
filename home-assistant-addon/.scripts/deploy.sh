@@ -58,7 +58,7 @@ docker buildx build \
     -t "ghcr.io/$IMAGE_OWNER/home-assistant-addon:$IMAGE_TAG" \
     --build-arg "BUILD_FROM=ghcr.io/$IMAGE_OWNER/mcp:$IMAGE_TAG" \
     --push \
-    home-assistant-addon
+    .
 
 echo "✅ Deployment complete!"
 echo "📦 Multi-arch images pushed to registry:"
