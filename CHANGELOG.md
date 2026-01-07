@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.3](https://github.com/ffMathy/hey-jarvis/compare/root-v1.1.2...root-v1.1.3) (2026-01-07)
+
+
+### Bug Fixes
+
+* docker build context in home-assistant-addon deploy script ([#431](https://github.com/ffMathy/hey-jarvis/issues/431)) ([f133e3a](https://github.com/ffMathy/hey-jarvis/commit/f133e3a3f580ee749ef3bfe39d8a9504ef4ffaa9))
+* **home-assistant-addon:** correct Docker build context in deploy script ([3b3c035](https://github.com/ffMathy/hey-jarvis/commit/3b3c035e9ee6c0e8bf0a3f393c739fec89b3a30c))
+
 ## [1.1.2](https://github.com/ffMathy/hey-jarvis/compare/root-v1.1.1...root-v1.1.2) (2026-01-06)
 
 
