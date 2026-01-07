@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.2](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.1.1...mcp-v1.1.2) (2026-01-07)
+
+
+### Miscellaneous Chores
+
+* **mcp:** Synchronize mcp versions
+
 ## [1.1.1](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.1.0...mcp-v1.1.1) (2026-01-06)
 
 
