@@ -14,61 +14,46 @@ COPY mcp/package.json ./mcp/
 # since Docker context doesn't include all workspace packages
 RUN jq 'del(.workspaces) | del(.scripts.prepare)' package.json.original > package.json && rm package.json.original
 
-# Install all dependencies (needed for TypeScript compilation and mastra build)
+# Install all dependencies (needed for TypeScript compilation)
 RUN bun install
 
 # Copy source code
 COPY tsconfig.base.json ./
 COPY mcp/ ./mcp/
 
-# Build Mastra application using official mastra build command
-# This creates .mastra/output/ with bundled Hono server
-RUN cd mcp && bunx mastra build --dir ./mastra
-
-# Compile Mastra output to native binary for faster startup and smaller size
-# Using --target=bun ensures compatibility with Bun runtime features
-# Note: --bytecode flag removed due to CJS compatibility issues (https://github.com/oven-sh/bun/issues/14412)
-RUN bun build --compile --minify --target=bun \
-    ./mcp/.mastra/output/index.mjs \
-    --outfile ./mcp/mastra-server
-
-# Compile MCP server to native binary for faster startup and smaller size
-# Note: --bytecode flag removed due to CJS compatibility issues (https://github.com/oven-sh/bun/issues/14412)
-RUN bun build --compile --minify --target=bun \
-    ./mcp/mastra/mcp-server.ts \
-    --outfile ./mcp/mcp-server
-
-# Production stage - use Alpine for smaller image size
-# No need for Bun runtime since we're running native compiled binaries
-FROM docker.io/alpine:3.21 AS production
+# Production stage - use Bun Alpine for runtime (needed for mastra studio CLI)
+FROM docker.io/oven/bun:1-alpine AS production
 
 ENV HOST=0.0.0.0
 ENV NODE_ENV=production
 ENV MASTRA_SERVER_PORT=4111
 ENV MCP_SERVER_PORT=4112
+ENV MASTRA_STUDIO_PORT=3000
 
 WORKDIR /workspace
 
-# Install supervisor for process management and wget for healthcheck
-RUN apk add --no-cache supervisor wget
+# Install supervisor for process management, wget for healthcheck, and netcat for port checking
+RUN apk add --no-cache supervisor wget netcat-openbsd
 
-# Copy compiled Mastra server binary from builder
-COPY --from=builder /workspace/mcp/mastra-server ./mcp/mastra-server
+# Copy node_modules and package files
+COPY --from=builder /workspace/node_modules ./node_modules
+COPY --from=builder /workspace/package.json ./package.json
 
-# Copy compiled MCP server binary from builder
-COPY --from=builder /workspace/mcp/mcp-server ./mcp/mcp-server
+# Copy mastra source files (needed for mastra studio and running server directly)
+COPY --from=builder /workspace/tsconfig.base.json ./tsconfig.base.json
+COPY --from=builder /workspace/mcp ./mcp
 
 # Copy runtime scripts and configuration
 COPY mcp/supervisord.conf /etc/supervisord.conf
 COPY mcp/healthcheck.sh /workspace/healthcheck.sh
 
-# Expose ports for services (4111: Mastra Server, 4112: MCP Server)
-EXPOSE 4111 4112
+# Expose ports for services (4111: Mastra Server, 4112: MCP Server, 3000: Studio UI)
+EXPOSE 4111 4112 3000
 
-# Make binaries and healthcheck executable
-RUN chmod +x ./mcp/mastra-server ./mcp/mcp-server /workspace/healthcheck.sh
+# Make healthcheck executable
+RUN chmod +x /workspace/healthcheck.sh
 
-# Health check to verify both services are running
+# Health check to verify all services are running
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
   CMD ["/workspace/healthcheck.sh"]
 

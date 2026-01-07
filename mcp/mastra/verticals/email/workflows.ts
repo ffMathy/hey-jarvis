@@ -85,7 +85,7 @@ const FORM_REPLIES_FOLDER_KEY = 'inbox-form-replies';
  * Creates a step to search for new emails since last check.
  * Each workflow uses its own folder key to track emails independently.
  */
-const createSearchNewEmailsStep = (folderKey: string, stepId: string) =>
+const createSearchNewEmailsStep = (storageKey: string, stepId: string) =>
   createStep({
     id: stepId,
     description: 'Search for new emails received since the last workflow run',
@@ -98,7 +98,7 @@ const createSearchNewEmailsStep = (folderKey: string, stepId: string) =>
       lastCheckTimestamp: z.string().optional(),
     }),
     execute: async () => {
-      return await findNewEmailsSinceLastCheck(folderKey, 50);
+      return await findNewEmailsSinceLastCheck(storageKey, 'inbox', 50);
     },
   });
 

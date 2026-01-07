@@ -26,7 +26,7 @@ docker build \
     -t "ghcr.io/$IMAGE_OWNER/home-assistant-addon:latest" \
     -t "ghcr.io/$IMAGE_OWNER/home-assistant-addon:$IMAGE_TAG" \
     --build-arg "BUILD_FROM=ghcr.io/$IMAGE_OWNER/mcp:$IMAGE_TAG" \
-    home-assistant-addon
+    .
 
 echo "✅ Build complete!"
 echo "📦 Local images:"

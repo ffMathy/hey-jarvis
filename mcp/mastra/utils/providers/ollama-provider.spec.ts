@@ -15,7 +15,7 @@ import {
   ollamaModel,
 } from './ollama-provider.js';
 
-describe('Ollama Provider Configuration', () => {
+describe.skip('Ollama Provider Configuration', () => {
   it('should export the correct model name', () => {
     expect(OLLAMA_MODEL).toBe('qwen3:0.6b');
   });

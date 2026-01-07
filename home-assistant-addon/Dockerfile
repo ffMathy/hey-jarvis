@@ -33,19 +33,22 @@ RUN apk add --no-cache curl jq && \
 # we define this stage to simulate how Home Assistant's ingress works locally.
 FROM base AS home-assistant-addon-end-to-end-test
 
-# Install nginx for ingress simulation
+# Install bash, lsof, and nginx for test environment
 # Note: Using apk since the base MCP image uses Alpine Linux (bun:1-alpine)
-RUN apk add --no-cache nginx
+RUN apk add --no-cache bash lsof nginx
+
+# Copy lib directory from the mcp project context (needed by server-functions.sh)
+COPY mcp/lib/ /workspace/mcp/lib/
 
 # Copy nginx test configuration
 # Note: Using /etc/nginx/http.d/ for Alpine (the default nginx config directory in Alpine)
-COPY tests/nginx.tests.conf /etc/nginx/http.d/default.conf
+COPY home-assistant-addon/tests/nginx.tests.conf /etc/nginx/http.d/default.conf
 
 # Copy test-specific supervisord configuration (includes nginx)
-COPY tests/supervisord-test.conf /etc/supervisord-test.conf
+COPY home-assistant-addon/tests/supervisord-test.conf /etc/supervisord-test.conf
 
 # Copy test entrypoint script
-COPY tests/run-test.sh /run-test.sh
+COPY home-assistant-addon/tests/run-test.sh /run-test.sh
 RUN chmod +x /run-test.sh
 
 # Override entrypoint to start the MCP server
@@ -55,15 +58,15 @@ ENTRYPOINT ["/run-test.sh"]
 # the last stage is the final image used by Home Assistant.
 FROM base AS final
 
-# Install bash and lsof (needed by run.sh and server-functions.sh)
-RUN apk add --no-cache bash lsof
+# Install bash (required by run.sh and server-functions.sh)
+# Note: Using apk since the base MCP image uses Alpine Linux (bun:1-alpine)
+RUN apk add --no-cache bash
 
-# Copy run.sh and lib directory from the mcp project context
-COPY ../mcp/run.sh /workspace/mcp/run.sh
-COPY ../mcp/lib/ /workspace/mcp/lib/
+# Copy addon's run.sh script
+COPY home-assistant-addon/run.sh /workspace/home-assistant-addon/run.sh
 
 # Make run.sh executable
-RUN chmod +x /workspace/mcp/run.sh
+RUN chmod +x /workspace/home-assistant-addon/run.sh
 
 # Override CMD to use run.sh for Home Assistant addon
-CMD ["/workspace/mcp/run.sh"]
+CMD ["/workspace/home-assistant-addon/run.sh"]

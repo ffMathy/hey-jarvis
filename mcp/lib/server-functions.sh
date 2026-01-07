@@ -26,14 +26,7 @@ kill_process_on_port() {
     fi
 }
 
-start_mastra() {
-    echo "Starting Mastra server on port ${MASTRA_SERVER_PORT}..." >&2
-    echo "Starting J.A.R.V.I.S. MCP server on port ${MCP_SERVER_PORT}..." >&2
-    
-    # Export environment variables for supervisord
-    export MASTRA_SERVER_PORT
-    export MCP_SERVER_PORT
-    
+start_mastra() {    
     # Determine which supervisord config to use
     # Default to production config, but allow override for tests
     SUPERVISORD_CONFIG=${SUPERVISORD_CONFIG:-/etc/supervisord.conf}

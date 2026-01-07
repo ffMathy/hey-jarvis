@@ -1,5 +1,40 @@
 # Changelog
 
+## [1.1.3](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v1.1.2...home-assistant-addon-v1.1.3) (2026-01-07)
+
+
+### Bug Fixes
+
+* **home-assistant-addon:** install bash in Docker image to fix SIGTERM error ([0834a2c](https://github.com/ffMathy/hey-jarvis/commit/0834a2c222eb3891fb0ef7e47e751bbfa890897a))
+* **home-assistant-addon:** install bash in final Docker stage ([#433](https://github.com/ffMathy/hey-jarvis/issues/433)) ([a6b5e98](https://github.com/ffMathy/hey-jarvis/commit/a6b5e98d6ca3521ccaddc8c5fedf8da713812a7d))
+
+## [1.1.2](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v1.1.1...home-assistant-addon-v1.1.2) (2026-01-07)
+
+
+### Bug Fixes
+
+* docker build context in home-assistant-addon deploy script ([#431](https://github.com/ffMathy/hey-jarvis/issues/431)) ([f133e3a](https://github.com/ffMathy/hey-jarvis/commit/f133e3a3f580ee749ef3bfe39d8a9504ef4ffaa9))
+* **home-assistant-addon:** correct Docker build context in deploy script ([3b3c035](https://github.com/ffMathy/hey-jarvis/commit/3b3c035e9ee6c0e8bf0a3f393c739fec89b3a30c))
+
+## [1.1.1](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v1.1.0...home-assistant-addon-v1.1.1) (2026-01-06)
+
+
+### Bug Fixes
+
+* better base URL support ([9e6bfdf](https://github.com/ffMathy/hey-jarvis/commit/9e6bfdf7e19f4a56ff9d073f32236bae6c2dd31d))
+* better project startup ([a41faaa](https://github.com/ffMathy/hey-jarvis/commit/a41faaac498b893d656b9a9d730471b81ab0e843))
+* build issues with dockerfile ([569836f](https://github.com/ffMathy/hey-jarvis/commit/569836f45b0b0cc6553c36b2fce0863775099610))
+* docker build ([f2467eb](https://github.com/ffMathy/hey-jarvis/commit/f2467eb4ae22e55a74ad2befd1e7db868c9d18e2))
+* jarvis stability ([#427](https://github.com/ffMathy/hey-jarvis/issues/427)) ([35298b1](https://github.com/ffMathy/hey-jarvis/commit/35298b10d354015eeab9e7059dfa64ba54304460))
+* updates to stability ([8215965](https://github.com/ffMathy/hey-jarvis/commit/8215965e8818c22d6a94cc4b0d399063d39c2612))
+
+## [1.1.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v1.0.2...home-assistant-addon-v1.1.0) (2025-12-29)
+
+
+### Miscellaneous Chores
+
+* **home-assistant-addon:** Synchronize mcp versions
+
 ## [1.0.2](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v1.0.1...home-assistant-addon-v1.0.2) (2025-12-11)
 
 

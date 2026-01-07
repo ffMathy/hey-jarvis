@@ -18,5 +18,9 @@ import { google } from '../../utils/providers/google-provider.js';
 
 // Export the Google Search tool for the web research agent
 export const webResearchTools = {
-  googleSearch: google.tools.googleSearch({}),
+  googleSearch: {
+    id: 'googleSearch',
+    description: 'Tool for performing web searches using Google Search API.',
+    ...google.tools.googleSearch({}),
+  },
 };

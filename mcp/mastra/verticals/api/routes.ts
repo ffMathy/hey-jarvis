@@ -73,6 +73,7 @@ export function createWorkflowApiHandler(workflow: NamedWorkflow) {
 
       if (result.status !== 'success') {
         const errorMessage = extractWorkflowError(result);
+
         logger.error('[API] Workflow failed', {
           workflowName,
           error: errorMessage,
