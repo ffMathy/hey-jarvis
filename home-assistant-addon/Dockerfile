@@ -58,6 +58,10 @@ ENTRYPOINT ["/run-test.sh"]
 # the last stage is the final image used by Home Assistant.
 FROM base AS final
 
+# Install bash (required by run.sh and server-functions.sh)
+# Note: Using apk since the base MCP image uses Alpine Linux (bun:1-alpine)
+RUN apk add --no-cache bash
+
 # Copy addon's run.sh script
 COPY home-assistant-addon/run.sh /workspace/home-assistant-addon/run.sh
 
