@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.5](https://github.com/ffMathy/hey-jarvis/compare/root-v1.1.4...root-v1.1.5) (2026-01-07)
+
+
+### Bug Fixes
+
+* add port 4113/tcp to config.json ([c580532](https://github.com/ffMathy/hey-jarvis/commit/c580532467c506ac657178b7e0d464d57ca308fd))
+* add port 4113/tcp to config.json ([#435](https://github.com/ffMathy/hey-jarvis/issues/435)) ([ff7a462](https://github.com/ffMathy/hey-jarvis/commit/ff7a462f20dc02884d978926c9a1eb5edc817423))
+
 ## [1.1.4](https://github.com/ffMathy/hey-jarvis/compare/root-v1.1.3...root-v1.1.4) (2026-01-07)
 
 
