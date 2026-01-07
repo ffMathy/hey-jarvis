@@ -13,7 +13,8 @@
   "init": false,
   "ports": {
     "4111/tcp": null,
-    "4112/tcp": null
+    "4112/tcp": null,
+    "4113/tcp": null
   },
   "ports_description": {
     "4111/tcp": "Mastra API server",
