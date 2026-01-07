@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.4](https://github.com/ffMathy/hey-jarvis/compare/root-v1.1.3...root-v1.1.4) (2026-01-07)
+
+
+### Bug Fixes
+
+* **home-assistant-addon:** install bash in Docker image to fix SIGTERM error ([0834a2c](https://github.com/ffMathy/hey-jarvis/commit/0834a2c222eb3891fb0ef7e47e751bbfa890897a))
+* **home-assistant-addon:** install bash in final Docker stage ([#433](https://github.com/ffMathy/hey-jarvis/issues/433)) ([a6b5e98](https://github.com/ffMathy/hey-jarvis/commit/a6b5e98d6ca3521ccaddc8c5fedf8da713812a7d))
+
 ## [1.1.3](https://github.com/ffMathy/hey-jarvis/compare/root-v1.1.2...root-v1.1.3) (2026-01-07)
 
 
