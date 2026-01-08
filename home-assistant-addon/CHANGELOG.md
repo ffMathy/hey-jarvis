@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.5](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v1.1.4...home-assistant-addon-v1.1.5) (2026-01-08)
+
+
+### Bug Fixes
+
+* **addon:** route ingress traffic through nginx for path rewriting ([#437](https://github.com/ffMathy/hey-jarvis/issues/437)) ([9836ad8](https://github.com/ffMathy/hey-jarvis/commit/9836ad814d77bc8f09ae6e74ec31e0dbe2ce176b))
+* **addon:** update nginx and supervisord to handle ingress on port 4113 ([e0ae5c0](https://github.com/ffMathy/hey-jarvis/commit/e0ae5c0147ad5248a282ae7a23041530f9aecb89))
+
 ## [1.1.4](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v1.1.3...home-assistant-addon-v1.1.4) (2026-01-07)
 
 
