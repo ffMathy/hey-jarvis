@@ -10,7 +10,7 @@ export const PORTS = {
   // Note: mastra dev serves both API and Studio on the same port (4111)
   MASTRA_SERVER: 4111,
   MASTRA_STUDIO: 4111,
-  MCP_SERVER: 8112,
+  MCP_SERVER: 4112,
   // Test ingress port (internal container port for nginx proxy)
   TEST_INGRESS_PORT: 5000,
 

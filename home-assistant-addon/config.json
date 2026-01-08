@@ -4,26 +4,21 @@
   "slug": "hey-jarvis-mcp",
   "description": "AI-powered home assistant with Mastra agents for weather, shopping, cooking, and more via Model Context Protocol",
   "url": "https://github.com/ffMathy/hey-jarvis",
-  "arch": [
-    "amd64",
-    "aarch64"
-  ],
+  "arch": ["amd64", "aarch64"],
   "startup": "application",
   "boot": "auto",
   "init": false,
   "ports": {
     "4111/tcp": null,
-    "4112/tcp": null,
-    "4113/tcp": null
+    "4112/tcp": null
   },
   "ports_description": {
-    "4111/tcp": "Mastra API server",
-    "4112/tcp": "Mastra MCP server",
-    "4113/tcp": "Mastra Studio server"
+    "4111/tcp": "Mastra Dev (both API and Studio)",
+    "4112/tcp": "MCP server"
   },
-  "webui": "http://[HOST]:[PORT:4113]",
+  "webui": "http://[HOST]:[PORT:4111]",
   "ingress": true,
-  "ingress_port": 4113,
+  "ingress_port": 4111,
   "panel_icon": "mdi:robot",
   "panel_title": "Hey Jarvis",
   "panel_admin": false,
@@ -31,9 +26,7 @@
   "hassio_api": true,
   "hassio_role": "default",
   "homeassistant_api": true,
-  "privileged": [
-    "NET_ADMIN"
-  ],
+  "privileged": ["NET_ADMIN"],
   "full_access": false,
   "apparmor": true,
   "options": {
@@ -93,13 +86,7 @@
   "environment": {
     "HOST": "0.0.0.0"
   },
-  "map": [
-    "config:rw",
-    "share:rw",
-    "media:rw"
-  ],
-  "backup_exclude": [
-    "llm/models"
-  ],
+  "map": ["config:rw", "share:rw", "media:rw"],
+  "backup_exclude": ["llm/models"],
   "image": "ghcr.io/ffmathy/home-assistant-addon"
 }
