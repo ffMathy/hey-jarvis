@@ -2188,6 +2188,36 @@ When working with Docker images:
 
 ### Core Development Principles
 
+#### 🔌 **Port Configuration Management**
+**CRITICAL: When changing ports, ALWAYS update ALL of these files:**
+
+1. **Service Configuration**:
+   - `mcp/supervisord.conf` - Production service ports
+   - `home-assistant-addon/supervisord.conf` - Addon service ports
+   - `home-assistant-addon/tests/supervisord-test.conf` - Test service ports
+
+2. **Port Constants**:
+   - `mcp/lib/ports.sh` - Bash port constants (centralized)
+   - `home-assistant-addon/tests/e2e/helpers/ports.ts` - TypeScript port constants (centralized)
+
+3. **Proxy Configuration**:
+   - `home-assistant-addon/nginx.conf` - Production nginx proxy targets
+   - `home-assistant-addon/tests/nginx.tests.conf` - Test nginx proxy targets
+
+4. **Home Assistant Addon Metadata** ⚠️:
+   - `home-assistant-addon/config.json` - Port mappings and descriptions for Home Assistant UI
+
+5. **Documentation**:
+   - `mcp/AGENTS.md` - Update port references in documentation
+
+**Port Change Checklist**:
+- [ ] Update all supervisord.conf files
+- [ ] Update ports.sh and ports.ts
+- [ ] Update nginx.conf files
+- [ ] Update config.json port descriptions ⚠️
+- [ ] Update AGENTS.md documentation
+- [ ] Run tests: `bunx nx test home-assistant-addon`
+
 #### 🎯 **YAGNI (You Aren't Gonna Need It)**
 This project strictly follows the YAGNI principle - avoid adding functionality or configuration options until they are actually needed:
 
@@ -2237,7 +2267,7 @@ const port = 8111;
 // Workaround for nginx auth module not supporting dynamic key files - must be created before nginx starts
 createJWTKeyFile();
 
-// Port 4112 exposed externally for MCP clients, while internal service uses 8112 to avoid conflicts
+// Port 4112 used for MCP server (both internally and externally)
 const mcpExternalPort = 4112;
 ```
 
