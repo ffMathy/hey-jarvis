@@ -1,9 +1,10 @@
 import { z } from 'zod';
+import { getEntityNoiseBaselineStorage } from '../../storage/index.js';
 import { isValidationError } from '../../utils/index.js';
 import { logger } from '../../utils/logger.js';
 import { createStep, createWorkflow } from '../../utils/workflows/workflow-factory.js';
 import { registerStateChange } from '../synapse/tools.js';
-import { getChangedDevicesSince } from './tools.js';
+import { getChangedDevicesSince, getHistoricalStates } from './tools.js';
 
 /**
  * Label used to mark devices/entities that should be excluded from state change monitoring.
@@ -16,6 +17,73 @@ const SENSITIVE_LABEL = 'sensitive';
  * Set to 3 hours to match the scheduler interval.
  */
 const STATE_CHANGE_WINDOW_SECONDS = 3 * 60 * 60;
+
+/**
+ * Time window in seconds to look back for historical data when calculating noise baselines.
+ * Set to 15 minutes to capture recent fluctuation patterns.
+ */
+const NOISE_BASELINE_HISTORY_SECONDS = 15 * 60;
+
+// Calculate noise baselines from historical data
+const calculateNoiseBaselines = createStep({
+  id: 'calculate-noise-baselines',
+  description:
+    'Fetches historical state data and calculates noise baselines for entities to filter insignificant changes',
+  inputSchema: z.object({}),
+  outputSchema: z.object({
+    baselinesCalculated: z.number(),
+    timestamp: z.string(),
+  }),
+  execute: async () => {
+    const startTime = new Date(Date.now() - NOISE_BASELINE_HISTORY_SECONDS * 1000).toISOString();
+    const endTime = new Date().toISOString();
+
+    logger.info('Calculating noise baselines', {
+      startTime,
+      endTime,
+      windowSeconds: NOISE_BASELINE_HISTORY_SECONDS,
+    });
+
+    try {
+      const result = await getHistoricalStates.execute({
+        startTime,
+        endTime,
+        minimalResponse: true,
+      });
+
+      // Handle ValidationError case
+      if (isValidationError(result)) {
+        logger.error('Failed to fetch historical states for noise baseline calculation', {
+          message: result.message,
+        });
+        return {
+          baselinesCalculated: 0,
+          timestamp: new Date().toISOString(),
+        };
+      }
+
+      // Calculate baselines from history
+      const storage = await getEntityNoiseBaselineStorage();
+      const baselines = await storage.calculateBaselinesFromHistory(result.history);
+
+      logger.info('Noise baselines calculated', {
+        baselinesCalculated: baselines.length,
+        entityCount: result.entityCount,
+      });
+
+      return {
+        baselinesCalculated: baselines.length,
+        timestamp: new Date().toISOString(),
+      };
+    } catch (error) {
+      logger.error('Error calculating noise baselines', { error });
+      return {
+        baselinesCalculated: 0,
+        timestamp: new Date().toISOString(),
+      };
+    }
+  },
+});
 
 // Fetch recently changed device states from Home Assistant
 const fetchRecentlyChangedDevices = createStep({
@@ -103,7 +171,7 @@ const fetchRecentlyChangedDevices = createStep({
 // Trigger state change notifications for detected changes
 const triggerStateChangeNotifications = createStep({
   id: 'trigger-state-change-notifications',
-  description: 'Triggers state change notifications for detected IoT device changes',
+  description: 'Triggers state change notifications for detected IoT device changes, filtering out noise',
   inputSchema: z.object({
     devices: z.array(
       z.object({
@@ -123,16 +191,63 @@ const triggerStateChangeNotifications = createStep({
   outputSchema: z.object({
     changesProcessed: z.number(),
     notificationsTriggered: z.number(),
+    filteredAsNoise: z.number(),
     timestamp: z.string(),
   }),
   execute: async ({ inputData }) => {
     let changesProcessed = 0;
     let notificationsTriggered = 0;
+    let filteredAsNoise = 0;
+
+    // Get storage instances
+    const noiseBaselineStorage = await getEntityNoiseBaselineStorage();
 
     for (const device of inputData.devices) {
       for (const entity of device.entities) {
         changesProcessed++;
+
         try {
+          // Check if this is a significant change using noise baseline
+          const baseline = await noiseBaselineStorage.getBaseline(entity.id);
+
+          if (baseline) {
+            // We need the previous state to compare - for now, we'll just use the baseline
+            // In a real scenario, we'd fetch the previous state from device state storage
+            // For numeric values, we can check if the change would be significant
+            const isNumeric = baseline.stateType === 'numeric';
+
+            if (isNumeric && baseline.numericThreshold) {
+              const currentValue = Number.parseFloat(entity.newState);
+
+              if (!Number.isNaN(currentValue)) {
+                // Check if any of the historical states would be considered "unchanged" with this new value
+                const historicalNumeric = baseline.historicalStates
+                  .map((s) => Number.parseFloat(s))
+                  .filter((n) => !Number.isNaN(n));
+
+                if (historicalNumeric.length > 0) {
+                  // Calculate average historical value
+                  const avgHistorical = historicalNumeric.reduce((sum, v) => sum + v, 0) / historicalNumeric.length;
+
+                  // Check if change from average is within noise threshold
+                  const changeFromAverage = Math.abs(currentValue - avgHistorical);
+
+                  if (changeFromAverage <= baseline.numericThreshold) {
+                    logger.info('State change filtered as noise', {
+                      entityId: entity.id,
+                      deviceName: device.name,
+                      changeAmount: changeFromAverage,
+                      threshold: baseline.numericThreshold,
+                    });
+                    filteredAsNoise++;
+                    continue; // Skip this change as it's within noise threshold
+                  }
+                }
+              }
+            }
+          }
+
+          // If we reach here, the change is significant (or no baseline exists)
           await registerStateChange.execute({
             source: 'internet-of-things',
             stateType: 'device_state_change',
@@ -165,6 +280,7 @@ const triggerStateChangeNotifications = createStep({
     return {
       changesProcessed,
       notificationsTriggered,
+      filteredAsNoise,
       timestamp: inputData.timestamp,
     };
   },
@@ -172,17 +288,19 @@ const triggerStateChangeNotifications = createStep({
 
 // IoT Monitoring Workflow
 // Uses Home Assistant's last_changed timestamp to detect recent state changes,
-// filters out sensitive devices/entities, and triggers state change notifications.
-// This matches the old n8n behavior of polling for changes in the last 60 seconds.
+// filters out sensitive devices/entities, calculates noise baselines from historical data,
+// and triggers state change notifications only for significant changes.
 export const iotMonitoringWorkflow = createWorkflow({
   id: 'iotMonitoringWorkflow',
   inputSchema: z.object({}),
   outputSchema: z.object({
     changesProcessed: z.number(),
     notificationsTriggered: z.number(),
+    filteredAsNoise: z.number(),
     timestamp: z.string(),
   }),
 })
+  .then(calculateNoiseBaselines)
   .then(fetchRecentlyChangedDevices)
   .then(triggerStateChangeNotifications)
   .commit();
