@@ -72,7 +72,7 @@ test.describe('Docker Container Integration Tests', () => {
     //
     // Access via Docker bridge network IP (required for Docker-in-Docker/devcontainer)
     const containerIP = await getContainerIP();
-    const ingressUrl = `http://${containerIP}:${PORTS.TEST_INGRESS_PORT}/api/hassio_ingress/redacted/api/agents`;
+    const ingressUrl = `http://${containerIP}:${PORTS.TEST_INGRESS_PORT}/api/hassio_ingress/redacted/`;
     console.log(`Navigating to ingress URL: ${ingressUrl}`);
 
     const response = await page.goto(ingressUrl);

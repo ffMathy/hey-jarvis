@@ -1,4 +1,5 @@
 ﻿#!/usr/bin/env pwsh
+Set-PSDebug -Trace 1
 
 param(
     [Parameter(Mandatory=$true)]
@@ -31,4 +32,5 @@ Get-ChildItem env: | Where-Object { $_.Name -like "HEY_JARVIS_*" -and $_.Value }
 }
 
 # Execute esphome with collected arguments
-python3.13 -m esphome @SubArgs $Action $YAML_FILE
+echo python3.13 -m esphome @SubArgs $Action $YAML_FILE --device /dev/ttyUSB0
+# python3.13 -m esphome @SubArgs $Action $YAML_FILE --device /dev/ttyUSB0

@@ -59,7 +59,7 @@ async function isServerReady(url: string): Promise<boolean> {
 }
 
 /**
- * Wait for both MCP and Mastra servers to be ready
+ * Wait for MCP server and Mastra dev (which serves both API and Studio on same port) to be ready
  */
 async function waitForServers(startTime: number, maxWaitTime: number, checkInterval: number): Promise<void> {
   let waitTime = 0;
@@ -68,11 +68,11 @@ async function waitForServers(startTime: number, maxWaitTime: number, checkInter
   // Get container IP for Docker network access (required in Docker-in-Docker/devcontainer)
   const containerIP = await getContainerIP();
   const mcpUrl = `http://${containerIP}:${PORTS.MCP_SERVER}`;
-  const mastraUrl = `http://${containerIP}:${PORTS.MASTRA_SERVER}`;
+  const mastraUrl = `http://${containerIP}:${PORTS.MASTRA_SERVER}`; // Same as MASTRA_STUDIO (both 4111)
 
   console.log(`Accessing servers via Docker bridge network IP: ${containerIP}`);
   console.log(`  MCP server: ${mcpUrl}`);
-  console.log(`  Mastra server: ${mastraUrl}`);
+  console.log(`  Mastra dev (API + Studio): ${mastraUrl}`);
 
   while (waitTime < maxWaitTime) {
     if (!readyStatus.mcp && (await isServerReady(mcpUrl))) {
@@ -82,7 +82,7 @@ async function waitForServers(startTime: number, maxWaitTime: number, checkInter
 
     if (!readyStatus.mastra && (await isServerReady(mastraUrl))) {
       readyStatus.mastra = true;
-      console.log(`Mastra UI is ready! (took ${((Date.now() - startTime) / 1000).toFixed(1)}s)`);
+      console.log(`Mastra dev is ready! (took ${((Date.now() - startTime) / 1000).toFixed(1)}s)`);
     }
 
     if (readyStatus.mcp && readyStatus.mastra) {
