@@ -155,6 +155,9 @@ bashio::log.info "Log level set to: ${LOG_LEVEL}"
 export MASTRA_STUDIO_BASE_URL=$(bashio::addon.ingress_entry)
 bashio::log.info "Mastra Studio Base URL set to: ${MASTRA_STUDIO_BASE_URL}"
 
+# Use addon-specific supervisord config that includes nginx
+export SUPERVISORD_CONFIG=/etc/supervisord-addon.conf
+
 # Start both Mastra UI and MCP server using supervisord
 # This will exec and replace the current process, so code after this won't run
 start_mastra
