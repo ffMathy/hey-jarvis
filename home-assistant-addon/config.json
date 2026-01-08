@@ -4,10 +4,7 @@
   "slug": "hey-jarvis-mcp",
   "description": "AI-powered home assistant with Mastra agents for weather, shopping, cooking, and more via Model Context Protocol",
   "url": "https://github.com/ffMathy/hey-jarvis",
-  "arch": [
-    "amd64",
-    "aarch64"
-  ],
+  "arch": ["amd64", "aarch64"],
   "startup": "application",
   "boot": "auto",
   "init": false,
@@ -31,9 +28,7 @@
   "hassio_api": true,
   "hassio_role": "default",
   "homeassistant_api": true,
-  "privileged": [
-    "NET_ADMIN"
-  ],
+  "privileged": ["NET_ADMIN"],
   "full_access": false,
   "apparmor": true,
   "options": {
@@ -93,13 +88,7 @@
   "environment": {
     "HOST": "0.0.0.0"
   },
-  "map": [
-    "config:rw",
-    "share:rw",
-    "media:rw"
-  ],
-  "backup_exclude": [
-    "llm/models"
-  ],
+  "map": ["config:rw", "share:rw", "media:rw"],
+  "backup_exclude": ["llm/models"],
   "image": "ghcr.io/ffmathy/home-assistant-addon"
 }

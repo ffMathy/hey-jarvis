@@ -119,6 +119,7 @@ export async function getMastra(): Promise<Mastra> {
     },
     server: {
       studioBase: process.env.MASTRA_STUDIO_BASE_URL,
+      port: process.env.MASTRA_SERVER_PORT ? Number(process.env.MASTRA_SERVER_PORT) : 4111,
     },
   });
 }
