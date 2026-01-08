@@ -1012,9 +1012,26 @@ All environment variables use the `HEY_JARVIS_` prefix for easy management and D
 - **Shopping (Search)**: `HEY_JARVIS_ALGOLIA_API_KEY`, `HEY_JARVIS_ALGOLIA_APPLICATION_ID`, `HEY_JARVIS_BILKA_USER_TOKEN` for product search
 - **ElevenLabs**: `HEY_JARVIS_ELEVENLABS_API_KEY`, `HEY_JARVIS_ELEVENLABS_AGENT_ID`, `HEY_JARVIS_ELEVENLABS_VOICE_ID` for voice AI (test agent ID `HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID` takes precedence for phone calls)
 - **Recipes**: `HEY_JARVIS_VALDEMARSRO_API_KEY` for Danish recipe data
+- **Entertainment (Spotify)**: `HEY_JARVIS_SPOTIFY_CLIENT_ID`, `HEY_JARVIS_SPOTIFY_CLIENT_SECRET` for Spotify API access (music search and track details)
 - **GitHub**: `HEY_JARVIS_GITHUB_API_TOKEN` for GitHub API access (coding agent and error reporting processor)
 - **WiFi**: `HEY_JARVIS_WIFI_SSID`, `HEY_JARVIS_WIFI_PASSWORD` for Home Assistant Voice Firmware
 - **Authentication**: `HEY_JARVIS_MCP_JWT_SECRET` for JWT-based HTTP authentication of the MCP server (Mastra UI is protected by Home Assistant ingress)
+
+#### Adding New Environment Variables
+**CRITICAL**: When adding new environment variables for a vertical, you must add them to **ALL** of the following locations:
+1. **Documentation**: Update the list above in this AGENTS.md file
+2. **Build CI**: Add to `.github/workflows/build.yml` in both the `env:` section at the top AND the `env:` block under devcontainers/ci
+3. **Release CI**: Add to `.github/workflows/release.yml` in both the `env:` section at the top AND the `env:` block under devcontainers/ci
+4. **1Password op.env**: Add the variable to `mcp/op.env` with the 1Password reference path (e.g., `HEY_JARVIS_EXAMPLE_KEY="op://Personal/Example/API key"`)
+5. **GitHub Secrets**: Add the secret to the GitHub repository settings
+
+#### OAuth-Based Integrations
+When creating new integrations that use OAuth with user consent (requiring refresh tokens), you must:
+1. **Register as OAuth Provider**: Add the provider to `mcp/mastra/credentials/` following the pattern of `google.ts` or `microsoft.ts`
+2. **Update Provider List**: Add the provider to the `PROVIDERS` array in `mcp/mastra/generate-refresh-tokens.ts`
+3. **Add Environment Variables**: Include client ID, client secret, and refresh token variables in all locations listed above
+
+**Note**: Integrations using OAuth client credentials flow (app-level auth without user consent, like Spotify) do NOT need to register as OAuth providers - they only need client ID and secret in the environment variables.
 
 #### Development Setup
 1. **Install 1Password CLI**: Follow [1Password CLI installation guide](https://developer.1password.com/docs/cli/get-started/)
