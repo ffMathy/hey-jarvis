@@ -77,7 +77,7 @@ The `scripts/deploy.sh` script:
 ### Ingress Configuration
 The addon uses Home Assistant ingress for secure web access:
 - **Ingress Enabled**: `"ingress": true`
-- **Ingress Port**: `4111`
+- **Ingress Port**: `4113`
 - **Panel Icon**: `mdi:robot`
 - **Web UI**: Accessible via Home Assistant interface
 
@@ -125,7 +125,9 @@ ElevenLabs Agent → Home Assistant Addon → MCP Server → Home Assistant Devi
                                 ↓
                     ghcr.io/ffmathy/mcp (base image)
                                 ↓
-                          Mastra Server (port 4111)
+                   Nginx (4111, 4113) → Mastra Studio (8113)
+                                ↓
+                          Mastra Server (8111)
 ```
 
 ### Base Image Relationship
