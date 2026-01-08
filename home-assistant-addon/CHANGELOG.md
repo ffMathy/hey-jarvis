@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.7](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v1.1.6...home-assistant-addon-v1.1.7) (2026-01-08)
+
+
+### Bug Fixes
+
+* better stability around ports ([753f7c1](https://github.com/ffMathy/hey-jarvis/commit/753f7c189fc2b678d66d421f4543d92b9ffae2a6))
+* better stability around ports ([#442](https://github.com/ffMathy/hey-jarvis/issues/442)) ([37beddc](https://github.com/ffMathy/hey-jarvis/commit/37beddcb343e5b5eeb2516acfa129de8651f3879))
+
 ## [1.1.6](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v1.1.5...home-assistant-addon-v1.1.6) (2026-01-08)
 
 
