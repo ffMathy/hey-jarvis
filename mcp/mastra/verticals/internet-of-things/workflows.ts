@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { getEntityNoiseBaselineStorage } from '../../storage/index.js';
+import { getDeviceStateStorage, getEntityNoiseBaselineStorage } from '../../storage/index.js';
 import { isValidationError } from '../../utils/index.js';
 import { logger } from '../../utils/logger.js';
 import { createStep, createWorkflow } from '../../utils/workflows/workflow-factory.js';
@@ -201,53 +201,47 @@ const triggerStateChangeNotifications = createStep({
 
     // Get storage instances
     const noiseBaselineStorage = await getEntityNoiseBaselineStorage();
+    const deviceStateStorage = await getDeviceStateStorage();
 
     for (const device of inputData.devices) {
       for (const entity of device.entities) {
         changesProcessed++;
 
         try {
+          // Get the previous state from device state storage
+          const previousState = await deviceStateStorage.getState(entity.id);
+
+          // Update the state in storage
+          await deviceStateStorage.updateState(
+            entity.id,
+            entity.newState,
+            {}, // attributes not available from getChangedDevicesSince
+            entity.lastChanged,
+          );
+
           // Check if this is a significant change using noise baseline
-          const baseline = await noiseBaselineStorage.getBaseline(entity.id);
+          if (previousState) {
+            const analysis = await noiseBaselineStorage.isSignificantChange(
+              entity.id,
+              previousState.state,
+              entity.newState,
+            );
 
-          if (baseline) {
-            // We need the previous state to compare - for now, we'll just use the baseline
-            // In a real scenario, we'd fetch the previous state from device state storage
-            // For numeric values, we can check if the change would be significant
-            const isNumeric = baseline.stateType === 'numeric';
-
-            if (isNumeric && baseline.numericThreshold) {
-              const currentValue = Number.parseFloat(entity.newState);
-
-              if (!Number.isNaN(currentValue)) {
-                // Check if any of the historical states would be considered "unchanged" with this new value
-                const historicalNumeric = baseline.historicalStates
-                  .map((s) => Number.parseFloat(s))
-                  .filter((n) => !Number.isNaN(n));
-
-                if (historicalNumeric.length > 0) {
-                  // Calculate average historical value
-                  const avgHistorical = historicalNumeric.reduce((sum, v) => sum + v, 0) / historicalNumeric.length;
-
-                  // Check if change from average is within noise threshold
-                  const changeFromAverage = Math.abs(currentValue - avgHistorical);
-
-                  if (changeFromAverage <= baseline.numericThreshold) {
-                    logger.info('State change filtered as noise', {
-                      entityId: entity.id,
-                      deviceName: device.name,
-                      changeAmount: changeFromAverage,
-                      threshold: baseline.numericThreshold,
-                    });
-                    filteredAsNoise++;
-                    continue; // Skip this change as it's within noise threshold
-                  }
-                }
-              }
+            if (!analysis.isSignificantChange) {
+              logger.info('State change filtered as noise', {
+                entityId: entity.id,
+                deviceName: device.name,
+                oldValue: previousState.state,
+                newValue: entity.newState,
+                changeAmount: analysis.changeAmount,
+                threshold: analysis.threshold,
+              });
+              filteredAsNoise++;
+              continue; // Skip this change as it's within noise threshold
             }
           }
 
-          // If we reach here, the change is significant (or no baseline exists)
+          // If we reach here, the change is significant (or no baseline/previous state exists)
           await registerStateChange.execute({
             source: 'internet-of-things',
             stateType: 'device_state_change',

@@ -26,6 +26,11 @@ export interface NoiseAnalysisResult {
   threshold?: number;
 }
 
+/**
+ * Maximum number of historical state samples to keep for reference
+ */
+const MAX_HISTORICAL_SAMPLES = 20;
+
 export class EntityNoiseBaselineStorage {
   private client: Client;
   private initialized = false;
@@ -240,7 +245,7 @@ export class EntityNoiseBaselineStorage {
           typicalFluctuation: avgFluctuation,
           sampleCount: states.length,
           lastCalculated: new Date().toISOString(),
-          historicalStates: stateValues.slice(-20), // Keep last 20 states as sample
+          historicalStates: stateValues.slice(-MAX_HISTORICAL_SAMPLES), // Keep last N states as sample
         };
       } else {
         // String-based state - store samples for reference
@@ -249,7 +254,7 @@ export class EntityNoiseBaselineStorage {
           stateType: 'string',
           sampleCount: states.length,
           lastCalculated: new Date().toISOString(),
-          historicalStates: stateValues.slice(-20), // Keep last 20 states as sample
+          historicalStates: stateValues.slice(-MAX_HISTORICAL_SAMPLES), // Keep last N states as sample
         };
       }
 
