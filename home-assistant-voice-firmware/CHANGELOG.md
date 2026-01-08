@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.1](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.7.0...home-assistant-voice-firmware-v0.7.1) (2026-01-08)
+
+
+### Bug Fixes
+
+* new ingress relay ([57c2e0a](https://github.com/ffMathy/hey-jarvis/commit/57c2e0a9c639e3b10b4d4678446baf48fa5f63b7))
+* new ingress relay ([#441](https://github.com/ffMathy/hey-jarvis/issues/441)) ([27da5a9](https://github.com/ffMathy/hey-jarvis/commit/27da5a9a9f8c01d9736a810e09ca4fe1e3339ca6))
+
 ## [0.7.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.6.0...home-assistant-voice-firmware-v0.7.0) (2025-12-05)
 
 

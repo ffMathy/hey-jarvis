@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.1.7](https://github.com/ffMathy/hey-jarvis/compare/root-v1.1.6...root-v1.1.7) (2026-01-08)
+
+
+### Bug Fixes
+
+* **addon:** add nginx to production image for Home Assistant ingress ([#439](https://github.com/ffMathy/hey-jarvis/issues/439)) ([07912ad](https://github.com/ffMathy/hey-jarvis/commit/07912ad48bdb4b35938831f51d4b7385382c9908))
+* **addon:** add nginx to production image for ingress support ([63464a0](https://github.com/ffMathy/hey-jarvis/commit/63464a01bd7f316408d5d7d3a78c2638e3fe9c9b))
+* new ingress relay ([57c2e0a](https://github.com/ffMathy/hey-jarvis/commit/57c2e0a9c639e3b10b4d4678446baf48fa5f63b7))
+* new ingress relay ([#441](https://github.com/ffMathy/hey-jarvis/issues/441)) ([27da5a9](https://github.com/ffMathy/hey-jarvis/commit/27da5a9a9f8c01d9736a810e09ca4fe1e3339ca6))
+
 ## [1.1.6](https://github.com/ffMathy/hey-jarvis/compare/root-v1.1.5...root-v1.1.6) (2026-01-08)
 
 
