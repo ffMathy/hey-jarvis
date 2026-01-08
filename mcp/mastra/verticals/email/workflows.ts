@@ -121,18 +121,28 @@ const createUpdateLastSeenEmailStep = (folderKey: string, stepId: string) =>
       folder: z.string(),
       previousLastSeenId: z.string().optional(),
       newLastSeenId: z.string(),
+      emailCount: z.number(),
     }),
-    execute: async ({ state }) => {
+    execute: async ({ state, inputData }) => {
       if (!state.mostRecentEmailId || !state.mostRecentEmailReceivedDateTime) {
         return {
           success: false,
           message: 'No new emails to track',
           folder: folderKey,
           newLastSeenId: '',
+          emailCount: inputData.emailCount,
         };
       }
 
-      return await updateLastSeenEmail(folderKey, state.mostRecentEmailId, state.mostRecentEmailReceivedDateTime);
+      const result = await updateLastSeenEmail(
+        folderKey,
+        state.mostRecentEmailId,
+        state.mostRecentEmailReceivedDateTime,
+      );
+      return {
+        ...result,
+        emailCount: inputData.emailCount,
+      };
     },
   });
 
@@ -156,11 +166,7 @@ const storeNewEmailsInState = createStep({
     isFirstCheck: z.boolean(),
   }),
   execute: async (params) => {
-    const { emails, isFirstCheck, lastCheckTimestamp } = params.inputData;
-
-    console.log(
-      `📬 Found ${emails.length} new email(s)${isFirstCheck ? ' (first check)' : ` since ${lastCheckTimestamp}`}`,
-    );
+    const { emails, totalCount, isFirstCheck, lastCheckTimestamp } = params.inputData;
 
     const mostRecentEmail = emails.length > 0 ? emails[0] : undefined;
 
@@ -173,8 +179,12 @@ const storeNewEmailsInState = createStep({
       mostRecentEmailReceivedDateTime: mostRecentEmail?.receivedDateTime,
     });
 
+    console.log(
+      `📬 Found ${totalCount} new email(s)${isFirstCheck ? ' (first check)' : ` since ${lastCheckTimestamp}`}`,
+    );
+
     return {
-      emailCount: emails.length,
+      emailCount: totalCount,
       isFirstCheck,
     };
   },
@@ -249,6 +259,7 @@ const formatEmailCheckingOutput = createStep({
     folder: z.string(),
     previousLastSeenId: z.string().optional(),
     newLastSeenId: z.string(),
+    emailCount: z.number(),
   }),
   outputSchema: z.object({
     emailsFound: z.number(),
@@ -256,16 +267,16 @@ const formatEmailCheckingOutput = createStep({
     message: z.string(),
   }),
   execute: async (params) => {
-    const emails = params.state.newEmails ?? [];
+    const { emailCount } = params.inputData;
     const updateResult = params.inputData;
 
     return {
-      emailsFound: emails.length,
+      emailsFound: emailCount,
       lastSeenEmailUpdated: updateResult.success && updateResult.newLastSeenId !== '',
       message:
-        emails.length === 0
+        emailCount === 0
           ? 'No new emails since last check'
-          : `Found ${emails.length} new email(s)${updateResult.success && updateResult.newLastSeenId !== '' ? `, updated last seen to ${updateResult.newLastSeenId}` : ''}`,
+          : `Found ${emailCount} new email(s)${updateResult.success && updateResult.newLastSeenId !== '' ? `, updated last seen to ${updateResult.newLastSeenId}` : ''}`,
     };
   },
 });
