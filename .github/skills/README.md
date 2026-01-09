@@ -17,9 +17,8 @@ Learn more: [GitHub Copilot Agent Skills Documentation](https://docs.github.com/
 
 ### Code Quality
 - **[typescript-type-safety](./typescript-type-safety/SKILL.md)** - TypeScript type safety guidelines
-- **[variable-naming](./variable-naming/SKILL.md)** - Variable naming conventions
+- **[clean-code](./clean-code/SKILL.md)** - Variable naming and YAGNI principle
 - **[conventional-commits](./conventional-commits/SKILL.md)** - Commit message standards
-- **[yagni-principle](./yagni-principle/SKILL.md)** - You Aren't Gonna Need It principle
 - **[use-npm-packages](./use-npm-packages/SKILL.md)** - Prefer npm packages over custom code
 
 ### Mastra Framework
@@ -31,7 +30,6 @@ Learn more: [GitHub Copilot Agent Skills Documentation](https://docs.github.com/
 ### Integration & Testing
 - **[github-mcp-tools-usage](./github-mcp-tools-usage/SKILL.md)** - Using GitHub MCP tools
 - **[elevenlabs-testing](./elevenlabs-testing/SKILL.md)** - Testing ElevenLabs voice integration
-- **[port-configuration-management](./port-configuration-management/SKILL.md)** - Managing port configurations
 
 ## How Copilot Uses Skills
 
