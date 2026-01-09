@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.3.2](https://github.com/ffMathy/hey-jarvis/compare/root-v1.3.1...root-v1.3.2) (2026-01-09)
+
+
+### Bug Fixes
+
+* **mcp:** keep default port as 4112 for tests, use 8112 in production ([3200c18](https://github.com/ffMathy/hey-jarvis/commit/3200c1852c496bc1a4bc5d295fd0ae10f4477294))
+* **mcp:** resolve nginx circular proxy by using internal port 8112 ([d2a9eb3](https://github.com/ffMathy/hey-jarvis/commit/d2a9eb3cae9938ccf93350a13860906bcc6a4f3a))
+* **mcp:** resolve nginx circular proxy configuration ([#456](https://github.com/ffMathy/hey-jarvis/issues/456)) ([f373c13](https://github.com/ffMathy/hey-jarvis/commit/f373c1390789b4e724c9985f9e3c37ad2d1fc183))
+
 ## [1.3.1](https://github.com/ffMathy/hey-jarvis/compare/root-v1.3.0...root-v1.3.1) (2026-01-09)
 
 
