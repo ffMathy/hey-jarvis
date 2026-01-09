@@ -3,49 +3,9 @@
 ## Overview
 This is the root-level guidelines document for the Hey Jarvis monorepo. All projects in this repository should follow these shared conventions.
 
-## 🔍 Research Before Implementation
+## GitHub Copilot Skills
 
-**CRITICAL: ALWAYS perform web searches before starting any task:**
-
-### Mandatory Research Protocol
-- **Minimum 1 web search** is REQUIRED before beginning any implementation
-- **Perform as many searches as possible** to gather comprehensive information
-- Use the `search_with_grounding` tool extensively for:
-  - Current best practices and patterns
-  - Latest library versions and APIs
-  - Security considerations and common pitfalls
-  - Existing solutions and examples
-  - Documentation and tutorials
-
-### When to Search
-- ✅ Before implementing any new feature
-- ✅ Before choosing a library or dependency
-- ✅ Before making architectural decisions
-- ✅ When encountering errors or issues
-- ✅ When uncertain about best practices
-- ✅ Before writing complex algorithms
-- ✅ When working with unfamiliar APIs or frameworks
-
-### Example Research Flow
-```typescript
-// STEP 1: Research (REQUIRED)
-const bestPractices = await search_with_grounding({
-  query: "TypeScript async error handling best practices 2024"
-});
-
-const libraryComparison = await search_with_grounding({
-  query: "best SQLite libraries for Node.js TypeScript 2024"
-});
-
-const securityConsiderations = await search_with_grounding({
-  query: "SQL injection prevention TypeScript parameterized queries"
-});
-
-// STEP 2: Implement based on research
-// ... your implementation here
-```
-
-**Remember**: More research = Better implementation. Never skip this step!
+This project includes specialized [GitHub Copilot Agent Skills](https://docs.github.com/copilot/concepts/agents/about-agent-skills) in `.github/skills/`. These skills teach Copilot how to perform tasks following project conventions. See [`.github/skills/README.md`](.github/skills/README.md) for the complete list.
 
 ## Technology Stack
 - **Runtime**: Bun (not Node.js)
@@ -69,41 +29,15 @@ This is an NX monorepo containing intelligent voice assistant components:
 
 ## Development Commands
 
+**See the [`nx-monorepo-commands`](.github/skills/nx-monorepo-commands/SKILL.md) skill for detailed NX usage.**
+
 ### NX Commands (MANDATORY)
 **CRITICAL: ALWAYS use NX commands** for this monorepo:
-- ✅ Use `bunx nx serve <project>` instead of running dev directly
-- ✅ Use `bunx nx build <project>` instead of running build directly
-- ✅ Use `bunx nx test <project>` instead of running test directly
-- ✅ Use `bunx nx lint <project>` instead of running lint directly
-- ✅ Use `bun install` for package installations at workspace level
-- ❌ **NEVER use npm commands** in this Bun-powered monorepo
-- ❌ **NEVER run commands directly** - always use NX for project commands
-
-### Command Execution with Timeouts
-**CRITICAL: ALWAYS use timeout for all commands** to prevent hanging processes:
-- Quick operations (linting, formatting): 30-60 seconds
-- Builds and compilation: 120-300 seconds
-- Tests: 120-300 seconds
-- Long-running operations (Docker builds): 600-900 seconds
-
-```bash
-# Examples
-timeout 30 bunx nx lint mcp
-timeout 180 bunx nx build mcp
-timeout 180 bunx nx test mcp
-```
-
-### Mandatory Linting and Testing
-**CRITICAL: ALWAYS run lint and tests after making any code changes:**
-
-1. **Lint**: `bunx nx lint <project>`
-2. **Test**: `bunx nx test <project>`
-3. **Build**: `bunx nx build <project>`
-
-Or for affected projects:
-```bash
-bunx nx affected --target=lint && bunx nx affected --target=test && bunx nx affected --target=build
-```
+- `bunx nx serve <project>` - Start development server
+- `bunx nx build <project>` - Build for production
+- `bunx nx test <project>` - Run tests
+- `bunx nx lint <project>` - Run linter
+- `bunx nx affected --target=<lint|test|build>` - Run on affected projects
 
 ## 1Password Authentication
 
@@ -125,11 +59,12 @@ This project uses **1Password CLI** for secure environment variable management.
 
 ## Core Development Principles
 
-### 🎯 YAGNI (You Aren't Gonna Need It)
-- **Factory Methods**: Opinionated with sensible defaults, not extensive customization
-- **Configuration**: Only expose necessary parameters
-- **Features**: Don't implement speculative features
-- **Dependencies**: Don't add libraries until they solve an actual problem
+**See these skills for detailed guidance:**
+- [`clean-code`](.github/skills/clean-code/SKILL.md) - Variable naming and YAGNI principle
+- [`typescript-type-safety`](.github/skills/typescript-type-safety/SKILL.md) - Type safety guidelines
+- [`use-npm-packages`](.github/skills/use-npm-packages/SKILL.md) - Prefer existing libraries
+- [`boy-scout-rule`](.github/skills/boy-scout-rule/SKILL.md) - Leave code better than you found it
+- [`conventional-commits`](.github/skills/conventional-commits/SKILL.md) - Commit message standards
 
 ### 🔁 DRY (Don't Repeat Yourself)
 - **Centralized Configuration**: Ports and URLs in dedicated config files
@@ -161,50 +96,12 @@ const taskId = uniqueId('task-');
 const task = find(tasks, task => task.status === 'running');
 ```
 
-### 🛡️ TypeScript Type Safety
-**CRITICAL: Never use `any` type** - it defeats TypeScript's purpose:
-- Use proper types for all data structures
-- Use `unknown` for truly unknown data, then narrow with type guards
-- Use type assertions sparingly and only when verified
-
-### 📛 Variable Naming
-**CRITICAL: Never shorten variable names** - clarity is more important than brevity:
-- ✅ Use `requirements`, `acceptanceCriteria`, `implementation`, `dependencies`
-- ❌ Never use `req`, `ac`, `impl`, `deps`
-- Variable names should be self-documenting and immediately understandable
-- Longer descriptive names are preferred over short abbreviated ones
-
-### 🔄 Don't Reinvent the Wheel
-**ALWAYS prefer well-maintained npm packages** over custom implementations:
-- Search npm first before writing custom code
-- Check for active maintenance and TypeScript support
-- Use official libraries from recognized maintainers
-
-## 🏕️ Boy Scout Rule
-
-**CRITICAL: Always fix issues you encounter, even if unrelated to your current task:**
-- ✅ Fix ALL lint errors in any file you encounter
-- ✅ Fix ALL failing tests you discover
-- ✅ Fix formatting issues in files you touch
-- ✅ Remove dead code and unused imports
-- ✅ Improve code quality whenever possible
-
 ## GitHub Integration
 
+**See the [`github-mcp-tools-usage`](.github/skills/github-mcp-tools-usage/SKILL.md) skill for detailed usage.**
+
 ### GitHub MCP Tools Usage
-**CRITICAL: Always use GitHub MCP tools** for all repository operations:
-
-```typescript
-// ✅ CORRECT
-const release = await mcp_github_github_get_release_by_tag({
-  owner: 'ffmathy',
-  repo: 'hey-jarvis',
-  tag: 'home-assistant-addon-v0.2.2'
-});
-
-// ❌ INCORRECT
-exec('curl -H "Authorization: Bearer $GITHUB_TOKEN" ...');
-```
+**CRITICAL: Always use GitHub MCP tools** for all repository operations.
 
 **Available Tools:**
 - `mcp_github_github_list_releases` - List all releases
@@ -278,73 +175,25 @@ const content = await playwright_browser_navigate({
 
 ## Commit Message Standards
 
+**See the [`conventional-commits`](.github/skills/conventional-commits/SKILL.md) skill for complete guidance.**
+
 **CRITICAL: ALWAYS follow Conventional Commits:**
 
-### Format
-```
-<type>(<scope>): <subject>
+Format: `<type>(<scope>): <subject>`
 
-<body>
+Types: feat, fix, docs, style, refactor, perf, test, chore, build, ci
 
-<footer>
-```
-
-### Types
-- **feat**: New feature
-- **fix**: Bug fix
-- **docs**: Documentation only
-- **style**: Formatting (no code change)
-- **refactor**: Code change (no bug fix or feature)
-- **perf**: Performance improvement
-- **test**: Adding/refactoring tests
-- **chore**: Maintenance tasks
-- **build**: Build system changes
-- **ci**: CI configuration changes
-
-### Examples
+Examples:
 ```bash
 feat(mcp): add calendar agent for scheduling
 fix(shopping): correct product quantity calculation
-docs(agents): update workflow examples
-feat(api)!: change authentication method
-
-BREAKING CHANGE: Auth now requires API key
 ```
-
-### Best Practices
-- Keep subject line under 72 characters
-- Use imperative mood ("add" not "added")
-- Don't capitalize first letter of subject
-- No period at end of subject
-- Reference issues in footer: `Closes #123`
 
 ## Pull Request Standards
 
-**CRITICAL: Pull request titles MUST follow Conventional Commits format:**
+**Pull request titles MUST follow Conventional Commits format** (same as commit messages).
 
-Pull request titles should use the same format as commit messages to maintain consistency and enable automated changelog generation.
-
-### Format
-```
-<type>(<scope>): <subject>
-```
-
-### Examples
-```bash
-feat(mcp): add calendar agent for scheduling
-fix(shopping): correct product quantity calculation
-docs(agents): update workflow examples
-feat(api)!: change authentication method
-```
-
-### Best Practices
-- Use the same types and scopes as commit messages (see Commit Message Standards above)
-- Keep PR title under 72 characters
-- Use imperative mood ("add" not "added")
-- Don't capitalize first letter of subject
-- No period at end of subject
-- Add `!` before colon for breaking changes
-- Use PR description for detailed explanations, not the title
+Format: `<type>(<scope>): <subject>`
 
 ## Project-Specific Guidelines
 
@@ -356,10 +205,15 @@ Each project has its own AGENTS.md with specialized instructions:
 
 ## Contributing
 
+**See these skills for detailed development guidelines:**
+- [`mastra-agent-creation`](.github/skills/mastra-agent-creation/SKILL.md) - Creating new agents
+- [`mastra-tool-creation`](.github/skills/mastra-tool-creation/SKILL.md) - Creating new tools
+- [`mastra-workflow-creation`](.github/skills/mastra-workflow-creation/SKILL.md) - Creating workflows
+- [`mastra-vertical-organization`](.github/skills/mastra-vertical-organization/SKILL.md) - Code organization
+
 All contributions should:
 - Follow TypeScript best practices
 - Use the Hey Jarvis factory patterns
-- Apply YAGNI principle
 - Include proper testing
 - Update relevant AGENTS.md files
 
