@@ -4,7 +4,7 @@ import { isValidationError } from '../../utils/index.js';
 import { logger } from '../../utils/logger.js';
 import { createStep, createWorkflow } from '../../utils/workflows/workflow-factory.js';
 import { registerStateChange } from '../synapse/tools.js';
-import { getChangedDevicesSince, getHistoricalStates } from './tools.js';
+import { fetchHistoricalStates, getChangedDevicesSince } from './tools.js';
 
 /**
  * Label used to mark devices/entities that should be excluded from state change monitoring.
@@ -45,22 +45,11 @@ const calculateNoiseBaselines = createStep({
     });
 
     try {
-      const result = await getHistoricalStates.execute({
+      const result = await fetchHistoricalStates({
         startTime,
         endTime,
         minimalResponse: true,
       });
-
-      // Handle ValidationError case
-      if (isValidationError(result)) {
-        logger.error('Failed to fetch historical states for noise baseline calculation', {
-          message: result.message,
-        });
-        return {
-          baselinesCalculated: 0,
-          timestamp: new Date().toISOString(),
-        };
-      }
 
       // Calculate baselines from history
       const storage = await getEntityNoiseBaselineStorage();

@@ -622,7 +622,7 @@ export const inferUserLocation = createTool({
 });
 
 // Interface for historical state entry
-interface HistoricalStateEntry {
+export interface HistoricalStateEntry {
   entity_id: string;
   state: string;
   last_changed: string;
@@ -630,91 +630,71 @@ interface HistoricalStateEntry {
   attributes: Record<string, unknown>;
 }
 
-// Tool to get historical states of all entities
-export const getHistoricalStates = createTool({
-  id: 'getHistoricalStates',
-  description:
-    'Fetch historical state data for all entities from Home Assistant over a specified time period. Returns the full state history with timestamps, useful for analyzing state fluctuations and patterns. Use this to establish noise baselines for filtering insignificant state changes.',
-  inputSchema: z.object({
-    startTime: z
-      .string()
-      .optional()
-      .describe('ISO 8601 timestamp for the start of the time range (optional, defaults to 15 minutes ago)'),
-    endTime: z
-      .string()
-      .optional()
-      .describe('ISO 8601 timestamp for the end of the time range (optional, defaults to now)'),
-    entityIds: z
-      .array(z.string())
-      .optional()
-      .describe(
-        'Optional array of specific entity IDs to fetch history for. If not provided, fetches history for all entities.',
-      ),
-    minimalResponse: z
-      .boolean()
-      .optional()
-      .describe(
-        'If true, only returns last_changed and state for states other than first and last. Defaults to true for performance.',
-      ),
-  }),
-  outputSchema: z.object({
-    history: z.record(
-      z.array(
-        z.object({
-          entity_id: z.string(),
-          state: z.string(),
-          last_changed: z.string(),
-          last_updated: z.string(),
-          attributes: z.record(z.unknown()).optional(),
-        }),
-      ),
-    ),
-    startTime: z.string(),
-    endTime: z.string(),
-    entityCount: z.number(),
-  }),
-  execute: async (inputData) => {
-    const endTime = inputData.endTime || new Date().toISOString();
-    const startTime = inputData.startTime || new Date(Date.now() - 15 * 60 * 1000).toISOString();
-    const minimalResponse = inputData.minimalResponse ?? true;
+// Interface for historical states result
+export interface HistoricalStatesResult {
+  history: Record<string, HistoricalStateEntry[]>;
+  startTime: string;
+  endTime: string;
+  entityCount: number;
+}
 
-    // Build the endpoint URL
-    let endpoint = `history/period/${startTime}`;
+// Interface for historical states options
+export interface HistoricalStatesOptions {
+  startTime?: string;
+  endTime?: string;
+  entityIds?: string[];
+  minimalResponse?: boolean;
+}
 
-    // Add query parameters
-    const params = new URLSearchParams();
-    params.append('end_time', endTime);
-    if (minimalResponse) {
-      params.append('minimal_response', '');
+/**
+ * Fetch historical state data for all entities from Home Assistant over a specified time period.
+ * Returns the full state history with timestamps, useful for analyzing state fluctuations and patterns.
+ * This function is used internally by workflows to establish noise baselines for filtering insignificant state changes.
+ *
+ * @param options - Configuration options for fetching historical states
+ * @returns Historical state data keyed by entity ID
+ */
+export async function fetchHistoricalStates(options: HistoricalStatesOptions = {}): Promise<HistoricalStatesResult> {
+  const endTime = options.endTime || new Date().toISOString();
+  const startTime = options.startTime || new Date(Date.now() - 15 * 60 * 1000).toISOString();
+  const minimalResponse = options.minimalResponse ?? true;
+
+  // Build the endpoint URL
+  let endpoint = `history/period/${startTime}`;
+
+  // Add query parameters
+  const params = new URLSearchParams();
+  params.append('end_time', endTime);
+  if (minimalResponse) {
+    params.append('minimal_response', '');
+  }
+  if (options.entityIds && options.entityIds.length > 0) {
+    params.append('filter_entity_id', options.entityIds.join(','));
+  }
+
+  endpoint += `?${params.toString()}`;
+
+  const response = (await callHomeAssistantApi(endpoint)) as Array<HistoricalStateEntry[]>;
+
+  // Convert array response to a record keyed by entity_id
+  const history: Record<string, HistoricalStateEntry[]> = {};
+  let entityCount = 0;
+
+  for (const entityHistory of response) {
+    if (Array.isArray(entityHistory) && entityHistory.length > 0) {
+      const entityId = entityHistory[0].entity_id;
+      history[entityId] = entityHistory;
+      entityCount++;
     }
-    if (inputData.entityIds && inputData.entityIds.length > 0) {
-      params.append('filter_entity_id', inputData.entityIds.join(','));
-    }
+  }
 
-    endpoint += `?${params.toString()}`;
-
-    const response = (await callHomeAssistantApi(endpoint)) as Array<HistoricalStateEntry[]>;
-
-    // Convert array response to a record keyed by entity_id
-    const history: Record<string, HistoricalStateEntry[]> = {};
-    let entityCount = 0;
-
-    for (const entityHistory of response) {
-      if (Array.isArray(entityHistory) && entityHistory.length > 0) {
-        const entityId = entityHistory[0].entity_id;
-        history[entityId] = entityHistory;
-        entityCount++;
-      }
-    }
-
-    return {
-      history,
-      startTime,
-      endTime,
-      entityCount,
-    };
-  },
-});
+  return {
+    history,
+    startTime,
+    endTime,
+    entityCount,
+  };
+}
 
 // Export all tools together for convenience
 export const internetOfThingsTools = {
@@ -724,5 +704,4 @@ export const internetOfThingsTools = {
   getAllServices,
   getChangedDevicesSince,
   inferUserLocation,
-  getHistoricalStates,
 };
