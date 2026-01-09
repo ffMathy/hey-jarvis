@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.1](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v1.2.0...home-assistant-addon-v1.2.1) (2026-01-09)
+
+
+### Bug Fixes
+
+* **home-assistant-addon:** resolve port conflict between nginx and mastra-studio ([29a30fa](https://github.com/ffMathy/hey-jarvis/commit/29a30fa799ef116710dbad4314510e962855b621))
+* **home-assistant-addon:** resolve port conflict between nginx and mastra-studio ([#453](https://github.com/ffMathy/hey-jarvis/issues/453)) ([77f156d](https://github.com/ffMathy/hey-jarvis/commit/77f156da4652dd134a5b549e408292a809e64407))
+
 ## [1.2.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v1.1.7...home-assistant-addon-v1.2.0) (2026-01-09)
 
 
