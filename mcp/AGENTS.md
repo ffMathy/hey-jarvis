@@ -1700,7 +1700,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 1. Client sends HTTP request to `/api/mcp` with `Authorization: Bearer <token>` header
 2. Nginx extracts and validates the JWT token using the configured secret via nginx-mod-http-auth-jwt
-3. If valid, request is proxied to the MCP server (port 4112)
+3. If valid, request is proxied to the MCP server (internal port 8112)
 4. If invalid/missing, Nginx returns 401 Unauthorized response
 5. Requests to other paths (Mastra UI) are proxied without JWT validation
 
@@ -2267,8 +2267,9 @@ const port = 8111;
 // Workaround for nginx auth module not supporting dynamic key files - must be created before nginx starts
 createJWTKeyFile();
 
-// Port 4112 used for MCP server (both internally and externally)
-const mcpExternalPort = 4112;
+// Using internal port when deployed (supervisord sets PORT=8112)
+// Defaults to 4112 for direct access (development and testing)
+const port = parseInt(process.env.PORT || '4112', 10);
 ```
 
 **When comments ARE allowed:**
