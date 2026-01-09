@@ -29,7 +29,7 @@ Learn more: [GitHub Copilot Agent Skills Documentation](https://docs.github.com/
 
 ### Integration & Testing
 - **[github-mcp-tools-usage](./github-mcp-tools-usage/SKILL.md)** - Using GitHub MCP tools
-- **[elevenlabs-testing](./elevenlabs-testing/SKILL.md)** - Testing ElevenLabs voice integration
+- **[testing](./testing/SKILL.md)** - Comprehensive testing requirements and workflow
 
 ## How Copilot Uses Skills
 
