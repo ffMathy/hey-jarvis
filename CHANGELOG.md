@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.1](https://github.com/ffMathy/hey-jarvis/compare/root-v1.3.0...root-v1.3.1) (2026-01-09)
+
+
+### Bug Fixes
+
+* **mcp,home-assistant-addon:** fix nginx connection refused to upstream services ([9ccfdfc](https://github.com/ffMathy/hey-jarvis/commit/9ccfdfc8d363c2f5fc7eaa2400cc81f60cba3a06))
+* **mcp,home-assistant-addon:** resolve nginx IPv6 connection failures to upstream services ([#454](https://github.com/ffMathy/hey-jarvis/issues/454)) ([5c3f62d](https://github.com/ffMathy/hey-jarvis/commit/5c3f62d98234e36b2d56cff8590ddcc62041d2dd))
+
 ## [1.3.0](https://github.com/ffMathy/hey-jarvis/compare/root-v1.2.0...root-v1.3.0) (2026-01-09)
 
 
