@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.3](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v1.2.2...home-assistant-addon-v1.2.3) (2026-01-09)
+
+
+### Bug Fixes
+
+* **mcp:** resolve nginx circular proxy by using internal port 8112 ([d2a9eb3](https://github.com/ffMathy/hey-jarvis/commit/d2a9eb3cae9938ccf93350a13860906bcc6a4f3a))
+* **mcp:** resolve nginx circular proxy configuration ([#456](https://github.com/ffMathy/hey-jarvis/issues/456)) ([f373c13](https://github.com/ffMathy/hey-jarvis/commit/f373c1390789b4e724c9985f9e3c37ad2d1fc183))
+
 ## [1.2.2](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v1.2.1...home-assistant-addon-v1.2.2) (2026-01-09)
 
 
