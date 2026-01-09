@@ -1,3 +1,4 @@
+import type { Agent } from '@mastra/core/agent';
 import { createAgent } from '../../utils/agent-factory.js';
 import { ollamaModel } from '../../utils/providers/ollama-provider.js';
 import { inferUserLocation } from '../internet-of-things/tools.js';
@@ -19,7 +20,7 @@ let notificationAgent: Awaited<ReturnType<typeof createAgent>> | null = null;
  *
  * Uses a local Qwen3 model via Ollama for cost-efficiency.
  */
-export async function getNotificationAgent() {
+export async function getNotificationAgent(): Promise<Agent> {
   if (notificationAgent) {
     return notificationAgent;
   }
