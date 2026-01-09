@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.3.0](https://github.com/ffMathy/hey-jarvis/compare/root-v1.2.0...root-v1.3.0) (2026-01-09)
+
+
+### Features
+
+* **skills:** replace elevenlabs-testing with generic testing skill ([8834f48](https://github.com/ffMathy/hey-jarvis/commit/8834f489b8b33512e8ac474a0cbad7265c008d93))
+* **skills:** replace elevenlabs-testing with generic testing skill ([#450](https://github.com/ffMathy/hey-jarvis/issues/450)) ([0a18042](https://github.com/ffMathy/hey-jarvis/commit/0a1804290724912eb2f53dcb620add603a636072))
+
+
+### Bug Fixes
+
+* **home-assistant-addon:** resolve port conflict between nginx and mastra-studio ([29a30fa](https://github.com/ffMathy/hey-jarvis/commit/29a30fa799ef116710dbad4314510e962855b621))
+* **home-assistant-addon:** resolve port conflict between nginx and mastra-studio ([#453](https://github.com/ffMathy/hey-jarvis/issues/453)) ([77f156d](https://github.com/ffMathy/hey-jarvis/commit/77f156da4652dd134a5b549e408292a809e64407))
+
 ## [1.2.0](https://github.com/ffMathy/hey-jarvis/compare/root-v1.1.8...root-v1.2.0) (2026-01-09)
 
 
