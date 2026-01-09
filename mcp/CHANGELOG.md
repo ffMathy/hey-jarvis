@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.2.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.1.7...mcp-v1.2.0) (2026-01-09)
+
+
+### Features
+
+* **iot:** add noise baseline calculation and filtering for state changes ([8f7fb89](https://github.com/ffMathy/hey-jarvis/commit/8f7fb8915a96a4e5d9c4c24e1b18c46bb869de24))
+* **iot:** Add noise baseline filtering for IoT state changes ([#444](https://github.com/ffMathy/hey-jarvis/issues/444)) ([ee351a5](https://github.com/ffMathy/hey-jarvis/commit/ee351a5b80cde0d6834ddb76fc9606b9fb75f891))
+
+
+### Bug Fixes
+
+* **mcp:** thread email count through workflow pipeline ([#445](https://github.com/ffMathy/hey-jarvis/issues/445)) ([a3e6358](https://github.com/ffMathy/hey-jarvis/commit/a3e6358aff1fbe1216cc7c6ec7ddbff070a90170))
+* **mcp:** thread email count through workflow pipeline to fix logging inconsistency ([ab47b2d](https://github.com/ffMathy/hey-jarvis/commit/ab47b2d09cef20215cf57b624b9f0df97ec66610))
+* **tests:** fix shopping list API content filtering issues ([e345298](https://github.com/ffMathy/hey-jarvis/commit/e3452989ad61d6f7dda3d588486d425c5c5b9371))
+
 ## [1.1.7](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.1.6...mcp-v1.1.7) (2026-01-08)
 
 
