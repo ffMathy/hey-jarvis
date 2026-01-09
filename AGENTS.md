@@ -318,6 +318,34 @@ BREAKING CHANGE: Auth now requires API key
 - No period at end of subject
 - Reference issues in footer: `Closes #123`
 
+## Pull Request Standards
+
+**CRITICAL: Pull request titles MUST follow Conventional Commits format:**
+
+Pull request titles should use the same format as commit messages to maintain consistency and enable automated changelog generation.
+
+### Format
+```
+<type>(<scope>): <subject>
+```
+
+### Examples
+```bash
+feat(mcp): add calendar agent for scheduling
+fix(shopping): correct product quantity calculation
+docs(agents): update workflow examples
+feat(api)!: change authentication method
+```
+
+### Best Practices
+- Use the same types and scopes as commit messages (see Commit Message Standards above)
+- Keep PR title under 72 characters
+- Use imperative mood ("add" not "added")
+- Don't capitalize first letter of subject
+- No period at end of subject
+- Add `!` before colon for breaking changes
+- Use PR description for detailed explanations, not the title
+
 ## Project-Specific Guidelines
 
 Each project has its own AGENTS.md with specialized instructions:
