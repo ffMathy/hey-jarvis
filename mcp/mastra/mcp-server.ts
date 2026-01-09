@@ -65,7 +65,7 @@ export async function startMcpServer() {
 
   console.log('Starting J.A.R.V.I.S. MCP Server...');
 
-  const port = parseInt(process.env.PORT || '8112', 10);
+  const port = parseInt(process.env.PORT || '4112', 10);
   const host = process.env.HOST || '0.0.0.0';
   const mcpPath = '/api/mcp';
 

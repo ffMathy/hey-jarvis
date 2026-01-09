@@ -2267,8 +2267,9 @@ const port = 8111;
 // Workaround for nginx auth module not supporting dynamic key files - must be created before nginx starts
 createJWTKeyFile();
 
-// Using internal port to allow nginx to handle JWT authentication
-const mcpInternalPort = 8112;
+// Using internal port when deployed (supervisord sets PORT=8112)
+// Defaults to 4112 for direct access (development and testing)
+const port = parseInt(process.env.PORT || '4112', 10);
 ```
 
 **When comments ARE allowed:**
