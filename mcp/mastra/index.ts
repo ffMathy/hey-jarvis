@@ -183,4 +183,9 @@ app.get('/health', (c) => c.json({ status: 'ok', runtime: 'bun' }));
 
 // 5. Export for Bun
 // Bun.serve looks for a default export with a 'fetch' handler.
-export default app;
+// Include port and hostname to ensure proper binding
+export default {
+  port: process.env.MASTRA_SERVER_PORT ? Number(process.env.MASTRA_SERVER_PORT) : 4111,
+  hostname: process.env.HOST || '0.0.0.0',
+  fetch: app.fetch,
+};
