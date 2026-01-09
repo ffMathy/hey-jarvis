@@ -12,7 +12,7 @@ export MASTRA_STUDIO_PORT=4111
 
 # Internal service ports (not exposed directly, nginx proxies to these)
 export MASTRA_SERVER_INTERNAL_PORT=8111
-export MCP_SERVER_INTERNAL_PORT=4112
+export MCP_SERVER_INTERNAL_PORT=8112
 export MASTRA_STUDIO_INTERNAL_PORT=8113
 
 # Test ingress port (for Home Assistant ingress simulation)

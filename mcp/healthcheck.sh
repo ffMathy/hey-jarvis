@@ -1,6 +1,6 @@
 #!/bin/sh
 # Health check script for Docker container
-# Verifies that Mastra Server (4111), MCP Server (4112), and Studio UI (3000) are responding
+# Verifies that Mastra Server (4111), MCP Server (external port 4112), and Studio UI (3000) are responding
 
 set -e
 
