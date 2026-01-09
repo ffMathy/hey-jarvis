@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.2.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v1.1.7...home-assistant-addon-v1.2.0) (2026-01-09)
+
+
+### Bug Fixes
+
+* change mastra-studio port from 8113 to 4111 ([e549b80](https://github.com/ffMathy/hey-jarvis/commit/e549b801e60b927daf8e57d73a2732e9f5f83709))
+* correct port configuration for nginx and supervisord ([de50feb](https://github.com/ffMathy/hey-jarvis/commit/de50feb753529a071e01a41fe376371e58f328e7))
+* nginx 500 error: correct port mapping for Mastra Studio ([#446](https://github.com/ffMathy/hey-jarvis/issues/446)) ([b02b0f9](https://github.com/ffMathy/hey-jarvis/commit/b02b0f9b12d8f789c9e974200fad48a576647918))
+* remove duplicate text/html MIME type in nginx config ([c5cbce1](https://github.com/ffMathy/hey-jarvis/commit/c5cbce1053d42ac8e14e0af0af89b23a648dbb47))
+* remove HTML rewriting as studio base is now handled elsewhere ([fafa282](https://github.com/ffMathy/hey-jarvis/commit/fafa282bb98f896f2b133428bee0506873a902df))
+* restore sub_filter_types for clarity ([0eff17c](https://github.com/ffMathy/hey-jarvis/commit/0eff17c372f2e6a8d41f6c8ee52690c33160e819))
+
 ## [1.1.7](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v1.1.6...home-assistant-addon-v1.1.7) (2026-01-08)
 
 
