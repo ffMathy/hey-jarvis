@@ -141,9 +141,153 @@ YAGNI means:
 - ✅ Add complexity when needed
 - ✅ Keep it simple until proven otherwise
 
+## DRY Principle (Don't Repeat Yourself)
+
+**Avoid duplicating code, logic, or knowledge throughout the codebase.**
+
+### Core Philosophy
+
+Every piece of knowledge should have a single, unambiguous representation in the system.
+
+### What to DRY
+
+- **Duplicated functions**: Extract to shared utilities
+- **Repeated logic**: Create reusable functions
+- **Copied constants**: Define once in a central location
+- **Similar patterns**: Abstract common behavior
+
+### Examples
+
+✅ **GOOD - Shared helper function:**
+```typescript
+// helpers/docker-helper.ts
+export async function getContainerIP(): Promise<string> {
+  // Implementation once
+}
+
+// test1.spec.ts
+import { getContainerIP } from './helpers/docker-helper';
+
+// test2.spec.ts
+import { getContainerIP } from './helpers/docker-helper';
+```
+
+❌ **BAD - Duplicated code:**
+```typescript
+// test1.spec.ts
+async function getContainerIP(): Promise<string> {
+  // Same implementation
+}
+
+// test2.spec.ts
+async function getContainerIP(): Promise<string> {
+  // Same implementation duplicated
+}
+```
+
+### When to Extract
+
+Extract duplication when you see:
+1. **Identical or very similar code** in 2+ places
+2. **Same logic** with minor variations
+3. **Related constants** defined multiple times
+
+### Where to Extract To
+
+- **Shared utilities**: For general-purpose functions
+- **Helper modules**: For domain-specific utilities
+- **Configuration files**: For constants and settings
+- **Base classes/types**: For shared behavior
+
+### Benefits
+
+- **Single source of truth**: Changes in one place affect all uses
+- **Easier maintenance**: Fix bugs once, not in multiple places
+- **Reduced errors**: Less code duplication means fewer mistakes
+- **Better testability**: Test shared code once
+
+## ETC Principle (Easy To Change)
+
+**Write code that is easy to modify, extend, and adapt to changing requirements.**
+
+### Core Philosophy
+
+Good design should minimize the cost of change. Code should be flexible and adaptable.
+
+### How to Apply
+
+**Decouple components:**
+```typescript
+// ✅ GOOD - Loosely coupled
+export function processData(data: Data, processor: DataProcessor) {
+  return processor.process(data);
+}
+
+// ❌ BAD - Tightly coupled
+export function processData(data: Data) {
+  const processor = new SpecificProcessor(); // Hard-coded dependency
+  return processor.process(data);
+}
+```
+
+**Use configuration over code:**
+```typescript
+// ✅ GOOD - Configurable
+export const TIMEOUTS = {
+  connect: 60,
+  read: 300,
+  retry: 60,
+};
+
+// ❌ BAD - Hard-coded
+const timeout = 60; // Scattered throughout code
+```
+
+**Favor composition over inheritance:**
+```typescript
+// ✅ GOOD - Composable
+export function createAgent(config: AgentConfig) {
+  return {
+    ...baseAgent,
+    ...config,
+  };
+}
+
+// ❌ BAD - Deep inheritance hierarchy
+class BaseAgent extends SuperAgent extends MegaAgent { }
+```
+
+### Design for Change
+
+Anticipate likely changes:
+- **Configuration values**: Extract to constants
+- **External dependencies**: Use interfaces/abstractions
+- **Business logic**: Keep separate from infrastructure
+- **Data formats**: Use adapters/transformers
+
+### ETC vs YAGNI
+
+- **ETC**: Make code easy to change when needed
+- **YAGNI**: Don't add features before they're needed
+
+These work together:
+- ✅ Write simple, well-structured code (ETC + YAGNI)
+- ❌ Don't add speculative features (YAGNI)
+- ✅ But make what you build easy to extend (ETC)
+
+### Red Flags
+
+Watch for code that's hard to change:
+- Many files need updates for a single feature
+- Duplicated logic in multiple places (violates DRY)
+- Hard-coded values scattered throughout
+- Tight coupling between unrelated modules
+
 ## Benefits
 
 - **Less code**: Fewer lines to maintain and test
 - **Faster development**: Focus on what matters
 - **Easier understanding**: Simpler, clearer code
 - **Better design**: Requirements clarify as you build
+- **Maintainability**: Changes are localized and safe
+- **Flexibility**: Code adapts to new requirements easily

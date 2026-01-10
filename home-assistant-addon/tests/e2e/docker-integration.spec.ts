@@ -1,27 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { type ContainerStartupResult, startContainer } from './helpers/container-startup';
+import { getContainerIP } from './helpers/docker-helper';
 import { PORTS } from './helpers/ports';
-
-/**
- * Get the container's IP address for direct Docker network access.
- *
- * In devcontainer environments with Docker-in-Docker, port forwarding to localhost doesn't work
- * because the mapped ports are on the HOST machine, not accessible within the devcontainer.
- * The solution is to access containers directly via their Docker bridge network IP address.
- */
-async function getContainerIP(): Promise<string> {
-  const { execSync } = await import('child_process');
-
-  const result = execSync("docker inspect --format='{{.NetworkSettings.IPAddress}}' home-assistant-addon-test", {
-    encoding: 'utf-8',
-  }).trim();
-
-  if (!result || result === '<no value>') {
-    throw new Error('Failed to get container IP address');
-  }
-
-  return result;
-}
 
 test.describe('Docker Container Integration Tests', () => {
   let container: ContainerStartupResult | undefined;
