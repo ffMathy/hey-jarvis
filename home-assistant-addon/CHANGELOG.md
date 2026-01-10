@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.3.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v1.2.3...home-assistant-addon-v1.3.0) (2026-01-10)
+
+
+### Features
+
+* **home-assistant-addon:** add nginx proxy timeout and retry settings ([acf2c8f](https://github.com/ffMathy/hey-jarvis/commit/acf2c8f768e0a5763e08d8fe9b13a98045b78d67))
+
+
+### Bug Fixes
+
+* **home-assistant-addon:** add nginx proxy timeout and retry configuration ([#458](https://github.com/ffMathy/hey-jarvis/issues/458)) ([2c2ceab](https://github.com/ffMathy/hey-jarvis/commit/2c2ceab2573b1566b783acd7f5106ebd1f58f43e))
+
 ## [1.2.3](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v1.2.2...home-assistant-addon-v1.2.3) (2026-01-09)
 
 
