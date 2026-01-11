@@ -41,15 +41,15 @@ test.describe('Backend Health and Connectivity Tests', () => {
     expect(data.status).toBe('healthy');
   });
 
-  test('Mastra Studio should be accessible directly on port 8113', async () => {
-    // Mastra Studio runs on internal port 8113
-    const studioUrl = `http://${containerIP}:8113`;
-    console.log(`Checking Mastra Studio at: ${studioUrl}`);
+  test('Mastra Dev should be accessible directly on port 8111', async () => {
+    // Mastra Dev (API + Studio) runs on internal port 8111
+    const mastraUrl = `http://${containerIP}:8111`;
+    console.log(`Checking Mastra Dev at: ${mastraUrl}`);
 
-    const response = await fetch(studioUrl);
+    const response = await fetch(mastraUrl);
 
     // Should respond with 200 or redirect (3xx)
-    expect(response.status, 'Mastra Studio should be accessible').toBeLessThan(400);
+    expect(response.status, 'Mastra Dev should be accessible').toBeLessThan(400);
   });
 
   test('nginx proxy on port 4112 should handle backend delays gracefully', async () => {
