@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.3.1](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.3.0...mcp-v1.3.1) (2026-01-11)
+
+
+### Bug Fixes
+
+* **home-assistant-addon:** consolidate to 2 ports, remove port 8113 ([0f04782](https://github.com/ffMathy/hey-jarvis/commit/0f04782c0af1b4afe96da772c7500ccd097a46be))
+* **mcp:** consolidate to 2-port architecture and fix health checks ([#461](https://github.com/ffMathy/hey-jarvis/issues/461)) ([f77ac6b](https://github.com/ffMathy/hey-jarvis/commit/f77ac6be29069da5663486f5629364d67e0369d2))
+* **mcp:** correct health check to use internal ports ([8c0137c](https://github.com/ffMathy/hey-jarvis/commit/8c0137cfd62479727b9d8e5d04299d343cf58032))
+
 ## [1.3.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.2.3...mcp-v1.3.0) (2026-01-10)
 
 
