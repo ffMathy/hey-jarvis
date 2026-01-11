@@ -184,6 +184,20 @@ The firmware communicates with Home Assistant, which routes voice commands throu
 
 ## Troubleshooting
 
+### Wake Word Issues
+
+If wake word detection is not working, see the comprehensive [Wake Word Testing Guide](./WAKE_WORD_TESTING.md) which covers:
+- Testing procedure for all wake words
+- Common issues and solutions
+- Configuration validation
+- Performance optimization tips
+
+**Quick fixes:**
+- Ensure VAD (Voice Activity Detection) model is configured
+- Verify all wake word models use full GitHub URLs (not short names)
+- Check ESPHome version is 2024.7.0 or later
+- Try "Okay Nabu" wake word (most reliable)
+
 ### Common Issues
 
 - **Flash Memory**: Use 8MB configuration for full features
