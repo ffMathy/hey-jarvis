@@ -152,8 +152,10 @@ fi
 LOG_LEVEL=$(bashio::config 'log_level')
 bashio::log.info "Log level set to: ${LOG_LEVEL}"
 
-export MASTRA_STUDIO_BASE_URL=$(bashio::addon.ingress_entry)
-bashio::log.info "Mastra Studio Base URL set to: ${MASTRA_STUDIO_BASE_URL}"
+# Do not set MASTRA_STUDIO_BASE_URL because nginx handles path rewriting
+# The ingress path is stripped by nginx before forwarding to Mastra (see nginx.conf lines 47-48)
+# So Mastra should operate as if it's at the root path "/"
+bashio::log.info "Mastra Studio will be served at root path (nginx handles ingress path rewriting)"
 
 # Use addon-specific supervisord config that includes nginx
 export SUPERVISORD_CONFIG=/etc/supervisord-addon.conf
