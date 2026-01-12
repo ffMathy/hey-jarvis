@@ -1,5 +1,98 @@
 # Changelog
 
+## [1.4.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.3.1...mcp-v1.4.0) (2026-01-12)
+
+
+### Miscellaneous Chores
+
+* **mcp:** Synchronize mcp versions
+
+## [1.3.1](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.3.0...mcp-v1.3.1) (2026-01-11)
+
+
+### Bug Fixes
+
+* **home-assistant-addon:** consolidate to 2 ports, remove port 8113 ([0f04782](https://github.com/ffMathy/hey-jarvis/commit/0f04782c0af1b4afe96da772c7500ccd097a46be))
+* **mcp:** consolidate to 2-port architecture and fix health checks ([#461](https://github.com/ffMathy/hey-jarvis/issues/461)) ([f77ac6b](https://github.com/ffMathy/hey-jarvis/commit/f77ac6be29069da5663486f5629364d67e0369d2))
+* **mcp:** correct health check to use internal ports ([8c0137c](https://github.com/ffMathy/hey-jarvis/commit/8c0137cfd62479727b9d8e5d04299d343cf58032))
+
+## [1.3.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.2.3...mcp-v1.3.0) (2026-01-10)
+
+
+### Miscellaneous Chores
+
+* **mcp:** Synchronize mcp versions
+
+## [1.2.3](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.2.2...mcp-v1.2.3) (2026-01-09)
+
+
+### Bug Fixes
+
+* **mcp:** keep default port as 4112 for tests, use 8112 in production ([3200c18](https://github.com/ffMathy/hey-jarvis/commit/3200c1852c496bc1a4bc5d295fd0ae10f4477294))
+* **mcp:** resolve nginx circular proxy by using internal port 8112 ([d2a9eb3](https://github.com/ffMathy/hey-jarvis/commit/d2a9eb3cae9938ccf93350a13860906bcc6a4f3a))
+* **mcp:** resolve nginx circular proxy configuration ([#456](https://github.com/ffMathy/hey-jarvis/issues/456)) ([f373c13](https://github.com/ffMathy/hey-jarvis/commit/f373c1390789b4e724c9985f9e3c37ad2d1fc183))
+
+## [1.2.2](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.2.1...mcp-v1.2.2) (2026-01-09)
+
+
+### Bug Fixes
+
+* **mcp,home-assistant-addon:** fix nginx connection refused to upstream services ([9ccfdfc](https://github.com/ffMathy/hey-jarvis/commit/9ccfdfc8d363c2f5fc7eaa2400cc81f60cba3a06))
+* **mcp,home-assistant-addon:** resolve nginx IPv6 connection failures to upstream services ([#454](https://github.com/ffMathy/hey-jarvis/issues/454)) ([5c3f62d](https://github.com/ffMathy/hey-jarvis/commit/5c3f62d98234e36b2d56cff8590ddcc62041d2dd))
+
+## [1.2.1](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.2.0...mcp-v1.2.1) (2026-01-09)
+
+
+### Miscellaneous Chores
+
+* **mcp:** Synchronize mcp versions
+
+## [1.2.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.1.7...mcp-v1.2.0) (2026-01-09)
+
+
+### Features
+
+* **iot:** add noise baseline calculation and filtering for state changes ([8f7fb89](https://github.com/ffMathy/hey-jarvis/commit/8f7fb8915a96a4e5d9c4c24e1b18c46bb869de24))
+* **iot:** Add noise baseline filtering for IoT state changes ([#444](https://github.com/ffMathy/hey-jarvis/issues/444)) ([ee351a5](https://github.com/ffMathy/hey-jarvis/commit/ee351a5b80cde0d6834ddb76fc9606b9fb75f891))
+
+
+### Bug Fixes
+
+* **mcp:** thread email count through workflow pipeline ([#445](https://github.com/ffMathy/hey-jarvis/issues/445)) ([a3e6358](https://github.com/ffMathy/hey-jarvis/commit/a3e6358aff1fbe1216cc7c6ec7ddbff070a90170))
+* **mcp:** thread email count through workflow pipeline to fix logging inconsistency ([ab47b2d](https://github.com/ffMathy/hey-jarvis/commit/ab47b2d09cef20215cf57b624b9f0df97ec66610))
+* **tests:** fix shopping list API content filtering issues ([e345298](https://github.com/ffMathy/hey-jarvis/commit/e3452989ad61d6f7dda3d588486d425c5c5b9371))
+
+## [1.1.7](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.1.6...mcp-v1.1.7) (2026-01-08)
+
+
+### Bug Fixes
+
+* better stability around ports ([753f7c1](https://github.com/ffMathy/hey-jarvis/commit/753f7c189fc2b678d66d421f4543d92b9ffae2a6))
+* better stability around ports ([#442](https://github.com/ffMathy/hey-jarvis/issues/442)) ([37beddc](https://github.com/ffMathy/hey-jarvis/commit/37beddcb343e5b5eeb2516acfa129de8651f3879))
+
+## [1.1.6](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.1.5...mcp-v1.1.6) (2026-01-08)
+
+
+### Bug Fixes
+
+* new ingress relay ([57c2e0a](https://github.com/ffMathy/hey-jarvis/commit/57c2e0a9c639e3b10b4d4678446baf48fa5f63b7))
+* new ingress relay ([#441](https://github.com/ffMathy/hey-jarvis/issues/441)) ([27da5a9](https://github.com/ffMathy/hey-jarvis/commit/27da5a9a9f8c01d9736a810e09ca4fe1e3339ca6))
+
+## [1.1.5](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.1.4...mcp-v1.1.5) (2026-01-08)
+
+
+### Bug Fixes
+
+* **addon:** route ingress traffic through nginx for path rewriting ([#437](https://github.com/ffMathy/hey-jarvis/issues/437)) ([9836ad8](https://github.com/ffMathy/hey-jarvis/commit/9836ad814d77bc8f09ae6e74ec31e0dbe2ce176b))
+* **addon:** update nginx and supervisord to handle ingress on port 4113 ([e0ae5c0](https://github.com/ffMathy/hey-jarvis/commit/e0ae5c0147ad5248a282ae7a23041530f9aecb89))
+
+## [1.1.4](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.1.3...mcp-v1.1.4) (2026-01-07)
+
+
+### Miscellaneous Chores
+
+* **mcp:** Synchronize mcp versions
+
 ## [1.1.3](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.1.2...mcp-v1.1.3) (2026-01-07)
 
 

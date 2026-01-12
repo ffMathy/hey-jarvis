@@ -1,3 +1,4 @@
+import type { Agent } from '@mastra/core/agent';
 import { createAgent } from '../../utils/agent-factory.js';
 import { ollamaModel } from '../../utils/providers/ollama-provider.js';
 import { getNotificationAgent } from '../notification/agent.js';
@@ -21,7 +22,7 @@ import { getNotificationAgent } from '../notification/agent.js';
  * Currently delegates to:
  * - Notification Agent: For sending user notifications (when this agent decides notification is warranted)
  */
-export async function getStateChangeReactorAgent() {
+export async function getStateChangeReactorAgent(): Promise<Agent> {
   // createAgent factory provides memory with working memory enabled by default
   return createAgent({
     model: ollamaModel,

@@ -5,9 +5,15 @@
 # This file defines all ports used by the Hey Jarvis system in one place.
 # Follow DRY (Don't Repeat Yourself) principle - update ports here, not in individual files.
 
-# Service ports (exposed directly by Node.js services)
+# External service ports (exposed via nginx)
 export MASTRA_SERVER_PORT=4111
 export MCP_SERVER_PORT=4112
+export MASTRA_STUDIO_PORT=4111
+
+# Internal service ports (not exposed directly, nginx proxies to these)
+# Note: Mastra Dev serves both API and Studio on the same internal port
+export MASTRA_DEV_INTERNAL_PORT=8111
+export MCP_SERVER_INTERNAL_PORT=8112
 
 # Test ingress port (for Home Assistant ingress simulation)
 export TEST_INGRESS_PORT=5000

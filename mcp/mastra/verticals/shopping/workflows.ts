@@ -114,35 +114,36 @@ const extractProductInformation = createAgentStep({
   agentConfig: {
     id: 'shopping-list-extractor',
     name: 'ShoppingListExtractor',
-    instructions: `You are an expert extraction algorithm that deals with shopping lists.
+    instructions: `You are a helpful assistant that processes shopping list requests.
 
-Your job is to convert the user's request into a machine-readable format.
+Your task is to convert the user's shopping request into structured data.
 
-Be aware that the same product may be mentioned multiple times. Combine them into one product with the combined quantity.
-For fresh herbs and products listed multiple times with different quantities, use just one quantity.
-Get the operationType right: use "set" for new items or quantity changes, "remove" for removal, null if item already exists in correct quantity.`,
+Guidelines:
+- If the same product appears multiple times, combine them into one entry with the total quantity
+- For fresh herbs and products with varying quantities, use a single quantity
+- Set operationType correctly: "set" for adding or updating items, "remove" for deletions, null if the item already exists with the correct quantity`,
     description: 'Specialized agent for extracting structured product information from shopping requests',
     tools: undefined,
   },
   inputSchema: z.object({}),
   outputSchema: extractedProductSchema,
   prompt: ({ state }) => {
-    return `Act as an expert extraction algorithm that deals with shopping lists.
+    return `You are a helpful assistant that processes shopping list requests.
 
-Your job is to convert the user's request into a machine-readable format.
+Your task is to convert the user's shopping request into structured data.
 
-# Instructions
-- Be aware that the same product may be mentioned multiple times. Combine them into one product with the combined quantity.
-- For fresh herbs and products listed multiple times with different quantities, use just one quantity.
-- Get the operationType right: use "set" for new items or quantity changes, "remove" for removal, null if item already exists in correct quantity.
+# Guidelines
+- If the same product appears multiple times, combine them into one entry with the total quantity
+- For fresh herbs and products with varying quantities, use a single quantity
+- Set operationType correctly: "set" for adding or updating items, "remove" for deletions, null if the item already exists with the correct quantity
 
-# Existing basket contents
+# Current basket contents
 ${JSON.stringify(state.cartBefore)}
 
-# User request
+# User's shopping request
 ${state.prompt}
 
-Respond with valid JSON matching this schema:
+Please respond with valid JSON matching this structure:
 {
   "products": [
     {
@@ -165,15 +166,17 @@ const processExtractedProducts = createAgentStep({
   agentConfig: {
     id: 'shopping-list-mutator',
     name: 'ShoppingListMutator',
-    instructions: `You are a shopping-list mutator agent. Process products by adding or removing them from the cart.
+    instructions: `You are a helpful shopping assistant that manages shopping cart items.
 
-For each product with operationType:
-- "set": Add/update the product in the cart using your tools
+Your task is to process product operations by adding or removing items from the cart.
+
+For each product operation:
+- "set": Add or update the product quantity in the cart using your available tools
 - "remove": Remove the product from the cart
 
-Use the find_product_in_catalog tool to search for products and set_product_basket_quantity to modify the cart.
+Use the find_product_in_catalog tool to search for products and set_product_basket_quantity to update the cart.
 
-Return a summary of actions taken for each product.`,
+Provide a summary of the actions you took for each product.`,
     description: 'Specialized agent for processing shopping cart mutations',
     tools: shoppingTools,
   },
@@ -182,15 +185,16 @@ Return a summary of actions taken for each product.`,
     mutationResults: z.array(z.string()),
   }),
   prompt: ({ inputData }) => {
-    return `Process each of these products that need action (operationType is not null) by adding or removing them from the cart:
+    const productsToProcess = inputData.products.filter((p) => p.operationType !== null);
+    return `Please process each of these products that require action (operationType is not null):
 
-${JSON.stringify(inputData.products.filter((p: any) => p.operationType !== null))}
+${JSON.stringify(productsToProcess)}
 
 For each product:
-1. If operationType is "set": Add/update the product in the cart
+1. If operationType is "set": Add or update the product in the shopping cart
 2. If operationType is "remove": Remove the product from the cart
 
-Use your tools to search for products and modify the cart. Return a summary of actions taken for each product.`;
+Use your available tools to search for products and update the cart. Return a summary of the actions taken for each product.`;
   },
 });
 
@@ -226,9 +230,9 @@ const generateSummary = createAgentStep({
   agentConfig: {
     id: 'shopping-list-summary',
     name: 'ShoppingListSummary',
-    instructions: `You are an evaluator agent that takes in a query from a user that has been processed by other agents, along with a "before" and "after" version of shopping basket contents.
+    instructions: `You are a helpful shopping assistant that provides summaries of shopping cart changes.
 
-Your job is to answer the query based on the information you have and provide a clear summary of what was changed.
+Your task is to review the user's request along with the before and after states of the shopping basket, then provide a clear summary of what changed.
 
 Format your response in a friendly, conversational way in Danish. Include:
 - What items were successfully added
@@ -237,7 +241,7 @@ Format your response in a friendly, conversational way in Danish. Include:
 - Current total items in basket
 - Any relevant notes about product selections (e.g., organic vs regular, size choices)
 
-Be concise but informative.`,
+Keep your summary concise but informative.`,
     description: 'Specialized agent for summarizing shopping list changes and providing user feedback',
     tools: undefined,
   },
@@ -245,17 +249,17 @@ Be concise but informative.`,
   outputSchema: shoppingListResultSchema,
   prompt: (params) => {
     const currentState = params.state;
-    return `Summarize the shopping list changes in Danish:
+    return `Please summarize the shopping list changes in Danish:
 
-Original request: ${currentState.prompt}
+User's original request: ${currentState.prompt}
 
-Basket contents before:
+Basket contents before the changes:
 ${JSON.stringify(currentState.cartBefore)}
 
-Basket contents after:
+Basket contents after the changes:
 ${JSON.stringify(params.inputData)}
 
-Provide a summary in Danish of what was changed.`;
+Please provide a friendly summary in Danish of what was changed in the shopping basket.`;
   },
 });
 

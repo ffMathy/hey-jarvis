@@ -4,6 +4,7 @@ import path from 'path';
 import { CredentialsStorage } from './credentials.js';
 import { DeviceStateStorage } from './device-state.js';
 import { EmailStateStorage } from './email-state.js';
+import { EntityNoiseBaselineStorage } from './entity-noise-baseline.js';
 import { TokenUsageStorage } from './token-usage.js';
 
 // Use HEY_JARVIS_STORAGE_PATH environment variable if set, otherwise use local mcp/ directory
@@ -90,9 +91,24 @@ export async function getTokenUsageStorage(): Promise<TokenUsageStorage> {
   return tokenUsageStorageInstance;
 }
 
+let entityNoiseBaselineStorageInstance: EntityNoiseBaselineStorage | null = null;
+
+export async function getEntityNoiseBaselineStorage(): Promise<EntityNoiseBaselineStorage> {
+  if (!entityNoiseBaselineStorageInstance) {
+    await ensureDatabaseDirectory();
+    entityNoiseBaselineStorageInstance = new EntityNoiseBaselineStorage(getSqlDatabasePath());
+  }
+  return entityNoiseBaselineStorageInstance;
+}
+
 export { CredentialsStorage } from './credentials.js';
 export { type DeviceStateChange, DeviceStateStorage, type StoredDeviceState } from './device-state.js';
 export { EmailStateStorage, type LastEmailState } from './email-state.js';
+export {
+  type EntityNoiseBaseline,
+  EntityNoiseBaselineStorage,
+  type NoiseAnalysisResult,
+} from './entity-noise-baseline.js';
 export {
   type QuotaInfo,
   type TokenUsageRecord,

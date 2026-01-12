@@ -97,6 +97,7 @@ jobs:
           REGISTRY: ghcr.io
           NX_BASE: ${{ steps.set-shas.outputs.base }}
           NX_HEAD: ${{ steps.set-shas.outputs.head }}
+          WORKSPACE_ROOT: /workspaces/hey-jarvis
         with:
           imageName: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
           cacheFrom: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
@@ -111,6 +112,7 @@ jobs:
             REGISTRY
             NX_BASE
             NX_HEAD
+            WORKSPACE_ROOT
             
             HEY_JARVIS_ELEVENLABS_AGENT_ID
             HEY_JARVIS_ELEVENLABS_API_KEY

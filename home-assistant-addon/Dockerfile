@@ -58,9 +58,18 @@ ENTRYPOINT ["/run-test.sh"]
 # the last stage is the final image used by Home Assistant.
 FROM base AS final
 
-# Install bash (required by run.sh and server-functions.sh)
+# Install bash (required by run.sh and server-functions.sh) and nginx (for proxying and ingress)
 # Note: Using apk since the base MCP image uses Alpine Linux (bun:1-alpine)
-RUN apk add --no-cache bash
+RUN apk add --no-cache bash nginx
+
+# Copy nginx configuration for Home Assistant ingress support
+COPY home-assistant-addon/nginx.conf /etc/nginx/nginx.conf
+
+# Create nginx temp directories
+RUN mkdir -p /tmp/client_body /tmp/proxy /tmp/fastcgi /tmp/uwsgi /tmp/scgi
+
+# Copy addon's supervisord configuration (includes nginx)
+COPY home-assistant-addon/supervisord.conf /etc/supervisord-addon.conf
 
 # Copy addon's run.sh script
 COPY home-assistant-addon/run.sh /workspace/home-assistant-addon/run.sh

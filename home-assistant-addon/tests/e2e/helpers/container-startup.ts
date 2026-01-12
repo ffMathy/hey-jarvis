@@ -1,39 +1,9 @@
 import { type ChildProcess, spawn } from 'child_process';
 import { promisify } from 'util';
+import { getContainerIP } from './docker-helper';
 import { PORTS } from './ports';
 
 const sleep = promisify(setTimeout);
-/**
- * Get the container's IP address for direct Docker network access.
- *
- * In devcontainer environments with Docker-in-Docker, port forwarding to localhost doesn't work
- * because the mapped ports are on the HOST machine, not accessible within the devcontainer.
- * The solution is to access containers directly via their Docker bridge network IP address.
- */
-async function getContainerIP(): Promise<string> {
-  const { execSync } = await import('child_process');
-
-  const maxRetries = 60; // 30 seconds total
-  const retryInterval = 500; // ms
-
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      const result = execSync("docker inspect --format='{{.NetworkSettings.IPAddress}}' home-assistant-addon-test", {
-        encoding: 'utf-8',
-      }).trim();
-
-      if (result && result !== '<no value>') {
-        return result;
-      }
-    } catch {
-      // Container may not be ready yet
-    }
-
-    await sleep(retryInterval);
-  }
-
-  throw new Error('Failed to get container IP address after 30 seconds');
-}
 export interface ContainerStartupResult {
   dockerProcess: ChildProcess;
   cleanup: () => Promise<void>;
@@ -59,7 +29,7 @@ async function isServerReady(url: string): Promise<boolean> {
 }
 
 /**
- * Wait for both MCP and Mastra servers to be ready
+ * Wait for MCP server and Mastra dev (which serves both API and Studio on same port) to be ready
  */
 async function waitForServers(startTime: number, maxWaitTime: number, checkInterval: number): Promise<void> {
   let waitTime = 0;
@@ -67,12 +37,13 @@ async function waitForServers(startTime: number, maxWaitTime: number, checkInter
 
   // Get container IP for Docker network access (required in Docker-in-Docker/devcontainer)
   const containerIP = await getContainerIP();
-  const mcpUrl = `http://${containerIP}:${PORTS.MCP_SERVER}`;
-  const mastraUrl = `http://${containerIP}:${PORTS.MASTRA_SERVER}`;
+  // Check MCP server directly on internal port 8112 (bypasses nginx JWT auth on port 4112)
+  const mcpUrl = `http://${containerIP}:8112/health`;
+  const mastraUrl = `http://${containerIP}:${PORTS.MASTRA_SERVER}`; // Same as MASTRA_STUDIO (both 4111)
 
   console.log(`Accessing servers via Docker bridge network IP: ${containerIP}`);
   console.log(`  MCP server: ${mcpUrl}`);
-  console.log(`  Mastra server: ${mastraUrl}`);
+  console.log(`  Mastra dev (API + Studio): ${mastraUrl}`);
 
   while (waitTime < maxWaitTime) {
     if (!readyStatus.mcp && (await isServerReady(mcpUrl))) {
@@ -82,7 +53,7 @@ async function waitForServers(startTime: number, maxWaitTime: number, checkInter
 
     if (!readyStatus.mastra && (await isServerReady(mastraUrl))) {
       readyStatus.mastra = true;
-      console.log(`Mastra UI is ready! (took ${((Date.now() - startTime) / 1000).toFixed(1)}s)`);
+      console.log(`Mastra dev is ready! (took ${((Date.now() - startTime) / 1000).toFixed(1)}s)`);
     }
 
     if (readyStatus.mcp && readyStatus.mastra) {
@@ -168,7 +139,7 @@ function createCleanupFunction(dockerProcess: ChildProcess): () => Promise<void>
  */
 export async function startContainer(options: ContainerStartupOptions = {}): Promise<ContainerStartupResult> {
   const {
-    maxWaitTime = 60 * 1000 * 1,
+    maxWaitTime = 60 * 1000, // 60 seconds - MCP server starts quickly
     checkInterval = 2000,
     additionalInitTime = 5000,
     environmentVariables = {},
@@ -180,7 +151,9 @@ export async function startContainer(options: ContainerStartupOptions = {}): Pro
   const env = { ...process.env, ...environmentVariables };
 
   // Use absolute path from project root
-  const scriptPath = '/workspaces/hey-jarvis/home-assistant-addon/tests/start-addon.sh';
+  // Default to current working directory (process.cwd()) for compatibility
+  const workspaceRoot = process.env.WORKSPACE_ROOT || process.cwd();
+  const scriptPath = `${workspaceRoot}/home-assistant-addon/tests/start-addon.sh`;
   const dockerProcess = spawn('bash', [scriptPath], {
     stdio: 'inherit',
     detached: false,

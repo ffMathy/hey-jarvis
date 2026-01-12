@@ -125,7 +125,9 @@ ElevenLabs Agent → Home Assistant Addon → MCP Server → Home Assistant Devi
                                 ↓
                     ghcr.io/ffmathy/mcp (base image)
                                 ↓
-                          Mastra Server (port 4111)
+                          Nginx (4111) → Mastra Dev (4111)
+                                ↓
+                          Mastra Server (4111)
 ```
 
 ### Base Image Relationship

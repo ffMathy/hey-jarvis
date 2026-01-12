@@ -621,6 +621,81 @@ export const inferUserLocation = createTool({
   },
 });
 
+// Interface for historical state entry
+export interface HistoricalStateEntry {
+  entity_id: string;
+  state: string;
+  last_changed: string;
+  last_updated: string;
+  attributes: Record<string, unknown>;
+}
+
+// Interface for historical states result
+export interface HistoricalStatesResult {
+  history: Record<string, HistoricalStateEntry[]>;
+  startTime: string;
+  endTime: string;
+  entityCount: number;
+}
+
+// Interface for historical states options
+export interface HistoricalStatesOptions {
+  startTime?: string;
+  endTime?: string;
+  entityIds?: string[];
+  minimalResponse?: boolean;
+}
+
+/**
+ * Fetch historical state data for all entities from Home Assistant over a specified time period.
+ * Returns the full state history with timestamps, useful for analyzing state fluctuations and patterns.
+ * This function is used internally by workflows to establish noise baselines for filtering insignificant state changes.
+ *
+ * @param options - Configuration options for fetching historical states
+ * @returns Historical state data keyed by entity ID
+ */
+export async function fetchHistoricalStates(options: HistoricalStatesOptions = {}): Promise<HistoricalStatesResult> {
+  const endTime = options.endTime || new Date().toISOString();
+  const startTime = options.startTime || new Date(Date.now() - 15 * 60 * 1000).toISOString();
+  const minimalResponse = options.minimalResponse ?? true;
+
+  // Build the endpoint URL
+  let endpoint = `history/period/${startTime}`;
+
+  // Add query parameters
+  const params = new URLSearchParams();
+  params.append('end_time', endTime);
+  if (minimalResponse) {
+    params.append('minimal_response', '');
+  }
+  if (options.entityIds && options.entityIds.length > 0) {
+    params.append('filter_entity_id', options.entityIds.join(','));
+  }
+
+  endpoint += `?${params.toString()}`;
+
+  const response = (await callHomeAssistantApi(endpoint)) as Array<HistoricalStateEntry[]>;
+
+  // Convert array response to a record keyed by entity_id
+  const history: Record<string, HistoricalStateEntry[]> = {};
+  let entityCount = 0;
+
+  for (const entityHistory of response) {
+    if (Array.isArray(entityHistory) && entityHistory.length > 0) {
+      const entityId = entityHistory[0].entity_id;
+      history[entityId] = entityHistory;
+      entityCount++;
+    }
+  }
+
+  return {
+    history,
+    startTime,
+    endTime,
+    entityCount,
+  };
+}
+
 // Export all tools together for convenience
 export const internetOfThingsTools = {
   callIoTService,

@@ -56,9 +56,16 @@ DOCKER_ARGS=(
     -e INFO_FALLBACK="$INFO"
 )
 
-# Forward all HEY_JARVIS_* and JWT_SECRET environment variables to container
+# Forward all HEY_JARVIS_* environment variables to container
 # This allows tests to pass configuration without hardcoding
 echo "🔑 Environment variables being forwarded to container:"
+
+# Generate a test JWT secret if not already set
+if [ -z "$HEY_JARVIS_MCP_JWT_SECRET" ]; then
+    export HEY_JARVIS_MCP_JWT_SECRET="test-jwt-secret-$(date +%s)"
+    echo "  ℹ️  Generated test JWT secret: HEY_JARVIS_MCP_JWT_SECRET"
+fi
+
 while IFS='=' read -r name value; do
     # Forward HEY_JARVIS_* prefixed variables
     if [[ "$name" =~ ^HEY_JARVIS_ ]]; then

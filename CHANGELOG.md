@@ -1,5 +1,145 @@
 # Changelog
 
+## [1.5.1](https://github.com/ffMathy/hey-jarvis/compare/root-v1.5.0...root-v1.5.1) (2026-01-12)
+
+
+### Bug Fixes
+
+* **wake-word:** add VAD model and full URLs for wake word models ([#465](https://github.com/ffMathy/hey-jarvis/issues/465)) ([b9c25a3](https://github.com/ffMathy/hey-jarvis/commit/b9c25a3c6d41fa7485d23a7961558af55fb77b02))
+
+## [1.5.0](https://github.com/ffMathy/hey-jarvis/compare/root-v1.4.1...root-v1.5.0) (2026-01-12)
+
+
+### Features
+
+* add WORKSPACE_ROOT to Copilot setup workflow ([5096c02](https://github.com/ffMathy/hey-jarvis/commit/5096c028245beef516a1519ca27e481d4adcf936))
+* increase test timeout to 5 minutes for mastra dev initialization ([558c1d7](https://github.com/ffMathy/hey-jarvis/commit/558c1d791d43e19f5867c60d5f9b8ce4ef518cb7))
+* make test workspace path configurable via WORKSPACE_ROOT env var ([75a244e](https://github.com/ffMathy/hey-jarvis/commit/75a244eed4bb49a69e70bade9ea46399dc81fa7f))
+
+
+### Bug Fixes
+
+* better local port mapping ([cceac40](https://github.com/ffMathy/hey-jarvis/commit/cceac40f7aabe42b5640189f441d0af573721564))
+* better local port mapping ([#463](https://github.com/ffMathy/hey-jarvis/issues/463)) ([8e25f39](https://github.com/ffMathy/hey-jarvis/commit/8e25f3970c9d3e8808df4ce4636c7f1b2fe9eaf5))
+* better local port mapping ([#468](https://github.com/ffMathy/hey-jarvis/issues/468)) ([9bbbe06](https://github.com/ffMathy/hey-jarvis/commit/9bbbe062ff247c055a4cba448d3ac5917dd566cd))
+* correct port configuration in test supervisord and serve.sh ([a2d8843](https://github.com/ffMathy/hey-jarvis/commit/a2d88431726f68137c87baacd19dcb74b89a181d))
+* correct test supervisord config and remove invalid internal port test ([fd09e68](https://github.com/ffMathy/hey-jarvis/commit/fd09e685b7a1d40afb7b796a65bab3878b3b8b7d))
+* enable Mastra Studio native base path handling for Home Assistant ingress ([#464](https://github.com/ffMathy/hey-jarvis/issues/464)) ([9178eb0](https://github.com/ffMathy/hey-jarvis/commit/9178eb0b33073968a29cd9c6a99062d8eb274888))
+* remove MASTRA_STUDIO_BASE_URL to fix ingress UI loading ([dd7fd53](https://github.com/ffMathy/hey-jarvis/commit/dd7fd530d98898a87a3c25a6b3a2cd694be49036))
+* remove nginx path rewriting and enable MASTRA_STUDIO_BASE_URL for ingress ([0ab0c9a](https://github.com/ffMathy/hey-jarvis/commit/0ab0c9a8ba0c20e04239e75918d1704e76c91a3b))
+* resolve port conflict in test environment causing MCP server timeout ([#466](https://github.com/ffMathy/hey-jarvis/issues/466)) ([233d5e2](https://github.com/ffMathy/hey-jarvis/commit/233d5e276d9d000fe925366a234ecaf26e90a95e))
+* revert mastra-dev port config in test supervisord causing MCP server startup failure ([d381b75](https://github.com/ffMathy/hey-jarvis/commit/d381b7586365043340f0a431884a9df3d4d05ae2))
+* revert test supervisord config, make workspace path configurable, and fix MCP server health check authentication ([cd6b6cd](https://github.com/ffMathy/hey-jarvis/commit/cd6b6cd1d66c74a09c15f70a6b1a0708e53fe3c0))
+* revert test supervisord config, make workspace path configurable, fix MCP health check, and remove nginx JWT layer ([#467](https://github.com/ffMathy/hey-jarvis/issues/467)) ([f8161ea](https://github.com/ffMathy/hey-jarvis/commit/f8161eaf90f68bcc6b6247766ac5110fc2ae1f4f))
+* use current directory for workspace root in tests ([1203faa](https://github.com/ffMathy/hey-jarvis/commit/1203faacd0276ae2cf5dbb9c86491d6013244064))
+
+## [1.4.1](https://github.com/ffMathy/hey-jarvis/compare/root-v1.4.0...root-v1.4.1) (2026-01-11)
+
+
+### Bug Fixes
+
+* **home-assistant-addon:** consolidate to 2 ports, remove port 8113 ([0f04782](https://github.com/ffMathy/hey-jarvis/commit/0f04782c0af1b4afe96da772c7500ccd097a46be))
+* **mcp:** consolidate to 2-port architecture and fix health checks ([#461](https://github.com/ffMathy/hey-jarvis/issues/461)) ([f77ac6b](https://github.com/ffMathy/hey-jarvis/commit/f77ac6be29069da5663486f5629364d67e0369d2))
+* **mcp:** correct health check to use internal ports ([8c0137c](https://github.com/ffMathy/hey-jarvis/commit/8c0137cfd62479727b9d8e5d04299d343cf58032))
+
+## [1.4.0](https://github.com/ffMathy/hey-jarvis/compare/root-v1.3.2...root-v1.4.0) (2026-01-10)
+
+
+### Features
+
+* **home-assistant-addon:** add nginx proxy timeout and retry settings ([acf2c8f](https://github.com/ffMathy/hey-jarvis/commit/acf2c8f768e0a5763e08d8fe9b13a98045b78d67))
+
+
+### Bug Fixes
+
+* **home-assistant-addon:** add nginx proxy timeout and retry configuration ([#458](https://github.com/ffMathy/hey-jarvis/issues/458)) ([2c2ceab](https://github.com/ffMathy/hey-jarvis/commit/2c2ceab2573b1566b783acd7f5106ebd1f58f43e))
+
+## [1.3.2](https://github.com/ffMathy/hey-jarvis/compare/root-v1.3.1...root-v1.3.2) (2026-01-09)
+
+
+### Bug Fixes
+
+* **mcp:** keep default port as 4112 for tests, use 8112 in production ([3200c18](https://github.com/ffMathy/hey-jarvis/commit/3200c1852c496bc1a4bc5d295fd0ae10f4477294))
+* **mcp:** resolve nginx circular proxy by using internal port 8112 ([d2a9eb3](https://github.com/ffMathy/hey-jarvis/commit/d2a9eb3cae9938ccf93350a13860906bcc6a4f3a))
+* **mcp:** resolve nginx circular proxy configuration ([#456](https://github.com/ffMathy/hey-jarvis/issues/456)) ([f373c13](https://github.com/ffMathy/hey-jarvis/commit/f373c1390789b4e724c9985f9e3c37ad2d1fc183))
+
+## [1.3.1](https://github.com/ffMathy/hey-jarvis/compare/root-v1.3.0...root-v1.3.1) (2026-01-09)
+
+
+### Bug Fixes
+
+* **mcp,home-assistant-addon:** fix nginx connection refused to upstream services ([9ccfdfc](https://github.com/ffMathy/hey-jarvis/commit/9ccfdfc8d363c2f5fc7eaa2400cc81f60cba3a06))
+* **mcp,home-assistant-addon:** resolve nginx IPv6 connection failures to upstream services ([#454](https://github.com/ffMathy/hey-jarvis/issues/454)) ([5c3f62d](https://github.com/ffMathy/hey-jarvis/commit/5c3f62d98234e36b2d56cff8590ddcc62041d2dd))
+
+## [1.3.0](https://github.com/ffMathy/hey-jarvis/compare/root-v1.2.0...root-v1.3.0) (2026-01-09)
+
+
+### Features
+
+* **skills:** replace elevenlabs-testing with generic testing skill ([8834f48](https://github.com/ffMathy/hey-jarvis/commit/8834f489b8b33512e8ac474a0cbad7265c008d93))
+* **skills:** replace elevenlabs-testing with generic testing skill ([#450](https://github.com/ffMathy/hey-jarvis/issues/450)) ([0a18042](https://github.com/ffMathy/hey-jarvis/commit/0a1804290724912eb2f53dcb620add603a636072))
+
+
+### Bug Fixes
+
+* **home-assistant-addon:** resolve port conflict between nginx and mastra-studio ([29a30fa](https://github.com/ffMathy/hey-jarvis/commit/29a30fa799ef116710dbad4314510e962855b621))
+* **home-assistant-addon:** resolve port conflict between nginx and mastra-studio ([#453](https://github.com/ffMathy/hey-jarvis/issues/453)) ([77f156d](https://github.com/ffMathy/hey-jarvis/commit/77f156da4652dd134a5b549e408292a809e64407))
+
+## [1.2.0](https://github.com/ffMathy/hey-jarvis/compare/root-v1.1.8...root-v1.2.0) (2026-01-09)
+
+
+### Features
+
+* **iot:** add noise baseline calculation and filtering for state changes ([8f7fb89](https://github.com/ffMathy/hey-jarvis/commit/8f7fb8915a96a4e5d9c4c24e1b18c46bb869de24))
+* **iot:** Add noise baseline filtering for IoT state changes ([#444](https://github.com/ffMathy/hey-jarvis/issues/444)) ([ee351a5](https://github.com/ffMathy/hey-jarvis/commit/ee351a5b80cde0d6834ddb76fc9606b9fb75f891))
+
+
+### Bug Fixes
+
+* change mastra-studio port from 8113 to 4111 ([e549b80](https://github.com/ffMathy/hey-jarvis/commit/e549b801e60b927daf8e57d73a2732e9f5f83709))
+* correct port configuration for nginx and supervisord ([de50feb](https://github.com/ffMathy/hey-jarvis/commit/de50feb753529a071e01a41fe376371e58f328e7))
+* **mcp:** thread email count through workflow pipeline ([#445](https://github.com/ffMathy/hey-jarvis/issues/445)) ([a3e6358](https://github.com/ffMathy/hey-jarvis/commit/a3e6358aff1fbe1216cc7c6ec7ddbff070a90170))
+* **mcp:** thread email count through workflow pipeline to fix logging inconsistency ([ab47b2d](https://github.com/ffMathy/hey-jarvis/commit/ab47b2d09cef20215cf57b624b9f0df97ec66610))
+* nginx 500 error: correct port mapping for Mastra Studio ([#446](https://github.com/ffMathy/hey-jarvis/issues/446)) ([b02b0f9](https://github.com/ffMathy/hey-jarvis/commit/b02b0f9b12d8f789c9e974200fad48a576647918))
+* remove duplicate text/html MIME type in nginx config ([c5cbce1](https://github.com/ffMathy/hey-jarvis/commit/c5cbce1053d42ac8e14e0af0af89b23a648dbb47))
+* remove HTML rewriting as studio base is now handled elsewhere ([fafa282](https://github.com/ffMathy/hey-jarvis/commit/fafa282bb98f896f2b133428bee0506873a902df))
+* restore sub_filter_types for clarity ([0eff17c](https://github.com/ffMathy/hey-jarvis/commit/0eff17c372f2e6a8d41f6c8ee52690c33160e819))
+* **tests:** fix shopping list API content filtering issues ([e345298](https://github.com/ffMathy/hey-jarvis/commit/e3452989ad61d6f7dda3d588486d425c5c5b9371))
+
+## [1.1.8](https://github.com/ffMathy/hey-jarvis/compare/root-v1.1.7...root-v1.1.8) (2026-01-08)
+
+
+### Bug Fixes
+
+* better stability around ports ([753f7c1](https://github.com/ffMathy/hey-jarvis/commit/753f7c189fc2b678d66d421f4543d92b9ffae2a6))
+* better stability around ports ([#442](https://github.com/ffMathy/hey-jarvis/issues/442)) ([37beddc](https://github.com/ffMathy/hey-jarvis/commit/37beddcb343e5b5eeb2516acfa129de8651f3879))
+
+## [1.1.7](https://github.com/ffMathy/hey-jarvis/compare/root-v1.1.6...root-v1.1.7) (2026-01-08)
+
+
+### Bug Fixes
+
+* **addon:** add nginx to production image for Home Assistant ingress ([#439](https://github.com/ffMathy/hey-jarvis/issues/439)) ([07912ad](https://github.com/ffMathy/hey-jarvis/commit/07912ad48bdb4b35938831f51d4b7385382c9908))
+* **addon:** add nginx to production image for ingress support ([63464a0](https://github.com/ffMathy/hey-jarvis/commit/63464a01bd7f316408d5d7d3a78c2638e3fe9c9b))
+* new ingress relay ([57c2e0a](https://github.com/ffMathy/hey-jarvis/commit/57c2e0a9c639e3b10b4d4678446baf48fa5f63b7))
+* new ingress relay ([#441](https://github.com/ffMathy/hey-jarvis/issues/441)) ([27da5a9](https://github.com/ffMathy/hey-jarvis/commit/27da5a9a9f8c01d9736a810e09ca4fe1e3339ca6))
+
+## [1.1.6](https://github.com/ffMathy/hey-jarvis/compare/root-v1.1.5...root-v1.1.6) (2026-01-08)
+
+
+### Bug Fixes
+
+* **addon:** route ingress traffic through nginx for path rewriting ([#437](https://github.com/ffMathy/hey-jarvis/issues/437)) ([9836ad8](https://github.com/ffMathy/hey-jarvis/commit/9836ad814d77bc8f09ae6e74ec31e0dbe2ce176b))
+* **addon:** update nginx and supervisord to handle ingress on port 4113 ([e0ae5c0](https://github.com/ffMathy/hey-jarvis/commit/e0ae5c0147ad5248a282ae7a23041530f9aecb89))
+
+## [1.1.5](https://github.com/ffMathy/hey-jarvis/compare/root-v1.1.4...root-v1.1.5) (2026-01-07)
+
+
+### Bug Fixes
+
+* add port 4113/tcp to config.json ([c580532](https://github.com/ffMathy/hey-jarvis/commit/c580532467c506ac657178b7e0d464d57ca308fd))
+* add port 4113/tcp to config.json ([#435](https://github.com/ffMathy/hey-jarvis/issues/435)) ([ff7a462](https://github.com/ffMathy/hey-jarvis/commit/ff7a462f20dc02884d978926c9a1eb5edc817423))
+
 ## [1.1.4](https://github.com/ffMathy/hey-jarvis/compare/root-v1.1.3...root-v1.1.4) (2026-01-07)
 
 

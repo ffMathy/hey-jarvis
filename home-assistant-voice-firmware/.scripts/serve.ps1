@@ -1,5 +1,4 @@
 ﻿#!/usr/bin/env pwsh
-
 $ErrorActionPreference = "Stop"
 
 # Use OTA upload instead of USB

@@ -1,29 +1,38 @@
 #!/bin/sh
 # Health check script for Docker container
-# Verifies that Mastra Server (4111), MCP Server (4112), and Studio UI (3000) are responding
+# Works for both base MCP container and Home Assistant addon
+# Automatically detects which ports are in use and checks accordingly
 
 set -e
 
-echo "Checking Mastra server API on port 4111..."
-if ! wget --spider --timeout=5 --tries=1 http://localhost:4111/health 2>/dev/null; then
-    echo "ERROR: Mastra server API (port 4111) is not responding"
+# Check if port 8111 is listening (Home Assistant addon mode)
+# or port 4111 is listening (base MCP container mode)
+# Both configurations use mastra dev which serves API and Studio UI together
+if nc -z localhost 8111 2>/dev/null; then
+    echo "Checking Mastra dev on internal port 8111 (addon mode)..."
+    if ! wget --spider --timeout=5 --tries=1 http://localhost:8111/health 2>/dev/null; then
+        echo "ERROR: Mastra dev (internal port 8111) is not responding"
+        exit 1
+    fi
+    echo "✓ Mastra dev is healthy"
+elif nc -z localhost 4111 2>/dev/null; then
+    echo "Checking Mastra dev on port 4111 (base container mode)..."
+    if ! wget --spider --timeout=5 --tries=1 http://localhost:4111/health 2>/dev/null; then
+        echo "ERROR: Mastra dev (port 4111) is not responding"
+        exit 1
+    fi
+    echo "✓ Mastra dev is healthy"
+else
+    echo "ERROR: Mastra dev is not listening on expected ports (8111 or 4111)"
     exit 1
 fi
-echo "✓ Mastra server API is healthy"
 
-echo "Checking MCP server on port 4112..."
-if ! nc -z localhost 4112 2>/dev/null; then
-    echo "ERROR: MCP server (port 4112) is not responding"
+echo "Checking MCP server on internal port 8112..."
+if ! wget --spider --timeout=5 --tries=1 http://localhost:8112/health 2>/dev/null; then
+    echo "ERROR: MCP server (internal port 8112) is not responding"
     exit 1
 fi
 echo "✓ MCP server is healthy"
-
-echo "Checking Mastra Studio UI on port 3000..."
-if ! wget --spider --timeout=5 --tries=1 http://localhost:3000 2>/dev/null; then
-    echo "ERROR: Mastra Studio UI (port 3000) is not responding"
-    exit 1
-fi
-echo "✓ Mastra Studio UI is healthy"
 
 echo "✓ All services are healthy"
 exit 0

@@ -1717,7 +1717,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 1. Client sends HTTP request to `/api/mcp` with `Authorization: Bearer <token>` header
 2. Nginx extracts and validates the JWT token using the configured secret via nginx-mod-http-auth-jwt
-3. If valid, request is proxied to the MCP server (port 4112)
+3. If valid, request is proxied to the MCP server (internal port 8112)
 4. If invalid/missing, Nginx returns 401 Unauthorized response
 5. Requests to other paths (Mastra UI) are proxied without JWT validation
 
@@ -2205,6 +2205,36 @@ When working with Docker images:
 
 ### Core Development Principles
 
+#### 🔌 **Port Configuration Management**
+**CRITICAL: When changing ports, ALWAYS update ALL of these files:**
+
+1. **Service Configuration**:
+   - `mcp/supervisord.conf` - Production service ports
+   - `home-assistant-addon/supervisord.conf` - Addon service ports
+   - `home-assistant-addon/tests/supervisord-test.conf` - Test service ports
+
+2. **Port Constants**:
+   - `mcp/lib/ports.sh` - Bash port constants (centralized)
+   - `home-assistant-addon/tests/e2e/helpers/ports.ts` - TypeScript port constants (centralized)
+
+3. **Proxy Configuration**:
+   - `home-assistant-addon/nginx.conf` - Production nginx proxy targets
+   - `home-assistant-addon/tests/nginx.tests.conf` - Test nginx proxy targets
+
+4. **Home Assistant Addon Metadata** ⚠️:
+   - `home-assistant-addon/config.json` - Port mappings and descriptions for Home Assistant UI
+
+5. **Documentation**:
+   - `mcp/AGENTS.md` - Update port references in documentation
+
+**Port Change Checklist**:
+- [ ] Update all supervisord.conf files
+- [ ] Update ports.sh and ports.ts
+- [ ] Update nginx.conf files
+- [ ] Update config.json port descriptions ⚠️
+- [ ] Update AGENTS.md documentation
+- [ ] Run tests: `bunx nx test home-assistant-addon`
+
 #### 🎯 **YAGNI (You Aren't Gonna Need It)**
 This project strictly follows the YAGNI principle - avoid adding functionality or configuration options until they are actually needed:
 
@@ -2254,8 +2284,9 @@ const port = 8111;
 // Workaround for nginx auth module not supporting dynamic key files - must be created before nginx starts
 createJWTKeyFile();
 
-// Port 4112 exposed externally for MCP clients, while internal service uses 8112 to avoid conflicts
-const mcpExternalPort = 4112;
+// Using internal port when deployed (supervisord sets PORT=8112)
+// Defaults to 4112 for direct access (development and testing)
+const port = parseInt(process.env.PORT || '4112', 10);
 ```
 
 **When comments ARE allowed:**

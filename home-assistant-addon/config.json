@@ -1,6 +1,6 @@
 {
   "name": "Hey Jarvis MCP Server",
-  "version": "1.1.3",
+  "version": "1.4.0",
   "slug": "hey-jarvis-mcp",
   "description": "AI-powered home assistant with Mastra agents for weather, shopping, cooking, and more via Model Context Protocol",
   "url": "https://github.com/ffMathy/hey-jarvis",
@@ -13,17 +13,15 @@
   "init": false,
   "ports": {
     "4111/tcp": null,
-    "4112/tcp": null,
-    "4113/tcp": null
+    "4112/tcp": null
   },
   "ports_description": {
-    "4111/tcp": "Mastra API server",
-    "4112/tcp": "Mastra MCP server",
-    "4113/tcp": "Mastra Studio server"
+    "4111/tcp": "Mastra Dev (both API and Studio)",
+    "4112/tcp": "MCP server"
   },
-  "webui": "http://[HOST]:[PORT:4113]",
+  "webui": "http://[HOST]:[PORT:4111]",
   "ingress": true,
-  "ingress_port": 4113,
+  "ingress_port": 4111,
   "panel_icon": "mdi:robot",
   "panel_title": "Hey Jarvis",
   "panel_admin": false,
