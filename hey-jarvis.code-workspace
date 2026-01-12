@@ -43,6 +43,7 @@
     "terminal.integrated.shellIntegration.enabled": true,
     "chat.mcp.autostart": "newAndOutdated",
     "chat.mcp.access": "all",
+    "chat.useAgentSkills": true,
     "mcp": {
       "servers": {
         "mastra": {

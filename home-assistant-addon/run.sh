@@ -152,6 +152,8 @@ fi
 LOG_LEVEL=$(bashio::config 'log_level')
 bashio::log.info "Log level set to: ${LOG_LEVEL}"
 
+# Set MASTRA_STUDIO_BASE_URL to the ingress path
+# Mastra will handle the base path natively via studioBase configuration
 export MASTRA_STUDIO_BASE_URL=$(bashio::addon.ingress_entry)
 bashio::log.info "Mastra Studio Base URL set to: ${MASTRA_STUDIO_BASE_URL}"
 
