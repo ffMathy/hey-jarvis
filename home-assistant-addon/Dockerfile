@@ -65,10 +65,8 @@ RUN apk add --no-cache bash nginx
 # Copy nginx configuration for Home Assistant ingress support
 COPY home-assistant-addon/nginx.conf /etc/nginx/nginx.conf
 
-# Create empty jwt-auth.conf (JWT auth is not used for Studio UI on port 4111)
 # Create nginx temp directories
-RUN touch /etc/nginx/jwt-auth.conf && \
-    mkdir -p /tmp/client_body /tmp/proxy /tmp/fastcgi /tmp/uwsgi /tmp/scgi
+RUN mkdir -p /tmp/client_body /tmp/proxy /tmp/fastcgi /tmp/uwsgi /tmp/scgi
 
 # Copy addon's supervisord configuration (includes nginx)
 COPY home-assistant-addon/supervisord.conf /etc/supervisord-addon.conf
