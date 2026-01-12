@@ -138,7 +138,7 @@ function createCleanupFunction(dockerProcess: ChildProcess): () => Promise<void>
  */
 export async function startContainer(options: ContainerStartupOptions = {}): Promise<ContainerStartupResult> {
   const {
-    maxWaitTime = 60 * 1000 * 1,
+    maxWaitTime = 60 * 1000 * 5, // 5 minutes to allow for mastra dev initialization
     checkInterval = 2000,
     additionalInitTime = 5000,
     environmentVariables = {},
