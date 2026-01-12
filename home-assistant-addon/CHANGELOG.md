@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.4.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v1.3.1...home-assistant-addon-v1.4.0) (2026-01-12)
+
+
+### Features
+
+* increase test timeout to 5 minutes for mastra dev initialization ([558c1d7](https://github.com/ffMathy/hey-jarvis/commit/558c1d791d43e19f5867c60d5f9b8ce4ef518cb7))
+* make test workspace path configurable via WORKSPACE_ROOT env var ([75a244e](https://github.com/ffMathy/hey-jarvis/commit/75a244eed4bb49a69e70bade9ea46399dc81fa7f))
+
+
+### Bug Fixes
+
+* better local port mapping ([cceac40](https://github.com/ffMathy/hey-jarvis/commit/cceac40f7aabe42b5640189f441d0af573721564))
+* better local port mapping ([#463](https://github.com/ffMathy/hey-jarvis/issues/463)) ([8e25f39](https://github.com/ffMathy/hey-jarvis/commit/8e25f3970c9d3e8808df4ce4636c7f1b2fe9eaf5))
+* better local port mapping ([#468](https://github.com/ffMathy/hey-jarvis/issues/468)) ([9bbbe06](https://github.com/ffMathy/hey-jarvis/commit/9bbbe062ff247c055a4cba448d3ac5917dd566cd))
+* correct port configuration in test supervisord and serve.sh ([a2d8843](https://github.com/ffMathy/hey-jarvis/commit/a2d88431726f68137c87baacd19dcb74b89a181d))
+* correct test supervisord config and remove invalid internal port test ([fd09e68](https://github.com/ffMathy/hey-jarvis/commit/fd09e685b7a1d40afb7b796a65bab3878b3b8b7d))
+* enable Mastra Studio native base path handling for Home Assistant ingress ([#464](https://github.com/ffMathy/hey-jarvis/issues/464)) ([9178eb0](https://github.com/ffMathy/hey-jarvis/commit/9178eb0b33073968a29cd9c6a99062d8eb274888))
+* remove MASTRA_STUDIO_BASE_URL to fix ingress UI loading ([dd7fd53](https://github.com/ffMathy/hey-jarvis/commit/dd7fd530d98898a87a3c25a6b3a2cd694be49036))
+* remove nginx path rewriting and enable MASTRA_STUDIO_BASE_URL for ingress ([0ab0c9a](https://github.com/ffMathy/hey-jarvis/commit/0ab0c9a8ba0c20e04239e75918d1704e76c91a3b))
+* resolve port conflict in test environment causing MCP server timeout ([#466](https://github.com/ffMathy/hey-jarvis/issues/466)) ([233d5e2](https://github.com/ffMathy/hey-jarvis/commit/233d5e276d9d000fe925366a234ecaf26e90a95e))
+* revert mastra-dev port config in test supervisord causing MCP server startup failure ([d381b75](https://github.com/ffMathy/hey-jarvis/commit/d381b7586365043340f0a431884a9df3d4d05ae2))
+* revert test supervisord config, make workspace path configurable, and fix MCP server health check authentication ([cd6b6cd](https://github.com/ffMathy/hey-jarvis/commit/cd6b6cd1d66c74a09c15f70a6b1a0708e53fe3c0))
+* revert test supervisord config, make workspace path configurable, fix MCP health check, and remove nginx JWT layer ([#467](https://github.com/ffMathy/hey-jarvis/issues/467)) ([f8161ea](https://github.com/ffMathy/hey-jarvis/commit/f8161eaf90f68bcc6b6247766ac5110fc2ae1f4f))
+* use current directory for workspace root in tests ([1203faa](https://github.com/ffMathy/hey-jarvis/commit/1203faacd0276ae2cf5dbb9c86491d6013244064))
+
 ## [1.3.1](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-addon-v1.3.0...home-assistant-addon-v1.3.1) (2026-01-11)
 
 
