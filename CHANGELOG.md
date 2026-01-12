@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.1](https://github.com/ffMathy/hey-jarvis/compare/root-v1.5.0...root-v1.5.1) (2026-01-12)
+
+
+### Bug Fixes
+
+* **wake-word:** add VAD model and full URLs for wake word models ([#465](https://github.com/ffMathy/hey-jarvis/issues/465)) ([b9c25a3](https://github.com/ffMathy/hey-jarvis/commit/b9c25a3c6d41fa7485d23a7961558af55fb77b02))
+
 ## [1.5.0](https://github.com/ffMathy/hey-jarvis/compare/root-v1.4.1...root-v1.5.0) (2026-01-12)
 
 

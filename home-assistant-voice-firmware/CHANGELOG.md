@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.7.2](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.7.1...home-assistant-voice-firmware-v0.7.2) (2026-01-12)
+
+
+### Bug Fixes
+
+* **wake-word:** add VAD model and full URLs for wake word models ([6ab1ee9](https://github.com/ffMathy/hey-jarvis/commit/6ab1ee9baf5a14b6f4be7fab064378e7148849b7))
+* **wake-word:** add VAD model and full URLs for wake word models ([#465](https://github.com/ffMathy/hey-jarvis/issues/465)) ([b9c25a3](https://github.com/ffMathy/hey-jarvis/commit/b9c25a3c6d41fa7485d23a7961558af55fb77b02))
+
+
+### Documentation
+
+* **wake-word:** add comprehensive testing and troubleshooting guide ([cae8223](https://github.com/ffMathy/hey-jarvis/commit/cae8223ec4709bcc2248c171b44d1ad3f1f7e13c))
+* **wake-word:** add wake word troubleshooting section to README ([5d149c8](https://github.com/ffMathy/hey-jarvis/commit/5d149c834591e14842694ba4cb27f70ad0160596))
+
 ## [0.7.1](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.7.0...home-assistant-voice-firmware-v0.7.1) (2026-01-08)
 
 
