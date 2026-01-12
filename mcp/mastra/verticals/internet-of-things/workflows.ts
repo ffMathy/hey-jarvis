@@ -65,7 +65,9 @@ const calculateNoiseBaselines = createStep({
         timestamp: new Date().toISOString(),
       };
     } catch (error) {
-      logger.error('Error calculating noise baselines', { error });
+      logger.error('Error calculating noise baselines', {
+        error: error instanceof Error ? error.message : String(error),
+      });
       return {
         baselinesCalculated: 0,
         timestamp: new Date().toISOString(),
