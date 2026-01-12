@@ -37,7 +37,8 @@ async function waitForServers(startTime: number, maxWaitTime: number, checkInter
 
   // Get container IP for Docker network access (required in Docker-in-Docker/devcontainer)
   const containerIP = await getContainerIP();
-  const mcpUrl = `http://${containerIP}:${PORTS.MCP_SERVER}`;
+  // Check MCP server directly on internal port 8112 (bypasses nginx JWT auth on port 4112)
+  const mcpUrl = `http://${containerIP}:8112/health`;
   const mastraUrl = `http://${containerIP}:${PORTS.MASTRA_SERVER}`; // Same as MASTRA_STUDIO (both 4111)
 
   console.log(`Accessing servers via Docker bridge network IP: ${containerIP}`);
@@ -138,7 +139,7 @@ function createCleanupFunction(dockerProcess: ChildProcess): () => Promise<void>
  */
 export async function startContainer(options: ContainerStartupOptions = {}): Promise<ContainerStartupResult> {
   const {
-    maxWaitTime = 60 * 1000 * 5, // 5 minutes to allow for mastra dev initialization
+    maxWaitTime = 60 * 1000, // 60 seconds - MCP server starts quickly
     checkInterval = 2000,
     additionalInitTime = 5000,
     environmentVariables = {},
