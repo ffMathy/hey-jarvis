@@ -938,8 +938,12 @@ micro_wake_word:
     gain_factor: 4
   stop_after_detection: false
   models:
-    - model: hey_jarvis
+    # Hey Jarvis wake word - requires full URL for ESPHome 2024.7.0+
+    - model: https://github.com/esphome/micro-wake-word-models/raw/main/models/v2/hey_jarvis.json
       id: hey_jarvis
+  # Voice Activity Detection improves wake word accuracy by filtering out non-speech audio
+  vad:
+    model: https://github.com/esphome/micro-wake-word-models/raw/main/models/v2/vad.json
   on_wake_word_detected:
     # If the wake word is detected when the device is muted (Possible with the software mute switch): Do nothing
     - if:

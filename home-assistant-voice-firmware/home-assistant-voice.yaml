@@ -1578,16 +1578,22 @@ micro_wake_word:
     gain_factor: 4
   stop_after_detection: false
   models:
+    # Okay Nabu wake word - most reliable according to community feedback
     - model: https://github.com/kahrendt/microWakeWord/releases/download/okay_nabu_20241226.3/okay_nabu.json
       id: okay_nabu
-    - model: hey_jarvis
+    # Hey Jarvis wake word - requires full URL for ESPHome 2024.7.0+
+    - model: https://github.com/esphome/micro-wake-word-models/raw/main/models/v2/hey_jarvis.json
       id: hey_jarvis
-    - model: hey_mycroft
+    # Hey Mycroft wake word - requires full URL for ESPHome 2024.7.0+
+    - model: https://github.com/esphome/micro-wake-word-models/raw/main/models/v2/hey_mycroft.json
       id: hey_mycroft
+    # Stop word for timer control - internal use only
     - model: https://github.com/kahrendt/microWakeWord/releases/download/stop/stop.json
       id: stop
       internal: true
+  # Voice Activity Detection improves wake word accuracy by filtering out non-speech audio
   vad:
+    model: https://github.com/esphome/micro-wake-word-models/raw/main/models/v2/vad.json
   on_wake_word_detected:
     # If the wake word is detected when the device is muted (Possible with the software mute switch): Do nothing
     - if:
