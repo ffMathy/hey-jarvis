@@ -98,64 +98,74 @@ const fetchRecentlyChangedDevices = createStep({
     timestamp: z.string(),
   }),
   execute: async () => {
-    const result = await getChangedDevicesSince.execute({
-      sinceSeconds: STATE_CHANGE_WINDOW_SECONDS,
-    });
+    try {
+      const result = await getChangedDevicesSince.execute({
+        sinceSeconds: STATE_CHANGE_WINDOW_SECONDS,
+      });
 
-    // Handle ValidationError case using type guard for proper type narrowing
-    if (isValidationError(result)) {
-      logger.error('IoT Monitoring: failed to fetch changed devices', { message: result.message });
+      // Handle ValidationError case using type guard for proper type narrowing
+      if (isValidationError(result)) {
+        logger.error('IoT Monitoring: failed to fetch changed devices', { message: result.message });
+        return {
+          devices: [],
+          timestamp: new Date().toISOString(),
+        };
+      }
+
+      // Group by device and filter out sensitive labels (matching old n8n behavior)
+      const deviceMap = new Map<
+        string,
+        { id: string; name: string; entities: Array<{ id: string; newState: string; lastChanged: string }> }
+      >();
+
+      for (const item of result.changed_devices) {
+        // Skip if device or entity has the sensitive label
+        if (item.device_label_ids?.includes(SENSITIVE_LABEL) || item.entity_label_ids?.includes(SENSITIVE_LABEL)) {
+          continue;
+        }
+
+        const deviceId = item.device_id || 'unknown';
+        const deviceName = item.device_name || 'Unknown Device';
+
+        if (!deviceMap.has(deviceId)) {
+          deviceMap.set(deviceId, {
+            id: deviceId,
+            name: deviceName,
+            entities: [],
+          });
+        }
+
+        const device = deviceMap.get(deviceId);
+        if (device) {
+          device.entities.push({
+            id: item.entity_id,
+            newState: item.state,
+            lastChanged: new Date(item.last_changed * 1000).toISOString(),
+          });
+        }
+      }
+
+      const devices = Array.from(deviceMap.values());
+
+      logger.info('IoT Monitoring: entities changed', {
+        totalChanged: result.total_changed,
+        windowSeconds: STATE_CHANGE_WINDOW_SECONDS,
+        devicesWithChanges: devices.length,
+      });
+
+      return {
+        devices,
+        timestamp: new Date().toISOString(),
+      };
+    } catch (error) {
+      logger.error('Error fetching recently changed devices', {
+        error: error instanceof Error ? error.message : String(error),
+      });
       return {
         devices: [],
         timestamp: new Date().toISOString(),
       };
     }
-
-    // Group by device and filter out sensitive labels (matching old n8n behavior)
-    const deviceMap = new Map<
-      string,
-      { id: string; name: string; entities: Array<{ id: string; newState: string; lastChanged: string }> }
-    >();
-
-    for (const item of result.changed_devices) {
-      // Skip if device or entity has the sensitive label
-      if (item.device_label_ids?.includes(SENSITIVE_LABEL) || item.entity_label_ids?.includes(SENSITIVE_LABEL)) {
-        continue;
-      }
-
-      const deviceId = item.device_id || 'unknown';
-      const deviceName = item.device_name || 'Unknown Device';
-
-      if (!deviceMap.has(deviceId)) {
-        deviceMap.set(deviceId, {
-          id: deviceId,
-          name: deviceName,
-          entities: [],
-        });
-      }
-
-      const device = deviceMap.get(deviceId);
-      if (device) {
-        device.entities.push({
-          id: item.entity_id,
-          newState: item.state,
-          lastChanged: new Date(item.last_changed * 1000).toISOString(),
-        });
-      }
-    }
-
-    const devices = Array.from(deviceMap.values());
-
-    logger.info('IoT Monitoring: entities changed', {
-      totalChanged: result.total_changed,
-      windowSeconds: STATE_CHANGE_WINDOW_SECONDS,
-      devicesWithChanges: devices.length,
-    });
-
-    return {
-      devices,
-      timestamp: new Date().toISOString(),
-    };
   },
 });
 
@@ -256,7 +266,7 @@ const triggerStateChangeNotifications = createStep({
         } catch (error) {
           logger.error('Failed to register state change', {
             entityId: entity.id,
-            error,
+            error: error instanceof Error ? error.message : String(error),
           });
         }
       }
