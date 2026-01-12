@@ -151,8 +151,8 @@ export async function startContainer(options: ContainerStartupOptions = {}): Pro
   const env = { ...process.env, ...environmentVariables };
 
   // Use absolute path from project root
-  // Default to /workspaces/hey-jarvis for devcontainer compatibility
-  const workspaceRoot = process.env.WORKSPACE_ROOT || '/workspaces/hey-jarvis';
+  // Default to current working directory (process.cwd()) for compatibility
+  const workspaceRoot = process.env.WORKSPACE_ROOT || process.cwd();
   const scriptPath = `${workspaceRoot}/home-assistant-addon/tests/start-addon.sh`;
   const dockerProcess = spawn('bash', [scriptPath], {
     stdio: 'inherit',
