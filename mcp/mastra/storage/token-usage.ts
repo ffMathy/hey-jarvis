@@ -318,7 +318,7 @@ export class TokenUsageStorage {
     const models = quotaResult.rows.map((row) => row.model as string);
 
     // Fetch all usage data in one query with grouping
-    const usageQuery = `
+    const _usageQuery = `
       SELECT 
         model,
         SUM(total_tokens) as total_tokens

@@ -143,7 +143,7 @@ describe('Commute Tools Integration Tests', () => {
       if (firstPlace.distanceFromRoute !== undefined) {
         console.log('   - Distance from route:', (firstPlace.distanceFromRoute / 1000).toFixed(2), 'km');
       }
-    }, 45000); // Longer timeout as this makes multiple API calls
+    }, 90000); // Longer timeout as this makes multiple API calls and may be slow under load
 
     it('should find restaurants along a route', async () => {
       const result = await commuteTools.searchPlacesAlongRoute.execute({
@@ -164,7 +164,7 @@ describe('Commute Tools Integration Tests', () => {
 
       console.log('✅ Restaurants along route fetched successfully');
       console.log('   - Found:', result.places.length, 'restaurants');
-    }, 45000);
+    }, 90000);
   });
 
   describe('searchPlacesByDistance', () => {

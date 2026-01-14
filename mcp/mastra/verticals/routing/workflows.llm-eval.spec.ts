@@ -167,7 +167,7 @@ function createMockAgent(id: string, description: string, tools?: MockToolConfig
 /**
  * Helper to run workflow with retry logic for flaky LLM responses
  */
-async function runWorkflowWithRetry(userQuery: string, maxAttempts = 5): Promise<DAGType | undefined> {
+async function _runWorkflowWithRetry(userQuery: string, maxAttempts = 5): Promise<DAGType | undefined> {
   let attempts = 0;
   let dag: DAGType | undefined;
 

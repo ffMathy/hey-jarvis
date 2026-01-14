@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from 'bun:test';
+import { describe, expect, it } from 'bun:test';
 import { isValidationError } from '../../utils/test-helpers/validation-error.js';
 import { findProductInCatalog, getCurrentCartContents } from './tools';
 

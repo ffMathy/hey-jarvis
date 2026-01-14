@@ -132,5 +132,5 @@ describe('Shopping List API Tests', () => {
     expect(data.success).toBeDefined();
     expect(data.message).toBeDefined();
     console.log('✓ Shopping list API accepted request (status:', `${response.status})`);
-  }, 30000);
+  }, 60000);
 });

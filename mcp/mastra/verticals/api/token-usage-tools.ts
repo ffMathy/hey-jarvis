@@ -38,13 +38,13 @@ Use this tool when:
     const endDate = inputData.endDate ? new Date(inputData.endDate) : undefined;
 
     // Validate date formats
-    if (startDate && isNaN(startDate.getTime())) {
+    if (startDate && Number.isNaN(startDate.getTime())) {
       return {
         success: false,
         message: `Invalid start date format: ${inputData.startDate}`,
       };
     }
-    if (endDate && isNaN(endDate.getTime())) {
+    if (endDate && Number.isNaN(endDate.getTime())) {
       return {
         success: false,
         message: `Invalid end date format: ${inputData.endDate}`,

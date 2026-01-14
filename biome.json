@@ -64,6 +64,12 @@
           }
         }
       }
+    },
+    {
+      "includes": ["home-assistant-addon/config.json"],
+      "formatter": {
+        "enabled": false
+      }
     }
   ]
 }
