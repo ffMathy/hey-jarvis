@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response, Router } from 'express';
 import type { ZodError } from 'zod';
 import { logger } from '../../utils/logger.js';
-import type { AnyWorkflow, AnyWorkflowResult, NamedWorkflow } from '../../utils/workflows/workflow-types.js';
+import type { AnyWorkflowResult, NamedWorkflow } from '../../utils/workflows/workflow-types.js';
 import { shoppingListWorkflow } from '../shopping/workflows.js';
 
 /**
