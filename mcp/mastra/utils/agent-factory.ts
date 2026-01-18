@@ -1,4 +1,5 @@
 import { Agent, type AgentConfig } from '@mastra/core/agent';
+import type { IMastraLogger } from '@mastra/core/logger';
 import type { OutputProcessor } from '@mastra/core/processors';
 import { createMemory } from '../memory/index.js';
 import { getModel } from './providers/github-models-provider.js';
@@ -43,5 +44,17 @@ export async function createAgent(
     id: config.id || config.name || 'default-agent',
   } as AgentConfig;
 
-  return new Agent(mergedConfig);
+  const agent = new Agent(mergedConfig);
+
+  // Workaround for @mastra/core@1.0.0-beta.21 bug where Mastra.constructor
+  // calls __setLogger on agents but Agent class doesn't have this method
+  // This adds the missing method to maintain compatibility
+  if (typeof (agent as any).__setLogger !== 'function') {
+    (agent as any).__setLogger = (logger: IMastraLogger) => {
+      // Store logger reference if needed by agent internals
+      (agent as any)._logger = logger;
+    };
+  }
+
+  return agent;
 }

@@ -160,6 +160,8 @@ function createMockAgent(id: string, description: string, tools?: MockToolConfig
     getDescription: () => description,
     generate: jest.fn().mockResolvedValue({ text: `Mock response from ${id}` }),
     listTools: jest.fn().mockResolvedValue(mockTools),
+    // Add __setLogger method to fix compatibility with Mastra core
+    __setLogger: jest.fn(),
   } as unknown as Agent;
   return mockAgent;
 }
