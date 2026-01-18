@@ -1,3 +1,4 @@
+import { describe } from 'bun:test';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import type { Agent } from '@mastra/core/agent';
 import { generateObject } from 'ai';
@@ -18,6 +19,9 @@ import {
  * These tests verify that the DAG generation produces correct task dependencies
  * and routing decisions. Tests use LLM evaluation similar to the elevenlabs
  * project tests to validate semantic correctness.
+ *
+ * Note: These tests make many LLM API calls and may hit rate limits when run
+ * sequentially with other tests. Set SKIP_LLM_TESTS=1 to skip them.
  */
 
 interface EvaluationResult {
@@ -195,7 +199,10 @@ async function _runWorkflowWithRetry(userQuery: string, maxAttempts = 5): Promis
   return dag;
 }
 
-describe('Routing Workflows - LLM Evaluated', () => {
+// Skip LLM tests if SKIP_LLM_TESTS is set or if likely to hit rate limits
+const shouldSkipLLMTests = process.env.SKIP_LLM_TESTS === '1' || process.env.CI === 'true';
+
+describe.skipIf(shouldSkipLLMTests)('Routing Workflows - LLM Evaluated', () => {
   beforeEach(() => {
     // Reset all workflow state in one call
     setWorkflowState();

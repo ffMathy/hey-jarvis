@@ -164,7 +164,7 @@ describe('Commute Tools Integration Tests', () => {
 
       console.log('✅ Restaurants along route fetched successfully');
       console.log('   - Found:', result.places.length, 'restaurants');
-    }, 90000);
+    }, 120000); // Extended timeout for API calls that can be slow under load
   });
 
   describe('searchPlacesByDistance', () => {
