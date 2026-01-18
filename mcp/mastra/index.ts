@@ -1,5 +1,6 @@
 import { Mastra } from '@mastra/core';
 import type { Agent } from '@mastra/core/agent';
+import type { IMastraLogger } from '@mastra/core/logger';
 import { MastraServer } from '@mastra/hono';
 import { PinoLogger } from '@mastra/loggers';
 import { CloudExporter, DefaultExporter, Observability, SamplingStrategyType } from '@mastra/observability';
@@ -52,6 +53,34 @@ function toAgentMap(agents: Agent[]): Record<string, Agent> {
 }
 
 export async function getMastra(): Promise<Mastra> {
+  // Create all agents
+  const agents = [
+    await getCalendarAgent(),
+    await getCommuteAgent(),
+    await getCookingAgent(),
+    await getCodingAgent(),
+    await getEmailAgent(),
+    await getEmailParsingAgent(),
+    await getInternetOfThingsAgent(),
+    await getNotificationAgent(),
+    await getRequirementsInterviewerAgent(),
+    await getShoppingListAgent(),
+    await getShoppingListSummaryAgent(),
+    await getStateChangeReactorAgent(),
+    await getTodoListAgent(),
+    await getWeatherAgent(),
+    await getWebResearchAgent(),
+  ];
+
+  // Workaround for @mastra/core@1.0.0-beta.21 bug: ensure all agents have __setLogger
+  for (const agent of agents) {
+    if (!(agent as any).__setLogger || typeof (agent as any).__setLogger !== 'function') {
+      (agent as any).__setLogger = (logger: IMastraLogger) => {
+        (agent as any)._logger = logger;
+      };
+    }
+  }
+
   return new Mastra({
     logger: new PinoLogger({
       name: 'Mastra',
@@ -81,23 +110,7 @@ export async function getMastra(): Promise<Mastra> {
       getCurrentDagWorkflow,
       getNextInstructionsWorkflow,
     },
-    agents: toAgentMap([
-      await getCalendarAgent(),
-      await getCommuteAgent(),
-      await getCookingAgent(),
-      await getCodingAgent(),
-      await getEmailAgent(),
-      await getEmailParsingAgent(),
-      await getInternetOfThingsAgent(),
-      await getNotificationAgent(),
-      await getRequirementsInterviewerAgent(),
-      await getShoppingListAgent(),
-      await getShoppingListSummaryAgent(),
-      await getStateChangeReactorAgent(),
-      await getTodoListAgent(),
-      await getWeatherAgent(),
-      await getWebResearchAgent(),
-    ]),
+    agents: toAgentMap(agents),
     tools: {
       ...tokenUsageTools,
       ...calendarTools,

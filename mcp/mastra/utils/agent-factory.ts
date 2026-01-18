@@ -49,7 +49,7 @@ export async function createAgent(
   // Workaround for @mastra/core@1.0.0-beta.21 bug where Mastra.constructor
   // calls __setLogger on agents but Agent class doesn't have this method
   // This adds the missing method to maintain compatibility
-  if (typeof (agent as any).__setLogger !== 'function') {
+  if (!(agent as any).__setLogger || typeof (agent as any).__setLogger !== 'function') {
     (agent as any).__setLogger = (logger: IMastraLogger) => {
       // Store logger reference if needed by agent internals
       (agent as any)._logger = logger;
