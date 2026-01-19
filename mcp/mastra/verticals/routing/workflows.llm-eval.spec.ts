@@ -1,4 +1,4 @@
-import { describe } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import type { Agent } from '@mastra/core/agent';
 import { generateObject } from 'ai';
@@ -164,8 +164,10 @@ function createMockAgent(id: string, description: string, tools?: MockToolConfig
     getDescription: () => description,
     generate: jest.fn().mockResolvedValue({ text: `Mock response from ${id}` }),
     listTools: jest.fn().mockResolvedValue(mockTools),
-    // Add __setLogger method to fix compatibility with Mastra core
+    // Add methods for compatibility with Mastra core
     __setLogger: jest.fn(),
+    __registerMastra: jest.fn(),
+    __registerPrimitives: jest.fn(),
   } as unknown as Agent;
   return mockAgent;
 }

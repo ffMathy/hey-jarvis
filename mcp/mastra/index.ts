@@ -52,6 +52,38 @@ function toAgentMap(agents: Agent[]): Record<string, Agent> {
 }
 
 export async function getMastra(): Promise<Mastra> {
+  const agents = [
+    await getCalendarAgent(),
+    await getCommuteAgent(),
+    await getCookingAgent(),
+    await getCodingAgent(),
+    await getEmailAgent(),
+    await getEmailParsingAgent(),
+    await getInternetOfThingsAgent(),
+    await getNotificationAgent(),
+    await getRequirementsInterviewerAgent(),
+    await getShoppingListAgent(),
+    await getShoppingListSummaryAgent(),
+    await getStateChangeReactorAgent(),
+    await getTodoListAgent(),
+    await getWeatherAgent(),
+    await getWebResearchAgent(),
+  ];
+
+  // Ensure all agents have required methods for compatibility with Mastra core
+  // Some versions of @mastra/core expect these methods but Agent class may not provide them
+  for (const agent of agents) {
+    if (!(agent as any).__setLogger) {
+      (agent as any).__setLogger = () => {}; // No-op implementation
+    }
+    if (!(agent as any).__registerMastra) {
+      (agent as any).__registerMastra = () => {}; // No-op implementation
+    }
+    if (!(agent as any).__registerPrimitives) {
+      (agent as any).__registerPrimitives = () => {}; // No-op implementation
+    }
+  }
+
   return new Mastra({
     logger: new PinoLogger({
       name: 'Mastra',
@@ -81,23 +113,7 @@ export async function getMastra(): Promise<Mastra> {
       getCurrentDagWorkflow,
       getNextInstructionsWorkflow,
     },
-    agents: toAgentMap([
-      await getCalendarAgent(),
-      await getCommuteAgent(),
-      await getCookingAgent(),
-      await getCodingAgent(),
-      await getEmailAgent(),
-      await getEmailParsingAgent(),
-      await getInternetOfThingsAgent(),
-      await getNotificationAgent(),
-      await getRequirementsInterviewerAgent(),
-      await getShoppingListAgent(),
-      await getShoppingListSummaryAgent(),
-      await getStateChangeReactorAgent(),
-      await getTodoListAgent(),
-      await getWeatherAgent(),
-      await getWebResearchAgent(),
-    ]),
+    agents: toAgentMap(agents),
     tools: {
       ...tokenUsageTools,
       ...calendarTools,
