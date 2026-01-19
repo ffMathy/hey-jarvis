@@ -61,7 +61,7 @@
     "test": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "./.scripts/run-with-env.sh mcp/op.env bun test mcp/tests mcp/mastra --max-concurrency=1 --exclude '**/e2e/**'",
+        "command": "./.scripts/run-with-env.sh mcp/op.env bun test mcp/tests mcp/mastra --max-concurrency=1",
         "cwd": "."
       },
       "outputs": ["{workspaceRoot}/coverage/{projectRoot}"]
