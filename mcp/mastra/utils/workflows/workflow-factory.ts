@@ -131,7 +131,7 @@ export function createWorkflow<
  */
 export function createStep<
   TStepId extends string = string,
-  TState extends z.ZodObject<any> = z.ZodObject<any>,
+  TState extends z.ZodObject<any> | undefined = undefined,
   TInput extends z.ZodSchema = z.ZodSchema,
   TOutput extends z.ZodSchema = z.ZodSchema,
   TResume extends z.ZodSchema = z.ZodNever,
