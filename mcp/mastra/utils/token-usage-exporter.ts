@@ -41,13 +41,23 @@ export class TokenUsageExporter implements ObservabilityExporter {
       return;
     }
 
-    // Cast attributes to ModelGenerationAttributes (safe after type guard)
-    const attributes = span.attributes as ModelGenerationAttributes | undefined;
-    if (!attributes || !attributes.usage) {
+    // Check if attributes has the required ModelGenerationAttributes structure
+    const attributes = span.attributes;
+    if (!attributes || typeof attributes !== 'object') {
+      return;
+    }
+
+    // Type guard to check for usage property
+    if (!('usage' in attributes) || !attributes.usage || typeof attributes.usage !== 'object') {
       return;
     }
 
     const usage = attributes.usage;
+
+    // Type guard for token counts
+    if (!('inputTokens' in usage) || !('outputTokens' in usage)) {
+      return;
+    }
 
     // Ensure we have non-zero token counts (skip calls with no tokens)
     // Mastra v1 beta.10+ uses inputTokens/outputTokens instead of promptTokens/completionTokens
@@ -55,22 +65,27 @@ export class TokenUsageExporter implements ObservabilityExporter {
       return;
     }
 
-    const promptTokens = usage.inputTokens ?? 0;
-    const completionTokens = usage.outputTokens ?? 0;
+    const promptTokens = typeof usage.inputTokens === 'number' ? usage.inputTokens : 0;
+    const completionTokens = typeof usage.outputTokens === 'number' ? usage.outputTokens : 0;
     const totalTokens = promptTokens + completionTokens;
 
-    // Get model and provider information
-    const model = attributes.model ?? 'unknown';
-    const provider = attributes.provider ?? 'unknown';
+    // Get model and provider information with runtime checks
+    const model = 'model' in attributes && typeof attributes.model === 'string' ? attributes.model : 'unknown';
+    const provider =
+      'provider' in attributes && typeof attributes.provider === 'string' ? attributes.provider : 'unknown';
 
     // Find the root span to get agent/workflow context
     let agentId: string | undefined;
     let workflowId: string | undefined;
 
-    // Search through metadata for agent/workflow IDs
-    if (span.metadata) {
-      agentId = span.metadata.agentId as string | undefined;
-      workflowId = span.metadata.workflowId as string | undefined;
+    // Search through metadata for agent/workflow IDs with runtime type checks
+    if (span.metadata && typeof span.metadata === 'object') {
+      if ('agentId' in span.metadata && typeof span.metadata.agentId === 'string') {
+        agentId = span.metadata.agentId;
+      }
+      if ('workflowId' in span.metadata && typeof span.metadata.workflowId === 'string') {
+        workflowId = span.metadata.workflowId;
+      }
     }
 
     try {
@@ -126,35 +141,57 @@ export class TokenTrackingProcessor implements SpanOutputProcessor {
 
     // For AGENT_RUN spans, add agentId to metadata
     if (span.type === 'agent_run') {
-      const agentRunSpan = span as AnySpan & { attributes?: { agentId?: string } };
-      if (agentRunSpan.attributes?.agentId) {
+      if (
+        span.attributes &&
+        typeof span.attributes === 'object' &&
+        'agentId' in span.attributes &&
+        typeof span.attributes.agentId === 'string'
+      ) {
         span.metadata = {
           ...span.metadata,
-          agentId: agentRunSpan.attributes.agentId,
+          agentId: span.attributes.agentId,
         };
       }
     }
 
     // For WORKFLOW_RUN spans, add workflowId to metadata
     if (span.type === 'workflow_run') {
-      const workflowRunSpan = span as AnySpan & { attributes?: { workflowId?: string } };
-      if (workflowRunSpan.attributes?.workflowId) {
+      if (
+        span.attributes &&
+        typeof span.attributes === 'object' &&
+        'workflowId' in span.attributes &&
+        typeof span.attributes.workflowId === 'string'
+      ) {
         span.metadata = {
           ...span.metadata,
-          workflowId: workflowRunSpan.attributes.workflowId,
+          workflowId: span.attributes.workflowId,
         };
       }
     }
 
     // For MODEL_GENERATION spans, inherit context from parent
     if (span.type === 'model_generation') {
-      const parent = (span as AnySpan & { parent?: { metadata?: Record<string, unknown> } }).parent;
-      if (parent?.metadata) {
-        span.metadata = {
-          ...span.metadata,
-          agentId: parent.metadata.agentId,
-          workflowId: parent.metadata.workflowId,
-        };
+      if (
+        'parent' in span &&
+        span.parent &&
+        typeof span.parent === 'object' &&
+        'metadata' in span.parent &&
+        span.parent.metadata
+      ) {
+        const parentMetadata = span.parent.metadata;
+        if (typeof parentMetadata === 'object') {
+          const inheritedMetadata: Record<string, unknown> = {};
+          if ('agentId' in parentMetadata) {
+            inheritedMetadata.agentId = parentMetadata.agentId;
+          }
+          if ('workflowId' in parentMetadata) {
+            inheritedMetadata.workflowId = parentMetadata.workflowId;
+          }
+          span.metadata = {
+            ...span.metadata,
+            ...inheritedMetadata,
+          };
+        }
       }
     }
 

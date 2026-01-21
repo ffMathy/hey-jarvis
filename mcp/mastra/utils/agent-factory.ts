@@ -31,17 +31,20 @@ export async function createAgent(
   };
 
   // Explicitly merge output processors to avoid type inference issues
-  const defaultProcessors = (DEFAULT_AGENT_CONFIG.outputProcessors || []) as OutputProcessor[];
-  const customProcessors = (config.outputProcessors || []) as OutputProcessor[];
+  const defaultProcessors: readonly OutputProcessor[] = DEFAULT_AGENT_CONFIG.outputProcessors || [];
+  const customProcessors: readonly OutputProcessor[] = config.outputProcessors || [];
 
   const mergedConfig: AgentConfig = {
     ...DEFAULT_AGENT_CONFIG,
     ...config,
+    model: config.model || DEFAULT_AGENT_CONFIG.model!,
+    memory: config.memory || DEFAULT_AGENT_CONFIG.memory,
+    scorers: config.scorers || DEFAULT_AGENT_CONFIG.scorers,
     // Merge output processors instead of replacing
     outputProcessors: [...defaultProcessors, ...customProcessors],
     // Use name as id if id not provided
     id: config.id || config.name || 'default-agent',
-  } as AgentConfig;
+  };
 
   return new Agent(mergedConfig);
 }
