@@ -87,7 +87,7 @@ export const createTask = createTool({
     status: z.string(),
     selfLink: z.string(),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, _context) => {
     const auth = await getGoogleAuth();
     const tasks = google.tasks({ version: 'v1', auth });
 
@@ -128,7 +128,7 @@ export const deleteTask = createTool({
     success: z.boolean(),
     message: z.string(),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, _context) => {
     const auth = await getGoogleAuth();
     const tasks = google.tasks({ version: 'v1', auth });
 
@@ -170,7 +170,7 @@ export const getAllTasks = createTool({
       }),
     ),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, _context) => {
     const auth = await getGoogleAuth();
     const tasks = google.tasks({ version: 'v1', auth });
 
@@ -217,7 +217,7 @@ export const updateTask = createTool({
     completed: z.string().optional(),
     selfLink: z.string(),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, _context) => {
     const auth = await getGoogleAuth();
     const tasks = google.tasks({ version: 'v1', auth });
 
@@ -272,7 +272,7 @@ export const getAllTaskLists = createTool({
       }),
     ),
   }),
-  execute: async () => {
+  execute: async (_inputData, _context) => {
     const auth = await getGoogleAuth();
     const tasks = google.tasks({ version: 'v1', auth });
 

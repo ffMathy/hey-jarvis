@@ -116,7 +116,7 @@ export const listUserRepositories = createTool({
     repositories: z.array(GitHubRepositorySchema),
     total_count: z.number(),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, _context) => {
     const username = inputData.username || 'ffMathy';
 
     const { data: repositories } = await octokit.rest.repos.listForUser({
@@ -148,7 +148,7 @@ export const listRepositoryIssues = createTool({
     issues: z.array(GitHubIssueSchema),
     total_count: z.number(),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, _context) => {
     const owner = inputData.owner || 'ffMathy';
     const repo = inputData.repo || 'hey-jarvis';
 
@@ -198,7 +198,7 @@ export const searchRepositories = createTool({
     repositories: z.array(GitHubRepositorySchema),
     total_count: z.number(),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, _context) => {
     const owner = inputData.owner || 'ffMathy';
 
     // Construct search query with owner filter
@@ -239,7 +239,7 @@ export const assignCopilotToIssue = createTool({
     message: z.string(),
     task_url: z.string().optional(),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, _context) => {
     const owner = inputData.owner || 'ffMathy';
 
     // This is an informational tool that provides instructions for manual assignment
@@ -275,7 +275,7 @@ export const createGitHubIssue = createTool({
     issue_url: z.string().optional(),
     message: z.string(),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, _context) => {
     const owner = inputData.owner || 'ffMathy';
 
     try {
@@ -324,7 +324,7 @@ export const updateGitHubIssue = createTool({
     issue_url: z.string().optional(),
     message: z.string(),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, _context) => {
     const owner = inputData.owner || 'ffMathy';
 
     try {

@@ -26,7 +26,7 @@ export const registerStateChange = createTool({
       .describe('True if the change is waiting in the batch queue, false if it was processed immediately'),
     message: z.string(),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, _context) => {
     try {
       logger.info('Registering state change', {
         stateType: inputData.stateType,
@@ -64,7 +64,7 @@ export const flushStateChanges = createTool({
     processedCount: z.number(),
     message: z.string(),
   }),
-  execute: async () => {
+  execute: async (_inputData, _context) => {
     const statsBefore = stateChangeBatcher.getStats();
     await stateChangeBatcher.flush();
     const statsAfter = stateChangeBatcher.getStats();
@@ -92,7 +92,7 @@ export const getStateChangeBatcherStats = createTool({
     isProcessing: z.boolean(),
     droppedCount: z.number().describe('Number of state changes dropped after exceeding retry limit'),
   }),
-  execute: async () => {
+  execute: async (_inputData, _context) => {
     return stateChangeBatcher.getStats();
   },
 });

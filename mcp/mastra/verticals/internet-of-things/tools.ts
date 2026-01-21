@@ -139,7 +139,7 @@ export const callIoTService = createTool({
     data: z.record(z.unknown()),
     message: z.string(),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, _context) => {
     try {
       const endpoint = `services/${inputData.domain}/${inputData.serviceId}`;
       await callHomeAssistantApi(endpoint, 'POST', inputData.data);
@@ -193,7 +193,7 @@ export const getEntityLogbook = createTool({
       }),
     ),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, _context) => {
     const endTime = inputData.endTime || new Date().toISOString();
     const startTime = inputData.startTime || new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
@@ -248,7 +248,7 @@ export const getAllDevices = createTool({
       }),
     ),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, _context) => {
     const domainFilter = inputData.domain ? `and st.domain == '${inputData.domain}'` : '';
 
     const template = `
@@ -347,7 +347,7 @@ export const getAllServices = createTool({
       ),
     ),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, _context) => {
     const response: ServicesApiResponse[] = await callHomeAssistantApi('services');
 
     const excludedDomains = ['update', 'hassio', 'frontend', 'logger', 'system_log'];
@@ -403,7 +403,7 @@ export const getChangedDevicesSince = createTool({
     since_seconds: z.number(),
     total_changed: z.number(),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, _context) => {
     const domainFilter = inputData.domain ? `and s.domain == '${inputData.domain}'` : '';
 
     const template = `
@@ -507,7 +507,7 @@ export const inferUserLocation = createTool({
     ),
     timestamp: z.string(),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, _context) => {
     // Fetch all person entities and zones using a Jinja template
     const template = `
 {%- set persons = states.person | list -%}

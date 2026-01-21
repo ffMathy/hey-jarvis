@@ -67,7 +67,7 @@ export const notifyDevice = createTool({
     message: z.string(),
     serviceCalled: z.string().optional(),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, _context) => {
     try {
       const { message, deviceName, conversationTimeout = 5000 } = inputData;
 

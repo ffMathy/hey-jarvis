@@ -104,7 +104,7 @@ export const getCurrentWeatherByCity = createTool({
       lon: z.number(),
     }),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, _context) => {
     const apiKey = getApiKey();
     const url = `https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(inputData.cityName)}&appid=${apiKey}&units=metric&lang=en`;
     const response = await fetch(url);
@@ -163,7 +163,7 @@ export const getCurrentWeatherByCoordinates = createTool({
       lon: z.number(),
     }),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, _context) => {
     const apiKey = getApiKey();
     const url = `https://api.openweathermap.org/data/2.5/weather?lat=${inputData.latitude}&lon=${inputData.longitude}&appid=${apiKey}&units=metric&lang=en`;
 
@@ -231,7 +231,7 @@ export const getForecastByCity = createTool({
       }),
     ),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, _context) => {
     const apiKey = getApiKey();
     const url = `https://api.openweathermap.org/data/2.5/forecast?q=${encodeURIComponent(inputData.cityName)}&appid=${apiKey}&units=metric&lang=en`;
 
@@ -299,7 +299,7 @@ export const getForecastByCoordinates = createTool({
       }),
     ),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, _context) => {
     const apiKey = getApiKey();
     const url = `https://api.openweathermap.org/data/2.5/forecast?lat=${inputData.latitude}&lon=${inputData.longitude}&appid=${apiKey}&units=metric&lang=en`;
 

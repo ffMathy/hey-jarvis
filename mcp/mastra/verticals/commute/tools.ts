@@ -72,7 +72,7 @@ export const getTravelTime = createTool({
     endAddress: z.string(),
     mode: z.string(),
   }),
-  execute: async ({ origin, destination, mode, departureTime, includeTraffic }) => {
+  execute: async ({ origin, destination, mode, departureTime, includeTraffic }, _context) => {
     const { client, apiKey } = getGoogleMapsClient();
 
     const params: {
@@ -155,7 +155,7 @@ export const searchPlacesAlongRoute = createTool({
       summary: z.string().describe('Brief summary of the route'),
     }),
   }),
-  execute: async ({ origin, destination, searchQuery, maxResults }) => {
+  execute: async ({ origin, destination, searchQuery, maxResults }, _context) => {
     const { client, apiKey } = getGoogleMapsClient();
 
     const directionsResponse = await client.directions({
@@ -308,7 +308,7 @@ export const searchPlacesByDistance = createTool({
       }),
     }),
   }),
-  execute: async ({ location, searchQuery, radius, maxResults }) => {
+  execute: async ({ location, searchQuery, radius, maxResults }, _context) => {
     const { client, apiKey } = getGoogleMapsClient();
 
     const geocodeResponse = await client.geocode({
@@ -335,7 +335,7 @@ export const searchPlacesByDistance = createTool({
       params: {
         query: searchQuery,
         location: centerLocation,
-        radius: Math.min(radius, 50000),
+        radius: Math.min(radius ?? 5000, 50000),
         key: apiKey,
       },
     });
@@ -414,7 +414,7 @@ export const getPlaceDetails = createTool({
       )
       .optional(),
   }),
-  execute: async ({ placeId, placeName, location }) => {
+  execute: async ({ placeId, placeName, location }, _context) => {
     const { client, apiKey } = getGoogleMapsClient();
 
     let actualPlaceId = placeId;

@@ -34,7 +34,7 @@ export const sendTextMessage = createTool({
     message: z.string(),
     messageSid: z.string().optional(),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, _context) => {
     try {
       const { phoneNumber, message } = inputData;
 
@@ -105,7 +105,7 @@ export const initiatePhoneCall = createTool({
     conversationId: z.string().optional(),
     callSid: z.string().optional(),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, _context) => {
     try {
       const { phoneNumber, firstMessage } = inputData;
 

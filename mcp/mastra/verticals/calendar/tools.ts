@@ -90,7 +90,7 @@ export const createCalendarEvent = createTool({
     htmlLink: z.string(),
     status: z.string(),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, _context) => {
     const auth = await getGoogleAuth();
     const calendar = google.calendar({ version: 'v3', auth });
 
@@ -137,7 +137,7 @@ export const deleteCalendarEvent = createTool({
     success: z.boolean(),
     message: z.string(),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, _context) => {
     const auth = await getGoogleAuth();
     const calendar = google.calendar({ version: 'v3', auth });
 
@@ -175,7 +175,7 @@ export const updateCalendarEvent = createTool({
     htmlLink: z.string(),
     status: z.string(),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, _context) => {
     const auth = await getGoogleAuth();
     const calendar = google.calendar({ version: 'v3', auth });
 
@@ -245,7 +245,7 @@ export const getCalendarEvents = createTool({
       }),
     ),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, _context) => {
     const auth = await getGoogleAuth();
     const calendar = google.calendar({ version: 'v3', auth });
 
@@ -291,7 +291,7 @@ export const getAllCalendars = createTool({
       }),
     ),
   }),
-  execute: async () => {
+  execute: async (_inputData, _context) => {
     const auth = await getGoogleAuth();
     const calendar = google.calendar({ version: 'v3', auth });
 

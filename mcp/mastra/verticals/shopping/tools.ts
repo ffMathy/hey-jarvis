@@ -21,7 +21,7 @@ export const findProductInCatalog = createTool({
       attributes: z.array(z.string()),
     }),
   ),
-  execute: async (inputData) => {
+  execute: async (inputData, _context) => {
     const attributeNameOrder = ['Økomærket DK', 'Økomærket EU', 'Nøglehulsmærket', 'Dansk', 'Europæisk ejerskab', ''];
 
     for (const attributeName of attributeNameOrder) {
@@ -71,7 +71,7 @@ export const setProductBasketQuantity = createTool({
     success: z.boolean(),
     message: z.string().optional(),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, _context) => {
     const _result = await changeProductQuantity(inputData.object_id, inputData.quantity, inputData.product_name);
     return {
       success: true,
@@ -101,7 +101,7 @@ export const getCurrentCartContents = createTool({
       type: z.string(),
     }),
   ),
-  execute: async () => {
+  execute: async (_inputData, _context) => {
     const cartResponse = await getCartContents();
     return cartResponse.lines
       .flatMap((x) => x.lines)
@@ -132,7 +132,7 @@ export const clearCartContents = createTool({
   outputSchema: z.object({
     success: z.boolean(),
   }),
-  execute: async () => {
+  execute: async (_inputData, _context) => {
     await clearCart();
     return { success: true };
   },

@@ -168,7 +168,7 @@ export const findEmails = createTool({
     ),
     totalCount: z.number(),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, _context) => {
     const accessToken = await getMicrosoftAuth();
     const { searchQuery, folder, limit, isRead, hasAttachment } = inputData;
 
@@ -237,7 +237,7 @@ export const draftEmail = createTool({
     success: z.boolean(),
     message: z.string(),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, _context) => {
     const accessToken = await getMicrosoftAuth();
     const { subject, bodyContent, toRecipients, ccRecipients, bccRecipients } = inputData;
 
@@ -306,7 +306,7 @@ export const draftReply = createTool({
     message: z.string(),
     draftId: z.string().optional(),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, _context) => {
     const accessToken = await getMicrosoftAuth();
     const { messageId, replyMessage, replyAll } = inputData;
 
@@ -369,7 +369,7 @@ export const updateDraft = createTool({
     message: z.string(),
     draftId: z.string(),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, _context) => {
     const accessToken = await getMicrosoftAuth();
     const { draftId, subject, bodyContent, toRecipients } = inputData;
 
@@ -426,7 +426,7 @@ export const deleteEmail = createTool({
     success: z.boolean(),
     message: z.string(),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, _context) => {
     const accessToken = await getMicrosoftAuth();
     const { messageId } = inputData;
 
@@ -465,7 +465,7 @@ export const sendEmail = createTool({
     success: z.boolean(),
     message: z.string(),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, _context) => {
     const accessToken = await getMicrosoftAuth();
     const { subject, bodyContent, toRecipients, ccRecipients, bccRecipients } = inputData;
 

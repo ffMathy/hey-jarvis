@@ -82,7 +82,7 @@ export const getRecipeById = createTool({
       servings: z.number().optional(),
     })
     .describe('Detailed information about the recipe'),
-  execute: async (inputData) => {
+  execute: async (inputData, _context) => {
     const apiKey = getApiKey();
     const url = `https://www.valdemarsro.dk/api/v2/recipes/${inputData.recipeId}?api_key=${apiKey}`;
 
@@ -152,7 +152,7 @@ export const getAllRecipes = createTool({
   outputSchema: z
     .array(getRecipeById.outputSchema)
     .describe('Array of all recipes from Valdemarsro suitable for meal planning'),
-  execute: async (inputData) => {
+  execute: async (inputData, _context) => {
     async function getPage(page: number) {
       const apiKey = getApiKey();
       let url = `https://www.valdemarsro.dk/api/v2/recipes/page/${page}?api_key=${apiKey}`;
@@ -199,7 +199,7 @@ export const getSearchFilters = createTool({
   outputSchema: z.object({
     filters: z.any(), // Will be defined based on actual API response
   }),
-  execute: async () => {
+  execute: async (_inputData, _context) => {
     const apiKey = getApiKey();
     const url = `https://www.valdemarsro.dk/api/v2/search/filters?api_key=${apiKey}`;
 
