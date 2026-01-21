@@ -370,7 +370,7 @@ const formatFinalOutput = createStep({
  */
 export const implementFeatureWorkflow = createWorkflow({
   id: 'implementFeatureWorkflow',
-
+  stateSchema: workflowStateSchema,
   inputSchema: requirementsInputSchema,
   outputSchema: z.object({
     success: z.boolean(),

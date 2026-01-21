@@ -156,6 +156,7 @@ export function getSendEmailAndAwaitResponseWorkflow<TResponseSchema extends z.Z
 
   return createWorkflow({
     id: `sendEmailAndAwaitResponseWorkflow-${slug}`,
+    stateSchema: z.object({}).partial(), // No state needed for this workflow
     inputSchema: sendAndWaitInputSchema,
     outputSchema,
   })
@@ -482,6 +483,7 @@ const formatFinalOutput = createStep({
 
 export const humanInTheLoopDemoWorkflow = createWorkflow({
   id: 'humanInTheLoopDemoWorkflow',
+  stateSchema: z.object({}).partial(), // No state needed for this workflow
   inputSchema: workflowInputSchema,
   outputSchema: workflowOutputSchema,
 })

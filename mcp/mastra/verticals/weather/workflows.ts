@@ -87,6 +87,7 @@ const registerWeatherStateChange = createStep({
 // Data flows through context and registers state changes for notification analysis
 export const weatherMonitoringWorkflow = createWorkflow({
   id: 'weatherMonitoringWorkflow',
+  stateSchema: z.object({}).partial(), // No state needed for this workflow
   inputSchema: z.object({}),
   outputSchema: z.object({
     registered: z.boolean(),

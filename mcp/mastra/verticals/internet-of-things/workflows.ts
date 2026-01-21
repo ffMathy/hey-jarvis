@@ -275,6 +275,7 @@ const triggerStateChangeNotifications = createStep({
 // and triggers state change notifications only for significant changes.
 export const iotMonitoringWorkflow = createWorkflow({
   id: 'iotMonitoringWorkflow',
+  stateSchema: z.object({}).partial(), // No state needed for this workflow
   inputSchema: z.object({}),
   outputSchema: z.object({
     changesProcessed: z.number(),

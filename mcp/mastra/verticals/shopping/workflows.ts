@@ -268,7 +268,7 @@ Please provide a friendly summary in Danish of what was changed in the shopping 
 // All other values flow through context from step to step
 export const shoppingListWorkflow = createWorkflow({
   id: 'shoppingListWorkflow',
-
+  stateSchema: workflowStateSchema,
   inputSchema: shoppingListInputSchema,
   outputSchema: shoppingListResultSchema,
 })
