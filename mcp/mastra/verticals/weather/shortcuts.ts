@@ -22,6 +22,9 @@ export const getUserCurrentLocation = createShortcut({
     "Get the current location of a user for weather purposes. Uses IoT device tracking to determine the user's GPS coordinates and zone information.",
   tool: inferUserLocation,
   execute: async (input) => {
+    if (!inferUserLocation.execute) {
+      throw new Error('inferUserLocation tool does not have an execute function');
+    }
     const result = await inferUserLocation.execute(input, {});
 
     // Handle ValidationError case - throw so caller can handle

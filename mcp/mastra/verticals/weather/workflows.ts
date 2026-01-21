@@ -72,6 +72,9 @@ const registerWeatherStateChange = createStep({
       },
     };
 
+    if (!registerStateChange.execute) {
+      throw new Error('registerStateChange tool does not have an execute function');
+    }
     const result = await registerStateChange.execute(stateChangeData, {});
 
     // Handle validation error case using type guard for proper narrowing
