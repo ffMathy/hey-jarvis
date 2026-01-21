@@ -206,7 +206,8 @@ export function createAgentStep<
         TypeOf<TInputSchema>,
         TResumeSchema,
         TSuspendSchema,
-        DefaultEngineType
+        DefaultEngineType,
+        unknown
       >,
     ) => string | Promise<string>;
   },
@@ -282,13 +283,17 @@ export function createToolStep<
   id: TStepId;
   description: string;
   tool: {
-    inputSchema: TToolInput;
-    outputSchema: TToolOutput;
+    inputSchema?: TToolInput;
+    outputSchema?: TToolOutput;
     execute: (inputData: z.infer<TToolInput>, context?: any) => Promise<z.infer<TToolOutput>>;
   };
   stateSchema?: TStateSchema;
   inputOverrides?: z.infer<TToolInput>;
 }) {
+  if (!config.tool.inputSchema || !config.tool.outputSchema) {
+    throw new Error(`Tool for step ${config.id} must have inputSchema and outputSchema defined`);
+  }
+
   const inputSchema = config.tool.inputSchema;
 
   return createStep<TStepId, TStateSchema, typeof inputSchema, TToolOutput>({

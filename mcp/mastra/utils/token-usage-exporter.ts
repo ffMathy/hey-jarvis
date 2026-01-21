@@ -104,8 +104,14 @@ export class TokenUsageExporter implements ObservabilityExporter {
     }
   }
 
+  async flush(): Promise<void> {
+    // Flush any pending token usage data
+    // Currently we write synchronously, so nothing to flush
+  }
+
   async shutdown(): Promise<void> {
     // Cleanup if needed
+    await this.flush();
   }
 }
 

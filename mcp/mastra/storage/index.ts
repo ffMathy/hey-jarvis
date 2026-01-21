@@ -47,7 +47,7 @@ export async function getVectorStorageProvider(): Promise<LibSQLVector> {
 
   return new LibSQLVector({
     id: 'hey-jarvis-vector-storage',
-    connectionUrl: `file:${path.join(databaseDirectory, 'mastra.vector.db')}`,
+    url: `file:${path.join(databaseDirectory, 'mastra.vector.db')}`,
   });
 }
 
