@@ -56,11 +56,14 @@ const sendFormRequestEmail = createStep({
 </html>
     `.trim();
 
-    const emailResult = await sendEmail.execute({
-      subject,
-      bodyContent,
-      toRecipients: [recipientEmail],
-    });
+    const emailResult = await sendEmail.execute(
+      {
+        subject,
+        bodyContent,
+        toRecipients: [recipientEmail],
+      },
+      {},
+    );
 
     // Handle validation error case - narrow the type explicitly
     if ('error' in emailResult) {
@@ -156,7 +159,6 @@ export function getSendEmailAndAwaitResponseWorkflow<TResponseSchema extends z.Z
 
   return createWorkflow({
     id: `sendEmailAndAwaitResponseWorkflow-${slug}`,
-    stateSchema: z.object({}).partial(), // No state needed for this workflow
     inputSchema: sendAndWaitInputSchema,
     outputSchema,
   })
@@ -483,7 +485,6 @@ const formatFinalOutput = createStep({
 
 export const humanInTheLoopDemoWorkflow = createWorkflow({
   id: 'humanInTheLoopDemoWorkflow',
-  stateSchema: z.object({}).partial(), // No state needed for this workflow
   inputSchema: workflowInputSchema,
   outputSchema: workflowOutputSchema,
 })

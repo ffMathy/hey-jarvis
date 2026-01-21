@@ -1,4 +1,3 @@
-import type { z } from 'zod';
 import { createShortcut } from '../../utils/shortcut-factory.js';
 import { getAllDevices } from '../internet-of-things/tools.js';
 
@@ -11,9 +10,28 @@ import { getAllDevices } from '../internet-of-things/tools.js';
  * schemas from the underlying tool they wrap.
  */
 
-// Type for device from getAllDevices output schema
-type Device = z.infer<typeof getAllDevices.outputSchema>['devices'][number];
-type Entity = Device['entities'][number];
+// Type for device entity
+interface DeviceEntity {
+  id: string;
+  domain: string;
+  state: string;
+  attributes: Record<string, any>;
+  newState?: string;
+  lastChanged?: string;
+}
+
+// Type for device from getAllDevices output
+interface DeviceState {
+  id: string;
+  name: string;
+  labels: string[];
+  area: string | null;
+  last_changed: string;
+  entities: DeviceEntity[];
+}
+
+type Device = DeviceState;
+type Entity = DeviceEntity;
 
 /**
  * Tessie integration entity patterns for Tesla vehicles in Home Assistant.
@@ -73,7 +91,7 @@ export const getCarNavigationDestination = createShortcut({
     "Get the current navigation destination from a connected Tesla via Tessie integration. Uses IoT device integration to query the car's navigation system for destination, distance to arrival, time to arrival, and traffic delay.",
   tool: getAllDevices,
   execute: async () => {
-    const devicesResult = await getAllDevices.execute({});
+    const devicesResult = await getAllDevices.execute({}, {});
 
     // Handle ValidationError case - check for error property that ValidationError has
     if ('error' in devicesResult) {

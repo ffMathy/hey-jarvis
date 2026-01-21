@@ -580,7 +580,6 @@ const startDagExecutionStep = createStep({
 
 export const getCurrentDagWorkflow = createWorkflow({
   id: 'getCurrentDagWorkflow',
-  stateSchema: z.object({}).partial(), // No state needed for this workflow
   inputSchema: z.object({}),
   outputSchema: dagSchema,
 })
@@ -691,7 +690,6 @@ const getNextInstructionsStep = createStep({
 export const getNextInstructionsWorkflow = createWorkflow({
   id: 'getNextInstructionsWorkflow',
   description: 'Workflow to wait for next instructions based on DAG state',
-  stateSchema: z.object({}).partial(), // No state needed for this workflow
   inputSchema: z.object({}),
   outputSchema: instructionsOutputSchema,
 })

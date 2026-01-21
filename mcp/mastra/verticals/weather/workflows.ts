@@ -72,7 +72,7 @@ const registerWeatherStateChange = createStep({
       },
     };
 
-    const result = await registerStateChange.execute(stateChangeData);
+    const result = await registerStateChange.execute(stateChangeData, {});
 
     // Handle validation error case using type guard for proper narrowing
     if (isValidationError(result)) {
@@ -87,7 +87,6 @@ const registerWeatherStateChange = createStep({
 // Data flows through context and registers state changes for notification analysis
 export const weatherMonitoringWorkflow = createWorkflow({
   id: 'weatherMonitoringWorkflow',
-  stateSchema: z.object({}).partial(), // No state needed for this workflow
   inputSchema: z.object({}),
   outputSchema: z.object({
     registered: z.boolean(),

@@ -8,7 +8,6 @@ import { getStateChangeReactorAgent } from './agent.js';
 // Receives state changes, saves to memory, and delegates to State Change Reactor agent for decision-making
 export const stateChangeNotificationWorkflow = createWorkflow({
   id: 'stateChangeNotificationWorkflow',
-  stateSchema: z.object({}).partial(), // No state needed for this workflow
   inputSchema: z.object({
     source: z.string(),
     stateType: z.string(),

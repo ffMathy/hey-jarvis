@@ -370,13 +370,13 @@ const formatFinalOutput = createStep({
  */
 export const implementFeatureWorkflow = createWorkflow({
   id: 'implementFeatureWorkflow',
-  stateSchema: workflowStateSchema,
   inputSchema: requirementsInputSchema,
   outputSchema: z.object({
     success: z.boolean(),
     message: z.string(),
     issueUrl: z.string().optional(),
   }),
+  stateSchema: workflowStateSchema,
 })
   .then(initializeGatheringSession)
   .dowhile(askRequirementsQuestion, async ({ iterationCount }) => {

@@ -96,9 +96,12 @@ const fetchRecentlyChangedDevices = createStep({
     timestamp: z.string(),
   }),
   execute: async () => {
-    const result = await getChangedDevicesSince.execute({
-      sinceSeconds: STATE_CHANGE_WINDOW_SECONDS,
-    });
+    const result = await getChangedDevicesSince.execute(
+      {
+        sinceSeconds: STATE_CHANGE_WINDOW_SECONDS,
+      },
+      {},
+    );
 
     // Handle ValidationError case using type guard for proper type narrowing
     if (isValidationError(result)) {
@@ -231,18 +234,21 @@ const triggerStateChangeNotifications = createStep({
           }
 
           // If we reach here, the change is significant (or no baseline/previous state exists)
-          await registerStateChange.execute({
-            source: 'internet-of-things',
-            stateType: 'device_state_change',
-            stateData: {
-              deviceId: device.id,
-              deviceName: device.name,
-              entityId: entity.id,
-              newState: entity.newState,
-              lastChanged: entity.lastChanged,
-              detectedAt: inputData.timestamp,
+          await registerStateChange.execute(
+            {
+              source: 'internet-of-things',
+              stateType: 'device_state_change',
+              stateData: {
+                deviceId: device.id,
+                deviceName: device.name,
+                entityId: entity.id,
+                newState: entity.newState,
+                lastChanged: entity.lastChanged,
+                detectedAt: inputData.timestamp,
+              },
             },
-          });
+            {},
+          );
 
           notificationsTriggered++;
 
@@ -275,7 +281,6 @@ const triggerStateChangeNotifications = createStep({
 // and triggers state change notifications only for significant changes.
 export const iotMonitoringWorkflow = createWorkflow({
   id: 'iotMonitoringWorkflow',
-  stateSchema: z.object({}).partial(), // No state needed for this workflow
   inputSchema: z.object({}),
   outputSchema: z.object({
     changesProcessed: z.number(),
