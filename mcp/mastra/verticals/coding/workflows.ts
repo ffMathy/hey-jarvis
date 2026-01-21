@@ -376,7 +376,7 @@ export const implementFeatureWorkflow = createWorkflow({
     message: z.string(),
     issueUrl: z.string().optional(),
   }),
-  stateSchema: workflowStateSchema,
+  // Removing state schema - workflow state will be managed without explicit schema
 })
   .then(initializeGatheringSession)
   .dowhile(askRequirementsQuestion, async ({ iterationCount }) => {

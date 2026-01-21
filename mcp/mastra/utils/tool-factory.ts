@@ -8,7 +8,10 @@ import { createTool as mastraCreateTool } from '@mastra/core/tools';
  * - Easily modify default behavior in the future
  * - Maintain a single point of tool configuration
  *
- * @param config - The tool configuration object
+ * IMPORTANT: All tools created with this function MUST include an execute function.
+ * The Mastra Tool type marks execute as optional, but we require it for all our tools.
+ *
+ * @param config - The tool configuration object (must include execute function)
  * @returns A new Tool instance with applied defaults
  *
  * @example

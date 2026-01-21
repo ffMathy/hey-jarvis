@@ -55,7 +55,9 @@ export function createWorkflowApiHandler(workflow: NamedWorkflow) {
         const parseResult = inputSchema.safeParse(req.body);
 
         if (!parseResult.success) {
-          const errorMessage = formatValidationErrors(parseResult.error);
+          // TypeScript narrows parseResult.error when success is false
+          const zodError = parseResult.error;
+          const errorMessage = formatValidationErrors(zodError);
           res.status(400).json({
             success: false,
             message: `Validation failed: ${errorMessage}`,

@@ -31,8 +31,17 @@ export async function createAgent(
   };
 
   // Explicitly merge output processors to avoid type inference issues
-  const defaultProcessors: readonly OutputProcessor[] = DEFAULT_AGENT_CONFIG.outputProcessors || [];
-  const customProcessors: readonly OutputProcessor[] = config.outputProcessors || [];
+  // Handle DynamicArgument - extract the static array if it's not a function
+  const getStaticProcessors = (processors: typeof DEFAULT_AGENT_CONFIG.outputProcessors): OutputProcessor[] => {
+    if (!processors) return [];
+    if (typeof processors === 'function') return [];
+    return Array.isArray(processors)
+      ? processors.filter((p): p is OutputProcessor => 'processOutputStep' in p || 'processOutputResult' in p)
+      : [];
+  };
+
+  const defaultProcessors = getStaticProcessors(DEFAULT_AGENT_CONFIG.outputProcessors);
+  const customProcessors = getStaticProcessors(config.outputProcessors);
 
   const mergedConfig: AgentConfig = {
     ...DEFAULT_AGENT_CONFIG,
