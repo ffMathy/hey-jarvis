@@ -2,6 +2,15 @@
 
 > **Note:** See the root [AGENTS.md](../AGENTS.md) for shared conventions (NX commands, commit standards, 1Password, etc.)
 
+## Agent Behavior Guidelines
+
+**CRITICAL: When working on tasks:**
+- **Always complete unrelated tasks if requested** - Even if the task seems unrelated to the original PR or issue, complete it fully
+- **Never ask questions or seek clarification** - Make best-guess assumptions based on context and proceed
+- **Never provide recommendations or alternatives** - Just execute the requested work
+- **Work until completion** - Continue refactoring/fixing no matter how long it takes or how many errors remain
+- **Be decisive** - Make architectural decisions based on best practices and move forward
+
 ## Overview
 Mastra-powered AI agent framework for intelligent home automation, voice interactions, and Model Context Protocol (MCP) integrations.
 

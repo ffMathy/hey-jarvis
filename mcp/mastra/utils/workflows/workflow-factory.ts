@@ -137,9 +137,9 @@ export function createStep<
   TResume extends z.ZodSchema = z.ZodNever,
   TSuspend extends z.ZodSchema = z.ZodNever,
 >(config: StepParams<TStepId, TState, TInput, TOutput, TResume, TSuspend>) {
+  // Don't pass stateSchema to mastraCreateStep - it's managed at workflow level in v1
   return mastraCreateStep({
     id: config.id,
-    stateSchema: config.stateSchema,
     description: config.description,
     inputSchema: config.inputSchema,
     outputSchema: config.outputSchema,
@@ -277,30 +277,28 @@ export function createAgentStep<
 export function createToolStep<
   TStepId extends string = string,
   TStateSchema extends z.ZodObject<any> = z.ZodObject<any>,
-  TToolInput extends z.ZodSchema = z.ZodSchema,
-  TToolOutput extends z.ZodSchema = z.ZodSchema,
+  TToolInput = any,
+  TToolOutput = any,
 >(config: {
   id: TStepId;
   description: string;
   tool: {
-    inputSchema?: TToolInput;
-    outputSchema?: TToolOutput;
-    execute: (inputData: z.infer<TToolInput>, context?: any) => Promise<z.infer<TToolOutput>>;
+    inputSchema?: any;
+    outputSchema?: any;
+    execute: (inputData: TToolInput, context?: any) => Promise<TToolOutput>;
   };
   stateSchema?: TStateSchema;
-  inputOverrides?: z.infer<TToolInput>;
+  inputOverrides?: Partial<TToolInput>;
 }) {
-  if (!config.tool.inputSchema || !config.tool.outputSchema) {
-    throw new Error(`Tool for step ${config.id} must have inputSchema and outputSchema defined`);
-  }
-
+  // Tool schemas can be undefined for runtime validation
   const inputSchema = config.tool.inputSchema;
+  const outputSchema = config.tool.outputSchema;
 
-  return createStep<TStepId, TStateSchema, typeof inputSchema, TToolOutput>({
+  return createStep<TStepId, TStateSchema, any, any>({
     id: config.id,
     description: config.description,
-    inputSchema: config.tool.inputSchema,
-    outputSchema: config.tool.outputSchema,
+    inputSchema,
+    outputSchema,
     stateSchema: config.stateSchema,
     execute: async (params) => {
       return await config.tool.execute(
