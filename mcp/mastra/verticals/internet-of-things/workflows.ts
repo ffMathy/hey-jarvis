@@ -183,7 +183,8 @@ const triggerStateChangeNotifications = createStep({
     filteredAsNoise: z.number(),
     timestamp: z.string(),
   }),
-  execute: async ({ inputData }) => {
+  execute: async (params) => {
+    const { inputData } = params;
     let changesProcessed = 0;
     let notificationsTriggered = 0;
     let filteredAsNoise = 0;

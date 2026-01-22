@@ -35,7 +35,8 @@ export const stateChangeNotificationWorkflow = createWorkflow({
         stateData: z.record(z.unknown()),
         memorySaved: z.boolean(),
       }),
-      execute: async ({ inputData }) => {
+      execute: async (params) => {
+        const { inputData } = params;
         logger.info('State change reactor processing', {
           source: inputData.source,
           stateType: inputData.stateType,
@@ -97,7 +98,8 @@ export const stateChangeNotificationWorkflow = createWorkflow({
         notificationSent: z.boolean().optional(),
         reasoning: z.string().optional(),
       }),
-      execute: async ({ inputData, mastra }) => {
+      execute: async (params) => {
+        const { inputData, mastra } = params;
         if (!mastra) {
           throw new Error('Mastra instance not available');
         }

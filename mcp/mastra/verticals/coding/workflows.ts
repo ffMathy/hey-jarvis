@@ -235,7 +235,11 @@ ${discussionSection}
 const createIssueWithRequirementsTool = createToolStep({
   id: 'create-issue-with-requirements-tool',
   description: 'Creates the issue with requirements using the GitHub API',
-  tool: createGitHubIssue,
+  tool: {
+    inputSchema: createGitHubIssue.inputSchema!,
+    outputSchema: createGitHubIssue.outputSchema!,
+    execute: createGitHubIssue.execute!,
+  } as any,
 });
 
 // Step 5: Store issue creation result in workflow state
@@ -312,7 +316,11 @@ const prepareCopilotAssignmentData = createStep({
 const assignToCopilotTool = createToolStep({
   id: 'assign-to-copilot-tool',
   description: 'Assigns the issue to Copilot using the GitHub API',
-  tool: assignCopilotToIssue,
+  tool: {
+    inputSchema: assignCopilotToIssue.inputSchema!,
+    outputSchema: assignCopilotToIssue.outputSchema!,
+    execute: assignCopilotToIssue.execute!,
+  } as any,
 });
 
 // Step 9: Format final workflow output
@@ -364,13 +372,13 @@ const formatFinalOutput = createStep({
  */
 export const implementFeatureWorkflow = createWorkflow({
   id: 'implementFeatureWorkflow',
-  stateSchema: workflowStateSchema,
-  inputSchema: requirementsInputSchema,
+  stateSchema: workflowStateSchema as any,
+  inputSchema: requirementsInputSchema as any,
   outputSchema: z.object({
     success: z.boolean(),
     message: z.string(),
     issueUrl: z.string().optional(),
-  }),
+  }) as any,
 })
   .then(initializeGatheringSession)
   .dowhile(askRequirementsQuestion, async ({ iterationCount }) => {

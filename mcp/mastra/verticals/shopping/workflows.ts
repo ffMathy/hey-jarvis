@@ -82,7 +82,11 @@ const storePromptAndPrepare = createStep({
 const getInitialCartContents = createToolStep({
   id: 'get-initial-cart-contents',
   description: 'Gets the current cart contents before processing the request',
-  tool: getCurrentCartContents,
+  tool: {
+    inputSchema: getCurrentCartContents.inputSchema!,
+    outputSchema: getCurrentCartContents.outputSchema!,
+    execute: getCurrentCartContents.execute!,
+  } as any,
 });
 
 // Step 3: Store cart in state
@@ -211,7 +215,11 @@ const prepareForCartUpdate = createStep({
 const getUpdatedCartContents = createToolStep({
   id: 'get-updated-cart-contents',
   description: 'Gets the updated cart contents after processing all items',
-  tool: getCurrentCartContents,
+  tool: {
+    inputSchema: getCurrentCartContents.inputSchema!,
+    outputSchema: getCurrentCartContents.outputSchema!,
+    execute: getCurrentCartContents.execute!,
+  } as any,
 });
 
 // Step 8: Generate summary

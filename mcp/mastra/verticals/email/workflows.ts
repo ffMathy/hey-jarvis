@@ -121,7 +121,8 @@ const createUpdateLastSeenEmailStep = (folderKey: string, stepId: string) =>
       newLastSeenId: z.string(),
       emailCount: z.number(),
     }),
-    execute: async ({ state, inputData }) => {
+    execute: async (params) => {
+      const { state, inputData } = params;
       if (!state.mostRecentEmailId || !state.mostRecentEmailReceivedDateTime) {
         return {
           success: false,
@@ -220,7 +221,8 @@ const updateLastSeenEmailForFormReplies = createStep({
     previousLastSeenId: z.string().optional(),
     newLastSeenId: z.string(),
   }),
-  execute: async ({ state }) => {
+  execute: async (params) => {
+    const { state } = params;
     if (!state.mostRecentEmailId || !state.mostRecentEmailReceivedDateTime) {
       return {
         success: false,
@@ -401,7 +403,8 @@ const registerEmailsStateChange = createStep({
     batched: z.boolean(),
     message: z.string(),
   }),
-  execute: async ({ state, inputData }) => {
+  execute: async (params) => {
+    const { state, inputData } = params;
     const emails = state.newEmails ?? [];
 
     if (emails.length === 0) {
@@ -459,7 +462,8 @@ const processEmailTriggersStep = createStep({
     triggersMatched: z.number(),
     matchedTriggerIds: z.array(z.string()),
   }),
-  execute: async ({ state }) => {
+  execute: async (params) => {
+    const { state } = params;
     const emails = state.newEmails ?? [];
 
     if (emails.length === 0) {

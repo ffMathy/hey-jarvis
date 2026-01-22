@@ -39,10 +39,10 @@ const generateMealPlanStateSchema = z
 
 export const generateMealPlanWorkflow = createWorkflow({
   id: 'generateMealPlanWorkflow',
-  stateSchema: generateMealPlanStateSchema,
+  stateSchema: generateMealPlanStateSchema as any,
   inputSchema: z.object({
     preferences: z.string().optional().describe('Optional preferences for the meal plan'),
-  }),
+  }) as any,
   outputSchema: z.object({
     mealplan: mealPlanSchema,
   }),
@@ -196,7 +196,8 @@ const prepareMealPlanFeedbackQuestion = createStep({
     recipientEmail: z.string(),
     question: z.string(),
   }),
-  execute: async ({ inputData, setState, state }) => {
+  execute: async (params) => {
+    const { inputData, setState, state } = params;
     const recipientEmails = process.env.HEY_JARVIS_MEAL_PLAN_NOTIFICATION_EMAIL;
     if (!recipientEmails) {
       throw new Error(
@@ -310,7 +311,8 @@ const processMealPlanFeedback = createStep({
     preferences: z.string().optional(),
     mealplan: mealPlanSchema,
   }),
-  execute: async ({ inputData, setState, state }) => {
+  execute: async (params) => {
+    const { inputData, setState, state } = params;
     const feedbackHistory = state?.feedbackHistory || [];
 
     // Update state with feedback
@@ -343,7 +345,8 @@ const prepareForRegeneration = createStep({
     preferences: z.string().optional(),
     isApproved: z.boolean(),
   }),
-  execute: async ({ inputData, state }) => {
+  execute: async (params) => {
+    const { inputData, state } = params;
     // Combine new preferences with recent feedback history (limit to last 3 to avoid token limits)
     const feedbackHistory = state?.feedbackHistory || [];
     const recentFeedback = feedbackHistory.slice(-3);
@@ -370,7 +373,8 @@ const prepareShoppingListPrompt = createStep({
   outputSchema: z.object({
     prompt: z.string(),
   }),
-  execute: async ({ state }) => {
+  execute: async (params) => {
+    const { state } = params;
     // Get the meal plan from state (stored during prepare-meal-plan-feedback-question step)
     const mealplan = state?.mealplan || [];
 
@@ -405,7 +409,8 @@ const formatFinalOutput = createStep({
     success: z.boolean(),
     message: z.string(),
   }),
-  execute: async ({ inputData }) => {
+  execute: async (params) => {
+    const { inputData } = params;
     const shoppingMessage = inputData.message || 'Shopping list updated.';
     return {
       success: inputData.success,
@@ -472,7 +477,8 @@ export const weeklyMealPlanningWorkflow = createWorkflow({
         preferences: z.string().optional(),
         isApproved: z.boolean(),
       }),
-      execute: async ({ setState }) => {
+      execute: async (params) => {
+        const { setState } = params;
         setState({
           isApproved: false,
           feedbackHistory: [],

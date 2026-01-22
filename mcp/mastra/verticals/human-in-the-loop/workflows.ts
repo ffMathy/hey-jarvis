@@ -97,7 +97,8 @@ function createAwaitEmailResponseStep<TResponseSchema extends z.ZodObject<z.ZodR
     outputSchema,
     resumeSchema: outputSchema,
     suspendSchema: z.object({}),
-    execute: async ({ inputData, resumeData, suspend }) => {
+    execute: async (params) => {
+      const { inputData, resumeData, suspend } = params;
       const { recipientEmail } = inputData;
 
       // If we have resume data, process it and return

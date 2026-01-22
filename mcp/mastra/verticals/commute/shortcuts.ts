@@ -72,9 +72,16 @@ export const getCarNavigationDestination = createShortcut({
   id: 'getCarNavigationDestination',
   description:
     "Get the current navigation destination from a connected Tesla via Tessie integration. Uses IoT device integration to query the car's navigation system for destination, distance to arrival, time to arrival, and traffic delay.",
-  tool: getAllDevices,
-  execute: async () => {
-    const devicesResult = await getAllDevices.execute({});
+  tool: {
+    inputSchema: getAllDevices.inputSchema!,
+    outputSchema: getAllDevices.outputSchema!,
+    execute: getAllDevices.execute!,
+  } as any,
+  execute: async (inputData: any, context: any) => {
+    if (!getAllDevices.execute) {
+      throw new Error('getAllDevices.execute is not defined');
+    }
+    const devicesResult = await getAllDevices.execute({}, context);
 
     // Handle ValidationError case - check for error property that ValidationError has
     if ('error' in devicesResult) {

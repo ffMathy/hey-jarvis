@@ -61,7 +61,8 @@ const registerWeatherStateChange = createStep({
     batched: z.boolean(),
     message: z.string(),
   }),
-  execute: async ({ inputData }) => {
+  execute: async (params) => {
+    const { inputData } = params;
     const stateChangeData = {
       source: 'weather',
       stateType: 'weather_update',

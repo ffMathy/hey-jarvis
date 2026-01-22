@@ -72,7 +72,7 @@ export const getTravelTime = createTool({
     endAddress: z.string(),
     mode: z.string(),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, context) => {
     const { origin, destination, mode, departureTime, includeTraffic } = inputData;
     const { client, apiKey } = getGoogleMapsClient();
 
@@ -367,7 +367,7 @@ export const searchPlacesByDistance = createTool({
         ),
       }))
       .sort((a, b) => (a.distanceFromCenter || 0) - (b.distanceFromCenter || 0))
-      .slice(0, maxResults);
+      .slice(0, maxResults || 10);
 
     return {
       places,
