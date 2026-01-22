@@ -58,15 +58,24 @@ import { createAgent } from '../agent-factory.js';
  */
 export function createWorkflow<
   TWorkflowId extends string = string,
+  // biome-ignore lint/suspicious/noExplicitAny: Type parameter defaults for generic workflow factory
   TState extends z.ZodObject<any> = z.ZodObject<any>,
+  // biome-ignore lint/suspicious/noExplicitAny: Type parameter defaults for generic workflow factory
   TInput extends z.ZodType<any> = z.ZodType<any>,
+  // biome-ignore lint/suspicious/noExplicitAny: Type parameter defaults for generic workflow factory
   TOutput extends z.ZodType<any> = z.ZodType<any>,
+  // biome-ignore lint/suspicious/noExplicitAny: Type parameter defaults for generic workflow factory
   TSteps extends Step<string, any, any, any, any, any, DefaultEngineType>[] = Step<
     string,
+    // biome-ignore lint/suspicious/noExplicitAny: Type parameter defaults for generic workflow factory
     any,
+    // biome-ignore lint/suspicious/noExplicitAny: Type parameter defaults for generic workflow factory
     any,
+    // biome-ignore lint/suspicious/noExplicitAny: Type parameter defaults for generic workflow factory
     any,
+    // biome-ignore lint/suspicious/noExplicitAny: Type parameter defaults for generic workflow factory
     any,
+    // biome-ignore lint/suspicious/noExplicitAny: Type parameter defaults for generic workflow factory
     any,
     DefaultEngineType
   >[],

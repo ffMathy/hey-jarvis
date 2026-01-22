@@ -358,6 +358,40 @@ export function getOllamaQueueLength(): number {
 }
 
 /**
+ * Handles successful Ollama API response with logging and metrics extraction.
+ */
+async function handleSuccessfulResponse(
+  response: Response,
+  modelName: string,
+  startTime: number,
+  isInferenceCall: boolean,
+): Promise<Response> {
+  const duration = Date.now() - startTime;
+
+  if (isInferenceCall) {
+    const responseBody = await parseResponseForMetrics(response);
+    const metrics = extractTokenMetrics(responseBody, duration);
+    logInferenceSuccess(modelName, duration, response.status, response.statusText, metrics);
+  }
+
+  return response;
+}
+
+/**
+ * Handles Ollama API errors with logging.
+ */
+function handleApiError(error: unknown, modelName: string, startTime: number, isInferenceCall: boolean): never {
+  const duration = Date.now() - startTime;
+  const errorMessage = error instanceof Error ? error.message : String(error);
+
+  if (isInferenceCall) {
+    logInferenceError(modelName, duration, errorMessage);
+  }
+
+  throw error;
+}
+
+/**
  * Creates a logging fetch wrapper that logs all Ollama API calls with timing information,
  * injects CPU thread limiting options, and uses a queue for serial processing of inference calls.
  */
@@ -384,24 +418,9 @@ function createLoggingFetch(): FetchFunction {
       // Inference calls go through the queue for serial processing
       // Non-inference calls (like model list, pull) bypass the queue
       const response = isInferenceCall ? await ollamaQueue.enqueue(url, modifiedInit) : await fetch(url, modifiedInit);
-      const duration = Date.now() - startTime;
-
-      if (isInferenceCall) {
-        const responseBody = await parseResponseForMetrics(response);
-        const metrics = extractTokenMetrics(responseBody, duration);
-        logInferenceSuccess(modelName, duration, response.status, response.statusText, metrics);
-      }
-
-      return response;
+      return await handleSuccessfulResponse(response, modelName, startTime, isInferenceCall);
     } catch (error) {
-      const duration = Date.now() - startTime;
-      const errorMessage = error instanceof Error ? error.message : String(error);
-
-      if (isInferenceCall) {
-        logInferenceError(modelName, duration, errorMessage);
-      }
-
-      throw error;
+      return handleApiError(error, modelName, startTime, isInferenceCall);
     }
   };
 
