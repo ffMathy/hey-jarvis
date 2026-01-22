@@ -72,7 +72,10 @@ const registerWeatherStateChange = createStep({
       },
     };
 
-    const result = await registerStateChange.execute(stateChangeData);
+    if (!registerStateChange.execute) {
+      throw new Error('registerStateChange.execute is not defined');
+    }
+    const result = await registerStateChange.execute(stateChangeData, params.context);
 
     // Handle validation error case using type guard for proper narrowing
     if (isValidationError(result)) {

@@ -43,6 +43,5 @@ export async function createAgent(
     id: config.id || config.name || 'default-agent',
   } as AgentConfig;
 
-  /* FIXME(mastra): Add a unique `id` parameter. See: https://mastra.ai/guides/migrations/upgrade-to-v1/mastra#required-id-parameter-for-all-mastra-primitives */
   return new Agent(mergedConfig);
 }

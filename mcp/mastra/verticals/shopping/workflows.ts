@@ -65,7 +65,6 @@ const workflowStateSchema = z
 const storePromptAndPrepare = createStep({
   id: 'store-prompt-and-prepare',
   description: 'Stores prompt in state and prepares empty input for cart tool',
-  stateSchema: workflowStateSchema,
   inputSchema: shoppingListInputSchema,
   outputSchema: z.object({}),
   execute: async (params) => {
@@ -83,7 +82,6 @@ const storePromptAndPrepare = createStep({
 const getInitialCartContents = createToolStep({
   id: 'get-initial-cart-contents',
   description: 'Gets the current cart contents before processing the request',
-  stateSchema: workflowStateSchema,
   tool: getCurrentCartContents,
 });
 
@@ -91,7 +89,6 @@ const getInitialCartContents = createToolStep({
 const storeInitialCart = createStep({
   id: 'store-initial-cart',
   description: 'Stores initial cart in state for summary generation',
-  stateSchema: workflowStateSchema,
   inputSchema: cartSnapshotSchema,
   outputSchema: z.object({}),
   execute: async (params) => {
@@ -110,7 +107,6 @@ const storeInitialCart = createStep({
 const extractProductInformation = createAgentStep({
   id: 'extract-product-information',
   description: 'Extracts structured product information from the user request using Information Extractor logic',
-  stateSchema: workflowStateSchema,
   agentConfig: {
     id: 'shopping-list-extractor',
     name: 'ShoppingListExtractor',
@@ -162,7 +158,6 @@ Please respond with valid JSON matching this structure:
 const processExtractedProducts = createAgentStep({
   id: 'process-extracted-products',
   description: 'Processes each extracted product using the Shopping List Mutator Agent',
-  stateSchema: workflowStateSchema,
   agentConfig: {
     id: 'shopping-list-mutator',
     name: 'ShoppingListMutator',
@@ -202,7 +197,6 @@ Use your available tools to search for products and update the cart. Return a su
 const prepareForCartUpdate = createStep({
   id: 'prepare-for-cart-update',
   description: 'Prepares to get updated cart contents',
-  stateSchema: workflowStateSchema,
   inputSchema: z.object({
     mutationResults: z.array(z.string()),
   }),
@@ -217,7 +211,6 @@ const prepareForCartUpdate = createStep({
 const getUpdatedCartContents = createToolStep({
   id: 'get-updated-cart-contents',
   description: 'Gets the updated cart contents after processing all items',
-  stateSchema: workflowStateSchema,
   tool: getCurrentCartContents,
 });
 
@@ -226,7 +219,6 @@ const getUpdatedCartContents = createToolStep({
 const generateSummary = createAgentStep({
   id: 'generate-summary',
   description: 'Generates a summary of changes using the Summarization Agent',
-  stateSchema: workflowStateSchema,
   agentConfig: {
     id: 'shopping-list-summary',
     name: 'ShoppingListSummary',

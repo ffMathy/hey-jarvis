@@ -213,6 +213,7 @@ export function createAgentStep<
       params: ExecuteFunctionParams<
         TypeOf<TStateSchema>,
         TypeOf<TInputSchema>,
+        TypeOf<TOutputSchema>,
         TResumeSchema,
         TSuspendSchema,
         DefaultEngineType

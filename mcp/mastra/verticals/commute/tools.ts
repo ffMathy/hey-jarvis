@@ -156,7 +156,8 @@ export const searchPlacesAlongRoute = createTool({
       summary: z.string().describe('Brief summary of the route'),
     }),
   }),
-  execute: async ({ origin, destination, searchQuery, maxResults }) => {
+  execute: async (inputData) => {
+    const { origin, destination, searchQuery, maxResults } = inputData;
     const { client, apiKey } = getGoogleMapsClient();
 
     const directionsResponse = await client.directions({
@@ -309,7 +310,8 @@ export const searchPlacesByDistance = createTool({
       }),
     }),
   }),
-  execute: async ({ location, searchQuery, radius, maxResults }) => {
+  execute: async (inputData) => {
+    const { location, searchQuery, radius, maxResults } = inputData;
     const { client, apiKey } = getGoogleMapsClient();
 
     const geocodeResponse = await client.geocode({
@@ -415,7 +417,8 @@ export const getPlaceDetails = createTool({
       )
       .optional(),
   }),
-  execute: async ({ placeId, placeName, location }) => {
+  execute: async (inputData) => {
+    const { placeId, placeName, location } = inputData;
     const { client, apiKey } = getGoogleMapsClient();
 
     let actualPlaceId = placeId;

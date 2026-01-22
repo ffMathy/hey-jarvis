@@ -17,7 +17,7 @@ interface WorkflowApiResponse<T = unknown> {
 /**
  * Formats Zod validation errors into a human-readable string.
  */
-function formatValidationErrors(zodError: ZodError): string {
+function formatValidationErrors(zodError: ZodError<any>): string {
   return zodError.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ');
 }
 
