@@ -89,7 +89,6 @@ const createSearchNewEmailsStep = (storageKey: string, stepId: string) =>
   createStep({
     id: stepId,
     description: 'Search for new emails received since the last workflow run',
-    stateSchema: sharedEmailStateSchema,
     inputSchema: z.object({}),
     outputSchema: z.object({
       emails: z.array(emailObjectSchema),
@@ -110,7 +109,6 @@ const createUpdateLastSeenEmailStep = (folderKey: string, stepId: string) =>
   createStep({
     id: stepId,
     description: 'Update the last seen email state after processing',
-    stateSchema: sharedEmailStateSchema,
     inputSchema: z.object({
       emailCount: z.number(),
       isFirstCheck: z.boolean(),
@@ -154,7 +152,6 @@ const createUpdateLastSeenEmailStep = (folderKey: string, stepId: string) =>
 const storeNewEmailsInState = createStep({
   id: 'store-new-emails-in-state',
   description: 'Store new emails in workflow state and track the most recent email for later update',
-  stateSchema: sharedEmailStateSchema,
   inputSchema: z.object({
     emails: z.array(emailObjectSchema),
     totalCount: z.number(),
@@ -211,7 +208,6 @@ const searchNewEmailsForFormReplies = createSearchNewEmailsStep(
 const updateLastSeenEmailForFormReplies = createStep({
   id: 'update-last-seen-email-form-replies',
   description: 'Update the last seen email state after processing form replies',
-  stateSchema: sharedEmailStateSchema,
   inputSchema: z.object({
     triggersProcessed: z.number(),
     triggersMatched: z.number(),
@@ -252,7 +248,6 @@ const updateLastSeenEmailForFormReplies = createStep({
 const formatEmailCheckingOutput = createStep({
   id: 'format-email-checking-output',
   description: 'Format the email checking workflow output',
-  stateSchema: sharedEmailStateSchema,
   inputSchema: z.object({
     success: z.boolean(),
     message: z.string(),
@@ -298,7 +293,6 @@ const formatEmailCheckingOutput = createStep({
  */
 export const emailCheckingWorkflow = createWorkflow({
   id: 'emailCheckingWorkflow',
-  stateSchema: sharedEmailStateSchema,
   inputSchema: z.object({}),
   outputSchema: z.object({
     emailsFound: z.number(),
@@ -322,7 +316,6 @@ export const emailCheckingWorkflow = createWorkflow({
 const processFormReplies = createStep({
   id: 'process-form-replies',
   description: 'Process emails to extract workflow IDs and attempt to resume workflows',
-  stateSchema: sharedEmailStateSchema,
   inputSchema: z.object({
     emailCount: z.number(),
     isFirstCheck: z.boolean(),
@@ -397,7 +390,6 @@ const processFormReplies = createStep({
 const registerEmailsStateChange = createStep({
   id: 'register-emails-state-change',
   description: 'Register new emails as state change for notification system (triggers state reactor)',
-  stateSchema: sharedEmailStateSchema,
   inputSchema: z.object({
     emailsProcessed: z.number(),
     formRepliesFound: z.number(),
@@ -457,7 +449,6 @@ const registerEmailsStateChange = createStep({
 const processEmailTriggersStep = createStep({
   id: 'process-email-triggers',
   description: 'Process emails against registered email triggers',
-  stateSchema: sharedEmailStateSchema,
   inputSchema: z.object({
     registered: z.boolean(),
     batched: z.boolean(),
@@ -512,7 +503,6 @@ const processEmailTriggersStep = createStep({
 const formatFormRepliesOutput = createStep({
   id: 'format-form-replies-output',
   description: 'Format the form replies detection workflow output',
-  stateSchema: sharedEmailStateSchema,
   inputSchema: z.object({
     success: z.boolean(),
     message: z.string(),
@@ -567,7 +557,6 @@ const formatFormRepliesOutput = createStep({
  */
 export const formRepliesDetectionWorkflow = createWorkflow({
   id: 'formRepliesDetectionWorkflow',
-  stateSchema: sharedEmailStateSchema,
   inputSchema: z.object({}),
   outputSchema: z.object({
     emailsFound: z.number(),

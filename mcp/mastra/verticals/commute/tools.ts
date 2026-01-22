@@ -72,7 +72,8 @@ export const getTravelTime = createTool({
     endAddress: z.string(),
     mode: z.string(),
   }),
-  execute: async ({ origin, destination, mode, departureTime, includeTraffic }) => {
+  execute: async (inputData) => {
+    const { origin, destination, mode, departureTime, includeTraffic } = inputData;
     const { client, apiKey } = getGoogleMapsClient();
 
     const params: {
