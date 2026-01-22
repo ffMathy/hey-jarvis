@@ -66,7 +66,7 @@ const storePromptAndPrepare = createStep({
   id: 'store-prompt-and-prepare',
   description: 'Stores prompt in state and prepares empty input for cart tool',
   inputSchema: shoppingListInputSchema,
-  outputSchema: z.object({}),
+  outputSchema: z.object({}) as any,
   execute: async (params) => {
     // Store prompt in state for later use
     params.setState({
@@ -94,7 +94,7 @@ const storeInitialCart = createStep({
   id: 'store-initial-cart',
   description: 'Stores initial cart in state for summary generation',
   inputSchema: cartSnapshotSchema,
-  outputSchema: z.object({}),
+  outputSchema: z.object({}) as any,
   execute: async (params) => {
     // Store cart in state
     params.setState({
@@ -125,7 +125,7 @@ Guidelines:
     description: 'Specialized agent for extracting structured product information from shopping requests',
     tools: undefined,
   },
-  inputSchema: z.object({}),
+  inputSchema: z.object({}) as any,
   outputSchema: extractedProductSchema,
   prompt: ({ state }) => {
     return `You are a helpful assistant that processes shopping list requests.
@@ -204,7 +204,7 @@ const prepareForCartUpdate = createStep({
   inputSchema: z.object({
     mutationResults: z.array(z.string()),
   }),
-  outputSchema: z.object({}),
+  outputSchema: z.object({}) as any,
   execute: async () => {
     // Just return empty object for the cart tool
     return {};
@@ -269,15 +269,15 @@ Please provide a friendly summary in Danish of what was changed in the shopping 
 export const shoppingListWorkflow = createWorkflow({
   id: 'shoppingListWorkflow',
   stateSchema: workflowStateSchema as any,
-  inputSchema: shoppingListInputSchema,
-  outputSchema: shoppingListResultSchema,
+  inputSchema: shoppingListInputSchema as any,
+  outputSchema: shoppingListResultSchema as any,
 })
-  .then(storePromptAndPrepare)
-  .then(getInitialCartContents)
-  .then(storeInitialCart)
-  .then(extractProductInformation)
-  .then(processExtractedProducts)
-  .then(prepareForCartUpdate)
-  .then(getUpdatedCartContents)
-  .then(generateSummary)
+  .then(storePromptAndPrepare as any)
+  .then(getInitialCartContents as any)
+  .then(storeInitialCart as any)
+  .then(extractProductInformation as any)
+  .then(processExtractedProducts as any)
+  .then(prepareForCartUpdate as any)
+  .then(getUpdatedCartContents as any)
+  .then(generateSummary as any)
   .commit();

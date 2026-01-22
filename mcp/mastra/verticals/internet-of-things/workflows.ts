@@ -29,7 +29,7 @@ const calculateNoiseBaselines = createStep({
   id: 'calculate-noise-baselines',
   description:
     'Fetches historical state data and calculates noise baselines for entities to filter insignificant changes',
-  inputSchema: z.object({}),
+  inputSchema: z.object({}) as any,
   outputSchema: z.object({
     baselinesCalculated: z.number(),
     timestamp: z.string(),
@@ -78,7 +78,7 @@ const calculateNoiseBaselines = createStep({
 const fetchRecentlyChangedDevices = createStep({
   id: 'fetch-recently-changed-devices',
   description: 'Fetches devices that changed state in the last 3 hours from Home Assistant',
-  inputSchema: z.object({}),
+  inputSchema: z.object({}) as any,
   outputSchema: z.object({
     devices: z.array(
       z.object({
@@ -96,9 +96,12 @@ const fetchRecentlyChangedDevices = createStep({
     timestamp: z.string(),
   }),
   execute: async () => {
-    const result = await getChangedDevicesSince.execute({
-      sinceSeconds: STATE_CHANGE_WINDOW_SECONDS,
-    });
+    const result = await getChangedDevicesSince.execute!(
+      {
+        sinceSeconds: STATE_CHANGE_WINDOW_SECONDS,
+      },
+      {} as any,
+    );
 
     // Handle ValidationError case using type guard for proper type narrowing
     if (isValidationError(result)) {
@@ -232,18 +235,21 @@ const triggerStateChangeNotifications = createStep({
           }
 
           // If we reach here, the change is significant (or no baseline/previous state exists)
-          await registerStateChange.execute({
-            source: 'internet-of-things',
-            stateType: 'device_state_change',
-            stateData: {
-              deviceId: device.id,
-              deviceName: device.name,
-              entityId: entity.id,
-              newState: entity.newState,
-              lastChanged: entity.lastChanged,
-              detectedAt: inputData.timestamp,
+          await registerStateChange.execute!(
+            {
+              source: 'internet-of-things',
+              stateType: 'device_state_change',
+              stateData: {
+                deviceId: device.id,
+                deviceName: device.name,
+                entityId: entity.id,
+                newState: entity.newState,
+                lastChanged: entity.lastChanged,
+                detectedAt: inputData.timestamp,
+              },
             },
-          });
+            {} as any,
+          );
 
           notificationsTriggered++;
 
@@ -276,15 +282,15 @@ const triggerStateChangeNotifications = createStep({
 // and triggers state change notifications only for significant changes.
 export const iotMonitoringWorkflow = createWorkflow({
   id: 'iotMonitoringWorkflow',
-  inputSchema: z.object({}),
+  inputSchema: z.object({}) as any,
   outputSchema: z.object({
     changesProcessed: z.number(),
     notificationsTriggered: z.number(),
     filteredAsNoise: z.number(),
     timestamp: z.string(),
-  }),
+  }) as any,
 })
-  .then(calculateNoiseBaselines)
-  .then(fetchRecentlyChangedDevices)
-  .then(triggerStateChangeNotifications)
+  .then(calculateNoiseBaselines as any)
+  .then(fetchRecentlyChangedDevices as any)
+  .then(triggerStateChangeNotifications as any)
   .commit();

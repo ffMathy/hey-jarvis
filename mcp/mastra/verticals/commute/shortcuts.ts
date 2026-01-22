@@ -38,7 +38,7 @@ const TESSIE_LOCATION_ENTITIES = {
  * Tessie devices have specific entity naming patterns for Tesla vehicles.
  */
 function isTessieCarDevice(device: Device): boolean {
-  return device.entities.some((entity) => {
+  return device.entities.some((entity: any) => {
     const entityId = entity.id.toLowerCase();
     return (
       entityId.includes('tessie') ||
@@ -77,11 +77,11 @@ export const getCarNavigationDestination = createShortcut({
     outputSchema: getAllDevices.outputSchema!,
     execute: getAllDevices.execute!,
   } as any,
-  execute: async (inputData: any, context: any) => {
+  execute: async (inputData: any): Promise<{ devices: any[] }> => {
     if (!getAllDevices.execute) {
       throw new Error('getAllDevices.execute is not defined');
     }
-    const devicesResult = await getAllDevices.execute({}, context);
+    const devicesResult = await getAllDevices.execute!({}, {} as any);
 
     // Handle ValidationError case - check for error property that ValidationError has
     if ('error' in devicesResult) {

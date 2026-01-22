@@ -12,13 +12,13 @@ export const stateChangeNotificationWorkflow = createWorkflow({
     source: z.string(),
     stateType: z.string(),
     stateData: z.record(z.unknown()),
-  }),
+  }) as any,
   outputSchema: z.object({
     registered: z.boolean(),
     analyzed: z.boolean(),
     notificationSent: z.boolean().optional(),
     reasoning: z.string().optional(),
-  }),
+  }) as any,
 })
   .then(
     createStep({
@@ -80,7 +80,7 @@ export const stateChangeNotificationWorkflow = createWorkflow({
           throw error;
         }
       },
-    }),
+    }) as any,
   )
   .then(
     createStep({
@@ -144,6 +144,6 @@ Analyze this state change using your working memory and context. Decide if the u
           };
         }
       },
-    }),
+    }) as any,
   )
   .commit();

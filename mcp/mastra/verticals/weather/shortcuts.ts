@@ -20,8 +20,12 @@ export const getUserCurrentLocation = createShortcut({
   id: 'getUserCurrentLocation',
   description:
     "Get the current location of a user for weather purposes. Uses IoT device tracking to determine the user's GPS coordinates and zone information.",
-  tool: inferUserLocation,
-  execute: async (input, context) => {
+  tool: {
+    inputSchema: inferUserLocation.inputSchema!,
+    outputSchema: inferUserLocation.outputSchema!,
+    execute: inferUserLocation.execute!,
+  } as any,
+  execute: async (input: any, context?: any) => {
     if (!inferUserLocation.execute) {
       throw new Error('inferUserLocation.execute is not defined');
     }

@@ -56,11 +56,14 @@ const sendFormRequestEmail = createStep({
 </html>
     `.trim();
 
-    const emailResult = await sendEmail.execute({
-      subject,
-      bodyContent,
-      toRecipients: [recipientEmail],
-    });
+    const emailResult = await sendEmail.execute!(
+      {
+        subject,
+        bodyContent,
+        toRecipients: [recipientEmail],
+      },
+      {} as any,
+    );
 
     // Handle validation error case - narrow the type explicitly
     if ('error' in emailResult) {
@@ -157,11 +160,11 @@ export function getSendEmailAndAwaitResponseWorkflow<TResponseSchema extends z.Z
 
   return createWorkflow({
     id: `sendEmailAndAwaitResponseWorkflow-${slug}`,
-    inputSchema: sendAndWaitInputSchema,
-    outputSchema,
+    inputSchema: sendAndWaitInputSchema as any,
+    outputSchema: outputSchema as any,
   })
-    .then(sendFormRequestEmail)
-    .then(createAwaitEmailResponseStep(responseSchema))
+    .then(sendFormRequestEmail as any)
+    .then(createAwaitEmailResponseStep(responseSchema) as any)
     .commit();
 }
 
@@ -483,23 +486,23 @@ const formatFinalOutput = createStep({
 
 export const humanInTheLoopDemoWorkflow = createWorkflow({
   id: 'humanInTheLoopDemoWorkflow',
-  inputSchema: workflowInputSchema,
-  outputSchema: workflowOutputSchema,
+  inputSchema: workflowInputSchema as any,
+  outputSchema: workflowOutputSchema as any,
 })
-  .then(initializeWorkflow)
-  .then(prepareBudgetApprovalQuestion)
-  .then(getSendEmailAndAwaitResponseWorkflow('budgetApproval', budgetApprovalResponseSchema)) // Send email and wait for human response
-  .then(extractBudgetApprovalResponse)
+  .then(initializeWorkflow as any)
+  .then(prepareBudgetApprovalQuestion as any)
+  .then(getSendEmailAndAwaitResponseWorkflow('budgetApproval', budgetApprovalResponseSchema) as any) // Send email and wait for human response
+  .then(extractBudgetApprovalResponse as any)
   // @ts-expect-error - Mastra v1 beta.10 workflow chaining has state schema compatibility issues that prevent proper type inference
   .then(mergeBudgetApprovalContext)
-  .then(prepareVendorSelectionQuestion)
-  .then(getSendEmailAndAwaitResponseWorkflow('vendorSelection', vendorSelectionResponseSchema))
-  .then(extractVendorSelectionResponse)
+  .then(prepareVendorSelectionQuestion as any)
+  .then(getSendEmailAndAwaitResponseWorkflow('vendorSelection', vendorSelectionResponseSchema) as any)
+  .then(extractVendorSelectionResponse as any)
   // @ts-expect-error - Mastra v1 beta.10 workflow chaining has state schema compatibility issues that prevent proper type inference
   .then(mergeVendorSelectionContext)
-  .then(prepareFinalConfirmationQuestion)
-  .then(getSendEmailAndAwaitResponseWorkflow('finalConfirmation', finalConfirmationResponseSchema))
+  .then(prepareFinalConfirmationQuestion as any)
+  .then(getSendEmailAndAwaitResponseWorkflow('finalConfirmation', finalConfirmationResponseSchema) as any)
   // @ts-expect-error - Mastra v1 beta.10 workflow chaining has state schema compatibility issues that prevent proper type inference
   .then(extractFinalConfirmationResponse)
-  .then(formatFinalOutput)
+  .then(formatFinalOutput as any)
   .commit();

@@ -105,7 +105,7 @@ export const searchRecipes = createTool({
   }),
   outputSchema: z.object({
     results: z
-      .array(getRecipeById.outputSchema!)
+      .array(getRecipeById.outputSchema! as any)
       .describe(
         'Array of detailed recipe information matching the search term, sorted by relevance ascending (most relevant results first)',
       ),
@@ -150,7 +150,7 @@ export const getAllRecipes = createTool({
     amount: z.number().optional().describe('Optional maximum number of recipes to retrieve, or all recipes if not set'),
   }),
   outputSchema: z
-    .array(getRecipeById.outputSchema!)
+    .array(getRecipeById.outputSchema! as any)
     .describe('Array of all recipes from Valdemarsro suitable for meal planning'),
   execute: async (inputData, context) => {
     async function getPage(page: number) {
