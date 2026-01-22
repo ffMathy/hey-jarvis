@@ -136,7 +136,7 @@ export const searchRecipes = createTool({
     );
 
     return {
-      results: results as z.infer<NonNullable<typeof getRecipeById.outputSchema>>[],
+      results: results as any[],
     };
   },
 });

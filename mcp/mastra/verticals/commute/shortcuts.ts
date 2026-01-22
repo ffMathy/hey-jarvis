@@ -13,7 +13,7 @@ import { getAllDevices } from '../internet-of-things/tools.js';
 
 // Type for device from getAllDevices output schema
 // Using non-null assertion since we know the schema exists
-type Device = z.infer<NonNullable<typeof getAllDevices.outputSchema>>['devices'][number];
+type Device = z.infer<any>['devices'][number];
 type Entity = Device['entities'][number];
 
 /**

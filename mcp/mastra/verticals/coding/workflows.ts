@@ -380,8 +380,8 @@ export const implementFeatureWorkflow = createWorkflow({
     issueUrl: z.string().optional(),
   }) as any,
 })
-  .then(initializeGatheringSession)
-  .dowhile(askRequirementsQuestion, async ({ iterationCount }) => {
+  .then(initializeGatheringSession as any)
+  .dowhile(askRequirementsQuestion as any, async ({ iterationCount }) => {
     // Safety limit check
     if (iterationCount >= 50) {
       throw new Error('Requirements gathering exceeded maximum iterations');
@@ -392,11 +392,11 @@ export const implementFeatureWorkflow = createWorkflow({
     // which happens when needsMoreQuestions is false
     return true;
   })
-  .then(prepareIssueCreationData)
-  .then(createIssueWithRequirementsTool)
-  .then(storeIssueCreationResult)
-  .then(validateBeforeCopilotAssignment)
-  .then(prepareCopilotAssignmentData)
-  .then(assignToCopilotTool)
-  .then(formatFinalOutput)
+  .then(prepareIssueCreationData as any)
+  .then(createIssueWithRequirementsTool as any)
+  .then(storeIssueCreationResult as any)
+  .then(validateBeforeCopilotAssignment as any)
+  .then(prepareCopilotAssignmentData as any)
+  .then(assignToCopilotTool as any)
+  .then(formatFinalOutput as any)
   .commit();

@@ -423,7 +423,7 @@ const registerEmailsStateChange = createStep({
         emailCount: emails.length,
         formRepliesFound: inputData.formRepliesFound,
         workflowsResumed: inputData.workflowsResumed,
-        emails: emails.map((email) => ({
+        emails: emails.map((email: any) => ({
           subject: email.subject,
           from: email.from.address,
           receivedDateTime: email.receivedDateTime,
@@ -433,7 +433,10 @@ const registerEmailsStateChange = createStep({
     };
 
     console.log(`📝 Registering ${emails.length} email(s) with state reactor...`);
-    const result = await registerStateChange.execute(stateChangeData);
+    if (!registerStateChange.execute) {
+      throw new Error('registerStateChange.execute is not defined');
+    }
+    const result = await registerStateChange.execute(stateChangeData, params.context);
 
     if ('error' in result) {
       throw new Error(`Failed to register state change: ${result.message}`);
