@@ -58,7 +58,6 @@ const questioningResponseSchema = z.object({
 const initializeGatheringSession = createStep({
   id: 'initialize-gathering-session',
   description: 'Sets up the initial prompt for requirements gathering',
-  stateSchema: workflowStateSchema,
   inputSchema: requirementsInputSchema,
   outputSchema: z.object({}),
   execute: async (params) => {
@@ -235,11 +234,7 @@ ${discussionSection}
 const createIssueWithRequirementsTool = createToolStep({
   id: 'create-issue-with-requirements-tool',
   description: 'Creates the issue with requirements using the GitHub API',
-  tool: {
-    inputSchema: createGitHubIssue.inputSchema!,
-    outputSchema: createGitHubIssue.outputSchema!,
-    execute: createGitHubIssue.execute!,
-  } as any,
+  tool: createGitHubIssue,
 });
 
 // Step 5: Store issue creation result in workflow state
@@ -316,11 +311,7 @@ const prepareCopilotAssignmentData = createStep({
 const assignToCopilotTool = createToolStep({
   id: 'assign-to-copilot-tool',
   description: 'Assigns the issue to Copilot using the GitHub API',
-  tool: {
-    inputSchema: assignCopilotToIssue.inputSchema!,
-    outputSchema: assignCopilotToIssue.outputSchema!,
-    execute: assignCopilotToIssue.execute!,
-  } as any,
+  tool: assignCopilotToIssue,
 });
 
 // Step 9: Format final workflow output
@@ -372,16 +363,15 @@ const formatFinalOutput = createStep({
  */
 export const implementFeatureWorkflow = createWorkflow({
   id: 'implementFeatureWorkflow',
-  stateSchema: workflowStateSchema as any,
-  inputSchema: requirementsInputSchema as any,
+  inputSchema: requirementsInputSchema,
   outputSchema: z.object({
     success: z.boolean(),
     message: z.string(),
     issueUrl: z.string().optional(),
-  }) as any,
+  }),
 })
-  .then(initializeGatheringSession as any)
-  .dowhile(askRequirementsQuestion as any, async ({ iterationCount }) => {
+  .then(initializeGatheringSession)
+  .dowhile(askRequirementsQuestion, async ({ iterationCount }) => {
     // Safety limit check
     if (iterationCount >= 50) {
       throw new Error('Requirements gathering exceeded maximum iterations');
@@ -392,11 +382,11 @@ export const implementFeatureWorkflow = createWorkflow({
     // which happens when needsMoreQuestions is false
     return true;
   })
-  .then(prepareIssueCreationData as any)
-  .then(createIssueWithRequirementsTool as any)
-  .then(storeIssueCreationResult as any)
-  .then(validateBeforeCopilotAssignment as any)
-  .then(prepareCopilotAssignmentData as any)
-  .then(assignToCopilotTool as any)
-  .then(formatFinalOutput as any)
+  .then(prepareIssueCreationData)
+  .then(createIssueWithRequirementsTool)
+  .then(storeIssueCreationResult)
+  .then(validateBeforeCopilotAssignment)
+  .then(prepareCopilotAssignmentData)
+  .then(assignToCopilotTool)
+  .then(formatFinalOutput)
   .commit();

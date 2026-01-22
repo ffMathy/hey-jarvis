@@ -39,23 +39,21 @@ const generateMealPlanStateSchema = z
 
 export const generateMealPlanWorkflow = createWorkflow({
   id: 'generateMealPlanWorkflow',
-  stateSchema: generateMealPlanStateSchema as any,
   inputSchema: z.object({
     preferences: z.string().optional().describe('Optional preferences for the meal plan'),
-  }) as any,
+  }),
   outputSchema: z.object({
     mealplan: mealPlanSchema,
-  }) as any,
+  }),
 })
   .then(
     createStep({
       id: 'store-preferences',
       description: 'Store preferences in workflow state for later use',
-      stateSchema: generateMealPlanStateSchema as any,
       inputSchema: z.object({
         preferences: z.string().optional(),
       }),
-      outputSchema: z.object({}) as any,
+      outputSchema: z.object({}),
       execute: async (params) => {
         if (params.inputData.preferences) {
           params.setState({
@@ -64,28 +62,22 @@ export const generateMealPlanWorkflow = createWorkflow({
         }
         return {};
       },
-    }) as any,
+    }),
   )
   .then(
     createToolStep({
       id: 'get-all-recipes',
       description: 'Fetches all recipes for meal planning',
-      stateSchema: generateMealPlanStateSchema as any,
-      tool: {
-        inputSchema: getAllRecipes.inputSchema! as any,
-        outputSchema: getAllRecipes.outputSchema! as any,
-        execute: getAllRecipes.execute!,
-      },
+      tool: getAllRecipes,
       inputOverrides: {
         amount: process.env.IS_DEVCONTAINER ? 10 : undefined,
       },
-    }) as any,
+    }),
   )
   .then(
     createAgentStep({
       id: 'generate-complete-meal-plan',
       description: 'Uses meal plan agents to select recipes and generate complete meal plan',
-      stateSchema: generateMealPlanStateSchema as any,
       agentConfig: {
         model: cookingModel,
         id: 'mealPlanGenerator',
@@ -110,7 +102,7 @@ export const generateMealPlanWorkflow = createWorkflow({
         description: 'Specialized agent for creating weekly meal plan schedules',
         tools: undefined,
       },
-      inputSchema: getAllRecipes.outputSchema as any,
+      inputSchema: getAllRecipes.outputSchema,
       outputSchema: z.object({
         mealplan: mealPlanSchema,
       }),
@@ -123,7 +115,7 @@ ${JSON.stringify(inputData, null, 2)}
 
 Focus on dinner/evening meals (look for "aftensmad" or similar categories). Generate the complete meal plan with proper scheduling.${preferencesText}`;
       },
-    }) as any,
+    }),
   )
   .commit();
 
@@ -131,7 +123,6 @@ Focus on dinner/evening meals (look for "aftensmad" or similar categories). Gene
 const generateMealPlanEmail = createAgentStep({
   id: 'generate-meal-plan-email',
   description: 'Generates HTML email using the specialized email formatter agent',
-  stateSchema: generateMealPlanStateSchema as any,
   agentConfig: {
     model: cookingModel,
     id: 'emailFormatter',
@@ -190,7 +181,6 @@ const weeklyMealPlanningStateSchema = z
 const prepareMealPlanFeedbackQuestion = createStep({
   id: 'prepare-meal-plan-feedback-question',
   description: 'Prepares the question for requesting meal plan feedback',
-  stateSchema: weeklyMealPlanningStateSchema as any,
   inputSchema: z.object({
     htmlContent: z.string(),
     subject: z.string(),
@@ -200,8 +190,7 @@ const prepareMealPlanFeedbackQuestion = createStep({
     recipientEmail: z.string(),
     question: z.string(),
   }),
-  execute: async (params) => {
-    const { inputData, setState, state } = params;
+  execute: async ({ inputData, setState, state }) => {
     const recipientEmails = process.env.HEY_JARVIS_MEAL_PLAN_NOTIFICATION_EMAIL;
     if (!recipientEmails) {
       throw new Error(
@@ -244,7 +233,6 @@ Svar venligst med:
 const extractMealPlanFeedbackResponse = createAgentStep({
   id: 'extract-meal-plan-feedback-response',
   description: 'Analyzes the human feedback to determine if approved or changes requested',
-  stateSchema: weeklyMealPlanningStateSchema as any,
   agentConfig: {
     model: cookingModel,
     id: 'feedbackAnalyzer',
@@ -303,7 +291,6 @@ Return the structured analysis. Also return the current mealplan unmodified.`;
 const processMealPlanFeedback = createStep({
   id: 'process-meal-plan-feedback',
   description: 'Updates workflow state based on feedback analysis',
-  stateSchema: weeklyMealPlanningStateSchema as any,
   inputSchema: z.object({
     isApproved: z.boolean(),
     feedbackText: z.string(),
@@ -315,8 +302,7 @@ const processMealPlanFeedback = createStep({
     preferences: z.string().optional(),
     mealplan: mealPlanSchema,
   }),
-  execute: async (params) => {
-    const { inputData, setState, state } = params;
+  execute: async ({ inputData, setState, state }) => {
     const feedbackHistory = state?.feedbackHistory || [];
 
     // Update state with feedback
@@ -339,7 +325,6 @@ const processMealPlanFeedback = createStep({
 const prepareForRegeneration = createStep({
   id: 'prepare-for-regeneration',
   description: 'Prepares input for meal plan regeneration with updated preferences',
-  stateSchema: weeklyMealPlanningStateSchema as any,
   inputSchema: z.object({
     isApproved: z.boolean(),
     preferences: z.string().optional(),
@@ -349,8 +334,7 @@ const prepareForRegeneration = createStep({
     preferences: z.string().optional(),
     isApproved: z.boolean(),
   }),
-  execute: async (params) => {
-    const { inputData, state } = params;
+  execute: async ({ inputData, state }) => {
     // Combine new preferences with recent feedback history (limit to last 3 to avoid token limits)
     const feedbackHistory = state?.feedbackHistory || [];
     const recentFeedback = feedbackHistory.slice(-3);
@@ -369,7 +353,6 @@ const prepareForRegeneration = createStep({
 const prepareShoppingListPrompt = createStep({
   id: 'prepare-shopping-list-prompt',
   description: 'Extracts all ingredients from approved meal plan for shopping list',
-  stateSchema: weeklyMealPlanningStateSchema as any,
   inputSchema: z.object({
     isApproved: z.boolean(),
     preferences: z.string().optional(),
@@ -377,8 +360,7 @@ const prepareShoppingListPrompt = createStep({
   outputSchema: z.object({
     prompt: z.string(),
   }),
-  execute: async (params) => {
-    const { state } = params;
+  execute: async ({ state }) => {
     // Get the meal plan from state (stored during prepare-meal-plan-feedback-question step)
     const mealplan = state?.mealplan || [];
 
@@ -403,7 +385,6 @@ ${allIngredients.join('\n')}`;
 const formatFinalOutput = createStep({
   id: 'format-final-output',
   description: 'Formats the final workflow output',
-  stateSchema: weeklyMealPlanningStateSchema as any,
   inputSchema: z.object({
     success: z.boolean(),
     message: z.string(),
@@ -413,8 +394,7 @@ const formatFinalOutput = createStep({
     success: z.boolean(),
     message: z.string(),
   }),
-  execute: async (params) => {
-    const { inputData } = params;
+  execute: async ({ inputData }) => {
     const shoppingMessage = inputData.message || 'Shopping list updated.';
     return {
       success: inputData.success,
@@ -427,35 +407,34 @@ const formatFinalOutput = createStep({
 // This generates meal plan, formats email, requests feedback
 const mealPlanFeedbackIterationWorkflow = createWorkflow({
   id: 'mealPlanFeedbackIterationWorkflow',
-  stateSchema: weeklyMealPlanningStateSchema as any,
   inputSchema: z.object({
     preferences: z.string().optional(),
     isApproved: z.boolean().optional(),
-  }) as any,
+  }),
   outputSchema: z.object({
     isApproved: z.boolean(),
     preferences: z.string().optional(),
-  }) as any,
+  }),
 })
   // Map input to generateMealPlanWorkflow input schema
-  .map(async ({ inputData }: any) => ({
+  .map(async ({ inputData }) => ({
     preferences: inputData.preferences,
   }))
   // @ts-expect-error - Mastra v1 beta.10 workflow chaining has state schema compatibility issues that prevent proper type inference
   .then(generateMealPlanWorkflow) // Generate meal plan (with preferences if any)
   // @ts-expect-error - Mastra v1 beta.10 workflow chaining has state schema compatibility issues that prevent proper type inference
   .then(generateMealPlanEmail) // Format as HTML email
-  .then(prepareMealPlanFeedbackQuestion as any) // Prepare feedback question
+  .then(prepareMealPlanFeedbackQuestion) // Prepare feedback question
   // Map to sendEmailAndAwaitResponseWorkflow input schema
-  .map(async ({ inputData }: any) => ({
-    recipientEmail: (inputData as any).recipientEmail,
-    question: (inputData as any).question,
+  .map(async ({ inputData }) => ({
+    recipientEmail: inputData.recipientEmail,
+    question: inputData.question,
   }))
   // @ts-expect-error - Mastra v1 beta.10 workflow chaining has state schema compatibility issues that prevent proper type inference
   .then(getSendEmailAndAwaitResponseWorkflow('mealPlanFeedback', mealPlanFeedbackResponseSchema)) // Send email and wait for human response
-  .then(extractMealPlanFeedbackResponse as any) // Analyze the response
-  .then(processMealPlanFeedback as any) // Update state and prepare output
-  .then(prepareForRegeneration as any) // Prepare for potential next iteration
+  .then(extractMealPlanFeedbackResponse) // Analyze the response
+  .then(processMealPlanFeedback) // Update state and prepare output
+  .then(prepareForRegeneration) // Prepare for potential next iteration
   .commit();
 
 // Main weekly meal planning workflow with human-in-the-loop feedback
@@ -463,26 +442,23 @@ const mealPlanFeedbackIterationWorkflow = createWorkflow({
 // When approved, adds ingredients to shopping list
 export const weeklyMealPlanningWorkflow = createWorkflow({
   id: 'weeklyMealPlanningWorkflow',
-  stateSchema: weeklyMealPlanningStateSchema as any,
-  inputSchema: z.object({}).partial() as any,
+  inputSchema: z.object({}).partial(),
   outputSchema: z.object({
     success: z.boolean(),
     message: z.string(),
-  }) as any,
+  }),
 })
   // Initialize with no preferences and not approved
   .then(
     createStep({
       id: 'initialize-workflow',
       description: 'Initializes the workflow with default values',
-      stateSchema: weeklyMealPlanningStateSchema as any,
-      inputSchema: z.object({}).partial() as any,
+      inputSchema: z.object({}).partial(),
       outputSchema: z.object({
         preferences: z.string().optional(),
         isApproved: z.boolean(),
-      }) as any,
-      execute: async (params) => {
-        const { setState } = params;
+      }),
+      execute: async ({ setState }) => {
         setState({
           isApproved: false,
           feedbackHistory: [],
@@ -492,18 +468,18 @@ export const weeklyMealPlanningWorkflow = createWorkflow({
           isApproved: false,
         };
       },
-    }) as any,
+    }),
   )
   // Keep iterating until approved
   // @ts-expect-error - Mastra v1 beta.10 dowhile has state schema compatibility issues that prevent proper type inference
   .dowhile(mealPlanFeedbackIterationWorkflow, async ({ inputData }) => !inputData.isApproved)
   // Once approved, add ingredients to shopping list
-  .then(prepareShoppingListPrompt as any)
+  .then(prepareShoppingListPrompt)
   // Map to shoppingListWorkflow input schema
-  .map(async ({ inputData }: any) => ({
-    prompt: (inputData as any).prompt,
+  .map(async ({ inputData }) => ({
+    prompt: inputData.prompt,
   }))
   // @ts-expect-error - Mastra v1 beta.10 workflow chaining has state schema compatibility issues that prevent proper type inference
   .then(shoppingListWorkflow)
-  .then(formatFinalOutput as any)
+  .then(formatFinalOutput)
   .commit();

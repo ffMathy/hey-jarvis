@@ -77,10 +77,10 @@ Summarize the key changes and notify the user in Danish.`;
  */
 export const orderChangedWorkflow = createWorkflow({
   id: 'orderChangedWorkflow',
-  inputSchema: emailInputSchema as any,
-  outputSchema: notificationOutputSchema as any,
+  inputSchema: emailInputSchema,
+  outputSchema: notificationOutputSchema,
 })
-  .then(notifyOrderChanges as any)
+  .then(notifyOrderChanges)
   .commit();
 
 /**

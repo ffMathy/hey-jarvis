@@ -125,7 +125,6 @@ const listAvailableAgentsStep = createStep({
   id: 'list-available-agents',
   description: 'List all available agents for routing',
   inputSchema: inputSchema,
-  stateSchema: stateSchema,
   outputSchema: z.object({
     agents: z.array(
       z.object({
@@ -391,9 +390,8 @@ Each task MUST have:
 - Combine related operations for the same agent when logical
 - Ensure leaf tasks (those with no dependents) directly address user-facing needs`,
   },
-  inputSchema: listAvailableAgentsStep.outputSchema as any,
-  outputSchema: outputSchema as any,
-  stateSchema: stateSchema,
+  inputSchema: listAvailableAgentsStep.outputSchema,
+  outputSchema: outputSchema,
   prompt: async (context) => {
     return `
             # User query
@@ -415,9 +413,8 @@ Each task MUST have:
 const mergeDagStep = createStep({
   id: 'merge-dag',
   description: 'Merge newly generated DAG with current DAG of tasks',
-  inputSchema: generateDagStep.outputSchema as any,
-  stateSchema: stateSchema,
-  outputSchema: outputSchema as any,
+  inputSchema: generateDagStep.outputSchema,
+  outputSchema: outputSchema,
   execute: async (context) => {
     const newTasks = context.inputData.tasks;
     const mergedTasks = [...workflowState.currentDAG.tasks];
@@ -438,9 +435,8 @@ const mergeDagStep = createStep({
 const optimizeDagStep = createStep({
   id: 'optimize-dag',
   description: 'Optimize DAG by compressing sequential tasks for the same agent',
-  inputSchema: mergeDagStep.outputSchema as any,
-  stateSchema: stateSchema,
-  outputSchema: outputSchema as any,
+  inputSchema: mergeDagStep.outputSchema,
+  outputSchema: outputSchema,
   execute: async (_context) => {
     const tasks = workflowState.currentDAG.tasks;
 
@@ -548,8 +544,7 @@ const optimizeDagStep = createStep({
 const startDagExecutionStep = createStep({
   id: 'start-dag-execution',
   description: 'Start execution of DAG tasks',
-  inputSchema: optimizeDagStep.outputSchema as any,
-  stateSchema: stateSchema,
+  inputSchema: optimizeDagStep.outputSchema,
   outputSchema: z.object({
     instructions: z.string().describe('Instructions for Jarvis to follow'),
     taskIdsInProgress: z.array(z.string()).describe('IDs of tasks currently in progress'),
@@ -580,19 +575,19 @@ const startDagExecutionStep = createStep({
 
 export const getCurrentDagWorkflow = createWorkflow({
   id: 'getCurrentDagWorkflow',
-  inputSchema: z.object({}) as any,
-  outputSchema: dagSchema as any,
+  inputSchema: z.object({}),
+  outputSchema: dagSchema,
 })
   .then(
     createStep({
       id: 'get-current-dag',
       description: 'Get the current DAG of tasks',
-      inputSchema: z.object({}) as any,
-      outputSchema: dagSchema as any,
+      inputSchema: z.object({}),
+      outputSchema: dagSchema,
       execute: async () => {
         return workflowState.currentDAG;
       },
-    }) as any,
+    }),
   )
   .commit();
 
@@ -613,7 +608,7 @@ const instructionsOutputSchema = z.object({
 const getNextInstructionsStep = createStep({
   id: 'get-next-instructions',
   description: 'Get next instructions based on DAG state',
-  inputSchema: z.object({}) as any,
+  inputSchema: z.object({}),
   outputSchema: instructionsOutputSchema,
   execute: async () => {
     async function waitForNextInstructions(): Promise<z.infer<typeof instructionsOutputSchema>> {
@@ -690,24 +685,23 @@ const getNextInstructionsStep = createStep({
 export const getNextInstructionsWorkflow = createWorkflow({
   id: 'getNextInstructionsWorkflow',
   description: 'Workflow to wait for next instructions based on DAG state',
-  inputSchema: z.object({}) as any,
-  outputSchema: instructionsOutputSchema as any,
+  inputSchema: z.object({}),
+  outputSchema: instructionsOutputSchema,
 })
-  .then(getNextInstructionsStep as any)
+  .then(getNextInstructionsStep)
   .commit();
 
 export const routePromptWorkflow = createWorkflow({
   id: 'routePromptWorkflow',
   description: 'Workflow to route a user prompt to appropriate agents via a DAG of tasks',
-  inputSchema: inputSchema as any,
-  outputSchema: startDagExecutionStep.outputSchema as any,
-  stateSchema: stateSchema as any,
+  inputSchema: inputSchema,
+  outputSchema: startDagExecutionStep.outputSchema,
 })
-  .then(listAvailableAgentsStep as any)
-  .then(generateDagStep as any)
-  .then(mergeDagStep as any)
-  .then(optimizeDagStep as any)
-  .then(startDagExecutionStep as any)
+  .then(listAvailableAgentsStep)
+  .then(generateDagStep)
+  .then(mergeDagStep)
+  .then(optimizeDagStep)
+  .then(startDagExecutionStep)
   .commit();
 
 async function waitForNextCompletedTask() {

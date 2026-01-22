@@ -90,3 +90,6 @@ When adding new skills:
 3. Keep each skill focused on one specific task or pattern
 4. Use clear, imperative language
 5. Include examples showing correct usage
+
+## typescript-type-safety.md
+**CRITICAL**: Never use `as any` casts. This document explains why and provides proper alternatives.

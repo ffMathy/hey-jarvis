@@ -54,6 +54,13 @@ export function createShortcut<
   TInput extends z.infer<TInputSchema>,
   TOutput extends z.infer<TOutputSchema>,
 >(config: CreateShortcutConfig<TInputSchema, TOutputSchema, TInput, TOutput>) {
+  // Validate that the tool has the required schemas
+  if (!config.tool.inputSchema || !config.tool.outputSchema) {
+    throw new Error(
+      `Tool ${config.tool.id || 'unknown'} must have both inputSchema and outputSchema defined for use in shortcuts`,
+    );
+  }
+
   return mastraCreateTool({
     id: config.id,
     description: config.description,

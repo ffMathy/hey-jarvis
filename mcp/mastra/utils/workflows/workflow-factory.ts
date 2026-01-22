@@ -231,7 +231,11 @@ export function createAgentStep<
       // Explicitly set memory to undefined to bypass Mastra v1 beta.10+ bug
       // where memory.getInputProcessors() is called but doesn't exist
       const agent = await createAgent({ ...config.agentConfig, memory: undefined });
-      const prompt = (await Promise.resolve(config.prompt(params as any)))
+
+      // Type assertion needed here due to complex generic type inference with ExecuteFunctionParams
+      // The params object has the correct runtime type but TypeScript can't verify it in this generic context
+      type PromptParams = Parameters<typeof config.prompt>[0];
+      const prompt = (await Promise.resolve(config.prompt(params as unknown as PromptParams)))
         .split('\n')
         .map((line) => line.trim())
         .join('\n')
@@ -292,23 +296,29 @@ export function createToolStep<
   id: TStepId;
   description: string;
   tool: {
-    inputSchema: TToolInput;
-    outputSchema: TToolOutput;
-    execute: (inputData: z.infer<TToolInput>, context?: any) => Promise<z.infer<TToolOutput>>;
+    inputSchema?: TToolInput;
+    outputSchema?: TToolOutput;
+    execute?: (inputData: z.infer<TToolInput>, context?: any) => Promise<z.infer<TToolOutput>>;
   };
   stateSchema?: TStateSchema;
-  inputOverrides?: z.infer<TToolInput>;
+  inputOverrides?: Partial<z.infer<TToolInput>>;
 }) {
-  const inputSchema = config.tool.inputSchema;
+  if (!config.tool.inputSchema || !config.tool.outputSchema || !config.tool.execute) {
+    throw new Error(`Tool for step ${config.id} must have inputSchema, outputSchema, and execute defined`);
+  }
 
-  return createStep<TStepId, TStateSchema, typeof inputSchema, TToolOutput>({
+  const inputSchema = config.tool.inputSchema;
+  const outputSchema = config.tool.outputSchema;
+  const execute = config.tool.execute;
+
+  return createStep<TStepId, TStateSchema, typeof inputSchema, typeof outputSchema>({
     id: config.id,
     description: config.description,
-    inputSchema: config.tool.inputSchema,
-    outputSchema: config.tool.outputSchema,
+    inputSchema,
+    outputSchema,
     stateSchema: config.stateSchema,
     execute: async (params) => {
-      return await config.tool.execute(
+      return await execute(
         {
           ...params.inputData,
           ...(config.inputOverrides ?? {}),

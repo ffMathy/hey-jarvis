@@ -12,13 +12,13 @@ export const stateChangeNotificationWorkflow = createWorkflow({
     source: z.string(),
     stateType: z.string(),
     stateData: z.record(z.unknown()),
-  }) as any,
+  }),
   outputSchema: z.object({
     registered: z.boolean(),
     analyzed: z.boolean(),
     notificationSent: z.boolean().optional(),
     reasoning: z.string().optional(),
-  }) as any,
+  }),
 })
   .then(
     createStep({
@@ -35,8 +35,7 @@ export const stateChangeNotificationWorkflow = createWorkflow({
         stateData: z.record(z.unknown()),
         memorySaved: z.boolean(),
       }),
-      execute: async (params) => {
-        const { inputData } = params;
+      execute: async ({ inputData }) => {
         logger.info('State change reactor processing', {
           source: inputData.source,
           stateType: inputData.stateType,
@@ -80,7 +79,7 @@ export const stateChangeNotificationWorkflow = createWorkflow({
           throw error;
         }
       },
-    }) as any,
+    }),
   )
   .then(
     createStep({
@@ -98,8 +97,7 @@ export const stateChangeNotificationWorkflow = createWorkflow({
         notificationSent: z.boolean().optional(),
         reasoning: z.string().optional(),
       }),
-      execute: async (params) => {
-        const { inputData, mastra } = params;
+      execute: async ({ inputData, mastra }) => {
         if (!mastra) {
           throw new Error('Mastra instance not available');
         }
@@ -144,6 +142,6 @@ Analyze this state change using your working memory and context. Decide if the u
           };
         }
       },
-    }) as any,
+    }),
   )
   .commit();

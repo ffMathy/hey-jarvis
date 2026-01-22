@@ -89,7 +89,7 @@ const createSearchNewEmailsStep = (storageKey: string, stepId: string) =>
   createStep({
     id: stepId,
     description: 'Search for new emails received since the last workflow run',
-    inputSchema: z.object({}) as any,
+    inputSchema: z.object({}),
     outputSchema: z.object({
       emails: z.array(emailObjectSchema),
       totalCount: z.number(),
@@ -121,8 +121,7 @@ const createUpdateLastSeenEmailStep = (folderKey: string, stepId: string) =>
       newLastSeenId: z.string(),
       emailCount: z.number(),
     }),
-    execute: async (params) => {
-      const { state, inputData } = params;
+    execute: async ({ state, inputData }) => {
       if (!state.mostRecentEmailId || !state.mostRecentEmailReceivedDateTime) {
         return {
           success: false,
@@ -221,8 +220,7 @@ const updateLastSeenEmailForFormReplies = createStep({
     previousLastSeenId: z.string().optional(),
     newLastSeenId: z.string(),
   }),
-  execute: async (params) => {
-    const { state } = params;
+  execute: async ({ state }) => {
     if (!state.mostRecentEmailId || !state.mostRecentEmailReceivedDateTime) {
       return {
         success: false,
@@ -295,17 +293,17 @@ const formatEmailCheckingOutput = createStep({
  */
 export const emailCheckingWorkflow = createWorkflow({
   id: 'emailCheckingWorkflow',
-  inputSchema: z.object({}) as any,
+  inputSchema: z.object({}),
   outputSchema: z.object({
     emailsFound: z.number(),
     lastSeenEmailUpdated: z.boolean(),
     message: z.string(),
-  }) as any,
+  }),
 })
-  .then(searchNewEmailsForChecking as any)
-  .then(storeNewEmailsInState as any)
-  .then(updateLastSeenEmailForChecking as any)
-  .then(formatEmailCheckingOutput as any)
+  .then(searchNewEmailsForChecking)
+  .then(storeNewEmailsInState)
+  .then(updateLastSeenEmailForChecking)
+  .then(formatEmailCheckingOutput)
   .commit();
 
 // ============================================================================
@@ -403,8 +401,7 @@ const registerEmailsStateChange = createStep({
     batched: z.boolean(),
     message: z.string(),
   }),
-  execute: async (params) => {
-    const { state, inputData } = params;
+  execute: async ({ state, inputData }) => {
     const emails = state.newEmails ?? [];
 
     if (emails.length === 0) {
@@ -423,7 +420,7 @@ const registerEmailsStateChange = createStep({
         emailCount: emails.length,
         formRepliesFound: inputData.formRepliesFound,
         workflowsResumed: inputData.workflowsResumed,
-        emails: emails.map((email: any) => ({
+        emails: emails.map((email) => ({
           subject: email.subject,
           from: email.from.address,
           receivedDateTime: email.receivedDateTime,
@@ -433,10 +430,7 @@ const registerEmailsStateChange = createStep({
     };
 
     console.log(`📝 Registering ${emails.length} email(s) with state reactor...`);
-    if (!registerStateChange.execute) {
-      throw new Error('registerStateChange.execute is not defined');
-    }
-    const result = await registerStateChange.execute(stateChangeData, {} as any);
+    const result = await registerStateChange.execute(stateChangeData);
 
     if ('error' in result) {
       throw new Error(`Failed to register state change: ${result.message}`);
@@ -465,8 +459,7 @@ const processEmailTriggersStep = createStep({
     triggersMatched: z.number(),
     matchedTriggerIds: z.array(z.string()),
   }),
-  execute: async (params) => {
-    const { state } = params;
+  execute: async ({ state }) => {
     const emails = state.newEmails ?? [];
 
     if (emails.length === 0) {
@@ -526,7 +519,7 @@ const formatFormRepliesOutput = createStep({
   execute: async (params) => {
     const emails = params.state.newEmails ?? [];
 
-    const formRepliesCount = emails.filter((email: any) => WORKFLOW_ID_REGEX.test(email.subject)).length;
+    const formRepliesCount = emails.filter((email) => WORKFLOW_ID_REGEX.test(email.subject)).length;
 
     return {
       emailsFound: emails.length,
@@ -564,19 +557,19 @@ const formatFormRepliesOutput = createStep({
  */
 export const formRepliesDetectionWorkflow = createWorkflow({
   id: 'formRepliesDetectionWorkflow',
-  inputSchema: z.object({}) as any,
+  inputSchema: z.object({}),
   outputSchema: z.object({
     emailsFound: z.number(),
     formRepliesDetected: z.number(),
     stateChangeRegistered: z.boolean(),
     message: z.string(),
-  }) as any,
+  }),
 })
-  .then(searchNewEmailsForFormReplies as any)
-  .then(storeNewEmailsInState as any)
-  .then(processFormReplies as any)
-  .then(registerEmailsStateChange as any)
-  .then(processEmailTriggersStep as any)
-  .then(updateLastSeenEmailForFormReplies as any)
-  .then(formatFormRepliesOutput as any)
+  .then(searchNewEmailsForFormReplies)
+  .then(storeNewEmailsInState)
+  .then(processFormReplies)
+  .then(registerEmailsStateChange)
+  .then(processEmailTriggersStep)
+  .then(updateLastSeenEmailForFormReplies)
+  .then(formatFormRepliesOutput)
   .commit();
