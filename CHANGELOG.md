@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.6.0](https://github.com/ffMathy/hey-jarvis/compare/root-v1.5.1...root-v1.6.0) (2026-01-24)
+
+
+### Features
+
+* apply Mastra V1 codemod and fix basic migration issues ([9ea9a6a](https://github.com/ffMathy/hey-jarvis/commit/9ea9a6a6f164f858df675002ba2da92b67fd5c96))
+* upgrade to Zod V4 and remove asWorkflowSchema hack ([42c2d47](https://github.com/ffMathy/hey-jarvis/commit/42c2d47b33d919cbf03ee58395f295535e680784))
+
+
+### Bug Fixes
+
+* add asWorkflowSchema helper to resolve TypeScript type compatibility ([48eab8c](https://github.com/ffMathy/hey-jarvis/commit/48eab8cb0ce33feb4ca9dcd80a6dd2c873c99f1a))
+* **mcp:** apply type casts for Mastra V1 workflow schema compatibility ([3a1013c](https://github.com/ffMathy/hey-jarvis/commit/3a1013c1cd8013292bf9d23956429c9ef9f26248))
+* **mcp:** complete Mastra V1 migration - fix tool signatures, workflow schemas, and type errors ([1ef1d6c](https://github.com/ffMathy/hey-jarvis/commit/1ef1d6c37efe73d36381d4c1dcd29f3ab7233d82))
+* **mcp:** continue Mastra V1 migration - fix execute signatures and tool type assertions ([8f7aa57](https://github.com/ffMathy/hey-jarvis/commit/8f7aa57c81febd2e7b1403e5fbbaac6345850073))
+* remove all 'as any' casts and improve type safety ([7a81d4c](https://github.com/ffMathy/hey-jarvis/commit/7a81d4c474064ff689a5746751ab55c57eddf797))
+* resolve all 113 TypeScript compilation errors in Mastra V1 migration ([4707fad](https://github.com/ffMathy/hey-jarvis/commit/4707fadf4ee6e1dc4e357644f264c963981cad7d))
+
 ## [1.5.1](https://github.com/ffMathy/hey-jarvis/compare/root-v1.5.0...root-v1.5.1) (2026-01-12)
 
 
