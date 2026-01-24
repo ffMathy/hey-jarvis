@@ -85,6 +85,7 @@ Start by asking your first clarifying question to understand what needs to be im
 const askRequirementsQuestion = createStep({
   id: 'ask-requirements-question',
   description: 'Asks a single clarifying question using the Requirements Interviewer Agent',
+  stateSchema: undefined,
   inputSchema: z.object({}),
   outputSchema: z.object({}),
   resumeSchema: z.object({
@@ -103,7 +104,7 @@ const askRequirementsQuestion = createStep({
     const state = params.state;
 
     // If we have resume data, add the user's answer to conversation history
-    let conversationHistory = state.conversationHistory ?? [];
+    let conversationHistory: any[] = Array.isArray(state.conversationHistory) ? state.conversationHistory : [];
     if (params.resumeData?.userAnswer) {
       conversationHistory = [
         ...conversationHistory,
@@ -165,6 +166,7 @@ const askRequirementsQuestion = createStep({
 const prepareIssueCreationData = createStep({
   id: 'prepare-issue-creation-data',
   description: 'Prepares data for creating the issue with complete requirements',
+  stateSchema: undefined,
   inputSchema: z.object({}),
   outputSchema: z.object({
     owner: z.string().optional(),
@@ -175,7 +177,7 @@ const prepareIssueCreationData = createStep({
   }),
   execute: async (params) => {
     const state = params.state;
-    const requirements = state.response?.requirements;
+    const requirements = (state.response as any)?.requirements as any;
 
     if (!requirements) {
       throw new Error('No requirements found in workflow state');
@@ -221,9 +223,9 @@ ${discussionSection}
 `;
 
     return {
-      owner: state.owner,
-      repo: state.repository ?? 'hey-jarvis',
-      title: requirements.title ?? 'Feature Implementation',
+      owner: state.owner as string | undefined,
+      repo: (state.repository as string | undefined) ?? 'hey-jarvis',
+      title: (requirements.title as string | undefined) ?? 'Feature Implementation',
       body: finalBody,
       labels: ['ready', 'requirements-complete'],
     };
@@ -241,6 +243,7 @@ const createIssueWithRequirementsTool = createToolStep({
 const storeIssueCreationResult = createStep({
   id: 'store-issue-creation-result',
   description: 'Stores the issue creation result in workflow state',
+  stateSchema: undefined,
   inputSchema: z.object({
     success: z.boolean(),
     message: z.string(),
@@ -269,6 +272,7 @@ const storeIssueCreationResult = createStep({
 const validateBeforeCopilotAssignment = createStep({
   id: 'validate-before-copilot-assignment',
   description: 'Validates that issue update succeeded before assigning Copilot',
+  stateSchema: undefined,
   inputSchema: z.object({}),
   outputSchema: z.object({}),
   execute: async (params) => {
@@ -286,6 +290,7 @@ const validateBeforeCopilotAssignment = createStep({
 const prepareCopilotAssignmentData = createStep({
   id: 'prepare-copilot-assignment-data',
   description: 'Prepares data for assigning the issue to Copilot',
+  stateSchema: undefined,
   inputSchema: z.object({}),
   outputSchema: z.object({
     owner: z.string().optional(),
@@ -300,9 +305,9 @@ const prepareCopilotAssignmentData = createStep({
     }
 
     return {
-      owner: state.owner,
-      repo: state.repository,
-      issue_number: state.issueNumber,
+      owner: state.owner as string | undefined,
+      repo: state.repository as string,
+      issue_number: state.issueNumber as number,
     };
   },
 });
@@ -318,6 +323,7 @@ const assignToCopilotTool = createToolStep({
 const formatFinalOutput = createStep({
   id: 'format-final-output',
   description: 'Formats the final workflow output with success message',
+  stateSchema: undefined,
   inputSchema: z.object({
     success: z.boolean(),
     message: z.string(),
@@ -335,14 +341,14 @@ const formatFinalOutput = createStep({
       return {
         success: false,
         message: `Copilot assignment initiated but may require manual confirmation: ${params.inputData.message}`,
-        issueUrl: state.issueUrl,
+        issueUrl: state.issueUrl as string | undefined,
       };
     }
 
     return {
       success: true,
       message: `Successfully assigned Copilot to issue #${state.issueNumber}. ${params.inputData.message}`,
-      issueUrl: state.issueUrl,
+      issueUrl: state.issueUrl as string | undefined,
     };
   },
 });
@@ -363,16 +369,16 @@ const formatFinalOutput = createStep({
  */
 export const implementFeatureWorkflow = createWorkflow({
   id: 'implementFeatureWorkflow',
-  stateSchema: workflowStateSchema,
-  inputSchema: requirementsInputSchema,
+  stateSchema: workflowStateSchema as any,
+  inputSchema: requirementsInputSchema as any,
   outputSchema: z.object({
     success: z.boolean(),
     message: z.string(),
     issueUrl: z.string().optional(),
-  }),
+  }) as any,
 })
-  .then(initializeGatheringSession)
-  .dowhile(askRequirementsQuestion, async ({ iterationCount }) => {
+  .then(initializeGatheringSession as any)
+  .dowhile(askRequirementsQuestion as any, async ({ iterationCount }) => {
     // Safety limit check
     if (iterationCount >= 50) {
       throw new Error('Requirements gathering exceeded maximum iterations');
@@ -383,11 +389,11 @@ export const implementFeatureWorkflow = createWorkflow({
     // which happens when needsMoreQuestions is false
     return true;
   })
-  .then(prepareIssueCreationData)
-  .then(createIssueWithRequirementsTool)
-  .then(storeIssueCreationResult)
-  .then(validateBeforeCopilotAssignment)
-  .then(prepareCopilotAssignmentData)
-  .then(assignToCopilotTool)
-  .then(formatFinalOutput)
+  .then(prepareIssueCreationData as any)
+  .then(createIssueWithRequirementsTool as any)
+  .then(storeIssueCreationResult as any)
+  .then(validateBeforeCopilotAssignment as any)
+  .then(prepareCopilotAssignmentData as any)
+  .then(assignToCopilotTool as any)
+  .then(formatFinalOutput as any)
   .commit();

@@ -1,6 +1,6 @@
 import type { z } from 'zod';
 import { createShortcut } from '../../utils/shortcut-factory.js';
-import { getAllDevices } from '../internet-of-things/tools.js';
+import { type DeviceState, getAllDevices } from '../internet-of-things/tools.js';
 
 /**
  * Shortcuts are tools that piggy-back on other verticals' capabilities.
@@ -72,7 +72,7 @@ export const getCarNavigationDestination = createShortcut({
   id: 'getCarNavigationDestination',
   description:
     "Get the current navigation destination from a connected Tesla via Tessie integration. Uses IoT device integration to query the car's navigation system for destination, distance to arrival, time to arrival, and traffic delay.",
-  tool: getAllDevices,
+  tool: getAllDevices as any,
   execute: async (inputData): Promise<{ devices: DeviceState[] }> => {
     if (!getAllDevices.execute) {
       throw new Error('getAllDevices.execute is not defined');

@@ -134,8 +134,8 @@ const createUpdateLastSeenEmailStep = (folderKey: string, stepId: string) =>
 
       const result = await updateLastSeenEmail(
         folderKey,
-        state.mostRecentEmailId,
-        state.mostRecentEmailReceivedDateTime,
+        state.mostRecentEmailId as string,
+        state.mostRecentEmailReceivedDateTime as string,
       );
       return {
         ...result,
@@ -232,8 +232,8 @@ const updateLastSeenEmailForFormReplies = createStep({
 
     return await updateLastSeenEmail(
       FORM_REPLIES_FOLDER_KEY,
-      state.mostRecentEmailId,
-      state.mostRecentEmailReceivedDateTime,
+      state.mostRecentEmailId as string,
+      state.mostRecentEmailReceivedDateTime as string,
     );
   },
 });
