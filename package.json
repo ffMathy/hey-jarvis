@@ -102,7 +102,7 @@
     "googleapis": "^166.0.0",
     "hono": "^4.10.7",
     "jsonwebtoken": "^9.0.2",
-    "lodash-es": "^4.17.21",
+    "lodash-es": "^4.17.23",
     "node-cron": "^4.2.1",
     "octokit": "^5.0.5",
     "ollama-ai-provider-v2": "^1.5.5",
