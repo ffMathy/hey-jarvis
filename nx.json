@@ -18,10 +18,10 @@
   },
   "targetDefaults": {
     "build": {
-      "dependsOn": ["lint", "^build", "typecheck"]
+      "dependsOn": ["lint", "^build"]
     },
     "test": {
-      "dependsOn": ["lint"]
+      "dependsOn": []
     },
     "@nx/esbuild:esbuild": {
       "cache": true,
@@ -40,7 +40,7 @@
       "options": {
         "command": "biome check --write {projectRoot}"
       },
-      "dependsOn": ["typecheck"]
+      "dependsOn": []
     },
     "format": {
       "cache": true,

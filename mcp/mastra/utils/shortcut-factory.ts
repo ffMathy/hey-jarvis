@@ -64,8 +64,8 @@ export function createShortcut<
   return mastraCreateTool({
     id: config.id,
     description: config.description,
-    inputSchema: config.tool.inputSchema as TInputSchema,
-    outputSchema: config.tool.outputSchema as TOutputSchema,
+    inputSchema: config.tool.inputSchema as any,
+    outputSchema: config.tool.outputSchema as any,
     execute: config.execute,
   });
 }

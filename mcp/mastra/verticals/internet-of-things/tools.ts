@@ -29,7 +29,7 @@ interface ServiceDefinition {
 }
 
 // Interface for Home Assistant device/entity state
-interface DeviceState {
+export interface DeviceState {
   id: string;
   name: string;
   labels: string[];

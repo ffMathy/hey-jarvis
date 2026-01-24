@@ -226,7 +226,7 @@ export function createAgentStep<
     description: config.description,
     inputSchema: config.inputSchema,
     outputSchema: config.outputSchema,
-    execute: async (params): Promise<TOutputSchema> => {
+    execute: async (params): Promise<z.infer<TOutputSchema>> => {
       // Create agent lazily during execution to avoid top-level awaits
       // Explicitly set memory to undefined to bypass Mastra v1 beta.10+ bug
       // where memory.getInputProcessors() is called but doesn't exist
@@ -258,7 +258,7 @@ export function createAgentStep<
         },
       );
 
-      return await response.object;
+      return (await response.object) as z.infer<TOutputSchema>;
     },
   });
 }
