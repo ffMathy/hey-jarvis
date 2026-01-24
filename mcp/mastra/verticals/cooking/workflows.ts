@@ -426,9 +426,9 @@ const mealPlanFeedbackIterationWorkflow = createWorkflow({
   .then(generateMealPlanEmail as any) // Format as HTML email
   .then(prepareMealPlanFeedbackQuestion as any) // Prepare feedback question
   // Map to sendEmailAndAwaitResponseWorkflow input schema
-  .map(async ({ inputData }) => ({
-    recipientEmail: inputData.recipientEmail,
-    question: inputData.question,
+  .map(async ({ inputData }: any) => ({
+    recipientEmail: (inputData as any).recipientEmail,
+    question: (inputData as any).question,
   }))
   .then(getSendEmailAndAwaitResponseWorkflow('mealPlanFeedback', mealPlanFeedbackResponseSchema) as any) // Send email and wait for human response
   .then(extractMealPlanFeedbackResponse as any) // Analyze the response
