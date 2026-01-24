@@ -10,7 +10,7 @@ import { TokenTrackingProcessor, TokenUsageExporter } from './utils/token-usage-
 import { tokenUsageTools } from './verticals/api/index.js';
 import { calendarTools, getCalendarAgent } from './verticals/calendar/index.js';
 import { codingTools, getCodingAgent, getRequirementsInterviewerAgent } from './verticals/coding/index.js';
-import { commuteShortcuts, commuteTools, getCommuteAgent } from './verticals/commute/index.js';
+import { commuteTools, getCommuteAgent } from './verticals/commute/index.js';
 import { cookingTools, getCookingAgent } from './verticals/cooking/index.js';
 import { emailTools, getEmailAgent } from './verticals/email/index.js';
 import { getEmailParsingAgent, humanInTheLoopTools } from './verticals/human-in-the-loop/index.js';
@@ -36,8 +36,8 @@ import {
 import { getShoppingListAgent, getShoppingListSummaryAgent, shoppingTools } from './verticals/shopping/index.js';
 import { getStateChangeReactorAgent, synapseTools } from './verticals/synapse/index.js';
 import { getTodoListAgent, todoListTools } from './verticals/todo-list/index.js';
-import { getWeatherAgent, weatherShortcuts, weatherTools } from './verticals/weather/index.js';
-import { getWebResearchAgent, webResearchTools } from './verticals/web-research/index.js';
+import { getWeatherAgent, weatherTools } from './verticals/weather/index.js';
+import { getWebResearchAgent } from './verticals/web-research/index.js';
 
 // Set up the Google AI SDK environment variable immediately
 // Prioritize HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY over HEY_JARVIS_GOOGLE_API_KEY
@@ -168,7 +168,7 @@ const mastraServer = new MastraServer({
   openapiPath: '/openapi.json',
   bodyLimitOptions: {
     maxSize: 10 * 1024 * 1024, // 10MB
-    onError: (err) => ({ error: 'Payload too large', maxSize: '10MB' }),
+    onError: (_err) => ({ error: 'Payload too large', maxSize: '10MB' }),
   },
   streamOptions: { redact: true },
 });

@@ -33,7 +33,8 @@ const notifyOrderChanges = createStep({
   description: 'Send notification about order changes via the notification agent',
   inputSchema: emailInputSchema,
   outputSchema: notificationOutputSchema,
-  execute: async ({ inputData }) => {
+  execute: async (params) => {
+    const { inputData } = params;
     // Get the notification agent
     const notificationAgent = await getNotificationAgent();
 

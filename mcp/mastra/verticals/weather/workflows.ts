@@ -61,7 +61,8 @@ const registerWeatherStateChange = createStep({
     batched: z.boolean(),
     message: z.string(),
   }),
-  execute: async ({ inputData }) => {
+  execute: async (params) => {
+    const { inputData } = params;
     const stateChangeData = {
       source: 'weather',
       stateType: 'weather_update',
@@ -72,7 +73,10 @@ const registerWeatherStateChange = createStep({
       },
     };
 
-    const result = await registerStateChange.execute(stateChangeData);
+    if (!registerStateChange.execute) {
+      throw new Error('registerStateChange.execute is not defined');
+    }
+    const result = await registerStateChange.execute(stateChangeData, {});
 
     // Handle validation error case using type guard for proper narrowing
     if (isValidationError(result)) {

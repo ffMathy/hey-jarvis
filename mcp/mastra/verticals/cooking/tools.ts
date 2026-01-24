@@ -61,6 +61,22 @@ const getApiKey = () => {
   return apiKey;
 };
 
+// Shared recipe schema used by multiple tools
+const recipeSchema = z
+  .object({
+    id: z.number(),
+    title: z.string(),
+    description: z.string(),
+    directions: z.string(),
+    categories: z.array(z.string()),
+    ingredients: z.array(z.string()),
+    url: z.string(),
+    imageUrl: z.string(),
+    preparationTime: z.string().optional(),
+    servings: z.number().optional(),
+  })
+  .describe('Detailed information about the recipe');
+
 // Tool to get recipe details by ID
 export const getRecipeById = createTool({
   id: 'getRecipeById',
@@ -68,20 +84,7 @@ export const getRecipeById = createTool({
   inputSchema: z.object({
     recipeId: z.string().describe('The recipe ID of the recipe to retrieve'),
   }),
-  outputSchema: z
-    .object({
-      id: z.number(),
-      title: z.string(),
-      description: z.string(),
-      directions: z.string(),
-      categories: z.array(z.string()),
-      ingredients: z.array(z.string()),
-      url: z.string(),
-      imageUrl: z.string(),
-      preparationTime: z.string().optional(),
-      servings: z.number().optional(),
-    })
-    .describe('Detailed information about the recipe'),
+  outputSchema: recipeSchema,
   execute: async (inputData) => {
     const apiKey = getApiKey();
     const url = `https://www.valdemarsro.dk/api/v2/recipes/${inputData.recipeId}?api_key=${apiKey}`;
@@ -105,7 +108,7 @@ export const searchRecipes = createTool({
   }),
   outputSchema: z.object({
     results: z
-      .array(getRecipeById.outputSchema)
+      .array(recipeSchema)
       .describe(
         'Array of detailed recipe information matching the search term, sorted by relevance ascending (most relevant results first)',
       ),
@@ -132,11 +135,11 @@ export const searchRecipes = createTool({
       data.data.result
         .slice(0, 25)
         .map((item) => item.post_id.toString())
-        .map(async (id) => await getRecipeById.execute({ recipeId: id }, context)),
+        .map(async (id) => await getRecipeById.execute!({ recipeId: id }, context)),
     );
 
     return {
-      results: results as z.infer<typeof getRecipeById.outputSchema>[],
+      results,
     };
   },
 });
@@ -149,10 +152,8 @@ export const getAllRecipes = createTool({
     fromDate: z.string().optional().describe('Optional from date filter'),
     amount: z.number().optional().describe('Optional maximum number of recipes to retrieve, or all recipes if not set'),
   }),
-  outputSchema: z
-    .array(getRecipeById.outputSchema)
-    .describe('Array of all recipes from Valdemarsro suitable for meal planning'),
-  execute: async (inputData) => {
+  outputSchema: z.array(recipeSchema).describe('Array of all recipes from Valdemarsro suitable for meal planning'),
+  execute: async (inputData, context) => {
     async function getPage(page: number) {
       const apiKey = getApiKey();
       let url = `https://www.valdemarsro.dk/api/v2/recipes/page/${page}?api_key=${apiKey}`;

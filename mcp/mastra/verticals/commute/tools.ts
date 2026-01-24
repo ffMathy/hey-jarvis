@@ -72,7 +72,8 @@ export const getTravelTime = createTool({
     endAddress: z.string(),
     mode: z.string(),
   }),
-  execute: async ({ origin, destination, mode, departureTime, includeTraffic }) => {
+  execute: async (inputData, context): Promise<any> => {
+    const { origin, destination, mode, departureTime, includeTraffic } = inputData;
     const { client, apiKey } = getGoogleMapsClient();
 
     const params: {
@@ -155,7 +156,8 @@ export const searchPlacesAlongRoute = createTool({
       summary: z.string().describe('Brief summary of the route'),
     }),
   }),
-  execute: async ({ origin, destination, searchQuery, maxResults }) => {
+  execute: async (inputData) => {
+    const { origin, destination, searchQuery, maxResults } = inputData;
     const { client, apiKey } = getGoogleMapsClient();
 
     const directionsResponse = await client.directions({
@@ -308,7 +310,8 @@ export const searchPlacesByDistance = createTool({
       }),
     }),
   }),
-  execute: async ({ location, searchQuery, radius, maxResults }) => {
+  execute: async (inputData) => {
+    const { location, searchQuery, radius, maxResults } = inputData;
     const { client, apiKey } = getGoogleMapsClient();
 
     const geocodeResponse = await client.geocode({
@@ -335,7 +338,7 @@ export const searchPlacesByDistance = createTool({
       params: {
         query: searchQuery,
         location: centerLocation,
-        radius: Math.min(radius, 50000),
+        radius: Math.min(radius ?? 5000, 50000),
         key: apiKey,
       },
     });
@@ -364,7 +367,7 @@ export const searchPlacesByDistance = createTool({
         ),
       }))
       .sort((a, b) => (a.distanceFromCenter || 0) - (b.distanceFromCenter || 0))
-      .slice(0, maxResults);
+      .slice(0, maxResults || 10);
 
     return {
       places,
@@ -414,7 +417,8 @@ export const getPlaceDetails = createTool({
       )
       .optional(),
   }),
-  execute: async ({ placeId, placeName, location }) => {
+  execute: async (inputData) => {
+    const { placeId, placeName, location } = inputData;
     const { client, apiKey } = getGoogleMapsClient();
 
     let actualPlaceId = placeId;

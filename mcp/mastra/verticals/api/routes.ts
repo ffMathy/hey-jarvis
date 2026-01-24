@@ -17,7 +17,7 @@ interface WorkflowApiResponse<T = unknown> {
 /**
  * Formats Zod validation errors into a human-readable string.
  */
-function formatValidationErrors(zodError: ZodError): string {
+function formatValidationErrors(zodError: ZodError<any>): string {
   return zodError.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ');
 }
 
@@ -55,7 +55,7 @@ export function createWorkflowApiHandler(workflow: NamedWorkflow) {
         const parseResult = inputSchema.safeParse(req.body);
 
         if (!parseResult.success) {
-          const errorMessage = formatValidationErrors(parseResult.error);
+          const errorMessage = formatValidationErrors(parseResult.error as ZodError<any>);
           res.status(400).json({
             success: false,
             message: `Validation failed: ${errorMessage}`,

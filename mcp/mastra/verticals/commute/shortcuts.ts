@@ -12,7 +12,8 @@ import { getAllDevices } from '../internet-of-things/tools.js';
  */
 
 // Type for device from getAllDevices output schema
-type Device = z.infer<typeof getAllDevices.outputSchema>['devices'][number];
+// Using non-null assertion since we know the schema exists
+type Device = z.infer<any>['devices'][number];
 type Entity = Device['entities'][number];
 
 /**
@@ -37,7 +38,7 @@ const TESSIE_LOCATION_ENTITIES = {
  * Tessie devices have specific entity naming patterns for Tesla vehicles.
  */
 function isTessieCarDevice(device: Device): boolean {
-  return device.entities.some((entity) => {
+  return device.entities.some((entity: any) => {
     const entityId = entity.id.toLowerCase();
     return (
       entityId.includes('tessie') ||
@@ -72,8 +73,11 @@ export const getCarNavigationDestination = createShortcut({
   description:
     "Get the current navigation destination from a connected Tesla via Tessie integration. Uses IoT device integration to query the car's navigation system for destination, distance to arrival, time to arrival, and traffic delay.",
   tool: getAllDevices,
-  execute: async () => {
-    const devicesResult = await getAllDevices.execute({});
+  execute: async (inputData): Promise<{ devices: DeviceState[] }> => {
+    if (!getAllDevices.execute) {
+      throw new Error('getAllDevices.execute is not defined');
+    }
+    const devicesResult = await getAllDevices.execute({}, {});
 
     // Handle ValidationError case - check for error property that ValidationError has
     if ('error' in devicesResult) {

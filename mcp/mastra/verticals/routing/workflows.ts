@@ -125,7 +125,6 @@ const listAvailableAgentsStep = createStep({
   id: 'list-available-agents',
   description: 'List all available agents for routing',
   inputSchema: inputSchema,
-  stateSchema: stateSchema,
   outputSchema: z.object({
     agents: z.array(
       z.object({
@@ -393,7 +392,6 @@ Each task MUST have:
   },
   inputSchema: listAvailableAgentsStep.outputSchema,
   outputSchema: outputSchema,
-  stateSchema: stateSchema,
   prompt: async (context) => {
     return `
             # User query
@@ -416,7 +414,6 @@ const mergeDagStep = createStep({
   id: 'merge-dag',
   description: 'Merge newly generated DAG with current DAG of tasks',
   inputSchema: generateDagStep.outputSchema,
-  stateSchema: stateSchema,
   outputSchema: outputSchema,
   execute: async (context) => {
     const newTasks = context.inputData.tasks;
@@ -439,7 +436,6 @@ const optimizeDagStep = createStep({
   id: 'optimize-dag',
   description: 'Optimize DAG by compressing sequential tasks for the same agent',
   inputSchema: mergeDagStep.outputSchema,
-  stateSchema: stateSchema,
   outputSchema: outputSchema,
   execute: async (_context) => {
     const tasks = workflowState.currentDAG.tasks;
@@ -549,7 +545,6 @@ const startDagExecutionStep = createStep({
   id: 'start-dag-execution',
   description: 'Start execution of DAG tasks',
   inputSchema: optimizeDagStep.outputSchema,
-  stateSchema: stateSchema,
   outputSchema: z.object({
     instructions: z.string().describe('Instructions for Jarvis to follow'),
     taskIdsInProgress: z.array(z.string()).describe('IDs of tasks currently in progress'),
@@ -701,7 +696,6 @@ export const routePromptWorkflow = createWorkflow({
   description: 'Workflow to route a user prompt to appropriate agents via a DAG of tasks',
   inputSchema: inputSchema,
   outputSchema: startDagExecutionStep.outputSchema,
-  stateSchema: stateSchema,
 })
   .then(listAvailableAgentsStep)
   .then(generateDagStep)

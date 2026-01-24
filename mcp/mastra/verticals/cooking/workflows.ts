@@ -39,7 +39,6 @@ const generateMealPlanStateSchema = z
 
 export const generateMealPlanWorkflow = createWorkflow({
   id: 'generateMealPlanWorkflow',
-  stateSchema: generateMealPlanStateSchema,
   inputSchema: z.object({
     preferences: z.string().optional().describe('Optional preferences for the meal plan'),
   }),
@@ -51,7 +50,6 @@ export const generateMealPlanWorkflow = createWorkflow({
     createStep({
       id: 'store-preferences',
       description: 'Store preferences in workflow state for later use',
-      stateSchema: generateMealPlanStateSchema,
       inputSchema: z.object({
         preferences: z.string().optional(),
       }),
@@ -70,7 +68,6 @@ export const generateMealPlanWorkflow = createWorkflow({
     createToolStep({
       id: 'get-all-recipes',
       description: 'Fetches all recipes for meal planning',
-      stateSchema: generateMealPlanStateSchema,
       tool: getAllRecipes,
       inputOverrides: {
         amount: process.env.IS_DEVCONTAINER ? 10 : undefined,
@@ -81,7 +78,6 @@ export const generateMealPlanWorkflow = createWorkflow({
     createAgentStep({
       id: 'generate-complete-meal-plan',
       description: 'Uses meal plan agents to select recipes and generate complete meal plan',
-      stateSchema: generateMealPlanStateSchema,
       agentConfig: {
         model: cookingModel,
         id: 'mealPlanGenerator',
@@ -127,7 +123,6 @@ Focus on dinner/evening meals (look for "aftensmad" or similar categories). Gene
 const generateMealPlanEmail = createAgentStep({
   id: 'generate-meal-plan-email',
   description: 'Generates HTML email using the specialized email formatter agent',
-  stateSchema: generateMealPlanStateSchema,
   agentConfig: {
     model: cookingModel,
     id: 'emailFormatter',
@@ -186,7 +181,6 @@ const weeklyMealPlanningStateSchema = z
 const prepareMealPlanFeedbackQuestion = createStep({
   id: 'prepare-meal-plan-feedback-question',
   description: 'Prepares the question for requesting meal plan feedback',
-  stateSchema: weeklyMealPlanningStateSchema,
   inputSchema: z.object({
     htmlContent: z.string(),
     subject: z.string(),
@@ -239,7 +233,6 @@ Svar venligst med:
 const extractMealPlanFeedbackResponse = createAgentStep({
   id: 'extract-meal-plan-feedback-response',
   description: 'Analyzes the human feedback to determine if approved or changes requested',
-  stateSchema: weeklyMealPlanningStateSchema,
   agentConfig: {
     model: cookingModel,
     id: 'feedbackAnalyzer',
@@ -298,7 +291,6 @@ Return the structured analysis. Also return the current mealplan unmodified.`;
 const processMealPlanFeedback = createStep({
   id: 'process-meal-plan-feedback',
   description: 'Updates workflow state based on feedback analysis',
-  stateSchema: weeklyMealPlanningStateSchema,
   inputSchema: z.object({
     isApproved: z.boolean(),
     feedbackText: z.string(),
@@ -333,7 +325,6 @@ const processMealPlanFeedback = createStep({
 const prepareForRegeneration = createStep({
   id: 'prepare-for-regeneration',
   description: 'Prepares input for meal plan regeneration with updated preferences',
-  stateSchema: weeklyMealPlanningStateSchema,
   inputSchema: z.object({
     isApproved: z.boolean(),
     preferences: z.string().optional(),
@@ -362,7 +353,6 @@ const prepareForRegeneration = createStep({
 const prepareShoppingListPrompt = createStep({
   id: 'prepare-shopping-list-prompt',
   description: 'Extracts all ingredients from approved meal plan for shopping list',
-  stateSchema: weeklyMealPlanningStateSchema,
   inputSchema: z.object({
     isApproved: z.boolean(),
     preferences: z.string().optional(),
@@ -395,7 +385,6 @@ ${allIngredients.join('\n')}`;
 const formatFinalOutput = createStep({
   id: 'format-final-output',
   description: 'Formats the final workflow output',
-  stateSchema: weeklyMealPlanningStateSchema,
   inputSchema: z.object({
     success: z.boolean(),
     message: z.string(),
@@ -418,7 +407,6 @@ const formatFinalOutput = createStep({
 // This generates meal plan, formats email, requests feedback
 const mealPlanFeedbackIterationWorkflow = createWorkflow({
   id: 'mealPlanFeedbackIterationWorkflow',
-  stateSchema: weeklyMealPlanningStateSchema,
   inputSchema: z.object({
     preferences: z.string().optional(),
     isApproved: z.boolean().optional(),
@@ -454,7 +442,6 @@ const mealPlanFeedbackIterationWorkflow = createWorkflow({
 // When approved, adds ingredients to shopping list
 export const weeklyMealPlanningWorkflow = createWorkflow({
   id: 'weeklyMealPlanningWorkflow',
-  stateSchema: weeklyMealPlanningStateSchema,
   inputSchema: z.object({}).partial(),
   outputSchema: z.object({
     success: z.boolean(),
@@ -466,7 +453,6 @@ export const weeklyMealPlanningWorkflow = createWorkflow({
     createStep({
       id: 'initialize-workflow',
       description: 'Initializes the workflow with default values',
-      stateSchema: weeklyMealPlanningStateSchema,
       inputSchema: z.object({}).partial(),
       outputSchema: z.object({
         preferences: z.string().optional(),

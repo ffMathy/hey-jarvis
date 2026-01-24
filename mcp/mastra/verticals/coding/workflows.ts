@@ -1,14 +1,21 @@
 import type { MessageInput } from '@mastra/core/agent/message-list';
 import { z } from 'zod';
-import { createStep, createToolStep, createWorkflow } from '../../utils/workflows/workflow-factory.js';
+import {
+  asWorkflowSchema,
+  createStep,
+  createToolStep,
+  createWorkflow,
+} from '../../utils/workflows/workflow-factory.js';
 import { assignCopilotToIssue, createGitHubIssue } from './tools.js';
 
 // Schema for requirements gathering input
-const requirementsInputSchema = z.object({
-  initialRequest: z.string().describe('The initial feature/implementation request from the user'),
-  repository: z.string().optional().describe('The repository name (defaults to "hey-jarvis")'),
-  owner: z.string().optional().describe('The repository owner (defaults to "ffMathy")'),
-});
+const requirementsInputSchema = asWorkflowSchema(
+  z.object({
+    initialRequest: z.string().describe('The initial feature/implementation request from the user'),
+    repository: z.string().optional().describe('The repository name (defaults to "hey-jarvis")'),
+    owner: z.string().optional().describe('The repository owner (defaults to "ffMathy")'),
+  }),
+);
 
 // Schema for gathered requirements
 const gatheredRequirementsSchema = z.object({
@@ -27,25 +34,27 @@ const gatheredRequirementsSchema = z.object({
 });
 
 // Define workflow state schema for strong typing
-const workflowStateSchema = z
-  .object({
-    initialRequest: z.string(),
-    repository: z.string(),
-    owner: z.string(),
-    issueNumber: z.number().optional(),
-    issueUrl: z.string().optional(),
-    conversationHistory: z.array(z.any()),
-    response: z
-      .object({
-        needsMoreQuestions: z.boolean(),
-        nextQuestion: z.string().optional(),
-        requirements: gatheredRequirementsSchema,
-      })
-      .nullable(),
-    success: z.boolean().optional(),
-    message: z.string().optional(),
-  })
-  .partial();
+const workflowStateSchema = asWorkflowSchema(
+  z
+    .object({
+      initialRequest: z.string(),
+      repository: z.string(),
+      owner: z.string(),
+      issueNumber: z.number().optional(),
+      issueUrl: z.string().optional(),
+      conversationHistory: z.array(z.any()),
+      response: z
+        .object({
+          needsMoreQuestions: z.boolean(),
+          nextQuestion: z.string().optional(),
+          requirements: gatheredRequirementsSchema,
+        })
+        .nullable(),
+      success: z.boolean().optional(),
+      message: z.string().optional(),
+    })
+    .partial(),
+);
 
 // Schema for iterative questioning response
 const questioningResponseSchema = z.object({
@@ -58,7 +67,6 @@ const questioningResponseSchema = z.object({
 const initializeGatheringSession = createStep({
   id: 'initialize-gathering-session',
   description: 'Sets up the initial prompt for requirements gathering',
-  stateSchema: workflowStateSchema,
   inputSchema: requirementsInputSchema,
   outputSchema: z.object({}),
   execute: async (params) => {
@@ -86,7 +94,6 @@ Start by asking your first clarifying question to understand what needs to be im
 const askRequirementsQuestion = createStep({
   id: 'ask-requirements-question',
   description: 'Asks a single clarifying question using the Requirements Interviewer Agent',
-  stateSchema: workflowStateSchema,
   inputSchema: z.object({}),
   outputSchema: z.object({}),
   resumeSchema: z.object({
@@ -167,7 +174,6 @@ const askRequirementsQuestion = createStep({
 const prepareIssueCreationData = createStep({
   id: 'prepare-issue-creation-data',
   description: 'Prepares data for creating the issue with complete requirements',
-  stateSchema: workflowStateSchema,
   inputSchema: z.object({}),
   outputSchema: z.object({
     owner: z.string().optional(),
@@ -238,14 +244,12 @@ const createIssueWithRequirementsTool = createToolStep({
   id: 'create-issue-with-requirements-tool',
   description: 'Creates the issue with requirements using the GitHub API',
   tool: createGitHubIssue,
-  stateSchema: workflowStateSchema,
 });
 
 // Step 5: Store issue creation result in workflow state
 const storeIssueCreationResult = createStep({
   id: 'store-issue-creation-result',
   description: 'Stores the issue creation result in workflow state',
-  stateSchema: workflowStateSchema,
   inputSchema: z.object({
     success: z.boolean(),
     message: z.string(),
@@ -274,7 +278,6 @@ const storeIssueCreationResult = createStep({
 const validateBeforeCopilotAssignment = createStep({
   id: 'validate-before-copilot-assignment',
   description: 'Validates that issue update succeeded before assigning Copilot',
-  stateSchema: workflowStateSchema,
   inputSchema: z.object({}),
   outputSchema: z.object({}),
   execute: async (params) => {
@@ -292,7 +295,6 @@ const validateBeforeCopilotAssignment = createStep({
 const prepareCopilotAssignmentData = createStep({
   id: 'prepare-copilot-assignment-data',
   description: 'Prepares data for assigning the issue to Copilot',
-  stateSchema: workflowStateSchema,
   inputSchema: z.object({}),
   outputSchema: z.object({
     owner: z.string().optional(),
@@ -319,14 +321,12 @@ const assignToCopilotTool = createToolStep({
   id: 'assign-to-copilot-tool',
   description: 'Assigns the issue to Copilot using the GitHub API',
   tool: assignCopilotToIssue,
-  stateSchema: workflowStateSchema,
 });
 
 // Step 9: Format final workflow output
 const formatFinalOutput = createStep({
   id: 'format-final-output',
   description: 'Formats the final workflow output with success message',
-  stateSchema: workflowStateSchema,
   inputSchema: z.object({
     success: z.boolean(),
     message: z.string(),
@@ -374,11 +374,13 @@ export const implementFeatureWorkflow = createWorkflow({
   id: 'implementFeatureWorkflow',
   stateSchema: workflowStateSchema,
   inputSchema: requirementsInputSchema,
-  outputSchema: z.object({
-    success: z.boolean(),
-    message: z.string(),
-    issueUrl: z.string().optional(),
-  }),
+  outputSchema: asWorkflowSchema(
+    z.object({
+      success: z.boolean(),
+      message: z.string(),
+      issueUrl: z.string().optional(),
+    }),
+  ),
 })
   .then(initializeGatheringSession)
   .dowhile(askRequirementsQuestion, async ({ iterationCount }) => {
