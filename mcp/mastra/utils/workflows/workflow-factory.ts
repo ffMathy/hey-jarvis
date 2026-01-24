@@ -13,6 +13,15 @@ import type { TypeOf, z } from 'zod';
 import { createAgent } from '../agent-factory.js';
 
 /**
+ * Type helper to ensure a Zod schema is compatible with SchemaWithValidation.
+ * This function is a no-op at runtime but helps TypeScript understand the type.
+ */
+// biome-ignore lint/suspicious/noExplicitAny: ZodType requires any for Zod v3/v4 compatibility
+export function asWorkflowSchema<T>(schema: z.ZodType<T, any, any>): z.ZodType<T, any, any> {
+  return schema;
+}
+
+/**
  * Creates a new Mastra Workflow with sensible defaults for the Hey Jarvis system.
  *
  * This is a proxy method to the Mastra createWorkflow function that allows us to:
@@ -289,19 +298,23 @@ export function createAgentStep<
  */
 export function createToolStep<
   TStepId extends string = string,
+  // biome-ignore lint/suspicious/noExplicitAny: Generic constraint for any state schema
   TStateSchema extends z.ZodObject<any> = z.ZodObject<any>,
-  TToolInput extends z.ZodSchema = z.ZodSchema,
-  TToolOutput extends z.ZodSchema = z.ZodSchema,
+  TToolInput = any,
+  TToolOutput = any,
 >(config: {
   id: TStepId;
   description: string;
   tool: {
-    inputSchema?: TToolInput;
-    outputSchema?: TToolOutput;
-    execute?: (inputData: z.infer<TToolInput>, context?: any) => Promise<z.infer<TToolOutput>>;
+    // biome-ignore lint/suspicious/noExplicitAny: Zod type requires any for type parameters
+    inputSchema?: z.ZodType<TToolInput, any, any>;
+    // biome-ignore lint/suspicious/noExplicitAny: Zod type requires any for type parameters
+    outputSchema?: z.ZodType<TToolOutput, any, any>;
+    // biome-ignore lint/suspicious/noExplicitAny: Context can be any type
+    execute?: (inputData: TToolInput, context?: any) => Promise<TToolOutput>;
   };
   stateSchema?: TStateSchema;
-  inputOverrides?: Partial<z.infer<TToolInput>>;
+  inputOverrides?: Partial<TToolInput>;
 }) {
   if (!config.tool.inputSchema || !config.tool.outputSchema || !config.tool.execute) {
     throw new Error(`Tool for step ${config.id} must have inputSchema, outputSchema, and execute defined`);
