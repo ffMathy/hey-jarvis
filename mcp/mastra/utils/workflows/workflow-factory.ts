@@ -13,15 +13,6 @@ import type { TypeOf, z } from 'zod';
 import { createAgent } from '../agent-factory.js';
 
 /**
- * Type helper to ensure a Zod schema is compatible with SchemaWithValidation.
- * This function is a no-op at runtime but helps TypeScript understand the type.
- */
-// biome-ignore lint/suspicious/noExplicitAny: ZodType requires any for Zod v3/v4 compatibility
-export function asWorkflowSchema<T>(schema: z.ZodType<T, any, any>): z.ZodType<T, any, any> {
-  return schema;
-}
-
-/**
  * Creates a new Mastra Workflow with sensible defaults for the Hey Jarvis system.
  *
  * This is a proxy method to the Mastra createWorkflow function that allows us to:

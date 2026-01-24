@@ -1,21 +1,14 @@
 import type { MessageInput } from '@mastra/core/agent/message-list';
 import { z } from 'zod';
-import {
-  asWorkflowSchema,
-  createStep,
-  createToolStep,
-  createWorkflow,
-} from '../../utils/workflows/workflow-factory.js';
+import { createStep, createToolStep, createWorkflow } from '../../utils/workflows/workflow-factory.js';
 import { assignCopilotToIssue, createGitHubIssue } from './tools.js';
 
 // Schema for requirements gathering input
-const requirementsInputSchema = asWorkflowSchema(
-  z.object({
-    initialRequest: z.string().describe('The initial feature/implementation request from the user'),
-    repository: z.string().optional().describe('The repository name (defaults to "hey-jarvis")'),
-    owner: z.string().optional().describe('The repository owner (defaults to "ffMathy")'),
-  }),
-);
+const requirementsInputSchema = z.object({
+  initialRequest: z.string().describe('The initial feature/implementation request from the user'),
+  repository: z.string().optional().describe('The repository name (defaults to "hey-jarvis")'),
+  owner: z.string().optional().describe('The repository owner (defaults to "ffMathy")'),
+});
 
 // Schema for gathered requirements
 const gatheredRequirementsSchema = z.object({
@@ -34,27 +27,25 @@ const gatheredRequirementsSchema = z.object({
 });
 
 // Define workflow state schema for strong typing
-const workflowStateSchema = asWorkflowSchema(
-  z
-    .object({
-      initialRequest: z.string(),
-      repository: z.string(),
-      owner: z.string(),
-      issueNumber: z.number().optional(),
-      issueUrl: z.string().optional(),
-      conversationHistory: z.array(z.any()),
-      response: z
-        .object({
-          needsMoreQuestions: z.boolean(),
-          nextQuestion: z.string().optional(),
-          requirements: gatheredRequirementsSchema,
-        })
-        .nullable(),
-      success: z.boolean().optional(),
-      message: z.string().optional(),
-    })
-    .partial(),
-);
+const workflowStateSchema = z
+  .object({
+    initialRequest: z.string(),
+    repository: z.string(),
+    owner: z.string(),
+    issueNumber: z.number().optional(),
+    issueUrl: z.string().optional(),
+    conversationHistory: z.array(z.any()),
+    response: z
+      .object({
+        needsMoreQuestions: z.boolean(),
+        nextQuestion: z.string().optional(),
+        requirements: gatheredRequirementsSchema,
+      })
+      .nullable(),
+    success: z.boolean().optional(),
+    message: z.string().optional(),
+  })
+  .partial();
 
 // Schema for iterative questioning response
 const questioningResponseSchema = z.object({
@@ -374,13 +365,11 @@ export const implementFeatureWorkflow = createWorkflow({
   id: 'implementFeatureWorkflow',
   stateSchema: workflowStateSchema,
   inputSchema: requirementsInputSchema,
-  outputSchema: asWorkflowSchema(
-    z.object({
-      success: z.boolean(),
-      message: z.string(),
-      issueUrl: z.string().optional(),
-    }),
-  ),
+  outputSchema: z.object({
+    success: z.boolean(),
+    message: z.string(),
+    issueUrl: z.string().optional(),
+  }),
 })
   .then(initializeGatheringSession)
   .dowhile(askRequirementsQuestion, async ({ iterationCount }) => {
