@@ -1,11 +1,11 @@
 import { Mastra } from '@mastra/core';
 import type { Agent } from '@mastra/core/agent';
 import { MastraServer } from '@mastra/hono';
-import { PinoLogger } from '@mastra/loggers';
 import { CloudExporter, DefaultExporter, Observability, SamplingStrategyType } from '@mastra/observability';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { getTokenUsageStorage } from './storage/index.js';
+import { logger } from './utils/logger.js';
 import { TokenTrackingProcessor, TokenUsageExporter } from './utils/token-usage-exporter.js';
 import { tokenUsageTools } from './verticals/api/index.js';
 import { calendarTools, getCalendarAgent } from './verticals/calendar/index.js';
@@ -53,10 +53,7 @@ function toAgentMap(agents: Agent[]): Record<string, Agent> {
 
 export async function getMastra(): Promise<Mastra> {
   return new Mastra({
-    logger: new PinoLogger({
-      name: 'Mastra',
-      level: 'info',
-    }),
+    logger,
     observability: new Observability({
       configs: {
         default: {
@@ -125,7 +122,7 @@ export async function getMastra(): Promise<Mastra> {
 }
 
 /**
- * Logs cumulative token usage statistics to the console.
+ * Logs cumulative token usage statistics.
  * Called during startup to show token usage summary.
  */
 export async function logTokenUsageSummary(): Promise<void> {
@@ -134,22 +131,21 @@ export async function logTokenUsageSummary(): Promise<void> {
     const totalUsage = await tokenStorage.getTotalUsage();
     const modelUsage = await tokenStorage.getAllModelUsage();
 
-    console.log('📊 Token Usage Summary:');
-    console.log(`   Total: ${totalUsage.totalTokens.toLocaleString()} tokens (${totalUsage.requestCount} requests)`);
-    console.log(
-      `   Prompt: ${totalUsage.totalPromptTokens.toLocaleString()} | Completion: ${totalUsage.totalCompletionTokens.toLocaleString()}`,
-    );
-
-    if (modelUsage.length > 0) {
-      console.log('   By Model:');
-      for (const usage of modelUsage) {
-        console.log(
-          `   - ${usage.model}: ${usage.totalTokens.toLocaleString()} tokens (${usage.requestCount} requests)`,
-        );
-      }
-    }
+    logger.info('Token Usage Summary', {
+      total: totalUsage.totalTokens,
+      requestCount: totalUsage.requestCount,
+      prompt: totalUsage.totalPromptTokens,
+      completion: totalUsage.totalCompletionTokens,
+      byModel: modelUsage.map((usage) => ({
+        model: usage.model,
+        tokens: usage.totalTokens,
+        requests: usage.requestCount,
+      })),
+    });
   } catch (error) {
-    console.error('⚠️  Failed to load token usage statistics:', error instanceof Error ? error.message : String(error));
+    logger.error('Failed to load token usage statistics', {
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 }
 
