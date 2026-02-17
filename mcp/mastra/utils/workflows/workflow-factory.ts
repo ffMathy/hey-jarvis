@@ -62,8 +62,7 @@ export function createWorkflow<
   TOutput = unknown,
   // biome-ignore lint/suspicious/noExplicitAny: Type parameter defaults for generic workflow factory
   TSteps extends Step<string, any, any, any, any, any, DefaultEngineType>[] = Step[],
-  TRequestContext extends Record<string, unknown> | unknown = unknown,
->(config: WorkflowConfig<TWorkflowId, TState, TInput, TOutput, TSteps, TRequestContext>) {
+>(config: WorkflowConfig<TWorkflowId, TState, TInput, TOutput, TSteps>) {
   return mastraCreateWorkflow(config);
 }
 
@@ -122,8 +121,7 @@ export function createStep<
   TOutput extends z.ZodTypeAny = z.ZodTypeAny,
   TResume extends z.ZodTypeAny | undefined = undefined,
   TSuspend extends z.ZodTypeAny | undefined = undefined,
-  TRequestContext extends z.ZodTypeAny | undefined = undefined,
->(config: StepParams<TStepId, TState, TInput, TOutput, TResume, TSuspend, TRequestContext>) {
+>(config: StepParams<TStepId, TState, TInput, TOutput, TResume, TSuspend>) {
   return mastraCreateStep(config);
 }
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import type { AnyWorkflow } from '@mastra/core/workflows';
+import type { Workflow } from '@mastra/core/workflows';
 import { MCPServer } from '@mastra/mcp';
 import type { NextFunction, Request, Response } from 'express';
 import express from 'express';
@@ -15,7 +15,7 @@ import { getNextInstructionsWorkflow, routePromptWorkflow } from './verticals/ro
 // Re-export for cross-project imports
 export { getPublicAgents };
 
-function createSimplifiedWorkflowTool(workflow: AnyWorkflow) {
+function createSimplifiedWorkflowTool(workflow: Workflow<any, any, any, any, any, any, any>) {
   const workflowName = workflow.name ?? workflow.id;
   return createTool({
     id: workflowName,

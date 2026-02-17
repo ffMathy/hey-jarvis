@@ -1,4 +1,4 @@
-import type { AnyWorkflow, WorkflowResult } from '@mastra/core/workflows';
+import type { Workflow, WorkflowResult } from '@mastra/core/workflows';
 import type { NextFunction, Request, Response, Router } from 'express';
 import type { ZodError } from 'zod';
 import { logger } from '../../utils/logger.js';
@@ -45,7 +45,7 @@ function extractWorkflowError(result: WorkflowResult<any, any, any, any>): strin
  * router.post('/api/shopping-list', handler);
  * ```
  */
-export function createWorkflowApiHandler(workflow: AnyWorkflow) {
+export function createWorkflowApiHandler(workflow: Workflow<any, any, any, any, any, any, any>) {
   const workflowName = workflow.name ?? workflow.id;
 
   return async (req: Request, res: Response, next: NextFunction) => {
@@ -111,7 +111,7 @@ interface WorkflowApiConfig {
   /** The URL path for the API endpoint (e.g., '/api/shopping-list') */
   path: string;
   /** The workflow to expose at this endpoint */
-  workflow: AnyWorkflow;
+  workflow: Workflow<any, any, any, any, any, any, any>;
   /** Optional description for logging purposes */
   description?: string;
 }

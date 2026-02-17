@@ -1,4 +1,4 @@
-import type { AnyWorkflow } from '@mastra/core/workflows';
+import type { Workflow } from '@mastra/core/workflows';
 import { logger } from '../../utils/logger.js';
 
 /**
@@ -11,7 +11,7 @@ export interface EmailTriggerConfig {
   /** Function to filter emails by subject line */
   subjectFilter: (subject: string) => boolean;
   /** The workflow to trigger when a matching email is received */
-  workflow: AnyWorkflow;
+  workflow: Workflow<any, any, any, any, any, any, any>;
 }
 
 /**
