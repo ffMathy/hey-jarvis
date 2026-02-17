@@ -1,4 +1,3 @@
-import type { MessageInput } from '@mastra/core/agent/message-list';
 import { z } from 'zod';
 import { createStep, createToolStep, createWorkflow } from '../../utils/workflows/workflow-factory.js';
 import { assignCopilotToIssue, createGitHubIssue } from './tools.js';
@@ -117,7 +116,7 @@ const askRequirementsQuestion = createStep({
     }
 
     // Get agent response with structured output
-    const response = await agent.stream(conversationHistory as MessageInput[], {
+    const response = await agent.stream(conversationHistory, {
       structuredOutput: {
         schema: questioningResponseSchema,
       },
@@ -136,7 +135,7 @@ const askRequirementsQuestion = createStep({
       {
         role: 'assistant',
         content: JSON.stringify(currentResponse),
-      } as MessageInput,
+      },
     ];
 
     // Update workflow state with latest conversation and response

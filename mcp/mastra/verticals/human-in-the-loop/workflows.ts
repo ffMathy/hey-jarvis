@@ -94,7 +94,7 @@ function createAwaitEmailResponseStep<TResponseSchema extends z.ZodObject<z.ZodR
 ) {
   const outputSchema = z.object({
     senderEmail: z.string().describe('Email of the person who responded'),
-    response: responseSchema.describe('The parsed response data'),
+    response: responseSchema,
   });
 
   return createStep({
@@ -109,7 +109,8 @@ function createAwaitEmailResponseStep<TResponseSchema extends z.ZodObject<z.ZodR
 
       // If we have resume data, process it and return
       if (resumeData) {
-        const { senderEmail, response } = resumeData as { senderEmail: string; response: z.infer<TResponseSchema> };
+        const parsed = outputSchema.parse(resumeData);
+        const { senderEmail } = parsed;
 
         // Validate sender email
         if (senderEmail && recipientEmail && senderEmail.toLowerCase() !== recipientEmail.toLowerCase()) {
@@ -118,11 +119,7 @@ function createAwaitEmailResponseStep<TResponseSchema extends z.ZodObject<z.ZodR
           );
         }
 
-        // Return the response data with proper typing
-        return {
-          senderEmail: senderEmail || '',
-          response: response as z.infer<TResponseSchema>,
-        };
+        return parsed;
       }
 
       // Suspend workflow - will be resumed by checkForFormRepliesWorkflow
@@ -158,7 +155,7 @@ export function getSendEmailAndAwaitResponseWorkflow<TResponseSchema extends z.Z
 ) {
   const outputSchema = z.object({
     senderEmail: z.string().describe('Email of the person who responded'),
-    response: responseSchema.describe('The parsed response data'),
+    response: responseSchema,
   });
 
   return createWorkflow({

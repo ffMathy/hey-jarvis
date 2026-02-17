@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import type { AnyWorkflow } from '@mastra/core/workflows';
 import { MCPServer } from '@mastra/mcp';
 import type { NextFunction, Request, Response } from 'express';
 import express from 'express';
@@ -8,14 +9,13 @@ import { z } from 'zod';
 import { logTokenUsageSummary } from './index.js';
 import { initializeScheduler } from './scheduler.js';
 import { createTool } from './utils/tool-factory.js';
-import type { NamedWorkflow } from './utils/workflows/workflow-types.js';
 import { getPublicAgents, registerApiRoutes, registerShoppingTriggers } from './verticals/index.js';
 import { getNextInstructionsWorkflow, routePromptWorkflow } from './verticals/routing/workflows.js';
 
 // Re-export for cross-project imports
 export { getPublicAgents };
 
-function createSimplifiedWorkflowTool(workflow: NamedWorkflow) {
+function createSimplifiedWorkflowTool(workflow: AnyWorkflow) {
   const workflowName = workflow.name ?? workflow.id;
   return createTool({
     id: workflowName,

@@ -1,5 +1,4 @@
 import type { AgentConfig } from '@mastra/core/agent';
-import type { OutputSchema } from '@mastra/core/stream';
 import {
   type DefaultEngineType,
   type ExecuteFunctionParams,
@@ -191,7 +190,7 @@ export function createAgentStep<
     ) => string | Promise<string>;
   },
 ) {
-  return createStep<TStepId, TStateSchema, TInputSchema, TOutputSchema>({
+  return createStep<TStepId, TStateSchema, TInputSchema, TOutputSchema, TResumeSchema, TSuspendSchema>({
     id: config.id,
     description: config.description,
     inputSchema: config.inputSchema,
@@ -202,10 +201,7 @@ export function createAgentStep<
       // where memory.getInputProcessors() is called but doesn't exist
       const agent = await createAgent({ ...config.agentConfig, memory: undefined });
 
-      // Type assertion needed here due to complex generic type inference with ExecuteFunctionParams
-      // The params object has the correct runtime type but TypeScript can't verify it in this generic context
-      type PromptParams = Parameters<typeof config.prompt>[0];
-      const prompt = (await Promise.resolve(config.prompt(params as unknown as PromptParams)))
+      const prompt = (await Promise.resolve(config.prompt(params)))
         .split('\n')
         .map((line) => line.trim())
         .join('\n')
@@ -220,15 +216,14 @@ export function createAgentStep<
         ],
         {
           structuredOutput: {
-            // The schema type is TOutputSchema which extends z.ZodSchema
-            // Mastra's internal types use a conditional that TypeScript can't verify in generic context
-            schema: config.outputSchema as NonNullable<OutputSchema>,
+            schema: config.outputSchema,
           },
           toolChoice: 'none',
         },
       );
 
-      return await response.object;
+      const result = await response.object;
+      return config.outputSchema.parse(result);
     },
   });
 }

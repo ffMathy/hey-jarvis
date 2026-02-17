@@ -206,7 +206,7 @@ const prepareMealPlanFeedbackQuestion = createStep({
 
     // Store the current meal plan in state for later steps to access
     setState({
-      ...(state as Record<string, unknown>),
+      ...state,
       mealplan: inputData.mealplan,
       isApproved: false,
     });

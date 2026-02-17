@@ -15,11 +15,16 @@ const WORKFLOW_ID_REGEX = /\[WF-([^\]]+)\]/;
  * Creates an empty form reply processing result.
  * Used for early returns when there are no emails to process.
  */
-const createEmptyFormReplyResult = () => ({
+const createEmptyFormReplyResult = (): {
+  emailsProcessed: number;
+  formRepliesFound: number;
+  workflowsResumed: number;
+  errors: string[];
+} => ({
   emailsProcessed: 0,
   formRepliesFound: 0,
   workflowsResumed: 0,
-  errors: [] as string[],
+  errors: [],
 });
 
 /**

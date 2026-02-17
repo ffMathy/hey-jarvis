@@ -146,9 +146,14 @@ const listAvailableAgentsStep = createStep({
         const tools = await agent.listTools();
         const toolsInfo = Object.entries(tools || {}).map(([toolName, tool]) => {
           let inputParams: string[] = [];
-          const inputSchema = (tool as { inputSchema?: { shape?: Record<string, unknown> } }).inputSchema;
-          if (inputSchema && typeof inputSchema === 'object' && 'shape' in inputSchema) {
-            inputParams = Object.keys(inputSchema.shape as Record<string, unknown>);
+          if (tool && typeof tool === 'object' && 'inputSchema' in tool) {
+            const { inputSchema } = tool;
+            if (inputSchema && typeof inputSchema === 'object' && 'shape' in inputSchema) {
+              const { shape } = inputSchema;
+              if (shape && typeof shape === 'object') {
+                inputParams = Object.keys(shape);
+              }
+            }
           }
           return {
             name: toolName,
@@ -178,7 +183,7 @@ export function getCurrentDAG(): z.infer<typeof dagSchema> {
 }
 
 export function injectTask(task: z.infer<typeof outputTaskSchema>): void {
-  workflowState.currentDAG.tasks.push(task as z.infer<typeof dagSchema>['tasks'][0]);
+  workflowState.currentDAG.tasks.push({ ...task, executionPromise: undefined, result: undefined, reported: undefined });
 }
 
 export function simulateTaskCompletion(taskId: string, result: unknown): void {
@@ -339,6 +344,7 @@ async function startDagExecution() {
 const generateDagStep = createAgentStep({
   id: 'generate-dag',
   description: 'Generate DAG of tasks to fulfill routing query',
+  stateSchema,
   agentConfig: {
     model: getModel('gemini-flash-lite-latest'),
     id: 'dag-agent',
@@ -395,7 +401,7 @@ Each task MUST have:
   prompt: async (context) => {
     return `
             # User query
-            > ${(context.state as z.infer<typeof stateSchema>).userQuery}
+            > ${context.state.userQuery}
 
             # Agents available
             \`\`\`json
@@ -544,6 +550,7 @@ const optimizeDagStep = createStep({
 const startDagExecutionStep = createStep({
   id: 'start-dag-execution',
   description: 'Start execution of DAG tasks',
+  stateSchema,
   inputSchema: optimizeDagStep.outputSchema,
   outputSchema: z.object({
     instructions: z.string().describe('Instructions for Jarvis to follow'),
@@ -554,7 +561,7 @@ const startDagExecutionStep = createStep({
       workflowState.currentDAG.executionPromise = startDagExecution();
     }
 
-    const isAsync = (context.state as z.infer<typeof stateSchema>).async === true;
+    const isAsync = context.state.async === true;
     const taskIdsInProgress = workflowState.currentDAG.tasks.filter((t) => t.result === undefined).map((t) => t.id);
 
     if (isAsync) {
