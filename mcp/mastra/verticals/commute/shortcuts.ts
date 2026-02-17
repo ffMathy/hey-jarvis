@@ -1,6 +1,6 @@
 import type { z } from 'zod';
 import { createShortcut } from '../../utils/shortcut-factory.js';
-import { getAllDevices } from '../internet-of-things/tools.js';
+import { type DeviceState, getAllDevices } from '../internet-of-things/tools.js';
 
 /**
  * Shortcuts are tools that piggy-back on other verticals' capabilities.

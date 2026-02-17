@@ -1,5 +1,5 @@
+import type { AnyWorkflow } from '@mastra/core/workflows';
 import { logger } from '../../utils/logger.js';
-import type { AnyWorkflow, AnyWorkflowResult } from '../../utils/workflows/workflow-types.js';
 
 /**
  * Configuration for registering an email trigger.

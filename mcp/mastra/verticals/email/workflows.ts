@@ -15,11 +15,16 @@ const WORKFLOW_ID_REGEX = /\[WF-([^\]]+)\]/;
  * Creates an empty form reply processing result.
  * Used for early returns when there are no emails to process.
  */
-const createEmptyFormReplyResult = () => ({
+const createEmptyFormReplyResult = (): {
+  emailsProcessed: number;
+  formRepliesFound: number;
+  workflowsResumed: number;
+  errors: string[];
+} => ({
   emailsProcessed: 0,
   formRepliesFound: 0,
   workflowsResumed: 0,
-  errors: [] as string[],
+  errors: [],
 });
 
 /**
@@ -109,6 +114,7 @@ const createUpdateLastSeenEmailStep = (folderKey: string, stepId: string) =>
   createStep({
     id: stepId,
     description: 'Update the last seen email state after processing',
+    stateSchema: sharedEmailStateSchema,
     inputSchema: z.object({
       emailCount: z.number(),
       isFirstCheck: z.boolean(),
@@ -152,6 +158,7 @@ const createUpdateLastSeenEmailStep = (folderKey: string, stepId: string) =>
 const storeNewEmailsInState = createStep({
   id: 'store-new-emails-in-state',
   description: 'Store new emails in workflow state and track the most recent email for later update',
+  stateSchema: sharedEmailStateSchema,
   inputSchema: z.object({
     emails: z.array(emailObjectSchema),
     totalCount: z.number(),
@@ -208,6 +215,7 @@ const searchNewEmailsForFormReplies = createSearchNewEmailsStep(
 const updateLastSeenEmailForFormReplies = createStep({
   id: 'update-last-seen-email-form-replies',
   description: 'Update the last seen email state after processing form replies',
+  stateSchema: sharedEmailStateSchema,
   inputSchema: z.object({
     triggersProcessed: z.number(),
     triggersMatched: z.number(),
@@ -316,6 +324,7 @@ export const emailCheckingWorkflow = createWorkflow({
 const processFormReplies = createStep({
   id: 'process-form-replies',
   description: 'Process emails to extract workflow IDs and attempt to resume workflows',
+  stateSchema: sharedEmailStateSchema,
   inputSchema: z.object({
     emailCount: z.number(),
     isFirstCheck: z.boolean(),
@@ -390,6 +399,7 @@ const processFormReplies = createStep({
 const registerEmailsStateChange = createStep({
   id: 'register-emails-state-change',
   description: 'Register new emails as state change for notification system (triggers state reactor)',
+  stateSchema: sharedEmailStateSchema,
   inputSchema: z.object({
     emailsProcessed: z.number(),
     formRepliesFound: z.number(),
@@ -430,7 +440,10 @@ const registerEmailsStateChange = createStep({
     };
 
     console.log(`📝 Registering ${emails.length} email(s) with state reactor...`);
-    const result = await registerStateChange.execute(stateChangeData);
+    if (!registerStateChange.execute) {
+      throw new Error('registerStateChange.execute is not defined');
+    }
+    const result = await registerStateChange.execute(stateChangeData, {});
 
     if ('error' in result) {
       throw new Error(`Failed to register state change: ${result.message}`);
@@ -449,6 +462,7 @@ const registerEmailsStateChange = createStep({
 const processEmailTriggersStep = createStep({
   id: 'process-email-triggers',
   description: 'Process emails against registered email triggers',
+  stateSchema: sharedEmailStateSchema,
   inputSchema: z.object({
     registered: z.boolean(),
     batched: z.boolean(),
@@ -503,6 +517,7 @@ const processEmailTriggersStep = createStep({
 const formatFormRepliesOutput = createStep({
   id: 'format-form-replies-output',
   description: 'Format the form replies detection workflow output',
+  stateSchema: sharedEmailStateSchema,
   inputSchema: z.object({
     success: z.boolean(),
     message: z.string(),

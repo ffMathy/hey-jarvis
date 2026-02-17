@@ -29,7 +29,7 @@ interface ServiceDefinition {
 }
 
 // Interface for Home Assistant device/entity state
-interface DeviceState {
+export interface DeviceState {
   id: string;
   name: string;
   labels: string[];
@@ -127,7 +127,7 @@ export const callIoTService = createTool({
       .string()
       .describe('The ID of the service to be called (e.g., "turn_on", "turn_off", "toggle", "set_temperature")'),
     data: z
-      .record(z.unknown())
+      .record(z.string(), z.unknown())
       .describe(
         'A parameter object containing the service data. Typically includes "entity_id" and service-specific parameters like "brightness_pct", "temperature", "rgb_color", etc.',
       ),
@@ -136,7 +136,7 @@ export const callIoTService = createTool({
     success: z.boolean(),
     domain: z.string(),
     service: z.string(),
-    data: z.record(z.unknown()),
+    data: z.record(z.string(), z.unknown()),
     message: z.string(),
   }),
   execute: async (inputData) => {
@@ -241,7 +241,7 @@ export const getAllDevices = createTool({
             area: z.string().nullable(),
             labels: z.array(z.string()),
             state: z.string(),
-            attributes: z.record(z.unknown()),
+            attributes: z.record(z.string(), z.unknown()),
             last_changed: z.string(),
           }),
         ),
@@ -338,11 +338,13 @@ export const getAllServices = createTool({
   }),
   outputSchema: z.object({
     services_by_domain: z.record(
+      z.string(),
       z.record(
+        z.string(),
         z.object({
           name: z.string().optional(),
           description: z.string().optional(),
-          fields: z.record(z.unknown()).optional(),
+          fields: z.record(z.string(), z.unknown()).optional(),
         }),
       ),
     ),
@@ -432,7 +434,7 @@ export const getChangedDevicesSince = createTool({
 });
 
 // Interface for user location data
-interface UserLocation {
+export interface UserLocation {
   userId: string;
   userName: string;
   state: string;

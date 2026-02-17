@@ -106,6 +106,7 @@ const storeInitialCart = createStep({
 // Uses workflow.state.prompt (spans from input to here)
 const extractProductInformation = createAgentStep({
   id: 'extract-product-information',
+  stateSchema: workflowStateSchema,
   description: 'Extracts structured product information from the user request using Information Extractor logic',
   agentConfig: {
     id: 'shopping-list-extractor',
@@ -218,6 +219,7 @@ const getUpdatedCartContents = createToolStep({
 // Uses workflow.state for prompt and cartBefore, context for cartAfter
 const generateSummary = createAgentStep({
   id: 'generate-summary',
+  stateSchema: workflowStateSchema,
   description: 'Generates a summary of changes using the Summarization Agent',
   agentConfig: {
     id: 'shopping-list-summary',
