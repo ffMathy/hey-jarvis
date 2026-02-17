@@ -17,10 +17,6 @@
       "path": "elevenlabs"
     },
     {
-      "name": "🏠 Home Assistant Addon",
-      "path": "home-assistant-addon"
-    },
-    {
       "name": "🤖 MCP Server",
       "path": "mcp"
     }
