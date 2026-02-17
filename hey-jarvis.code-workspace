@@ -30,6 +30,14 @@
     },
     "chat.tools.global.autoApprove": true,
     "chat.tools.terminal.enableAutoApprove": true,
+    "chat.agentSkillsLocations": {
+      ".github/skills": true,
+      ".agents/skills": true,
+      ".claude/skills": true,
+      "~/.copilot/skills": true,
+      "~/.agents/skills": true,
+      "~/.claude/skills": true
+    },
     "chat.agent.maxRequests": 1000,
     "chat.useAgentsMdFile": true,
     "chat.useNestedAgentsMdFiles": true,
@@ -38,6 +46,9 @@
     "terminal.integrated.shellIntegration.timeout": -1,
     "terminal.integrated.shellIntegration.enabled": true,
     "chat.mcp.autostart": "newAndOutdated",
+    "chat.experimental.useSkillAdherencePrompt": true,
+    "workbench.commandPalette.experimental.enableNaturalLanguageSearch": true,
+    "github.copilot.chat.notebook.summaryExperimentEnabled": true,
     "chat.mcp.access": "all",
     "chat.useAgentSkills": true,
     "mcp": {
