@@ -395,7 +395,7 @@ Each task MUST have:
   prompt: async (context) => {
     return `
             # User query
-            > ${context.state.userQuery}
+            > ${(context.state as z.infer<typeof stateSchema>).userQuery}
 
             # Agents available
             \`\`\`json
@@ -554,7 +554,7 @@ const startDagExecutionStep = createStep({
       workflowState.currentDAG.executionPromise = startDagExecution();
     }
 
-    const isAsync = context.state.async === true;
+    const isAsync = (context.state as z.infer<typeof stateSchema>).async === true;
     const taskIdsInProgress = workflowState.currentDAG.tasks.filter((t) => t.result === undefined).map((t) => t.id);
 
     if (isAsync) {
@@ -657,7 +657,7 @@ const getNextInstructionsStep = createStep({
         instructions: instructions,
         completedTaskResults: allResults.map((x) => ({
           id: x.task.id,
-          ...(isLeaf ? { result: x.task.result } : {}),
+          result: isLeaf ? x.task.result : undefined,
         })),
         taskIdsInProgress: isLeaf ? tasks.filter((t) => t.result === undefined).map((t) => t.id) : undefined,
       };

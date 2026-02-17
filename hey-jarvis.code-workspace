@@ -47,8 +47,6 @@
     "terminal.integrated.shellIntegration.enabled": true,
     "chat.mcp.autostart": "newAndOutdated",
     "chat.experimental.useSkillAdherencePrompt": true,
-    "workbench.commandPalette.experimental.enableNaturalLanguageSearch": true,
-    "github.copilot.chat.notebook.summaryExperimentEnabled": true,
     "chat.mcp.access": "all",
     "chat.useAgentSkills": true,
     "mcp": {

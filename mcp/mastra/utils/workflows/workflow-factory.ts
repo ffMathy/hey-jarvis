@@ -9,7 +9,7 @@ import {
   type StepParams,
   type WorkflowConfig,
 } from '@mastra/core/workflows';
-import type { TypeOf, z } from 'zod';
+import type { z } from 'zod';
 import { createAgent } from '../agent-factory.js';
 
 /**
@@ -58,35 +58,13 @@ import { createAgent } from '../agent-factory.js';
  */
 export function createWorkflow<
   TWorkflowId extends string = string,
+  TState = unknown,
+  TInput = unknown,
+  TOutput = unknown,
   // biome-ignore lint/suspicious/noExplicitAny: Type parameter defaults for generic workflow factory
-  TState extends z.ZodObject<any> = z.ZodObject<any>,
-  // biome-ignore lint/suspicious/noExplicitAny: Type parameter defaults for generic workflow factory
-  TInput extends z.ZodType<any> = z.ZodType<any>,
-  // biome-ignore lint/suspicious/noExplicitAny: Type parameter defaults for generic workflow factory
-  TOutput extends z.ZodType<any> = z.ZodType<any>,
-  // biome-ignore lint/suspicious/noExplicitAny: Type parameter defaults for generic workflow factory
-  TSteps extends Step<string, any, any, any, any, any, DefaultEngineType>[] = Step<
-    string,
-    // biome-ignore lint/suspicious/noExplicitAny: Type parameter defaults for generic workflow factory
-    any,
-    // biome-ignore lint/suspicious/noExplicitAny: Type parameter defaults for generic workflow factory
-    any,
-    // biome-ignore lint/suspicious/noExplicitAny: Type parameter defaults for generic workflow factory
-    any,
-    // biome-ignore lint/suspicious/noExplicitAny: Type parameter defaults for generic workflow factory
-    any,
-    // biome-ignore lint/suspicious/noExplicitAny: Type parameter defaults for generic workflow factory
-    any,
-    DefaultEngineType
-  >[],
->(config: WorkflowConfig<TWorkflowId, TState, TInput, TOutput, TSteps>) {
-  // For now, this is a direct proxy to the Mastra createWorkflow function
-  // Future enhancements could include:
-  // - Automatic error handling and retry logic
-  // - Logging and observability
-  // - Performance monitoring
-  // - Workflow versioning
-  // - Automatic step validation
+  TSteps extends Step<string, any, any, any, any, any, DefaultEngineType>[] = Step[],
+  TRequestContext extends Record<string, unknown> | unknown = unknown,
+>(config: WorkflowConfig<TWorkflowId, TState, TInput, TOutput, TSteps, TRequestContext>) {
   return mastraCreateWorkflow(config);
 }
 
@@ -140,22 +118,14 @@ export function createWorkflow<
  */
 export function createStep<
   TStepId extends string = string,
-  TState extends z.ZodObject<any> = z.ZodObject<any>,
-  TInput extends z.ZodSchema = z.ZodSchema,
-  TOutput extends z.ZodSchema = z.ZodSchema,
-  TResume extends z.ZodSchema = z.ZodNever,
-  TSuspend extends z.ZodSchema = z.ZodNever,
->(config: StepParams<TStepId, TState, TInput, TOutput, TResume, TSuspend>) {
-  return mastraCreateStep({
-    id: config.id,
-    stateSchema: config.stateSchema,
-    description: config.description,
-    inputSchema: config.inputSchema,
-    outputSchema: config.outputSchema,
-    resumeSchema: config.resumeSchema,
-    suspendSchema: config.suspendSchema,
-    execute: config.execute.bind(config),
-  });
+  TState extends z.ZodTypeAny | undefined = undefined,
+  TInput extends z.ZodTypeAny = z.ZodTypeAny,
+  TOutput extends z.ZodTypeAny = z.ZodTypeAny,
+  TResume extends z.ZodTypeAny | undefined = undefined,
+  TSuspend extends z.ZodTypeAny | undefined = undefined,
+  TRequestContext extends z.ZodTypeAny | undefined = undefined,
+>(config: StepParams<TStepId, TState, TInput, TOutput, TResume, TSuspend, TRequestContext>) {
+  return mastraCreateStep(config);
 }
 
 /**
@@ -194,11 +164,11 @@ export function createStep<
  */
 export function createAgentStep<
   TStepId extends string = string,
-  TStateSchema extends z.ZodObject<any> = z.ZodObject<any>,
-  TInputSchema extends z.ZodSchema = z.ZodSchema,
-  TOutputSchema extends z.ZodSchema = z.ZodSchema,
-  TResumeSchema extends z.ZodSchema = z.ZodSchema,
-  TSuspendSchema extends z.ZodSchema = z.ZodSchema,
+  TStateSchema extends z.ZodTypeAny | undefined = undefined,
+  TInputSchema extends z.ZodTypeAny = z.ZodTypeAny,
+  TOutputSchema extends z.ZodTypeAny = z.ZodTypeAny,
+  TResumeSchema extends z.ZodTypeAny | undefined = undefined,
+  TSuspendSchema extends z.ZodTypeAny | undefined = undefined,
 >(
   config: Pick<
     StepParams<TStepId, TStateSchema, TInputSchema, TOutputSchema, TResumeSchema, TSuspendSchema>,
@@ -211,11 +181,11 @@ export function createAgentStep<
     };
     prompt: (
       params: ExecuteFunctionParams<
-        TypeOf<TStateSchema>,
-        TypeOf<TInputSchema>,
-        TypeOf<TOutputSchema>,
-        TResumeSchema,
-        TSuspendSchema,
+        TStateSchema extends z.ZodTypeAny ? z.infer<TStateSchema> : unknown,
+        z.infer<TInputSchema>,
+        z.infer<TOutputSchema>,
+        TResumeSchema extends z.ZodTypeAny ? z.infer<TResumeSchema> : unknown,
+        TSuspendSchema extends z.ZodTypeAny ? z.infer<TSuspendSchema> : unknown,
         DefaultEngineType
       >,
     ) => string | Promise<string>;
@@ -226,7 +196,7 @@ export function createAgentStep<
     description: config.description,
     inputSchema: config.inputSchema,
     outputSchema: config.outputSchema,
-    execute: async (params): Promise<TOutputSchema> => {
+    execute: async (params) => {
       // Create agent lazily during execution to avoid top-level awaits
       // Explicitly set memory to undefined to bypass Mastra v1 beta.10+ bug
       // where memory.getInputProcessors() is called but doesn't exist
@@ -290,7 +260,7 @@ export function createAgentStep<
 export function createToolStep<
   TStepId extends string = string,
   // biome-ignore lint/suspicious/noExplicitAny: Generic constraint for any state schema
-  TStateSchema extends z.ZodObject<any> = z.ZodObject<any>,
+  TStateSchema extends z.ZodTypeAny | undefined = undefined,
   TToolInput = any,
   TToolOutput = any,
 >(config: {

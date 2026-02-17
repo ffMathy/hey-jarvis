@@ -11,7 +11,7 @@ export const stateChangeNotificationWorkflow = createWorkflow({
   inputSchema: z.object({
     source: z.string(),
     stateType: z.string(),
-    stateData: z.record(z.unknown()),
+    stateData: z.record(z.string(), z.unknown()),
   }),
   outputSchema: z.object({
     registered: z.boolean(),
@@ -27,12 +27,12 @@ export const stateChangeNotificationWorkflow = createWorkflow({
       inputSchema: z.object({
         source: z.string(),
         stateType: z.string(),
-        stateData: z.record(z.unknown()),
+        stateData: z.record(z.string(), z.unknown()),
       }),
       outputSchema: z.object({
         source: z.string(),
         stateType: z.string(),
-        stateData: z.record(z.unknown()),
+        stateData: z.record(z.string(), z.unknown()),
         memorySaved: z.boolean(),
       }),
       execute: async ({ inputData }) => {
@@ -88,7 +88,7 @@ export const stateChangeNotificationWorkflow = createWorkflow({
       inputSchema: z.object({
         source: z.string(),
         stateType: z.string(),
-        stateData: z.record(z.unknown()),
+        stateData: z.record(z.string(), z.unknown()),
         memorySaved: z.boolean(),
       }),
       outputSchema: z.object({

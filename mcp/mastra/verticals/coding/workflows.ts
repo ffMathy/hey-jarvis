@@ -58,6 +58,7 @@ const questioningResponseSchema = z.object({
 const initializeGatheringSession = createStep({
   id: 'initialize-gathering-session',
   description: 'Sets up the initial prompt for requirements gathering',
+  stateSchema: workflowStateSchema,
   inputSchema: requirementsInputSchema,
   outputSchema: z.object({}),
   execute: async (params) => {
@@ -85,6 +86,7 @@ Start by asking your first clarifying question to understand what needs to be im
 const askRequirementsQuestion = createStep({
   id: 'ask-requirements-question',
   description: 'Asks a single clarifying question using the Requirements Interviewer Agent',
+  stateSchema: workflowStateSchema,
   inputSchema: z.object({}),
   outputSchema: z.object({}),
   resumeSchema: z.object({
@@ -165,6 +167,7 @@ const askRequirementsQuestion = createStep({
 const prepareIssueCreationData = createStep({
   id: 'prepare-issue-creation-data',
   description: 'Prepares data for creating the issue with complete requirements',
+  stateSchema: workflowStateSchema,
   inputSchema: z.object({}),
   outputSchema: z.object({
     owner: z.string().optional(),
@@ -234,6 +237,7 @@ ${discussionSection}
 const createIssueWithRequirementsTool = createToolStep({
   id: 'create-issue-with-requirements-tool',
   description: 'Creates the issue with requirements using the GitHub API',
+  stateSchema: workflowStateSchema,
   tool: createGitHubIssue,
 });
 
@@ -241,6 +245,7 @@ const createIssueWithRequirementsTool = createToolStep({
 const storeIssueCreationResult = createStep({
   id: 'store-issue-creation-result',
   description: 'Stores the issue creation result in workflow state',
+  stateSchema: workflowStateSchema,
   inputSchema: z.object({
     success: z.boolean(),
     message: z.string(),
@@ -269,6 +274,7 @@ const storeIssueCreationResult = createStep({
 const validateBeforeCopilotAssignment = createStep({
   id: 'validate-before-copilot-assignment',
   description: 'Validates that issue update succeeded before assigning Copilot',
+  stateSchema: workflowStateSchema,
   inputSchema: z.object({}),
   outputSchema: z.object({}),
   execute: async (params) => {
@@ -286,6 +292,7 @@ const validateBeforeCopilotAssignment = createStep({
 const prepareCopilotAssignmentData = createStep({
   id: 'prepare-copilot-assignment-data',
   description: 'Prepares data for assigning the issue to Copilot',
+  stateSchema: workflowStateSchema,
   inputSchema: z.object({}),
   outputSchema: z.object({
     owner: z.string().optional(),
@@ -311,6 +318,7 @@ const prepareCopilotAssignmentData = createStep({
 const assignToCopilotTool = createToolStep({
   id: 'assign-to-copilot-tool',
   description: 'Assigns the issue to Copilot using the GitHub API',
+  stateSchema: workflowStateSchema,
   tool: assignCopilotToIssue,
 });
 
@@ -318,6 +326,7 @@ const assignToCopilotTool = createToolStep({
 const formatFinalOutput = createStep({
   id: 'format-final-output',
   description: 'Formats the final workflow output with success message',
+  stateSchema: workflowStateSchema,
   inputSchema: z.object({
     success: z.boolean(),
     message: z.string(),
