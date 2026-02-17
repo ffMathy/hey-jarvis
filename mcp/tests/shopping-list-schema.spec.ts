@@ -15,7 +15,7 @@ describe('Shopping List API Schema Tests', () => {
       const result = addToShoppingListSchema.safeParse({});
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.errors[0].path).toContain('prompt');
+        expect(result.error.issues[0].path).toContain('prompt');
       }
     });
 
@@ -23,7 +23,7 @@ describe('Shopping List API Schema Tests', () => {
       const result = addToShoppingListSchema.safeParse({ prompt: '' });
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.errors[0].message).toContain('Prompt is required');
+        expect(result.error.issues[0].message).toContain('Prompt is required');
       }
     });
 

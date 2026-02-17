@@ -102,7 +102,8 @@ export const generateMealPlanWorkflow = createWorkflow({
         description: 'Specialized agent for creating weekly meal plan schedules',
         tools: undefined,
       },
-      inputSchema: getAllRecipes.outputSchema,
+      stateSchema: generateMealPlanStateSchema,
+      inputSchema: getAllRecipes.outputSchema!,
       outputSchema: z.object({
         mealplan: mealPlanSchema,
       }),
@@ -186,6 +187,7 @@ const prepareMealPlanFeedbackQuestion = createStep({
     subject: z.string(),
     mealplan: mealPlanSchema,
   }),
+  stateSchema: weeklyMealPlanningStateSchema,
   outputSchema: z.object({
     recipientEmail: z.string(),
     question: z.string(),
@@ -204,7 +206,7 @@ const prepareMealPlanFeedbackQuestion = createStep({
 
     // Store the current meal plan in state for later steps to access
     setState({
-      ...state,
+      ...(state as Record<string, unknown>),
       mealplan: inputData.mealplan,
       isApproved: false,
     });
@@ -233,6 +235,7 @@ Svar venligst med:
 const extractMealPlanFeedbackResponse = createAgentStep({
   id: 'extract-meal-plan-feedback-response',
   description: 'Analyzes the human feedback to determine if approved or changes requested',
+  stateSchema: weeklyMealPlanningStateSchema,
   agentConfig: {
     model: cookingModel,
     id: 'feedbackAnalyzer',
@@ -291,6 +294,7 @@ Return the structured analysis. Also return the current mealplan unmodified.`;
 const processMealPlanFeedback = createStep({
   id: 'process-meal-plan-feedback',
   description: 'Updates workflow state based on feedback analysis',
+  stateSchema: weeklyMealPlanningStateSchema,
   inputSchema: z.object({
     isApproved: z.boolean(),
     feedbackText: z.string(),
@@ -325,6 +329,7 @@ const processMealPlanFeedback = createStep({
 const prepareForRegeneration = createStep({
   id: 'prepare-for-regeneration',
   description: 'Prepares input for meal plan regeneration with updated preferences',
+  stateSchema: weeklyMealPlanningStateSchema,
   inputSchema: z.object({
     isApproved: z.boolean(),
     preferences: z.string().optional(),
@@ -353,6 +358,7 @@ const prepareForRegeneration = createStep({
 const prepareShoppingListPrompt = createStep({
   id: 'prepare-shopping-list-prompt',
   description: 'Extracts all ingredients from approved meal plan for shopping list',
+  stateSchema: weeklyMealPlanningStateSchema,
   inputSchema: z.object({
     isApproved: z.boolean(),
     preferences: z.string().optional(),
@@ -420,9 +426,7 @@ const mealPlanFeedbackIterationWorkflow = createWorkflow({
   .map(async ({ inputData }) => ({
     preferences: inputData.preferences,
   }))
-  // @ts-expect-error - Mastra v1 beta.10 workflow chaining has state schema compatibility issues that prevent proper type inference
   .then(generateMealPlanWorkflow) // Generate meal plan (with preferences if any)
-  // @ts-expect-error - Mastra v1 beta.10 workflow chaining has state schema compatibility issues that prevent proper type inference
   .then(generateMealPlanEmail) // Format as HTML email
   .then(prepareMealPlanFeedbackQuestion) // Prepare feedback question
   // Map to sendEmailAndAwaitResponseWorkflow input schema
@@ -430,7 +434,6 @@ const mealPlanFeedbackIterationWorkflow = createWorkflow({
     recipientEmail: inputData.recipientEmail,
     question: inputData.question,
   }))
-  // @ts-expect-error - Mastra v1 beta.10 workflow chaining has state schema compatibility issues that prevent proper type inference
   .then(getSendEmailAndAwaitResponseWorkflow('mealPlanFeedback', mealPlanFeedbackResponseSchema)) // Send email and wait for human response
   .then(extractMealPlanFeedbackResponse) // Analyze the response
   .then(processMealPlanFeedback) // Update state and prepare output
@@ -479,7 +482,6 @@ export const weeklyMealPlanningWorkflow = createWorkflow({
   .map(async ({ inputData }) => ({
     prompt: inputData.prompt,
   }))
-  // @ts-expect-error - Mastra v1 beta.10 workflow chaining has state schema compatibility issues that prevent proper type inference
   .then(shoppingListWorkflow)
   .then(formatFinalOutput)
   .commit();

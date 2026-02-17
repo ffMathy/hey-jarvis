@@ -29,9 +29,9 @@ import type { ZodType } from 'zod';
  * }
  * ```
  */
-// biome-ignore lint/suspicious/noExplicitAny: Workflow has 7 generic parameters that cannot be inferred without specific workflow instances
+// biome-ignore lint/suspicious/noExplicitAny: Workflow has 8 generic parameters that cannot be inferred without specific workflow instances
 export type AnyWorkflow = Pick<
-  Workflow<any, any, any, any, any, any, any>,
+  Workflow<any, any, any, any, any, any, any, any>,
   'id' | 'description' | 'inputSchema' | 'outputSchema' | 'createRun'
 >;
 

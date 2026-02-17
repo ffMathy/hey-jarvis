@@ -56,11 +56,18 @@ const sendFormRequestEmail = createStep({
 </html>
     `.trim();
 
-    const emailResult = await sendEmail.execute({
-      subject,
-      bodyContent,
-      toRecipients: [recipientEmail],
-    });
+    if (!sendEmail.execute) {
+      throw new Error('sendEmail tool execute function is not available');
+    }
+
+    const emailResult = await sendEmail.execute(
+      {
+        subject,
+        bodyContent,
+        toRecipients: [recipientEmail],
+      },
+      {},
+    );
 
     // Handle validation error case - narrow the type explicitly
     if ('error' in emailResult) {
@@ -102,7 +109,7 @@ function createAwaitEmailResponseStep<TResponseSchema extends z.ZodObject<z.ZodR
 
       // If we have resume data, process it and return
       if (resumeData) {
-        const { senderEmail, response } = resumeData as z.infer<typeof outputSchema>;
+        const { senderEmail, response } = resumeData as { senderEmail: string; response: z.infer<TResponseSchema> };
 
         // Validate sender email
         if (senderEmail && recipientEmail && senderEmail.toLowerCase() !== recipientEmail.toLowerCase()) {
@@ -300,8 +307,6 @@ const mergeBudgetApprovalContext = createStep({
     approved: z.boolean(),
     comments: z.string().optional(),
     recipientEmail: z.string(),
-    projectName: z.string(), // From upstream context
-    budgetAmount: z.number(), // From upstream context
   }),
   outputSchema: z.object({
     approved: z.boolean(),
@@ -310,11 +315,12 @@ const mergeBudgetApprovalContext = createStep({
     projectName: z.string(),
   }),
   execute: async (params) => {
+    const initData = params.getInitData<{ projectName: string; budgetAmount: number }>();
     return {
       approved: params.inputData.approved,
       comments: params.inputData.comments,
       recipientEmail: params.inputData.recipientEmail,
-      projectName: params.inputData.projectName,
+      projectName: initData.projectName,
     };
   },
 });
@@ -381,7 +387,6 @@ const mergeVendorSelectionContext = createStep({
     vendorName: z.string(),
     justification: z.string(),
     recipientEmail: z.string(),
-    projectName: z.string(), // From upstream context
   }),
   outputSchema: z.object({
     vendorName: z.string(),
@@ -390,7 +395,11 @@ const mergeVendorSelectionContext = createStep({
     projectName: z.string(),
   }),
   execute: async (params) => {
-    return params.inputData;
+    const initData = params.getInitData<{ projectName: string }>();
+    return {
+      ...params.inputData,
+      projectName: initData.projectName,
+    };
   },
 });
 
@@ -489,16 +498,13 @@ export const humanInTheLoopDemoWorkflow = createWorkflow({
   .then(prepareBudgetApprovalQuestion)
   .then(getSendEmailAndAwaitResponseWorkflow('budgetApproval', budgetApprovalResponseSchema)) // Send email and wait for human response
   .then(extractBudgetApprovalResponse)
-  // @ts-expect-error - Mastra v1 beta.10 workflow chaining has state schema compatibility issues that prevent proper type inference
   .then(mergeBudgetApprovalContext)
   .then(prepareVendorSelectionQuestion)
   .then(getSendEmailAndAwaitResponseWorkflow('vendorSelection', vendorSelectionResponseSchema))
   .then(extractVendorSelectionResponse)
-  // @ts-expect-error - Mastra v1 beta.10 workflow chaining has state schema compatibility issues that prevent proper type inference
   .then(mergeVendorSelectionContext)
   .then(prepareFinalConfirmationQuestion)
   .then(getSendEmailAndAwaitResponseWorkflow('finalConfirmation', finalConfirmationResponseSchema))
-  // @ts-expect-error - Mastra v1 beta.10 workflow chaining has state schema compatibility issues that prevent proper type inference
   .then(extractFinalConfirmationResponse)
   .then(formatFinalOutput)
   .commit();
