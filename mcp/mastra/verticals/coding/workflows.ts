@@ -119,7 +119,6 @@ const askRequirementsQuestion = createStep({
     }
 
     // Get agent response with structured output
-    // Mastra's MessageListInput discriminated union can't narrow { role: union; content } objects
     // Zod infers role as a union ('user' | 'assistant' | ...) which can't be narrowed to the
     // discriminated CoreMessageV4 union; cast to Mastra's own bundled v4 type
     const response = await agent.stream(conversationHistory as CoreMessageV4[], {
