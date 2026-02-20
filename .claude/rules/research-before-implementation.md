@@ -1,8 +1,3 @@
----
-name: research-before-implementation
-description: Always perform web searches to check for latest patterns before starting work
----
-
 # Research Before Implementation
 
 **CRITICAL: ALWAYS perform web searches before starting any task.**
