@@ -1,5 +1,5 @@
 import { logger } from '../../utils/logger.js';
-import type { AnyWorkflow, AnyWorkflowResult } from '../../utils/workflows/workflow-types.js';
+import type { AnyWorkflow } from '../../utils/workflows/workflow-factory.js';
 
 /**
  * Configuration for registering an email trigger.

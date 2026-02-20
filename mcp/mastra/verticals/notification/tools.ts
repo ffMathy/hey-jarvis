@@ -90,7 +90,7 @@ export const notifyDevice = createTool({
       const serviceName = `${devicePrefix}_send_notification`;
 
       // Call the ESPHome service
-      const serviceData: any = {
+      const serviceData = {
         message: message,
         timeout: conversationTimeout,
       };

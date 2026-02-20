@@ -15,13 +15,12 @@
     "lib": ["es2020", "dom"],
     "skipLibCheck": true,
     "skipDefaultLibCheck": true,
-    "baseUrl": ".",
     "incremental": true,
     "resolveJsonModule": true,
     "allowSyntheticDefaultImports": true,
     "types": [],
     "paths": {
-      "mcp/*": ["mcp/*"]
+      "mcp/*": ["./mcp/*"]
     },
     "strict": true,
     "noImplicitAny": true,

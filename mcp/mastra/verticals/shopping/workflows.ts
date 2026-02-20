@@ -57,7 +57,7 @@ const shoppingListResultSchema = z.object({
 const workflowStateSchema = z
   .object({
     prompt: z.string(), // Used by extraction (step 2) and summary (step 5) - spans 3 steps
-    cartBefore: z.any(), // Used by summary (step 5) - spans 4 steps
+    cartBefore: z.unknown(), // Used by summary (step 5) - spans 4 steps
   })
   .partial();
 
@@ -89,15 +89,13 @@ const getInitialCartContents = createToolStep({
 const storeInitialCart = createStep({
   id: 'store-initial-cart',
   description: 'Stores initial cart in state for summary generation',
-  inputSchema: cartSnapshotSchema,
+  inputSchema: z.unknown(),
   outputSchema: z.object({}),
   execute: async (params) => {
-    // Store cart in state
     params.setState({
-      cartBefore: params.inputData,
+      cartBefore: cartSnapshotSchema.parse(params.inputData),
     });
 
-    // Return empty object for extraction agent
     return {};
   },
 });
@@ -106,6 +104,7 @@ const storeInitialCart = createStep({
 // Uses workflow.state.prompt (spans from input to here)
 const extractProductInformation = createAgentStep({
   id: 'extract-product-information',
+  stateSchema: workflowStateSchema,
   description: 'Extracts structured product information from the user request using Information Extractor logic',
   agentConfig: {
     id: 'shopping-list-extractor',
@@ -218,6 +217,7 @@ const getUpdatedCartContents = createToolStep({
 // Uses workflow.state for prompt and cartBefore, context for cartAfter
 const generateSummary = createAgentStep({
   id: 'generate-summary',
+  stateSchema: workflowStateSchema,
   description: 'Generates a summary of changes using the Summarization Agent',
   agentConfig: {
     id: 'shopping-list-summary',
@@ -237,9 +237,10 @@ Keep your summary concise but informative.`,
     description: 'Specialized agent for summarizing shopping list changes and providing user feedback',
     tools: undefined,
   },
-  inputSchema: cartSnapshotSchema,
+  inputSchema: z.unknown(),
   outputSchema: shoppingListResultSchema,
   prompt: (params) => {
+    const cartAfter = cartSnapshotSchema.parse(params.inputData);
     const currentState = params.state;
     return `Please summarize the shopping list changes in Danish:
 
@@ -249,7 +250,7 @@ Basket contents before the changes:
 ${JSON.stringify(currentState.cartBefore)}
 
 Basket contents after the changes:
-${JSON.stringify(params.inputData)}
+${JSON.stringify(cartAfter)}
 
 Please provide a friendly summary in Danish of what was changed in the shopping basket.`;
   },

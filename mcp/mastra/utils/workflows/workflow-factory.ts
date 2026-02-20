@@ -1,5 +1,6 @@
 import type { AgentConfig } from '@mastra/core/agent';
-import type { OutputSchema } from '@mastra/core/stream';
+import type { SchemaWithValidation } from '@mastra/core/stream';
+import type { ToolExecutionContext, ValidationError } from '@mastra/core/tools';
 import {
   type DefaultEngineType,
   type ExecuteFunctionParams,
@@ -9,8 +10,38 @@ import {
   type StepParams,
   type WorkflowConfig,
 } from '@mastra/core/workflows';
-import type { TypeOf, z } from 'zod';
+import type { z } from 'zod';
 import { createAgent } from '../agent-factory.js';
+
+/**
+ * Centralized type aliases for workflow generics.
+ * Mastra's Workflow and Step types require `any` in their generic bounds internally,
+ * so we define these aliases once to avoid scattering `any` across the codebase.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra Step type requires `any` in its generic bounds
+type AnyStep = Step<string, any, any, any, any, any, DefaultEngineType>[];
+
+/**
+ * A Workflow with all generic parameters set to their defaults.
+ * Used when accepting any workflow instance without caring about specific types.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra Workflow type requires `any` in its Step bound
+export type AnyWorkflow = import('@mastra/core/workflows').Workflow<
+  DefaultEngineType,
+  any[],
+  string,
+  unknown,
+  unknown,
+  unknown,
+  unknown,
+  unknown
+>;
+
+/**
+ * A WorkflowResult with all generic parameters set to their defaults.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra WorkflowResult type requires `any` in its Step bound
+export type AnyWorkflowResult = import('@mastra/core/workflows').WorkflowResult<unknown, unknown, unknown, any[]>;
 
 /**
  * Creates a new Mastra Workflow with sensible defaults for the Hey Jarvis system.
@@ -58,35 +89,11 @@ import { createAgent } from '../agent-factory.js';
  */
 export function createWorkflow<
   TWorkflowId extends string = string,
-  // biome-ignore lint/suspicious/noExplicitAny: Type parameter defaults for generic workflow factory
-  TState extends z.ZodObject<any> = z.ZodObject<any>,
-  // biome-ignore lint/suspicious/noExplicitAny: Type parameter defaults for generic workflow factory
-  TInput extends z.ZodType<any> = z.ZodType<any>,
-  // biome-ignore lint/suspicious/noExplicitAny: Type parameter defaults for generic workflow factory
-  TOutput extends z.ZodType<any> = z.ZodType<any>,
-  // biome-ignore lint/suspicious/noExplicitAny: Type parameter defaults for generic workflow factory
-  TSteps extends Step<string, any, any, any, any, any, DefaultEngineType>[] = Step<
-    string,
-    // biome-ignore lint/suspicious/noExplicitAny: Type parameter defaults for generic workflow factory
-    any,
-    // biome-ignore lint/suspicious/noExplicitAny: Type parameter defaults for generic workflow factory
-    any,
-    // biome-ignore lint/suspicious/noExplicitAny: Type parameter defaults for generic workflow factory
-    any,
-    // biome-ignore lint/suspicious/noExplicitAny: Type parameter defaults for generic workflow factory
-    any,
-    // biome-ignore lint/suspicious/noExplicitAny: Type parameter defaults for generic workflow factory
-    any,
-    DefaultEngineType
-  >[],
+  TState = unknown,
+  TInput = unknown,
+  TOutput = unknown,
+  TSteps extends AnyStep = Step[],
 >(config: WorkflowConfig<TWorkflowId, TState, TInput, TOutput, TSteps>) {
-  // For now, this is a direct proxy to the Mastra createWorkflow function
-  // Future enhancements could include:
-  // - Automatic error handling and retry logic
-  // - Logging and observability
-  // - Performance monitoring
-  // - Workflow versioning
-  // - Automatic step validation
   return mastraCreateWorkflow(config);
 }
 
@@ -140,22 +147,13 @@ export function createWorkflow<
  */
 export function createStep<
   TStepId extends string = string,
-  TState extends z.ZodObject<any> = z.ZodObject<any>,
-  TInput extends z.ZodSchema = z.ZodSchema,
-  TOutput extends z.ZodSchema = z.ZodSchema,
-  TResume extends z.ZodSchema = z.ZodNever,
-  TSuspend extends z.ZodSchema = z.ZodNever,
+  TState extends z.ZodTypeAny | undefined = undefined,
+  TInput extends z.ZodTypeAny = z.ZodTypeAny,
+  TOutput extends z.ZodTypeAny = z.ZodTypeAny,
+  TResume extends z.ZodTypeAny | undefined = undefined,
+  TSuspend extends z.ZodTypeAny | undefined = undefined,
 >(config: StepParams<TStepId, TState, TInput, TOutput, TResume, TSuspend>) {
-  return mastraCreateStep({
-    id: config.id,
-    stateSchema: config.stateSchema,
-    description: config.description,
-    inputSchema: config.inputSchema,
-    outputSchema: config.outputSchema,
-    resumeSchema: config.resumeSchema,
-    suspendSchema: config.suspendSchema,
-    execute: config.execute.bind(config),
-  });
+  return mastraCreateStep(config);
 }
 
 /**
@@ -194,11 +192,11 @@ export function createStep<
  */
 export function createAgentStep<
   TStepId extends string = string,
-  TStateSchema extends z.ZodObject<any> = z.ZodObject<any>,
-  TInputSchema extends z.ZodSchema = z.ZodSchema,
-  TOutputSchema extends z.ZodSchema = z.ZodSchema,
-  TResumeSchema extends z.ZodSchema = z.ZodSchema,
-  TSuspendSchema extends z.ZodSchema = z.ZodSchema,
+  TStateSchema extends z.ZodTypeAny | undefined = undefined,
+  TInputSchema extends z.ZodTypeAny = z.ZodTypeAny,
+  TOutputSchema extends z.ZodTypeAny = z.ZodTypeAny,
+  TResumeSchema extends z.ZodTypeAny | undefined = undefined,
+  TSuspendSchema extends z.ZodTypeAny | undefined = undefined,
 >(
   config: Pick<
     StepParams<TStepId, TStateSchema, TInputSchema, TOutputSchema, TResumeSchema, TSuspendSchema>,
@@ -211,31 +209,28 @@ export function createAgentStep<
     };
     prompt: (
       params: ExecuteFunctionParams<
-        TypeOf<TStateSchema>,
-        TypeOf<TInputSchema>,
-        TypeOf<TOutputSchema>,
-        TResumeSchema,
-        TSuspendSchema,
+        TStateSchema extends z.ZodTypeAny ? z.infer<TStateSchema> : unknown,
+        z.infer<TInputSchema>,
+        z.infer<TOutputSchema>,
+        TResumeSchema extends z.ZodTypeAny ? z.infer<TResumeSchema> : unknown,
+        TSuspendSchema extends z.ZodTypeAny ? z.infer<TSuspendSchema> : unknown,
         DefaultEngineType
       >,
     ) => string | Promise<string>;
   },
 ) {
-  return createStep<TStepId, TStateSchema, TInputSchema, TOutputSchema>({
+  return createStep<TStepId, TStateSchema, TInputSchema, TOutputSchema, TResumeSchema, TSuspendSchema>({
     id: config.id,
     description: config.description,
     inputSchema: config.inputSchema,
     outputSchema: config.outputSchema,
-    execute: async (params): Promise<TOutputSchema> => {
+    execute: async (params) => {
       // Create agent lazily during execution to avoid top-level awaits
       // Explicitly set memory to undefined to bypass Mastra v1 beta.10+ bug
       // where memory.getInputProcessors() is called but doesn't exist
       const agent = await createAgent({ ...config.agentConfig, memory: undefined });
 
-      // Type assertion needed here due to complex generic type inference with ExecuteFunctionParams
-      // The params object has the correct runtime type but TypeScript can't verify it in this generic context
-      type PromptParams = Parameters<typeof config.prompt>[0];
-      const prompt = (await Promise.resolve(config.prompt(params as unknown as PromptParams)))
+      const prompt = (await Promise.resolve(config.prompt(params)))
         .split('\n')
         .map((line) => line.trim())
         .join('\n')
@@ -250,15 +245,14 @@ export function createAgentStep<
         ],
         {
           structuredOutput: {
-            // The schema type is TOutputSchema which extends z.ZodSchema
-            // Mastra's internal types use a conditional that TypeScript can't verify in generic context
-            schema: config.outputSchema as NonNullable<OutputSchema>,
+            schema: config.outputSchema,
           },
           toolChoice: 'none',
         },
       );
 
-      return await response.object;
+      const result = await response.object;
+      return config.outputSchema.parse(result);
     },
   });
 }
@@ -289,20 +283,16 @@ export function createAgentStep<
  */
 export function createToolStep<
   TStepId extends string = string,
-  // biome-ignore lint/suspicious/noExplicitAny: Generic constraint for any state schema
-  TStateSchema extends z.ZodObject<any> = z.ZodObject<any>,
-  TToolInput = any,
-  TToolOutput = any,
+  TStateSchema extends z.ZodTypeAny | undefined = undefined,
+  TToolInput = unknown,
+  TToolOutput = unknown,
 >(config: {
   id: TStepId;
   description: string;
   tool: {
-    // biome-ignore lint/suspicious/noExplicitAny: Zod type requires any for type parameters
-    inputSchema?: z.ZodType<TToolInput, any, any>;
-    // biome-ignore lint/suspicious/noExplicitAny: Zod type requires any for type parameters
-    outputSchema?: z.ZodType<TToolOutput, any, any>;
-    // biome-ignore lint/suspicious/noExplicitAny: Context can be any type
-    execute?: (inputData: TToolInput, context?: any) => Promise<TToolOutput>;
+    inputSchema?: SchemaWithValidation;
+    outputSchema?: SchemaWithValidation;
+    execute?: (inputData: TToolInput, context: ToolExecutionContext) => Promise<TToolOutput | ValidationError>;
   };
   stateSchema?: TStateSchema;
   inputOverrides?: Partial<TToolInput>;
@@ -311,8 +301,8 @@ export function createToolStep<
     throw new Error(`Tool for step ${config.id} must have inputSchema, outputSchema, and execute defined`);
   }
 
-  const inputSchema = config.tool.inputSchema;
-  const outputSchema = config.tool.outputSchema;
+  const inputSchema = config.tool.inputSchema as z.ZodTypeAny;
+  const outputSchema = config.tool.outputSchema as z.ZodTypeAny;
   const execute = config.tool.execute;
 
   return createStep<TStepId, TStateSchema, typeof inputSchema, typeof outputSchema>({
@@ -322,12 +312,13 @@ export function createToolStep<
     outputSchema,
     stateSchema: config.stateSchema,
     execute: async (params) => {
+      // params.mastra is a Mastra instance, but tools expect ToolExecutionContext - cast needed at workflow-tool boundary
       return await execute(
         {
-          ...params.inputData,
+          ...(params.inputData as Record<string, unknown>),
           ...(config.inputOverrides ?? {}),
-        },
-        params.mastra,
+        } as TToolInput,
+        params.mastra as unknown as ToolExecutionContext,
       );
     },
   });

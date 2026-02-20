@@ -23,4 +23,10 @@ nx daemon --start || {
 
 # Project-level dependencies are installed with the "initialize" target in NX, lazily, when needed.
 
+echo "📁 Copying MCP configuration to .claude directory..."
+cp .mcp.json .vscode/mcp.json
+
+echo "⚡ Installing Playwright browsers..."
+bunx playwright install chrome chromium
+
 echo "✅ DevContainer initialization complete!"

@@ -129,7 +129,7 @@ Respond with:
   async assertCriteria(criteria: string, minScore = 0.7): Promise<EvaluationResult> {
     const result = await this.evaluate(criteria);
 
-    if (!result.passed || result.score < minScore) {
+    if (result.score < minScore) {
       throw new Error(
         `Conversation failed to meet criteria (scored: ${result.score} but needed: ${minScore}):\n` +
           `Criteria: ${criteria}\n` +

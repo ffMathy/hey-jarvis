@@ -40,7 +40,8 @@ export const microsoftProvider: OAuthProvider = {
       },
     });
   },
-  getAuthUrl: async (client: ConfidentialClientApplication): Promise<string> => {
+  getAuthUrl: async (client: unknown): Promise<string> => {
+    const msalClient = client as ConfidentialClientApplication;
     const authCodeUrlParameters = {
       scopes: microsoftProvider.scopes,
       redirectUri: REDIRECT_URI,
@@ -49,15 +50,16 @@ export const microsoftProvider: OAuthProvider = {
       // Add prompt to ensure fresh consent (helps with debugging)
       prompt: 'select_account' as const,
     };
-    return await client.getAuthCodeUrl(authCodeUrlParameters);
+    return await msalClient.getAuthCodeUrl(authCodeUrlParameters);
   },
-  exchangeCode: async (client: ConfidentialClientApplication, code: string): Promise<TokenResponse> => {
+  exchangeCode: async (client: unknown, code: string): Promise<TokenResponse> => {
+    const msalClient = client as ConfidentialClientApplication;
     const tokenRequest: AuthorizationCodeRequest = {
       code,
       scopes: microsoftProvider.scopes,
       redirectUri: REDIRECT_URI,
     };
-    const response = await client.acquireTokenByCode(tokenRequest);
+    const response = await msalClient.acquireTokenByCode(tokenRequest);
 
     // MSAL v3+ stores refresh tokens in an internal cache
     // We need to serialize the cache to extract the refresh token
@@ -67,7 +69,7 @@ export const microsoftProvider: OAuthProvider = {
     }
 
     // Get the token cache and serialize it
-    const tokenCache = client.getTokenCache();
+    const tokenCache = msalClient.getTokenCache();
     const cacheState = await tokenCache.serialize();
 
     // Parse the serialized cache to extract refresh token

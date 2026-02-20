@@ -30,12 +30,6 @@ updates:
       interval: "daily"
       time: "09:00"
 
-  - package-ecosystem: "docker"
-    directory: "/home-assistant-addon"
-    schedule:
-      interval: "daily"
-      time: "09:00"
-
   # GitHub Actions dependencies
   - package-ecosystem: "github-actions"
     directory: "/"

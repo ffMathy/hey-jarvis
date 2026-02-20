@@ -1,20 +1,22 @@
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 
 /**
- * Validates and creates a Google Generative AI provider instance
+ * Creates a Google Generative AI provider instance
  * using the HEY_JARVIS_GOOGLE_API_KEY environment variable.
  *
  * This shared provider ensures consistency across all agents and scorers
  * in the Hey Jarvis system.
+ *
+ * Uses lazy validation so that missing API key doesn't crash the server
+ * at module load time — the error surfaces when an actual API call is made.
  */
 
-// Validate that the Google API key is available
 const googleApiKey = process.env.HEY_JARVIS_GOOGLE_API_KEY;
+
 if (!googleApiKey) {
-  throw new Error('HEY_JARVIS_GOOGLE_API_KEY environment variable is required');
+  console.warn('⚠️ HEY_JARVIS_GOOGLE_API_KEY is not set. Google AI features will not work.');
 }
 
-// Create and export the configured Google provider instance
 export const google = createGoogleGenerativeAI({
-  apiKey: googleApiKey,
+  apiKey: googleApiKey || 'not-configured',
 });

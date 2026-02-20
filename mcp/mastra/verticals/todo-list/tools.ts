@@ -91,7 +91,7 @@ export const createTask = createTool({
     const auth = await getGoogleAuth();
     const tasks = google.tasks({ version: 'v1', auth });
 
-    const task: any = {
+    const task: { title: string; notes?: string; due?: string } = {
       title: inputData.title,
       notes: inputData.notes,
     };
@@ -228,7 +228,12 @@ export const updateTask = createTool({
     });
 
     // Prepare update payload
-    const updatedTask: any = {
+    const updatedTask: {
+      title: string | null | undefined;
+      notes: string | null | undefined;
+      status: string | null | undefined;
+      due?: string | null;
+    } = {
       title: inputData.title || existingTask.data.title,
       notes: inputData.notes !== undefined ? inputData.notes : existingTask.data.notes,
       status: inputData.status || existingTask.data.status,

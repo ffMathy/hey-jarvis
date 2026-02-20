@@ -1,7 +1,6 @@
 import type { NextFunction, Request, Response, Router } from 'express';
-import type { ZodError } from 'zod';
 import { logger } from '../../utils/logger.js';
-import type { AnyWorkflow, AnyWorkflowResult, NamedWorkflow } from '../../utils/workflows/workflow-types.js';
+import type { AnyWorkflow, AnyWorkflowResult } from '../../utils/workflows/workflow-factory.js';
 import { shoppingListWorkflow } from '../shopping/workflows.js';
 
 /**
@@ -17,8 +16,10 @@ interface WorkflowApiResponse<T = unknown> {
 /**
  * Formats Zod validation errors into a human-readable string.
  */
-function formatValidationErrors(zodError: ZodError<any>): string {
-  return zodError.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ');
+function formatValidationErrors(zodError: {
+  issues: Array<{ path?: Array<string | number>; message: string }>;
+}): string {
+  return zodError.issues.map((e) => `${e.path?.join?.('.') ?? ''}: ${e.message}`).join(', ');
 }
 
 /**
@@ -44,7 +45,7 @@ function extractWorkflowError(result: AnyWorkflowResult): string {
  * router.post('/api/shopping-list', handler);
  * ```
  */
-export function createWorkflowApiHandler(workflow: NamedWorkflow) {
+export function createWorkflowApiHandler(workflow: AnyWorkflow) {
   const workflowName = workflow.name ?? workflow.id;
 
   return async (req: Request, res: Response, next: NextFunction) => {
@@ -55,7 +56,7 @@ export function createWorkflowApiHandler(workflow: NamedWorkflow) {
         const parseResult = inputSchema.safeParse(req.body);
 
         if (!parseResult.success) {
-          const errorMessage = formatValidationErrors(parseResult.error as ZodError<any>);
+          const errorMessage = formatValidationErrors(parseResult.error);
           res.status(400).json({
             success: false,
             message: `Validation failed: ${errorMessage}`,
@@ -110,7 +111,7 @@ interface WorkflowApiConfig {
   /** The URL path for the API endpoint (e.g., '/api/shopping-list') */
   path: string;
   /** The workflow to expose at this endpoint */
-  workflow: NamedWorkflow;
+  workflow: AnyWorkflow;
   /** Optional description for logging purposes */
   description?: string;
 }

@@ -17,7 +17,7 @@ export const registerStateChange = createTool({
     stateType: z
       .string()
       .describe('Type of state change (e.g., "weather_update", "task_completed", "significant_temperature_change")'),
-    stateData: z.record(z.unknown()).describe('State change data payload containing relevant information'),
+    stateData: z.record(z.string(), z.unknown()).describe('State change data payload containing relevant information'),
   }),
   outputSchema: z.object({
     registered: z.boolean(),

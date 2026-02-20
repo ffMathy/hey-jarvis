@@ -4,6 +4,14 @@
   "sourceRoot": "mcp/src",
   "projectType": "application",
   "targets": {
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "inputs": ["default", "^default"],
+      "options": {
+        "command": "tsgo --noEmit --project {projectRoot}/tsconfig.json"
+      }
+    },
     "lint": {},
     "initialize": {
       "executor": "nx:run-commands",
@@ -61,7 +69,7 @@
     "test": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "./.scripts/run-with-env.sh mcp/op.env bun test mcp/tests mcp/mastra",
+        "command": "./.scripts/run-with-env.sh mcp/op.env bun test mcp/tests/*.spec.ts mcp/tests/*.test.ts mcp/mastra",
         "cwd": "."
       },
       "outputs": ["{workspaceRoot}/coverage/{projectRoot}"]
@@ -72,6 +80,15 @@
         "command": "./.scripts/run-with-env.sh mcp/op.env bun run mcp/mastra/generate-refresh-tokens.ts",
         "cwd": "."
       }
+    },
+    "e2e": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build"],
+      "options": {
+        "command": "bunx playwright test --config mcp/playwright.config.ts",
+        "cwd": "."
+      },
+      "outputs": ["{projectRoot}/test-results", "{projectRoot}/playwright-report"]
     }
   },
   "tags": []

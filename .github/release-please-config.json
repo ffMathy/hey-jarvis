@@ -17,20 +17,6 @@
       "initial-version": "0.1.0",
       "component": "root"
     },
-    "home-assistant-addon": {
-      "release-type": "node",
-      "package-name": "home-assistant-addon",
-      "extra-files": [
-        {
-          "type": "json",
-          "path": "config.json",
-          "jsonpath": "$.version"
-        }
-      ],
-      "changelog-path": "CHANGELOG.md",
-      "initial-version": "0.1.0",
-      "component": "home-assistant-addon"
-    },
     "mcp": {
       "release-type": "node",
       "package-name": "mcp",
@@ -64,7 +50,7 @@
     {
       "type": "linked-versions",
       "groupName": "mcp",
-      "components": ["mcp", "home-assistant-addon"]
+      "components": ["mcp"]
     }
   ]
 }

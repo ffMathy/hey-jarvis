@@ -57,11 +57,23 @@ This project uses **1Password CLI** for secure environment variable management.
 - Reuse the same terminal ID for related commands
 - This maintains context and environment variables
 
+## Research Before Implementing
+
+**CRITICAL: Always search online before fixing errors, installing tools, or implementing features.**
+
+Before starting any implementation or debugging:
+1. **Search online first** — use `WebSearch` or `search_with_grounding` to find known issues, docs, and best practices
+2. **Check GitHub issues** — many errors have confirmed workarounds in open/closed issues
+3. **Verify the fix** — confirm the solution applies to the current version before applying it
+
+This prevents wasted effort from trial-and-error and finds the authoritative fix faster.
+
 ## Core Development Principles
 
 **See these skills for detailed guidance:**
 - [`clean-code`](.github/skills/clean-code/SKILL.md) - Variable naming and YAGNI principle
-- [`typescript-type-safety`](.github/skills/typescript-type-safety/SKILL.md) - Type safety guidelines
+- [`typescript-type-safety`](.github/skills/typescript-type-safety/SKILL.md) - Type safety guidelines (prefer inference over casts)
+- [`mastra-development`](.claude/skills/mastra-development/SKILL.md) - Agents, tools, workflows, vertical organization, and type safety
 - [`use-npm-packages`](.github/skills/use-npm-packages/SKILL.md) - Prefer existing libraries
 - [`boy-scout-rule`](.github/skills/boy-scout-rule/SKILL.md) - Leave code better than you found it
 - [`conventional-commits`](.github/skills/conventional-commits/SKILL.md) - Commit message standards
@@ -206,10 +218,7 @@ Each project has its own AGENTS.md with specialized instructions:
 ## Contributing
 
 **See these skills for detailed development guidelines:**
-- [`mastra-agent-creation`](.github/skills/mastra-agent-creation/SKILL.md) - Creating new agents
-- [`mastra-tool-creation`](.github/skills/mastra-tool-creation/SKILL.md) - Creating new tools
-- [`mastra-workflow-creation`](.github/skills/mastra-workflow-creation/SKILL.md) - Creating workflows
-- [`mastra-vertical-organization`](.github/skills/mastra-vertical-organization/SKILL.md) - Code organization
+- [`mastra-development`](.claude/skills/mastra-development/SKILL.md) - Agents, tools, workflows, vertical organization, and type safety
 
 All contributions should:
 - Follow TypeScript best practices

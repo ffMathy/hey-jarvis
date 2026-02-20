@@ -6,15 +6,6 @@ export interface TokenResponse {
   expiry_date: number;
 }
 
-/**
- * OAuth provider interface. This is a unified interface that works
- * both for typed implementations and for arrays of mixed providers.
- *
- * The 'any' type is used intentionally because different OAuth providers
- * (Google, Microsoft, etc.) have incompatible client types that cannot
- * be unified into a single generic type without losing type safety in
- * the individual provider implementations.
- */
 export interface OAuthProvider {
   name: string;
   clientIdEnvVar: string;
@@ -23,10 +14,7 @@ export interface OAuthProvider {
   scopes: string[];
   setupInstructions: string[];
   storageInstructions: string[];
-  // biome-ignore lint/suspicious/noExplicitAny: OAuth client types vary per provider and cannot be unified
-  createClient: (clientId: string, clientSecret: string) => any;
-  // biome-ignore lint/suspicious/noExplicitAny: OAuth client types vary per provider and cannot be unified
-  getAuthUrl: (client: any) => string | Promise<string>;
-  // biome-ignore lint/suspicious/noExplicitAny: OAuth client types vary per provider and cannot be unified
-  exchangeCode: (client: any, code: string) => Promise<TokenResponse>;
+  createClient: (clientId: string, clientSecret: string) => unknown;
+  getAuthUrl: (client: unknown) => string | Promise<string>;
+  exchangeCode: (client: unknown, code: string) => Promise<TokenResponse>;
 }

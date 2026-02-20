@@ -28,15 +28,17 @@ export const googleProvider: OAuthProvider = {
   createClient: (clientId: string, clientSecret: string): OAuth2Client => {
     return new google.auth.OAuth2(clientId, clientSecret, REDIRECT_URI);
   },
-  getAuthUrl: (client: OAuth2Client): string => {
-    return client.generateAuthUrl({
+  getAuthUrl: (client: unknown): string => {
+    const oauth2Client = client as OAuth2Client;
+    return oauth2Client.generateAuthUrl({
       access_type: 'offline',
       prompt: 'consent',
       scope: googleProvider.scopes,
     });
   },
-  exchangeCode: async (client: OAuth2Client, code: string): Promise<TokenResponse> => {
-    const { tokens } = await client.getToken(code);
+  exchangeCode: async (client: unknown, code: string): Promise<TokenResponse> => {
+    const oauth2Client = client as OAuth2Client;
+    const { tokens } = await oauth2Client.getToken(code);
     return tokens as TokenResponse;
   },
 };

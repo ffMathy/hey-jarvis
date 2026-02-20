@@ -6,6 +6,7 @@
     "ghcr.io/devcontainers/features/python:1": {
       "version": "3.11"
     },
+    "ghcr.io/devcontainers-extra/features/claude-code:1": {},
     "ghcr.io/devcontainers-extra/features/nx-npm:1": {},
     "ghcr.io/flexwie/devcontainer-features/op:1": {},
     "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {},
@@ -45,7 +46,8 @@
         "GitHub.copilot-chat",
         "redhat.vscode-yaml",
         "esphome.esphome-vscode",
-        "editorconfig.editorconfig"
+        "editorconfig.editorconfig",
+        "Anthropic.claude-code"
       ],
       "settings": {
         //don't put settings here - instead, put them in hey-jarvis.code-workspace in the root of the repo
@@ -53,9 +55,6 @@
     }
   },
   "mounts": ["source=/dev,target=/dev,type=bind,consistency=cached"],
-  "runArgs": ["--privileged", "--device=/dev:/dev"],
-  "containerUser": "root",
-  "remoteUser": "root",
   "postCreateCommand": "chmod +x ./.devcontainer/.scripts/devcontainer-init.sh && ./.devcontainer/.scripts/devcontainer-init.sh",
   "portsAttributes": {}
 }

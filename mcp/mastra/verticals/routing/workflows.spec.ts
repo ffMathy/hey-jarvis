@@ -2,6 +2,7 @@ import type { Agent } from '@mastra/core/agent';
 import { z } from 'zod';
 import {
   type AgentProvider,
+  type DagGenerator,
   getCurrentDAG,
   getNextInstructionsWorkflow,
   getTaskCompletedListenersCount,
@@ -291,17 +292,42 @@ describe('Routing Workflows', () => {
   });
 
   describe('routePromptWorkflow with mock agents', () => {
+    function createMockDagGenerator(agents: { id: string }[]): DagGenerator {
+      return async (agentInput, userQuery) => {
+        const agentIds = new Set(agents.map((a) => a.id));
+        const tasks: { id: string; agent: string; prompt: string; dependsOn: string[] }[] = [];
+
+        for (const agent of agentInput.agents) {
+          if (agentIds.has(agent.id)) {
+            tasks.push({
+              id: `${agent.id}-task`,
+              agent: agent.id,
+              prompt: userQuery,
+              dependsOn: [],
+            });
+          }
+        }
+
+        return { tasks };
+      };
+    }
+
     it('should list available mock agents', async () => {
       const weatherAgent = createMockAgent('weather', 'Provides weather information for any location');
       const calendarAgent = createMockAgent('calendar', 'Manages calendar events and schedules');
 
       const mockAgentProvider: AgentProvider = async () => [weatherAgent, calendarAgent];
       setAgentProvider(mockAgentProvider);
+      setWorkflowState({
+        agentProvider: mockAgentProvider,
+        dagGenerator: createMockDagGenerator([weatherAgent, calendarAgent]),
+      });
 
       const _result = await routePromptWorkflow.createRun().then((run) =>
         run.start({
           inputData: {
             userQuery: 'What is the weather in Aarhus?',
+            async: false,
           },
         }),
       );
@@ -316,12 +342,13 @@ describe('Routing Workflows', () => {
     it('should start DAG execution and return tasks in progress with instructions', async () => {
       const weatherAgent = createMockAgent('weather', 'Provides weather information for any location');
       const mockAgentProvider: AgentProvider = async () => [weatherAgent];
-      setAgentProvider(mockAgentProvider);
+      setWorkflowState({ agentProvider: mockAgentProvider, dagGenerator: createMockDagGenerator([weatherAgent]) });
 
       const workflowResult = await routePromptWorkflow.createRun().then((run) =>
         run.start({
           inputData: {
             userQuery: 'What is the weather?',
+            async: false,
           },
         }),
       );
@@ -337,7 +364,7 @@ describe('Routing Workflows', () => {
     it('should return end call instructions when async flag is true', async () => {
       const weatherAgent = createMockAgent('weather', 'Provides weather information for any location');
       const mockAgentProvider: AgentProvider = async () => [weatherAgent];
-      setAgentProvider(mockAgentProvider);
+      setWorkflowState({ agentProvider: mockAgentProvider, dagGenerator: createMockDagGenerator([weatherAgent]) });
 
       const workflowResult = await routePromptWorkflow.createRun().then((run) =>
         run.start({

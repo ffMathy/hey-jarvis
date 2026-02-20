@@ -1,28 +1,22 @@
-import type { Tool } from '@mastra/core/tools';
+import type { Tool, ToolExecutionContext } from '@mastra/core/tools';
 import { createTool as mastraCreateTool } from '@mastra/core/tools';
-import type { z } from 'zod';
 
 /**
  * Configuration for creating a shortcut tool that wraps another tool.
  * Shortcuts automatically reuse the input and output schemas from the underlying tool.
  */
-interface CreateShortcutConfig<
-  TInputSchema extends z.ZodSchema,
-  TOutputSchema extends z.ZodSchema,
-  TInput extends z.infer<TInputSchema>,
-  TOutput extends z.infer<TOutputSchema>,
-> {
+interface CreateShortcutConfig<TInput, TOutput> {
   /** Unique identifier for this shortcut tool */
   id: string;
   /** Description of what this shortcut does in the context of the current vertical */
   description: string;
   /** The underlying tool that this shortcut wraps */
-  tool: Tool<TInputSchema, TOutputSchema>;
+  tool: Tool<TInput, TOutput>;
   /**
    * Transform function to execute the underlying tool and optionally transform the result.
    * Receives the input and returns the output (or a transformed version of it).
    */
-  execute: (input: TInput) => Promise<TOutput>;
+  execute: (input: TInput, context: ToolExecutionContext) => Promise<TOutput>;
 }
 
 /**
@@ -48,12 +42,7 @@ interface CreateShortcutConfig<
  * });
  * ```
  */
-export function createShortcut<
-  TInputSchema extends z.ZodSchema,
-  TOutputSchema extends z.ZodSchema,
-  TInput extends z.infer<TInputSchema>,
-  TOutput extends z.infer<TOutputSchema>,
->(config: CreateShortcutConfig<TInputSchema, TOutputSchema, TInput, TOutput>) {
+export function createShortcut<TInput, TOutput>(config: CreateShortcutConfig<TInput, TOutput>) {
   // Validate that the tool has the required schemas
   if (!config.tool.inputSchema || !config.tool.outputSchema) {
     throw new Error(
@@ -64,8 +53,8 @@ export function createShortcut<
   return mastraCreateTool({
     id: config.id,
     description: config.description,
-    inputSchema: config.tool.inputSchema as TInputSchema,
-    outputSchema: config.tool.outputSchema as TOutputSchema,
+    inputSchema: config.tool.inputSchema,
+    outputSchema: config.tool.outputSchema,
     execute: config.execute,
   });
 }

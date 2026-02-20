@@ -171,3 +171,5 @@ cloudflared.deb
 
 # TypeScript build output for specs
 dist-spec
+
+.claude/worktrees/

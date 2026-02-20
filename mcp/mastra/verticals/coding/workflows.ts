@@ -1,4 +1,4 @@
-import type { MessageInput } from '@mastra/core/agent/message-list';
+import type { CoreMessage } from 'ai';
 import { z } from 'zod';
 import { createStep, createToolStep, createWorkflow } from '../../utils/workflows/workflow-factory.js';
 import { assignCopilotToIssue, createGitHubIssue } from './tools.js';
@@ -34,7 +34,9 @@ const workflowStateSchema = z
     owner: z.string(),
     issueNumber: z.number().optional(),
     issueUrl: z.string().optional(),
-    conversationHistory: z.array(z.any()),
+    conversationHistory: z.array(
+      z.object({ role: z.enum(['user', 'assistant', 'system', 'tool']), content: z.string() }),
+    ),
     response: z
       .object({
         needsMoreQuestions: z.boolean(),
@@ -58,6 +60,7 @@ const questioningResponseSchema = z.object({
 const initializeGatheringSession = createStep({
   id: 'initialize-gathering-session',
   description: 'Sets up the initial prompt for requirements gathering',
+  stateSchema: workflowStateSchema,
   inputSchema: requirementsInputSchema,
   outputSchema: z.object({}),
   execute: async (params) => {
@@ -85,6 +88,7 @@ Start by asking your first clarifying question to understand what needs to be im
 const askRequirementsQuestion = createStep({
   id: 'ask-requirements-question',
   description: 'Asks a single clarifying question using the Requirements Interviewer Agent',
+  stateSchema: workflowStateSchema,
   inputSchema: z.object({}),
   outputSchema: z.object({}),
   resumeSchema: z.object({
@@ -115,7 +119,8 @@ const askRequirementsQuestion = createStep({
     }
 
     // Get agent response with structured output
-    const response = await agent.stream(conversationHistory as MessageInput[], {
+    // Mastra's MessageListInput discriminated union can't narrow { role: union; content } objects
+    const response = await agent.stream(conversationHistory as CoreMessage[], {
       structuredOutput: {
         schema: questioningResponseSchema,
       },
@@ -129,12 +134,12 @@ const askRequirementsQuestion = createStep({
     }
 
     // Add agent response to history
-    const updatedHistory = [
+    const updatedHistory: typeof conversationHistory = [
       ...conversationHistory,
       {
-        role: 'assistant',
+        role: 'assistant' as const,
         content: JSON.stringify(currentResponse),
-      } as MessageInput,
+      },
     ];
 
     // Update workflow state with latest conversation and response
@@ -165,6 +170,7 @@ const askRequirementsQuestion = createStep({
 const prepareIssueCreationData = createStep({
   id: 'prepare-issue-creation-data',
   description: 'Prepares data for creating the issue with complete requirements',
+  stateSchema: workflowStateSchema,
   inputSchema: z.object({}),
   outputSchema: z.object({
     owner: z.string().optional(),
@@ -234,32 +240,38 @@ ${discussionSection}
 const createIssueWithRequirementsTool = createToolStep({
   id: 'create-issue-with-requirements-tool',
   description: 'Creates the issue with requirements using the GitHub API',
+  stateSchema: workflowStateSchema,
   tool: createGitHubIssue,
+});
+
+// Schema for issue creation tool output - validated at runtime since .then() chain passes unknown
+const issueCreationResultSchema = z.object({
+  success: z.boolean(),
+  message: z.string(),
+  issue_number: z.number().optional(),
+  issue_url: z.string().optional(),
 });
 
 // Step 5: Store issue creation result in workflow state
 const storeIssueCreationResult = createStep({
   id: 'store-issue-creation-result',
   description: 'Stores the issue creation result in workflow state',
-  inputSchema: z.object({
-    success: z.boolean(),
-    message: z.string(),
-    issue_number: z.number().optional(),
-    issue_url: z.string().optional(),
-  }),
+  stateSchema: workflowStateSchema,
+  inputSchema: z.unknown(),
   outputSchema: z.object({}),
   execute: async (params) => {
-    if (!params.inputData.success || !params.inputData.issue_number || !params.inputData.issue_url) {
-      throw new Error(`Failed to create issue: ${params.inputData.message}`);
+    const input = issueCreationResultSchema.parse(params.inputData);
+    if (!input.success || !input.issue_number || !input.issue_url) {
+      throw new Error(`Failed to create issue: ${input.message}`);
     }
 
     const state = params.state;
     params.setState({
       ...state,
-      issueNumber: params.inputData.issue_number,
-      issueUrl: params.inputData.issue_url,
-      success: params.inputData.success,
-      message: params.inputData.message,
+      issueNumber: input.issue_number,
+      issueUrl: input.issue_url,
+      success: input.success,
+      message: input.message,
     });
     return {};
   },
@@ -269,6 +281,7 @@ const storeIssueCreationResult = createStep({
 const validateBeforeCopilotAssignment = createStep({
   id: 'validate-before-copilot-assignment',
   description: 'Validates that issue update succeeded before assigning Copilot',
+  stateSchema: workflowStateSchema,
   inputSchema: z.object({}),
   outputSchema: z.object({}),
   execute: async (params) => {
@@ -286,6 +299,7 @@ const validateBeforeCopilotAssignment = createStep({
 const prepareCopilotAssignmentData = createStep({
   id: 'prepare-copilot-assignment-data',
   description: 'Prepares data for assigning the issue to Copilot',
+  stateSchema: workflowStateSchema,
   inputSchema: z.object({}),
   outputSchema: z.object({
     owner: z.string().optional(),
@@ -311,37 +325,43 @@ const prepareCopilotAssignmentData = createStep({
 const assignToCopilotTool = createToolStep({
   id: 'assign-to-copilot-tool',
   description: 'Assigns the issue to Copilot using the GitHub API',
+  stateSchema: workflowStateSchema,
   tool: assignCopilotToIssue,
+});
+
+// Schema for Copilot assignment tool output - validated at runtime since .then() chain passes unknown
+const copilotAssignmentResultSchema = z.object({
+  success: z.boolean(),
+  message: z.string(),
+  task_url: z.string().optional(),
 });
 
 // Step 9: Format final workflow output
 const formatFinalOutput = createStep({
   id: 'format-final-output',
   description: 'Formats the final workflow output with success message',
-  inputSchema: z.object({
-    success: z.boolean(),
-    message: z.string(),
-    task_url: z.string().optional(),
-  }),
+  stateSchema: workflowStateSchema,
+  inputSchema: z.unknown(),
   outputSchema: z.object({
     success: z.boolean(),
     message: z.string(),
     issueUrl: z.string().optional(),
   }),
   execute: async (params) => {
+    const input = copilotAssignmentResultSchema.parse(params.inputData);
     const state = params.state;
 
-    if (!params.inputData.success) {
+    if (!input.success) {
       return {
         success: false,
-        message: `Copilot assignment initiated but may require manual confirmation: ${params.inputData.message}`,
+        message: `Copilot assignment initiated but may require manual confirmation: ${input.message}`,
         issueUrl: state.issueUrl,
       };
     }
 
     return {
       success: true,
-      message: `Successfully assigned Copilot to issue #${state.issueNumber}. ${params.inputData.message}`,
+      message: `Successfully assigned Copilot to issue #${state.issueNumber}. ${input.message}`,
       issueUrl: state.issueUrl,
     };
   },

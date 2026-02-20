@@ -1,7 +1,9 @@
 import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 
-// Configure screenshot base directory - relative to test file location
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 const SCREENSHOTS_DIR = process.env.SCREENSHOTS_DIR || path.join(__dirname, '../../screenshots');
 
 test.describe('Mastra Studio UI', () => {
