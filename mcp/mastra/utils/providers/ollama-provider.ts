@@ -1,3 +1,4 @@
+import type { LanguageModelV3 } from '@ai-sdk/provider';
 import { createOllama } from 'ai-sdk-ollama';
 
 /**
@@ -56,7 +57,7 @@ export const ollama = createOllama({
 /**
  * Pre-configured default model for use in agents and workflows.
  */
-export const ollamaModel = ollama(OLLAMA_MODEL);
+export const ollamaModel: LanguageModelV3 = ollama(OLLAMA_MODEL);
 
 /**
  * Returns the Ollama API base URL including /api path (for health checks etc.).
