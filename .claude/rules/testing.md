@@ -1,8 +1,3 @@
----
-name: testing
-description: Strict requirements for testing code changes including never skipping tests
----
-
 # Testing Guidelines
 
 Strict requirements for testing code changes across the Hey Jarvis project.
@@ -60,10 +55,10 @@ describe('Feature/Component Name', () => {
     it('should behave correctly when condition', () => {
       // Arrange
       const input = setupTestData();
-      
+
       // Act
       const result = functionUnderTest(input);
-      
+
       // Assert
       expect(result).toBeDefined();
       expect(result.value).toBe(expectedValue);
@@ -119,6 +114,12 @@ Do NOT consider your work complete until:
 - ✅ All linting passes without warnings or errors
 - ✅ All tests pass without skipping any
 - ✅ The build succeeds (if applicable)
+
+## Always Run Tests Before Declaring Done
+
+**After every task that touches code, run tests before reporting completion.**
+
+This is non-negotiable — do not tell the user "it's done" until you have actually run `bunx nx test <project>` and seen it pass. Typecheck alone is not sufficient.
 
 ## What NOT to Do
 
