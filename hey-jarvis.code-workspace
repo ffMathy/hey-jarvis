@@ -162,7 +162,8 @@
     "chat.tools.terminal.ignoreDefaultAutoApproveRules": true,
     "github.copilot.chat.agent.autoFix": true,
     "chat.tools.terminal.blockDetectedFileWrites": "never",
-    "chat.useClaudeHooks": true
+    "chat.useClaudeHooks": true,
+    "claudeCode.useTerminal": true
   },
   "extensions": {
     "recommendations": [
