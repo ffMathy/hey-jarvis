@@ -73,6 +73,9 @@
   },
   "dependencies": {
     "@ai-sdk/google": "^3.0.30",
+    "@ai-sdk/provider": "^3.0.8",
+    "@ai-sdk/provider-utils": "^4.0.15",
+    "@libsql/client": "^0.15.15",
     "@ai-sdk/openai": "^3.0.30",
     "@azure/msal-node": "^5.0.4",
     "@elevenlabs/elevenlabs-js": "^2.36.0",

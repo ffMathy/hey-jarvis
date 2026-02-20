@@ -1,5 +1,7 @@
-import type { OAuth2Client } from 'google-auth-library';
-import { google } from 'googleapis';
+import { type Auth, google } from 'googleapis';
+
+type OAuth2Client = Auth.OAuth2Client;
+
 import { z } from 'zod';
 import { getCredentialsStorage } from '../../storage/index.js';
 import { logger } from '../../utils/logger.js';
