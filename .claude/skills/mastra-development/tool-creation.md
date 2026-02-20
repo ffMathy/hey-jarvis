@@ -1,8 +1,3 @@
----
-name: mastra-tool-creation
-description: Factory pattern and conventions for creating Mastra tools
----
-
 # Creating Mastra Tools
 
 Use the Hey Jarvis factory pattern for creating all tools.

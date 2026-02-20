@@ -1,8 +1,3 @@
----
-name: mastra-type-safety
-description: Infer types in Mastra code — never cast to fix version upgrade breakages
----
-
 # Mastra Type Safety
 
 **CRITICAL: Never use type casts (`as`) to fix Mastra type errors** — especially after version bumps. Casts are hacks that hide real incompatibilities and will break silently at runtime.
@@ -28,24 +23,23 @@ When upgrading Mastra and types break:
 3. **Never cast the old shape** into the new type to make errors go away
 4. **Run tests** to verify behavior matches the new contract
 
-❌ **BAD - Casting to silence a version bump breakage:**
+BAD - Casting to silence a version bump breakage:
 ```typescript
-// Mastra v2 changed StepResult shape, so we cast to make it compile
 const result = step.output as unknown as LegacyStepResult;
 ```
 
-❌ **BAD - Casting tool execute return:**
+BAD - Casting tool execute return:
 ```typescript
 export const myTool = createTool({
   id: 'my-tool',
   execute: async ({ context }) => {
     const data = await fetchData();
-    return data as ToolOutput; // cast hides shape mismatch
+    return data as ToolOutput;
   },
 });
 ```
 
-✅ **GOOD - Let types flow from the SDK:**
+GOOD - Let types flow from the SDK:
 ```typescript
 export const myTool = createTool({
   id: 'my-tool',
@@ -53,12 +47,12 @@ export const myTool = createTool({
   outputSchema: myOutputSchema,
   execute: async ({ context }) => {
     const data = await fetchData();
-    return data; // SDK infers the output type from outputSchema
+    return data;
   },
 });
 ```
 
-✅ **GOOD - Use `satisfies` for config objects:**
+GOOD - Use `satisfies` for config objects:
 ```typescript
 const agentConfig = {
   name: 'MyAgent',
@@ -83,8 +77,6 @@ export const searchTool = createTool({
   inputSchema,
   outputSchema,
   execute: async ({ context }) => {
-    // context.query is inferred as string from inputSchema
-    // return type is inferred from outputSchema
     return { results: await search(context.query) };
   },
 });
@@ -92,7 +84,7 @@ export const searchTool = createTool({
 
 ### Workflow Steps
 
-Don't annotate step input/output types — they're inferred from the schema and previous steps:
+Don't annotate step input/output types — they're inferred from schemas and previous steps:
 
 ```typescript
 const myWorkflow = createWorkflow({
@@ -100,8 +92,8 @@ const myWorkflow = createWorkflow({
   inputSchema: z.object({ prompt: z.string() }),
   outputSchema: z.object({ answer: z.string() }),
 })
-  .then(stepOne)  // input/output types inferred
-  .then(stepTwo)  // receives stepOne's output type automatically
+  .then(stepOne)
+  .then(stepTwo)
   .commit();
 ```
 
@@ -115,7 +107,7 @@ const response = await agent.generate(prompt) as { text: string };
 
 // RIGHT
 const response = await agent.generate(prompt);
-const text = response.text; // type is already known from the SDK
+const text = response.text;
 ```
 
 ## Why This Matters for Mastra Specifically

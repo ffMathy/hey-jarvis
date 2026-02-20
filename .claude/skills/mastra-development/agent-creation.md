@@ -1,8 +1,3 @@
----
-name: mastra-agent-creation
-description: Factory pattern and conventions for creating Mastra AI agents
----
-
 # Creating Mastra Agents
 
 Use the Hey Jarvis factory pattern for creating all agents.

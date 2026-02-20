@@ -1,8 +1,3 @@
----
-name: mastra-workflow-creation
-description: Factory pattern for creating Mastra workflows with agent-as-step and tool-as-step patterns
----
-
 # Creating Mastra Workflows
 
 Use the Hey Jarvis factory pattern for creating workflows and leverage modern patterns.

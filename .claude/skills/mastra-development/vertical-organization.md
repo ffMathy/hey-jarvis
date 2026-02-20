@@ -1,8 +1,3 @@
----
-name: mastra-vertical-organization
-description: Organize code by business domain verticals, not technical layers
----
-
 # Mastra Vertical Organization
 
 This project uses **vertical organization** where code is grouped by business domain, not technical layer.
