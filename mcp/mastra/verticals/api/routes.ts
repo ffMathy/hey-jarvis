@@ -45,7 +45,9 @@ function extractWorkflowError(result: AnyWorkflowResult): string {
  * router.post('/api/shopping-list', handler);
  * ```
  */
-export function createWorkflowApiHandler(workflow: AnyWorkflow) {
+export function createWorkflowApiHandler(
+  workflow: AnyWorkflow,
+): (req: Request, res: Response, next: NextFunction) => Promise<void> {
   const workflowName = workflow.name ?? workflow.id;
 
   return async (req: Request, res: Response, next: NextFunction) => {

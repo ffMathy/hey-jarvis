@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'bun:test';
 import { mastra } from '../../index.js';
-import { ensureModelAvailable, isOllamaAvailable, OLLAMA_MODEL } from '../../utils/providers/ollama-provider.js';
+import { isOllamaAvailable, OLLAMA_MODEL } from '../../utils/providers/ollama-provider.js';
 
 describe('weatherMonitoringWorkflow', () => {
   let ollamaAvailable = false;
@@ -20,9 +20,6 @@ describe('weatherMonitoringWorkflow', () => {
     ollamaAvailable = await isOllamaAvailable();
     if (!ollamaAvailable) {
       console.log('⚠️ Ollama is not available - integration tests requiring Ollama will be skipped');
-    } else {
-      // Ensure the model is available (lazy pull if needed)
-      await ensureModelAvailable(OLLAMA_MODEL);
     }
   });
 

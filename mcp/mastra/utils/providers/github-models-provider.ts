@@ -1,4 +1,5 @@
 import { createOpenAI } from '@ai-sdk/openai';
+import type { LanguageModelV3 } from '@ai-sdk/provider';
 import { google } from './google-provider.js';
 
 /**
@@ -92,7 +93,7 @@ export function getEquivalentGitHubModel(geminiModel: string): string {
  * @param geminiModel - The Gemini model name to use in production
  * @returns The appropriate model instance for the current environment
  */
-export function getModel(geminiModel: string) {
+export function getModel(geminiModel: string): LanguageModelV3 {
   if (shouldUseGitHubModels()) {
     const githubProvider = getGitHubModelsProvider();
     const modelId = getEquivalentGitHubModel(geminiModel);

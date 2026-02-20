@@ -1,74 +1,122 @@
-import {
-  createLazyOllamaProvider,
-  ensureModelAvailable,
-  getOllamaApiUrl,
-  getOllamaQueueLength,
-  getOllamaQueueStats,
-  isModelAvailable,
-  isOllamaAvailable,
-  listModels,
-  OLLAMA_BASE_URL,
-} from './ollama-model-manager.js';
+import type { LanguageModelV3 } from '@ai-sdk/provider';
+import { createOllama } from 'ai-sdk-ollama';
 
 /**
- * Creates an Ollama provider instance for local LLM inference.
+ * Ollama provider for local LLM inference.
  *
- * This provider connects to the Ollama server running as a separate Home Assistant
- * extension at http://homeassistant.local:11434.
+ * Connects to the Ollama cluster configured via OLLAMA_BASE_URL
+ * (defaults to http://jarvis.local:8000).
  *
- * Uses ollama-ai-provider-v2 which is compatible with AI SDK v5 (LanguageModelV2).
- * This ensures compatibility with Mastra's .stream() method.
- *
- * **Lazy Model Loading**: Models are automatically pulled on first use if not already available.
- * This provides a seamless experience even if models aren't pre-installed.
- *
- * **Request Logging**: All inference calls are logged with timing information including
- * model name, prompt preview, and duration in milliseconds.
- *
- * **CPU Thread Limiting**: By default, Ollama uses 50% of available CPU cores to prevent
- * system overload. This can be customized via the OLLAMA_NUM_THREADS environment variable.
- *
- * **Request Queue**: Inference requests are processed serially to prevent Ollama overload.
- * When the queue reaches its maximum size (10), new requests are dropped with an error.
- *
- * Environment variables:
- * - OLLAMA_NUM_THREADS: Number of CPU threads for inference (default: 50% of CPU cores)
+ * Uses a custom fetch wrapper to strip fields unsupported by the
+ * Hailo hardware-accelerated cluster:
+ * - tools / tool_choice: no function-calling API support
+ * - format: no structured output / JSON schema support
  */
 
-/**
- * Ollama provider with lazy model loading.
- * Models are automatically pulled on first use if not already available.
- */
-export const ollama = createLazyOllamaProvider();
+const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL ?? 'http://jarvis.local:8000';
 
 /**
- * Default Ollama model for scheduled/automated workflows.
- * Uses Qwen3 with 0.6 billion parameters for optimal performance.
- * This model is used by the workflow scheduler for all internal operations.
+ * Default Ollama model. Pre-loaded on the Jarvis Hailo cluster.
+ * Configurable via OLLAMA_MODEL environment variable.
  */
-export const OLLAMA_MODEL = 'qwen3:0.6b';
+export const OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? 'qwen2.5-instruct:1.5b';
 
 /**
- * Pre-configured Ollama model instance for use in agents and workflows.
- * This is the recommended way to use Ollama in scheduled tasks.
- * Models are automatically pulled on first use if not available.
+ * Strip fields that crash the Hailo cluster's oatpp-based Ollama server.
+ * The cluster uses HEF-format models and does not support tools or JSON schema.
+ *
+ * Bun's `typeof fetch` includes a `preconnect` property for DNS prefetching.
+ * We copy it from the global fetch so the wrapper satisfies the type at runtime.
  */
-export const ollamaModel = ollama(OLLAMA_MODEL);
+const strippingFetch = Object.assign(
+  async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    if (init?.body && typeof init.body === 'string') {
+      try {
+        const body = JSON.parse(init.body) as Record<string, unknown>;
+        const { tools: _t, tool_choice: _tc, format: _f, ...stripped } = body;
+        init = { ...init, body: JSON.stringify(stripped) };
+      } catch {
+        // Not JSON — pass through as-is
+      }
+    }
+    return fetch(input, init);
+  },
+  // Copy Bun's preconnect and any other static properties from global fetch
+  { preconnect: fetch.preconnect },
+) as typeof fetch;
 
 /**
- * Get the Ollama base URL for health checks and API calls.
+ * Ollama provider instance pointing at the Jarvis cluster.
+ * Call as `ollama('model-id')` or `ollama.chat('model-id')` to get a language model.
+ */
+export const ollama = createOllama({
+  baseURL: OLLAMA_BASE_URL,
+  fetch: strippingFetch,
+});
+
+/**
+ * Pre-configured default model for use in agents and workflows.
+ */
+export const ollamaModel: LanguageModelV3 = ollama(OLLAMA_MODEL);
+
+/**
+ * Returns the Ollama API base URL including /api path (for health checks etc.).
  */
 export function getOllamaBaseUrl(): string {
   return `${OLLAMA_BASE_URL}/api`;
 }
 
-// Re-export model manager functions for convenience
-export {
-  ensureModelAvailable,
-  getOllamaApiUrl,
-  getOllamaQueueLength,
-  getOllamaQueueStats,
-  isModelAvailable,
-  isOllamaAvailable,
-  listModels,
-};
+/**
+ * Returns the Ollama base URL (without /api path).
+ */
+export function getOllamaApiUrl(): string {
+  return OLLAMA_BASE_URL;
+}
+
+/**
+ * Returns true if the Ollama server is reachable.
+ */
+export async function isOllamaAvailable(): Promise<boolean> {
+  try {
+    const response = await fetch(`${OLLAMA_BASE_URL}/api/tags`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Returns true if the given model is available on the Ollama server.
+ */
+export async function isModelAvailable(modelName: string): Promise<boolean> {
+  try {
+    const response = await fetch(`${OLLAMA_BASE_URL}/api/tags`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok) return false;
+    const data = (await response.json()) as { models?: Array<{ name: string }> };
+    const models = data.models ?? [];
+    const baseName = modelName.split(':')[0];
+    return models.some((m) => m.name === modelName || m.name.startsWith(`${baseName}:`));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Returns the list of model names available on the Ollama server.
+ */
+export async function listModels(): Promise<string[]> {
+  try {
+    const response = await fetch(`${OLLAMA_BASE_URL}/api/tags`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok) return [];
+    const data = (await response.json()) as { models?: Array<{ name: string }> };
+    return (data.models ?? []).map((m) => m.name);
+  } catch {
+    return [];
+  }
+}

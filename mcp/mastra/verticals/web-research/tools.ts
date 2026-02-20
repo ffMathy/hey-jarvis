@@ -14,10 +14,11 @@
  * The Tavily API key is no longer required for this agent.
  */
 
+import type { ToolsInput } from '@mastra/core/agent';
 import { google } from '../../utils/providers/google-provider.js';
 
 // Export the Google Search tool for the web research agent
-export const webResearchTools = {
+export const webResearchTools: ToolsInput = {
   googleSearch: {
     id: 'googleSearch',
     description: 'Tool for performing web searches using Google Search API.',

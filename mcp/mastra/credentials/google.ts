@@ -1,5 +1,7 @@
-import type { OAuth2Client } from 'google-auth-library';
-import { google } from 'googleapis';
+import { type Auth, google } from 'googleapis';
+
+type OAuth2Client = Auth.OAuth2Client;
+
 import type { OAuthProvider, TokenResponse } from './types.js';
 
 const REDIRECT_URI = 'http://localhost:3000/oauth2callback';
