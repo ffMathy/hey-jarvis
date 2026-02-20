@@ -57,6 +57,17 @@ This project uses **1Password CLI** for secure environment variable management.
 - Reuse the same terminal ID for related commands
 - This maintains context and environment variables
 
+## Research Before Implementing
+
+**CRITICAL: Always search online before fixing errors, installing tools, or implementing features.**
+
+Before starting any implementation or debugging:
+1. **Search online first** — use `WebSearch` or `search_with_grounding` to find known issues, docs, and best practices
+2. **Check GitHub issues** — many errors have confirmed workarounds in open/closed issues
+3. **Verify the fix** — confirm the solution applies to the current version before applying it
+
+This prevents wasted effort from trial-and-error and finds the authoritative fix faster.
+
 ## Core Development Principles
 
 **See these skills for detailed guidance:**
