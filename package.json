@@ -95,7 +95,7 @@
     "@types/node-cron": "^3.0.11",
     "@types/node-fetch": "^2.6.13",
     "@typescript/native-preview": "^7.0.0-dev.20260220.1",
-    "ai": "^6.0.96",
+    "ai": "^6.0.97",
     "ai-sdk-ollama": "^3.7.1",
     "commander": "^14.0.3",
     "dotenv": "^17.3.1",
