@@ -10,11 +10,8 @@ export {
 } from './providers/github-models-provider.js';
 export { google } from './providers/google-provider.js';
 export {
-  ensureModelAvailable,
   getOllamaApiUrl,
   getOllamaBaseUrl,
-  getOllamaQueueLength,
-  getOllamaQueueStats,
   isModelAvailable,
   isOllamaAvailable,
   listModels,
