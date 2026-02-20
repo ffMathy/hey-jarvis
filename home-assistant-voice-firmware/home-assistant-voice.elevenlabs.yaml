@@ -29,7 +29,7 @@ esphome:
   name: hass-elevenlabs
   friendly_name: Home Assistant Voice ElevenLabs
   name_add_mac_suffix: true
-  min_version: 2025.11.0
+  min_version: 2025.12.0
   compile_process_limit: 1
   on_boot:
     priority: 375
@@ -670,10 +670,10 @@ script:
     then:
       - lambda: |
           const auto timers = id(va).get_timers();
-          auto output_timer = timers.begin()->second;
-          for (auto &iterable_timer : timers) {
-            if (iterable_timer.second.is_active && iterable_timer.second.seconds_left <= output_timer.seconds_left) {
-              output_timer = iterable_timer.second;
+          auto output_timer = timers.front();
+          for (const auto &iterable_timer : timers) {
+            if (iterable_timer.is_active && iterable_timer.seconds_left <= output_timer.seconds_left) {
+              output_timer = iterable_timer;
             }
           }
           id(first_active_timer) = output_timer;
@@ -685,8 +685,8 @@ script:
           const auto timers = id(va).get_timers();
           bool output = false;
           if (timers.size() > 0) {
-            for (auto &iterable_timer : timers) {
-              if(iterable_timer.second.is_active) {
+            for (const auto &iterable_timer : timers) {
+              if(iterable_timer.is_active) {
                 output = true;
               }
             }

@@ -1,7 +1,7 @@
 import type { Agent } from '@mastra/core/agent';
 import { chain, keyBy } from 'lodash-es';
 import z from 'zod';
-import { createAgentStep, createStep, createWorkflow, getModel } from '../../utils';
+import { createAgent, createAgentStep, createStep, createWorkflow, getModel } from '../../utils';
 import { getPublicAgents } from '..';
 
 const outputTaskSchema = z.object({
@@ -45,7 +45,7 @@ export const dagSchema = outputSchema.extend({
   tasks: z.array(
     outputTaskSchema.extend({
       executionPromise: z.promise(outputTaskSchema).optional().describe('Internal promise tracking task execution'),
-      result: z.any().optional().describe('Result of the task execution'),
+      result: z.unknown().optional().describe('Result of the task execution'),
       reported: z.boolean().optional().describe('Whether the task result has been reported back to Jarvis'),
     }),
   ),
@@ -53,12 +53,18 @@ export const dagSchema = outputSchema.extend({
 
 export type AgentProvider = () => Promise<Agent[]>;
 
+export type DagGenerator = (
+  agents: z.infer<typeof listAvailableAgentsStep.outputSchema>,
+  userQuery: string,
+) => Promise<z.infer<typeof outputSchema>>;
+
 /**
  * Workflow state that contains all globally needed state for routing workflows.
  * This can be replaced by tests for mocking purposes.
  */
 export interface WorkflowState {
   agentProvider: AgentProvider;
+  dagGenerator?: DagGenerator;
   taskCompletedListeners: Array<(task: z.infer<typeof outputTaskSchema>) => void>;
   currentDAG: z.infer<typeof dagSchema>;
 }
@@ -341,15 +347,7 @@ async function startDagExecution() {
   workflowState.currentDAG.executionPromise = undefined;
 }
 
-const generateDagStep = createAgentStep({
-  id: 'generate-dag',
-  description: 'Generate DAG of tasks to fulfill routing query',
-  stateSchema,
-  agentConfig: {
-    model: getModel('gemini-flash-lite-latest'),
-    id: 'dag-agent',
-    name: 'DagAgent',
-    instructions: `You are a task decomposition specialist that converts user queries into Directed Acyclic Graphs (DAGs) of executable tasks.
+const DAG_AGENT_INSTRUCTIONS = `You are a task decomposition specialist that converts user queries into Directed Acyclic Graphs (DAGs) of executable tasks.
 
 # Your Role
 Analyze the user's query and decompose it into discrete, executable tasks that can be assigned to available agents. Each task forms a node in a DAG where edges represent data dependencies.
@@ -394,35 +392,63 @@ Each task MUST have:
 # Output Quality
 - Prefer fewer, well-scoped tasks over many granular ones
 - Combine related operations for the same agent when logical
-- Ensure leaf tasks (those with no dependents) directly address user-facing needs`,
-  },
-  inputSchema: listAvailableAgentsStep.outputSchema,
+- Ensure leaf tasks (those with no dependents) directly address user-facing needs`;
+
+const generateDagStep = createStep({
+  id: 'generate-dag',
+  description: 'Generate DAG of tasks to fulfill routing query',
+  stateSchema,
+  inputSchema: listAvailableAgentsStep.outputSchema as z.ZodTypeAny,
   outputSchema: outputSchema,
-  prompt: async (context) => {
-    return `
-            # User query
-            > ${context.state.userQuery}
+  execute: async (context) => {
+    if (workflowState.dagGenerator) {
+      return workflowState.dagGenerator(context.inputData, context.state.userQuery ?? '');
+    }
 
-            # Agents available
-            \`\`\`json
-            ${JSON.stringify(context.inputData.agents, null, 2)}
-            \`\`\`
+    const agent = await createAgent({
+      model: getModel('gemini-flash-lite-latest'),
+      id: 'dag-agent',
+      name: 'DagAgent',
+      instructions: DAG_AGENT_INSTRUCTIONS,
+      memory: undefined,
+    });
 
-            # Current tasks
-            \`\`\`json
-            ${JSON.stringify(workflowState.currentDAG.tasks, null, 2)}
-            \`\`\`
-        `;
+    const prompt = `
+      # User query
+      > ${context.state.userQuery}
+
+      # Agents available
+      \`\`\`json
+      ${JSON.stringify((context.inputData as { agents: unknown[] }).agents, null, 2)}
+      \`\`\`
+
+      # Current tasks
+      \`\`\`json
+      ${JSON.stringify(workflowState.currentDAG.tasks, null, 2)}
+      \`\`\`
+    `
+      .split('\n')
+      .map((line) => line.trim())
+      .join('\n')
+      .trim();
+
+    const response = await agent.stream([{ role: 'user', content: prompt }], {
+      structuredOutput: { schema: outputSchema },
+      toolChoice: 'none',
+    });
+
+    const result = await response.object;
+    return outputSchema.parse(result);
   },
 });
 
 const mergeDagStep = createStep({
   id: 'merge-dag',
   description: 'Merge newly generated DAG with current DAG of tasks',
-  inputSchema: generateDagStep.outputSchema,
+  inputSchema: generateDagStep.outputSchema as z.ZodTypeAny,
   outputSchema: outputSchema,
   execute: async (context) => {
-    const newTasks = context.inputData.tasks;
+    const newTasks = (context.inputData as z.infer<typeof outputSchema>).tasks;
     const mergedTasks = [...workflowState.currentDAG.tasks];
 
     const existingTaskIds = new Set(mergedTasks.map((t) => t.id));
@@ -441,7 +467,7 @@ const mergeDagStep = createStep({
 const optimizeDagStep = createStep({
   id: 'optimize-dag',
   description: 'Optimize DAG by compressing sequential tasks for the same agent',
-  inputSchema: mergeDagStep.outputSchema,
+  inputSchema: mergeDagStep.outputSchema as z.ZodTypeAny,
   outputSchema: outputSchema,
   execute: async (_context) => {
     const tasks = workflowState.currentDAG.tasks;
@@ -551,7 +577,7 @@ const startDagExecutionStep = createStep({
   id: 'start-dag-execution',
   description: 'Start execution of DAG tasks',
   stateSchema,
-  inputSchema: optimizeDagStep.outputSchema,
+  inputSchema: optimizeDagStep.outputSchema as z.ZodTypeAny,
   outputSchema: z.object({
     instructions: z.string().describe('Instructions for Jarvis to follow'),
     taskIdsInProgress: z.array(z.string()).describe('IDs of tasks currently in progress'),
@@ -604,7 +630,7 @@ const instructionsOutputSchema = z.object({
     .array(
       z.object({
         id: z.string().describe('The unique task ID'),
-        result: z.any().describe('Result of the task execution'),
+        result: z.unknown().describe('Result of the task execution'),
       }),
     )
     .optional()

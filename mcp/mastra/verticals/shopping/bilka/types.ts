@@ -62,8 +62,8 @@ export interface CatalogProduct {
   properties: string[];
   attributes: ProductAttribute[];
   energyInfo: ProductEnergyInfo;
-  safetyIcons: any[];
-  safetyTexts: any[];
+  safetyIcons: unknown[];
+  safetyTexts: unknown[];
   images: string[];
   productType: string;
   infos: ProductInfo[];
@@ -103,7 +103,7 @@ export interface SearchResult {
   params: string;
   index: string;
   queryID: string;
-  renderingContent: Record<string, any>;
+  renderingContent: Record<string, unknown>;
   extensions: SearchExtensions;
   processingTimeMS: number;
   processingTimingsMS: ProcessingTimings;
@@ -168,20 +168,20 @@ export interface BilkaCartOrderLine {
   sort: number;
   product: BilkaCartProduct;
   unavailable_reason: string;
-  discounts: any[];
-  deposits: any[];
-  replacement: any;
-  returns: any[];
+  discounts: unknown[];
+  deposits: unknown[];
+  replacement: unknown;
+  returns: unknown[];
   pickedCountryOfOrigin: string;
   comment: string;
-  strikethrough: any;
-  tagline: any;
-  children: any[];
+  strikethrough: unknown;
+  tagline: unknown;
+  children: unknown[];
 }
 
 export interface BilkaCartLine {
   orderlines: BilkaCartOrderLine[];
-  discounts: any[];
+  discounts: unknown[];
 }
 
 export interface BilkaCartSection {
@@ -224,9 +224,9 @@ export interface BilkaCartStat {
   packaging_price: number;
   price_no_promo: number;
   subtotal_no_promo: number;
-  uncollected_fee: any;
-  global_discounts: any[];
-  vouchers: any[];
+  uncollected_fee: unknown;
+  global_discounts: unknown[];
+  vouchers: unknown[];
   minimum_left: number;
   minimum_left_text: string;
   specifications: BilkaCartSpecification[];
@@ -234,7 +234,7 @@ export interface BilkaCartStat {
 
 export interface BilkaDeliveryAddress {
   id: string;
-  dawa_uid: any;
+  dawa_uid: unknown;
   name: string;
   address: string;
   street: string;
@@ -252,7 +252,7 @@ export interface BilkaDeliveryAddress {
   missing_hd_address: boolean;
   accessconditions_required: boolean;
   hd_available: boolean;
-  temporary_zipcode: any;
+  temporary_zipcode: unknown;
 }
 
 export interface BilkaDeliveryDate {
@@ -271,9 +271,9 @@ export interface BilkaDeliveryDate {
 export interface BilkaCartResponse {
   stat: BilkaCartStat;
   lines: BilkaCartSection[];
-  messages: any[];
+  messages: unknown[];
   has_b2b_organisations: boolean;
-  company: any;
+  company: unknown;
   is_ski: boolean;
   hd_available: boolean;
   missing_hd_address: boolean;
@@ -282,9 +282,9 @@ export interface BilkaCartResponse {
   ageRestrictionEnabled: boolean;
   deliveryAddress: BilkaDeliveryAddress;
   deliveryDate: BilkaDeliveryDate;
-  checkoutconsent: any[];
+  checkoutconsent: unknown[];
   eid: number;
   uid: number;
   tid: string;
-  info_object: any;
+  info_object: unknown;
 }

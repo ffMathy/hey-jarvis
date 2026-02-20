@@ -73,7 +73,7 @@ export async function searchProductCatalog(
 /**
  * Changes the quantity of a product in the cart
  */
-export async function changeProductQuantity(objectId: string, quantity: number, productName: string): Promise<any> {
+export async function changeProductQuantity(objectId: string, quantity: number, productName: string): Promise<unknown> {
   const jwtToken = await authenticateWithBilka();
 
   const url = `https://api.bilkatogo.dk/api/shop/v6/ChangeLineCount?u=w&productId=${encodeURIComponent(objectId)}&count=${quantity}&fullCart=0&name=${encodeURIComponent(productName)}`;
@@ -115,7 +115,7 @@ export async function getCartContents(): Promise<BilkaCartResponse> {
 /**
  * Empties the entire shopping cart
  */
-export async function clearCart(): Promise<any> {
+export async function clearCart(): Promise<unknown> {
   const jwtToken = await authenticateWithBilka();
 
   const response = await fetch('https://api.bilkatogo.dk/api/shop/v6/EmptyCart', {

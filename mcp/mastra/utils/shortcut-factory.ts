@@ -1,4 +1,4 @@
-import type { Tool } from '@mastra/core/tools';
+import type { Tool, ToolExecutionContext } from '@mastra/core/tools';
 import { createTool as mastraCreateTool } from '@mastra/core/tools';
 
 /**
@@ -16,8 +16,7 @@ interface CreateShortcutConfig<TInput, TOutput> {
    * Transform function to execute the underlying tool and optionally transform the result.
    * Receives the input and returns the output (or a transformed version of it).
    */
-  // biome-ignore lint/suspicious/noExplicitAny: Context can vary depending on tool
-  execute: (input: TInput, context?: any) => Promise<TOutput>;
+  execute: (input: TInput, context: ToolExecutionContext) => Promise<TOutput>;
 }
 
 /**

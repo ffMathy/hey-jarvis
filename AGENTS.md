@@ -61,7 +61,8 @@ This project uses **1Password CLI** for secure environment variable management.
 
 **See these skills for detailed guidance:**
 - [`clean-code`](.github/skills/clean-code/SKILL.md) - Variable naming and YAGNI principle
-- [`typescript-type-safety`](.github/skills/typescript-type-safety/SKILL.md) - Type safety guidelines
+- [`typescript-type-safety`](.github/skills/typescript-type-safety/SKILL.md) - Type safety guidelines (prefer inference over casts)
+- [`mastra-type-safety`](.github/skills/mastra-type-safety/SKILL.md) - Infer types in Mastra code, never cast to fix version bumps
 - [`use-npm-packages`](.github/skills/use-npm-packages/SKILL.md) - Prefer existing libraries
 - [`boy-scout-rule`](.github/skills/boy-scout-rule/SKILL.md) - Leave code better than you found it
 - [`conventional-commits`](.github/skills/conventional-commits/SKILL.md) - Commit message standards
@@ -210,6 +211,7 @@ Each project has its own AGENTS.md with specialized instructions:
 - [`mastra-tool-creation`](.github/skills/mastra-tool-creation/SKILL.md) - Creating new tools
 - [`mastra-workflow-creation`](.github/skills/mastra-workflow-creation/SKILL.md) - Creating workflows
 - [`mastra-vertical-organization`](.github/skills/mastra-vertical-organization/SKILL.md) - Code organization
+- [`mastra-type-safety`](.github/skills/mastra-type-safety/SKILL.md) - Infer types in Mastra code, never cast to fix version bumps
 
 All contributions should:
 - Follow TypeScript best practices

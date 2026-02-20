@@ -15,7 +15,7 @@ import {
   ollamaModel,
 } from './ollama-provider.js';
 
-describe.skip('Ollama Provider Configuration', () => {
+describe('Ollama Provider Configuration', () => {
   it('should export the correct model name', () => {
     expect(OLLAMA_MODEL).toBe('qwen3:0.6b');
   });
@@ -124,16 +124,23 @@ describe('Ollama Docker Integration', () => {
     // The lazy loading provider should automatically pull the model if needed
     const model = ollama(OLLAMA_MODEL);
 
-    // Simple text generation test
-    const { text } = await model.doGenerate({
+    // Simple text generation test - LanguageModelV2 returns content array
+    const result = await model.doGenerate({
       inputFormat: 'messages',
       mode: { type: 'regular' },
       prompt: [{ role: 'user', content: [{ type: 'text', text: 'Say hello in one word.' }] }],
     });
 
-    expect(text).toBeDefined();
-    expect(typeof text).toBe('string');
-    expect(text.length).toBeGreaterThan(0);
+    expect(result.content).toBeDefined();
+    expect(Array.isArray(result.content)).toBe(true);
+    expect(result.content.length).toBeGreaterThan(0);
+
+    // qwen3 model may return reasoning content instead of text content
+    const hasContent = result.content.some(
+      (c: { type: string; text?: string }) =>
+        (c.type === 'text' || c.type === 'reasoning') && c.text && c.text.length > 0,
+    );
+    expect(hasContent).toBe(true);
   }, 120000); // Increased timeout to allow for model pulling
 
   it('should verify model is available after lazy loading', async () => {

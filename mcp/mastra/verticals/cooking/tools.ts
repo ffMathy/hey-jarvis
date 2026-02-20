@@ -198,7 +198,7 @@ export const getSearchFilters = createTool({
   description: 'Get available search filters for recipes',
   inputSchema: z.object({}),
   outputSchema: z.object({
-    filters: z.any(), // Will be defined based on actual API response
+    filters: z.unknown(),
   }),
   execute: async () => {
     const apiKey = getApiKey();

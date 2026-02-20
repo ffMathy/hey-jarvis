@@ -1,4 +1,6 @@
 import type { AgentConfig } from '@mastra/core/agent';
+import type { SchemaWithValidation } from '@mastra/core/stream';
+import type { ToolExecutionContext, ValidationError } from '@mastra/core/tools';
 import {
   type DefaultEngineType,
   type ExecuteFunctionParams,
@@ -10,6 +12,36 @@ import {
 } from '@mastra/core/workflows';
 import type { z } from 'zod';
 import { createAgent } from '../agent-factory.js';
+
+/**
+ * Centralized type aliases for workflow generics.
+ * Mastra's Workflow and Step types require `any` in their generic bounds internally,
+ * so we define these aliases once to avoid scattering `any` across the codebase.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra Step type requires `any` in its generic bounds
+type AnyStep = Step<string, any, any, any, any, any, DefaultEngineType>[];
+
+/**
+ * A Workflow with all generic parameters set to their defaults.
+ * Used when accepting any workflow instance without caring about specific types.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra Workflow type requires `any` in its Step bound
+export type AnyWorkflow = import('@mastra/core/workflows').Workflow<
+  DefaultEngineType,
+  any[],
+  string,
+  unknown,
+  unknown,
+  unknown,
+  unknown,
+  unknown
+>;
+
+/**
+ * A WorkflowResult with all generic parameters set to their defaults.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra WorkflowResult type requires `any` in its Step bound
+export type AnyWorkflowResult = import('@mastra/core/workflows').WorkflowResult<unknown, unknown, unknown, any[]>;
 
 /**
  * Creates a new Mastra Workflow with sensible defaults for the Hey Jarvis system.
@@ -60,8 +92,7 @@ export function createWorkflow<
   TState = unknown,
   TInput = unknown,
   TOutput = unknown,
-  // biome-ignore lint/suspicious/noExplicitAny: Type parameter defaults for generic workflow factory
-  TSteps extends Step<string, any, any, any, any, any, DefaultEngineType>[] = Step[],
+  TSteps extends AnyStep = Step[],
 >(config: WorkflowConfig<TWorkflowId, TState, TInput, TOutput, TSteps>) {
   return mastraCreateWorkflow(config);
 }
@@ -252,20 +283,16 @@ export function createAgentStep<
  */
 export function createToolStep<
   TStepId extends string = string,
-  // biome-ignore lint/suspicious/noExplicitAny: Generic constraint for any state schema
   TStateSchema extends z.ZodTypeAny | undefined = undefined,
-  TToolInput = any,
-  TToolOutput = any,
+  TToolInput = unknown,
+  TToolOutput = unknown,
 >(config: {
   id: TStepId;
   description: string;
   tool: {
-    // biome-ignore lint/suspicious/noExplicitAny: Zod type requires any for type parameters
-    inputSchema?: z.ZodType<TToolInput, any, any>;
-    // biome-ignore lint/suspicious/noExplicitAny: Zod type requires any for type parameters
-    outputSchema?: z.ZodType<TToolOutput, any, any>;
-    // biome-ignore lint/suspicious/noExplicitAny: Context can be any type
-    execute?: (inputData: TToolInput, context?: any) => Promise<TToolOutput>;
+    inputSchema?: SchemaWithValidation;
+    outputSchema?: SchemaWithValidation;
+    execute?: (inputData: TToolInput, context: ToolExecutionContext) => Promise<TToolOutput | ValidationError>;
   };
   stateSchema?: TStateSchema;
   inputOverrides?: Partial<TToolInput>;
@@ -274,8 +301,8 @@ export function createToolStep<
     throw new Error(`Tool for step ${config.id} must have inputSchema, outputSchema, and execute defined`);
   }
 
-  const inputSchema = config.tool.inputSchema;
-  const outputSchema = config.tool.outputSchema;
+  const inputSchema = config.tool.inputSchema as z.ZodTypeAny;
+  const outputSchema = config.tool.outputSchema as z.ZodTypeAny;
   const execute = config.tool.execute;
 
   return createStep<TStepId, TStateSchema, typeof inputSchema, typeof outputSchema>({
@@ -285,12 +312,13 @@ export function createToolStep<
     outputSchema,
     stateSchema: config.stateSchema,
     execute: async (params) => {
+      // params.mastra is a Mastra instance, but tools expect ToolExecutionContext - cast needed at workflow-tool boundary
       return await execute(
         {
-          ...params.inputData,
+          ...(params.inputData as Record<string, unknown>),
           ...(config.inputOverrides ?? {}),
-        },
-        params.mastra,
+        } as TToolInput,
+        params.mastra as unknown as ToolExecutionContext,
       );
     },
   });

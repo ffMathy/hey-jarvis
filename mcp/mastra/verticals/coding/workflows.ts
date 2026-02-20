@@ -1,3 +1,4 @@
+import type { CoreMessage } from 'ai';
 import { z } from 'zod';
 import { createStep, createToolStep, createWorkflow } from '../../utils/workflows/workflow-factory.js';
 import { assignCopilotToIssue, createGitHubIssue } from './tools.js';
@@ -33,7 +34,9 @@ const workflowStateSchema = z
     owner: z.string(),
     issueNumber: z.number().optional(),
     issueUrl: z.string().optional(),
-    conversationHistory: z.array(z.any()),
+    conversationHistory: z.array(
+      z.object({ role: z.enum(['user', 'assistant', 'system', 'tool']), content: z.string() }),
+    ),
     response: z
       .object({
         needsMoreQuestions: z.boolean(),
@@ -116,7 +119,8 @@ const askRequirementsQuestion = createStep({
     }
 
     // Get agent response with structured output
-    const response = await agent.stream(conversationHistory, {
+    // Mastra's MessageListInput discriminated union can't narrow { role: union; content } objects
+    const response = await agent.stream(conversationHistory as CoreMessage[], {
       structuredOutput: {
         schema: questioningResponseSchema,
       },
@@ -130,10 +134,10 @@ const askRequirementsQuestion = createStep({
     }
 
     // Add agent response to history
-    const updatedHistory = [
+    const updatedHistory: typeof conversationHistory = [
       ...conversationHistory,
       {
-        role: 'assistant',
+        role: 'assistant' as const,
         content: JSON.stringify(currentResponse),
       },
     ];
@@ -240,30 +244,34 @@ const createIssueWithRequirementsTool = createToolStep({
   tool: createGitHubIssue,
 });
 
+// Schema for issue creation tool output - validated at runtime since .then() chain passes unknown
+const issueCreationResultSchema = z.object({
+  success: z.boolean(),
+  message: z.string(),
+  issue_number: z.number().optional(),
+  issue_url: z.string().optional(),
+});
+
 // Step 5: Store issue creation result in workflow state
 const storeIssueCreationResult = createStep({
   id: 'store-issue-creation-result',
   description: 'Stores the issue creation result in workflow state',
   stateSchema: workflowStateSchema,
-  inputSchema: z.object({
-    success: z.boolean(),
-    message: z.string(),
-    issue_number: z.number().optional(),
-    issue_url: z.string().optional(),
-  }),
+  inputSchema: z.unknown(),
   outputSchema: z.object({}),
   execute: async (params) => {
-    if (!params.inputData.success || !params.inputData.issue_number || !params.inputData.issue_url) {
-      throw new Error(`Failed to create issue: ${params.inputData.message}`);
+    const input = issueCreationResultSchema.parse(params.inputData);
+    if (!input.success || !input.issue_number || !input.issue_url) {
+      throw new Error(`Failed to create issue: ${input.message}`);
     }
 
     const state = params.state;
     params.setState({
       ...state,
-      issueNumber: params.inputData.issue_number,
-      issueUrl: params.inputData.issue_url,
-      success: params.inputData.success,
-      message: params.inputData.message,
+      issueNumber: input.issue_number,
+      issueUrl: input.issue_url,
+      success: input.success,
+      message: input.message,
     });
     return {};
   },
@@ -321,35 +329,39 @@ const assignToCopilotTool = createToolStep({
   tool: assignCopilotToIssue,
 });
 
+// Schema for Copilot assignment tool output - validated at runtime since .then() chain passes unknown
+const copilotAssignmentResultSchema = z.object({
+  success: z.boolean(),
+  message: z.string(),
+  task_url: z.string().optional(),
+});
+
 // Step 9: Format final workflow output
 const formatFinalOutput = createStep({
   id: 'format-final-output',
   description: 'Formats the final workflow output with success message',
   stateSchema: workflowStateSchema,
-  inputSchema: z.object({
-    success: z.boolean(),
-    message: z.string(),
-    task_url: z.string().optional(),
-  }),
+  inputSchema: z.unknown(),
   outputSchema: z.object({
     success: z.boolean(),
     message: z.string(),
     issueUrl: z.string().optional(),
   }),
   execute: async (params) => {
+    const input = copilotAssignmentResultSchema.parse(params.inputData);
     const state = params.state;
 
-    if (!params.inputData.success) {
+    if (!input.success) {
       return {
         success: false,
-        message: `Copilot assignment initiated but may require manual confirmation: ${params.inputData.message}`,
+        message: `Copilot assignment initiated but may require manual confirmation: ${input.message}`,
         issueUrl: state.issueUrl,
       };
     }
 
     return {
       success: true,
-      message: `Successfully assigned Copilot to issue #${state.issueNumber}. ${params.inputData.message}`,
+      message: `Successfully assigned Copilot to issue #${state.issueNumber}. ${input.message}`,
       issueUrl: state.issueUrl,
     };
   },

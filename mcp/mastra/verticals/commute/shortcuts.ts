@@ -1,4 +1,3 @@
-import type { z } from 'zod';
 import { createShortcut } from '../../utils/shortcut-factory.js';
 import { type DeviceState, getAllDevices } from '../internet-of-things/tools.js';
 
@@ -11,9 +10,8 @@ import { type DeviceState, getAllDevices } from '../internet-of-things/tools.js'
  * schemas from the underlying tool they wrap.
  */
 
-// Type for device from getAllDevices output schema
-// Using non-null assertion since we know the schema exists
-type Device = z.infer<any>['devices'][number];
+// Reuse the exported DeviceState interface from IoT tools
+type Device = DeviceState;
 type Entity = Device['entities'][number];
 
 /**
@@ -38,7 +36,7 @@ const TESSIE_LOCATION_ENTITIES = {
  * Tessie devices have specific entity naming patterns for Tesla vehicles.
  */
 function isTessieCarDevice(device: Device): boolean {
-  return device.entities.some((entity: any) => {
+  return device.entities.some((entity: Entity) => {
     const entityId = entity.id.toLowerCase();
     return (
       entityId.includes('tessie') ||

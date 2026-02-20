@@ -103,7 +103,7 @@ export const generateMealPlanWorkflow = createWorkflow({
         tools: undefined,
       },
       stateSchema: generateMealPlanStateSchema,
-      inputSchema: getAllRecipes.outputSchema!,
+      inputSchema: getAllRecipes.outputSchema! as z.ZodTypeAny,
       outputSchema: z.object({
         mealplan: mealPlanSchema,
       }),

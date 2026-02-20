@@ -373,7 +373,7 @@ export const updateDraft = createTool({
     const accessToken = await getMicrosoftAuth();
     const { draftId, subject, bodyContent, toRecipients } = inputData;
 
-    const updateData: any = {};
+    const updateData: Record<string, unknown> = {};
 
     if (subject) {
       updateData.subject = subject;

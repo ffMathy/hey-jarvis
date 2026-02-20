@@ -1,7 +1,6 @@
-import type { Workflow, WorkflowResult } from '@mastra/core/workflows';
 import type { NextFunction, Request, Response, Router } from 'express';
-import type { ZodError } from 'zod';
 import { logger } from '../../utils/logger.js';
+import type { AnyWorkflow, AnyWorkflowResult } from '../../utils/workflows/workflow-factory.js';
 import { shoppingListWorkflow } from '../shopping/workflows.js';
 
 /**
@@ -17,15 +16,16 @@ interface WorkflowApiResponse<T = unknown> {
 /**
  * Formats Zod validation errors into a human-readable string.
  */
-function formatValidationErrors(zodError: ZodError<any>): string {
-  return zodError.issues.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ');
+function formatValidationErrors(zodError: {
+  issues: Array<{ path?: Array<string | number>; message: string }>;
+}): string {
+  return zodError.issues.map((e) => `${e.path?.join?.('.') ?? ''}: ${e.message}`).join(', ');
 }
 
 /**
  * Extracts an error message from a workflow result.
  */
-// biome-ignore lint/suspicious/noExplicitAny: WorkflowResult requires 4 generic parameters that cannot be inferred without specific workflow instances
-function extractWorkflowError(result: WorkflowResult<any, any, any, any>): string {
+function extractWorkflowError(result: AnyWorkflowResult): string {
   if ('error' in result && result.error instanceof Error) {
     return result.error.message;
   }
@@ -45,7 +45,7 @@ function extractWorkflowError(result: WorkflowResult<any, any, any, any>): strin
  * router.post('/api/shopping-list', handler);
  * ```
  */
-export function createWorkflowApiHandler(workflow: Workflow<any, any, any, any, any, any, any>) {
+export function createWorkflowApiHandler(workflow: AnyWorkflow) {
   const workflowName = workflow.name ?? workflow.id;
 
   return async (req: Request, res: Response, next: NextFunction) => {
@@ -111,7 +111,7 @@ interface WorkflowApiConfig {
   /** The URL path for the API endpoint (e.g., '/api/shopping-list') */
   path: string;
   /** The workflow to expose at this endpoint */
-  workflow: Workflow<any, any, any, any, any, any, any>;
+  workflow: AnyWorkflow;
   /** Optional description for logging purposes */
   description?: string;
 }
