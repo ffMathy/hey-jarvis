@@ -72,8 +72,8 @@
     ]
   },
   "dependencies": {
-    "@ai-sdk/google": "^2.0.42",
-    "@ai-sdk/openai": "^2.0.75",
+    "@ai-sdk/google": "^3.0.30",
+    "@ai-sdk/openai": "^3.0.30",
     "@azure/msal-node": "^3.8.3",
     "@elevenlabs/elevenlabs-js": "^2.25.0",
     "@googlemaps/google-maps-services-js": "^3.4.2",
@@ -92,7 +92,8 @@
     "@types/node-cron": "^3.0.11",
     "@types/node-fetch": "^2.6.13",
     "@typescript/native-preview": "^7.0.0-dev.20260220.1",
-    "ai": "^5.0.101",
+    "ai": "^6.0.96",
+    "ai-sdk-ollama": "^3.7.1",
     "commander": "^14.0.2",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
@@ -105,7 +106,6 @@
     "lodash-es": "^4.17.21",
     "node-cron": "^4.2.1",
     "octokit": "^5.0.5",
-    "ollama-ai-provider-v2": "^1.5.5",
     "open": "^11.0.0",
     "twilio": "^5.10.6",
     "zod": "^4.3.6"
