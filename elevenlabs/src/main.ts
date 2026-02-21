@@ -143,6 +143,54 @@ class ElevenLabsAgentManager {
     }
   }
 
+  private resolveAgentId(isTestAgent: boolean): string {
+    const agentId = isTestAgent
+      ? process.env.HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID
+      : process.env.HEY_JARVIS_ELEVENLABS_AGENT_ID;
+
+    if (!agentId) {
+      const envVarName = isTestAgent ? 'HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID' : 'HEY_JARVIS_ELEVENLABS_AGENT_ID';
+      throw new Error(`${envVarName} environment variable is required`);
+    }
+
+    return agentId;
+  }
+
+  private injectEnvironmentVariables(
+    config: Partial<GetAgentResponseModel>,
+    agentId: string,
+    voiceId: string | undefined,
+  ): void {
+    config.agentId = agentId;
+    if (voiceId && config.conversationConfig?.tts) {
+      // voice_id is not part of the official AgentConfig but may be needed by the API
+      config.conversationConfig.tts.voiceId = voiceId;
+    }
+  }
+
+  private applyTestAgentOverrides(config: Partial<GetAgentResponseModel>): void {
+    // Set textOnly to true for test agents
+    if (config.conversationConfig?.conversation) {
+      config.conversationConfig.conversation.textOnly = true;
+      console.log('🔧 Setting textOnly to true for test agent');
+    }
+
+    // Replace MCP server IDs with local tunnel MCP server for testing
+    if (config.conversationConfig?.agent?.prompt) {
+      config.conversationConfig.agent.prompt.mcpServerIds = ['GMOqF385QS1GsrZKfQk6'];
+      console.log('🔧 Setting mcpServerIds to local tunnel MCP server for test agent');
+
+      config.conversationConfig.agent.prompt.tools = [];
+      console.log('🔧 Clearing tools array for test agent');
+    }
+
+    // Suffix agent name with " (test)" to distinguish from production
+    if (config.name && !config.name.endsWith(' (test)')) {
+      config.name = `${config.name} (test)`;
+      console.log(`🏷️ Renaming agent to: ${config.name}`);
+    }
+  }
+
   private async deployConfig(isTestAgent: boolean = false): Promise<void> {
     try {
       const config = await this.loadConfig();
@@ -155,45 +203,13 @@ class ElevenLabsAgentManager {
         };
       }
 
-      const agentId = isTestAgent
-        ? process.env.HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID
-        : process.env.HEY_JARVIS_ELEVENLABS_AGENT_ID;
+      const agentId = this.resolveAgentId(isTestAgent);
       const voiceId = process.env.HEY_JARVIS_ELEVENLABS_VOICE_ID;
 
-      if (!agentId) {
-        const envVarName = isTestAgent ? 'HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID' : 'HEY_JARVIS_ELEVENLABS_AGENT_ID';
-        throw new Error(`${envVarName} environment variable is required`);
-      }
+      this.injectEnvironmentVariables(config, agentId, voiceId);
 
-      // Inject environment variables into config
-      config.agentId = agentId;
-      if (voiceId && config.conversationConfig?.tts) {
-        // voice_id is not part of the official AgentConfig but may be needed by the API
-        config.conversationConfig.tts.voiceId = voiceId;
-      }
-
-      // Modify configuration for test agents
       if (isTestAgent) {
-        // Set textOnly to true for test agents
-        if (config.conversationConfig?.conversation) {
-          config.conversationConfig.conversation.textOnly = true;
-          console.log('🔧 Setting textOnly to true for test agent');
-        }
-
-        // Replace MCP server IDs with local tunnel MCP server for testing
-        if (config.conversationConfig?.agent?.prompt) {
-          config.conversationConfig.agent.prompt.mcpServerIds = ['GMOqF385QS1GsrZKfQk6'];
-          console.log('🔧 Setting mcpServerIds to local tunnel MCP server for test agent');
-
-          config.conversationConfig.agent.prompt.tools = [];
-          console.log('🔧 Clearing tools array for test agent');
-        }
-
-        // Suffix agent name with " (test)" to distinguish from production
-        if (config.name && !config.name.endsWith(' (test)')) {
-          config.name = `${config.name} (test)`;
-          console.log(`🏷️ Renaming agent to: ${config.name}`);
-        }
+        this.applyTestAgentOverrides(config);
       }
 
       const agentType = isTestAgent ? 'test agent' : 'agent';

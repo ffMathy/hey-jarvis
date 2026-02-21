@@ -18,16 +18,16 @@ import { createAgent } from '../agent-factory.js';
  * Mastra's Workflow and Step types require `any` in their generic bounds internally,
  * so we define these aliases once to avoid scattering `any` across the codebase.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra Step type requires `any` in its generic bounds
+// biome-ignore lint/suspicious/noExplicitAny: Mastra Step type requires `any` in its generic bounds
 type AnyStep = Step<string, any, any, any, any, any, DefaultEngineType>[];
 
 /**
  * A Workflow with all generic parameters set to their defaults.
  * Used when accepting any workflow instance without caring about specific types.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra Workflow type requires `any` in its Step bound
 export type AnyWorkflow = import('@mastra/core/workflows').Workflow<
   DefaultEngineType,
+  // biome-ignore lint/suspicious/noExplicitAny: Mastra Workflow type requires `any` in its Step bound
   any[],
   string,
   unknown,
@@ -40,7 +40,7 @@ export type AnyWorkflow = import('@mastra/core/workflows').Workflow<
 /**
  * A WorkflowResult with all generic parameters set to their defaults.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra WorkflowResult type requires `any` in its Step bound
+// biome-ignore lint/suspicious/noExplicitAny: Mastra WorkflowResult type requires `any` in its Step bound
 export type AnyWorkflowResult = import('@mastra/core/workflows').WorkflowResult<unknown, unknown, unknown, any[]>;
 
 /**
@@ -236,25 +236,60 @@ export function createAgentStep<
         .join('\n')
         .trim();
 
-      const response = await agent.stream(
-        [
-          {
-            role: 'user',
-            content: prompt,
-          },
-        ],
-        {
-          structuredOutput: {
-            schema: config.outputSchema,
-          },
-          toolChoice: 'none',
-        },
-      );
+      const messages = [{ role: 'user' as const, content: prompt }];
 
-      const result = await response.object;
-      return config.outputSchema.parse(result);
+      // Use generate() instead of stream() — we need the full result anyway,
+      // and generate() exposes both .object and .text on the result so we can
+      // fall back to text parsing for models that don't support structured output
+      // (e.g. Ollama's Hailo cluster strips the JSON-mode `format` field).
+      try {
+        const response = await agent.generate(messages, {
+          structuredOutput: { schema: config.outputSchema },
+          toolChoice: 'none',
+        });
+
+        if (response.object !== undefined && response.object !== null) {
+          return config.outputSchema.parse(response.object);
+        }
+
+        // Structured output returned undefined — try text fallback
+        return extractResultFromText(response.text, config.outputSchema, config.id);
+      } catch (error) {
+        // Structured output failed entirely — retry with plain text to maximise resilience.
+        // Log so developers can diagnose whether this is a validation error, network issue, etc.
+        console.error(`Agent step "${config.id}" structured output failed; retrying without structured output.`, error);
+        const response = await agent.generate(messages, { toolChoice: 'none' });
+        return extractResultFromText(response.text, config.outputSchema, config.id);
+      }
     },
   });
+}
+
+/**
+ * Extracts a structured result from raw text when structured output is unavailable.
+ * Tries JSON parsing first, then wraps as `{ result: text }` for simple schemas.
+ */
+function extractResultFromText<T extends z.ZodTypeAny>(
+  text: string | undefined,
+  schema: T,
+  stepId: string,
+): z.infer<T> {
+  const trimmed = text?.trim();
+  if (!trimmed) {
+    throw new Error(`Agent step "${stepId}" produced no output`);
+  }
+
+  try {
+    return schema.parse(JSON.parse(trimmed));
+  } catch (error) {
+    // JSON.parse or schema.parse failed — fall back to wrapping the raw text.
+    // Log so malformed or unexpected agent output is visible during debugging.
+    console.warn(
+      `Failed to parse structured result for agent step "${stepId}", falling back to plain-text schema:`,
+      error,
+    );
+    return schema.parse({ result: trimmed });
+  }
 }
 
 /**

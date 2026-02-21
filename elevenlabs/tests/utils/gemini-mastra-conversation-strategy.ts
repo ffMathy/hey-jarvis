@@ -53,6 +53,7 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
       }
 
       // Extract tools from all agents
+      // biome-ignore lint/suspicious/noExplicitAny: Mastra tool types are dynamic and vary by agent
       const tools: Record<string, any> = {};
       for (const agent of agentsArray) {
         const agentTools = await agent.listTools();
@@ -156,7 +157,7 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
       {
         createdAt: new Date(),
         type: 'text',
-        id: 'message-' + this.messages.length.toString(),
+        id: `message-${this.messages.length.toString()}`,
         content: text,
         role: 'user' as const,
       },
@@ -182,22 +183,22 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
 
         const inProgressMessage = this.createToolCallMessage(
           toolCall.payload.toolName,
-          toolCall.runId + '_in_progress',
+          `${toolCall.runId}_in_progress`,
           JSON.stringify(inProgressResult),
         );
         this.messages.push(inProgressMessage);
 
         // Send in_progress to agent and store response
-        await this.sendToAgent(agent, JSON.stringify(inProgressResult), 'tool', 'tool-in-progress-' + toolCall.runId);
+        await this.sendToAgent(agent, JSON.stringify(inProgressResult), 'tool', `tool-in-progress-${toolCall.runId}`);
 
         // Step 2: Emit the actual tool result
         const result = toolCall.payload.result as Record<string, unknown> | undefined;
-        const toolResultText = (result?.['text'] as string) || JSON.stringify(toolCall.payload.result);
+        const toolResultText = (result?.text as string) || JSON.stringify(toolCall.payload.result);
         const toolMessage = this.createToolCallMessage(toolCall.payload.toolName, toolCall.runId, toolResultText);
         this.messages.push(toolMessage);
 
         // Send actual result to agent and store response
-        await this.sendToAgent(agent, toolResultText, 'tool', 'tool-result-' + toolCall.runId);
+        await this.sendToAgent(agent, toolResultText, 'tool', `tool-result-${toolCall.runId}`);
       }
     }
 

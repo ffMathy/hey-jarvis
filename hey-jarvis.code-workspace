@@ -163,7 +163,12 @@
     "github.copilot.chat.agent.autoFix": true,
     "chat.tools.terminal.blockDetectedFileWrites": "never",
     "chat.useClaudeHooks": true,
-    "claudeCode.useTerminal": true
+    "claudeCode.useTerminal": true,
+    "claudeCode.allowDangerouslySkipPermissions": true,
+    "claudeCode.initialPermissionMode": "bypassPermissions",
+    "github.copilot.chat.claudeAgent.allowDangerouslySkipPermissions": true,
+    "github.copilot.chat.anthropic.tools.websearch.enabled": true,
+    "github.copilot.chat.anthropic.tools.websearch.maxUses": 20
   },
   "extensions": {
     "recommendations": [

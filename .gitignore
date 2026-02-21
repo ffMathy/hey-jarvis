@@ -70,6 +70,9 @@ web_modules/
 .env
 !.env.example
 
+# 1Password resolved local env files
+op.env.local
+
 # parcel-bundler cache (https://parceljs.org/)
 .cache
 .parcel-cache
@@ -140,6 +143,7 @@ vite.config.ts.timestamp-*
 
 # NX
 .nx/cache
+.nx/installation
 .nx/workspace-data
 tmp/
 
@@ -153,10 +157,6 @@ tmp/
 *.dylib
 *.dll
 home-assistant-voice-firmware/dist/
-
-.nx/installation
-.nx/cache
-.nx/workspace-data
 
 
 .cursor/rules/nx-rules.mdc

@@ -22,7 +22,7 @@ export async function createMemory(options: CreateMemoryOptions = {}) {
   return new Memory({
     storage: sqlStorageProvider,
     vector: vectorStorageProvider,
-    embedder: google.textEmbeddingModel('text-embedding-004'),
+    embedder: google.embeddingModel('gemini-embedding-001'),
     options: {
       lastMessages: 10,
       workingMemory: enableWorkingMemory

@@ -1,12 +1,18 @@
 import { beforeAll, describe, expect, it } from 'bun:test';
-import { mastra } from '../../index.js';
-import { isOllamaAvailable, OLLAMA_MODEL } from '../../utils/providers/ollama-provider.js';
+import { Mastra } from '@mastra/core';
+import { isOllamaAvailable } from '../../utils/providers/ollama-provider.js';
+import { weatherMonitoringWorkflow } from './workflows.js';
 
 describe('weatherMonitoringWorkflow', () => {
   let ollamaAvailable = false;
+  let mastra: Mastra;
 
   beforeAll(async () => {
-    // Mastra is already initialized synchronously in index.ts
+    // Create a minimal Mastra instance with just the weather workflow.
+    // Avoids importing the full index.ts entrypoint which starts a Hono server at module level.
+    mastra = new Mastra({
+      workflows: { weatherMonitoringWorkflow },
+    });
 
     // Verify required environment variables
     if (!process.env.HEY_JARVIS_OPENWEATHERMAP_API_KEY) {

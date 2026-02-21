@@ -31,6 +31,7 @@
     "HEY_JARVIS_ELEVENLABS_VOICE_ID": "${localEnv:HEY_JARVIS_ELEVENLABS_VOICE_ID}",
     "HEY_JARVIS_WIFI_SSID": "${localEnv:HEY_JARVIS_WIFI_SSID}",
     "HEY_JARVIS_WIFI_PASSWORD": "${localEnv:HEY_JARVIS_WIFI_PASSWORD}",
+    "HEY_JARVIS_OLLAMA_BASE_URL": "${localEnv:HEY_JARVIS_OLLAMA_BASE_URL}",
     "NODE_OPTIONS": "--experimental-vm-modules",
     "PATH": "${containerEnv:HOME}/.bun/bin:/home/node/.bun/bin:/usr/local/bin:${containerEnv:PATH}"
   },
@@ -47,7 +48,8 @@
         "redhat.vscode-yaml",
         "esphome.esphome-vscode",
         "editorconfig.editorconfig",
-        "Anthropic.claude-code"
+        "Anthropic.claude-code",
+        "biomejs.biome"
       ],
       "settings": {
         //don't put settings here - instead, put them in hey-jarvis.code-workspace in the root of the repo

@@ -29,7 +29,8 @@ bunx nx build <project>    # Build for production
 
 **Testing:**
 ```bash
-bunx nx test <project>     # Run tests
+bunx nx test <project>                      # Run all tests
+bunx nx test <project> -- path/to/file.spec.ts  # Run specific file
 ```
 
 **Linting:**
