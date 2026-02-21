@@ -172,15 +172,13 @@ The voice firmware integrates with:
 - **Home Assistant Core**: Device registration and entity management
 - **Jarvis MCP Server**: Voice command processing and AI agent communication
 - **ElevenLabs**: Direct voice streaming and processing
-- **Home Assistant Addon**: Centralized management and configuration
-
 ## Network Architecture
 
 ```
-Voice Hardware → Home Assistant → Home Assistant Addon → Jarvis MCP Server → ElevenLabs
+Voice Hardware → Home Assistant → Jarvis MCP Server → ElevenLabs
 ```
 
-The firmware communicates with Home Assistant, which routes voice commands through the addon to the MCP server for processing.
+The firmware communicates with Home Assistant, which routes voice commands to the MCP server for processing.
 
 ## Troubleshooting
 

@@ -78,8 +78,7 @@ export const notifyDevice = createTool({
       if (!supervisorToken) {
         return {
           success: false,
-          message:
-            'Home Assistant Supervisor token not available. This tool only works when running inside Home Assistant addon.',
+          message: 'Home Assistant Supervisor token not available. Please set SUPERVISOR_TOKEN environment variable.',
         };
       }
 

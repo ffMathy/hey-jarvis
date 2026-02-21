@@ -24,7 +24,6 @@ This is an NX monorepo containing intelligent voice assistant components:
 |---------|-------------|
 | **mcp** | Mastra AI-powered Model Context Protocol server |
 | **elevenlabs** | ElevenLabs voice interface integration |
-| **home-assistant-addon** | Home Assistant addon for MCP server hosting |
 | **home-assistant-voice-firmware** | ESPHome firmware for voice hardware |
 
 ## Development Commands
@@ -57,17 +56,6 @@ This project uses **1Password CLI** for secure environment variable management.
 - Reuse the same terminal ID for related commands
 - This maintains context and environment variables
 
-## Research Before Implementing
-
-**CRITICAL: Always search online before fixing errors, installing tools, or implementing features.**
-
-Before starting any implementation or debugging:
-1. **Search online first** — use `WebSearch` or `search_with_grounding` to find known issues, docs, and best practices
-2. **Check GitHub issues** — many errors have confirmed workarounds in open/closed issues
-3. **Verify the fix** — confirm the solution applies to the current version before applying it
-
-This prevents wasted effort from trial-and-error and finds the authoritative fix faster.
-
 ## Core Development Principles
 
 **See these skills for detailed guidance:**
@@ -77,53 +65,6 @@ This prevents wasted effort from trial-and-error and finds the authoritative fix
 - [`use-npm-packages`](.github/skills/use-npm-packages/SKILL.md) - Prefer existing libraries
 - [`boy-scout-rule`](.github/skills/boy-scout-rule/SKILL.md) - Leave code better than you found it
 - [`conventional-commits`](.github/skills/conventional-commits/SKILL.md) - Commit message standards
-
-### 🔁 DRY (Don't Repeat Yourself)
-- **Centralized Configuration**: Ports and URLs in dedicated config files
-- **Single Source of Truth**: Never hardcode the same value in multiple files
-- **Helper Functions**: Create reusable functions instead of duplicating logic
-
-### 💬 Clean Code Comments
-**Comments should ONLY explain WHY, never WHAT or HOW:**
-
-❌ **NEVER:**
-```typescript
-// Loop through users
-for (const user of users) { ... }
-```
-
-✅ **ONLY:**
-```typescript
-// Using internal port to allow nginx to handle JWT authentication
-const port = 8111;
-```
-
-### 🔧 Use lodash-es for Utilities
-This project uses `lodash-es` for common utility functions:
-
-```typescript
-import { find, uniqueId, truncate, chain, groupBy } from 'lodash-es';
-
-const taskId = uniqueId('task-');
-const task = find(tasks, task => task.status === 'running');
-```
-
-## GitHub Integration
-
-**See the [`github-mcp-tools-usage`](.github/skills/github-mcp-tools-usage/SKILL.md) skill for detailed usage.**
-
-### GitHub MCP Tools Usage
-**CRITICAL: Always use GitHub MCP tools** for all repository operations.
-
-**Available Tools:**
-- `mcp_github_github_list_releases` - List all releases
-- `mcp_github_github_get_release_by_tag` - Get specific release
-- `mcp_github_github_get_latest_release` - Get latest release
-- `mcp_github_github_list_tags` - List all tags
-- `mcp_github_github_list_branches` - List all branches
-- `mcp_github_github_create_branch` - Create new branch
-- `mcp_github_github_create_or_update_file` - Create/update files
-- `mcp_github_github_push_files` - Push multiple files
 
 ## Web Search and Information Retrieval
 
@@ -185,22 +126,6 @@ const content = await playwright_browser_navigate({
 - Add inline comments for complex logic
 - Use the Mastra playground for testing and examples
 
-## Commit Message Standards
-
-**See the [`conventional-commits`](.github/skills/conventional-commits/SKILL.md) skill for complete guidance.**
-
-**CRITICAL: ALWAYS follow Conventional Commits:**
-
-Format: `<type>(<scope>): <subject>`
-
-Types: feat, fix, docs, style, refactor, perf, test, chore, build, ci
-
-Examples:
-```bash
-feat(mcp): add calendar agent for scheduling
-fix(shopping): correct product quantity calculation
-```
-
 ## Pull Request Standards
 
 **Pull request titles MUST follow Conventional Commits format** (same as commit messages).
@@ -212,7 +137,6 @@ Format: `<type>(<scope>): <subject>`
 Each project has its own AGENTS.md with specialized instructions:
 - **mcp/AGENTS.md** - Mastra agents, tools, workflows, and vertical organization
 - **elevenlabs/AGENTS.md** - Voice integration and testing guidelines
-- **home-assistant-addon/AGENTS.md** - Addon configuration and deployment
 - **home-assistant-voice-firmware/AGENTS.md** - Firmware development
 
 ## Contributing
@@ -250,7 +174,6 @@ bunx nx serve mcp
 ### Building for Production
 ```bash
 bunx nx build mcp
-bunx nx build home-assistant-addon
 ```
 
 ### Testing Changes

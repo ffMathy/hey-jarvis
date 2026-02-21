@@ -197,7 +197,7 @@ const prepareMealPlanFeedbackQuestion = createStep({
     if (!recipientEmails) {
       throw new Error(
         'HEY_JARVIS_MEAL_PLAN_NOTIFICATION_EMAIL environment variable is not set. ' +
-          'Please configure meal_plan_notification_email in the Home Assistant addon settings.',
+          'Please set the HEY_JARVIS_MEAL_PLAN_NOTIFICATION_EMAIL environment variable.',
       );
     }
 
