@@ -142,7 +142,9 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
 # NX
-.nx/
+.nx/cache
+.nx/installation
+.nx/workspace-data
 tmp/
 
 # C++ compiled binaries and object files
