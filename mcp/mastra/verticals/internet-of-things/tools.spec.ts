@@ -2,19 +2,25 @@ import { beforeAll, describe, expect, it } from 'bun:test';
 import { isValidationError } from '../../utils/test-helpers/validation-error.js';
 import { fetchHistoricalStates, getAllDevices, getAllServices } from './tools';
 
-describe('IoT Tools Integration Tests', () => {
-  beforeAll(() => {
-    // Verify Home Assistant configuration is available
-    // In production (addon): SUPERVISOR_TOKEN is used and converted to HEY_JARVIS_HOME_ASSISTANT_* by run.sh
-    // In tests: HEY_JARVIS_HOME_ASSISTANT_URL and HEY_JARVIS_HOME_ASSISTANT_TOKEN are used directly
-    if (!process.env.HEY_JARVIS_HOME_ASSISTANT_URL || !process.env.HEY_JARVIS_HOME_ASSISTANT_TOKEN) {
-      throw new Error(
-        'Home Assistant configuration is required for IoT tools tests.\n' +
-          'Set HEY_JARVIS_HOME_ASSISTANT_URL and HEY_JARVIS_HOME_ASSISTANT_TOKEN environment variables.',
-      );
-    }
-  });
+// Pre-flight check: verify Home Assistant is configured and reachable.
+// Unlike cloud APIs, HA runs on a local network and may not be accessible from CI runners.
+const HA_URL = process.env.HEY_JARVIS_HOME_ASSISTANT_URL;
+const HA_TOKEN = process.env.HEY_JARVIS_HOME_ASSISTANT_TOKEN;
+let isHomeAssistantReachable = false;
 
+if (HA_URL && HA_TOKEN) {
+  try {
+    const response = await fetch(`${HA_URL}/api/`, {
+      headers: { Authorization: `Bearer ${HA_TOKEN}` },
+      signal: AbortSignal.timeout(5000),
+    });
+    isHomeAssistantReachable = response.ok;
+  } catch {
+    // HA is not reachable (local network, DNS resolution failure, etc.)
+  }
+}
+
+describe.skipIf(!isHomeAssistantReachable)('IoT Tools Integration Tests', () => {
   describe('getAllDevices', () => {
     it('should retrieve all devices from Home Assistant', async () => {
       const result = await getAllDevices.execute({});

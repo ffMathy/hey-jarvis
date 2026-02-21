@@ -38,7 +38,6 @@ Search: "SQL injection prevention TypeScript parameterized queries"
 ```
 
 ## Search Tool
-
-Use the `search_with_grounding` tool extensively for all research needs.
+Use your preferred search engine (Google, Bing, DuckDuckGo, etc.) and consider using advanced search operators to narrow down results. Always check the date of the information to ensure it's current.
 
 **Remember**: More research = Better implementation. Never skip this step!
