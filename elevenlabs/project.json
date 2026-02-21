@@ -5,6 +5,13 @@
   "projectType": "application",
   "tags": [],
   "targets": {
+    "env:local": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "./.scripts/generate-env-local.sh elevenlabs/op.env elevenlabs/.env.local",
+        "cwd": "."
+      }
+    },
     "typecheck": {
       "executor": "nx:run-commands",
       "cache": true,

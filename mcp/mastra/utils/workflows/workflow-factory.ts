@@ -254,8 +254,10 @@ export function createAgentStep<
 
         // Structured output returned undefined — try text fallback
         return extractResultFromText(response.text, config.outputSchema, config.id);
-      } catch {
-        // Structured output failed entirely (validation error) — retry without it
+      } catch (error) {
+        // Structured output failed entirely — retry with plain text to maximise resilience.
+        // Log so developers can diagnose whether this is a validation error, network issue, etc.
+        console.error(`Agent step "${config.id}" structured output failed; retrying without structured output.`, error);
         const response = await agent.generate(messages, { toolChoice: 'none' });
         return extractResultFromText(response.text, config.outputSchema, config.id);
       }
@@ -279,8 +281,13 @@ function extractResultFromText<T extends z.ZodTypeAny>(
 
   try {
     return schema.parse(JSON.parse(trimmed));
-  } catch {
-    // Wrap plain text for simple schemas like z.object({ result: z.string() })
+  } catch (error) {
+    // JSON.parse or schema.parse failed — fall back to wrapping the raw text.
+    // Log so malformed or unexpected agent output is visible during debugging.
+    console.warn(
+      `Failed to parse structured result for agent step "${stepId}", falling back to plain-text schema:`,
+      error,
+    );
     return schema.parse({ result: trimmed });
   }
 }
