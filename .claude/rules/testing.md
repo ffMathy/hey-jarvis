@@ -26,6 +26,8 @@ Strict requirements for testing code changes across the Hey Jarvis project.
 
 If any of these fail, you MUST fix the issues. Do not proceed until all checks pass.
 
+**Important:** Run only tests for the affected changes, unless you are completely done with your task - in which case you should run *all tests* to ensure nothing else is broken.
+
 ### Keep Fixing Until It Works
 
 **When tests or linting fail, you MUST:**
