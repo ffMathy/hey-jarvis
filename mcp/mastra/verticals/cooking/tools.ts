@@ -153,7 +153,7 @@ export const getAllRecipes = createTool({
     amount: z.number().optional().describe('Optional maximum number of recipes to retrieve, or all recipes if not set'),
   }),
   outputSchema: z.array(recipeSchema).describe('Array of all recipes from Valdemarsro suitable for meal planning'),
-  execute: async (inputData, context) => {
+  execute: async (inputData, _context) => {
     async function getPage(page: number) {
       const apiKey = getApiKey();
       let url = `https://www.valdemarsro.dk/api/v2/recipes/page/${page}?api_key=${apiKey}`;

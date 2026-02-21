@@ -38,7 +38,7 @@ test.describe('Mastra Studio UI', () => {
 
       // Take screenshot of agents page
       await page.screenshot({ path: path.join(SCREENSHOTS_DIR, 'studio-agents.png'), fullPage: true });
-    } catch (error) {
+    } catch (_error) {
       // If agents link not found, mark test as skipped
       test.skip(true, 'Agents navigation not available in Studio UI');
     }
@@ -59,7 +59,7 @@ test.describe('Mastra Studio UI', () => {
 
       // Take screenshot of workflows page
       await page.screenshot({ path: path.join(SCREENSHOTS_DIR, 'studio-workflows.png'), fullPage: true });
-    } catch (error) {
+    } catch (_error) {
       // If workflows link not found, mark test as skipped
       test.skip(true, 'Workflows navigation not available in Studio UI');
     }

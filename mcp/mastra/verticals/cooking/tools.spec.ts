@@ -2,6 +2,85 @@ import { beforeAll, describe, expect, it } from 'bun:test';
 import { isValidationError } from '../../utils/test-helpers/validation-error.js';
 import { cookingTools } from './tools';
 
+interface RecipeShape {
+  id: unknown;
+  title: unknown;
+  description: unknown;
+  directions: unknown;
+  categories: unknown;
+  ingredients: unknown;
+  url: unknown;
+  imageUrl: unknown;
+  preparationTime?: unknown;
+  servings?: unknown;
+}
+
+/**
+ * Validates the required fields of a recipe object.
+ */
+function validateRecipeStructure(recipe: RecipeShape) {
+  expect(typeof recipe.id).toBe('number');
+  expect(typeof recipe.title).toBe('string');
+  expect(typeof recipe.description).toBe('string');
+  expect(typeof recipe.directions).toBe('string');
+  expect(Array.isArray(recipe.categories)).toBe(true);
+  expect(Array.isArray(recipe.ingredients)).toBe(true);
+  expect(typeof recipe.url).toBe('string');
+  expect(typeof recipe.imageUrl).toBe('string');
+}
+
+/**
+ * Validates optional recipe fields have correct types when present.
+ */
+function validateRecipeOptionalFields(recipe: RecipeShape) {
+  if (recipe.preparationTime !== undefined) {
+    expect(typeof recipe.preparationTime).toBe('string');
+  }
+  if (recipe.servings !== undefined) {
+    expect(typeof recipe.servings).toBe('number');
+  }
+}
+
+/**
+ * Collects the distinct types of optional fields across a list of recipes,
+ * and returns problematic recipes that don't match expected types.
+ */
+function analyzeRecipeFieldTypes(recipes: RecipeShape[]) {
+  const preparationTimeTypes = new Set<string>();
+  const servingsTypes = new Set<string>();
+
+  for (const recipe of recipes) {
+    if (recipe.preparationTime !== undefined) {
+      preparationTimeTypes.add(typeof recipe.preparationTime);
+    }
+    if (recipe.servings !== undefined) {
+      servingsTypes.add(typeof recipe.servings);
+    }
+  }
+
+  const problematicRecipes = recipes.filter(
+    (r) =>
+      (r.preparationTime !== undefined && typeof r.preparationTime !== 'string') ||
+      (r.servings !== undefined && typeof r.servings !== 'number'),
+  );
+
+  return { preparationTimeTypes, servingsTypes, problematicRecipes };
+}
+
+/**
+ * Asserts that all optional field types are consistent and correct.
+ */
+function assertFieldTypeConsistency(preparationTimeTypes: Set<string>, servingsTypes: Set<string>) {
+  expect(preparationTimeTypes.size).toBeLessThanOrEqual(1);
+  expect(servingsTypes.size).toBeLessThanOrEqual(1);
+  if (preparationTimeTypes.size > 0) {
+    expect(Array.from(preparationTimeTypes)[0]).toBe('string');
+  }
+  if (servingsTypes.size > 0) {
+    expect(Array.from(servingsTypes)[0]).toBe('number');
+  }
+}
+
 describe('Cooking Tools Integration Tests', () => {
   beforeAll(() => {
     // Verify API key is configured
@@ -22,22 +101,8 @@ describe('Cooking Tools Integration Tests', () => {
 
       // Validate structure
       expect(result).toBeDefined();
-      expect(typeof result.id).toBe('number');
-      expect(typeof result.title).toBe('string');
-      expect(typeof result.description).toBe('string');
-      expect(typeof result.directions).toBe('string');
-      expect(Array.isArray(result.categories)).toBe(true);
-      expect(Array.isArray(result.ingredients)).toBe(true);
-      expect(typeof result.url).toBe('string');
-      expect(typeof result.imageUrl).toBe('string');
-
-      // Validate optional fields have correct types when present
-      if (result.preparationTime !== undefined) {
-        expect(typeof result.preparationTime).toBe('string');
-      }
-      if (result.servings !== undefined) {
-        expect(typeof result.servings).toBe('number');
-      }
+      validateRecipeStructure(result);
+      validateRecipeOptionalFields(result);
 
       console.log('✅ Recipe fetched successfully:', result.title);
       console.log('   - preparationTime type:', typeof result.preparationTime, '=', result.preparationTime);
@@ -62,22 +127,8 @@ describe('Cooking Tools Integration Tests', () => {
 
       // Validate first result
       const firstRecipe = result.results[0];
-      expect(typeof firstRecipe.id).toBe('number');
-      expect(typeof firstRecipe.title).toBe('string');
-      expect(typeof firstRecipe.description).toBe('string');
-      expect(typeof firstRecipe.directions).toBe('string');
-      expect(Array.isArray(firstRecipe.categories)).toBe(true);
-      expect(Array.isArray(firstRecipe.ingredients)).toBe(true);
-      expect(typeof firstRecipe.url).toBe('string');
-      expect(typeof firstRecipe.imageUrl).toBe('string');
-
-      // Validate optional fields
-      if (firstRecipe.preparationTime !== undefined) {
-        expect(typeof firstRecipe.preparationTime).toBe('string');
-      }
-      if (firstRecipe.servings !== undefined) {
-        expect(typeof firstRecipe.servings).toBe('number');
-      }
+      validateRecipeStructure(firstRecipe);
+      validateRecipeOptionalFields(firstRecipe);
 
       console.log(`✅ Found ${result.results.length} recipes for "kylling"`);
       console.log('   First recipe:', firstRecipe.title);
@@ -107,27 +158,10 @@ describe('Cooking Tools Integration Tests', () => {
 
       // Validate first recipe
       const firstRecipe = result[0];
-      expect(typeof firstRecipe.id).toBe('number');
-      expect(typeof firstRecipe.title).toBe('string');
-      expect(typeof firstRecipe.description).toBe('string');
-      expect(typeof firstRecipe.directions).toBe('string');
-      expect(Array.isArray(firstRecipe.categories)).toBe(true);
-      expect(Array.isArray(firstRecipe.ingredients)).toBe(true);
-      expect(typeof firstRecipe.url).toBe('string');
-      expect(typeof firstRecipe.imageUrl).toBe('string');
+      validateRecipeStructure(firstRecipe);
 
       // Check all recipes for type consistency
-      const preparationTimeTypes = new Set<string>();
-      const servingsTypes = new Set<string>();
-
-      for (const recipe of result) {
-        if (recipe.preparationTime !== undefined) {
-          preparationTimeTypes.add(typeof recipe.preparationTime);
-        }
-        if (recipe.servings !== undefined) {
-          servingsTypes.add(typeof recipe.servings);
-        }
-      }
+      const { preparationTimeTypes, servingsTypes, problematicRecipes } = analyzeRecipeFieldTypes(result);
 
       console.log(`✅ Fetched ${result.length} recipes from last 30 days`);
       console.log('   First recipe:', firstRecipe.title);
@@ -135,12 +169,6 @@ describe('Cooking Tools Integration Tests', () => {
       console.log('   - servings types found:', Array.from(servingsTypes));
 
       // Log problematic recipes if any
-      const problematicRecipes = result.filter(
-        (r) =>
-          (r.preparationTime !== undefined && typeof r.preparationTime !== 'string') ||
-          (r.servings !== undefined && typeof r.servings !== 'number'),
-      );
-
       if (problematicRecipes.length > 0) {
         console.log(`\n⚠️  Found ${problematicRecipes.length} recipes with type mismatches:`);
         problematicRecipes.slice(0, 5).forEach((recipe) => {
@@ -153,14 +181,7 @@ describe('Cooking Tools Integration Tests', () => {
       }
 
       // Validate types
-      expect(preparationTimeTypes.size).toBeLessThanOrEqual(1);
-      expect(servingsTypes.size).toBeLessThanOrEqual(1);
-      if (preparationTimeTypes.size > 0) {
-        expect(Array.from(preparationTimeTypes)[0]).toBe('string');
-      }
-      if (servingsTypes.size > 0) {
-        expect(Array.from(servingsTypes)[0]).toBe('number');
-      }
+      assertFieldTypeConsistency(preparationTimeTypes, servingsTypes);
     }, 60000);
   });
 

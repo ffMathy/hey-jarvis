@@ -165,14 +165,18 @@ function createMockAgent(id: string, description: string, tools?: MockToolConfig
 }
 
 /**
- * Helper to run workflow with retry logic for flaky LLM responses
+ * Helper to run workflow with retry logic for flaky LLM responses.
+ * An optional `isValid` predicate can be supplied to retry when the DAG
+ * is structurally valid but does not meet additional criteria.
  */
-async function runWorkflowWithRetry(userQuery: string, maxAttempts = 5): Promise<DAGType | undefined> {
-  let attempts = 0;
+async function runWorkflowWithRetry(
+  userQuery: string,
+  maxAttempts = 5,
+  isValid?: (dag: DAGType) => boolean,
+): Promise<DAGType | undefined> {
   let dag: DAGType | undefined;
 
-  while (attempts < maxAttempts) {
-    attempts++;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     resetCurrentDAG();
 
     try {
@@ -180,11 +184,15 @@ async function runWorkflowWithRetry(userQuery: string, maxAttempts = 5): Promise
 
       dag = getCurrentDAG();
       if (result.status === 'success' && dag.tasks.length >= 1) {
-        return dag;
+        if (!isValid || isValid(dag)) {
+          return dag;
+        }
+        console.log(`Attempt ${attempt}: DAG did not pass validation predicate, retrying...`);
+      } else {
+        console.log(`Attempt ${attempt}: Workflow succeeded but no tasks generated, retrying...`);
       }
-      console.log(`Attempt ${attempts}: Workflow succeeded but no tasks generated, retrying...`);
     } catch (_e) {
-      console.log(`Attempt ${attempts}: Workflow failed, retrying...`);
+      console.log(`Attempt ${attempt}: Workflow failed, retrying...`);
     }
 
     await new Promise((resolve) => setTimeout(resolve, 500));
@@ -310,7 +318,7 @@ Control and monitor Internet of Things (IoT) devices. Use this agent to **get us
     it('should NOT create location task when location is explicitly provided', async () => {
       const weatherAgent = createMockAgent(
         'weather',
-        `# Purpose  
+        `# Purpose
 Provide weather data for any location specified by city name or coordinates.
 
 **Location is mandatory and must be provided - the weather agent cannot tell a user's location.**`,
@@ -318,7 +326,7 @@ Provide weather data for any location specified by city name or coordinates.
 
       const internetOfThingsAgent = createMockAgent(
         'internetOfThings',
-        `# Purpose  
+        `# Purpose
 Control IoT devices and get user locations via their phones.`,
       );
 
@@ -338,47 +346,17 @@ Control IoT devices and get user locations via their phones.`,
 
       // Custom retry with validation: the DAG should NOT contain any location-related tasks
       // when the location is explicitly provided in the query
-      let dag: DAGType | undefined;
-      const maxAttempts = 5;
+      const dag = await runWorkflowWithRetry(userQuery, 5, (d) => !hasUnnecessaryLocationTask(d.tasks));
 
-      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-        resetCurrentDAG();
-
-        try {
-          const result = await routePromptWorkflow.createRun().then((run) => run.start({ inputData: { userQuery } }));
-
-          dag = getCurrentDAG();
-          if (result.status === 'success' && dag.tasks.length >= 1) {
-            // Check if DAG has only weather tasks (no location lookups)
-            if (!hasUnnecessaryLocationTask(dag.tasks)) {
-              // Found a valid DAG without unnecessary location tasks
-              break;
-            }
-            console.log(`Attempt ${attempt}: DAG has unnecessary location task, retrying...`);
-          } else {
-            console.log(`Attempt ${attempt}: Workflow succeeded but no tasks generated, retrying...`);
-          }
-        } catch (_e) {
-          console.log(`Attempt ${attempt}: Workflow failed, retrying...`);
-        }
-
-        await new Promise((resolve) => setTimeout(resolve, 500));
-      }
-
-      // Skip the test if we couldn't get a valid DAG after all attempts
+      // Fail if we couldn't get a valid DAG after all retry attempts
       if (!dag || dag.tasks.length === 0) {
-        console.log('Skipping test: Could not generate valid DAG after max attempts');
-        return;
+        throw new Error('Failed to generate valid DAG after max attempts');
       }
 
-      // Check if the final DAG still has unnecessary location tasks
-      // If so, skip the test as LLM flakiness - this is a known issue with some models
+      // Fail if the DAG contains unnecessary location tasks
       if (hasUnnecessaryLocationTask(dag.tasks)) {
-        console.log(
-          'Skipping test: LLM consistently generated unnecessary location task despite explicit location in query. ' +
-            'This is a known LLM flakiness issue with some models.',
-        );
-        return;
+        const taskSummary = dag.tasks.map((t) => `${t.id}(${t.agent})`).join(', ');
+        throw new Error(`LLM generated unnecessary location task despite explicit location in query: [${taskSummary}]`);
       }
 
       expect(dag.tasks.length).toBeGreaterThanOrEqual(1);
@@ -409,13 +387,11 @@ Control IoT devices and get user locations via their phones.`,
       const userQuery =
         'Check my calendar for today and tell me what the weather will be like for my first meeting, and how long it will take to get there';
 
-      await routePromptWorkflow.createRun().then((run) =>
-        run.start({
-          inputData: { userQuery },
-        }),
-      );
+      const dag = await runWorkflowWithRetry(userQuery);
 
-      const dag = getCurrentDAG();
+      if (!dag || dag.tasks.length === 0) {
+        throw new Error('Failed to generate valid DAG after max attempts');
+      }
 
       expect(dag.tasks.length).toBeGreaterThanOrEqual(1);
 

@@ -1,7 +1,7 @@
 import type { Agent } from '@mastra/core/agent';
 import { chain, keyBy } from 'lodash-es';
 import z from 'zod';
-import { createAgent, createAgentStep, createStep, createWorkflow, getModel } from '../../utils';
+import { createAgent, createStep, createWorkflow, getModel } from '../../utils';
 import { getPublicAgents } from '..';
 
 const outputTaskSchema = z.object({
@@ -464,6 +464,121 @@ const mergeDagStep = createStep({
   },
 });
 
+type DagTask = z.infer<typeof dagSchema>['tasks'][0];
+type TaskLookup = Record<string, DagTask>;
+
+/**
+ * Groups tasks by their agent ID.
+ */
+function groupTasksByAgent(tasks: DagTask[]): Map<string, DagTask[]> {
+  const tasksByAgent = new Map<string, DagTask[]>();
+  for (const task of tasks) {
+    const agentTasks = tasksByAgent.get(task.agent) || [];
+    agentTasks.push(task);
+    tasksByAgent.set(task.agent, agentTasks);
+  }
+  return tasksByAgent;
+}
+
+/**
+ * Finds tasks within the same agent group that can be chained after the given task.
+ * A successor is chainable if it depends on the given task and has no external dependencies
+ * (dependencies outside the agent's task group).
+ */
+function findChainableSuccessors(taskId: string, agentTasks: DagTask[], tasksById: TaskLookup): DagTask[] {
+  return agentTasks.filter((otherTask) => {
+    if (!otherTask.dependsOn.includes(taskId)) return false;
+    if (!tasksById[otherTask.id]) return false;
+    return !otherTask.dependsOn.some((depId) => !tasksById[depId] && depId !== taskId);
+  });
+}
+
+/**
+ * Recursively builds a chain of tasks that can be merged, starting from a given task.
+ * Walks down through chainable successors (tasks that only depend on internal tasks).
+ */
+function buildChain(
+  taskId: string,
+  currentChain: DagTask[],
+  visited: Set<string>,
+  agentTasks: DagTask[],
+  tasksById: TaskLookup,
+): void {
+  if (visited.has(taskId)) return;
+  visited.add(taskId);
+
+  const task = tasksById[taskId];
+  if (!task) return;
+
+  currentChain.push(task);
+
+  const successors = findChainableSuccessors(taskId, agentTasks, tasksById);
+  for (const successor of successors) {
+    buildChain(successor.id, currentChain, visited, agentTasks, tasksById);
+  }
+}
+
+/**
+ * Discovers all chains of sequential tasks within an agent's task group.
+ * Returns the chains found and any tasks that were not part of any chain.
+ */
+function discoverChains(agentTasks: DagTask[]): { chains: DagTask[][]; unchainedTasks: DagTask[] } {
+  const tasksById = keyBy(agentTasks, 'id') as TaskLookup;
+  const visited = new Set<string>();
+  const chains: DagTask[][] = [];
+
+  const rootTasks = agentTasks.filter((task) => {
+    const internalDeps = task.dependsOn.filter((depId) => tasksById[depId]);
+    return internalDeps.length === 0;
+  });
+
+  for (const rootTask of rootTasks) {
+    if (visited.has(rootTask.id)) continue;
+    const currentChain: DagTask[] = [];
+    buildChain(rootTask.id, currentChain, visited, agentTasks, tasksById);
+    if (currentChain.length > 0) {
+      chains.push(currentChain);
+    }
+  }
+
+  const unchainedTasks = agentTasks.filter((task) => !visited.has(task.id));
+  return { chains, unchainedTasks };
+}
+
+/**
+ * Merges a chain of tasks into a single combined task.
+ * Records the mapping from original task IDs to the merged ID.
+ */
+function mergeChainIntoTask(taskChain: DagTask[], agent: string, mergedTaskIds: Map<string, string>): DagTask {
+  const mergedId = taskChain.map((t) => t.id).join('+');
+  const mergedPrompt = taskChain.map((t) => t.prompt).join('\nThen:\n');
+  const externalDeps = taskChain
+    .flatMap((t) => t.dependsOn)
+    .filter((depId) => !taskChain.some((ct) => ct.id === depId));
+
+  for (const task of taskChain) {
+    mergedTaskIds.set(task.id, mergedId);
+  }
+
+  return {
+    id: mergedId,
+    agent,
+    prompt: mergedPrompt,
+    dependsOn: [...new Set(externalDeps)],
+  };
+}
+
+/**
+ * Processes chains for a single agent: single-task chains are kept as-is,
+ * multi-task chains are merged into a combined task.
+ */
+function processChainsForAgent(chains: DagTask[][], agent: string, mergedTaskIds: Map<string, string>): DagTask[] {
+  return chains.map((taskChain) => {
+    if (taskChain.length === 1) return taskChain[0];
+    return mergeChainIntoTask(taskChain, agent, mergedTaskIds);
+  });
+}
+
 const optimizeDagStep = createStep({
   id: 'optimize-dag',
   description: 'Optimize DAG by compressing sequential tasks for the same agent',
@@ -471,13 +586,7 @@ const optimizeDagStep = createStep({
   outputSchema: outputSchema,
   execute: async (_context) => {
     const tasks = workflowState.currentDAG.tasks;
-
-    const tasksByAgent = new Map<string, typeof tasks>();
-    for (const task of tasks) {
-      const agentTasks = tasksByAgent.get(task.agent) || [];
-      agentTasks.push(task);
-      tasksByAgent.set(task.agent, agentTasks);
-    }
+    const tasksByAgent = groupTasksByAgent(tasks);
 
     const optimizedTasks: typeof tasks = [];
     const mergedTaskIds = new Map<string, string>();
@@ -488,79 +597,9 @@ const optimizeDagStep = createStep({
         continue;
       }
 
-      const tasksById = keyBy(agentTasks, 'id');
-      const taskDependencies = new Map<string, Set<string>>();
-
-      for (const task of agentTasks) {
-        const internalDeps = task.dependsOn.filter((depId) => tasksById[depId]);
-        taskDependencies.set(task.id, new Set(internalDeps));
-      }
-
-      const visited = new Set<string>();
-      const chains: (typeof tasks)[] = [];
-
-      const buildChain = (taskId: string, chain: typeof tasks) => {
-        if (visited.has(taskId)) return;
-        visited.add(taskId);
-
-        const task = tasksById[taskId];
-        if (!task) return;
-
-        chain.push(task);
-
-        for (const otherTask of agentTasks) {
-          if (otherTask.dependsOn.includes(taskId) && tasksById[otherTask.id]) {
-            const hasExternalDeps = otherTask.dependsOn.some((depId) => !tasksById[depId] && depId !== taskId);
-            if (!hasExternalDeps) {
-              buildChain(otherTask.id, chain);
-            }
-          }
-        }
-      };
-
-      const rootTasks = agentTasks.filter((task) => {
-        const deps = taskDependencies.get(task.id) || new Set();
-        return deps.size === 0;
-      });
-
-      for (const rootTask of rootTasks) {
-        if (!visited.has(rootTask.id)) {
-          const chain: typeof tasks = [];
-          buildChain(rootTask.id, chain);
-          if (chain.length > 0) {
-            chains.push(chain);
-          }
-        }
-      }
-
-      for (const task of agentTasks) {
-        if (!visited.has(task.id)) {
-          optimizedTasks.push(task);
-        }
-      }
-
-      for (const chain of chains) {
-        if (chain.length === 1) {
-          optimizedTasks.push(chain[0]);
-        } else {
-          const mergedId = chain.map((t) => t.id).join('+');
-          const mergedPrompt = chain.map((t) => t.prompt).join('\nThen:\n');
-          const externalDeps = chain
-            .flatMap((t) => t.dependsOn)
-            .filter((depId) => !chain.some((ct) => ct.id === depId));
-
-          for (const task of chain) {
-            mergedTaskIds.set(task.id, mergedId);
-          }
-
-          optimizedTasks.push({
-            id: mergedId,
-            agent: agent,
-            prompt: mergedPrompt,
-            dependsOn: [...new Set(externalDeps)],
-          });
-        }
-      }
+      const { chains, unchainedTasks } = discoverChains(agentTasks);
+      optimizedTasks.push(...unchainedTasks);
+      optimizedTasks.push(...processChainsForAgent(chains, agent, mergedTaskIds));
     }
 
     const finalTasks = optimizedTasks.map((task) => ({

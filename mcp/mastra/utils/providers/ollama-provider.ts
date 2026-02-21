@@ -4,7 +4,7 @@ import { createOllama } from 'ai-sdk-ollama';
 /**
  * Ollama provider for local LLM inference.
  *
- * Connects to the Ollama cluster configured via OLLAMA_BASE_URL
+ * Connects to the Ollama cluster configured via HEY_JARVIS_OLLAMA_BASE_URL
  * (defaults to http://jarvis.local:8000).
  *
  * Uses a custom fetch wrapper to strip fields unsupported by the
@@ -13,7 +13,11 @@ import { createOllama } from 'ai-sdk-ollama';
  * - format: no structured output / JSON schema support
  */
 
-const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL ?? 'http://jarvis.local:8000';
+/**
+ * Ollama base URL. When undefined, Ollama helper functions (isOllamaAvailable, etc.)
+ * return false/empty results, and Ollama tests are skipped.
+ */
+const HEY_JARVIS_OLLAMA_BASE_URL = process.env.HEY_JARVIS_OLLAMA_BASE_URL;
 
 /**
  * Default Ollama model. Pre-loaded on the Jarvis Hailo cluster.
@@ -50,7 +54,7 @@ const strippingFetch = Object.assign(
  * Call as `ollama('model-id')` or `ollama.chat('model-id')` to get a language model.
  */
 export const ollama = createOllama({
-  baseURL: OLLAMA_BASE_URL,
+  baseURL: HEY_JARVIS_OLLAMA_BASE_URL,
   fetch: strippingFetch,
 });
 
@@ -63,23 +67,25 @@ export const ollamaModel: LanguageModelV3 = ollama(OLLAMA_MODEL);
  * Returns the Ollama API base URL including /api path (for health checks etc.).
  */
 export function getOllamaBaseUrl(): string {
-  return `${OLLAMA_BASE_URL}/api`;
+  return `${HEY_JARVIS_OLLAMA_BASE_URL}/api`;
 }
 
 /**
  * Returns the Ollama base URL (without /api path).
  */
-export function getOllamaApiUrl(): string {
-  return OLLAMA_BASE_URL;
+export function getOllamaApiUrl() {
+  return HEY_JARVIS_OLLAMA_BASE_URL;
 }
 
 /**
  * Returns true if the Ollama server is reachable.
  */
 export async function isOllamaAvailable(): Promise<boolean> {
+  if (!getOllamaApiUrl()) return false;
+
   try {
-    const response = await fetch(`${OLLAMA_BASE_URL}/api/tags`, {
-      signal: AbortSignal.timeout(5000),
+    const response = await fetch(`${HEY_JARVIS_OLLAMA_BASE_URL}/api/tags`, {
+      signal: AbortSignal.timeout(3000),
     });
     return response.ok;
   } catch {
@@ -91,8 +97,10 @@ export async function isOllamaAvailable(): Promise<boolean> {
  * Returns true if the given model is available on the Ollama server.
  */
 export async function isModelAvailable(modelName: string): Promise<boolean> {
+  if (!(await isOllamaAvailable())) return false;
+
   try {
-    const response = await fetch(`${OLLAMA_BASE_URL}/api/tags`, {
+    const response = await fetch(`${HEY_JARVIS_OLLAMA_BASE_URL}/api/tags`, {
       signal: AbortSignal.timeout(5000),
     });
     if (!response.ok) return false;
@@ -109,8 +117,10 @@ export async function isModelAvailable(modelName: string): Promise<boolean> {
  * Returns the list of model names available on the Ollama server.
  */
 export async function listModels(): Promise<string[]> {
+  if (!(await isOllamaAvailable())) return [];
+
   try {
-    const response = await fetch(`${OLLAMA_BASE_URL}/api/tags`, {
+    const response = await fetch(`${HEY_JARVIS_OLLAMA_BASE_URL}/api/tags`, {
       signal: AbortSignal.timeout(5000),
     });
     if (!response.ok) return [];

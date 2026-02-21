@@ -18,16 +18,16 @@ import { createAgent } from '../agent-factory.js';
  * Mastra's Workflow and Step types require `any` in their generic bounds internally,
  * so we define these aliases once to avoid scattering `any` across the codebase.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra Step type requires `any` in its generic bounds
+// biome-ignore lint/suspicious/noExplicitAny: Mastra Step type requires `any` in its generic bounds
 type AnyStep = Step<string, any, any, any, any, any, DefaultEngineType>[];
 
 /**
  * A Workflow with all generic parameters set to their defaults.
  * Used when accepting any workflow instance without caring about specific types.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra Workflow type requires `any` in its Step bound
 export type AnyWorkflow = import('@mastra/core/workflows').Workflow<
   DefaultEngineType,
+  // biome-ignore lint/suspicious/noExplicitAny: Mastra Workflow type requires `any` in its Step bound
   any[],
   string,
   unknown,
@@ -40,7 +40,7 @@ export type AnyWorkflow = import('@mastra/core/workflows').Workflow<
 /**
  * A WorkflowResult with all generic parameters set to their defaults.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Mastra WorkflowResult type requires `any` in its Step bound
+// biome-ignore lint/suspicious/noExplicitAny: Mastra WorkflowResult type requires `any` in its Step bound
 export type AnyWorkflowResult = import('@mastra/core/workflows').WorkflowResult<unknown, unknown, unknown, any[]>;
 
 /**
