@@ -2,6 +2,12 @@
 # DevContainer initialization script
 # Installs dependencies and runs project-specific initialization
 
+# Fix file ownership — the DevContainer infrastructure clones files as root,
+# and bun install can also create root-owned files. The container runs as
+# the `node` user (uid 1000), so we need to chown everything upfront.
+echo "🔑 Fixing workspace file ownership..."
+sudo chown -R node:node /workspaces/hey-jarvis
+
 # Configure git safe.directory to avoid ownership issues
 git config --global --add safe.directory /workspaces/hey-jarvis
 git config --global pull.rebase false

@@ -15,6 +15,7 @@
  */
 
 import type { ToolsInput } from '@mastra/core/agent';
+import { z } from 'zod';
 import { google } from '../../utils/providers/google-provider.js';
 
 // Export the Google Search tool for the web research agent
@@ -23,5 +24,8 @@ export const webResearchTools: ToolsInput = {
     id: 'googleSearch',
     description: 'Tool for performing web searches using Google Search API.',
     ...google.tools.googleSearch({}),
+    // Provider-defined tools lack a Zod inputSchema, which crashes zod-to-json-schema
+    // when the /tools endpoint serializes all registered tools.
+    inputSchema: z.object({}),
   },
 };

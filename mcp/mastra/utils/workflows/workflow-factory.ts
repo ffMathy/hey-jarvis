@@ -236,25 +236,53 @@ export function createAgentStep<
         .join('\n')
         .trim();
 
-      const response = await agent.stream(
-        [
-          {
-            role: 'user',
-            content: prompt,
-          },
-        ],
-        {
-          structuredOutput: {
-            schema: config.outputSchema,
-          },
-          toolChoice: 'none',
-        },
-      );
+      const messages = [{ role: 'user' as const, content: prompt }];
 
-      const result = await response.object;
-      return config.outputSchema.parse(result);
+      // Use generate() instead of stream() — we need the full result anyway,
+      // and generate() exposes both .object and .text on the result so we can
+      // fall back to text parsing for models that don't support structured output
+      // (e.g. Ollama's Hailo cluster strips the JSON-mode `format` field).
+      try {
+        const response = await agent.generate(messages, {
+          structuredOutput: { schema: config.outputSchema },
+          toolChoice: 'none',
+        });
+
+        if (response.object !== undefined && response.object !== null) {
+          return config.outputSchema.parse(response.object);
+        }
+
+        // Structured output returned undefined — try text fallback
+        return extractResultFromText(response.text, config.outputSchema, config.id);
+      } catch {
+        // Structured output failed entirely (validation error) — retry without it
+        const response = await agent.generate(messages, { toolChoice: 'none' });
+        return extractResultFromText(response.text, config.outputSchema, config.id);
+      }
     },
   });
+}
+
+/**
+ * Extracts a structured result from raw text when structured output is unavailable.
+ * Tries JSON parsing first, then wraps as `{ result: text }` for simple schemas.
+ */
+function extractResultFromText<T extends z.ZodTypeAny>(
+  text: string | undefined,
+  schema: T,
+  stepId: string,
+): z.infer<T> {
+  const trimmed = text?.trim();
+  if (!trimmed) {
+    throw new Error(`Agent step "${stepId}" produced no output`);
+  }
+
+  try {
+    return schema.parse(JSON.parse(trimmed));
+  } catch {
+    // Wrap plain text for simple schemas like z.object({ result: z.string() })
+    return schema.parse({ result: trimmed });
+  }
 }
 
 /**
