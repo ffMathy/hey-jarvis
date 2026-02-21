@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.9.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.8.0...home-assistant-voice-firmware-v0.9.0) (2026-02-21)
+
+
+### Features
+
+* new improvements ([#504](https://github.com/ffMathy/hey-jarvis/issues/504)) ([4826bdb](https://github.com/ffMathy/hey-jarvis/commit/4826bdbfcc06470e5f1c68940b3539f1077283bd))
+
+
+### Bug Fixes
+
+* log catch-block errors and add env:local NX targets for 1Password secret resolution ([#505](https://github.com/ffMathy/hey-jarvis/issues/505)) ([a9aae83](https://github.com/ffMathy/hey-jarvis/commit/a9aae833a79748ec61d4c2aa64b7fb7cd7a1fad1))
+* log errors in catch blocks and add env:local NX targets for all projects ([49453f0](https://github.com/ffMathy/hey-jarvis/commit/49453f0067dfb6bf7822ef77e8c9bbdec3ca15f5))
+* much better environment interpolation ([c6f4aab](https://github.com/ffMathy/hey-jarvis/commit/c6f4aab1a923b6d86b724527ea95a25a7e439727))
+
 ## [0.8.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.7.2...home-assistant-voice-firmware-v0.8.0) (2026-02-20)
 
 
