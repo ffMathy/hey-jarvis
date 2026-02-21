@@ -1,5 +1,35 @@
 # Changelog
 
+## [1.5.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.4.0...mcp-v1.5.0) (2026-02-20)
+
+
+### Features
+
+* apply Mastra V1 codemod and fix basic migration issues ([9ea9a6a](https://github.com/ffMathy/hey-jarvis/commit/9ea9a6a6f164f858df675002ba2da92b67fd5c96))
+* better AI, better build ([c1ad34d](https://github.com/ffMathy/hey-jarvis/commit/c1ad34de97115d464839aceae0284e23db27feaa))
+* Enhance workflows with state schema integration for improved context management ([aa8217b](https://github.com/ffMathy/hey-jarvis/commit/aa8217bce7a9c3f754fa09f14680c8e5da0b8c13))
+* new changes ([#502](https://github.com/ffMathy/hey-jarvis/issues/502)) ([a8ebc7d](https://github.com/ffMathy/hey-jarvis/commit/a8ebc7de12d000e3dba37c15a117c6ba67f8c880))
+* replace Ollama model manager with ai-sdk-ollama ([bad7ea7](https://github.com/ffMathy/hey-jarvis/commit/bad7ea7e1720bbc1fd3d305808e161cbc09be786))
+* replace ollama-model-manager with ai-sdk-ollama, upgrade AI SDK to v6 ([ed54e32](https://github.com/ffMathy/hey-jarvis/commit/ed54e328247e3c4b369411264d38bd09f63a5092))
+* upgrade to Zod V4 and remove asWorkflowSchema hack ([42c2d47](https://github.com/ffMathy/hey-jarvis/commit/42c2d47b33d919cbf03ee58395f295535e680784))
+
+
+### Bug Fixes
+
+* add asWorkflowSchema helper to resolve TypeScript type compatibility ([48eab8c](https://github.com/ffMathy/hey-jarvis/commit/48eab8cb0ce33feb4ca9dcd80a6dd2c873c99f1a))
+* build errors fixed ([f35273c](https://github.com/ffMathy/hey-jarvis/commit/f35273cc9641abad703e1fe2014ccb9a28efb06e))
+* build errors fixed ([#485](https://github.com/ffMathy/hey-jarvis/issues/485)) ([ee88eec](https://github.com/ffMathy/hey-jarvis/commit/ee88eec013bdb1e3cb8fca65c4f1cda49f51a2c3))
+* Ensure execute functions are defined before invocation in various steps ([aa8217b](https://github.com/ffMathy/hey-jarvis/commit/aa8217bce7a9c3f754fa09f14680c8e5da0b8c13))
+* hoist transitive deps and fix google-auth-library import paths ([bca110b](https://github.com/ffMathy/hey-jarvis/commit/bca110bde8f8271ad79f7833eb3bda331f3e457b))
+* **mcp:** apply type casts for Mastra V1 workflow schema compatibility ([3a1013c](https://github.com/ffMathy/hey-jarvis/commit/3a1013c1cd8013292bf9d23956429c9ef9f26248))
+* **mcp:** complete Mastra V1 migration - fix tool signatures, workflow schemas, and type errors ([1ef1d6c](https://github.com/ffMathy/hey-jarvis/commit/1ef1d6c37efe73d36381d4c1dcd29f3ab7233d82))
+* **mcp:** continue Mastra V1 migration - fix execute signatures and tool type assertions ([8f7aa57](https://github.com/ffMathy/hey-jarvis/commit/8f7aa57c81febd2e7b1403e5fbbaac6345850073))
+* more build failure fixes ([72dfd38](https://github.com/ffMathy/hey-jarvis/commit/72dfd381e4df5a2dc509658b6597ba1ca39cf94f))
+* remove all 'as any' casts and improve type safety ([7a81d4c](https://github.com/ffMathy/hey-jarvis/commit/7a81d4c474064ff689a5746751ab55c57eddf797))
+* resolve all 113 TypeScript compilation errors in Mastra V1 migration ([4707fad](https://github.com/ffMathy/hey-jarvis/commit/4707fadf4ee6e1dc4e357644f264c963981cad7d))
+* resolve TS2742 inferred type errors with explicit type annotations ([8f9cdea](https://github.com/ffMathy/hey-jarvis/commit/8f9cdea4b69c1b5f4fce569746599cd9e1b6abed))
+* Update validation error formatting to use 'issues' instead of 'errors' ([aa8217b](https://github.com/ffMathy/hey-jarvis/commit/aa8217bce7a9c3f754fa09f14680c8e5da0b8c13))
+
 ## [1.4.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.3.1...mcp-v1.4.0) (2026-01-12)
 
 

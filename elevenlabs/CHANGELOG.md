@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.9.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.8.2...elevenlabs-v0.9.0) (2026-02-20)
+
+
+### Features
+
+* better AI, better build ([c1ad34d](https://github.com/ffMathy/hey-jarvis/commit/c1ad34de97115d464839aceae0284e23db27feaa))
+
+
+### Bug Fixes
+
+* build errors fixed ([#485](https://github.com/ffMathy/hey-jarvis/issues/485)) ([ee88eec](https://github.com/ffMathy/hey-jarvis/commit/ee88eec013bdb1e3cb8fca65c4f1cda49f51a2c3))
+
 ## [0.8.2](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.8.1...elevenlabs-v0.8.2) (2025-12-11)
 
 
