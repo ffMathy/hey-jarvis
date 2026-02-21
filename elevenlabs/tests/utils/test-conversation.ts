@@ -3,7 +3,6 @@ import { generateObject } from 'ai';
 import { z } from 'zod';
 import type { ConversationStrategy, ServerMessage } from './conversation-strategy';
 import { ElevenLabsConversationStrategy } from './elevenlabs-conversation-strategy';
-import { GeminiMastraConversationStrategy } from './gemini-mastra-conversation-strategy';
 
 export interface ConversationOptions {
   agentId: string;
@@ -80,7 +79,7 @@ export class TestConversation {
     const google = createGoogleGenerativeAI({ apiKey: this.googleApiKey });
 
     // Use Vercel AI SDK's built-in retry mechanism
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // biome-ignore lint/suspicious/noExplicitAny: Vercel AI SDK generateObject requires `any` for dynamic schema
     const result = await generateObject<any>({
       model: google('gemini-flash-latest'),
       temperature: 0,

@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'bun:test';
 import { mastra } from '../../index.js';
-import { isOllamaAvailable, OLLAMA_MODEL } from '../../utils/providers/ollama-provider.js';
+import { isOllamaAvailable } from '../../utils/providers/ollama-provider.js';
 
 describe('weatherMonitoringWorkflow', () => {
   let ollamaAvailable = false;

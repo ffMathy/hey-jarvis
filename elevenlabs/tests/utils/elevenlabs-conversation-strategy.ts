@@ -13,9 +13,9 @@ import type {
  */
 interface ConversationInitiationClientDataEvent {
   type: 'conversation_initiation_client_data';
-  custom_llm_extra_body?: {};
-  conversation_config_override?: {};
-  dynamic_variables?: {};
+  custom_llm_extra_body?: Record<string, unknown>;
+  conversation_config_override?: Record<string, unknown>;
+  dynamic_variables?: Record<string, unknown>;
   conversation?: {
     text_only?: boolean;
   };

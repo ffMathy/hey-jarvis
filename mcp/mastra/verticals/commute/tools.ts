@@ -11,6 +11,60 @@ import { chain, isEqual, sumBy, uniqWith } from 'lodash-es';
 import { z } from 'zod';
 import { createTool } from '../../utils/tool-factory.js';
 
+/**
+ * Collect all step start/end locations along a route's legs.
+ * Falls back to leg start/end if no steps exist.
+ */
+const collectRouteLocations = (route: {
+  legs: {
+    start_location: LatLngLiteral;
+    end_location: LatLngLiteral;
+    steps?: { start_location: LatLngLiteral; end_location: LatLngLiteral }[];
+  }[];
+}): LatLngLiteral[] => {
+  const locations: LatLngLiteral[] = [];
+  for (const leg of route.legs) {
+    for (const step of leg.steps || []) {
+      locations.push(step.start_location);
+      locations.push(step.end_location);
+    }
+  }
+  if (locations.length === 0) {
+    locations.push(route.legs[0].start_location);
+    locations.push(route.legs[0].end_location);
+  }
+  return uniqWith(locations, isEqual);
+};
+
+/**
+ * Search for places at multiple locations, returning a deduplicated map keyed by place_id.
+ */
+const searchAtLocations = async (
+  client: Client,
+  apiKey: string,
+  locations: LatLngLiteral[],
+  searchQuery: string,
+): Promise<Map<string, Partial<PlaceData>>> => {
+  const placesMap = new Map<string, Partial<PlaceData>>();
+  for (const searchLocation of locations) {
+    const placesResponse = await client.textSearch({
+      params: {
+        query: searchQuery,
+        location: searchLocation,
+        radius: 50000,
+        key: apiKey,
+      },
+    });
+    if (placesResponse.data.status !== 'OK') continue;
+    for (const place of placesResponse.data.results || []) {
+      if (place.place_id && !placesMap.has(place.place_id)) {
+        placesMap.set(place.place_id, place);
+      }
+    }
+  }
+  return placesMap;
+};
+
 const getGoogleMapsClient = () => {
   const apiKey = process.env.HEY_JARVIS_GOOGLE_API_KEY;
   if (!apiKey) {
@@ -72,7 +126,7 @@ export const getTravelTime = createTool({
     endAddress: z.string(),
     mode: z.string(),
   }),
-  execute: async (inputData, context) => {
+  execute: async (inputData, _context) => {
     const { origin, destination, mode, departureTime, includeTraffic } = inputData;
     const { client, apiKey } = getGoogleMapsClient();
 
@@ -184,23 +238,7 @@ export const searchPlacesAlongRoute = createTool({
     }
 
     // Collect all step locations along the route
-    let allLocations: LatLngLiteral[] = [];
-    for (const leg of shortestRoute.legs) {
-      if (leg.steps) {
-        for (const step of leg.steps) {
-          allLocations.push(step.start_location);
-          allLocations.push(step.end_location);
-        }
-      }
-    }
-
-    if (allLocations.length === 0) {
-      allLocations.push(shortestRoute.legs[0].start_location);
-      allLocations.push(shortestRoute.legs[0].end_location);
-    }
-
-    // Use lodash uniqWith with isEqual for distinct locations
-    allLocations = uniqWith(allLocations, isEqual);
+    const allLocations = collectRouteLocations(shortestRoute);
 
     // Search at 0%, 25%, 50%, and 75% of the route
     const searchPercentages = [0, 0.25, 0.5, 0.75];
@@ -208,31 +246,10 @@ export const searchPlacesAlongRoute = createTool({
       const index = Math.floor(allLocations.length * percentage);
       return allLocations[Math.min(index, allLocations.length - 1)];
     });
-
-    // Use lodash uniqWith with isEqual for distinct search locations
     searchLocations = uniqWith(searchLocations, isEqual);
 
     // Perform searches at all locations and combine unique results
-    const allPlacesMap = new Map<string, Partial<PlaceData>>(); // Use place_id as key to avoid duplicates
-
-    for (const searchLocation of searchLocations) {
-      const placesResponse = await client.textSearch({
-        params: {
-          query: searchQuery,
-          location: searchLocation,
-          radius: 50000,
-          key: apiKey,
-        },
-      });
-
-      if (placesResponse.data.status === 'OK') {
-        for (const place of placesResponse.data.results || []) {
-          if (place.place_id && !allPlacesMap.has(place.place_id)) {
-            allPlacesMap.set(place.place_id, place);
-          }
-        }
-      }
-    }
+    const allPlacesMap = await searchAtLocations(client, apiKey, searchLocations, searchQuery);
 
     // Convert map to array, calculate distance to route, sort by distance, and limit results
     const places = Array.from(allPlacesMap.values())

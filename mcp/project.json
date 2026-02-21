@@ -4,6 +4,13 @@
   "sourceRoot": "mcp/src",
   "projectType": "application",
   "targets": {
+    "env:local": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "./.scripts/generate-env-local.sh mcp/op.env",
+        "cwd": "."
+      }
+    },
     "typecheck": {
       "executor": "nx:run-commands",
       "cache": true,
@@ -69,7 +76,7 @@
     "test": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "./.scripts/run-with-env.sh mcp/op.env bun test mcp/tests/*.spec.ts mcp/tests/*.test.ts mcp/mastra",
+        "command": "./.scripts/run-with-env.sh mcp/op.env mcp/.scripts/test.sh",
         "cwd": "."
       },
       "outputs": ["{workspaceRoot}/coverage/{projectRoot}"]

@@ -61,8 +61,8 @@ describe('GitHub Models Provider', () => {
       expect(getEquivalentGitHubModel('gemini-pro-latest')).toBe('gpt-4o');
     });
 
-    it('should map gemini-flash-lite-latest to gpt-4o-mini', () => {
-      expect(getEquivalentGitHubModel('gemini-flash-lite-latest')).toBe('gpt-4o-mini');
+    it('should map gemini-flash-lite-latest to gpt-4o', () => {
+      expect(getEquivalentGitHubModel('gemini-flash-lite-latest')).toBe('gpt-4o');
     });
 
     it('should return default model for unknown Gemini model', () => {

@@ -166,6 +166,38 @@ const fetchRecentlyChangedDevices = createStep({
   },
 });
 
+/**
+ * Checks whether a state change is within the noise threshold and should be filtered out.
+ * Returns `true` if the change is noise (i.e. should be skipped), `false` if it is significant.
+ */
+async function isNoiseChange(
+  noiseBaselineStorage: Awaited<ReturnType<typeof getEntityNoiseBaselineStorage>>,
+  entityId: string,
+  previousState: { state: string } | null,
+  newState: string,
+  deviceName: string,
+): Promise<boolean> {
+  if (!previousState) {
+    return false;
+  }
+
+  const analysis = await noiseBaselineStorage.isSignificantChange(entityId, previousState.state, newState);
+
+  if (!analysis.isSignificantChange) {
+    logger.info('State change filtered as noise', {
+      entityId,
+      deviceName,
+      oldValue: previousState.state,
+      newValue: newState,
+      changeAmount: analysis.changeAmount,
+      threshold: analysis.threshold,
+    });
+    return true;
+  }
+
+  return false;
+}
+
 // Trigger state change notifications for detected changes
 const triggerStateChangeNotifications = createStep({
   id: 'trigger-state-change-notifications',
@@ -218,25 +250,9 @@ const triggerStateChangeNotifications = createStep({
           );
 
           // Check if this is a significant change using noise baseline
-          if (previousState) {
-            const analysis = await noiseBaselineStorage.isSignificantChange(
-              entity.id,
-              previousState.state,
-              entity.newState,
-            );
-
-            if (!analysis.isSignificantChange) {
-              logger.info('State change filtered as noise', {
-                entityId: entity.id,
-                deviceName: device.name,
-                oldValue: previousState.state,
-                newValue: entity.newState,
-                changeAmount: analysis.changeAmount,
-                threshold: analysis.threshold,
-              });
-              filteredAsNoise++;
-              continue; // Skip this change as it's within noise threshold
-            }
+          if (await isNoiseChange(noiseBaselineStorage, entity.id, previousState, entity.newState, device.name)) {
+            filteredAsNoise++;
+            continue; // Skip this change as it's within noise threshold
           }
 
           // If we reach here, the change is significant (or no baseline/previous state exists)

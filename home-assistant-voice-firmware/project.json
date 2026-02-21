@@ -4,6 +4,13 @@
   "projectType": "application",
   "sourceRoot": "home-assistant-voice-firmware/src",
   "targets": {
+    "env:local": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "./.scripts/generate-env-local.sh home-assistant-voice-firmware/op.env",
+        "cwd": "."
+      }
+    },
     "lint": {},
     "initialize": {
       "executor": "nx:run-commands",

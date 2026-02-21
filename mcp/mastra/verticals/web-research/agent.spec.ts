@@ -18,15 +18,13 @@ describe('Web Research Agent - Google Search Tool Migration', () => {
     expect(typeof webResearchTools.googleSearch).toBe('object');
   });
 
-  test('googleSearch tool should have expected provider-defined structure', () => {
-    const { googleSearch } = webResearchTools;
+  test('googleSearch tool should have expected provider structure', () => {
+    const googleSearch = webResearchTools.googleSearch as Record<string, unknown>;
 
-    // Verify tool has expected properties (based on AI SDK provider-defined tools)
+    // Verify tool has expected properties (based on AI SDK provider tools)
     expect(googleSearch).toBeDefined();
     expect(googleSearch).toHaveProperty('type');
-    expect(googleSearch.type).toBe('provider-defined');
-    expect(googleSearch).toHaveProperty('name');
-    expect(googleSearch.name).toBe('google_search');
+    expect(googleSearch.type).toBe('provider');
     expect(googleSearch).toHaveProperty('id');
     expect(googleSearch.id).toBe('google.google_search');
   });

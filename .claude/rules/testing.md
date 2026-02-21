@@ -26,12 +26,14 @@ Strict requirements for testing code changes across the Hey Jarvis project.
 
 If any of these fail, you MUST fix the issues. Do not proceed until all checks pass.
 
+**Important:** Run only tests for the affected changes, unless you are completely done with your task - in which case you should run *all tests* to ensure nothing else is broken.
+
 ### Keep Fixing Until It Works
 
 **When tests or linting fail, you MUST:**
 
 1. Analyze the failure output carefully
-2. Fix the root cause (not the symptom)
+2. Fix the root cause (not the symptom - no hacks or conditional skipping)
 3. Re-run the tests/linting
 4. Repeat until ALL tests and linting pass
 
@@ -77,14 +79,27 @@ it('should complete async operation', async () => {
 
 ## Running Tests
 
-### Single Project
+### Single Project (all tests)
 ```bash
 bunx nx test <project-name>
 ```
 
+### Single Project (specific file)
+```bash
+bunx nx test <project-name> -- path/to/file.spec.ts
+```
+
+**Important:** Always run tests through NX, even for a single file. Running `bun test` directly
+bypasses the environment variable loading that NX provides via `run-with-env.sh`.
+
 ### All Affected Projects
 ```bash
 bunx nx affected --target=test
+```
+
+### All Projects
+```bash
+bunx nx run-many --target=test
 ```
 
 ## Running Linting
@@ -105,8 +120,8 @@ When making code changes, follow this workflow:
 
 1. **Make your changes** - Implement the feature or fix
 2. **Run linting** - `bunx nx lint <project>` and fix any issues
-3. **Run tests** - `bunx nx test <project>` and fix any failures
-4. **Run build** - `bunx nx build <project>` if applicable
+3. **Run build** - `bunx nx build <project>` if applicable
+4. **Run tests** - `bunx nx test <project>` and fix any failures
 5. **Verify manually** - Test the functionality works as expected
 6. **Repeat** - If any step fails, fix and re-run all checks
 

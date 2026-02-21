@@ -72,7 +72,7 @@ This prevents wasted effort from trial-and-error and finds the authoritative fix
 
 **See these skills for detailed guidance:**
 - [`clean-code`](.github/skills/clean-code/SKILL.md) - Variable naming and YAGNI principle
-- [`typescript-type-safety`](.github/skills/typescript-type-safety/SKILL.md) - Type safety guidelines (prefer inference over casts)
+- [`typescript`](.claude/rules/typescript.md) - Type safety guidelines (prefer inference over casts)
 - [`mastra-development`](.claude/skills/mastra-development/SKILL.md) - Agents, tools, workflows, vertical organization, and type safety
 - [`use-npm-packages`](.github/skills/use-npm-packages/SKILL.md) - Prefer existing libraries
 - [`boy-scout-rule`](.github/skills/boy-scout-rule/SKILL.md) - Leave code better than you found it

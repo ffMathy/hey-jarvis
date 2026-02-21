@@ -10,7 +10,7 @@ export async function killProcessOnPort(port: number): Promise<void> {
   try {
     await fkill(`:${port}`, { force: true, silent: true });
     console.log(`🧹 Killed process(es) on port ${port}`);
-  } catch (error) {
+  } catch (_error) {
     // Silent failure - port may already be free
   }
 }

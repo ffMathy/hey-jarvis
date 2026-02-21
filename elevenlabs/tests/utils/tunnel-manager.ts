@@ -1,5 +1,5 @@
 import { type ChildProcess, execSync, spawn } from 'child_process';
-import { createAuthenticatedMcpClient, isMcpServerRunning } from '../../../mcp/tests/utils/mcp-server-manager.js';
+import { isMcpServerRunning } from '../../../mcp/tests/utils/mcp-server-manager.js';
 import { retryWithBackoff } from '../../../mcp/tests/utils/retry-with-backoff.js';
 
 let tunnelProcess: ChildProcess | null = null;
@@ -11,7 +11,7 @@ function killExistingTunnels(): void {
   try {
     execSync('pkill -f cloudflared || true', { stdio: 'ignore' });
     console.log('🧹 Killed any existing cloudflared processes');
-  } catch (error) {
+  } catch (_error) {
     // Ignore errors - process might not exist
   }
 }
@@ -28,7 +28,7 @@ async function isLocalMcpServerHealthy(): Promise<boolean> {
     });
     const data = (await response.json()) as { status: string };
     return response.ok && data.status === 'healthy';
-  } catch (error) {
+  } catch (_error) {
     return false;
   }
 }
@@ -140,7 +140,7 @@ export async function ensureTunnelRunning(): Promise<void> {
       maxRetries: 60,
       initialDelay: 1000,
       backoffMultiplier: 1, // Linear retry (1 second between attempts)
-      onRetry: (error, attempt, delay) => {
+      onRetry: (error, attempt, _delay) => {
         // Log extra diagnostics every 10 attempts
         if (attempt % 10 === 0) {
           console.log(`🔍 Tunnel diagnostics (attempt ${attempt}/60):`);
