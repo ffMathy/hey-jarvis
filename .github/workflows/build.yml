@@ -85,6 +85,15 @@ jobs:
         with:
           main-branch-name: main
 
+      - name: Restore NX build cache
+        uses: actions/cache@v4
+        with:
+          path: .nx/cache
+          key: nx-cache-${{ runner.os }}-${{ steps.set-shas.outputs.head }}
+          restore-keys: |
+            nx-cache-${{ runner.os }}-${{ steps.set-shas.outputs.base }}
+            nx-cache-${{ runner.os }}-
+
       - name: Build and test in dev container
         uses: devcontainers/ci@v0.3
         env:

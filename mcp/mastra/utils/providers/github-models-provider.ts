@@ -75,7 +75,10 @@ export const GITHUB_MODELS_DEFAULT_MODEL = 'gpt-4o-mini';
  */
 export const GEMINI_TO_GITHUB_MODEL_MAP: Record<string, string> = {
   'gemini-flash-latest': 'gpt-4o-mini',
-  'gemini-flash-lite-latest': 'gpt-4o-mini',
+  // Use gpt-4o for the lite model because gpt-4o-mini lacks the reasoning needed
+  // for the routing agent to correctly avoid unnecessary tasks (e.g. location lookup
+  // when the location is already provided in the query).
+  'gemini-flash-lite-latest': 'gpt-4o',
   'gemini-pro-latest': 'gpt-4o',
 };
 
