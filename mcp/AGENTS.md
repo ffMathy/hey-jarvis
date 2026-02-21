@@ -495,7 +495,7 @@ Proactive notification delivery workflow with validation and device targeting:
 - Uses ESPHome API service: `esphome.{device_name}_send_notification`
 - Parameters: `message` (string), `timeout` (integer in milliseconds)
 - Requires device firmware with ElevenLabs integration and custom action support
-- Works within Home Assistant addon environment with Supervisor token
+- Works within Home Assistant environment with Supervisor token
 
 **Usage Example:**
 ```typescript
@@ -1186,14 +1186,6 @@ bunx nx generate-tokens mcp
 
 **Note**: Client ID and secret must always be provided via environment variables for security.
 
-**Alternative: Manual Configuration in Home Assistant Addon**
-1. Go to **Supervisor** → **Hey Jarvis MCP Server** → **Configuration**
-2. Fill in the three fields:
-   - `google_client_id`
-   - `google_client_secret`
-   - `google_refresh_token`
-3. Save and restart the addon
-
 #### Token Lifecycle
 
 **Access Tokens**:
@@ -1393,14 +1385,6 @@ bunx nx generate-tokens mcp
 - Single source for refresh tokens across deployments
 
 **Note**: Client ID and secret must always be provided via environment variables for security.
-
-**Alternative: Manual Configuration in Home Assistant Addon**
-1. Go to **Supervisor** → **Hey Jarvis MCP Server** → **Configuration**
-2. Fill in the three fields:
-   - `microsoft_client_id`
-   - `microsoft_client_secret`
-   - `microsoft_refresh_token`
-3. Save and restart the addon
 
 #### Token Lifecycle
 
@@ -1624,17 +1608,11 @@ const PROVIDERS: OAuthProvider[] = [
 
 ## MCP Server Authentication
 
-The MCP server supports JWT (JSON Web Token) authentication for secure access over HTTP. Authentication is handled at the Nginx reverse proxy layer in the Home Assistant addon, providing protection for the MCP server endpoints (port 4112) while allowing open access to the Mastra UI (port 4111) which is protected by Home Assistant's ingress authentication.
+The MCP server supports JWT (JSON Web Token) authentication for secure access over HTTP, providing protection for the MCP server endpoints (port 4112).
 
 ### JWT Authentication Setup
 
 #### 1. Configure JWT Secret
-
-**For Home Assistant Addon:**
-Configure the JWT secret in the addon configuration:
-1. Go to **Supervisor** → **Hey Jarvis MCP Server** → **Configuration**
-2. Add your JWT secret to the `jwt_secret` field
-3. Save and restart the addon
 
 **For Development with 1Password:**
 Store a secure JWT secret in your 1Password vault:
@@ -1646,7 +1624,7 @@ HEY_JARVIS_MCP_JWT_SECRET="op://Personal/Jarvis/JWT secret"
 **Important**: The JWT secret should be:
 - At least 32 characters long
 - Randomly generated (use a password generator)
-- Kept secure in your 1Password vault or Home Assistant configuration
+- Kept secure in your 1Password vault
 - Never committed to version control
 
 #### 2. Generate JWT Tokens
@@ -1675,8 +1653,7 @@ curl -H "Authorization: Bearer <your-token>" \
      -X POST \
      http://localhost:4112/api/mcp
 
-# Mastra UI does NOT require JWT - it's protected by Home Assistant ingress
-# Access through Home Assistant ingress: http://homeassistant.local:8123/...
+# Mastra UI does NOT require JWT
 ```
 
 #### 4. Token Format
@@ -1687,9 +1664,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 ### Security Features
 
-- **Nginx-Based Authentication**: JWT validation happens at the Nginx layer for MCP server endpoints
 - **Selective Protection**: Only MCP server (`/api/mcp`) requires JWT authentication
-- **Mastra UI Access**: Mastra UI is accessible without JWT (protected by Home Assistant ingress instead)
 - **HTTP-Only Authentication**: JWT authentication applies only to HTTP transport. The stdio transport (used for local development with MCP clients) is unaffected.
 - **Token Validation**: All MCP HTTP requests are validated before reaching the backend service.
 - **Graceful Degradation**: If JWT secret is not configured, the MCP server runs without authentication (useful for development).
@@ -1699,15 +1674,13 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ### Authentication Flow
 
 1. Client sends HTTP request to `/api/mcp` with `Authorization: Bearer <token>` header
-2. Nginx extracts and validates the JWT token using the configured secret via nginx-mod-http-auth-jwt
-3. If valid, request is proxied to the MCP server (internal port 8112)
-4. If invalid/missing, Nginx returns 401 Unauthorized response
-5. Requests to other paths (Mastra UI) are proxied without JWT validation
+2. The JWT token is validated using the configured secret
+3. If valid, request is processed by the MCP server
+4. If invalid/missing, a 401 Unauthorized response is returned
 
 ### Disabling Authentication
 
 To disable authentication (not recommended for production):
-- **Home Assistant Addon**: Leave the `jwt_secret` field empty in the addon configuration
 - **Development**: Don't set `HEY_JARVIS_MCP_JWT_SECRET` environment variable
 - The MCP server will be accessible without authentication
 
@@ -2114,76 +2087,6 @@ Create sub-verticals when:
 - **IFTTT/Zapier** workflow connections
 - **IoT device ecosystem** expansion
 
-## GitHub Integration
-
-### GitHub MCP Tools Usage
-**CRITICAL: Always use GitHub MCP tools** for all GitHub repository operations:
-
-#### Available Tools
-- `mcp_github_github_list_releases` - List all releases in repository
-- `mcp_github_github_get_release_by_tag` - Get specific release by tag name
-- `mcp_github_github_get_latest_release` - Get the latest published release
-- `mcp_github_github_list_tags` - List all tags in repository
-- `mcp_github_github_list_branches` - List all branches
-- `mcp_github_github_create_branch` - Create a new branch
-- `mcp_github_github_create_or_update_file` - Create or update files
-- `mcp_github_github_push_files` - Push multiple files in single commit
-
-#### Common Use Cases
-
-**Checking Docker Image Availability**:
-```typescript
-// ✅ CORRECT: Use MCP tools to verify release exists
-const release = await mcp_github_github_get_release_by_tag({
-  owner: 'ffmathy',
-  repo: 'hey-jarvis',
-  tag: 'home-assistant-addon-v0.2.2'
-});
-
-// ❌ INCORRECT: Don't use curl or manual API calls
-exec('curl -H "Authorization: Bearer $GITHUB_TOKEN" ...');
-```
-
-**Listing Available Versions**:
-```typescript
-// ✅ CORRECT: List all releases to see what's published
-const releases = await mcp_github_github_list_releases({
-  owner: 'ffmathy',
-  repo: 'hey-jarvis',
-  perPage: 20
-});
-
-// Filter for specific project
-const addonReleases = releases.filter(r => 
-  r.tag_name.startsWith('home-assistant-addon-v')
-);
-```
-
-**Creating Release Branches**:
-```typescript
-// ✅ CORRECT: Create branch for release work
-await mcp_github_github_create_branch({
-  owner: 'ffmathy',
-  repo: 'hey-jarvis',
-  branch: 'release/v0.3.0',
-  from_branch: 'main'
-});
-```
-
-#### Why Use MCP Tools?
-- **Type Safety**: Full TypeScript types for requests and responses
-- **Error Handling**: Consistent error handling across all operations
-- **Authentication**: Automatic token management
-- **Rate Limiting**: Built-in rate limit handling
-- **Documentation**: Self-documenting with schemas
-
-#### GitHub Container Registry (GHCR)
-When working with Docker images:
-1. **Always verify release exists** before updating `config.json` image references
-2. **Check deployment logs** in GitHub Actions to confirm images were pushed
-3. **Use semantic versioning** for addon releases (e.g., `home-assistant-addon-v0.2.2`)
-4. **Multi-arch images required** for Home Assistant compatibility
-
 ## Development Guidelines
 
 ### Core Development Principles
@@ -2193,320 +2096,17 @@ When working with Docker images:
 
 1. **Service Configuration**:
    - `mcp/supervisord.conf` - Production service ports
-   - `home-assistant-addon/supervisord.conf` - Addon service ports
-   - `home-assistant-addon/tests/supervisord-test.conf` - Test service ports
 
 2. **Port Constants**:
    - `mcp/lib/ports.sh` - Bash port constants (centralized)
-   - `home-assistant-addon/tests/e2e/helpers/ports.ts` - TypeScript port constants (centralized)
 
-3. **Proxy Configuration**:
-   - `home-assistant-addon/nginx.conf` - Production nginx proxy targets
-   - `home-assistant-addon/tests/nginx.tests.conf` - Test nginx proxy targets
-
-4. **Home Assistant Addon Metadata** ⚠️:
-   - `home-assistant-addon/config.json` - Port mappings and descriptions for Home Assistant UI
-
-5. **Documentation**:
+3. **Documentation**:
    - `mcp/AGENTS.md` - Update port references in documentation
 
 **Port Change Checklist**:
-- [ ] Update all supervisord.conf files
-- [ ] Update ports.sh and ports.ts
-- [ ] Update nginx.conf files
-- [ ] Update config.json port descriptions ⚠️
+- [ ] Update supervisord.conf
+- [ ] Update ports.sh
 - [ ] Update AGENTS.md documentation
-- [ ] Run tests: `bunx nx test home-assistant-addon`
-
-#### 🎯 **YAGNI (You Aren't Gonna Need It)**
-This project strictly follows the YAGNI principle - avoid adding functionality or configuration options until they are actually needed:
-
-- **Factory Methods**: Should be opinionated and provide sensible defaults rather than extensive customization options
-- **Configuration**: Only expose parameters that are necessary for core functionality
-- **Features**: Don't implement speculative features or "what if" scenarios
-- **Abstraction**: Keep abstractions minimal and add complexity only when required
-- **Dependencies**: Don't add libraries or tools until they solve an actual problem
-
-**Example**: Our workflow factory methods (`createAgentStep`, `createToolStep`) only accept essential parameters and use opinionated defaults for scorers, rather than exposing all possible configuration options.
-
-#### 🔁 **DRY (Don't Repeat Yourself)**
-Avoid duplication of configuration and constants:
-
-- **Centralized Configuration**: All ports and URLs are defined in centralized configuration files
-  - Bash scripts: `mcp/lib/ports.sh`
-  - TypeScript tests: `home-assistant-addon/tests/e2e/helpers/ports.ts`
-- **Single Source of Truth**: Never hardcode the same value in multiple files
-- **Helper Functions**: Create reusable helper functions instead of duplicating logic
-- **Configuration Sharing**: Import configurations rather than duplicating them
-
-**Example**: Port configuration is centralized in `ports.sh` and `ports.ts`, then imported by all scripts and tests rather than hardcoded.
-
-#### 💬 **Clean Code Comments - CRITICAL**
-**Comments should ONLY explain *WHY*, never *WHAT* or *HOW*:**
-
-❌ **NEVER write comments like these:**
-```typescript
-// Loop through users
-for (const user of users) { ... }
-
-// Set port to 4111
-const port = 4111;
-
-// Create HTTP server
-const server = createServer();
-
-// Call the API
-const response = await fetch(url);
-```
-
-✅ **ONLY write comments like these:**
-```typescript
-// Using internal port to allow nginx to handle JWT authentication at reverse proxy layer
-const port = 8111;
-
-// Workaround for nginx auth module not supporting dynamic key files - must be created before nginx starts
-createJWTKeyFile();
-
-// Using internal port when deployed (supervisord sets PORT=8112)
-// Defaults to 4112 for direct access (development and testing)
-const port = parseInt(process.env.PORT || '4112', 10);
-```
-
-**When comments ARE allowed:**
-- Explaining non-obvious business logic or architectural decisions
-- Documenting workarounds for bugs in external libraries
-- Clarifying why a hack or unusual pattern exists
-- Noting important security considerations or constraints
-- Explaining why we chose a specific approach over alternatives
-
-**When comments are NOT allowed:**
-- Describing what the code does (the code itself shows this)
-- Explaining how something works (use descriptive names instead)
-- Repeating information already in the code
-- Documenting standard patterns or idioms
-- Stating the obvious
-
-**Golden Rule**: If removing the comment makes the code unclear, improve the code (better names, smaller functions, clearer structure) rather than adding a comment.
-
-### Code Reuse and External Libraries
-
-#### 🔄 **Don't Reinvent the Wheel**
-**CRITICAL: Always prefer well-maintained npm packages** over custom implementations:
-
-- **Search npm first**: Before writing custom code, search for existing packages
-- **Check maintenance**: Verify active maintenance, download statistics, and TypeScript support
-- **Use official libraries**: Prefer packages by recognized maintainers (e.g., Sindre Sorhus)
-- **Avoid platform-specific code**: Don't write shell commands (lsof, kill, grep) when cross-platform libraries exist
-- **Use lodash-es for utility functions**: This project uses `lodash-es` for common utility functions like array/object manipulation, string handling, and collection operations
-
-**Example - Using lodash-es:**
-
-✅ **GOOD - Use lodash-es for cleaner code:**
-```typescript
-import { find, uniqueId, truncate, chain, sumBy, groupBy } from 'lodash-es';
-
-// Generate unique IDs
-const taskId = uniqueId('task-');  // Returns 'task-1', 'task-2', etc.
-
-// Truncate long strings
-const description = truncate(longText, { length: 100 });
-
-// Find items in collections
-const task = find(tasks, task => task.status === 'running');
-
-// Chain operations
-const result = chain(items)
-  .filter(item => item.active)
-  .sortBy('priority')
-  .take(5)
-  .value();
-```
-
-❌ **BAD - Custom implementations:**
-```typescript
-// ❌ Don't write custom ID generators
-function generateId(prefix: string): string {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-}
-
-// ❌ Don't write custom truncate functions
-const desc = `${text.substring(0, 100)}${text.length > 100 ? '...' : ''}`;
-```
-
-**Example - Port-Based Process Killing:**
-
-❌ **BAD - Custom Shell Commands:**
-```typescript
-// ❌ Platform-specific, reinventing the wheel, ~60 lines of code
-export function killProcessOnPort(port: number): void {
-  try {
-    const lsofCmd = `lsof -ti:${port}`;
-    const pids = execSync(lsofCmd, { encoding: 'utf-8' }).trim().split('\n');
-    pids.forEach(pid => execSync(`kill -9 ${pid}`));
-  } catch (error) {
-    // Complex error handling for different platforms...
-  }
-}
-```
-
-✅ **GOOD - Use Existing Package:**
-```typescript
-// ✅ Cross-platform, maintained (182k downloads/week), ~15 lines
-import fkill from 'fkill';
-
-export async function killProcessOnPort(port: number): Promise<void> {
-  try {
-    await fkill(`:${port}`, { force: true, silent: true });
-    console.log(`🧹 Killed process(es) on port ${port}`);
-  } catch (error) {
-    // Silent failure - port may already be free
-  }
-}
-```
-
-**Package Selection Criteria:**
-- **Downloads/week**: >100k preferred (indicates wide adoption)
-- **Last publish**: Within last few months (actively maintained)
-- **TypeScript support**: Built-in types or @types package available
-- **Cross-platform**: Works on Linux, macOS, Windows
-- **Reputable author**: Known maintainer (e.g., sindresorhus, vercel, microsoft)
-
-**Common Patterns to Avoid:**
-- ❌ Custom file system watchers → Use `chokidar`
-- ❌ Custom process management → Use `fkill`, `cross-spawn`
-- ❌ Custom HTTP clients → Use `axios`, `node-fetch`, `got`
-- ❌ Custom date/time handling → Use `date-fns`, `dayjs`
-- ❌ Custom path manipulation → Use Node.js built-in `path` module
-- ❌ Custom validation → Use `zod`, `joi`, `yup`
-- ❌ Custom array/object utilities → Use `lodash-es`
-
-#### 🛡️ **TypeScript Type Safety**
-**CRITICAL: Never use `any` type** - it defeats TypeScript's purpose:
-
-- **Use proper types**: Define interfaces or types for all data structures
-- **Use `unknown` for truly unknown data**: Then narrow with type guards
-- **Use type assertions sparingly**: Only when you have verified the type
-- **Enable strict mode**: Configure `strict: true` in tsconfig.json where possible
-
-**Example - Error Handling:**
-
-❌ **BAD - Using `any`:**
-```typescript
-// ❌ Loses all type safety, no autocomplete, no compile-time checks
-server.on('error', (error: any) => {
-  console.error('Server error:', error.message);
-  if (error.details) {
-    console.error('Details:', error.details.message);
-  }
-});
-```
-
-✅ **GOOD - Proper Type Assertion:**
-```typescript
-// ✅ Type-safe with explicit shape, catches typos at compile time
-server.on('error', (error) => {
-  const typedError = error as Error & {
-    details?: { message?: string };
-  };
-  console.error('Server error:', typedError.message);
-  if (typedError.details?.message) {
-    console.error('Details:', typedError.details.message);
-  }
-});
-```
-
-✅ **EVEN BETTER - Type Guard:**
-```typescript
-// ✅ Runtime validation + type narrowing
-function isErrorWithDetails(error: unknown): error is Error & { details: { message: string } } {
-  return error instanceof Error &&
-    typeof (error as any).details === 'object' &&
-    typeof (error as any).details.message === 'string';
-}
-
-server.on('error', (error) => {
-  console.error('Server error:', error instanceof Error ? error.message : String(error));
-  if (isErrorWithDetails(error)) {
-    console.error('Details:', error.details.message);
-  }
-});
-```
-
-**Why `any` is Problematic:**
-- Disables all TypeScript checking for that value
-- No autocomplete in IDE
-- Typos and wrong property access caught only at runtime
-- Defeats the purpose of using TypeScript
-- Makes refactoring dangerous (no compile-time safety)
-
-**When to Use Type Assertions:**
-- Only after verifying the shape/type at runtime
-- When TypeScript can't infer but you know the type is correct
-- Use `as` assertions, not angle brackets (TSX compatibility)
-- Document why the assertion is safe
-
-#### 🎯 **Let Libraries Handle Complexity**
-**Don't add validation or routing logic that frameworks already handle:**
-
-- **Trust well-tested libraries**: They've handled edge cases you haven't thought of
-- **Don't pre-validate inputs**: Let the library validate and return proper errors
-- **Don't duplicate routing logic**: Let frameworks route requests to handlers
-- **Follow library conventions**: Don't fight the framework's design
-
-**Example - MCP Server Routing:**
-
-❌ **BAD - Unnecessary Validation:**
-```typescript
-// ❌ Manually validating path and method before passing to Mastra
-const requestUrl = new URL(req.url!, `http://${req.headers.host}`);
-
-if (requestUrl.pathname !== httpPath) {
-  res.writeHead(404, { 'Content-Type': 'text/plain' });
-  res.end('Not Found');
-  return;
-}
-
-if (req.method !== 'POST' && req.method !== 'GET') {
-  res.writeHead(405, { 'Content-Type': 'text/plain' });
-  res.end('Method Not Allowed');
-  return;
-}
-
-// Finally pass to Mastra
-mcpServer.startHTTP(req, res);
-```
-
-✅ **GOOD - Let Mastra Handle It:**
-```typescript
-// ✅ Pass all requests to Mastra - let it handle routing, methods, and paths
-const requestUrl = new URL(req.url!, `http://${req.headers.host}`);
-
-// Only handle health check (for container orchestration)
-if (requestUrl.pathname === '/health') {
-  res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('OK');
-  return;
-}
-
-// Let Mastra handle everything else (validates, routes, responds)
-mcpServer.startHTTP(req, res);
-```
-
-**Benefits:**
-- **Less code**: Fewer lines to maintain and test
-- **Better error handling**: Libraries return standard error formats
-- **More features**: Libraries handle edge cases (OPTIONS, HEAD, 404s, etc.)
-- **Easier updates**: Library improvements automatically benefit you
-- **Standard behavior**: Users get expected responses per protocol specs
-
-**When to Add Validation:**
-- ✅ Custom business logic specific to your domain
-- ✅ Authentication/authorization (but prefer middleware)
-- ✅ Rate limiting or quota enforcement
-- ✅ Custom health checks or monitoring endpoints
-- ❌ Standard HTTP method validation (framework handles it)
-- ❌ Standard path routing (framework handles it)
-- ❌ Standard content-type negotiation (framework handles it)
 
 ### File Creation Policy
 **CRITICAL**: When working on this project:

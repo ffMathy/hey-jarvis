@@ -25,9 +25,8 @@ export const microsoftProvider: OAuthProvider = {
     '  - Store in "Microsoft OAuth" item in "Personal" vault',
     '  - Fields: client id, client secret, refresh token',
     '',
-    'Home Assistant Addon:',
-    '  - Go to Supervisor → Hey Jarvis MCP Server → Configuration',
-    '  - Fields: microsoft_client_id, microsoft_client_secret, microsoft_refresh_token',
+    'Environment Variables:',
+    '  - Set HEY_JARVIS_MICROSOFT_CLIENT_ID, HEY_JARVIS_MICROSOFT_CLIENT_SECRET, HEY_JARVIS_MICROSOFT_REFRESH_TOKEN',
   ],
   createClient: (clientId: string, clientSecret: string) => {
     return new ConfidentialClientApplication({

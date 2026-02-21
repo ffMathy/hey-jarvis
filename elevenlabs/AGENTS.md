@@ -46,9 +46,6 @@ Required (via 1Password):
 
 ## Testing Guidelines
 
-### Never Skip Tests
-**CRITICAL**: Tests must NEVER be skipped in CI/CD environments. Let tests fail properly if requirements are not met.
-
 ### Test Score Requirements
 All tests must use strict score requirements (>0.9 for 90%+ confidence):
 

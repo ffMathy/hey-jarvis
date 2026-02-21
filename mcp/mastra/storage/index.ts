@@ -8,7 +8,6 @@ import { EntityNoiseBaselineStorage } from './entity-noise-baseline.js';
 import { TokenUsageStorage } from './token-usage.js';
 
 // Use HEY_JARVIS_STORAGE_PATH environment variable if set, otherwise use local mcp/ directory
-// Home Assistant addon sets this to /data for automatic backups
 function getDatabaseDirectory(): string {
   const envPath = process.env.HEY_JARVIS_STORAGE_PATH;
 

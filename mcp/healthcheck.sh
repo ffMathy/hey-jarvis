@@ -1,12 +1,11 @@
 #!/bin/sh
 # Health check script for Docker container
-# Works for both base MCP container and Home Assistant addon
 # Automatically detects which ports are in use and checks accordingly
 
 set -e
 
-# Check if port 8111 is listening (Home Assistant addon mode)
-# or port 4111 is listening (base MCP container mode)
+# Check if port 8111 is listening (internal mode)
+# or port 4111 is listening (default mode)
 # Both configurations use mastra dev which serves API and Studio UI together
 if nc -z localhost 8111 2>/dev/null; then
     echo "Checking Mastra dev on internal port 8111 (addon mode)..."

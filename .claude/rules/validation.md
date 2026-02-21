@@ -6,13 +6,23 @@ Strict requirements for when to run tests across the Hey Jarvis project.
 
 **Testing and linting are MANDATORY after making code changes.** You must verify your changes work before reporting completion.
 
+### When to Skip Validation
+
+Validation is **NOT required** when changes only affect non-code files:
+- Documentation files (`.md`, `AGENTS.md`, `README.md`, `CHANGELOG.md`)
+- Comments-only changes in code files
+- Configuration files that don't affect build/runtime (`.gitignore`, `.nxignore`, editor settings)
+- License files, `.editorconfig`, or other metadata
+
+If a task includes **both** code and non-code changes, validation is still required.
+
 ### After Every Code Change
 
 Run tests after:
 - Implementing a new feature
 - Fixing a bug
 - Refactoring code
-- Changing configuration
+- Changing configuration that affects build or runtime
 - Updating dependencies
 
 **Important:** Run only tests for the affected changes, unless you are completely done with your task — in which case you should run *all tests* to ensure nothing else is broken.

@@ -23,9 +23,8 @@ export const googleProvider: OAuthProvider = {
     '  - Store in "Google OAuth" item in "Personal" vault',
     '  - Fields: client id, client secret, refresh token',
     '',
-    'Home Assistant Addon:',
-    '  - Go to Supervisor → Hey Jarvis MCP Server → Configuration',
-    '  - Fields: google_client_id, google_client_secret, google_refresh_token',
+    'Environment Variables:',
+    '  - Set HEY_JARVIS_GOOGLE_CLIENT_ID, HEY_JARVIS_GOOGLE_CLIENT_SECRET, HEY_JARVIS_GOOGLE_REFRESH_TOKEN',
   ],
   createClient: (clientId: string, clientSecret: string): OAuth2Client => {
     return new google.auth.OAuth2(clientId, clientSecret, REDIRECT_URI);
