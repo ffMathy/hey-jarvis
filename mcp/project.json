@@ -7,7 +7,7 @@
     "env:local": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "./.scripts/generate-env-local.sh mcp/op.env mcp/.env.local",
+        "command": "./.scripts/generate-env-local.sh mcp/op.env",
         "cwd": "."
       }
     },

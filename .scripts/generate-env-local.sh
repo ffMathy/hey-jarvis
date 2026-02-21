@@ -1,13 +1,14 @@
 #!/bin/bash
 set -euo pipefail
-# Generates a .env.local file with actual secrets resolved from 1Password CLI.
-# Usage: generate-env-local.sh <op-env-file> <output-file>
+# Generates an op.env.local file with actual secrets resolved from 1Password CLI.
+# Usage: generate-env-local.sh <op-env-file>
+# Output is written to <op-env-file>.local (e.g. mcp/op.env → mcp/op.env.local)
 
 op_env_file="$1"
-output_file="$2"
+output_file="${op_env_file}.local"
 
-if [ -z "$op_env_file" ] || [ -z "$output_file" ]; then
-  echo "Usage: $0 <op-env-file> <output-file>"
+if [ -z "$op_env_file" ]; then
+  echo "Usage: $0 <op-env-file>"
   exit 1
 fi
 
@@ -22,7 +23,7 @@ if ! op account get &> /dev/null; then
   exit 1
 fi
 
-# Resolve op:// references and write actual values to .env.local.
+# Resolve op:// references and write actual values to op.env.local.
 # op run sets the resolved secrets as environment variables; the inner bash
 # then reads each variable name from the op.env file and writes KEY=VALUE lines.
 op run --env-file "$op_env_file" --no-masking -- \

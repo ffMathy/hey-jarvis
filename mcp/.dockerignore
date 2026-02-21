@@ -11,6 +11,7 @@ coverage/
 # Development
 .env
 .env.local
+op.env.local
 .env.*.local
 *.swp
 *.swo

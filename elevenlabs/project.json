@@ -8,7 +8,7 @@
     "env:local": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "./.scripts/generate-env-local.sh elevenlabs/op.env elevenlabs/.env.local",
+        "command": "./.scripts/generate-env-local.sh elevenlabs/op.env",
         "cwd": "."
       }
     },
