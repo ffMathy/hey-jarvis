@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from 'bun:test';
+import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 import { createAgent } from '../agent-factory.js';
 import {
@@ -11,6 +11,17 @@ import {
   ollama,
   ollamaModel,
 } from './ollama-provider.js';
+
+/** True when HEY_JARVIS_OLLAMA_BASE_URL is configured — the single discriminator for all Ollama tests. */
+const ollamaConfigured = Boolean(process.env.HEY_JARVIS_OLLAMA_BASE_URL);
+
+function skipUnlessConfigured(): boolean {
+  if (!ollamaConfigured) {
+    console.log('Skipping: HEY_JARVIS_OLLAMA_BASE_URL is not set');
+    return true;
+  }
+  return false;
+}
 
 describe('Ollama Provider Configuration', () => {
   it('should export the correct model name', () => {
@@ -28,14 +39,10 @@ describe('Ollama Provider Configuration', () => {
     expect(typeof listModels).toBe('function');
   });
 
-  // Skipped when HEY_JARVIS_OLLAMA_BASE_URL is not set — no default value is provided,
-  // so URL helper functions return undefined-based strings when the env var is absent.
   it('should return correct URL values', () => {
+    if (skipUnlessConfigured()) return;
+
     const ollamaBaseUrl = process.env.HEY_JARVIS_OLLAMA_BASE_URL;
-    if (!ollamaBaseUrl) {
-      console.log('Skipping test: HEY_JARVIS_OLLAMA_BASE_URL is not set');
-      return;
-    }
 
     const baseUrl = getOllamaBaseUrl();
     const apiUrl = getOllamaApiUrl();
@@ -54,47 +61,12 @@ describe('Ollama Provider Configuration', () => {
   });
 });
 
-/**
- * Checks if Ollama can actually perform inference (not just respond to API health checks).
- * The Hailo hardware-accelerated cluster may respond to /api/tags but fail on inference.
- */
-async function isInferenceAvailable(): Promise<boolean> {
-  try {
-    const response = await fetch(`${getOllamaApiUrl()}/api/generate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: OLLAMA_MODEL, prompt: 'hi', stream: false }),
-      signal: AbortSignal.timeout(4000),
-    });
-    return response.ok;
-  } catch {
-    return false;
-  }
-}
-
 describe('Ollama Docker Integration', () => {
-  let ollamaAvailable = false;
-  let inferenceAvailable = false;
-
-  beforeAll(async () => {
-    ollamaAvailable = await isOllamaAvailable();
-
-    if (!ollamaAvailable) {
-      console.log('⚠️ Ollama is not available - integration tests will be skipped');
-      console.log(`   Expected Ollama at: ${getOllamaBaseUrl()}`);
-    } else {
-      inferenceAvailable = await isInferenceAvailable();
-      if (!inferenceAvailable) {
-        console.log('⚠️ Ollama API is up but inference is unavailable - inference tests will be skipped');
-      }
-    }
-  });
-
   it('should connect to Ollama API', async () => {
-    if (!ollamaAvailable) {
-      console.log('Skipping test: Ollama is not available');
-      return;
-    }
+    if (skipUnlessConfigured()) return;
+
+    const available = await isOllamaAvailable();
+    expect(available).toBe(true);
 
     const response = await fetch(`${getOllamaApiUrl()}/api/tags`);
 
@@ -105,20 +77,14 @@ describe('Ollama Docker Integration', () => {
   });
 
   it('should list available models', async () => {
-    if (!ollamaAvailable) {
-      console.log('Skipping test: Ollama is not available');
-      return;
-    }
+    if (skipUnlessConfigured()) return;
 
     const models = await listModels();
     expect(Array.isArray(models)).toBe(true);
   });
 
   it('should check model availability using isModelAvailable', async () => {
-    if (!ollamaAvailable) {
-      console.log('Skipping test: Ollama is not available');
-      return;
-    }
+    if (skipUnlessConfigured()) return;
 
     // Check for a model that definitely doesn't exist
     const nonExistentAvailable = await isModelAvailable('non-existent-model:v999');
@@ -126,10 +92,7 @@ describe('Ollama Docker Integration', () => {
   });
 
   it('should generate text using ollama provider', async () => {
-    if (!ollamaAvailable || !inferenceAvailable) {
-      console.log('Skipping test: Ollama inference is not available');
-      return;
-    }
+    if (skipUnlessConfigured()) return;
 
     const model = ollama(OLLAMA_MODEL);
 
@@ -151,10 +114,7 @@ describe('Ollama Docker Integration', () => {
   }, 120000);
 
   it('should verify default model is available', async () => {
-    if (!ollamaAvailable) {
-      console.log('Skipping test: Ollama is not available');
-      return;
-    }
+    if (skipUnlessConfigured()) return;
 
     const modelAvailable = await isModelAvailable(OLLAMA_MODEL);
     expect(modelAvailable).toBe(true);
@@ -162,16 +122,6 @@ describe('Ollama Docker Integration', () => {
 });
 
 describe('Ollama Mastra Agent Integration', () => {
-  let ollamaAvailable = false;
-  let inferenceAvailable = false;
-
-  beforeAll(async () => {
-    ollamaAvailable = await isOllamaAvailable();
-    if (ollamaAvailable) {
-      inferenceAvailable = await isInferenceAvailable();
-    }
-  });
-
   it('should create an agent with ollamaModel', async () => {
     const agent = await createAgent({
       model: ollamaModel,
@@ -185,10 +135,7 @@ describe('Ollama Mastra Agent Integration', () => {
   });
 
   it('should generate a response using Mastra agent with Ollama', async () => {
-    if (!ollamaAvailable || !inferenceAvailable) {
-      console.log('Skipping test: Ollama inference is not available');
-      return;
-    }
+    if (skipUnlessConfigured()) return;
 
     const agent = await createAgent({
       model: ollamaModel,
@@ -206,10 +153,7 @@ describe('Ollama Mastra Agent Integration', () => {
   }, 60000);
 
   it('should stream a response using Mastra agent with Ollama', async () => {
-    if (!ollamaAvailable || !inferenceAvailable) {
-      console.log('Skipping test: Ollama inference is not available');
-      return;
-    }
+    if (skipUnlessConfigured()) return;
 
     const agent = await createAgent({
       model: ollamaModel,
@@ -231,10 +175,7 @@ describe('Ollama Mastra Agent Integration', () => {
   }, 60000);
 
   it('should generate structured output using Mastra agent with Ollama', async () => {
-    if (!ollamaAvailable || !inferenceAvailable) {
-      console.log('Skipping test: Ollama inference is not available');
-      return;
-    }
+    if (skipUnlessConfigured()) return;
 
     const outputSchema = z.object({
       greeting: z.string(),
@@ -248,23 +189,14 @@ describe('Ollama Mastra Agent Integration', () => {
       instructions: 'You are a helpful test assistant. Always respond with valid JSON.',
     });
 
-    // Structured output requires the Ollama `format` field which hardware-accelerated clusters
-    // (e.g. Hailo) may not support. Treat schema-validation failures as graceful degradation.
-    try {
-      const stream = await agent.stream('Say hello and give me a random number between 1 and 10.', {
-        structuredOutput: {
-          schema: outputSchema,
-        },
-      });
+    const stream = await agent.stream('Say hello and give me a random number between 1 and 10.', {
+      structuredOutput: {
+        schema: outputSchema,
+      },
+    });
 
-      const result = await stream.object;
-      expect(result).toBeDefined();
-    } catch (error) {
-      console.log(
-        'Note: Structured output not supported on this cluster (format field stripped):',
-        error instanceof Error ? error.message : String(error),
-      );
-    }
+    const result = await stream.object;
+    expect(result).toBeDefined();
   }, 90000);
 });
 

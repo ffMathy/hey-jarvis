@@ -79,10 +79,18 @@ it('should complete async operation', async () => {
 
 ## Running Tests
 
-### Single Project
+### Single Project (all tests)
 ```bash
 bunx nx test <project-name>
 ```
+
+### Single Project (specific file)
+```bash
+bunx nx test <project-name> -- path/to/file.spec.ts
+```
+
+**Important:** Always run tests through NX, even for a single file. Running `bun test` directly
+bypasses the environment variable loading that NX provides via `run-with-env.sh`.
 
 ### All Affected Projects
 ```bash

@@ -102,7 +102,7 @@
       "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
       "dependsOn": ["lint", "deploy:test"],
       "options": {
-        "command": "rm -rf dist/elevenlabs-spec && ./.scripts/run-with-env.sh elevenlabs/op.env bun test elevenlabs/tests",
+        "command": "./.scripts/run-with-env.sh elevenlabs/op.env elevenlabs/.scripts/test.sh",
         "cwd": "."
       }
     },
