@@ -1,28 +1,46 @@
-# Hey Jarvis - Digital Assistant Monorepo
+# Hey Jarvis
 
-An NX monorepo containing intelligent voice assistant components for comprehensive home automation.
+An intelligent voice assistant for home automation, powered by AI agents and custom voice hardware.
 
-<img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/f565c210-42df-4600-a1ab-5abb437bfcc9" />
+<img width="1536" height="1024" alt="Hey Jarvis" src="https://github.com/user-attachments/assets/f565c210-42df-4600-a1ab-5abb437bfcc9" />
+
+## Architecture
+
+```
+ESP32 Voice Hardware  ←→  Home Assistant  ←→  MCP Server (Mastra AI)  ←→  ElevenLabs Voice
+```
 
 ## Projects
 
 | Project | Description |
 |---------|-------------|
-| **elevenlabs** | End-to-end testing suite and conversational agent configuration for ElevenLabs voice interface |
-| **mcp** | Mastra AI-powered Model Context Protocol server providing intelligent tools and agents |
-| **home-assistant-voice-firmware** | ESPHome firmware for dedicated voice hardware devices with local processing capabilities |
+| [**mcp**](./mcp) | Mastra AI-powered MCP server with 15+ agents across 16 domains (weather, shopping, IoT, calendar, etc.) |
+| [**elevenlabs**](./elevenlabs) | CLI for deploying and testing the ElevenLabs voice agent |
+| [**home-assistant-voice-firmware**](./home-assistant-voice-firmware) | ESPHome firmware for ESP32 voice devices with ElevenLabs streaming |
 
 ## Quick Start
-Start the project in its DevContainer. Then use one of the below NX targets to try things out.
+
+Open in a DevContainer — all dependencies are pre-installed.
 
 ```bash
-# Start the MCP server
-nx serve mcp
-
-# Build voice firmware
-nx serve home-assistant-voice-firmware
+bunx nx serve mcp                              # Start MCP server + playground
+bunx nx deploy elevenlabs                       # Deploy voice agent
+bunx nx serve home-assistant-voice-firmware     # Flash firmware over WiFi
 ```
 
 ## Development
 
-This monorepo uses NX for build orchestration and dependency management. Each project includes detailed documentation in its respective directory.
+- **Build system**: NX monorepo
+- **Package manager**: Bun
+- **Code quality**: Biome (formatting + linting), TypeScript strict mode
+- **Commits**: Conventional Commits enforced via commitlint + husky
+- **Secrets**: 1Password CLI — NX targets inject credentials via `op run`
+- **CI/CD**: GitHub Actions with DevContainer, Release Please for versioning
+
+```bash
+bunx nx affected --target=test      # Test affected projects
+bunx nx run-many --target=lint      # Lint everything
+bunx biome check --write .          # Format + lint
+```
+
+Each project has an `AGENTS.md` with detailed development guidelines.
