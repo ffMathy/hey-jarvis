@@ -28,7 +28,7 @@
   },
   "homepage": "https://github.com/ffMathy/hey-jarvis#readme",
   "devDependencies": {
-    "@biomejs/biome": "2.4.3",
+    "@biomejs/biome": "2.3.15",
     "@commitlint/cli": "20.4.2",
     "@commitlint/config-conventional": "20.4.2",
     "@nx/docker": "22.5.1",
