@@ -132,6 +132,11 @@ const content = await playwright_browser_navigate({
 
 Format: `<type>(<scope>): <subject>`
 
+## Work Preferences
+
+- **Always use worktrees**: All implementation work should be done in isolated git worktrees (`isolation: "worktree"`) to prevent changes from affecting the main working directory. The worktree should be named something that semantically makes sense compared to the work being done.
+- **Always run in background**: Tasks should be run in the background (`run_in_background: true`) so the user can continue working while agents complete their work.
+
 ## Project-Specific Guidelines
 
 Each project has its own AGENTS.md with specialized instructions:
