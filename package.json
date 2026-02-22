@@ -66,6 +66,14 @@
     "wait-port": "^1.1.0",
     "ws": "^8.19.0"
   },
+  "trustedDependencies": [
+    "@swc/core",
+    "esbuild",
+    "nx",
+    "protobufjs",
+    "unrs-resolver",
+    "@playwright/test"
+  ],
   "lint-staged": {
     "*.{ts,tsx,js,jsx,json}": [
       "bunx biome check --write --no-errors-on-unmatched"
