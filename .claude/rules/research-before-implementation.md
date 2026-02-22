@@ -1,20 +1,37 @@
-# Research Before Implementation
+# Research and Planning Before Implementation
 
-**CRITICAL: ALWAYS perform web searches before starting any task.**
+**CRITICAL: ALWAYS plan in a separate agent and research before starting any task.**
 
-## Mandatory Protocol
+## Planning Phase (MANDATORY)
 
-Before implementing ANY feature, you MUST:
+Before implementing ANY task, you MUST spawn a **Explore agent** (`subagent_type: "Explore"`) to:
 
-1. Perform **at minimum 1 web search** (more is better)
-2. Search for:
-   - Current best practices and patterns
-   - Latest library versions and APIs
-   - Security considerations and common pitfalls
-   - Existing solutions and examples
-   - Documentation and tutorials
+1. Explore the codebase and understand the affected areas
+2. Perform **at minimum 1 web search** for current best practices (more is better)
+3. Design the implementation approach
+4. **Identify which steps can be parallelized** — the plan must explicitly mark each step as either:
+   - **Parallel**: can run independently as a background task (e.g., changes to unrelated files/projects)
+   - **Sequential**: depends on a prior step's output and must wait
 
-## When to Search
+The Explore agent cannot edit files — it only researches and recommends. This keeps the main conversation context lean.
+
+### What the Plan Must Include
+
+- List of steps with clear descriptions
+- Files to be modified in each step
+- Parallelization markers (`parallel` / `sequential` + dependency) for each step
+- Web research findings that informed the approach
+
+## Research Requirements
+
+The Explore agent must search for:
+- Current best practices and patterns
+- Latest library versions and APIs
+- Security considerations and common pitfalls
+- Existing solutions and examples
+- Documentation and tutorials
+
+### When to Search
 
 ✅ **ALWAYS search before:**
 - Implementing any new feature
@@ -25,19 +42,22 @@ Before implementing ANY feature, you MUST:
 - Encountering errors or issues
 - Being uncertain about best practices
 
-## Example Research Flow
+## Example Flow
 
 ```
-// STEP 1: Research (REQUIRED)
-Search: "TypeScript async error handling best practices 2024"
-Search: "best SQLite libraries for Node.js TypeScript 2024"
-Search: "SQL injection prevention TypeScript parameterized queries"
+// STEP 1: Spawn Explore agent (REQUIRED)
+// The Explore agent explores the codebase, performs web searches,
+// and returns a structured plan with parallelization markers.
 
-// STEP 2: Implement based on research
-// ... your implementation here
+// STEP 2: Review the plan
+// Check the proposed steps and their parallel/sequential markers.
+
+// STEP 3: Execute
+// Launch parallel steps as background tasks simultaneously.
+// Run sequential steps in order after their dependencies complete.
 ```
 
 ## Search Tool
 Use your preferred search engine (Google, Bing, DuckDuckGo, etc.) and consider using advanced search operators to narrow down results. Always check the date of the information to ensure it's current.
 
-**Remember**: More research = Better implementation. Never skip this step!
+**Remember**: Plan first, research always, parallelize when possible. Never skip any of these steps!
