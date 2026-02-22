@@ -345,8 +345,10 @@ Control IoT devices and get user locations via their phones.`,
         );
 
       // Custom retry with validation: the DAG should NOT contain any location-related tasks
-      // when the location is explicitly provided in the query
-      const dag = await runWorkflowWithRetry(userQuery, 5, (d) => !hasUnnecessaryLocationTask(d.tasks));
+      // when the location is explicitly provided in the query.
+      // Use more retries (10) because gemini-flash-lite-latest sometimes generates
+      // unnecessary location tasks despite explicit location in the query.
+      const dag = await runWorkflowWithRetry(userQuery, 10, (d) => !hasUnnecessaryLocationTask(d.tasks));
 
       // Fail if we couldn't get a valid DAG after all retry attempts
       if (!dag || dag.tasks.length === 0) {
