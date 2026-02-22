@@ -71,7 +71,8 @@
     "esbuild",
     "nx",
     "protobufjs",
-    "unrs-resolver"
+    "unrs-resolver",
+    "@playwright/test"
   ],
   "lint-staged": {
     "*.{ts,tsx,js,jsx,json}": [
