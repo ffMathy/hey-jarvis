@@ -173,3 +173,7 @@ cloudflared.deb
 dist-spec
 
 .claude/worktrees/
+
+# Generated SBOM files
+sbom.cdx.json
+bom.json
