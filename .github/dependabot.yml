@@ -16,19 +16,35 @@ updates:
         patterns:
           - "@nx/*"
           - "nx"
+    # Supply chain defense: delay adoption of new versions so security
+    # vendors have time to detect and remove malicious packages.
+    # Security updates (CVE patches) bypass cooldown automatically.
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
+      semver-minor-days: 7
+      semver-patch-days: 3
 
-  # Docker dependencies
+  # npm dependencies for mcp subproject
   - package-ecosystem: "npm"
     directory: "/mcp"
     schedule:
       interval: "weekly"
       time: "09:00"
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
+      semver-minor-days: 7
+      semver-patch-days: 3
 
+  # Docker dependencies
   - package-ecosystem: "docker"
     directory: "/elevenlabs"
     schedule:
       interval: "daily"
       time: "09:00"
+    cooldown:
+      default-days: 7
 
   # GitHub Actions dependencies
   - package-ecosystem: "github-actions"
@@ -36,3 +52,5 @@ updates:
     schedule:
       interval: "daily"
       time: "09:00"
+    cooldown:
+      default-days: 7
