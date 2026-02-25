@@ -965,7 +965,7 @@ bunx tsx mcp/mastra/mcp-server.ts
 - The `run-with-env.sh` script ensures 1Password CLI authentication and environment variable injection
 - Direct tsx execution avoids nested NX process issues that cause premature exit
 - Tests run in the same environment as development and need access to secrets
-- Without run-with-env.sh, required environment variables like `HEY_JARVIS_MCP_JWT_SECRET` won't be available
+- Without run-with-env.sh, required environment variables won't be available
 - This approach provides the simplest, most direct path to a running server
 
 **Test Implementation Pattern:**
@@ -1014,7 +1014,6 @@ All environment variables use the `HEY_JARVIS_` prefix for easy management and D
 - **Recipes**: `HEY_JARVIS_VALDEMARSRO_API_KEY` for Danish recipe data
 - **GitHub**: `HEY_JARVIS_GITHUB_API_TOKEN` for GitHub API access (coding agent and error reporting processor)
 - **WiFi**: `HEY_JARVIS_WIFI_SSID`, `HEY_JARVIS_WIFI_PASSWORD` for Home Assistant Voice Firmware
-- **Authentication**: `HEY_JARVIS_MCP_JWT_SECRET` for JWT-based HTTP authentication of the MCP server (Mastra UI is protected by Home Assistant ingress)
 
 #### Development Setup
 1. **Install 1Password CLI**: Follow [1Password CLI installation guide](https://developer.1password.com/docs/cli/get-started/)
@@ -1606,92 +1605,9 @@ const PROVIDERS: OAuthProvider[] = [
 - **Easy Maintenance**: Add providers without modifying core script logic
 - **Type Safety**: TypeScript ensures all providers implement the required interface
 
-## MCP Server Authentication
+## MCP Server Access
 
-The MCP server supports JWT (JSON Web Token) authentication for secure access over HTTP, providing protection for the MCP server endpoints (port 4112).
-
-### JWT Authentication Setup
-
-#### 1. Configure JWT Secret
-
-**For Development with 1Password:**
-Store a secure JWT secret in your 1Password vault:
-```bash
-# The secret should be a strong, randomly generated string
-HEY_JARVIS_MCP_JWT_SECRET="op://Personal/Jarvis/JWT secret"
-```
-
-**Important**: The JWT secret should be:
-- At least 32 characters long
-- Randomly generated (use a password generator)
-- Kept secure in your 1Password vault
-- Never committed to version control
-
-#### 2. Generate JWT Tokens
-Generate JWT tokens using any JWT library that supports HS256 signing. For example, using Node.js:
-
-```javascript
-import { sign } from 'hono/jwt';
-
-const payload = {
-  sub: 'mcp-client',
-  iat: Math.floor(Date.now() / 1000),
-  exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60), // 24 hours
-};
-
-const token = await sign(payload, process.env.HEY_JARVIS_MCP_JWT_SECRET);
-```
-
-Or use online tools like [jwt.io](https://jwt.io) with the HS256 algorithm.
-
-#### 3. Using JWT Tokens
-Include the JWT token in the `Authorization` header of HTTP requests to the MCP server:
-
-```bash
-# Example curl command for MCP server (requires JWT)
-curl -H "Authorization: Bearer <your-token>" \
-     -X POST \
-     http://localhost:4112/api/mcp
-
-# Mastra UI does NOT require JWT
-```
-
-#### 4. Token Format
-Tokens must use the "Bearer" authentication scheme:
-```
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-```
-
-### Security Features
-
-- **Selective Protection**: Only MCP server (`/api/mcp`) requires JWT authentication
-- **HTTP-Only Authentication**: JWT authentication applies only to HTTP transport. The stdio transport (used for local development with MCP clients) is unaffected.
-- **Token Validation**: All MCP HTTP requests are validated before reaching the backend service.
-- **Graceful Degradation**: If JWT secret is not configured, the MCP server runs without authentication (useful for development).
-- **401 Unauthorized**: Invalid or missing tokens receive a clear error response from Nginx.
-- **Standard JWT**: Uses industry-standard JWT format (HS256 algorithm) compatible with all JWT libraries.
-
-### Authentication Flow
-
-1. Client sends HTTP request to `/api/mcp` with `Authorization: Bearer <token>` header
-2. The JWT token is validated using the configured secret
-3. If valid, request is processed by the MCP server
-4. If invalid/missing, a 401 Unauthorized response is returned
-
-### Disabling Authentication
-
-To disable authentication (not recommended for production):
-- **Development**: Don't set `HEY_JARVIS_MCP_JWT_SECRET` environment variable
-- The MCP server will be accessible without authentication
-
-### Token Payload
-
-JWT tokens should include standard claims:
-- `sub`: Subject identifier (e.g., "mcp-client")
-- `iat`: Issued at timestamp
-- `exp`: Expiration timestamp (recommended: 24 hours or less)
-
-Tokens can be created using any JWT library that supports HS256 signing with your JWT secret.
+The MCP server does not require authentication. All endpoints are publicly accessible on port 4112. Security is handled at the network level (e.g., Home Assistant ingress, firewall rules).
 
 ## Integration Capabilities
 
