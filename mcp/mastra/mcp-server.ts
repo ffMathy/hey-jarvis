@@ -1,9 +1,7 @@
 #!/usr/bin/env node
 
 import { MCPServer } from '@mastra/mcp';
-import type { NextFunction, Request, Response } from 'express';
 import express from 'express';
-import { expressjwt } from 'express-jwt';
 import { z } from 'zod';
 import { logTokenUsageSummary } from './index.js';
 import { initializeScheduler } from './scheduler.js';
@@ -43,15 +41,6 @@ function createSimplifiedWorkflowTool(workflow: AnyWorkflow) {
 }
 
 export async function startMcpServer() {
-  const jwtSecret = process.env.HEY_JARVIS_MCP_JWT_SECRET;
-
-  if (!jwtSecret) {
-    throw new Error(
-      'HEY_JARVIS_MCP_JWT_SECRET environment variable is required. ' +
-        'JWT authentication cannot be disabled for security reasons.',
-    );
-  }
-
   const mcpServer = new MCPServer({
     id: 'jarvis-mcp-server',
     name: 'J.A.R.V.I.S. Assistant',
@@ -98,76 +87,55 @@ export async function startMcpServer() {
     next();
   });
 
-  // Health check endpoint (no JWT required)
+  // Health check endpoint
   app.get('/health', (_req, res) => {
     res.json({ status: 'healthy' });
   });
 
-  // Create a router for JWT-protected API routes
+  // Create a router for API routes
   const apiRouter = express.Router();
-  apiRouter.use(
-    expressjwt({
-      secret: jwtSecret,
-      algorithms: ['HS256'],
-      credentialsRequired: true,
-    }),
-  );
 
   // Register API routes (shopping list, etc.) and get the registered paths
   const registeredApiPaths = registerApiRoutes(apiRouter);
   app.use(apiRouter);
 
   // MCP endpoint - handles both GET (for initial connection) and POST (for messages)
-  app.all(
-    mcpPath,
-    expressjwt({
-      secret: jwtSecret,
-      algorithms: ['HS256'],
-      credentialsRequired: true,
-    }),
-    async (req, res) => {
-      try {
-        const base = `http://${host}:${port}`;
-        const url = new URL(req.url || '', base);
+  app.all(mcpPath, async (req, res) => {
+    try {
+      const base = `http://${host}:${port}`;
+      const url = new URL(req.url || '', base);
 
-        await mcpServer.startHTTP({
-          url,
-          httpPath: mcpPath,
-          req,
-          res,
-        });
-
-        // startHTTP takes over the response (including SSE/streaming)
-        // so we don't send anything else here
-      } catch (err) {
-        console.error('Error handling MCP HTTP connection', err);
-        if (!res.headersSent) {
-          const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-          res.status(500).json({
-            error: 'Failed to establish MCP connection',
-            details: errorMessage,
-          });
-        }
-      }
-    },
-  );
-
-  // Express error handler for JWT authentication failures
-  app.use((err: Error & { status?: number }, _req: Request, res: Response, _next: NextFunction) => {
-    if (err.name === 'UnauthorizedError') {
-      res.status(401).json({
-        error: 'Unauthorized',
-        message: 'Invalid or missing JWT token',
+      await mcpServer.startHTTP({
+        url,
+        httpPath: mcpPath,
+        req,
+        res,
       });
-    } else {
+
+      // startHTTP takes over the response (including SSE/streaming)
+      // so we don't send anything else here
+    } catch (err) {
+      console.error('Error handling MCP HTTP connection', err);
+      if (!res.headersSent) {
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+        res.status(500).json({
+          error: 'Failed to establish MCP connection',
+          details: errorMessage,
+        });
+      }
+    }
+  });
+
+  // Express error handler
+  app.use(
+    (err: Error & { status?: number }, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
       res.status(err.status || 500).json({
         error: 'Internal server error',
         message: err.message,
       });
-    }
-  });
+    },
+  );
 
-  console.log(`JWT authentication enabled for ${mcpPath} with secret length: ${jwtSecret.length} characters`);
   console.log(`J.A.R.V.I.S. MCP Server listening on http://${host}:${port}${mcpPath}`);
   for (const apiPath of registeredApiPaths) {
     console.log(`API endpoint available: POST http://${host}:${port}${apiPath}`);

@@ -1,20 +1,11 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import {
-  generateExpiredToken,
-  generateValidToken,
-  startMcpServerForTestingPurposes,
-  stopMcpServer,
-} from './utils/mcp-server-manager';
+import { startMcpServerForTestingPurposes, stopMcpServer } from './utils/mcp-server-manager';
 
 const API_BASE_URL = 'http://localhost:4112';
 const SERVER_STARTUP_TIMEOUT = 120000;
 
 describe('Shopping List API Tests', () => {
   beforeAll(async () => {
-    if (!process.env.HEY_JARVIS_MCP_JWT_SECRET) {
-      throw new Error('HEY_JARVIS_MCP_JWT_SECRET not found - tests must be run via nx test which uses run-with-env.sh');
-    }
-
     console.log('Starting MCP server programmatically...');
     await startMcpServerForTestingPurposes();
 
@@ -28,57 +19,11 @@ describe('Shopping List API Tests', () => {
     await stopMcpServer();
   });
 
-  test('should return 401 for shopping list API without JWT token', async () => {
-    const response = await fetch(`${API_BASE_URL}/api/shopping-list`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ prompt: 'Add milk' }),
-    });
-
-    expect(response.status).toBe(401);
-    console.log('✓ Shopping list API correctly rejects requests without JWT token');
-  });
-
-  test('should return 401 for shopping list API with invalid JWT token', async () => {
-    const response = await fetch(`${API_BASE_URL}/api/shopping-list`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: 'Bearer invalid-token-here',
-      },
-      body: JSON.stringify({ prompt: 'Add milk' }),
-    });
-
-    expect(response.status).toBe(401);
-    console.log('✓ Shopping list API correctly rejects requests with invalid JWT token');
-  });
-
-  test('should return 401 for shopping list API with expired JWT token', async () => {
-    const expiredToken = generateExpiredToken();
-
-    const response = await fetch(`${API_BASE_URL}/api/shopping-list`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${expiredToken}`,
-      },
-      body: JSON.stringify({ prompt: 'Add milk' }),
-    });
-
-    expect(response.status).toBe(401);
-    console.log('✓ Shopping list API correctly rejects requests with expired JWT token');
-  });
-
   test('should return 400 for shopping list API with missing prompt', async () => {
-    const validToken = generateValidToken();
-
     const response = await fetch(`${API_BASE_URL}/api/shopping-list`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${validToken}`,
       },
       body: JSON.stringify({}),
     });
@@ -91,13 +36,10 @@ describe('Shopping List API Tests', () => {
   });
 
   test('should return 400 for shopping list API with empty prompt', async () => {
-    const validToken = generateValidToken();
-
     const response = await fetch(`${API_BASE_URL}/api/shopping-list`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${validToken}`,
       },
       body: JSON.stringify({ prompt: '' }),
     });
@@ -109,14 +51,11 @@ describe('Shopping List API Tests', () => {
     console.log('✓ Shopping list API correctly rejects requests with empty prompt');
   });
 
-  test('should accept shopping list API request with valid JWT and prompt', async () => {
-    const validToken = generateValidToken();
-
+  test('should accept shopping list API request with valid prompt', async () => {
     const response = await fetch(`${API_BASE_URL}/api/shopping-list`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${validToken}`,
       },
       body: JSON.stringify({ prompt: 'Add milk to my basket' }),
     });

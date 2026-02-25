@@ -1,12 +1,10 @@
 import { MCPClient } from '@mastra/mcp';
 import fkill from 'fkill';
-import jwt from 'jsonwebtoken';
 import * as path from 'path';
 import { retryWithBackoff } from './retry-with-backoff';
 
 let mcpServerProcess: ReturnType<typeof Bun.spawn> | null = null;
 
-// JWT secret for authentication (must match server)
 const MCP_PORT = 4112;
 
 // Find workspace root (go up from mcp/tests/utils to workspace root)
@@ -43,7 +41,7 @@ async function isServerHealthy(): Promise<boolean> {
  * Checks if the MCP server is already running.
  * First checks the health endpoint, then attempts full MCP client connection.
  */
-export async function isMcpServerRunning(args?: AuthenticatedMcpClientArgs): Promise<boolean> {
+export async function isMcpServerRunning(args?: McpClientArgs): Promise<boolean> {
   // First, quick health check to see if server is up
   if (!(await isServerHealthy())) {
     return false;
@@ -52,7 +50,7 @@ export async function isMcpServerRunning(args?: AuthenticatedMcpClientArgs): Pro
   // Then try the full MCP client connection
   let client: MCPClient | null = null;
   try {
-    client = await createAuthenticatedMcpClient(args);
+    client = await createMcpClient(args);
     await client.listTools();
     return true;
   } catch (_error) {
@@ -151,52 +149,12 @@ export function isMcpServerRunningSync(): boolean {
 }
 
 /**
- * Generate a valid JWT token for testing
+ * Creates an MCP client for testing.
  */
-export function generateValidToken(expiresIn = 3600): string {
-  const now = Math.floor(Date.now() / 1000);
-  const payload = {
-    sub: 'test-client',
-    iat: now,
-    exp: now + expiresIn,
-  };
-  return jwt.sign(payload, process.env.HEY_JARVIS_MCP_JWT_SECRET!);
-}
-
-/**
- * Generate an expired JWT token for testing
- */
-export function generateExpiredToken(): string {
-  const now = Math.floor(Date.now() / 1000);
-  const payload = {
-    sub: 'test-client',
-    iat: now - 7200,
-    exp: now - 3600,
-  };
-  return jwt.sign(payload, process.env.HEY_JARVIS_MCP_JWT_SECRET!);
-}
-
-/**
- * Generate a JWT token without expiry for testing
- */
-export function generateTokenWithoutExpiry(): string {
-  const now = Math.floor(Date.now() / 1000);
-  const payload = {
-    sub: 'test-client',
-    iat: now,
-  };
-  return jwt.sign(payload, process.env.HEY_JARVIS_MCP_JWT_SECRET!);
-}
-
-/**
- * Creates an authenticated MCP client with a JWT token.
- * If no token is provided, generates a valid JWT signed with the secret.
- */
-type AuthenticatedMcpClientArgs = {
-  token?: string;
+type McpClientArgs = {
   url?: string;
 };
-export async function createAuthenticatedMcpClient(args?: AuthenticatedMcpClientArgs): Promise<MCPClient> {
+export async function createMcpClient(args?: McpClientArgs): Promise<MCPClient> {
   const timeout = 5000;
   return new MCPClient({
     id: 'mcp-test-client',
@@ -207,11 +165,6 @@ export async function createAuthenticatedMcpClient(args?: AuthenticatedMcpClient
         connectTimeout: timeout,
         timeout: timeout,
         url: new URL(args?.url || 'http://localhost:4112/api/mcp'),
-        requestInit: {
-          headers: {
-            Authorization: `Bearer ${args?.token || generateValidToken()}`,
-          },
-        },
       },
     },
     timeout: timeout,

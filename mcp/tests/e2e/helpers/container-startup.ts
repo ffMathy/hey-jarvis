@@ -5,8 +5,6 @@ import { PORTS } from './ports';
 
 const sleep = promisify(setTimeout);
 
-export const TEST_JWT_SECRET = 'mcp-test-jwt-secret-e2e-12345';
-
 export interface ContainerStartupResult {
   dockerProcess: ChildProcess;
   containerIP: string;
@@ -143,8 +141,6 @@ export async function startContainer(options: ContainerStartupOptions = {}): Pro
       `${PORTS.TEST_MASTRA_DEV}:${PORTS.MASTRA_DEV}`,
       '-p',
       `${PORTS.TEST_MCP_SERVER}:${PORTS.MCP_SERVER_INTERNAL}`,
-      '-e',
-      `HEY_JARVIS_MCP_JWT_SECRET=${TEST_JWT_SECRET}`,
       'mcp-test:latest',
     ],
     {
