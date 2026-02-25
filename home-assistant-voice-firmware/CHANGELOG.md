@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.9.1](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.9.0...home-assistant-voice-firmware-v0.9.1) (2026-02-25)
+
+
+### Documentation
+
+* better documentation ([34b180c](https://github.com/ffMathy/hey-jarvis/commit/34b180c5d6d8f0aa33a41e2034a5252aae18ae88))
+* improve documentation ([#527](https://github.com/ffMathy/hey-jarvis/issues/527)) ([198cfd2](https://github.com/ffMathy/hey-jarvis/commit/198cfd2a06fd17dfb70e99f5b84ad851970d0c43))
+* optimize AI documentation ([e2b83c2](https://github.com/ffMathy/hey-jarvis/commit/e2b83c25c34e2ccb8ce274cb11c1cef0ca58b3ef))
+* optimize AI documentation ([#509](https://github.com/ffMathy/hey-jarvis/issues/509)) ([7637f29](https://github.com/ffMathy/hey-jarvis/commit/7637f295dfc586a485807521216689b794cd5dd1))
+
 ## [0.9.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.8.0...home-assistant-voice-firmware-v0.9.0) (2026-02-21)
 
 
