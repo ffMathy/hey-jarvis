@@ -8,7 +8,6 @@
 # External service ports (exposed via nginx)
 export MASTRA_SERVER_PORT=4111
 export MCP_SERVER_PORT=4112
-export MASTRA_STUDIO_PORT=4111
 
 # Internal service ports (not exposed directly, nginx proxies to these)
 # Note: Mastra Dev serves both API and Studio on the same internal port

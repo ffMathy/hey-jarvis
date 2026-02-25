@@ -36,13 +36,6 @@
         "cwd": "."
       }
     },
-    "serve:studio": {
-      "executor": "nx:run-commands",
-      "options": {
-        "command": "./.scripts/run-with-env.sh mcp/op.env bunx mastra studio --port 3000 --server-host localhost --server-port 4111",
-        "cwd": "."
-      }
-    },
     "serve:mcp": {
       "executor": "nx:run-commands",
       "options": {
