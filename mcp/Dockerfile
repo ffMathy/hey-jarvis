@@ -28,7 +28,6 @@ ENV HOST=0.0.0.0
 ENV NODE_ENV=production
 ENV MASTRA_SERVER_PORT=4111
 ENV MCP_SERVER_PORT=4112
-ENV MASTRA_STUDIO_PORT=3000
 
 WORKDIR /workspace
 
@@ -47,8 +46,8 @@ COPY --from=builder /workspace/mcp ./mcp
 COPY mcp/supervisord.conf /etc/supervisord.conf
 COPY mcp/healthcheck.sh /workspace/healthcheck.sh
 
-# Expose ports for services (4111: Mastra Server, 4112: MCP Server, 3000: Studio UI)
-EXPOSE 4111 4112 3000
+# Expose ports for services (4111: Mastra Server + UI, 4112: MCP Server)
+EXPOSE 4111 4112
 
 # Make healthcheck executable
 RUN chmod +x /workspace/healthcheck.sh
