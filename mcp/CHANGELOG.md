@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.7.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.6.0...mcp-v1.7.0) (2026-02-25)
+
+
+### Features
+
+* **mcp:** remove JWT authentication from MCP server ([7729a86](https://github.com/ffMathy/hey-jarvis/commit/7729a8667f2bb0edc0033bf2a98936ff7fd06b85))
+* **mcp:** remove JWT authentication from MCP server ([#537](https://github.com/ffMathy/hey-jarvis/issues/537)) ([82c3687](https://github.com/ffMathy/hey-jarvis/commit/82c3687649c2ddb267d5dbe8ff1e32d08db2e0e6))
+
+
+### Bug Fixes
+
+* home assistant test ([da9756e](https://github.com/ffMathy/hey-jarvis/commit/da9756ef7bd45a030a9376429830900063d0d163))
+* home assistant test ([#530](https://github.com/ffMathy/hey-jarvis/issues/530)) ([f377b18](https://github.com/ffMathy/hey-jarvis/commit/f377b18e2e99f8b280c8f865f9591cb25ceb3bd7))
+* increase LLM eval test retry attempts for flaky DAG generation ([#531](https://github.com/ffMathy/hey-jarvis/issues/531)) ([3c986f0](https://github.com/ffMathy/hey-jarvis/commit/3c986f0227844b4909a6c3026ef720d352c0f273))
+* increase LLM eval test retry attempts from 5 to 10 for flaky DAG generation ([49bc68e](https://github.com/ffMathy/hey-jarvis/commit/49bc68e49cd5acfd50a9d4b42caa6afa9916f818))
+* pin all dependency versions and configure exact versioning ([d3e0acf](https://github.com/ffMathy/hey-jarvis/commit/d3e0acfeb82512a97f3b3a453f4461983beba000))
+* pin all dependency versions and configure exact versioning ([#515](https://github.com/ffMathy/hey-jarvis/issues/515)) ([b8dd8b5](https://github.com/ffMathy/hey-jarvis/commit/b8dd8b51e23be8a0dd5e2f73dec8f0659a3a99da))
+* remove MASTRA_STUDIO_PORT — API and UI now share port 4111 ([#536](https://github.com/ffMathy/hey-jarvis/issues/536)) ([9b7e96d](https://github.com/ffMathy/hey-jarvis/commit/9b7e96d7b4bbe2fa665ae99c79989787ad532d9c))
+* remove MASTRA_STUDIO_PORT references since API and UI share port 4111 ([f09c0e9](https://github.com/ffMathy/hey-jarvis/commit/f09c0e95adebdfd81afbb5bb5ca0cdf62b26942b))
+* upgrade all npm packages to latest and fix Zod v4 type error ([0d56b17](https://github.com/ffMathy/hey-jarvis/commit/0d56b1766b662632812f2a9db02be5ebdf21aac3))
+* upgrade all npm packages to latest and fix Zod v4 type error ([#529](https://github.com/ffMathy/hey-jarvis/issues/529)) ([4cc2e14](https://github.com/ffMathy/hey-jarvis/commit/4cc2e14c8c0af42dd5c06758cb6ad9d19529d570))
+
 ## [1.6.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.5.0...mcp-v1.6.0) (2026-02-21)
 
 

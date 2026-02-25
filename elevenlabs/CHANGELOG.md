@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.11.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.10.0...elevenlabs-v0.11.0) (2026-02-25)
+
+
+### Features
+
+* **mcp:** remove JWT authentication from MCP server ([7729a86](https://github.com/ffMathy/hey-jarvis/commit/7729a8667f2bb0edc0033bf2a98936ff7fd06b85))
+* **mcp:** remove JWT authentication from MCP server ([#537](https://github.com/ffMathy/hey-jarvis/issues/537)) ([82c3687](https://github.com/ffMathy/hey-jarvis/commit/82c3687649c2ddb267d5dbe8ff1e32d08db2e0e6))
+
+
+### Bug Fixes
+
+* pin all dependency versions and configure exact versioning ([d3e0acf](https://github.com/ffMathy/hey-jarvis/commit/d3e0acfeb82512a97f3b3a453f4461983beba000))
+* pin all dependency versions and configure exact versioning ([#515](https://github.com/ffMathy/hey-jarvis/issues/515)) ([b8dd8b5](https://github.com/ffMathy/hey-jarvis/commit/b8dd8b51e23be8a0dd5e2f73dec8f0659a3a99da))
+
 ## [0.10.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.9.0...elevenlabs-v0.10.0) (2026-02-21)
 
 
