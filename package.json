@@ -39,7 +39,7 @@
     "@playwright/test": "1.58.2",
     "@swc-node/register": "1.11.1",
     "@swc/core": "1.15.11",
-    "@swc/helpers": "0.5.18",
+    "@swc/helpers": "0.5.19",
     "@swc/jest": "0.2.39",
     "@types/bun": "1.3.9",
     "@types/express": "5.0.6",
