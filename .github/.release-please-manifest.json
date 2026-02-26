@@ -1,6 +1,6 @@
 {
-  ".": "1.8.0",
-  "mcp": "1.7.0",
+  ".": "1.8.1",
+  "mcp": "1.7.1",
   "elevenlabs": "0.11.0",
   "home-assistant-voice-firmware": "0.9.1"
 }

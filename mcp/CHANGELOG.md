@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.7.1](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.7.0...mcp-v1.7.1) (2026-02-26)
+
+
+### Bug Fixes
+
+* change MCP server port from 8112 to 4112 ([df14305](https://github.com/ffMathy/hey-jarvis/commit/df143052335b09cbd76ce80c8c491fcd9260dd17))
+* change MCP server port from 8112 to 4112 ([#540](https://github.com/ffMathy/hey-jarvis/issues/540)) ([ce4e287](https://github.com/ffMathy/hey-jarvis/commit/ce4e287730308d7530cce33b443258b79bfe2888))
+* **mcp:** change internal ports from 8111/8112 to 4111/4112 ([#543](https://github.com/ffMathy/hey-jarvis/issues/543)) ([e412a42](https://github.com/ffMathy/hey-jarvis/commit/e412a427254e6296649554a24acce966532fa2bb))
+* **mcp:** change MASTRA_DEV_INTERNAL_PORT from 8111 to 4111 ([377d7cb](https://github.com/ffMathy/hey-jarvis/commit/377d7cbda8404408748c3237187b9cd933a82b56))
+* **mcp:** change MCP server internal port from 8112 to 4112 ([0ee07af](https://github.com/ffMathy/hey-jarvis/commit/0ee07af6acdfd33ac2d5addc1e26672a1c84d2b0))
+
 ## [1.7.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.6.0...mcp-v1.7.0) (2026-02-25)
 
 
