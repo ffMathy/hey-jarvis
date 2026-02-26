@@ -11,8 +11,8 @@ export MCP_SERVER_PORT=4112
 
 # Internal service ports (not exposed directly, nginx proxies to these)
 # Note: Mastra Dev serves both API and Studio on the same internal port
-export MASTRA_DEV_INTERNAL_PORT=8111
-export MCP_SERVER_INTERNAL_PORT=8112
+export MASTRA_DEV_INTERNAL_PORT=4111
+export MCP_SERVER_INTERNAL_PORT=4112
 
 # Test ingress port (for Home Assistant ingress simulation)
 export TEST_INGRESS_PORT=5000
