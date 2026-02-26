@@ -31,70 +31,25 @@
         "cwd": "."
       }
     },
-    "build": {
-      "executor": "@nx/esbuild:esbuild",
-      "outputs": ["{options.outputPath}"],
-      "defaultConfiguration": "production",
-      "options": {
-        "platform": "node",
-        "outputPath": "dist/elevenlabs",
-        "format": ["esm"],
-        "bundle": false,
-        "main": "elevenlabs/src/main.ts",
-        "tsConfig": "elevenlabs/tsconfig.app.json",
-        "assets": ["elevenlabs/src/assets"],
-        "generatePackageJson": false,
-        "esbuildOptions": {
-          "sourcemap": true,
-          "outExtension": {
-            ".js": ".js"
-          }
-        }
-      },
-      "configurations": {
-        "development": {},
-        "production": {
-          "generateLockfile": false,
-          "esbuildOptions": {
-            "sourcemap": false,
-            "outExtension": {
-              ".js": ".js"
-            }
-          }
-        }
-      }
-    },
     "deploy": {
       "executor": "nx:run-commands",
-      "dependsOn": ["build"],
       "options": {
-        "command": "./.scripts/run-with-env.sh elevenlabs/op.env node dist/elevenlabs/main.js deploy",
-        "cwd": ".",
-        "env": {
-          "NODE_OPTIONS": "--experimental-vm-modules"
-        }
+        "command": "./.scripts/run-with-env.sh elevenlabs/op.env bun elevenlabs/src/main.ts deploy",
+        "cwd": "."
       }
     },
     "deploy:test": {
       "executor": "nx:run-commands",
-      "dependsOn": ["build"],
       "options": {
-        "command": "./.scripts/run-with-env.sh elevenlabs/op.env node dist/elevenlabs/main.js deploy --test",
-        "cwd": ".",
-        "env": {
-          "NODE_OPTIONS": "--experimental-vm-modules"
-        }
+        "command": "./.scripts/run-with-env.sh elevenlabs/op.env bun elevenlabs/src/main.ts deploy --test",
+        "cwd": "."
       }
     },
     "refresh": {
       "executor": "nx:run-commands",
-      "dependsOn": ["build"],
       "options": {
-        "command": "./.scripts/run-with-env.sh elevenlabs/op.env node dist/elevenlabs/main.js fetch",
-        "cwd": ".",
-        "env": {
-          "NODE_OPTIONS": "--experimental-vm-modules"
-        }
+        "command": "./.scripts/run-with-env.sh elevenlabs/op.env bun elevenlabs/src/main.ts fetch",
+        "cwd": "."
       }
     },
     "test": {
@@ -112,42 +67,6 @@
         "command": "./.scripts/run-with-env.sh elevenlabs/op.env bun elevenlabs/tests/utils/tunnel-manager.ts",
         "cwd": "."
       }
-    },
-    "build:test": {
-      "executor": "@nx/esbuild:esbuild",
-      "outputs": ["{options.outputPath}"],
-      "options": {
-        "platform": "node",
-        "outputPath": "dist/elevenlabs-test",
-        "format": ["esm"],
-        "bundle": true,
-        "main": "elevenlabs/tests/specs/agent-prompt.spec.ts",
-        "additionalEntryPoints": [
-          "elevenlabs/tests/**/*.spec.ts",
-          "elevenlabs/tests/**/*.test.ts",
-          "elevenlabs/tests/**/*.ts"
-        ],
-        "tsConfig": "elevenlabs/tsconfig.app.json",
-        "assets": [
-          {
-            "input": "elevenlabs/src/assets",
-            "glob": "**/*",
-            "output": "./assets"
-          }
-        ],
-        "esbuildOptions": {
-          "sourcemap": true,
-          "outExtension": {
-            ".js": ".js"
-          },
-          "alias": {
-            "@mcp": "./mcp"
-          }
-        },
-        "skipTypeCheck": true,
-        "external": []
-      },
-      "dependsOn": []
     }
   }
 }

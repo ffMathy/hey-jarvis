@@ -108,6 +108,7 @@ export async function startMcpServer() {
       await mcpServer.startHTTP({
         url,
         httpPath: mcpPath,
+        options: {},
         req,
         res,
       });
