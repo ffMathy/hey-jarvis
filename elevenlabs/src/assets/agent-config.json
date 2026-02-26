@@ -5,22 +5,34 @@
       "quality": "high",
       "provider": "scribe_realtime",
       "userInputAudioFormat": "pcm_16000",
-      "keywords": ["Jarvis"]
+      "keywords": [
+        "Jarvis"
+      ]
     },
     "turn": {
       "turnTimeout": -1,
       "silenceEndCallTimeout": 30,
       "softTimeoutConfig": {
         "timeoutSeconds": -1,
-        "message": "I'm experiencing higher latency than usual, sir. However, I'll respond to you as quickly as I can."
+        "message": "I'm experiencing higher latency than usual, sir. However, I'll respond to you as quickly as I can.",
+        "useLlmGeneratedMessage": false
       },
       "mode": "turn",
-      "turnEagerness": "eager"
+      "turnEagerness": "eager",
+      "spellingPatience": "auto",
+      "speculativeTurn": true,
+      "turn_model": "turn_v2"
     },
     "tts": {
-      "modelId": "eleven_flash_v2",
+      "modelId": "eleven_v3_conversational",
       "supportedVoices": [],
-      "suggestedAudioTags": [],
+      "expressiveMode": false,
+      "suggestedAudioTags": [
+        {
+          "tag": "Fast",
+          "description": ""
+        }
+      ],
       "agentOutputAudioFormat": "pcm_16000",
       "optimizeStreamingLatency": 4,
       "stability": 0.4,
@@ -41,15 +53,34 @@
         "agent_tool_response",
         "vad_score",
         "agent_chat_response_part"
+      ],
+      "monitoringEnabled": false,
+      "monitoringEvents": [
+        "user_transcript",
+        "agent_response",
+        "agent_response_correction"
       ]
     },
-    "languagePresets": {},
+    "languagePresets": {
+      "da": {
+        "overrides": {
+          "agent": {
+            "firstMessage": "Hej hr., hvordan kan jeg hjælpe?"
+          }
+        },
+        "firstMessageTranslation": {
+          "sourceHash": "{\"firstMessage\":\"Hello sir, how can I help?\",\"language\":\"en\"}",
+          "text": "Hej hr., hvordan kan jeg hjælpe?"
+        }
+      }
+    },
     "vad": {
-      "background_voice_detection": false
+      "background_voice_detection": true
     },
     "agent": {
       "firstMessage": "Hello sir, how can I help?",
       "language": "en",
+      "hinglishMode": false,
       "dynamicVariables": {
         "dynamicVariablePlaceholders": {
           "objective": "Book a hairdresser appointment for Monday at 2 pm."
@@ -57,8 +88,8 @@
       },
       "disableFirstMessageInterruptions": true,
       "prompt": {
-        "llm": "gemini-2.5-flash-preview-09-2025",
-        "thinkingBudget": 0,
+        "llm": "gemini-3-flash-preview",
+        "reasoningEffort": "minimal",
         "temperature": 0,
         "maxTokens": -1,
         "toolIds": [],
@@ -72,8 +103,23 @@
             "forcePreToolSpeech": false,
             "assignments": [],
             "toolCallSoundBehavior": "auto",
+            "toolErrorHandlingMode": "auto",
             "params": {
               "systemToolType": "end_call"
+            }
+          },
+          "languageDetection": {
+            "type": "system",
+            "name": "language_detection",
+            "description": "",
+            "responseTimeoutSecs": 20,
+            "disableInterruptions": false,
+            "forcePreToolSpeech": false,
+            "assignments": [],
+            "toolCallSoundBehavior": "auto",
+            "toolErrorHandlingMode": "auto",
+            "params": {
+              "systemToolType": "language_detection"
             }
           },
           "skipTurn": {
@@ -85,12 +131,16 @@
             "forcePreToolSpeech": false,
             "assignments": [],
             "toolCallSoundBehavior": "auto",
+            "toolErrorHandlingMode": "auto",
             "params": {
               "systemToolType": "skip_turn"
             }
           }
         },
-        "mcpServerIds": ["lEHHz7v2aiZKdIwh9axo"],
+        "enable_parallel_tool_calls": false,
+        "mcpServerIds": [
+          "eDfozDHPtwpkiacmZmpM"
+        ],
         "nativeMcpServerIds": [],
         "knowledgeBase": [],
         "ignoreDefaultPersonality": true,
@@ -99,12 +149,14 @@
           "embeddingModel": "e5_mistral_7b_instruct",
           "maxVectorDistance": 0.6,
           "maxDocumentsLength": 50000,
-          "maxRetrievedRagChunksCount": 20
+          "maxRetrievedRagChunksCount": 20,
+          "num_candidates": null
         },
         "timezone": "Europe/Copenhagen",
         "backupLlmConfig": {
           "preference": "default"
         },
+        "cascadeTimeoutSeconds": 8,
         "tools": [
           {
             "type": "system",
@@ -115,8 +167,23 @@
             "forcePreToolSpeech": false,
             "assignments": [],
             "toolCallSoundBehavior": "auto",
+            "toolErrorHandlingMode": "auto",
             "params": {
               "systemToolType": "end_call"
+            }
+          },
+          {
+            "type": "system",
+            "name": "language_detection",
+            "description": "",
+            "responseTimeoutSecs": 20,
+            "disableInterruptions": false,
+            "forcePreToolSpeech": false,
+            "assignments": [],
+            "toolCallSoundBehavior": "auto",
+            "toolErrorHandlingMode": "auto",
+            "params": {
+              "systemToolType": "language_detection"
             }
           },
           {
@@ -128,6 +195,7 @@
             "forcePreToolSpeech": false,
             "assignments": [],
             "toolCallSoundBehavior": "auto",
+            "toolErrorHandlingMode": "auto",
             "params": {
               "systemToolType": "skip_turn"
             }
@@ -138,7 +206,7 @@
   },
   "metadata": {
     "createdAtUnixSecs": 1742778859,
-    "updatedAtUnixSecs": 1764330385
+    "updatedAtUnixSecs": 1772134779
   },
   "platformSettings": {
     "evaluation": {
@@ -173,19 +241,32 @@
       "termsHtml": "<h4>Terms and conditions</h4>\n<p>By clicking &quot;Agree,&quot; and each time I interact with this AI agent, I consent to the recording, storage, and sharing of my communications with third-party service providers, and as described in the Privacy Policy.\nIf you do not wish to have your conversations recorded, please refrain from using this service.</p>\n",
       "showAvatarWhenCollapsed": true,
       "disableBanner": false,
+      "markdownLinkAllowedHosts": [],
+      "markdownLinkIncludeWww": true,
+      "markdownLinkAllowHttp": true,
       "micMutingEnabled": false,
       "transcriptEnabled": false,
       "textInputEnabled": false,
+      "conversationModeToggleEnabled": false,
       "defaultExpanded": false,
       "alwaysExpanded": false,
+      "dismissible": false,
+      "show_agent_status": false,
+      "show_conversation_id": true,
+      "strip_audio_tags": true,
+      "syntax_highlight_theme": null,
       "textContents": {
-        "initiate_feedback": null,
-        "request_follow_up_feedback": null,
-        "thanks_for_feedback": null,
-        "thanks_for_feedback_details": null,
-        "follow_up_feedback_placeholder": null,
-        "submit": null,
-        "go_back": null
+        "send_message": null,
+        "text_mode": null,
+        "voice_mode": null,
+        "switched_to_text_mode": null,
+        "switched_to_voice_mode": null,
+        "copy": null,
+        "download": null,
+        "wrap": null,
+        "agent_working": null,
+        "agent_done": null,
+        "agent_error": null
       },
       "styles": {},
       "languageSelector": false,
@@ -211,7 +292,7 @@
         },
         "agent": {
           "firstMessage": true,
-          "language": false,
+          "language": true,
           "prompt": {
             "prompt": false,
             "llm": false,
@@ -224,7 +305,9 @@
     },
     "workspaceOverrides": {
       "webhooks": {
-        "events": ["transcript"],
+        "events": [
+          "transcript"
+        ],
         "sendAudio": false
       }
     },
@@ -235,6 +318,44 @@
     "archived": false,
     "guardrails": {
       "version": "1",
+      "focus": {
+        "is_enabled": false
+      },
+      "prompt_injection": {
+        "is_enabled": false
+      },
+      "content": {
+        "config": {
+          "sexual": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "violence": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "harassment": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "self_harm": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "profanity": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "religion_or_politics": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "medical_and_legal_information": {
+            "is_enabled": false,
+            "threshold": 0.3
+          }
+        }
+      },
       "moderation": {
         "config": {
           "sexual": {
@@ -282,11 +403,18 @@
             "threshold": 0.3
           }
         }
+      },
+      "custom": {
+        "config": {
+          "configs": []
+        }
       }
     },
+    "summary_language": null,
     "auth": {
       "enableAuth": true,
-      "allowlist": []
+      "allowlist": [],
+      "requireOriginHeader": false
     },
     "callLimits": {
       "agentConcurrencyLimit": 1,
@@ -300,7 +428,11 @@
       "deleteTranscriptAndPii": true,
       "deleteAudio": true,
       "applyToExistingConversations": true,
-      "zeroRetentionMode": false
+      "zeroRetentionMode": false,
+      "conversation_history_redaction": {
+        "enabled": false,
+        "entities": []
+      }
     },
     "safety": {
       "isBlockedIvc": false,
@@ -308,6 +440,7 @@
       "ignoreSafetyEvaluation": false
     }
   },
+  "whatsappAccounts": [],
   "workflow": {
     "edges": {},
     "nodes": {
@@ -320,10 +453,13 @@
         "edgeOrder": []
       }
     },
-    "prevent_subagent_loops": false
+    "preventSubagentLoops": false
   },
   "tags": [],
-  "version_id": null,
-  "branch_id": null,
-  "main_branch_id": null
+  "versionId": "agtvrsn_5901kjdqdjhvfw4rhxm3fkr5epwr",
+  "branchId": "agtbrch_2601khb1qbd5ezvt0z9zwb38myek",
+  "mainBranchId": "agtbrch_2601khb1qbd5ezvt0z9zwb38myek",
+  "coaching_settings": null,
+  "procedure_versions": [],
+  "procedures_enabled": false
 }
