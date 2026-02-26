@@ -26,9 +26,9 @@ else
     exit 1
 fi
 
-echo "Checking MCP server on internal port 8112..."
-if ! wget --spider --timeout=5 --tries=1 http://localhost:8112/health 2>/dev/null; then
-    echo "ERROR: MCP server (internal port 8112) is not responding"
+echo "Checking MCP server on internal port 4112..."
+if ! wget --spider --timeout=5 --tries=1 http://localhost:4112/health 2>/dev/null; then
+    echo "ERROR: MCP server (internal port 4112) is not responding"
     exit 1
 fi
 echo "✓ MCP server is healthy"
