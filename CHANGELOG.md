@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.9.0](https://github.com/ffMathy/hey-jarvis/compare/root-v1.8.1...root-v1.9.0) (2026-03-03)
+
+
+### Features
+
+* **agent:** enhance audio expression with new audio tags guidelines ([9713f5f](https://github.com/ffMathy/hey-jarvis/commit/9713f5f1ee32002c329e22180c9663eb5538ba7e))
+* **agent:** enhance audio expression with new audio tags guidelines ([#549](https://github.com/ffMathy/hey-jarvis/issues/549)) ([0e0125f](https://github.com/ffMathy/hey-jarvis/commit/0e0125f7ee0375de0ae2f6e301212208192bb16e))
+* switch to GSD and Superpowers ([4bb1288](https://github.com/ffMathy/hey-jarvis/commit/4bb1288a4e8da65a036f65d2bcf66fa1d4b10cf0))
+* switch to GSD and Superpowers ([#546](https://github.com/ffMathy/hey-jarvis/issues/546)) ([e7061c3](https://github.com/ffMathy/hey-jarvis/commit/e7061c34a36cbed3e71e92b850f2b6ab3238f0d3))
+
 ## [1.8.1](https://github.com/ffMathy/hey-jarvis/compare/root-v1.8.0...root-v1.8.1) (2026-02-26)
 
 

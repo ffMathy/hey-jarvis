@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.12.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.11.0...elevenlabs-v0.12.0) (2026-03-03)
+
+
+### Features
+
+* **agent:** enhance audio expression with new audio tags guidelines ([9713f5f](https://github.com/ffMathy/hey-jarvis/commit/9713f5f1ee32002c329e22180c9663eb5538ba7e))
+* **agent:** enhance audio expression with new audio tags guidelines ([#549](https://github.com/ffMathy/hey-jarvis/issues/549)) ([0e0125f](https://github.com/ffMathy/hey-jarvis/commit/0e0125f7ee0375de0ae2f6e301212208192bb16e))
+
 ## [0.11.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.10.0...elevenlabs-v0.11.0) (2026-02-25)
 
 
