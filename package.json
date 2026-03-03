@@ -83,7 +83,7 @@
     "@ai-sdk/provider": "3.0.8",
     "@ai-sdk/provider-utils": "4.0.15",
     "@libsql/client": "0.17.0",
-    "@ai-sdk/openai": "3.0.30",
+    "@ai-sdk/openai": "3.0.31",
     "@azure/msal-node": "5.0.4",
     "@elevenlabs/elevenlabs-js": "2.36.0",
     "@googlemaps/google-maps-services-js": "3.4.2",
