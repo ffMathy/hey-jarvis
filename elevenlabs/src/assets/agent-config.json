@@ -242,7 +242,7 @@
       "disableBanner": false,
       "markdownLinkAllowedHosts": [],
       "markdownLinkIncludeWww": true,
-      "markdownLinkAllowHttp": true,
+      "markdownLinkAllowHttp": false,
       "micMutingEnabled": false,
       "transcriptEnabled": false,
       "textInputEnabled": false,
@@ -411,7 +411,7 @@
     "auth": {
       "enableAuth": true,
       "allowlist": [],
-      "requireOriginHeader": false
+      "requireOriginHeader": true
     },
     "callLimits": {
       "agentConcurrencyLimit": 1,
