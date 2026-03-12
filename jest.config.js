@@ -1,5 +1,3 @@
-const { getJestProjectsAsync } = require('@nx/jest');
-
-module.exports = async () => ({
-  projects: await getJestProjectsAsync(),
-});
+module.exports = {
+  projects: ['<rootDir>/mcp', '<rootDir>/elevenlabs'],
+};

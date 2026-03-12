@@ -2,6 +2,20 @@
   "name": "mcp",
   "version": "1.7.1",
   "type": "module",
+  "scripts": {
+    "typecheck": "tsgo --noEmit --project tsconfig.json",
+    "lint": "cd .. && bunx biome check --write mcp",
+    "format": "cd .. && bunx biome format --write mcp",
+    "build": "cd .. && ./mcp/.scripts/build.sh",
+    "deploy": "cd .. && ./mcp/.scripts/deploy.sh",
+    "test": "cd .. && ./.scripts/run-with-env.sh mcp/op.env mcp/.scripts/test.sh",
+    "serve": "cd .. && ./.scripts/run-with-env.sh mcp/op.env bun mcp/mastra/index.ts",
+    "serve:mcp": "cd .. && ./.scripts/run-with-env.sh mcp/op.env bun mcp/mastra/mcp-server.ts",
+    "initialize": "bun install mastra@1.0.0-beta.2 --global",
+    "e2e": "cd .. && bunx playwright test --config mcp/playwright.config.ts",
+    "generate-tokens": "cd .. && ./.scripts/run-with-env.sh mcp/op.env bun run mcp/mastra/generate-refresh-tokens.ts",
+    "env:local": "cd .. && ./.scripts/generate-env-local.sh mcp/op.env"
+  },
   "devDependencies": {
     "bun-types": "1.3.10"
   }

@@ -141,11 +141,8 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
-# NX
-.nx/cache
-.nx/installation
-.nx/workspace-data
-tmp/
+# Turborepo
+.turbo
 
 # C++ compiled binaries and object files
 *.o
@@ -166,7 +163,6 @@ home-assistant-voice-firmware/dist/
 # Playwright test artifacts
 playwright-report/
 test-results/
-project-graph.json
 cloudflared.deb
 
 # TypeScript build output for specs

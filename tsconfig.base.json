@@ -32,5 +32,5 @@
     "useUnknownInCatchVariables": true,
     "alwaysStrict": true
   },
-  "exclude": ["node_modules", "tmp", "dist", ".nx"]
+  "exclude": ["node_modules", "tmp", "dist", ".turbo"]
 }
