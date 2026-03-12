@@ -173,3 +173,4 @@ cloudflared.deb
 dist-spec
 
 .claude/worktrees/
+.nx/polygraph

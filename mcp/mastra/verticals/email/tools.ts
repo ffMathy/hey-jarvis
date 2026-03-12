@@ -247,20 +247,20 @@ export const draftEmail = createTool({
         contentType: 'HTML',
         content: bodyContent,
       },
-      toRecipients: toRecipients.map((email) => ({
+      toRecipients: toRecipients.map((email: string) => ({
         emailAddress: {
           address: email,
         },
       })),
       ...(ccRecipients && {
-        ccRecipients: ccRecipients.map((email) => ({
+        ccRecipients: ccRecipients.map((email: string) => ({
           emailAddress: {
             address: email,
           },
         })),
       }),
       ...(bccRecipients && {
-        bccRecipients: bccRecipients.map((email) => ({
+        bccRecipients: bccRecipients.map((email: string) => ({
           emailAddress: {
             address: email,
           },
@@ -387,7 +387,7 @@ export const updateDraft = createTool({
     }
 
     if (toRecipients) {
-      updateData.toRecipients = toRecipients.map((email) => ({
+      updateData.toRecipients = toRecipients.map((email: string) => ({
         emailAddress: {
           address: email,
         },
@@ -475,20 +475,20 @@ export const sendEmail = createTool({
         contentType: 'HTML',
         content: bodyContent,
       },
-      toRecipients: toRecipients.map((email) => ({
+      toRecipients: toRecipients.map((email: string) => ({
         emailAddress: {
           address: email,
         },
       })),
       ...(ccRecipients && {
-        ccRecipients: ccRecipients.map((email) => ({
+        ccRecipients: ccRecipients.map((email: string) => ({
           emailAddress: {
             address: email,
           },
         })),
       }),
       ...(bccRecipients && {
-        bccRecipients: bccRecipients.map((email) => ({
+        bccRecipients: bccRecipients.map((email: string) => ({
           emailAddress: {
             address: email,
           },

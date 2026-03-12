@@ -143,7 +143,7 @@ export const getTravelTime = createTool({
     };
 
     if (mode === 'driving' || mode === 'walking' || mode === 'bicycling' || mode === 'transit') {
-      params.mode = TravelMode[mode];
+      params.mode = TravelMode[mode as keyof typeof TravelMode];
     }
 
     if (includeTraffic && mode === 'driving') {

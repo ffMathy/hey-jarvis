@@ -108,7 +108,7 @@ export const createCalendarEvent = createTool({
         dateTime: inputData.end,
         timeZone: 'UTC',
       },
-      attendees: inputData.attendees?.map((email) => ({ email })),
+      attendees: inputData.attendees?.map((email: string) => ({ email })),
     };
 
     const response = await calendar.events.insert({

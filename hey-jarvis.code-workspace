@@ -159,7 +159,8 @@
     "claudeCode.initialPermissionMode": "bypassPermissions",
     "github.copilot.chat.claudeAgent.allowDangerouslySkipPermissions": true,
     "github.copilot.chat.anthropic.tools.websearch.enabled": true,
-    "github.copilot.chat.anthropic.tools.websearch.maxUses": 20
+    "github.copilot.chat.anthropic.tools.websearch.maxUses": 20,
+    "chat.autopilot.enabled": true
   },
   "extensions": {
     "recommendations": [
