@@ -30,7 +30,7 @@ The tests automatically start the MCP server in the background using Node.js `ch
 
 ### Run All Tests
 ```bash
-nx test mcp
+bunx turbo test --filter=mcp
 ```
 
 The MCP server will automatically start and stop with the test run.
@@ -55,7 +55,7 @@ bunx jest mcp-client-connection.spec.ts
 
 ### Run Tests with Coverage
 ```bash
-nx test mcp --coverage
+bunx turbo test --filter=mcp --coverage
 ```
 
 ## Test Behavior
@@ -88,7 +88,7 @@ nx test mcp --coverage
 ### Port already in use
 **Solution**: Stop any running MCP server processes:
 ```bash
-pkill -f "nx serve mcp"
+pkill -f "bunx turbo serve --filter=mcp"
 ```
 
 ### Tests timeout during server startup
@@ -101,7 +101,7 @@ pkill -f "nx serve mcp"
 ### Server fails to start
 **Solution**:
 - Ensure all dependencies are installed: `bun install`
-- Check that `nx serve mcp` works independently
+- Check that `bunx turbo serve --filter=mcp` works independently
 - Verify environment variables are properly configured
 - Look for errors in test output logs
 

@@ -13,7 +13,7 @@
  * - Microsoft (Outlook/Email via Graph API)
  *
  * Usage:
- *   bunx nx generate-tokens mcp
+ *   bun run --cwd mcp generate-tokens
  *   # OR directly:
  *   bun run mcp/mastra/generate-refresh-tokens.ts
  */

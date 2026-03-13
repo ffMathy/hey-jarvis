@@ -1,6 +1,6 @@
 # ElevenLabs Integration
 
-> **Note:** See the root [AGENTS.md](../AGENTS.md) for shared conventions (NX commands, commit standards, 1Password, etc.)
+> **Note:** See the root [AGENTS.md](../AGENTS.md) for shared conventions (Turborepo commands, commit standards, 1Password, etc.)
 
 ## Overview
 TypeScript-based integration connecting ElevenLabs voice AI agents with the Hey Jarvis ecosystem.
@@ -24,17 +24,17 @@ elevenlabs/
 │       ├── websocket-client.ts      # ElevenLabs WebSocket client
 │       └── agent-prompt.spec.ts     # Agent behavior specification tests
 ├── AGENTS.md                        # This file
-├── project.json                     # NX project configuration
+├── project.json                     # TURBO project configuration
 └── op.env                          # 1Password environment variable references
 ```
 
-## NX Commands
+## TURBO Commands
 ```bash
-bunx nx test elevenlabs     # Run tests
-bunx nx build elevenlabs    # Build the project
-bunx nx deploy elevenlabs   # Update ElevenLabs agent configuration
-bunx nx refresh elevenlabs  # Fetch current agent configuration
-bunx nx lint elevenlabs     # Lint the project
+bunx turbo test --filter=elevenlabs     # Run tests
+bunx turbo build --filter=elevenlabs    # Build the project
+bunx turbo deploy --filter=elevenlabs   # Update ElevenLabs agent configuration
+bun run --cwd elevenlabs refresh  # Fetch current agent configuration
+bunx turbo lint --filter=elevenlabs     # Lint the project
 ```
 
 ## Environment Variables
@@ -95,7 +95,7 @@ The agent prompt in `src/assets/agent-prompt.md` defines:
 - **Update agent-prompt.md** for behavior changes
 - **Add tests** with 0.9+ score requirements for new features
 - **Test locally** before deploying to ElevenLabs
-- **Use `bunx nx deploy elevenlabs`** to push prompt changes
+- **Use `bunx turbo deploy --filter=elevenlabs`** to push prompt changes
 
 ## Scope Guidelines for Commits
 Use elevenlabs-specific scopes:

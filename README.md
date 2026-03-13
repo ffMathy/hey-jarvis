@@ -23,23 +23,23 @@ ESP32 Voice Hardware  ←→  Home Assistant  ←→  MCP Server (Mastra AI)  �
 Open in a DevContainer — all dependencies are pre-installed.
 
 ```bash
-bunx nx serve mcp                              # Start MCP server + playground
-bunx nx deploy elevenlabs                       # Deploy voice agent
-bunx nx serve home-assistant-voice-firmware     # Flash firmware over WiFi
+bunx turbo serve --filter=mcp                              # Start MCP server + playground
+bunx turbo deploy --filter=elevenlabs                       # Deploy voice agent
+bunx turbo serve --filter=home-assistant-voice-firmware     # Flash firmware over WiFi
 ```
 
 ## Development
 
-- **Build system**: NX monorepo
+- **Build system**: Turborepo monorepo
 - **Package manager**: Bun
 - **Code quality**: Biome (formatting + linting), TypeScript strict mode
 - **Commits**: Conventional Commits enforced via commitlint + husky
-- **Secrets**: 1Password CLI — NX targets inject credentials via `op run`
+- **Secrets**: 1Password CLI — Turborepo tasks inject credentials via `op run`
 - **CI/CD**: GitHub Actions with DevContainer, Release Please for versioning
 
 ```bash
-bunx nx affected --target=test      # Test affected projects
-bunx nx run-many --target=lint      # Lint everything
+bunx turbo test      # Test affected projects
+bunx turbo lint      # Lint everything
 bunx biome check --write .          # Format + lint
 ```
 

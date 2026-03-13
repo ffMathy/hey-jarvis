@@ -25,8 +25,8 @@
 ### Bug Fixes
 
 * better test capabilities ([4a2d9a2](https://github.com/ffMathy/hey-jarvis/commit/4a2d9a2ed911f54d9259f97e20c576e13592dd53))
-* log catch-block errors and add env:local NX targets for 1Password secret resolution ([#505](https://github.com/ffMathy/hey-jarvis/issues/505)) ([a9aae83](https://github.com/ffMathy/hey-jarvis/commit/a9aae833a79748ec61d4c2aa64b7fb7cd7a1fad1))
-* log errors in catch blocks and add env:local NX targets for all projects ([49453f0](https://github.com/ffMathy/hey-jarvis/commit/49453f0067dfb6bf7822ef77e8c9bbdec3ca15f5))
+* log catch-block errors and add env:local Turborepo tasks for 1Password secret resolution ([#505](https://github.com/ffMathy/hey-jarvis/issues/505)) ([a9aae83](https://github.com/ffMathy/hey-jarvis/commit/a9aae833a79748ec61d4c2aa64b7fb7cd7a1fad1))
+* log errors in catch blocks and add env:local Turborepo tasks for all projects ([49453f0](https://github.com/ffMathy/hey-jarvis/commit/49453f0067dfb6bf7822ef77e8c9bbdec3ca15f5))
 * much better environment interpolation ([c6f4aab](https://github.com/ffMathy/hey-jarvis/commit/c6f4aab1a923b6d86b724527ea95a25a7e439727))
 * much better testing and ollama integration ([4b3cbcc](https://github.com/ffMathy/hey-jarvis/commit/4b3cbcc94cb8afcbbed0270fde8bbf9933b59b5c))
 

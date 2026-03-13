@@ -156,8 +156,8 @@ vite.config.ts.timestamp-*
 home-assistant-voice-firmware/dist/
 
 
-.cursor/rules/nx-rules.mdc
-.github/instructions/nx.instructions.md
+.cursor/rules/turbo-rules.mdc
+.github/instructions/turbo.instructions.md
 .mastra
 
 # Playwright test artifacts
@@ -169,4 +169,4 @@ cloudflared.deb
 dist-spec
 
 .claude/worktrees/
-.nx/polygraph
+.turbo/polygraph

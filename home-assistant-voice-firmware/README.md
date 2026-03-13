@@ -9,10 +9,10 @@ ESPHome firmware for ESP32 voice hardware with local wake word detection and dir
 esphome upload home-assistant-voice.elevenlabs.yaml
 
 # Subsequent updates (WiFi OTA — works in DevContainer)
-bunx nx serve home-assistant-voice-firmware
+bunx turbo serve --filter=home-assistant-voice-firmware
 
 # Build without flashing
-bunx nx build home-assistant-voice-firmware
+bunx turbo build --filter=home-assistant-voice-firmware
 ```
 
 ## Hardware

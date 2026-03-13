@@ -1,5 +1,5 @@
 ---
-name: nx-monorepo-commands
+name: turbo-monorepo-commands
 description: Always use Turborepo commands for building, testing, and serving projects in this monorepo
 ---
 

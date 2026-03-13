@@ -36,12 +36,6 @@
           "type": "http",
           "url": "https://api.githubcopilot.com/mcp/"
         },
-        "nx-mcp": {
-          "type": "stdio",
-          "tools": ["*"],
-          "command": "npx",
-          "args": ["nx-mcp@latest"]
-        },
         "playwright": {
           "type": "stdio",
           "tools": ["*"],
@@ -59,7 +53,7 @@
       "sound": "on",
       "announcement": "auto"
     },
-    // Encourage NX usage
+    // Encourage TURBO usage
     "workbench.commandPalette.experimental.suggestCommands": true,
     "workbench.tips.enabled": true,
     // TypeScript settings for the monorepo
@@ -92,7 +86,7 @@
     "search.exclude": {
       "**/node_modules": true,
       "**/dist": true,
-      "**/.nx": true,
+      "**/.turbo": true,
       "**/*.log": true,
       "**/tmp": true,
       "**/coverage": true
@@ -106,14 +100,14 @@
       "**/.DS_Store": true,
       "**/Thumbs.db": true,
       "**/node_modules": true,
-      "**/.nx": true,
+      "**/.turbo": true,
       "**/dist": true,
       "**/tmp": true
     },
     "files.watcherExclude": {
       "**/node_modules/**": true,
       "**/dist/**": true,
-      "**/.nx/**": true,
+      "**/.turbo/**": true,
       "**/tmp/**": true,
       "**/coverage/**": true
     },
@@ -185,7 +179,7 @@
       {
         "label": "🏗️ Build All Projects",
         "type": "shell",
-        "command": "nx run-many --target=build --all",
+        "command": "bunx turbo build",
         "group": "build",
         "presentation": {
           "echo": true,
@@ -200,7 +194,7 @@
       {
         "label": "🧪 Test All Projects",
         "type": "shell",
-        "command": "nx run-many --target=test --all",
+        "command": "bunx turbo test",
         "group": "test",
         "presentation": {
           "echo": true,
@@ -212,7 +206,7 @@
       {
         "label": "🚀 Serve E2E",
         "type": "shell",
-        "command": "nx serve e2e",
+        "command": "bunx turbo serve --filter=e2e",
         "group": "build",
         "presentation": {
           "echo": true,
@@ -225,7 +219,7 @@
       {
         "label": "🤖 Serve MCP",
         "type": "shell",
-        "command": "nx serve mcp",
+        "command": "bunx turbo serve --filter=mcp",
         "group": "build",
         "presentation": {
           "echo": true,
@@ -238,7 +232,7 @@
       {
         "label": "🏠 Build Voice Firmware",
         "type": "shell",
-        "command": "nx build home-assistant-voice-firmware",
+        "command": "bunx turbo build --filter=home-assistant-voice-firmware",
         "group": "build",
         "presentation": {
           "echo": true,

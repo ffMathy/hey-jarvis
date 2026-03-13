@@ -39,7 +39,7 @@ interface GraphEmailListResponse {
  *
  * The client automatically refreshes access tokens using the stored refresh token.
  * Refresh tokens are long-lived and only need to be obtained once using the
- * `nx generate-tokens mcp` command.
+ * `bun run --cwd mcp generate-tokens` command.
  *
  * Credentials are loaded in this order:
  * 1. Environment variables (HEY_JARVIS_MICROSOFT_*)
@@ -72,7 +72,7 @@ const getMicrosoftAuth = async (): Promise<string> => {
         '  - HEY_JARVIS_MICROSOFT_REFRESH_TOKEN\n' +
         '\n' +
         'Option 2: Store refresh token in Mastra (client ID/secret still required in env):\n' +
-        '  Run `nx generate-tokens mcp`',
+        '  Run `bun run --cwd mcp generate-tokens`',
     );
   }
 
@@ -105,7 +105,7 @@ const getMicrosoftAuth = async (): Promise<string> => {
   } catch (error) {
     throw new Error(
       `Failed to acquire access token from Microsoft: ${error instanceof Error ? error.message : String(error)}\n` +
-        'Your refresh token may have expired. Run `nx generate-tokens mcp` to get a new one.',
+        'Your refresh token may have expired. Run `bun run --cwd mcp generate-tokens` to get a new one.',
     );
   }
 };

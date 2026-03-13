@@ -12,7 +12,7 @@ This project includes specialized [GitHub Copilot Agent Skills](https://docs.git
 
 - **Runtime**: Bun (not Node.js)
 - **Package Manager**: Bun (use `bun install`, never npm)
-- **Build System**: NX monorepo
+- **Build System**: Turborepo monorepo
 - **Language**: TypeScript (strict mode)
 - **AI Framework**: Mastra (V1 beta)
 - **LLM Provider**: Google Gemini (gemini-flash-latest)
@@ -21,7 +21,7 @@ This project includes specialized [GitHub Copilot Agent Skills](https://docs.git
 
 ## Repository Structure
 
-This is an NX monorepo containing intelligent voice assistant components:
+This is an Turborepo monorepo containing intelligent voice assistant components:
 
 | Project                           | Description                                     |
 | --------------------------------- | ----------------------------------------------- |
@@ -31,17 +31,17 @@ This is an NX monorepo containing intelligent voice assistant components:
 
 ## Development Commands
 
-**See the [`nx-monorepo-commands`](.github/skills/nx-monorepo-commands/SKILL.md) skill for detailed NX usage.**
+**See the [`turbo-monorepo-commands`](.claude/skills/turbo-monorepo-commands/SKILL.md) skill for detailed Turborepo usage.**
 
-### NX Commands (MANDATORY)
+### TURBO Commands (MANDATORY)
 
-**CRITICAL: ALWAYS use NX commands** for this monorepo:
+**CRITICAL: ALWAYS use Turborepo commands** for this monorepo:
 
-- `bunx nx serve <project>` - Start development server
-- `bunx nx build <project>` - Build for production
-- `bunx nx test <project>` - Run tests
-- `bunx nx lint <project>` - Run linter
-- `bunx nx affected --target=<lint|test|build>` - Run on affected projects
+- `bunx turbo serve --filter=<project>` - Start development server
+- `bunx turbo build --filter=<project>` - Build for production
+- `bunx turbo test --filter=<project>` - Run tests
+- `bunx turbo lint --filter=<project>` - Run linter
+- `bunx turbo <target>` - Run a target across packages (optionally narrowed with `--filter`)
 
 ## 1Password Authentication
 
@@ -185,46 +185,44 @@ All contributions should:
 ### Running the Development Server
 
 ```bash
-bunx nx serve mcp
+bunx turbo serve --filter=mcp
 # Access playground at http://localhost:4111/agents
 ```
 
 ### Building for Production
 
 ```bash
-bunx nx build mcp
+bunx turbo build --filter=mcp
 ```
 
 ### Testing Changes
 
 ```bash
 # Test specific project
-bunx nx test mcp
+bunx turbo test --filter=mcp
 
 # Test affected projects
-bunx nx affected --target=test
+bunx turbo test
 ```
 
-<!-- nx configuration start-->
+<!-- turbo configuration start-->
 <!-- Leave the start & end comments to automatically receive updates. -->
 
-## General Guidelines for working with Nx
+## General Guidelines for working with Turbo
 
-- For navigating/exploring the workspace, invoke the `nx-workspace` skill first - it has patterns for querying projects, targets, and dependencies
-- When running tasks (for example build, lint, test, e2e, etc.), always prefer running the task through `nx` (i.e. `nx run`, `nx run-many`, `nx affected`) instead of using the underlying tooling directly
-- Prefix nx commands with the workspace's package manager (e.g., `pnpm nx build`, `npm exec nx test`) - avoids using globally installed CLI
-- You have access to the Nx MCP server and its tools, use them to help the user
-- For Nx plugin best practices, check `node_modules/@nx/<plugin>/PLUGIN.md`. Not all plugins have this file - proceed without it if unavailable.
-- NEVER guess CLI flags - always check nx_docs or `--help` first when unsure
+- For navigating/exploring the workspace, use Turborepo-aware project/task tooling first.
+- When running tasks (for example build, lint, test, e2e, etc.), prefer Turborepo task execution (`turbo <task>` and `--filter`) instead of calling underlying tools directly.
+- Prefix Turbo commands with the workspace package manager (`bunx turbo ...`) instead of relying on global binaries.
+- You have access to Turborepo MCP tooling; use it to inspect projects and tasks.
+- NEVER guess CLI flags; check `turbo --help` first when unsure.
 
 ## Scaffolding & Generators
 
-- For scaffolding tasks (creating apps, libs, project structure, setup), ALWAYS invoke the `nx-generate` skill FIRST before exploring or calling MCP tools
+- For scaffolding tasks (creating apps, libs, project structure, setup), use repository-approved generators and workspace conventions first.
 
-## When to use nx_docs
+## When to use docs lookups
 
 - USE for: advanced config options, unfamiliar flags, migration guides, plugin configuration, edge cases
-- DON'T USE for: basic generator syntax (`nx g @nx/react:app`), standard commands, things you already know
-- The `nx-generate` skill handles generator discovery internally - don't call nx_docs just to look up generator syntax
+- DON'T USE for: basic Turborepo command syntax and common day-to-day commands
 
-<!-- nx configuration end-->
+<!-- turbo configuration end-->

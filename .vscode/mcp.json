@@ -11,12 +11,6 @@
       "type": "http",
       "url": "https://api.githubcopilot.com/mcp/"
     },
-    "nx-mcp": {
-      "type": "stdio",
-      "tools": ["*"],
-      "command": "npx",
-      "args": ["nx-mcp@latest"]
-    },
     "playwright": {
       "type": "stdio",
       "tools": ["*"],

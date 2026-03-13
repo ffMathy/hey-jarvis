@@ -4,11 +4,9 @@ set -e
 # Navigate to workspace root (script lives in elevenlabs/.scripts/)
 cd "$(dirname "$0")/../.."
 
-SOURCEMAP="${SOURCEMAP:-false}"
+if [ ! -f "elevenlabs/src/main.ts" ]; then
+  echo "❌ Missing entrypoint: elevenlabs/src/main.ts"
+  exit 1
+fi
 
-bunx esbuild elevenlabs/src/main.ts \
-  --platform=node \
-  --format=esm \
-  --bundle=false \
-  --outdir=dist/elevenlabs \
-  --sourcemap="${SOURCEMAP}"
+echo "✅ No build output required for elevenlabs (executed directly with Bun + TypeScript)."

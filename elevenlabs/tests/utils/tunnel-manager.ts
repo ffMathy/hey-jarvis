@@ -95,7 +95,7 @@ export async function ensureTunnelRunning(): Promise<void> {
   if (!token) {
     throw new Error(
       'HEY_JARVIS_CLOUDFLARED_TUNNEL_TOKEN environment variable is not set. ' +
-        'Make sure tests are run via: nx test elevenlabs',
+        'Make sure tests are run via: bunx turbo test --filter=elevenlabs',
     );
   }
 
