@@ -1,6 +1,6 @@
 # Jarvis Mastra AI Agents
 
-> **Note:** See the root [AGENTS.md](../AGENTS.md) for shared conventions (NX commands, commit standards, 1Password, etc.)
+> **Note:** See the root [AGENTS.md](../AGENTS.md) for shared conventions (Turborepo commands, commit standards, 1Password, etc.)
 
 ## Overview
 Mastra-powered AI agent framework for intelligent home automation, voice interactions, and Model Context Protocol (MCP) integrations.
@@ -60,7 +60,7 @@ mcp/
 │   ├── memory/          # Shared memory management
 │   ├── storage/         # Shared storage configuration
 │   └── index.ts         # Main Mastra configuration
-├── project.json         # NX project configuration
+├── project.json         # TURBO project configuration
 └── AGENTS.md           # This documentation
 ```
 
@@ -818,7 +818,7 @@ export async function getMyAgent() {
 **Testing:**
 ```bash
 # Start MCP server
-bunx nx serve mcp
+bunx turbo serve --filter=mcp
 
 # Access playground at http://localhost:4111/agents
 # Select any agent (all have error reporting)
@@ -943,7 +943,7 @@ bun install mastra --global
 
 **CRITICAL: Test Server Startup Must Use run-with-env.sh**
 
-When starting the MCP server for testing purposes, **ALWAYS use `run-with-env.sh` directly with tsx** to ensure proper environment variable loading from 1Password without nested NX process issues:
+When starting the MCP server for testing purposes, **ALWAYS use `run-with-env.sh` directly with tsx** to ensure proper environment variable loading from 1Password without nested TURBO process issues:
 
 ✅ **CORRECT:**
 ```bash
@@ -953,9 +953,9 @@ When starting the MCP server for testing purposes, **ALWAYS use `run-with-env.sh
 
 ❌ **INCORRECT:**
 ```bash
-# Don't use NX targets - they cause nested NX processes in test environment
-bunx nx serve:mcp mcp
-bunx nx serve:mcp:tsx mcp
+# Don't use Turborepo tasks - they cause nested TURBO processes in test environment
+bun run --cwd mcp serve:mcp
+bun run --cwd mcp serve:mcp
 
 # Don't bypass run-with-env.sh - environment variables won't load
 bunx tsx mcp/mastra/mcp-server.ts
@@ -963,7 +963,7 @@ bunx tsx mcp/mastra/mcp-server.ts
 
 **Why This Matters:**
 - The `run-with-env.sh` script ensures 1Password CLI authentication and environment variable injection
-- Direct tsx execution avoids nested NX process issues that cause premature exit
+- Direct tsx execution avoids nested TURBO process issues that cause premature exit
 - Tests run in the same environment as development and need access to secrets
 - Without run-with-env.sh, required environment variables won't be available
 - This approach provides the simplest, most direct path to a running server
@@ -986,10 +986,10 @@ mcpServerProcess = spawn('./.scripts/run-with-env.sh', [
 ### Running the Project
 ```bash
 # Start development server with playground
-bunx nx serve mcp
+bunx turbo serve --filter=mcp
 
 # Build for production
-bunx nx build mcp
+bunx turbo build --filter=mcp
 ```
 
 ### Development Playground
@@ -1019,7 +1019,7 @@ All environment variables use the `HEY_JARVIS_` prefix for easy management and D
 1. **Install 1Password CLI**: Follow [1Password CLI installation guide](https://developer.1password.com/docs/cli/get-started/)
 2. **Sign in to 1Password**: `eval $(op signin)` - **CRITICAL: Always run this command when you get a 1Password authentication error or non-zero exit code from op commands**
 3. **Store your API keys** in 1Password vaults with the paths referenced in `.env`
-4. **Run commands**: Use `nx serve mcp` or `nx run mcp:mcp` - both use `op run` automatically
+4. **Run commands**: Use `bunx turbo serve --filter=mcp` or `bun run --cwd mcp serve:mcp` - both use `op run` automatically
 
 **Important**: 
 - If any command using 1Password fails with "no active session found" or similar errors, immediately run `eval $(op signin)` to re-authenticate before continuing.
@@ -1035,7 +1035,7 @@ All environment variables use the `HEY_JARVIS_` prefix for easy management and D
 - **Do NOT create separate `*-dev` targets** that bypass 1Password CLI
 - **The `op run` approach is designed for both development AND production**
 - **1Password CLI provides secure local testing** without hardcoded keys
-- **All nx targets should use the same `op run --env-file=".env"` pattern**
+- **All Turborepo tasks should use the same `op run --env-file=".env"` pattern**
 - **This ensures consistency between development and deployment environments**
 
 If you encounter 1Password CLI authentication issues:
@@ -1115,7 +1115,7 @@ To regenerate a token for a specific provider, delete it from storage first:
 sqlite3 mcp/mastra.sql.db "DELETE FROM oauth_credentials WHERE provider='google';"
 
 # Then run the generator - will only regenerate Google token
-bunx nx generate-tokens mcp
+bun run --cwd mcp generate-tokens
 ```
 
 #### Why OAuth2?
@@ -1149,7 +1149,7 @@ Run the token generation script to obtain your refresh token:
 
 ```bash
 # Run the interactive token generator
-bunx nx generate-tokens mcp
+bun run --cwd mcp generate-tokens
 
 # This will:
 # 1. Open your browser for Google authorization
@@ -1169,7 +1169,7 @@ You have four options for storing your OAuth2 credentials:
 **Mastra Storage (Default)**
 ```bash
 # Generate tokens and store refresh token in Mastra's LibSQL database
-bunx nx generate-tokens mcp
+bun run --cwd mcp generate-tokens
 
 # This will:
 # 1. Guide you through the OAuth flow
@@ -1270,7 +1270,7 @@ await credentialsStorage.deleteRefreshToken('google');
 - Solution:
   1. Go to [Google Account Permissions](https://myaccount.google.com/permissions)
   2. Remove this application
-  3. Run `bunx nx generate-tokens mcp` again
+  3. Run `bun run --cwd mcp generate-tokens` again
 
 **"Missing required Google OAuth2 credentials" Error**:
 - Verify all three environment variables are set:
@@ -1281,7 +1281,7 @@ await credentialsStorage.deleteRefreshToken('google');
 
 **"Invalid grant" Error**:
 - Refresh token has been revoked or expired
-- Solution: Run `bunx nx generate-tokens mcp` to get a new token
+- Solution: Run `bun run --cwd mcp generate-tokens` to get a new token
 
 **Authorization Timeout**:
 - The token generator times out after 5 minutes
@@ -1349,7 +1349,7 @@ Run the token generation script:
 
 ```bash
 # Run the interactive token generator
-bunx nx generate-tokens mcp
+bun run --cwd mcp generate-tokens
 
 # This will:
 # 1. Open your browser for Microsoft authorization
@@ -1369,7 +1369,7 @@ Credentials are automatically stored in Mastra storage:
 **Mastra Storage (Default)**
 ```bash
 # Generate tokens and store refresh token in Mastra's LibSQL database
-bunx nx generate-tokens mcp
+bun run --cwd mcp generate-tokens
 
 # This will:
 # 1. Guide you through the OAuth flow
@@ -1420,7 +1420,7 @@ if (response.refreshToken && response.refreshToken !== refreshToken) {
 - Solution:
   1. Go to Azure Portal → App Registrations → Your App → API permissions
   2. Ensure `offline_access` is listed
-  3. Run `bunx nx generate-tokens mcp` again
+  3. Run `bun run --cwd mcp generate-tokens` again
 
 **"Missing required Microsoft OAuth2 credentials" Error**:
 - Verify all three environment variables are set:
@@ -1431,7 +1431,7 @@ if (response.refreshToken && response.refreshToken !== refreshToken) {
 
 **"Invalid grant" Error**:
 - Refresh token has been revoked or expired
-- Solution: Run `bunx nx generate-tokens mcp` to get a new token
+- Solution: Run `bun run --cwd mcp generate-tokens` to get a new token
 
 **"AADSTS65001: User consent required" Error**:
 - Admin consent is required for your organization
@@ -1590,7 +1590,7 @@ const PROVIDERS: OAuthProvider[] = [
    HEY_JARVIS_YOUR_PROVIDER_REFRESH_TOKEN="op://Personal/Your Provider/refresh token"
    ```
 
-6. **Run Token Generation**: Execute `bunx nx generate-tokens mcp`
+6. **Run Token Generation**: Execute `bun run --cwd mcp generate-tokens`
    - Script will process ALL providers automatically
    - Skip any provider with missing credentials
    - Each provider opens its own browser authorization flow
@@ -1971,7 +1971,7 @@ Before considering a vertical complete:
 - [ ] Tools use kebab-case IDs
 - [ ] Workflows match business processes
 - [ ] Main index files are updated
-- [ ] Build passes: `nx build mcp`
+- [ ] Build passes: `bunx turbo build --filter=mcp`
 - [ ] Documentation updated in this AGENTS.md file
 
 ### 🎯 **When to Create Sub-Verticals**
@@ -2054,7 +2054,7 @@ This project follows a strict "lean documentation" approach because:
 - **Scattered documentation** creates maintenance overhead and confusion
 - **The Mastra playground** provides interactive testing without file creation
 - **Inline comments** are more maintainable than separate documentation files
-- **Multiple README files** violate the monorepo structure and NX conventions
+- **Multiple README files** violate the monorepo structure and TURBO conventions
 
 **If you feel documentation is needed, ALWAYS update this AGENTS.md file instead of creating new files. DO NOT CREATE ANY .md FILES UNDER ANY CIRCUMSTANCES.**
 

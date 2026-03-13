@@ -1,4 +1,5 @@
 import type { NextFunction, Request, Response, Router } from 'express';
+import type { ZodTypeAny } from 'zod';
 import { logger } from '../../utils/logger.js';
 import type { AnyWorkflow, AnyWorkflowResult } from '../../utils/workflows/workflow-factory.js';
 import { shoppingListWorkflow } from '../shopping/workflows.js';
@@ -55,7 +56,7 @@ export function createWorkflowApiHandler(
       const inputSchema = workflow.inputSchema;
 
       if (inputSchema) {
-        const parseResult = inputSchema.safeParse(req.body);
+        const parseResult = (inputSchema as ZodTypeAny).safeParse(req.body);
 
         if (!parseResult.success) {
           const errorMessage = formatValidationErrors(parseResult.error);

@@ -37,9 +37,9 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Install NX globally
+      - name: Install Turborepo globally
         run: |
-          bun install -g nx
+          bun install -g turbo
           echo "$(bun global bin)" >> $GITHUB_PATH
 
       - name: Install cloudflared

@@ -1,0 +1,14 @@
+{
+  "name": "home-assistant-voice-firmware",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "lint": "echo 'No lint for firmware'",
+    "typecheck": "echo 'No typecheck for firmware'",
+    "build": "bash .scripts/build.sh",
+    "serve": "bash .scripts/serve.sh",
+    "initialize": "python3 -m pip install --upgrade --no-cache-dir --timeout=900 esphome",
+    "clean": "python3 -m esphome clean home-assistant-voice.elevenlabs.yaml",
+    "env:local": "cd .. && ./.scripts/generate-env-local.sh home-assistant-voice-firmware/op.env"
+  }
+}

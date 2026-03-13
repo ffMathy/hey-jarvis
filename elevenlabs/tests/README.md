@@ -34,10 +34,10 @@ Test utility functions are located in `tests/utils/`:
 
 ```bash
 # Run all tests
-nx test elevenlabs
+bunx turbo test --filter=elevenlabs
 
 # Run tests with verbose output
-nx test elevenlabs --verbose
+bunx turbo test --filter=elevenlabs --verbose
 ```
 
 ## Test Requirements

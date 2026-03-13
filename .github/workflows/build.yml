@@ -70,7 +70,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
-          fetch-depth: 0  # Fetch all history for nx affected to work
+          fetch-depth: 0  # Fetch all history for turbo affected detection to work
 
       - name: Fetch base branch
         run: git fetch origin main:main
@@ -78,20 +78,13 @@ jobs:
       - name: Set lowercase repository owner
         run: echo "REPO_OWNER_LC=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
 
-      - name: Set NX SHAs for affected detection
-        uses: nrwl/nx-set-shas@v4
-        id: set-shas
-        with:
-          main-branch-name: main
-
-      - name: Restore NX build cache
+      - name: Restore Turborepo cache
         uses: actions/cache@v5
         with:
-          path: .nx/cache
-          key: nx-cache-${{ runner.os }}-${{ steps.set-shas.outputs.head }}
+          path: .turbo
+          key: turbo-cache-${{ runner.os }}-${{ github.sha }}
           restore-keys: |
-            nx-cache-${{ runner.os }}-${{ steps.set-shas.outputs.base }}
-            nx-cache-${{ runner.os }}-
+            turbo-cache-${{ runner.os }}-
 
       - name: Build and test in dev container
         uses: devcontainers/ci@v0.3
@@ -101,16 +94,16 @@ jobs:
           IMAGE_TAG: pr-${{ github.event.pull_request.number }}
           IMAGE_OWNER: ${{ env.REPO_OWNER_LC }}
           REGISTRY: ghcr.io
-          NX_BASE: ${{ steps.set-shas.outputs.base }}
-          NX_HEAD: ${{ steps.set-shas.outputs.head }}
+          TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+          TURBO_TEAM: ${{ vars.TURBO_TEAM }}
           WORKSPACE_ROOT: /workspaces/hey-jarvis
         with:
           imageName: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
           cacheFrom: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
           push: never
           runCmd: |
-            nx affected --target=build
-            nx affected --target=test
+            turbo build
+            turbo test
           env: |
             GITHUB_ACTIONS
             GITHUB_TOKEN

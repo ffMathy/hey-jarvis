@@ -20,8 +20,8 @@
 
 ### Bug Fixes
 
-* log catch-block errors and add env:local NX targets for 1Password secret resolution ([#505](https://github.com/ffMathy/hey-jarvis/issues/505)) ([a9aae83](https://github.com/ffMathy/hey-jarvis/commit/a9aae833a79748ec61d4c2aa64b7fb7cd7a1fad1))
-* log errors in catch blocks and add env:local NX targets for all projects ([49453f0](https://github.com/ffMathy/hey-jarvis/commit/49453f0067dfb6bf7822ef77e8c9bbdec3ca15f5))
+* log catch-block errors and add env:local Turborepo tasks for 1Password secret resolution ([#505](https://github.com/ffMathy/hey-jarvis/issues/505)) ([a9aae83](https://github.com/ffMathy/hey-jarvis/commit/a9aae833a79748ec61d4c2aa64b7fb7cd7a1fad1))
+* log errors in catch blocks and add env:local Turborepo tasks for all projects ([49453f0](https://github.com/ffMathy/hey-jarvis/commit/49453f0067dfb6bf7822ef77e8c9bbdec3ca15f5))
 * much better environment interpolation ([c6f4aab](https://github.com/ffMathy/hey-jarvis/commit/c6f4aab1a923b6d86b724527ea95a25a7e439727))
 
 ## [0.8.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.7.2...home-assistant-voice-firmware-v0.8.0) (2026-02-20)
@@ -178,7 +178,7 @@
 
 ### Bug Fixes
 
-* broken build commands for nx ([23f70c1](https://github.com/ffMathy/hey-jarvis/commit/23f70c1dc7b395f8c030f0c5d00da64afa877c7c))
+* broken build commands for turbo ([23f70c1](https://github.com/ffMathy/hey-jarvis/commit/23f70c1dc7b395f8c030f0c5d00da64afa877c7c))
 * build issue ([#66](https://github.com/ffMathy/hey-jarvis/issues/66)) ([31783be](https://github.com/ffMathy/hey-jarvis/commit/31783bee891a4e9698795108a6730268e41299c0))
 * progress on stability and tests ([082660f](https://github.com/ffMathy/hey-jarvis/commit/082660f8b5bd0db869ef0d4ece56bc01eee5eb54))
 * reference env from prefix ([11b1213](https://github.com/ffMathy/hey-jarvis/commit/11b12135ff6e20aa89830bb8ca91ef8bd701fbec))
@@ -207,7 +207,7 @@
 
 ### Bug Fixes
 
-* broken build commands for nx ([23f70c1](https://github.com/ffMathy/hey-jarvis/commit/23f70c1dc7b395f8c030f0c5d00da64afa877c7c))
+* broken build commands for turbo ([23f70c1](https://github.com/ffMathy/hey-jarvis/commit/23f70c1dc7b395f8c030f0c5d00da64afa877c7c))
 * build issue ([#66](https://github.com/ffMathy/hey-jarvis/issues/66)) ([31783be](https://github.com/ffMathy/hey-jarvis/commit/31783bee891a4e9698795108a6730268e41299c0))
 * progress on stability and tests ([082660f](https://github.com/ffMathy/hey-jarvis/commit/082660f8b5bd0db869ef0d4ece56bc01eee5eb54))
 * reference env from prefix ([11b1213](https://github.com/ffMathy/hey-jarvis/commit/11b12135ff6e20aa89830bb8ca91ef8bd701fbec))
@@ -246,7 +246,7 @@
 
 ### Bug Fixes
 
-* broken build commands for nx ([23f70c1](https://github.com/ffMathy/hey-jarvis/commit/23f70c1dc7b395f8c030f0c5d00da64afa877c7c))
+* broken build commands for turbo ([23f70c1](https://github.com/ffMathy/hey-jarvis/commit/23f70c1dc7b395f8c030f0c5d00da64afa877c7c))
 * build issue ([#66](https://github.com/ffMathy/hey-jarvis/issues/66)) ([b1029ed](https://github.com/ffMathy/hey-jarvis/commit/b1029ed0d19222d5a98befe513ba474a9b518c13))
 * progress on stability and tests ([0692649](https://github.com/ffMathy/hey-jarvis/commit/069264952fd76864a39da98d55bf64d1c36b5eba))
 * reference env from prefix ([edb2a75](https://github.com/ffMathy/hey-jarvis/commit/edb2a75fe2aa6c4e15b54c88d51e8a78698121b3))
@@ -271,7 +271,7 @@
 
 ### Bug Fixes
 
-* broken build commands for nx ([23f70c1](https://github.com/ffMathy/hey-jarvis/commit/23f70c1dc7b395f8c030f0c5d00da64afa877c7c))
+* broken build commands for turbo ([23f70c1](https://github.com/ffMathy/hey-jarvis/commit/23f70c1dc7b395f8c030f0c5d00da64afa877c7c))
 * build issue ([#66](https://github.com/ffMathy/hey-jarvis/issues/66)) ([b1029ed](https://github.com/ffMathy/hey-jarvis/commit/b1029ed0d19222d5a98befe513ba474a9b518c13))
 * progress on stability and tests ([0692649](https://github.com/ffMathy/hey-jarvis/commit/069264952fd76864a39da98d55bf64d1c36b5eba))
 * reference env from prefix ([edb2a75](https://github.com/ffMathy/hey-jarvis/commit/edb2a75fe2aa6c4e15b54c88d51e8a78698121b3))
@@ -317,7 +317,7 @@
 
 ### Bug Fixes
 
-* broken build commands for nx ([23f70c1](https://github.com/ffMathy/hey-jarvis/commit/23f70c1dc7b395f8c030f0c5d00da64afa877c7c))
+* broken build commands for turbo ([23f70c1](https://github.com/ffMathy/hey-jarvis/commit/23f70c1dc7b395f8c030f0c5d00da64afa877c7c))
 * reference env from prefix ([edb2a75](https://github.com/ffMathy/hey-jarvis/commit/edb2a75fe2aa6c4e15b54c88d51e8a78698121b3))
 
 
@@ -352,7 +352,7 @@
 
 ### Bug Fixes
 
-* broken build commands for nx ([23f70c1](https://github.com/ffMathy/hey-jarvis/commit/23f70c1dc7b395f8c030f0c5d00da64afa877c7c))
+* broken build commands for turbo ([23f70c1](https://github.com/ffMathy/hey-jarvis/commit/23f70c1dc7b395f8c030f0c5d00da64afa877c7c))
 
 
 ### Documentation

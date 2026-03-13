@@ -12,10 +12,9 @@ updates:
         patterns:
           - "@mastra/*"
           - "mastra"
-      nx:
+      turbo:
         patterns:
-          - "@nx/*"
-          - "nx"
+          - "turbo"
     # Supply chain defense: delay adoption of new versions so security
     # vendors have time to detect and remove malicious packages.
     # Security updates (CVE patches) bypass cooldown automatically.

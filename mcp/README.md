@@ -5,10 +5,10 @@ The AI brain of the Jarvis ecosystem — a Mastra-powered MCP server with specia
 ## Quick Start
 
 ```bash
-bunx nx serve mcp          # Start server + Mastra Studio playground
-bunx nx serve:mcp mcp      # Start MCP server only (JWT-authenticated)
-bunx nx test mcp            # Run tests
-bunx nx e2e mcp             # Run E2E tests
+bunx turbo serve --filter=mcp          # Start server + Mastra Studio playground
+bun run --cwd mcp serve:mcp      # Start MCP server only (JWT-authenticated)
+bunx turbo test --filter=mcp            # Run tests
+bunx turbo e2e --filter=mcp             # Run E2E tests
 ```
 
 Access the playground at `http://localhost:4111/agents` to test agents, debug tools, and monitor memory.

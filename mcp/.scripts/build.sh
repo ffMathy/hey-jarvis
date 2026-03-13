@@ -21,11 +21,21 @@ echo "   Image Tag: $IMAGE_TAG"
 
 # Build Docker image locally
 echo "🐳 Building Docker image..."
-docker build \
+if ! docker build \
     -f mcp/Dockerfile \
     -t "ghcr.io/$IMAGE_OWNER/mcp:latest" \
     -t "ghcr.io/$IMAGE_OWNER/mcp:$IMAGE_TAG" \
-    .
+    .; then
+  echo "⚠️ Standard docker build failed, retrying with isolated Docker config (public base images only)..."
+  TMP_DOCKER_CONFIG="$(mktemp -d)"
+  trap 'rm -rf "$TMP_DOCKER_CONFIG"' EXIT
+
+  DOCKER_CONFIG="$TMP_DOCKER_CONFIG" docker build \
+      -f mcp/Dockerfile \
+      -t "ghcr.io/$IMAGE_OWNER/mcp:latest" \
+      -t "ghcr.io/$IMAGE_OWNER/mcp:$IMAGE_TAG" \
+      .
+fi
 
 echo "✅ Build complete!"
 echo "📦 Local images:"

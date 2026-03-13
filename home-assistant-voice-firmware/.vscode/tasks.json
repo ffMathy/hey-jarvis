@@ -4,7 +4,7 @@
     {
       "label": "Initialize ESPHome",
       "type": "shell",
-      "command": "nx init home-assistant-voice-firmware",
+      "command": "turbo initialize --filter=home-assistant-voice-firmware",
       "group": "build",
       "presentation": {
         "echo": true,
@@ -19,7 +19,7 @@
     {
       "label": "Build Voice Firmware",
       "type": "shell",
-      "command": "nx build home-assistant-voice-firmware",
+      "command": "turbo build --filter=home-assistant-voice-firmware",
       "group": "build",
       "presentation": {
         "echo": true,
@@ -34,7 +34,7 @@
     {
       "label": "Upload to Device",
       "type": "shell",
-      "command": "nx serve home-assistant-voice-firmware",
+      "command": "turbo serve --filter=home-assistant-voice-firmware",
       "group": "build",
       "presentation": {
         "echo": true,
@@ -49,7 +49,7 @@
     {
       "label": "Clean Build",
       "type": "shell",
-      "command": "nx clean home-assistant-voice-firmware",
+      "command": "bun run --filter=home-assistant-voice-firmware clean",
       "group": "build",
       "presentation": {
         "echo": true,

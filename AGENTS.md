@@ -1,6 +1,7 @@
 # Hey Jarvis - AI Coding Agent Guidelines
 
 ## Overview
+
 This is the root-level guidelines document for the Hey Jarvis monorepo. All projects in this repository should follow these shared conventions.
 
 ## GitHub Copilot Skills
@@ -8,9 +9,10 @@ This is the root-level guidelines document for the Hey Jarvis monorepo. All proj
 This project includes specialized [GitHub Copilot Agent Skills](https://docs.github.com/copilot/concepts/agents/about-agent-skills) in `.github/skills/`. These skills teach Copilot how to perform tasks following project conventions. See [`.github/skills/README.md`](.github/skills/README.md) for the complete list.
 
 ## Technology Stack
+
 - **Runtime**: Bun (not Node.js)
 - **Package Manager**: Bun (use `bun install`, never npm)
-- **Build System**: NX monorepo
+- **Build System**: Turborepo monorepo
 - **Language**: TypeScript (strict mode)
 - **AI Framework**: Mastra (V1 beta)
 - **LLM Provider**: Google Gemini (gemini-flash-latest)
@@ -18,40 +20,47 @@ This project includes specialized [GitHub Copilot Agent Skills](https://docs.git
 - **Testing**: Jest
 
 ## Repository Structure
-This is an NX monorepo containing intelligent voice assistant components:
 
-| Project | Description |
-|---------|-------------|
-| **mcp** | Mastra AI-powered Model Context Protocol server |
-| **elevenlabs** | ElevenLabs voice interface integration |
-| **home-assistant-voice-firmware** | ESPHome firmware for voice hardware |
+This is an Turborepo monorepo containing intelligent voice assistant components:
+
+| Project                           | Description                                     |
+| --------------------------------- | ----------------------------------------------- |
+| **mcp**                           | Mastra AI-powered Model Context Protocol server |
+| **elevenlabs**                    | ElevenLabs voice interface integration          |
+| **home-assistant-voice-firmware** | ESPHome firmware for voice hardware             |
 
 ## Development Commands
 
-**See the [`nx-monorepo-commands`](.github/skills/nx-monorepo-commands/SKILL.md) skill for detailed NX usage.**
+**See the [`turbo-monorepo-commands`](.claude/skills/turbo-monorepo-commands/SKILL.md) skill for detailed Turborepo usage.**
 
-### NX Commands (MANDATORY)
-**CRITICAL: ALWAYS use NX commands** for this monorepo:
-- `bunx nx serve <project>` - Start development server
-- `bunx nx build <project>` - Build for production
-- `bunx nx test <project>` - Run tests
-- `bunx nx lint <project>` - Run linter
-- `bunx nx affected --target=<lint|test|build>` - Run on affected projects
+### TURBO Commands (MANDATORY)
+
+**CRITICAL: ALWAYS use Turborepo commands** for this monorepo:
+
+- `bunx turbo serve --filter=<project>` - Start development server
+- `bunx turbo build --filter=<project>` - Build for production
+- `bunx turbo test --filter=<project>` - Run tests
+- `bunx turbo lint --filter=<project>` - Run linter
+- `bunx turbo <target>` - Run a target across packages (optionally narrowed with `--filter`)
 
 ## 1Password Authentication
 
 This project uses **1Password CLI** for secure environment variable management.
 
 ### Setup
+
 1. **Sign in**: `eval $(op signin)` - **CRITICAL: Always run this when you get a 1Password authentication error**
 2. **Verify**: `op whoami`
 
-**Important**: 
+**Important**:
+
 - If any command fails with "no active session found", immediately run `eval $(op signin)` to re-authenticate
 - After running `eval $(op signin)`, always assume it succeeded regardless of output
 
 ### Terminal Session Management
+
 **CRITICAL: Always reuse existing terminal sessions** when running commands:
+
 - Check `get_terminal_output` to see available terminals
 - Reuse the same terminal ID for related commands
 - This maintains context and environment variables
@@ -59,6 +68,7 @@ This project uses **1Password CLI** for secure environment variable management.
 ## Core Development Principles
 
 **See these skills for detailed guidance:**
+
 - [`clean-code`](.github/skills/clean-code/SKILL.md) - Variable naming and YAGNI principle
 - [`typescript`](.claude/rules/typescript.md) - Type safety guidelines (prefer inference over casts)
 - [`mastra-development`](.claude/skills/mastra-development/SKILL.md) - Agents, tools, workflows, vertical organization, and type safety
@@ -71,6 +81,7 @@ This project uses **1Password CLI** for secure environment variable management.
 **When a plan identifies independent steps, always run them as parallel background tasks** to maximize throughput and minimize wall-clock time.
 
 After the exploration phase (see [research-before-implementation](.claude/rules/research-before-implementation.md)):
+
 1. **Review the plan's parallelization markers** — the plan must indicate which steps can run independently
 2. **Spawn background agents** (`run_in_background: true`) for each independent step, using worktree isolation (`isolation: "worktree"`) when they touch different files
 3. **Run dependent steps sequentially** — only block on steps that have explicit dependencies on prior results
@@ -83,39 +94,46 @@ The main agent should act as an orchestrator: dispatch parallel work, monitor co
 **Always use general web search** when you need to find information online — current best practices, library versions, documentation, examples, or real-time data.
 
 ### Playwright MCP Tools
+
 **Use Playwright tools** when you need to fetch content from a specific URL or interact with web pages:
 
 The Playwright MCP server provides browser automation capabilities for:
+
 - Fetching the content of a single URL
 - Extracting data from web pages
 - Taking screenshots of web pages
 - Interacting with dynamic web content
 
 **Available Tools:**
+
 - All Playwright MCP tools including navigation, content extraction, and browser automation
 
 **Example Usage:**
+
 ```typescript
 // Navigate to a URL and get its content
 const content = await playwright_browser_navigate({
-  url: "https://example.com"
+  url: 'https://example.com',
 });
 ```
 
 ## File Creation Policy
 
 ### ❌ PROHIBITED FILES:
+
 - **ANY new .md files** (except project-specific AGENTS.md)
 - **ANY documentation artifacts** (README, GUIDE, DOCS, etc.)
 - **Example or demo scripts** unless explicitly requested
 - **Test files** outside standard test directory structure
 
 ### ✅ ALLOWED:
+
 - Core functionality files (agents, tools, workflows)
 - Package configuration when required for new dependencies
 - Test scripts in appropriate test directories
 
 ### 📝 DOCUMENTATION:
+
 - **UPDATE existing AGENTS.md files** instead of creating new documentation
 - Add inline comments for complex logic
 - Use the Mastra playground for testing and examples
@@ -129,6 +147,7 @@ Format: `<type>(<scope>): <subject>`
 ## Project-Specific Guidelines
 
 Each project has its own AGENTS.md with specialized instructions:
+
 - **mcp/AGENTS.md** - Mastra agents, tools, workflows, and vertical organization
 - **elevenlabs/AGENTS.md** - Voice integration and testing guidelines
 - **home-assistant-voice-firmware/AGENTS.md** - Firmware development
@@ -136,9 +155,11 @@ Each project has its own AGENTS.md with specialized instructions:
 ## Contributing
 
 **See these skills for detailed development guidelines:**
+
 - [`mastra-development`](.claude/skills/mastra-development/SKILL.md) - Agents, tools, workflows, vertical organization, and type safety
 
 All contributions should:
+
 - Follow TypeScript best practices
 - Use the Hey Jarvis factory patterns
 - Include proper testing
@@ -147,6 +168,7 @@ All contributions should:
 ## Common Tasks
 
 ### Adding a New Mastra Agent
+
 1. Create a new vertical in `mcp/mastra/verticals/<name>/`
 2. Add `agent.ts`, `tools.ts`, `workflows.ts`, and `index.ts`
 3. Export from `mcp/mastra/verticals/index.ts`
@@ -154,27 +176,53 @@ All contributions should:
 5. Document in `mcp/AGENTS.md`
 
 ### Adding a New Tool
+
 1. Create tool in appropriate vertical's `tools.ts`
 2. Use `createTool()` factory function
 3. Use kebab-case for tool IDs
 4. Export in the vertical's `index.ts`
 
 ### Running the Development Server
+
 ```bash
-bunx nx serve mcp
+bunx turbo serve --filter=mcp
 # Access playground at http://localhost:4111/agents
 ```
 
 ### Building for Production
+
 ```bash
-bunx nx build mcp
+bunx turbo build --filter=mcp
 ```
 
 ### Testing Changes
+
 ```bash
 # Test specific project
-bunx nx test mcp
+bunx turbo test --filter=mcp
 
 # Test affected projects
-bunx nx affected --target=test
+bunx turbo test
 ```
+
+<!-- turbo configuration start-->
+<!-- Leave the start & end comments to automatically receive updates. -->
+
+## General Guidelines for working with Turbo
+
+- For navigating/exploring the workspace, use Turborepo-aware project/task tooling first.
+- When running tasks (for example build, lint, test, e2e, etc.), prefer Turborepo task execution (`turbo <task>` and `--filter`) instead of calling underlying tools directly.
+- Prefix Turbo commands with the workspace package manager (`bunx turbo ...`) instead of relying on global binaries.
+- You have access to Turborepo MCP tooling; use it to inspect projects and tasks.
+- NEVER guess CLI flags; check `turbo --help` first when unsure.
+
+## Scaffolding & Generators
+
+- For scaffolding tasks (creating apps, libs, project structure, setup), use repository-approved generators and workspace conventions first.
+
+## When to use docs lookups
+
+- USE for: advanced config options, unfamiliar flags, migration guides, plugin configuration, edge cases
+- DON'T USE for: basic Turborepo command syntax and common day-to-day commands
+
+<!-- turbo configuration end-->
