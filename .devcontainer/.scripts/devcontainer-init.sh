@@ -24,9 +24,6 @@ bun install --frozen-lockfile || {
 
 # Project-level dependencies are installed with the "initialize" target in Turborepo, lazily, when needed.
 
-echo "🔄 Updating turbo.json with env vars from op.env files..."
-bash ./.scripts/update-turbo-env.sh
-
 echo "📁 Copying MCP configuration to .claude directory..."
 cp .mcp.json .vscode/mcp.json
 
