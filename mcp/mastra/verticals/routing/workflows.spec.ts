@@ -51,6 +51,32 @@ function assertWorkflowSuccess<T>(workflowResult: { status: string; result?: T }
   return workflowResult.result as T;
 }
 
+function createMockSupervisorExecutor(agentIds: string[]): SupervisorExecutor {
+  return async (userQuery, agents) => {
+    const targetAgentIds = new Set(agentIds);
+    // Phase 1: Inject all tasks synchronously (before any await)
+    for (const agent of agents) {
+      if (targetAgentIds.has(agent.id)) {
+        injectTask({
+          id: `${agent.id}-task`,
+          agent: agent.id,
+          prompt: userQuery,
+          dependsOn: [],
+        });
+      }
+    }
+    // Phase 2: Execute tasks (with awaits)
+    for (const task of getCurrentDAG().tasks) {
+      if (task.result !== undefined) continue;
+      const agent = agents.find((a) => a.id === task.agent);
+      if (agent) {
+        const result = await agent.generate(task.prompt);
+        simulateTaskCompletion(task.id, result.text);
+      }
+    }
+  };
+}
+
 describe('Routing Workflows', () => {
   beforeEach(() => {
     // Reset all workflow state in one call
@@ -292,32 +318,6 @@ describe('Routing Workflows', () => {
   });
 
   describe('routePromptWorkflow with mock agents', () => {
-    function createMockSupervisorExecutor(agentIds: string[]): SupervisorExecutor {
-      return async (userQuery, agents) => {
-        const targetAgentIds = new Set(agentIds);
-        // Phase 1: Inject all tasks synchronously (before any await)
-        for (const agent of agents) {
-          if (targetAgentIds.has(agent.id)) {
-            injectTask({
-              id: `${agent.id}-task`,
-              agent: agent.id,
-              prompt: userQuery,
-              dependsOn: [],
-            });
-          }
-        }
-        // Phase 2: Execute tasks (with awaits)
-        for (const task of getCurrentDAG().tasks) {
-          if (task.result !== undefined) continue;
-          const agent = agents.find((a) => a.id === task.agent);
-          if (agent) {
-            const result = await agent.generate(task.prompt);
-            simulateTaskCompletion(task.id, result.text);
-          }
-        }
-      };
-    }
-
     it('should list available mock agents', async () => {
       const weatherAgent = createMockAgent('weather', 'Provides weather information for any location');
       const calendarAgent = createMockAgent('calendar', 'Manages calendar events and schedules');
