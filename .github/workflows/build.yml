@@ -111,9 +111,9 @@ jobs:
             IMAGE_TAG
             IMAGE_OWNER
             REGISTRY
-            NX_BASE
-            NX_HEAD
             WORKSPACE_ROOT
+            TURBO_TOKEN
+            TURBO_TEAM
             
             HEY_JARVIS_ELEVENLABS_AGENT_ID
             HEY_JARVIS_ELEVENLABS_API_KEY
