@@ -1,8 +1,9 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "envMode": "loose",
   "tasks": {
     "build": {
-      "dependsOn": ["^build", "lint", "typecheck"],
+      "dependsOn": ["^build", "lint", "typecheck", "initialize"],
       "outputs": ["../dist/**", ".esphome/build/**"]
     },
     "typecheck": {
