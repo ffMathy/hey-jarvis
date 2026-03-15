@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.8.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.7.1...mcp-v1.8.0) (2026-03-15)
+
+
+### Features
+
+* enable chat.autopilot in hey-jarvis workspace ([5f677f1](https://github.com/ffMathy/hey-jarvis/commit/5f677f1ceb5ccfd2821c1af7ca13b960c30a8d15))
+* nx to turborepo, typescript over javascript ([#563](https://github.com/ffMathy/hey-jarvis/issues/563)) ([bd8015c](https://github.com/ffMathy/hey-jarvis/commit/bd8015c3912e3a39d5da7bca0a74d0a6295112dd))
+
+
+### Bug Fixes
+
+* cast inputSchema to ZodTypeAny in routes.ts for safe parsing ([5f677f1](https://github.com/ffMathy/hey-jarvis/commit/5f677f1ceb5ccfd2821c1af7ca13b960c30a8d15))
+* cast mode to keyof TravelMode in getTravelTime tool ([5f677f1](https://github.com/ffMathy/hey-jarvis/commit/5f677f1ceb5ccfd2821c1af7ca13b960c30a8d15))
+* ensure preferences are correctly typed in mealPlanFeedbackIterationWorkflow ([5f677f1](https://github.com/ffMathy/hey-jarvis/commit/5f677f1ceb5ccfd2821c1af7ca13b960c30a8d15))
+* replace contradictory Nx guidelines with Turborepo in AGENTS.md ([#566](https://github.com/ffMathy/hey-jarvis/issues/566)) ([5f08fee](https://github.com/ffMathy/hey-jarvis/commit/5f08feed67a9c744b7de4cf70c303460d59cad83))
+* restore deploy:test dependency and add Ollama fallback for CI ([#569](https://github.com/ffMathy/hey-jarvis/issues/569)) ([09f5e65](https://github.com/ffMathy/hey-jarvis/commit/09f5e65ebce6ba20c41328892a8fa5f662c12a52))
+* restore deploy:test dependency and add Ollama fallback model for CI ([3d438d5](https://github.com/ffMathy/hey-jarvis/commit/3d438d59cf392349499bf57d98ef988e488c85fc))
+* specify email type in attendees mapping in createCalendarEvent tool ([5f677f1](https://github.com/ffMathy/hey-jarvis/commit/5f677f1ceb5ccfd2821c1af7ca13b960c30a8d15))
+* turborepo migration ([cc816d5](https://github.com/ffMathy/hey-jarvis/commit/cc816d5aafc8ca090f296b9daf851ac1b8f27c05))
+* update email mapping to use z.infer for type safety in email workflows ([5f677f1](https://github.com/ffMathy/hey-jarvis/commit/5f677f1ceb5ccfd2821c1af7ca13b960c30a8d15))
+
 ## [1.7.1](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.7.0...mcp-v1.7.1) (2026-02-26)
 
 

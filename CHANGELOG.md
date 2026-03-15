@@ -1,5 +1,39 @@
 # Changelog
 
+## [1.9.0](https://github.com/ffMathy/hey-jarvis/compare/root-v1.8.1...root-v1.9.0) (2026-03-15)
+
+
+### Features
+
+* **agent:** enhance audio expression with new audio tags guidelines ([9713f5f](https://github.com/ffMathy/hey-jarvis/commit/9713f5f1ee32002c329e22180c9663eb5538ba7e))
+* **agent:** enhance audio expression with new audio tags guidelines ([#549](https://github.com/ffMathy/hey-jarvis/issues/549)) ([0e0125f](https://github.com/ffMathy/hey-jarvis/commit/0e0125f7ee0375de0ae2f6e301212208192bb16e))
+* enable chat.autopilot in hey-jarvis workspace ([5f677f1](https://github.com/ffMathy/hey-jarvis/commit/5f677f1ceb5ccfd2821c1af7ca13b960c30a8d15))
+* enable Claude superpowers ([b3c3438](https://github.com/ffMathy/hey-jarvis/commit/b3c3438ae91040c7faf029940ae12a4db1391068))
+* nx to turborepo, typescript over javascript ([#563](https://github.com/ffMathy/hey-jarvis/issues/563)) ([bd8015c](https://github.com/ffMathy/hey-jarvis/commit/bd8015c3912e3a39d5da7bca0a74d0a6295112dd))
+* switch to GSD and Superpowers ([4bb1288](https://github.com/ffMathy/hey-jarvis/commit/4bb1288a4e8da65a036f65d2bcf66fa1d4b10cf0))
+* switch to GSD and Superpowers ([#546](https://github.com/ffMathy/hey-jarvis/issues/546)) ([e7061c3](https://github.com/ffMathy/hey-jarvis/commit/e7061c34a36cbed3e71e92b850f2b6ab3238f0d3))
+
+
+### Bug Fixes
+
+* cast inputSchema to ZodTypeAny in routes.ts for safe parsing ([5f677f1](https://github.com/ffMathy/hey-jarvis/commit/5f677f1ceb5ccfd2821c1af7ca13b960c30a8d15))
+* cast mode to keyof TravelMode in getTravelTime tool ([5f677f1](https://github.com/ffMathy/hey-jarvis/commit/5f677f1ceb5ccfd2821c1af7ca13b960c30a8d15))
+* correct output paths in turbo.json (remove invalid ../../ prefix) ([93fa584](https://github.com/ffMathy/hey-jarvis/commit/93fa584118fda6147204931efd541c8bdb6d04f2))
+* correct turbo.json output paths (../../ → relative to package dir) ([#564](https://github.com/ffMathy/hey-jarvis/issues/564)) ([ef11c69](https://github.com/ffMathy/hey-jarvis/commit/ef11c695be38623bf459edae58dc276c014b18ae))
+* disable Turborepo strict env mode with envMode loose ([7064cc5](https://github.com/ffMathy/hey-jarvis/commit/7064cc5e5d0aa497406548d624c384d4f415e56d))
+* dynamically populate turbo.json globalPassThroughEnv from op.env on devcontainer init ([a82d820](https://github.com/ffMathy/hey-jarvis/commit/a82d8202eeb4d02fab329f29f090723071ce78aa))
+* ensure elevenlabs tests run after mcp tests to prevent port 4112 conflict ([9496ef8](https://github.com/ffMathy/hey-jarvis/commit/9496ef861d7e01525e78009c05141a58ecc273c1))
+* ensure preferences are correctly typed in mealPlanFeedbackIterationWorkflow ([5f677f1](https://github.com/ffMathy/hey-jarvis/commit/5f677f1ceb5ccfd2821c1af7ca13b960c30a8d15))
+* pass env vars through Turborepo and add missing initialize dependency ([631d513](https://github.com/ffMathy/hey-jarvis/commit/631d513beeade8751b6303891a23ca8667fd5df3))
+* replace contradictory Nx guidelines with Turborepo in AGENTS.md ([#566](https://github.com/ffMathy/hey-jarvis/issues/566)) ([5f08fee](https://github.com/ffMathy/hey-jarvis/commit/5f08feed67a9c744b7de4cf70c303460d59cad83))
+* restore deploy:test dependency and add Ollama fallback for CI ([#569](https://github.com/ffMathy/hey-jarvis/issues/569)) ([09f5e65](https://github.com/ffMathy/hey-jarvis/commit/09f5e65ebce6ba20c41328892a8fa5f662c12a52))
+* restore deploy:test dependency and add Ollama fallback model for CI ([3d438d5](https://github.com/ffMathy/hey-jarvis/commit/3d438d59cf392349499bf57d98ef988e488c85fc))
+* serialize elevenlabs tests after mcp tests to prevent port 4112 race condition ([#570](https://github.com/ffMathy/hey-jarvis/issues/570)) ([c3ce27b](https://github.com/ffMathy/hey-jarvis/commit/c3ce27b73f85451eae41a7dbbcf187ce3a608879))
+* specify email type in attendees mapping in createCalendarEvent tool ([5f677f1](https://github.com/ffMathy/hey-jarvis/commit/5f677f1ceb5ccfd2821c1af7ca13b960c30a8d15))
+* Turborepo env passthrough and missing initialize dependency in CI ([#568](https://github.com/ffMathy/hey-jarvis/issues/568)) ([8dfd6ad](https://github.com/ffMathy/hey-jarvis/commit/8dfd6ad3af041baed07e95feb9048ce51c6123b4))
+* turborepo migration ([cc816d5](https://github.com/ffMathy/hey-jarvis/commit/cc816d5aafc8ca090f296b9daf851ac1b8f27c05))
+* update email mapping to use z.infer for type safety in email workflows ([5f677f1](https://github.com/ffMathy/hey-jarvis/commit/5f677f1ceb5ccfd2821c1af7ca13b960c30a8d15))
+
 ## [1.8.1](https://github.com/ffMathy/hey-jarvis/compare/root-v1.8.0...root-v1.8.1) (2026-02-26)
 
 

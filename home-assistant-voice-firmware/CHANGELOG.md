@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.10.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.9.1...home-assistant-voice-firmware-v0.10.0) (2026-03-15)
+
+
+### Features
+
+* nx to turborepo, typescript over javascript ([#563](https://github.com/ffMathy/hey-jarvis/issues/563)) ([bd8015c](https://github.com/ffMathy/hey-jarvis/commit/bd8015c3912e3a39d5da7bca0a74d0a6295112dd))
+
+
+### Bug Fixes
+
+* replace contradictory Nx guidelines with Turborepo in AGENTS.md ([#566](https://github.com/ffMathy/hey-jarvis/issues/566)) ([5f08fee](https://github.com/ffMathy/hey-jarvis/commit/5f08feed67a9c744b7de4cf70c303460d59cad83))
+* turborepo migration ([cc816d5](https://github.com/ffMathy/hey-jarvis/commit/cc816d5aafc8ca090f296b9daf851ac1b8f27c05))
+
+
+### Documentation
+
+* migrate AGENTS.md NX references to Turborepo ([#567](https://github.com/ffMathy/hey-jarvis/issues/567)) ([baa5d85](https://github.com/ffMathy/hey-jarvis/commit/baa5d85742ef3dfb8f3f8f100c2d1eeed91b7ea7))
+* replace bunx nx commands with bunx turbo equivalents in AGENTS.md ([#565](https://github.com/ffMathy/hey-jarvis/issues/565)) ([1e6c61b](https://github.com/ffMathy/hey-jarvis/commit/1e6c61b9bb15bfc78d6dc384ee63e4741a017853))
+
 ## [0.9.1](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.9.0...home-assistant-voice-firmware-v0.9.1) (2026-02-25)
 
 
