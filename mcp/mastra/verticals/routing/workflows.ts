@@ -1,8 +1,8 @@
 import type { Agent } from '@mastra/core/agent';
-import { chain, keyBy } from 'lodash-es';
 import z from 'zod';
-import { createAgent, createStep, createWorkflow, getModel } from '../../utils';
+import { createStep, createWorkflow } from '../../utils';
 import { getPublicAgents } from '..';
+import { getRoutingSupervisorAgent } from './agents.js';
 
 const outputTaskSchema = z.object({
   id: z.string().describe('The unique task ID for this task'),
@@ -16,13 +16,6 @@ export const outputSchema = z
     tasks: z.array(outputTaskSchema),
   })
   .describe('The generated DAG of tasks to fulfill the routing query');
-
-const stateSchema = z
-  .object({
-    userQuery: z.string().describe("The user's routing query"),
-    async: z.boolean().describe('Whether the DAG is running asynchronously (fire-and-forget)'),
-  })
-  .partial();
 
 export const inputSchema = z.object({
   userQuery: z
@@ -53,10 +46,13 @@ export const dagSchema = outputSchema.extend({
 
 export type AgentProvider = () => Promise<Agent[]>;
 
-export type DagGenerator = (
-  agents: z.infer<typeof listAvailableAgentsStep.outputSchema>,
-  userQuery: string,
-) => Promise<z.infer<typeof outputSchema>>;
+/**
+ * A function that executes the supervisor's routing logic.
+ * It receives the user query and available agents, and is responsible for
+ * populating tasks in the workflow state via injectTask/simulateTaskCompletion.
+ * Used for testing to inject mock behavior.
+ */
+export type SupervisorExecutor = (userQuery: string, agents: Agent[]) => Promise<void>;
 
 /**
  * Workflow state that contains all globally needed state for routing workflows.
@@ -64,7 +60,7 @@ export type DagGenerator = (
  */
 export interface WorkflowState {
   agentProvider: AgentProvider;
-  dagGenerator?: DagGenerator;
+  supervisorExecutor?: SupervisorExecutor;
   taskCompletedListeners: Array<(task: z.infer<typeof outputTaskSchema>) => void>;
   currentDAG: z.infer<typeof dagSchema>;
 }
@@ -122,61 +118,6 @@ export function clearTaskCompletedListeners(): void {
   workflowState.taskCompletedListeners.length = 0;
 }
 
-const toolInfoSchema = z.object({
-  name: z.string().describe('The tool name/ID'),
-  inputParams: z.array(z.string()).describe('Names of input parameters the tool accepts'),
-});
-
-const listAvailableAgentsStep = createStep({
-  id: 'list-available-agents',
-  description: 'List all available agents for routing',
-  inputSchema: inputSchema,
-  outputSchema: z.object({
-    agents: z.array(
-      z.object({
-        id: z.string(),
-        description: z.string(),
-        tools: z.array(toolInfoSchema).describe('Tools available to this agent'),
-      }),
-    ),
-  }),
-  execute: async (context) => {
-    context.setState({
-      userQuery: context.inputData.userQuery,
-      async: context.inputData.async,
-    });
-
-    const publicAgents = Object.values(await workflowState.agentProvider());
-    const agentsById = await Promise.all(
-      publicAgents.map(async (agent) => {
-        const tools = await agent.listTools();
-        const toolsInfo = Object.entries(tools || {}).map(([toolName, tool]) => {
-          let inputParams: string[] = [];
-          if (tool && typeof tool === 'object' && 'inputSchema' in tool) {
-            const { inputSchema } = tool;
-            if (inputSchema && typeof inputSchema === 'object' && 'shape' in inputSchema) {
-              const { shape } = inputSchema;
-              if (shape && typeof shape === 'object') {
-                inputParams = Object.keys(shape);
-              }
-            }
-          }
-          return {
-            name: toolName,
-            inputParams,
-          };
-        });
-        return {
-          id: agent.id || agent.name,
-          description: agent.getDescription(),
-          tools: toolsInfo,
-        };
-      }),
-    );
-    return { agents: agentsById };
-  },
-});
-
 export function resetCurrentDAG() {
   workflowState.currentDAG = {
     tasks: [],
@@ -204,429 +145,71 @@ export function simulateTaskCompletion(taskId: string, result: unknown): void {
   }
 }
 
-function truncateLog(text: string, maxLength: number): string {
-  if (!text) return '';
-
-  text = text
-    .split('\n')
-    .map((x) => x.trim())
-    .filter((x) => x)
-    .join('  ');
-  if (text.length <= maxLength) {
-    return text;
-  }
-  return `${text.slice(0, maxLength)}...`;
-}
-
-function drawDAGAsASCIIArt(): void {
-  const tasks = workflowState.currentDAG.tasks;
-  if (tasks.length === 0) {
-    console.log('(empty DAG)');
-    return;
+/**
+ * Executes the supervisor agent with delegation hooks to track task progress.
+ * Uses the injected supervisorExecutor if available (for testing), otherwise
+ * creates a real supervisor agent that delegates to sub-agents.
+ */
+async function startSupervisorExecution(userQuery: string, agents: Agent[]): Promise<void> {
+  if (workflowState.supervisorExecutor) {
+    return workflowState.supervisorExecutor(userQuery, agents);
   }
 
-  const taskIds = new Set(tasks.map((t) => t.id));
-  const rootTasks = tasks.filter((t) => t.dependsOn.length === 0 || t.dependsOn.every((dep) => !taskIds.has(dep)));
-
-  const childrenMap = new Map<string, string[]>();
-  for (const task of tasks) {
-    for (const parentId of task.dependsOn) {
-      if (taskIds.has(parentId)) {
-        const children = childrenMap.get(parentId) || [];
-        children.push(task.id);
-        childrenMap.set(parentId, children);
-      }
-    }
+  const agentsMap: Record<string, Agent> = {};
+  for (const agent of agents) {
+    agentsMap[agent.id] = agent;
   }
 
-  const lines: string[] = [];
+  const supervisor = await getRoutingSupervisorAgent(agentsMap);
+  let delegationCounter = 0;
 
-  const drawTask = (taskId: string, prefix: string, isLast: boolean) => {
-    const connector = isLast ? '└── ' : '├── ';
-    lines.push(prefix + connector + taskId);
-
-    const children = childrenMap.get(taskId) || [];
-    const childPrefix = prefix + (isLast ? '    ' : '│   ');
-    children.forEach((childId, index) => {
-      drawTask(childId, childPrefix, index === children.length - 1);
-    });
-  };
-
-  rootTasks.forEach((task, index) => {
-    const isLast = index === rootTasks.length - 1;
-    const connector = isLast ? '└── ' : '├── ';
-    lines.push(connector + task.id);
-
-    const children = childrenMap.get(task.id) || [];
-    const childPrefix = isLast ? '    ' : '│   ';
-    children.forEach((childId, childIndex) => {
-      drawTask(childId, childPrefix, childIndex === children.length - 1);
-    });
+  await supervisor.generate([{ role: 'user', content: userQuery }], {
+    maxSteps: 10,
+    delegation: {
+      onDelegationStart: async (ctx) => {
+        delegationCounter++;
+        const taskId = `${ctx.primitiveId}-delegation-${delegationCounter}`;
+        workflowState.currentDAG.tasks.push({
+          id: taskId,
+          agent: ctx.primitiveId,
+          prompt: ctx.prompt,
+          dependsOn: [],
+        });
+        console.log(`→ Delegating to: ${ctx.primitiveId} (task: ${taskId})`);
+        return { proceed: true };
+      },
+      onDelegationComplete: async (ctx) => {
+        const task = workflowState.currentDAG.tasks.find((t) => t.agent === ctx.primitiveId && t.result === undefined);
+        if (task) {
+          task.result = ctx.result?.text || '';
+          console.log(`✓ Completed: ${ctx.primitiveId} (task: ${task.id})`);
+          for (const listener of workflowState.taskCompletedListeners) {
+            listener(task);
+          }
+        }
+      },
+    },
   });
 
-  console.log(`\n${lines.join('\n')}\n`);
-}
-
-async function startDagExecution() {
-  const publicAgents = Object.values(await workflowState.agentProvider());
-  const agentsById = keyBy(publicAgents, 'id');
-  const tasks = workflowState.currentDAG.tasks;
-
-  const executeTask = async (task: (typeof tasks)[0]) => {
-    const agent = agentsById[task.agent];
-    if (!agent) {
-      throw new Error(`Agent with ID ${task.agent} not found`);
-    }
-
-    // Gather context from completed dependencies
-    const contextParts: string[] = [];
-    for (const dependencyId of task.dependsOn) {
-      const dependencyTask = tasks.find((t) => t.id === dependencyId);
-      if (dependencyTask?.result) {
-        contextParts.push(
-          `## ${dependencyTask.id} result\n\`\`\`json\n${JSON.stringify(dependencyTask.result)}\n\`\`\``,
-        );
-      }
-    }
-
-    const context = contextParts.join('\n\n');
-    const promptWithContext = `
-        # Context
-        ${context}
-        
-        # Task Prompt
-        ${task.prompt}
-    `;
-
-    console.log(`${task.agent}->${task.id}: ${truncateLog(promptWithContext, 100)}`);
-
-    const result = await agent.generate(promptWithContext);
-    const output = await Promise.resolve(result.text);
-    task.result = output || '';
-
-    console.log(`${task.agent}->${task.id} completed: ${truncateLog(output, 100)}`);
-
-    for (const listener of workflowState.taskCompletedListeners) {
-      listener(task);
-    }
-
-    return task;
-  };
-
-  console.log('Executing DAG...');
-  drawDAGAsASCIIArt();
-
-  while (true) {
-    const tasksWithoutPromises = chain(workflowState.currentDAG.tasks)
-      .filter((t) => !t.executionPromise)
-      .orderBy((x) => x.dependsOn.length)
-      .value();
-    if (tasksWithoutPromises.length === 0) {
-      break;
-    }
-
-    for (const task of tasksWithoutPromises) {
-      const dependencies = task.dependsOn;
-      const dependencyPromise = Promise.all(
-        dependencies.map((dependencyId) => {
-          const dependencyTask = workflowState.currentDAG.tasks.find((t) => t.id === dependencyId);
-          if (!dependencyTask || !dependencyTask.executionPromise) {
-            throw new Error(`Dependency task with ID ${dependencyId} not found or not started for task ${task.id}`);
-          }
-          return dependencyTask.executionPromise;
-        }),
-      );
-      task.executionPromise = dependencyPromise.then(() => executeTask(task));
-    }
-  }
-
-  await Promise.all(workflowState.currentDAG.tasks.map((t) => t.executionPromise));
-
-  console.log('DAG execution complete.');
-
+  console.log('Supervisor execution complete.');
   workflowState.currentDAG.executionPromise = undefined;
 }
 
-const DAG_AGENT_INSTRUCTIONS = `You are a task decomposition specialist that converts user queries into Directed Acyclic Graphs (DAGs) of executable tasks.
-
-# Your Role
-Analyze the user's query and decompose it into discrete, executable tasks that can be assigned to available agents. Each task forms a node in a DAG where edges represent data dependencies.
-
-# Task Structure Requirements
-Each task MUST have:
-- \`id\`: A unique, descriptive kebab-case identifier
-- \`agent\`: The exact agent ID from the available agents list (case-sensitive match required)
-- \`prompt\`: A self-contained instruction that provides ALL context the agent needs
-- \`dependsOn\`: Array of task IDs whose outputs are required as input for this task
-
-# Critical Rules
-
-**Agent Capability Matching:**
-- ONLY assign tasks that match an agent's stated capabilities in their description
-- Review each agent's \`tools\` array to understand EXACTLY what the agent can do
-- Each tool has a \`name\` and \`inputParams\` - use these to determine if the agent can fulfill a task
-- If no agent has a tool that can handle a sub-task, DO NOT create that task - omit it entirely
-- Never assume capabilities not supported by the agent's available tools
-
-**Tool-Based Decision Making:**
-- When routing, prefer agents whose tools directly match the required functionality
-- If a task requires specific parameters (e.g., location, date), ensure the relevant tool accepts those parameters via its \`inputParams\`
-- Multiple tools on an agent mean the agent can perform multiple related actions
-
-**Dependency Graph Construction:**
-- If Task B needs data from Task A, Task B MUST list Task A's ID in \`dependsOn\`
-- Tasks with no dependencies have empty \`dependsOn: []\` and can run in parallel
-- Avoid circular dependencies - the graph must be acyclic
-
-**Prompt Isolation:**
-- Each prompt must be fully self-contained - agents cannot see the DAG structure
-- Include all necessary context, parameters, and constraints within the prompt itself
-- Reference specific data needs: "Get weather for Aarhus, Denmark" not "Get the weather"
-- Never reference task IDs, other agents, or DAG metadata in prompts
-
-**Incremental Updates:**
-- You will receive a list of already-running tasks - DO NOT recreate them
-- Only add NEW tasks for uncovered aspects of the user's query
-- If the user's request is fully covered by existing tasks, return empty tasks array
-
-# Output Quality
-- Prefer fewer, well-scoped tasks over many granular ones
-- Combine related operations for the same agent when logical
-- Ensure leaf tasks (those with no dependents) directly address user-facing needs`;
-
-const generateDagStep = createStep({
-  id: 'generate-dag',
-  description: 'Generate DAG of tasks to fulfill routing query',
-  stateSchema,
-  inputSchema: listAvailableAgentsStep.outputSchema as z.ZodTypeAny,
-  outputSchema: outputSchema,
-  execute: async (context) => {
-    if (workflowState.dagGenerator) {
-      return workflowState.dagGenerator(context.inputData, context.state.userQuery ?? '');
-    }
-
-    const agent = await createAgent({
-      model: getModel('gemini-flash-lite-latest'),
-      id: 'dag-agent',
-      name: 'DagAgent',
-      instructions: DAG_AGENT_INSTRUCTIONS,
-      memory: undefined,
-    });
-
-    const prompt = `
-      # User query
-      > ${context.state.userQuery}
-
-      # Agents available
-      \`\`\`json
-      ${JSON.stringify((context.inputData as { agents: unknown[] }).agents, null, 2)}
-      \`\`\`
-
-      # Current tasks
-      \`\`\`json
-      ${JSON.stringify(workflowState.currentDAG.tasks, null, 2)}
-      \`\`\`
-    `
-      .split('\n')
-      .map((line) => line.trim())
-      .join('\n')
-      .trim();
-
-    const response = await agent.stream([{ role: 'user', content: prompt }], {
-      structuredOutput: { schema: outputSchema },
-      toolChoice: 'none',
-    });
-
-    const result = await response.object;
-    return outputSchema.parse(result);
-  },
-});
-
-const mergeDagStep = createStep({
-  id: 'merge-dag',
-  description: 'Merge newly generated DAG with current DAG of tasks',
-  inputSchema: generateDagStep.outputSchema as z.ZodTypeAny,
-  outputSchema: outputSchema,
-  execute: async (context) => {
-    const newTasks = (context.inputData as z.infer<typeof outputSchema>).tasks;
-    const mergedTasks = [...workflowState.currentDAG.tasks];
-
-    const existingTaskIds = new Set(mergedTasks.map((t) => t.id));
-    for (const newTask of newTasks) {
-      if (!existingTaskIds.has(newTask.id)) {
-        mergedTasks.push(newTask);
-      }
-    }
-
-    workflowState.currentDAG.tasks = mergedTasks;
-
-    return workflowState.currentDAG;
-  },
-});
-
-type DagTask = z.infer<typeof dagSchema>['tasks'][0];
-type TaskLookup = Record<string, DagTask>;
-
-/**
- * Groups tasks by their agent ID.
- */
-function groupTasksByAgent(tasks: DagTask[]): Map<string, DagTask[]> {
-  const tasksByAgent = new Map<string, DagTask[]>();
-  for (const task of tasks) {
-    const agentTasks = tasksByAgent.get(task.agent) || [];
-    agentTasks.push(task);
-    tasksByAgent.set(task.agent, agentTasks);
-  }
-  return tasksByAgent;
-}
-
-/**
- * Finds tasks within the same agent group that can be chained after the given task.
- * A successor is chainable if it depends on the given task and has no external dependencies
- * (dependencies outside the agent's task group).
- */
-function findChainableSuccessors(taskId: string, agentTasks: DagTask[], tasksById: TaskLookup): DagTask[] {
-  return agentTasks.filter((otherTask) => {
-    if (!otherTask.dependsOn.includes(taskId)) return false;
-    if (!tasksById[otherTask.id]) return false;
-    return !otherTask.dependsOn.some((depId) => !tasksById[depId] && depId !== taskId);
-  });
-}
-
-/**
- * Recursively builds a chain of tasks that can be merged, starting from a given task.
- * Walks down through chainable successors (tasks that only depend on internal tasks).
- */
-function buildChain(
-  taskId: string,
-  currentChain: DagTask[],
-  visited: Set<string>,
-  agentTasks: DagTask[],
-  tasksById: TaskLookup,
-): void {
-  if (visited.has(taskId)) return;
-  visited.add(taskId);
-
-  const task = tasksById[taskId];
-  if (!task) return;
-
-  currentChain.push(task);
-
-  const successors = findChainableSuccessors(taskId, agentTasks, tasksById);
-  for (const successor of successors) {
-    buildChain(successor.id, currentChain, visited, agentTasks, tasksById);
-  }
-}
-
-/**
- * Discovers all chains of sequential tasks within an agent's task group.
- * Returns the chains found and any tasks that were not part of any chain.
- */
-function discoverChains(agentTasks: DagTask[]): { chains: DagTask[][]; unchainedTasks: DagTask[] } {
-  const tasksById = keyBy(agentTasks, 'id') as TaskLookup;
-  const visited = new Set<string>();
-  const chains: DagTask[][] = [];
-
-  const rootTasks = agentTasks.filter((task) => {
-    const internalDeps = task.dependsOn.filter((depId) => tasksById[depId]);
-    return internalDeps.length === 0;
-  });
-
-  for (const rootTask of rootTasks) {
-    if (visited.has(rootTask.id)) continue;
-    const currentChain: DagTask[] = [];
-    buildChain(rootTask.id, currentChain, visited, agentTasks, tasksById);
-    if (currentChain.length > 0) {
-      chains.push(currentChain);
-    }
-  }
-
-  const unchainedTasks = agentTasks.filter((task) => !visited.has(task.id));
-  return { chains, unchainedTasks };
-}
-
-/**
- * Merges a chain of tasks into a single combined task.
- * Records the mapping from original task IDs to the merged ID.
- */
-function mergeChainIntoTask(taskChain: DagTask[], agent: string, mergedTaskIds: Map<string, string>): DagTask {
-  const mergedId = taskChain.map((t) => t.id).join('+');
-  const mergedPrompt = taskChain.map((t) => t.prompt).join('\nThen:\n');
-  const externalDeps = taskChain
-    .flatMap((t) => t.dependsOn)
-    .filter((depId) => !taskChain.some((ct) => ct.id === depId));
-
-  for (const task of taskChain) {
-    mergedTaskIds.set(task.id, mergedId);
-  }
-
-  return {
-    id: mergedId,
-    agent,
-    prompt: mergedPrompt,
-    dependsOn: [...new Set(externalDeps)],
-  };
-}
-
-/**
- * Processes chains for a single agent: single-task chains are kept as-is,
- * multi-task chains are merged into a combined task.
- */
-function processChainsForAgent(chains: DagTask[][], agent: string, mergedTaskIds: Map<string, string>): DagTask[] {
-  return chains.map((taskChain) => {
-    if (taskChain.length === 1) return taskChain[0];
-    return mergeChainIntoTask(taskChain, agent, mergedTaskIds);
-  });
-}
-
-const optimizeDagStep = createStep({
-  id: 'optimize-dag',
-  description: 'Optimize DAG by compressing sequential tasks for the same agent',
-  inputSchema: mergeDagStep.outputSchema as z.ZodTypeAny,
-  outputSchema: outputSchema,
-  execute: async (_context) => {
-    const tasks = workflowState.currentDAG.tasks;
-    const tasksByAgent = groupTasksByAgent(tasks);
-
-    const optimizedTasks: typeof tasks = [];
-    const mergedTaskIds = new Map<string, string>();
-
-    for (const [agent, agentTasks] of tasksByAgent) {
-      if (agentTasks.length === 1) {
-        optimizedTasks.push(agentTasks[0]);
-        continue;
-      }
-
-      const { chains, unchainedTasks } = discoverChains(agentTasks);
-      optimizedTasks.push(...unchainedTasks);
-      optimizedTasks.push(...processChainsForAgent(chains, agent, mergedTaskIds));
-    }
-
-    const finalTasks = optimizedTasks.map((task) => ({
-      ...task,
-      dependsOn: task.dependsOn.map((depId) => mergedTaskIds.get(depId) || depId),
-    }));
-    workflowState.currentDAG.tasks = finalTasks;
-
-    return workflowState.currentDAG;
-  },
-});
-
-const startDagExecutionStep = createStep({
-  id: 'start-dag-execution',
-  description: 'Start execution of DAG tasks',
-  stateSchema,
-  inputSchema: optimizeDagStep.outputSchema as z.ZodTypeAny,
+const routeWithSupervisorStep = createStep({
+  id: 'route-with-supervisor',
+  description: 'Route user prompt via supervisor agent that delegates to sub-agents',
+  inputSchema: inputSchema,
   outputSchema: z.object({
     instructions: z.string().describe('Instructions for Jarvis to follow'),
     taskIdsInProgress: z.array(z.string()).describe('IDs of tasks currently in progress'),
   }),
   execute: async (context) => {
     if (!workflowState.currentDAG.executionPromise) {
-      workflowState.currentDAG.executionPromise = startDagExecution();
+      const agents = await workflowState.agentProvider();
+      workflowState.currentDAG.executionPromise = startSupervisorExecution(context.inputData.userQuery, agents);
     }
 
-    const isAsync = context.state.async === true;
+    const isAsync = context.inputData.async === true;
     const taskIdsInProgress = workflowState.currentDAG.tasks.filter((t) => t.result === undefined).map((t) => t.id);
 
     if (isAsync) {
@@ -765,15 +348,11 @@ export const getNextInstructionsWorkflow = createWorkflow({
 
 export const routePromptWorkflow = createWorkflow({
   id: 'routePromptWorkflow',
-  description: 'Workflow to route a user prompt to appropriate agents via a DAG of tasks',
+  description: 'Workflow to route a user prompt to appropriate agents via a supervisor agent',
   inputSchema: inputSchema,
-  outputSchema: startDagExecutionStep.outputSchema,
+  outputSchema: routeWithSupervisorStep.outputSchema,
 })
-  .then(listAvailableAgentsStep)
-  .then(generateDagStep)
-  .then(mergeDagStep)
-  .then(optimizeDagStep)
-  .then(startDagExecutionStep)
+  .then(routeWithSupervisorStep)
   .commit();
 
 async function waitForNextCompletedTask() {

@@ -28,6 +28,7 @@ import {
 import { getInternetOfThingsAgent, internetOfThingsTools } from './verticals/internet-of-things/index.js';
 import { getNotificationAgent, notificationTools } from './verticals/notification/index.js';
 import { phoneTools } from './verticals/phone/index.js';
+import { getRoutingSupervisorAgent } from './verticals/routing/agents.js';
 import {
   getCurrentDagWorkflow,
   getNextInstructionsWorkflow,
@@ -91,6 +92,7 @@ export async function getMastra(): Promise<Mastra> {
       await getInternetOfThingsAgent(),
       await getNotificationAgent(),
       await getRequirementsInterviewerAgent(),
+      await getRoutingSupervisorAgent(),
       await getShoppingListAgent(),
       await getShoppingListSummaryAgent(),
       await getStateChangeReactorAgent(),

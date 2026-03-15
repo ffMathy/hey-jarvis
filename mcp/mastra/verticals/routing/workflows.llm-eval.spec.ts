@@ -7,10 +7,12 @@ import {
   type AgentProvider,
   type dagSchema,
   getCurrentDAG,
+  injectTask,
   resetCurrentDAG,
   routePromptWorkflow,
-  setAgentProvider,
+  type SupervisorExecutor,
   setWorkflowState,
+  simulateTaskCompletion,
 } from './workflows.js';
 
 /**
@@ -166,6 +168,67 @@ function createMockAgent(id: string, description: string, tools?: MockToolConfig
 }
 
 /**
+ * Creates a SupervisorExecutor that uses an LLM to make routing decisions.
+ * This simulates how the supervisor agent decomposes queries into delegations,
+ * but uses structured output to generate the task list for LLM evaluation.
+ */
+function createLLMSupervisorExecutor(): SupervisorExecutor {
+  return async (userQuery, agents) => {
+    const apiKey = process.env.HEY_JARVIS_GOOGLE_API_KEY;
+    if (!apiKey) {
+      throw new Error('Google API key required for LLM eval tests');
+    }
+
+    const google = createGoogleGenerativeAI({ apiKey });
+    const agentDescriptions = agents.map((a) => ({
+      id: a.id,
+      description: a.getDescription(),
+    }));
+
+    const taskSchema = z.object({
+      tasks: z.array(
+        z.object({
+          id: z.string().describe('Unique task ID in kebab-case'),
+          agent: z.string().describe('Agent ID to delegate to'),
+          prompt: z.string().describe('Self-contained prompt for the agent'),
+          dependsOn: z.array(z.string()).describe('IDs of prerequisite tasks'),
+        }),
+      ),
+    });
+
+    const result = await generateObject({
+      model: google('gemini-flash-lite-latest'),
+      temperature: 0,
+      schema: taskSchema,
+      maxRetries: 3,
+      prompt: `You are a task coordinator. Decompose this user query into tasks for available agents.
+
+User query: ${userQuery}
+
+Available agents:
+${JSON.stringify(agentDescriptions, null, 2)}
+
+Rules:
+- Only assign tasks to agents whose capabilities match
+- If Task B needs data from Task A, include Task A's ID in dependsOn
+- Tasks with no dependencies have empty dependsOn array
+- Prompts must be self-contained`,
+    });
+
+    for (const task of result.object.tasks) {
+      injectTask(task);
+    }
+
+    // Simulate task completion for all tasks
+    for (const task of getCurrentDAG().tasks) {
+      if (task.result === undefined) {
+        simulateTaskCompletion(task.id, `Mock result from ${task.agent}`);
+      }
+    }
+  };
+}
+
+/**
  * Helper to run workflow with retry logic for flaky LLM responses.
  * An optional `isValid` predicate can be supplied to retry when the DAG
  * is structurally valid but does not meet additional criteria.
@@ -253,7 +316,7 @@ Control and monitor Internet of Things (IoT) devices. Use this agent to **turn d
       );
 
       const mockAgentProvider: AgentProvider = async () => [weatherAgent, internetOfThingsAgent];
-      setAgentProvider(mockAgentProvider);
+      setWorkflowState({ agentProvider: mockAgentProvider, supervisorExecutor: createLLMSupervisorExecutor() });
 
       const userQuery = 'Check the weather for my current location';
 
@@ -303,7 +366,7 @@ Control and monitor Internet of Things (IoT) devices. Use this agent to **get us
       );
 
       const mockAgentProvider: AgentProvider = async () => [weatherAgent, internetOfThingsAgent];
-      setAgentProvider(mockAgentProvider);
+      setWorkflowState({ agentProvider: mockAgentProvider, supervisorExecutor: createLLMSupervisorExecutor() });
 
       const userQuery = "What's the weather like where I am right now?";
 
@@ -353,7 +416,7 @@ Control IoT devices and get user locations via their phones.`,
       );
 
       const mockAgentProvider: AgentProvider = async () => [weatherAgent, internetOfThingsAgent];
-      setAgentProvider(mockAgentProvider);
+      setWorkflowState({ agentProvider: mockAgentProvider, supervisorExecutor: createLLMSupervisorExecutor() });
 
       const userQuery = 'Please tell me what the weather is like in New York City today';
 
@@ -410,7 +473,7 @@ Control IoT devices and get user locations via their phones.`,
       const commuteAgent = createMockAgent('commute', `Calculate travel times and distances between locations.`);
 
       const mockAgentProvider: AgentProvider = async () => [weatherAgent, calendarAgent, commuteAgent];
-      setAgentProvider(mockAgentProvider);
+      setWorkflowState({ agentProvider: mockAgentProvider, supervisorExecutor: createLLMSupervisorExecutor() });
 
       const userQuery =
         'Check my calendar for today and tell me what the weather will be like for my first meeting, and how long it will take to get there';
