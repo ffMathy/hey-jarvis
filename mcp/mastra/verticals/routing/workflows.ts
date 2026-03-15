@@ -162,13 +162,18 @@ async function startSupervisorExecution(userQuery: string, agents: Agent[]): Pro
 
   const supervisor = await getRoutingSupervisorAgent(agentsMap);
   let delegationCounter = 0;
+  // Map toolCallId → taskId to correctly match concurrent delegations to the same agent
+  const toolCallToTask = new Map<string, string>();
 
+  // maxSteps limits the total number of LLM iterations the supervisor can perform.
+  // 10 is sufficient for most multi-agent routing scenarios while preventing runaway loops.
   await supervisor.generate([{ role: 'user', content: userQuery }], {
     maxSteps: 10,
     delegation: {
       onDelegationStart: async (ctx) => {
         delegationCounter++;
         const taskId = `${ctx.primitiveId}-delegation-${delegationCounter}`;
+        toolCallToTask.set(ctx.toolCallId, taskId);
         workflowState.currentDAG.tasks.push({
           id: taskId,
           agent: ctx.primitiveId,
@@ -179,7 +184,8 @@ async function startSupervisorExecution(userQuery: string, agents: Agent[]): Pro
         return { proceed: true };
       },
       onDelegationComplete: async (ctx) => {
-        const task = workflowState.currentDAG.tasks.find((t) => t.agent === ctx.primitiveId && t.result === undefined);
+        const taskId = toolCallToTask.get(ctx.toolCallId);
+        const task = taskId ? workflowState.currentDAG.tasks.find((t) => t.id === taskId) : undefined;
         if (task) {
           task.result = ctx.result?.text || '';
           console.log(`✓ Completed: ${ctx.primitiveId} (task: ${task.id})`);

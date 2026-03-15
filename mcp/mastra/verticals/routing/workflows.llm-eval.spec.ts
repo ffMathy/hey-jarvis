@@ -171,6 +171,10 @@ function createMockAgent(id: string, description: string, tools?: MockToolConfig
  * Creates a SupervisorExecutor that uses an LLM to make routing decisions.
  * This simulates how the supervisor agent decomposes queries into delegations,
  * but uses structured output to generate the task list for LLM evaluation.
+ *
+ * Note: Task execution is simulated synchronously with mock results since these
+ * tests focus on evaluating routing decisions (which agents are selected and how
+ * tasks are structured), not execution timing or actual agent responses.
  */
 function createLLMSupervisorExecutor(): SupervisorExecutor {
   return async (userQuery, agents) => {
