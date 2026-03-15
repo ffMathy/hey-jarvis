@@ -1,5 +1,6 @@
 import type { LanguageModelV3 } from '@ai-sdk/provider';
 import { createOllama } from 'ai-sdk-ollama';
+import { getModel } from './github-models-provider.js';
 
 /**
  * Ollama provider for local LLM inference.
@@ -116,6 +117,21 @@ export const ollama = createOllama({
  * Pre-configured default model for use in agents and workflows.
  */
 export const ollamaModel: LanguageModelV3 = ollama(OLLAMA_MODEL);
+
+/**
+ * Returns the Ollama model when HEY_JARVIS_OLLAMA_BASE_URL is configured,
+ * otherwise falls back to getModel(fallbackGeminiModel). getModel() selects
+ * GitHub Models (gpt-4o) in CI or the specified Gemini model in production.
+ * Use this instead of ollamaModel directly to avoid connection errors when
+ * Ollama is not available (e.g. in CI environments).
+ * @param fallbackGeminiModel - Gemini model name to use as fallback (default: 'gemini-flash-lite-latest')
+ */
+export function getOllamaModelOrFallback(fallbackGeminiModel = 'gemini-flash-lite-latest'): LanguageModelV3 {
+  if (HEY_JARVIS_OLLAMA_BASE_URL) {
+    return ollamaModel;
+  }
+  return getModel(fallbackGeminiModel);
+}
 
 /**
  * Returns the Ollama API base URL including /api path (for health checks etc.).

@@ -69,7 +69,7 @@ export async function isMcpServerRunning(args?: McpClientArgs): Promise<boolean>
 /**
  * Starts the MCP server using run-with-env.sh directly with tsx.
  * This ensures environment variables are properly loaded from 1Password CLI.
- * CRITICAL: Must use run-with-env.sh to load secrets, but call tsx directly to avoid nested NX processes.
+ * CRITICAL: Must use run-with-env.sh to load secrets, but call tsx directly to avoid nested TURBO processes.
  */
 export async function startMcpServerForTestingPurposes(): Promise<void> {
   // Kill any existing servers first to ensure clean state

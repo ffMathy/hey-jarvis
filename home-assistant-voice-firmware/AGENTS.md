@@ -1,6 +1,6 @@
 # Home Assistant Voice Firmware
 
-> **Note:** See the root [AGENTS.md](../AGENTS.md) for shared conventions (NX commands, commit standards, 1Password, etc.)
+> **Note:** See the root [AGENTS.md](../AGENTS.md) for shared conventions (Turborepo commands, commit standards, 1Password, etc.)
 
 ## Overview
 ESPHome firmware for dedicated voice hardware devices with local processing capabilities.
@@ -75,7 +75,7 @@ vad:
 ### Debug Commands
 ```bash
 # View device logs
-bunx nx serve home-assistant-voice-firmware
+bunx turbo serve --filter=home-assistant-voice-firmware
 
 # Or directly with ESPHome
 esphome logs home-assistant-voice.elevenlabs.yaml --verbose
@@ -87,16 +87,16 @@ esphome config home-assistant-voice.elevenlabs.yaml
 ## Usage
 ```bash
 # Build the firmware
-bunx nx build home-assistant-voice-firmware
+bunx turbo build --filter=home-assistant-voice-firmware
 
 # Flash and monitor (OTA or USB)
-bunx nx serve home-assistant-voice-firmware
+bunx turbo serve --filter=home-assistant-voice-firmware
 ```
 
 ## Development
 
 ### Build System
-The firmware uses ESPHome with NX monorepo conventions. Configuration files:
+The firmware uses ESPHome with Turborepo monorepo conventions. Configuration files:
 - `home-assistant-voice.yaml`: Standard configuration with all wake words
 - `home-assistant-voice.elevenlabs.yaml`: ElevenLabs-optimized configuration
 - `home-assistant-voice.8mb.yaml`: Full-featured build for 8MB+ flash

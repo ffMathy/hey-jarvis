@@ -430,7 +430,7 @@ const registerEmailsStateChange = createStep({
         emailCount: emails.length,
         formRepliesFound: inputData.formRepliesFound,
         workflowsResumed: inputData.workflowsResumed,
-        emails: emails.map((email) => ({
+        emails: emails.map((email: z.infer<typeof emailObjectSchema>) => ({
           subject: email.subject,
           from: email.from.address,
           receivedDateTime: email.receivedDateTime,
@@ -534,7 +534,9 @@ const formatFormRepliesOutput = createStep({
   execute: async (params) => {
     const emails = params.state.newEmails ?? [];
 
-    const formRepliesCount = emails.filter((email) => WORKFLOW_ID_REGEX.test(email.subject)).length;
+    const formRepliesCount = emails.filter((email: z.infer<typeof emailObjectSchema>) =>
+      WORKFLOW_ID_REGEX.test(email.subject),
+    ).length;
 
     return {
       emailsFound: emails.length,

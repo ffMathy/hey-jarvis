@@ -43,10 +43,10 @@ Do NOT consider your work complete until:
 **CRITICAL: Always delegate validation to the `validation` agent.** Never run tests, linting, or builds directly in the main conversation context. The validation agent is purpose-built for this — it captures full output and reports results back.
 
 Use the Task tool with `subagent_type: "validation"` to run:
-- Linting: `bunx nx lint <project>`
-- Tests: `bunx nx test <project>`
-- Builds: `bunx nx build <project>`
-- All affected: `bunx nx affected --target=test`
+- Linting: `bunx turbo lint --filter=<project>`
+- Tests: `bunx turbo test --filter=<project>`
+- Builds: `bunx turbo build --filter=<project>`
+- Full workspace checks: `bunx turbo lint && bunx turbo test && bunx turbo build`
 
 ## Critical Rules
 

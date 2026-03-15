@@ -12,7 +12,7 @@ import { createTool } from '../../utils/tool-factory.js';
  *
  * The client automatically refreshes access tokens using the stored refresh token.
  * Refresh tokens are long-lived (6+ months with regular use) and only need to be
- * obtained once using the `nx generate-tokens mcp` command.
+ * obtained once using the `bun run --cwd mcp generate-tokens` command.
  *
  * Credentials are loaded in this order:
  * 1. Environment variables (HEY_JARVIS_GOOGLE_*)
@@ -45,7 +45,7 @@ const getGoogleAuth = async (): Promise<OAuth2Client> => {
         '  - HEY_JARVIS_GOOGLE_REFRESH_TOKEN\n' +
         '\n' +
         'Option 2: Store refresh token in Mastra (client ID/secret still required in env):\n' +
-        '  Run `nx generate-tokens mcp`',
+        '  Run `bun run --cwd mcp generate-tokens`',
     );
   }
 
@@ -108,7 +108,7 @@ export const createCalendarEvent = createTool({
         dateTime: inputData.end,
         timeZone: 'UTC',
       },
-      attendees: inputData.attendees?.map((email) => ({ email })),
+      attendees: inputData.attendees?.map((email: string) => ({ email })),
     };
 
     const response = await calendar.events.insert({

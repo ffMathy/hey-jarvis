@@ -424,7 +424,7 @@ const mealPlanFeedbackIterationWorkflow = createWorkflow({
 })
   // Map input to generateMealPlanWorkflow input schema
   .map(async ({ inputData }) => ({
-    preferences: inputData.preferences,
+    preferences: (inputData as { preferences?: string }).preferences,
   }))
   .then(generateMealPlanWorkflow) // Generate meal plan (with preferences if any)
   .then(generateMealPlanEmail) // Format as HTML email
@@ -474,7 +474,6 @@ export const weeklyMealPlanningWorkflow = createWorkflow({
     }),
   )
   // Keep iterating until approved
-  // @ts-expect-error - Mastra v1 beta.10 dowhile has state schema compatibility issues that prevent proper type inference
   .dowhile(mealPlanFeedbackIterationWorkflow, async ({ inputData }) => !inputData.isApproved)
   // Once approved, add ingredients to shopping list
   .then(prepareShoppingListPrompt)

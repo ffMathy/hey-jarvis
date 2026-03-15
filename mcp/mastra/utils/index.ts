@@ -12,6 +12,7 @@ export { google } from './providers/google-provider.js';
 export {
   getOllamaApiUrl,
   getOllamaBaseUrl,
+  getOllamaModelOrFallback,
   isModelAvailable,
   isOllamaAvailable,
   listModels,

@@ -46,22 +46,35 @@ const searchAtLocations = async (
   searchQuery: string,
 ): Promise<Map<string, Partial<PlaceData>>> => {
   const placesMap = new Map<string, Partial<PlaceData>>();
-  for (const searchLocation of locations) {
-    const placesResponse = await client.textSearch({
-      params: {
-        query: searchQuery,
-        location: searchLocation,
-        radius: 50000,
-        key: apiKey,
-      },
-    });
-    if (placesResponse.data.status !== 'OK') continue;
-    for (const place of placesResponse.data.results || []) {
+  const searchResponses = await Promise.allSettled(
+    locations.map((searchLocation) =>
+      client.textSearch({
+        params: {
+          query: searchQuery,
+          location: searchLocation,
+          radius: 50000,
+          key: apiKey,
+        },
+      }),
+    ),
+  );
+
+  for (const response of searchResponses) {
+    if (response.status !== 'fulfilled') {
+      continue;
+    }
+
+    if (response.value.data.status !== 'OK') {
+      continue;
+    }
+
+    for (const place of response.value.data.results || []) {
       if (place.place_id && !placesMap.has(place.place_id)) {
         placesMap.set(place.place_id, place);
       }
     }
   }
+
   return placesMap;
 };
 
@@ -143,7 +156,7 @@ export const getTravelTime = createTool({
     };
 
     if (mode === 'driving' || mode === 'walking' || mode === 'bicycling' || mode === 'transit') {
-      params.mode = TravelMode[mode];
+      params.mode = TravelMode[mode as keyof typeof TravelMode];
     }
 
     if (includeTraffic && mode === 'driving') {

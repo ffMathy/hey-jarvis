@@ -34,5 +34,5 @@ op.env.local
 .DS_Store
 Thumbs.db
 
-# NX cache
-.nx/
+# TURBO cache
+.turbo/

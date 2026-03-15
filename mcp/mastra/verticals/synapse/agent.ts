@@ -1,6 +1,6 @@
 import type { Agent } from '@mastra/core/agent';
 import { createAgent } from '../../utils/agent-factory.js';
-import { ollamaModel } from '../../utils/providers/ollama-provider.js';
+import { getOllamaModelOrFallback } from '../../utils/providers/ollama-provider.js';
 import { getNotificationAgent } from '../notification/agent.js';
 
 /**
@@ -25,7 +25,7 @@ import { getNotificationAgent } from '../notification/agent.js';
 export async function getStateChangeReactorAgent(): Promise<Agent> {
   // createAgent factory provides memory with working memory enabled by default
   return createAgent({
-    model: ollamaModel,
+    model: getOllamaModelOrFallback(),
     id: 'stateChangeReactor',
     name: 'StateChangeReactor',
     instructions: `You are the State Change Reactor - the central decision-maker for the Hey Jarvis smart home system.

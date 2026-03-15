@@ -1,5 +1,5 @@
 import type { AgentConfig } from '@mastra/core/agent';
-import type { SchemaWithValidation } from '@mastra/core/stream';
+import type { StandardSchemaWithJSON } from '@mastra/core/schema';
 import type { ToolExecutionContext, ValidationError } from '@mastra/core/tools';
 import {
   type DefaultEngineType,
@@ -230,7 +230,7 @@ export function createAgentStep<
       // where memory.getInputProcessors() is called but doesn't exist
       const agent = await createAgent({ ...config.agentConfig, memory: undefined });
 
-      const prompt = (await Promise.resolve(config.prompt(params)))
+      const prompt = (await Promise.resolve(config.prompt(params as Parameters<typeof config.prompt>[0])))
         .split('\n')
         .map((line) => line.trim())
         .join('\n')
@@ -325,8 +325,10 @@ export function createToolStep<
   id: TStepId;
   description: string;
   tool: {
-    inputSchema?: SchemaWithValidation;
-    outputSchema?: SchemaWithValidation;
+    // biome-ignore lint/suspicious/noExplicitAny: Tool schemas can be either Zod or StandardSchema depending on Mastra version
+    inputSchema?: z.ZodTypeAny | StandardSchemaWithJSON<any>;
+    // biome-ignore lint/suspicious/noExplicitAny: Tool schemas can be either Zod or StandardSchema depending on Mastra version
+    outputSchema?: z.ZodTypeAny | StandardSchemaWithJSON<any>;
     execute?: (inputData: TToolInput, context: ToolExecutionContext) => Promise<TToolOutput | ValidationError>;
   };
   stateSchema?: TStateSchema;

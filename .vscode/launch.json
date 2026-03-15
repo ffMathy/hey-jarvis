@@ -4,9 +4,9 @@
     {
       "type": "node",
       "request": "launch",
-      "name": "Debug elevenlabs with Nx",
-      "runtimeExecutable": "npx",
-      "runtimeArgs": ["nx", "serve", "elevenlabs"],
+      "name": "Debug elevenlabs",
+      "runtimeExecutable": "bunx",
+      "runtimeArgs": ["turbo", "serve", "--filter=elevenlabs"],
       "env": {
         "NODE_OPTIONS": "--inspect=9229"
       },

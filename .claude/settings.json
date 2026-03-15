@@ -47,5 +47,8 @@
   "statusLine": {
     "type": "command",
     "command": "node .claude/hooks/gsd-statusline.js"
+  },
+  "enabledPlugins": {
+    "superpowers@claude-plugins-official": true
   }
 }

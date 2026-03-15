@@ -1,16 +1,17 @@
 import { z } from 'zod';
-import { ollamaModel } from '../../utils/providers/ollama-provider.js';
+import { getOllamaModelOrFallback } from '../../utils/providers/ollama-provider.js';
 import { isValidationError } from '../../utils/validation-error.js';
 import { createAgentStep, createStep, createWorkflow } from '../../utils/workflows/workflow-factory.js';
 import { registerStateChange } from '../synapse/tools.js';
 import { weatherTools } from './tools.js';
 
-// Agent-as-step for scheduled weather check (uses local Qwen3 via Ollama for cost-efficiency)
+// Agent-as-step for scheduled weather check (uses local Qwen3 via Ollama for cost-efficiency,
+// falls back to getModel() when Ollama is not configured)
 const scheduledWeatherCheck = createAgentStep({
   id: 'scheduled-weather-check',
   description: 'Checks weather for Aarhus every hour',
   agentConfig: {
-    model: ollamaModel,
+    model: getOllamaModelOrFallback(),
     id: 'weather',
     name: 'Weather',
     instructions: `You are a weather agent which can provide weather insights via tools (current weather information and 5-day future prognosises for certain locations).

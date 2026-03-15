@@ -1,0 +1,48 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "envMode": "loose",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build", "lint", "typecheck", "initialize"],
+      "outputs": ["../dist/**", ".esphome/build/**"]
+    },
+    "typecheck": {
+      "inputs": ["**/*.ts", "**/*.tsx", "tsconfig*.json"],
+      "cache": true
+    },
+    "lint": {
+      "dependsOn": ["typecheck"],
+      "inputs": ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.json", "$TURBO_ROOT/biome.json"],
+      "cache": true
+    },
+    "format": {
+      "cache": false
+    },
+    "test": {
+      "dependsOn": ["lint"],
+      "outputs": ["../coverage/**"]
+    },
+    "deploy:test": {
+      "cache": false
+    },
+    "elevenlabs#test": {
+      "dependsOn": ["deploy:test", "lint", "mcp#test"],
+      "cache": false,
+      "outputs": []
+    },
+    "deploy": {
+      "dependsOn": ["build"]
+    },
+    "serve": {
+      "cache": false,
+      "persistent": true
+    },
+    "e2e": {
+      "dependsOn": ["build"],
+      "outputs": ["playwright-report/**", "test-results/**"]
+    },
+    "initialize": {
+      "cache": true
+    }
+  }
+}

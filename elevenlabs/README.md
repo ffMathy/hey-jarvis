@@ -5,10 +5,10 @@ CLI tool for deploying and testing the Jarvis ElevenLabs voice agent from code.
 ## Quick Start
 
 ```bash
-bunx nx deploy elevenlabs        # Deploy to ElevenLabs (production)
-bunx nx deploy:test elevenlabs   # Deploy test agent (text-only mode)
-bunx nx refresh elevenlabs       # Fetch current config from ElevenLabs
-bunx nx test elevenlabs          # Run tests (auto-deploys test agent first)
+bunx turbo deploy --filter=elevenlabs        # Deploy to ElevenLabs (production)
+bun run --cwd elevenlabs deploy:test   # Deploy test agent (text-only mode)
+bun run --cwd elevenlabs refresh       # Fetch current config from ElevenLabs
+bunx turbo test --filter=elevenlabs          # Run tests (auto-deploys test agent first)
 ```
 
 ## How It Works
