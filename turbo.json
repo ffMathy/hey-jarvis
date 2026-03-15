@@ -3,7 +3,7 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build", "lint", "typecheck"],
-      "outputs": ["../../dist/**", "../../.esphome/build/**"]
+      "outputs": ["../dist/**", ".esphome/build/**"]
     },
     "typecheck": {
       "inputs": ["**/*.ts", "**/*.tsx", "tsconfig*.json"],
@@ -19,7 +19,7 @@
     },
     "test": {
       "dependsOn": ["lint"],
-      "outputs": ["../../coverage/**"]
+      "outputs": ["../coverage/**"]
     },
     "deploy": {
       "dependsOn": ["build"]
