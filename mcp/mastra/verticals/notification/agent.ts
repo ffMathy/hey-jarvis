@@ -1,6 +1,6 @@
 import type { Agent } from '@mastra/core/agent';
 import { createAgent } from '../../utils/agent-factory.js';
-import { ollamaModel } from '../../utils/providers/ollama-provider.js';
+import { getOllamaModelOrFallback } from '../../utils/providers/ollama-provider.js';
 import { inferUserLocation } from '../internet-of-things/tools.js';
 import { initiatePhoneCall, sendTextMessage } from '../phone/tools.js';
 import { notificationTools } from './tools.js';
@@ -26,7 +26,7 @@ export async function getNotificationAgent(): Promise<Agent> {
   }
 
   notificationAgent = await createAgent({
-    model: ollamaModel,
+    model: getOllamaModelOrFallback(),
     id: 'notification',
     name: 'Notification',
     description: 'Sends notifications to users via the most appropriate channel based on their location and urgency.',

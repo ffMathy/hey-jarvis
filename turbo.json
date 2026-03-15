@@ -22,6 +22,14 @@
       "dependsOn": ["lint"],
       "outputs": ["../coverage/**"]
     },
+    "deploy:test": {
+      "cache": false
+    },
+    "elevenlabs#test": {
+      "dependsOn": ["deploy:test", "lint"],
+      "cache": false,
+      "outputs": []
+    },
     "deploy": {
       "dependsOn": ["build"]
     },
