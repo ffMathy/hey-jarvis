@@ -1,8 +1,9 @@
 import type { Agent } from '@mastra/core/agent';
 import { chain, keyBy } from 'lodash-es';
 import z from 'zod';
-import { createAgent, createStep, createWorkflow, getModel } from '../../utils';
+import { createStep, createWorkflow } from '../../utils';
 import { getPublicAgents } from '..';
+import { dagGeneratorSupervisor } from './agents.js';
 
 const outputTaskSchema = z.object({
   id: z.string().describe('The unique task ID for this task'),
@@ -347,53 +348,6 @@ async function startDagExecution() {
   workflowState.currentDAG.executionPromise = undefined;
 }
 
-const DAG_AGENT_INSTRUCTIONS = `You are a task decomposition specialist that converts user queries into Directed Acyclic Graphs (DAGs) of executable tasks.
-
-# Your Role
-Analyze the user's query and decompose it into discrete, executable tasks that can be assigned to available agents. Each task forms a node in a DAG where edges represent data dependencies.
-
-# Task Structure Requirements
-Each task MUST have:
-- \`id\`: A unique, descriptive kebab-case identifier
-- \`agent\`: The exact agent ID from the available agents list (case-sensitive match required)
-- \`prompt\`: A self-contained instruction that provides ALL context the agent needs
-- \`dependsOn\`: Array of task IDs whose outputs are required as input for this task
-
-# Critical Rules
-
-**Agent Capability Matching:**
-- ONLY assign tasks that match an agent's stated capabilities in their description
-- Review each agent's \`tools\` array to understand EXACTLY what the agent can do
-- Each tool has a \`name\` and \`inputParams\` - use these to determine if the agent can fulfill a task
-- If no agent has a tool that can handle a sub-task, DO NOT create that task - omit it entirely
-- Never assume capabilities not supported by the agent's available tools
-
-**Tool-Based Decision Making:**
-- When routing, prefer agents whose tools directly match the required functionality
-- If a task requires specific parameters (e.g., location, date), ensure the relevant tool accepts those parameters via its \`inputParams\`
-- Multiple tools on an agent mean the agent can perform multiple related actions
-
-**Dependency Graph Construction:**
-- If Task B needs data from Task A, Task B MUST list Task A's ID in \`dependsOn\`
-- Tasks with no dependencies have empty \`dependsOn: []\` and can run in parallel
-- Avoid circular dependencies - the graph must be acyclic
-
-**Prompt Isolation:**
-- Each prompt must be fully self-contained - agents cannot see the DAG structure
-- Include all necessary context, parameters, and constraints within the prompt itself
-- Reference specific data needs: "Get weather for Aarhus, Denmark" not "Get the weather"
-- Never reference task IDs, other agents, or DAG metadata in prompts
-
-**Incremental Updates:**
-- You will receive a list of already-running tasks - DO NOT recreate them
-- Only add NEW tasks for uncovered aspects of the user's query
-- If the user's request is fully covered by existing tasks, return empty tasks array
-
-# Output Quality
-- Prefer fewer, well-scoped tasks over many granular ones
-- Combine related operations for the same agent when logical
-- Ensure leaf tasks (those with no dependents) directly address user-facing needs`;
-
 const generateDagStep = createStep({
   id: 'generate-dag',
   description: 'Generate DAG of tasks to fulfill routing query',
@@ -404,14 +358,6 @@ const generateDagStep = createStep({
     if (workflowState.dagGenerator) {
       return workflowState.dagGenerator(context.inputData, context.state.userQuery ?? '');
     }
-
-    const agent = await createAgent({
-      model: getModel('gemini-flash-lite-latest'),
-      id: 'dag-agent',
-      name: 'DagAgent',
-      instructions: DAG_AGENT_INSTRUCTIONS,
-      memory: undefined,
-    });
 
     const prompt = `
       # User query
@@ -432,9 +378,9 @@ const generateDagStep = createStep({
       .join('\n')
       .trim();
 
-    const response = await agent.stream([{ role: 'user', content: prompt }], {
+    const response = await dagGeneratorSupervisor.stream([{ role: 'user', content: prompt }], {
       structuredOutput: { schema: outputSchema },
-      toolChoice: 'none',
+      maxSteps: 10,
     });
 
     const result = await response.object;
