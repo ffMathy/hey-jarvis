@@ -18,6 +18,10 @@ export async function createAgent(
     model: getModel('gemini-flash-latest'),
     // Use default scorers for comprehensive evaluation
     scorers: getDefaultScorers(),
+    // Use temperature 0 for deterministic outputs across all agents
+    defaultOptions: {
+      modelSettings: { temperature: 0 },
+    },
     instructions: `${config.instructions}\n\n# Additional context and guidelines\nNever ask questions. Always make best-guess assumptions.\nThe time is currently: \`${new Date().toString()}\`.`,
     inputProcessors: [],
     outputProcessors: [

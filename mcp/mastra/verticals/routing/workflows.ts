@@ -165,7 +165,6 @@ async function startSupervisorExecution(userQuery: string, agents: Agent[]): Pro
   // Map toolCallId → taskId to correctly match concurrent delegations to the same agent
   const toolCallToTask = new Map<string, string>();
   // Track completed task IDs per iteration so later delegations can depend on earlier ones
-  let lastCompletedIteration = 0;
   const completedTaskIdsByIteration = new Map<number, string[]>();
 
   try {
@@ -173,6 +172,7 @@ async function startSupervisorExecution(userQuery: string, agents: Agent[]): Pro
     // 10 is sufficient for most multi-agent routing scenarios while preventing runaway loops.
     await supervisor.generate([{ role: 'user', content: userQuery }], {
       maxSteps: 10,
+      modelSettings: { temperature: 0 },
       delegation: {
         onDelegationStart: async (ctx) => {
           delegationCounter++;
@@ -204,9 +204,6 @@ async function startSupervisorExecution(userQuery: string, agents: Agent[]): Pro
             task.result = ctx.result?.text || '';
 
             // Track which tasks completed in which iteration for dependency inference
-            if (ctx.iteration > lastCompletedIteration) {
-              lastCompletedIteration = ctx.iteration;
-            }
             const iterationTasks = completedTaskIdsByIteration.get(ctx.iteration) || [];
             iterationTasks.push(task.id);
             completedTaskIdsByIteration.set(ctx.iteration, iterationTasks);
