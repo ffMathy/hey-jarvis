@@ -37,6 +37,10 @@
       "cache": false,
       "persistent": true
     },
+    "serve:all": {
+      "cache": false,
+      "persistent": true
+    },
     "e2e": {
       "dependsOn": ["build"],
       "outputs": ["playwright-report/**", "test-results/**"]

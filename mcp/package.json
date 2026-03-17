@@ -10,6 +10,7 @@
     "deploy": "cd .. && ./mcp/.scripts/deploy.sh",
     "test": "cd .. && ./.scripts/run-with-env.sh mcp/op.env mcp/.scripts/test.sh",
     "serve": "cd .. && ./.scripts/run-with-env.sh mcp/op.env bun mcp/mastra/index.ts",
+    "serve:all": "cd .. && ./.scripts/run-with-env.sh mcp/op.env mcp/.scripts/serve.sh",
     "serve:mcp": "cd .. && ./.scripts/run-with-env.sh mcp/op.env bun mcp/mastra/mcp-server.ts",
     "initialize": "bun install mastra@1.0.0-beta.2 --global",
     "e2e": "cd .. && bunx playwright test --config mcp/playwright.config.ts",
