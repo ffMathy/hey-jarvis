@@ -27,29 +27,24 @@ export const registerStateChange = createTool({
     message: z.string(),
   }),
   execute: async (inputData) => {
-    try {
-      logger.info('Registering state change', {
-        stateType: inputData.stateType,
-        source: inputData.source,
-      });
+    logger.info('Registering state change', {
+      stateType: inputData.stateType,
+      source: inputData.source,
+    });
 
-      // Add to batcher for optimized processing
-      await stateChangeBatcher.add({
-        source: inputData.source,
-        stateType: inputData.stateType,
-        stateData: inputData.stateData,
-      });
+    // Add to batcher for optimized processing
+    await stateChangeBatcher.add({
+      source: inputData.source,
+      stateType: inputData.stateType,
+      stateData: inputData.stateData,
+    });
 
-      const stats = stateChangeBatcher.getStats();
-      return {
-        registered: true,
-        batched: stats.pendingCount > 0,
-        message: `State change ${inputData.stateType} registered. Batch: ${stats.pendingCount} pending, ${stats.totalProcessed} processed`,
-      };
-    } catch (error) {
-      logger.error('Failed to register state change', { error });
-      throw error;
-    }
+    const stats = stateChangeBatcher.getStats();
+    return {
+      registered: true,
+      batched: stats.pendingCount > 0,
+      message: `State change ${inputData.stateType} registered. Batch: ${stats.pendingCount} pending, ${stats.totalProcessed} processed`,
+    };
   },
 });
 

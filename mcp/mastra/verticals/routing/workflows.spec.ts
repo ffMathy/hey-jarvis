@@ -1,4 +1,3 @@
-import type { Agent } from '@mastra/core/agent';
 import { z } from 'zod';
 import {
   type AgentProvider,
@@ -18,7 +17,16 @@ interface MockToolConfig {
   inputParams: string[];
 }
 
-function createMockAgent(id: string, description: string, tools?: MockToolConfig[]): Agent {
+/** Structural subset of Agent that satisfies what workflows.ts actually uses at runtime */
+interface MockAgent {
+  id: string;
+  name: string;
+  getDescription(): string;
+  generate(prompt: unknown): Promise<{ text: string }>;
+  listTools(): Promise<Record<string, { inputSchema?: { shape: Record<string, unknown> } }>>;
+}
+
+function createMockAgent(id: string, description: string, tools?: MockToolConfig[]): MockAgent {
   const mockTools: Record<string, { inputSchema?: { shape: Record<string, unknown> } }> = {};
 
   if (tools) {
@@ -33,13 +41,13 @@ function createMockAgent(id: string, description: string, tools?: MockToolConfig
     }
   }
 
-  const mockAgent = {
+  const mockAgent: MockAgent = {
     id,
     name: id,
     getDescription: () => description,
     generate: jest.fn().mockResolvedValue({ text: `Mock response from ${id}` }),
     listTools: jest.fn().mockResolvedValue(mockTools),
-  } as unknown as Agent;
+  };
   return mockAgent;
 }
 
@@ -49,6 +57,16 @@ function assertWorkflowSuccess<T>(workflowResult: { status: string; result?: T }
     throw new Error(`Workflow failed with status: ${workflowResult.status}`);
   }
   return workflowResult.result as T;
+}
+
+async function startWorkflowRun<TInput, TResult>(
+  workflow: {
+    createRun(): Promise<{ start: (args: { inputData: TInput }) => Promise<TResult> }>;
+  },
+  inputData: TInput,
+): Promise<TResult> {
+  const run = await workflow.createRun();
+  return run.start({ inputData });
 }
 
 function createMockSupervisorExecutor(agentIds: string[]): SupervisorExecutor {
@@ -102,7 +120,7 @@ describe('Routing Workflows', () => {
           dependsOn: [],
         });
 
-        const instructionsPromise = getNextInstructionsWorkflow.createRun().then((run) => run.start({ inputData: {} }));
+        const instructionsPromise = startWorkflowRun(getNextInstructionsWorkflow, {});
 
         await new Promise((resolve) => setTimeout(resolve, 100));
 
@@ -123,7 +141,7 @@ describe('Routing Workflows', () => {
         const mockAgentProvider: AgentProvider = async () => [mockAgent];
         setAgentProvider(mockAgentProvider);
 
-        const instructionsPromise = getNextInstructionsWorkflow.createRun().then((run) => run.start({ inputData: {} }));
+        const instructionsPromise = startWorkflowRun(getNextInstructionsWorkflow, {});
 
         await new Promise((resolve) => setTimeout(resolve, 50));
 
@@ -151,9 +169,7 @@ describe('Routing Workflows', () => {
         setAgentProvider(mockAgentProvider);
 
         const startTime = Date.now();
-        const workflowResult = await getNextInstructionsWorkflow
-          .createRun()
-          .then((run) => run.start({ inputData: {} }));
+        const workflowResult = await startWorkflowRun(getNextInstructionsWorkflow, {});
         const elapsed = Date.now() - startTime;
 
         expect(elapsed).toBeGreaterThanOrEqual(14900);
@@ -176,7 +192,7 @@ describe('Routing Workflows', () => {
           dependsOn: [],
         });
 
-        const instructionsPromise = getNextInstructionsWorkflow.createRun().then((run) => run.start({ inputData: {} }));
+        const instructionsPromise = startWorkflowRun(getNextInstructionsWorkflow, {});
 
         await new Promise((resolve) => setTimeout(resolve, 50));
 
@@ -205,7 +221,7 @@ describe('Routing Workflows', () => {
           dependsOn: ['get-location'],
         });
 
-        const instructionsPromise = getNextInstructionsWorkflow.createRun().then((run) => run.start({ inputData: {} }));
+        const instructionsPromise = startWorkflowRun(getNextInstructionsWorkflow, {});
 
         await new Promise((resolve) => setTimeout(resolve, 50));
 
@@ -236,7 +252,7 @@ describe('Routing Workflows', () => {
           dependsOn: [],
         });
 
-        const promise1 = getNextInstructionsWorkflow.createRun().then((run) => run.start({ inputData: {} }));
+        const promise1 = startWorkflowRun(getNextInstructionsWorkflow, {});
 
         await new Promise((resolve) => setTimeout(resolve, 50));
         simulateTaskCompletion('task-1', 'Result 1');
@@ -246,7 +262,7 @@ describe('Routing Workflows', () => {
         expect(result1.completedTaskResults).toHaveLength(1);
         expect(result1.completedTaskResults?.[0].id).toBe('task-1');
 
-        const promise2 = getNextInstructionsWorkflow.createRun().then((run) => run.start({ inputData: {} }));
+        const promise2 = startWorkflowRun(getNextInstructionsWorkflow, {});
 
         await new Promise((resolve) => setTimeout(resolve, 50));
         simulateTaskCompletion('task-2', 'Result 2');
@@ -273,7 +289,7 @@ describe('Routing Workflows', () => {
 
         expect(getCurrentDAG().tasks).toHaveLength(1);
 
-        const instructionsPromise = getNextInstructionsWorkflow.createRun().then((run) => run.start({ inputData: {} }));
+        const instructionsPromise = startWorkflowRun(getNextInstructionsWorkflow, {});
 
         await new Promise((resolve) => setTimeout(resolve, 50));
         simulateTaskCompletion('single-task', 'Done');
@@ -305,7 +321,7 @@ describe('Routing Workflows', () => {
           dependsOn: [],
         });
 
-        const instructionsPromise = getNextInstructionsWorkflow.createRun().then((run) => run.start({ inputData: {} }));
+        const instructionsPromise = startWorkflowRun(getNextInstructionsWorkflow, {});
 
         await new Promise((resolve) => setTimeout(resolve, 50));
         simulateTaskCompletion('task-1', 'Done 1');
@@ -328,14 +344,10 @@ describe('Routing Workflows', () => {
         supervisorExecutor: createMockSupervisorExecutor([weatherAgent.id, calendarAgent.id]),
       });
 
-      const _result = await routePromptWorkflow.createRun().then((run) =>
-        run.start({
-          inputData: {
-            userQuery: 'What is the weather in Aarhus?',
-            async: false,
-          },
-        }),
-      );
+      const _result = await startWorkflowRun(routePromptWorkflow, {
+        userQuery: 'What is the weather in Aarhus?',
+        async: false,
+      });
 
       const dag = getCurrentDAG();
       expect(dag.tasks.length).toBeGreaterThanOrEqual(1);
@@ -352,14 +364,10 @@ describe('Routing Workflows', () => {
         supervisorExecutor: createMockSupervisorExecutor([weatherAgent.id]),
       });
 
-      const workflowResult = await routePromptWorkflow.createRun().then((run) =>
-        run.start({
-          inputData: {
-            userQuery: 'What is the weather?',
-            async: false,
-          },
-        }),
-      );
+      const workflowResult = await startWorkflowRun(routePromptWorkflow, {
+        userQuery: 'What is the weather?',
+        async: false,
+      });
 
       const result = assertWorkflowSuccess(workflowResult);
       expect(result.taskIdsInProgress).toBeDefined();
@@ -377,14 +385,10 @@ describe('Routing Workflows', () => {
         supervisorExecutor: createMockSupervisorExecutor([weatherAgent.id]),
       });
 
-      const workflowResult = await routePromptWorkflow.createRun().then((run) =>
-        run.start({
-          inputData: {
-            userQuery: 'What is the weather?',
-            async: true,
-          },
-        }),
-      );
+      const workflowResult = await startWorkflowRun(routePromptWorkflow, {
+        userQuery: 'What is the weather?',
+        async: true,
+      });
 
       const result = assertWorkflowSuccess(workflowResult);
       expect(result.taskIdsInProgress).toBeDefined();
@@ -400,7 +404,7 @@ describe('Routing Workflows', () => {
       const mockAgentProvider: AgentProvider = async () => [weatherAgent];
       setAgentProvider(mockAgentProvider);
 
-      const instructionsPromise = getNextInstructionsWorkflow.createRun().then((run) => run.start({ inputData: {} }));
+      const instructionsPromise = startWorkflowRun(getNextInstructionsWorkflow, {});
 
       await new Promise((resolve) => setTimeout(resolve, 100));
 
@@ -429,8 +433,8 @@ describe('Routing Workflows', () => {
       const mockAgentProvider: AgentProvider = async () => [weatherAgent];
       setAgentProvider(mockAgentProvider);
 
-      const promise1 = getNextInstructionsWorkflow.createRun().then((run) => run.start({ inputData: {} }));
-      const promise2 = getNextInstructionsWorkflow.createRun().then((run) => run.start({ inputData: {} }));
+      const promise1 = startWorkflowRun(getNextInstructionsWorkflow, {});
+      const promise2 = startWorkflowRun(getNextInstructionsWorkflow, {});
 
       await new Promise((resolve) => setTimeout(resolve, 100));
       expect(getTaskCompletedListenersCount()).toBe(2);

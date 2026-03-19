@@ -1,5 +1,4 @@
 import { beforeAll, describe, expect, it } from 'bun:test';
-import { isValidationError } from '../../utils/test-helpers/validation-error.js';
 import { getAllCalendars, getCalendarEvents } from './tools';
 
 describe('Calendar Tools Integration Tests', () => {
@@ -20,11 +19,6 @@ describe('Calendar Tools Integration Tests', () => {
     it('should retrieve all calendars', async () => {
       const result = await getAllCalendars.execute({});
 
-      // Check for validation errors
-      if (isValidationError(result)) {
-        throw new Error(`Validation failed: ${result.message}`);
-      }
-
       // Validate structure
       expect(result).toBeDefined();
       expect(Array.isArray(result.calendars)).toBe(true);
@@ -40,11 +34,6 @@ describe('Calendar Tools Integration Tests', () => {
         calendarId: 'primary',
         maxResults: 5,
       });
-
-      // Check for validation errors
-      if (isValidationError(result)) {
-        throw new Error(`Validation failed: ${result.message}`);
-      }
 
       // Validate structure
       expect(result).toBeDefined();

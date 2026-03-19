@@ -128,7 +128,7 @@ export async function processEmailTriggers(email: TriggerableEmail): Promise<str
         sender: senderAddress,
       });
       workflowPromises.push(
-        (async () => {
+        (async (): Promise<string | null> => {
           try {
             const run = await trigger.workflow.createRun();
             const result = await run.start({
@@ -136,18 +136,20 @@ export async function processEmailTriggers(email: TriggerableEmail): Promise<str
                 email,
               },
             });
+
             if (result.status === 'success') {
               logger.info('Successfully executed workflow for trigger', {
                 triggerId: trigger.id,
               });
               return trigger.id;
             }
+
             logger.error('Workflow execution failed for trigger', {
               triggerId: trigger.id,
               status: result.status,
             });
             return null;
-          } catch (error) {
+          } catch (error: unknown) {
             logger.error('Failed to execute workflow for trigger', {
               triggerId: trigger.id,
               error,

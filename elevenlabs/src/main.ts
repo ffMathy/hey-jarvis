@@ -111,36 +111,31 @@ class ElevenLabsAgentManager {
   }
 
   private async fetchAgentConfig(): Promise<void> {
-    try {
-      const agentId = process.env.HEY_JARVIS_ELEVENLABS_AGENT_ID;
-      if (!agentId) {
-        throw new Error('HEY_JARVIS_ELEVENLABS_AGENT_ID environment variable is required');
-      }
-
-      console.log(`📡 Fetching configuration for agent ${agentId}...`);
-
-      const response = await this.client.conversationalAi.agents.get(agentId);
-
-      console.log('✅ Agent configuration fetched successfully');
-      console.log(`📋 Agent Name: ${response.name}`);
-      console.log(`🆔 Agent ID: ${response.agentId}`);
-
-      // Extract and save prompt separately
-      await this.savePrompt(response.conversationConfig?.agent?.prompt?.prompt || '');
-
-      // Remove prompt from config before saving
-      const configToSave = { ...response };
-      if (configToSave.conversationConfig?.agent?.prompt) {
-        delete (
-          configToSave.conversationConfig.agent.prompt as Partial<typeof configToSave.conversationConfig.agent.prompt>
-        ).prompt;
-      }
-
-      await this.saveConfig(configToSave);
-    } catch (error) {
-      console.error('❌ Failed to fetch configuration:', error);
-      process.exit(1);
+    const agentId = process.env.HEY_JARVIS_ELEVENLABS_AGENT_ID;
+    if (!agentId) {
+      throw new Error('HEY_JARVIS_ELEVENLABS_AGENT_ID environment variable is required');
     }
+
+    console.log(`📡 Fetching configuration for agent ${agentId}...`);
+
+    const response = await this.client.conversationalAi.agents.get(agentId);
+
+    console.log('✅ Agent configuration fetched successfully');
+    console.log(`📋 Agent Name: ${response.name}`);
+    console.log(`🆔 Agent ID: ${response.agentId}`);
+
+    // Extract and save prompt separately
+    await this.savePrompt(response.conversationConfig?.agent?.prompt?.prompt || '');
+
+    // Remove prompt from config before saving
+    const configToSave = { ...response };
+    if (configToSave.conversationConfig?.agent?.prompt) {
+      delete (
+        configToSave.conversationConfig.agent.prompt as Partial<typeof configToSave.conversationConfig.agent.prompt>
+      ).prompt;
+    }
+
+    await this.saveConfig(configToSave);
   }
 
   private resolveAgentId(isTestAgent: boolean): string {
@@ -192,43 +187,38 @@ class ElevenLabsAgentManager {
   }
 
   private async deployConfig(isTestAgent: boolean = false): Promise<void> {
-    try {
-      const config = await this.loadConfig();
-      const prompt = await this.loadPrompt();
+    const config = await this.loadConfig();
+    const prompt = await this.loadPrompt();
 
-      // Inject prompt into config
-      if (config.conversationConfig?.agent) {
-        config.conversationConfig.agent.prompt = {
-          prompt: prompt,
-        };
-      }
+    // Inject prompt into config
+    if (config.conversationConfig?.agent) {
+      config.conversationConfig.agent.prompt = {
+        prompt: prompt,
+      };
+    }
 
-      const agentId = this.resolveAgentId(isTestAgent);
-      const voiceId = process.env.HEY_JARVIS_ELEVENLABS_VOICE_ID;
+    const agentId = this.resolveAgentId(isTestAgent);
+    const voiceId = process.env.HEY_JARVIS_ELEVENLABS_VOICE_ID;
 
-      this.injectEnvironmentVariables(config, agentId, voiceId);
+    this.injectEnvironmentVariables(config, agentId, voiceId);
 
-      if (isTestAgent) {
-        this.applyTestAgentOverrides(config);
-      }
+    if (isTestAgent) {
+      this.applyTestAgentOverrides(config);
+    }
 
-      const agentType = isTestAgent ? 'test agent' : 'agent';
-      console.log(`🚀 Deploying configuration to ${agentType} ${agentId}...`);
+    const agentType = isTestAgent ? 'test agent' : 'agent';
+    console.log(`🚀 Deploying configuration to ${agentType} ${agentId}...`);
 
-      const response = await this.client.conversationalAi.agents.update(agentId, config);
+    const response = await this.client.conversationalAi.agents.update(agentId, config);
 
-      console.log('✅ Agent configuration deployed successfully');
-      console.log(`📋 Agent Name: ${response.name}`);
-      console.log(`🆔 Agent ID: ${response.agentId}`);
-      if (voiceId) {
-        console.log(`🎤 Voice ID: ${voiceId}`);
-      }
-      if (isTestAgent) {
-        console.log('🧪 Test agent mode enabled (textOnly: true)');
-      }
-    } catch (error) {
-      console.error('❌ Failed to deploy configuration:', error);
-      process.exit(1);
+    console.log('✅ Agent configuration deployed successfully');
+    console.log(`📋 Agent Name: ${response.name}`);
+    console.log(`🆔 Agent ID: ${response.agentId}`);
+    if (voiceId) {
+      console.log(`🎤 Voice ID: ${voiceId}`);
+    }
+    if (isTestAgent) {
+      console.log('🧪 Test agent mode enabled (textOnly: true)');
     }
   }
 
@@ -253,12 +243,13 @@ class ElevenLabsAgentManager {
 }
 
 // Run the application
-(async () => {
+async function main(): Promise<void> {
   try {
-    const manager = new ElevenLabsAgentManager();
-    await manager.run();
+    await new ElevenLabsAgentManager().run();
   } catch (error) {
     console.error('❌ Application error:', error);
     process.exit(1);
   }
-})();
+}
+
+void main();

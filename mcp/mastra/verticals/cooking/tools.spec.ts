@@ -1,5 +1,4 @@
 import { beforeAll, describe, expect, it } from 'bun:test';
-import { isValidationError } from '../../utils/test-helpers/validation-error.js';
 import { cookingTools } from './tools';
 
 interface RecipeShape {
@@ -94,11 +93,6 @@ describe('Cooking Tools Integration Tests', () => {
       // Using a known recipe ID from Valdemarsro
       const result = await cookingTools.getRecipeById.execute({ recipeId: '51796' });
 
-      // Check for validation errors
-      if (isValidationError(result)) {
-        throw new Error(`Validation failed: ${result.message}`);
-      }
-
       // Validate structure
       expect(result).toBeDefined();
       validateRecipeStructure(result);
@@ -113,11 +107,6 @@ describe('Cooking Tools Integration Tests', () => {
   describe('searchRecipes', () => {
     it('should search for recipes and validate schema', async () => {
       const result = await cookingTools.searchRecipes.execute({ searchTerm: 'kylling' });
-
-      // Check for validation errors
-      if (isValidationError(result)) {
-        throw new Error(`Validation failed: ${result.message}`);
-      }
 
       // Validate structure
       expect(result).toBeDefined();
@@ -145,11 +134,6 @@ describe('Cooking Tools Integration Tests', () => {
       const fromDate = thirtyDaysAgo.toISOString().split('T')[0];
 
       const result = await cookingTools.getAllRecipes.execute({ fromDate });
-
-      // Check for validation errors
-      if (isValidationError(result)) {
-        throw new Error(`Validation failed: ${result.message}`);
-      }
 
       // Validate structure
       expect(result).toBeDefined();
@@ -188,11 +172,6 @@ describe('Cooking Tools Integration Tests', () => {
   describe('getSearchFilters', () => {
     it('should fetch search filters', async () => {
       const result = await cookingTools.getSearchFilters.execute({});
-
-      // Check for validation errors
-      if (isValidationError(result)) {
-        throw new Error(`Validation failed: ${result.message}`);
-      }
 
       // Validate structure
       expect(result).toBeDefined();

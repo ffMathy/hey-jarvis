@@ -12,22 +12,23 @@ const CONTAINER_NAME = 'mcp-docker-test';
  * The solution is to access containers directly via their Docker bridge network IP address.
  */
 export async function getContainerIP(): Promise<string> {
-  const { execSync } = await import('child_process');
+  const { spawnSync } = await import('child_process');
 
   const maxRetries = 60;
   const retryInterval = 500;
 
   for (let i = 0; i < maxRetries; i++) {
-    try {
-      const result = execSync(`docker inspect --format='{{.NetworkSettings.IPAddress}}' ${CONTAINER_NAME}`, {
-        encoding: 'utf-8',
-      }).trim();
+    const { stdout, status } = spawnSync(
+      'docker',
+      ['inspect', `--format={{.NetworkSettings.IPAddress}}`, CONTAINER_NAME],
+      { encoding: 'utf-8' },
+    );
 
+    if (status === 0) {
+      const result = stdout.trim();
       if (result && result !== '<no value>') {
         return result;
       }
-    } catch {
-      // Container may not be ready yet
     }
 
     await sleep(retryInterval);

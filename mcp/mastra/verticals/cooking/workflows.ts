@@ -415,7 +415,8 @@ const mealPlanFeedbackIterationWorkflow = createWorkflow({
   id: 'mealPlanFeedbackIterationWorkflow',
   inputSchema: z.object({
     preferences: z.string().optional(),
-    isApproved: z.boolean().optional(),
+    // Always provided by the initialisation step or the previous iteration
+    isApproved: z.boolean(),
   }),
   outputSchema: z.object({
     isApproved: z.boolean(),

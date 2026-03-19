@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'bun:test';
-import { isValidationError } from '../../utils/test-helpers/validation-error.js';
 import { findProductInCatalog, getCurrentCartContents } from './tools';
 
 describe('Shopping Tools Integration Tests', () => {
@@ -8,11 +7,6 @@ describe('Shopping Tools Integration Tests', () => {
       const result = await findProductInCatalog.execute({
         search_query: 'mælk',
       });
-
-      // Check for validation errors
-      if (isValidationError(result)) {
-        throw new Error(`Validation failed: ${result.message}`);
-      }
 
       // Validate structure
       expect(result).toBeDefined();
@@ -39,11 +33,6 @@ describe('Shopping Tools Integration Tests', () => {
   describe('getCurrentCartContents', () => {
     it('should retrieve cart contents', async () => {
       const result = await getCurrentCartContents.execute({});
-
-      // Check for validation errors
-      if (isValidationError(result)) {
-        throw new Error(`Validation failed: ${result.message}`);
-      }
 
       // Validate structure
       expect(result).toBeDefined();

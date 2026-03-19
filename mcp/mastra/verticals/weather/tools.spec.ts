@@ -1,5 +1,4 @@
 import { beforeAll, describe, expect, it } from 'bun:test';
-import { isValidationError } from '../../utils/test-helpers/validation-error.js';
 import { weatherTools } from './tools';
 
 describe('Weather Tools Integration Tests', () => {
@@ -15,11 +14,6 @@ describe('Weather Tools Integration Tests', () => {
       const result = await weatherTools.getCurrentWeatherByCity.execute({
         cityName: 'aarhus,dk',
       });
-
-      // Check for validation errors
-      if (isValidationError(result)) {
-        throw new Error(`Validation failed: ${result.message}`);
-      }
 
       // Validate structure
       expect(result).toBeDefined();
@@ -55,12 +49,9 @@ describe('Weather Tools Integration Tests', () => {
 
     it('should handle invalid city gracefully', async () => {
       await expect(async () => {
-        const result = await weatherTools.getCurrentWeatherByCity.execute({
+        await weatherTools.getCurrentWeatherByCity.execute({
           cityName: 'thiscitydoesnotexist123456',
         });
-        if (isValidationError(result)) {
-          throw new Error(result.message);
-        }
       }).toThrow();
     }, 30000);
   });
@@ -72,11 +63,6 @@ describe('Weather Tools Integration Tests', () => {
         latitude: 56.1629,
         longitude: 10.2039,
       });
-
-      // Check for validation errors
-      if (isValidationError(result)) {
-        throw new Error(`Validation failed: ${result.message}`);
-      }
 
       // Validate structure
       expect(result).toBeDefined();
@@ -111,11 +97,6 @@ describe('Weather Tools Integration Tests', () => {
       const result = await weatherTools.getForecastByCity.execute({
         cityName: 'aarhus,dk',
       });
-
-      // Check for validation errors
-      if (isValidationError(result)) {
-        throw new Error(`Validation failed: ${result.message}`);
-      }
 
       // Validate structure
       expect(result).toBeDefined();
@@ -156,11 +137,6 @@ describe('Weather Tools Integration Tests', () => {
         latitude: 56.1629,
         longitude: 10.2039,
       });
-
-      // Check for validation errors
-      if (isValidationError(result)) {
-        throw new Error(`Validation failed: ${result.message}`);
-      }
 
       // Validate structure
       expect(result).toBeDefined();

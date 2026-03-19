@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'bun:test';
-import { isValidationError } from '../../utils/test-helpers/validation-error.js';
 import { notifyDevice } from './tools';
 
 describe('Notification Tools Integration Tests', () => {
@@ -9,11 +8,6 @@ describe('Notification Tools Integration Tests', () => {
         message: 'Test notification',
         conversationTimeout: 5000,
       });
-
-      // Check for validation errors
-      if (isValidationError(result)) {
-        throw new Error(`Validation failed: ${result.message}`);
-      }
 
       // Validate structure
       expect(result).toBeDefined();
@@ -36,11 +30,6 @@ describe('Notification Tools Integration Tests', () => {
         deviceName: 'test_device',
         conversationTimeout: 3000,
       });
-
-      // Check for validation errors
-      if (isValidationError(result)) {
-        throw new Error(`Validation failed: ${result.message}`);
-      }
 
       expect(result).toBeDefined();
       expect(typeof result.success).toBe('boolean');

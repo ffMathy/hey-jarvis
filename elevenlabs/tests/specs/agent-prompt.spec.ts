@@ -17,15 +17,17 @@ async function withConversationRetry(
   let lastError: Error | undefined;
   for (let attempt = 1; attempt <= MAX_CONVERSATION_RETRIES; attempt++) {
     const conversation = createConversation();
+    let succeeded = false;
     try {
       await testBody(conversation);
-      return;
+      succeeded = true;
     } catch (error) {
       lastError = error as Error;
       console.warn(`⚠️ Attempt ${attempt}/${MAX_CONVERSATION_RETRIES} failed: ${lastError.message.split('\n')[0]}`);
     } finally {
       await conversation.disconnect();
     }
+    if (succeeded) return;
   }
   throw lastError;
 }

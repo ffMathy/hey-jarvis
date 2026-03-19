@@ -1,5 +1,4 @@
 import { beforeAll, describe, expect, it } from 'bun:test';
-import { isValidationError } from '../../utils/test-helpers/validation-error.js';
 import { listUserRepositories, searchRepositories } from './tools';
 
 describe('Coding Tools Integration Tests', () => {
@@ -18,11 +17,6 @@ describe('Coding Tools Integration Tests', () => {
         query: 'typescript language:typescript',
         maxResults: 5,
       });
-
-      // Check for validation errors
-      if (isValidationError(result)) {
-        throw new Error(`Validation failed: ${result.message}`);
-      }
 
       // Validate structure
       expect(result).toBeDefined();
@@ -47,11 +41,6 @@ describe('Coding Tools Integration Tests', () => {
       const result = await listUserRepositories.execute({
         maxResults: 5,
       });
-
-      // Check for validation errors
-      if (isValidationError(result)) {
-        throw new Error(`Validation failed: ${result.message}`);
-      }
 
       // Validate structure
       expect(result).toBeDefined();

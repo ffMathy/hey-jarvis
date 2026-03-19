@@ -1,5 +1,4 @@
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
-import type { Agent } from '@mastra/core/agent';
 import { generateObject } from 'ai';
 import { z } from 'zod';
 import { isOllamaAvailable } from '../../utils/providers/ollama-provider.js';
@@ -142,7 +141,16 @@ interface MockToolConfig {
   inputParams: string[];
 }
 
-function createMockAgent(id: string, description: string, tools?: MockToolConfig[]): Agent {
+/** Structural subset of Agent that satisfies what workflows.ts actually uses at runtime */
+interface MockAgent {
+  id: string;
+  name: string;
+  getDescription(): string;
+  generate(prompt: unknown): Promise<{ text: string }>;
+  listTools(): Promise<Record<string, { inputSchema?: { shape: Record<string, unknown> } }>>;
+}
+
+function createMockAgent(id: string, description: string, tools?: MockToolConfig[]): MockAgent {
   const mockTools: Record<string, { inputSchema?: { shape: Record<string, unknown> } }> = {};
 
   if (tools) {
@@ -157,13 +165,13 @@ function createMockAgent(id: string, description: string, tools?: MockToolConfig
     }
   }
 
-  const mockAgent = {
+  const mockAgent: MockAgent = {
     id,
     name: id,
     getDescription: () => description,
     generate: jest.fn().mockResolvedValue({ text: `Mock response from ${id}` }),
     listTools: jest.fn().mockResolvedValue(mockTools),
-  } as unknown as Agent;
+  };
   return mockAgent;
 }
 
@@ -247,11 +255,18 @@ async function runWorkflowWithRetry(
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     resetCurrentDAG();
 
+    let runResult: Awaited<ReturnType<Awaited<ReturnType<typeof routePromptWorkflow.createRun>>['start']>> | undefined;
     try {
-      const result = await routePromptWorkflow.createRun().then((run) => run.start({ inputData: { userQuery } }));
+      const run = await routePromptWorkflow.createRun();
+      runResult = await run.start({ inputData: { userQuery } });
+    } catch {
+      console.log(`Attempt ${attempt}: Workflow failed, retrying...`);
+      runResult = undefined;
+    }
 
+    if (runResult !== undefined) {
       dag = getCurrentDAG();
-      if (result.status === 'success' && dag.tasks.length >= 1) {
+      if (runResult.status === 'success' && dag.tasks.length >= 1) {
         if (!isValid || isValid(dag)) {
           return dag;
         }
@@ -259,8 +274,6 @@ async function runWorkflowWithRetry(
       } else {
         console.log(`Attempt ${attempt}: Workflow succeeded but no tasks generated, retrying...`);
       }
-    } catch (_e) {
-      console.log(`Attempt ${attempt}: Workflow failed, retrying...`);
     }
 
     await new Promise((resolve) => setTimeout(resolve, 750));
@@ -324,11 +337,10 @@ Control and monitor Internet of Things (IoT) devices. Use this agent to **turn d
 
       const userQuery = 'Check the weather for my current location';
 
-      await routePromptWorkflow.createRun().then((run) =>
-        run.start({
-          inputData: { userQuery },
-        }),
-      );
+      const run = await routePromptWorkflow.createRun();
+      await run.start({
+        inputData: { userQuery },
+      });
 
       const dag = getCurrentDAG();
 
@@ -374,11 +386,10 @@ Control and monitor Internet of Things (IoT) devices. Use this agent to **get us
 
       const userQuery = "What's the weather like where I am right now?";
 
-      await routePromptWorkflow.createRun().then((run) =>
-        run.start({
-          inputData: { userQuery },
-        }),
-      );
+      const run = await routePromptWorkflow.createRun();
+      await run.start({
+        inputData: { userQuery },
+      });
 
       const dag = getCurrentDAG();
 

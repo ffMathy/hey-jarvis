@@ -1,5 +1,4 @@
 import { beforeAll, describe, expect, it } from 'bun:test';
-import { isValidationError } from '../../utils/test-helpers/validation-error.js';
 import { sendTextMessage } from './tools';
 
 describe('Phone Tools Integration Tests', () => {
@@ -23,11 +22,6 @@ describe('Phone Tools Integration Tests', () => {
         message: 'Test message',
       });
 
-      // Check for validation errors
-      if (isValidationError(result)) {
-        throw new Error(`Validation failed: ${result.message}`);
-      }
-
       // Validate structure
       expect(result).toBeDefined();
       expect(typeof result.success).toBe('boolean');
@@ -43,11 +37,6 @@ describe('Phone Tools Integration Tests', () => {
         phoneNumber: '+15551234567',
         message: 'Test message with valid E.164 format',
       });
-
-      // Check for validation errors
-      if (isValidationError(result)) {
-        throw new Error(`Validation failed: ${result.message}`);
-      }
 
       expect(result).toBeDefined();
       expect(typeof result.success).toBe('boolean');

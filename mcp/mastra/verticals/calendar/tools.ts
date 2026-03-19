@@ -27,12 +27,8 @@ const getGoogleAuth = async (): Promise<OAuth2Client> => {
 
   // Fallback to Mastra storage for refresh token only
   if (!refreshToken) {
-    try {
-      const credentialsStorage = await getCredentialsStorage();
-      refreshToken = (await credentialsStorage.getRefreshToken('google')) ?? undefined;
-    } catch (_error) {
-      // Storage error - continue to show helpful error message below
-    }
+    const credentialsStorage = await getCredentialsStorage();
+    refreshToken = (await credentialsStorage.getRefreshToken('google')) ?? undefined;
   }
 
   if (!clientId || !clientSecret || !refreshToken) {
@@ -53,17 +49,19 @@ const getGoogleAuth = async (): Promise<OAuth2Client> => {
   oauth2Client.setCredentials({ refresh_token: refreshToken });
 
   // Listen for token refresh events and update storage automatically
-  oauth2Client.on('tokens', async (tokens) => {
+  oauth2Client.on('tokens', (tokens) => {
     if (tokens.refresh_token) {
       // OAuth provider has issued a new refresh token - update storage
       logger.info('New refresh token received from Google - updating storage');
-      try {
-        const credentialsStorage = await getCredentialsStorage();
-        await credentialsStorage.renewRefreshToken('google', tokens.refresh_token);
-        logger.info('Refresh token updated in storage');
-      } catch (error) {
-        logger.error('Failed to update refresh token in storage', { error });
-      }
+      void (async () => {
+        try {
+          const credentialsStorage = await getCredentialsStorage();
+          await credentialsStorage.renewRefreshToken('google', tokens.refresh_token as string);
+          logger.info('Refresh token updated in storage');
+        } catch (error: unknown) {
+          logger.error('Failed to update refresh token in storage', { error });
+        }
+      })();
     }
     // Access token refresh is automatic and expected - no logging needed for normal operation
   });

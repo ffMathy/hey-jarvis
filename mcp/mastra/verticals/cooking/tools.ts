@@ -131,12 +131,19 @@ export const searchRecipes = createTool({
     }
 
     const data = (await response.json()) as SearchResponse;
-    const results = await Promise.all(
+    const rawResults = await Promise.all(
       data.data.result
         .slice(0, 25)
         .map((item) => item.post_id.toString())
         .map(async (id) => await getRecipeById.execute!({ recipeId: id }, context)),
     );
+
+    const results = rawResults.map((r) => {
+      if ('error' in r) {
+        throw new Error(r.message);
+      }
+      return r;
+    });
 
     return {
       results,

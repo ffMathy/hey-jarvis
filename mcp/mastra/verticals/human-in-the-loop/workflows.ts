@@ -56,11 +56,8 @@ const sendFormRequestEmail = createStep({
 </html>
     `.trim();
 
-    if (!sendEmail.execute) {
-      throw new Error('sendEmail tool execute function is not available');
-    }
-
-    const emailResult = await sendEmail.execute(
+    // sendEmail is created with createTool and always has execute defined
+    const emailResult = await sendEmail.execute!(
       {
         subject,
         bodyContent,
@@ -161,7 +158,7 @@ export function getSendEmailAndAwaitResponseWorkflow<TResponseSchema extends z.Z
   return createWorkflow({
     id: `sendEmailAndAwaitResponseWorkflow-${slug}`,
     inputSchema: sendAndWaitInputSchema,
-    outputSchema,
+    outputSchema: outputSchema as z.ZodType<z.infer<typeof outputSchema>>,
   })
     .then(sendFormRequestEmail)
     .then(createAwaitEmailResponseStep(responseSchema))

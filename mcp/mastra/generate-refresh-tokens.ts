@@ -128,21 +128,23 @@ async function handleOAuthCallback(
  */
 function startCallbackServer(provider: OAuthProvider, client: unknown): Promise<TokenResponse> {
   return new Promise((resolve, reject) => {
-    const server = http.createServer(async (req, res) => {
-      try {
-        if (!req.url) {
-          return;
-        }
+    const server = http.createServer((req, res) => {
+      if (!req.url) {
+        return;
+      }
 
-        const url = new URL(req.url, `http://localhost:${PORT}`);
+      const url = new URL(req.url, `http://localhost:${PORT}`);
 
-        if (url.pathname === '/oauth2callback') {
-          await handleOAuthCallback(url, res, provider, client, server, resolve, reject);
-        }
-      } catch (err) {
-        sendErrorResponse(res, 500, 'Server Error', 'An error occurred processing your request.');
-        reject(err);
-        server.close();
+      if (url.pathname === '/oauth2callback') {
+        void (async () => {
+          try {
+            await handleOAuthCallback(url, res, provider, client, server, resolve, reject);
+          } catch (err: unknown) {
+            sendErrorResponse(res, 500, 'Server Error', 'An error occurred processing your request.');
+            reject(err);
+            server.close();
+          }
+        })();
       }
     });
 
@@ -173,17 +175,12 @@ async function processProvider(
   console.log('');
 
   // Check if token already exists in storage
-  try {
-    const credentialsStorage = await getCredentialsStorage();
-    const existingToken = await credentialsStorage.getRefreshToken(provider.name.toLowerCase());
-    if (existingToken) {
-      console.log('✅ Refresh token already exists in Mastra storage');
-      console.log('⏭️  Skipping token generation\n');
-      return { provider: provider.name };
-    }
-  } catch (_error) {
-    // Storage check failed, continue with token generation
-    console.log('⚠️  Could not check storage, proceeding with token generation\n');
+  const credentialsStorage = await getCredentialsStorage();
+  const existingToken = await credentialsStorage.getRefreshToken(provider.name.toLowerCase());
+  if (existingToken) {
+    console.log('✅ Refresh token already exists in Mastra storage');
+    console.log('⏭️  Skipping token generation\n');
+    return { provider: provider.name };
   }
 
   console.log('📋 Prerequisites:');
@@ -193,13 +190,7 @@ async function processProvider(
   console.log('');
 
   // Validate credentials
-  let credentials: { clientId: string; clientSecret: string };
-  try {
-    credentials = validateProviderCredentials(provider);
-  } catch (_error) {
-    console.error(`⏭️  Skipping ${provider.name} - credentials not configured\n`);
-    return { provider: provider.name };
-  }
+  const credentials = validateProviderCredentials(provider);
 
   // Create OAuth client
   const client = provider.createClient(credentials.clientId, credentials.clientSecret);
@@ -213,57 +204,45 @@ async function processProvider(
 
   console.log('⏳ Waiting for authorization...\n');
 
-  try {
-    const tokens = await startCallbackServer(provider, client);
+  const tokens = await startCallbackServer(provider, client);
 
-    if (!tokens.refresh_token) {
-      console.error(`❌ No refresh token received for ${provider.name}!`);
-      console.error('   This can happen if you previously authorized this application.');
-      console.error('   To fix this:');
-      console.error('   1. Revoke access in your account settings');
-      console.error('   2. Run this script again');
-      return { provider: provider.name };
-    }
-
-    console.log('✅ Authorization successful!\n');
-    console.log('📝 Your refresh token:');
-    console.log('─'.repeat(70));
-    console.log(tokens.refresh_token);
-    console.log('─'.repeat(70));
-    console.log('');
-
-    // Always store in Mastra storage
-    try {
-      const credentialsStorage = await getCredentialsStorage();
-      await credentialsStorage.setRefreshToken(provider.name.toLowerCase(), tokens.refresh_token);
-      console.log('✅ Stored refresh token in Mastra storage (mastra.sql.db)');
-      console.log('⚠️  Note: Client ID and secret must still be set in environment variables\n');
-    } catch (error) {
-      console.error('⚠️  Failed to store in Mastra storage:');
-      console.error(error instanceof Error ? error.message : String(error));
-      console.log('');
-    }
-
-    console.log('💾 Token storage information:\n');
-    provider.storageInstructions.forEach((instruction) => {
-      console.log(`   ${instruction}`);
-    });
-    console.log('');
-    console.log(`   Environment variable: ${provider.refreshTokenEnvVar}="${tokens.refresh_token}"\n`);
-
-    return {
-      provider: provider.name,
-      credentials: {
-        clientId: credentials.clientId,
-        clientSecret: credentials.clientSecret,
-        refreshToken: tokens.refresh_token,
-      },
-    };
-  } catch (error) {
-    console.error(`❌ Error during ${provider.name} authorization:`);
-    console.error(error instanceof Error ? error.message : String(error));
+  if (!tokens.refresh_token) {
+    console.error(`❌ No refresh token received for ${provider.name}!`);
+    console.error('   This can happen if you previously authorized this application.');
+    console.error('   To fix this:');
+    console.error('   1. Revoke access in your account settings');
+    console.error('   2. Run this script again');
     return { provider: provider.name };
   }
+
+  console.log('✅ Authorization successful!\n');
+  console.log('📝 Your refresh token:');
+  console.log('─'.repeat(70));
+  console.log(tokens.refresh_token);
+  console.log('─'.repeat(70));
+  console.log('');
+
+  // Always store in Mastra storage
+  const credStorage = await getCredentialsStorage();
+  await credStorage.setRefreshToken(provider.name.toLowerCase(), tokens.refresh_token);
+  console.log('✅ Stored refresh token in Mastra storage (mastra.sql.db)');
+  console.log('⚠️  Note: Client ID and secret must still be set in environment variables\n');
+
+  console.log('💾 Token storage information:\n');
+  provider.storageInstructions.forEach((instruction) => {
+    console.log(`   ${instruction}`);
+  });
+  console.log('');
+  console.log(`   Environment variable: ${provider.refreshTokenEnvVar}="${tokens.refresh_token}"\n`);
+
+  return {
+    provider: provider.name,
+    credentials: {
+      clientId: credentials.clientId,
+      clientSecret: credentials.clientSecret,
+      refreshToken: tokens.refresh_token,
+    },
+  };
 }
 
 /**
@@ -307,8 +286,12 @@ async function main() {
   console.log('   if environment variables are not set.\n');
 }
 
-main().catch((error) => {
-  console.error('❌ Unexpected error:');
-  console.error(error);
-  process.exit(1);
-});
+void (async () => {
+  try {
+    await main();
+  } catch (error) {
+    console.error('❌ Unexpected error:');
+    console.error(error);
+    process.exit(1);
+  }
+})();

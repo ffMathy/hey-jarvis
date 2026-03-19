@@ -1,4 +1,4 @@
-import { type ChildProcess, execSync, spawn } from 'child_process';
+import { type ChildProcess, spawn, spawnSync } from 'child_process';
 import { isMcpServerRunning } from '../../../mcp/tests/utils/mcp-server-manager.js';
 import { retryWithBackoff } from '../../../mcp/tests/utils/retry-with-backoff.js';
 
@@ -8,12 +8,9 @@ let tunnelProcess: ChildProcess | null = null;
  * Kills all existing cloudflared processes
  */
 function killExistingTunnels(): void {
-  try {
-    execSync('pkill -f cloudflared || true', { stdio: 'ignore' });
-    console.log('🧹 Killed any existing cloudflared processes');
-  } catch (_error) {
-    // Ignore errors - process might not exist
-  }
+  // Use spawnSync so cleanup never throws when no process matches or pkill is signaled.
+  spawnSync('pkill', ['-f', 'cloudflared'], { stdio: 'ignore' });
+  console.log('🧹 Killed any existing cloudflared processes');
 }
 
 /**
@@ -28,7 +25,7 @@ async function isLocalMcpServerHealthy(): Promise<boolean> {
     });
     const data = (await response.json()) as { status: string };
     return response.ok && data.status === 'healthy';
-  } catch (_error) {
+  } catch {
     return false;
   }
 }
@@ -47,18 +44,21 @@ async function isTunnelRunning(): Promise<boolean> {
  * Checks tunnel connectivity via health endpoint (doesn't require JWT)
  */
 async function checkTunnelHealth(): Promise<{ ok: boolean; status?: number; error?: string }> {
+  const healthUrl = `${process.env.HEY_JARVIS_CLOUDFLARED_TUNNEL_URL}/health`;
   try {
-    const healthUrl = `${process.env.HEY_JARVIS_CLOUDFLARED_TUNNEL_URL}/health`;
     const response = await fetch(healthUrl, {
       method: 'GET',
       signal: AbortSignal.timeout(10000),
     });
     if (response.ok) {
-      return { ok: true, status: response.status };
+      return { ok: true as const, status: response.status };
     }
-    return { ok: false, status: response.status, error: `HTTP ${response.status}` };
+    return { ok: false as const, status: response.status, error: `HTTP ${response.status}` };
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    return {
+      ok: false as const,
+      error: error instanceof Error ? error.message : String(error),
+    };
   }
 }
 
@@ -146,9 +146,10 @@ export async function ensureTunnelRunning(): Promise<void> {
           console.log(`🔍 Tunnel diagnostics (attempt ${attempt}/60):`);
           console.log(`   - Error: ${error.message}`);
           console.log(`   - Process running: ${tunnelProcess && !tunnelProcess.killed}`);
-          isLocalMcpServerHealthy().then((healthy) => {
+          void (async () => {
+            const healthy = await isLocalMcpServerHealthy();
             console.log(`   - Local MCP server healthy: ${healthy}`);
-          });
+          })();
         } else {
           console.log(
             `🔍 Checking tunnel status (attempt ${attempt}/60) at ${process.env.HEY_JARVIS_CLOUDFLARED_TUNNEL_URL}...`,
@@ -197,8 +198,12 @@ async function runStandalone(): Promise<void> {
 
 // Detect if this file is being run directly
 if (import.meta.main) {
-  runStandalone().catch((error) => {
-    console.error('❌ Failed to start tunnel:', error);
-    process.exit(1);
-  });
+  void (async () => {
+    try {
+      await runStandalone();
+    } catch (error) {
+      console.error('❌ Failed to start tunnel:', error);
+      process.exit(1);
+    }
+  })();
 }

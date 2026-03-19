@@ -38,13 +38,21 @@ export async function createAgent(
   const defaultProcessors = (DEFAULT_AGENT_CONFIG.outputProcessors || []) as OutputProcessor[];
   const customProcessors = (config.outputProcessors || []) as OutputProcessor[];
 
+  const resolvedModel = config.model ?? DEFAULT_AGENT_CONFIG.model;
+
   const mergedConfig: AgentConfig = {
     ...DEFAULT_AGENT_CONFIG,
     ...config,
+    model: resolvedModel,
     // Merge output processors instead of replacing
     outputProcessors: [...defaultProcessors, ...customProcessors],
     // Use name as id if id not provided
     id: config.id || config.name || 'default-agent',
+    // Explicitly merge defaultOptions so caller overrides are preserved on top of defaults
+    defaultOptions: {
+      ...DEFAULT_AGENT_CONFIG.defaultOptions,
+      ...config.defaultOptions,
+    },
   } as AgentConfig;
 
   return new Agent(mergedConfig);

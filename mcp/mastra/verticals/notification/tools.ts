@@ -68,61 +68,54 @@ export const notifyDevice = createTool({
     serviceCalled: z.string().optional(),
   }),
   execute: async (inputData) => {
-    try {
-      const { message, deviceName, conversationTimeout = 5000 } = inputData;
+    const { message, deviceName, conversationTimeout = 5000 } = inputData;
 
-      // Get Home Assistant Supervisor API URL from environment
-      const supervisorToken = process.env.SUPERVISOR_TOKEN;
-      const homeAssistantUrl = process.env.HOME_ASSISTANT_URL || 'http://supervisor/core';
+    // Get Home Assistant Supervisor API URL from environment
+    const supervisorToken = process.env.SUPERVISOR_TOKEN;
+    const homeAssistantUrl = process.env.HOME_ASSISTANT_URL || 'http://supervisor/core';
 
-      if (!supervisorToken) {
-        return {
-          success: false,
-          message: 'Home Assistant Supervisor token not available. Please set SUPERVISOR_TOKEN environment variable.',
-        };
-      }
-
-      // Construct the ESPHome service name
-      // ESPHome devices expose services as esphome.{device_name}_{service_name}
-      const serviceDomain = 'esphome';
-      const devicePrefix = deviceName || 'hass_elevenlabs'; // Default device name
-      const serviceName = `${devicePrefix}_send_notification`;
-
-      // Call the ESPHome service
-      const serviceData = {
-        message: message,
-        timeout: conversationTimeout,
-      };
-
-      const response = await fetch(`${homeAssistantUrl}/api/services/${serviceDomain}/${serviceName}`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${supervisorToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(serviceData),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        return {
-          success: false,
-          message: `Failed to send notification: ${response.status} ${response.statusText}. Error: ${errorText}. Make sure the ESPHome device has the send_notification service configured.`,
-          serviceCalled: `${serviceDomain}.${serviceName}`,
-        };
-      }
-
-      return {
-        success: true,
-        message: `Notification sent successfully to ${deviceName || 'default device'}`,
-        serviceCalled: `${serviceDomain}.${serviceName}`,
-      };
-    } catch (error) {
+    if (!supervisorToken) {
       return {
         success: false,
-        message: `Error sending notification: ${error instanceof Error ? error.message : String(error)}`,
+        message: 'Home Assistant Supervisor token not available. Please set SUPERVISOR_TOKEN environment variable.',
       };
     }
+
+    // Construct the ESPHome service name
+    // ESPHome devices expose services as esphome.{device_name}_{service_name}
+    const serviceDomain = 'esphome';
+    const devicePrefix = deviceName || 'hass_elevenlabs'; // Default device name
+    const serviceName = `${devicePrefix}_send_notification`;
+
+    // Call the ESPHome service
+    const serviceData = {
+      message: message,
+      timeout: conversationTimeout,
+    };
+
+    const response = await fetch(`${homeAssistantUrl}/api/services/${serviceDomain}/${serviceName}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${supervisorToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(serviceData),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return {
+        success: false,
+        message: `Failed to send notification: ${response.status} ${response.statusText}. Error: ${errorText}. Make sure the ESPHome device has the send_notification service configured.`,
+        serviceCalled: `${serviceDomain}.${serviceName}`,
+      };
+    }
+
+    return {
+      success: true,
+      message: `Notification sent successfully to ${deviceName || 'default device'}`,
+      serviceCalled: `${serviceDomain}.${serviceName}`,
+    };
   },
 });
 

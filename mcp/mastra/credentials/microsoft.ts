@@ -74,20 +74,16 @@ export const microsoftProvider: OAuthProvider = {
     // Parse the serialized cache to extract refresh token
     let refreshToken: string | undefined;
     if (cacheState) {
-      try {
-        const cache = JSON.parse(cacheState);
-        // Refresh tokens are stored in the RefreshToken section
-        const refreshTokens = cache.RefreshToken || {};
+      const cache = JSON.parse(cacheState);
+      // Refresh tokens are stored in the RefreshToken section
+      const refreshTokens = cache.RefreshToken || {};
 
-        // Find the refresh token for this account
-        // Key format: "<homeAccountId>-<environment>-refreshtoken-<clientId>--"
-        const refreshTokenKey = Object.keys(refreshTokens).find((key) => key.includes(account.homeAccountId));
+      // Find the refresh token for this account
+      // Key format: "<homeAccountId>-<environment>-refreshtoken-<clientId>--"
+      const refreshTokenKey = Object.keys(refreshTokens).find((key) => key.includes(account.homeAccountId));
 
-        if (refreshTokenKey) {
-          refreshToken = refreshTokens[refreshTokenKey].secret;
-        }
-      } catch (err) {
-        console.error('Failed to parse MSAL token cache:', err);
+      if (refreshTokenKey) {
+        refreshToken = refreshTokens[refreshTokenKey].secret;
       }
     }
 

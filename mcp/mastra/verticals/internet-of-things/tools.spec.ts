@@ -1,5 +1,4 @@
 import { beforeAll, describe, expect, it } from 'bun:test';
-import { isValidationError } from '../../utils/test-helpers/validation-error.js';
 import { fetchHistoricalStates, getAllDevices, getAllServices } from './tools';
 
 // These tests require a Cloudflared tunnel URL in HEY_JARVIS_HOME_ASSISTANT_URL
@@ -9,11 +8,6 @@ describe('IoT Tools Integration Tests', () => {
   describe('getAllDevices', () => {
     it('should retrieve all devices from Home Assistant', async () => {
       const result = await getAllDevices.execute({});
-
-      // Check for validation errors
-      if (isValidationError(result)) {
-        throw new Error(`Validation failed: ${result.message}`);
-      }
 
       // Validate structure
       expect(result).toBeDefined();
@@ -27,11 +21,6 @@ describe('IoT Tools Integration Tests', () => {
   describe('getAllServices', () => {
     it('should retrieve all services from Home Assistant', async () => {
       const result = await getAllServices.execute({});
-
-      // Check for validation errors
-      if (isValidationError(result)) {
-        throw new Error(`Validation failed: ${result.message}`);
-      }
 
       // Validate structure
       expect(result).toBeDefined();
@@ -50,9 +39,6 @@ describe('IoT Tools Integration Tests', () => {
 
     beforeAll(async () => {
       const devicesResult = await getAllDevices.execute({});
-      if (isValidationError(devicesResult)) {
-        throw new Error(`Validation failed: ${devicesResult.message}`);
-      }
       expect(devicesResult.devices.length).toBeGreaterThan(0);
 
       const firstDevice = devicesResult.devices[0];

@@ -167,62 +167,57 @@ async function startSupervisorExecution(userQuery: string, agents: Agent[]): Pro
   // Track completed task IDs per iteration so later delegations can depend on earlier ones
   const completedTaskIdsByIteration = new Map<number, string[]>();
 
-  try {
-    // maxSteps limits the total number of LLM iterations the supervisor can perform.
-    // 10 is sufficient for most multi-agent routing scenarios while preventing runaway loops.
-    await supervisor.generate([{ role: 'user', content: userQuery }], {
-      maxSteps: 10,
-      modelSettings: { temperature: 0 },
-      delegation: {
-        onDelegationStart: async (ctx) => {
-          delegationCounter++;
-          const taskId = `${ctx.primitiveId}-delegation-${delegationCounter}`;
-          toolCallToTask.set(ctx.toolCallId, taskId);
+  // maxSteps limits the total number of LLM iterations the supervisor can perform.
+  // 10 is sufficient for most multi-agent routing scenarios while preventing runaway loops.
+  await supervisor.generate([{ role: 'user', content: userQuery }], {
+    maxSteps: 10,
+    modelSettings: { temperature: 0 },
+    delegation: {
+      onDelegationStart: async (ctx) => {
+        delegationCounter++;
+        const taskId = `${ctx.primitiveId}-delegation-${delegationCounter}`;
+        toolCallToTask.set(ctx.toolCallId, taskId);
 
-          // Tasks in later iterations depend on all tasks completed in prior iterations
-          const dependsOn: string[] = [];
-          for (let i = 1; i < ctx.iteration; i++) {
-            const ids = completedTaskIdsByIteration.get(i);
-            if (ids) {
-              dependsOn.push(...ids);
-            }
+        // Tasks in later iterations depend on all tasks completed in prior iterations
+        const dependsOn: string[] = [];
+        for (let i = 1; i < ctx.iteration; i++) {
+          const ids = completedTaskIdsByIteration.get(i);
+          if (ids) {
+            dependsOn.push(...ids);
           }
+        }
 
-          workflowState.currentDAG.tasks.push({
-            id: taskId,
-            agent: ctx.primitiveId,
-            prompt: ctx.prompt,
-            dependsOn,
-          });
-          console.log(`→ Delegating to: ${ctx.primitiveId} (task: ${taskId}, dependsOn: [${dependsOn.join(', ')}])`);
-          return { proceed: true };
-        },
-        onDelegationComplete: async (ctx) => {
-          const taskId = toolCallToTask.get(ctx.toolCallId);
-          const task = taskId ? workflowState.currentDAG.tasks.find((t) => t.id === taskId) : undefined;
-          if (task) {
-            task.result = ctx.result?.text || '';
-
-            // Track which tasks completed in which iteration for dependency inference
-            const iterationTasks = completedTaskIdsByIteration.get(ctx.iteration) || [];
-            iterationTasks.push(task.id);
-            completedTaskIdsByIteration.set(ctx.iteration, iterationTasks);
-
-            console.log(`✓ Completed: ${ctx.primitiveId} (task: ${task.id})`);
-            for (const listener of workflowState.taskCompletedListeners) {
-              listener(task);
-            }
-          }
-        },
+        workflowState.currentDAG.tasks.push({
+          id: taskId,
+          agent: ctx.primitiveId,
+          prompt: ctx.prompt,
+          dependsOn,
+        });
+        console.log(`→ Delegating to: ${ctx.primitiveId} (task: ${taskId}, dependsOn: [${dependsOn.join(', ')}])`);
+        return { proceed: true };
       },
-    });
+      onDelegationComplete: async (ctx) => {
+        const taskId = toolCallToTask.get(ctx.toolCallId);
+        const task = taskId ? workflowState.currentDAG.tasks.find((t) => t.id === taskId) : undefined;
+        if (task) {
+          task.result = ctx.result?.text || '';
 
-    console.log('Supervisor execution complete.');
-  } catch (error) {
-    console.error('Supervisor execution failed:', error);
-  } finally {
-    workflowState.currentDAG.executionPromise = undefined;
-  }
+          // Track which tasks completed in which iteration for dependency inference
+          const iterationTasks = completedTaskIdsByIteration.get(ctx.iteration) || [];
+          iterationTasks.push(task.id);
+          completedTaskIdsByIteration.set(ctx.iteration, iterationTasks);
+
+          console.log(`✓ Completed: ${ctx.primitiveId} (task: ${task.id})`);
+          for (const listener of workflowState.taskCompletedListeners) {
+            listener(task);
+          }
+        }
+      },
+    },
+  });
+
+  console.log('Supervisor execution complete.');
+  workflowState.currentDAG.executionPromise = undefined;
 }
 
 const routeWithSupervisorStep = createStep({

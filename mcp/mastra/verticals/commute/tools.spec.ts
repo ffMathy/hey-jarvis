@@ -1,5 +1,4 @@
 import { beforeAll, describe, expect, it } from 'bun:test';
-import { isValidationError } from '../../utils/test-helpers/validation-error.js';
 import { commuteTools } from './tools';
 
 /**
@@ -66,11 +65,6 @@ describe('Commute Tools Integration Tests', () => {
         {},
       );
 
-      // Check for validation errors
-      if (isValidationError(result)) {
-        throw new Error(`Validation failed: ${result.message}`);
-      }
-
       // Validate structure
       expect(result).toBeDefined();
       expect(result.distance).toBeDefined();
@@ -110,11 +104,6 @@ describe('Commute Tools Integration Tests', () => {
         {},
       );
 
-      // Check for validation errors
-      if (isValidationError(result)) {
-        throw new Error(`Validation failed: ${result.message}`);
-      }
-
       expect(result).toBeDefined();
       expect(result.distance.value).toBeGreaterThan(150000);
       console.log('✅ Travel time with coordinates fetched successfully');
@@ -130,11 +119,6 @@ describe('Commute Tools Integration Tests', () => {
         },
         {},
       );
-
-      // Check for validation errors
-      if (isValidationError(result)) {
-        throw new Error(`Validation failed: ${result.message}`);
-      }
 
       expect(result).toBeDefined();
       expect(result.mode).toBe('walking');
@@ -153,11 +137,6 @@ describe('Commute Tools Integration Tests', () => {
         },
         {},
       );
-
-      // Check for validation errors
-      if (isValidationError(result)) {
-        throw new Error(`Validation failed: ${result.message}`);
-      }
 
       // Validate structure
       expect(result).toBeDefined();
@@ -194,11 +173,6 @@ describe('Commute Tools Integration Tests', () => {
         {},
       );
 
-      // Check for validation errors
-      if (isValidationError(result)) {
-        throw new Error(`Validation failed: ${result.message}`);
-      }
-
       expect(result).toBeDefined();
       expect(result.places.length).toBeGreaterThan(0);
       expect(result.places.length).toBeLessThanOrEqual(3);
@@ -219,11 +193,6 @@ describe('Commute Tools Integration Tests', () => {
         },
         {},
       );
-
-      // Check for validation errors
-      if (isValidationError(result)) {
-        throw new Error(`Validation failed: ${result.message}`);
-      }
 
       // Validate structure
       expect(result).toBeDefined();
@@ -267,11 +236,6 @@ describe('Commute Tools Integration Tests', () => {
         {},
       );
 
-      // Check for validation errors
-      if (isValidationError(result)) {
-        throw new Error(`Validation failed: ${result.message}`);
-      }
-
       expect(result).toBeDefined();
       expect(result.places.length).toBeGreaterThan(0);
       expect(result.places.length).toBeLessThanOrEqual(10);
@@ -290,11 +254,6 @@ describe('Commute Tools Integration Tests', () => {
         },
         {},
       );
-
-      // Check for validation errors
-      if (isValidationError(result)) {
-        throw new Error(`Validation failed: ${result.message}`);
-      }
 
       // Validate structure
       expect(result).toBeDefined();
@@ -330,11 +289,6 @@ describe('Commute Tools Integration Tests', () => {
         },
         {},
       );
-
-      // Check for validation errors
-      if (isValidationError(result)) {
-        throw new Error(`Validation failed: ${result.message}`);
-      }
 
       expect(result).toBeDefined();
       expect(typeof result.name).toBe('string');
