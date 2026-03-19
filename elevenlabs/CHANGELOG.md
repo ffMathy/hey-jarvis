@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.12.1](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.12.0...elevenlabs-v0.12.1) (2026-03-19)
+
+
+### Bug Fixes
+
+* better async ([0668712](https://github.com/ffMathy/hey-jarvis/commit/0668712a56d83a6f50d0549766ca3b075c41c960))
+* set temperature 0 for deterministic LLM outputs across all agents and test calls ([9d9fd71](https://github.com/ffMathy/hey-jarvis/commit/9d9fd710e9203f1a1b6611a1697d7ea7c8802d86))
+
 ## [0.12.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.11.0...elevenlabs-v0.12.0) (2026-03-15)
 
 
