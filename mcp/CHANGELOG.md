@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.8.1](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.8.0...mcp-v1.8.1) (2026-03-19)
+
+
+### Bug Fixes
+
+* better async ([0668712](https://github.com/ffMathy/hey-jarvis/commit/0668712a56d83a6f50d0549766ca3b075c41c960))
+* better local serving ([ed6efa1](https://github.com/ffMathy/hey-jarvis/commit/ed6efa156942a5a51a6180eaed24835457ecd2b0))
+* **mcp:** add try/finally to clear executionPromise and track delegation dependencies ([6d43ff9](https://github.com/ffMathy/hey-jarvis/commit/6d43ff9753d2aac3979ac15a64e594c0de8142cc))
+* set temperature 0 for deterministic LLM outputs across all agents and test calls ([9d9fd71](https://github.com/ffMathy/hey-jarvis/commit/9d9fd710e9203f1a1b6611a1697d7ea7c8802d86))
+
 ## [1.8.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.7.1...mcp-v1.8.0) (2026-03-15)
 
 
