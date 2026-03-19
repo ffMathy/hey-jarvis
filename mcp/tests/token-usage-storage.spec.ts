@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdir, unlink } from 'fs/promises';
+import { mkdir, rm } from 'fs/promises';
 import path from 'path';
 import { TokenUsageStorage } from '../mastra/storage/token-usage.js';
 
@@ -20,20 +20,12 @@ describe('Token Usage Storage Tests', () => {
 
   afterEach(async () => {
     // Close database connection first
-    try {
-      await storage.close();
-    } catch {
-      // Ignore errors if already closed
-    }
+    await storage.close();
 
     // Clean up test database files
-    try {
-      await unlink(TEST_DB_PATH);
-      await unlink(`${TEST_DB_PATH}-shm`);
-      await unlink(`${TEST_DB_PATH}-wal`);
-    } catch {
-      // Ignore errors if files don't exist
-    }
+    await rm(TEST_DB_PATH, { force: true });
+    await rm(`${TEST_DB_PATH}-shm`, { force: true });
+    await rm(`${TEST_DB_PATH}-wal`, { force: true });
   });
 
   describe('recordUsage', () => {

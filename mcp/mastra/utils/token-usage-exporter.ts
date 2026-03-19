@@ -41,7 +41,8 @@ export class TokenUsageExporter implements ObservabilityExporter {
       return;
     }
 
-    // Cast attributes to ModelGenerationAttributes (safe after type guard)
+    // span.attributes is typed as the union of all attribute types; cast to the narrowed type
+    // after the span.type === 'model_generation' guard (AnyExportedSpan is not a discriminated union)
     const attributes = span.attributes as ModelGenerationAttributes | undefined;
     if (!attributes || !attributes.usage) {
       return;
@@ -73,35 +74,27 @@ export class TokenUsageExporter implements ObservabilityExporter {
       workflowId = span.metadata.workflowId as string | undefined;
     }
 
-    try {
-      const storage = await getTokenUsageStorage();
+    const storage = await getTokenUsageStorage();
 
-      await storage.recordUsage({
-        model,
-        provider,
-        promptTokens,
-        completionTokens,
-        totalTokens,
-        traceId: span.traceId,
-        agentId,
-        workflowId,
-      });
+    await storage.recordUsage({
+      model,
+      provider,
+      promptTokens,
+      completionTokens,
+      totalTokens,
+      traceId: span.traceId,
+      agentId,
+      workflowId,
+    });
 
-      this.logger?.debug('Token usage recorded', {
-        model,
-        provider,
-        promptTokens,
-        completionTokens,
-        totalTokens,
-        traceId: span.traceId,
-      });
-    } catch (error) {
-      this.logger?.error('Failed to record token usage', {
-        error: error instanceof Error ? error.message : String(error),
-        model,
-        provider,
-      });
-    }
+    this.logger?.debug('Token usage recorded', {
+      model,
+      provider,
+      promptTokens,
+      completionTokens,
+      totalTokens,
+      traceId: span.traceId,
+    });
   }
 
   async flush(): Promise<void> {
@@ -123,38 +116,29 @@ export class TokenTrackingProcessor implements SpanOutputProcessor {
   process(span?: AnySpan): AnySpan | undefined {
     if (!span) return undefined;
 
-    // For AGENT_RUN spans, add agentId to metadata
-    if (span.type === 'agent_run') {
-      const agentRunSpan = span as AnySpan & { attributes?: { agentId?: string } };
-      if (agentRunSpan.attributes?.agentId) {
-        span.metadata = {
-          ...span.metadata,
-          agentId: agentRunSpan.attributes.agentId,
-        };
-      }
+    // For AGENT_RUN spans, add agentId from entityId (BaseSpan property holding the creating entity's ID)
+    if (span.type === 'agent_run' && span.entityId) {
+      span.metadata = {
+        ...span.metadata,
+        agentId: span.entityId,
+      };
     }
 
-    // For WORKFLOW_RUN spans, add workflowId to metadata
-    if (span.type === 'workflow_run') {
-      const workflowRunSpan = span as AnySpan & { attributes?: { workflowId?: string } };
-      if (workflowRunSpan.attributes?.workflowId) {
-        span.metadata = {
-          ...span.metadata,
-          workflowId: workflowRunSpan.attributes.workflowId,
-        };
-      }
+    // For WORKFLOW_RUN spans, add workflowId from entityId (BaseSpan property holding the creating entity's ID)
+    if (span.type === 'workflow_run' && span.entityId) {
+      span.metadata = {
+        ...span.metadata,
+        workflowId: span.entityId,
+      };
     }
 
-    // For MODEL_GENERATION spans, inherit context from parent
-    if (span.type === 'model_generation') {
-      const parent = (span as AnySpan & { parent?: { metadata?: Record<string, unknown> } }).parent;
-      if (parent?.metadata) {
-        span.metadata = {
-          ...span.metadata,
-          agentId: parent.metadata.agentId,
-          workflowId: parent.metadata.workflowId,
-        };
-      }
+    // For MODEL_GENERATION spans, inherit agent/workflow context from the parent span's metadata
+    if (span.type === 'model_generation' && span.parent?.metadata) {
+      span.metadata = {
+        ...span.metadata,
+        agentId: span.parent.metadata.agentId,
+        workflowId: span.parent.metadata.workflowId,
+      };
     }
 
     return span;

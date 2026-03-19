@@ -85,15 +85,16 @@ export class ElevenLabsConversationStrategy implements ConversationStrategy {
         this._onWebSocketOpen();
 
         // Wait for conversation to be ready (conversation_initiation_metadata received)
-        conversationReadyPromise
-          .then(() => {
+        void (async () => {
+          try {
+            await conversationReadyPromise;
             clearTimeout(timeoutId);
             resolve(undefined);
-          })
-          .catch((error) => {
+          } catch (error) {
             clearTimeout(timeoutId);
             reject(error);
-          });
+          }
+        })();
       });
 
       this.ws.on('message', (data: Data) => {
@@ -140,13 +141,8 @@ export class ElevenLabsConversationStrategy implements ConversationStrategy {
       return;
     }
 
-    try {
-      const message = JSON.parse(data.toString()) as ServerMessage;
-
-      this._handleMessage(message);
-    } catch (error) {
-      console.error('Error parsing WebSocket message:', error);
-    }
+    const message = JSON.parse(data.toString()) as ServerMessage;
+    this._handleMessage(message);
   }
 
   private _onWebSocketClose(): void {

@@ -354,9 +354,7 @@ const processFormReplies = createStep({
         emailsProcessed++;
 
         const match = email.subject.match(WORKFLOW_ID_REGEX);
-        if (!match) {
-          continue;
-        }
+        if (!match) continue;
 
         formRepliesFound++;
         const workflowId = match[1];

@@ -48,21 +48,13 @@ ${inputData.email.body.content}
 
 Summarize the key changes and notify the user in Danish.`;
 
-    try {
-      // Execute the agent to handle notification
-      const response = await notificationAgent.generate(notificationPrompt);
+    // Execute the agent to handle notification
+    const response = await notificationAgent.generate(notificationPrompt);
 
-      return {
-        notificationSent: true,
-        message: response.text ?? 'Notification sent via agent',
-      };
-    } catch (error) {
-      console.error('❌ Failed to send notification via agent:', error);
-      return {
-        notificationSent: false,
-        message: error instanceof Error ? error.message : 'Unknown error',
-      };
-    }
+    return {
+      notificationSent: true,
+      message: response.text ?? 'Notification sent via agent',
+    };
   },
 });
 

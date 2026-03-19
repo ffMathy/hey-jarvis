@@ -54,12 +54,8 @@ const getMicrosoftAuth = async (): Promise<string> => {
 
   // Fallback to Mastra storage for refresh token only
   if (!refreshToken) {
-    try {
-      const credentialsStorage = await getCredentialsStorage();
-      refreshToken = (await credentialsStorage.getRefreshToken('microsoft')) ?? undefined;
-    } catch (_error) {
-      // Storage error - continue to show helpful error message below
-    }
+    const credentialsStorage = await getCredentialsStorage();
+    refreshToken = (await credentialsStorage.getRefreshToken('microsoft')) ?? undefined;
   }
 
   if (!clientId || !clientSecret || !refreshToken) {
@@ -90,24 +86,17 @@ const getMicrosoftAuth = async (): Promise<string> => {
     scopes: ['https://graph.microsoft.com/Mail.ReadWrite', 'https://graph.microsoft.com/Mail.Send'],
   };
 
-  try {
-    const response = await msalClient.acquireTokenByRefreshToken(tokenRequest);
+  const response = await msalClient.acquireTokenByRefreshToken(tokenRequest);
 
-    // Note: MSAL v3+ automatically manages refresh token rotation internally.
-    // The refresh token is stored in MSAL's token cache and is not exposed in the response.
-    // Token renewal happens automatically on subsequent acquireTokenByRefreshToken calls.
+  // Note: MSAL v3+ automatically manages refresh token rotation internally.
+  // The refresh token is stored in MSAL's token cache and is not exposed in the response.
+  // Token renewal happens automatically on subsequent acquireTokenByRefreshToken calls.
 
-    if (!response) {
-      throw new Error('No response received from Microsoft token endpoint');
-    }
-
-    return response.accessToken;
-  } catch (error) {
-    throw new Error(
-      `Failed to acquire access token from Microsoft: ${error instanceof Error ? error.message : String(error)}\n` +
-        'Your refresh token may have expired. Run `bun run --cwd mcp generate-tokens` to get a new one.',
-    );
+  if (!response) {
+    throw new Error('No response received from Microsoft token endpoint');
   }
+
+  return response.accessToken;
 };
 
 // Base URL for Microsoft Graph API

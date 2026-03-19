@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import { getOllamaModelOrFallback } from '../../utils/providers/ollama-provider.js';
-import { isValidationError } from '../../utils/validation-error.js';
 import { createAgentStep, createStep, createWorkflow } from '../../utils/workflows/workflow-factory.js';
 import { registerStateChange } from '../synapse/tools.js';
 import { weatherTools } from './tools.js';
@@ -79,9 +78,8 @@ const registerWeatherStateChange = createStep({
     }
     const result = await registerStateChange.execute(stateChangeData, {});
 
-    // Handle validation error case using type guard for proper narrowing
-    if (isValidationError(result)) {
-      throw new Error(`Failed to register state change: ${result.message}`);
+    if ('error' in result) {
+      throw new Error(result.message);
     }
 
     return result;

@@ -74,34 +74,31 @@ function injectSchemaIntoMessages(
  */
 const strippingFetch = Object.assign(
   async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-    if (init?.body && typeof init.body === 'string') {
-      try {
-        const body = JSON.parse(init.body) as Record<string, unknown>;
-        const { tools: _t, tool_choice: _tc, ...stripped } = body;
+    if (init?.body && typeof init.body === 'string' && init.body.trimStart().startsWith('{')) {
+      const body = JSON.parse(init.body) as Record<string, unknown>;
+      const { tools: _t, tool_choice: _tc, ...stripped } = body;
 
-        // Hailo's oatpp server only accepts format:"json", not a schema object.
-        // Downgrade to the string form and inject the schema into messages.
-        if (stripped.format && typeof stripped.format === 'object') {
-          const schema = stripped.format;
-          stripped.format = 'json';
+      // Hailo's oatpp server only accepts format:"json", not a schema object.
+      // Downgrade to the string form and inject the schema into messages.
+      if (stripped.format && typeof stripped.format === 'object') {
+        const schema = stripped.format;
+        stripped.format = 'json';
 
-          if (Array.isArray(stripped.messages)) {
-            stripped.messages = injectSchemaIntoMessages(
-              stripped.messages as Array<{ role: string; content: string }>,
-              schema,
-            );
-          }
+        if (Array.isArray(stripped.messages)) {
+          stripped.messages = injectSchemaIntoMessages(
+            stripped.messages as Array<{ role: string; content: string }>,
+            schema,
+          );
         }
-
-        init = { ...init, body: JSON.stringify(stripped) };
-      } catch {
-        // Not JSON — pass through as-is
       }
+
+      init = { ...init, body: JSON.stringify(stripped) };
     }
     return fetch(input, init);
   },
-  // Copy Bun's preconnect and any other static properties from global fetch
-  { preconnect: fetch.preconnect },
+  // Copy Bun's preconnect and any other static properties from global fetch.
+  // Bun extends fetch with preconnect() for TCP pre-warming, which is absent from standard type definitions.
+  { preconnect: (fetch as typeof fetch & { preconnect?: typeof fetch }).preconnect },
 ) as typeof fetch;
 
 /**
@@ -157,6 +154,7 @@ export async function isOllamaAvailable(): Promise<boolean> {
     const response = await fetch(`${HEY_JARVIS_OLLAMA_BASE_URL}/api/tags`, {
       signal: AbortSignal.timeout(3000),
     });
+
     return response.ok;
   } catch {
     return false;
@@ -173,7 +171,9 @@ export async function isModelAvailable(modelName: string): Promise<boolean> {
     const response = await fetch(`${HEY_JARVIS_OLLAMA_BASE_URL}/api/tags`, {
       signal: AbortSignal.timeout(5000),
     });
+
     if (!response.ok) return false;
+
     const data = (await response.json()) as { models?: Array<{ name: string }> };
     const models = data.models ?? [];
     const baseName = modelName.split(':')[0];
@@ -193,7 +193,9 @@ export async function listModels(): Promise<string[]> {
     const response = await fetch(`${HEY_JARVIS_OLLAMA_BASE_URL}/api/tags`, {
       signal: AbortSignal.timeout(5000),
     });
+
     if (!response.ok) return [];
+
     const data = (await response.json()) as { models?: Array<{ name: string }> };
     return (data.models ?? []).map((m) => m.name);
   } catch {

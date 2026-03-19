@@ -3,11 +3,6 @@ import { logger } from '../../utils/logger.js';
 import { getStateChangeReactorAgent } from './agent.js';
 
 /**
- * Maximum number of retries for a failed batch before dropping changes
- */
-const MAX_RETRY_ATTEMPTS = 3;
-
-/**
  * State Change data type
  */
 export interface StateChange {
@@ -101,9 +96,13 @@ export class StateChangeBatcher {
   private resetTimer(): void {
     this.clearTimer();
     this.batchTimer = setTimeout(() => {
-      this.processBatch().catch((error) => {
-        logger.error('[BATCHER] Error processing batch', { error });
-      });
+      void (async () => {
+        try {
+          await this.processBatch();
+        } catch (error) {
+          logger.error('[BATCHER] Error processing batch', { error });
+        }
+      })();
     }, this.batchDelayMs);
   }
 
@@ -126,61 +125,21 @@ export class StateChangeBatcher {
       count: changesToProcess.length,
     });
 
-    try {
-      // Save all changes to memory
-      await this.saveToMemory(changesToProcess);
+    // Save all changes to memory
+    await this.saveToMemory(changesToProcess);
 
-      // Analyze all changes together
-      await this.analyzeChanges(changesToProcess);
+    // Analyze all changes together
+    await this.analyzeChanges(changesToProcess);
 
-      this.stats.totalProcessed += changesToProcess.length;
-      this.stats.batchesProcessed++;
+    this.stats.totalProcessed += changesToProcess.length;
+    this.stats.batchesProcessed++;
 
-      logger.info('[BATCHER] Batch processed', {
-        totalProcessed: this.stats.totalProcessed,
-        totalReceived: this.stats.totalReceived,
-        batchesProcessed: this.stats.batchesProcessed,
-      });
-    } catch (error) {
-      logger.error('[BATCHER] Failed to process batch', { error });
-      this.handleFailedBatch(changesToProcess);
-    } finally {
-      this.isProcessing = false;
-    }
-  }
-
-  /**
-   * Handle failed batch by re-queuing changes with retry limit
-   */
-  private handleFailedBatch(failedChanges: PendingStateChange[]): void {
-    const toRetry: PendingStateChange[] = [];
-    const toDrop: PendingStateChange[] = [];
-
-    for (const change of failedChanges) {
-      change.retryCount++;
-      if (change.retryCount < MAX_RETRY_ATTEMPTS) {
-        toRetry.push(change);
-      } else {
-        toDrop.push(change);
-      }
-    }
-
-    if (toDrop.length > 0) {
-      this.stats.droppedCount += toDrop.length;
-      logger.error('[BATCHER] Dropping state changes after retry limit', {
-        count: toDrop.length,
-        maxRetries: MAX_RETRY_ATTEMPTS,
-        dropped: toDrop.map((d) => ({ stateType: d.stateType, source: d.source })),
-      });
-    }
-
-    if (toRetry.length > 0) {
-      logger.info('[BATCHER] Re-queuing changes for retry', {
-        count: toRetry.length,
-      });
-      this.pendingChanges = [...toRetry, ...this.pendingChanges];
-      this.resetTimer();
-    }
+    logger.info('[BATCHER] Batch processed', {
+      totalProcessed: this.stats.totalProcessed,
+      totalReceived: this.stats.totalReceived,
+      batchesProcessed: this.stats.batchesProcessed,
+    });
+    this.isProcessing = false;
   }
 
   /**
@@ -242,16 +201,11 @@ If multiple notifications are warranted, you can combine related ones into a sin
     const reactorAgent = await getStateChangeReactorAgent();
     const batchPrompt = this.buildBatchPrompt(changes);
 
-    try {
-      const networkStream = await reactorAgent.network(batchPrompt);
-      await networkStream.result;
-      logger.info('[BATCHER] Agent analysis completed', {
-        changesCount: changes.length,
-      });
-    } catch (error) {
-      logger.error('[BATCHER] Agent analysis failed', { error });
-      throw error;
-    }
+    const networkStream = await reactorAgent.network(batchPrompt);
+    await networkStream.result;
+    logger.info('[BATCHER] Agent analysis completed', {
+      changesCount: changes.length,
+    });
   }
 
   /**

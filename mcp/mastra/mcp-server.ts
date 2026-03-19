@@ -100,30 +100,29 @@ export async function startMcpServer() {
   app.use(apiRouter);
 
   // MCP endpoint - handles both GET (for initial connection) and POST (for messages)
-  app.all(mcpPath, async (req, res) => {
-    try {
-      const base = `http://${host}:${port}`;
-      const url = new URL(req.url || '', base);
+  app.all(mcpPath, (req, res): void => {
+    const base = `http://${host}:${port}`;
+    const url = new URL(req.url || '', base);
 
-      await mcpServer.startHTTP({
-        url,
-        httpPath: mcpPath,
-        req,
-        res,
-      });
-
-      // startHTTP takes over the response (including SSE/streaming)
-      // so we don't send anything else here
-    } catch (err) {
-      console.error('Error handling MCP HTTP connection', err);
-      if (!res.headersSent) {
-        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-        res.status(500).json({
-          error: 'Failed to establish MCP connection',
-          details: errorMessage,
+    void (async () => {
+      try {
+        await mcpServer.startHTTP({
+          url,
+          httpPath: mcpPath,
+          req,
+          res,
         });
+      } catch (err: unknown) {
+        console.error('Error handling MCP HTTP connection', err);
+        if (!res.headersSent) {
+          const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+          res.status(500).json({
+            error: 'Failed to establish MCP connection',
+            details: errorMessage,
+          });
+        }
       }
-    }
+    })();
   });
 
   // Express error handler
@@ -161,7 +160,11 @@ export async function startMcpServer() {
   });
 }
 
-startMcpServer().catch((error) => {
-  console.error('Failed to start servers:', error);
-  process.exit(1);
-});
+void (async () => {
+  try {
+    await startMcpServer();
+  } catch (error) {
+    console.error('Failed to start servers:', error);
+    process.exit(1);
+  }
+})();

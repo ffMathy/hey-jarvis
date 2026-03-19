@@ -278,27 +278,20 @@ export const createGitHubIssue = createTool({
   execute: async (inputData) => {
     const owner = inputData.owner || 'ffMathy';
 
-    try {
-      const { data: issue } = await octokit.rest.issues.create({
-        owner,
-        repo: inputData.repo,
-        title: inputData.title,
-        body: inputData.body,
-        labels: inputData.labels || [],
-      });
+    const { data: issue } = await octokit.rest.issues.create({
+      owner,
+      repo: inputData.repo,
+      title: inputData.title,
+      body: inputData.body,
+      labels: inputData.labels || [],
+    });
 
-      return {
-        success: true,
-        issue_number: issue.number,
-        issue_url: issue.html_url,
-        message: `Successfully created issue #${issue.number}`,
-      };
-    } catch (error) {
-      return {
-        success: false,
-        message: `Failed to create issue: ${error instanceof Error ? error.message : String(error)}`,
-      };
-    }
+    return {
+      success: true,
+      issue_number: issue.number,
+      issue_url: issue.html_url,
+      message: `Successfully created issue #${issue.number}`,
+    };
   },
 });
 
@@ -327,32 +320,25 @@ export const updateGitHubIssue = createTool({
   execute: async (inputData) => {
     const owner = inputData.owner || 'ffMathy';
 
-    try {
-      const updateData: IssueUpdateParams = {
-        owner,
-        repo: inputData.repo,
-        issue_number: inputData.issue_number,
-      };
+    const updateData: IssueUpdateParams = {
+      owner,
+      repo: inputData.repo,
+      issue_number: inputData.issue_number,
+    };
 
-      if (inputData.title !== undefined) updateData.title = inputData.title;
-      if (inputData.body !== undefined) updateData.body = inputData.body;
-      if (inputData.labels !== undefined) updateData.labels = inputData.labels;
-      if (inputData.state !== undefined) updateData.state = inputData.state;
+    if (inputData.title !== undefined) updateData.title = inputData.title;
+    if (inputData.body !== undefined) updateData.body = inputData.body;
+    if (inputData.labels !== undefined) updateData.labels = inputData.labels;
+    if (inputData.state !== undefined) updateData.state = inputData.state;
 
-      const { data: issue } = await octokit.rest.issues.update(updateData);
+    const { data: issue } = await octokit.rest.issues.update(updateData);
 
-      return {
-        success: true,
-        issue_number: issue.number,
-        issue_url: issue.html_url,
-        message: `Successfully updated issue #${issue.number}`,
-      };
-    } catch (error) {
-      return {
-        success: false,
-        message: `Failed to update issue: ${error instanceof Error ? error.message : String(error)}`,
-      };
-    }
+    return {
+      success: true,
+      issue_number: issue.number,
+      issue_url: issue.html_url,
+      message: `Successfully updated issue #${issue.number}`,
+    };
   },
 });
 

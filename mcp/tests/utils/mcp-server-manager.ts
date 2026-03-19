@@ -17,24 +17,23 @@ const WORKSPACE_ROOT = path.resolve(__dirname, '../../..');
 async function killProcessOnPort(port: number): Promise<void> {
   try {
     await fkill(`:${port}`, { force: true, silent: true });
-    console.log(`🧹 Killed process(es) on port ${port}`);
-  } catch (_error) {
+  } catch {
     // Silent failure - port may already be free
   }
+  console.log(`🧹 Killed process(es) on port ${port}`);
 }
 
 /**
  * Checks if the server is healthy via the health endpoint
  */
 async function isServerHealthy(): Promise<boolean> {
-  try {
-    const response = await fetch(`http://localhost:${MCP_PORT}/health`, {
+  const [healthResult] = await Promise.allSettled([
+    fetch(`http://localhost:${MCP_PORT}/health`, {
       signal: AbortSignal.timeout(2000),
-    });
-    return response.ok;
-  } catch (_error) {
-    return false;
-  }
+    }),
+  ]);
+
+  return healthResult.status === 'fulfilled' ? healthResult.value.ok : false;
 }
 
 /**
@@ -49,21 +48,18 @@ export async function isMcpServerRunning(args?: McpClientArgs): Promise<boolean>
 
   // Then try the full MCP client connection
   let client: MCPClient | null = null;
-  try {
-    client = await createMcpClient(args);
-    await client.listTools();
-    return true;
-  } catch (_error) {
+
+  const [clientResult] = await Promise.allSettled([createMcpClient(args)]);
+  if (clientResult.status !== 'fulfilled') {
     return false;
-  } finally {
-    if (client) {
-      try {
-        await client.disconnect();
-      } catch (_disconnectError) {
-        // Ignore disconnect errors during cleanup
-      }
-    }
   }
+
+  client = clientResult.value;
+
+  const [listToolsResult] = await Promise.allSettled([client.listTools()]);
+  await Promise.allSettled([client.disconnect()]);
+
+  return listToolsResult.status === 'fulfilled';
 }
 
 /**
@@ -131,11 +127,7 @@ export async function stopMcpServer(): Promise<void> {
 
   // Clean up process reference and suppress any exit code errors
   if (mcpServerProcess && !mcpServerProcess.killed) {
-    try {
-      mcpServerProcess.kill();
-    } catch (_error) {
-      // Ignore errors - process might already be dead
-    }
+    mcpServerProcess.kill();
   }
   mcpServerProcess = null;
   console.log('🛑 MCP server stopped');

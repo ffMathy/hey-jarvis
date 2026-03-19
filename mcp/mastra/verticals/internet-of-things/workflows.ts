@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import { getDeviceStateStorage, getEntityNoiseBaselineStorage } from '../../storage/index.js';
-import { isValidationError } from '../../utils/index.js';
 import { logger } from '../../utils/logger.js';
 import { createStep, createWorkflow } from '../../utils/workflows/workflow-factory.js';
 import { registerStateChange } from '../synapse/tools.js';
@@ -44,33 +43,25 @@ const calculateNoiseBaselines = createStep({
       windowSeconds: NOISE_BASELINE_HISTORY_SECONDS,
     });
 
-    try {
-      const result = await fetchHistoricalStates({
-        startTime,
-        endTime,
-        minimalResponse: true,
-      });
+    const result = await fetchHistoricalStates({
+      startTime,
+      endTime,
+      minimalResponse: true,
+    });
 
-      // Calculate baselines from history
-      const storage = await getEntityNoiseBaselineStorage();
-      const baselines = await storage.calculateBaselinesFromHistory(result.history);
+    // Calculate baselines from history
+    const storage = await getEntityNoiseBaselineStorage();
+    const baselines = await storage.calculateBaselinesFromHistory(result.history);
 
-      logger.info('Noise baselines calculated', {
-        baselinesCalculated: baselines.length,
-        entityCount: result.entityCount,
-      });
+    logger.info('Noise baselines calculated', {
+      baselinesCalculated: baselines.length,
+      entityCount: result.entityCount,
+    });
 
-      return {
-        baselinesCalculated: baselines.length,
-        timestamp: new Date().toISOString(),
-      };
-    } catch (error) {
-      logger.error('Error calculating noise baselines', { error });
-      return {
-        baselinesCalculated: 0,
-        timestamp: new Date().toISOString(),
-      };
-    }
+    return {
+      baselinesCalculated: baselines.length,
+      timestamp: new Date().toISOString(),
+    };
   },
 });
 
@@ -109,13 +100,8 @@ const fetchRecentlyChangedDevices = createStep({
       {},
     );
 
-    // Handle ValidationError case using type guard for proper type narrowing
-    if (isValidationError(result)) {
-      logger.error('IoT Monitoring: failed to fetch changed devices', { message: result.message });
-      return {
-        devices: [],
-        timestamp: new Date().toISOString(),
-      };
+    if ('error' in result) {
+      throw new Error(result.message);
     }
 
     // Group by device and filter out sensitive labels (matching old n8n behavior)
@@ -237,57 +223,50 @@ const triggerStateChangeNotifications = createStep({
       for (const entity of device.entities) {
         changesProcessed++;
 
-        try {
-          // Get the previous state from device state storage
-          const previousState = await deviceStateStorage.getState(entity.id);
+        // Get the previous state from device state storage
+        const previousState = await deviceStateStorage.getState(entity.id);
 
-          // Update the state in storage
-          await deviceStateStorage.updateState(
-            entity.id,
-            entity.newState,
-            {}, // attributes not available from getChangedDevicesSince
-            entity.lastChanged,
-          );
+        // Update the state in storage
+        await deviceStateStorage.updateState(
+          entity.id,
+          entity.newState,
+          {}, // attributes not available from getChangedDevicesSince
+          entity.lastChanged,
+        );
 
-          // Check if this is a significant change using noise baseline
-          if (await isNoiseChange(noiseBaselineStorage, entity.id, previousState, entity.newState, device.name)) {
-            filteredAsNoise++;
-            continue; // Skip this change as it's within noise threshold
-          }
-
-          // If we reach here, the change is significant (or no baseline/previous state exists)
-          if (!registerStateChange.execute) {
-            throw new Error('registerStateChange.execute is not defined');
-          }
-          await registerStateChange.execute(
-            {
-              source: 'internet-of-things',
-              stateType: 'device_state_change',
-              stateData: {
-                deviceId: device.id,
-                deviceName: device.name,
-                entityId: entity.id,
-                newState: entity.newState,
-                lastChanged: entity.lastChanged,
-                detectedAt: inputData.timestamp,
-              },
-            },
-            {},
-          );
-
-          notificationsTriggered++;
-
-          logger.info('State change registered', {
-            entityId: entity.id,
-            deviceName: device.name,
-            // Do not log newState value as it may contain sensitive data
-          });
-        } catch (error) {
-          logger.error('Failed to register state change', {
-            entityId: entity.id,
-            error,
-          });
+        // Check if this is a significant change using noise baseline
+        if (await isNoiseChange(noiseBaselineStorage, entity.id, previousState, entity.newState, device.name)) {
+          filteredAsNoise++;
+          continue; // Skip this change as it's within noise threshold
         }
+
+        // If we reach here, the change is significant (or no baseline/previous state exists)
+        if (!registerStateChange.execute) {
+          throw new Error('registerStateChange.execute is not defined');
+        }
+        await registerStateChange.execute(
+          {
+            source: 'internet-of-things',
+            stateType: 'device_state_change',
+            stateData: {
+              deviceId: device.id,
+              deviceName: device.name,
+              entityId: entity.id,
+              newState: entity.newState,
+              lastChanged: entity.lastChanged,
+              detectedAt: inputData.timestamp,
+            },
+          },
+          {},
+        );
+
+        notificationsTriggered++;
+
+        logger.info('State change registered', {
+          entityId: entity.id,
+          deviceName: device.name,
+          // Do not log newState value as it may contain sensitive data
+        });
       }
     }
 

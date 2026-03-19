@@ -210,15 +210,11 @@ describe('Ollama Provider Error Handling', () => {
 
     const model = invalidOllama('qwen3:0.6b');
 
-    try {
-      await model.doGenerate({
+    // Expected to fail with a connection error
+    await expect(
+      model.doGenerate({
         prompt: [{ role: 'user', content: [{ type: 'text', text: 'Hello' }] }],
-      });
-      // Should not reach here
-      expect(true).toBe(false);
-    } catch (error) {
-      // Expected to fail with connection error
-      expect(error).toBeDefined();
-    }
+      }),
+    ).rejects.toBeDefined();
   }, 10000);
 });

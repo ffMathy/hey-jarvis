@@ -80,31 +80,33 @@ export async function retryWithBackoff<T>(fn: () => Promise<T>, options: RetryOp
   let lastError: Error | undefined;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      return await fn();
-    } catch (error) {
-      lastError = error as Error;
+    const [result] = await Promise.allSettled([fn()]);
 
-      // Check if we should retry this error
-      if (!shouldRetry(lastError)) {
-        throw lastError;
-      }
-
-      // If this was the last attempt, don't wait - just throw
-      if (attempt >= maxRetries) {
-        break;
-      }
-
-      const delayMs = calculateBackoffDelay(attempt, initialDelay, maxDelay, backoffMultiplier);
-
-      // Call the retry callback if provided
-      if (onRetry) {
-        onRetry(lastError, attempt, delayMs);
-      }
-
-      // Wait before retrying
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    if (result.status === 'fulfilled') {
+      return result.value;
     }
+
+    lastError = result.reason as Error;
+
+    // Check if we should retry this error
+    if (!shouldRetry(lastError)) {
+      throw lastError;
+    }
+
+    // If this was the last attempt, don't wait - just throw
+    if (attempt >= maxRetries) {
+      break;
+    }
+
+    const delayMs = calculateBackoffDelay(attempt, initialDelay, maxDelay, backoffMultiplier);
+
+    // Call the retry callback if provided
+    if (onRetry) {
+      onRetry(lastError, attempt, delayMs);
+    }
+
+    // Wait before retrying
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
   }
 
   // All retries exhausted

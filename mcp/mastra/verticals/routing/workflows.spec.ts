@@ -1,13 +1,12 @@
-import type { Agent } from '@mastra/core/agent';
 import { z } from 'zod';
 import {
   type AgentProvider,
-  type DagGenerator,
   getCurrentDAG,
   getNextInstructionsWorkflow,
   getTaskCompletedListenersCount,
   injectTask,
   routePromptWorkflow,
+  type SupervisorExecutor,
   setAgentProvider,
   setWorkflowState,
   simulateTaskCompletion,
@@ -18,7 +17,16 @@ interface MockToolConfig {
   inputParams: string[];
 }
 
-function createMockAgent(id: string, description: string, tools?: MockToolConfig[]): Agent {
+/** Structural subset of Agent that satisfies what workflows.ts actually uses at runtime */
+interface MockAgent {
+  id: string;
+  name: string;
+  getDescription(): string;
+  generate(prompt: unknown): Promise<{ text: string }>;
+  listTools(): Promise<Record<string, { inputSchema?: { shape: Record<string, unknown> } }>>;
+}
+
+function createMockAgent(id: string, description: string, tools?: MockToolConfig[]): MockAgent {
   const mockTools: Record<string, { inputSchema?: { shape: Record<string, unknown> } }> = {};
 
   if (tools) {
@@ -33,13 +41,13 @@ function createMockAgent(id: string, description: string, tools?: MockToolConfig
     }
   }
 
-  const mockAgent = {
+  const mockAgent: MockAgent = {
     id,
     name: id,
     getDescription: () => description,
     generate: jest.fn().mockResolvedValue({ text: `Mock response from ${id}` }),
     listTools: jest.fn().mockResolvedValue(mockTools),
-  } as unknown as Agent;
+  };
   return mockAgent;
 }
 
@@ -49,6 +57,42 @@ function assertWorkflowSuccess<T>(workflowResult: { status: string; result?: T }
     throw new Error(`Workflow failed with status: ${workflowResult.status}`);
   }
   return workflowResult.result as T;
+}
+
+async function startWorkflowRun<TInput, TResult>(
+  workflow: {
+    createRun(): Promise<{ start: (args: { inputData: TInput }) => Promise<TResult> }>;
+  },
+  inputData: TInput,
+): Promise<TResult> {
+  const run = await workflow.createRun();
+  return run.start({ inputData });
+}
+
+function createMockSupervisorExecutor(agentIds: string[]): SupervisorExecutor {
+  return async (userQuery, agents) => {
+    const targetAgentIds = new Set(agentIds);
+    // Phase 1: Inject all tasks synchronously (before any await)
+    for (const agent of agents) {
+      if (targetAgentIds.has(agent.id)) {
+        injectTask({
+          id: `${agent.id}-task`,
+          agent: agent.id,
+          prompt: userQuery,
+          dependsOn: [],
+        });
+      }
+    }
+    // Phase 2: Execute tasks (with awaits)
+    for (const task of getCurrentDAG().tasks) {
+      if (task.result !== undefined) continue;
+      const agent = agents.find((a) => a.id === task.agent);
+      if (agent) {
+        const result = await agent.generate(task.prompt);
+        simulateTaskCompletion(task.id, result.text);
+      }
+    }
+  };
 }
 
 describe('Routing Workflows', () => {
@@ -76,7 +120,7 @@ describe('Routing Workflows', () => {
           dependsOn: [],
         });
 
-        const instructionsPromise = getNextInstructionsWorkflow.createRun().then((run) => run.start({ inputData: {} }));
+        const instructionsPromise = startWorkflowRun(getNextInstructionsWorkflow, {});
 
         await new Promise((resolve) => setTimeout(resolve, 100));
 
@@ -97,7 +141,7 @@ describe('Routing Workflows', () => {
         const mockAgentProvider: AgentProvider = async () => [mockAgent];
         setAgentProvider(mockAgentProvider);
 
-        const instructionsPromise = getNextInstructionsWorkflow.createRun().then((run) => run.start({ inputData: {} }));
+        const instructionsPromise = startWorkflowRun(getNextInstructionsWorkflow, {});
 
         await new Promise((resolve) => setTimeout(resolve, 50));
 
@@ -125,9 +169,7 @@ describe('Routing Workflows', () => {
         setAgentProvider(mockAgentProvider);
 
         const startTime = Date.now();
-        const workflowResult = await getNextInstructionsWorkflow
-          .createRun()
-          .then((run) => run.start({ inputData: {} }));
+        const workflowResult = await startWorkflowRun(getNextInstructionsWorkflow, {});
         const elapsed = Date.now() - startTime;
 
         expect(elapsed).toBeGreaterThanOrEqual(14900);
@@ -150,7 +192,7 @@ describe('Routing Workflows', () => {
           dependsOn: [],
         });
 
-        const instructionsPromise = getNextInstructionsWorkflow.createRun().then((run) => run.start({ inputData: {} }));
+        const instructionsPromise = startWorkflowRun(getNextInstructionsWorkflow, {});
 
         await new Promise((resolve) => setTimeout(resolve, 50));
 
@@ -179,7 +221,7 @@ describe('Routing Workflows', () => {
           dependsOn: ['get-location'],
         });
 
-        const instructionsPromise = getNextInstructionsWorkflow.createRun().then((run) => run.start({ inputData: {} }));
+        const instructionsPromise = startWorkflowRun(getNextInstructionsWorkflow, {});
 
         await new Promise((resolve) => setTimeout(resolve, 50));
 
@@ -210,7 +252,7 @@ describe('Routing Workflows', () => {
           dependsOn: [],
         });
 
-        const promise1 = getNextInstructionsWorkflow.createRun().then((run) => run.start({ inputData: {} }));
+        const promise1 = startWorkflowRun(getNextInstructionsWorkflow, {});
 
         await new Promise((resolve) => setTimeout(resolve, 50));
         simulateTaskCompletion('task-1', 'Result 1');
@@ -220,7 +262,7 @@ describe('Routing Workflows', () => {
         expect(result1.completedTaskResults).toHaveLength(1);
         expect(result1.completedTaskResults?.[0].id).toBe('task-1');
 
-        const promise2 = getNextInstructionsWorkflow.createRun().then((run) => run.start({ inputData: {} }));
+        const promise2 = startWorkflowRun(getNextInstructionsWorkflow, {});
 
         await new Promise((resolve) => setTimeout(resolve, 50));
         simulateTaskCompletion('task-2', 'Result 2');
@@ -247,7 +289,7 @@ describe('Routing Workflows', () => {
 
         expect(getCurrentDAG().tasks).toHaveLength(1);
 
-        const instructionsPromise = getNextInstructionsWorkflow.createRun().then((run) => run.start({ inputData: {} }));
+        const instructionsPromise = startWorkflowRun(getNextInstructionsWorkflow, {});
 
         await new Promise((resolve) => setTimeout(resolve, 50));
         simulateTaskCompletion('single-task', 'Done');
@@ -279,7 +321,7 @@ describe('Routing Workflows', () => {
           dependsOn: [],
         });
 
-        const instructionsPromise = getNextInstructionsWorkflow.createRun().then((run) => run.start({ inputData: {} }));
+        const instructionsPromise = startWorkflowRun(getNextInstructionsWorkflow, {});
 
         await new Promise((resolve) => setTimeout(resolve, 50));
         simulateTaskCompletion('task-1', 'Done 1');
@@ -292,45 +334,20 @@ describe('Routing Workflows', () => {
   });
 
   describe('routePromptWorkflow with mock agents', () => {
-    function createMockDagGenerator(agents: { id: string }[]): DagGenerator {
-      return async (agentInput, userQuery) => {
-        const agentIds = new Set(agents.map((a) => a.id));
-        const tasks: { id: string; agent: string; prompt: string; dependsOn: string[] }[] = [];
-
-        for (const agent of agentInput.agents) {
-          if (agentIds.has(agent.id)) {
-            tasks.push({
-              id: `${agent.id}-task`,
-              agent: agent.id,
-              prompt: userQuery,
-              dependsOn: [],
-            });
-          }
-        }
-
-        return { tasks };
-      };
-    }
-
     it('should list available mock agents', async () => {
       const weatherAgent = createMockAgent('weather', 'Provides weather information for any location');
       const calendarAgent = createMockAgent('calendar', 'Manages calendar events and schedules');
 
       const mockAgentProvider: AgentProvider = async () => [weatherAgent, calendarAgent];
-      setAgentProvider(mockAgentProvider);
       setWorkflowState({
         agentProvider: mockAgentProvider,
-        dagGenerator: createMockDagGenerator([weatherAgent, calendarAgent]),
+        supervisorExecutor: createMockSupervisorExecutor([weatherAgent.id, calendarAgent.id]),
       });
 
-      const _result = await routePromptWorkflow.createRun().then((run) =>
-        run.start({
-          inputData: {
-            userQuery: 'What is the weather in Aarhus?',
-            async: false,
-          },
-        }),
-      );
+      const _result = await startWorkflowRun(routePromptWorkflow, {
+        userQuery: 'What is the weather in Aarhus?',
+        async: false,
+      });
 
       const dag = getCurrentDAG();
       expect(dag.tasks.length).toBeGreaterThanOrEqual(1);
@@ -342,16 +359,15 @@ describe('Routing Workflows', () => {
     it('should start DAG execution and return tasks in progress with instructions', async () => {
       const weatherAgent = createMockAgent('weather', 'Provides weather information for any location');
       const mockAgentProvider: AgentProvider = async () => [weatherAgent];
-      setWorkflowState({ agentProvider: mockAgentProvider, dagGenerator: createMockDagGenerator([weatherAgent]) });
+      setWorkflowState({
+        agentProvider: mockAgentProvider,
+        supervisorExecutor: createMockSupervisorExecutor([weatherAgent.id]),
+      });
 
-      const workflowResult = await routePromptWorkflow.createRun().then((run) =>
-        run.start({
-          inputData: {
-            userQuery: 'What is the weather?',
-            async: false,
-          },
-        }),
-      );
+      const workflowResult = await startWorkflowRun(routePromptWorkflow, {
+        userQuery: 'What is the weather?',
+        async: false,
+      });
 
       const result = assertWorkflowSuccess(workflowResult);
       expect(result.taskIdsInProgress).toBeDefined();
@@ -364,16 +380,15 @@ describe('Routing Workflows', () => {
     it('should return end call instructions when async flag is true', async () => {
       const weatherAgent = createMockAgent('weather', 'Provides weather information for any location');
       const mockAgentProvider: AgentProvider = async () => [weatherAgent];
-      setWorkflowState({ agentProvider: mockAgentProvider, dagGenerator: createMockDagGenerator([weatherAgent]) });
+      setWorkflowState({
+        agentProvider: mockAgentProvider,
+        supervisorExecutor: createMockSupervisorExecutor([weatherAgent.id]),
+      });
 
-      const workflowResult = await routePromptWorkflow.createRun().then((run) =>
-        run.start({
-          inputData: {
-            userQuery: 'What is the weather?',
-            async: true,
-          },
-        }),
-      );
+      const workflowResult = await startWorkflowRun(routePromptWorkflow, {
+        userQuery: 'What is the weather?',
+        async: true,
+      });
 
       const result = assertWorkflowSuccess(workflowResult);
       expect(result.taskIdsInProgress).toBeDefined();
@@ -389,7 +404,7 @@ describe('Routing Workflows', () => {
       const mockAgentProvider: AgentProvider = async () => [weatherAgent];
       setAgentProvider(mockAgentProvider);
 
-      const instructionsPromise = getNextInstructionsWorkflow.createRun().then((run) => run.start({ inputData: {} }));
+      const instructionsPromise = startWorkflowRun(getNextInstructionsWorkflow, {});
 
       await new Promise((resolve) => setTimeout(resolve, 100));
 
@@ -418,8 +433,8 @@ describe('Routing Workflows', () => {
       const mockAgentProvider: AgentProvider = async () => [weatherAgent];
       setAgentProvider(mockAgentProvider);
 
-      const promise1 = getNextInstructionsWorkflow.createRun().then((run) => run.start({ inputData: {} }));
-      const promise2 = getNextInstructionsWorkflow.createRun().then((run) => run.start({ inputData: {} }));
+      const promise1 = startWorkflowRun(getNextInstructionsWorkflow, {});
+      const promise2 = startWorkflowRun(getNextInstructionsWorkflow, {});
 
       await new Promise((resolve) => setTimeout(resolve, 100));
       expect(getTaskCompletedListenersCount()).toBe(2);

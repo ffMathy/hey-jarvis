@@ -1,5 +1,4 @@
 import { beforeAll, describe, expect, it } from 'bun:test';
-import { isValidationError } from '../../utils/test-helpers/validation-error.js';
 import { getAllTaskLists, getAllTasks } from './tools';
 
 describe('Todo List Tools Integration Tests', () => {
@@ -20,11 +19,6 @@ describe('Todo List Tools Integration Tests', () => {
     it('should retrieve all task lists', async () => {
       const result = await getAllTaskLists.execute({});
 
-      // Check for validation errors
-      if (isValidationError(result)) {
-        throw new Error(`Validation failed: ${result.message}`);
-      }
-
       // Validate structure
       expect(result).toBeDefined();
       expect(Array.isArray(result.taskLists)).toBe(true);
@@ -40,11 +34,6 @@ describe('Todo List Tools Integration Tests', () => {
         taskListId: '@default',
         maxResults: 10,
       });
-
-      // Check for validation errors
-      if (isValidationError(result)) {
-        throw new Error(`Validation failed: ${result.message}`);
-      }
 
       // Validate structure
       expect(result).toBeDefined();

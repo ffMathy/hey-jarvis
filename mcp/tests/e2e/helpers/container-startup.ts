@@ -18,15 +18,13 @@ export interface ContainerStartupOptions {
 }
 
 async function isServerReady(url: string): Promise<boolean> {
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
-    const response = await fetch(url, { signal: controller.signal });
-    clearTimeout(timeout);
-    return response.status < 500;
-  } catch {
-    return false;
-  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+
+  const [result] = await Promise.allSettled([fetch(url, { signal: controller.signal })]);
+  clearTimeout(timeout);
+
+  return result.status === 'fulfilled' ? result.value.status < 500 : false;
 }
 
 /**
@@ -79,24 +77,11 @@ function createCleanupFunction(dockerProcess: ChildProcess): () => Promise<void>
     console.log('Cleaning up Docker container...');
 
     if (dockerProcess?.pid) {
-      try {
-        process.kill(dockerProcess.pid, 'SIGTERM');
-      } catch {
-        // ESRCH is expected for detached docker processes
-      }
+      dockerProcess.kill('SIGTERM');
     }
 
-    try {
-      execSync(`docker stop ${CONTAINER_NAME}`, { stdio: 'inherit' });
-    } catch {
-      // Container may already be stopped
-    }
-
-    try {
-      execSync(`docker rm -f ${CONTAINER_NAME}`, { stdio: 'inherit' });
-    } catch {
-      // Container may already be removed
-    }
+    execSync(`docker stop ${CONTAINER_NAME} || true`, { stdio: 'inherit' });
+    execSync(`docker rm -f ${CONTAINER_NAME} || true`, { stdio: 'inherit' });
 
     await sleep(2000);
   };
@@ -112,12 +97,8 @@ export async function startContainer(options: ContainerStartupOptions = {}): Pro
   const startTime = Date.now();
 
   // Stop any existing test container
-  try {
-    execSync(`docker stop ${CONTAINER_NAME} 2>/dev/null || true`, { stdio: 'inherit' });
-    execSync(`docker rm -f ${CONTAINER_NAME} 2>/dev/null || true`, { stdio: 'inherit' });
-  } catch {
-    // Ignore errors
-  }
+  execSync(`docker stop ${CONTAINER_NAME} 2>/dev/null || true`, { stdio: 'inherit' });
+  execSync(`docker rm -f ${CONTAINER_NAME} 2>/dev/null || true`, { stdio: 'inherit' });
 
   // Build the MCP Docker image
   console.log('🐳 Building MCP Docker image...');

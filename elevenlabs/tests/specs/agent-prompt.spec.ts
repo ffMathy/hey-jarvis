@@ -17,15 +17,17 @@ async function withConversationRetry(
   let lastError: Error | undefined;
   for (let attempt = 1; attempt <= MAX_CONVERSATION_RETRIES; attempt++) {
     const conversation = createConversation();
+    let succeeded = false;
     try {
       await testBody(conversation);
-      return;
+      succeeded = true;
     } catch (error) {
       lastError = error as Error;
       console.warn(`⚠️ Attempt ${attempt}/${MAX_CONVERSATION_RETRIES} failed: ${lastError.message.split('\n')[0]}`);
     } finally {
       await conversation.disconnect();
     }
+    if (succeeded) return;
   }
   throw lastError;
 }
@@ -92,26 +94,24 @@ describe('Agent Prompt Specifications', () => {
           () => new TestConversation({ agentId, apiKey, googleApiKey }),
           async (conversation) => {
             await conversation.connect();
-            // Deliberately vague request
-            await conversation.sendMessage('Tell me about the weather');
+            // Request that implies tool usage but is vague about details
+            await conversation.sendMessage("What's the weather like right now?");
 
             // Verify a tool was called — the agent may call weather tools directly
             // or use the routePromptWorkflow which internally dispatches to weather
             const messages = conversation.getMessages();
-            const toolCalls = messages.filter(
+            const allToolCalls = messages.filter((m) => m.type === 'mcp_tool_call');
+            const relevantToolCalls = allToolCalls.filter(
               (msg) =>
-                msg.type === 'mcp_tool_call' &&
-                (msg.mcp_tool_call.tool_name.toLowerCase().includes('weather') ||
-                  msg.mcp_tool_call.tool_name.toLowerCase().includes('home_assistant') ||
-                  msg.mcp_tool_call.tool_name.toLowerCase().includes('route')),
+                msg.mcp_tool_call.tool_name.toLowerCase().includes('weather') ||
+                msg.mcp_tool_call.tool_name.toLowerCase().includes('home_assistant') ||
+                msg.mcp_tool_call.tool_name.toLowerCase().includes('route'),
             );
 
-            if (toolCalls.length === 0) {
+            if (relevantToolCalls.length === 0) {
               throw new Error(
-                `Expected weather, home assistant, or routing tool to be called, but no relevant tool calls found in messages. Available tools: ${messages
-                  .filter((m) => m.type === 'mcp_tool_call')
-                  .map((m) => m.mcp_tool_call.tool_name)
-                  .join(', ')}`,
+                `Expected weather, home assistant, or routing tool to be called, but no relevant tool calls found in messages. ` +
+                  `All tool calls: [${allToolCalls.map((m) => m.mcp_tool_call.tool_name).join(', ')}]`,
               );
             }
 

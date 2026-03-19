@@ -48,62 +48,64 @@ function extractWorkflowError(result: AnyWorkflowResult): string {
  */
 export function createWorkflowApiHandler(
   workflow: AnyWorkflow,
-): (req: Request, res: Response, next: NextFunction) => Promise<void> {
+): (req: Request, res: Response, next: NextFunction) => void {
   const workflowName = workflow.name ?? workflow.id;
 
-  return async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const inputSchema = workflow.inputSchema;
+  return (req: Request, res: Response, next: NextFunction): void => {
+    void (async (): Promise<void> => {
+      try {
+        const inputSchema = workflow.inputSchema;
 
-      if (inputSchema) {
-        const parseResult = (inputSchema as ZodTypeAny).safeParse(req.body);
+        if (inputSchema) {
+          const parseResult = (inputSchema as ZodTypeAny).safeParse(req.body);
 
-        if (!parseResult.success) {
-          const errorMessage = formatValidationErrors(parseResult.error);
-          res.status(400).json({
+          if (!parseResult.success) {
+            const errorMessage = formatValidationErrors(parseResult.error);
+            res.status(400).json({
+              success: false,
+              message: `Validation failed: ${errorMessage}`,
+            } satisfies WorkflowApiResponse);
+            return;
+          }
+        }
+
+        console.log(`[API] ${workflowName} request received`);
+
+        const run = await workflow.createRun();
+        const result = await run.start({
+          inputData: req.body,
+        });
+
+        if (result.status !== 'success') {
+          const errorMessage = extractWorkflowError(result);
+
+          logger.error('[API] Workflow failed', {
+            workflowName,
+            error: errorMessage,
+          });
+          res.status(500).json({
             success: false,
-            message: `Validation failed: ${errorMessage}`,
+            message: `Failed to execute ${workflowName}`,
+            error: errorMessage,
           } satisfies WorkflowApiResponse);
           return;
         }
-      }
 
-      console.log(`[API] ${workflowName} request received`);
+        logger.info('[API] Workflow completed successfully', { workflowName });
 
-      const run = await workflow.createRun();
-      const result = await run.start({
-        inputData: req.body,
-      });
-
-      if (result.status !== 'success') {
-        const errorMessage = extractWorkflowError(result);
-
-        logger.error('[API] Workflow failed', {
-          workflowName,
-          error: errorMessage,
-        });
-        res.status(500).json({
-          success: false,
-          message: `Failed to execute ${workflowName}`,
-          error: errorMessage,
+        res.json({
+          success: true,
+          message: `${workflowName} completed successfully`,
+          data: result.result,
         } satisfies WorkflowApiResponse);
-        return;
+      } catch (error: unknown) {
+        logger.error('[API] Unexpected error in endpoint', {
+          workflowName,
+          error,
+        });
+        next(error);
       }
-
-      logger.info('[API] Workflow completed successfully', { workflowName });
-
-      res.json({
-        success: true,
-        message: `${workflowName} completed successfully`,
-        data: result.result,
-      } satisfies WorkflowApiResponse);
-    } catch (error) {
-      logger.error('[API] Unexpected error in endpoint', {
-        workflowName,
-        error,
-      });
-      next(error);
-    }
+    })();
   };
 }
 

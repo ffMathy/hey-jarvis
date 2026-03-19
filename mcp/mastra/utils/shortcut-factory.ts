@@ -43,11 +43,14 @@ interface CreateShortcutConfig<TInput, TOutput> {
  * ```
  */
 export function createShortcut<TInput, TOutput>(config: CreateShortcutConfig<TInput, TOutput>) {
-  // Validate that the tool has the required schemas
+  // Validate that the tool has the required schemas and execute function
   if (!config.tool.inputSchema || !config.tool.outputSchema) {
     throw new Error(
       `Tool ${config.tool.id || 'unknown'} must have both inputSchema and outputSchema defined for use in shortcuts`,
     );
+  }
+  if (!config.tool.execute) {
+    throw new Error(`Tool ${config.tool.id || 'unknown'} must have an execute function defined for use in shortcuts`);
   }
 
   return mastraCreateTool({

@@ -32,11 +32,7 @@ describe('MCP Server Connection Tests', () => {
 
   afterEach(async () => {
     if (mcpClient) {
-      try {
-        await mcpClient.disconnect();
-      } catch (_error) {
-        // Ignore disconnect errors during cleanup
-      }
+      await Promise.allSettled([mcpClient.disconnect()]);
       mcpClient = null;
     }
   });
@@ -70,23 +66,16 @@ describe('MCP Server Connection Tests', () => {
       timeout: 5000, // Short timeout for this test
     });
 
-    const listToolsResult = await clientWithBadUrl
-      .listTools()
-      .then((tools) => ({ ok: true as const, tools }))
-      .catch((error) => ({ ok: false as const, error }));
+    const [listToolsResult] = await Promise.allSettled([clientWithBadUrl.listTools()]);
 
-    if (listToolsResult.ok) {
-      expect(listToolsResult.tools).toBeDefined();
-      expect(Object.keys(listToolsResult.tools)).toHaveLength(0);
+    if (listToolsResult.status === 'fulfilled') {
+      expect(listToolsResult.value).toBeDefined();
+      expect(Object.keys(listToolsResult.value)).toHaveLength(0);
     } else {
-      expect(listToolsResult.error).toBeDefined();
+      expect(listToolsResult.reason).toBeDefined();
     }
 
-    try {
-      await clientWithBadUrl.disconnect();
-    } catch (_error) {
-      // Ignore disconnect errors for failed/never-established connections
-    }
+    await Promise.allSettled([clientWithBadUrl.disconnect()]);
     console.log('✓ Connection errors handled gracefully');
   });
 });

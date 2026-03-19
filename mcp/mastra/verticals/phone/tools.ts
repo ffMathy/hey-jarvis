@@ -35,44 +35,37 @@ export const sendTextMessage = createTool({
     messageSid: z.string().optional(),
   }),
   execute: async (inputData) => {
-    try {
-      const { phoneNumber, message } = inputData;
+    const { phoneNumber, message } = inputData;
 
-      const accountSid = process.env.HEY_JARVIS_TWILIO_ACCOUNT_SID;
-      const authToken = process.env.HEY_JARVIS_TWILIO_AUTH_TOKEN;
-      const fromNumber = process.env.HEY_JARVIS_TWILIO_PHONE_NUMBER;
+    const accountSid = process.env.HEY_JARVIS_TWILIO_ACCOUNT_SID;
+    const authToken = process.env.HEY_JARVIS_TWILIO_AUTH_TOKEN;
+    const fromNumber = process.env.HEY_JARVIS_TWILIO_PHONE_NUMBER;
 
-      if (!accountSid) {
-        throw new Error('Twilio Account SID not configured. Set HEY_JARVIS_TWILIO_ACCOUNT_SID environment variable.');
-      }
-
-      if (!authToken) {
-        throw new Error('Twilio Auth Token not configured. Set HEY_JARVIS_TWILIO_AUTH_TOKEN environment variable.');
-      }
-
-      if (!fromNumber) {
-        throw new Error('Twilio phone number not configured. Set HEY_JARVIS_TWILIO_PHONE_NUMBER environment variable.');
-      }
-
-      const client = twilio(accountSid, authToken);
-
-      const response = await client.messages.create({
-        body: message,
-        from: fromNumber,
-        to: phoneNumber,
-      });
-
-      return {
-        success: true,
-        message: `Text message sent successfully to ${phoneNumber}`,
-        messageSid: response.sid,
-      };
-    } catch (error) {
-      return {
-        success: false,
-        message: `Error sending text message: ${error instanceof Error ? error.message : String(error)}`,
-      };
+    if (!accountSid) {
+      throw new Error('Twilio Account SID not configured. Set HEY_JARVIS_TWILIO_ACCOUNT_SID environment variable.');
     }
+
+    if (!authToken) {
+      throw new Error('Twilio Auth Token not configured. Set HEY_JARVIS_TWILIO_AUTH_TOKEN environment variable.');
+    }
+
+    if (!fromNumber) {
+      throw new Error('Twilio phone number not configured. Set HEY_JARVIS_TWILIO_PHONE_NUMBER environment variable.');
+    }
+
+    const client = twilio(accountSid, authToken);
+
+    const response = await client.messages.create({
+      body: message,
+      from: fromNumber,
+      to: phoneNumber,
+    });
+
+    return {
+      success: true,
+      message: `Text message sent successfully to ${phoneNumber}`,
+      messageSid: response.sid,
+    };
   },
 });
 
@@ -106,58 +99,51 @@ export const initiatePhoneCall = createTool({
     callSid: z.string().optional(),
   }),
   execute: async (inputData) => {
-    try {
-      const { phoneNumber, firstMessage } = inputData;
+    const { phoneNumber, firstMessage } = inputData;
 
-      const apiKey = process.env.HEY_JARVIS_ELEVENLABS_API_KEY;
-      const agentId = process.env.HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID || process.env.HEY_JARVIS_ELEVENLABS_AGENT_ID;
+    const apiKey = process.env.HEY_JARVIS_ELEVENLABS_API_KEY;
+    const agentId = process.env.HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID || process.env.HEY_JARVIS_ELEVENLABS_AGENT_ID;
 
-      if (!apiKey) {
-        throw new Error('ElevenLabs API key not configured. Set HEY_JARVIS_ELEVENLABS_API_KEY environment variable.');
-      }
+    if (!apiKey) {
+      throw new Error('ElevenLabs API key not configured. Set HEY_JARVIS_ELEVENLABS_API_KEY environment variable.');
+    }
 
-      if (!agentId) {
-        throw new Error(
-          'ElevenLabs agent ID not configured. Set HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID or HEY_JARVIS_ELEVENLABS_AGENT_ID environment variable.',
-        );
-      }
+    if (!agentId) {
+      throw new Error(
+        'ElevenLabs agent ID not configured. Set HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID or HEY_JARVIS_ELEVENLABS_AGENT_ID environment variable.',
+      );
+    }
 
-      const client = new ElevenLabsClient({ apiKey });
+    const client = new ElevenLabsClient({ apiKey });
 
-      const response = await client.conversationalAi.twilio.outboundCall({
-        agentId,
-        agentPhoneNumberId: ELEVENLABS_PHONE_NUMBER_ID,
-        toNumber: phoneNumber,
-        conversationInitiationClientData: {
-          conversationConfigOverride: {
-            agent: {
-              firstMessage,
-            },
+    const response = await client.conversationalAi.twilio.outboundCall({
+      agentId,
+      agentPhoneNumberId: ELEVENLABS_PHONE_NUMBER_ID,
+      toNumber: phoneNumber,
+      conversationInitiationClientData: {
+        conversationConfigOverride: {
+          agent: {
+            firstMessage,
           },
         },
-      });
+      },
+    });
 
-      if (response.success) {
-        return {
-          success: true,
-          message: `Phone call initiated successfully to ${phoneNumber}`,
-          conversationId: response.conversationId,
-          callSid: response.callSid,
-        };
-      }
-
+    if (response.success) {
       return {
-        success: false,
-        message: response.message || 'Failed to initiate phone call',
+        success: true,
+        message: `Phone call initiated successfully to ${phoneNumber}`,
         conversationId: response.conversationId,
         callSid: response.callSid,
       };
-    } catch (error) {
-      return {
-        success: false,
-        message: `Error initiating phone call: ${error instanceof Error ? error.message : String(error)}`,
-      };
     }
+
+    return {
+      success: false,
+      message: response.message || 'Failed to initiate phone call',
+      conversationId: response.conversationId,
+      callSid: response.callSid,
+    };
   },
 });
 

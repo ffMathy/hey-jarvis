@@ -41,43 +41,38 @@ export const stateChangeNotificationWorkflow = createWorkflow({
           stateType: inputData.stateType,
         });
 
-        try {
-          // Save to memory for semantic recall
-          const memory = await createMemory();
-          await memory.saveMessages({
-            messages: [
-              {
-                id: `state-change-${Date.now()}`,
-                role: 'system',
-                content: {
-                  format: 2,
-                  parts: [
-                    {
-                      type: 'text',
-                      text: `State change registered: ${inputData.stateType} from ${inputData.source}. Data: ${JSON.stringify(inputData.stateData)}`,
-                    },
-                  ],
-                },
-                createdAt: new Date(),
+        // Save to memory for semantic recall
+        const memory = await createMemory();
+        await memory.saveMessages({
+          messages: [
+            {
+              id: `state-change-${Date.now()}`,
+              role: 'system',
+              content: {
+                format: 2,
+                parts: [
+                  {
+                    type: 'text',
+                    text: `State change registered: ${inputData.stateType} from ${inputData.source}. Data: ${JSON.stringify(inputData.stateData)}`,
+                  },
+                ],
               },
-            ],
-          });
+              createdAt: new Date(),
+            },
+          ],
+        });
 
-          logger.info('State change saved to memory', {
-            stateType: inputData.stateType,
-            source: inputData.source,
-          });
+        logger.info('State change saved to memory', {
+          stateType: inputData.stateType,
+          source: inputData.source,
+        });
 
-          return {
-            source: inputData.source,
-            stateType: inputData.stateType,
-            stateData: inputData.stateData,
-            memorySaved: true,
-          };
-        } catch (error) {
-          logger.error('Failed to save state change to memory', { error });
-          throw error;
-        }
+        return {
+          source: inputData.source,
+          stateType: inputData.stateType,
+          stateData: inputData.stateData,
+          memorySaved: true,
+        };
       },
     }),
   )
@@ -114,33 +109,24 @@ Data: ${JSON.stringify(inputData.stateData, null, 2)}
 
 Analyze this state change using your working memory and context. Decide if the user should be notified or if any other action is needed. If you decide to notify, delegate to the Notification agent with a clear message to send.`;
 
-        try {
-          // Execute agent network - the reactor will decide and potentially call notification agent
-          const networkStream = await reactorAgent.network(analysisPrompt);
+        // Execute agent network - the reactor will decide and potentially call notification agent
+        const networkStream = await reactorAgent.network(analysisPrompt);
 
-          // Wait for the network execution to complete
-          const workflowResult = await networkStream.result;
+        // Wait for the network execution to complete
+        const workflowResult = await networkStream.result;
 
-          if (!workflowResult) {
-            return {
-              registered: true,
-              analyzed: false,
-              reasoning: 'No result from agent network',
-            };
-          }
-
-          return {
-            registered: true,
-            analyzed: true,
-          };
-        } catch (error) {
-          mastra.getLogger()?.error('Failed to execute agent network:', error);
+        if (!workflowResult) {
           return {
             registered: true,
             analyzed: false,
-            reasoning: `Network execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            reasoning: 'No result from agent network',
           };
         }
+
+        return {
+          registered: true,
+          analyzed: true,
+        };
       },
     }),
   )

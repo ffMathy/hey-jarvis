@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'bun:test';
-import { isValidationError } from '../../utils/test-helpers/validation-error.js';
 import { synapseTools } from './tools';
 
 describe('Synapse Tools Integration Tests', () => {
@@ -13,11 +12,6 @@ describe('Synapse Tools Integration Tests', () => {
           timestamp: new Date().toISOString(),
         },
       });
-
-      // Check for validation errors
-      if (isValidationError(result)) {
-        throw new Error(`Validation failed: ${result.message}`);
-      }
 
       // Validate structure
       expect(result).toBeDefined();
@@ -35,11 +29,6 @@ describe('Synapse Tools Integration Tests', () => {
   describe('getStateChangeBatcherStats', () => {
     it('should return batcher statistics', async () => {
       const result = await synapseTools.getStateChangeBatcherStats.execute({});
-
-      // Check for validation errors
-      if (isValidationError(result)) {
-        throw new Error(`Validation failed: ${result.message}`);
-      }
 
       // Validate structure
       expect(result).toBeDefined();
@@ -69,11 +58,6 @@ describe('Synapse Tools Integration Tests', () => {
 
       // Then flush
       const result = await synapseTools.flushStateChanges.execute({});
-
-      // Check for validation errors
-      if (isValidationError(result)) {
-        throw new Error(`Validation failed: ${result.message}`);
-      }
 
       // Validate structure
       expect(result).toBeDefined();

@@ -187,7 +187,8 @@ export const getTravelTime = createTool({
       durationInTraffic: element.duration_in_traffic,
       startAddress: response.data.origin_addresses[0],
       endAddress: response.data.destination_addresses[0],
-      mode,
+      // mode is optional in input; Google Maps defaults to driving when unspecified
+      mode: mode ?? 'driving',
     };
   },
 });

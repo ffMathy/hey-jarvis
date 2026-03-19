@@ -1,5 +1,4 @@
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
-import type { Agent } from '@mastra/core/agent';
 import { generateObject } from 'ai';
 import { z } from 'zod';
 import { isOllamaAvailable } from '../../utils/providers/ollama-provider.js';
@@ -7,10 +6,12 @@ import {
   type AgentProvider,
   type dagSchema,
   getCurrentDAG,
+  injectTask,
   resetCurrentDAG,
   routePromptWorkflow,
-  setAgentProvider,
+  type SupervisorExecutor,
   setWorkflowState,
+  simulateTaskCompletion,
 } from './workflows.js';
 
 /**
@@ -140,7 +141,16 @@ interface MockToolConfig {
   inputParams: string[];
 }
 
-function createMockAgent(id: string, description: string, tools?: MockToolConfig[]): Agent {
+/** Structural subset of Agent that satisfies what workflows.ts actually uses at runtime */
+interface MockAgent {
+  id: string;
+  name: string;
+  getDescription(): string;
+  generate(prompt: unknown): Promise<{ text: string }>;
+  listTools(): Promise<Record<string, { inputSchema?: { shape: Record<string, unknown> } }>>;
+}
+
+function createMockAgent(id: string, description: string, tools?: MockToolConfig[]): MockAgent {
   const mockTools: Record<string, { inputSchema?: { shape: Record<string, unknown> } }> = {};
 
   if (tools) {
@@ -155,14 +165,79 @@ function createMockAgent(id: string, description: string, tools?: MockToolConfig
     }
   }
 
-  const mockAgent = {
+  const mockAgent: MockAgent = {
     id,
     name: id,
     getDescription: () => description,
     generate: jest.fn().mockResolvedValue({ text: `Mock response from ${id}` }),
     listTools: jest.fn().mockResolvedValue(mockTools),
-  } as unknown as Agent;
+  };
   return mockAgent;
+}
+
+/**
+ * Creates a SupervisorExecutor that uses an LLM to make routing decisions.
+ * This simulates how the supervisor agent decomposes queries into delegations,
+ * but uses structured output to generate the task list for LLM evaluation.
+ *
+ * Note: Task execution is simulated synchronously with mock results since these
+ * tests focus on evaluating routing decisions (which agents are selected and how
+ * tasks are structured), not execution timing or actual agent responses.
+ */
+function createLLMSupervisorExecutor(): SupervisorExecutor {
+  return async (userQuery, agents) => {
+    const apiKey = process.env.HEY_JARVIS_GOOGLE_API_KEY;
+    if (!apiKey) {
+      throw new Error('Google API key required for LLM eval tests');
+    }
+
+    const google = createGoogleGenerativeAI({ apiKey });
+    const agentDescriptions = agents.map((a) => ({
+      id: a.id,
+      description: a.getDescription(),
+    }));
+
+    const taskSchema = z.object({
+      tasks: z.array(
+        z.object({
+          id: z.string().describe('Unique task ID in kebab-case'),
+          agent: z.string().describe('Agent ID to delegate to'),
+          prompt: z.string().describe('Self-contained prompt for the agent'),
+          dependsOn: z.array(z.string()).describe('IDs of prerequisite tasks'),
+        }),
+      ),
+    });
+
+    const result = await generateObject({
+      model: google('gemini-flash-lite-latest'),
+      temperature: 0,
+      schema: taskSchema,
+      maxRetries: 3,
+      prompt: `You are a task coordinator. Decompose this user query into tasks for available agents.
+
+User query: ${userQuery}
+
+Available agents:
+${JSON.stringify(agentDescriptions, null, 2)}
+
+Rules:
+- Only assign tasks to agents whose capabilities match
+- If Task B needs data from Task A, include Task A's ID in dependsOn
+- Tasks with no dependencies have empty dependsOn array
+- Prompts must be self-contained`,
+    });
+
+    for (const task of result.object.tasks) {
+      injectTask(task);
+    }
+
+    // Simulate task completion for all tasks
+    for (const task of getCurrentDAG().tasks) {
+      if (task.result === undefined) {
+        simulateTaskCompletion(task.id, `Mock result from ${task.agent}`);
+      }
+    }
+  };
 }
 
 /**
@@ -180,11 +255,18 @@ async function runWorkflowWithRetry(
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     resetCurrentDAG();
 
+    let runResult: Awaited<ReturnType<Awaited<ReturnType<typeof routePromptWorkflow.createRun>>['start']>> | undefined;
     try {
-      const result = await routePromptWorkflow.createRun().then((run) => run.start({ inputData: { userQuery } }));
+      const run = await routePromptWorkflow.createRun();
+      runResult = await run.start({ inputData: { userQuery } });
+    } catch {
+      console.log(`Attempt ${attempt}: Workflow failed, retrying...`);
+      runResult = undefined;
+    }
 
+    if (runResult !== undefined) {
       dag = getCurrentDAG();
-      if (result.status === 'success' && dag.tasks.length >= 1) {
+      if (runResult.status === 'success' && dag.tasks.length >= 1) {
         if (!isValid || isValid(dag)) {
           return dag;
         }
@@ -192,8 +274,6 @@ async function runWorkflowWithRetry(
       } else {
         console.log(`Attempt ${attempt}: Workflow succeeded but no tasks generated, retrying...`);
       }
-    } catch (_e) {
-      console.log(`Attempt ${attempt}: Workflow failed, retrying...`);
     }
 
     await new Promise((resolve) => setTimeout(resolve, 750));
@@ -253,15 +333,14 @@ Control and monitor Internet of Things (IoT) devices. Use this agent to **turn d
       );
 
       const mockAgentProvider: AgentProvider = async () => [weatherAgent, internetOfThingsAgent];
-      setAgentProvider(mockAgentProvider);
+      setWorkflowState({ agentProvider: mockAgentProvider, supervisorExecutor: createLLMSupervisorExecutor() });
 
       const userQuery = 'Check the weather for my current location';
 
-      await routePromptWorkflow.createRun().then((run) =>
-        run.start({
-          inputData: { userQuery },
-        }),
-      );
+      const run = await routePromptWorkflow.createRun();
+      await run.start({
+        inputData: { userQuery },
+      });
 
       const dag = getCurrentDAG();
 
@@ -303,15 +382,14 @@ Control and monitor Internet of Things (IoT) devices. Use this agent to **get us
       );
 
       const mockAgentProvider: AgentProvider = async () => [weatherAgent, internetOfThingsAgent];
-      setAgentProvider(mockAgentProvider);
+      setWorkflowState({ agentProvider: mockAgentProvider, supervisorExecutor: createLLMSupervisorExecutor() });
 
       const userQuery = "What's the weather like where I am right now?";
 
-      await routePromptWorkflow.createRun().then((run) =>
-        run.start({
-          inputData: { userQuery },
-        }),
-      );
+      const run = await routePromptWorkflow.createRun();
+      await run.start({
+        inputData: { userQuery },
+      });
 
       const dag = getCurrentDAG();
 
@@ -353,7 +431,7 @@ Control IoT devices and get user locations via their phones.`,
       );
 
       const mockAgentProvider: AgentProvider = async () => [weatherAgent, internetOfThingsAgent];
-      setAgentProvider(mockAgentProvider);
+      setWorkflowState({ agentProvider: mockAgentProvider, supervisorExecutor: createLLMSupervisorExecutor() });
 
       const userQuery = 'Please tell me what the weather is like in New York City today';
 
@@ -410,7 +488,7 @@ Control IoT devices and get user locations via their phones.`,
       const commuteAgent = createMockAgent('commute', `Calculate travel times and distances between locations.`);
 
       const mockAgentProvider: AgentProvider = async () => [weatherAgent, calendarAgent, commuteAgent];
-      setAgentProvider(mockAgentProvider);
+      setWorkflowState({ agentProvider: mockAgentProvider, supervisorExecutor: createLLMSupervisorExecutor() });
 
       const userQuery =
         'Check my calendar for today and tell me what the weather will be like for my first meeting, and how long it will take to get there';

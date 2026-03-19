@@ -28,6 +28,7 @@ import {
 import { getInternetOfThingsAgent, internetOfThingsTools } from './verticals/internet-of-things/index.js';
 import { getNotificationAgent, notificationTools } from './verticals/notification/index.js';
 import { phoneTools } from './verticals/phone/index.js';
+import { getRoutingSupervisorAgent } from './verticals/routing/agents.js';
 import {
   getCurrentDagWorkflow,
   getNextInstructionsWorkflow,
@@ -91,6 +92,7 @@ export async function getMastra(): Promise<Mastra> {
       await getInternetOfThingsAgent(),
       await getNotificationAgent(),
       await getRequirementsInterviewerAgent(),
+      await getRoutingSupervisorAgent(),
       await getShoppingListAgent(),
       await getShoppingListSummaryAgent(),
       await getStateChangeReactorAgent(),
@@ -129,27 +131,21 @@ export async function getMastra(): Promise<Mastra> {
  * Called during startup to show token usage summary.
  */
 export async function logTokenUsageSummary(): Promise<void> {
-  try {
-    const tokenStorage = await getTokenUsageStorage();
-    const totalUsage = await tokenStorage.getTotalUsage();
-    const modelUsage = await tokenStorage.getAllModelUsage();
+  const tokenStorage = await getTokenUsageStorage();
+  const totalUsage = await tokenStorage.getTotalUsage();
+  const modelUsage = await tokenStorage.getAllModelUsage();
 
-    console.log('📊 Token Usage Summary:');
-    console.log(`   Total: ${totalUsage.totalTokens.toLocaleString()} tokens (${totalUsage.requestCount} requests)`);
-    console.log(
-      `   Prompt: ${totalUsage.totalPromptTokens.toLocaleString()} | Completion: ${totalUsage.totalCompletionTokens.toLocaleString()}`,
-    );
+  console.log('📊 Token Usage Summary:');
+  console.log(`   Total: ${totalUsage.totalTokens.toLocaleString()} tokens (${totalUsage.requestCount} requests)`);
+  console.log(
+    `   Prompt: ${totalUsage.totalPromptTokens.toLocaleString()} | Completion: ${totalUsage.totalCompletionTokens.toLocaleString()}`,
+  );
 
-    if (modelUsage.length > 0) {
-      console.log('   By Model:');
-      for (const usage of modelUsage) {
-        console.log(
-          `   - ${usage.model}: ${usage.totalTokens.toLocaleString()} tokens (${usage.requestCount} requests)`,
-        );
-      }
+  if (modelUsage.length > 0) {
+    console.log('   By Model:');
+    for (const usage of modelUsage) {
+      console.log(`   - ${usage.model}: ${usage.totalTokens.toLocaleString()} tokens (${usage.requestCount} requests)`);
     }
-  } catch (error) {
-    console.error('⚠️  Failed to load token usage statistics:', error instanceof Error ? error.message : String(error));
   }
 }
 

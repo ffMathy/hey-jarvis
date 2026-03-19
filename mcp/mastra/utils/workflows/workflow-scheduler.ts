@@ -121,9 +121,13 @@ export class WorkflowScheduler {
       console.log(`\n🏃 Executing ${this.startupWorkflows.size} startup workflow(s)...`);
       this.startupWorkflows.forEach((inputData, workflowId) => {
         console.log(`   🚀 Running on startup: ${workflowId}`);
-        this.executeWorkflow(workflowId, inputData).catch((error) => {
-          console.error(`   ❌ Startup workflow ${workflowId} failed:`, error);
-        });
+        void (async () => {
+          try {
+            await this.executeWorkflow(workflowId, inputData);
+          } catch (error) {
+            console.error(`   ❌ Startup workflow ${workflowId} failed:`, error);
+          }
+        })();
       });
     }
 
@@ -171,26 +175,17 @@ export class WorkflowScheduler {
     console.log(`\n⚙️  Executing scheduled workflow: ${workflowId}`);
     console.log(`   Time: ${new Date().toISOString()}`);
 
-    try {
-      const workflow = this.mastra.getWorkflow(workflowId);
-      const run = await workflow.createRun();
-      const result = await run.start({ inputData });
+    const workflow = this.mastra.getWorkflow(workflowId);
+    const run = await workflow.createRun();
+    const result = await run.start({ inputData });
 
-      const duration = Date.now() - startTime;
-      console.log(`✅ Workflow completed successfully (${duration}ms)`);
-      console.log(`   Status: ${result.status}`);
+    const duration = Date.now() - startTime;
+    console.log(`✅ Workflow completed successfully (${duration}ms)`);
+    console.log(`   Status: ${result.status}`);
 
-      // Log result if it's not too large and workflow succeeded
-      if (result.status === 'success' && result.result && JSON.stringify(result.result).length < 500) {
-        console.log(`   Result:`, result.result);
-      }
-    } catch (error) {
-      const duration = Date.now() - startTime;
-      console.error(`❌ Workflow failed (${duration}ms):`, error);
-
-      if (this.options.onError && error instanceof Error) {
-        this.options.onError(error, workflowId);
-      }
+    // Log result if it's not too large and workflow succeeded
+    if (result.status === 'success' && result.result && JSON.stringify(result.result).length < 500) {
+      console.log(`   Result:`, result.result);
     }
   }
 

@@ -224,7 +224,8 @@ export function createAgentStep<
     description: config.description,
     inputSchema: config.inputSchema,
     outputSchema: config.outputSchema,
-    execute: async (params) => {
+    // biome-ignore lint/suspicious/noExplicitAny: Zod v4 resolves z.output<T> to unknown for unconstrained generics; runtime types are correct
+    execute: async (params): Promise<any> => {
       // Create agent lazily during execution to avoid top-level awaits
       // Explicitly set memory to undefined to bypass Mastra v1 beta.10+ bug
       // where memory.getInputProcessors() is called but doesn't exist
@@ -242,25 +243,43 @@ export function createAgentStep<
       // and generate() exposes both .object and .text on the result so we can
       // fall back to text parsing for models that don't support structured output
       // (e.g. Ollama's Hailo cluster strips the JSON-mode `format` field).
+      let structuredResponse: Awaited<ReturnType<typeof agent.generate>>;
       try {
-        const response = await agent.generate(messages, {
+        structuredResponse = await agent.generate(messages, {
           structuredOutput: { schema: config.outputSchema },
           toolChoice: 'none',
         });
+      } catch (error: unknown) {
+        // Structured output failed — retry with plain text.
+        // STRUCTURED_OUTPUT_SCHEMA_VALIDATION_FAILED is expected with smaller/local models
+        // (e.g. Ollama's qwen2.5-instruct) that don't reliably honour the JSON schema.
+        // Treat it as a warning (graceful degradation); log real errors as errors.
+        const isValidationFailure =
+          error != null &&
+          typeof error === 'object' &&
+          'id' in error &&
+          (error as { id: unknown }).id === 'STRUCTURED_OUTPUT_SCHEMA_VALIDATION_FAILED';
 
-        if (response.object !== undefined && response.object !== null) {
-          return config.outputSchema.parse(response.object);
+        if (isValidationFailure) {
+          console.warn(
+            `Agent step "${config.id}" structured output validation failed; retrying without structured output.`,
+          );
+        } else {
+          console.error(
+            `Agent step "${config.id}" structured output failed; retrying without structured output.`,
+            error,
+          );
         }
 
-        // Structured output returned undefined — try text fallback
-        return extractResultFromText(response.text, config.outputSchema, config.id);
-      } catch (error) {
-        // Structured output failed entirely — retry with plain text to maximise resilience.
-        // Log so developers can diagnose whether this is a validation error, network issue, etc.
-        console.error(`Agent step "${config.id}" structured output failed; retrying without structured output.`, error);
-        const response = await agent.generate(messages, { toolChoice: 'none' });
-        return extractResultFromText(response.text, config.outputSchema, config.id);
+        structuredResponse = await agent.generate(messages, { toolChoice: 'none' });
       }
+
+      if (structuredResponse.object !== undefined && structuredResponse.object !== null) {
+        return config.outputSchema.parse(structuredResponse.object);
+      }
+
+      // Structured output returned undefined — try text fallback
+      return extractResultFromText(structuredResponse.text, config.outputSchema, config.id);
     },
   });
 }
@@ -279,17 +298,14 @@ function extractResultFromText<T extends z.ZodTypeAny>(
     throw new Error(`Agent step "${stepId}" produced no output`);
   }
 
-  try {
+  if (trimmed.startsWith('{')) {
     return schema.parse(JSON.parse(trimmed));
-  } catch (error) {
-    // JSON.parse or schema.parse failed — fall back to wrapping the raw text.
-    // Log so malformed or unexpected agent output is visible during debugging.
-    console.warn(
-      `Failed to parse structured result for agent step "${stepId}", falling back to plain-text schema:`,
-      error,
-    );
-    return schema.parse({ result: trimmed });
   }
+
+  // Not a JSON object — wrap raw text in the schema.
+  // Log so unexpected agent output is visible during debugging.
+  console.warn(`Agent step "${stepId}" produced non-JSON output, using plain-text schema.`);
+  return schema.parse({ result: trimmed });
 }
 
 /**
@@ -349,13 +365,14 @@ export function createToolStep<
     outputSchema,
     stateSchema: config.stateSchema,
     execute: async (params) => {
-      // params.mastra is a Mastra instance, but tools expect ToolExecutionContext - cast needed at workflow-tool boundary
+      // ToolExecutionContext has all-optional fields; { mastra } satisfies it without unsafe casting
+      const toolContext: ToolExecutionContext = { mastra: params.mastra };
       return await execute(
         {
           ...(params.inputData as Record<string, unknown>),
           ...(config.inputOverrides ?? {}),
         } as TToolInput,
-        params.mastra as unknown as ToolExecutionContext,
+        toolContext,
       );
     },
   });

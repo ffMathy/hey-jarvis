@@ -1,5 +1,4 @@
 import { beforeAll, describe, expect, it } from 'bun:test';
-import { isValidationError } from '../../utils/test-helpers/validation-error.js';
 import { findEmails } from './tools';
 
 describe('Email Tools Integration Tests', () => {
@@ -22,11 +21,6 @@ describe('Email Tools Integration Tests', () => {
         maxResults: 5,
       });
 
-      // Check for validation errors
-      if (isValidationError(result)) {
-        throw new Error(`Validation failed: ${result.message}`);
-      }
-
       // Validate structure
       expect(result).toBeDefined();
       expect(Array.isArray(result.emails)).toBe(true);
@@ -42,11 +36,6 @@ describe('Email Tools Integration Tests', () => {
         from: 'noreply@example.com',
         maxResults: 5,
       });
-
-      // Check for validation errors
-      if (isValidationError(result)) {
-        throw new Error(`Validation failed: ${result.message}`);
-      }
 
       // Validate structure
       expect(result).toBeDefined();

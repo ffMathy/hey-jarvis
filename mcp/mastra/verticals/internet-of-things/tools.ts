@@ -140,26 +140,16 @@ export const callIoTService = createTool({
     message: z.string(),
   }),
   execute: async (inputData) => {
-    try {
-      const endpoint = `services/${inputData.domain}/${inputData.serviceId}`;
-      await callHomeAssistantApi(endpoint, 'POST', inputData.data);
+    const endpoint = `services/${inputData.domain}/${inputData.serviceId}`;
+    await callHomeAssistantApi(endpoint, 'POST', inputData.data);
 
-      return {
-        success: true,
-        domain: inputData.domain,
-        service: inputData.serviceId,
-        data: inputData.data,
-        message: `Successfully called ${inputData.domain}.${inputData.serviceId}`,
-      };
-    } catch (error) {
-      return {
-        success: false,
-        domain: inputData.domain,
-        service: inputData.serviceId,
-        data: inputData.data,
-        message: error instanceof Error ? error.message : 'Unknown error occurred',
-      };
-    }
+    return {
+      success: true,
+      domain: inputData.domain,
+      service: inputData.serviceId,
+      data: inputData.data,
+      message: `Successfully called ${inputData.domain}.${inputData.serviceId}`,
+    };
   },
 });
 

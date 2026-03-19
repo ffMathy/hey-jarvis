@@ -1,0 +1,615 @@
+turbo 2.5.4
+
+• Packages in scope: mcp
+• Running test in 1 packages
+• Remote caching disabled
+mcp:typecheck: cache hit, replaying logs 720534ca04e75162
+mcp:typecheck: 
+mcp:typecheck: [0m[2m[35m$[0m [2m[1mtsgo --noEmit --project tsconfig.json[0m
+mcp:lint: cache hit, replaying logs 9aacf2d2b30478ee
+mcp:lint: 
+mcp:lint: [0m[2m[35m$[0m [2m[1mcd .. && bunx biome check --write mcp[0m
+mcp:lint: [0m[34mChecked 135 files in 321[0m[0m[2m[34mms[0m[0m[34m.[0m[0m[34m No fixes applied.[0m
+mcp:test: cache miss, executing f4c428ee7e4be7cf
+mcp:test: $ cd .. && ./.scripts/run-with-env.sh mcp/op.env mcp/.scripts/test.sh
+mcp:test: Using pre-resolved secrets from mcp/op.env.local
+mcp:test: bun test v1.3.9 (cf6cdbbb)
+mcp:test: 
+mcp:test: mcp/tests/shopping-list-api.spec.ts:
+mcp:test: Starting MCP server programmatically...
+mcp:test: 🧹 Killed process(es) on port 4112
+mcp:test: 🤖 Starting MCP server via run-with-env.sh + bun...
+mcp:test: Using pre-resolved secrets from mcp/op.env.local
+mcp:test: 🔍 Checking MCP server status (attempt 1/30)...
+mcp:test: 🔍 Checking MCP server status (attempt 2/30)...
+mcp:test: 📦 Using local development directory for storage: /tmp/mcp
+mcp:test: mastra-cloud-observability-exporter disabled: MASTRA_CLOUD_ACCESS_TOKEN environment variable not set.
+mcp:test: 🔍 Checking MCP server status (attempt 3/30)...
+mcp:test: [33mWARN[39m [2026-03-18 17:50:58.419 +0000] (Mastra): [36mDefaultExporter disabled: Storage not available. Traces will not be persisted.[39m
+mcp:test: Starting J.A.R.V.I.S. MCP Server...
+mcp:test: [32mINFO[39m [2026-03-18 17:50:58.634 +0000] (Mastra-Verticals): [36m[API] Registered workflow endpoint[39m
+mcp:test:     [35mmethod[39m: "POST"
+mcp:test:     [35mpath[39m: "/api/shopping-list"
+mcp:test:     [35mworkflow[39m: "shoppingListWorkflow"
+mcp:test: J.A.R.V.I.S. MCP Server listening on http://0.0.0.0:4112/api/mcp
+mcp:test: API endpoint available: POST http://0.0.0.0:4112/api/shopping-list
+mcp:test: 🛒 Registering shopping email triggers...
+mcp:test: ✅ Shopping email triggers registered
+mcp:test: [32mINFO[39m [2026-03-18 17:50:58.637 +0000] (Mastra-Verticals): [36mRegistered email trigger[39m
+mcp:test:     [35mtriggerId[39m: "email-trigger-1"
+mcp:test:     [35msender[39m: "info@kundeservice.bilkatogo.dk"
+mcp:test: 📊 Token Usage Summary:
+mcp:test:    Total: 424,167 tokens (3 requests)
+mcp:test:    Prompt: 400,267 | Completion: 23,900
+mcp:test:    By Model:
+mcp:test:    - gemini-2.5-flash: 419,187 tokens (1 requests)
+mcp:test:    - gemini-2.5-flash-lite: 4,980 tokens (2 requests)
+mcp:test: 📅 Scheduled workflow: weatherMonitoringWorkflow
+mcp:test:    Schedule: 0 */3 * * * (Europe/Copenhagen)
+mcp:test: 📅 Scheduled workflow: weeklyMealPlanningWorkflow
+mcp:test:    Schedule: 0 8 * * 0 (Europe/Copenhagen)
+mcp:test: 📅 Scheduled workflow: emailCheckingWorkflow
+mcp:test:    Schedule: * * * * * (Europe/Copenhagen)
+mcp:test:    Run on startup: enabled
+mcp:test: 📅 Scheduled workflow: formRepliesDetectionWorkflow
+mcp:test:    Schedule: 0 */3 * * * (Europe/Copenhagen)
+mcp:test:    Run on startup: enabled
+mcp:test: 📅 Scheduled workflow: iotMonitoringWorkflow
+mcp:test:    Schedule: 0 */3 * * * (Europe/Copenhagen)
+mcp:test:    Run on startup: enabled
+mcp:test: 
+mcp:test: 🚀 5 scheduled workflow(s) are now active
+mcp:test:    ✅ Active: weatherMonitoringWorkflow
+mcp:test:    ✅ Active: weeklyMealPlanningWorkflow
+mcp:test:    ✅ Active: emailCheckingWorkflow
+mcp:test:    ✅ Active: formRepliesDetectionWorkflow
+mcp:test:    ✅ Active: iotMonitoringWorkflow
+mcp:test: 
+mcp:test: 🏃 Executing 3 startup workflow(s)...
+mcp:test:    🚀 Running on startup: emailCheckingWorkflow
+mcp:test: 
+mcp:test: ⚙️  Executing scheduled workflow: emailCheckingWorkflow
+mcp:test:    Time: 2026-03-18T17:50:58.805Z
+mcp:test:    🚀 Running on startup: formRepliesDetectionWorkflow
+mcp:test: 
+mcp:test: ⚙️  Executing scheduled workflow: formRepliesDetectionWorkflow
+mcp:test:    Time: 2026-03-18T17:50:58.807Z
+mcp:test:    🚀 Running on startup: iotMonitoringWorkflow
+mcp:test: 
+mcp:test: ⚙️  Executing scheduled workflow: iotMonitoringWorkflow
+mcp:test:    Time: 2026-03-18T17:50:58.807Z
+mcp:test: 
+mcp:test: ⏰ Workflow scheduler is running
+mcp:test: 
+mcp:test: [32mINFO[39m [2026-03-18 17:50:58.840 +0000] (Mastra-Verticals): [36mCalculating noise baselines[39m
+mcp:test:     [35mstartTime[39m: "2026-03-18T17:35:58.840Z"
+mcp:test:     [35mendTime[39m: "2026-03-18T17:50:58.840Z"
+mcp:test:     [35mwindowSeconds[39m: 900
+mcp:test: [31mERROR[39m [2026-03-18 17:50:58.936 +0000] (Mastra-Verticals): [36mError calculating noise baselines[39m
+mcp:test:     error: {}
+mcp:test: Server running on http://0.0.0.0:4112
+mcp:test: MCP HTTP endpoint: http://0.0.0.0:4112/api/mcp
+mcp:test: [32mINFO[39m [2026-03-18 17:50:58.982 +0000] (Mastra-Verticals): [36mIoT Monitoring: entities changed[39m
+mcp:test:     [35mtotalChanged[39m: 192
+mcp:test:     [35mwindowSeconds[39m: 10800
+mcp:test:     [35mdevicesWithChanges[39m: 35
+mcp:test: [32mINFO[39m [2026-03-18 17:50:59.018 +0000] (Mastra-Verticals): [36mRegistering state change[39m
+mcp:test:     [35mstateType[39m: "device_state_change"
+mcp:test:     [35msource[39m: "internet-of-things"
+mcp:test: [32mINFO[39m [2026-03-18 17:50:59.019 +0000] (Mastra-Verticals): [36m[BATCHER] State change received[39m
+mcp:test:     [35mstateType[39m: "device_state_change"
+mcp:test:     [35msource[39m: "internet-of-things"
+mcp:test: [32mINFO[39m [2026-03-18 17:50:59.019 +0000] (Mastra-Verticals): [36m[BATCHER] Batch size[39m
+mcp:test:     [35mcurrent[39m: 1
+mcp:test:     [35mmax[39m: 10
+mcp:test: [32mINFO[39m [2026-03-18 17:50:59.020 +0000] (Mastra-Verticals): [36mState change registered[39m
+mcp:test:     [35mentityId[39m: "sensor.sun_next_setting"
+mcp:test:     [35mdeviceName[39m: "Sun"
+mcp:test: [32mINFO[39m [2026-03-18 17:50:59.025 +0000] (Mastra-Verticals): [36mRegistering state change[39m
+mcp:test:     [35mstateType[39m: "device_state_change"
+mcp:test:     [35msource[39m: "internet-of-things"
+mcp:test: [32mINFO[39m [2026-03-18 17:50:59.025 +0000] (Mastra-Verticals): [36m[BATCHER] State change received[39m
+mcp:test:     [35mstateType[39m: "device_state_change"
+mcp:test:     [35msource[39m: "internet-of-things"
+mcp:test: [32mINFO[39m [2026-03-18 17:50:59.026 +0000] (Mastra-Verticals): [36m[BATCHER] Batch size[39m
+mcp:test:     [35mcurrent[39m: 2
+mcp:test:     [35mmax[39m: 10
+mcp:test: [32mINFO[39m [2026-03-18 17:50:59.026 +0000] (Mastra-Verticals): [36mState change registered[39m
+mcp:test:     [35mentityId[39m: "lock.lock_ultra_b1"
+mcp:test:     [35mdeviceName[39m: "Hoveddør"
+mcp:test: [32mINFO[39m [2026-03-18 17:50:59.031 +0000] (Mastra-Verticals): [36mRegistering state change[39m
+mcp:test:     [35mstateType[39m: "device_state_change"
+mcp:test:     [35msource[39m: "internet-of-things"
+mcp:test: [32mINFO[39m [2026-03-18 17:50:59.031 +0000] (Mastra-Verticals): [36m[BATCHER] State change received[39m
+mcp:test:     [35mstateType[39m: "device_state_change"
+mcp:test:     [35msource[39m: "internet-of-things"
+mcp:test: [32mINFO[39m [2026-03-18 17:50:59.032 +0000] (Mastra-Verticals): [36m[BATCHER] Batch size[39m
+mcp:test:     [35mcurrent[39m: 3
+mcp:test:     [35mmax[39m: 10
+mcp:test: [32mINFO[39m [2026-03-18 17:50:59.032 +0000] (Mastra-Verticals): [36mState change registered[39m
+mcp:test:     [35mentityId[39m: "sensor.tesla_route_distance_to_julie_in_meters"
+mcp:test:     [35mdeviceName[39m: "Bil"
+mcp:test: [32mINFO[39m [2026-03-18 17:50:59.037 +0000] (Mastra-Verticals): [36mRegistering state change[39m
+mcp:test:     [35mstateType[39m: "device_state_change"
+mcp:test:     [35msource[39m: "internet-of-things"
+mcp:test: [32mINFO[39m [2026-03-18 17:50:59.038 +0000] (Mastra-Verticals): [36m[BATCHER] State change received[39m
+mcp:test:     [35mstateType[39m: "device_state_change"
+mcp:test:     [35msource[39m: "internet-of-things"
+mcp:test: [32mINFO[39m [2026-03-18 17:50:59.038 +0000] (Mastra-Verticals): [36m[BATCHER] Batch size[39m
+mcp:test:     [35mcurrent[39m: 4
+mcp:test:     [35mmax[39m: 10
+mcp:test: [32mINFO[39m [2026-03-18 17:50:59.039 +0000] (Mastra-Verticals): [36mState change registered[39m
+mcp:test:     [35mentityId[39m: "sensor.tesla_route_distance_to_mathias_in_meters"
+mcp:test:     [35mdeviceName[39m: "Bil"
+mcp:test: [32mINFO[39m [2026-03-18 17:50:59.044 +0000] (Mastra-Verticals): [36mRegistering state change[39m
+mcp:test:     [35mstateType[39m: "device_state_change"
+mcp:test:     [35msource[39m: "internet-of-things"
+mcp:test: [32mINFO[39m [2026-03-18 17:50:59.045 +0000] (Mastra-Verticals): [36m[BATCHER] State change received[39m
+mcp:test:     [35mstateType[39m: "device_state_change"
+mcp:test:     [35msource[39m: "internet-of-things"
+mcp:test: [32mINFO[39m [2026-03-18 17:50:59.045 +0000] (Mastra-Verticals): [36m[BATCHER] Batch size[39m
+mcp:test:     [35mcurrent[39m: 5
+mcp:test:     [35mmax[39m: 10
+mcp:test: [32mINFO[39m [2026-03-18 17:50:59.045 +0000] (Mastra-Verticals): [36mState change registered[39m
+mcp:test:     [35mentityId[39m: "binary_sensor.teslabobs_status"
+mcp:test:     [35mdeviceName[39m: "Bil"
+mcp:test: [32mINFO[39m [2026-03-18 17:50:59.050 +0000] (Mastra-Verticals): [36mRegistering state change[39m
+mcp:test:     [35mstateType[39m: "device_state_change"
+mcp:test:     [35msource[39m: "internet-of-things"
+mcp:test: [32mINFO[39m [2026-03-18 17:50:59.050 +0000] (Mastra-Verticals): [36m[BATCHER] State change received[39m
+mcp:test:     [35mstateType[39m: "device_state_change"
+mcp:test:     [35msource[39m: "internet-of-things"
+mcp:test: [32mINFO[39m [2026-03-18 17:50:59.050 +0000] (Mastra-Verticals): [36m[BATCHER] Batch size[39m
+mcp:test:     [35mcurrent[39m: 6
+mcp:test:     [35mmax[39m: 10
+mcp:test: [32mINFO[39m [2026-03-18 17:50:59.051 +0000] (Mastra-Verticals): [36mState change registered[39m
+mcp:test:     [35mentityId[39m: "binary_sensor.teslabobs_battery_heater"
+mcp:test:     [35mdeviceName[39m: "Bil"
+mcp:test: [32mINFO[39m [2026-03-18 17:50:59.055 +0000] (Mastra-Verticals): [36mRegistering state change[39m
+mcp:test:     [35mstateType[39m: "device_state_change"
+mcp:test:     [35msource[39m: "internet-of-things"
+mcp:test: [32mINFO[39m [2026-03-18 17:50:59.056 +0000] (Mastra-Verticals): [36m[BATCHER] State change received[39m
+mcp:test:     [35mstateType[39m: "device_state_change"
+mcp:test:     [35msource[39m: "internet-of-things"
+mcp:test: [32mINFO[39m [2026-03-18 17:50:59.058 +0000] (Mastra-Verticals): [36m[BATCHER] Batch size[39m
+mcp:test:     [35mcurrent[39m: 7
+mcp:test:     [35mmax[39m: 10
+mcp:test: [32mINFO[39m [2026-03-18 17:50:59.058 +0000] (Mastra-Verticals): [36mState change registered[39m
+mcp:test:     [35mentityId[39m: "binary_sensor.teslabobs_charging"
+mcp:test:     [35mdeviceName[39m: "Bil"
+mcp:test: [32mINFO[39m [2026-03-18 17:50:59.063 +0000] (Mastra-Verticals): [36mRegistering state change[39m
+mcp:test:     [35mstateType[39m: "device_state_change"
+mcp:test:     [35msource[39m: "internet-of-things"
+mcp:test: [32mINFO[39m [2026-03-18 17:50:59.063 +0000] (Mastra-Verticals): [36m[BATCHER] State change received[39m
+mcp:test:     [35mstateType[39m: "device_state_change"
+mcp:test:     [35msource[39m: "internet-of-things"
+mcp:test: [32mINFO[39m [2026-03-18 17:50:59.065 +0000] (Mastra-Verticals): [36m[BATCHER] Batch size[39m
+mcp:test:     [35mcurrent[39m: 8
+mcp:test:     [35mmax[39m: 10
+mcp:test: [32mINFO[39m [2026-03-18 17:50:59.065 +0000] (Mastra-Verticals): [36mState change registered[39m
+mcp:test:     [35mentityId[39m: "binary_sensor.teslabobs_preconditioning_enabled"
+mcp:test:     [35mdeviceName[39m: "Bil"
+mcp:test: [32mINFO[39m [2026-03-18 17:50:59.069 +0000] (Mastra-Verticals): [36mRegistering state change[39m
+mcp:test:     [35mstateType[39m: "device_state_change"
+mcp:test:     [35msource[39m: "internet-of-things"
+mcp:test: [32mINFO[39m [2026-03-18 17:50:59.069 +0000] (Mastra-Verticals): [36m[BATCHER] State change received[39m
+mcp:test:     [35mstateType[39m: "device_state_change"
+mcp:test:     [35msource[39m: "internet-of-things"
+mcp:test: [32mINFO[39m [2026-03-18 17:50:59.069 +0000] (Mastra-Verticals): [36m[BATCHER] Batch size[39m
+mcp:test:     [35mcurrent[39m: 9
+mcp:test:     [35mmax[39m: 10
+mcp:test: [32mINFO[39m [2026-03-18 17:50:59.069 +0000] (Mastra-Verticals): [36mState change registered[39m
+mcp:test:     [35mentityId[39m: "binary_sensor.teslabobs_scheduled_charging_pending"
+mcp:test:     [35mdeviceName[39m: "Bil"
+mcp:test: [32mINFO[39m [2026-03-18 17:50:59.074 +0000] (Mastra-Verticals): [36mRegistering state change[39m
+mcp:test:     [35mstateType[39m: "device_state_change"
+mcp:test:     [35msource[39m: "internet-of-things"
+mcp:test: [32mINFO[39m [2026-03-18 17:50:59.074 +0000] (Mastra-Verticals): [36m[BATCHER] State change received[39m
+mcp:test:     [35mstateType[39m: "device_state_change"
+mcp:test:     [35msource[39m: "internet-of-things"
+mcp:test: [32mINFO[39m [2026-03-18 17:50:59.075 +0000] (Mastra-Verticals): [36m[BATCHER] Batch size[39m
+mcp:test:     [35mcurrent[39m: 10
+mcp:test:     [35mmax[39m: 10
+mcp:test: [32mINFO[39m [2026-03-18 17:50:59.075 +0000] (Mastra-Verticals): [36m[BATCHER] Batch full, processing immediately[39m
+mcp:test: [32mINFO[39m [2026-03-18 17:50:59.076 +0000] (Mastra-Verticals): [36m[BATCHER] Processing batch[39m
+mcp:test:     [35mcount[39m: 10
+mcp:test: 📬 Found 0 new email(s) since 2026-03-18T17:26:43Z
+mcp:test: ⏭️  No emails to process for form replies
+mcp:test: ⏭️  No emails to register with state reactor
+mcp:test: ✅ Workflow completed successfully (645ms)
+mcp:test:    Status: success
+mcp:test:    Result: {
+mcp:test:   emailsFound: 0,
+mcp:test:   formRepliesDetected: 0,
+mcp:test:   stateChangeRegistered: false,
+mcp:test:   message: "No new emails to analyze",
+mcp:test: }
+mcp:test: 📬 Found 0 new email(s) since 2026-03-18T17:26:43Z
+mcp:test: ✅ Workflow completed successfully (652ms)
+mcp:test:    Status: success
+mcp:test:    Result: {
+mcp:test:   emailsFound: 0,
+mcp:test:   lastSeenEmailUpdated: false,
+mcp:test:   message: "No new emails since last check",
+mcp:test: }
+mcp:test: [32mINFO[39m [2026-03-18 17:51:00.920 +0000] (Mastra-Verticals): [36m[BATCHER] Saved state changes to memory[39m
+mcp:test:     [35mcount[39m: 10
+mcp:test: 
+mcp:test: ⚙️  Executing scheduled workflow: emailCheckingWorkflow
+mcp:test:    Time: 2026-03-18T17:51:01.138Z
+mcp:test: 📬 Found 0 new email(s) since 2026-03-18T17:26:43Z
+mcp:test: ✅ Workflow completed successfully (319ms)
+mcp:test:    Status: success
+mcp:test:    Result: {
+mcp:test:   emailsFound: 0,
+mcp:test:   lastSeenEmailUpdated: false,
+mcp:test:   message: "No new emails since last check",
+mcp:test: }
+mcp:test: [2026-03-18T17:51:02.752Z] GET /health
+mcp:test: [2026-03-18T17:51:02.757Z] GET /health - 200 (5ms)
+mcp:test: [2026-03-18T17:51:02.770Z] POST /api/mcp
+mcp:test: [2026-03-18T17:51:02.800Z] POST /api/mcp - 200 (30ms)
+mcp:test: [2026-03-18T17:51:02.825Z] POST /api/mcp
+mcp:test: [2026-03-18T17:51:02.830Z] POST /api/mcp - 202 (5ms)
+mcp:test: [2026-03-18T17:51:02.833Z] GET /api/mcp
+mcp:test: [2026-03-18T17:51:02.848Z] POST /api/mcp
+mcp:test: [2026-03-18T17:51:02.853Z] POST /api/mcp - 200 (5ms)
+mcp:test: ✅ MCP server started successfully
+mcp:test: MCP server is ready!
+mcp:test: [2026-03-18T17:51:05.933Z] POST /api/shopping-list
+mcp:test: [2026-03-18T17:51:05.935Z] POST /api/shopping-list - 400 (2ms)
+mcp:test: ✓ Shopping list API correctly rejects requests with missing prompt
+mcp:test: (pass) Shopping List API Tests > should return 400 for shopping list API with missing prompt [20.22ms]
+mcp:test: [2026-03-18T17:51:05.937Z] POST /api/shopping-list
+mcp:test: (pass) Shopping List API Tests > should return 400 for shopping list API with empty prompt [3.46ms]
+mcp:test: ✓ Shopping list API correctly rejects requests with empty prompt
+mcp:test: [2026-03-18T17:51:05.938Z] POST /api/shopping-list - 400 (1ms)
+mcp:test: [2026-03-18T17:51:05.940Z] POST /api/shopping-list
+mcp:test: [API] shoppingListWorkflow request received
+mcp:test: [32mINFO[39m [2026-03-18 17:51:14.468 +0000] (Mastra-Verticals): [36m[API] Workflow completed successfully[39m
+mcp:test:     [35mworkflowName[39m: "shoppingListWorkflow"
+mcp:test: ✓ Shopping list API accepted request (status: 200)
+mcp:test: (pass) Shopping List API Tests > should accept shopping list API request with valid prompt [8535.00ms]
+mcp:test: [2026-03-18T17:51:14.471Z] POST /api/shopping-list - 200 (8531ms)
+mcp:test: Shutting down servers...
+mcp:test: 🧹 Killed process(es) on port 4112
+mcp:test: 🛑 MCP server stopped
+mcp:test: 
+mcp:test: mcp/tests/shopping-list-schema.spec.ts:
+mcp:test: (pass) Shopping List API Schema Tests > addToShoppingListSchema > should accept valid prompt [0.77ms]
+mcp:test: (pass) Shopping List API Schema Tests > addToShoppingListSchema > should reject missing prompt [1.13ms]
+mcp:test: (pass) Shopping List API Schema Tests > addToShoppingListSchema > should reject empty prompt [0.30ms]
+mcp:test: (pass) Shopping List API Schema Tests > addToShoppingListSchema > should reject prompt with wrong type [0.20ms]
+mcp:test: (pass) Shopping List API Schema Tests > addToShoppingListSchema > should accept prompt with special characters [0.12ms]
+mcp:test: (pass) Shopping List API Schema Tests > addToShoppingListSchema > should accept long prompt [0.15ms]
+mcp:test: 
+mcp:test: mcp/tests/mcp-client-connection.spec.ts:
+mcp:test: Starting MCP server programmatically...
+mcp:test: 🧹 Killed process(es) on port 4112
+mcp:test: 🤖 Starting MCP server via run-with-env.sh + bun...
+mcp:test: 🔍 Checking MCP server status (attempt 1/30)...
+mcp:test: Using pre-resolved secrets from mcp/op.env.local
+mcp:test: 🔍 Checking MCP server status (attempt 2/30)...
+mcp:test: 📦 Using local development directory for storage: /tmp/mcp
+mcp:test: 🔍 Checking MCP server status (attempt 3/30)...
+mcp:test: mastra-cloud-observability-exporter disabled: MASTRA_CLOUD_ACCESS_TOKEN environment variable not set.
+mcp:test: [33mWARN[39m [2026-03-18 17:51:21.584 +0000] (Mastra): [36mDefaultExporter disabled: Storage not available. Traces will not be persisted.[39m
+mcp:test: Starting J.A.R.V.I.S. MCP Server...
+mcp:test: [32mINFO[39m [2026-03-18 17:51:21.854 +0000] (Mastra-Verticals): [36m[API] Registered workflow endpoint[39m
+mcp:test:     [35mmethod[39m: "POST"
+mcp:test:     [35mpath[39m: "/api/shopping-list"
+mcp:test:     [35mworkflow[39m: "shoppingListWorkflow"
+mcp:test: J.A.R.V.I.S. MCP Server listening on http://0.0.0.0:4112/api/mcp
+mcp:test: API endpoint available: POST http://0.0.0.0:4112/api/shopping-list
+mcp:test: 🛒 Registering shopping email triggers...
+mcp:test: ✅ Shopping email triggers registered
+mcp:test: [32mINFO[39m [2026-03-18 17:51:21.859 +0000] (Mastra-Verticals): [36mRegistered email trigger[39m
+mcp:test:     [35mtriggerId[39m: "email-trigger-1"
+mcp:test:     [35msender[39m: "info@kundeservice.bilkatogo.dk"
+mcp:test: 📊 Token Usage Summary:
+mcp:test:    Total: 424,167 tokens (3 requests)
+mcp:test:    Prompt: 400,267 | Completion: 23,900
+mcp:test:    By Model:
+mcp:test:    - gemini-2.5-flash: 419,187 tokens (1 requests)
+mcp:test:    - gemini-2.5-flash-lite: 4,980 tokens (2 requests)
+mcp:test: 📅 Scheduled workflow: weatherMonitoringWorkflow
+mcp:test:    Schedule: 0 */3 * * * (Europe/Copenhagen)
+mcp:test: 📅 Scheduled workflow: weeklyMealPlanningWorkflow
+mcp:test:    Schedule: 0 8 * * 0 (Europe/Copenhagen)
+mcp:test: 📅 Scheduled workflow: emailCheckingWorkflow
+mcp:test:    Schedule: * * * * * (Europe/Copenhagen)
+mcp:test:    Run on startup: enabled
+mcp:test: 📅 Scheduled workflow: formRepliesDetectionWorkflow
+mcp:test:    Schedule: 0 */3 * * * (Europe/Copenhagen)
+mcp:test:    Run on startup: enabled
+mcp:test: 📅 Scheduled workflow: iotMonitoringWorkflow
+mcp:test:    Schedule: 0 */3 * * * (Europe/Copenhagen)
+mcp:test:    Run on startup: enabled
+mcp:test: 
+mcp:test: 🚀 5 scheduled workflow(s) are now active
+mcp:test:    ✅ Active: weatherMonitoringWorkflow
+mcp:test:    ✅ Active: weeklyMealPlanningWorkflow
+mcp:test:    ✅ Active: emailCheckingWorkflow
+mcp:test:    ✅ Active: formRepliesDetectionWorkflow
+mcp:test:    ✅ Active: iotMonitoringWorkflow
+mcp:test: 
+mcp:test: 🏃 Executing 3 startup workflow(s)...
+mcp:test:    🚀 Running on startup: emailCheckingWorkflow
+mcp:test: 
+mcp:test: ⚙️  Executing scheduled workflow: emailCheckingWorkflow
+mcp:test:    Time: 2026-03-18T17:51:22.068Z
+mcp:test:    🚀 Running on startup: formRepliesDetectionWorkflow
+mcp:test: 
+mcp:test: ⚙️  Executing scheduled workflow: formRepliesDetectionWorkflow
+mcp:test:    Time: 2026-03-18T17:51:22.078Z
+mcp:test:    🚀 Running on startup: iotMonitoringWorkflow
+mcp:test: 
+mcp:test: ⚙️  Executing scheduled workflow: iotMonitoringWorkflow
+mcp:test:    Time: 2026-03-18T17:51:22.078Z
+mcp:test: 
+mcp:test: ⏰ Workflow scheduler is running
+mcp:test: 
+mcp:test: [32mINFO[39m [2026-03-18 17:51:22.120 +0000] (Mastra-Verticals): [36mCalculating noise baselines[39m
+mcp:test:     [35mstartTime[39m: "2026-03-18T17:36:22.120Z"
+mcp:test:     [35mendTime[39m: "2026-03-18T17:51:22.120Z"
+mcp:test:     [35mwindowSeconds[39m: 900
+mcp:test: [31mERROR[39m [2026-03-18 17:51:22.292 +0000] (Mastra-Verticals): [36mError calculating noise baselines[39m
+mcp:test:     error: {}
+mcp:test: Server running on http://0.0.0.0:4112
+mcp:test: MCP HTTP endpoint: http://0.0.0.0:4112/api/mcp
+mcp:test: [32mINFO[39m [2026-03-18 17:51:22.346 +0000] (Mastra-Verticals): [36mIoT Monitoring: entities changed[39m
+mcp:test:     [35mtotalChanged[39m: 192
+mcp:test:     [35mwindowSeconds[39m: 10800
+mcp:test:     [35mdevicesWithChanges[39m: 35
+mcp:test: [32mINFO[39m [2026-03-18 17:51:22.383 +0000] (Mastra-Verticals): [36mRegistering state change[39m
+mcp:test:     [35mstateType[39m: "device_state_change"
+mcp:test:     [35msource[39m: "internet-of-things"
+mcp:test: [32mINFO[39m [2026-03-18 17:51:22.384 +0000] (Mastra-Verticals): [36m[BATCHER] State change received[39m
+mcp:test:     [35mstateType[39m: "device_state_change"
+mcp:test:     [35msource[39m: "internet-of-things"
+mcp:test: [32mINFO[39m [2026-03-18 17:51:22.385 +0000] (Mastra-Verticals): [36m[BATCHER] Batch size[39m
+mcp:test:     [35mcurrent[39m: 1
+mcp:test:     [35mmax[39m: 10
+mcp:test: [32mINFO[39m [2026-03-18 17:51:22.385 +0000] (Mastra-Verticals): [36mState change registered[39m
+mcp:test:     [35mentityId[39m: "sensor.sun_next_setting"
+mcp:test:     [35mdeviceName[39m: "Sun"
+mcp:test: [32mINFO[39m [2026-03-18 17:51:22.393 +0000] (Mastra-Verticals): [36mRegistering state change[39m
+mcp:test:     [35mstateType[39m: "device_state_change"
+mcp:test:     [35msource[39m: "internet-of-things"
+mcp:test: [32mINFO[39m [2026-03-18 17:51:22.394 +0000] (Mastra-Verticals): [36m[BATCHER] State change received[39m
+mcp:test:     [35mstateType[39m: "device_state_change"
+mcp:test:     [35msource[39m: "internet-of-things"
+mcp:test: [32mINFO[39m [2026-03-18 17:51:22.394 +0000] (Mastra-Verticals): [36m[BATCHER] Batch size[39m
+mcp:test:     [35mcurrent[39m: 2
+mcp:test:     [35mmax[39m: 10
+mcp:test: [32mINFO[39m [2026-03-18 17:51:22.395 +0000] (Mastra-Verticals): [36mState change registered[39m
+mcp:test:     [35mentityId[39m: "lock.lock_ultra_b1"
+mcp:test:     [35mdeviceName[39m: "Hoveddør"
+mcp:test: [32mINFO[39m [2026-03-18 17:51:22.400 +0000] (Mastra-Verticals): [36mRegistering state change[39m
+mcp:test:     [35mstateType[39m: "device_state_change"
+mcp:test:     [35msource[39m: "internet-of-things"
+mcp:test: [32mINFO[39m [2026-03-18 17:51:22.401 +0000] (Mastra-Verticals): [36m[BATCHER] State change received[39m
+mcp:test:     [35mstateType[39m: "device_state_change"
+mcp:test:     [35msource[39m: "internet-of-things"
+mcp:test: [32mINFO[39m [2026-03-18 17:51:22.401 +0000] (Mastra-Verticals): [36m[BATCHER] Batch size[39m
+mcp:test:     [35mcurrent[39m: 3
+mcp:test:     [35mmax[39m: 10
+mcp:test: [32mINFO[39m [2026-03-18 17:51:22.402 +0000] (Mastra-Verticals): [36mState change registered[39m
+mcp:test:     [35mentityId[39m: "sensor.tesla_route_distance_to_julie_in_meters"
+mcp:test:     [35mdeviceName[39m: "Bil"
+mcp:test: [32mINFO[39m [2026-03-18 17:51:22.410 +0000] (Mastra-Verticals): [36mRegistering state change[39m
+mcp:test:     [35mstateType[39m: "device_state_change"
+mcp:test:     [35msource[39m: "internet-of-things"
+mcp:test: [32mINFO[39m [2026-03-18 17:51:22.410 +0000] (Mastra-Verticals): [36m[BATCHER] State change received[39m
+mcp:test:     [35mstateType[39m: "device_state_change"
+mcp:test:     [35msource[39m: "internet-of-things"
+mcp:test: [32mINFO[39m [2026-03-18 17:51:22.411 +0000] (Mastra-Verticals): [36m[BATCHER] Batch size[39m
+mcp:test:     [35mcurrent[39m: 4
+mcp:test:     [35mmax[39m: 10
+mcp:test: [32mINFO[39m [2026-03-18 17:51:22.411 +0000] (Mastra-Verticals): [36mState change registered[39m
+mcp:test:     [35mentityId[39m: "sensor.tesla_route_distance_to_mathias_in_meters"
+mcp:test:     [35mdeviceName[39m: "Bil"
+mcp:test: [32mINFO[39m [2026-03-18 17:51:22.416 +0000] (Mastra-Verticals): [36mRegistering state change[39m
+mcp:test:     [35mstateType[39m: "device_state_change"
+mcp:test:     [35msource[39m: "internet-of-things"
+mcp:test: [32mINFO[39m [2026-03-18 17:51:22.417 +0000] (Mastra-Verticals): [36m[BATCHER] State change received[39m
+mcp:test:     [35mstateType[39m: "device_state_change"
+mcp:test:     [35msource[39m: "internet-of-things"
+mcp:test: [32mINFO[39m [2026-03-18 17:51:22.417 +0000] (Mastra-Verticals): [36m[BATCHER] Batch size[39m
+mcp:test:     [35mcurrent[39m: 5
+mcp:test:     [35mmax[39m: 10
+mcp:test: [32mINFO[39m [2026-03-18 17:51:22.417 +0000] (Mastra-Verticals): [36mState change registered[39m
+mcp:test:     [35mentityId[39m: "binary_sensor.teslabobs_status"
+mcp:test:     [35mdeviceName[39m: "Bil"
+mcp:test: [32mINFO[39m [2026-03-18 17:51:22.422 +0000] (Mastra-Verticals): [36mRegistering state change[39m
+mcp:test:     [35mstateType[39m: "device_state_change"
+mcp:test:     [35msource[39m: "internet-of-things"
+mcp:test: [32mINFO[39m [2026-03-18 17:51:22.422 +0000] (Mastra-Verticals): [36m[BATCHER] State change received[39m
+mcp:test:     [35mstateType[39m: "device_state_change"
+mcp:test:     [35msource[39m: "internet-of-things"
+mcp:test: [32mINFO[39m [2026-03-18 17:51:22.422 +0000] (Mastra-Verticals): [36m[BATCHER] Batch size[39m
+mcp:test:     [35mcurrent[39m: 6
+mcp:test:     [35mmax[39m: 10
+mcp:test: [32mINFO[39m [2026-03-18 17:51:22.423 +0000] (Mastra-Verticals): [36mState change registered[39m
+mcp:test:     [35mentityId[39m: "binary_sensor.teslabobs_battery_heater"
+mcp:test:     [35mdeviceName[39m: "Bil"
+mcp:test: [32mINFO[39m [2026-03-18 17:51:22.427 +0000] (Mastra-Verticals): [36mRegistering state change[39m
+mcp:test:     [35mstateType[39m: "device_state_change"
+mcp:test:     [35msource[39m: "internet-of-things"
+mcp:test: [32mINFO[39m [2026-03-18 17:51:22.428 +0000] (Mastra-Verticals): [36m[BATCHER] State change received[39m
+mcp:test:     [35mstateType[39m: "device_state_change"
+mcp:test:     [35msource[39m: "internet-of-things"
+mcp:test: [32mINFO[39m [2026-03-18 17:51:22.428 +0000] (Mastra-Verticals): [36m[BATCHER] Batch size[39m
+mcp:test:     [35mcurrent[39m: 7
+mcp:test:     [35mmax[39m: 10
+mcp:test: [32mINFO[39m [2026-03-18 17:51:22.428 +0000] (Mastra-Verticals): [36mState change registered[39m
+mcp:test:     [35mentityId[39m: "binary_sensor.teslabobs_charging"
+mcp:test:     [35mdeviceName[39m: "Bil"
+mcp:test: [32mINFO[39m [2026-03-18 17:51:22.433 +0000] (Mastra-Verticals): [36mRegistering state change[39m
+mcp:test:     [35mstateType[39m: "device_state_change"
+mcp:test:     [35msource[39m: "internet-of-things"
+mcp:test: [32mINFO[39m [2026-03-18 17:51:22.433 +0000] (Mastra-Verticals): [36m[BATCHER] State change received[39m
+mcp:test:     [35mstateType[39m: "device_state_change"
+mcp:test:     [35msource[39m: "internet-of-things"
+mcp:test: [32mINFO[39m [2026-03-18 17:51:22.434 +0000] (Mastra-Verticals): [36m[BATCHER] Batch size[39m
+mcp:test:     [35mcurrent[39m: 8
+mcp:test:     [35mmax[39m: 10
+mcp:test: [32mINFO[39m [2026-03-18 17:51:22.434 +0000] (Mastra-Verticals): [36mState change registered[39m
+mcp:test:     [35mentityId[39m: "binary_sensor.teslabobs_preconditioning_enabled"
+mcp:test:     [35mdeviceName[39m: "Bil"
+mcp:test: [32mINFO[39m [2026-03-18 17:51:22.439 +0000] (Mastra-Verticals): [36mRegistering state change[39m
+mcp:test:     [35mstateType[39m: "device_state_change"
+mcp:test:     [35msource[39m: "internet-of-things"
+mcp:test: [32mINFO[39m [2026-03-18 17:51:22.440 +0000] (Mastra-Verticals): [36m[BATCHER] State change received[39m
+mcp:test:     [35mstateType[39m: "device_state_change"
+mcp:test:     [35msource[39m: "internet-of-things"
+mcp:test: [32mINFO[39m [2026-03-18 17:51:22.440 +0000] (Mastra-Verticals): [36m[BATCHER] Batch size[39m
+mcp:test:     [35mcurrent[39m: 9
+mcp:test:     [35mmax[39m: 10
+mcp:test: [32mINFO[39m [2026-03-18 17:51:22.440 +0000] (Mastra-Verticals): [36mState change registered[39m
+mcp:test:     [35mentityId[39m: "binary_sensor.teslabobs_scheduled_charging_pending"
+mcp:test:     [35mdeviceName[39m: "Bil"
+mcp:test: [32mINFO[39m [2026-03-18 17:51:22.453 +0000] (Mastra-Verticals): [36mRegistering state change[39m
+mcp:test:     [35mstateType[39m: "device_state_change"
+mcp:test:     [35msource[39m: "internet-of-things"
+mcp:test: [32mINFO[39m [2026-03-18 17:51:22.453 +0000] (Mastra-Verticals): [36m[BATCHER] State change received[39m
+mcp:test:     [35mstateType[39m: "device_state_change"
+mcp:test:     [35msource[39m: "internet-of-things"
+mcp:test: [32mINFO[39m [2026-03-18 17:51:22.453 +0000] (Mastra-Verticals): [36m[BATCHER] Batch size[39m
+mcp:test:     [35mcurrent[39m: 10
+mcp:test:     [35mmax[39m: 10
+mcp:test: [32mINFO[39m [2026-03-18 17:51:22.457 +0000] (Mastra-Verticals): [36m[BATCHER] Batch full, processing immediately[39m
+mcp:test: [32mINFO[39m [2026-03-18 17:51:22.458 +0000] (Mastra-Verticals): [36m[BATCHER] Processing batch[39m
+mcp:test:     [35mcount[39m: 10
+mcp:test: 📬 Found 0 new email(s) since 2026-03-18T17:26:43Z
+mcp:test: ⏭️  No emails to process for form replies
+mcp:test: ⏭️  No emails to register with state reactor
+mcp:test: ✅ Workflow completed successfully (858ms)
+mcp:test:    Status: success
+mcp:test:    Result: {
+mcp:test:   emailsFound: 0,
+mcp:test:   formRepliesDetected: 0,
+mcp:test:   stateChangeRegistered: false,
+mcp:test:   message: "No new emails to analyze",
+mcp:test: }
+mcp:test: 📬 Found 0 new email(s) since 2026-03-18T17:26:43Z
+mcp:test: ✅ Workflow completed successfully (874ms)
+mcp:test:    Status: success
+mcp:test:    Result: {
+mcp:test:   emailsFound: 0,
+mcp:test:   lastSeenEmailUpdated: false,
+mcp:test:   message: "No new emails since last check",
+mcp:test: }
+mcp:test: [32mINFO[39m [2026-03-18 17:51:25.059 +0000] (Mastra-Verticals): [36m[BATCHER] Saved state changes to memory[39m
+mcp:test:     [35mcount[39m: 10
+mcp:test: [2026-03-18T17:51:25.246Z] GET /health
+mcp:test: [2026-03-18T17:51:25.249Z] GET /health - 200 (3ms)
+mcp:test: [2026-03-18T17:51:25.252Z] POST /api/mcp
+mcp:test: [2026-03-18T17:51:25.281Z] POST /api/mcp - 200 (29ms)
+mcp:test: [2026-03-18T17:51:25.293Z] POST /api/mcp
+mcp:test: [2026-03-18T17:51:25.296Z] POST /api/mcp - 202 (3ms)
+mcp:test: [2026-03-18T17:51:25.310Z] GET /api/mcp
+mcp:test: [2026-03-18T17:51:25.313Z] POST /api/mcp
+mcp:test: [2026-03-18T17:51:25.317Z] POST /api/mcp - 200 (4ms)
+mcp:test: ✅ MCP server started successfully
+mcp:test: MCP server is ready!
+mcp:test: [2026-03-18T17:51:28.350Z] POST /api/mcp
+mcp:test: [2026-03-18T17:51:28.355Z] POST /api/mcp - 200 (5ms)
+mcp:test: [2026-03-18T17:51:28.358Z] POST /api/mcp
+mcp:test: [2026-03-18T17:51:28.360Z] POST /api/mcp - 202 (2ms)
+mcp:test: [2026-03-18T17:51:28.362Z] GET /api/mcp
+mcp:test: [2026-03-18T17:51:28.364Z] POST /api/mcp
+mcp:test: [2026-03-18T17:51:28.366Z] POST /api/mcp - 200 (2ms)
+mcp:test: ✓ MCP server established connection
+mcp:test: (pass) MCP Server Connection Tests > should establish connection [38.70ms]
+mcp:test: [2026-03-18T17:51:28.399Z] POST /api/mcp
+mcp:test: [2026-03-18T17:51:28.419Z] POST /api/mcp - 200 (20ms)
+mcp:test: [2026-03-18T17:51:28.420Z] POST /api/mcp
+mcp:test: [2026-03-18T17:51:28.422Z] POST /api/mcp - 202 (2ms)
+mcp:test: [2026-03-18T17:51:28.435Z] GET /api/mcp
+mcp:test: [2026-03-18T17:51:28.438Z] POST /api/mcp
+mcp:test: [2026-03-18T17:51:28.441Z] POST /api/mcp - 200 (3ms)
+mcp:test: ✓ MCP server returned 2 tools
+mcp:test: (pass) MCP Server Connection Tests > should list available tools [76.96ms]
+mcp:test: MCPClient errored connecting to MCP server: {
+mcp:test:   error: "{\"message\":\"Failed to connect to MCP server invalidServer: Unable to connect. Is the computer able to access the url?\",\"domain\":\"MCP\",\"category\":\"THIRD_PARTY\",\"code\":\"MCP_CLIENT_CONNECT_FAILED\",\"details\":{\"name\":\"invalidServer\"},\"cause\":{\"message\":\"Unable to connect. Is the computer able to access the url?\",\"name\":\"Error\",\"code\":\"ConnectionRefused\",\"path\":\"http://localhost:9999/invalid\",\"errno\":0}}",
+mcp:test: }
+mcp:test: ✓ Connection errors handled gracefully
+mcp:test: Failed to list tools from server: {
+mcp:test:   error: "{\"message\":\"Failed to connect to MCP server invalidServer: Unable to connect. Is the computer able to access the url?\",\"domain\":\"MCP\",\"category\":\"THIRD_PARTY\",\"code\":\"MCP_CLIENT_GET_TOOLS_FAILED\",\"details\":{\"serverName\":\"invalidServer\"},\"cause\":{\"message\":\"Failed to connect to MCP server invalidServer: Unable to connect. Is the computer able to access the url?\",\"domain\":\"MCP\",\"category\":\"THIRD_PARTY\",\"code\":\"MCP_CLIENT_CONNECT_FAILED\",\"details\":{\"name\":\"invalidServer\"},\"cause\":{\"message\":\"Unable to connect. Is the computer able to access the url?\",\"name\":\"Error\",\"code\":\"ConnectionRefused\",\"path\":\"http://localhost:9999/invalid\",\"errno\":0}}}",
+mcp:test: }
+mcp:test: (pass) MCP Server Connection Tests > should handle connection errors gracefully [10.67ms]
+mcp:test: Shutting down servers...
+mcp:test: 🧹 Killed process(es) on port 4112
+mcp:test: 🛑 MCP server stopped
+mcp:test: 
+mcp:test: mcp/tests/zod-v4-upgrade.test.ts:
+mcp:test: (pass) Zod V4 Upgrade > Zod V4 is installed [0.31ms]
+mcp:test: (pass) Zod V4 Upgrade > Basic schema validation works [0.87ms]
+mcp:test: (pass) Zod V4 Upgrade > Schema with nested objects works [0.97ms]
+mcp:test: (pass) Zod V4 Upgrade > Partial schemas work [1.07ms]
+mcp:test: (pass) Zod V4 Upgrade > Schema inference works [0.66ms]
+mcp:test: 
+mcp:test: mcp/tests/entity-noise-baseline-storage.spec.ts:
+mcp:test: (pass) EntityNoiseBaselineStorage > calculateBaselinesFromHistory > should calculate numeric baseline from temperature fluctuations [47.36ms]
+mcp:test: (pass) EntityNoiseBaselineStorage > calculateBaselinesFromHistory > should handle string states [19.47ms]
+mcp:test: (pass) EntityNoiseBaselineStorage > calculateBaselinesFromHistory > should skip entities with less than 2 states [23.74ms]
+mcp:test: (pass) EntityNoiseBaselineStorage > isSignificantChange > should detect significant numeric change exceeding threshold [19.77ms]
+mcp:test: (pass) EntityNoiseBaselineStorage > isSignificantChange > should filter insignificant numeric change below threshold [19.32ms]
+mcp:test: (pass) EntityNoiseBaselineStorage > isSignificantChange > should detect string state changes [22.10ms]
+mcp:test: (pass) EntityNoiseBaselineStorage > isSignificantChange > should consider all changes significant when no baseline exists [12.21ms]
+mcp:test: (pass) EntityNoiseBaselineStorage > getBaseline and saveBaseline > should save and retrieve baseline [17.31ms]
+mcp:test: (pass) EntityNoiseBaselineStorage > getBaseline and saveBaseline > should update existing baseline [28.69ms]
+mcp:test: (pass) EntityNoiseBaselineStorage > getBaseline and saveBaseline > should return null for non-existent baseline [7.53ms]
+mcp:test: (pass) EntityNoiseBaselineStorage > getAllBaselines > should return all baselines [30.11ms]
+mcp:test: (pass) EntityNoiseBaselineStorage > getAllBaselines > should return empty map when no baselines exist [14.33ms]
+mcp:test: (pass) EntityNoiseBaselineStorage > deleteBaseline > should delete a specific baseline [29.48ms]
+mcp:test: (pass) EntityNoiseBaselineStorage > clearAllBaselines > should clear all baselines [50.66ms]
+mcp:test: 
+mcp:test: mcp/tests/token-usage-storage.spec.ts:
+mcp:test: (pass) Token Usage Storage Tests > recordUsage > should record token usage [55.01ms]
+mcp:test: (pass) Token Usage Storage Tests > recordUsage > should calculate total tokens if not provided [54.35ms]
+mcp:test: (pass) Token Usage Storage Tests > recordUsage > should store trace and agent context [55.62ms]
+mcp:test: (pass) Token Usage Storage Tests > getModelUsage > should return null for model with no usage [45.41ms]
+mcp:test: (pass) Token Usage Storage Tests > getModelUsage > should aggregate usage for a model [70.97ms]
+mcp:test: (pass) Token Usage Storage Tests > getModelUsage > should filter by date range [61.73ms]
+mcp:test: (pass) Token Usage Storage Tests > getAllModelUsage > should return empty array when no usage [43.58ms]
+mcp:test: (pass) Token Usage Storage Tests > getAllModelUsage > should return usage for all models [70.71ms]
+mcp:test: (pass) Token Usage Storage Tests > getAllModelUsage > should sort by total tokens descending [77.29ms]
+mcp:test: (pass) Token Usage Storage Tests > setQuota and getQuotaInfo > should set and retrieve quota [65.64ms]
+mcp:test: (pass) Token Usage Storage Tests > setQuota and getQuotaInfo > should update existing quota [166.01ms]
+mcp:test: (pass) Token Usage Storage Tests > setQuota and getQuotaInfo > should calculate quota usage correctly [62.13ms]
+mcp:test: (pass) Token Usage Storage Tests > setQuota and getQuotaInfo > should detect over quota [62.64ms]
+mcp:test: (pass) Token Usage Storage Tests > setQuota and getQuotaInfo > should return null for model without quota [55.72ms]
+mcp:test: (pass) Token Usage Storage Tests > getAllQuotaInfo > should return empty array when no quotas [48.49ms]
+mcp:test: (pass) Token Usage Storage Tests > getAllQuotaInfo > should return all quotas [65.26ms]
+mcp:test: (pass) Token Usage Storage Tests > getTotalUsage > should return zero for no usage [55.19ms]
+mcp:test: (pass) Token Usage Storage Tests > getTotalUsage > should aggregate all model usage [96.90ms]
+mcp:test: (pass) Token Usage Storage Tests > getRecentUsage > should return empty array when no usage [43.37ms]
+mcp:test: (pass) Token Usage Storage Tests > getRecentUsage > should return recent records [88.52ms]
+mcp:test: (pass) Token Usage Storage Tests > getRecentUsage > should respect limit [99.74ms]
+mcp:test: (pass) Token Usage Storage Tests > getRecentUsage > should return most recent first [88.51ms]
+mcp:test: (pass) Token Usage Storage Tests > deleteQuota > should delete quota [65.45ms]
+mcp:test: (pass) Token Usage Storage Tests > deleteQuota > should not affect usage records [73.32ms]
+mcp:test: (pass) Token Usage Storage Tests > cleanupOldRecords > should delete old records [60.27ms]
+mcp:test: (pass) Token Usage Storage Tests > cleanupOldRecords > should not delete recent records [54.27ms]
+mcp:test: 
+mcp:test: mcp/mastra/utils/providers/ollama-provider.spec.ts:
+mcp:test: 📦 Using local development directory for storage: /tmp/mcp
+mcp:test: (pass) Ollama Provider Configuration > should export the correct model name [0.06ms]
+mcp:test: (pass) Ollama Provider Configuration > should export configuration helper functions [0.05ms]
+mcp:test: (pass) Ollama Provider Configuration > should export model management functions [0.04ms]
+mcp:test: (pass) Ollama Provider Configuration > should return correct URL values [0.12ms]
+mcp:test: (pass) Ollama Provider Configuration > should export ollama provider instance [0.04ms]
+mcp:test: (pass) Ollama Provider Configuration > should export pre-configured ollamaModel instance [0.03ms]
+mcp:test: (pass) Ollama Docker Integration > should connect to Ollama API [59.75ms]
+mcp:test: (pass) Ollama Docker Integration > should list available models [13.87ms]
+mcp:test: (pass) Ollama Docker Integration > should check model availability using isModelAvailable [15.83ms]
+mcp:test: (fail) Ollama Docker Integration > should generate text using ollama provider [120004.54ms]
+mcp:test:   ^ this test timed out after 120000ms.
+mcp:test: (pass) Ollama Docker Integration > should verify default model is available [664.71ms]
+mcp:test: (pass) Ollama Mastra Agent Integration > should create an agent with ollamaModel [17.69ms]
+mcp:test: (fail) Ollama Mastra Agent Integration > should generate a response using Mastra agent with Ollama [60035.11ms]
+mcp:test:   ^ this test timed out after 60000ms.
+mcp:test: (fail) Ollama Mastra Agent Integration > should stream a response using Mastra agent with Ollama [60031.19ms]
+mcp:test:   ^ this test timed out after 60000ms.
