@@ -99,7 +99,7 @@
     "@types/node-fetch": "2.6.13",
     "@typescript/native-preview": "7.0.0-dev.20260312.1",
     "ai": "6.0.116",
-    "ai-sdk-ollama": "3.8.0",
+    "ai-sdk-ollama": "3.8.1",
     "commander": "14.0.3",
     "dotenv": "17.3.1",
     "express": "5.2.1",
