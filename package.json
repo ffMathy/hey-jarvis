@@ -30,7 +30,7 @@
   },
   "homepage": "https://github.com/ffMathy/hey-jarvis#readme",
   "devDependencies": {
-    "@biomejs/biome": "2.4.6",
+    "@biomejs/biome": "2.4.8",
     "@commitlint/cli": "20.4.4",
     "@commitlint/config-conventional": "20.4.4",
     "@playwright/test": "1.58.2",
