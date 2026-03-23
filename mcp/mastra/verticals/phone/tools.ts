@@ -55,17 +55,25 @@ export const sendTextMessage = createTool({
 
     const client = twilio(accountSid, authToken);
 
-    const response = await client.messages.create({
-      body: message,
-      from: fromNumber,
-      to: phoneNumber,
-    });
+    try {
+      const response = await client.messages.create({
+        body: message,
+        from: fromNumber,
+        to: phoneNumber,
+      });
 
-    return {
-      success: true,
-      message: `Text message sent successfully to ${phoneNumber}`,
-      messageSid: response.sid,
-    };
+      return {
+        success: true,
+        message: `Text message sent successfully to ${phoneNumber}`,
+        messageSid: response.sid,
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return {
+        success: false,
+        message: `Failed to send text message: ${errorMessage}`,
+      };
+    }
   },
 });
 
