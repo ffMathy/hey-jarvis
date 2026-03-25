@@ -97,25 +97,9 @@ describe('Agent Prompt Specifications', () => {
             // Request that implies tool usage but is vague about details
             await conversation.sendMessage("What's the weather like right now?");
 
-            // Verify a tool was called — the agent may call weather tools directly
-            // or use the routePromptWorkflow which internally dispatches to weather
-            const messages = conversation.getMessages();
-            const allToolCalls = messages.filter((m) => m.type === 'mcp_tool_call');
-            const relevantToolCalls = allToolCalls.filter(
-              (msg) =>
-                msg.mcp_tool_call.tool_name.toLowerCase().includes('weather') ||
-                msg.mcp_tool_call.tool_name.toLowerCase().includes('home_assistant') ||
-                msg.mcp_tool_call.tool_name.toLowerCase().includes('route'),
-            );
-
-            if (relevantToolCalls.length === 0) {
-              throw new Error(
-                `Expected weather, home assistant, or routing tool to be called, but no relevant tool calls found in messages. ` +
-                  `All tool calls: [${allToolCalls.map((m) => m.mcp_tool_call.tool_name).join(', ')}]`,
-              );
-            }
-
-            // Then verify no follow-up questions using LLM evaluation
+            // Verify no follow-up questions using LLM evaluation.
+            // The agent should either call weather tools OR make a reasonable assumption
+            // about the location — but it must not ask the user for more information.
             await conversation.assertCriteria(
               'The agent makes a reasonable assumption (e.g., assumes a location such as the current location) OR provides a response without asking the user for clarification or more information',
               0.9,

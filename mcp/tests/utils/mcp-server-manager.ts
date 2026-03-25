@@ -59,7 +59,9 @@ export async function isMcpServerRunning(args?: McpClientArgs): Promise<boolean>
   const [listToolsResult] = await Promise.allSettled([client.listTools()]);
   await Promise.allSettled([client.disconnect()]);
 
-  return listToolsResult.status === 'fulfilled';
+  // @mastra/mcp >= 1.3.1 catches per-server errors and returns {} instead of throwing,
+  // so we must check that tools were actually returned, not just that the call didn't throw.
+  return listToolsResult.status === 'fulfilled' && Object.keys(listToolsResult.value).length > 0;
 }
 
 /**
