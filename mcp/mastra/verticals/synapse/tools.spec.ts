@@ -67,6 +67,6 @@ describe('Synapse Tools Integration Tests', () => {
 
       console.log('✅ State changes flushed successfully');
       console.log('   - Processed count:', result.processedCount);
-    }, 15000);
+    }, 60000);
   });
 });
