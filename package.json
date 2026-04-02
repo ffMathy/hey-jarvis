@@ -82,7 +82,7 @@
     "@azure/msal-node": "5.0.6",
     "@elevenlabs/elevenlabs-js": "2.39.0",
     "@googlemaps/google-maps-services-js": "3.4.2",
-    "@hono/node-server": "1.19.11",
+    "@hono/node-server": "1.19.12",
     "@libsql/client": "0.17.0",
     "@mastra/core": "1.14.0",
     "@mastra/evals": "1.1.2",
