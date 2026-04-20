@@ -87,7 +87,7 @@ jobs:
             turbo-cache-${{ runner.os }}-
 
       - name: Build and test in dev container
-        uses: devcontainers/ci@v0.3
+        uses: devcontainers/ci@v0.3.1900000417
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
