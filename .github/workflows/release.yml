@@ -32,7 +32,7 @@ jobs:
     steps:
       - name: Release using "Release Please"
         id: release
-        uses: googleapis/release-please-action@v4
+        uses: googleapis/release-please-action@v4.4.1
         with:
           config-file: .github/release-please-config.json
           manifest-file: .github/.release-please-manifest.json
