@@ -60,7 +60,7 @@
     "turbo": "2.5.4",
     "typescript": "5.9.3",
     "wait-port": "1.1.0",
-    "ws": "8.19.0"
+    "ws": "8.20.1"
   },
   "trustedDependencies": [
     "@swc/core",
