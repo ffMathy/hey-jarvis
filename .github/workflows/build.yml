@@ -68,7 +68,7 @@ jobs:
           swap-storage: false    # Skip swap removal to save time
 
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v6.0.2
         with:
           fetch-depth: 0  # Fetch all history for turbo affected detection to work
 
