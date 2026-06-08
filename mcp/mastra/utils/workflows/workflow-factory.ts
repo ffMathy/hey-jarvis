@@ -1,6 +1,6 @@
 import type { AgentConfig } from '@mastra/core/agent';
 import type { StandardSchemaWithJSON } from '@mastra/core/schema';
-import type { ToolExecutionContext, ValidationError } from '@mastra/core/tools';
+import { noopObserve, type ToolExecutionContext, type ValidationError } from '@mastra/core/tools';
 import {
   type DefaultEngineType,
   type ExecuteFunctionParams,
@@ -365,8 +365,9 @@ export function createToolStep<
     outputSchema,
     stateSchema: config.stateSchema,
     execute: async (params) => {
-      // ToolExecutionContext has all-optional fields; { mastra } satisfies it without unsafe casting
-      const toolContext: ToolExecutionContext = { mastra: params.mastra };
+      // The Mastra tool runtime normally injects `observe`; when invoking a tool's
+      // execute directly from a step we supply the no-op observe implementation.
+      const toolContext: ToolExecutionContext = { mastra: params.mastra, observe: noopObserve };
       return await execute(
         {
           ...(params.inputData as Record<string, unknown>),

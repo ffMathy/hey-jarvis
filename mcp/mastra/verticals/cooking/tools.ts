@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { createTool } from '../../utils/tool-factory';
+import { createTool, isValidationError, type ValidationError } from '../../utils/tool-factory';
 
 // Interface for Valdemarsro Recipe API responses
 interface Recipe {
@@ -135,11 +135,14 @@ export const searchRecipes = createTool({
       data.data.result
         .slice(0, 25)
         .map((item) => item.post_id.toString())
-        .map(async (id) => await getRecipeById.execute!({ recipeId: id }, context)),
+        .map(
+          async (id): Promise<z.infer<typeof recipeSchema> | ValidationError> =>
+            await getRecipeById.execute!({ recipeId: id }, context),
+        ),
     );
 
     const results = rawResults.map((r) => {
-      if ('error' in r) {
+      if (isValidationError(r)) {
         throw new Error(r.message);
       }
       return r;

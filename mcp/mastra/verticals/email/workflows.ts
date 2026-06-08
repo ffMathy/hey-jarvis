@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { defaultToolExecutionContext } from '../../utils/tool-factory.js';
 import { createStep, createWorkflow } from '../../utils/workflows/workflow-factory.js';
 import { registerStateChange } from '../synapse/tools.js';
 import { findNewEmailsSinceLastCheck, updateLastSeenEmail } from './tools.js';
@@ -441,7 +442,7 @@ const registerEmailsStateChange = createStep({
     if (!registerStateChange.execute) {
       throw new Error('registerStateChange.execute is not defined');
     }
-    const result = await registerStateChange.execute(stateChangeData, {});
+    const result = await registerStateChange.execute(stateChangeData, defaultToolExecutionContext);
 
     if ('error' in result) {
       throw new Error(`Failed to register state change: ${result.message}`);

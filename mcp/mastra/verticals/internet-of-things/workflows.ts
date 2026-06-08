@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { getDeviceStateStorage, getEntityNoiseBaselineStorage } from '../../storage/index.js';
 import { logger } from '../../utils/logger.js';
+import { defaultToolExecutionContext } from '../../utils/tool-factory.js';
 import { createStep, createWorkflow } from '../../utils/workflows/workflow-factory.js';
 import { registerStateChange } from '../synapse/tools.js';
 import { fetchHistoricalStates, getChangedDevicesSince } from './tools.js';
@@ -97,7 +98,7 @@ const fetchRecentlyChangedDevices = createStep({
       {
         sinceSeconds: STATE_CHANGE_WINDOW_SECONDS,
       },
-      {},
+      defaultToolExecutionContext,
     );
 
     if ('error' in result) {
@@ -257,7 +258,7 @@ const triggerStateChangeNotifications = createStep({
               detectedAt: inputData.timestamp,
             },
           },
-          {},
+          defaultToolExecutionContext,
         );
 
         notificationsTriggered++;

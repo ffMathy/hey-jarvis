@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { defaultToolExecutionContext } from '../../utils/tool-factory.js';
 import { createStep, createWorkflow } from '../../utils/workflows/workflow-factory.js';
 import { sendEmail } from '../email/tools.js';
 
@@ -63,7 +64,7 @@ const sendFormRequestEmail = createStep({
         bodyContent,
         toRecipients: [recipientEmail],
       },
-      {},
+      defaultToolExecutionContext,
     );
 
     // Handle validation error case - narrow the type explicitly

@@ -1,4 +1,5 @@
 import { createShortcut } from '../../utils/shortcut-factory.js';
+import { defaultToolExecutionContext } from '../../utils/tool-factory.js';
 import { type DeviceState, getAllDevices } from '../internet-of-things/tools.js';
 
 /**
@@ -72,7 +73,7 @@ export const getCarNavigationDestination = createShortcut({
     "Get the current navigation destination from a connected Tesla via Tessie integration. Uses IoT device integration to query the car's navigation system for destination, distance to arrival, time to arrival, and traffic delay.",
   tool: getAllDevices,
   execute: async (_inputData): Promise<{ devices: DeviceState[] }> => {
-    const devicesResult = await getAllDevices.execute!({}, {});
+    const devicesResult = await getAllDevices.execute!({}, defaultToolExecutionContext);
 
     // Handle ValidationError case - check for error property that ValidationError has
     if ('error' in devicesResult) {
