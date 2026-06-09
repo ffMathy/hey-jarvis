@@ -55,17 +55,27 @@ export const sendTextMessage = createTool({
 
     const client = twilio(accountSid, authToken);
 
-    const response = await client.messages.create({
-      body: message,
-      from: fromNumber,
-      to: phoneNumber,
-    });
+    try {
+      const response = await client.messages.create({
+        body: message,
+        from: fromNumber,
+        to: phoneNumber,
+      });
 
-    return {
-      success: true,
-      message: `Text message sent successfully to ${phoneNumber}`,
-      messageSid: response.sid,
-    };
+      return {
+        success: true,
+        message: `Text message sent successfully to ${phoneNumber}`,
+        messageSid: response.sid,
+      };
+    } catch (error) {
+      // Twilio throws on rejected requests (e.g. invalid recipient number). Surface
+      // this as a structured failure so callers can react, matching initiatePhoneCall.
+      const reason = error instanceof Error ? error.message : String(error);
+      return {
+        success: false,
+        message: `Failed to send text message to ${phoneNumber}: ${reason}`,
+      };
+    }
   },
 });
 

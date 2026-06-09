@@ -106,7 +106,10 @@ async function callHomeAssistantApi(endpoint: string, method = 'GET', body?: unk
   });
 
   if (!response.ok) {
-    throw new Error(`Home Assistant API error: ${response.statusText}`);
+    // Include the response body — Home Assistant returns the actual error detail
+    // (e.g. a template render error) there, not just in the status text.
+    const detail = await response.text().catch(() => '');
+    throw new Error(`Home Assistant API error: ${response.statusText}${detail ? ` - ${detail}` : ''}`);
   }
 
   return response.json();
