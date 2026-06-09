@@ -1,5 +1,21 @@
 import { beforeAll, describe, expect, it } from 'bun:test';
+import { retryWithBackoff } from '../../../tests/utils/retry-with-backoff.js';
 import { commuteTools } from './tools';
+
+/**
+ * These tests exercise live Google Maps APIs, which intermittently return transient
+ * errors (rate limiting, momentary UNKNOWN_ERROR/quota responses). Wrap each call so a
+ * single transient failure retries with backoff instead of failing the whole CI run.
+ */
+function callWithRetry<T>(label: string, fn: () => Promise<T>): Promise<T> {
+  return retryWithBackoff(fn, {
+    maxRetries: 3,
+    initialDelay: 1000,
+    onRetry: (error, attempt, delayMs) => {
+      console.warn(`⚠️ ${label} attempt ${attempt} failed: ${error.message} — retrying in ${delayMs}ms`);
+    },
+  });
+}
 
 /**
  * Validates the structure of a place object returned from route/distance search results.
@@ -55,14 +71,16 @@ describe('Commute Tools Integration Tests', () => {
 
   describe('getTravelTime', () => {
     it('should fetch travel time between two cities', async () => {
-      const result = await commuteTools.getTravelTime.execute!(
-        {
-          origin: 'Aarhus, Denmark',
-          destination: 'Copenhagen, Denmark',
-          mode: 'driving',
-          includeTraffic: true,
-        },
-        {},
+      const result = await callWithRetry('getTravelTime (cities)', () =>
+        commuteTools.getTravelTime.execute!(
+          {
+            origin: 'Aarhus, Denmark',
+            destination: 'Copenhagen, Denmark',
+            mode: 'driving',
+            includeTraffic: true,
+          },
+          {},
+        ),
       );
 
       // Validate structure
@@ -94,14 +112,16 @@ describe('Commute Tools Integration Tests', () => {
 
     it('should handle coordinates as input', async () => {
       // Coordinates for Aarhus and Copenhagen
-      const result = await commuteTools.getTravelTime.execute!(
-        {
-          origin: '56.1629,10.2039',
-          destination: '55.6761,12.5683',
-          mode: 'driving',
-          includeTraffic: false,
-        },
-        {},
+      const result = await callWithRetry('getTravelTime (coordinates)', () =>
+        commuteTools.getTravelTime.execute!(
+          {
+            origin: '56.1629,10.2039',
+            destination: '55.6761,12.5683',
+            mode: 'driving',
+            includeTraffic: false,
+          },
+          {},
+        ),
       );
 
       expect(result).toBeDefined();
@@ -110,14 +130,16 @@ describe('Commute Tools Integration Tests', () => {
     }, 30000);
 
     it('should support different travel modes', async () => {
-      const result = await commuteTools.getTravelTime.execute!(
-        {
-          origin: 'Aarhus, Denmark',
-          destination: 'Aarhus C, Denmark',
-          mode: 'walking',
-          includeTraffic: false,
-        },
-        {},
+      const result = await callWithRetry('getTravelTime (walking)', () =>
+        commuteTools.getTravelTime.execute!(
+          {
+            origin: 'Aarhus, Denmark',
+            destination: 'Aarhus C, Denmark',
+            mode: 'walking',
+            includeTraffic: false,
+          },
+          {},
+        ),
       );
 
       expect(result).toBeDefined();
@@ -128,14 +150,16 @@ describe('Commute Tools Integration Tests', () => {
 
   describe('searchPlacesAlongRoute', () => {
     it('should find EV charging stations along a route', async () => {
-      const result = await commuteTools.searchPlacesAlongRoute.execute!(
-        {
-          origin: 'Aarhus, Denmark',
-          destination: 'Copenhagen, Denmark',
-          searchQuery: 'EV charging station',
-          maxResults: 5,
-        },
-        {},
+      const result = await callWithRetry('searchPlacesAlongRoute (EV)', () =>
+        commuteTools.searchPlacesAlongRoute.execute!(
+          {
+            origin: 'Aarhus, Denmark',
+            destination: 'Copenhagen, Denmark',
+            searchQuery: 'EV charging station',
+            maxResults: 5,
+          },
+          {},
+        ),
       );
 
       // Validate structure
@@ -160,17 +184,19 @@ describe('Commute Tools Integration Tests', () => {
       console.log('✅ Places along route fetched successfully');
       console.log('   - Found:', result.places.length, 'charging stations');
       logPlaceDetails(firstPlace);
-    }, 45000); // Longer timeout as this makes multiple API calls
+    }, 120000); // Longer timeout: makes multiple API calls, with retry headroom for transient errors
 
     it('should find restaurants along a route', async () => {
-      const result = await commuteTools.searchPlacesAlongRoute.execute!(
-        {
-          origin: 'Aarhus, Denmark',
-          destination: 'Odense, Denmark',
-          searchQuery: 'restaurant',
-          maxResults: 3,
-        },
-        {},
+      const result = await callWithRetry('searchPlacesAlongRoute (restaurants)', () =>
+        commuteTools.searchPlacesAlongRoute.execute!(
+          {
+            origin: 'Aarhus, Denmark',
+            destination: 'Odense, Denmark',
+            searchQuery: 'restaurant',
+            maxResults: 3,
+          },
+          {},
+        ),
       );
 
       expect(result).toBeDefined();
@@ -179,19 +205,21 @@ describe('Commute Tools Integration Tests', () => {
 
       console.log('✅ Restaurants along route fetched successfully');
       console.log('   - Found:', result.places.length, 'restaurants');
-    }, 90000);
+    }, 180000);
   });
 
   describe('searchPlacesByDistance', () => {
     it('should find nearby gas stations ordered by distance', async () => {
-      const result = await commuteTools.searchPlacesByDistance.execute!(
-        {
-          location: 'Aarhus, Denmark',
-          searchQuery: 'gas station',
-          radius: 5000,
-          maxResults: 5,
-        },
-        {},
+      const result = await callWithRetry('searchPlacesByDistance (gas)', () =>
+        commuteTools.searchPlacesByDistance.execute!(
+          {
+            location: 'Aarhus, Denmark',
+            searchQuery: 'gas station',
+            radius: 5000,
+            maxResults: 5,
+          },
+          {},
+        ),
       );
 
       // Validate structure
@@ -223,17 +251,19 @@ describe('Commute Tools Integration Tests', () => {
       if (firstPlace.distanceFromCenter !== undefined) {
         console.log('   - Distance:', (firstPlace.distanceFromCenter / 1000).toFixed(2), 'km');
       }
-    }, 30000);
+    }, 60000);
 
     it('should find coffee shops with larger radius', async () => {
-      const result = await commuteTools.searchPlacesByDistance.execute!(
-        {
-          location: 'Aarhus C, Denmark',
-          searchQuery: 'coffee shop',
-          radius: 2000,
-          maxResults: 10,
-        },
-        {},
+      const result = await callWithRetry('searchPlacesByDistance (coffee)', () =>
+        commuteTools.searchPlacesByDistance.execute!(
+          {
+            location: 'Aarhus C, Denmark',
+            searchQuery: 'coffee shop',
+            radius: 2000,
+            maxResults: 10,
+          },
+          {},
+        ),
       );
 
       expect(result).toBeDefined();
@@ -242,17 +272,19 @@ describe('Commute Tools Integration Tests', () => {
 
       console.log('✅ Coffee shops fetched successfully');
       console.log('   - Found:', result.places.length, 'coffee shops');
-    }, 30000);
+    }, 60000);
   });
 
   describe('getPlaceDetails', () => {
     it('should fetch details for a specific place by name', async () => {
-      const result = await commuteTools.getPlaceDetails.execute!(
-        {
-          placeName: 'Aros Aarhus Kunstmuseum',
-          location: 'Aarhus, Denmark',
-        },
-        {},
+      const result = await callWithRetry('getPlaceDetails (Aros)', () =>
+        commuteTools.getPlaceDetails.execute!(
+          {
+            placeName: 'Aros Aarhus Kunstmuseum',
+            location: 'Aarhus, Denmark',
+          },
+          {},
+        ),
       );
 
       // Validate structure
@@ -279,15 +311,17 @@ describe('Commute Tools Integration Tests', () => {
       if (result.openingHours) {
         console.log('   - Open now:', result.openingHours.openNow);
       }
-    }, 30000);
+    }, 60000);
 
     it('should include reviews when available', async () => {
-      const result = await commuteTools.getPlaceDetails.execute!(
-        {
-          placeName: 'Aarhus Domkirke',
-          location: 'Aarhus, Denmark',
-        },
-        {},
+      const result = await callWithRetry('getPlaceDetails (Domkirke)', () =>
+        commuteTools.getPlaceDetails.execute!(
+          {
+            placeName: 'Aarhus Domkirke',
+            location: 'Aarhus, Denmark',
+          },
+          {},
+        ),
       );
 
       expect(result).toBeDefined();
@@ -301,6 +335,6 @@ describe('Commute Tools Integration Tests', () => {
         console.log('✅ Place with reviews fetched successfully');
         console.log('   - Total reviews:', result.reviews.length);
       }
-    }, 30000);
+    }, 60000);
   });
 });
