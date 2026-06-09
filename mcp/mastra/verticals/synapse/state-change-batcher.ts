@@ -125,21 +125,35 @@ export class StateChangeBatcher {
       count: changesToProcess.length,
     });
 
-    // Save all changes to memory
-    await this.saveToMemory(changesToProcess);
+    try {
+      // Save all changes to memory
+      await this.saveToMemory(changesToProcess);
 
-    // Analyze all changes together
-    await this.analyzeChanges(changesToProcess);
+      // Analyze all changes together
+      await this.analyzeChanges(changesToProcess);
 
-    this.stats.totalProcessed += changesToProcess.length;
-    this.stats.batchesProcessed++;
+      this.stats.totalProcessed += changesToProcess.length;
+      this.stats.batchesProcessed++;
 
-    logger.info('[BATCHER] Batch processed', {
-      totalProcessed: this.stats.totalProcessed,
-      totalReceived: this.stats.totalReceived,
-      batchesProcessed: this.stats.batchesProcessed,
-    });
-    this.isProcessing = false;
+      logger.info('[BATCHER] Batch processed', {
+        totalProcessed: this.stats.totalProcessed,
+        totalReceived: this.stats.totalReceived,
+        batchesProcessed: this.stats.batchesProcessed,
+      });
+    } catch (error) {
+      // Background batch analysis is best-effort. A failure here (e.g. an LLM
+      // token-limit/413 or transient API error) must never propagate to the
+      // caller that registered the state change, nor leave the batcher wedged.
+      // Log it, count the changes as dropped, and let the finally block reset
+      // isProcessing so future batches keep flowing.
+      this.stats.droppedCount += changesToProcess.length;
+      logger.error('[BATCHER] Failed to process batch; dropping changes', {
+        count: changesToProcess.length,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      this.isProcessing = false;
+    }
   }
 
   /**
@@ -178,7 +192,7 @@ export class StateChangeBatcher {
           `${index + 1}. Source: ${change.source}
    Type: ${change.stateType}
    Time: ${change.timestamp.toISOString()}
-   Data: ${JSON.stringify(change.stateData, null, 2)}`,
+   Data: ${JSON.stringify(change.stateData)}`,
       )
       .join('\n\n');
 

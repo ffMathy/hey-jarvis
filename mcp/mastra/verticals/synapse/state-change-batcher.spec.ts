@@ -100,6 +100,57 @@ describe('StateChangeBatcher', () => {
   });
 });
 
+describe('StateChangeBatcher - resilience', () => {
+  // Restore the default (succeeding) reactor mock after these tests so ordering
+  // with other suites stays independent.
+  const restoreSuccessMock = () => {
+    mock.module('./agent.js', () => ({
+      getStateChangeReactorAgent: async () => ({
+        network: async () => ({
+          result: { registered: true, analyzed: true },
+        }),
+      }),
+    }));
+  };
+
+  afterEach(restoreSuccessMock);
+
+  it('does not propagate analysis failures or wedge the batcher', async () => {
+    // Re-mock the reactor so the network analysis fails the way it does in CI
+    // when the request exceeds the model's token limit (a non-retryable 413).
+    mock.module('./agent.js', () => ({
+      getStateChangeReactorAgent: async () => ({
+        network: async () => {
+          throw new Error('Request body too large for gpt-4o model. Max size: 8000 tokens.');
+        },
+      }),
+    }));
+
+    const failingBatcher = new StateChangeBatcher(10000, 2);
+
+    // Filling the batch triggers immediate processing. The analysis failure
+    // must be swallowed by add(), not surfaced to the caller that registered
+    // the state change.
+    await failingBatcher.add({ source: 'a', stateType: 'change', stateData: {} });
+    await expect(failingBatcher.add({ source: 'b', stateType: 'change', stateData: {} })).resolves.toBeUndefined();
+
+    const afterFailure = failingBatcher.getStats();
+    expect(afterFailure.isProcessing).toBe(false); // not wedged
+    expect(afterFailure.droppedCount).toBe(2); // failed batch counted as dropped
+    expect(afterFailure.totalProcessed).toBe(0); // nothing counted as processed
+
+    // After a failure the same batcher must keep working. Restore a succeeding
+    // reactor and push another full batch through the same instance.
+    restoreSuccessMock();
+    await failingBatcher.add({ source: 'c', stateType: 'change', stateData: {} });
+    await failingBatcher.add({ source: 'd', stateType: 'change', stateData: {} });
+
+    const afterRecovery = failingBatcher.getStats();
+    expect(afterRecovery.totalProcessed).toBe(2); // subsequent batch processed
+    expect(afterRecovery.droppedCount).toBe(2); // earlier failure still recorded
+  });
+});
+
 describe('StateChangeBatcher - Integration', () => {
   it('should handle multiple rapid state changes', async () => {
     const batcher = new StateChangeBatcher(50, 10);
