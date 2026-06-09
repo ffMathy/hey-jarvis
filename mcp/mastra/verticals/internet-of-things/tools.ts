@@ -206,48 +206,28 @@ export const getEntityLogbook = createTool({
   },
 });
 
-// Tool to get all devices (entities/states)
-export const getAllDevices = createTool({
-  id: 'getAllDevices',
-  description:
-    'Get all devices and their entities from the IoT system. Returns devices grouped with their entities, including state, attributes, area, and labels. Use this to discover available devices and get comprehensive device information.',
-  inputSchema: z.object({
-    domain: z
-      .string()
-      .optional()
-      .describe(
-        'Optional domain filter to only get devices with entities from a specific domain (e.g., "light", "switch", "sensor", "climate")',
-      ),
-  }),
-  outputSchema: z.object({
-    devices: z.array(
-      z.object({
-        id: z.string(),
-        name: z.string(),
-        labels: z.array(z.string()),
-        area: z.string().nullable(),
-        last_changed: z.string(),
-        entities: z.array(
-          z.object({
-            id: z.string(),
-            domain: z.string(),
-            area: z.string().nullable(),
-            labels: z.array(z.string()),
-            state: z.string(),
-            attributes: z.record(z.string(), z.unknown()),
-            last_changed: z.string(),
-          }),
-        ),
-      }),
-    ),
-  }),
-  execute: async (inputData) => {
-    const domainFilter = inputData.domain ? `and st.domain == '${inputData.domain}'` : '';
+// Home Assistant rejects template renders whose output exceeds 262144 characters.
+// Device detail is therefore rendered in batches of this many devices at a time.
+const DEVICE_BATCH_SIZE = 50;
 
-    const template = `
+// Fetch the list of device IDs known to Home Assistant. The output is just an array
+// of opaque device-id strings, so it stays well under the template output size cap
+// even for homes with thousands of devices.
+async function fetchDeviceIds(): Promise<string[]> {
+  const template = `{{ states | map(attribute='entity_id') | map('device_id') | unique | reject('eq', None) | list | to_json }}`;
+  const response = await callHomeAssistantApi('template', 'POST', { template });
+  const ids = typeof response === 'string' ? JSON.parse(response) : response;
+  return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : [];
+}
+
+// Build the Jinja template that serializes full detail for a fixed set of device IDs.
+// Identical to a whole-home render except the device list is injected rather than
+// derived from every state, which lets us render in bounded batches.
+function buildDeviceDetailTemplate(deviceIdsLiteral: string, domainFilter: string): string {
+  return `
 {%- set MAX_STR = 160 -%}
 {%- set MAX_LIST = 20 -%}
-{%- set devices = states|map(attribute='entity_id')|map('device_id')|unique|reject('eq',None)|list -%}
+{%- set devices = ${deviceIdsLiteral} -%}
 {%- set ns = namespace(devices=[]) -%}
 {%- for d in devices -%}
   {%- set ents = device_entities(d)|list -%}
@@ -303,15 +283,100 @@ export const getAllDevices = createTool({
 {%- endfor -%}
 {{ ns.devices | to_json }}
     `
-      .split('\n')
-      .map((line) => line.trim())
-      .join('\n');
+    .split('\n')
+    .map((line) => line.trim())
+    .join('\n');
+}
 
+// Render full detail for a batch of devices. Home Assistant caps template output at
+// 262144 characters; if a batch's output still exceeds that, split it in half and
+// render each part independently so even very large homes resolve correctly.
+async function renderDeviceBatch(deviceIds: string[], domainFilter: string): Promise<DeviceState[]> {
+  if (deviceIds.length === 0) {
+    return [];
+  }
+
+  const template = buildDeviceDetailTemplate(JSON.stringify(deviceIds), domainFilter);
+
+  try {
     const response = await callHomeAssistantApi('template', 'POST', { template });
-    const devices: DeviceState[] = typeof response === 'string' ? JSON.parse(response) : response;
+    const devices = typeof response === 'string' ? JSON.parse(response) : response;
+    return Array.isArray(devices) ? devices : [];
+  } catch (error) {
+    const isOutputTooLarge = error instanceof Error && error.message.includes('maximum size');
+    if (deviceIds.length > 1 && isOutputTooLarge) {
+      const mid = Math.ceil(deviceIds.length / 2);
+      const [first, second] = await Promise.all([
+        renderDeviceBatch(deviceIds.slice(0, mid), domainFilter),
+        renderDeviceBatch(deviceIds.slice(mid), domainFilter),
+      ]);
+      return [...first, ...second];
+    }
+    throw error;
+  }
+}
+
+// Fetch every entity ID known to Home Assistant. Output is a flat array of entity-id
+// strings, which stays under the template output size cap.
+export async function fetchAllEntityIds(): Promise<string[]> {
+  const template = `{{ states | map(attribute='entity_id') | list | to_json }}`;
+  const response = await callHomeAssistantApi('template', 'POST', { template });
+  const ids = typeof response === 'string' ? JSON.parse(response) : response;
+  return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : [];
+}
+
+// Tool to get all devices (entities/states)
+export const getAllDevices = createTool({
+  id: 'getAllDevices',
+  description:
+    'Get all devices and their entities from the IoT system. Returns devices grouped with their entities, including state, attributes, area, and labels. Use this to discover available devices and get comprehensive device information.',
+  inputSchema: z.object({
+    domain: z
+      .string()
+      .optional()
+      .describe(
+        'Optional domain filter to only get devices with entities from a specific domain (e.g., "light", "switch", "sensor", "climate")',
+      ),
+  }),
+  outputSchema: z.object({
+    devices: z.array(
+      z.object({
+        id: z.string(),
+        name: z.string(),
+        labels: z.array(z.string()),
+        area: z.string().nullable(),
+        last_changed: z.string(),
+        entities: z.array(
+          z.object({
+            id: z.string(),
+            domain: z.string(),
+            area: z.string().nullable(),
+            labels: z.array(z.string()),
+            state: z.string(),
+            attributes: z.record(z.string(), z.unknown()),
+            last_changed: z.string(),
+          }),
+        ),
+      }),
+    ),
+  }),
+  execute: async (inputData) => {
+    const domainFilter = inputData.domain ? `and st.domain == '${inputData.domain}'` : '';
+
+    // Home Assistant caps template output at 262144 characters. A home with many
+    // devices exceeds that when every entity and attribute is serialized in one
+    // render, so fetch the (small) list of device IDs first and render detail in
+    // batches, splitting any batch whose output is still too large.
+    const deviceIds = await fetchDeviceIds();
+
+    const devices: DeviceState[] = [];
+    for (let i = 0; i < deviceIds.length; i += DEVICE_BATCH_SIZE) {
+      const batch = deviceIds.slice(i, i + DEVICE_BATCH_SIZE);
+      devices.push(...(await renderDeviceBatch(batch, domainFilter)));
+    }
 
     return {
-      devices: Array.isArray(devices) ? devices : [],
+      devices,
     };
   },
 });

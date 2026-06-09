@@ -4,7 +4,12 @@ import { logger } from '../../utils/logger.js';
 import { defaultToolExecutionContext } from '../../utils/tool-factory.js';
 import { createStep, createWorkflow } from '../../utils/workflows/workflow-factory.js';
 import { registerStateChange } from '../synapse/tools.js';
-import { fetchHistoricalStates, getChangedDevicesSince } from './tools.js';
+import {
+  fetchAllEntityIds,
+  fetchHistoricalStates,
+  getChangedDevicesSince,
+  type HistoricalStateEntry,
+} from './tools.js';
 
 /**
  * Label used to mark devices/entities that should be excluded from state change monitoring.
@@ -23,6 +28,14 @@ const STATE_CHANGE_WINDOW_SECONDS = 3 * 60 * 60;
  * Set to 15 minutes to capture recent fluctuation patterns.
  */
 const NOISE_BASELINE_HISTORY_SECONDS = 15 * 60;
+
+/**
+ * Number of entity IDs to request history for per Home Assistant call.
+ * Home Assistant requires a filter_entity_id on history queries, so we batch the
+ * entity IDs rather than sending one request with every ID (which produces an
+ * over-long URL).
+ */
+const HISTORY_BATCH_SIZE = 100;
 
 // Calculate noise baselines from historical data
 const calculateNoiseBaselines = createStep({
@@ -44,19 +57,32 @@ const calculateNoiseBaselines = createStep({
       windowSeconds: NOISE_BASELINE_HISTORY_SECONDS,
     });
 
-    const result = await fetchHistoricalStates({
-      startTime,
-      endTime,
-      minimalResponse: true,
-    });
+    // Home Assistant requires a filter_entity_id on history queries, so fetch all
+    // entity IDs and request their history in bounded batches.
+    const entityIds = await fetchAllEntityIds();
+
+    const history: Record<string, HistoricalStateEntry[]> = {};
+    let entityCount = 0;
+
+    for (let i = 0; i < entityIds.length; i += HISTORY_BATCH_SIZE) {
+      const batch = entityIds.slice(i, i + HISTORY_BATCH_SIZE);
+      const result = await fetchHistoricalStates({
+        startTime,
+        endTime,
+        entityIds: batch,
+        minimalResponse: true,
+      });
+      Object.assign(history, result.history);
+      entityCount += result.entityCount;
+    }
 
     // Calculate baselines from history
     const storage = await getEntityNoiseBaselineStorage();
-    const baselines = await storage.calculateBaselinesFromHistory(result.history);
+    const baselines = await storage.calculateBaselinesFromHistory(history);
 
     logger.info('Noise baselines calculated', {
       baselinesCalculated: baselines.length,
-      entityCount: result.entityCount,
+      entityCount,
     });
 
     return {
