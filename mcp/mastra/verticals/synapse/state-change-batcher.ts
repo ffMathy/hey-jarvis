@@ -1,5 +1,6 @@
 import { createMemory } from '../../memory/index.js';
 import { logger } from '../../utils/logger.js';
+import { shouldUseGitHubModels } from '../../utils/providers/github-models-provider.js';
 import { getStateChangeReactorAgent } from './agent.js';
 
 /**
@@ -256,11 +257,25 @@ If multiple notifications are warranted, you can combine related ones into a sin
   }
 }
 
+// Production (Gemini, large context window) batches up to 10 changes per reactor
+// request for efficiency. In CI we run on GitHub Models, whose free tier caps every
+// request at 8000 tokens — a batch of 10 home-assistant state changes plus the
+// network routing context routinely blows past that (a non-retryable 413). Use a
+// smaller batch there so each request stays within the limit. (The batcher's
+// try/catch still safely drops any batch that exceeds the cap regardless.)
+const PRODUCTION_MAX_BATCH_SIZE = 10;
+const GITHUB_MODELS_MAX_BATCH_SIZE = 3;
+const DEFAULT_BATCH_DELAY_MS = 5000;
+
 /**
  * Global state change batcher instance
  *
  * Default configuration:
  * - 5 second delay before processing (allows changes to accumulate)
- * - Maximum batch size of 10 changes
+ * - Maximum batch size of 10 changes (3 when running on GitHub Models in CI to
+ *   stay within the 8000-token request limit)
  */
-export const stateChangeBatcher = new StateChangeBatcher();
+export const stateChangeBatcher = new StateChangeBatcher(
+  DEFAULT_BATCH_DELAY_MS,
+  shouldUseGitHubModels() ? GITHUB_MODELS_MAX_BATCH_SIZE : PRODUCTION_MAX_BATCH_SIZE,
+);
