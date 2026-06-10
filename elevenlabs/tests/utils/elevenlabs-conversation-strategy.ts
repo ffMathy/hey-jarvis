@@ -117,6 +117,28 @@ export class ElevenLabsConversationStrategy implements ConversationStrategy {
         }
       });
     });
+
+    // Wait for the agent's initial unprompted greeting turn to complete before any user message
+    // is sent. ElevenLabs agents are turn-based: sending a user message while the agent is still
+    // composing its opening greeting causes the message to be dropped, leaving the agent's real
+    // reply (and any tool call it would make) uncaptured. It also keeps the transcript ordering in
+    // sendMessage() correct, which relies on a greeting agent_response already being present.
+    await this.waitForInitialGreeting();
+  }
+
+  /**
+   * Waits until the agent's first response (its unprompted greeting) has arrived, or until
+   * timeoutMs elapses if the agent is not configured to greet. This gates the first sendMessage
+   * so it is delivered to an idle, listening agent rather than mid-greeting-turn.
+   */
+  private async waitForInitialGreeting(timeoutMs = 20000): Promise<void> {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      if (this.messages.some((msg) => msg.type === 'agent_response')) {
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
   }
 
   private _onWebSocketOpen(): void {
