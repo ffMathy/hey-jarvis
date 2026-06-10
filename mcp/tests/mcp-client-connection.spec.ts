@@ -1,7 +1,15 @@
 import { MCPClient } from '@mastra/mcp';
 import { createMcpClient, startMcpServerForTestingPurposes, stopMcpServer } from './utils/mcp-server-manager';
+import { retryWithBackoff } from './utils/retry-with-backoff';
 
 const SERVER_STARTUP_TIMEOUT = 120000;
+
+// The first MCP client connection + listTools against a freshly started server can be
+// slow under CI load; the default 5s client/test timeout was occasionally too tight
+// (timing out at ~5004ms). Use a generous client timeout, retry transient slowness, and
+// give these tests room so they don't flake.
+const CLIENT_TIMEOUT = 30000;
+const CONNECTION_TEST_TIMEOUT = 120000;
 
 describe('MCP Server Connection Tests', () => {
   let mcpClient: MCPClient | null = null;
@@ -37,23 +45,39 @@ describe('MCP Server Connection Tests', () => {
     }
   });
 
-  it('should establish connection', async () => {
-    mcpClient = await createMcpClient();
+  it(
+    'should establish connection',
+    async () => {
+      // Getting tools successfully means connection was established
+      const tools = await retryWithBackoff(
+        async () => {
+          mcpClient = await createMcpClient({ timeout: CLIENT_TIMEOUT });
+          return mcpClient.listTools();
+        },
+        { maxRetries: 3, initialDelay: 1000 },
+      );
+      expect(tools).toBeDefined();
+      console.log(`✓ MCP server established connection`);
+    },
+    CONNECTION_TEST_TIMEOUT,
+  );
 
-    // Getting tools successfully means connection was established
-    const tools = await mcpClient.listTools();
-    expect(tools).toBeDefined();
-    console.log(`✓ MCP server established connection`);
-  });
-
-  it('should list available tools', async () => {
-    mcpClient = await createMcpClient();
-
-    const tools = await mcpClient.listTools();
-    expect(tools).toBeDefined();
-    expect(Object.keys(tools).length).toBeGreaterThan(0);
-    console.log(`✓ MCP server returned ${Object.keys(tools).length} tools`);
-  });
+  it(
+    'should list available tools',
+    async () => {
+      const tools = await retryWithBackoff(
+        async () => {
+          mcpClient = await createMcpClient({ timeout: CLIENT_TIMEOUT });
+          return mcpClient.listTools();
+        },
+        { maxRetries: 3, initialDelay: 1000 },
+      );
+      expect(tools).toBeDefined();
+      expect(Object.keys(tools).length).toBeGreaterThan(0);
+      console.log(`✓ MCP server returned ${Object.keys(tools).length} tools`);
+    },
+    CONNECTION_TEST_TIMEOUT,
+  );
 
   it('should handle connection errors gracefully', async () => {
     const clientWithBadUrl = new MCPClient({

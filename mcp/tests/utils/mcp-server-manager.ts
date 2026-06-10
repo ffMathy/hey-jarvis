@@ -153,9 +153,11 @@ export function isMcpServerRunningSync(): boolean {
  */
 type McpClientArgs = {
   url?: string;
+  /** Connect/request timeout in ms. Defaults to 5000 (used by the fast readiness probe). */
+  timeout?: number;
 };
 export async function createMcpClient(args?: McpClientArgs): Promise<MCPClient> {
-  const timeout = 5000;
+  const timeout = args?.timeout ?? 5000;
   return new MCPClient({
     id: 'mcp-test-client',
     servers: {
