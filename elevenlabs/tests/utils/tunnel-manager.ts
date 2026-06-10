@@ -72,7 +72,7 @@ export async function ensureTunnelRunning(): Promise<void> {
   killExistingTunnels();
   await new Promise((resolve) => setTimeout(resolve, 500)); // Wait for processes to die
 
-  // First, verify the local MCP server is healthy
+  // First, verify the local MCP server (the tunnel's origin) is healthy
   console.log('🔍 Checking local MCP server health...');
   const localHealthy = await isLocalMcpServerHealthy();
   if (!localHealthy) {
@@ -81,12 +81,13 @@ export async function ensureTunnelRunning(): Promise<void> {
     console.log('✅ Local MCP server is healthy at http://localhost:4112');
   }
 
-  // Check if tunnel is already running
-  if (await isTunnelRunning()) {
-    console.log('✅ Cloudflared tunnel is already running');
-    return;
-  }
-
+  // NOTE: We intentionally do NOT early-return on an "is the tunnel already up?" probe here.
+  // killExistingTunnels() above has just torn down any local connector, but the public Cloudflare
+  // hostname can still briefly answer for a moment (edge propagation lag) — a dying connector may
+  // serve a single request before it fully disappears. That produced a false-positive
+  // "already running" result, so a fresh connector was never started and the entire suite ran with
+  // no live tunnel, every agent tool call hitting Cloudflare Error 1033. Always start a fresh
+  // connector and verify it end-to-end below instead.
   console.log('🌐 Starting cloudflared tunnel...');
   console.log(`🌐 Tunnel URL: ${process.env.HEY_JARVIS_CLOUDFLARED_TUNNEL_URL}`);
 
@@ -118,23 +119,25 @@ export async function ensureTunnelRunning(): Promise<void> {
     }
   });
 
-  // Verify tunnel is running with retry logic (up to 60 seconds with longer waits)
+  // Verify the tunnel is reachable end-to-end with retry logic (up to 60 seconds with longer waits).
+  // A freshly started connector takes time to register with Cloudflare's edge; until it does, the
+  // public hostname returns Error 1033 (HTTP 530), which checkTunnelHealth() reports as not-ok.
   await retryWithBackoff(
     async () => {
-      // Check tunnel health first (doesn't require JWT)
+      // /health passes only once Cloudflare can actually reach the origin through the connector.
       const healthResult = await checkTunnelHealth();
-      if (healthResult.ok) {
-        console.log(`✅ Tunnel health check passed (status: ${healthResult.status})`);
-        return;
+      if (!healthResult.ok) {
+        throw new Error(`Tunnel not ready: ${healthResult.error || `HTTP ${healthResult.status}`}`);
       }
 
-      // If health check fails, try the MCP endpoint (requires JWT)
-      const isRunning = await isTunnelRunning();
-      if (isRunning) {
-        return;
+      // Additionally confirm the MCP endpoint itself is reachable through the tunnel. This is the
+      // exact capability the ElevenLabs agent depends on to list and call tools — verifying it here
+      // prevents declaring success on a connector that answers /health but cannot yet serve MCP.
+      if (!(await isTunnelRunning())) {
+        throw new Error('Tunnel /health is up but the MCP endpoint is not reachable through the tunnel yet');
       }
 
-      throw new Error(`Tunnel not ready: ${healthResult.error || 'Unknown error'}`);
+      console.log(`✅ Tunnel verified end-to-end (health status: ${healthResult.status}, MCP reachable)`);
     },
     {
       maxRetries: 60,
