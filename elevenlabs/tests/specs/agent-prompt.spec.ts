@@ -98,20 +98,26 @@ describe('Agent Prompt Specifications', () => {
             await conversation.sendMessage("What's the weather like right now?");
 
             // Verify a tool was called — the agent may call weather tools directly
-            // or use the routePromptWorkflow which internally dispatches to weather
+            // or use the routePromptWorkflow which internally dispatches to weather.
+            // Tool usage can surface either as an mcp_tool_call event or as an
+            // agent_tool_response event, so collect tool names from both.
             const messages = conversation.getMessages();
-            const allToolCalls = messages.filter((m) => m.type === 'mcp_tool_call');
-            const relevantToolCalls = allToolCalls.filter(
-              (msg) =>
-                msg.mcp_tool_call.tool_name.toLowerCase().includes('weather') ||
-                msg.mcp_tool_call.tool_name.toLowerCase().includes('home_assistant') ||
-                msg.mcp_tool_call.tool_name.toLowerCase().includes('route'),
-            );
+            const toolNames = messages.flatMap((m) => {
+              if (m.type === 'mcp_tool_call') return [m.mcp_tool_call.tool_name];
+              if (m.type === 'agent_tool_response') return [m.agent_tool_response.tool_name];
+              return [];
+            });
+            const relevantToolCalls = toolNames.filter((name) => {
+              const lower = name.toLowerCase();
+              return lower.includes('weather') || lower.includes('home_assistant') || lower.includes('route');
+            });
 
             if (relevantToolCalls.length === 0) {
               throw new Error(
-                `Expected weather, home assistant, or routing tool to be called, but no relevant tool calls found in messages. ` +
-                  `All tool calls: [${allToolCalls.map((m) => m.mcp_tool_call.tool_name).join(', ')}]`,
+                `Expected weather, home assistant, or routing tool to be called, but no relevant tool calls found. ` +
+                  `Tool calls seen: [${toolNames.join(', ')}]. ` +
+                  `Message stream: [${messages.map((m) => m.type).join(', ')}]. ` +
+                  `Transcript:\n${conversation.getTranscriptText()}`,
               );
             }
 
