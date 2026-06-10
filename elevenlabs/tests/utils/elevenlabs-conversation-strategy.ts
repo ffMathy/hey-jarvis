@@ -217,37 +217,52 @@ export class ElevenLabsConversationStrategy implements ConversationStrategy {
     return lastAgentResponse?.agent_response_event?.agent_response || '';
   }
 
-  private async waitForResponse() {
-    let currentMessageLength = this.messages.length;
-    const waitForNextMessage = async (): Promise<ServerMessage> => {
-      while (this.messages.length === currentMessageLength) {
-        await new Promise((resolve) => setTimeout(resolve, 10));
+  /**
+   * Wait for the agent to finish its turn.
+   *
+   * An agent turn can span several messages (e.g. `mcp_tool_call` loading ->
+   * `mcp_tool_call` success -> `agent_response`), and routing a tool call through the
+   * MCP server can take a while to even begin emitting messages. The previous
+   * implementation treated a brief initial silence as "done", which produced
+   * incomplete transcripts (e.g. the agent's reply or its tool calls missing) and
+   * made the assertions non-deterministic.
+   *
+   * Instead, wait until the agent has produced its textual `agent_response` for this
+   * turn — the protocol's completion signal — then allow a short settle window to
+   * capture any trailing messages (such as a tool result arriving alongside the
+   * response). The whole wait is bounded by an overall deadline so a genuinely stuck
+   * turn still fails rather than hanging.
+   */
+  private async waitForResponse(): Promise<void> {
+    const OVERALL_TIMEOUT_MS = 60000; // hard cap for a single agent turn
+    const SETTLE_MS = 2000; // quiet window after agent_response to catch trailing messages
+    const POLL_MS = 10;
+
+    const deadline = Date.now() + OVERALL_TIMEOUT_MS;
+    let lastSeenLength = this.messages.length;
+    let sawAgentResponse = false;
+    let quietSince = Date.now();
+
+    while (Date.now() < deadline) {
+      if (this.messages.length > lastSeenLength) {
+        for (let i = lastSeenLength; i < this.messages.length; i++) {
+          if (this.messages[i]?.type === 'agent_response') {
+            sawAgentResponse = true;
+          }
+        }
+        lastSeenLength = this.messages.length;
+        quietSince = Date.now();
       }
 
-      currentMessageLength = this.messages.length;
-
-      const message = this.messages[this.messages.length - 1];
-      return message;
-    };
-
-    let timeout = 0;
-
-    let message: Partial<ServerMessage> | null = {};
-    while (message !== null) {
-      timeout = 15000;
-      if (message?.type === 'mcp_tool_call' && message.mcp_tool_call?.state === 'loading') {
-        timeout = 60000; // Wait longer for agent response
+      // Done once the agent has replied and no further messages have arrived briefly.
+      if (sawAgentResponse && Date.now() - quietSince >= SETTLE_MS) {
+        return;
       }
 
-      message = await Promise.race([
-        waitForNextMessage(),
-        new Promise<null>((resolve) =>
-          setTimeout(() => {
-            resolve(null);
-          }, timeout),
-        ),
-      ]);
+      await new Promise((resolve) => setTimeout(resolve, POLL_MS));
     }
+    // Overall deadline hit: return with whatever was captured so the assertion
+    // reflects reality (e.g. a missing response or tool call) instead of hanging.
   }
 
   getMessages(): ServerMessage[] {
