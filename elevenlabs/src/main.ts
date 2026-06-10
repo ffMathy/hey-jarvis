@@ -177,6 +177,15 @@ class ElevenLabsAgentManager {
 
       config.conversationConfig.agent.prompt.tools = [];
       console.log('🔧 Clearing tools array for test agent');
+
+      // Disable all built-in/system tools (end_call, transfer_to_agent, skip_turn, etc.) for the
+      // test agent. These live in builtInTools, separate from the tools array, so clearing tools
+      // above does not remove them. Diagnostics showed the agent calling end_call/transfer_to_agent
+      // for a weather query instead of routing, because these remained available as alternatives to
+      // the MCP routePromptWorkflow tool. Removing them leaves routePromptWorkflow as the only
+      // actionable tool, so the model must route live-data requests rather than hang up or transfer.
+      config.conversationConfig.agent.prompt.builtInTools = {};
+      console.log('🔧 Clearing builtInTools (system tools) for test agent');
     }
 
     // Suffix agent name with " (test)" to distinguish from production
