@@ -83,6 +83,14 @@ export async function startMcpServerForTestingPurposes(): Promise<void> {
   // Using Bun.spawn for simpler process management
   mcpServerProcess = Bun.spawn(['./.scripts/run-with-env.sh', 'mcp/op.env', 'bun', 'run', 'mcp/mastra/mcp-server.ts'], {
     cwd: WORKSPACE_ROOT,
+    env: {
+      ...process.env,
+      // The synapse state-change reactor is background-only and not exercised by any
+      // test. Disable it in the test server so it doesn't flood the shared GitHub
+      // Models endpoint (its .network() request exceeds the 8000-token cap and trips
+      // Azure content filters) and contend for LLM quota with the agent under test.
+      HEY_JARVIS_DISABLE_STATE_CHANGE_REACTOR: 'true',
+    },
     stdin: 'ignore',
     stdout: 'inherit',
     stderr: 'inherit',

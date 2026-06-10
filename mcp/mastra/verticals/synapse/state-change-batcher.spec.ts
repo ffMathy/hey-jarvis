@@ -151,6 +151,40 @@ describe('StateChangeBatcher - resilience', () => {
   });
 });
 
+describe('StateChangeBatcher - reactor disabled in CI tests', () => {
+  afterEach(() => {
+    delete process.env.HEY_JARVIS_DISABLE_STATE_CHANGE_REACTOR;
+    // Restore the default succeeding reactor mock for other suites.
+    mock.module('./agent.js', () => ({
+      getStateChangeReactorAgent: async () => ({
+        network: async () => ({
+          result: { registered: true, analyzed: true },
+        }),
+      }),
+    }));
+  });
+
+  it('skips LLM analysis without calling the reactor when disabled', async () => {
+    process.env.HEY_JARVIS_DISABLE_STATE_CHANGE_REACTOR = 'true';
+    // The reactor must not be invoked while disabled; this mock throws if it is.
+    mock.module('./agent.js', () => ({
+      getStateChangeReactorAgent: async () => ({
+        network: async () => {
+          throw new Error('reactor should not be called when disabled');
+        },
+      }),
+    }));
+
+    const batcher = new StateChangeBatcher(10000, 2);
+    await batcher.add({ source: 'a', stateType: 'change', stateData: {} });
+    await batcher.add({ source: 'b', stateType: 'change', stateData: {} });
+
+    const stats = batcher.getStats();
+    expect(stats.totalProcessed).toBe(2); // batch processed (analysis skipped, not failed)
+    expect(stats.droppedCount).toBe(0); // reactor never called, so nothing dropped
+  });
+});
+
 describe('StateChangeBatcher - Integration', () => {
   it('should handle multiple rapid state changes', async () => {
     const batcher = new StateChangeBatcher(50, 10);

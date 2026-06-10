@@ -213,6 +213,18 @@ If multiple notifications are warranted, you can combine related ones into a sin
    * Analyze all state changes together in a single LLM call
    */
   private async analyzeChanges(changes: PendingStateChange[]): Promise<void> {
+    // The reactor is background-only and not exercised by any test. During CI test
+    // runs it is disabled (via HEY_JARVIS_DISABLE_STATE_CHANGE_REACTOR) so it does
+    // not flood the shared GitHub Models endpoint — its .network() request exceeds
+    // the 8000-token cap and trips Azure content filters — and so it doesn't contend
+    // for LLM quota with the agent under test (a source of eval flakiness).
+    if (process.env.HEY_JARVIS_DISABLE_STATE_CHANGE_REACTOR === 'true') {
+      logger.info('[BATCHER] State change reactor disabled; skipping LLM analysis', {
+        changesCount: changes.length,
+      });
+      return;
+    }
+
     const reactorAgent = await getStateChangeReactorAgent();
     const batchPrompt = this.buildBatchPrompt(changes);
 
