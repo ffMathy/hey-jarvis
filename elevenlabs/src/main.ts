@@ -2,10 +2,15 @@
 
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import type { BuiltInToolsInput, GetAgentResponseModel } from '@elevenlabs/elevenlabs-js/api';
+import { McpApprovalPolicy } from '@elevenlabs/elevenlabs-js/api';
 import { Command } from 'commander';
 import { access, mkdir, readFile, writeFile } from 'fs/promises';
 import * as path from 'path';
 import { cwd } from 'process';
+
+// The shared ElevenLabs MCP server registration that points at the local cloudflared tunnel used by
+// the test agent. The agent reaches routePromptWorkflow through this server.
+const TEST_MCP_SERVER_ID = 'GMOqF385QS1GsrZKfQk6';
 
 class ElevenLabsAgentManager {
   private client: ElevenLabsClient;
@@ -172,7 +177,7 @@ class ElevenLabsAgentManager {
 
     // Replace MCP server IDs with local tunnel MCP server for testing
     if (config.conversationConfig?.agent?.prompt) {
-      config.conversationConfig.agent.prompt.mcpServerIds = ['GMOqF385QS1GsrZKfQk6'];
+      config.conversationConfig.agent.prompt.mcpServerIds = [TEST_MCP_SERVER_ID];
       console.log('🔧 Setting mcpServerIds to local tunnel MCP server for test agent');
 
       config.conversationConfig.agent.prompt.tools = [];
@@ -246,8 +251,23 @@ class ElevenLabsAgentManager {
     }
     if (isTestAgent) {
       console.log('🧪 Test agent mode enabled (textOnly: true)');
+      await this.ensureTestMcpServerAutoApproves();
       await this.verifyTestAgentDeployment(agentId);
     }
+  }
+
+  /**
+   * Sets the test MCP server's approval policy to auto_approve_all. Without this, routePromptWorkflow
+   * requires per-call approval, so the agent cannot execute it autonomously in an automated text-only
+   * test: the model decides to route but its tool call leaks out as a `[tool_code]` text block instead
+   * of a real, executed tool call, and the weather spec sees no tool invocation. Auto-approving makes
+   * routePromptWorkflow a directly callable function for the agent.
+   */
+  private async ensureTestMcpServerAutoApproves(): Promise<void> {
+    console.log(`🔧 Setting test MCP server ${TEST_MCP_SERVER_ID} approval policy to auto_approve_all...`);
+    await this.client.conversationalAi.mcpServers.update(TEST_MCP_SERVER_ID, {
+      approvalPolicy: McpApprovalPolicy.AutoApproveAll,
+    });
   }
 
   /**
@@ -272,15 +292,25 @@ class ElevenLabsAgentManager {
     const mcpServerIds = prompt?.mcpServerIds ?? [];
     const nativeMcpServerIds = prompt?.nativeMcpServerIds ?? [];
 
+    const mcpServer = await this.client.conversationalAi.mcpServers.get(TEST_MCP_SERVER_ID);
+    const approvalPolicy = mcpServer.config.approvalPolicy;
+
     console.log(`🔎 Live agent name: ${live.name}`);
     console.log(`🔎 Live enabled builtInTools: [${enabledBuiltInTools.join(', ')}]`);
     console.log(`🔎 Live prompt.tools count: ${customToolCount}`);
     console.log(`🔎 Live mcpServerIds: [${mcpServerIds.join(', ')}]`);
     console.log(`🔎 Live nativeMcpServerIds: [${nativeMcpServerIds.join(', ')}]`);
+    console.log(`🔎 Live test MCP server approval policy: ${approvalPolicy}`);
 
     const problems: string[] = [];
-    if (!mcpServerIds.includes('GMOqF385QS1GsrZKfQk6')) {
-      problems.push(`expected test MCP server GMOqF385QS1GsrZKfQk6 in mcpServerIds, got [${mcpServerIds.join(', ')}]`);
+    if (!mcpServerIds.includes(TEST_MCP_SERVER_ID)) {
+      problems.push(`expected test MCP server ${TEST_MCP_SERVER_ID} in mcpServerIds, got [${mcpServerIds.join(', ')}]`);
+    }
+    if (approvalPolicy !== McpApprovalPolicy.AutoApproveAll) {
+      problems.push(
+        `test MCP server approval policy is "${approvalPolicy}", expected "${McpApprovalPolicy.AutoApproveAll}" — ` +
+          `routePromptWorkflow won't be auto-executable and the model will emit it as [tool_code] text instead of calling it`,
+      );
     }
     if (enabledBuiltInTools.length > 0) {
       problems.push(
