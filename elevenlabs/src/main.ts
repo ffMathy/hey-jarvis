@@ -228,7 +228,59 @@ class ElevenLabsAgentManager {
     }
     if (isTestAgent) {
       console.log('🧪 Test agent mode enabled (textOnly: true)');
+      await this.verifyTestAgentDeployment(agentId);
     }
+  }
+
+  /**
+   * Reads the test agent back after deploying and verifies the test overrides actually took effect
+   * on the live agent. The ElevenLabs update API performs a partial merge, so it is easy for an
+   * override to silently not apply (e.g. an empty builtInTools object leaves the existing system
+   * tools in place). When that happens the agent answers live-data requests by calling system tools
+   * like end_call / transfer_to_agent instead of the MCP routePromptWorkflow tool, and the weather
+   * spec fails deep inside a long test run. Failing here instead surfaces the real deployed state
+   * immediately, right next to the deploy step.
+   */
+  private async verifyTestAgentDeployment(agentId: string): Promise<void> {
+    console.log('🔎 Verifying test agent deployment...');
+    const live = await this.client.conversationalAi.agents.get(agentId);
+    const prompt = live.conversationConfig?.agent?.prompt;
+
+    const builtInTools = prompt?.builtInTools ?? {};
+    const enabledBuiltInTools = Object.entries(builtInTools)
+      .filter(([, value]) => value != null)
+      .map(([key]) => key);
+    const customToolCount = prompt?.tools?.length ?? 0;
+    const mcpServerIds = prompt?.mcpServerIds ?? [];
+    const nativeMcpServerIds = prompt?.nativeMcpServerIds ?? [];
+
+    console.log(`🔎 Live agent name: ${live.name}`);
+    console.log(`🔎 Live enabled builtInTools: [${enabledBuiltInTools.join(', ')}]`);
+    console.log(`🔎 Live prompt.tools count: ${customToolCount}`);
+    console.log(`🔎 Live mcpServerIds: [${mcpServerIds.join(', ')}]`);
+    console.log(`🔎 Live nativeMcpServerIds: [${nativeMcpServerIds.join(', ')}]`);
+
+    const problems: string[] = [];
+    if (!mcpServerIds.includes('GMOqF385QS1GsrZKfQk6')) {
+      problems.push(`expected test MCP server GMOqF385QS1GsrZKfQk6 in mcpServerIds, got [${mcpServerIds.join(', ')}]`);
+    }
+    if (enabledBuiltInTools.length > 0) {
+      problems.push(
+        `built-in system tools still enabled: [${enabledBuiltInTools.join(', ')}] — these shadow routePromptWorkflow ` +
+          `and let the model answer with end_call/transfer_to_agent instead of routing`,
+      );
+    }
+    if (customToolCount > 0) {
+      problems.push(
+        `prompt.tools still has ${customToolCount} entr${customToolCount === 1 ? 'y' : 'ies'} (expected 0)`,
+      );
+    }
+
+    if (problems.length > 0) {
+      throw new Error(`Test agent deployment did not apply as expected:\n - ${problems.join('\n - ')}`);
+    }
+
+    console.log('✅ Test agent deployment verified (system tools disabled, test MCP server set)');
   }
 
   public async run(): Promise<void> {
