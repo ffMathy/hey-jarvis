@@ -5,6 +5,7 @@ import { PinoLogger } from '@mastra/loggers';
 import { CloudExporter, DefaultExporter, Observability, SamplingStrategyType } from '@mastra/observability';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { getCorsOptions } from './cors.js';
 import { getTokenUsageStorage } from './storage/index.js';
 import { TokenTrackingProcessor, TokenUsageExporter } from './utils/token-usage-exporter.js';
 import { tokenUsageTools } from './verticals/api/index.js';
@@ -152,7 +153,7 @@ export async function logTokenUsageSummary(): Promise<void> {
 // 1. Initialize the Hono Application
 // We do not need any special adapters for Bun here; Hono works out of the box.
 const app = new Hono();
-app.use('*', cors());
+app.use('*', cors(getCorsOptions()));
 
 export const mastra = await getMastra();
 
