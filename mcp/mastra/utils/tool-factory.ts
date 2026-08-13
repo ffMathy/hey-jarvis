@@ -103,7 +103,9 @@ export async function executeTool<TInput, TOutput>(
     throw new Error(`Tool ${toolId} failed validation: ${result.message}`);
   }
 
-  if (result === undefined || result === null) {
+  // Only `undefined` means "returned nothing" — a tool whose output schema is
+  // nullable may legitimately resolve to null.
+  if (result === undefined) {
     throw new Error(`Tool ${toolId} returned no result`);
   }
 
