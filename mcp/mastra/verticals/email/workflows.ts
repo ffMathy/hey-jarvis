@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { executeTool } from '../../utils/tool-factory.js';
 import { createStep, createWorkflow } from '../../utils/workflows/workflow-factory.js';
 import { registerStateChange } from '../synapse/tools.js';
 import { findNewEmailsSinceLastCheck, updateLastSeenEmail } from './tools.js';
@@ -409,7 +410,7 @@ const registerEmailsStateChange = createStep({
     batched: z.boolean(),
     message: z.string(),
   }),
-  execute: async ({ state, inputData }) => {
+  execute: async ({ state, inputData, mastra }) => {
     const emails = state.newEmails ?? [];
 
     if (emails.length === 0) {
@@ -438,16 +439,7 @@ const registerEmailsStateChange = createStep({
     };
 
     console.log(`📝 Registering ${emails.length} email(s) with state reactor...`);
-    if (!registerStateChange.execute) {
-      throw new Error('registerStateChange.execute is not defined');
-    }
-    const result = await registerStateChange.execute(stateChangeData, {});
-
-    if ('error' in result) {
-      throw new Error(`Failed to register state change: ${result.message}`);
-    }
-
-    return result;
+    return await executeTool(registerStateChange, stateChangeData, { mastra });
   },
 });
 

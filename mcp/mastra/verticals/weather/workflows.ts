@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { getOllamaModelOrFallback } from '../../utils/providers/ollama-provider.js';
+import { executeTool } from '../../utils/tool-factory.js';
 import { createAgentStep, createStep, createWorkflow } from '../../utils/workflows/workflow-factory.js';
 import { registerStateChange } from '../synapse/tools.js';
 import { weatherTools } from './tools.js';
@@ -73,16 +74,7 @@ const registerWeatherStateChange = createStep({
       },
     };
 
-    if (!registerStateChange.execute) {
-      throw new Error('registerStateChange.execute is not defined');
-    }
-    const result = await registerStateChange.execute(stateChangeData, {});
-
-    if ('error' in result) {
-      throw new Error(result.message);
-    }
-
-    return result;
+    return await executeTool(registerStateChange, stateChangeData, { mastra: params.mastra });
   },
 });
 

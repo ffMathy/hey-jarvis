@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { executeTool } from '../../utils/tool-factory.js';
 import { createStep, createWorkflow } from '../../utils/workflows/workflow-factory.js';
 import { sendEmail } from '../email/tools.js';
 
@@ -56,22 +57,12 @@ const sendFormRequestEmail = createStep({
 </html>
     `.trim();
 
-    // sendEmail is created with createTool and always has execute defined
-    const emailResult = await sendEmail.execute!(
-      {
-        subject,
-        bodyContent,
-        toRecipients: [recipientEmail],
-      },
-      {},
-    );
+    const emailResult = await executeTool(sendEmail, {
+      subject,
+      bodyContent,
+      toRecipients: [recipientEmail],
+    });
 
-    // Handle validation error case - narrow the type explicitly
-    if ('error' in emailResult) {
-      throw new Error(`Failed to send email: ${emailResult.message}`);
-    }
-
-    // At this point, emailResult is known to be the success type
     return {
       messageId: emailResult.messageId,
       subject: emailResult.subject,
