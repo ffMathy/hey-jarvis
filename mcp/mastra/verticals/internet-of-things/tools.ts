@@ -244,12 +244,122 @@ export const getAllDevices = createTool({
     ),
   }),
   execute: async (inputData) => {
-    const domainFilter = inputData.domain ? `and st.domain == '${inputData.domain}'` : '';
+    const deviceIds = await fetchDeviceIds();
+    const devices = await fetchDevicesInBatches(deviceIds, inputData.domain);
 
-    const template = `
+    return { devices };
+  },
+});
+
+/**
+ * Fragment of the error Home Assistant returns when a template renders more
+ * output than it allows (256 KB at the time of writing). Matched so an
+ * oversized batch can be split and retried rather than failing the whole call.
+ */
+const HA_TEMPLATE_OUTPUT_LIMIT_MESSAGE = 'exceeded maximum size';
+
+/**
+ * Devices requested per template render. Chosen well below the point where a
+ * typical batch approaches Home Assistant's output cap; batches that still
+ * overflow are split automatically.
+ */
+const DEVICE_BATCH_SIZE = 25;
+
+/** Fetches just the device IDs, which is cheap enough to always fit in one render. */
+async function fetchDeviceIds(): Promise<string[]> {
+  const template = `{{ states|map(attribute='entity_id')|map('device_id')|unique|reject('eq',None)|list|to_json }}`;
+  const response = await callHomeAssistantApi('template', 'POST', { template });
+  const ids: unknown = typeof response === 'string' ? JSON.parse(response) : response;
+
+  return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : [];
+}
+
+/**
+ * Fetches full device payloads in batches, halving any batch that still exceeds
+ * Home Assistant's template output limit.
+ *
+ * Home Assistant caps template output at 256 KB, so rendering every device with
+ * all of its entity attributes in a single template fails outright once an
+ * installation grows past that — and it fails for the whole call, not just the
+ * excess. Batching keeps each render small and makes the tool scale with the
+ * number of devices.
+ */
+async function fetchDevicesInBatches(deviceIds: string[], domain?: string): Promise<DeviceState[]> {
+  return await renderInBatches(deviceIds, DEVICE_BATCH_SIZE, async (batch) => {
+    const response = await callHomeAssistantApi('template', 'POST', {
+      template: buildDeviceTemplate(batch, domain),
+    });
+    const parsed: unknown = typeof response === 'string' ? JSON.parse(response) : response;
+
+    // The template emits exactly the DeviceState shape, and the tool's
+    // outputSchema validates the assembled result before it reaches a caller.
+    return Array.isArray(parsed) ? (parsed as DeviceState[]) : [];
+  });
+}
+
+/**
+ * Splits `items` into batches of `batchSize` and concatenates what `render`
+ * returns for each, halving any batch that `render` rejects because Home
+ * Assistant's template output limit was exceeded.
+ *
+ * Exported for testing: the halving behaviour only shows up against an
+ * installation large enough to overflow, which no test can rely on.
+ *
+ * @param items - Items to render, in order
+ * @param batchSize - Items per render attempt
+ * @param render - Renders one batch; may reject with an output-limit error
+ * @throws Whatever `render` throws, if it is not an output-limit error or if a
+ * single item still overflows on its own
+ */
+export async function renderInBatches<TItem, TResult>(
+  items: TItem[],
+  batchSize: number,
+  render: (batch: TItem[]) => Promise<TResult[]>,
+): Promise<TResult[]> {
+  const results: TResult[] = [];
+
+  for (let index = 0; index < items.length; index += batchSize) {
+    results.push(...(await renderBatch(items.slice(index, index + batchSize), render)));
+  }
+
+  return results;
+}
+
+async function renderBatch<TItem, TResult>(
+  batch: TItem[],
+  render: (batch: TItem[]) => Promise<TResult[]>,
+): Promise<TResult[]> {
+  if (batch.length === 0) {
+    return [];
+  }
+
+  try {
+    return await render(batch);
+  } catch (error) {
+    const overflowed = error instanceof Error && error.message.includes(HA_TEMPLATE_OUTPUT_LIMIT_MESSAGE);
+
+    // A single item that cannot be rendered on its own is not something
+    // splitting can solve — surface it rather than looping forever.
+    if (!overflowed || batch.length === 1) {
+      throw error;
+    }
+
+    const middle = Math.ceil(batch.length / 2);
+
+    return [
+      ...(await renderBatch(batch.slice(0, middle), render)),
+      ...(await renderBatch(batch.slice(middle), render)),
+    ];
+  }
+}
+
+function buildDeviceTemplate(deviceIds: string[], domain?: string): string {
+  const domainFilter = domain ? `and st.domain == '${domain}'` : '';
+
+  return `
 {%- set MAX_STR = 160 -%}
 {%- set MAX_LIST = 20 -%}
-{%- set devices = states|map(attribute='entity_id')|map('device_id')|unique|reject('eq',None)|list -%}
+{%- set devices = ${JSON.stringify(deviceIds)} -%}
 {%- set ns = namespace(devices=[]) -%}
 {%- for d in devices -%}
   {%- set ents = device_entities(d)|list -%}
@@ -305,18 +415,10 @@ export const getAllDevices = createTool({
 {%- endfor -%}
 {{ ns.devices | to_json }}
     `
-      .split('\n')
-      .map((line) => line.trim())
-      .join('\n');
-
-    const response = await callHomeAssistantApi('template', 'POST', { template });
-    const devices: DeviceState[] = typeof response === 'string' ? JSON.parse(response) : response;
-
-    return {
-      devices: Array.isArray(devices) ? devices : [],
-    };
-  },
-});
+    .split('\n')
+    .map((line) => line.trim())
+    .join('\n');
+}
 
 // Tool to get all available services
 export const getAllServices = createTool({
