@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { createTool, executeTool } from '../../utils/tool-factory';
+import { createTool, executeTool } from '../../utils/tool-factory.js';
 
 // Interface for Valdemarsro Recipe API responses
 interface Recipe {

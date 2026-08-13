@@ -4,7 +4,9 @@ import { getAllowedOrigins, getCorsOptions } from './cors.js';
 
 const STUDIO_ORIGIN = 'http://localhost:3000';
 
-function createApp(studioBaseUrl?: string) {
+// Defaults to '' rather than undefined so the middleware under test never falls
+// back to MASTRA_STUDIO_BASE_URL from the runner's environment.
+function createApp(studioBaseUrl = '') {
   const app = new Hono();
   app.use('*', cors(getCorsOptions(studioBaseUrl)));
   app.get('/api/agents', (c) => c.json({}));
@@ -20,8 +22,10 @@ async function preflight(app: Hono, origin: string) {
 
 describe('API CORS configuration', () => {
   describe('getAllowedOrigins', () => {
+    // Passed explicitly rather than relying on the default parameter, which would
+    // read MASTRA_STUDIO_BASE_URL and make these expectations depend on the runner.
     it('allows both loopback spellings of the default Studio origin', () => {
-      expect(getAllowedOrigins(undefined)).toEqual(['http://localhost:3000', 'http://127.0.0.1:3000']);
+      expect(getAllowedOrigins('')).toEqual(['http://localhost:3000', 'http://127.0.0.1:3000']);
     });
 
     it('adds a custom Studio base URL', () => {
