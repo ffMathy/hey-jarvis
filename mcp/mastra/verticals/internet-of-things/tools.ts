@@ -106,7 +106,12 @@ async function callHomeAssistantApi(endpoint: string, method = 'GET', body?: unk
   });
 
   if (!response.ok) {
-    throw new Error(`Home Assistant API error: ${response.statusText}`);
+    // Home Assistant puts the actual reason in the body — a template rendering
+    // error, an unknown entity, a malformed filter. Reporting only statusText
+    // turns every one of those into an unactionable "Bad Request".
+    const detail = await response.text().catch(() => '');
+    const suffix = detail ? ` — ${detail.slice(0, 500)}` : '';
+    throw new Error(`Home Assistant API error calling ${method} ${endpoint}: ${response.statusText}${suffix}`);
   }
 
   return response.json();
