@@ -41,7 +41,7 @@ The project is organized by business domain. Each vertical contains its own agen
 - **Factory functions** for all agents, tools, and workflows (`createAgent`, `createTool`, `createWorkflow`)
 - **Tool IDs** are always `kebab-case` (e.g., `get-current-weather`)
 - **Persistent memory** via LibSQL with semantic vector recall
-- **Multi-model**: Gemini Flash (primary), Ollama Qwen3 (local/scheduled tasks), GitHub Models (CI)
+- **Multi-model**: Gemini Flash (primary), Ollama Qwen3 (local/scheduled tasks)
 - **Storage**: Credentials, device state, email state, noise baselines, token usage — all in LibSQL
 
 ## Server Endpoints

@@ -20,3 +20,17 @@ if (!googleApiKey) {
 export const google = createGoogleGenerativeAI({
   apiKey: googleApiKey || 'not-configured',
 });
+
+/**
+ * Resolves the language model to use for a given Gemini model name.
+ *
+ * Kept as a single indirection point for every agent, scorer and workflow so
+ * that model selection can change in one place. CI used to be routed to GitHub
+ * Models here to save tokens; that service has been deprecated, so every
+ * environment now talks to Gemini directly.
+ *
+ * @param geminiModel - Gemini model name, e.g. `gemini-flash-latest`
+ */
+export function getModel(geminiModel: string) {
+  return google(geminiModel);
+}

@@ -14,7 +14,7 @@ This project includes specialized [GitHub Copilot Agent Skills](https://docs.git
 - **Package Manager**: Bun (use `bun install`, never npm)
 - **Build System**: Turborepo monorepo
 - **Language**: TypeScript (strict mode)
-- **AI Framework**: Mastra (V1 beta)
+- **AI Framework**: Mastra (V1)
 - **LLM Provider**: Google Gemini (gemini-flash-latest)
 - **Linting**: Biome
 - **Testing**: Jest

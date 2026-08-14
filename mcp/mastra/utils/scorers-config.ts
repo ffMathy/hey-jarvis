@@ -1,4 +1,4 @@
-import { getModel } from './providers/github-models-provider.js';
+import { getModel } from './providers/google-provider.js';
 
 /**
  * Default sampling rate for live evaluations.
@@ -9,7 +9,6 @@ const DEFAULT_SAMPLING_RATE = 0.1;
 /**
  * Lazy initialization of the scorer model to avoid import-time failures.
  * Only creates the model when scorers are actually instantiated.
- * Uses GitHub Models in CI environments to reduce costs.
  */
 type ModelType = ReturnType<typeof getModel>;
 let scorerModel: ModelType | null = null;

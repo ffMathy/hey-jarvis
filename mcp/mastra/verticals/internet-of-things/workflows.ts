@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { getDeviceStateStorage, getEntityNoiseBaselineStorage } from '../../storage/index.js';
 import { logger } from '../../utils/logger.js';
+import { executeTool } from '../../utils/tool-factory.js';
 import { createStep, createWorkflow } from '../../utils/workflows/workflow-factory.js';
 import { registerStateChange } from '../synapse/tools.js';
 import { fetchHistoricalStates, getChangedDevicesSince } from './tools.js';
@@ -89,20 +90,8 @@ const fetchRecentlyChangedDevices = createStep({
     ),
     timestamp: z.string(),
   }),
-  execute: async () => {
-    if (!getChangedDevicesSince.execute) {
-      throw new Error('getChangedDevicesSince.execute is not defined');
-    }
-    const result = await getChangedDevicesSince.execute(
-      {
-        sinceSeconds: STATE_CHANGE_WINDOW_SECONDS,
-      },
-      {},
-    );
-
-    if ('error' in result) {
-      throw new Error(result.message);
-    }
+  execute: async ({ mastra }) => {
+    const result = await executeTool(getChangedDevicesSince, { sinceSeconds: STATE_CHANGE_WINDOW_SECONDS }, { mastra });
 
     // Group by device and filter out sensitive labels (matching old n8n behavior)
     const deviceMap = new Map<
@@ -210,7 +199,7 @@ const triggerStateChangeNotifications = createStep({
     filteredAsNoise: z.number(),
     timestamp: z.string(),
   }),
-  execute: async ({ inputData }) => {
+  execute: async ({ inputData, mastra }) => {
     let changesProcessed = 0;
     let notificationsTriggered = 0;
     let filteredAsNoise = 0;
@@ -241,10 +230,8 @@ const triggerStateChangeNotifications = createStep({
         }
 
         // If we reach here, the change is significant (or no baseline/previous state exists)
-        if (!registerStateChange.execute) {
-          throw new Error('registerStateChange.execute is not defined');
-        }
-        await registerStateChange.execute(
+        await executeTool(
+          registerStateChange,
           {
             source: 'internet-of-things',
             stateType: 'device_state_change',
@@ -257,7 +244,7 @@ const triggerStateChangeNotifications = createStep({
               detectedAt: inputData.timestamp,
             },
           },
-          {},
+          { mastra },
         );
 
         notificationsTriggered++;

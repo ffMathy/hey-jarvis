@@ -1,25 +1,16 @@
 import type { AgentConfig } from '@mastra/core/agent';
 import type { StandardSchemaWithJSON } from '@mastra/core/schema';
-import type { ToolExecutionContext, ValidationError } from '@mastra/core/tools';
+import type { ToolExecuteFunction, ToolExecutionContext } from '@mastra/core/tools';
 import {
   type DefaultEngineType,
   type ExecuteFunctionParams,
   createStep as mastraCreateStep,
   createWorkflow as mastraCreateWorkflow,
-  type Step,
   type StepParams,
-  type WorkflowConfig,
 } from '@mastra/core/workflows';
 import type { z } from 'zod';
 import { createAgent } from '../agent-factory.js';
-
-/**
- * Centralized type aliases for workflow generics.
- * Mastra's Workflow and Step types require `any` in their generic bounds internally,
- * so we define these aliases once to avoid scattering `any` across the codebase.
- */
-// biome-ignore lint/suspicious/noExplicitAny: Mastra Step type requires `any` in its generic bounds
-type AnyStep = Step<string, any, any, any, any, any, DefaultEngineType>[];
+import { executeTool } from '../tool-factory.js';
 
 /**
  * A Workflow with all generic parameters set to their defaults.
@@ -87,15 +78,7 @@ export type AnyWorkflowResult = import('@mastra/core/workflows').WorkflowResult<
  * }).then(myStep);
  * ```
  */
-export function createWorkflow<
-  TWorkflowId extends string = string,
-  TState = unknown,
-  TInput = unknown,
-  TOutput = unknown,
-  TSteps extends AnyStep = Step[],
->(config: WorkflowConfig<TWorkflowId, TState, TInput, TOutput, TSteps>) {
-  return mastraCreateWorkflow(config);
-}
+export const createWorkflow = mastraCreateWorkflow;
 
 /**
  * Creates a new Mastra Step with sensible defaults for the Hey Jarvis system.
@@ -145,16 +128,7 @@ export function createWorkflow<
  * });
  * ```
  */
-export function createStep<
-  TStepId extends string = string,
-  TState extends z.ZodTypeAny | undefined = undefined,
-  TInput extends z.ZodTypeAny = z.ZodTypeAny,
-  TOutput extends z.ZodTypeAny = z.ZodTypeAny,
-  TResume extends z.ZodTypeAny | undefined = undefined,
-  TSuspend extends z.ZodTypeAny | undefined = undefined,
->(config: StepParams<TStepId, TState, TInput, TOutput, TResume, TSuspend>) {
-  return mastraCreateStep(config);
-}
+export const createStep = mastraCreateStep;
 
 /**
  * Creates a workflow step that uses an agent as the step execution.
@@ -341,11 +315,12 @@ export function createToolStep<
   id: TStepId;
   description: string;
   tool: {
+    id?: string;
     // biome-ignore lint/suspicious/noExplicitAny: Tool schemas can be either Zod or StandardSchema depending on Mastra version
     inputSchema?: z.ZodTypeAny | StandardSchemaWithJSON<any>;
     // biome-ignore lint/suspicious/noExplicitAny: Tool schemas can be either Zod or StandardSchema depending on Mastra version
     outputSchema?: z.ZodTypeAny | StandardSchemaWithJSON<any>;
-    execute?: (inputData: TToolInput, context: ToolExecutionContext) => Promise<TToolOutput | ValidationError>;
+    execute?: ToolExecuteFunction<TToolInput, TToolOutput, ToolExecutionContext>;
   };
   stateSchema?: TStateSchema;
   inputOverrides?: Partial<TToolInput>;
@@ -356,7 +331,7 @@ export function createToolStep<
 
   const inputSchema = config.tool.inputSchema as z.ZodTypeAny;
   const outputSchema = config.tool.outputSchema as z.ZodTypeAny;
-  const execute = config.tool.execute;
+  const tool = config.tool;
 
   return createStep<TStepId, TStateSchema, typeof inputSchema, typeof outputSchema>({
     id: config.id,
@@ -364,16 +339,14 @@ export function createToolStep<
     inputSchema,
     outputSchema,
     stateSchema: config.stateSchema,
-    execute: async (params) => {
-      // ToolExecutionContext has all-optional fields; { mastra } satisfies it without unsafe casting
-      const toolContext: ToolExecutionContext = { mastra: params.mastra };
-      return await execute(
+    execute: async (params) =>
+      await executeTool(
+        tool,
         {
           ...(params.inputData as Record<string, unknown>),
           ...(config.inputOverrides ?? {}),
         } as TToolInput,
-        toolContext,
-      );
-    },
+        { mastra: params.mastra },
+      ),
   });
 }

@@ -1,47 +1,64 @@
-import { beforeAll, describe, expect, it } from 'bun:test';
+import { describe, expect, it } from 'bun:test';
 import { sendTextMessage } from './tools';
 
-describe('Phone Tools Integration Tests', () => {
-  beforeAll(() => {
-    // Check if Twilio credentials are configured
-    if (
-      !process.env.HEY_JARVIS_TWILIO_ACCOUNT_SID ||
-      !process.env.HEY_JARVIS_TWILIO_AUTH_TOKEN ||
-      !process.env.HEY_JARVIS_TWILIO_PHONE_NUMBER
-    ) {
-      throw new Error(
-        'Twilio credentials are required for phone tools tests. Set HEY_JARVIS_TWILIO_ACCOUNT_SID, HEY_JARVIS_TWILIO_AUTH_TOKEN, and HEY_JARVIS_TWILIO_PHONE_NUMBER environment variables.',
-      );
-    }
-  });
+// These tests exercise the sendTextMessage input contract only — they make no
+// Twilio calls, so they need no credentials and send no SMS. Sending a real
+// message from CI is not viable: Twilio rejects any placeholder number with
+// error 21211, and a genuine number would be texted on every single run.
+describe('Phone Tools', () => {
+  const inputSchema = sendTextMessage.inputSchema;
 
-  describe('sendTextMessage', () => {
-    it('should send a text message via Twilio', async () => {
-      const result = await sendTextMessage.execute({
-        phoneNumber: '+1234567890',
+  describe('sendTextMessage input schema', () => {
+    it('accepts an E.164 number with a message', () => {
+      const parsed = inputSchema.parse({
+        phoneNumber: '+15551234567',
         message: 'Test message',
       });
 
-      // Validate structure
-      expect(result).toBeDefined();
-      expect(typeof result.success).toBe('boolean');
-      expect(typeof result.message).toBe('string');
+      expect(parsed.phoneNumber).toBe('+15551234567');
+      expect(parsed.message).toBe('Test message');
+    });
 
-      console.log('✅ SMS tool executed');
-      console.log('   - Success:', result.success);
-      // Do not log message content as it may contain error details with config paths
-    }, 10000);
+    it('rejects input with no phone number', () => {
+      expect(() => inputSchema.parse({ message: 'Test message' })).toThrow();
+    });
 
-    it('should validate phone number format in schema', async () => {
-      const result = await sendTextMessage.execute({
-        phoneNumber: '+15551234567',
-        message: 'Test message with valid E.164 format',
+    it('rejects input with no message', () => {
+      expect(() => inputSchema.parse({ phoneNumber: '+15551234567' })).toThrow();
+    });
+
+    it('rejects a non-string phone number', () => {
+      expect(() => inputSchema.parse({ phoneNumber: 15551234567, message: 'Test message' })).toThrow();
+    });
+
+    it('rejects a non-string message', () => {
+      expect(() => inputSchema.parse({ phoneNumber: '+15551234567', message: 42 })).toThrow();
+    });
+  });
+
+  describe('sendTextMessage definition', () => {
+    it('is registered under a stable tool id', () => {
+      expect(sendTextMessage.id).toBe('sendTextMessage');
+    });
+
+    it('declares the result shape callers depend on', () => {
+      const parsed = sendTextMessage.outputSchema.parse({
+        success: true,
+        message: 'Text message sent successfully to +15551234567',
+        messageSid: 'SM00000000000000000000000000000000',
       });
 
-      expect(result).toBeDefined();
-      expect(typeof result.success).toBe('boolean');
+      expect(parsed.success).toBe(true);
+      expect(parsed.messageSid).toBeDefined();
+    });
 
-      console.log('✅ Phone number validation passed');
-    }, 10000);
+    it('treats messageSid as optional, since a failed send has none', () => {
+      const parsed = sendTextMessage.outputSchema.parse({
+        success: false,
+        message: 'Could not send',
+      });
+
+      expect(parsed.messageSid).toBeUndefined();
+    });
   });
 });

@@ -1,4 +1,5 @@
 import { createShortcut } from '../../utils/shortcut-factory.js';
+import { executeTool } from '../../utils/tool-factory.js';
 import { inferUserLocation } from '../internet-of-things/tools.js';
 
 /**
@@ -20,15 +21,7 @@ export const getUserCurrentLocation = createShortcut({
   description:
     "Get the current location of a user for weather purposes. Uses IoT device tracking to determine the user's GPS coordinates and zone information.",
   tool: inferUserLocation,
-  execute: async (input, context) => {
-    const result = await inferUserLocation.execute!(input, context);
-
-    if ('error' in result) {
-      throw new Error(result.message);
-    }
-
-    return result;
-  },
+  execute: async (input, context) => await executeTool(inferUserLocation, input, context),
 });
 
 export const weatherShortcuts = {
