@@ -6,7 +6,7 @@ import { registerStateChange } from '../synapse/tools.js';
 import { weatherTools } from './tools.js';
 
 // Agent-as-step for scheduled weather check (uses local Qwen3 via Ollama for cost-efficiency,
-// falls back to getModel() when Ollama is not configured)
+// falls back to Gemini when Ollama is not configured)
 const scheduledWeatherCheck = createAgentStep({
   id: 'scheduled-weather-check',
   description: 'Checks weather for Aarhus every hour',

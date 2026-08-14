@@ -1,14 +1,7 @@
 // Utils exports - Core factories
 export { createAgent } from './agent-factory.js';
 // Provider exports
-export {
-  GITHUB_MODELS_DEFAULT_MODEL,
-  getEquivalentGitHubModel,
-  getGitHubModelsProvider,
-  getModel,
-  shouldUseGitHubModels,
-} from './providers/github-models-provider.js';
-export { google } from './providers/google-provider.js';
+export { getModel, google } from './providers/google-provider.js';
 export {
   getOllamaApiUrl,
   getOllamaBaseUrl,
