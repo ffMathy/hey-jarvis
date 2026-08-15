@@ -9,7 +9,16 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/hooks/block-op-env.sh"
+            "command": "node .claude/hooks/block-op-env.js"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/require-timeout.js"
           }
         ]
       }
@@ -23,32 +32,7 @@
             "command": ".claude/hooks/lint-on-edit.sh"
           }
         ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node .claude/hooks/gsd-context-monitor.js"
-          }
-        ]
-      }
-    ],
-    "SessionStart": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node .claude/hooks/gsd-check-update.js"
-          }
-        ]
       }
     ]
-  },
-  "statusLine": {
-    "type": "command",
-    "command": "node .claude/hooks/gsd-statusline.js"
-  },
-  "enabledPlugins": {
-    "superpowers@claude-plugins-official": true
   }
 }

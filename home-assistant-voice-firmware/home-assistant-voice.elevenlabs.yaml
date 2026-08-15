@@ -29,13 +29,34 @@ esphome:
   name: hass-elevenlabs
   friendly_name: Home Assistant Voice ElevenLabs
   name_add_mac_suffix: true
-  min_version: 2025.12.0
+  min_version: 2026.7.0
   compile_process_limit: 1
   on_boot:
-    priority: 375
-    then:
-      - switch.turn_on: internal_speaker_amp
-      - lambda: id(init_in_progress) = false;
+    - priority: 375
+      then:
+        - switch.turn_on: internal_speaker_amp
+        - lambda: id(init_in_progress) = false;
+    # Start listening for the wake word as soon as the device is up.
+    #
+    # Upstream only starts it from voice_assistant.on_client_connected, because the
+    # stock firmware routes voice through Home Assistant. This build talks to
+    # ElevenLabs directly and needs no Home Assistant at all, so that gate left a
+    # freshly flashed device permanently deaf: micro_wake_word never started, and no
+    # amount of speaking at it could trigger anything.
+    #
+    # Priority -100 runs last, once every component (microphone included) is set up.
+    # elevenlabs_stream.on_start still stops the engine for the duration of a
+    # conversation and on_end restarts it, so this only fixes the cold-boot case.
+    - priority: -100
+      then:
+        - micro_wake_word.start:
+        # voice_assistant_phase initialises to not_ready and upstream only clears it
+        # in on_client_connected, so without Home Assistant the ring stays red and the
+        # device reports itself as broken while actually being perfectly functional.
+        # Present as idle instead: for this build "ready" means the wake word engine
+        # is listening, which it now is.
+        - lambda: id(voice_assistant_phase) = ${voice_assist_idle_phase_id};
+        - script.execute: control_leds
 
 esp32:
   board: esp32-s3-devkitc-1
