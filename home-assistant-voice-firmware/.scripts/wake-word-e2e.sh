@@ -1,13 +1,22 @@
 #!/usr/bin/env bash
 set -uo pipefail
 
-# End-to-end acoustic test of the wake word, over real air.
+# End-to-end acoustic test of the wake word AND the device's playback quality.
 #
-# Synthesises "Hey Jarvis" with ElevenLabs TTS, plays it through the HOST speakers,
-# and asserts that the USB-attached Voice PE actually heard it — by watching its
-# serial log for micro_wake_word's detection line. Nothing is mocked: this exercises
-# TTS, the speakers, the room, the device microphone, the VAD and the wake word model
-# in one shot.
+# Round trip, entirely over real air:
+#   1. Synthesise "Hey Jarvis" with ElevenLabs TTS and play it through HOST speakers
+#   2. Assert the Voice PE heard it, via micro_wake_word's serial log line
+#   3. Speak a command so the agent replies
+#   4. Stop playing, and record the ROOM with the host microphone — capturing the
+#      device's own speaker
+#   5. Send that recording to Gemini and ask whether the speech stutters
+#
+# Nothing is mocked: one run exercises TTS, the speakers, the room, the device
+# microphone, the VAD, the wake word model, the agent, and the device's audio output.
+#
+# Step 5 exists because the device stutters as if buffering during playback. A room
+# recording is the only way to judge what actually comes out of the speaker — serial
+# logs cannot tell you how it sounds.
 #
 # The device must be physically near the host speakers and NOT muted. Check the
 # HARDWARE mute switch on the back: it overrides the software one, and while it is on
@@ -33,17 +42,61 @@ set -uo pipefail
 #   LISTEN_SECONDS     wait for detection per attempt  (default 15)
 #   ESPHOME_DEVICE     serial port                     (default: first /dev/ttyACM*|ttyUSB*)
 #   KEEP_AUDIO         1 = keep the synthesised file and reuse it (default 1, avoids re-billing)
+#   COMMAND_TEXT       phrase asked after waking       (default "What time is it?")
+#   RECORD_SECONDS     how long to record the reply    (default 20)
+#   RECORD_SOURCE      PulseAudio capture source       (default RDPSource, the WSLg mic)
+#   GEMINI_MODEL       model used for the analysis     (default gemini-flash-latest)
+#   SKIP_AUDIO_CHECK   1 = wake word only, no recording or analysis
+#   LISTEN_ONLY        1 = play nothing, just watch for a detection from live speech
+#
+# Exit codes:
+#   0  woke, and the reply had no stuttering (or the check was skipped)
+#   1  never woke
+#   2  woke, but STUTTERING was detected in the reply
+#   3  woke, but the reply could not be analysed (silent capture, or API failure)
 
 WAKE_WORD_TEXT="${WAKE_WORD_TEXT:-Hey Jarvis}"
 ATTEMPTS="${ATTEMPTS:-3}"
 LISTEN_SECONDS="${LISTEN_SECONDS:-15}"
 KEEP_AUDIO="${KEEP_AUDIO:-1}"
 
+COMMAND_TEXT="${COMMAND_TEXT:-What time is it?}"
+RECORD_SECONDS="${RECORD_SECONDS:-20}"
+RECORD_SOURCE="${RECORD_SOURCE:-RDPSource}"
+GEMINI_MODEL="${GEMINI_MODEL:-gemini-flash-latest}"
+
 WORK_DIR="${TMPDIR:-/tmp}/hey-jarvis-wake-word-test"
 mkdir -p "$WORK_DIR"
 AUDIO_MP3="$WORK_DIR/wake-word.mp3"
 AUDIO_WAV="$WORK_DIR/wake-word.wav"
+COMMAND_MP3="$WORK_DIR/command.mp3"
+COMMAND_WAV="$WORK_DIR/command.wav"
+REPLY_WAV="$WORK_DIR/jarvis-reply.wav"
+GEMINI_REQ="$WORK_DIR/gemini-request.json"
+GEMINI_RES="$WORK_DIR/gemini-response.json"
 SERIAL_LOG="$WORK_DIR/serial.log"
+
+# Describe the artefact rather than naming it, and demand evidence. Asking "is it
+# stuttering?" invites agreement; asking what it hears and requiring timestamps makes
+# a false positive harder. Recording-side noise is called out explicitly so room echo
+# or a quiet mic is not mistaken for a playback fault on the device.
+ANALYSIS_PROMPT="${ANALYSIS_PROMPT:-This is a recording, made with a room microphone, of a smart speaker playing back synthesised speech.
+
+Judge ONLY the playback quality of the speech, not its content and not the room.
+
+Report stuttering_detected: true only if the SPEECH ITSELF is broken up — repeated
+or re-articulated syllables, words chopped mid-utterance, abrupt gaps or dropouts
+inside a word or phrase, or a robotic stammer. These indicate an audio buffering or
+underrun fault in the device.
+
+Report false if the speech is continuous and natural, even when it is quiet,
+echoey, distant, or has background noise. Natural pauses between sentences, breaths
+and ordinary hesitation are NOT stuttering.
+
+Give a transcript of what is said. In evidence, quote the specific words affected
+and where they occur, or state plainly that the speech was continuous. Put the
+number of distinct artefacts in artifact_count. If you cannot hear intelligible
+speech at all, report false and say so in evidence.}"
 
 # micro_wake_word.cpp logs: Detected '<wake word>' with sliding average probability ...
 DETECT_RE="Detected '[^']*[Jj]arvis'"
@@ -65,9 +118,20 @@ fail() {
 # --- preflight ---------------------------------------------------------------
 echo "🔎 Preflight"
 
-for tool in curl ffmpeg; do
+for tool in curl ffmpeg jq base64; do
   command -v "$tool" > /dev/null 2>&1 || fail "$tool is required. sudo apt-get install -y $tool"
 done
+
+# Recording source, unless the reply check is switched off.
+if [ -z "${SKIP_AUDIO_CHECK:-}" ]; then
+  if ffmpeg -hide_banner -sources pulse 2>&1 | grep -q "$RECORD_SOURCE"; then
+    echo "   mic:     $RECORD_SOURCE"
+  else
+    echo "   ⚠️  Capture source '$RECORD_SOURCE' not listed. Available:"
+    ffmpeg -hide_banner -sources pulse 2>&1 | sed 's/^/      /' | head -6
+    echo "      Set RECORD_SOURCE=<name>, or SKIP_AUDIO_CHECK=1 to test the wake word only."
+  fi
+fi
 
 # Playback backend: prefer a native Linux player through WSLg's PulseAudio, and
 # fall back to handing the file to Windows, which always has a working audio stack.
@@ -224,11 +288,12 @@ if [ -n "${LISTEN_ONLY:-}" ]; then
   exit 1
 fi
 
-play_once() {
+play_file() {
+  local f="$1"
   case "$PLAYER" in
-    ffplay) ffplay -nodisp -autoexit -loglevel error "$AUDIO_WAV" > /dev/null 2>&1 ;;
-    paplay) paplay "$AUDIO_WAV" > /dev/null 2>&1 ;;
-    aplay) aplay -q "$AUDIO_WAV" > /dev/null 2>&1 ;;
+    ffplay) ffplay -nodisp -autoexit -loglevel error "$f" > /dev/null 2>&1 ;;
+    paplay) paplay "$f" > /dev/null 2>&1 ;;
+    aplay) aplay -q "$f" > /dev/null 2>&1 ;;
     powershell)
       # Copy onto the Windows filesystem first: SoundPlayer is unreliable with the
       # \\wsl$ UNC path, and a local copy always works.
@@ -238,11 +303,11 @@ play_once() {
         local lin_dir
         lin_dir="$(wslpath -u "$win_dir" 2> /dev/null)"
         if [ -n "$lin_dir" ] && [ -d "$lin_dir" ]; then
-          cp -f "$AUDIO_WAV" "$lin_dir/hey-jarvis-wake-word.wav" 2> /dev/null
-          win_path="$win_dir\\hey-jarvis-wake-word.wav"
+          cp -f "$f" "$lin_dir/hey-jarvis-play.wav" 2> /dev/null
+          win_path="$win_dir\\hey-jarvis-play.wav"
         fi
       fi
-      [ -n "${win_path:-}" ] || win_path="$(wslpath -w "$AUDIO_WAV" 2> /dev/null || echo "$AUDIO_WAV")"
+      [ -n "${win_path:-}" ] || win_path="$(wslpath -w "$f" 2> /dev/null || echo "$f")"
       powershell.exe -NoProfile -Command \
         "(New-Object Media.SoundPlayer '$win_path').PlaySync()" > /dev/null 2>&1
       ;;
@@ -251,17 +316,18 @@ play_once() {
 
 # --- play and assert ---------------------------------------------------------
 detected_line=""
+woke=0
 for attempt in $(seq 1 "$ATTEMPTS"); do
   echo "▶️  Attempt $attempt/$ATTEMPTS — playing through host speakers..."
   mark="$(wc -c < "$SERIAL_LOG")"
-  play_once
+  play_file "$AUDIO_WAV"
 
   deadline=$((SECONDS + LISTEN_SECONDS))
   while [ "$SECONDS" -lt "$deadline" ]; do
     # Only look at output produced since this attempt started.
     if detected_line="$(tail -c "+$((mark + 1))" "$SERIAL_LOG" 2> /dev/null | grep -m1 -E "$DETECT_RE")"; then
       echo
-      echo "✅ PASS — the device heard it."
+      echo "✅ Wake word detected."
       echo "   $detected_line"
       follow_up="$(tail -c "+$((mark + 1))" "$SERIAL_LOG" 2> /dev/null | grep -m3 -E "$STREAM_RE")"
       if [ -n "$follow_up" ]; then
@@ -271,12 +337,112 @@ for attempt in $(seq 1 "$ATTEMPTS"); do
         echo "   ⚠️  Wake word detected, but no ElevenLabs stream activity followed."
         echo "      Check that master_mute_switch is off and the device has WiFi."
       fi
-      exit 0
+      woke=1
+      break 2
     fi
     sleep 1
   done
   echo "   no detection within ${LISTEN_SECONDS}s"
 done
+
+if [ "$woke" = "1" ]; then
+  # --- capture Jarvis's reply ------------------------------------------------
+  # The device is now listening. Speak a command so it actually replies, then stop
+  # playing and record the room: the microphone hears the device's SPEAKER, which is
+  # the only way to judge what the audio really sounds like coming out of it.
+  #
+  # Deliberately RDPSource (the real microphone) and not RDPSink.monitor, which is a
+  # loopback of what this host plays and would just record our own TTS back.
+  if [ -n "${SKIP_AUDIO_CHECK:-}" ]; then
+    echo
+    echo "⏭️  SKIP_AUDIO_CHECK set — not recording or analysing the reply."
+    exit 0
+  fi
+
+  echo
+  echo "🗣️  Asking: \"$COMMAND_TEXT\""
+  if [ ! -s "$COMMAND_WAV" ]; then
+    payload="$(jq -nc --arg text "$COMMAND_TEXT" \
+      '{text: $text, model_id: "eleven_multilingual_v2"}')"
+    http="$(call_elevenlabs "https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}" "$COMMAND_MP3" "$payload")"
+    [ "$http" = "200" ] || fail "Could not synthesise the command (HTTP $http)."
+    ffmpeg -loglevel error -y -i "$COMMAND_MP3" -ac 1 -ar 48000 -sample_fmt s16 "$COMMAND_WAV" \
+      || fail "ffmpeg could not convert the command audio."
+  fi
+
+  play_file "$COMMAND_WAV"
+
+  echo "🎙️  Recording the reply for ${RECORD_SECONDS}s from '${RECORD_SOURCE}'..."
+  ffmpeg -hide_banner -loglevel error -y -f pulse -i "$RECORD_SOURCE" \
+    -t "$RECORD_SECONDS" -ac 1 -ar 16000 -sample_fmt s16 "$REPLY_WAV" 2> /dev/null \
+    || fail "Could not record from '$RECORD_SOURCE'. List sources: ffmpeg -sources pulse"
+
+  rec_peak="$(ffmpeg -i "$REPLY_WAV" -af volumedetect -f null /dev/null 2>&1 \
+    | grep -a -oE 'max_volume: -?[0-9.]+' | head -1 | grep -oE '\-?[0-9.]+')"
+  echo "   captured: $REPLY_WAV (peak ${rec_peak:-?} dB)"
+
+  # A silent capture means the microphone heard nothing — analysing it would produce
+  # a confident-sounding verdict about silence, which is worse than saying so.
+  if [ -n "$rec_peak" ] && awk -v p="$rec_peak" 'BEGIN { exit !(p < -45) }'; then
+    echo
+    echo "⚠️  The recording is effectively silent (peak ${rec_peak} dB)."
+    echo "   Either the device never replied, or the host microphone cannot hear it."
+    echo "   Not sending it for analysis — the verdict would be meaningless."
+    exit 3
+  fi
+
+  # --- analyse for stuttering ------------------------------------------------
+  [ -n "${HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY:-}" ] \
+    || fail "HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY is not set; cannot analyse the audio."
+
+  echo "🧠 Analysing with ${GEMINI_MODEL}..."
+  jq -n --arg audio "$(base64 -w0 < "$REPLY_WAV")" --arg prompt "$ANALYSIS_PROMPT" '{
+    contents: [ { parts: [ { text: $prompt }, { inline_data: { mime_type: "audio/wav", data: $audio } } ] } ],
+    generationConfig: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: "OBJECT",
+        properties: {
+          stuttering_detected: { type: "BOOLEAN" },
+          confidence: { type: "STRING", enum: ["low", "medium", "high"] },
+          transcript: { type: "STRING" },
+          evidence: { type: "STRING" },
+          artifact_count: { type: "INTEGER" }
+        },
+        required: ["stuttering_detected", "confidence", "transcript", "evidence"]
+      }
+    }
+  }' > "$GEMINI_REQ"
+
+  # Key travels in a header via a stdin config file, never argv or the URL.
+  printf 'header = "x-goog-api-key: %s"\n' "$HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY" \
+    | curl -sS --config - -X POST \
+      "https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent" \
+      -H 'Content-Type: application/json' --data-binary "@$GEMINI_REQ" -o "$GEMINI_RES"
+
+  if ! verdict="$(jq -er '.candidates[0].content.parts[0].text' "$GEMINI_RES" 2> /dev/null)"; then
+    echo "❌ Gemini did not return a verdict:" >&2
+    head -c 600 "$GEMINI_RES" >&2; echo >&2
+    exit 3
+  fi
+
+  stutter="$(printf '%s' "$verdict" | jq -r '.stuttering_detected')"
+  echo
+  echo "   transcript: $(printf '%s' "$verdict" | jq -r '.transcript')"
+  echo "   confidence: $(printf '%s' "$verdict" | jq -r '.confidence')"
+  echo "   evidence:   $(printf '%s' "$verdict" | jq -r '.evidence')"
+
+  if [ "$stutter" = "true" ]; then
+    echo
+    echo "❌ STUTTERING DETECTED in Jarvis's speech."
+    echo "   Recording kept at: $REPLY_WAV"
+    exit 2
+  fi
+
+  echo
+  echo "✅ PASS — woke on the wake word and replied without stuttering."
+  exit 0
+fi
 
 # --- failure diagnostics -----------------------------------------------------
 echo
