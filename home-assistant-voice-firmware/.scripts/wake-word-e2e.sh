@@ -19,8 +19,7 @@ set -uo pipefail
 #
 # Options (environment):
 #   WAKE_WORD_TEXT     phrase to synthesise            (default "Hey Jarvis")
-#   VOICE_ID           ElevenLabs voice to speak it    (default $HEY_JARVIS_ELEVENLABS_MATHIAS_VOICE_ID,
-#                                                       else $HEY_JARVIS_ELEVENLABS_VOICE_ID)
+#   VOICE_ID           ElevenLabs voice to speak it    (default: Mathias, see below)
 #   ATTEMPTS           playbacks before giving up      (default 3)
 #   LISTEN_SECONDS     wait for detection per attempt  (default 15)
 #   ESPHOME_DEVICE     serial port                     (default: first /dev/ttyACM*|ttyUSB*)
@@ -97,9 +96,12 @@ echo "   device:  $ESPHOME_DEVICE"
 [ -n "${HEY_JARVIS_ELEVENLABS_API_KEY:-}" ] || fail "HEY_JARVIS_ELEVENLABS_API_KEY is not set.
    Run through: bash ../.scripts/run-with-env.sh ./op.env bash ./.scripts/wake-word-e2e.sh"
 
-VOICE_ID="${VOICE_ID:-${HEY_JARVIS_ELEVENLABS_MATHIAS_VOICE_ID:-${HEY_JARVIS_ELEVENLABS_VOICE_ID:-}}}"
-[ -n "$VOICE_ID" ] || fail "No voice to speak with. Set VOICE_ID, or add
-   HEY_JARVIS_ELEVENLABS_MATHIAS_VOICE_ID to elevenlabs/op.env."
+# Mathias's voice. A voice ID is a public identifier, not a credential, so it lives
+# here rather than in 1Password — the test then needs only the API key to run.
+# Deliberately NOT the Jarvis voice ($HEY_JARVIS_ELEVENLABS_VOICE_ID): the hey_jarvis
+# model is trained on human speech, so a cloned human voice triggers it far more
+# reliably than a synthetic one.
+VOICE_ID="${VOICE_ID:-YxLPUUJ11i82ER1NpDzl}"
 echo "   voice:   $VOICE_ID"
 echo "   phrase:  \"$WAKE_WORD_TEXT\""
 
@@ -141,9 +143,23 @@ else
   fi
 
   # 16-bit mono 48kHz: what the device's mic path expects, and universally playable.
-  ffmpeg -loglevel error -y -i "$AUDIO_MP3" -ac 1 -ar 48000 -sample_fmt s16 "$AUDIO_WAV" \
-    || fail "ffmpeg could not convert the audio."
+  #
+  # Loudness-normalise on the way. Raw ElevenLabs output sits around -32 dB mean /
+  # -13 dB peak, which is quiet enough that the device may simply not hear it across
+  # a room. loudnorm brings it to a consistent broadcast level so a failure means
+  # "the model did not trigger" rather than "the volume was too low".
+  if ! ffmpeg -loglevel error -y -i "$AUDIO_MP3" \
+    -af 'loudnorm=I=-14:TP=-1.5:LRA=11' -ac 1 -ar 48000 -sample_fmt s16 "$AUDIO_WAV" 2> /dev/null; then
+    echo "   ⚠️  loudnorm unavailable; converting without normalisation."
+    ffmpeg -loglevel error -y -i "$AUDIO_MP3" -ac 1 -ar 48000 -sample_fmt s16 "$AUDIO_WAV" \
+      || fail "ffmpeg could not convert the audio."
+  fi
   echo "   saved:   $AUDIO_WAV"
+fi
+
+if command -v ffmpeg > /dev/null 2>&1; then
+  peak="$(ffmpeg -i "$AUDIO_WAV" -af volumedetect -f null /dev/null 2>&1 | grep -a -oE 'max_volume: [-0-9.]+ dB' | head -1)"
+  [ -n "$peak" ] && echo "   level:   ${peak#max_volume: }"
 fi
 
 # --- capture serial ----------------------------------------------------------
@@ -208,14 +224,25 @@ done
 echo
 echo "❌ FAIL — no wake word detection after $ATTEMPTS attempt(s)."
 echo
-echo "Things to check, roughly in order of likelihood:"
-echo "  1. Host volume — the device needs to actually hear it. Play $AUDIO_WAV yourself."
+echo "MOST LIKELY: the wake word engine is not running."
+echo
+echo "  micro_wake_word only ever starts from two triggers in this config:"
+echo "    - voice_assistant: on_client_connected  (a HOME ASSISTANT client connects)"
+echo "    - elevenlabs_stream: on_end             (a conversation finishes)"
+echo
+echo "  So after a fresh flash, with no Home Assistant attached, the device never"
+echo "  begins listening and no amount of audio will trigger it."
+echo
+echo "  To start it by hand: press the centre button once to start a conversation,"
+echo "  then once more to stop it. on_end fires and the wake word goes live. Re-run"
+echo "  this test straight after."
+echo
+echo "Otherwise, in order of likelihood:"
+echo "  1. Host volume — the device must actually hear it. Play $AUDIO_WAV yourself."
 echo "  2. The device is muted. on_wake_word_detected does nothing while"
 echo "     master_mute_switch is on."
-echo "  3. The device is not running this firmware yet, or is still booting."
-echo "  4. The synthesised voice does not trigger the model. The hey_jarvis model is"
-echo "     trained on human speech — try a different VOICE_ID, or raise the volume."
-echo "  5. Something else holds the serial port (esphome logs, screen, another run)."
+echo "  3. The synthesised voice does not trigger the model. Try another VOICE_ID."
+echo "  4. Something else holds the serial port (esphome logs, screen, another run)."
 echo
 if [ -s "$SERIAL_LOG" ]; then
   echo "Last serial output seen:"
