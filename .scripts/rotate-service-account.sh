@@ -22,6 +22,10 @@ set -euo pipefail
 #   bash .scripts/rotate-service-account.sh            # rotate now
 #   EXPIRES_IN=30d bash .scripts/rotate-service-account.sh
 #   bash .scripts/rotate-service-account.sh --check    # report time left, rotate nothing
+#   DRY_RUN=1 bash .scripts/rotate-service-account.sh  # preview the item, write nothing
+#
+# DRY_RUN still creates a real service account (1Password has no dry run for that),
+# but only previews the 1Password item write and skips the GitHub secret entirely.
 
 VAULT="${VAULT:-Jarvis}"
 EXPIRES_IN="${EXPIRES_IN:-90d}"
@@ -31,6 +35,17 @@ REPO="${REPO:-ffMathy/hey-jarvis}"
 # token can't be used to fetch its own successor.
 TOKEN_ITEM="${TOKEN_ITEM:-1Password service account (Jarvis)}"
 TOKEN_VAULT="${TOKEN_VAULT:-Personal}"
+
+dry_run_flags=()
+[ -n "${DRY_RUN:-}" ] && dry_run_flags=(--dry-run)
+
+require_jq() {
+  command -v jq > /dev/null 2>&1 || {
+    echo "❌ jq is required (the token is passed to 1Password as JSON on stdin)."
+    echo "   sudo apt-get install -y jq"
+    exit 1
+  }
+}
 
 require_human_session() {
   # A service account rotating itself is the exact bootstrap problem this guards.
@@ -61,6 +76,7 @@ if [ "${1:-}" = "--check" ]; then
 fi
 
 require_human_session
+require_jq
 
 timestamp="$(date +%Y%m%d-%H%M%S)"
 account_name="${ACCOUNT_PREFIX}-${timestamp}"
@@ -70,8 +86,7 @@ echo "   vault:   ${VAULT} (read_items only)"
 echo "   expires: ${EXPIRES_IN}"
 
 # --raw emits only the token. It is held in a shell variable and piped onward;
-# it is never echoed, written to a file, or passed as a command-line argument
-# (argv is visible to other processes via the process list).
+# it is never echoed, written to a file, or passed as a command-line argument.
 token="$(op service-account create "$account_name" \
   --expires-in "$EXPIRES_IN" \
   --vault "${VAULT}:read_items" \
@@ -82,20 +97,43 @@ if [ -z "$token" ]; then
   exit 1
 fi
 
+# Render the item as JSON with the token arriving on jq's stdin.
+#
+# Do NOT go back to `credential[password]=$token` assignment statements. Command
+# arguments land in /proc/<pid>/cmdline, which is world-readable, so every process
+# on the machine can read a secret passed that way for as long as the command runs.
+# 1Password's own `op item create --help` says to use a JSON template instead.
+# `jq -Rs` slurps stdin verbatim, so any character in the token survives intact.
+token_payload() {
+  printf '%s' "$token" | jq -Rs \
+    --arg title "$TOKEN_ITEM" \
+    --arg expires_at "${EXPIRES_IN} from ${timestamp}" \
+    --arg account_name "$account_name" \
+    '{
+      title: $title,
+      category: "API_CREDENTIAL",
+      fields: [
+        { id: "credential", type: "CONCEALED", label: "credential", value: . },
+        { type: "STRING", label: "expires_at", value: $expires_at },
+        { type: "STRING", label: "account_name", value: $account_name }
+      ]
+    }'
+}
+
 # 1Password only ever returns this token once, so persist it before anything else.
 if op item get "$TOKEN_ITEM" --vault "$TOKEN_VAULT" &> /dev/null; then
-  op item edit "$TOKEN_ITEM" --vault "$TOKEN_VAULT" \
-    "credential[password]=$token" \
-    "expires_at[text]=${EXPIRES_IN} from ${timestamp}" \
-    "account_name[text]=${account_name}" > /dev/null
+  token_payload | op item edit "$TOKEN_ITEM" --vault "$TOKEN_VAULT" "${dry_run_flags[@]}" > /dev/null
   echo "✅ Updated '$TOKEN_ITEM' in the $TOKEN_VAULT vault"
 else
-  op item create --category "API Credential" \
-    --title "$TOKEN_ITEM" --vault "$TOKEN_VAULT" \
-    "credential[password]=$token" \
-    "expires_at[text]=${EXPIRES_IN} from ${timestamp}" \
-    "account_name[text]=${account_name}" > /dev/null
+  token_payload | op item create --vault "$TOKEN_VAULT" "${dry_run_flags[@]}" - > /dev/null
   echo "✅ Created '$TOKEN_ITEM' in the $TOKEN_VAULT vault"
+fi
+
+if [ -n "${DRY_RUN:-}" ]; then
+  echo "🔍 DRY_RUN set — skipping the GitHub secret update."
+  echo "   Service account '${account_name}' WAS created; delete it if this was only a test."
+  unset token
+  exit 0
 fi
 
 if command -v gh &> /dev/null; then

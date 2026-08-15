@@ -20,6 +20,9 @@
 #
 # Run from the repo root, on the branch where op.env already points at op://Jarvis/:
 #   bash .scripts/migrate-to-jarvis-vault.sh
+#
+# Rehearse it first — this previews every write and moves/creates nothing:
+#   DRY_RUN=1 bash .scripts/migrate-to-jarvis-vault.sh
 set -uo pipefail
 
 SRC="Personal"
@@ -38,7 +41,16 @@ MOVE_ITEMS=(ElevenLabs Openweathermap Valdemarsro Jarvis Tavily Twilio)
 COPY_ITEMS=(Google Microsoft Bilkatogo WiFi)
 
 # --- guards -----------------------------------------------------------------
+dry_run_flags=()
+[ -n "${DRY_RUN:-}" ] && dry_run_flags=(--dry-run)
+
 [ -f "${ENV_FILES[0]}" ] || { echo "❌ Run this from the repo root."; exit 1; }
+
+command -v jq > /dev/null 2>&1 || {
+  echo "❌ jq is required (secret values are passed to 1Password as JSON on stdin)."
+  echo "   sudo apt-get install -y jq"
+  exit 1
+}
 
 if [ -n "${OP_SERVICE_ACCOUNT_TOKEN:-}" ]; then
   echo "❌ OP_SERVICE_ACCOUNT_TOKEN is set. A service account cannot read $SRC."
@@ -71,13 +83,25 @@ for item in "${COPY_ITEMS[@]}"; do
   done < <(paths_for_item "$item")
 done
 
-printf '\nType MIGRATE to continue: '
-read -r reply < /dev/tty
-[ "$reply" = "MIGRATE" ] || { echo "Aborted."; exit 1; }
+if [ -n "${DRY_RUN:-}" ]; then
+  echo
+  echo "🔍 DRY_RUN — previewing every write. Nothing will be moved, created or changed."
+else
+  printf '\nType MIGRATE to continue: '
+  read -r reply < /dev/tty
+  [ "$reply" = "MIGRATE" ] || { echo "Aborted."; exit 1; }
+fi
 
 # --- destination vault ------------------------------------------------------
+# Neither `op vault create` nor `op item move` has a --dry-run, so a rehearsal
+# reports what it would do and changes nothing.
 if op vault get "$DST" > /dev/null 2>&1; then
   echo "✅ Vault '$DST' already exists."
+elif [ -n "${DRY_RUN:-}" ]; then
+  echo "🔍 Would create vault '$DST'."
+  echo "   It does not exist yet, so the per-item previews below cannot run."
+  echo "   Create it first if you want a full rehearsal:  op vault create $DST"
+  exit 0
 else
   op vault create "$DST" > /dev/null && echo "✅ Created vault '$DST'."
 fi
@@ -86,6 +110,12 @@ fi
 for item in "${MOVE_ITEMS[@]}"; do
   if op item get "$item" --vault "$DST" > /dev/null 2>&1; then
     echo "⏭️  '$item' is already in $DST"
+  elif [ -n "${DRY_RUN:-}" ]; then
+    if op item get "$item" --vault "$SRC" > /dev/null 2>&1; then
+      echo "🔍 Would move '$item' from $SRC to $DST"
+    else
+      echo "⚠️  '$item' not found in $SRC — would need handling manually"
+    fi
   elif op item move "$item" --current-vault "$SRC" --destination-vault "$DST" > /dev/null 2>&1; then
     echo "✅ Moved '$item'"
   else
@@ -94,38 +124,70 @@ for item in "${MOVE_ITEMS[@]}"; do
 done
 
 # --- copy referenced fields, leaving originals in place ---------------------
-for item in "${COPY_ITEMS[@]}"; do
-  args=()
+#
+# Secret values reach 1Password as JSON on stdin, never as command arguments.
+# Command arguments land in /proc/<pid>/cmdline, which is world-readable, so an
+# assignment statement like `password[password]=$value` exposes the value to every
+# process on the machine while the command runs. 1Password's own docs say to use a
+# JSON template for sensitive values. `jq -Rs` slurps stdin verbatim, so passwords
+# containing quotes, backslashes or newlines survive intact.
+emit_fields() {
+  local item="$1" path section label value
   while IFS= read -r path; do
     [ -n "$path" ] || continue
     if ! value="$(op read "op://$SRC/$item/$path" 2> /dev/null)"; then
-      echo "⚠️  '$item / $path' not found in $SRC — skipping"
+      echo "⚠️  '$item / $path' not found in $SRC — skipping" >&2
       continue
     fi
     if [[ "$path" == */* ]]; then
       # op:// path carries a section: Item/Section/Field
-      args+=("${path%%/*}.${path#*/}[password]=${value}")
+      section="${path%%/*}"
+      label="${path#*/}"
     else
-      args+=("${path}[password]=${value}")
+      section=""
+      label="$path"
     fi
+    # NB: `label` is a reserved word in jq, so the variable is $fieldLabel.
+    printf '%s' "$value" | jq -Rs -c --arg section "$section" --arg fieldLabel "$label" \
+      '{ type: "CONCEALED", label: $fieldLabel, value: . }
+       + (if $section == "" then {} else { section: { id: $section, label: $section } } end)'
+    unset value
   done < <(paths_for_item "$item")
+}
 
-  if [ ${#args[@]} -eq 0 ]; then
+for item in "${COPY_ITEMS[@]}"; do
+  fields="$(emit_fields "$item" | jq -s -c '.')"
+  count="$(printf '%s' "$fields" | jq 'length')"
+
+  if [ "$count" -eq 0 ]; then
     echo "⚠️  Nothing to copy for '$item'"
     continue
   fi
 
+  payload="$(printf '%s' "$fields" | jq -c --arg title "$item" \
+    '{ title: $title,
+       category: "SECURE_NOTE",
+       sections: ([ .[].section // empty ] | unique),
+       fields: . }')"
+
   if op item get "$item" --vault "$DST" > /dev/null 2>&1; then
-    op item edit "$item" --vault "$DST" "${args[@]}" > /dev/null \
-      && echo "✅ Updated '$item' in $DST (${#args[@]} fields; original left in $SRC)"
+    printf '%s' "$payload" | op item edit "$item" --vault "$DST" "${dry_run_flags[@]}" > /dev/null \
+      && echo "✅ Updated '$item' in $DST ($count fields; original left in $SRC)"
   else
-    op item create --category "Secure Note" --title "$item" --vault "$DST" "${args[@]}" > /dev/null \
-      && echo "✅ Created '$item' in $DST (${#args[@]} fields; original left in $SRC)"
+    printf '%s' "$payload" | op item create --vault "$DST" "${dry_run_flags[@]}" - > /dev/null \
+      && echo "✅ Created '$item' in $DST ($count fields; original left in $SRC)"
   fi
-  unset args value
+  unset fields payload count
 done
 
 # --- verify every reference the repo actually uses --------------------------
+if [ -n "${DRY_RUN:-}" ]; then
+  echo
+  echo "🔍 Rehearsal complete. Nothing was changed, so the reference check is skipped."
+  echo "   Run it for real with:  bash .scripts/migrate-to-jarvis-vault.sh"
+  exit 0
+fi
+
 echo
 echo "Verifying every op:// reference in the repo resolves from '$DST'..."
 ok=0
