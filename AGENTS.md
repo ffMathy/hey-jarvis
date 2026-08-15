@@ -11,7 +11,7 @@ This project includes specialized [GitHub Copilot Agent Skills](https://docs.git
 ## Technology Stack
 
 - **Runtime**: Bun (not Node.js)
-- **Package Manager**: Bun (use `bun install`, never npm)
+- **Package Manager**: Bun only — `npm`/`npx`/`yarn`/`pnpm` are rejected by CI (see [Supply Chain Security](#supply-chain-security))
 - **Build System**: Turborepo monorepo
 - **Language**: TypeScript (strict mode)
 - **AI Framework**: Mastra (V1)
@@ -42,6 +42,69 @@ This is an Turborepo monorepo containing intelligent voice assistant components:
 - `bunx turbo test --filter=<project>` - Run tests
 - `bunx turbo lint --filter=<project>` - Run linter
 - `bunx turbo <target>` - Run a target across packages (optionally narrowed with `--filter`)
+
+## Supply Chain Security
+
+Dependencies are the most likely way an attacker gets code into this repository,
+so installation is locked down. The rules below are enforced by
+`.scripts/check-supply-chain.sh`, which runs on every pull request.
+
+### Bun is the only package manager
+
+`npm`, `npx`, `yarn` and `pnpm` are not allowed anywhere — not in scripts, not in
+workflows, not in Dockerfiles. A second package manager resolves dependencies
+outside `bun.lock`'s pins and ignores `bunfig.toml`. Use `bun` and `bunx`; a
+committed `package-lock.json`, `yarn.lock` or `pnpm-lock.yaml` fails CI and the
+pre-commit hook.
+
+### Install policy (`bunfig.toml`)
+
+| Setting                        | Effect                                                              |
+| ------------------------------ | ------------------------------------------------------------------- |
+| `exact = true`                 | Versions are pinned exactly — never `^` or `~`                       |
+| `ignoreScripts = true`         | Dependency lifecycle scripts (`postinstall` & friends) never execute |
+| `minimumReleaseAge = 604800`   | Only versions public for ≥ 7 days can be resolved                    |
+| `saveTextLockfile = true`      | Dependency changes stay reviewable in diffs                          |
+| `registry = …registry.npmjs.org` | Installs cannot be silently redirected to another host             |
+
+Dependabot mirrors the same 7-day cooldown, so new versions sit out the window
+that malicious releases are typically caught and yanked in. Its pull requests
+auto-merge for patch and minor bumps only; majors need a human.
+
+### Adding or updating a dependency
+
+```bash
+bun add <package>            # writes an exact version
+bun install --frozen-lockfile # what CI and containers run
+bun run check:supply-chain   # the policy check CI runs
+bun run audit                # known advisories, high severity and above
+```
+
+A brand-new release (< 7 days old) is refused by design. Wait it out, or — if a
+security fix makes waiting worse than installing — add the package to
+`minimumReleaseAgeExcludes` in `bunfig.toml` in the same pull request, so the
+exception is reviewed.
+
+### Install scripts are never trusted
+
+Because `ignoreScripts = true` applies to this workspace too, `prepare` does not
+run on install. Git hooks are installed explicitly instead:
+
+```bash
+bun run prepare   # git config core.hooksPath .husky
+```
+
+Native binaries come from optional platform packages or from an explicit,
+reviewable `initialize` target — never from a `postinstall`. Do not reintroduce
+`trustedDependencies`.
+
+### GitHub Actions
+
+Every `uses:` is pinned to a full commit SHA with the version in a trailing
+comment (`uses: actions/checkout@d23441a… # v6.1.0`); tags are mutable and a
+retagged action runs with the workflow's token. Workflows default to
+`permissions: {}` and opt into the minimum they need, and checkouts use
+`persist-credentials: false` so project code never inherits a usable token.
 
 ## 1Password Authentication
 

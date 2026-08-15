@@ -1,8 +1,18 @@
-# Git Hooks with Husky
+# Git Hooks
 
-This repository uses [Husky](https://typicode.github.io/husky/) and [commitlint](https://commitlint.js.org/) to enforce commit message standards locally.
+This repository uses plain git hooks in this directory plus [commitlint](https://commitlint.js.org/) to enforce commit message standards locally.
+
+Dependency install scripts are disabled repo-wide (see [Supply Chain Security](../AGENTS.md#supply-chain-security)), so nothing installs these hooks automatically. Point git at them once per clone:
+
+```bash
+bun run prepare   # git config core.hooksPath .husky
+```
+
+The DevContainer does this for you during initialization.
 
 ## What's Configured
+
+`pre-commit` rejects foreign package-manager lockfiles and runs lint-staged; `commit-msg` runs commitlint.
 
 All commit messages must follow [Conventional Commits](https://www.conventionalcommits.org/) format:
 
@@ -34,6 +44,7 @@ echo "feat(mcp): add new feature" | bunx commitlint
 **Hooks not running?**
 ```bash
 bun run prepare
+git config core.hooksPath   # should print .husky
 ```
 
 **Bypass validation?** (not recommended)

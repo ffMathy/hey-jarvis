@@ -1,2 +1,31 @@
+# Supply chain hardening for every `bun install` in this repository.
+# See the "Supply Chain Security" section of AGENTS.md for the rationale and
+# for how to request an exception.
+
 [install]
+# Always record the exact version that was resolved — never a `^` or `~` range.
+# A range lets a compromised patch release slip in without a lockfile change.
 exact = true
+
+# Never execute dependency lifecycle scripts (preinstall/install/postinstall).
+# Those scripts are the primary execution vector for npm supply chain attacks:
+# they run with full user privileges the moment a package is installed.
+# Packages that genuinely need a native binary (esbuild, @swc/core, Playwright)
+# ship it as an optional platform package or install it through an explicit,
+# reviewable step (see the `initialize` targets in the workspace packages).
+ignoreScripts = true
+
+# Only resolve versions that have been public for at least 7 days (in seconds).
+# Malicious releases are typically detected and yanked within hours, so a
+# cooldown keeps the worst of them out of the lockfile entirely. This only
+# affects *new* resolutions — `--frozen-lockfile` installs of already pinned
+# versions are unaffected.
+minimumReleaseAge = 604800
+
+# Keep the lockfile in the reviewable text format so dependency changes show up
+# in diffs instead of hiding inside a binary blob.
+saveTextLockfile = true
+
+# Pin the registry so a stray .npmrc or environment variable cannot silently
+# redirect installs to a different host.
+registry = "https://registry.npmjs.org/"

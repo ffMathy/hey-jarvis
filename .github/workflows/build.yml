@@ -5,6 +5,9 @@ on:
     types: [opened, synchronize, labeled]
     branches: [ main ]
 
+# Least privilege by default: every job below opts into exactly what it needs.
+permissions: {}
+
 env:
   # Every HEY_JARVIS_* secret is resolved at run time from the `Jarvis`
   # 1Password vault by .scripts/run-with-env.sh, so CI needs only this one token
@@ -23,7 +26,7 @@ jobs:
     concurrency:
       group: build-${{ github.actor }}-${{ github.head_ref || github.ref }}
       cancel-in-progress: ${{ github.actor != 'dependabot[bot]' }}
-      
+
     runs-on: ubuntu-latest
     timeout-minutes: 60  # Increase timeout for ESP-IDF toolchain downloads
     permissions:
@@ -33,7 +36,7 @@ jobs:
 
     steps:
       - name: Free Disk Space (Ubuntu)
-        uses: jlumbroso/free-disk-space@v1.3.1
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # v1.3.1
         with:
           # Only remove what we definitely don't need for faster cleanup
           android: false
@@ -44,9 +47,12 @@ jobs:
           swap-storage: false    # Skip swap removal to save time
 
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 0  # Fetch all history for turbo affected detection to work
+          # The build runs untrusted pull request code; never leave a usable
+          # GitHub token behind in .git/config for it to pick up.
+          persist-credentials: false
 
       - name: Fetch base branch
         run: git fetch origin main:main
@@ -55,7 +61,7 @@ jobs:
         run: echo "REPO_OWNER_LC=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
 
       - name: Restore Turborepo cache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: .turbo
           key: turbo-cache-${{ runner.os }}-${{ github.sha }}
@@ -63,7 +69,7 @@ jobs:
             turbo-cache-${{ runner.os }}-
 
       - name: Build and test in dev container
-        uses: devcontainers/ci@v0.3
+        uses: devcontainers/ci@513af61f4de4f75d37e4438f184ba4358f0fc1ca # v0.3.1900000450
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
@@ -102,22 +108,28 @@ jobs:
       contents: write
       pull-requests: write
     runs-on: ubuntu-latest
-    if: github.actor == 'dependabot[bot]'
+    if: github.actor == 'dependabot[bot]' && github.event.pull_request.user.login == 'dependabot[bot]'
     steps:
       - name: Dependabot metadata
         id: metadata
-        uses: dependabot/fetch-metadata@v2
+        uses: dependabot/fetch-metadata@21025c705c08248db411dc16f3619e6b5f9ea21a # v2.5.0
         with:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
 
+      # Major bumps can change a dependency's maintainers, build steps and
+      # transitive tree wholesale, so they stay a human decision. Patch and
+      # minor bumps already sat through the Dependabot cooldown window before
+      # the pull request was opened.
       - name: Enable auto-merge for Dependabot PRs
+        if: steps.metadata.outputs.update-type != 'version-update:semver-major'
         run: gh pr merge --auto --squash "$PR_URL"
         env:
-          PR_URL: ${{github.event.pull_request.html_url}}
-          GH_TOKEN: ${{secrets.GITHUB_TOKEN}}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Approve PR
+        if: steps.metadata.outputs.update-type != 'version-update:semver-major'
         run: gh pr review --approve "$PR_URL"
         env:
-          PR_URL: ${{github.event.pull_request.html_url}}
-          GH_TOKEN: ${{secrets.GITHUB_TOKEN}}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

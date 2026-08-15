@@ -1,4 +1,9 @@
 version: 2
+
+# Supply chain defense: every ecosystem below delays adoption of new versions
+# so security vendors have time to detect and remove malicious packages. This
+# mirrors the `minimumReleaseAge` setting in bunfig.toml. Security updates (CVE
+# patches) bypass the cooldown automatically.
 updates:
   # npm dependencies for root
   - package-ecosystem: "npm"
@@ -7,6 +12,8 @@ updates:
       interval: "daily"
       time: "09:00"
     open-pull-requests-limit: 10
+    # Keep exact pins exact instead of widening them into ranges.
+    versioning-strategy: "increase"
     groups:
       mastra:
         patterns:
@@ -15,9 +22,6 @@ updates:
       turbo:
         patterns:
           - "turbo"
-    # Supply chain defense: delay adoption of new versions so security
-    # vendors have time to detect and remove malicious packages.
-    # Security updates (CVE patches) bypass cooldown automatically.
     cooldown:
       default-days: 7
       semver-major-days: 14
@@ -30,13 +34,27 @@ updates:
     schedule:
       interval: "weekly"
       time: "09:00"
+    versioning-strategy: "increase"
     cooldown:
       default-days: 7
       semver-major-days: 14
       semver-minor-days: 7
       semver-patch-days: 3
 
-  # Docker dependencies
+  # npm dependencies for elevenlabs subproject
+  - package-ecosystem: "npm"
+    directory: "/elevenlabs"
+    schedule:
+      interval: "weekly"
+      time: "09:00"
+    versioning-strategy: "increase"
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
+      semver-minor-days: 7
+      semver-patch-days: 3
+
+  # Docker base images
   - package-ecosystem: "docker"
     directory: "/elevenlabs"
     schedule:
@@ -45,11 +63,29 @@ updates:
     cooldown:
       default-days: 7
 
-  # GitHub Actions dependencies
+  - package-ecosystem: "docker"
+    directory: "/mcp"
+    schedule:
+      interval: "daily"
+      time: "09:00"
+    cooldown:
+      default-days: 7
+
+  # GitHub Actions dependencies — pinned to commit SHAs, which Dependabot
+  # updates in place while keeping the human-readable version comment.
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "daily"
+      time: "09:00"
+    cooldown:
+      default-days: 7
+
+  # The devcontainer's base image and features.
+  - package-ecosystem: "devcontainers"
+    directory: "/"
+    schedule:
+      interval: "weekly"
       time: "09:00"
     cooldown:
       default-days: 7
