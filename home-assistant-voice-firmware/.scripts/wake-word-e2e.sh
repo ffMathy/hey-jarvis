@@ -219,7 +219,7 @@ synthesise() {
   if [ -n "$measured" ]; then
     gain="$(awk -v m="$measured" 'BEGIN { printf "%.1f", -1.0 - m }')"
     if ffmpeg -loglevel error -y -i "$wav" -af "volume=${gain}dB" \
-      -ac 1 -ar 48000 -sample_fmt s16 "${wav}.norm" 2> /dev/null; then
+      -ac 1 -ar 48000 -sample_fmt s16 -f wav "${wav}.norm"; then
       mv "${wav}.norm" "$wav"
       echo "   gain:    ${gain} dB applied (was ${measured} dB peak)"
     fi
@@ -503,7 +503,7 @@ room_measured="$(ffmpeg -i "$ROOM_WAV" -af volumedetect -f null /dev/null 2>&1 \
 if [ -n "$room_measured" ]; then
   room_gain="$(awk -v m="$room_measured" 'BEGIN { printf "%.1f", -1.0 - m }')"
   if ffmpeg -loglevel error -y -i "$ROOM_WAV" -af "volume=${room_gain}dB" \
-    -ac 1 -ar 16000 -sample_fmt s16 "${ROOM_WAV}.norm" 2> /dev/null; then
+    -ac 1 -ar 16000 -sample_fmt s16 -f wav "${ROOM_WAV}.norm"; then
     mv "${ROOM_WAV}.norm" "$ROOM_WAV"
     echo "   room gain: ${room_gain} dB applied (was ${room_measured} dB peak)"
   fi
