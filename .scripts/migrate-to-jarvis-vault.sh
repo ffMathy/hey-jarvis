@@ -6,15 +6,20 @@
 # Two policies, by credential type:
 #
 #   MOVE  - machine credentials (API keys, tokens, IDs) on single-purpose items.
-#           The item leaves Personal. Values never pass through this shell;
+#           The item leaves $SRC. Values never pass through this shell;
 #           1Password performs the move server-side.
 #
-#   COPY  - anything holding a real username/password login. Only the fields the
-#           repo actually references are copied into the Jarvis vault, and the
-#           original item stays in Personal, untouched and undeleted.
+#   COPY  - anything holding a real username/password login, and anything living
+#           in a vault the service account cannot read. Only the fields the repo
+#           actually references are copied into the Jarvis vault; the original
+#           item stays where it is, untouched and undeleted.
 #
 # Copied fields are duplicated, so if you later change one of those logins you
 # must update both copies. That is the deliberate cost of keeping the originals.
+#
+# Most items are read from $SRC. Bilkatogo is shared into the "Shared" vault
+# instead, so it has a per-item source (see ITEM_SRC below); the service account
+# is never granted access to Shared.
 #
 # Delete this script once the migration has succeeded.
 #
@@ -41,11 +46,22 @@ ENV_FILES=(mcp/op.env elevenlabs/op.env home-assistant-voice-firmware/op.env)
 # --current-vault/--destination-vault flags keep that unambiguous.
 MOVE_ITEMS=(ElevenLabs Openweathermap Valdemarsro Jarvis Tavily Twilio)
 
-# Items holding a username/password you want to keep in Personal:
+# Items holding a username/password you want to keep where they are:
 #   Google, Microsoft - your personal accounts, with Jarvis fields added on
 #   Bilkatogo         - your store login (username/password)
 #   WiFi              - your home network name/password
 COPY_ITEMS=(Google Microsoft Bilkatogo WiFi)
+
+# Items that do not live in $SRC. Bilkatogo is shared into the "Shared" vault,
+# which the service account has no access to — copying its referenced fields into
+# $DST is exactly what makes them reachable, and the shared original is untouched.
+SHARED="${SHARED:-Shared}"
+declare -A ITEM_SRC=(
+  [Bilkatogo]="$SHARED"
+)
+
+# The vault a given item is read from, defaulting to $SRC.
+src_for_item() { printf '%s' "${ITEM_SRC[$1]:-$SRC}"; }
 
 # --- guards -----------------------------------------------------------------
 dry_run_flags=()
@@ -76,14 +92,16 @@ fi
 op account get > /dev/null 2>&1 || { echo "❌ Not signed in - run: eval \$(op signin)"; exit 1; }
 
 # Fail fast on a wrong source vault rather than reporting 32 confusing lookup failures.
-op vault get "$SRC" > /dev/null 2>&1 || {
-  echo "❌ Source vault '$SRC' not found on this account."
-  echo "   The personal vault is 'Personal' on Individual accounts, 'Private' on"
-  echo "   Families, and 'Employee' on Business. Vaults available here:"
-  op vault list 2> /dev/null | sed 's/^/     /'
-  echo "   Re-run with:  SRC=<name> bash .scripts/migrate-to-jarvis-vault.sh"
-  exit 1
-}
+for vault in "$SRC" "${ITEM_SRC[@]}"; do
+  op vault get "$vault" > /dev/null 2>&1 || {
+    echo "❌ Source vault '$vault' not found on this account."
+    echo "   The personal vault is 'Personal' on Individual accounts, 'Private' on"
+    echo "   Families, and 'Employee' on Business. Vaults available here:"
+    op vault list 2> /dev/null | sed 's/^/     /'
+    echo "   Re-run with:  SRC=<name> SHARED=<name> bash .scripts/migrate-to-jarvis-vault.sh"
+    exit 1
+  }
+done
 grep -q "op://$DST/" "${ENV_FILES[0]}" || { echo "❌ op.env does not reference op://$DST/ — wrong branch?"; exit 1; }
 
 all_refs() { grep -ho "op://$DST/[^\"]*" "${ENV_FILES[@]}" | sort -u; }
@@ -101,10 +119,10 @@ paths_for_item() {
 echo "MOVE (leaves $SRC):"
 printf '  - %s\n' "${MOVE_ITEMS[@]}"
 echo
-echo "COPY (original stays in $SRC, only these fields are duplicated):"
+echo "COPY (original stays put, only these fields are duplicated):"
 for item in "${COPY_ITEMS[@]}"; do
   while IFS= read -r p; do
-    [ -n "$p" ] && echo "  - $item / $p"
+    [ -n "$p" ] && echo "  - $(src_for_item "$item") / $item / $p"
   done < <(paths_for_item "$item")
 done
 
@@ -157,11 +175,12 @@ done
 # JSON template for sensitive values. `jq -Rs` slurps stdin verbatim, so passwords
 # containing quotes, backslashes or newlines survive intact.
 emit_fields() {
-  local item="$1" path section label value
+  local item="$1" item_src path section label value
+  item_src="$(src_for_item "$item")"
   while IFS= read -r path; do
     [ -n "$path" ] || continue
-    if ! value="$(op read "op://$SRC/$item/$path" 2> /dev/null)"; then
-      echo "⚠️  '$item / $path' not found in $SRC — skipping" >&2
+    if ! value="$(op read "op://$item_src/$item/$path" 2> /dev/null)"; then
+      echo "⚠️  '$item / $path' not found in $item_src — skipping" >&2
       continue
     fi
     if [[ "$path" == */* ]]; then
@@ -197,10 +216,10 @@ for item in "${COPY_ITEMS[@]}"; do
 
   if op item get "$item" --vault "$DST" > /dev/null 2>&1; then
     printf '%s' "$payload" | op item edit "$item" --vault "$DST" "${dry_run_flags[@]}" > /dev/null \
-      && echo "$mark ${verb_update} '$item' in $DST ($count fields; original left in $SRC)"
+      && echo "$mark ${verb_update} '$item' in $DST ($count fields; original left in $(src_for_item "$item"))"
   else
     printf '%s' "$payload" | op item create --vault "$DST" "${dry_run_flags[@]}" - > /dev/null \
-      && echo "$mark ${verb_create} '$item' in $DST ($count fields; original left in $SRC)"
+      && echo "$mark ${verb_create} '$item' in $DST ($count fields; original left in $(src_for_item "$item"))"
   fi
   unset fields payload count
 done
