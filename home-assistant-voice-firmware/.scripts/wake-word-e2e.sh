@@ -450,7 +450,9 @@ echo "🧠 Comparing with ${GEMINI_MODEL}..."
 # harder. Recording-side artefacts are ruled out explicitly, because the room capture
 # is necessarily quieter, echoier and noisier than the reference — none of which is a
 # device fault.
-read -r -d '' PROMPT <<PROMPT_EOF
+# `read -d ''` always exits non-zero at EOF even though PROMPT is fully populated;
+# `|| true` keeps that harmless if this script ever gains `set -e`.
+read -r -d '' PROMPT <<PROMPT_EOF || true
 You are given two audio recordings of the SAME conversation, plus its transcript.
 
 AUDIO 1 is the REFERENCE: what the voice service generated, captured server-side.
@@ -479,6 +481,17 @@ In differences, quote the specific words affected and roughly where they occur, 
 state plainly that the reproduction was faithful. Put the number of distinct defects
 in defect_count. If the agent's speech is not audible at all in AUDIO 2, report false
 and say so in differences.
+
+About the transcript below:
+  - "agent:" lines are what the service intended to say. "user:" lines are what the
+    device transcribed from the room, and may be imperfect — that is speech
+    recognition, not playback, so do NOT report it as a defect.
+  - Text in square brackets such as [sighs], [dry] or [sounding like Jarvis from the
+    Iron Man movies] are DELIVERY DIRECTIVES for the voice engine, not words to be
+    spoken. Expect them to be absent from BOTH recordings, or realised as a tone of
+    voice or a non-verbal sound. Their absence is NEVER a defect.
+  - Compare the two recordings against EACH OTHER. The transcript is context for what
+    is being said; it is not the thing under test.
 
 TRANSCRIPT:
 ${transcript}
