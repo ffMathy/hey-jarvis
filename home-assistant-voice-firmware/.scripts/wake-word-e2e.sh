@@ -9,7 +9,16 @@ set -uo pipefail
 # TTS, the speakers, the room, the device microphone, the VAD and the wake word model
 # in one shot.
 #
-# The device must be physically near the host speakers and NOT muted.
+# The device must be physically near the host speakers and NOT muted. Check the
+# HARDWARE mute switch on the back: it overrides the software one, and while it is on
+# the wake word engine runs happily on a silent microphone, so nothing ever triggers.
+#
+# KNOWN LIMITATION: a passing run leaves a conversation open, and
+# elevenlabs_stream.on_start stops the wake word engine until on_end. So a second run
+# immediately after a pass will fail until that conversation finishes. Verified once
+# (0.94 probability, first attempt); the immediate re-run failed, consistent with this
+# but not confirmed on hardware. Either wait for the conversation to end, or teach the
+# script to stop the stream before asserting.
 #
 # Usage (needs the ElevenLabs API key, so go through run-with-env.sh):
 #   bun run --cwd home-assistant-voice-firmware wake-word-test
