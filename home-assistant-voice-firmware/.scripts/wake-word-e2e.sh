@@ -4,11 +4,11 @@ set -uo pipefail
 # End-to-end acoustic test of the Voice PE: wake word, conversation, and playback
 # fidelity — all over real air, nothing mocked.
 #
-#   1. Start recording the ROOM with the host microphone
-#   2. Synthesise "Hey Jarvis" (ElevenLabs TTS) and play it through HOST speakers
-#   3. Assert the device heard it, via micro_wake_word's serial log line
-#   4. Speak a command so the agent replies
-#   5. Keep recording until the device ends the conversation
+#   1. Synthesise "Hey Jarvis" (ElevenLabs TTS) and play it through HOST speakers
+#   2. Assert the device heard it, via micro_wake_word's serial log line
+#   3. Wait for the device to finish its activation chime and open its microphone
+#   4. Speak a full sentence so the agent gives a substantial reply
+#   5. Only NOW start recording the room, and keep going until the call ends
 #   6. Download what ElevenLabs actually produced for that same conversation
 #   7. Ask Gemini to COMPARE the two and report the differences
 #
@@ -28,7 +28,8 @@ set -uo pipefail
 #
 # Options (environment):
 #   WAKE_WORD_TEXT     wake phrase                     (default "Hey Jarvis")
-#   COMMAND_TEXT       phrase asked after waking       (default "What time is it?")
+#   COMMAND_TEXT       full sentence asked after waking (default: an introduction request)
+#   READY_TIMEOUT      wait for the device to open its mic (default 15)
 #   VOICE_ID           ElevenLabs voice to speak with  (default: Mathias, see below)
 #   ATTEMPTS           wake attempts before giving up  (default 3)
 #   LISTEN_SECONDS     wait for detection per attempt  (default 15)
@@ -49,7 +50,11 @@ set -uo pipefail
 #   3  woke, but the comparison could not run (silent capture, API or processing failure)
 
 WAKE_WORD_TEXT="${WAKE_WORD_TEXT:-Hey Jarvis}"
-COMMAND_TEXT="${COMMAND_TEXT:-What time is it?}"
+# A full sentence, not a two-word query. The point of the reply is to give the
+# comparison enough continuous speech to judge, and "introduce yourself" is answerable
+# from the prompt alone, so the test does not depend on a working tool call.
+COMMAND_TEXT="${COMMAND_TEXT:-Please introduce yourself, and tell me what you can help me with today.}"
+READY_TIMEOUT="${READY_TIMEOUT:-15}"
 ATTEMPTS="${ATTEMPTS:-3}"
 LISTEN_SECONDS="${LISTEN_SECONDS:-15}"
 CONVERSATION_MAX="${CONVERSATION_MAX:-90}"
@@ -92,6 +97,8 @@ DETECT_RE="Detected '[^']*[Jj]arvis'"
 STREAM_RE="elevenlabs_stream|Voice assistant|wake_word_triggered"
 # elevenlabs_stream.on_end restarts the engine, which is the cleanest end-of-call marker.
 END_RE="Starting wake word detection"
+# HANDLE_MIC reports the activation chime finishing, i.e. the device is really listening.
+READY_RE="HANDLE_MIC.*activation_speaker_running=false"
 
 reader_pid=""
 recorder_pid=""
@@ -352,6 +359,35 @@ if [ -n "${SKIP_AUDIO_CHECK:-}" ]; then
 fi
 
 # --- hold the conversation ---------------------------------------------------
+# Wait for the device to actually be listening before speaking.
+#
+# Waking is not the same as being ready. The device opens the stream, then plays its
+# activation chime, and deliberately holds its microphone back until that finishes --
+# it logs "Starting microphone enable timeout: 817 ms, 1750 ms grace period" for
+# exactly this reason. Speaking into that window means the command is simply never
+# heard, which from the room sounds like the wake phrase and the command running into
+# each other with nothing in between.
+#
+# HANDLE_MIC logs activation_speaker_running=true while the chime plays and false once
+# it stops, so that transition is the real "you may speak now" signal.
+echo "⏳ Waiting for the device to finish its chime and open the mic..."
+ready_mark="$(wc -c < "$SERIAL_LOG")"
+deadline=$((SECONDS + READY_TIMEOUT))
+ready=0
+while [ "$SECONDS" -lt "$deadline" ]; do
+  if tail -c "+$((ready_mark + 1))" "$SERIAL_LOG" 2> /dev/null \
+    | grep -q -E "$READY_RE"; then
+    ready=1
+    echo "   device is listening"
+    break
+  fi
+  sleep 0.2
+done
+if [ "$ready" != "1" ]; then
+  echo "   ⚠️  No listening marker within ${READY_TIMEOUT}s; speaking anyway."
+  sleep 2
+fi
+
 echo "🗨️  Asking: \"$COMMAND_TEXT\""
 play_file "$COMMAND_WAV"
 
@@ -390,7 +426,13 @@ echo "   captured: $ROOM_RAW (peak ${room_peak:-?} dB)"
 
 # A silent capture means the microphone heard nothing. Comparing it would produce a
 # confident-sounding verdict about silence, which is worse than saying so.
-if [ -n "$room_peak" ] && awk -v p="$room_peak" 'BEGIN { exit !(p < -45) }'; then
+#
+# The threshold has to sit below a QUIET but real capture, not just below a loud one.
+# Microphone gain varies a lot between hosts: the same room measured -38 dB peak one
+# day and -76 dB the next, so a -45 dB cut-off rejected perfectly usable audio. -60 dB
+# still separates "nothing at all" from "faint but there"; raise it if a genuinely
+# empty room slips through.
+if [ -n "$room_peak" ] && awk -v p="$room_peak" -v t="${SILENCE_ABORT_DB:--60}" 'BEGIN { exit !(p < t) }'; then
   echo
   echo "⚠️  The recording is effectively silent (peak ${room_peak} dB)."
   echo "   Either the device never spoke, or the host microphone cannot hear it."
@@ -450,6 +492,22 @@ ffmpeg -loglevel error -y -i "$REF_SRC" -ac 1 -ar 16000 -sample_fmt s16 "$REF_WA
   || fail "Could not convert the reference audio."
 ffmpeg -loglevel error -y -i "$ROOM_RAW" -ac 1 -ar 16000 -sample_fmt s16 "$ROOM_WAV" \
   || fail "Could not convert the room recording."
+
+# Peak-normalise the room capture to sit at a comparable level to the reference. A
+# distant microphone can land 40 dB below the server-side audio, and handing the model
+# a near-inaudible clip invites "I cannot hear the speech" regardless of quality. This
+# changes loudness only -- dropouts, stutters and truncation all survive a gain change,
+# so it cannot manufacture or hide a defect.
+room_measured="$(ffmpeg -i "$ROOM_WAV" -af volumedetect -f null /dev/null 2>&1 \
+  | grep -a -oE 'max_volume: -?[0-9.]+' | head -1 | grep -oE '\-?[0-9.]+')"
+if [ -n "$room_measured" ]; then
+  room_gain="$(awk -v m="$room_measured" 'BEGIN { printf "%.1f", -1.0 - m }')"
+  if ffmpeg -loglevel error -y -i "$ROOM_WAV" -af "volume=${room_gain}dB" \
+    -ac 1 -ar 16000 -sample_fmt s16 "${ROOM_WAV}.norm" 2> /dev/null; then
+    mv "${ROOM_WAV}.norm" "$ROOM_WAV"
+    echo "   room gain: ${room_gain} dB applied (was ${room_measured} dB peak)"
+  fi
+fi
 
 # --- compare -----------------------------------------------------------------
 [ -n "${HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY:-}" ] \
