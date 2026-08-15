@@ -16,6 +16,7 @@
 
 #include <esp_task_wdt.h>
 #include <esp_heap_caps.h>
+#include <freertos/FreeRTOS.h>  // pdMS_TO_TICKS for the blocking speaker write
 
 namespace esphome {
 namespace elevenlabs_stream {
@@ -23,6 +24,15 @@ namespace elevenlabs_stream {
 using namespace esphome::json;
 
 static const char* TAG = "elevenlabs_stream";
+
+// How long a single blocking write waits for ring buffer space before returning 0.
+// Short enough to keep the websocket task responsive, long enough to avoid spinning.
+static const uint32_t SPEAKER_WRITE_WAIT_MS = 100;
+
+// How long to keep retrying with NO progress at all before giving up on a chunk. The
+// speaker drains in real time, so any healthy buffer frees space well inside this;
+// only a genuinely wedged speaker reaches it.
+static const uint32_t SPEAKER_WRITE_STALL_TIMEOUT_MS = 5000;
 
 // Helper to convert StreamState enum to string
 static const char* stream_state_to_string(StreamState state) {
@@ -79,21 +89,54 @@ bool ElevenLabsStream::decode_and_play_base64_audio(const char* base64_data) {
     ESP_LOGW(TAG, "DECODE_B64: LOW MEMORY WARNING: PSRAM Free=%zuKB", psram_after_decode / 1024);
   }
 
-  size_t written = elevenlabs_speaker_->play(decoded, decoded_len);
-  ESP_LOGD(TAG, "DECODE_B64: Played %zu bytes from decoded buffer (expected %zu)", written, decoded_len);
+  // Speaker::play() is NON-BLOCKING: it copies only what currently fits in the ring
+  // buffer and returns how much it took. ElevenLabs streams audio faster than it plays
+  // back, so the buffer fills routinely and short writes are normal, not exceptional.
+  //
+  // This used to write once, free the buffer, and return false on a short write --
+  // silently discarding the remainder. That is audible as whole clauses vanishing
+  // mid-sentence while the rest plays cleanly, which is exactly what a room recording
+  // of a reply showed: about three quarters of it never reached the speaker.
+  //
+  // Retry the remainder with the blocking overload instead, so the socket is throttled
+  // by playback rather than audio being dropped. The stall timer only advances while no
+  // progress is made, so a slow-but-moving speaker is never treated as stuck.
+  size_t total_written = 0;
+  uint32_t last_progress = millis();
+  bool stalled = false;
+
+  while (total_written < decoded_len) {
+    size_t written = elevenlabs_speaker_->play(decoded + total_written, decoded_len - total_written,
+                                               pdMS_TO_TICKS(SPEAKER_WRITE_WAIT_MS));
+    if (written > 0) {
+      total_written += written;
+      last_progress = millis();
+      continue;
+    }
+
+    if (millis() - last_progress >= SPEAKER_WRITE_STALL_TIMEOUT_MS) {
+      // Give up rather than block the websocket task forever; losing the tail of one
+      // chunk beats wedging the connection.
+      ESP_LOGE(TAG, "DECODE_B64: Speaker stalled for %ums, dropping %zu of %zu bytes",
+               SPEAKER_WRITE_STALL_TIMEOUT_MS, decoded_len - total_written, decoded_len);
+      stalled = true;
+      break;
+    }
+  }
+
+  ESP_LOGD(TAG, "DECODE_B64: Played %zu bytes from decoded buffer (expected %zu)", total_written, decoded_len);
 
   if (decoded) {
     heap_caps_free(decoded);
-    
+
     // Log PSRAM after freeing
     size_t psram_after_free = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
     size_t psram_freed = psram_after_free - psram_after_decode;
-    ESP_LOGD(TAG, "DECODE_B64: Buffer freed, PSRAM Free=%zuKB (+%zuKB)", 
+    ESP_LOGD(TAG, "DECODE_B64: Buffer freed, PSRAM Free=%zuKB (+%zuKB)",
              psram_after_free / 1024, psram_freed / 1024);
   }
 
-  if (written != decoded_len) {
-    ESP_LOGE(TAG, "DECODE_B64: Played bytes mismatch: expected %zu, got %zu", decoded_len, written);
+  if (stalled) {
     return false;
   }
 
