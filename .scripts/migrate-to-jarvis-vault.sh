@@ -159,10 +159,13 @@ for item in "${MOVE_ITEMS[@]}"; do
     else
       echo "⚠️  '$item' not found in $SRC — would need handling manually"
     fi
-  elif op item move "$item" --current-vault "$SRC" --destination-vault "$DST" > /dev/null 2>&1; then
+  # Capture stderr (2>&1 before >/dev/null keeps only the error text). Swallowing it
+  # here made a real failure indistinguishable from a missing item.
+  elif move_err="$(op item move "$item" --current-vault "$SRC" --destination-vault "$DST" 2>&1 > /dev/null)"; then
     echo "✅ Moved '$item'"
   else
-    echo "⚠️  Could not move '$item' (missing or renamed in $SRC?) — handle it manually"
+    echo "⚠️  Could not move '$item' — handle it manually"
+    [ -n "$move_err" ] && printf '       %s\n' "$move_err"
   fi
 done
 
