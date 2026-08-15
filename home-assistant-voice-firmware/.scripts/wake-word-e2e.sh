@@ -62,8 +62,12 @@ done
 
 # Playback backend: prefer a native Linux player through WSLg's PulseAudio, and
 # fall back to handing the file to Windows, which always has a working audio stack.
-PLAYER=""
-if command -v ffplay > /dev/null 2>&1; then
+# PLAYER=powershell is worth trying under WSL: it uses Windows' own audio stack and
+# bypasses WSLg's PulseAudio, which can silently route to a sink you cannot hear.
+PLAYER="${PLAYER:-}"
+if [ -n "$PLAYER" ]; then
+  :
+elif command -v ffplay > /dev/null 2>&1; then
   PLAYER="ffplay"
 elif command -v paplay > /dev/null 2>&1; then
   PLAYER="paplay"
@@ -144,15 +148,24 @@ else
 
   # 16-bit mono 48kHz: what the device's mic path expects, and universally playable.
   #
-  # Loudness-normalise on the way. Raw ElevenLabs output sits around -32 dB mean /
-  # -13 dB peak, which is quiet enough that the device may simply not hear it across
-  # a room. loudnorm brings it to a consistent broadcast level so a failure means
-  # "the model did not trigger" rather than "the volume was too low".
-  if ! ffmpeg -loglevel error -y -i "$AUDIO_MP3" \
-    -af 'loudnorm=I=-14:TP=-1.5:LRA=11' -ac 1 -ar 48000 -sample_fmt s16 "$AUDIO_WAV" 2> /dev/null; then
-    echo "   ⚠️  loudnorm unavailable; converting without normalisation."
-    ffmpeg -loglevel error -y -i "$AUDIO_MP3" -ac 1 -ar 48000 -sample_fmt s16 "$AUDIO_WAV" \
-      || fail "ffmpeg could not convert the audio."
+  # Raw ElevenLabs output peaks around -13 dB, quiet enough that the device may
+  # simply not hear it across a room. Normalise the PEAK to -1 dB in two passes.
+  #
+  # Do NOT use loudnorm here: it targets integrated (average) loudness, and on a
+  # sub-second clip that is mostly silence it misjudges badly — measured output came
+  # out at -29 dB peak, i.e. quieter than the input it was meant to lift.
+  ffmpeg -loglevel error -y -i "$AUDIO_MP3" -ac 1 -ar 48000 -sample_fmt s16 "$AUDIO_WAV" \
+    || fail "ffmpeg could not convert the audio."
+
+  measured="$(ffmpeg -i "$AUDIO_WAV" -af volumedetect -f null /dev/null 2>&1 \
+    | grep -a -oE 'max_volume: -?[0-9.]+' | head -1 | grep -oE '\-?[0-9.]+')"
+  if [ -n "$measured" ]; then
+    gain="$(awk -v m="$measured" 'BEGIN { printf "%.1f", -1.0 - m }')"
+    if ffmpeg -loglevel error -y -i "$AUDIO_WAV" -af "volume=${gain}dB" \
+      -ac 1 -ar 48000 -sample_fmt s16 "${AUDIO_WAV}.norm" 2> /dev/null; then
+      mv "${AUDIO_WAV}.norm" "$AUDIO_WAV"
+      echo "   gain:    ${gain} dB applied (was ${measured} dB peak)"
+    fi
   fi
   echo "   saved:   $AUDIO_WAV"
 fi
@@ -176,15 +189,51 @@ if [ ! -s "$SERIAL_LOG" ]; then
   echo "   ⚠️  No serial output yet. The device may be booted and quiet — continuing."
 fi
 
+# LISTEN_ONLY skips playback entirely and just watches the serial log. Use it to
+# isolate the microphone from the speakers: say "Hey Jarvis" yourself and see whether
+# the device reacts. If your voice triggers it but the synthesised phrase does not,
+# the problem is the audio being played, not the device.
+if [ -n "${LISTEN_ONLY:-}" ]; then
+  echo
+  echo "👂 Listening for ${LISTEN_SECONDS}s — say \"Hey Jarvis\" out loud now."
+  mark="$(wc -c < "$SERIAL_LOG")"
+  deadline=$((SECONDS + LISTEN_SECONDS))
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    if line="$(tail -c "+$((mark + 1))" "$SERIAL_LOG" 2> /dev/null | grep -m1 -E "$DETECT_RE")"; then
+      echo
+      echo "✅ The microphone and the model work — detected your voice:"
+      echo "   $line"
+      exit 0
+    fi
+    sleep 1
+  done
+  echo
+  echo "❌ Nothing detected from live speech either."
+  echo "   The device is not hearing anything, so this is not about the played audio."
+  echo "   Check the hardware mute switch on the back — it overrides software mute"
+  echo "   and silences the microphone entirely."
+  exit 1
+fi
+
 play_once() {
   case "$PLAYER" in
     ffplay) ffplay -nodisp -autoexit -loglevel error "$AUDIO_WAV" > /dev/null 2>&1 ;;
     paplay) paplay "$AUDIO_WAV" > /dev/null 2>&1 ;;
     aplay) aplay -q "$AUDIO_WAV" > /dev/null 2>&1 ;;
     powershell)
-      # Hand Windows a path it understands; \\wsl$ works from the Windows side.
-      local win_path
-      win_path="$(wslpath -w "$AUDIO_WAV" 2> /dev/null || echo "$AUDIO_WAV")"
+      # Copy onto the Windows filesystem first: SoundPlayer is unreliable with the
+      # \\wsl$ UNC path, and a local copy always works.
+      local win_dir win_path
+      win_dir="$(powershell.exe -NoProfile -Command 'Write-Host -NoNewline $env:TEMP' 2> /dev/null | tr -d '\r')"
+      if [ -n "$win_dir" ]; then
+        local lin_dir
+        lin_dir="$(wslpath -u "$win_dir" 2> /dev/null)"
+        if [ -n "$lin_dir" ] && [ -d "$lin_dir" ]; then
+          cp -f "$AUDIO_WAV" "$lin_dir/hey-jarvis-wake-word.wav" 2> /dev/null
+          win_path="$win_dir\\hey-jarvis-wake-word.wav"
+        fi
+      fi
+      [ -n "${win_path:-}" ] || win_path="$(wslpath -w "$AUDIO_WAV" 2> /dev/null || echo "$AUDIO_WAV")"
       powershell.exe -NoProfile -Command \
         "(New-Object Media.SoundPlayer '$win_path').PlaySync()" > /dev/null 2>&1
       ;;
