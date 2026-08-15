@@ -228,7 +228,8 @@ done
 if [ -n "${DRY_RUN:-}" ]; then
   echo
   echo "🔍 Rehearsal complete. Nothing was changed, so the reference check is skipped."
-  echo "   Run it for real with:  bash .scripts/migrate-to-jarvis-vault.sh"
+  echo "   Run it for real with the same vaults, just without DRY_RUN:"
+  echo "     SRC=$SRC SHARED=$SHARED bash .scripts/migrate-to-jarvis-vault.sh"
   exit 0
 fi
 
