@@ -17,6 +17,7 @@
 #include <esp_task_wdt.h>
 #include <esp_heap_caps.h>
 #include <freertos/FreeRTOS.h>  // pdMS_TO_TICKS for the blocking speaker write
+#include <inttypes.h>
 
 namespace esphome {
 namespace elevenlabs_stream {
@@ -131,8 +132,8 @@ bool ElevenLabsStream::decode_and_play_base64_audio(const char* base64_data) {
 
     // Log PSRAM after freeing
     size_t psram_after_free = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
-    size_t psram_freed = psram_after_free - psram_after_decode;
-    ESP_LOGD(TAG, "DECODE_B64: Buffer freed, PSRAM Free=%zuKB (+%zuKB)",
+    int64_t psram_freed = (int64_t)psram_after_free - (int64_t)psram_after_decode;
+    ESP_LOGD(TAG, "DECODE_B64: Buffer freed, PSRAM Free=%zuKB (%+" PRId64 "KB)",
              psram_after_free / 1024, psram_freed / 1024);
   }
 
