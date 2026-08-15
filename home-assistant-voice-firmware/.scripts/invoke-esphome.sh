@@ -61,5 +61,9 @@ if [ -n "${ESPHOME_DEVICE:-}" ]; then
 	esac
 fi
 
-set -x
+# Deliberately NOT `set -x` here. SUB_ARGS carries resolved secret VALUES (the WiFi
+# password, API keys, tokens), so tracing would print every one of them to the
+# console and into CI logs — and run-with-env.sh invokes `op run --no-masking`, so
+# nothing downstream would redact them. Log the action without the substitutions.
+echo "▶️  esphome $ACTION $YAML_FILE ${EXTRA_ARGS[*]:-} ($(( ${#SUB_ARGS[@]} / 2 )) substitutions, values hidden)"
 "${ESPHOME_CMD[@]}" "${SUB_ARGS[@]}" "$ACTION" "$YAML_FILE" "${EXTRA_ARGS[@]}"
