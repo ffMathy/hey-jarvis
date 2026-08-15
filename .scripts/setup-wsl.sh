@@ -38,6 +38,17 @@ else
   export PATH="$BUN_INSTALL/bin:$PATH"
 fi
 
+# --- Node.js ----------------------------------------------------------------
+# The .claude hooks are invoked as `node`, and the devcontainer is a node image,
+# so keep parity. Ubuntu 22.04's packaged nodejs is far too old, hence NodeSource.
+if have node; then
+  log "node already installed ($(node --version))"
+else
+  log "Installing Node.js LTS"
+  curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+  sudo apt-get install -y -qq nodejs
+fi
+
 # --- 1Password CLI ----------------------------------------------------------
 if have op; then
   log "1Password CLI already installed ($(op --version))"
@@ -92,7 +103,7 @@ fi
 # --- report -----------------------------------------------------------------
 log "Installed versions"
 export PATH="$HOME/.bun/bin:$HOME/.local/bin:$PATH"
-for c in git bun op uv esphome; do
+for c in git node bun op uv esphome; do
   printf '  %-8s %s\n' "$c" "$(command -v "$c" > /dev/null 2>&1 && "$c" --version 2>&1 | head -1 || echo 'MISSING')"
 done
 
