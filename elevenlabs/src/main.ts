@@ -33,6 +33,13 @@ class ElevenLabsAgentManager {
     delete filtered.accessInfo;
     delete filtered.agentId;
 
+    // Branch IDs identify a specific agent's version history, so they are no more
+    // portable than agentId. Persisting them meant the production agent's branch was
+    // deployed to the test agent, which the API rejects with
+    // "Cannot publish new version to branch ... it is not the branch of the agent".
+    delete filtered.branchId;
+    delete filtered.mainBranchId;
+
     // Remove nested sensitive data if it exists (voice_id might be added dynamically)
     if (filtered.conversationConfig?.tts) {
       delete (filtered.conversationConfig.tts as Partial<typeof filtered.conversationConfig.tts>).voiceId;
@@ -53,7 +60,10 @@ class ElevenLabsAgentManager {
       });
     }
 
-    return filtered as Omit<GetAgentResponseModel, 'phoneNumbers' | 'accessInfo' | 'agentId'>;
+    return filtered as Omit<
+      GetAgentResponseModel,
+      'phoneNumbers' | 'accessInfo' | 'agentId' | 'branchId' | 'mainBranchId'
+    >;
   }
 
   private async saveConfig(config: GetAgentResponseModel): Promise<void> {
