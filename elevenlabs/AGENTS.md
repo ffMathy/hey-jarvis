@@ -42,7 +42,7 @@ Required (via 1Password):
 - `HEY_JARVIS_ELEVENLABS_API_KEY` - ElevenLabs API key
 - `HEY_JARVIS_ELEVENLABS_AGENT_ID` - ElevenLabs agent ID
 - `HEY_JARVIS_ELEVENLABS_VOICE_ID` - ElevenLabs voice ID
-- `HEY_JARVIS_GOOGLE_API_KEY` - Google Gemini API for test evaluations
+- `HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY` - Google Gemini API for test evaluations
 
 ## Testing Guidelines
 

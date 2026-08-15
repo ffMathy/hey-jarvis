@@ -41,10 +41,11 @@ import { getTodoListAgent, todoListTools } from './verticals/todo-list/index.js'
 import { getWeatherAgent, weatherTools } from './verticals/weather/index.js';
 import { getWebResearchAgent } from './verticals/web-research/index.js';
 
-// Set up the Google AI SDK environment variable immediately
-// Prioritize HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY over HEY_JARVIS_GOOGLE_API_KEY
-process.env.GOOGLE_GENERATIVE_AI_API_KEY =
-  process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY || process.env.HEY_JARVIS_GOOGLE_API_KEY || '';
+// Set up the Google AI SDK environment variable immediately.
+// No fallback to a general "Google" key: HEY_JARVIS_GOOGLE_MAPS_API_KEY is scoped to
+// the Maps APIs and returns API_KEY_INVALID here, which used to look like a broken
+// credential rather than the wrong one.
+process.env.GOOGLE_GENERATIVE_AI_API_KEY = process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY || '';
 
 function toAgentMap(agents: Agent[]): Record<string, Agent> {
   return agents.reduce<Record<string, Agent>>((acc, agent) => {

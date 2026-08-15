@@ -39,9 +39,9 @@ async function evaluateDAG(
   criteria: string,
   googleApiKey?: string,
 ): Promise<EvaluationResult> {
-  const apiKey = googleApiKey || process.env.HEY_JARVIS_GOOGLE_API_KEY;
+  const apiKey = googleApiKey || process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY;
   if (!apiKey) {
-    throw new Error('Google API key required: set HEY_JARVIS_GOOGLE_API_KEY');
+    throw new Error('Google API key required: set HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY');
   }
 
   const google = createGoogleGenerativeAI({ apiKey });
@@ -186,7 +186,7 @@ function createMockAgent(id: string, description: string, tools?: MockToolConfig
  */
 function createLLMSupervisorExecutor(): SupervisorExecutor {
   return async (userQuery, agents) => {
-    const apiKey = process.env.HEY_JARVIS_GOOGLE_API_KEY;
+    const apiKey = process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY;
     if (!apiKey) {
       throw new Error('Google API key required for LLM eval tests');
     }

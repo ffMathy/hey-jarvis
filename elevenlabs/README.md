@@ -47,4 +47,4 @@ Managed via 1Password CLI:
 - `HEY_JARVIS_ELEVENLABS_AGENT_ID` — Production agent
 - `HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID` — Test agent
 - `HEY_JARVIS_ELEVENLABS_VOICE_ID` — Voice for TTS
-- `HEY_JARVIS_GOOGLE_API_KEY` — Gemini for test evaluation
+- `HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY` — Gemini for test evaluation
