@@ -10,6 +10,7 @@
     "flash": "bash .scripts/flash-usb.sh run",
     "upload": "bash .scripts/flash-usb.sh upload",
     "logs": "bash .scripts/flash-usb.sh logs",
+    "wake-word-test": "cd .. && bash ./.scripts/run-with-env.sh elevenlabs/op.env bash -c 'cd home-assistant-voice-firmware && bash ./.scripts/wake-word-e2e.sh'",
     "initialize": "bash .scripts/initialize.sh",
     "clean": "bash .scripts/invoke-esphome.sh clean",
     "env:local": "cd .. && bash ./.scripts/generate-env-local.sh home-assistant-voice-firmware/op.env"
