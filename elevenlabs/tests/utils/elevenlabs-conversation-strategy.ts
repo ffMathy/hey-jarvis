@@ -255,20 +255,22 @@ export class ElevenLabsConversationStrategy implements ConversationStrategy {
   }
 
   /**
-   * Waits until a message matching the predicate has been received.
-   * sendMessage() returns once the stream falls quiet, which the agent can do
-   * while a tool is still running server-side, so events worth asserting on may
-   * only arrive afterwards.
+   * Text-only conversations never receive mcp_tool_call events — the socket
+   * streams agent_chat_response_part chunks and renders the invocation inside
+   * the agent's own text. The conversation history API is the structured record
+   * of what the agent really called, so ask it rather than the socket.
    */
-  async waitForMessage(predicate: (message: ServerMessage) => boolean, timeoutMs: number): Promise<boolean> {
-    const deadline = Date.now() + timeoutMs;
-    while (!this.messages.some(predicate)) {
-      if (Date.now() >= deadline) {
-        return false;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 100));
+  async getCalledToolNames(): Promise<string[]> {
+    if (!this.conversationId) {
+      return [];
     }
-    return true;
+
+    const conversation = await this.client.conversationalAi.conversations.get(this.conversationId);
+
+    return conversation.transcript.flatMap(
+      (turn) =>
+        turn.toolCalls?.filter((toolCall) => toolCall.toolHasBeenCalled).map((toolCall) => toolCall.toolName) ?? [],
+    );
   }
 
   getTranscriptText(): string {

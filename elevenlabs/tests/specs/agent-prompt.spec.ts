@@ -1,6 +1,5 @@
 import { afterAll, beforeAll, describe, it } from 'bun:test';
 import { startMcpServerForTestingPurposes, stopMcpServer } from '../../../mcp/tests/utils/mcp-server-manager.js';
-import type { ServerMessage } from '../utils/conversation-strategy.js';
 import { TestConversation } from '../utils/test-conversation.js';
 import { ensureTunnelRunning, stopTunnel } from '../utils/tunnel-manager.js';
 
@@ -11,13 +10,9 @@ const TOOL_CALL_TIMEOUT_MS = 45000;
 
 const RELEVANT_TOOL_NAME_FRAGMENTS = ['weather', 'home_assistant', 'route'];
 
-function isRelevantToolCall(message: ServerMessage): boolean {
-  if (message.type !== 'mcp_tool_call') {
-    return false;
-  }
-
-  const toolName = message.mcp_tool_call.tool_name.toLowerCase();
-  return RELEVANT_TOOL_NAME_FRAGMENTS.some((fragment) => toolName.includes(fragment));
+function isRelevantToolName(toolName: string): boolean {
+  const lowercased = toolName.toLowerCase();
+  return RELEVANT_TOOL_NAME_FRAGMENTS.some((fragment) => lowercased.includes(fragment));
 }
 
 /**
@@ -116,18 +111,12 @@ describe('Agent Prompt Specifications', () => {
 
             // Verify a tool was called — the agent may call weather tools directly
             // or use the routePromptWorkflow which internally dispatches to weather.
-            // The agent speaks before its tool finishes, so sendMessage() can return
-            // while the call is still in flight: wait for it instead of sampling the
-            // messages received so far.
-            const calledRelevantTool = await conversation.waitForMessage(isRelevantToolCall, TOOL_CALL_TIMEOUT_MS);
+            const toolNames = await conversation.waitForCalledToolNames(isRelevantToolName, TOOL_CALL_TIMEOUT_MS);
 
-            if (!calledRelevantTool) {
-              const messages = conversation.getMessages();
-              const allToolCalls = messages.filter((m) => m.type === 'mcp_tool_call');
+            if (!toolNames.some(isRelevantToolName)) {
               throw new Error(
-                `Expected weather, home assistant, or routing tool to be called, but no relevant tool calls found in messages. ` +
-                  `All tool calls: [${allToolCalls.map((m) => m.mcp_tool_call.tool_name).join(', ')}]\n` +
-                  `Message types received: [${messages.map((m) => m.type).join(', ')}]\n` +
+                `Expected weather, home assistant, or routing tool to be called, but no relevant tool calls found. ` +
+                  `All tool calls: [${toolNames.join(', ')}]\n` +
                   `Transcript:\n${conversation.getTranscriptText()}`,
               );
             }

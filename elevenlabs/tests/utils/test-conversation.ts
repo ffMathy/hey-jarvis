@@ -62,11 +62,48 @@ export class TestConversation {
   }
 
   /**
-   * Wait until a message matching the predicate arrives, or the timeout elapses.
-   * Returns whether such a message was seen.
+   * Poll for the tools the agent invoked until one matches, or the timeout elapses.
+   * The agent answers before its tool finishes and the history takes a moment to
+   * catch up, so the calls are not all visible the instant sendMessage() returns.
    */
-  async waitForMessage(predicate: (message: ServerMessage) => boolean, timeoutMs: number): Promise<boolean> {
-    return await this.strategy.waitForMessage(predicate, timeoutMs);
+  async waitForCalledToolNames(matches: (toolName: string) => boolean, timeoutMs: number): Promise<string[]> {
+    const deadline = Date.now() + timeoutMs;
+    let toolNames: string[] = [];
+    let lastError: unknown;
+
+    while (true) {
+      const [result] = await Promise.allSettled([this.getCalledToolNames()]);
+      if (result.status === 'fulfilled') {
+        toolNames = result.value;
+        lastError = undefined;
+        if (toolNames.some(matches)) {
+          return toolNames;
+        }
+      } else {
+        // The history only becomes queryable once ElevenLabs has registered the
+        // conversation, so an early lookup can fail while it catches up.
+        lastError = result.reason;
+      }
+
+      if (Date.now() >= deadline) {
+        break;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+
+    if (lastError) {
+      throw lastError;
+    }
+
+    return toolNames;
+  }
+
+  /**
+   * Names of the tools the agent actually invoked during the conversation.
+   */
+  async getCalledToolNames(): Promise<string[]> {
+    return await this.strategy.getCalledToolNames();
   }
 
   /**

@@ -7,7 +7,8 @@ export interface ConversationStrategy {
   sendMessage(text: string): Promise<string>;
   getMessages(): ServerMessage[];
   getTranscriptText(): string;
-  waitForMessage(predicate: (message: ServerMessage) => boolean, timeoutMs: number): Promise<boolean>;
+  /** Names of the tools the agent actually invoked during the conversation. */
+  getCalledToolNames(): Promise<string[]>;
 }
 
 /**
