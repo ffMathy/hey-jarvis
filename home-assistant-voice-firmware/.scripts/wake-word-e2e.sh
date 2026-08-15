@@ -286,13 +286,13 @@ fi
 # --- start recording the room ------------------------------------------------
 # Recording spans the WHOLE exchange, starting before the wake phrase, so the capture
 # contains both what we played and what the device said back.
-if [ -z "${SKIP_AUDIO_CHECK:-}" ]; then
-  echo "🎙️  Recording the room (max ${CONVERSATION_MAX}s)"
-  ffmpeg -hide_banner -loglevel error -y -f pulse -i "$RECORD_SOURCE" \
-    -t "$CONVERSATION_MAX" -ac 1 -ar 16000 -sample_fmt s16 "$ROOM_RAW" > /dev/null 2>&1 &
-  recorder_pid=$!
-  sleep 1
-fi
+# Recording starts AFTER the last thing we play, never during it. WSLg's audio is an
+# RDP transport, and holding a capture stream open while playing degrades playback
+# badly and progressively: measured on a 2 s tone, playback took 2.1 s alone but
+# 4.5 s, then 11.6 s, then 13.3 s with a recorder running, recovering to 2.1 s the
+# moment it stopped. Recording through the wake phrase therefore mangles the very
+# audio the device is supposed to recognise, and each cycle sounds worse than the
+# last. The reply is what we need to capture, and it arrives after we stop talking.
 
 # Epoch before anything happens, so the conversation lookup cannot match an older call.
 started_at="$(date +%s)"
@@ -354,6 +354,12 @@ fi
 # --- hold the conversation ---------------------------------------------------
 echo "🗨️  Asking: \"$COMMAND_TEXT\""
 play_file "$COMMAND_WAV"
+
+# Playback is done; only now is it safe to open a capture stream.
+echo "🎙️  Recording the reply (max ${CONVERSATION_MAX}s)"
+ffmpeg -hide_banner -loglevel error -y -f pulse -i "$RECORD_SOURCE" \
+  -t "$CONVERSATION_MAX" -ac 1 -ar 16000 -sample_fmt s16 "$ROOM_RAW" > /dev/null 2>&1 &
+recorder_pid=$!
 
 echo "⏳ Waiting for the conversation to end (max ${CONVERSATION_MAX}s)..."
 conv_mark="$(wc -c < "$SERIAL_LOG")"
@@ -491,9 +497,11 @@ read -r -d '' PROMPT <<PROMPT_EOF || true
 You are given two audio recordings of the SAME conversation, plus its transcript.
 
 AUDIO 1 is the REFERENCE: what the voice service generated, captured server-side.
-AUDIO 2 is a ROOM RECORDING made with a microphone, of a smart speaker playing that
-same conversation out loud. Audio 2 also contains the human side of the conversation
-played through separate speakers.
+AUDIO 2 is a ROOM RECORDING made with a microphone, of a smart speaker playing back
+the AGENT's side of that conversation out loud. Recording only starts after the human
+side finished being spoken, so AUDIO 2 contains the agent's reply and little or
+nothing of the user's turn. A user turn present in AUDIO 1 but absent from AUDIO 2 is
+therefore EXPECTED and is not a defect.
 
 Compare AUDIO 2 against AUDIO 1 and report only defects in how the SPEAKER reproduced
 the agent's speech.
