@@ -1,14 +1,15 @@
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 
 /**
- * Creates a Google Generative AI provider instance.
+ * Creates a Google Generative AI provider instance using
+ * HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY.
  *
- * Prefers HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY and falls back to
- * HEY_JARVIS_GOOGLE_API_KEY, matching the precedence mastra/index.ts already
- * documents. This provider previously read only the latter, so the two entry points
- * could authenticate with different keys — which is exactly what happened: the
- * generative-AI key was valid while the plain one was not, and every embedding call
- * through here failed with API_KEY_INVALID even though the service was reachable.
+ * There is deliberately no fallback to a general "Google" key. This used to read
+ * HEY_JARVIS_GOOGLE_API_KEY, which is a Google MAPS key restricted to the Maps APIs,
+ * so every call here failed with API_KEY_INVALID against a service that was
+ * perfectly reachable. Maps credentials now live under HEY_JARVIS_GOOGLE_MAPS_API_KEY
+ * and the two cannot be confused again. Failing outright beats silently
+ * authenticating with a key scoped to the wrong product.
  *
  * This shared provider ensures consistency across all agents and scorers
  * in the Hey Jarvis system.
@@ -17,12 +18,10 @@ import { createGoogleGenerativeAI } from '@ai-sdk/google';
  * at module load time — the error surfaces when an actual API call is made.
  */
 
-const googleApiKey = process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY || process.env.HEY_JARVIS_GOOGLE_API_KEY;
+const googleApiKey = process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY;
 
 if (!googleApiKey) {
-  console.warn(
-    '⚠️ Neither HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY nor HEY_JARVIS_GOOGLE_API_KEY is set. Google AI features will not work.',
-  );
+  console.warn('⚠️ HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY is not set. Google AI features will not work.');
 }
 
 export const google = createGoogleGenerativeAI({

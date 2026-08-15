@@ -7,9 +7,9 @@ describe('MCP Server Connection Tests', () => {
   let mcpClient: MCPClient | null = null;
 
   beforeAll(async () => {
-    if (!process.env.HEY_JARVIS_GOOGLE_API_KEY) {
+    if (!process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY) {
       throw new Error(
-        'HEY_JARVIS_GOOGLE_API_KEY not found - tests must be run via bunx turbo test --filter=mcp, which uses run-with-env.sh',
+        'HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY not found - tests must be run via bunx turbo test --filter=mcp, which uses run-with-env.sh',
       );
     }
 

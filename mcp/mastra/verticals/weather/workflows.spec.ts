@@ -18,8 +18,10 @@ describe('weatherMonitoringWorkflow', () => {
     if (!process.env.HEY_JARVIS_OPENWEATHERMAP_API_KEY) {
       throw new Error('HEY_JARVIS_OPENWEATHERMAP_API_KEY environment variable is required for weather workflow tests');
     }
-    if (!process.env.HEY_JARVIS_GOOGLE_API_KEY) {
-      throw new Error('HEY_JARVIS_GOOGLE_API_KEY environment variable is required for weather workflow tests');
+    if (!process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY) {
+      throw new Error(
+        'HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY environment variable is required for weather workflow tests',
+      );
     }
 
     // Check Ollama availability and ensure model is pulled

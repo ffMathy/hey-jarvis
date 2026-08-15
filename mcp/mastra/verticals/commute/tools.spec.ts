@@ -48,8 +48,8 @@ function logPlaceDetails(place: { name: string; address: string; rating?: number
 describe('Commute Tools Integration Tests', () => {
   beforeAll(() => {
     // Verify API key is configured
-    if (!process.env.HEY_JARVIS_GOOGLE_API_KEY) {
-      throw new Error('HEY_JARVIS_GOOGLE_API_KEY environment variable is required for commute tools tests');
+    if (!process.env.HEY_JARVIS_GOOGLE_MAPS_API_KEY) {
+      throw new Error('HEY_JARVIS_GOOGLE_MAPS_API_KEY environment variable is required for commute tools tests');
     }
   });
 

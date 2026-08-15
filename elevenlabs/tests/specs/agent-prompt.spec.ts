@@ -48,7 +48,7 @@ describe('Agent Prompt Specifications', () => {
   // Non-null assertion safe here because beforeAll throws if these are undefined
   const agentId = process.env.HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID!;
   const apiKey = process.env.HEY_JARVIS_ELEVENLABS_API_KEY;
-  const googleApiKey = process.env.HEY_JARVIS_GOOGLE_API_KEY;
+  const googleApiKey = process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY;
 
   // Ensure MCP server and cloudflared tunnel are running before all tests
   beforeAll(async () => {
