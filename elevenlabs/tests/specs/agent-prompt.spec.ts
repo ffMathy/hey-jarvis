@@ -111,6 +111,9 @@ describe('Agent Prompt Specifications', () => {
 
             // Verify a tool was called — the agent may call weather tools directly
             // or use the routePromptWorkflow which internally dispatches to weather.
+            // The history only settles once the conversation is over, so end it
+            // first; the transcript recorded so far stays available for evaluation.
+            await conversation.disconnect();
             const toolNames = await conversation.waitForCalledToolNames(isRelevantToolName, TOOL_CALL_TIMEOUT_MS);
 
             if (!toolNames.some(isRelevantToolName)) {

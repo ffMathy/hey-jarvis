@@ -45,6 +45,7 @@ export class ElevenLabsConversationStrategy implements ConversationStrategy {
   private shouldStop = false;
   private conversationReady = false;
   private conversationReadyResolve?: () => void;
+  private hasReportedEmptyToolCalls = false;
 
   constructor(options: ElevenLabsConversationOptions) {
     this.agentId = options.agentId;
@@ -59,6 +60,7 @@ export class ElevenLabsConversationStrategy implements ConversationStrategy {
     this.shouldStop = false;
     this.conversationReady = false;
     this.conversationReadyResolve = undefined;
+    this.hasReportedEmptyToolCalls = false;
 
     // Get signed URL for authenticated connection
     const { signedUrl } = await this.client.conversationalAi.conversations.getSignedUrl({
@@ -267,10 +269,22 @@ export class ElevenLabsConversationStrategy implements ConversationStrategy {
 
     const conversation = await this.client.conversationalAi.conversations.get(this.conversationId);
 
-    return conversation.transcript.flatMap(
+    const toolNames = conversation.transcript.flatMap(
       (turn) =>
         turn.toolCalls?.filter((toolCall) => toolCall.toolHasBeenCalled).map((toolCall) => toolCall.toolName) ?? [],
     );
+
+    // Reported once per conversation so a history that never fills in says why —
+    // whether it is still being processed, or has turns carrying no tool calls.
+    if (toolNames.length === 0 && !this.hasReportedEmptyToolCalls) {
+      this.hasReportedEmptyToolCalls = true;
+      const turns = conversation.transcript
+        .map((turn) => `${turn.role}(${turn.toolCalls?.length ?? 0} tool calls)`)
+        .join(', ');
+      console.debug(`ℹ️ Conversation ${this.conversationId} status=${conversation.status}, turns: [${turns}]`);
+    }
+
+    return toolNames;
   }
 
   getTranscriptText(): string {
@@ -289,6 +303,11 @@ export class ElevenLabsConversationStrategy implements ConversationStrategy {
       .join('\n');
   }
 
+  /**
+   * Ends the conversation. What it recorded is kept so the transcript can still
+   * be evaluated and the history still queried afterwards — connect() clears the
+   * state before a new conversation starts.
+   */
   async disconnect(): Promise<void> {
     if (this.ws) {
       this.shouldStop = true;
@@ -296,9 +315,6 @@ export class ElevenLabsConversationStrategy implements ConversationStrategy {
       this.ws = null;
     }
 
-    this.messages = [];
-    this.conversationId = undefined;
-    this.shouldStop = false;
     this.conversationReady = false;
     this.conversationReadyResolve = undefined;
   }
