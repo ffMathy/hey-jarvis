@@ -7,6 +7,7 @@ export interface ConversationStrategy {
   sendMessage(text: string): Promise<string>;
   getMessages(): ServerMessage[];
   getTranscriptText(): string;
+  waitForMessage(predicate: (message: ServerMessage) => boolean, timeoutMs: number): Promise<boolean>;
 }
 
 /**

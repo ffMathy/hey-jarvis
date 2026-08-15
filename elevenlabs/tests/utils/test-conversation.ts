@@ -62,6 +62,14 @@ export class TestConversation {
   }
 
   /**
+   * Wait until a message matching the predicate arrives, or the timeout elapses.
+   * Returns whether such a message was seen.
+   */
+  async waitForMessage(predicate: (message: ServerMessage) => boolean, timeoutMs: number): Promise<boolean> {
+    return await this.strategy.waitForMessage(predicate, timeoutMs);
+  }
+
+  /**
    * Evaluate the conversation transcript against specific criteria using an LLM
    *
    * @param criteria - Evaluation criteria (e.g., "The agent was helpful and polite")

@@ -216,6 +216,14 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
     return [...this.messages];
   }
 
+  /**
+   * Tool calls are recorded before sendMessage() resolves here, so there is
+   * never anything left to wait for.
+   */
+  waitForMessage(predicate: (message: ServerMessage) => boolean, _timeoutMs: number): Promise<boolean> {
+    return Promise.resolve(this.messages.some(predicate));
+  }
+
   getTranscriptText(): string {
     return this.messages
       .map((msg) => {

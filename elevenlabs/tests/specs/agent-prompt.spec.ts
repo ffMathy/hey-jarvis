@@ -1,9 +1,24 @@
 import { afterAll, beforeAll, describe, it } from 'bun:test';
 import { startMcpServerForTestingPurposes, stopMcpServer } from '../../../mcp/tests/utils/mcp-server-manager.js';
+import type { ServerMessage } from '../utils/conversation-strategy.js';
 import { TestConversation } from '../utils/test-conversation.js';
 import { ensureTunnelRunning, stopTunnel } from '../utils/tunnel-manager.js';
 
 const MAX_CONVERSATION_RETRIES = 3;
+
+/** How long a tool call may take to surface after the agent has finished speaking. */
+const TOOL_CALL_TIMEOUT_MS = 45000;
+
+const RELEVANT_TOOL_NAME_FRAGMENTS = ['weather', 'home_assistant', 'route'];
+
+function isRelevantToolCall(message: ServerMessage): boolean {
+  if (message.type !== 'mcp_tool_call') {
+    return false;
+  }
+
+  const toolName = message.mcp_tool_call.tool_name.toLowerCase();
+  return RELEVANT_TOOL_NAME_FRAGMENTS.some((fragment) => toolName.includes(fragment));
+}
 
 /**
  * LLM-based conversation tests are inherently non-deterministic.
@@ -100,20 +115,20 @@ describe('Agent Prompt Specifications', () => {
             await conversation.sendMessage("What's the weather like right now?");
 
             // Verify a tool was called — the agent may call weather tools directly
-            // or use the routePromptWorkflow which internally dispatches to weather
-            const messages = conversation.getMessages();
-            const allToolCalls = messages.filter((m) => m.type === 'mcp_tool_call');
-            const relevantToolCalls = allToolCalls.filter(
-              (msg) =>
-                msg.mcp_tool_call.tool_name.toLowerCase().includes('weather') ||
-                msg.mcp_tool_call.tool_name.toLowerCase().includes('home_assistant') ||
-                msg.mcp_tool_call.tool_name.toLowerCase().includes('route'),
-            );
+            // or use the routePromptWorkflow which internally dispatches to weather.
+            // The agent speaks before its tool finishes, so sendMessage() can return
+            // while the call is still in flight: wait for it instead of sampling the
+            // messages received so far.
+            const calledRelevantTool = await conversation.waitForMessage(isRelevantToolCall, TOOL_CALL_TIMEOUT_MS);
 
-            if (relevantToolCalls.length === 0) {
+            if (!calledRelevantTool) {
+              const messages = conversation.getMessages();
+              const allToolCalls = messages.filter((m) => m.type === 'mcp_tool_call');
               throw new Error(
                 `Expected weather, home assistant, or routing tool to be called, but no relevant tool calls found in messages. ` +
-                  `All tool calls: [${allToolCalls.map((m) => m.mcp_tool_call.tool_name).join(', ')}]`,
+                  `All tool calls: [${allToolCalls.map((m) => m.mcp_tool_call.tool_name).join(', ')}]\n` +
+                  `Message types received: [${messages.map((m) => m.type).join(', ')}]\n` +
+                  `Transcript:\n${conversation.getTranscriptText()}`,
               );
             }
 

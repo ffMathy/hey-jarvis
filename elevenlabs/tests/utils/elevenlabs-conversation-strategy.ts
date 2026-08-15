@@ -254,6 +254,23 @@ export class ElevenLabsConversationStrategy implements ConversationStrategy {
     return [...this.messages];
   }
 
+  /**
+   * Waits until a message matching the predicate has been received.
+   * sendMessage() returns once the stream falls quiet, which the agent can do
+   * while a tool is still running server-side, so events worth asserting on may
+   * only arrive afterwards.
+   */
+  async waitForMessage(predicate: (message: ServerMessage) => boolean, timeoutMs: number): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    while (!this.messages.some(predicate)) {
+      if (Date.now() >= deadline) {
+        return false;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    return true;
+  }
+
   getTranscriptText(): string {
     return this.messages
       .map((msg) => {
