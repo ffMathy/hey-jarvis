@@ -43,10 +43,13 @@ fi
 # Priority 3: Fall back to 1Password CLI
 echo "Missing environment variables, so falling back to 1Password CLI: ${missing_vars[*]}..."
 
-# Check if 1Password CLI is signed in
-op account get &> /dev/null
-if [ $? -ne 0 ]; then
-    echo "❌ 1Password CLI is not signed in - run: eval \$(op signin)"
+# Check that the 1Password CLI can authenticate. A service account token works
+# non-interactively and has no "account" to get, so `op account get` is only a
+# meaningful check when no token is present.
+if [ -z "${OP_SERVICE_ACCOUNT_TOKEN:-}" ] && ! op account get &> /dev/null; then
+    echo "❌ 1Password CLI is not authenticated. Either:"
+    echo "   - interactive:  eval \$(op signin)"
+    echo "   - unattended:   export OP_SERVICE_ACCOUNT_TOKEN=<token>"
     exit 1
 fi
 
