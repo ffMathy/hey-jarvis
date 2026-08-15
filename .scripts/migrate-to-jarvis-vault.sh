@@ -166,6 +166,15 @@ for item in "${MOVE_ITEMS[@]}"; do
   else
     echo "⚠️  Could not move '$item' — handle it manually"
     [ -n "$move_err" ] && printf '       %s\n' "$move_err"
+    # Items with an ssoLogin field (a "Sign in with Google/Apple" login) fail the
+    # CLI's item validator on move. The apps use a different path and move fine.
+    case "$move_err" in
+      *"unsupported field type"*)
+        echo "       ↳ The CLI cannot re-validate this item, so it can only be moved"
+        echo "         in the 1Password app or on 1password.com: drag '$item' into"
+        echo "         the '$DST' vault, then re-run this script to verify."
+        ;;
+    esac
   fi
 done
 
