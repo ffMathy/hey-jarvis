@@ -1,8 +1,34 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ACTION="$1" # compile | upload | clean
+# Usage: invoke-esphome.sh <action> [extra esphome args...]
+#   action: compile | upload | run | logs | clean
+#
+# Set ESPHOME_DEVICE to target a specific port instead of ESPHome's auto-detect,
+# e.g. ESPHOME_DEVICE=/dev/ttyACM0 for a USB-attached device, or an IP/hostname
+# for OTA. Under WSL the device must first be attached with usbipd-win — see
+# .scripts/setup-wsl.sh.
+if [ $# -eq 0 ]; then
+	echo "❌ Usage: invoke-esphome.sh <compile|upload|run|logs|clean> [extra esphome args...]"
+	exit 1
+fi
+ACTION="$1"
+shift
+EXTRA_ARGS=("$@")
 YAML_FILE="home-assistant-voice.elevenlabs.yaml"
+
+# Prefer a standalone `esphome` binary (uv/pipx install it that way, on a Python
+# new enough for current ESPHome). Fall back to the system interpreter.
+if command -v esphome > /dev/null 2>&1; then
+	ESPHOME_CMD=(esphome)
+elif python3 -c 'import esphome' > /dev/null 2>&1; then
+	ESPHOME_CMD=(python3 -m esphome)
+else
+	echo "❌ ESPHome is not installed."
+	echo "   WSL/Linux: bash .scripts/setup-wsl.sh   (installs it on Python 3.12 via uv)"
+	echo "   Otherwise: uv tool install esphome --python 3.12"
+	exit 1
+fi
 
 # Optimize ESP-IDF compilation to reduce memory usage
 # Single-threaded compilation and no debug symbols reduces peak memory consumption
@@ -25,4 +51,15 @@ while IFS='=' read -r name value; do
 	fi
 done < <(env)
 
-python3 -m esphome "${SUB_ARGS[@]}" "$ACTION" "$YAML_FILE"
+# --device is a per-command flag, so it belongs after the YAML file.
+if [ -n "${ESPHOME_DEVICE:-}" ]; then
+	case "$ACTION" in
+		upload | run | logs)
+			echo "ℹ️  Targeting device: $ESPHOME_DEVICE"
+			EXTRA_ARGS+=("--device" "$ESPHOME_DEVICE")
+			;;
+	esac
+fi
+
+set -x
+"${ESPHOME_CMD[@]}" "${SUB_ARGS[@]}" "$ACTION" "$YAML_FILE" "${EXTRA_ARGS[@]}"
