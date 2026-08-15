@@ -49,7 +49,15 @@ COPY_ITEMS=(Google Microsoft Bilkatogo WiFi)
 
 # --- guards -----------------------------------------------------------------
 dry_run_flags=()
-[ -n "${DRY_RUN:-}" ] && dry_run_flags=(--dry-run)
+mark="✅"
+verb_create="Created"
+verb_update="Updated"
+if [ -n "${DRY_RUN:-}" ]; then
+  dry_run_flags=(--dry-run)
+  mark="🔍"
+  verb_create="Would create"
+  verb_update="Would update"
+fi
 
 [ -f "${ENV_FILES[0]}" ] || { echo "❌ Run this from the repo root."; exit 1; }
 
@@ -189,10 +197,10 @@ for item in "${COPY_ITEMS[@]}"; do
 
   if op item get "$item" --vault "$DST" > /dev/null 2>&1; then
     printf '%s' "$payload" | op item edit "$item" --vault "$DST" "${dry_run_flags[@]}" > /dev/null \
-      && echo "✅ Updated '$item' in $DST ($count fields; original left in $SRC)"
+      && echo "$mark ${verb_update} '$item' in $DST ($count fields; original left in $SRC)"
   else
     printf '%s' "$payload" | op item create --vault "$DST" "${dry_run_flags[@]}" - > /dev/null \
-      && echo "✅ Created '$item' in $DST ($count fields; original left in $SRC)"
+      && echo "$mark ${verb_create} '$item' in $DST ($count fields; original left in $SRC)"
   fi
   unset fields payload count
 done
