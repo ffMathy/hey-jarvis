@@ -202,10 +202,14 @@ describe('Ollama Mastra Agent Integration', () => {
 
 describe('Ollama Provider Error Handling', () => {
   it('should handle connection errors gracefully', async () => {
-    // Create a provider pointing at a host that doesn't exist
+    // Point at a closed port on loopback rather than an unresolvable hostname.
+    // A bogus hostname makes the test hostage to DNS: under WSL an NXDOMAIN takes
+    // ~20s to come back, so the connection never fails within the 10s budget and
+    // the test times out instead of asserting. Loopback needs no DNS and refuses
+    // immediately (~2ms), while still producing the connection error under test.
     const { createOllama } = await import('ai-sdk-ollama');
     const invalidOllama = createOllama({
-      baseURL: 'http://invalid-host-that-does-not-exist:9999',
+      baseURL: 'http://127.0.0.1:9',
     });
 
     const model = invalidOllama('qwen3:0.6b');
