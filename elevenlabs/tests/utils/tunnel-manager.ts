@@ -4,6 +4,8 @@ import { retryWithBackoff } from '../../../mcp/tests/utils/retry-with-backoff.js
 
 let tunnelProcess: ChildProcess | null = null;
 
+const TUNNEL_REQUEST_TIMEOUT_MS = 10000;
+
 /**
  * Kills all existing cloudflared processes
  */
@@ -31,29 +33,37 @@ async function isLocalMcpServerHealthy(): Promise<boolean> {
 }
 
 /**
- * Checks if the cloudflared tunnel is already running
- * A 401 response means the tunnel is working but requires JWT authentication
+ * Checks if the cloudflared tunnel actually serves the MCP endpoint.
  */
 async function isTunnelRunning(): Promise<boolean> {
   return await isMcpServerRunning({
     url: `${process.env.HEY_JARVIS_CLOUDFLARED_TUNNEL_URL!}/api/mcp`,
+    healthTimeoutMs: TUNNEL_REQUEST_TIMEOUT_MS,
   });
 }
 
 /**
- * Checks tunnel connectivity via health endpoint (doesn't require JWT)
+ * Checks tunnel connectivity via health endpoint (doesn't require JWT).
+ * Cloudflare answers with its own error pages while the tunnel is down, so the
+ * body has to confirm our MCP server is the one on the other end.
  */
 async function checkTunnelHealth(): Promise<{ ok: boolean; status?: number; error?: string }> {
   const healthUrl = `${process.env.HEY_JARVIS_CLOUDFLARED_TUNNEL_URL}/health`;
   try {
     const response = await fetch(healthUrl, {
       method: 'GET',
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(TUNNEL_REQUEST_TIMEOUT_MS),
     });
-    if (response.ok) {
-      return { ok: true as const, status: response.status };
+    if (!response.ok) {
+      return { ok: false as const, status: response.status, error: `HTTP ${response.status}` };
     }
-    return { ok: false as const, status: response.status, error: `HTTP ${response.status}` };
+
+    const data = (await response.json()) as { status?: string };
+    if (data.status !== 'healthy') {
+      return { ok: false as const, status: response.status, error: `Unexpected health payload: ${data.status}` };
+    }
+
+    return { ok: true as const, status: response.status };
   } catch (error) {
     return {
       ok: false as const,
@@ -63,8 +73,9 @@ async function checkTunnelHealth(): Promise<{ ok: boolean; status?: number; erro
 }
 
 /**
- * Ensures the cloudflared tunnel is running before tests start.
- * If not running, starts it in the background.
+ * Ensures the cloudflared tunnel is running before tests start: replaces any
+ * existing connector with one of our own and waits until the tunnel actually
+ * serves the local MCP server.
  * Environment variables are expected to be already available via op run.
  */
 export async function ensureTunnelRunning(): Promise<void> {
@@ -81,12 +92,10 @@ export async function ensureTunnelRunning(): Promise<void> {
     console.log('✅ Local MCP server is healthy at http://localhost:4112');
   }
 
-  // Check if tunnel is already running
-  if (await isTunnelRunning()) {
-    console.log('✅ Cloudflared tunnel is already running');
-    return;
-  }
-
+  // No connector survives killExistingTunnels(), so the tunnel always has to be
+  // started here. Anything still answering on the hostname would be a connector
+  // on another machine, which would route the agent away from the MCP server
+  // these tests just started.
   console.log('🌐 Starting cloudflared tunnel...');
   console.log(`🌐 Tunnel URL: ${process.env.HEY_JARVIS_CLOUDFLARED_TUNNEL_URL}`);
 

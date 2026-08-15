@@ -57,7 +57,9 @@ describe('Agent Prompt Specifications', () => {
     }
     await startMcpServerForTestingPurposes();
     await ensureTunnelRunning();
-  }, 90000);
+    // Starting the MCP server and waiting for cloudflared to register with
+    // Cloudflare's edge can each take tens of seconds on a cold CI runner.
+  }, 240000);
 
   // Clean up after all tests
   afterAll(() => {
