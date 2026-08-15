@@ -54,7 +54,13 @@ ATTEMPTS="${ATTEMPTS:-3}"
 LISTEN_SECONDS="${LISTEN_SECONDS:-15}"
 CONVERSATION_MAX="${CONVERSATION_MAX:-90}"
 FETCH_TIMEOUT="${FETCH_TIMEOUT:-180}"
-GEMINI_MODEL="${GEMINI_MODEL:-gemini-flash-latest}"
+# A pro model, deliberately, even though the rest of the repo uses gemini-flash-latest.
+# Verified against a reference clip and a copy of it with eight 90 ms dropouts injected:
+# flash called BOTH faithful with high confidence, which would have made this test
+# useless — it would report "no defects" forever while the device stuttered. The pro
+# model passed the clean clip and found exactly 8 defects in the glitched one, quoting
+# the affected word boundaries. Do not downgrade this without re-running that check.
+GEMINI_MODEL="${GEMINI_MODEL:-gemini-pro-latest}"
 RECORD_SOURCE="${RECORD_SOURCE:-RDPSource}"
 KEEP_AUDIO="${KEEP_AUDIO:-1}"
 
@@ -443,6 +449,35 @@ ffmpeg -loglevel error -y -i "$ROOM_RAW" -ac 1 -ar 16000 -sample_fmt s16 "$ROOM_
 [ -n "${HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY:-}" ] \
   || fail "HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY is not set; cannot compare the audio."
 
+# Deterministic corroboration. Dropouts show up as extra silent gaps, and counting
+# them needs no model at all — so a verdict that disagrees with this is worth
+# distrusting. It cannot see missing words or wrong pacing, which is why it supports
+# the comparison rather than replacing it.
+#
+# Peak-normalise before counting. The room recording is ~25 dB quieter than the
+# reference, so against a fixed floor far more of it reads as silence: measured
+# unnormalised, a clean capture already showed 31 more gaps than the reference, which
+# would fire this warning on every good run. Normalised, a clean capture matches the
+# reference exactly (delta 0) while the glitched one stands out (delta 10).
+count_gaps() {
+  local f="$1" measured gain tmp
+  tmp="${WORK_DIR}/gapnorm-$(basename "$f")"
+  measured="$(ffmpeg -i "$f" -af volumedetect -f null /dev/null 2>&1 \
+    | grep -a -oE 'max_volume: -?[0-9.]+' | head -1 | grep -oE '\-?[0-9.]+')"
+  if [ -n "$measured" ]; then
+    gain="$(awk -v m="$measured" 'BEGIN { printf "%.1f", -1.0 - m }')"
+    ffmpeg -loglevel error -y -i "$f" -af "volume=${gain}dB" -ac 1 -ar 16000 "$tmp" 2> /dev/null
+  else
+    cp -f "$f" "$tmp"
+  fi
+  ffmpeg -i "$tmp" -af "silencedetect=noise=${SILENCE_FLOOR:--45}dB:d=0.05" -f null /dev/null 2>&1 \
+    | grep -ac "silence_start" || true
+}
+ref_gaps="$(count_gaps "$REF_WAV")"
+room_gaps="$(count_gaps "$ROOM_WAV")"
+gap_delta=$((room_gaps - ref_gaps))
+echo "   gaps:    reference ${ref_gaps}, room ${room_gaps} (delta ${gap_delta})"
+
 echo "🧠 Comparing with ${GEMINI_MODEL}..."
 
 # Describe the two inputs and demand quoted evidence. Asking "did playback degrade?"
@@ -561,6 +596,18 @@ if [ "$(printf '%s' "$verdict" | jq -r '.defects_found')" = "true" ]; then
   echo "   reference: $REF_WAV"
   echo "   room:      $ROOM_WAV"
   exit 2
+fi
+
+
+# The gap count is model-independent, so a clean verdict alongside a lot of extra
+# silence is a signal the comparison may have missed something rather than a pass.
+if [ "$gap_delta" -ge 5 ]; then
+  echo
+  echo "⚠️  No defects reported, but the room recording has ${gap_delta} more silent"
+  echo "   gaps than the reference. That is what dropouts look like, so treat this"
+  echo "   pass with suspicion and listen yourself:"
+  echo "     reference: $REF_WAV"
+  echo "     room:      $ROOM_WAV"
 fi
 
 echo
