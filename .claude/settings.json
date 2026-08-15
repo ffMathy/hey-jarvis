@@ -9,7 +9,16 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/hooks/block-op-env.sh"
+            "command": "node .claude/hooks/block-op-env.js"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/require-timeout.js"
           }
         ]
       }
