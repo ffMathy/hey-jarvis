@@ -23,10 +23,17 @@
 #
 # Rehearse it first — this previews every write and moves/creates nothing:
 #   DRY_RUN=1 bash .scripts/migrate-to-jarvis-vault.sh
+#
+# On a Families account the personal vault is called "Private", not "Personal":
+#   SRC=Private DRY_RUN=1 bash .scripts/migrate-to-jarvis-vault.sh
 set -uo pipefail
 
-SRC="Personal"
-DST="Jarvis"
+# The name of your personal vault depends on the account type: "Personal" on an
+# Individual account, "Private" on a Families account, "Employee" on Business.
+# Check with `op vault list` and override if needed:
+#   SRC=Private bash .scripts/migrate-to-jarvis-vault.sh
+SRC="${SRC:-Personal}"
+DST="${DST:-Jarvis}"
 ENV_FILES=(mcp/op.env elevenlabs/op.env home-assistant-voice-firmware/op.env)
 
 # Single-purpose service items: no human login on them, safe to relocate.
@@ -59,6 +66,16 @@ if [ -n "${OP_SERVICE_ACCOUNT_TOKEN:-}" ]; then
 fi
 
 op account get > /dev/null 2>&1 || { echo "❌ Not signed in - run: eval \$(op signin)"; exit 1; }
+
+# Fail fast on a wrong source vault rather than reporting 32 confusing lookup failures.
+op vault get "$SRC" > /dev/null 2>&1 || {
+  echo "❌ Source vault '$SRC' not found on this account."
+  echo "   The personal vault is 'Personal' on Individual accounts, 'Private' on"
+  echo "   Families, and 'Employee' on Business. Vaults available here:"
+  op vault list 2> /dev/null | sed 's/^/     /'
+  echo "   Re-run with:  SRC=<name> bash .scripts/migrate-to-jarvis-vault.sh"
+  exit 1
+}
 grep -q "op://$DST/" "${ENV_FILES[0]}" || { echo "❌ op.env does not reference op://$DST/ — wrong branch?"; exit 1; }
 
 all_refs() { grep -ho "op://$DST/[^\"]*" "${ENV_FILES[@]}" | sort -u; }
