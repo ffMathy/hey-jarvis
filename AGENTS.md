@@ -17,7 +17,7 @@ This project includes specialized [GitHub Copilot Agent Skills](https://docs.git
 - **AI Framework**: Mastra (V1)
 - **LLM Provider**: Google Gemini (gemini-flash-latest)
 - **Linting**: Biome
-- **Testing**: Jest
+- **Testing**: `bun test`
 
 ## Repository Structure
 
@@ -84,6 +84,40 @@ A brand-new release (< 7 days old) is refused by design. Wait it out, or — if 
 security fix makes waiting worse than installing — add the package to
 `minimumReleaseAgeExcludes` in `bunfig.toml` in the same pull request, so the
 exception is reviewed.
+
+The cooldown also applies when re-resolving, so a plain `bun update` fails while
+any pinned version is younger than 7 days ("failed to resolve"). For a one-off,
+relax it on the command line — `bun update --minimum-release-age=86400` — and
+check the resulting `bun.lock` diff before committing it.
+
+### Overriding a vulnerable transitive dependency
+
+When a package deep in the tree has an advisory but its parent still requests a
+vulnerable range, pin it forward in the `overrides` block of `package.json`.
+Two things to know before adding one:
+
+- **Bun only honors flat overrides.** The npm nested form
+  (`{"parent": {"child": "1.2.3"}}`) is parsed and then silently ignored, so a
+  nested entry looks like a fix while doing nothing. Always re-run
+  `bun run audit` to confirm an override actually took effect.
+- **An override applies to every copy in the tree.** If two majors of a package
+  are installed, all consumers get the one version you name. Check the consumers
+  with `bun why <package>` first — forcing a major on a consumer that expects the
+  old API breaks it at runtime, not at install time.
+
+Advisories that cannot be fixed this way are listed below with the consumer that
+blocks them, so nobody has to re-derive it:
+
+| Package           | Blocked by                                                        |
+| ----------------- | ----------------------------------------------------------------- |
+| `brace-expansion` | Only safe version is ESM-only; `minimatch@3` (via `serve-handler`) is CJS |
+| `js-yaml`         | `gray-matter` calls `safeLoad`/`safeDump`, removed in v4            |
+| `minimatch`       | `serve-handler` calls the CJS export as a function; v9+ exports an object |
+| `path-to-regexp`  | Same — `serve-handler` calls `pathToRegExp(...)` directly           |
+| `@ai-sdk/provider-utils` | The vulnerable copy is a v3 dependency; the fix is a v4 API break |
+
+Three of those trace to `serve-handler` ← `serve` ← the `mastra` CLI, so a single
+upstream bump there would clear them.
 
 ### Install scripts are never trusted
 

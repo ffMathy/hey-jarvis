@@ -56,13 +56,16 @@ jobs:
           fi
           echo "✅ bun.lock matches package.json"
 
-      # Reports advisories in the pinned tree. Deliberately non-blocking for
-      # now: the tree already carries a backlog of transitive advisories
-      # (139 at the time of writing, mostly reachable only through mastra,
-      # jest and the OpenTelemetry SDK). The dependency-review job below is
-      # what stops *new* ones from being introduced; make this step blocking
-      # once the existing backlog is cleared.
-      - name: Audit dependencies for known vulnerabilities
+      # The tree carries no critical advisories, so any new one is a regression
+      # introduced by the change under review. This gate blocks.
+      - name: Fail on critical advisories
+        run: bun audit --audit-level=critical
+
+      # What remains is high/moderate and transitive, blocked on upstream
+      # packages that still pin vulnerable ranges — see AGENTS.md → Supply
+      # Chain Security for why each one cannot be forced. Reported, not gated;
+      # the dependency-review job below blocks *new* high-severity additions.
+      - name: Report remaining advisories
         continue-on-error: true
         run: bun audit --audit-level=high
 

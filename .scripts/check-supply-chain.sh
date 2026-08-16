@@ -84,7 +84,7 @@ fi
 unpinned=$(git ls-files -- 'package.json' '*/package.json' | while read -r manifest; do
 	bun --eval "
 		const manifest = require('./${manifest}');
-		for (const section of ['dependencies', 'devDependencies', 'optionalDependencies']) {
+		for (const section of ['dependencies', 'devDependencies', 'optionalDependencies', 'overrides']) {
 			for (const [name, range] of Object.entries(manifest[section] ?? {})) {
 				if (!/^[0-9]/.test(range)) console.log('${manifest}: ' + section + '.' + name + ' = ' + range);
 			}
