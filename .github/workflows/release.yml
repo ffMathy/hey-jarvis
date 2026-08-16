@@ -34,7 +34,7 @@ jobs:
     steps:
       - name: Release using "Release Please"
         id: release
-        uses: googleapis/release-please-action@v4.4.1
+        uses: googleapis/release-please-action@v5.0.0
         with:
           config-file: .github/release-please-config.json
           manifest-file: .github/.release-please-manifest.json
@@ -62,7 +62,7 @@ jobs:
           swap-storage: false    # Skip swap removal to save time
 
       - name: Checkout
-        uses: actions/checkout@v6.1.0
+        uses: actions/checkout@v7.0.1
         with:
           # The deploy runs project code and container builds; don't leave a
           # usable GitHub token behind in .git/config.
@@ -72,7 +72,7 @@ jobs:
         run: echo "REPO_OWNER_LC=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
 
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3.7.0
+        uses: docker/login-action@v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}

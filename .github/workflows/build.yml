@@ -49,7 +49,7 @@ jobs:
           swap-storage: false    # Skip swap removal to save time
 
       - name: Checkout
-        uses: actions/checkout@v6.1.0
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0  # Fetch all history for turbo affected detection to work
           # The build runs untrusted pull request code; never leave a usable
@@ -63,7 +63,7 @@ jobs:
         run: echo "REPO_OWNER_LC=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
 
       - name: Restore Turborepo cache
-        uses: actions/cache@v5.1.0
+        uses: actions/cache@v6.1.0
         with:
           path: .turbo
           key: turbo-cache-${{ runner.os }}-${{ github.sha }}
@@ -114,7 +114,7 @@ jobs:
     steps:
       - name: Dependabot metadata
         id: metadata
-        uses: dependabot/fetch-metadata@v2.5.0
+        uses: dependabot/fetch-metadata@v3.1.0
         with:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
 
