@@ -420,6 +420,21 @@ void ElevenLabsStream::stop_stream() {
     ESP_LOGD(TAG, "STOP_STREAM: Microphone stopped");
   }
   
+  // Stop the speaker so the next conversation starts from an empty buffer.
+  //
+  // This only reset the bookkeeping below and left the speaker running, so whatever
+  // was still queued -- plus the resampler's filter state -- carried into the next
+  // conversation. The next reply then appended behind that residue and its opening
+  // syllable came out doubled: "Na- Naturally". It was intermittent, roughly one run
+  // in ten, which is exactly how a leftover-buffer bug behaves: it depends on how much
+  // was still queued when the previous conversation happened to end.
+  //
+  // The conversation is over, so discarding anything still queued is correct.
+  if (this->elevenlabs_speaker_ != nullptr && this->elevenlabs_speaker_->is_running()) {
+    ESP_LOGD(TAG, "STOP_STREAM: Stopping speaker to discard leftover audio");
+    this->elevenlabs_speaker_->stop();
+  }
+
   // Reset speaker state completely
   this->speaker_is_active_ = false;
   this->speaker_start_time_ = 0;
