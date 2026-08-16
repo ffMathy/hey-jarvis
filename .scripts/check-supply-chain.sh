@@ -99,17 +99,44 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 4. GitHub Actions are pinned to immutable commit SHAs.
+# 4. Every GitHub Action is pinned to an immutable commit SHA by the lockfile.
 # ---------------------------------------------------------------------------
-unpinned_actions=$(git ls-files -- '.github/workflows/*.yml' '.github/workflows/*.yaml' |
-	xargs grep -nE '^[[:space:]]*(-[[:space:]]*)?uses:' 2>/dev/null |
-	grep -vE 'uses:[[:space:]]*\./' |
-	grep -vE 'uses:[[:space:]]*[^@]+@[0-9a-f]{40}([[:space:]]|$|#)' || true)
-if [ -n "$unpinned_actions" ]; then
-	fail "GitHub Actions must be pinned to a full commit SHA:"
-	echo "$unpinned_actions" | sed 's/^/     /'
+# The pinning lives in .github/workflows/actions.lock, not inline in the workflows.
+# GitHub resolves each `uses:` through that lockfile, so a tag reference still runs
+# the exact commit recorded there, and a hijacked tag is caught before it runs.
+#
+# This check used to demand a bare SHA on every `uses:` line instead. That is
+# actively worse under the lockfile model: `gh actions-lock` reports a bare SHA as
+# "pinned to a bare SHA without a symbolic ref — weakens supply-chain traceability",
+# because the SHA alone says nothing about which release it is. Worse, rewriting the
+# workflows to SHAs desynchronised them from the lockfile, which GitHub then rejected
+# outright with "Invalid lockfile: the lockfile could not be validated" -- a startup
+# failure that stopped every workflow from running at all.
+#
+# So verify what actually matters: the lockfile exists, and it accounts for every
+# action referenced by every workflow. Deliberately offline and dependency-free --
+# `gh actions-lock --no-fix` is the richer check, but it needs the extension and
+# network access, and this script must stay runnable anywhere.
+actions_lock='.github/workflows/actions.lock'
+if [ ! -f "$actions_lock" ]; then
+	fail "Missing $actions_lock — generate it with: gh actions-lock"
 else
-	pass "All GitHub Actions are pinned to commit SHAs"
+	unlocked_actions=$(git ls-files -- '.github/workflows/*.yml' '.github/workflows/*.yaml' |
+		xargs grep -nE '^[[:space:]]*(-[[:space:]]*)?uses:' 2>/dev/null |
+		grep -vE 'uses:[[:space:]]*\./' |
+		while IFS= read -r line; do
+			# "path:lineno:  uses: owner/repo@ref  # comment" -> "owner/repo@ref"
+			ref=$(printf '%s\n' "$line" | sed -E 's/.*uses:[[:space:]]*//; s/[[:space:]]*#.*$//; s/[[:space:]]*$//')
+			# A ref already pinned to a bare SHA needs no lockfile entry to be immutable.
+			printf '%s\n' "$ref" | grep -qE '@[0-9a-f]{40}$' && continue
+			grep -qF "'${ref}'" "$actions_lock" || printf '%s\n' "$line"
+		done)
+	if [ -n "$unlocked_actions" ]; then
+		fail "GitHub Actions missing from $actions_lock (run: gh actions-lock):"
+		echo "$unlocked_actions" | sed 's/^/     /'
+	else
+		pass "All GitHub Actions are pinned via $actions_lock"
+	fi
 fi
 
 # ---------------------------------------------------------------------------
