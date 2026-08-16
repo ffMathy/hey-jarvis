@@ -44,6 +44,29 @@ static const uint32_t SPEAKER_START_TIMEOUT_MS = 500;
 // is well under a second; this only stops a stuck one from delaying the reply.
 static const uint32_t ACTIVATION_CHIME_TIMEOUT_MS = 2000;
 
+// Settle time after the chime reports finished, to let the shared i2s peripheral drain
+// before reply audio is queued behind it.
+static const uint32_t I2S_DRAIN_SETTLE_MS = 200;
+
+// How much decoded audio to hold before playback starts.
+//
+// Must exceed a single frame or it buys nothing. The first frame measured 18192 bytes,
+// so an earlier 16000-byte threshold was satisfied immediately, flushed on frame one,
+// and left no cushion at all -- the gap inside the opening word persisted unchanged.
+//
+// 48000 bytes is 1.5s at 16 kHz 16-bit mono and spans two to three frames, so playback
+// only begins once there is enough queued to ride out the wait for the next one.
+// ElevenLabs then streams faster than real time and the buffer stays ahead.
+static const uint32_t REPLY_PREBUFFER_BYTES = 48000;
+
+// Hard ceiling on how long audio may sit in the prebuffer. Whatever is held is released
+// once this elapses, even if the size threshold was never met, so a short turn can never
+// be swallowed. Comfortably under the point where a listener notices a delayed reply.
+static const uint32_t REPLY_PREBUFFER_MAX_MS = 400;
+
+// How long to let a short reply finish playing before the speaker is stopped.
+static const uint32_t SPEAKER_DRAIN_TIMEOUT_MS = 3000;
+
 // Helper to convert StreamState enum to string
 static const char* stream_state_to_string(StreamState state) {
   switch (state) {
@@ -97,6 +120,61 @@ bool ElevenLabsStream::decode_and_play_base64_audio(const char* base64_data) {
   
   if (psram_after_decode < 1024 * 1024) {
     ESP_LOGW(TAG, "DECODE_B64: LOW MEMORY WARNING: PSRAM Free=%zuKB", psram_after_decode / 1024);
+  }
+
+  // Build a cushion before playback starts.
+  //
+  // The opening of a reply was unreliable in a way that ordering fixes could not
+  // settle: sometimes the first syllable was chopped ("urally"), sometimes doubled
+  // ("Na- Naturally"), sometimes a gap between the first two words. Starting the
+  // speaker earlier, waiting for it to run, waiting for the activation chime and
+  // reapplying the stream info each conversation all reduced it without removing it.
+  //
+  // The cause is not the ordering, it is that the first fragment plays into a pipeline
+  // with nothing behind it, so any scheduling jitter in the resampler or i2s is
+  // immediately audible. Later audio never suffers because ElevenLabs sends faster
+  // than real time and the buffer stays full.
+  //
+  // So hold the first REPLY_PREBUFFER_BYTES back and release them together. Playback
+  // starts a fraction of a second later with a cushion already in hand.
+  if (this->reply_prebuffering_) {
+    if (this->reply_prebuffer_.empty()) {
+      this->reply_prebuffer_started_ms_ = millis();
+    }
+    this->reply_prebuffer_.insert(this->reply_prebuffer_.end(), decoded, decoded + decoded_len);
+    heap_caps_free(decoded);
+
+    // Release on size OR on age, whichever comes first.
+    //
+    // Size alone is not safe: a turn whose audio totals less than the threshold would
+    // be held and never played. That is not hypothetical -- a 48000-byte threshold did
+    // exactly this, holding 31836 bytes to the end of the turn, and the device fell
+    // silent for whole replies. The deadline guarantees audio always reaches the
+    // speaker, so the threshold only decides how much cushion a big reply gets.
+    uint32_t held_ms = millis() - this->reply_prebuffer_started_ms_;
+    if (this->reply_prebuffer_.size() < REPLY_PREBUFFER_BYTES && held_ms < REPLY_PREBUFFER_MAX_MS) {
+      ESP_LOGD(TAG, "DECODE_B64: Prebuffering, %zu/%u bytes held for %ums", this->reply_prebuffer_.size(),
+               REPLY_PREBUFFER_BYTES, held_ms);
+      return true;
+    }
+
+    // Cushion reached: swap the accumulated audio in and fall through to write it.
+    ESP_LOGD(TAG, "DECODE_B64: Prebuffer full at %zu bytes; starting playback",
+             this->reply_prebuffer_.size());
+    this->reply_prebuffering_ = false;
+    decoded_len = this->reply_prebuffer_.size();
+    decoded = static_cast<uint8_t*>(heap_caps_malloc(decoded_len, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    if (decoded == nullptr) {
+      decoded = static_cast<uint8_t*>(heap_caps_malloc(decoded_len, MALLOC_CAP_8BIT));
+    }
+    if (decoded == nullptr) {
+      ESP_LOGE(TAG, "DECODE_B64: Could not allocate %zu bytes to flush the prebuffer", decoded_len);
+      this->reply_prebuffer_.clear();
+      return false;
+    }
+    memcpy(decoded, this->reply_prebuffer_.data(), decoded_len);
+    this->reply_prebuffer_.clear();
+    this->reply_prebuffer_.shrink_to_fit();
   }
 
   // Make sure the speaker is actually running before handing it the first chunk.
@@ -434,10 +512,31 @@ void ElevenLabsStream::stop_stream() {
   // was still queued when the previous conversation happened to end.
   //
   // The conversation is over, so discarding anything still queued is correct.
+  // Release anything still held in the prebuffer first. A reply shorter than the
+  // prebuffer threshold would otherwise never be played at all -- held back waiting
+  // for a cushion that never arrives, then discarded here.
+  if (this->elevenlabs_speaker_ != nullptr && !this->reply_prebuffer_.empty()) {
+    ESP_LOGD(TAG, "STOP_STREAM: Flushing %zu prebuffered bytes before stopping",
+             this->reply_prebuffer_.size());
+    this->elevenlabs_speaker_->play(this->reply_prebuffer_.data(), this->reply_prebuffer_.size(),
+                                    pdMS_TO_TICKS(SPEAKER_WRITE_WAIT_MS));
+    uint32_t drain_deadline = millis() + SPEAKER_DRAIN_TIMEOUT_MS;
+    while (this->elevenlabs_speaker_->has_buffered_data() && millis() < drain_deadline) {
+      delay(10);
+    }
+  }
+
   if (this->elevenlabs_speaker_ != nullptr && this->elevenlabs_speaker_->is_running()) {
     ESP_LOGD(TAG, "STOP_STREAM: Stopping speaker to discard leftover audio");
     this->elevenlabs_speaker_->stop();
   }
+
+  // Arm the prebuffer for the next reply. Without this the next conversation would
+  // hold its opening audio behind a threshold that has already been met and never
+  // release it.
+  this->reply_prebuffer_.clear();
+  this->reply_prebuffer_.shrink_to_fit();
+  this->reply_prebuffering_ = true;
 
   // Reset speaker state completely
   this->speaker_is_active_ = false;
@@ -633,9 +732,11 @@ void ElevenLabsStream::parse_json_message_from_buffer(uint8_t *buffer, size_t le
             delay(100); // Wait until the speaker is stopped
           }
           
-          // Start the speaker early for immediate readiness
-          ESP_LOGI(TAG, "PARSE_JSON_BUF: Starting speaker early for faster audio response");
-          this->set_speaker_stream_info_to_elevenlabs_format();
+          // The stream info is applied unconditionally just below, on every
+          // conversation. Setting it here as well meant two calls in quick succession
+          // on the first conversation after boot, and a second set_audio_stream_info()
+          // can restart a speaker that already has audio queued -- which is heard as
+          // the opening syllable played twice ("Na- Naturally"). One call, one place.
         }
 
         // Let the activation chime finish before any reply audio is queued.
@@ -661,6 +762,20 @@ void ElevenLabsStream::parse_json_message_from_buffer(uint8_t *buffer, size_t le
           if (waited) {
             ESP_LOGD(TAG, "PARSE_JSON_BUF: Waited for the activation chime to finish before playing the reply");
           }
+
+          // Then give the i2s peripheral time to actually drain.
+          //
+          // The loop above asks the RESAMPLER whether it is done, but both speakers
+          // feed one shared i2s_audio_speaker, and i2s keeps emitting for a short
+          // while after the resampler reports empty. Reply audio starting inside that
+          // window collides with the chime tail, which is heard as a gap partway
+          // through the first word -- the last artifact still failing 2 runs in 10,
+          // with an identical signature every time.
+          //
+          // There is no handle on the shared i2s device from here, so this is a fixed
+          // settle time rather than a state check. It costs the same delay on every
+          // reply, which is the price of not having something better to poll.
+          delay(I2S_DRAIN_SETTLE_MS);
         }
 
         // Bring the speaker up NOW, before any audio arrives, and do it on every
@@ -675,9 +790,21 @@ void ElevenLabsStream::parse_json_message_from_buffer(uint8_t *buffer, size_t le
         //
         // Deliberately outside the infoset_ guard above, which only fires once per
         // boot; every conversation needs a running speaker.
-        if (this->elevenlabs_speaker_ != nullptr && !this->elevenlabs_speaker_->is_running()) {
-          ESP_LOGI(TAG, "PARSE_JSON_BUF: Starting elevenlabs speaker ahead of the first audio frame");
-          this->elevenlabs_speaker_->start();
+        if (this->elevenlabs_speaker_ != nullptr) {
+          // Reapply the stream info every conversation, not just the first.
+          //
+          // stop_stream() now stops the speaker between conversations, and a stopped
+          // speaker does not necessarily retain the input rate configured for it. The
+          // original call sits inside the infoset_ guard above, which fires once per
+          // boot, so every later conversation started a speaker that had never been
+          // told the agent's format again. Reconfiguring before start() is cheap and
+          // removes the guesswork.
+          this->set_speaker_stream_info_to_elevenlabs_format();
+
+          if (!this->elevenlabs_speaker_->is_running()) {
+            ESP_LOGI(TAG, "PARSE_JSON_BUF: Starting elevenlabs speaker ahead of the first audio frame");
+            this->elevenlabs_speaker_->start();
+          }
         }
       } else {
         ESP_LOGW(TAG, "PARSE_JSON_BUF: No conversation_id in metadata");
