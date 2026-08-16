@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
-import type { GetAgentResponseModel } from '@elevenlabs/elevenlabs-js/api';
+import { ClientEvent, type GetAgentResponseModel } from '@elevenlabs/elevenlabs-js/api';
 import { Command } from 'commander';
 import { access, mkdir, readFile, writeFile } from 'fs/promises';
 import * as path from 'path';
@@ -178,6 +178,15 @@ class ElevenLabsAgentManager {
     if (config.conversationConfig?.conversation) {
       config.conversationConfig.conversation.textOnly = true;
       console.log('🔧 Setting textOnly to true for test agent');
+
+      // The socket only carries the events an agent is configured to emit, and
+      // the tests assert that MCP tools were called. Production has no such
+      // listener, so this stays a test-agent concern.
+      const clientEvents = config.conversationConfig.conversation.clientEvents ?? [];
+      if (!clientEvents.includes(ClientEvent.McpToolCall)) {
+        config.conversationConfig.conversation.clientEvents = [...clientEvents, ClientEvent.McpToolCall];
+        console.log('🔧 Adding mcp_tool_call to client events for test agent');
+      }
     }
 
     // Replace MCP server IDs with local tunnel MCP server for testing

@@ -63,37 +63,16 @@ export class TestConversation {
 
   /**
    * Poll for the tools the agent invoked until one matches, or the timeout elapses.
-   * The agent answers before its tool finishes and the history takes a moment to
-   * catch up, so the calls are not all visible the instant sendMessage() returns.
+   * The agent answers before its tool finishes, so the calls are not necessarily
+   * all in by the time sendMessage() returns.
    */
   async waitForCalledToolNames(matches: (toolName: string) => boolean, timeoutMs: number): Promise<string[]> {
     const deadline = Date.now() + timeoutMs;
-    let toolNames: string[] = [];
-    let lastError: unknown;
+    let toolNames = await this.getCalledToolNames();
 
-    while (true) {
-      const [result] = await Promise.allSettled([this.getCalledToolNames()]);
-      if (result.status === 'fulfilled') {
-        toolNames = result.value;
-        lastError = undefined;
-        if (toolNames.some(matches)) {
-          return toolNames;
-        }
-      } else {
-        // The history only becomes queryable once ElevenLabs has registered the
-        // conversation, so an early lookup can fail while it catches up.
-        lastError = result.reason;
-      }
-
-      if (Date.now() >= deadline) {
-        break;
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-    }
-
-    if (lastError) {
-      throw lastError;
+    while (!toolNames.some(matches) && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      toolNames = await this.getCalledToolNames();
     }
 
     return toolNames;
