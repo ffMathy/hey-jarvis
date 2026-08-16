@@ -1,18 +1,41 @@
 import { afterAll, beforeAll, describe, it } from 'bun:test';
 import { startMcpServerForTestingPurposes, stopMcpServer } from '../../../mcp/tests/utils/mcp-server-manager.js';
+import type { ServerMessage } from '../utils/conversation-strategy.js';
 import { TestConversation } from '../utils/test-conversation.js';
 import { ensureTunnelRunning, stopTunnel } from '../utils/tunnel-manager.js';
 
 const MAX_CONVERSATION_RETRIES = 3;
 
-/** How long a tool call may take to surface after the agent has finished speaking. */
-const TOOL_CALL_TIMEOUT_MS = 45000;
+const CONVERSATION_TIMEOUT_MS = 90000;
+
+/**
+ * How long a tool call may take to surface after the agent has finished speaking.
+ * The agent announces the routing before dispatching it, so the call itself lands
+ * well after the conversation has gone quiet.
+ */
+const TOOL_CALL_TIMEOUT_MS = 90000;
 
 const RELEVANT_TOOL_NAME_FRAGMENTS = ['weather', 'home_assistant', 'route'];
+
+/** Message types that getTranscriptText already renders. */
+const TRANSCRIPT_MESSAGE_TYPES = ['user_message', 'agent_response', 'agent_chat_response_part'];
 
 function isRelevantToolName(toolName: string): boolean {
   const lowercased = toolName.toLowerCase();
   return RELEVANT_TOOL_NAME_FRAGMENTS.some((fragment) => lowercased.includes(fragment));
+}
+
+/**
+ * Everything the socket delivered that the transcript does not show — tool calls,
+ * MCP connection status and anything else — so a missing tool call can be told
+ * apart from one the agent never made.
+ */
+function describeNonTranscriptMessages(messages: ServerMessage[]): string {
+  const details = messages
+    .filter((message) => !TRANSCRIPT_MESSAGE_TYPES.includes(message.type))
+    .map((message) => JSON.stringify(message).slice(0, 400));
+
+  return details.length > 0 ? details.join('\n') : '(none)';
 }
 
 /**
@@ -94,7 +117,7 @@ describe('Agent Prompt Specifications', () => {
           },
         );
       },
-      90000 * MAX_CONVERSATION_RETRIES,
+      CONVERSATION_TIMEOUT_MS * MAX_CONVERSATION_RETRIES,
     );
   });
 
@@ -114,9 +137,12 @@ describe('Agent Prompt Specifications', () => {
             const toolNames = await conversation.waitForCalledToolNames(isRelevantToolName, TOOL_CALL_TIMEOUT_MS);
 
             if (!toolNames.some(isRelevantToolName)) {
+              const messages = conversation.getMessages();
               throw new Error(
                 `Expected weather, home assistant, or routing tool to be called, but no relevant tool calls found. ` +
                   `All tool calls: [${toolNames.join(', ')}]\n` +
+                  `Message types received: [${messages.map((message) => message.type).join(', ')}]\n` +
+                  `Messages not in the transcript:\n${describeNonTranscriptMessages(messages)}\n` +
                   `Transcript:\n${conversation.getTranscriptText()}`,
               );
             }
@@ -129,7 +155,9 @@ describe('Agent Prompt Specifications', () => {
           },
         );
       },
-      90000 * MAX_CONVERSATION_RETRIES,
+      // This is the one test that also waits on a tool call, so it needs that
+      // budget on top of the conversation's.
+      (CONVERSATION_TIMEOUT_MS + TOOL_CALL_TIMEOUT_MS) * MAX_CONVERSATION_RETRIES,
     );
 
     it(
@@ -148,7 +176,7 @@ describe('Agent Prompt Specifications', () => {
           },
         );
       },
-      90000 * MAX_CONVERSATION_RETRIES,
+      CONVERSATION_TIMEOUT_MS * MAX_CONVERSATION_RETRIES,
     );
   });
 
@@ -169,7 +197,7 @@ describe('Agent Prompt Specifications', () => {
           },
         );
       },
-      90000 * MAX_CONVERSATION_RETRIES,
+      CONVERSATION_TIMEOUT_MS * MAX_CONVERSATION_RETRIES,
     );
 
     it(
@@ -189,7 +217,7 @@ describe('Agent Prompt Specifications', () => {
           },
         );
       },
-      90000 * MAX_CONVERSATION_RETRIES,
+      CONVERSATION_TIMEOUT_MS * MAX_CONVERSATION_RETRIES,
     );
   });
 
@@ -210,7 +238,7 @@ describe('Agent Prompt Specifications', () => {
           },
         );
       },
-      90000 * MAX_CONVERSATION_RETRIES,
+      CONVERSATION_TIMEOUT_MS * MAX_CONVERSATION_RETRIES,
     );
   });
 });
