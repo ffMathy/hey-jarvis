@@ -21,8 +21,10 @@ import { google } from '../../utils/providers/google-provider.js';
 // Export the Google Search tool for the web research agent
 export const webResearchTools: ToolsInput = {
   googleSearch: {
-    id: 'googleSearch',
     description: 'Tool for performing web searches using Google Search API.',
+    // No `id` here on purpose: the provider-defined tool supplies its own
+    // (`google.google_search`), and anything declared before the spread would be
+    // silently overwritten by it.
     ...google.tools.googleSearch({}),
     // Provider-defined tools lack a Zod inputSchema, which crashes zod-to-json-schema
     // when the /tools endpoint serializes all registered tools.

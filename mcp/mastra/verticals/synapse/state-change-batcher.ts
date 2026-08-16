@@ -1,15 +1,12 @@
 import { createMemory } from '../../memory/index.js';
+import { getSubscriptionStorage } from '../../storage/index.js';
 import { logger } from '../../utils/logger.js';
+import { embedTexts } from '../../utils/static-embedder.js';
 import { getStateChangeReactorAgent } from './agent.js';
+import { describeStateChange, type StateChange } from './state-change.js';
+import { formatSubscriptionMatches, rankSubscriptions } from './subscription-matcher.js';
 
-/**
- * State Change data type
- */
-export interface StateChange {
-  source: string;
-  stateType: string;
-  stateData: Record<string, unknown>;
-}
+export type { StateChange } from './state-change.js';
 
 /**
  * Pending state change with timestamp for batching
@@ -17,6 +14,17 @@ export interface StateChange {
 interface PendingStateChange extends StateChange {
   timestamp: Date;
   retryCount: number;
+}
+
+/**
+ * Indents every line of a multi-line block so it nests under a numbered list
+ * entry in the batch prompt.
+ */
+function indent(text: string, padding: string): string {
+  return text
+    .split('\n')
+    .map((line) => `${padding}${line}`)
+    .join('\n');
 }
 
 /**
@@ -125,21 +133,26 @@ export class StateChangeBatcher {
       count: changesToProcess.length,
     });
 
-    // Save all changes to memory
-    await this.saveToMemory(changesToProcess);
+    try {
+      // Save all changes to memory
+      await this.saveToMemory(changesToProcess);
 
-    // Analyze all changes together
-    await this.analyzeChanges(changesToProcess);
+      // Analyze all changes together, alongside the subscriptions they match
+      await this.analyzeChanges(changesToProcess);
 
-    this.stats.totalProcessed += changesToProcess.length;
-    this.stats.batchesProcessed++;
+      this.stats.totalProcessed += changesToProcess.length;
+      this.stats.batchesProcessed++;
 
-    logger.info('[BATCHER] Batch processed', {
-      totalProcessed: this.stats.totalProcessed,
-      totalReceived: this.stats.totalReceived,
-      batchesProcessed: this.stats.batchesProcessed,
-    });
-    this.isProcessing = false;
+      logger.info('[BATCHER] Batch processed', {
+        totalProcessed: this.stats.totalProcessed,
+        totalReceived: this.stats.totalReceived,
+        batchesProcessed: this.stats.batchesProcessed,
+      });
+    } finally {
+      // Always release the lock: a failed batch must not wedge the batcher so
+      // that every later state change is silently dropped.
+      this.isProcessing = false;
+    }
   }
 
   /**
@@ -169,16 +182,42 @@ export class StateChangeBatcher {
   }
 
   /**
-   * Build the batch analysis prompt from state changes
+   * Retrieve the subscriptions whose `when`/`given` components look relevant to
+   * each state change.
+   *
+   * Matching is vector-only and runs in-process, so this stays cheap even when
+   * the batch is large — no LLM is involved until the shortlist is assembled.
    */
-  private buildBatchPrompt(changes: PendingStateChange[]): string {
+  private async matchSubscriptions(changes: PendingStateChange[]): Promise<string[]> {
+    const storage = await getSubscriptionStorage();
+    const subscriptions = await storage.getAllEmbedded();
+
+    if (subscriptions.length === 0) {
+      return changes.map(() => formatSubscriptionMatches([]));
+    }
+
+    // Load the subscriptions once and embed the whole batch in one pass, rather
+    // than repeating both per change.
+    const descriptions = changes.map(describeStateChange);
+    const embeddings = await embedTexts(descriptions);
+
+    return embeddings.map((embedding) => formatSubscriptionMatches(rankSubscriptions(embedding, subscriptions)));
+  }
+
+  /**
+   * Build the batch analysis prompt from state changes and their matched
+   * subscriptions.
+   */
+  private buildBatchPrompt(changes: PendingStateChange[], matchedSubscriptions: string[]): string {
     const changesDescription = changes
       .map(
         (change, index) =>
           `${index + 1}. Source: ${change.source}
    Type: ${change.stateType}
    Time: ${change.timestamp.toISOString()}
-   Data: ${JSON.stringify(change.stateData, null, 2)}`,
+   Data: ${JSON.stringify(change.stateData, null, 2)}
+   Candidate subscriptions:
+${indent(matchedSubscriptions[index] ?? 'No subscriptions matched this state change.', '     ')}`,
       )
       .join('\n\n');
 
@@ -186,7 +225,11 @@ export class StateChangeBatcher {
 
 ${changesDescription}
 
+The candidate subscriptions above were retrieved by semantic similarity against their WHEN and GIVEN parts. They are suggestions, not decisions — a candidate can easily be a false match.
+
 For each state change, decide if the user should be notified or if any action is needed. Consider:
+- Does any candidate subscription genuinely fire? Its WHEN must describe what actually happened, and its GIVEN (when present) must currently hold.
+- If a subscription fires, carry out its THEN and call markSubscriptionTriggered with its id.
 - Are any of these related or can be summarized together?
 - What's the overall context from all these changes?
 - Which ones are important enough to notify about?
@@ -199,7 +242,8 @@ If multiple notifications are warranted, you can combine related ones into a sin
    */
   private async analyzeChanges(changes: PendingStateChange[]): Promise<void> {
     const reactorAgent = await getStateChangeReactorAgent();
-    const batchPrompt = this.buildBatchPrompt(changes);
+    const matchedSubscriptions = await this.matchSubscriptions(changes);
+    const batchPrompt = this.buildBatchPrompt(changes, matchedSubscriptions);
 
     const networkStream = await reactorAgent.network(batchPrompt);
     await networkStream.result;
