@@ -67,6 +67,14 @@ static const uint32_t REPLY_PREBUFFER_MAX_MS = 400;
 // How long to let a short reply finish playing before the speaker is stopped.
 static const uint32_t SPEAKER_DRAIN_TIMEOUT_MS = 3000;
 
+// vad_score above which an announcement treats the room as occupied and keeps waiting.
+// The service documents the score as the probability that the user is speaking, so this
+// is "more likely than not". See the VAD handler for why it sits above the LED's 0.25.
+static const float ANNOUNCEMENT_SPEECH_THRESHOLD = 0.5f;
+
+// How long an announcement waits for the agent's first audio before giving up on it.
+static const uint32_t ANNOUNCEMENT_FIRST_AUDIO_TIMEOUT_MS = 20000;
+
 // Helper to convert StreamState enum to string
 static const char* stream_state_to_string(StreamState state) {
   switch (state) {
@@ -99,6 +107,12 @@ bool ElevenLabsStream::decode_and_play_base64_audio(const char* base64_data) {
     ESP_LOGW(TAG, "DECODE_B64: Input base64 string is empty");
     return false;
   }
+
+  // Both audio paths -- the fast path and the JSON one -- come through here, so this is
+  // the one place that knows the agent has started talking. Until it does, an
+  // announcement's reply window must stay shut: connecting, fetching a signed URL and
+  // synthesising the first message can easily outlast three seconds of "silence".
+  this->agent_has_spoken_ = true;
 
   // Log PSRAM before decode
   size_t psram_before_decode = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
@@ -308,6 +322,7 @@ void ElevenLabsStream::setup() {
       ESP_LOGI(TAG, "SPEAKER_CALLBACK: Setting speaker_is_active_ = false");
       this->speaker_is_active_ = false;
 
+
       for (auto *trigger : this->on_listening_triggers_) {
           trigger->trigger();
       }
@@ -373,17 +388,54 @@ void ElevenLabsStream::loop() {
     last_psram_log = millis();
   }
   
-  // Check for conversation timeout if configured
-  if (this->conversation_timeout_ms_ > 0 && this->state_ == StreamState::ON && 
-      this->last_user_input_time_ > 0 && !this->speaker_is_active_) {
-    uint32_t time_since_input = millis() - this->last_user_input_time_;
-    if (time_since_input >= this->conversation_timeout_ms_) {
-      ESP_LOGI(TAG, "LOOP: Conversation timeout reached (%u ms since last input), stopping stream", time_since_input);
+  // An announcement hangs up if nobody answers it.
+  //
+  // The clock is held at zero, rather than merely reset, for as long as there is any
+  // reason to believe the exchange is still alive: the agent has yet to say anything,
+  // its audio is still playing, or the speaker has only just fallen quiet. It starts
+  // running at the first moment none of that is true, and vad_score pushes it back
+  // whenever the service thinks it can hear somebody (see parse_json_buffer). So the
+  // window measures silence in the room after the announcement, which is the thing
+  // actually being asked about.
+  if (this->awaiting_response_ && this->response_window_ms_ > 0 && this->state_ == StreamState::ON) {
+    // Nothing else bounds an announcement that never gets off the ground -- if the agent
+    // produces no audio at all, "the agent is still busy" stays true forever and the
+    // socket is left open on a conversation nobody in the room is aware of. The bound is
+    // loose on purpose: it has to cover the signed URL round trip, the LLM and the first
+    // sentence of speech, and it only exists to catch outright failure.
+    if (!this->agent_has_spoken_ &&
+        millis() - this->connection_start_time_ >= ANNOUNCEMENT_FIRST_AUDIO_TIMEOUT_MS) {
+      ESP_LOGW(TAG, "LOOP: Announcement produced no audio within %ums, ending conversation",
+               ANNOUNCEMENT_FIRST_AUDIO_TIMEOUT_MS);
+      this->awaiting_response_ = false;
+      this->silence_started_ms_ = 0;
+      this->stop_stream();
+      return;
+    }
+
+    const bool agent_busy = !this->agent_has_spoken_ || this->speaker_is_active_ ||
+                            // has_buffered_data(), not is_running(): the speaker is
+                            // started once for the whole conversation and only stopped
+                            // at the end, so is_running() would be true throughout and
+                            // the clock would never get to start.
+                            (this->elevenlabs_speaker_ != nullptr &&
+                             this->elevenlabs_speaker_->has_buffered_data());
+    if (agent_busy) {
+      this->silence_started_ms_ = 0;
+    } else if (this->silence_started_ms_ == 0) {
+      this->silence_started_ms_ = millis();
+      ESP_LOGD(TAG, "LOOP: Room is quiet, giving a reply %ums before hanging up",
+               this->response_window_ms_);
+    } else if (millis() - this->silence_started_ms_ >= this->response_window_ms_) {
+      ESP_LOGI(TAG, "LOOP: No reply within %ums of the announcement, ending conversation",
+               this->response_window_ms_);
+      this->awaiting_response_ = false;
+      this->silence_started_ms_ = 0;
       this->stop_stream();
       return;
     }
   }
-  
+
   // Send periodic heartbeat when connected
   if (this->client_ && this->state_ == StreamState::ON && !this->speaker_is_active_) {
     uint32_t heartbeat_elapsed = millis() - this->last_heartbeat_;
@@ -412,10 +464,12 @@ bool ElevenLabsStream::start_stream(const std::string &initial_message, uint32_t
   ESP_LOGD(TAG, "START_STREAM: Agent ID='%s'", this->agent_id_.c_str());
   ESP_LOGD(TAG, "START_STREAM: Initial message='%s', timeout=%u ms", initial_message.c_str(), timeout_ms);
 
-  // Store the initial message and timeout for this session
+  // Store the initial message and response window for this session
   this->initial_message_ = initial_message;
-  this->conversation_timeout_ms_ = timeout_ms;
-  this->last_user_input_time_ = 0; // Reset on new stream
+  this->response_window_ms_ = timeout_ms;
+  this->awaiting_response_ = timeout_ms > 0;
+  this->agent_has_spoken_ = false;
+  this->silence_started_ms_ = 0;
 
   this->connection_start_time_ = millis();
   ESP_LOGD(TAG, "START_STREAM: Connection start time set to %d", this->connection_start_time_);
@@ -544,6 +598,13 @@ void ElevenLabsStream::stop_stream() {
   this->speaker_end_time_ = 0;
   this->accumulated_duration_ms_ = 0;
   ESP_LOGD(TAG, "STOP_STREAM: Speaker activity tracking reset");
+
+  // Clear the announcement window too, so a conversation started afterwards by the wake
+  // word cannot inherit a stale one and hang itself up mid-sentence.
+  this->awaiting_response_ = false;
+  this->agent_has_spoken_ = false;
+  this->silence_started_ms_ = 0;
+  this->response_window_ms_ = 0;
   
   // Disconnect WebSocket client
   if (this->client_) {
@@ -864,7 +925,17 @@ void ElevenLabsStream::parse_json_message_from_buffer(uint8_t *buffer, size_t le
       const char* user_transcript = transcript["user_transcript"];
       if (user_transcript) {
         ESP_LOGI(TAG, "PARSE_JSON_BUF: User transcript: '%s'", user_transcript);
-        // Could trigger an event here for transcript handling
+
+        // Somebody answered the announcement, so stop policing it. A transcript is the
+        // one unambiguous signal available -- vad_score only ever says something
+        // speech-shaped was heard -- and past this point the exchange is an ordinary
+        // conversation that should live or die by the agent's own settings, not by a
+        // three second window meant to catch an empty room.
+        if (this->awaiting_response_ && user_transcript[0] != '\0') {
+          ESP_LOGI(TAG, "PARSE_JSON_BUF: Announcement was answered, dropping the reply window");
+          this->awaiting_response_ = false;
+          this->silence_started_ms_ = 0;
+        }
       } else {
         ESP_LOGW(TAG, "PARSE_JSON_BUF: No user_transcript in user_transcription_event");
       }
@@ -918,8 +989,22 @@ void ElevenLabsStream::parse_json_message_from_buffer(uint8_t *buffer, size_t le
 
       this->last_vad_score_ = vad_score;
 
+      // Hold off the announcement hang-up while the service thinks it can hear someone.
+      //
+      // Deliberately a stricter threshold than the ring's 0.25. The LED is meant to be
+      // twitchy -- lighting up early feels responsive and costs nothing if it is wrong
+      // -- but the same twitchiness applied here would let a fridge hum or a passing car
+      // hold the call open indefinitely. This only needs to catch a person starting to
+      // answer, and a false negative merely ends a conversation nobody was having.
+      if (this->awaiting_response_ && vad_score >= ANNOUNCEMENT_SPEECH_THRESHOLD) {
+        if (this->silence_started_ms_ != 0) {
+          ESP_LOGD(TAG, "PARSE_JSON_BUF: Speech detected (VAD %.2f), holding the announcement open",
+                   vad_score);
+        }
+        this->silence_started_ms_ = 0;
+      }
+
       ESP_LOGD(TAG, "PARSE_JSON_BUF: VAD score: %.2f", vad_score);
-      // Could use this for voice activity detection
     } else {
       ESP_LOGD(TAG, "PARSE_JSON_BUF: No vad_score_event found");
     }
@@ -1030,6 +1115,12 @@ void ElevenLabsStream::send_conversation_init() {
     // Language configuration
     // Use custom initial message if provided, otherwise use empty string
     agent["first_message"] = this->initial_message_.empty() ? "" : this->initial_message_.c_str();
+
+    // Nothing about the silence window is sent here. turn.silence_end_call_timeout is
+    // not in the overridable set, and ElevenLabs errors a conversation that arrives with
+    // an override it does not accept -- so asking for it would not merely be ignored, it
+    // would take the announcement down with it. The window is timed on the device
+    // instead, off the vad_score events the agent already sends. See loop().
   });
   
   ESP_LOGD(TAG, "SEND_CONV_INIT: Sending conversation init: %s", message.c_str());
@@ -1157,10 +1248,11 @@ void ElevenLabsStream::handle_microphone_data(const std::vector<uint8_t> &data) 
   
   if (!this->send_websocket_message(message)) {
     ESP_LOGW(TAG, "HANDLE_MIC: Failed to send audio message via websocket");
-  } else {
-    // Update last user input time when audio is successfully sent
-    this->last_user_input_time_ = millis();
   }
+  // Nothing is stamped here on success. A timestamp taken at this point only records
+  // that the microphone is streaming, which it does continuously from the moment the
+  // socket opens -- it says nothing about whether anyone spoke. Treating it as "last
+  // user input" is what made the original silence timeout never fire.
 }
 
 void ElevenLabsStream::set_state(StreamState new_state) {
