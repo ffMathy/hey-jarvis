@@ -36,6 +36,10 @@ static const uint32_t SPEAKER_WRITE_WAIT_MS = 100;
 // only a genuinely wedged speaker reaches it.
 static const uint32_t SPEAKER_WRITE_STALL_TIMEOUT_MS = 5000;
 
+// How long to wait for the speaker to reach STATE_RUNNING before the first write.
+// It normally comes up in a few milliseconds; this only bounds a pathological case.
+static const uint32_t SPEAKER_START_TIMEOUT_MS = 500;
+
 // Helper to convert StreamState enum to string
 static const char* stream_state_to_string(StreamState state) {
   switch (state) {
@@ -89,6 +93,30 @@ bool ElevenLabsStream::decode_and_play_base64_audio(const char* base64_data) {
   
   if (psram_after_decode < 1024 * 1024) {
     ESP_LOGW(TAG, "DECODE_B64: LOW MEMORY WARNING: PSRAM Free=%zuKB", psram_after_decode / 1024);
+  }
+
+  // Make sure the speaker is actually running before handing it the first chunk.
+  //
+  // Speaker::play() does start the speaker implicitly, but asynchronously, and the
+  // audio written during that transition is lost. The serial log shows the order
+  // plainly: "Audio fast path, payload=18192 bytes" and only then
+  // "resampler_speaker: Starting". Those 18192 bytes are ~0.57s at 16 kHz, which is
+  // why the reply consistently began mid-word -- "Naturally" arriving as "urally".
+  //
+  // Starting it explicitly and waiting for STATE_RUNNING costs a few milliseconds once
+  // per reply and keeps the opening syllable. The wait is bounded so a speaker that
+  // never comes up cannot wedge the websocket task.
+  if (!elevenlabs_speaker_->is_running()) {
+    ESP_LOGD(TAG, "DECODE_B64: Speaker not running; starting it before the first write");
+    elevenlabs_speaker_->start();
+    uint32_t start_deadline = millis() + SPEAKER_START_TIMEOUT_MS;
+    while (!elevenlabs_speaker_->is_running() && millis() < start_deadline) {
+      delay(2);
+    }
+    if (!elevenlabs_speaker_->is_running()) {
+      ESP_LOGW(TAG, "DECODE_B64: Speaker did not reach running state within %ums; writing anyway",
+               SPEAKER_START_TIMEOUT_MS);
+    }
   }
 
   // Speaker::play() is NON-BLOCKING: it copies only what currently fits in the ring
