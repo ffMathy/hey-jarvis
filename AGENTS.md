@@ -140,6 +140,13 @@ retagged action runs with the workflow's token. Workflows default to
 `permissions: {}` and opt into the minimum they need, and checkouts use
 `persist-credentials: false` so project code never inherits a usable token.
 
+Every job must run on a GitHub-hosted runner (`ubuntu-*`, `windows-*`,
+`macos-*`). Self-hosted runners execute workflow code on a machine we control,
+where a malicious pull request could read other jobs' secrets, poison the tool
+cache, or persist between runs. Registering one already requires repository
+admin; the CI check makes the other half explicit by rejecting any workflow that
+targets a runner we do not rent from GitHub.
+
 ## 1Password Authentication
 
 This project uses **1Password CLI** for secure environment variable management.

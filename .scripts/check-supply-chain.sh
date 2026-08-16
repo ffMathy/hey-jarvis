@@ -113,7 +113,25 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 5. No floating tags in MCP server commands or container images.
+# 5. Jobs only run on GitHub-hosted runners.
+# ---------------------------------------------------------------------------
+# A self-hosted runner executes workflow code on a machine we control, where a
+# malicious pull request could read other jobs' secrets, poison the tool cache
+# or persist between runs. Registering one needs repository admin, but this
+# check makes the other half explicit: even if a runner existed, no workflow
+# here is allowed to target it.
+foreign_runners=$(git ls-files -- '.github/workflows/*.yml' '.github/workflows/*.yaml' |
+	xargs grep -nE '^[[:space:]]*runs-on:' 2>/dev/null |
+	grep -vE 'runs-on:[[:space:]]*(ubuntu|windows|macos)-[a-z0-9.-]+[[:space:]]*$' || true)
+if [ -n "$foreign_runners" ]; then
+	fail "Workflows must run on GitHub-hosted runners:"
+	echo "$foreign_runners" | sed 's/^/     /'
+else
+	pass "All workflow jobs run on GitHub-hosted runners"
+fi
+
+# ---------------------------------------------------------------------------
+# 6. No floating tags in MCP server commands or container images.
 # ---------------------------------------------------------------------------
 floating=$(git ls-files -- '*.json' 'Dockerfile*' '*/Dockerfile*' |
 	xargs grep -nE '@latest|FROM .*:latest' 2>/dev/null || true)
