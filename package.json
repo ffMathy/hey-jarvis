@@ -86,7 +86,7 @@
     "@ai-sdk/google": "3.0.43",
     "@ai-sdk/openai": "3.0.41",
     "@ai-sdk/provider": "3.0.8",
-    "@ai-sdk/provider-utils": "4.0.19",
+    "@ai-sdk/provider-utils": "5.0.18",
     "@azure/msal-node": "5.5.0",
     "@elevenlabs/elevenlabs-js": "2.64.0",
     "@googlemaps/google-maps-services-js": "3.4.2",
