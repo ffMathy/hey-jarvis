@@ -1,7 +1,9 @@
-import { beforeAll, describe, it } from 'bun:test';
+import { afterAll, beforeAll, describe, it } from 'bun:test';
+import { startMcpServerForTestingPurposes, stopMcpServer } from '../../../mcp/tests/utils/mcp-server-manager.js';
+import { deployTestAgent } from '../../src/main.js';
 import type { ServerMessage } from '../utils/conversation-strategy.js';
 import { TestConversation } from '../utils/test-conversation.js';
-import { assertTestMcpServerReachable } from '../utils/test-mcp-server.js';
+import { ensureTunnelRunning, stopTunnel } from '../utils/tunnel-manager.js';
 
 const MAX_CONVERSATION_RETRIES = 3;
 
@@ -95,14 +97,25 @@ describe('Agent Prompt Specifications', () => {
   const apiKey = process.env.HEY_JARVIS_ELEVENLABS_API_KEY;
   const googleApiKey = process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY;
 
-  // The agent is hosted and reaches its own MCP server, so this run starts
-  // nothing — it only checks that the server the agent depends on is up.
+  // Order matters. ElevenLabs hosts the agent and reads its MCP tool list when
+  // the agent is updated, so the server has to be answering on its public
+  // hostname before the deploy — otherwise the agent is left holding
+  // tool_count: 0 for a URL that only came alive afterwards.
   beforeAll(async () => {
     if (!process.env.HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID) {
       throw new Error('HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID environment variable is required');
     }
-    await assertTestMcpServerReachable();
-  }, 30000);
+    await startMcpServerForTestingPurposes();
+    await ensureTunnelRunning();
+    await deployTestAgent();
+    // The MCP server and cloudflared registering with Cloudflare's edge can each
+    // take tens of seconds on a cold CI runner, before the deploy even starts.
+  }, 240000);
+
+  afterAll(() => {
+    stopMcpServer();
+    stopTunnel();
+  });
 
   describe('Personality & Tone', () => {
     it(

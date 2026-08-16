@@ -205,7 +205,7 @@ class ElevenLabsAgentManager {
     }
   }
 
-  private async deployConfig(isTestAgent: boolean = false): Promise<void> {
+  public async deployConfig(isTestAgent: boolean = false): Promise<void> {
     const config = await this.loadConfig();
     const prompt = await this.loadPrompt();
 
@@ -261,6 +261,15 @@ class ElevenLabsAgentManager {
   }
 }
 
+/**
+ * Deploys the test agent, for callers that need control over when it happens.
+ * The agent tests deploy only once their MCP server is reachable, so that
+ * ElevenLabs reads the tool list from a URL that is already answering.
+ */
+export async function deployTestAgent(): Promise<void> {
+  await new ElevenLabsAgentManager().deployConfig(true);
+}
+
 // Run the application
 async function main(): Promise<void> {
   try {
@@ -271,4 +280,7 @@ async function main(): Promise<void> {
   }
 }
 
-void main();
+// Only when invoked as a command — importing this module must not run the CLI.
+if (import.meta.main) {
+  void main();
+}
