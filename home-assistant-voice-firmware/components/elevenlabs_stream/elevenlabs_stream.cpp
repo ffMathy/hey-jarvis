@@ -618,6 +618,23 @@ void ElevenLabsStream::parse_json_message_from_buffer(uint8_t *buffer, size_t le
           ESP_LOGI(TAG, "PARSE_JSON_BUF: Starting speaker early for faster audio response");
           this->set_speaker_stream_info_to_elevenlabs_format();
         }
+
+        // Bring the speaker up NOW, before any audio arrives, and do it on every
+        // conversation rather than only the first.
+        //
+        // Starting it lazily on the first chunk is inherently racy and the race is
+        // audible either way: writing before it is running loses the opening syllable
+        // ("Naturally" as "urally"), while starting and waiting inside the write path
+        // instead produced a repeat ("Na-naturally"). Doing it here removes the
+        // transition from the audio path entirely -- by the time the first frame
+        // lands, the speaker has been running for a while.
+        //
+        // Deliberately outside the infoset_ guard above, which only fires once per
+        // boot; every conversation needs a running speaker.
+        if (this->elevenlabs_speaker_ != nullptr && !this->elevenlabs_speaker_->is_running()) {
+          ESP_LOGI(TAG, "PARSE_JSON_BUF: Starting elevenlabs speaker ahead of the first audio frame");
+          this->elevenlabs_speaker_->start();
+        }
       } else {
         ESP_LOGW(TAG, "PARSE_JSON_BUF: No conversation_id in metadata");
       }
