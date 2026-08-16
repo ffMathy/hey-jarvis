@@ -137,10 +137,10 @@ api:
     #     message: "Your laundry is finished."
     #     silence_seconds: 3
     #
-    # The silence is timed by ElevenLabs, not here: it is sent as a
-    # silence_end_call_timeout override when the conversation opens. The service is
-    # already running the turn model and the transcriber, so it can tell a pause from a
-    # reply; the device only sees a continuous microphone stream and would be guessing.
+    # The silence is timed on the device, off the vad_score events ElevenLabs already
+    # sends -- its own estimate of whether a person is speaking. Its
+    # silence_end_call_timeout cannot be used instead: it is not an overridable setting,
+    # and a conversation sent an override it does not accept is rejected outright.
     #
     # Answer and the conversation simply continues as a normal one. Say nothing and it
     # closes itself.
@@ -155,10 +155,9 @@ api:
             then:
               - elevenlabs_stream.start:
                   initial_message: !lambda 'return message;'
-                  # start_stream takes milliseconds; it converts to whole seconds for
-                  # the override. Fall back to 3s if the caller passes 0 or omits it,
-                  # so an announcement can never inherit the agent's 30s default and
-                  # sit with the microphone open.
+                  # start_stream takes milliseconds. Fall back to 3s if the caller
+                  # passes 0 or omits it, so an announcement can never inherit the
+                  # agent's 30s default and sit with the microphone open.
                   timeout: !lambda 'return silence_seconds > 0 ? silence_seconds * 1000 : 3000;'
             else:
               - logger.log: "Announcement suppressed: the device is muted"
