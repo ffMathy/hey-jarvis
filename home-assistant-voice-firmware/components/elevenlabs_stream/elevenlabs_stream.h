@@ -122,6 +122,14 @@ public:
   
   // Timing and configuration constants
   uint32_t last_audio_time_{0};
+
+  // Prebuffer for the opening of each reply. Decoded audio is accumulated here until
+  // there is enough of a cushion to start playback, then written in one go. Without it
+  // the first fragment plays into a pipeline that has not settled, and the opening word
+  // arrives chopped, gapped or doubled depending on the timing.
+  std::vector<uint8_t> reply_prebuffer_;
+  bool reply_prebuffering_{true};
+  uint32_t reply_prebuffer_started_ms_{0};
   uint32_t last_audio_response_time_{0};  // Track when we last received audio from agent
   uint32_t connection_timeout_{10000};  // Reduced to 10 seconds
   uint32_t connection_start_time_{0};

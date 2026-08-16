@@ -580,8 +580,12 @@ defects.
 
 In differences, quote the specific words affected and roughly where they occur, or
 state plainly that the reproduction was faithful. Put the number of distinct defects
-in defect_count. If the agent's speech is not audible at all in AUDIO 2, report false
-and say so in differences.
+in defect_count.
+
+Set agent_speech_audible to false if you cannot make out the agent's speech in AUDIO 2
+at all. That is the most severe defect there is -- the device played nothing -- so also
+set defects_found to true and say so in differences. Do NOT report a faithful
+reproduction when there is no speech to compare.
 
 About the transcript below:
   - "agent:" lines are what the service intended to say. "user:" lines are what the
@@ -624,6 +628,7 @@ jq -n \
       type: "OBJECT",
       properties: {
         defects_found: { type: "BOOLEAN" },
+        agent_speech_audible: { type: "BOOLEAN" },
         confidence: { type: "STRING", enum: ["low", "medium", "high"] },
         defect_count: { type: "INTEGER" },
         differences: { type: "STRING" },
@@ -654,6 +659,18 @@ echo "   reference: $(printf '%s' "$verdict" | jq -r '.reference_summary // "-"'
 echo "   room:      $(printf '%s' "$verdict" | jq -r '.room_summary // "-"')"
 echo "   confidence: $(printf '%s' "$verdict" | jq -r '.confidence')"
 echo "   differences: $(printf '%s' "$verdict" | jq -r '.differences')"
+
+# Treat inaudible agent speech as a hard failure regardless of defects_found. A run
+# where nothing played is the worst outcome, not a clean one, and an earlier version of
+# this prompt scored exactly that as a pass three times in a row.
+if [ "$(printf '%s' "$verdict" | jq -r '.agent_speech_audible // true')" = "false" ]; then
+  echo
+  echo "❌ NO AUDIO — the agent's speech is not audible in the room recording at all."
+  echo "   The device played nothing, or nothing the microphone could hear."
+  echo "   reference: $REF_WAV"
+  echo "   room:      $ROOM_WAV"
+  exit 2
+fi
 
 if [ "$(printf '%s' "$verdict" | jq -r '.defects_found')" = "true" ]; then
   echo
