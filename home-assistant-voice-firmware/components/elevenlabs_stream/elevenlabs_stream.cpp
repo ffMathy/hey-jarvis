@@ -44,6 +44,10 @@ static const uint32_t SPEAKER_START_TIMEOUT_MS = 500;
 // is well under a second; this only stops a stuck one from delaying the reply.
 static const uint32_t ACTIVATION_CHIME_TIMEOUT_MS = 2000;
 
+// Settle time after the chime reports finished, to let the shared i2s peripheral drain
+// before reply audio is queued behind it.
+static const uint32_t I2S_DRAIN_SETTLE_MS = 200;
+
 // How much decoded audio to hold before playback starts.
 //
 // Must exceed a single frame or it buys nothing. The first frame measured 18192 bytes,
@@ -758,6 +762,20 @@ void ElevenLabsStream::parse_json_message_from_buffer(uint8_t *buffer, size_t le
           if (waited) {
             ESP_LOGD(TAG, "PARSE_JSON_BUF: Waited for the activation chime to finish before playing the reply");
           }
+
+          // Then give the i2s peripheral time to actually drain.
+          //
+          // The loop above asks the RESAMPLER whether it is done, but both speakers
+          // feed one shared i2s_audio_speaker, and i2s keeps emitting for a short
+          // while after the resampler reports empty. Reply audio starting inside that
+          // window collides with the chime tail, which is heard as a gap partway
+          // through the first word -- the last artifact still failing 2 runs in 10,
+          // with an identical signature every time.
+          //
+          // There is no handle on the shared i2s device from here, so this is a fixed
+          // settle time rather than a state check. It costs the same delay on every
+          // reply, which is the price of not having something better to poll.
+          delay(I2S_DRAIN_SETTLE_MS);
         }
 
         // Bring the speaker up NOW, before any audio arrives, and do it on every
