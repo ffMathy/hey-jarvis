@@ -40,6 +40,10 @@ static const uint32_t SPEAKER_WRITE_STALL_TIMEOUT_MS = 5000;
 // It normally comes up in a few milliseconds; this only bounds a pathological case.
 static const uint32_t SPEAKER_START_TIMEOUT_MS = 500;
 
+// How long to let the activation chime finish before queueing reply audio. The chime
+// is well under a second; this only stops a stuck one from delaying the reply.
+static const uint32_t ACTIVATION_CHIME_TIMEOUT_MS = 2000;
+
 // Helper to convert StreamState enum to string
 static const char* stream_state_to_string(StreamState state) {
   switch (state) {
@@ -632,6 +636,31 @@ void ElevenLabsStream::parse_json_message_from_buffer(uint8_t *buffer, size_t le
           // Start the speaker early for immediate readiness
           ESP_LOGI(TAG, "PARSE_JSON_BUF: Starting speaker early for faster audio response");
           this->set_speaker_stream_info_to_elevenlabs_format();
+        }
+
+        // Let the activation chime finish before any reply audio is queued.
+        //
+        // The chime plays on activation_speaker while the reply plays on
+        // elevenlabs_speaker, and both feed the same i2s output. Overlapping them
+        // costs the first moment of speech: observed as a gap between "Naturally" and
+        // "sir", or a doubled opening syllable, always inside the first second and
+        // roughly one run in five.
+        //
+        // The block above waits for exactly this, but it is guarded by
+        // activation_speaker_audio_stream_infoset_, which is set on the first
+        // conversation after boot and never cleared -- so every subsequent
+        // conversation raced the chime. Wait here on every conversation.
+        {
+          uint32_t chime_deadline = millis() + ACTIVATION_CHIME_TIMEOUT_MS;
+          bool waited = false;
+          while ((this->activation_speaker_->is_running() || this->activation_speaker_->has_buffered_data()) &&
+                 millis() < chime_deadline) {
+            waited = true;
+            delay(10);
+          }
+          if (waited) {
+            ESP_LOGD(TAG, "PARSE_JSON_BUF: Waited for the activation chime to finish before playing the reply");
+          }
         }
 
         // Bring the speaker up NOW, before any audio arrives, and do it on every
