@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, it } from 'bun:test';
 import { startMcpServerForTestingPurposes, stopMcpServer } from '../../../mcp/tests/utils/mcp-server-manager.js';
 import { deployTestAgent } from '../../src/main.js';
 import type { ServerMessage } from '../utils/conversation-strategy.js';
+import { reportTestAgentMcpIntegration } from '../utils/mcp-integration.js';
 import { TestConversation } from '../utils/test-conversation.js';
 import { ensureTunnelRunning, stopTunnel } from '../utils/tunnel-manager.js';
 
@@ -108,6 +109,7 @@ describe('Agent Prompt Specifications', () => {
     await startMcpServerForTestingPurposes();
     await ensureTunnelRunning();
     await deployTestAgent();
+    await reportTestAgentMcpIntegration();
     // The MCP server and cloudflared registering with Cloudflare's edge can each
     // take tens of seconds on a cold CI runner, before the deploy even starts.
   }, 240000);

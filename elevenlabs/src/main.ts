@@ -7,6 +7,12 @@ import { access, mkdir, readFile, writeFile } from 'fs/promises';
 import * as path from 'path';
 import { cwd } from 'process';
 
+/**
+ * The MCP server integration the test agent talks to — the tunnel to a locally
+ * running server, kept separate from the one production uses.
+ */
+export const TEST_AGENT_MCP_SERVER_ID = 'GMOqF385QS1GsrZKfQk6';
+
 class ElevenLabsAgentManager {
   private client: ElevenLabsClient;
 
@@ -191,7 +197,7 @@ class ElevenLabsAgentManager {
 
     // Replace MCP server IDs with local tunnel MCP server for testing
     if (config.conversationConfig?.agent?.prompt) {
-      config.conversationConfig.agent.prompt.mcpServerIds = ['GMOqF385QS1GsrZKfQk6'];
+      config.conversationConfig.agent.prompt.mcpServerIds = [TEST_AGENT_MCP_SERVER_ID];
       console.log('🔧 Setting mcpServerIds to local tunnel MCP server for test agent');
 
       config.conversationConfig.agent.prompt.tools = [];
