@@ -119,7 +119,9 @@ export async function getMastra(): Promise<Mastra> {
       ...weatherTools,
     },
     bundler: {
-      externals: ['@elevenlabs/elevenlabs-js', 'twilio'],
+      // @yarflam/potion-base-8m resolves its embedding table relative to its own
+      // module URL, so it has to stay unbundled or the model files go missing.
+      externals: ['@elevenlabs/elevenlabs-js', 'twilio', '@yarflam/potion-base-8m'],
     },
     server: {
       studioBase: process.env.MASTRA_STUDIO_BASE_URL,

@@ -28,6 +28,7 @@
         "@types/node-cron": "3.0.11",
         "@types/node-fetch": "2.6.13",
         "@typescript/native-preview": "7.0.0-dev.20260312.1",
+        "@yarflam/potion-base-8m": "1.0.4",
         "ai": "6.0.116",
         "ai-sdk-ollama": "3.8.0",
         "commander": "14.0.3",
@@ -1060,6 +1061,8 @@
     "@vercel/oidc": ["@vercel/oidc@3.1.0", "", {}, "sha512-Fw28YZpRnA3cAHHDlkt7xQHiJ0fcL+NRcIqsocZQUSmbzeIKRpwttJjik5ZGanXP+vlA4SbTg+AbA3bP363l+w=="],
 
     "@workflow/serde": ["@workflow/serde@4.1.0", "", {}, "sha512-pav4F2BoirECWR7Nf1TKt+2eETcBj7jj4cBefQ8VXQCA6NPkaKeLfj/zMgi+3zYV5ZIBT4GuUiphsj0/b9hPQQ=="],
+
+    "@yarflam/potion-base-8m": ["@yarflam/potion-base-8m@1.0.4", "", {}, "sha512-FnVnvuGhol1v5cH+ij0VkPmJFZotRwsJsvp4TB901S2eg8pKCttL3tIRklG9erbyDGBAfxpBh//TNEW7bxc7lw=="],
 
     "@zeit/schemas": ["@zeit/schemas@2.36.0", "", {}, "sha512-7kjMwcChYEzMKjeex9ZFXkt1AyNov9R5HZtjBKVsmVpw7pa7ZtlCGvCBC2vnnXctaYN+aRI61HjIqeetZW5ROg=="],
 

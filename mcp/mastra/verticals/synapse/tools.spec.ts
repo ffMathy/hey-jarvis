@@ -69,4 +69,73 @@ describe('Synapse Tools Integration Tests', () => {
       console.log('   - Processed count:', result.processedCount);
     }, 15000);
   });
+
+  describe('subscriptions', () => {
+    it('should register, retrieve, trigger and remove a Given/When/Then subscription', async () => {
+      const registered = await synapseTools.registerSubscription.execute({
+        whenEvent: 'the sun goes down',
+        givenCondition: 'the lights are on',
+        thenAction: 'close the blinds',
+        source: 'synapse-tools-spec',
+        oneShot: true,
+      });
+
+      expect(registered.registered).toBe(true);
+      expect(registered.subscription.id).toBeTruthy();
+      expect(registered.subscription.oneShot).toBe(true);
+
+      const subscriptionId = registered.subscription.id;
+
+      try {
+        const listed = await synapseTools.listSubscriptions.execute({ includeDisabled: false });
+        expect(listed.subscriptions.some((subscription) => subscription.id === subscriptionId)).toBe(true);
+
+        // Vector retrieval should surface it from a paraphrase of the WHEN.
+        const found = await synapseTools.findRelevantSubscriptions.execute({
+          description: 'the sun has gone down and it is getting dark outside',
+          minimumScore: 0.3,
+          maximumMatches: 5,
+        });
+        const match = found.matches.find((candidate) => candidate.subscription.id === subscriptionId);
+        expect(match).toBeDefined();
+        expect(match?.whenScore ?? 0).toBeGreaterThan(0.3);
+
+        // One-shot subscriptions retire once they fire.
+        const triggered = await synapseTools.markSubscriptionTriggered.execute({ subscriptionId });
+        expect(triggered.triggered).toBe(true);
+        expect(triggered.stillEnabled).toBe(false);
+
+        const afterTrigger = await synapseTools.listSubscriptions.execute({ includeDisabled: false });
+        expect(afterTrigger.subscriptions.some((subscription) => subscription.id === subscriptionId)).toBe(false);
+
+        console.log('✅ Subscription lifecycle verified');
+        console.log('   - Id:', subscriptionId);
+        console.log('   - WHEN similarity:', match?.whenScore);
+      } finally {
+        const removed = await synapseTools.removeSubscription.execute({ subscriptionId });
+        expect(removed.removed).toBe(true);
+      }
+    }, 15000);
+
+    it('should not match a subscription against an unrelated state change', async () => {
+      const registered = await synapseTools.registerSubscription.execute({
+        whenEvent: 'the milk in the fridge expires',
+        thenAction: 'add milk to the shopping list',
+        source: 'synapse-tools-spec',
+        oneShot: false,
+      });
+
+      try {
+        const found = await synapseTools.findRelevantSubscriptions.execute({
+          description: 'coding pull request opened: title is Refactor the deployment script',
+          minimumScore: 0.3,
+          maximumMatches: 5,
+        });
+
+        expect(found.matches.some((candidate) => candidate.subscription.id === registered.subscription.id)).toBe(false);
+      } finally {
+        await synapseTools.removeSubscription.execute({ subscriptionId: registered.subscription.id });
+      }
+    }, 15000);
+  });
 });
