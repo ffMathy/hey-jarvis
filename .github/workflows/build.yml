@@ -120,6 +120,10 @@ jobs:
       # transitive tree wholesale, so they stay a human decision. Patch and
       # minor bumps already sat through the Dependabot cooldown window before
       # the pull request was opened.
+      #
+      # Every ecosystem is grouped into one pull request, and `update-type` is
+      # the highest semver change across the whole batch — so one major in the
+      # group holds back everything bundled with it until a human merges.
       - name: Enable auto-merge for Dependabot PRs
         if: steps.metadata.outputs.update-type != 'version-update:semver-major'
         run: gh pr merge --auto --squash "$PR_URL"
