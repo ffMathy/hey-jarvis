@@ -105,15 +105,12 @@ public:
   uint32_t conversation_timeout_ms_{0}; // Timeout in milliseconds (0 = no timeout)
   uint32_t last_user_input_time_{0}; // Track last user input for timeout detection
 
-  // Proactive announcement support.
-  //
-  // An announcement speaks first, then listens briefly in case the user replies. These
-  // track that window. Deliberately separate from last_user_input_time_, which is
-  // stamped on every outgoing microphone chunk and therefore never stops advancing
-  // while the stream is open -- it cannot express "the user has not said anything".
-  uint32_t response_window_ms_{0};        // 0 = stay open indefinitely
-  uint32_t awaiting_response_since_{0};   // 0 = not currently counting down
-  bool user_responded_{false};            // set by a real user_transcript event
+  // Seconds of silence to allow before ElevenLabs ends the call, sent as a
+  // silence_end_call_timeout override at conversation start. 0 leaves the agent's own
+  // configured value alone. The device does not time this itself: it only sees a
+  // continuous microphone stream and cannot tell a pause from a reply, whereas the
+  // service is already running the turn model and the transcriber.
+  uint32_t silence_timeout_s_{0};
 
   // Triggers - simplified
   std::vector<Trigger<> *> on_start_triggers_;

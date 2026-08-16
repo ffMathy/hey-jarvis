@@ -129,19 +129,25 @@ logger:
 api:
   id: api_id
   services:
-    # Proactive announcement: the device speaks first, then listens briefly in case
-    # the user answers. If nobody does, the conversation closes itself.
+    # Proactive announcement. The device speaks the message, then stays in a normal
+    # conversation until the user has been silent for silence_seconds.
     #
     #   service: esphome.<device>_announce
     #   data:
     #     message: "Your laundry is finished."
+    #     silence_seconds: 3
     #
-    # The 3s window is measured from the moment the announcement STOPS speaking, not
-    # from when it starts, so a long message does not eat into the reply time. Any real
-    # reply cancels the window and the conversation continues normally.
+    # The silence is timed by ElevenLabs, not here: it is sent as a
+    # silence_end_call_timeout override when the conversation opens. The service is
+    # already running the turn model and the transcriber, so it can tell a pause from a
+    # reply; the device only sees a continuous microphone stream and would be guessing.
+    #
+    # Answer and the conversation simply continues as a normal one. Say nothing and it
+    # closes itself.
     - service: announce
       variables:
         message: string
+        silence_seconds: int
       then:
         - if:
             condition:
@@ -149,37 +155,14 @@ api:
             then:
               - elevenlabs_stream.start:
                   initial_message: !lambda 'return message;'
-                  timeout: !lambda 'return 3000;'
+                  # start_stream takes milliseconds; it converts to whole seconds for
+                  # the override. Fall back to 3s if the caller passes 0 or omits it,
+                  # so an announcement can never inherit the agent's 30s default and
+                  # sit with the microphone open.
+                  timeout: !lambda 'return silence_seconds > 0 ? silence_seconds * 1000 : 3000;'
             else:
               - logger.log: "Announcement suppressed: the device is muted"
 
-    # Same, with an explicit window. timeout is milliseconds of silence to allow after
-    # the announcement finishes; 0 keeps the conversation open indefinitely, matching
-    # wake-word behaviour.
-    - service: announce_with_timeout
-      variables:
-        message: string
-        timeout: int
-      then:
-        - if:
-            condition:
-              switch.is_off: master_mute_switch
-            then:
-              - elevenlabs_stream.start:
-                  initial_message: !lambda 'return message;'
-                  timeout: !lambda 'return timeout;'
-            else:
-              - logger.log: "Announcement suppressed: the device is muted"
-
-    # Retained under its original name so existing automations keep working.
-    - service: send_notification
-      variables:
-        message: string
-        timeout: int
-      then:
-        - elevenlabs_stream.start:
-            initial_message: !lambda 'return message;'
-            timeout: !lambda 'return timeout;'
 
 json:
 

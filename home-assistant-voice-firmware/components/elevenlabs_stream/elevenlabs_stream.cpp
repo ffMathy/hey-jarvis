@@ -308,13 +308,6 @@ void ElevenLabsStream::setup() {
       ESP_LOGI(TAG, "SPEAKER_CALLBACK: Setting speaker_is_active_ = false");
       this->speaker_is_active_ = false;
 
-      // The agent has stopped talking. If this conversation has a response window and
-      // nobody has spoken yet, start counting from here -- the window is meant to
-      // measure silence after the announcement, not from when it began.
-      if (this->response_window_ms_ > 0 && !this->user_responded_ && this->awaiting_response_since_ == 0) {
-        this->awaiting_response_since_ = millis();
-        ESP_LOGI(TAG, "SPEAKER_CALLBACK: Listening %ums for a reply", this->response_window_ms_);
-      }
 
       for (auto *trigger : this->on_listening_triggers_) {
           trigger->trigger();
@@ -381,27 +374,14 @@ void ElevenLabsStream::loop() {
     last_psram_log = millis();
   }
   
-  // Close an unanswered announcement.
-  //
-  // The window opens when the agent stops speaking (see the speaker callback) and is
-  // cancelled by a real user_transcript. If it expires, nobody replied, so end the
-  // conversation rather than hold the microphone open indefinitely.
-  //
-  // This replaces a check against last_user_input_time_, which could never fire: that
-  // timestamp is refreshed on every outgoing microphone chunk, and the microphone
-  // streams continuously while the stream is open, so "time since last input" was
-  // always ~0 no matter whether anyone had spoken.
-  if (this->response_window_ms_ > 0 && this->state_ == StreamState::ON &&
-      this->awaiting_response_since_ > 0 && !this->user_responded_ && !this->speaker_is_active_) {
-    uint32_t waited = millis() - this->awaiting_response_since_;
-    if (waited >= this->response_window_ms_) {
-      ESP_LOGI(TAG, "LOOP: No reply within %ums of the announcement finishing; ending the conversation",
-               this->response_window_ms_);
-      this->stop_stream();
-      return;
-    }
-  }
-  
+  // NOTE: silence is no longer timed here. ElevenLabs ends the call itself via the
+  // silence_end_call_timeout override sent at conversation start -- see
+  // send_conversation_init(). A local timer was tried first and could not work: it was
+  // driven by last_user_input_time_, which is stamped on every outgoing microphone
+  // chunk, and the microphone streams continuously while the stream is open. "Time
+  // since last input" was therefore always about zero regardless of whether anyone had
+  // spoken, so the timeout never fired.
+
   // Send periodic heartbeat when connected
   if (this->client_ && this->state_ == StreamState::ON && !this->speaker_is_active_) {
     uint32_t heartbeat_elapsed = millis() - this->last_heartbeat_;
@@ -435,11 +415,10 @@ bool ElevenLabsStream::start_stream(const std::string &initial_message, uint32_t
   this->conversation_timeout_ms_ = timeout_ms;
   this->last_user_input_time_ = 0; // Reset on new stream
 
-  // timeout_ms is the announcement response window. Wake-word conversations pass 0 and
-  // stay open as before; only a proactive announcement asks to close itself.
-  this->response_window_ms_ = timeout_ms;
-  this->awaiting_response_since_ = 0;
-  this->user_responded_ = false;
+  // timeout_ms is milliseconds of silence to allow before ElevenLabs ends the call.
+  // Converted to whole seconds because that is the unit the override takes; anything
+  // under a second rounds up so a small value cannot silently become "no timeout".
+  this->silence_timeout_s_ = timeout_ms > 0 ? ((timeout_ms + 999) / 1000) : 0;
 
   this->connection_start_time_ = millis();
   ESP_LOGD(TAG, "START_STREAM: Connection start time set to %d", this->connection_start_time_);
@@ -888,15 +867,6 @@ void ElevenLabsStream::parse_json_message_from_buffer(uint8_t *buffer, size_t le
       const char* user_transcript = transcript["user_transcript"];
       if (user_transcript) {
         ESP_LOGI(TAG, "PARSE_JSON_BUF: User transcript: '%s'", user_transcript);
-
-        // Somebody actually spoke, so this is a conversation now rather than an
-        // unanswered announcement. Cancel the window permanently: reopening it after
-        // each later reply would cut a real exchange short after one pause.
-        if (!this->user_responded_) {
-          this->user_responded_ = true;
-          this->awaiting_response_since_ = 0;
-          ESP_LOGI(TAG, "PARSE_JSON_BUF: Reply received; the announcement window no longer applies");
-        }
         // Could trigger an event here for transcript handling
       } else {
         ESP_LOGW(TAG, "PARSE_JSON_BUF: No user_transcript in user_transcription_event");
@@ -1063,6 +1033,21 @@ void ElevenLabsStream::send_conversation_init() {
     // Language configuration
     // Use custom initial message if provided, otherwise use empty string
     agent["first_message"] = this->initial_message_.empty() ? "" : this->initial_message_.c_str();
+
+    // Let ElevenLabs end the call on silence rather than timing it here.
+    //
+    // The service already knows when a user is speaking -- it runs the turn model and
+    // the transcriber -- so it can tell a pause from a reply. The device only sees a
+    // continuous microphone stream and would have to guess. Overriding
+    // silence_end_call_timeout puts the decision where the information is.
+    //
+    // Only sent when a window was requested; a wake-word conversation leaves the
+    // agent's configured default (30s) alone.
+    if (this->silence_timeout_s_ > 0) {
+      JsonObject turn = conversation_config["turn"].to<JsonObject>();
+      turn["silence_end_call_timeout"] = this->silence_timeout_s_;
+      ESP_LOGI(TAG, "SEND_CONV_INIT: Overriding silence_end_call_timeout to %us", this->silence_timeout_s_);
+    }
   });
   
   ESP_LOGD(TAG, "SEND_CONV_INIT: Sending conversation init: %s", message.c_str());
