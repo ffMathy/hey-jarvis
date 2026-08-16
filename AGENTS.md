@@ -51,8 +51,10 @@ This is an Turborepo monorepo containing intelligent voice assistant components:
 ## Supply Chain Security
 
 Dependencies are the most likely way an attacker gets code into this repository,
-so installation is locked down. The rules below are enforced by
-`.scripts/check-supply-chain.sh`, which runs on every pull request.
+so installation is locked down. The rules below are checked by
+`.scripts/check-supply-chain.sh`, run on demand with `bun run check:supply-chain`.
+It is no longer wired into CI, so nothing enforces these rules automatically —
+run it yourself when touching dependencies or workflows.
 
 ### Bun is the only package manager
 
