@@ -1,36 +1,62 @@
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
+import type { McpServerConfigOutput } from '@elevenlabs/elevenlabs-js/api';
+import agentConfig from '../../src/assets/agent-config.json';
 import { TEST_AGENT_MCP_SERVER_ID } from '../../src/main.js';
 
 /**
- * Reports how ElevenLabs is configured to reach the MCP server.
- *
- * The tunnel is demonstrably serving /api/mcp to the public internet, yet the
- * agent still reports no connection — so what remains is what ElevenLabs itself
- * was told to dial. The URL and transport come from its side of the arrangement
- * and are the only part of the path the tests cannot otherwise see.
- *
- * Secrets configured on the integration are reported as present or absent, never
- * printed.
+ * How ElevenLabs authenticates to an MCP server, without disclosing any of it.
+ * Header names are worth seeing — CF-Access-* would mean the tunnel is doing the
+ * authenticating — but their values, and the secret token itself, are not.
  */
-export async function reportTestAgentMcpIntegration(): Promise<void> {
-  const client = new ElevenLabsClient({ apiKey: process.env.HEY_JARVIS_ELEVENLABS_API_KEY });
+function describeAuthentication(config: McpServerConfigOutput): string {
+  const headerNames = Object.keys(config.requestHeaders ?? {});
+  return (
+    `transport=${config.transport} approvalPolicy=${config.approvalPolicy} ` +
+    `hasSecretToken=${Boolean(config.secretToken)} ` +
+    `requestHeaders=[${headerNames.join(', ')}]`
+  );
+}
 
-  const [result] = await Promise.allSettled([client.conversationalAi.mcpServers.get(TEST_AGENT_MCP_SERVER_ID)]);
+async function fetchConfig(client: ElevenLabsClient, serverId: string): Promise<McpServerConfigOutput | undefined> {
+  const [result] = await Promise.allSettled([client.conversationalAi.mcpServers.get(serverId)]);
   if (result.status !== 'fulfilled') {
     const reason = result.reason instanceof Error ? result.reason.message : String(result.reason);
-    console.log(`🔍 Could not read the test agent's MCP integration: ${reason}`);
+    console.log(`🔍 Could not read MCP integration ${serverId}: ${reason}`);
+    return undefined;
+  }
+  return result.value.config;
+}
+
+/**
+ * Reports how ElevenLabs is configured to reach the MCP servers, for the test
+ * agent and for production.
+ *
+ * The tunnel demonstrably serves /api/mcp to the public internet, so what is
+ * left is ElevenLabs' own side of the arrangement. Production is included
+ * because it is the only working example available: whatever it does that the
+ * test integration does not is the difference worth chasing. Its URL stays out
+ * of the output — these logs are public, and the test hostname is already in
+ * them by way of Cloudflare's own error pages.
+ */
+export async function reportMcpIntegrations(): Promise<void> {
+  const client = new ElevenLabsClient({ apiKey: process.env.HEY_JARVIS_ELEVENLABS_API_KEY });
+
+  const testConfig = await fetchConfig(client, TEST_AGENT_MCP_SERVER_ID);
+  if (testConfig) {
+    const expectedUrl = `${process.env.HEY_JARVIS_CLOUDFLARED_TUNNEL_URL}/api/mcp`;
+    console.log(
+      `🔍 Test agent MCP integration: url=${testConfig.url} matchesTunnel=${testConfig.url === expectedUrl} ` +
+        describeAuthentication(testConfig),
+    );
+  }
+
+  const [productionServerId] = agentConfig.conversationConfig.agent.prompt.mcpServerIds;
+  if (!productionServerId) {
     return;
   }
 
-  const { config } = result.value;
-  const expectedUrl = `${process.env.HEY_JARVIS_CLOUDFLARED_TUNNEL_URL}/api/mcp`;
-
-  console.log(
-    `🔍 Test agent's MCP integration: url=${config.url} ` +
-      `matchesTunnel=${config.url === expectedUrl} ` +
-      `transport=${config.transport} ` +
-      `approvalPolicy=${config.approvalPolicy} ` +
-      `hasSecretToken=${Boolean(config.secretToken)} ` +
-      `requestHeaders=${Object.keys(config.requestHeaders ?? {}).length}`,
-  );
+  const productionConfig = await fetchConfig(client, productionServerId);
+  if (productionConfig) {
+    console.log(`🔍 Production MCP integration: ${describeAuthentication(productionConfig)}`);
+  }
 }
