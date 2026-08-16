@@ -73,8 +73,11 @@ pre-commit hook.
 | `registry = …registry.npmjs.org` | Installs cannot be silently redirected to another host             |
 
 Dependabot mirrors the same 7-day cooldown, so new versions sit out the window
-that malicious releases are typically caught and yanked in. Its pull requests
-auto-merge for patch and minor bumps only; majors need a human.
+that malicious releases are typically caught and yanked in. Each ecosystem uses
+a single catch-all group, so bumps arrive as one rolling pull request per
+ecosystem instead of one per dependency. A grouped pull request auto-merges only
+when the largest bump in it is a patch or minor, so a single major parks the
+whole batch for a human.
 
 ### Adding or updating a dependency
 
