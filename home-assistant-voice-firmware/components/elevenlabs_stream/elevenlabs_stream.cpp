@@ -728,9 +728,11 @@ void ElevenLabsStream::parse_json_message_from_buffer(uint8_t *buffer, size_t le
             delay(100); // Wait until the speaker is stopped
           }
           
-          // Start the speaker early for immediate readiness
-          ESP_LOGI(TAG, "PARSE_JSON_BUF: Starting speaker early for faster audio response");
-          this->set_speaker_stream_info_to_elevenlabs_format();
+          // The stream info is applied unconditionally just below, on every
+          // conversation. Setting it here as well meant two calls in quick succession
+          // on the first conversation after boot, and a second set_audio_stream_info()
+          // can restart a speaker that already has audio queued -- which is heard as
+          // the opening syllable played twice ("Na- Naturally"). One call, one place.
         }
 
         // Let the activation chime finish before any reply audio is queued.
