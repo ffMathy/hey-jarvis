@@ -11,7 +11,8 @@
 # separate from the production one means a routed test prompt can never reach
 # the tools that run the house.
 #
-#   docker compose -f mcp/docker-compose.test-tunnel.yml up -d
+#   OP_SERVICE_ACCOUNT_TOKEN=… HEY_JARVIS_MCP_IMAGE_TAG=… \
+#     docker compose -f mcp/docker-compose.test-tunnel.yml up -d
 #
 # In the Cloudflare dashboard, the tunnel this token belongs to must route its
 # public hostname to http://mcp:4112 — the same hostname the test agent's MCP
@@ -21,10 +22,11 @@ services:
   mcp:
     image: ghcr.io/ffmathy/mcp:${HEY_JARVIS_MCP_IMAGE_TAG:?set the released MCP image tag, e.g. 1.9.0}
     restart: unless-stopped
-    # Every HEY_JARVIS_* value the server needs at runtime. The image runs the
-    # server directly under supervisord, so nothing resolves 1Password for it.
-    env_file:
-      - .env.test-tunnel
+    environment:
+      # The only secret this deployment holds. Everything else is resolved at
+      # startup from the op:// references in mcp/op.env, by the 1Password CLI
+      # inside the image — no plaintext secrets on the host, none in the image.
+      OP_SERVICE_ACCOUNT_TOKEN: ${OP_SERVICE_ACCOUNT_TOKEN:?set a 1Password service account token}
     expose:
       - '4112'
 

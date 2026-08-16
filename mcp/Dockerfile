@@ -21,6 +21,12 @@ RUN bun install --frozen-lockfile
 COPY tsconfig.base.json ./
 COPY mcp/ ./mcp/
 
+# 1Password CLI, pinned by digest. Secrets are resolved at runtime from a service
+# account rather than baked into the image or handed over as plaintext env files,
+# so the CLI has to be present in the runtime stage. Published for amd64, arm64
+# and arm/v7 — the same architectures this image is built for.
+FROM docker.io/1password/op:2.39.0@sha256:3cd5a1febc662c93d46b944b983b301e710da5c016ef63be9d436cf2b1ed30d5 AS onepassword
+
 # Production stage - use Bun Alpine for runtime (needed for mastra studio CLI)
 FROM docker.io/oven/bun:1.3.9-alpine@sha256:9028ee7a60a04777190f0c3129ce49c73384d3fc918f3e5c75f5af188e431981 AS production
 
@@ -32,8 +38,12 @@ ENV WORKSPACE_ROOT=/workspace
 
 WORKDIR /workspace
 
-# Install supervisor for process management, wget for healthcheck, and netcat for port checking
-RUN apk add --no-cache supervisor wget netcat-openbsd
+# Install supervisor for process management, wget for healthcheck, netcat for
+# port checking, and bash to run run-with-env.sh
+RUN apk add --no-cache supervisor wget netcat-openbsd bash
+
+# The 1Password CLI resolves the op:// references in mcp/op.env at startup
+COPY --from=onepassword /usr/local/bin/op /usr/local/bin/op
 
 # Copy node_modules and package files
 COPY --from=builder /workspace/node_modules ./node_modules
@@ -46,12 +56,13 @@ COPY --from=builder /workspace/mcp ./mcp
 # Copy runtime scripts and configuration
 COPY mcp/supervisord.conf /etc/supervisord.conf
 COPY mcp/healthcheck.sh /workspace/healthcheck.sh
+COPY .scripts/run-with-env.sh /workspace/.scripts/run-with-env.sh
 
 # Expose ports for services (4111: Mastra Server + UI, 4112: MCP Server)
 EXPOSE 4111 4112
 
-# Make healthcheck executable
-RUN chmod +x /workspace/healthcheck.sh
+# Make healthcheck and secret-resolving wrapper executable
+RUN chmod +x /workspace/healthcheck.sh /workspace/.scripts/run-with-env.sh
 
 # Health check to verify all services are running
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
