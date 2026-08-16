@@ -1,28 +1,28 @@
 # Build stage - use Bun image for building
-FROM docker.io/oven/bun:1-alpine AS builder
+# Pinned by digest so the base image is immutable; Dependabot keeps the tag and
+# digest in sync. Keep the version aligned with `packageManager` in package.json.
+FROM docker.io/oven/bun:1.3.9-alpine@sha256:9028ee7a60a04777190f0c3129ce49c73384d3fc918f3e5c75f5af188e431981 AS builder
 
 WORKDIR /workspace
 
-# Install jq for JSON manipulation
-RUN apk add --no-cache jq
-
-# Copy package files for dependency installation
-COPY package.json ./package.json.original
+# Copy the install manifests first so dependency layers cache independently of
+# source changes. bunfig.toml comes along deliberately: it is what disables
+# lifecycle scripts and enforces exact versions inside the image too.
+COPY package.json bun.lock bunfig.toml .npmrc ./
 COPY mcp/package.json ./mcp/
+COPY elevenlabs/package.json ./elevenlabs/
+COPY home-assistant-voice-firmware/package.json ./home-assistant-voice-firmware/
 
-# Remove workspaces field and husky prepare script from package.json 
-# since Docker context doesn't include all workspace packages
-RUN jq 'del(.workspaces) | del(.scripts.prepare)' package.json.original > package.json && rm package.json.original
-
-# Install all dependencies (needed for TypeScript compilation)
-RUN bun install
+# --frozen-lockfile installs exactly what bun.lock pins and fails if anything
+# would have to be resolved fresh from the registry.
+RUN bun install --frozen-lockfile
 
 # Copy source code
 COPY tsconfig.base.json ./
 COPY mcp/ ./mcp/
 
 # Production stage - use Bun Alpine for runtime (needed for mastra studio CLI)
-FROM docker.io/oven/bun:1-alpine AS production
+FROM docker.io/oven/bun:1.3.9-alpine@sha256:9028ee7a60a04777190f0c3129ce49c73384d3fc918f3e5c75f5af188e431981 AS production
 
 ENV HOST=0.0.0.0
 ENV NODE_ENV=production

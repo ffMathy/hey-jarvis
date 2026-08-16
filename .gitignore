@@ -47,6 +47,14 @@ web_modules/
 # TypeScript cache
 *.tsbuildinfo
 
+# Foreign package manager lockfiles. Bun is the only supported package manager
+# (see AGENTS.md → Supply Chain Security); a second lockfile would resolve
+# dependencies outside bun.lock's pins.
+package-lock.json
+npm-shrinkwrap.json
+yarn.lock
+pnpm-lock.yaml
+
 # Optional npm cache directory
 .npm
 

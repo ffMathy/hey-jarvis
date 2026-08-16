@@ -1,1 +1,12 @@
+#!/bin/sh
+# Reject foreign package-manager lockfiles before they ever reach a commit —
+# bun.lock is the single source of truth for dependency resolution.
+foreign_lockfiles=$(git diff --cached --name-only --diff-filter=ACMR |
+	grep -E '(^|/)(package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml)$' || true)
+if [ -n "$foreign_lockfiles" ]; then
+	echo "❌ This repository installs with Bun only. Remove these lockfiles:"
+	echo "$foreign_lockfiles"
+	exit 1
+fi
+
 bunx lint-staged
