@@ -18,6 +18,7 @@
 #include <esp_heap_caps.h>
 #include <freertos/FreeRTOS.h>  // pdMS_TO_TICKS for the blocking speaker write
 #include <inttypes.h>
+#include <cstring>  // memcmp, memchr for the audio fast path
 
 namespace esphome {
 namespace elevenlabs_stream {
@@ -324,7 +325,7 @@ bool ElevenLabsStream::start_stream(const std::string &initial_message, uint32_t
   ESP_LOGD(TAG, "START_STREAM: Connecting to ElevenLabs...");
   bool connected = this->client_->connect(
     this->signed_url_,
-    [this](const uint8_t* buffer, size_t length) { 
+    [this](uint8_t* buffer, size_t length) { 
       this->parse_json_message_from_buffer(buffer, length); 
     },
     [this]() { 
@@ -458,12 +459,61 @@ bool ElevenLabsStream::send_websocket_message(const std::string &message) {
   return true;
 }
 
-void ElevenLabsStream::parse_json_message_from_buffer(const uint8_t *buffer, size_t length) {
+void ElevenLabsStream::parse_json_message_from_buffer(uint8_t *buffer, size_t length) {
   // Log PSRAM before parsing
   size_t psram_free_before = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
   ESP_LOGD(TAG, "PARSE_JSON_BUF: Processing message, length=%zu, PSRAM Free=%zuKB", 
            length, psram_free_before / 1024);
   
+  // Fast path for audio frames: extract the base64 payload without parsing the JSON.
+  //
+  // Audio arrives as {"type":"audio","audio_event":{"audio_base_64":"<~100KB>",...}}.
+  // Handing that to ArduinoJson reliably failed with NoMemory and threw the frame
+  // away -- each loss being a chunk of speech the speaker never got, which is what
+  // made replies stutter. Measured: a 105KB frame, a 211KB pool that allocated in
+  // full, and 2176KB contiguous PSRAM still free, yet deserialization reported
+  // NoMemory. The payload is copied into the pool regardless of the zero-copy cast.
+  //
+  // The payload is a base64 string with no escapes, so its bounds can be found by
+  // scanning. That avoids allocating any document for the largest, most frequent
+  // messages. Everything else -- small control frames -- still goes through the
+  // parser below, where correctness matters more than bytes.
+  static const char AUDIO_KEY[] = "\"audio_base_64\"";
+  const size_t AUDIO_KEY_LEN = sizeof(AUDIO_KEY) - 1;
+  const char* haystack = reinterpret_cast<const char*>(buffer);
+  // Hand-rolled rather than memmem(), which is a GNU extension and not dependable on
+  // ESP-IDF. The key appears early in the frame, so this scans a few bytes in practice.
+  const char* key_pos = nullptr;
+  if (length >= AUDIO_KEY_LEN) {
+    for (size_t i = 0; i + AUDIO_KEY_LEN <= length; i++) {
+      if (haystack[i] == '"' && memcmp(haystack + i, AUDIO_KEY, AUDIO_KEY_LEN) == 0) {
+        key_pos = haystack + i;
+        break;
+      }
+    }
+  }
+  if (key_pos != nullptr) {
+    const char* end = haystack + length;
+    const char* p = key_pos + sizeof(AUDIO_KEY) - 1;
+    while (p < end && *p != ':') p++;          // key -> colon
+    while (p < end && *p != '"') p++;          // colon -> opening quote
+    if (p < end) {
+      const char* value_start = p + 1;
+      const char* value_end = static_cast<const char*>(memchr(value_start, '"', end - value_start));
+      if (value_end != nullptr && value_end > value_start) {
+        // decode_and_play_base64_audio takes a C string; terminate in place. The
+        // buffer belongs to the websocket assembler and is reset after this returns.
+        size_t payload_len = value_end - value_start;
+        *const_cast<char*>(value_end) = '\0';
+        ESP_LOGD(TAG, "PARSE_JSON_BUF: Audio fast path, payload=%zu bytes (frame %zu)", payload_len, length);
+        this->last_audio_time_ = millis();
+        this->decode_and_play_base64_audio(value_start);
+        return;
+      }
+    }
+    ESP_LOGW(TAG, "PARSE_JSON_BUF: audio_base_64 present but unparseable; falling back to JSON");
+  }
+
   // Use new JsonDeserializer class
   auto json_doc = JsonDeserializer::parse(buffer, length);
   if (!json_doc) {

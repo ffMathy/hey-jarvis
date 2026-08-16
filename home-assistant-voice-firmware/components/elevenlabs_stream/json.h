@@ -38,7 +38,12 @@ struct PSRAMAllocator {
 class JsonDeserializer {
 public:
     // Parses a JSON buffer and returns a unique_ptr to the document. Returns nullptr on error.
-    static std::unique_ptr<BasicJsonDocument<PSRAMAllocator>> parse(const uint8_t* buffer, size_t length);
+    // Takes a MUTABLE buffer so ArduinoJson can parse zero-copy: it inserts null
+    // terminators in place and points at the original bytes instead of copying every
+    // string into the document. Audio frames arrive as ~100KB of base64 in a single
+    // string, so copying it was the difference between fitting and NoMemory.
+    // The buffer is rewritten in place and must outlive the returned document.
+    static std::unique_ptr<BasicJsonDocument<PSRAMAllocator>> parse(uint8_t* buffer, size_t length);
     static std::unique_ptr<BasicJsonDocument<PSRAMAllocator>> parse(const char* cstr);
     
     // Serialize a JsonObject to a std::string

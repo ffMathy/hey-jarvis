@@ -47,6 +47,7 @@ bool WebsocketMessageAssembler::add(const esp_websocket_event_data_t* e) {
 }
 bool WebsocketMessageAssembler::isReady() const { return finSeen_ && isContiguous(); }
 const uint8_t* WebsocketMessageAssembler::getBuffer() const { return isReady() ? buf_ : nullptr; }
+uint8_t* WebsocketMessageAssembler::getMutableBuffer() { return isReady() ? buf_ : nullptr; }
 size_t WebsocketMessageAssembler::getSize() const { return isReady() ? total_ : 0; }
 void WebsocketMessageAssembler::reset() { ranges_.clear(); total_ = npos; finSeen_ = false; }
 bool WebsocketMessageAssembler::isContiguous() const {
@@ -63,7 +64,7 @@ bool WebsocketMessageAssembler::abort() { reset(); return false; }
 WebsocketClient::WebsocketClient() {}
 WebsocketClient::~WebsocketClient() { disconnect(); }
 bool WebsocketClient::connect(const std::string &url,
-                              std::function<void(const uint8_t *, size_t)> on_message,
+                              std::function<void(uint8_t *, size_t)> on_message,
                               std::function<void()> on_connected,
                               std::function<void()> on_disconnected,
                               std::function<void(const std::string &)> on_error) {
@@ -194,7 +195,7 @@ void WebsocketClient::websocket_event_handler(void *handler_args, esp_event_base
 
             if (client->reassembler_.add(data)) {
                 if (client->on_message_) {
-                    client->on_message_(client->reassembler_.getBuffer(), client->reassembler_.getSize());
+                    client->on_message_(client->reassembler_.getMutableBuffer(), client->reassembler_.getSize());
                 }
                 client->reassembler_.reset();
             }
