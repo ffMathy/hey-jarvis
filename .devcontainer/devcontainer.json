@@ -6,7 +6,7 @@
     "ghcr.io/devcontainers/features/python:1": {
       "version": "3.12"
     },
-    "ghcr.io/devcontainers-extra/features/claude-code:1": {},
+    "ghcr.io/devcontainers-extra/features/claude-code:2": {},
     "ghcr.io/flexwie/devcontainer-features/op:1": {},
     "ghcr.io/devcontainers-extra/features/turborepo-npm:1": {},
     "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {},
