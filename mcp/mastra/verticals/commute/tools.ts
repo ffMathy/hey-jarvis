@@ -177,7 +177,7 @@ export const getTravelTime = createTool({
       .orderBy((x) => x.duration_in_traffic)
       .first()
       .value();
-    if (!element || element.status !== 'OK') {
+    if (element?.status !== 'OK') {
       throw new Error(`Route calculation failed: ${element?.status || 'Unknown error'}`);
     }
 
