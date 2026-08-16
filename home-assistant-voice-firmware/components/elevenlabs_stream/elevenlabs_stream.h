@@ -105,6 +105,16 @@ public:
   uint32_t conversation_timeout_ms_{0}; // Timeout in milliseconds (0 = no timeout)
   uint32_t last_user_input_time_{0}; // Track last user input for timeout detection
 
+  // Proactive announcement support.
+  //
+  // An announcement speaks first, then listens briefly in case the user replies. These
+  // track that window. Deliberately separate from last_user_input_time_, which is
+  // stamped on every outgoing microphone chunk and therefore never stops advancing
+  // while the stream is open -- it cannot express "the user has not said anything".
+  uint32_t response_window_ms_{0};        // 0 = stay open indefinitely
+  uint32_t awaiting_response_since_{0};   // 0 = not currently counting down
+  bool user_responded_{false};            // set by a real user_transcript event
+
   // Triggers - simplified
   std::vector<Trigger<> *> on_start_triggers_;
   std::vector<Trigger<> *> on_end_triggers_;

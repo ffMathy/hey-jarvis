@@ -129,6 +129,49 @@ logger:
 api:
   id: api_id
   services:
+    # Proactive announcement: the device speaks first, then listens briefly in case
+    # the user answers. If nobody does, the conversation closes itself.
+    #
+    #   service: esphome.<device>_announce
+    #   data:
+    #     message: "Your laundry is finished."
+    #
+    # The 3s window is measured from the moment the announcement STOPS speaking, not
+    # from when it starts, so a long message does not eat into the reply time. Any real
+    # reply cancels the window and the conversation continues normally.
+    - service: announce
+      variables:
+        message: string
+      then:
+        - if:
+            condition:
+              switch.is_off: master_mute_switch
+            then:
+              - elevenlabs_stream.start:
+                  initial_message: !lambda 'return message;'
+                  timeout: !lambda 'return 3000;'
+            else:
+              - logger.log: "Announcement suppressed: the device is muted"
+
+    # Same, with an explicit window. timeout is milliseconds of silence to allow after
+    # the announcement finishes; 0 keeps the conversation open indefinitely, matching
+    # wake-word behaviour.
+    - service: announce_with_timeout
+      variables:
+        message: string
+        timeout: int
+      then:
+        - if:
+            condition:
+              switch.is_off: master_mute_switch
+            then:
+              - elevenlabs_stream.start:
+                  initial_message: !lambda 'return message;'
+                  timeout: !lambda 'return timeout;'
+            else:
+              - logger.log: "Announcement suppressed: the device is muted"
+
+    # Retained under its original name so existing automations keep working.
     - service: send_notification
       variables:
         message: string
