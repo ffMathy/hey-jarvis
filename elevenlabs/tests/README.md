@@ -12,7 +12,7 @@ tests/
 └── utils/          # Test utility functions and helpers
     ├── test-conversation.ts
     ├── mcp-server-manager.ts
-    ├── tunnel-manager.ts
+    ├── test-mcp-server.ts
     ├── retry-with-backoff.ts
     ├── conversation-strategy.ts
     ├── elevenlabs-conversation-strategy.ts
@@ -24,7 +24,7 @@ tests/
 Test utility functions are located in `tests/utils/`:
 - `test-conversation.ts` - Conversation testing framework
 - `mcp-server-manager.ts` - MCP server lifecycle management
-- `tunnel-manager.ts` - Cloudflare tunnel management
+- `test-mcp-server.ts` - Checks the test agent's MCP server is reachable
 - `retry-with-backoff.ts` - Retry logic with exponential backoff
 - `conversation-strategy.ts` - Base conversation strategy interface
 - `elevenlabs-conversation-strategy.ts` - ElevenLabs WebSocket strategy
@@ -47,4 +47,7 @@ Tests require the following environment variables (managed via 1Password):
 - `HEY_JARVIS_ELEVENLABS_API_KEY` - ElevenLabs API key
 - `HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY` - Google Gemini API key for evaluations
 
-Tests automatically start the MCP server and Cloudflare tunnel before running.
+The agent under test is hosted by ElevenLabs and connects to its MCP server
+itself, so these tests start nothing. That server has to be running and
+reachable on its public hostname before the suite does, or the agent has no
+tools to call — see `mcp/docker-compose.test-tunnel.yml`.

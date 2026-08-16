@@ -29,7 +29,8 @@ On **fetch**, the CLI retrieves the current config and automatically strips sens
 Tests use **LLM-based evaluation** — the suite has live conversations with the deployed agent and uses Gemini to score responses for personality, tone, and correctness.
 
 1. Deploys the test agent (text-only mode, separate MCP server)
-2. Starts an MCP server + Cloudflare tunnel
+2. Checks that MCP server is reachable — ElevenLabs connects to it itself, so
+   it has to be running persistently (`mcp/docker-compose.test-tunnel.yml`)
 3. Sends conversation prompts via WebSocket
 4. Gemini evaluates responses (threshold: score > 0.9)
 5. Retries up to 3 times for LLM non-determinism

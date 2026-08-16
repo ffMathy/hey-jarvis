@@ -11,7 +11,6 @@
     "deploy:test": "cd .. && bash ./.scripts/run-with-env.sh elevenlabs/op.env bun elevenlabs/src/main.ts deploy --test",
     "refresh": "cd .. && bash ./.scripts/run-with-env.sh elevenlabs/op.env bun elevenlabs/src/main.ts fetch",
     "test": "cd .. && bash ./.scripts/run-with-env.sh elevenlabs/op.env elevenlabs/.scripts/test.sh",
-    "tunnel": "cd .. && bash ./.scripts/run-with-env.sh elevenlabs/op.env bun elevenlabs/tests/utils/tunnel-manager.ts",
     "initialize": "cd .. && bunx playwright install && bunx playwright install-deps",
     "env:local": "cd .. && bash ./.scripts/generate-env-local.sh elevenlabs/op.env"
   },
