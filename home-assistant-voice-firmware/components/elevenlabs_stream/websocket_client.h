@@ -25,6 +25,9 @@ public:
     bool add(const esp_websocket_event_data_t* e);
     bool isReady() const;
     const uint8_t* getBuffer() const;
+    // Non-const view for zero-copy JSON parsing, which rewrites the buffer in place.
+    // Safe: the assembler owns this memory and resets it after each message.
+    uint8_t* getMutableBuffer();
     size_t getSize() const;
     void reset();
 private:
@@ -44,7 +47,7 @@ public:
     ~WebsocketClient();
 
     bool connect(const std::string& url,
-                 std::function<void(const uint8_t*, size_t)> on_message,
+                 std::function<void(uint8_t*, size_t)> on_message,
                  std::function<void()> on_connected,
                  std::function<void()> on_disconnected,
                  std::function<void(const std::string&)> on_error);
@@ -57,7 +60,7 @@ private:
     static void websocket_event_handler(void* handler_args, esp_event_base_t base, int32_t event_id, void* event_data);
     esp_websocket_client_handle_t websocket_client_ = nullptr;
     bool websocket_connected_ = false;
-    std::function<void(const uint8_t*, size_t)> on_message_;
+    std::function<void(uint8_t*, size_t)> on_message_;
     std::function<void()> on_connected_;
     std::function<void()> on_disconnected_;
     std::function<void(const std::string&)> on_error_;

@@ -18,6 +18,7 @@
 #include <esp_heap_caps.h>
 #include <freertos/FreeRTOS.h>  // pdMS_TO_TICKS for the blocking speaker write
 #include <inttypes.h>
+#include <cstring>  // memcmp, memchr for the audio fast path
 
 namespace esphome {
 namespace elevenlabs_stream {
@@ -34,6 +35,14 @@ static const uint32_t SPEAKER_WRITE_WAIT_MS = 100;
 // speaker drains in real time, so any healthy buffer frees space well inside this;
 // only a genuinely wedged speaker reaches it.
 static const uint32_t SPEAKER_WRITE_STALL_TIMEOUT_MS = 5000;
+
+// How long to wait for the speaker to reach STATE_RUNNING before the first write.
+// It normally comes up in a few milliseconds; this only bounds a pathological case.
+static const uint32_t SPEAKER_START_TIMEOUT_MS = 500;
+
+// How long to let the activation chime finish before queueing reply audio. The chime
+// is well under a second; this only stops a stuck one from delaying the reply.
+static const uint32_t ACTIVATION_CHIME_TIMEOUT_MS = 2000;
 
 // Helper to convert StreamState enum to string
 static const char* stream_state_to_string(StreamState state) {
@@ -88,6 +97,30 @@ bool ElevenLabsStream::decode_and_play_base64_audio(const char* base64_data) {
   
   if (psram_after_decode < 1024 * 1024) {
     ESP_LOGW(TAG, "DECODE_B64: LOW MEMORY WARNING: PSRAM Free=%zuKB", psram_after_decode / 1024);
+  }
+
+  // Make sure the speaker is actually running before handing it the first chunk.
+  //
+  // Speaker::play() does start the speaker implicitly, but asynchronously, and the
+  // audio written during that transition is lost. The serial log shows the order
+  // plainly: "Audio fast path, payload=18192 bytes" and only then
+  // "resampler_speaker: Starting". Those 18192 bytes are ~0.57s at 16 kHz, which is
+  // why the reply consistently began mid-word -- "Naturally" arriving as "urally".
+  //
+  // Starting it explicitly and waiting for STATE_RUNNING costs a few milliseconds once
+  // per reply and keeps the opening syllable. The wait is bounded so a speaker that
+  // never comes up cannot wedge the websocket task.
+  if (!elevenlabs_speaker_->is_running()) {
+    ESP_LOGD(TAG, "DECODE_B64: Speaker not running; starting it before the first write");
+    elevenlabs_speaker_->start();
+    uint32_t start_deadline = millis() + SPEAKER_START_TIMEOUT_MS;
+    while (!elevenlabs_speaker_->is_running() && millis() < start_deadline) {
+      delay(2);
+    }
+    if (!elevenlabs_speaker_->is_running()) {
+      ESP_LOGW(TAG, "DECODE_B64: Speaker did not reach running state within %ums; writing anyway",
+               SPEAKER_START_TIMEOUT_MS);
+    }
   }
 
   // Speaker::play() is NON-BLOCKING: it copies only what currently fits in the ring
@@ -324,7 +357,7 @@ bool ElevenLabsStream::start_stream(const std::string &initial_message, uint32_t
   ESP_LOGD(TAG, "START_STREAM: Connecting to ElevenLabs...");
   bool connected = this->client_->connect(
     this->signed_url_,
-    [this](const uint8_t* buffer, size_t length) { 
+    [this](uint8_t* buffer, size_t length) { 
       this->parse_json_message_from_buffer(buffer, length); 
     },
     [this]() { 
@@ -391,6 +424,21 @@ void ElevenLabsStream::stop_stream() {
     ESP_LOGD(TAG, "STOP_STREAM: Microphone stopped");
   }
   
+  // Stop the speaker so the next conversation starts from an empty buffer.
+  //
+  // This only reset the bookkeeping below and left the speaker running, so whatever
+  // was still queued -- plus the resampler's filter state -- carried into the next
+  // conversation. The next reply then appended behind that residue and its opening
+  // syllable came out doubled: "Na- Naturally". It was intermittent, roughly one run
+  // in ten, which is exactly how a leftover-buffer bug behaves: it depends on how much
+  // was still queued when the previous conversation happened to end.
+  //
+  // The conversation is over, so discarding anything still queued is correct.
+  if (this->elevenlabs_speaker_ != nullptr && this->elevenlabs_speaker_->is_running()) {
+    ESP_LOGD(TAG, "STOP_STREAM: Stopping speaker to discard leftover audio");
+    this->elevenlabs_speaker_->stop();
+  }
+
   // Reset speaker state completely
   this->speaker_is_active_ = false;
   this->speaker_start_time_ = 0;
@@ -458,12 +506,61 @@ bool ElevenLabsStream::send_websocket_message(const std::string &message) {
   return true;
 }
 
-void ElevenLabsStream::parse_json_message_from_buffer(const uint8_t *buffer, size_t length) {
+void ElevenLabsStream::parse_json_message_from_buffer(uint8_t *buffer, size_t length) {
   // Log PSRAM before parsing
   size_t psram_free_before = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
   ESP_LOGD(TAG, "PARSE_JSON_BUF: Processing message, length=%zu, PSRAM Free=%zuKB", 
            length, psram_free_before / 1024);
   
+  // Fast path for audio frames: extract the base64 payload without parsing the JSON.
+  //
+  // Audio arrives as {"type":"audio","audio_event":{"audio_base_64":"<~100KB>",...}}.
+  // Handing that to ArduinoJson reliably failed with NoMemory and threw the frame
+  // away -- each loss being a chunk of speech the speaker never got, which is what
+  // made replies stutter. Measured: a 105KB frame, a 211KB pool that allocated in
+  // full, and 2176KB contiguous PSRAM still free, yet deserialization reported
+  // NoMemory. The payload is copied into the pool regardless of the zero-copy cast.
+  //
+  // The payload is a base64 string with no escapes, so its bounds can be found by
+  // scanning. That avoids allocating any document for the largest, most frequent
+  // messages. Everything else -- small control frames -- still goes through the
+  // parser below, where correctness matters more than bytes.
+  static const char AUDIO_KEY[] = "\"audio_base_64\"";
+  const size_t AUDIO_KEY_LEN = sizeof(AUDIO_KEY) - 1;
+  const char* haystack = reinterpret_cast<const char*>(buffer);
+  // Hand-rolled rather than memmem(), which is a GNU extension and not dependable on
+  // ESP-IDF. The key appears early in the frame, so this scans a few bytes in practice.
+  const char* key_pos = nullptr;
+  if (length >= AUDIO_KEY_LEN) {
+    for (size_t i = 0; i + AUDIO_KEY_LEN <= length; i++) {
+      if (haystack[i] == '"' && memcmp(haystack + i, AUDIO_KEY, AUDIO_KEY_LEN) == 0) {
+        key_pos = haystack + i;
+        break;
+      }
+    }
+  }
+  if (key_pos != nullptr) {
+    const char* end = haystack + length;
+    const char* p = key_pos + sizeof(AUDIO_KEY) - 1;
+    while (p < end && *p != ':') p++;          // key -> colon
+    while (p < end && *p != '"') p++;          // colon -> opening quote
+    if (p < end) {
+      const char* value_start = p + 1;
+      const char* value_end = static_cast<const char*>(memchr(value_start, '"', end - value_start));
+      if (value_end != nullptr && value_end > value_start) {
+        // decode_and_play_base64_audio takes a C string; terminate in place. The
+        // buffer belongs to the websocket assembler and is reset after this returns.
+        size_t payload_len = value_end - value_start;
+        *const_cast<char*>(value_end) = '\0';
+        ESP_LOGD(TAG, "PARSE_JSON_BUF: Audio fast path, payload=%zu bytes (frame %zu)", payload_len, length);
+        this->last_audio_time_ = millis();
+        this->decode_and_play_base64_audio(value_start);
+        return;
+      }
+    }
+    ESP_LOGW(TAG, "PARSE_JSON_BUF: audio_base_64 present but unparseable; falling back to JSON");
+  }
+
   // Use new JsonDeserializer class
   auto json_doc = JsonDeserializer::parse(buffer, length);
   if (!json_doc) {
@@ -539,6 +636,48 @@ void ElevenLabsStream::parse_json_message_from_buffer(const uint8_t *buffer, siz
           // Start the speaker early for immediate readiness
           ESP_LOGI(TAG, "PARSE_JSON_BUF: Starting speaker early for faster audio response");
           this->set_speaker_stream_info_to_elevenlabs_format();
+        }
+
+        // Let the activation chime finish before any reply audio is queued.
+        //
+        // The chime plays on activation_speaker while the reply plays on
+        // elevenlabs_speaker, and both feed the same i2s output. Overlapping them
+        // costs the first moment of speech: observed as a gap between "Naturally" and
+        // "sir", or a doubled opening syllable, always inside the first second and
+        // roughly one run in five.
+        //
+        // The block above waits for exactly this, but it is guarded by
+        // activation_speaker_audio_stream_infoset_, which is set on the first
+        // conversation after boot and never cleared -- so every subsequent
+        // conversation raced the chime. Wait here on every conversation.
+        {
+          uint32_t chime_deadline = millis() + ACTIVATION_CHIME_TIMEOUT_MS;
+          bool waited = false;
+          while ((this->activation_speaker_->is_running() || this->activation_speaker_->has_buffered_data()) &&
+                 millis() < chime_deadline) {
+            waited = true;
+            delay(10);
+          }
+          if (waited) {
+            ESP_LOGD(TAG, "PARSE_JSON_BUF: Waited for the activation chime to finish before playing the reply");
+          }
+        }
+
+        // Bring the speaker up NOW, before any audio arrives, and do it on every
+        // conversation rather than only the first.
+        //
+        // Starting it lazily on the first chunk is inherently racy and the race is
+        // audible either way: writing before it is running loses the opening syllable
+        // ("Naturally" as "urally"), while starting and waiting inside the write path
+        // instead produced a repeat ("Na-naturally"). Doing it here removes the
+        // transition from the audio path entirely -- by the time the first frame
+        // lands, the speaker has been running for a while.
+        //
+        // Deliberately outside the infoset_ guard above, which only fires once per
+        // boot; every conversation needs a running speaker.
+        if (this->elevenlabs_speaker_ != nullptr && !this->elevenlabs_speaker_->is_running()) {
+          ESP_LOGI(TAG, "PARSE_JSON_BUF: Starting elevenlabs speaker ahead of the first audio frame");
+          this->elevenlabs_speaker_->start();
         }
       } else {
         ESP_LOGW(TAG, "PARSE_JSON_BUF: No conversation_id in metadata");

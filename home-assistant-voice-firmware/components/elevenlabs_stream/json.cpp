@@ -16,15 +16,29 @@ std::string JsonDeserializer::to_string(const JsonObject& obj) {
   return out;
 }
 
-std::unique_ptr<BasicJsonDocument<PSRAMAllocator>> JsonDeserializer::parse(const uint8_t* buffer, size_t length) {
+std::unique_ptr<BasicJsonDocument<PSRAMAllocator>> JsonDeserializer::parse(uint8_t* buffer, size_t length) {
     // Log PSRAM before parsing
     size_t psram_free_before = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
     size_t heap_free_before = heap_caps_get_free_size(MALLOC_CAP_8BIT);
-    
-    // ArduinoJson needs 1.5-2.0x the input size for internal structures (objects, arrays, strings)
-    // Use 3x multiplier for heavily fragmented PSRAM after speaker buffers allocate
-    // This accounts for ArduinoJson overhead + fragmentation + safety margin
-    size_t capacity = length * 3;
+
+    // Zero-copy parsing (see the header): strings stay in `buffer` and the document
+    // holds pointers, so the pool only has to fit the object structure -- a handful of
+    // keys -- rather than a copy of the ~100KB base64 audio payload.
+    //
+    // Previously this passed a const char*, which forces ArduinoJson to copy every
+    // string into the pool. A 3x multiplier still was not enough in practice: audio
+    // frames of 67KB-114KB failed with "JSON deserialization failed: NoMemory", and
+    // every one of those frames was a chunk of speech discarded before it ever
+    // reached the speaker. That, not the speaker write, was the dominant cause of the
+    // dropouts.
+    //
+    // 2x covers the structural overhead with a wide margin now that the payload is not
+    // duplicated, and the floor keeps small control messages from getting a pool too
+    // tight to work in.
+    size_t capacity = length * 2;
+    if (capacity < 4096) {
+        capacity = 4096;
+    }
     
     // Check if we have enough contiguous memory available (with 512KB safety margin)
     size_t required_memory = capacity + (512 * 1024);
@@ -39,12 +53,19 @@ std::unique_ptr<BasicJsonDocument<PSRAMAllocator>> JsonDeserializer::parse(const
              capacity, psram_free_before / 1024, heap_free_before / 1024);
     
     auto json_document = std::make_unique<BasicJsonDocument<PSRAMAllocator>>(capacity);
+    // Free size is a total, not a contiguous run. If PSRAM is fragmented the allocator
+    // can silently hand back less than asked for, which surfaces later as NoMemory and
+    // looks like the capacity was too small when it was never allocated.
+    ESP_LOGD(TAG, "parse: document capacity requested=%zu actual=%zu, largest PSRAM block=%zuKB",
+             capacity, json_document->capacity(),
+             heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM) / 1024);
     if (json_document->overflowed()) {
         ESP_LOGD(TAG, "parse: JSON document overflowed with capacity %zu (input length: %zu)", capacity, length);
         return nullptr;
     }
     
-    DeserializationError err = deserializeJson(*json_document, (const char*)buffer, length);
+    // char* (not const char*) selects ArduinoJson's zero-copy mode.
+    DeserializationError err = deserializeJson(*json_document, (char*)buffer, length);
     if (err != DeserializationError::Ok) {
         ESP_LOGD(TAG, "parse: JSON deserialization failed: %s", err.c_str());
         return nullptr;
@@ -78,7 +99,39 @@ std::unique_ptr<BasicJsonDocument<PSRAMAllocator>> JsonDeserializer::parse(const
 }
 
 std::unique_ptr<BasicJsonDocument<PSRAMAllocator>> JsonDeserializer::parse(const char* cstr) {
-    return parse(reinterpret_cast<const uint8_t*>(cstr), strlen(cstr));
+    // Deliberately COPYING mode, not the zero-copy path above.
+    //
+    // Zero-copy leaves the document pointing into its input buffer. Copying the string
+    // into a local here and parsing that would leave the document dangling the moment
+    // this function returns, and the caller reads its fields afterwards. Copying into
+    // the pool keeps the document self-contained.
+    //
+    // Safe on memory: the only caller parses the signed-URL response, a couple of
+    // hundred bytes. The NoMemory failures this change fixes were ~100KB audio frames,
+    // which come through the buffer overload.
+    if (!cstr) {
+        return nullptr;
+    }
+    size_t length = strlen(cstr);
+    size_t capacity = length * 3;
+    if (capacity < 4096) {
+        capacity = 4096;
+    }
+
+    auto json_document = std::make_unique<BasicJsonDocument<PSRAMAllocator>>(capacity);
+    if (json_document->overflowed()) {
+        ESP_LOGD(TAG, "parse(cstr): JSON document overflowed with capacity %zu (input length: %zu)", capacity, length);
+        return nullptr;
+    }
+
+    DeserializationError err = deserializeJson(*json_document, cstr, length);
+    if (err != DeserializationError::Ok) {
+        ESP_LOGD(TAG, "parse(cstr): JSON deserialization failed: %s", err.c_str());
+        return nullptr;
+    }
+
+    json_document->shrinkToFit();
+    return json_document;
 }
 
 } // namespace elevenlabs_stream

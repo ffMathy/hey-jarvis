@@ -103,7 +103,7 @@ bool ElevenLabsClient::get_signed_url(std::string &signed_url_out) {
 }
 
 bool ElevenLabsClient::connect(const std::string &signed_url,
-                               std::function<void(const uint8_t *, size_t)> on_message,
+                               std::function<void(uint8_t *, size_t)> on_message,
                                std::function<void()> on_connected,
                                std::function<void()> on_disconnected,
                                std::function<void(const std::string &)> on_error) {
