@@ -1,32 +1,19 @@
----
-name: boy-scout-rule
-description: Always fix issues you encounter, even if unrelated to your current task
----
-
 # Boy Scout Rule
 
 **CRITICAL: Always fix issues you encounter, even if unrelated to your current task.**
-
-## The Rule
 
 Leave the codebase cleaner than you found it.
 
 ## What to Fix
 
 ✅ **Always fix:**
+
 - ALL lint errors in any file you encounter
 - ALL failing tests you discover
 - Formatting issues in files you touch
 - Dead code and unused imports
+- Stale references in documentation (links to moved or deleted files)
 - Code quality issues you notice
-
-## Examples
-
-**While working on feature A, you notice:**
-- File B has lint errors → Fix them
-- Test C is failing → Fix it
-- File D has unused imports → Remove them
-- Function E has poor naming → Improve it
 
 ## Process
 
@@ -39,7 +26,7 @@ Leave the codebase cleaner than you found it.
 
 When fixing unrelated issues:
 
-```bash
+```
 feat(feature-a): add new capability
 
 Also fixes:
@@ -47,13 +34,6 @@ Also fixes:
 - Failing test in file-c.spec.ts
 - Removes unused imports from file-d.ts
 ```
-
-## Benefits
-
-- **Continuous improvement**: Code quality increases over time
-- **Prevents technical debt**: Small fixes prevent larger problems
-- **Team responsibility**: Everyone contributes to code quality
-- **Safer refactoring**: Clean code is easier to change
 
 ## What NOT to Do
 

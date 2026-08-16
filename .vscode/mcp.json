@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "mastra": {
-      "command": "npx",
-      "args": ["-y", "@mastra/mcp-docs-server"],
+      "command": "bunx",
+      "args": ["@mastra/mcp-docs-server@1.2.14"],
       "type": "stdio",
       "tools": ["*"]
     },
@@ -14,8 +14,8 @@
     "playwright": {
       "type": "stdio",
       "tools": ["*"],
-      "command": "npx",
-      "args": ["@playwright/mcp@latest", "--browser", "chromium", "--no-sandbox"]
+      "command": "bunx",
+      "args": ["@playwright/mcp@0.0.79", "--browser", "chromium", "--no-sandbox"]
     }
   }
 }

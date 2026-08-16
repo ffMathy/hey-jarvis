@@ -18,9 +18,14 @@ bun install --frozen-lockfile || {
     exit 1
 }
 
+# Dependency lifecycle scripts are disabled repo-wide (bunfig.toml), so the
+# `prepare` script no longer runs on install — wire up the git hooks explicitly.
+echo "🪝 Installing git hooks..."
+git config core.hooksPath .husky
+
 # Skip Playwright installation by default - can be installed manually when needed
 # This significantly reduces DevContainer build time
-# To install manually: npx playwright install --with-deps chromium
+# To install manually: bunx playwright install --with-deps chromium
 
 # Project-level dependencies are installed with the "initialize" target in Turborepo, lazily, when needed.
 

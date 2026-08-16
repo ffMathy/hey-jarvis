@@ -1,0 +1,62 @@
+# Docker builds in this repository run from the repository root
+# (`docker build -f mcp/Dockerfile .`), so this file — not the per-project
+# .dockerignore files — is what actually filters the build context.
+#
+# Its first job is to keep secrets out of the context: anything sent to the
+# daemon can end up in an image layer or a build cache that is later pushed.
+
+# Resolved secrets and environment files
+op.env.local
+**/op.env.local
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+
+# Credentials and keys that should never be in an image
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+**/id_rsa*
+**/.npmrc.local
+
+# Version control and CI metadata
+.git/
+.github/
+.husky/
+
+# Dependencies are installed inside the image from bun.lock
+node_modules/
+**/node_modules/
+
+# Build outputs and caches
+dist/
+**/dist/
+build/
+**/build/
+.turbo/
+**/.turbo/
+.mastra/
+**/.mastra/
+**/*.tsbuildinfo
+.esphome/
+**/.esphome/
+
+# Test and tooling artifacts
+coverage/
+**/coverage/
+playwright-report/
+**/playwright-report/
+test-results/
+**/test-results/
+test-output.txt
+*.log
+*.deb
+
+# Editor and agent workspaces
+.vscode/
+.idea/
+.devcontainer/
+.claude/worktrees/
