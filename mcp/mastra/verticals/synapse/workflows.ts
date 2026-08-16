@@ -3,6 +3,8 @@ import { createMemory } from '../../memory/index.js';
 import { logger } from '../../utils/logger.js';
 import { createStep, createWorkflow } from '../../utils/workflows/workflow-factory.js';
 import { getStateChangeReactorAgent } from './agent.js';
+import { describeStateChange } from './state-change.js';
+import { findRelevantSubscriptions, formatSubscriptionMatches } from './subscription-matcher.js';
 
 // State change notification workflow
 // Receives state changes, saves to memory, and delegates to State Change Reactor agent for decision-making
@@ -78,13 +80,52 @@ export const stateChangeNotificationWorkflow = createWorkflow({
   )
   .then(
     createStep({
+      id: 'match-subscriptions',
+      description:
+        'Finds subscriptions whose WHEN/GIVEN components semantically match the state change, using static Model2Vec embeddings',
+      inputSchema: z.object({
+        source: z.string(),
+        stateType: z.string(),
+        stateData: z.record(z.string(), z.unknown()),
+        memorySaved: z.boolean(),
+      }),
+      outputSchema: z.object({
+        source: z.string(),
+        stateType: z.string(),
+        stateData: z.record(z.string(), z.unknown()),
+        matchedSubscriptions: z.string(),
+        matchCount: z.number(),
+      }),
+      execute: async ({ inputData }) => {
+        const description = describeStateChange(inputData);
+        const matches = await findRelevantSubscriptions(description);
+
+        logger.info('State change matched against subscriptions', {
+          stateType: inputData.stateType,
+          source: inputData.source,
+          matchCount: matches.length,
+        });
+
+        return {
+          source: inputData.source,
+          stateType: inputData.stateType,
+          stateData: inputData.stateData,
+          matchedSubscriptions: formatSubscriptionMatches(matches),
+          matchCount: matches.length,
+        };
+      },
+    }),
+  )
+  .then(
+    createStep({
       id: 'analyze-and-decide',
       description: 'State Change Reactor analyzes the change and decides what actions to take',
       inputSchema: z.object({
         source: z.string(),
         stateType: z.string(),
         stateData: z.record(z.string(), z.unknown()),
-        memorySaved: z.boolean(),
+        matchedSubscriptions: z.string(),
+        matchCount: z.number(),
       }),
       outputSchema: z.object({
         registered: z.boolean(),
@@ -107,7 +148,13 @@ Source: ${inputData.source}
 Type: ${inputData.stateType}
 Data: ${JSON.stringify(inputData.stateData, null, 2)}
 
-Analyze this state change using your working memory and context. Decide if the user should be notified or if any other action is needed. If you decide to notify, delegate to the Notification agent with a clear message to send.`;
+Candidate subscriptions, retrieved by semantic similarity against their WHEN and GIVEN parts:
+
+${inputData.matchedSubscriptions}
+
+These candidates are suggestions, not decisions. For each one, confirm that its WHEN describes what actually happened and that its GIVEN (when present) currently holds. Carry out the THEN of every subscription that genuinely fires, and call markSubscriptionTriggered with its id afterwards.
+
+Then analyze this state change using your working memory and context. Decide if the user should be notified or if any other action is needed. If you decide to notify, delegate to the Notification agent with a clear message to send.`;
 
         // Execute agent network - the reactor will decide and potentially call notification agent
         const networkStream = await reactorAgent.network(analysisPrompt);

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { logger } from '../../utils/logger.js';
 import { createTool } from '../../utils/tool-factory.js';
 import { stateChangeBatcher } from './state-change-batcher.js';
+import { subscriptionTools } from './subscription-tools.js';
 import { stateChangeNotificationWorkflow } from './workflows.js';
 
 // Register state change tool for reactive notifications
@@ -96,7 +97,18 @@ export const synapseTools = {
   registerStateChange,
   flushStateChanges,
   getStateChangeBatcherStats,
+  ...subscriptionTools,
 };
+
+export {
+  findRelevantSubscriptions,
+  listSubscriptions,
+  markSubscriptionTriggered,
+  registerSubscription,
+  removeSubscription,
+  setSubscriptionEnabled,
+  subscriptionTools,
+} from './subscription-tools.js';
 
 // Re-export the workflow for backward compatibility
 export { stateChangeNotificationWorkflow };
