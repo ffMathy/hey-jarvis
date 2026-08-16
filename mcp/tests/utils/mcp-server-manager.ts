@@ -42,8 +42,13 @@ async function isServerHealthy(mcpUrl: URL, timeoutMs: number): Promise<boolean>
 }
 
 /**
- * Checks if the MCP server is already running.
- * First checks the health endpoint, then attempts full MCP client connection.
+ * Checks if the MCP server is up and usable — reachable on its health endpoint,
+ * and serving at least one tool over MCP.
+ *
+ * Tools are part of the contract rather than a bonus: every caller here is about
+ * to run tests through them, and a client that cannot reach its server reports
+ * an empty tool list rather than failing, so "connected" alone proves nothing.
+ * A server that legitimately exposes no tools would read as not running.
  */
 export async function isMcpServerRunning(args?: McpClientArgs): Promise<boolean> {
   const mcpUrl = new URL(args?.url || DEFAULT_MCP_URL);

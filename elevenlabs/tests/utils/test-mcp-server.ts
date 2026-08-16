@@ -21,10 +21,14 @@ export async function assertTestMcpServerReachable(): Promise<void> {
   ]);
 
   if (result.status !== 'fulfilled') {
+    // Carry the underlying reason through: a timeout, a refused connection and
+    // an unresolvable name all land here, and they point at different problems.
+    const reason = result.reason instanceof Error ? result.reason.message : String(result.reason);
     throw new Error(
       'The MCP server for the test agent could not be reached over its public hostname. ' +
         'ElevenLabs needs it running to give the agent any tools — start the deployment in ' +
-        'mcp/docker-compose.test-tunnel.yml.',
+        `mcp/docker-compose.test-tunnel.yml. The request failed with: ${reason}`,
+      { cause: result.reason },
     );
   }
 
