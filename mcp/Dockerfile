@@ -1,7 +1,7 @@
 # Build stage - use Bun image for building
 # Pinned by digest so the base image is immutable; Dependabot keeps the tag and
 # digest in sync. Keep the version aligned with `packageManager` in package.json.
-FROM docker.io/oven/bun:1.3.9-alpine@sha256:9028ee7a60a04777190f0c3129ce49c73384d3fc918f3e5c75f5af188e431981 AS builder
+FROM docker.io/oven/bun:1.3.14-alpine@sha256:5acc90a93e91ff07bf72aa90a7c9f0fa189765aec90b47bdbf2152d2196383c0 AS builder
 
 WORKDIR /workspace
 
@@ -22,7 +22,7 @@ COPY tsconfig.base.json ./
 COPY mcp/ ./mcp/
 
 # Production stage - use Bun Alpine for runtime (needed for mastra studio CLI)
-FROM docker.io/oven/bun:1.3.9-alpine@sha256:9028ee7a60a04777190f0c3129ce49c73384d3fc918f3e5c75f5af188e431981 AS production
+FROM docker.io/oven/bun:1.3.14-alpine@sha256:5acc90a93e91ff07bf72aa90a7c9f0fa189765aec90b47bdbf2152d2196383c0 AS production
 
 ENV HOST=0.0.0.0
 ENV NODE_ENV=production
