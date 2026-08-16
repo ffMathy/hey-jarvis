@@ -4,9 +4,14 @@
 
 This is the root-level guidelines document for the Hey Jarvis monorepo. All projects in this repository should follow these shared conventions.
 
-## GitHub Copilot Skills
+## Agent Rules and Skills
 
-This project includes specialized [GitHub Copilot Agent Skills](https://docs.github.com/copilot/concepts/agents/about-agent-skills) in `.github/skills/`. These skills teach Copilot how to perform tasks following project conventions. See [`.github/skills/README.md`](.github/skills/README.md) for the complete list.
+Project conventions live in two places under `.claude/`:
+
+- **[`.claude/rules/`](.claude/rules/)** — always-applied guidelines. Rules with a `paths` frontmatter glob load only when matching files are in play; rules without one apply to every session.
+- **[`.claude/skills/`](.claude/skills/)** — optional, situational workflows that are loaded on demand.
+
+Prefer a rule over a skill. Use the [`remember`](.claude/skills/remember/SKILL.md) skill to capture a new convention into the right place.
 
 ## Technology Stack
 
@@ -31,7 +36,7 @@ This is an Turborepo monorepo containing intelligent voice assistant components:
 
 ## Development Commands
 
-**See the [`turbo-monorepo-commands`](.claude/skills/turbo-monorepo-commands/SKILL.md) skill for detailed Turborepo usage.**
+**See the [`turbo-commands`](.claude/rules/turbo-commands.md) rule for detailed Turborepo usage.**
 
 ### TURBO Commands (MANDATORY)
 
@@ -67,20 +72,23 @@ This project uses **1Password CLI** for secure environment variable management.
 
 ## Core Development Principles
 
-**See these skills for detailed guidance:**
+**See these rules for detailed guidance:**
 
-- [`clean-code`](.github/skills/clean-code/SKILL.md) - Variable naming and YAGNI principle
+- [`clean-code`](.claude/rules/clean-code.md) - Variable naming, YAGNI, DRY, and ETC
 - [`typescript`](.claude/rules/typescript.md) - Type safety guidelines (prefer inference over casts)
-- [`mastra-development`](.claude/skills/mastra-development/SKILL.md) - Agents, tools, workflows, vertical organization, and type safety
-- [`use-npm-packages`](.github/skills/use-npm-packages/SKILL.md) - Prefer existing libraries
-- [`boy-scout-rule`](.github/skills/boy-scout-rule/SKILL.md) - Leave code better than you found it
-- [`conventional-commits`](.github/skills/conventional-commits/SKILL.md) - Commit message standards
+- [`mastra`](.claude/rules/mastra.md) - Factories, vertical organization, and type safety, plus [`mastra-agents`](.claude/rules/mastra-agents.md), [`mastra-tools`](.claude/rules/mastra-tools.md), and [`mastra-workflows`](.claude/rules/mastra-workflows.md)
+- [`use-npm-packages`](.claude/rules/use-npm-packages.md) - Prefer existing libraries
+- [`boy-scout-rule`](.claude/rules/boy-scout-rule.md) - Leave code better than you found it
+- [`conventional-commits`](.claude/rules/conventional-commits.md) - Commit message standards
+- [`github-mcp-tools`](.claude/rules/github-mcp-tools.md) - Use the GitHub MCP tools, never `curl` or `gh`
+- [`security`](.claude/rules/security.md) - Never read or print environment variable values
+- [`validation`](.claude/rules/validation.md) - When and how to run tests, linting, and builds
 
 ## Parallel Task Execution
 
 **When a plan identifies independent steps, always run them as parallel background tasks** to maximize throughput and minimize wall-clock time.
 
-After the exploration phase (see [research-before-implementation](.claude/rules/research-before-implementation.md)):
+After the exploration phase:
 
 1. **Review the plan's parallelization markers** — the plan must indicate which steps can run independently
 2. **Spawn background agents** (`run_in_background: true`) for each independent step, using worktree isolation (`isolation: "worktree"`) when they touch different files
@@ -154,9 +162,10 @@ Each project has its own AGENTS.md with specialized instructions:
 
 ## Contributing
 
-**See these skills for detailed development guidelines:**
+**See these rules for detailed development guidelines:**
 
-- [`mastra-development`](.claude/skills/mastra-development/SKILL.md) - Agents, tools, workflows, vertical organization, and type safety
+- [`mastra`](.claude/rules/mastra.md) - Factories, vertical organization, and type safety
+- [`mastra-agents`](.claude/rules/mastra-agents.md), [`mastra-tools`](.claude/rules/mastra-tools.md), [`mastra-workflows`](.claude/rules/mastra-workflows.md) - Per-file-type conventions
 
 All contributions should:
 
