@@ -73,6 +73,34 @@ async function checkTunnelHealth(): Promise<{ ok: boolean; status?: number; erro
 }
 
 /**
+ * Reports what the MCP endpoint answers through the public hostname.
+ *
+ * A healthy /health only proves the tunnel reaches the origin for a path nothing
+ * guards. ElevenLabs connects to /api/mcp instead, and its status here separates
+ * the possibilities: 401 or 403 is something at the edge refusing the request,
+ * 404 is the wrong path, 5xx is Cloudflare with no connector to talk to.
+ */
+async function reportTunnelMcpEndpoint(): Promise<void> {
+  const mcpUrl = `${process.env.HEY_JARVIS_CLOUDFLARED_TUNNEL_URL}/api/mcp`;
+  const [result] = await Promise.allSettled([
+    fetch(mcpUrl, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }),
+      signal: AbortSignal.timeout(TUNNEL_REQUEST_TIMEOUT_MS),
+    }),
+  ]);
+
+  if (result.status !== 'fulfilled') {
+    const reason = result.reason instanceof Error ? result.reason.message : String(result.reason);
+    console.log(`🔍 MCP endpoint through the tunnel: request failed (${reason})`);
+    return;
+  }
+
+  console.log(`🔍 MCP endpoint through the tunnel answered ${result.value.status}`);
+}
+
+/**
  * Ensures the cloudflared tunnel is running before tests start: replaces any
  * existing connector with one of our own and waits until the tunnel actually
  * serves the local MCP server.
@@ -169,6 +197,10 @@ export async function ensureTunnelRunning(): Promise<void> {
   );
 
   console.log('✅ Cloudflared tunnel started successfully');
+
+  // /health passing says the tunnel reaches the origin; this says whether the
+  // endpoint ElevenLabs actually needs is reachable the same way.
+  await reportTunnelMcpEndpoint();
 }
 
 /**
