@@ -26,7 +26,7 @@ public:
 
   // Connects to ElevenLabs WebSocket using signed URL
   bool connect(const std::string& signed_url,
-               std::function<void(const uint8_t*, size_t)> on_message,
+               std::function<void(uint8_t*, size_t)> on_message,
                std::function<void()> on_connected,
                std::function<void()> on_disconnected,
                std::function<void(const std::string&)> on_error);

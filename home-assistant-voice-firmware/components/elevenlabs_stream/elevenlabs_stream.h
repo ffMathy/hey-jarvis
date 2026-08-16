@@ -44,7 +44,6 @@ public:
   void set_elevenlabs_speaker(speaker::Speaker *speaker) { this->elevenlabs_speaker_ = speaker; }
   void set_activation_speaker(speaker::Speaker *speaker) { this->activation_speaker_ = speaker; }
   void set_initial_message(const std::string &message) { this->initial_message_ = message; }
-  void set_conversation_timeout(uint32_t timeout_ms) { this->conversation_timeout_ms_ = timeout_ms; }
 
   bool start_stream();
   bool start_stream(const std::string &initial_message);
@@ -77,7 +76,7 @@ public:
   void renew_signed_url_if_needed();
   bool send_websocket_message(const std::string &message);
   void handle_websocket_message(const uint8_t *buffer, size_t length);
-  void parse_json_message_from_buffer(const uint8_t *buffer, size_t length);
+  void parse_json_message_from_buffer(uint8_t *buffer, size_t length);
   void handle_error(const std::string &error_message);
   void send_conversation_init();
   void capture_and_send_audio();
@@ -102,8 +101,33 @@ public:
   
   // Notification/proactive message support
   std::string initial_message_; // Custom initial message for proactive notifications
-  uint32_t conversation_timeout_ms_{0}; // Timeout in milliseconds (0 = no timeout)
-  uint32_t last_user_input_time_{0}; // Track last user input for timeout detection
+
+  // How long an announcement waits for a reply before hanging up, and the state used to
+  // time it. 0 disables the whole mechanism, which is what wake-word conversations use:
+  // somebody said the wake word, so they are already talking and the call should live as
+  // long as the agent's own settings allow.
+  //
+  // Timed here rather than by the service, because silence_end_call_timeout is not an
+  // overridable field -- the overridable set is prompt, first_message, language, LLM,
+  // tool_ids, knowledge_base, the TTS voice settings, text_only and asr.keywords -- and
+  // ElevenLabs errors the conversation outright when it is sent one that is not enabled.
+  //
+  // The earlier local attempt failed for a different reason: it timed the gap between
+  // outgoing microphone chunks, and the microphone streams continuously while the socket
+  // is open, so the gap was always about zero. The signal it needed was already arriving
+  // and being ignored -- vad_score, the service's own estimate of whether a person is
+  // speaking, which the LED ring has been driven from all along.
+  uint32_t response_window_ms_{0};
+  // True while an announcement is still waiting to hear a reply. Cleared for good by the
+  // first real transcript: from then on somebody is in the conversation and the window
+  // has served its purpose.
+  bool awaiting_response_{false};
+  // True once the agent has produced audio in this stream. The clock must not run before
+  // that, or the window expires while the announcement is still being synthesised.
+  bool agent_has_spoken_{false};
+  // Start of the current unbroken run of silence, refreshed by speech and by the agent's
+  // own playback. 0 means the clock is not running.
+  uint32_t silence_started_ms_{0};
 
   // Triggers - simplified
   std::vector<Trigger<> *> on_start_triggers_;
@@ -122,6 +146,14 @@ public:
   
   // Timing and configuration constants
   uint32_t last_audio_time_{0};
+
+  // Prebuffer for the opening of each reply. Decoded audio is accumulated here until
+  // there is enough of a cushion to start playback, then written in one go. Without it
+  // the first fragment plays into a pipeline that has not settled, and the opening word
+  // arrives chopped, gapped or doubled depending on the timing.
+  std::vector<uint8_t> reply_prebuffer_;
+  bool reply_prebuffering_{true};
+  uint32_t reply_prebuffer_started_ms_{0};
   uint32_t last_audio_response_time_{0};  // Track when we last received audio from agent
   uint32_t connection_timeout_{10000};  // Reduced to 10 seconds
   uint32_t connection_start_time_{0};

@@ -67,6 +67,7 @@ FETCH_TIMEOUT="${FETCH_TIMEOUT:-180}"
 # the affected word boundaries. Do not downgrade this without re-running that check.
 GEMINI_MODEL="${GEMINI_MODEL:-gemini-pro-latest}"
 RECORD_SOURCE="${RECORD_SOURCE:-RDPSource}"
+CHIME_RECORD_SECONDS="${CHIME_RECORD_SECONDS:-4}"
 KEEP_AUDIO="${KEEP_AUDIO:-1}"
 
 # Mathias's voice. A voice ID is a public identifier, not a credential, so it lives
@@ -83,6 +84,7 @@ COMMAND_MP3="$WORK_DIR/command.mp3"
 COMMAND_WAV="$WORK_DIR/command.wav"
 ROOM_RAW="$WORK_DIR/room-recording.wav"
 ROOM_WAV="$WORK_DIR/room-16k.wav"
+CHIME_WAV="$WORK_DIR/activation-chime.wav"
 REF_SRC="$WORK_DIR/elevenlabs-reference.mp3"
 REF_WAV="$WORK_DIR/elevenlabs-16k.wav"
 CONV_JSON="$WORK_DIR/conversation.json"
@@ -359,6 +361,24 @@ if [ -n "${SKIP_AUDIO_CHECK:-}" ]; then
 fi
 
 # --- hold the conversation ---------------------------------------------------
+# VOLUME_CHECK records the activation chime on its own, before the command is spoken,
+# so its level can be compared against the reply's. The two sounds travel different
+# speaker paths on the device, and only one of them used to follow the volume dial.
+#
+# Recorded in a separate window rather than one continuous capture because recording
+# while the host is playing degrades WSLg audio badly (see the note above the reply
+# recording). The chime plays immediately after the wake word, while the host is
+# silent, so it gets a clean window of its own.
+chime_peak=""
+if [ -n "${VOLUME_CHECK:-}" ]; then
+  echo "🔔 Recording the activation chime (${CHIME_RECORD_SECONDS}s)"
+  ffmpeg -hide_banner -loglevel error -y -f pulse -i "$RECORD_SOURCE" \
+    -t "$CHIME_RECORD_SECONDS" -ac 1 -ar 16000 -sample_fmt s16 "$CHIME_WAV" > /dev/null 2>&1
+  chime_peak="$(ffmpeg -i "$CHIME_WAV" -af volumedetect -f null /dev/null 2>&1 \
+    | grep -a -oE 'max_volume: -?[0-9.]+' | head -1 | grep -oE '\-?[0-9.]+')"
+  echo "   chime peak: ${chime_peak:-?} dB"
+fi
+
 # Wait for the device to actually be listening before speaking.
 #
 # Waking is not the same as being ready. The device opens the stream, then plays its
@@ -423,6 +443,25 @@ recorder_pid=""
 room_peak="$(ffmpeg -i "$ROOM_RAW" -af volumedetect -f null /dev/null 2>&1 \
   | grep -a -oE 'max_volume: -?[0-9.]+' | head -1 | grep -oE '\-?[0-9.]+')"
 echo "   captured: $ROOM_RAW (peak ${room_peak:-?} dB)"
+
+# Compare the two sounds' levels. They share one amplifier, so after the volume sync
+# they should land close together; a large gap means the reply is not following the
+# dial. Tolerance is generous because the two sounds differ in content and duration.
+if [ -n "${VOLUME_CHECK:-}" ] && [ -n "$chime_peak" ] && [ -n "$room_peak" ]; then
+  gap="$(awk -v a="$chime_peak" -v b="$room_peak" 'BEGIN { d = a - b; if (d < 0) d = -d; printf "%.1f", d }')"
+  echo "   volume parity: chime ${chime_peak} dB vs reply ${room_peak} dB (gap ${gap} dB)"
+  # TREAT THIS AS INDICATIVE, NOT AUTHORITATIVE. The window starts from the serial
+  # detection line, so it catches a varying slice of a ~1.6s chime and the number moves
+  # several dB between identical runs. It is useful for spotting a gross mismatch, not
+  # for judging a few dB. Compare the source files directly when that matters:
+  #   ffmpeg -i <file> -af volumedetect -f null /dev/null
+  if awk -v g="$gap" -v t="${VOLUME_GAP_MAX_DB:-12}" 'BEGIN { exit !(g > t) }'; then
+    echo "   ⚠️  The two sounds differ by more than ${VOLUME_GAP_MAX_DB:-12} dB — the dial is"
+    echo "      probably not reaching both speaker paths."
+  else
+    echo "   ✅ Chime and reply are at comparable levels."
+  fi
+fi
 
 # A silent capture means the microphone heard nothing. Comparing it would produce a
 # confident-sounding verdict about silence, which is worse than saying so.
@@ -580,8 +619,12 @@ defects.
 
 In differences, quote the specific words affected and roughly where they occur, or
 state plainly that the reproduction was faithful. Put the number of distinct defects
-in defect_count. If the agent's speech is not audible at all in AUDIO 2, report false
-and say so in differences.
+in defect_count.
+
+Set agent_speech_audible to false if you cannot make out the agent's speech in AUDIO 2
+at all. That is the most severe defect there is -- the device played nothing -- so also
+set defects_found to true and say so in differences. Do NOT report a faithful
+reproduction when there is no speech to compare.
 
 About the transcript below:
   - "agent:" lines are what the service intended to say. "user:" lines are what the
@@ -624,6 +667,7 @@ jq -n \
       type: "OBJECT",
       properties: {
         defects_found: { type: "BOOLEAN" },
+        agent_speech_audible: { type: "BOOLEAN" },
         confidence: { type: "STRING", enum: ["low", "medium", "high"] },
         defect_count: { type: "INTEGER" },
         differences: { type: "STRING" },
@@ -654,6 +698,18 @@ echo "   reference: $(printf '%s' "$verdict" | jq -r '.reference_summary // "-"'
 echo "   room:      $(printf '%s' "$verdict" | jq -r '.room_summary // "-"')"
 echo "   confidence: $(printf '%s' "$verdict" | jq -r '.confidence')"
 echo "   differences: $(printf '%s' "$verdict" | jq -r '.differences')"
+
+# Treat inaudible agent speech as a hard failure regardless of defects_found. A run
+# where nothing played is the worst outcome, not a clean one, and an earlier version of
+# this prompt scored exactly that as a pass three times in a row.
+if [ "$(printf '%s' "$verdict" | jq -r '.agent_speech_audible // true')" = "false" ]; then
+  echo
+  echo "❌ NO AUDIO — the agent's speech is not audible in the room recording at all."
+  echo "   The device played nothing, or nothing the microphone could hear."
+  echo "   reference: $REF_WAV"
+  echo "   room:      $ROOM_WAV"
+  exit 2
+fi
 
 if [ "$(printf '%s' "$verdict" | jq -r '.defects_found')" = "true" ]; then
   echo

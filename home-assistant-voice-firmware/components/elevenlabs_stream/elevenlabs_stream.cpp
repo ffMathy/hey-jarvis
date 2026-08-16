@@ -18,6 +18,7 @@
 #include <esp_heap_caps.h>
 #include <freertos/FreeRTOS.h>  // pdMS_TO_TICKS for the blocking speaker write
 #include <inttypes.h>
+#include <cstring>  // memcmp, memchr for the audio fast path
 
 namespace esphome {
 namespace elevenlabs_stream {
@@ -34,6 +35,45 @@ static const uint32_t SPEAKER_WRITE_WAIT_MS = 100;
 // speaker drains in real time, so any healthy buffer frees space well inside this;
 // only a genuinely wedged speaker reaches it.
 static const uint32_t SPEAKER_WRITE_STALL_TIMEOUT_MS = 5000;
+
+// How long to wait for the speaker to reach STATE_RUNNING before the first write.
+// It normally comes up in a few milliseconds; this only bounds a pathological case.
+static const uint32_t SPEAKER_START_TIMEOUT_MS = 500;
+
+// How long to let the activation chime finish before queueing reply audio. The chime
+// is well under a second; this only stops a stuck one from delaying the reply.
+static const uint32_t ACTIVATION_CHIME_TIMEOUT_MS = 2000;
+
+// Settle time after the chime reports finished, to let the shared i2s peripheral drain
+// before reply audio is queued behind it.
+static const uint32_t I2S_DRAIN_SETTLE_MS = 200;
+
+// How much decoded audio to hold before playback starts.
+//
+// Must exceed a single frame or it buys nothing. The first frame measured 18192 bytes,
+// so an earlier 16000-byte threshold was satisfied immediately, flushed on frame one,
+// and left no cushion at all -- the gap inside the opening word persisted unchanged.
+//
+// 48000 bytes is 1.5s at 16 kHz 16-bit mono and spans two to three frames, so playback
+// only begins once there is enough queued to ride out the wait for the next one.
+// ElevenLabs then streams faster than real time and the buffer stays ahead.
+static const uint32_t REPLY_PREBUFFER_BYTES = 48000;
+
+// Hard ceiling on how long audio may sit in the prebuffer. Whatever is held is released
+// once this elapses, even if the size threshold was never met, so a short turn can never
+// be swallowed. Comfortably under the point where a listener notices a delayed reply.
+static const uint32_t REPLY_PREBUFFER_MAX_MS = 400;
+
+// How long to let a short reply finish playing before the speaker is stopped.
+static const uint32_t SPEAKER_DRAIN_TIMEOUT_MS = 3000;
+
+// vad_score above which an announcement treats the room as occupied and keeps waiting.
+// The service documents the score as the probability that the user is speaking, so this
+// is "more likely than not". See the VAD handler for why it sits above the LED's 0.25.
+static const float ANNOUNCEMENT_SPEECH_THRESHOLD = 0.5f;
+
+// How long an announcement waits for the agent's first audio before giving up on it.
+static const uint32_t ANNOUNCEMENT_FIRST_AUDIO_TIMEOUT_MS = 20000;
 
 // Helper to convert StreamState enum to string
 static const char* stream_state_to_string(StreamState state) {
@@ -68,6 +108,12 @@ bool ElevenLabsStream::decode_and_play_base64_audio(const char* base64_data) {
     return false;
   }
 
+  // Both audio paths -- the fast path and the JSON one -- come through here, so this is
+  // the one place that knows the agent has started talking. Until it does, an
+  // announcement's reply window must stay shut: connecting, fetching a signed URL and
+  // synthesising the first message can easily outlast three seconds of "silence".
+  this->agent_has_spoken_ = true;
+
   // Log PSRAM before decode
   size_t psram_before_decode = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
   ESP_LOGD(TAG, "DECODE_B64: Starting decode, input_len=%zu, PSRAM Free=%zuKB", 
@@ -88,6 +134,85 @@ bool ElevenLabsStream::decode_and_play_base64_audio(const char* base64_data) {
   
   if (psram_after_decode < 1024 * 1024) {
     ESP_LOGW(TAG, "DECODE_B64: LOW MEMORY WARNING: PSRAM Free=%zuKB", psram_after_decode / 1024);
+  }
+
+  // Build a cushion before playback starts.
+  //
+  // The opening of a reply was unreliable in a way that ordering fixes could not
+  // settle: sometimes the first syllable was chopped ("urally"), sometimes doubled
+  // ("Na- Naturally"), sometimes a gap between the first two words. Starting the
+  // speaker earlier, waiting for it to run, waiting for the activation chime and
+  // reapplying the stream info each conversation all reduced it without removing it.
+  //
+  // The cause is not the ordering, it is that the first fragment plays into a pipeline
+  // with nothing behind it, so any scheduling jitter in the resampler or i2s is
+  // immediately audible. Later audio never suffers because ElevenLabs sends faster
+  // than real time and the buffer stays full.
+  //
+  // So hold the first REPLY_PREBUFFER_BYTES back and release them together. Playback
+  // starts a fraction of a second later with a cushion already in hand.
+  if (this->reply_prebuffering_) {
+    if (this->reply_prebuffer_.empty()) {
+      this->reply_prebuffer_started_ms_ = millis();
+    }
+    this->reply_prebuffer_.insert(this->reply_prebuffer_.end(), decoded, decoded + decoded_len);
+    heap_caps_free(decoded);
+
+    // Release on size OR on age, whichever comes first.
+    //
+    // Size alone is not safe: a turn whose audio totals less than the threshold would
+    // be held and never played. That is not hypothetical -- a 48000-byte threshold did
+    // exactly this, holding 31836 bytes to the end of the turn, and the device fell
+    // silent for whole replies. The deadline guarantees audio always reaches the
+    // speaker, so the threshold only decides how much cushion a big reply gets.
+    uint32_t held_ms = millis() - this->reply_prebuffer_started_ms_;
+    if (this->reply_prebuffer_.size() < REPLY_PREBUFFER_BYTES && held_ms < REPLY_PREBUFFER_MAX_MS) {
+      ESP_LOGD(TAG, "DECODE_B64: Prebuffering, %zu/%u bytes held for %ums", this->reply_prebuffer_.size(),
+               REPLY_PREBUFFER_BYTES, held_ms);
+      return true;
+    }
+
+    // Cushion reached: swap the accumulated audio in and fall through to write it.
+    ESP_LOGD(TAG, "DECODE_B64: Prebuffer full at %zu bytes; starting playback",
+             this->reply_prebuffer_.size());
+    this->reply_prebuffering_ = false;
+    decoded_len = this->reply_prebuffer_.size();
+    decoded = static_cast<uint8_t*>(heap_caps_malloc(decoded_len, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    if (decoded == nullptr) {
+      decoded = static_cast<uint8_t*>(heap_caps_malloc(decoded_len, MALLOC_CAP_8BIT));
+    }
+    if (decoded == nullptr) {
+      ESP_LOGE(TAG, "DECODE_B64: Could not allocate %zu bytes to flush the prebuffer", decoded_len);
+      this->reply_prebuffer_.clear();
+      return false;
+    }
+    memcpy(decoded, this->reply_prebuffer_.data(), decoded_len);
+    this->reply_prebuffer_.clear();
+    this->reply_prebuffer_.shrink_to_fit();
+  }
+
+  // Make sure the speaker is actually running before handing it the first chunk.
+  //
+  // Speaker::play() does start the speaker implicitly, but asynchronously, and the
+  // audio written during that transition is lost. The serial log shows the order
+  // plainly: "Audio fast path, payload=18192 bytes" and only then
+  // "resampler_speaker: Starting". Those 18192 bytes are ~0.57s at 16 kHz, which is
+  // why the reply consistently began mid-word -- "Naturally" arriving as "urally".
+  //
+  // Starting it explicitly and waiting for STATE_RUNNING costs a few milliseconds once
+  // per reply and keeps the opening syllable. The wait is bounded so a speaker that
+  // never comes up cannot wedge the websocket task.
+  if (!elevenlabs_speaker_->is_running()) {
+    ESP_LOGD(TAG, "DECODE_B64: Speaker not running; starting it before the first write");
+    elevenlabs_speaker_->start();
+    uint32_t start_deadline = millis() + SPEAKER_START_TIMEOUT_MS;
+    while (!elevenlabs_speaker_->is_running() && millis() < start_deadline) {
+      delay(2);
+    }
+    if (!elevenlabs_speaker_->is_running()) {
+      ESP_LOGW(TAG, "DECODE_B64: Speaker did not reach running state within %ums; writing anyway",
+               SPEAKER_START_TIMEOUT_MS);
+    }
   }
 
   // Speaker::play() is NON-BLOCKING: it copies only what currently fits in the ring
@@ -197,6 +322,7 @@ void ElevenLabsStream::setup() {
       ESP_LOGI(TAG, "SPEAKER_CALLBACK: Setting speaker_is_active_ = false");
       this->speaker_is_active_ = false;
 
+
       for (auto *trigger : this->on_listening_triggers_) {
           trigger->trigger();
       }
@@ -262,17 +388,54 @@ void ElevenLabsStream::loop() {
     last_psram_log = millis();
   }
   
-  // Check for conversation timeout if configured
-  if (this->conversation_timeout_ms_ > 0 && this->state_ == StreamState::ON && 
-      this->last_user_input_time_ > 0 && !this->speaker_is_active_) {
-    uint32_t time_since_input = millis() - this->last_user_input_time_;
-    if (time_since_input >= this->conversation_timeout_ms_) {
-      ESP_LOGI(TAG, "LOOP: Conversation timeout reached (%u ms since last input), stopping stream", time_since_input);
+  // An announcement hangs up if nobody answers it.
+  //
+  // The clock is held at zero, rather than merely reset, for as long as there is any
+  // reason to believe the exchange is still alive: the agent has yet to say anything,
+  // its audio is still playing, or the speaker has only just fallen quiet. It starts
+  // running at the first moment none of that is true, and vad_score pushes it back
+  // whenever the service thinks it can hear somebody (see parse_json_buffer). So the
+  // window measures silence in the room after the announcement, which is the thing
+  // actually being asked about.
+  if (this->awaiting_response_ && this->response_window_ms_ > 0 && this->state_ == StreamState::ON) {
+    // Nothing else bounds an announcement that never gets off the ground -- if the agent
+    // produces no audio at all, "the agent is still busy" stays true forever and the
+    // socket is left open on a conversation nobody in the room is aware of. The bound is
+    // loose on purpose: it has to cover the signed URL round trip, the LLM and the first
+    // sentence of speech, and it only exists to catch outright failure.
+    if (!this->agent_has_spoken_ &&
+        millis() - this->connection_start_time_ >= ANNOUNCEMENT_FIRST_AUDIO_TIMEOUT_MS) {
+      ESP_LOGW(TAG, "LOOP: Announcement produced no audio within %ums, ending conversation",
+               ANNOUNCEMENT_FIRST_AUDIO_TIMEOUT_MS);
+      this->awaiting_response_ = false;
+      this->silence_started_ms_ = 0;
+      this->stop_stream();
+      return;
+    }
+
+    const bool agent_busy = !this->agent_has_spoken_ || this->speaker_is_active_ ||
+                            // has_buffered_data(), not is_running(): the speaker is
+                            // started once for the whole conversation and only stopped
+                            // at the end, so is_running() would be true throughout and
+                            // the clock would never get to start.
+                            (this->elevenlabs_speaker_ != nullptr &&
+                             this->elevenlabs_speaker_->has_buffered_data());
+    if (agent_busy) {
+      this->silence_started_ms_ = 0;
+    } else if (this->silence_started_ms_ == 0) {
+      this->silence_started_ms_ = millis();
+      ESP_LOGD(TAG, "LOOP: Room is quiet, giving a reply %ums before hanging up",
+               this->response_window_ms_);
+    } else if (millis() - this->silence_started_ms_ >= this->response_window_ms_) {
+      ESP_LOGI(TAG, "LOOP: No reply within %ums of the announcement, ending conversation",
+               this->response_window_ms_);
+      this->awaiting_response_ = false;
+      this->silence_started_ms_ = 0;
       this->stop_stream();
       return;
     }
   }
-  
+
   // Send periodic heartbeat when connected
   if (this->client_ && this->state_ == StreamState::ON && !this->speaker_is_active_) {
     uint32_t heartbeat_elapsed = millis() - this->last_heartbeat_;
@@ -301,10 +464,12 @@ bool ElevenLabsStream::start_stream(const std::string &initial_message, uint32_t
   ESP_LOGD(TAG, "START_STREAM: Agent ID='%s'", this->agent_id_.c_str());
   ESP_LOGD(TAG, "START_STREAM: Initial message='%s', timeout=%u ms", initial_message.c_str(), timeout_ms);
 
-  // Store the initial message and timeout for this session
+  // Store the initial message and response window for this session
   this->initial_message_ = initial_message;
-  this->conversation_timeout_ms_ = timeout_ms;
-  this->last_user_input_time_ = 0; // Reset on new stream
+  this->response_window_ms_ = timeout_ms;
+  this->awaiting_response_ = timeout_ms > 0;
+  this->agent_has_spoken_ = false;
+  this->silence_started_ms_ = 0;
 
   this->connection_start_time_ = millis();
   ESP_LOGD(TAG, "START_STREAM: Connection start time set to %d", this->connection_start_time_);
@@ -324,7 +489,7 @@ bool ElevenLabsStream::start_stream(const std::string &initial_message, uint32_t
   ESP_LOGD(TAG, "START_STREAM: Connecting to ElevenLabs...");
   bool connected = this->client_->connect(
     this->signed_url_,
-    [this](const uint8_t* buffer, size_t length) { 
+    [this](uint8_t* buffer, size_t length) { 
       this->parse_json_message_from_buffer(buffer, length); 
     },
     [this]() { 
@@ -391,12 +556,55 @@ void ElevenLabsStream::stop_stream() {
     ESP_LOGD(TAG, "STOP_STREAM: Microphone stopped");
   }
   
+  // Stop the speaker so the next conversation starts from an empty buffer.
+  //
+  // This only reset the bookkeeping below and left the speaker running, so whatever
+  // was still queued -- plus the resampler's filter state -- carried into the next
+  // conversation. The next reply then appended behind that residue and its opening
+  // syllable came out doubled: "Na- Naturally". It was intermittent, roughly one run
+  // in ten, which is exactly how a leftover-buffer bug behaves: it depends on how much
+  // was still queued when the previous conversation happened to end.
+  //
+  // The conversation is over, so discarding anything still queued is correct.
+  // Release anything still held in the prebuffer first. A reply shorter than the
+  // prebuffer threshold would otherwise never be played at all -- held back waiting
+  // for a cushion that never arrives, then discarded here.
+  if (this->elevenlabs_speaker_ != nullptr && !this->reply_prebuffer_.empty()) {
+    ESP_LOGD(TAG, "STOP_STREAM: Flushing %zu prebuffered bytes before stopping",
+             this->reply_prebuffer_.size());
+    this->elevenlabs_speaker_->play(this->reply_prebuffer_.data(), this->reply_prebuffer_.size(),
+                                    pdMS_TO_TICKS(SPEAKER_WRITE_WAIT_MS));
+    uint32_t drain_deadline = millis() + SPEAKER_DRAIN_TIMEOUT_MS;
+    while (this->elevenlabs_speaker_->has_buffered_data() && millis() < drain_deadline) {
+      delay(10);
+    }
+  }
+
+  if (this->elevenlabs_speaker_ != nullptr && this->elevenlabs_speaker_->is_running()) {
+    ESP_LOGD(TAG, "STOP_STREAM: Stopping speaker to discard leftover audio");
+    this->elevenlabs_speaker_->stop();
+  }
+
+  // Arm the prebuffer for the next reply. Without this the next conversation would
+  // hold its opening audio behind a threshold that has already been met and never
+  // release it.
+  this->reply_prebuffer_.clear();
+  this->reply_prebuffer_.shrink_to_fit();
+  this->reply_prebuffering_ = true;
+
   // Reset speaker state completely
   this->speaker_is_active_ = false;
   this->speaker_start_time_ = 0;
   this->speaker_end_time_ = 0;
   this->accumulated_duration_ms_ = 0;
   ESP_LOGD(TAG, "STOP_STREAM: Speaker activity tracking reset");
+
+  // Clear the announcement window too, so a conversation started afterwards by the wake
+  // word cannot inherit a stale one and hang itself up mid-sentence.
+  this->awaiting_response_ = false;
+  this->agent_has_spoken_ = false;
+  this->silence_started_ms_ = 0;
+  this->response_window_ms_ = 0;
   
   // Disconnect WebSocket client
   if (this->client_) {
@@ -458,12 +666,61 @@ bool ElevenLabsStream::send_websocket_message(const std::string &message) {
   return true;
 }
 
-void ElevenLabsStream::parse_json_message_from_buffer(const uint8_t *buffer, size_t length) {
+void ElevenLabsStream::parse_json_message_from_buffer(uint8_t *buffer, size_t length) {
   // Log PSRAM before parsing
   size_t psram_free_before = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
   ESP_LOGD(TAG, "PARSE_JSON_BUF: Processing message, length=%zu, PSRAM Free=%zuKB", 
            length, psram_free_before / 1024);
   
+  // Fast path for audio frames: extract the base64 payload without parsing the JSON.
+  //
+  // Audio arrives as {"type":"audio","audio_event":{"audio_base_64":"<~100KB>",...}}.
+  // Handing that to ArduinoJson reliably failed with NoMemory and threw the frame
+  // away -- each loss being a chunk of speech the speaker never got, which is what
+  // made replies stutter. Measured: a 105KB frame, a 211KB pool that allocated in
+  // full, and 2176KB contiguous PSRAM still free, yet deserialization reported
+  // NoMemory. The payload is copied into the pool regardless of the zero-copy cast.
+  //
+  // The payload is a base64 string with no escapes, so its bounds can be found by
+  // scanning. That avoids allocating any document for the largest, most frequent
+  // messages. Everything else -- small control frames -- still goes through the
+  // parser below, where correctness matters more than bytes.
+  static const char AUDIO_KEY[] = "\"audio_base_64\"";
+  const size_t AUDIO_KEY_LEN = sizeof(AUDIO_KEY) - 1;
+  const char* haystack = reinterpret_cast<const char*>(buffer);
+  // Hand-rolled rather than memmem(), which is a GNU extension and not dependable on
+  // ESP-IDF. The key appears early in the frame, so this scans a few bytes in practice.
+  const char* key_pos = nullptr;
+  if (length >= AUDIO_KEY_LEN) {
+    for (size_t i = 0; i + AUDIO_KEY_LEN <= length; i++) {
+      if (haystack[i] == '"' && memcmp(haystack + i, AUDIO_KEY, AUDIO_KEY_LEN) == 0) {
+        key_pos = haystack + i;
+        break;
+      }
+    }
+  }
+  if (key_pos != nullptr) {
+    const char* end = haystack + length;
+    const char* p = key_pos + sizeof(AUDIO_KEY) - 1;
+    while (p < end && *p != ':') p++;          // key -> colon
+    while (p < end && *p != '"') p++;          // colon -> opening quote
+    if (p < end) {
+      const char* value_start = p + 1;
+      const char* value_end = static_cast<const char*>(memchr(value_start, '"', end - value_start));
+      if (value_end != nullptr && value_end > value_start) {
+        // decode_and_play_base64_audio takes a C string; terminate in place. The
+        // buffer belongs to the websocket assembler and is reset after this returns.
+        size_t payload_len = value_end - value_start;
+        *const_cast<char*>(value_end) = '\0';
+        ESP_LOGD(TAG, "PARSE_JSON_BUF: Audio fast path, payload=%zu bytes (frame %zu)", payload_len, length);
+        this->last_audio_time_ = millis();
+        this->decode_and_play_base64_audio(value_start);
+        return;
+      }
+    }
+    ESP_LOGW(TAG, "PARSE_JSON_BUF: audio_base_64 present but unparseable; falling back to JSON");
+  }
+
   // Use new JsonDeserializer class
   auto json_doc = JsonDeserializer::parse(buffer, length);
   if (!json_doc) {
@@ -536,9 +793,79 @@ void ElevenLabsStream::parse_json_message_from_buffer(const uint8_t *buffer, siz
             delay(100); // Wait until the speaker is stopped
           }
           
-          // Start the speaker early for immediate readiness
-          ESP_LOGI(TAG, "PARSE_JSON_BUF: Starting speaker early for faster audio response");
+          // The stream info is applied unconditionally just below, on every
+          // conversation. Setting it here as well meant two calls in quick succession
+          // on the first conversation after boot, and a second set_audio_stream_info()
+          // can restart a speaker that already has audio queued -- which is heard as
+          // the opening syllable played twice ("Na- Naturally"). One call, one place.
+        }
+
+        // Let the activation chime finish before any reply audio is queued.
+        //
+        // The chime plays on activation_speaker while the reply plays on
+        // elevenlabs_speaker, and both feed the same i2s output. Overlapping them
+        // costs the first moment of speech: observed as a gap between "Naturally" and
+        // "sir", or a doubled opening syllable, always inside the first second and
+        // roughly one run in five.
+        //
+        // The block above waits for exactly this, but it is guarded by
+        // activation_speaker_audio_stream_infoset_, which is set on the first
+        // conversation after boot and never cleared -- so every subsequent
+        // conversation raced the chime. Wait here on every conversation.
+        {
+          uint32_t chime_deadline = millis() + ACTIVATION_CHIME_TIMEOUT_MS;
+          bool waited = false;
+          while ((this->activation_speaker_->is_running() || this->activation_speaker_->has_buffered_data()) &&
+                 millis() < chime_deadline) {
+            waited = true;
+            delay(10);
+          }
+          if (waited) {
+            ESP_LOGD(TAG, "PARSE_JSON_BUF: Waited for the activation chime to finish before playing the reply");
+          }
+
+          // Then give the i2s peripheral time to actually drain.
+          //
+          // The loop above asks the RESAMPLER whether it is done, but both speakers
+          // feed one shared i2s_audio_speaker, and i2s keeps emitting for a short
+          // while after the resampler reports empty. Reply audio starting inside that
+          // window collides with the chime tail, which is heard as a gap partway
+          // through the first word -- the last artifact still failing 2 runs in 10,
+          // with an identical signature every time.
+          //
+          // There is no handle on the shared i2s device from here, so this is a fixed
+          // settle time rather than a state check. It costs the same delay on every
+          // reply, which is the price of not having something better to poll.
+          delay(I2S_DRAIN_SETTLE_MS);
+        }
+
+        // Bring the speaker up NOW, before any audio arrives, and do it on every
+        // conversation rather than only the first.
+        //
+        // Starting it lazily on the first chunk is inherently racy and the race is
+        // audible either way: writing before it is running loses the opening syllable
+        // ("Naturally" as "urally"), while starting and waiting inside the write path
+        // instead produced a repeat ("Na-naturally"). Doing it here removes the
+        // transition from the audio path entirely -- by the time the first frame
+        // lands, the speaker has been running for a while.
+        //
+        // Deliberately outside the infoset_ guard above, which only fires once per
+        // boot; every conversation needs a running speaker.
+        if (this->elevenlabs_speaker_ != nullptr) {
+          // Reapply the stream info every conversation, not just the first.
+          //
+          // stop_stream() now stops the speaker between conversations, and a stopped
+          // speaker does not necessarily retain the input rate configured for it. The
+          // original call sits inside the infoset_ guard above, which fires once per
+          // boot, so every later conversation started a speaker that had never been
+          // told the agent's format again. Reconfiguring before start() is cheap and
+          // removes the guesswork.
           this->set_speaker_stream_info_to_elevenlabs_format();
+
+          if (!this->elevenlabs_speaker_->is_running()) {
+            ESP_LOGI(TAG, "PARSE_JSON_BUF: Starting elevenlabs speaker ahead of the first audio frame");
+            this->elevenlabs_speaker_->start();
+          }
         }
       } else {
         ESP_LOGW(TAG, "PARSE_JSON_BUF: No conversation_id in metadata");
@@ -598,7 +925,17 @@ void ElevenLabsStream::parse_json_message_from_buffer(const uint8_t *buffer, siz
       const char* user_transcript = transcript["user_transcript"];
       if (user_transcript) {
         ESP_LOGI(TAG, "PARSE_JSON_BUF: User transcript: '%s'", user_transcript);
-        // Could trigger an event here for transcript handling
+
+        // Somebody answered the announcement, so stop policing it. A transcript is the
+        // one unambiguous signal available -- vad_score only ever says something
+        // speech-shaped was heard -- and past this point the exchange is an ordinary
+        // conversation that should live or die by the agent's own settings, not by a
+        // three second window meant to catch an empty room.
+        if (this->awaiting_response_ && user_transcript[0] != '\0') {
+          ESP_LOGI(TAG, "PARSE_JSON_BUF: Announcement was answered, dropping the reply window");
+          this->awaiting_response_ = false;
+          this->silence_started_ms_ = 0;
+        }
       } else {
         ESP_LOGW(TAG, "PARSE_JSON_BUF: No user_transcript in user_transcription_event");
       }
@@ -652,8 +989,22 @@ void ElevenLabsStream::parse_json_message_from_buffer(const uint8_t *buffer, siz
 
       this->last_vad_score_ = vad_score;
 
+      // Hold off the announcement hang-up while the service thinks it can hear someone.
+      //
+      // Deliberately a stricter threshold than the ring's 0.25. The LED is meant to be
+      // twitchy -- lighting up early feels responsive and costs nothing if it is wrong
+      // -- but the same twitchiness applied here would let a fridge hum or a passing car
+      // hold the call open indefinitely. This only needs to catch a person starting to
+      // answer, and a false negative merely ends a conversation nobody was having.
+      if (this->awaiting_response_ && vad_score >= ANNOUNCEMENT_SPEECH_THRESHOLD) {
+        if (this->silence_started_ms_ != 0) {
+          ESP_LOGD(TAG, "PARSE_JSON_BUF: Speech detected (VAD %.2f), holding the announcement open",
+                   vad_score);
+        }
+        this->silence_started_ms_ = 0;
+      }
+
       ESP_LOGD(TAG, "PARSE_JSON_BUF: VAD score: %.2f", vad_score);
-      // Could use this for voice activity detection
     } else {
       ESP_LOGD(TAG, "PARSE_JSON_BUF: No vad_score_event found");
     }
@@ -764,6 +1115,12 @@ void ElevenLabsStream::send_conversation_init() {
     // Language configuration
     // Use custom initial message if provided, otherwise use empty string
     agent["first_message"] = this->initial_message_.empty() ? "" : this->initial_message_.c_str();
+
+    // Nothing about the silence window is sent here. turn.silence_end_call_timeout is
+    // not in the overridable set, and ElevenLabs errors a conversation that arrives with
+    // an override it does not accept -- so asking for it would not merely be ignored, it
+    // would take the announcement down with it. The window is timed on the device
+    // instead, off the vad_score events the agent already sends. See loop().
   });
   
   ESP_LOGD(TAG, "SEND_CONV_INIT: Sending conversation init: %s", message.c_str());
@@ -891,10 +1248,11 @@ void ElevenLabsStream::handle_microphone_data(const std::vector<uint8_t> &data) 
   
   if (!this->send_websocket_message(message)) {
     ESP_LOGW(TAG, "HANDLE_MIC: Failed to send audio message via websocket");
-  } else {
-    // Update last user input time when audio is successfully sent
-    this->last_user_input_time_ = millis();
   }
+  // Nothing is stamped here on success. A timestamp taken at this point only records
+  // that the microphone is streaming, which it does continuously from the moment the
+  // socket opens -- it says nothing about whether anyone spoke. Treating it as "last
+  // user input" is what made the original silence timeout never fire.
 }
 
 void ElevenLabsStream::set_state(StreamState new_state) {

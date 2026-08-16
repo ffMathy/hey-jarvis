@@ -129,14 +129,39 @@ logger:
 api:
   id: api_id
   services:
-    - service: send_notification
+    # Proactive announcement. The device speaks the message, then stays in a normal
+    # conversation until the user has been silent for silence_seconds.
+    #
+    #   service: esphome.<device>_announce
+    #   data:
+    #     message: "Your laundry is finished."
+    #     silence_seconds: 3
+    #
+    # The silence is timed on the device, off the vad_score events ElevenLabs already
+    # sends -- its own estimate of whether a person is speaking. Its
+    # silence_end_call_timeout cannot be used instead: it is not an overridable setting,
+    # and a conversation sent an override it does not accept is rejected outright.
+    #
+    # Answer and the conversation simply continues as a normal one. Say nothing and it
+    # closes itself.
+    - service: announce
       variables:
         message: string
-        timeout: int
+        silence_seconds: int
       then:
-        - elevenlabs_stream.start:
-            initial_message: !lambda 'return message;'
-            timeout: !lambda 'return timeout;'
+        - if:
+            condition:
+              switch.is_off: master_mute_switch
+            then:
+              - elevenlabs_stream.start:
+                  initial_message: !lambda 'return message;'
+                  # start_stream takes milliseconds. Fall back to 3s if the caller
+                  # passes 0 or omits it, so an announcement can never inherit the
+                  # agent's 30s default and sit with the microphone open.
+                  timeout: !lambda 'return silence_seconds > 0 ? silence_seconds * 1000 : 3000;'
+            else:
+              - logger.log: "Announcement suppressed: the device is muted"
+
 
 json:
 
