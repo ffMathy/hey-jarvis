@@ -26,6 +26,19 @@ function isRelevantToolName(toolName: string): boolean {
 }
 
 /**
+ * Integrations the agent could not connect to, as it reported them.
+ * With none connected the agent has no tools at all, and answers by writing
+ * something that reads like a tool call into its own reply instead of making one.
+ */
+function findDisconnectedIntegrations(messages: ServerMessage[]): string[] {
+  return messages
+    .filter((message) => message.type === 'mcp_connection_status')
+    .flatMap((message) => message.mcp_connection_status.integrations)
+    .filter((integration) => !integration.is_connected)
+    .map((integration) => `${integration.integration_id} (${integration.tool_count} tools)`);
+}
+
+/**
  * Everything the socket delivered that the transcript does not show — tool calls,
  * MCP connection status and anything else — so a missing tool call can be told
  * apart from one the agent never made.
@@ -131,6 +144,18 @@ describe('Agent Prompt Specifications', () => {
             await conversation.connect();
             // Request that implies tool usage but is vague about details
             await conversation.sendMessage("What's the weather like right now?");
+
+            // An agent whose MCP server never connected has nothing to call, so
+            // say that outright rather than waiting out the tool call timeout and
+            // reporting the absence as if the agent had chosen not to call one.
+            const disconnectedIntegrations = findDisconnectedIntegrations(conversation.getMessages());
+            if (disconnectedIntegrations.length > 0) {
+              throw new Error(
+                `The agent reported no connection to its MCP server, leaving it without tools: ` +
+                  `[${disconnectedIntegrations.join(', ')}]. ElevenLabs has to be able to reach the MCP server ` +
+                  `through the cloudflared tunnel for this test to mean anything.`,
+              );
+            }
 
             // Verify a tool was called — the agent may call weather tools directly
             // or use the routePromptWorkflow which internally dispatches to weather.

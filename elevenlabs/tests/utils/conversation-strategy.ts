@@ -62,6 +62,18 @@ interface AgentToolResponseEvent {
   };
 }
 
+interface McpConnectionStatusEvent {
+  type: 'mcp_connection_status';
+  mcp_connection_status: {
+    integrations: {
+      integration_id: string;
+      integration_type: string;
+      is_connected: boolean;
+      tool_count: number;
+    }[];
+  };
+}
+
 interface McpToolCallEvent {
   type: 'mcp_tool_call';
   mcp_tool_call: {
@@ -79,5 +91,6 @@ export type ServerMessage =
   | UserMessageEvent
   | PingEvent
   | AgentToolResponseEvent
+  | McpConnectionStatusEvent
   | McpToolCallEvent
   | AudioEvent;
