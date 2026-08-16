@@ -11,7 +11,7 @@ fi
 # Only lint file types that biome supports
 case "$FILE_PATH" in
   *.ts|*.tsx|*.js|*.jsx|*.json|*.jsonc|*.css)
-    npx biome check --write "$FILE_PATH" 2>&1
+    bunx biome check --write "$FILE_PATH" 2>&1
     ;;
 esac
 

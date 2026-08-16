@@ -1,18 +1,19 @@
-# Creating Mastra Workflows
+---
+paths:
+  - "mcp/mastra/verticals/**/workflows.ts"
+  - "mcp/mastra/utils/workflows/**/*.ts"
+---
 
-Use the Hey Jarvis factory pattern for creating workflows and leverage modern patterns.
+# Mastra Workflows
 
-## Factory Functions
+**CRITICAL: ALWAYS use the factories from `../../utils/workflow-factory`:**
 
-**CRITICAL: ALWAYS use these factories:**
-- `createWorkflow()` - Create workflows
-- `createStep()` - Create custom steps
-- `createAgentStep()` - Use agent as step
-- `createToolStep()` - Use tool as step
+- `createWorkflow()` — create workflows
+- `createStep()` — create custom steps
+- `createAgentStep()` — use an agent as a step
+- `createToolStep()` — use a tool as a step
 
-All from `../../utils/workflow-factory`
-
-## Basic Workflow Pattern
+## Basic Pattern
 
 ```typescript
 import { createWorkflow, createStep } from '../../utils/workflow-factory';
@@ -35,9 +36,7 @@ export const myWorkflow = createWorkflow({
 }).then(myStep);
 ```
 
-## Agent-as-Step Pattern
-
-Use existing agents directly as workflow steps:
+## Agent-as-Step
 
 ```typescript
 const weatherStep = createAgentStep({
@@ -50,15 +49,7 @@ const weatherStep = createAgentStep({
 });
 ```
 
-**Benefits:**
-- Leverages existing agent intelligence
-- Consistent with standalone agent behavior
-- Automatic tool access
-- Memory integration
-
-## Tool-as-Step Pattern
-
-Use existing tools directly as workflow steps:
+## Tool-as-Step
 
 ```typescript
 const getCurrentWeatherStep = createToolStep({
@@ -70,46 +61,29 @@ const getCurrentWeatherStep = createToolStep({
 });
 ```
 
-**Benefits:**
-- Direct tool execution (faster)
-- Precise input/output transformation
-- Better for deterministic operations
+## Which Pattern to Use
 
-## When to Use Each Pattern
+**Agent-as-step** when you need natural language processing, tool calling, conversation context, or flexible intelligent responses.
 
-**Use Agent-as-Step when:**
-- Need natural language processing
-- Require tool calling capabilities
-- Want conversation context
-- Need flexible, intelligent responses
+**Tool-as-step** when the operation is deterministic, is a direct API call, needs precise input/output control, or should be fast.
 
-**Use Tool-as-Step when:**
-- Have deterministic operations
-- Need direct API calls
-- Want precise input/output control
-- Prefer faster execution
+**Custom step** when you need complex data transformation, workflow-specific logic, several combined operations, or conditional branching.
 
-**Use Custom Steps when:**
-- Need complex data transformation
-- Require workflow-specific logic
-- Must combine multiple operations
-- Need conditional branching
+## State Management — The One-Step Rule
 
-## Workflow State Management
+**Only use state for values that must travel across more than one step.**
 
-**The One-Step Rule**: Only use state for values that need to travel across **more than one step**.
-
-✅ **Use context** for immediate data flow (adjacent steps)
-✅ **Use state** for long-distance data sharing (2+ steps away)
+✅ **Use context** for immediate data flow between adjacent steps
+✅ **Use state** only for long-distance sharing (2+ steps away)
 
 ```typescript
-// NO state needed - values flow through context
+// NO state needed — values flow through context
 const step1 = createAgentStep()({
   outputSchema: z.object({ result: z.string() }),
 });
 
 const step2 = createStep()({
-  inputSchema: z.object({ result: z.string() }),  // From step1 context
+  inputSchema: z.object({ result: z.string() }),  // from step1's context
   execute: async ({ context }) => ({ data: context.result }),
 });
 
@@ -119,10 +93,8 @@ export const workflow = createWorkflow({
 ```
 
 ```typescript
-// State needed - value used multiple steps later
-const stateSchema = z.object({
-  persistedValue: z.string(),
-});
+// State needed — the value is consumed several steps later
+const stateSchema = z.object({ persistedValue: z.string() });
 
 const storeStep = createStep<typeof stateSchema>()({
   execute: async ({ context, workflow }) => {
@@ -132,13 +104,11 @@ const storeStep = createStep<typeof stateSchema>()({
 });
 
 const useStep = createStep<typeof stateSchema>()({
-  execute: async ({ workflow }) => {
-    return { data: workflow.state.persistedValue };
-  },
+  execute: async ({ workflow }) => ({ data: workflow.state.persistedValue }),
 });
 ```
 
-## Workflow Chaining
+## Chaining and Branching
 
 ```typescript
 export const myWorkflow = createWorkflow({
@@ -159,5 +129,6 @@ export const myWorkflow = createWorkflow({
 
 ❌ Never import from `@mastra/core/workflows` directly
 ❌ Never store in state what can flow through context
-❌ Never create custom steps when agent/tool-as-step works
+❌ Never write a custom step when agent-as-step or tool-as-step would do
 ❌ Never skip input/output schemas
+❌ Never annotate step input/output types — they're inferred from schemas and prior steps
