@@ -31,9 +31,10 @@ async function killProcessOnPort(port: number): Promise<void> {
  * tunnel asks the tunnel — a healthy localhost says nothing about whether the
  * tunnel can reach it.
  */
-async function isServerHealthy(mcpUrl: URL, timeoutMs: number): Promise<boolean> {
+async function isServerHealthy(mcpUrl: URL, timeoutMs: number, headers?: Record<string, string>): Promise<boolean> {
   const [healthResult] = await Promise.allSettled([
     fetch(new URL('/health', mcpUrl), {
+      headers,
       signal: AbortSignal.timeout(timeoutMs),
     }),
   ]);
@@ -54,7 +55,7 @@ export async function isMcpServerRunning(args?: McpClientArgs): Promise<boolean>
   const mcpUrl = new URL(args?.url || DEFAULT_MCP_URL);
 
   // First, quick health check to see if server is up
-  if (!(await isServerHealthy(mcpUrl, args?.healthTimeoutMs ?? DEFAULT_HEALTH_TIMEOUT_MS))) {
+  if (!(await isServerHealthy(mcpUrl, args?.healthTimeoutMs ?? DEFAULT_HEALTH_TIMEOUT_MS, args?.headers))) {
     return false;
   }
 
@@ -167,6 +168,8 @@ type McpClientArgs = {
   url?: string;
   /** Timeout for the health probe — remote origins such as tunnels need more than localhost. */
   healthTimeoutMs?: number;
+  /** Sent with every request — a tunnel behind Cloudflare Access needs its service token. */
+  headers?: Record<string, string>;
 };
 export async function createMcpClient(args?: McpClientArgs): Promise<MCPClient> {
   const timeout = 5000;
@@ -179,6 +182,7 @@ export async function createMcpClient(args?: McpClientArgs): Promise<MCPClient> 
         connectTimeout: timeout,
         timeout: timeout,
         url: new URL(args?.url || DEFAULT_MCP_URL),
+        requestInit: args?.headers ? { headers: args.headers } : undefined,
       },
     },
     timeout: timeout,

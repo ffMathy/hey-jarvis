@@ -1,6 +1,7 @@
 import { type ChildProcess, spawn, spawnSync } from 'child_process';
 import { isMcpServerRunning } from '../../../mcp/tests/utils/mcp-server-manager.js';
 import { retryWithBackoff } from '../../../mcp/tests/utils/retry-with-backoff.js';
+import { cloudflareAccessHeaders } from './cloudflare-access.js';
 
 let tunnelProcess: ChildProcess | null = null;
 
@@ -39,6 +40,7 @@ async function isTunnelRunning(): Promise<boolean> {
   return await isMcpServerRunning({
     url: `${process.env.HEY_JARVIS_CLOUDFLARED_TUNNEL_URL!}/api/mcp`,
     healthTimeoutMs: TUNNEL_REQUEST_TIMEOUT_MS,
+    headers: cloudflareAccessHeaders(),
   });
 }
 
@@ -52,6 +54,7 @@ async function checkTunnelHealth(): Promise<{ ok: boolean; status?: number; erro
   try {
     const response = await fetch(healthUrl, {
       method: 'GET',
+      headers: cloudflareAccessHeaders(),
       signal: AbortSignal.timeout(TUNNEL_REQUEST_TIMEOUT_MS),
     });
     if (!response.ok) {
@@ -85,7 +88,11 @@ async function reportTunnelMcpEndpoint(): Promise<void> {
   const [result] = await Promise.allSettled([
     fetch(mcpUrl, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
+        ...cloudflareAccessHeaders(),
+      },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }),
       signal: AbortSignal.timeout(TUNNEL_REQUEST_TIMEOUT_MS),
     }),
