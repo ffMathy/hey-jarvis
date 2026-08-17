@@ -44,7 +44,7 @@ export class TokenUsageExporter implements ObservabilityExporter {
     // span.attributes is typed as the union of all attribute types; cast to the narrowed type
     // after the span.type === 'model_generation' guard (AnyExportedSpan is not a discriminated union)
     const attributes = span.attributes as ModelGenerationAttributes | undefined;
-    if (!attributes || !attributes.usage) {
+    if (!attributes?.usage) {
       return;
     }
 

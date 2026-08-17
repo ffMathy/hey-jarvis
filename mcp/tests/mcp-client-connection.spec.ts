@@ -1,5 +1,10 @@
 import { MCPClient } from '@mastra/mcp';
-import { createMcpClient, startMcpServerForTestingPurposes, stopMcpServer } from './utils/mcp-server-manager';
+import {
+  createMcpClient,
+  isMcpServerRunning,
+  startMcpServerForTestingPurposes,
+  stopMcpServer,
+} from './utils/mcp-server-manager';
 
 const SERVER_STARTUP_TIMEOUT = 120000;
 
@@ -77,5 +82,22 @@ describe('MCP Server Connection Tests', () => {
 
     await Promise.allSettled([clientWithBadUrl.disconnect()]);
     console.log('✓ Connection errors handled gracefully');
+  });
+
+  it('should report an unreachable MCP endpoint as not running', async () => {
+    // The origin is healthy but nothing speaks MCP on this path, so the client
+    // resolves with an empty tool list instead of throwing. Callers such as the
+    // cloudflared tunnel check rely on that not being mistaken for a live server.
+    const running = await isMcpServerRunning({ url: 'http://localhost:4112/not-the-mcp-endpoint' });
+
+    expect(running).toBe(false);
+    console.log('✓ Unreachable MCP endpoint reported as not running');
+  });
+
+  it('should report an unreachable origin as not running', async () => {
+    const running = await isMcpServerRunning({ url: 'http://localhost:9999/api/mcp' });
+
+    expect(running).toBe(false);
+    console.log('✓ Unreachable origin reported as not running');
   });
 });

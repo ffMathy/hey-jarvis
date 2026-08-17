@@ -6,6 +6,8 @@ import { retryWithBackoff } from './retry-with-backoff';
 let mcpServerProcess: ReturnType<typeof Bun.spawn> | null = null;
 
 const MCP_PORT = 4112;
+const DEFAULT_MCP_URL = `http://localhost:${MCP_PORT}/api/mcp`;
+const DEFAULT_HEALTH_TIMEOUT_MS = 2000;
 
 // Find workspace root (go up from mcp/tests/utils to workspace root)
 const WORKSPACE_ROOT = path.resolve(__dirname, '../../..');
@@ -24,12 +26,16 @@ async function killProcessOnPort(port: number): Promise<void> {
 }
 
 /**
- * Checks if the server is healthy via the health endpoint
+ * Checks if the server behind an MCP URL is healthy via its health endpoint.
+ * The health endpoint is resolved against the MCP URL's own origin, so probing a
+ * tunnel asks the tunnel — a healthy localhost says nothing about whether the
+ * tunnel can reach it.
  */
-async function isServerHealthy(): Promise<boolean> {
+async function isServerHealthy(mcpUrl: URL, timeoutMs: number, headers?: Record<string, string>): Promise<boolean> {
   const [healthResult] = await Promise.allSettled([
-    fetch(`http://localhost:${MCP_PORT}/health`, {
-      signal: AbortSignal.timeout(2000),
+    fetch(new URL('/health', mcpUrl), {
+      headers,
+      signal: AbortSignal.timeout(timeoutMs),
     }),
   ]);
 
@@ -37,12 +43,19 @@ async function isServerHealthy(): Promise<boolean> {
 }
 
 /**
- * Checks if the MCP server is already running.
- * First checks the health endpoint, then attempts full MCP client connection.
+ * Checks if the MCP server is up and usable — reachable on its health endpoint,
+ * and serving at least one tool over MCP.
+ *
+ * Tools are part of the contract rather than a bonus: every caller here is about
+ * to run tests through them, and a client that cannot reach its server reports
+ * an empty tool list rather than failing, so "connected" alone proves nothing.
+ * A server that legitimately exposes no tools would read as not running.
  */
 export async function isMcpServerRunning(args?: McpClientArgs): Promise<boolean> {
+  const mcpUrl = new URL(args?.url || DEFAULT_MCP_URL);
+
   // First, quick health check to see if server is up
-  if (!(await isServerHealthy())) {
+  if (!(await isServerHealthy(mcpUrl, args?.healthTimeoutMs ?? DEFAULT_HEALTH_TIMEOUT_MS, args?.headers))) {
     return false;
   }
 
@@ -56,10 +69,18 @@ export async function isMcpServerRunning(args?: McpClientArgs): Promise<boolean>
 
   client = clientResult.value;
 
-  const [listToolsResult] = await Promise.allSettled([client.listTools()]);
+  // listToolsWithErrors surfaces per-server failures that listTools swallows: a
+  // client that cannot reach the server resolves with an empty tool list rather
+  // than rejecting, which would otherwise read as "server is up".
+  const [listToolsResult] = await Promise.allSettled([client.listToolsWithErrors()]);
   await Promise.allSettled([client.disconnect()]);
 
-  return listToolsResult.status === 'fulfilled';
+  if (listToolsResult.status !== 'fulfilled') {
+    return false;
+  }
+
+  const { tools, errors } = listToolsResult.value;
+  return Object.keys(errors).length === 0 && Object.keys(tools).length > 0;
 }
 
 /**
@@ -145,6 +166,10 @@ export function isMcpServerRunningSync(): boolean {
  */
 type McpClientArgs = {
   url?: string;
+  /** Timeout for the health probe — remote origins such as tunnels need more than localhost. */
+  healthTimeoutMs?: number;
+  /** Sent with every request — a tunnel behind Cloudflare Access needs its service token. */
+  headers?: Record<string, string>;
 };
 export async function createMcpClient(args?: McpClientArgs): Promise<MCPClient> {
   const timeout = 5000;
@@ -156,7 +181,8 @@ export async function createMcpClient(args?: McpClientArgs): Promise<MCPClient> 
         enableServerLogs: false,
         connectTimeout: timeout,
         timeout: timeout,
-        url: new URL(args?.url || 'http://localhost:4112/api/mcp'),
+        url: new URL(args?.url || DEFAULT_MCP_URL),
+        requestInit: args?.headers ? { headers: args.headers } : undefined,
       },
     },
     timeout: timeout,

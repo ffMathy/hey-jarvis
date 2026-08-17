@@ -62,6 +62,30 @@ export class TestConversation {
   }
 
   /**
+   * Poll for the tools the agent invoked until one matches, or the timeout elapses.
+   * The agent answers before its tool finishes, so the calls are not necessarily
+   * all in by the time sendMessage() returns.
+   */
+  async waitForCalledToolNames(matches: (toolName: string) => boolean, timeoutMs: number): Promise<string[]> {
+    const deadline = Date.now() + timeoutMs;
+    let toolNames = await this.getCalledToolNames();
+
+    while (!toolNames.some(matches) && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      toolNames = await this.getCalledToolNames();
+    }
+
+    return toolNames;
+  }
+
+  /**
+   * Names of the tools the agent actually invoked during the conversation.
+   */
+  async getCalledToolNames(): Promise<string[]> {
+    return await this.strategy.getCalledToolNames();
+  }
+
+  /**
    * Evaluate the conversation transcript against specific criteria using an LLM
    *
    * @param criteria - Evaluation criteria (e.g., "The agent was helpful and polite")

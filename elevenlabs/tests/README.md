@@ -47,4 +47,6 @@ Tests require the following environment variables (managed via 1Password):
 - `HEY_JARVIS_ELEVENLABS_API_KEY` - ElevenLabs API key
 - `HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY` - Google Gemini API key for evaluations
 
-Tests automatically start the MCP server and Cloudflare tunnel before running.
+Tests start the MCP server and Cloudflare tunnel, and only then deploy the test
+agent. ElevenLabs reads the agent's MCP tool list when the agent is updated, so
+deploying before the tunnel is up leaves the agent with no tools to call.

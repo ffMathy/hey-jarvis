@@ -1,11 +1,17 @@
 #!/usr/bin/env node
 
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
-import type { GetAgentResponseModel } from '@elevenlabs/elevenlabs-js/api';
+import { ClientEvent, type GetAgentResponseModel } from '@elevenlabs/elevenlabs-js/api';
 import { Command } from 'commander';
 import { access, mkdir, readFile, writeFile } from 'fs/promises';
 import * as path from 'path';
 import { cwd } from 'process';
+
+/**
+ * The MCP server integration the test agent talks to — the tunnel to a locally
+ * running server, kept separate from the one production uses.
+ */
+export const TEST_AGENT_MCP_SERVER_ID = 'GMOqF385QS1GsrZKfQk6';
 
 class ElevenLabsAgentManager {
   private client: ElevenLabsClient;
@@ -178,11 +184,20 @@ class ElevenLabsAgentManager {
     if (config.conversationConfig?.conversation) {
       config.conversationConfig.conversation.textOnly = true;
       console.log('🔧 Setting textOnly to true for test agent');
+
+      // The socket only carries the events an agent is configured to emit, and
+      // the tests assert that MCP tools were called. Production has no such
+      // listener, so this stays a test-agent concern.
+      const clientEvents = config.conversationConfig.conversation.clientEvents ?? [];
+      if (!clientEvents.includes(ClientEvent.McpToolCall)) {
+        config.conversationConfig.conversation.clientEvents = [...clientEvents, ClientEvent.McpToolCall];
+        console.log('🔧 Adding mcp_tool_call to client events for test agent');
+      }
     }
 
     // Replace MCP server IDs with local tunnel MCP server for testing
     if (config.conversationConfig?.agent?.prompt) {
-      config.conversationConfig.agent.prompt.mcpServerIds = ['GMOqF385QS1GsrZKfQk6'];
+      config.conversationConfig.agent.prompt.mcpServerIds = [TEST_AGENT_MCP_SERVER_ID];
       console.log('🔧 Setting mcpServerIds to local tunnel MCP server for test agent');
 
       config.conversationConfig.agent.prompt.tools = [];
@@ -196,7 +211,7 @@ class ElevenLabsAgentManager {
     }
   }
 
-  private async deployConfig(isTestAgent: boolean = false): Promise<void> {
+  public async deployConfig(isTestAgent: boolean = false): Promise<void> {
     const config = await this.loadConfig();
     const prompt = await this.loadPrompt();
 
@@ -252,6 +267,15 @@ class ElevenLabsAgentManager {
   }
 }
 
+/**
+ * Deploys the test agent, for callers that need control over when it happens.
+ * The agent tests deploy only once their MCP server is reachable, so that
+ * ElevenLabs reads the tool list from a URL that is already answering.
+ */
+export async function deployTestAgent(): Promise<void> {
+  await new ElevenLabsAgentManager().deployConfig(true);
+}
+
 // Run the application
 async function main(): Promise<void> {
   try {
@@ -262,4 +286,7 @@ async function main(): Promise<void> {
   }
 }
 
-void main();
+// Only when invoked as a command — importing this module must not run the CLI.
+if (import.meta.main) {
+  void main();
+}

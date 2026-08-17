@@ -26,7 +26,7 @@
       "cache": false
     },
     "elevenlabs#test": {
-      "dependsOn": ["deploy:test", "lint", "mcp#test"],
+      "dependsOn": ["lint", "mcp#test"],
       "cache": false,
       "outputs": []
     },

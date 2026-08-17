@@ -254,6 +254,21 @@ export class ElevenLabsConversationStrategy implements ConversationStrategy {
     return [...this.messages];
   }
 
+  /**
+   * The agent reports its MCP tool calls over the socket, which it only does
+   * when mcp_tool_call is among the client events it is configured to emit —
+   * applyTestAgentOverrides adds it for exactly this reason. The conversation
+   * history API is no substitute: it holds nothing until the conversation ends,
+   * which outlasts the test.
+   */
+  getCalledToolNames(): Promise<string[]> {
+    return Promise.resolve(
+      this.messages
+        .filter((message) => message.type === 'mcp_tool_call')
+        .map((message) => message.mcp_tool_call.tool_name),
+    );
+  }
+
   getTranscriptText(): string {
     return this.messages
       .map((msg) => {

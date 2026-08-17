@@ -1,9 +1,57 @@
 import { afterAll, beforeAll, describe, it } from 'bun:test';
 import { startMcpServerForTestingPurposes, stopMcpServer } from '../../../mcp/tests/utils/mcp-server-manager.js';
+import { deployTestAgent } from '../../src/main.js';
+import type { ServerMessage } from '../utils/conversation-strategy.js';
+import { reportMcpIntegrations } from '../utils/mcp-integration.js';
 import { TestConversation } from '../utils/test-conversation.js';
 import { ensureTunnelRunning, stopTunnel } from '../utils/tunnel-manager.js';
 
 const MAX_CONVERSATION_RETRIES = 3;
+
+const CONVERSATION_TIMEOUT_MS = 90000;
+
+/**
+ * How long a tool call may take to surface after the agent has finished speaking.
+ * The agent announces the routing before dispatching it, so the call itself lands
+ * well after the conversation has gone quiet.
+ */
+const TOOL_CALL_TIMEOUT_MS = 90000;
+
+const RELEVANT_TOOL_NAME_FRAGMENTS = ['weather', 'home_assistant', 'route'];
+
+/** Message types that getTranscriptText already renders. */
+const TRANSCRIPT_MESSAGE_TYPES = ['user_message', 'agent_response', 'agent_chat_response_part'];
+
+function isRelevantToolName(toolName: string): boolean {
+  const lowercased = toolName.toLowerCase();
+  return RELEVANT_TOOL_NAME_FRAGMENTS.some((fragment) => lowercased.includes(fragment));
+}
+
+/**
+ * Integrations the agent could not connect to, as it reported them.
+ * With none connected the agent has no tools at all, and answers by writing
+ * something that reads like a tool call into its own reply instead of making one.
+ */
+function findDisconnectedIntegrations(messages: ServerMessage[]): string[] {
+  return messages
+    .filter((message) => message.type === 'mcp_connection_status')
+    .flatMap((message) => message.mcp_connection_status.integrations)
+    .filter((integration) => !integration.is_connected)
+    .map((integration) => `${integration.integration_id} (${integration.tool_count} tools)`);
+}
+
+/**
+ * Everything the socket delivered that the transcript does not show — tool calls,
+ * MCP connection status and anything else — so a missing tool call can be told
+ * apart from one the agent never made.
+ */
+function describeNonTranscriptMessages(messages: ServerMessage[]): string {
+  const details = messages
+    .filter((message) => !TRANSCRIPT_MESSAGE_TYPES.includes(message.type))
+    .map((message) => JSON.stringify(message).slice(0, 400));
+
+  return details.length > 0 ? details.join('\n') : '(none)';
+}
 
 /**
  * LLM-based conversation tests are inherently non-deterministic.
@@ -50,16 +98,22 @@ describe('Agent Prompt Specifications', () => {
   const apiKey = process.env.HEY_JARVIS_ELEVENLABS_API_KEY;
   const googleApiKey = process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY;
 
-  // Ensure MCP server and cloudflared tunnel are running before all tests
+  // Order matters. ElevenLabs hosts the agent and reads its MCP tool list when
+  // the agent is updated, so the server has to be answering on its public
+  // hostname before the deploy — otherwise the agent is left holding
+  // tool_count: 0 for a URL that only came alive afterwards.
   beforeAll(async () => {
     if (!process.env.HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID) {
       throw new Error('HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID environment variable is required');
     }
     await startMcpServerForTestingPurposes();
     await ensureTunnelRunning();
-  }, 90000);
+    await deployTestAgent();
+    await reportMcpIntegrations();
+    // The MCP server and cloudflared registering with Cloudflare's edge can each
+    // take tens of seconds on a cold CI runner, before the deploy even starts.
+  }, 240000);
 
-  // Clean up after all tests
   afterAll(() => {
     stopMcpServer();
     stopTunnel();
@@ -82,7 +136,7 @@ describe('Agent Prompt Specifications', () => {
           },
         );
       },
-      90000 * MAX_CONVERSATION_RETRIES,
+      CONVERSATION_TIMEOUT_MS * MAX_CONVERSATION_RETRIES,
     );
   });
 
@@ -97,21 +151,30 @@ describe('Agent Prompt Specifications', () => {
             // Request that implies tool usage but is vague about details
             await conversation.sendMessage("What's the weather like right now?");
 
-            // Verify a tool was called — the agent may call weather tools directly
-            // or use the routePromptWorkflow which internally dispatches to weather
-            const messages = conversation.getMessages();
-            const allToolCalls = messages.filter((m) => m.type === 'mcp_tool_call');
-            const relevantToolCalls = allToolCalls.filter(
-              (msg) =>
-                msg.mcp_tool_call.tool_name.toLowerCase().includes('weather') ||
-                msg.mcp_tool_call.tool_name.toLowerCase().includes('home_assistant') ||
-                msg.mcp_tool_call.tool_name.toLowerCase().includes('route'),
-            );
-
-            if (relevantToolCalls.length === 0) {
+            // An agent whose MCP server never connected has nothing to call, so
+            // say that outright rather than waiting out the tool call timeout and
+            // reporting the absence as if the agent had chosen not to call one.
+            const disconnectedIntegrations = findDisconnectedIntegrations(conversation.getMessages());
+            if (disconnectedIntegrations.length > 0) {
               throw new Error(
-                `Expected weather, home assistant, or routing tool to be called, but no relevant tool calls found in messages. ` +
-                  `All tool calls: [${allToolCalls.map((m) => m.mcp_tool_call.tool_name).join(', ')}]`,
+                `The agent reported no connection to its MCP server, leaving it without tools: ` +
+                  `[${disconnectedIntegrations.join(', ')}]. ElevenLabs has to be able to reach the MCP server ` +
+                  `through the cloudflared tunnel for this test to mean anything.`,
+              );
+            }
+
+            // Verify a tool was called — the agent may call weather tools directly
+            // or use the routePromptWorkflow which internally dispatches to weather.
+            const toolNames = await conversation.waitForCalledToolNames(isRelevantToolName, TOOL_CALL_TIMEOUT_MS);
+
+            if (!toolNames.some(isRelevantToolName)) {
+              const messages = conversation.getMessages();
+              throw new Error(
+                `Expected weather, home assistant, or routing tool to be called, but no relevant tool calls found. ` +
+                  `All tool calls: [${toolNames.join(', ')}]\n` +
+                  `Message types received: [${messages.map((message) => message.type).join(', ')}]\n` +
+                  `Messages not in the transcript:\n${describeNonTranscriptMessages(messages)}\n` +
+                  `Transcript:\n${conversation.getTranscriptText()}`,
               );
             }
 
@@ -123,7 +186,9 @@ describe('Agent Prompt Specifications', () => {
           },
         );
       },
-      90000 * MAX_CONVERSATION_RETRIES,
+      // This is the one test that also waits on a tool call, so it needs that
+      // budget on top of the conversation's.
+      (CONVERSATION_TIMEOUT_MS + TOOL_CALL_TIMEOUT_MS) * MAX_CONVERSATION_RETRIES,
     );
 
     it(
@@ -142,7 +207,7 @@ describe('Agent Prompt Specifications', () => {
           },
         );
       },
-      90000 * MAX_CONVERSATION_RETRIES,
+      CONVERSATION_TIMEOUT_MS * MAX_CONVERSATION_RETRIES,
     );
   });
 
@@ -163,7 +228,7 @@ describe('Agent Prompt Specifications', () => {
           },
         );
       },
-      90000 * MAX_CONVERSATION_RETRIES,
+      CONVERSATION_TIMEOUT_MS * MAX_CONVERSATION_RETRIES,
     );
 
     it(
@@ -183,7 +248,7 @@ describe('Agent Prompt Specifications', () => {
           },
         );
       },
-      90000 * MAX_CONVERSATION_RETRIES,
+      CONVERSATION_TIMEOUT_MS * MAX_CONVERSATION_RETRIES,
     );
   });
 
@@ -204,7 +269,7 @@ describe('Agent Prompt Specifications', () => {
           },
         );
       },
-      90000 * MAX_CONVERSATION_RETRIES,
+      CONVERSATION_TIMEOUT_MS * MAX_CONVERSATION_RETRIES,
     );
   });
 });

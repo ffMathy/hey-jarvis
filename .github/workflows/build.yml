@@ -27,7 +27,7 @@ jobs:
   build:
     concurrency:
       group: build-${{ github.actor }}-${{ github.head_ref || github.ref }}
-      cancel-in-progress: ${{ github.actor != 'dependabot[bot]' }}
+      cancel-in-progress: true
 
     runs-on: ubuntu-latest
     timeout-minutes: 60  # Increase timeout for ESP-IDF toolchain downloads
@@ -103,39 +103,3 @@ jobs:
 
             HEY_JARVIS_WIFI_SSID
             HEY_JARVIS_WIFI_PASSWORD
-
-  auto-merge:
-    needs: build
-    permissions:
-      contents: write
-      pull-requests: write
-    runs-on: ubuntu-latest
-    if: github.actor == 'dependabot[bot]' && github.event.pull_request.user.login == 'dependabot[bot]'
-    steps:
-      - name: Dependabot metadata
-        id: metadata
-        uses: dependabot/fetch-metadata@v2.5.0
-        with:
-          github-token: "${{ secrets.GITHUB_TOKEN }}"
-
-      # Major bumps can change a dependency's maintainers, build steps and
-      # transitive tree wholesale, so they stay a human decision. Patch and
-      # minor bumps already sat through the Dependabot cooldown window before
-      # the pull request was opened.
-      #
-      # Every ecosystem is grouped into one pull request, and `update-type` is
-      # the highest semver change across the whole batch — so one major in the
-      # group holds back everything bundled with it until a human merges.
-      - name: Enable auto-merge for Dependabot PRs
-        if: steps.metadata.outputs.update-type != 'version-update:semver-major'
-        run: gh pr merge --auto --squash "$PR_URL"
-        env:
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Approve PR
-        if: steps.metadata.outputs.update-type != 'version-update:semver-major'
-        run: gh pr review --approve "$PR_URL"
-        env:
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

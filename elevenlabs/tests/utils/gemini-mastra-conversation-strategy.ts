@@ -216,6 +216,14 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
     return [...this.messages];
   }
 
+  getCalledToolNames(): Promise<string[]> {
+    return Promise.resolve(
+      this.messages
+        .filter((message) => message.type === 'mcp_tool_call')
+        .map((message) => message.mcp_tool_call.tool_name),
+    );
+  }
+
   getTranscriptText(): string {
     return this.messages
       .map((msg) => {
