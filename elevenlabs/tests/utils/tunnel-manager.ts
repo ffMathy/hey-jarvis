@@ -167,11 +167,22 @@ export async function ensureTunnelRunning(): Promise<void> {
 
   console.log(`🌐 Token length: ${token.length} characters`);
 
+  // cloudflared logs the tunnel-related variables it finds in its environment,
+  // verbatim, at startup — and CI logs are public. It masks the token when it
+  // arrives as a flag, so pass it that way and keep it out of the environment
+  // the child inherits.
+  const {
+    HEY_JARVIS_CLOUDFLARED_TUNNEL_TOKEN: _token,
+    HEY_JARVIS_CLOUDFLARED_TUNNEL_URL: _url,
+    ...environmentWithoutTunnelSecrets
+  } = process.env;
+
   // Start cloudflared tunnel in background with HTTP2 protocol (more reliable than QUIC)
   // Using --protocol http2 to avoid UDP/QUIC blocking issues in some network environments
   tunnelProcess = spawn('cloudflared', ['tunnel', '--protocol', 'http2', 'run', '--token', token], {
     detached: false,
     stdio: ['ignore', 'inherit', 'inherit'],
+    env: environmentWithoutTunnelSecrets,
   });
 
   tunnelProcess.on('error', (error) => {
