@@ -24,7 +24,12 @@ COPY mcp/ ./mcp/
 # 1Password CLI, pinned by digest. Secrets are resolved at runtime from a service
 # account rather than baked into the image or handed over as plaintext env files,
 # so the CLI has to be present in the runtime stage. Published for amd64, arm64
-# and arm/v7 — the same architectures this image is built for.
+# and arm/v7, so it covers both architectures this image is built for.
+#
+# That build is amd64 and arm64 only, and cannot be widened: Bun has no 32-bit
+# ARM support, and oven/bun is published for linux/amd64 and linux/arm64 alone.
+# Nothing is lost by it — Home Assistant deprecated armv7, armhf and i386 in
+# 2025.6 and stopped supporting them after 2025.12, leaving aarch64 and amd64.
 FROM docker.io/1password/op:2.39.0@sha256:3cd5a1febc662c93d46b944b983b301e710da5c016ef63be9d436cf2b1ed30d5 AS onepassword
 
 # Production stage - use Bun Alpine for runtime (needed for mastra studio CLI)

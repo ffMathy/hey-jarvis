@@ -31,7 +31,7 @@ echo "📋 Deployment configuration:"
 echo "   Image Owner: $IMAGE_OWNER"
 echo "   Image Tag: $IMAGE_TAG"
 echo "   GitHub Actor: $GITHUB_ACTOR"
-echo "   Architectures: amd64, arm64, arm/v7"
+echo "   Architectures: amd64, arm64"
 
 # Login to GitHub Container Registry
 echo "🔐 Logging in to GitHub Container Registry..."
