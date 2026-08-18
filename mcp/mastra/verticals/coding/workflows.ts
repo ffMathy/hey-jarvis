@@ -1,7 +1,7 @@
 import type { CoreMessageV4 } from '@mastra/core/agent/message-list';
 import { z } from 'zod';
 import { createStep, createToolStep, createWorkflow } from '../../utils/workflows/workflow-factory.js';
-import { assignCopilotToIssue, createGitHubIssue } from './tools.js';
+import { createGitHubIssue, startCodingSession } from './tools.js';
 
 // Schema for requirements gathering input
 const requirementsInputSchema = z.object({
@@ -278,10 +278,10 @@ const storeIssueCreationResult = createStep({
   },
 });
 
-// Step 6: Validate success before Copilot assignment
-const validateBeforeCopilotAssignment = createStep({
-  id: 'validate-before-copilot-assignment',
-  description: 'Validates that issue update succeeded before assigning Copilot',
+// Step 6: Validate success before starting the coding session
+const validateBeforeCodingSession = createStep({
+  id: 'validate-before-coding-session',
+  description: 'Validates that issue creation succeeded before starting a Claude cloud session',
   stateSchema: workflowStateSchema,
   inputSchema: z.object({}),
   outputSchema: z.object({}),
@@ -289,23 +289,25 @@ const validateBeforeCopilotAssignment = createStep({
     const state = params.state;
 
     if (!state.success) {
-      throw new Error('Cannot assign to Copilot: Issue update failed');
+      throw new Error('Cannot start a Claude cloud session: Issue creation failed');
     }
 
     return {};
   },
 });
 
-// Step 7: Prepare Copilot assignment data using workflow state
-const prepareCopilotAssignmentData = createStep({
-  id: 'prepare-copilot-assignment-data',
-  description: 'Prepares data for assigning the issue to Copilot',
+// Step 7: Prepare Claude cloud session data using workflow state
+const prepareCodingSessionData = createStep({
+  id: 'prepare-coding-session-data',
+  description: 'Prepares data for starting a Claude cloud session on the issue',
   stateSchema: workflowStateSchema,
   inputSchema: z.object({}),
   outputSchema: z.object({
     owner: z.string().optional(),
     repo: z.string(),
     issue_number: z.number(),
+    title: z.string().optional(),
+    instructions: z.string().optional(),
   }),
   execute: async (params) => {
     const state = params.state;
@@ -314,27 +316,33 @@ const prepareCopilotAssignmentData = createStep({
       throw new Error('Missing repository or issue number in workflow state');
     }
 
+    const requirements = state.response?.requirements;
+
     return {
       owner: state.owner,
       repo: state.repository,
       issue_number: state.issueNumber,
+      title: requirements?.title,
+      instructions: (requirements?.requirements ?? []).map((requirement) => `- ${requirement}`).join('\n') || undefined,
     };
   },
 });
 
-// Step 8: Assign to GitHub Copilot using tool
-const assignToCopilotTool = createToolStep({
-  id: 'assign-to-copilot-tool',
-  description: 'Assigns the issue to Copilot using the GitHub API',
+// Step 8: Start the Claude cloud session that implements the issue
+const startCodingSessionTool = createToolStep({
+  id: 'start-coding-session-tool',
+  description: 'Starts a Claude cloud session that implements the issue',
   stateSchema: workflowStateSchema,
-  tool: assignCopilotToIssue,
+  tool: startCodingSession,
 });
 
-// Schema for Copilot assignment tool output - validated at runtime since .then() chain passes unknown
-const copilotAssignmentResultSchema = z.object({
+// Schema for coding session tool output - validated at runtime since .then() chain passes unknown
+const codingSessionResultSchema = z.object({
   success: z.boolean(),
   message: z.string(),
-  task_url: z.string().optional(),
+  session_id: z.string().optional(),
+  session_url: z.string().optional(),
+  status: z.string().optional(),
 });
 
 // Step 9: Format final workflow output
@@ -347,23 +355,27 @@ const formatFinalOutput = createStep({
     success: z.boolean(),
     message: z.string(),
     issueUrl: z.string().optional(),
+    sessionId: z.string().optional(),
+    sessionUrl: z.string().optional(),
   }),
   execute: async (params) => {
-    const input = copilotAssignmentResultSchema.parse(params.inputData);
+    const input = codingSessionResultSchema.parse(params.inputData);
     const state = params.state;
 
     if (!input.success) {
       return {
         success: false,
-        message: `Copilot assignment initiated but may require manual confirmation: ${input.message}`,
+        message: `Issue #${state.issueNumber} was created, but the Claude cloud session did not start: ${input.message}`,
         issueUrl: state.issueUrl,
       };
     }
 
     return {
       success: true,
-      message: `Successfully assigned Copilot to issue #${state.issueNumber}. ${input.message}`,
+      message: `Started a Claude cloud session on issue #${state.issueNumber}. ${input.message}`,
       issueUrl: state.issueUrl,
+      sessionId: input.session_id,
+      sessionUrl: input.session_url,
     };
   },
 });
@@ -376,8 +388,12 @@ const formatFinalOutput = createStep({
  * 2. Uses Mastra's .dowhile() to iteratively:
  *    a. Ask clarifying questions via Requirements Interviewer Agent
  * 3. Prepares and creates the issue with complete requirements (3 sub-steps)
- * 4. Validates success before Copilot assignment
- * 5. Prepares and assigns GitHub Copilot for implementation (3 sub-steps)
+ * 4. Validates success before starting the implementation
+ * 5. Starts a Claude cloud session that implements the issue (2 sub-steps)
+ *
+ * The session's events are watched from the moment it starts and republished as
+ * Synapse state changes, so its progress reaches the notification system without
+ * the workflow having to stay alive for the duration of the implementation.
  *
  * All state is managed via workflow.state and workflow.setState for cleaner code.
  * Tool calls are isolated in dedicated createToolStep steps for better observability.
@@ -390,6 +406,8 @@ export const implementFeatureWorkflow = createWorkflow({
     success: z.boolean(),
     message: z.string(),
     issueUrl: z.string().optional(),
+    sessionId: z.string().optional(),
+    sessionUrl: z.string().optional(),
   }),
 })
   .then(initializeGatheringSession)
@@ -407,8 +425,8 @@ export const implementFeatureWorkflow = createWorkflow({
   .then(prepareIssueCreationData)
   .then(createIssueWithRequirementsTool)
   .then(storeIssueCreationResult)
-  .then(validateBeforeCopilotAssignment)
-  .then(prepareCopilotAssignmentData)
-  .then(assignToCopilotTool)
+  .then(validateBeforeCodingSession)
+  .then(prepareCodingSessionData)
+  .then(startCodingSessionTool)
   .then(formatFinalOutput)
   .commit();

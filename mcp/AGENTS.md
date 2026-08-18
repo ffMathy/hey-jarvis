@@ -230,7 +230,7 @@ await phoneTools.initiatePhoneCall.execute({
 
 ### Coding Agent
 Manages GitHub repositories and coordinates feature implementation:
-- **6 GitHub tools**: List repositories, list issues, search repositories, create/update GitHub issues, assign Copilot
+- **7 tools**: List repositories, list issues, search repositories, create/update GitHub issues, follow and steer Claude cloud sessions
 - **Google Gemini model**: Uses `gemini-flash-latest` for natural language processing
 - **Repository management**: Browse and search repositories for any GitHub user
 - **Issue tracking**: View open, closed, or all issues for repositories
@@ -250,7 +250,33 @@ This agent follows the **workflow delegation pattern**. When a user requests a n
 1. Creates a draft issue
 2. Uses the Requirements Interviewer Agent to gather complete requirements
 3. Updates the issue with structured requirements
-4. Assigns GitHub Copilot for automated implementation
+4. Starts a Claude cloud session that implements the issue autonomously
+
+**Claude Cloud Sessions:**
+Implementation work is delegated to the [Claude Managed Agents session API](https://platform.claude.com/docs/en/managed-agents/sessions)
+rather than to GitHub Copilot, through the official `@anthropic-ai/sdk` client. A session is an agent instance running
+in a sandboxed cloud environment; it is created with the issue as its task, works unattended, and opens a pull request
+when it is done.
+
+- **`startCodingSession`**: Creates the session, seeded with the issue link and the gathered requirements, and starts
+  watching it. Used by `implementFeatureWorkflow`.
+- **`getCodingSessionStatus`**: Reports a session's status (`idle`, `running`, `rescheduling`, `terminated`) and the
+  messages it has produced.
+- **`sendCodingSessionMessage`**: Sends a follow-up message to a session, to answer a question or redirect its work.
+
+**Feeding Back Into Synapse:**
+`ClaudeSessionWatcher` tails each session's server-sent event stream and republishes notable events as Synapse state
+changes with the source `coding` and a state type derived from the event type (for example
+`coding_session_agent_message`). Only `agent.message`, `session.status_running`, `session.status_idle` and
+`session.error` are forwarded — a session emits far more (thinking blocks, every tool call, model request spans), and
+each state change costs tokens once Synapse reasons over the batch. Events are deduplicated by id, so a reconnecting
+stream that replays history never re-notifies, and a failed hand-off is logged without tearing down the watch.
+
+**Environment Requirements:**
+- `HEY_JARVIS_ANTHROPIC_API_KEY`: Claude API key with access to the Managed Agents beta
+- `HEY_JARVIS_CLAUDE_AGENT_ID`: ID of the agent sessions are created from
+- `HEY_JARVIS_CLAUDE_ENVIRONMENT_ID`: ID of the environment sessions run in
+- `HEY_JARVIS_ANTHROPIC_API_BASE_URL` (optional): Overrides the API base URL for gateways and tests
 
 **Example Use Cases:**
 - "What repositories does ffMathy have?"
@@ -650,7 +676,7 @@ Implements the workflow-based requirements gathering pattern for new feature imp
 - **Step 1 - Create Draft Issue**: Creates initial GitHub issue to track requirements gathering progress
 - **Step 2 - Gather Requirements**: Uses Requirements Interviewer Agent to ask clarifying questions
 - **Step 3 - Update Issue**: Updates GitHub issue with complete requirements and acceptance criteria
-- **Step 4 - Assign Copilot**: Assigns GitHub Copilot for automated implementation
+- **Step 4 - Start Coding Session**: Starts a Claude cloud session that implements the issue, and watches its events
 
 **Architecture Pattern:**
 This workflow follows the **agent-as-step** pattern recommended by Mastra for sequential multi-step processes where the exact steps are known in advance (not dynamic routing).
@@ -659,7 +685,10 @@ This workflow follows the **agent-as-step** pattern recommended by Mastra for se
 1. **Draft Issue Creation**: Creates a GitHub issue labeled `["draft", "requirements-gathering"]` with initial request
 2. **Interactive Interview**: Requirements Interviewer Agent asks questions one at a time until 100% certain
 3. **Issue Update**: Formats and updates issue with structured requirements, acceptance criteria, and implementation details
-4. **Copilot Assignment**: Assigns issue to GitHub Copilot using MCP tool for automated implementation
+4. **Coding Session**: Starts a Claude cloud session on the issue with the `startCodingSession` tool. The session runs
+   unattended in a sandboxed cloud environment, and every notable event it emits (agent messages, status transitions,
+   errors) is republished as a Synapse state change from the `coding` source, so progress flows into the existing
+   notification path instead of needing the workflow to stay alive
 
 **Usage Example:**
 ```typescript
@@ -1067,6 +1096,7 @@ All environment variables use the `HEY_JARVIS_` prefix for easy management and D
 - **ElevenLabs**: `HEY_JARVIS_ELEVENLABS_API_KEY`, `HEY_JARVIS_ELEVENLABS_AGENT_ID`, `HEY_JARVIS_ELEVENLABS_VOICE_ID` for voice AI (test agent ID `HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID` takes precedence for phone calls)
 - **Recipes**: `HEY_JARVIS_VALDEMARSRO_API_KEY` for Danish recipe data
 - **GitHub**: `HEY_JARVIS_GITHUB_API_TOKEN` for GitHub API access (coding agent and error reporting processor)
+- **Claude cloud sessions**: `HEY_JARVIS_ANTHROPIC_API_KEY`, `HEY_JARVIS_CLAUDE_AGENT_ID`, `HEY_JARVIS_CLAUDE_ENVIRONMENT_ID` for the coding vertical's implementation sessions
 - **WiFi**: `HEY_JARVIS_WIFI_SSID`, `HEY_JARVIS_WIFI_PASSWORD` for Home Assistant Voice Firmware
 
 #### Development Setup
