@@ -1,7 +1,16 @@
 import { pick } from 'lodash-es';
 import { Octokit } from 'octokit';
 import { z } from 'zod';
+import { logger } from '../../utils/logger.js';
 import { createTool } from '../../utils/tool-factory.js';
+import {
+  createClaudeSession,
+  getClaudeSession,
+  getClaudeSessionUrl,
+  listClaudeSessionEvents,
+  sendClaudeSessionMessage,
+} from './claude-sessions.js';
+import { claudeSessionWatcher } from './session-watcher.js';
 
 // Create Octokit instance with optional GitHub token authentication
 // Using HEY_JARVIS_GITHUB_API_TOKEN for consistency with other env vars
@@ -219,38 +228,146 @@ export const searchRepositories = createTool({
 });
 
 /**
- * Tool to provide instructions for assigning GitHub Copilot to an issue
+ * Tool to hand an issue to a Claude cloud session for implementation
  *
- * NOTE: This is an informational tool that provides guidance for manual Copilot assignment.
- * It does NOT automatically start a coding task. Automation requires GitHub App installation
- * and MCP server configuration with proper authentication.
+ * The session runs unattended in a sandboxed cloud environment. Its events are
+ * watched from the moment it starts and forwarded into the Synapse vertical as
+ * state changes, so progress, questions and failures surface through the same
+ * notification path as everything else in the house.
  */
-export const assignCopilotToIssue = createTool({
-  id: 'assignCopilotToIssue',
+export const startCodingSession = createTool({
+  id: 'startCodingSession',
   description:
-    'Provides instructions for assigning GitHub Copilot Coding Agent to a specific issue. This is an informational tool that does NOT automatically start a coding task. To enable automation, install the GitHub App and configure the MCP server with proper permissions. Defaults to "ffMathy" owner if not specified.',
+    'Starts a Claude cloud session that implements a GitHub issue autonomously. The session clones the repository, does the work and opens a pull request. Its events are reported back into the Synapse vertical as state changes. Defaults to "ffMathy" owner if not specified.',
   inputSchema: z.object({
     owner: z.string().optional().describe('The repository owner (defaults to "ffMathy" if not provided)'),
     repo: z.string().describe('The repository name (e.g., "hey-jarvis")'),
-    issue_number: z.number().describe('The issue number to assign Copilot to'),
+    issue_number: z.number().describe('The issue number the session should implement'),
+    title: z.string().optional().describe('The issue title, used to describe the session'),
+    instructions: z
+      .string()
+      .optional()
+      .describe('Extra instructions for the session, such as the gathered requirements'),
+  }),
+  outputSchema: z.object({
+    success: z.boolean(),
+    session_id: z.string().optional(),
+    session_url: z.string().optional(),
+    status: z.string().optional(),
+    message: z.string(),
+  }),
+  execute: async (inputData) => {
+    const owner = inputData.owner || 'ffMathy';
+    const repository = `${owner}/${inputData.repo}`;
+    const issueUrl = `https://github.com/${repository}/issues/${inputData.issue_number}`;
+
+    const task = [
+      `Implement GitHub issue #${inputData.issue_number} in the ${repository} repository.`,
+      `Issue: ${issueUrl}`,
+      inputData.title ? `Title: ${inputData.title}` : undefined,
+      inputData.instructions ? `\nRequirements:\n${inputData.instructions}` : undefined,
+      '\nWork on a dedicated branch, follow the repository conventions in AGENTS.md and CLAUDE.md, run the tests, and open a pull request that closes the issue when you are done.',
+    ]
+      .filter((line): line is string => typeof line === 'string')
+      .join('\n');
+
+    // A session that fails to start is reported rather than thrown, so the
+    // caller still learns about the issue that was created for it.
+    try {
+      const session = await createClaudeSession(task, { repository, issueNumber: inputData.issue_number });
+
+      claudeSessionWatcher.watch(session.id, {
+        repository,
+        issueNumber: inputData.issue_number,
+        title: inputData.title,
+      });
+
+      return {
+        success: true,
+        session_id: session.id,
+        session_url: getClaudeSessionUrl(session.id),
+        status: session.status,
+        message: `Started Claude cloud session ${session.id} for issue #${inputData.issue_number}`,
+      };
+    } catch (error) {
+      logger.error('[CLAUDE SESSION] Failed to start session', {
+        repository,
+        issueNumber: inputData.issue_number,
+        error,
+      });
+
+      return {
+        success: false,
+        message: `Could not start a Claude cloud session for ${issueUrl}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      };
+    }
+  },
+});
+
+/**
+ * Tool to check what a Claude cloud session is currently doing
+ */
+export const getCodingSessionStatus = createTool({
+  id: 'getCodingSessionStatus',
+  description:
+    'Gets the current status of a Claude cloud session started for a coding task, along with the messages it has produced so far.',
+  inputSchema: z.object({
+    session_id: z.string().describe('The Claude cloud session ID'),
+  }),
+  outputSchema: z.object({
+    session_id: z.string(),
+    session_url: z.string(),
+    status: z.string(),
+    messages: z.array(z.string()),
+  }),
+  execute: async (inputData) => {
+    const [session, events] = await Promise.all([
+      getClaudeSession(inputData.session_id),
+      listClaudeSessionEvents(inputData.session_id),
+    ]);
+
+    const messages = events
+      .filter((event) => event.type === 'agent.message')
+      .map((event) =>
+        event.content
+          .filter((block) => block.type === 'text')
+          .map((block) => block.text)
+          .join('\n'),
+      )
+      .filter((message) => message.length > 0);
+
+    return {
+      session_id: session.id,
+      session_url: getClaudeSessionUrl(session.id),
+      status: session.status,
+      messages,
+    };
+  },
+});
+
+/**
+ * Tool to steer a running Claude cloud session
+ */
+export const sendCodingSessionMessage = createTool({
+  id: 'sendCodingSessionMessage',
+  description:
+    'Sends a follow-up message to a running Claude cloud session, to answer a question it asked or to redirect the work it is doing.',
+  inputSchema: z.object({
+    session_id: z.string().describe('The Claude cloud session ID'),
+    message: z.string().describe('The message to send to the session'),
   }),
   outputSchema: z.object({
     success: z.boolean(),
     message: z.string(),
-    task_url: z.string().optional(),
   }),
   execute: async (inputData) => {
-    const owner = inputData.owner || 'ffMathy';
-
-    // This is an informational tool that provides instructions for manual assignment
-    // Automation would require GitHub App installation and proper MCP server configuration
-
-    const issueUrl = `https://github.com/${owner}/${inputData.repo}/issues/${inputData.issue_number}`;
+    await sendClaudeSessionMessage(inputData.session_id, inputData.message);
 
     return {
-      success: false,
-      message: `GitHub Copilot assignment requires the GitHub App to be installed with proper permissions. Please visit ${issueUrl} and manually assign @copilot to the issue, or configure the GitHub MCP server with authentication tokens.`,
-      task_url: issueUrl,
+      success: true,
+      message: `Sent message to Claude cloud session ${inputData.session_id}`,
     };
   },
 });
@@ -347,4 +464,6 @@ export const codingTools = {
   listUserRepositories,
   listRepositoryIssues,
   searchRepositories,
+  getCodingSessionStatus,
+  sendCodingSessionMessage,
 };
