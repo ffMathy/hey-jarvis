@@ -49,7 +49,12 @@ async function isTunnelRunning(): Promise<boolean> {
  * Cloudflare answers with its own error pages while the tunnel is down, so the
  * body has to confirm our MCP server is the one on the other end.
  */
-async function checkTunnelHealth(): Promise<{ ok: boolean; status?: number; error?: string }> {
+async function checkTunnelHealth(): Promise<{
+  ok: boolean;
+  status?: number;
+  error?: string;
+  rejectedByAccess?: boolean;
+}> {
   const healthUrl = `${process.env.HEY_JARVIS_CLOUDFLARED_TUNNEL_URL}/health`;
   try {
     const response = await fetch(healthUrl, {
@@ -59,6 +64,23 @@ async function checkTunnelHealth(): Promise<{ ok: boolean; status?: number; erro
     });
     if (!response.ok) {
       return { ok: false as const, status: response.status, error: `HTTP ${response.status}` };
+    }
+
+    // Cloudflare Access answers a request it will not let through with its own
+    // page, and a login page is still a 200. Saying so beats letting the JSON
+    // parse fail and reporting that instead.
+    const contentType = response.headers.get('content-type') ?? 'none';
+    if (!contentType.includes('application/json')) {
+      const sentServiceToken = Object.keys(cloudflareAccessHeaders()).length > 0;
+      return {
+        ok: false as const,
+        status: response.status,
+        error:
+          `expected JSON from /health but got ${contentType}, which is what Cloudflare Access serves ` +
+          `when it does not accept the request (service token sent: ${sentServiceToken}). ` +
+          `Check that the Access policy's action is Service Auth and that it includes this token.`,
+        rejectedByAccess: true,
+      };
     }
 
     const data = (await response.json()) as { status?: string };
@@ -145,11 +167,22 @@ export async function ensureTunnelRunning(): Promise<void> {
 
   console.log(`🌐 Token length: ${token.length} characters`);
 
+  // cloudflared logs the tunnel-related variables it finds in its environment,
+  // verbatim, at startup — and CI logs are public. It masks the token when it
+  // arrives as a flag, so pass it that way and keep it out of the environment
+  // the child inherits.
+  const {
+    HEY_JARVIS_CLOUDFLARED_TUNNEL_TOKEN: _token,
+    HEY_JARVIS_CLOUDFLARED_TUNNEL_URL: _url,
+    ...environmentWithoutTunnelSecrets
+  } = process.env;
+
   // Start cloudflared tunnel in background with HTTP2 protocol (more reliable than QUIC)
   // Using --protocol http2 to avoid UDP/QUIC blocking issues in some network environments
   tunnelProcess = spawn('cloudflared', ['tunnel', '--protocol', 'http2', 'run', '--token', token], {
     detached: false,
     stdio: ['ignore', 'inherit', 'inherit'],
+    env: environmentWithoutTunnelSecrets,
   });
 
   tunnelProcess.on('error', (error) => {
@@ -172,6 +205,12 @@ export async function ensureTunnelRunning(): Promise<void> {
         return;
       }
 
+      // Access decides on the credentials presented, and those do not improve by
+      // being offered again — so stop rather than spend a minute proving it.
+      if (healthResult.rejectedByAccess) {
+        throw new Error(`Tunnel reachable but Access refused the request: ${healthResult.error}`);
+      }
+
       // If health check fails, try the MCP endpoint (requires JWT)
       const isRunning = await isTunnelRunning();
       if (isRunning) {
@@ -184,6 +223,7 @@ export async function ensureTunnelRunning(): Promise<void> {
       maxRetries: 60,
       initialDelay: 1000,
       backoffMultiplier: 1, // Linear retry (1 second between attempts)
+      shouldRetry: (error) => !error.message.startsWith('Tunnel reachable but Access refused'),
       onRetry: (error, attempt, _delay) => {
         // Log extra diagnostics every 10 attempts
         if (attempt % 10 === 0) {
