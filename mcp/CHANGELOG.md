@@ -1,5 +1,35 @@
 # Changelog
 
+## [1.9.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.8.1...mcp-v1.9.0) (2026-08-18)
+
+
+### Features
+
+* **firmware:** verify playback fidelity against ElevenLabs' own recording ([#625](https://github.com/ffMathy/hey-jarvis/issues/625)) ([a9f607f](https://github.com/ffMathy/hey-jarvis/commit/a9f607f07bd80531c1beb32ebb914bb4091f9890))
+* scope credentials to a Jarvis vault, fix WSL toolchain and USB flashing ([#624](https://github.com/ffMathy/hey-jarvis/issues/624)) ([349cbcb](https://github.com/ffMathy/hey-jarvis/commit/349cbcb28d239777e5b0ebc1591b869b69b0d582))
+* **secrets:** scope credentials to a dedicated Jarvis vault ([1ea6f3c](https://github.com/ffMathy/hey-jarvis/commit/1ea6f3c430d494f66c8be64a68ca99bc898cf06d))
+* **security:** harden the repo against supply chain attacks ([b07d7d3](https://github.com/ffMathy/hey-jarvis/commit/b07d7d3bf0c56a0f2e64c27e393b6c40f32fabbe))
+* **security:** harden the repo against supply chain attacks ([#628](https://github.com/ffMathy/hey-jarvis/issues/628)) ([595ecfc](https://github.com/ffMathy/hey-jarvis/commit/595ecfc58bc8754939c26bf1e4d59e44c0104682))
+* **synapse:** match state changes to Given/When/Then subscriptions with Model2Vec ([65a83da](https://github.com/ffMathy/hey-jarvis/commit/65a83da20d973880276b0404d111a936a03217f5))
+* **synapse:** match state changes to Given/When/Then subscriptions with Model2Vec ([#629](https://github.com/ffMathy/hey-jarvis/issues/629)) ([f59e09a](https://github.com/ffMathy/hey-jarvis/commit/f59e09a867dc29a28ddb8d642ce0ac32c79b7927))
+
+
+### Bug Fixes
+
+* **deps:** make the bumped dependencies installable again ([77f07b2](https://github.com/ffMathy/hey-jarvis/commit/77f07b281331b46bc3ec3f966493ddeb7a2531ff))
+* **deps:** restore a lockfile the workspace can actually install ([4554958](https://github.com/ffMathy/hey-jarvis/commit/4554958e659d14301ca2b612b7af2f0e83d7be50))
+* **elevenlabs:** deploy the test agent only once its tunnel is answering ([693db83](https://github.com/ffMathy/hey-jarvis/commit/693db8380a4eebc596d7590aab71bb79a7874bc4))
+* **elevenlabs:** give the test agent an MCP server that outlives the run ([d8060cb](https://github.com/ffMathy/hey-jarvis/commit/d8060cb5e8c913f5101752b8b8431ad2165cc6e9))
+* **mcp:** address review feedback on the Mastra upgrade ([17696ea](https://github.com/ffMathy/hey-jarvis/commit/17696eaf2cd075d6c1ce46d7d17a976578ac881e))
+* **mcp:** align the Google provider's key precedence with mastra/index.ts ([9a9fb56](https://github.com/ffMathy/hey-jarvis/commit/9a9fb56f282987b4726f22730484d30d2bcec2b6))
+* **mcp:** allow credentialed CORS requests from Mastra Studio ([9d90816](https://github.com/ffMathy/hey-jarvis/commit/9d90816a250415fa2b7082ac49ea2d0df13d703f))
+* **mcp:** correct the advertised build architectures ([b6e610b](https://github.com/ffMathy/hey-jarvis/commit/b6e610b9ff730d5e6b472f34890147e86445c4bb))
+* **mcp:** fetch Home Assistant devices in batches ([d2a1abf](https://github.com/ffMathy/hey-jarvis/commit/d2a1abf1d11a34b4f62b2985bce7111b1191f7bf))
+* **mcp:** surface the Home Assistant error body, not just the status text ([c73fa2c](https://github.com/ffMathy/hey-jarvis/commit/c73fa2ca2cccb80a55d592ede6a20a13859c7c7a))
+* **scripts:** invoke shell scripts through bash ([00ebfd6](https://github.com/ffMathy/hey-jarvis/commit/00ebfd6908804db49a31504474e3e80c27631580))
+* **tests:** give the elevenlabs agent tests an MCP server that stays up ([#627](https://github.com/ffMathy/hey-jarvis/issues/627)) ([2ec1355](https://github.com/ffMathy/hey-jarvis/commit/2ec13551ed9e3660e91e661ae09511f6a52fa6b6))
+* **tests:** start the tunnel the elevenlabs agent tests depend on ([c4bbbaa](https://github.com/ffMathy/hey-jarvis/commit/c4bbbaa4ac1c3302995f83cdd774101287218161))
+
 ## [1.8.1](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.8.0...mcp-v1.8.1) (2026-03-19)
 
 
