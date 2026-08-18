@@ -11,13 +11,28 @@
       "turnTimeout": -1,
       "silenceEndCallTimeout": 30,
       "mode": "turn",
-      "turnEagerness": "eager",
+      "turnEagerness": "normal",
       "spellingPatience": "auto",
       "speculativeTurn": true,
       "retranscribeOnTurnTimeout": false,
       "turnModel": "turn_v3",
-      "interruptionIgnoreTerms": [],
-      "interruptionIgnoreTermLanguages": [],
+      "interruptionIgnoreTerms": [
+        "mmhmm",
+        "uhhuh",
+        "uh huh",
+        "uh",
+        "mm",
+        "hmm",
+        "okay",
+        "ok",
+        "okey",
+        "i see",
+        "go on",
+        "go ahead",
+        "right",
+        "gotcha"
+      ],
+      "interruptionIgnoreTermLanguages": ["en", "da"],
       "mergeWithDefaultIgnoreTerms": false,
       "transcribeOnDisabledInterruptions": false,
       "softTimeoutConfig": {
@@ -335,7 +350,7 @@
   },
   "metadata": {
     "createdAtUnixSecs": 1742778859,
-    "updatedAtUnixSecs": 1786652139
+    "updatedAtUnixSecs": 1787070863
   },
   "platformSettings": {
     "evaluation": {
@@ -433,7 +448,8 @@
       },
       "customLlmExtraBody": false,
       "enableConversationInitiationClientDataFromWebhook": false,
-      "enableStartingWorkflowNodeIdFromClient": false
+      "enableStartingWorkflowNodeIdFromClient": false,
+      "enable_procedure_ids_from_client": false
     },
     "workspaceOverrides": {
       "webhooks": {
@@ -617,7 +633,7 @@
     "preventSubagentLoops": false
   },
   "tags": [],
-  "versionId": "agtvrsn_4501kzyc87w8e8xambx1j632zedy",
+  "versionId": "agtvrsn_8701m0avjpb1eh5vbf7htt866sdc",
   "procedures": {},
   "trust_context": "unknown"
 }
