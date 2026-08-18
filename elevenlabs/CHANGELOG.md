@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.13.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.12.1...elevenlabs-v0.13.0) (2026-08-18)
+
+
+### Features
+
+* **elevenlabs:** pull latest settings from the production agent ([455f819](https://github.com/ffMathy/hey-jarvis/commit/455f8193c817b88386a5e86ad417d0e77ecb0119))
+* **firmware:** verify playback fidelity against ElevenLabs' own recording ([#625](https://github.com/ffMathy/hey-jarvis/issues/625)) ([a9f607f](https://github.com/ffMathy/hey-jarvis/commit/a9f607f07bd80531c1beb32ebb914bb4091f9890))
+* scope credentials to a Jarvis vault, fix WSL toolchain and USB flashing ([#624](https://github.com/ffMathy/hey-jarvis/issues/624)) ([349cbcb](https://github.com/ffMathy/hey-jarvis/commit/349cbcb28d239777e5b0ebc1591b869b69b0d582))
+* **secrets:** scope credentials to a dedicated Jarvis vault ([1ea6f3c](https://github.com/ffMathy/hey-jarvis/commit/1ea6f3c430d494f66c8be64a68ca99bc898cf06d))
+* **security:** harden the repo against supply chain attacks ([b07d7d3](https://github.com/ffMathy/hey-jarvis/commit/b07d7d3bf0c56a0f2e64c27e393b6c40f32fabbe))
+* **security:** harden the repo against supply chain attacks ([#628](https://github.com/ffMathy/hey-jarvis/issues/628)) ([595ecfc](https://github.com/ffMathy/hey-jarvis/commit/595ecfc58bc8754939c26bf1e4d59e44c0104682))
+
+
+### Bug Fixes
+
+* **elevenlabs:** deploy the test agent only once its tunnel is answering ([693db83](https://github.com/ffMathy/hey-jarvis/commit/693db8380a4eebc596d7590aab71bb79a7874bc4))
+* **elevenlabs:** give the test agent an MCP server that outlives the run ([d8060cb](https://github.com/ffMathy/hey-jarvis/commit/d8060cb5e8c913f5101752b8b8431ad2165cc6e9))
+* **elevenlabs:** keep the tunnel token out of the CI log ([f7f7142](https://github.com/ffMathy/hey-jarvis/commit/f7f71429f21adbcab1c22c3a24d5f1fe97147f43))
+* **elevenlabs:** let the test agent report the MCP tools it calls ([dd198a3](https://github.com/ffMathy/hey-jarvis/commit/dd198a3e00a0b1cc41fdd333bb02c56ff1542074))
+* **elevenlabs:** stop deploying the production agent's branch to the test agent ([83b70d3](https://github.com/ffMathy/hey-jarvis/commit/83b70d30203c827808875b29eb4caf8bc08c075a))
+* **prompt:** make brevity outrank embellishment ([9b5f7dd](https://github.com/ffMathy/hey-jarvis/commit/9b5f7dd3d98587dea742fd81d4a21c60a2aa9a67))
+* **prompt:** stop routing requests that are already answered ([e241201](https://github.com/ffMathy/hey-jarvis/commit/e24120188cab45b5fa72336c125cba12d523ae44))
+* **scripts:** invoke shell scripts through bash ([00ebfd6](https://github.com/ffMathy/hey-jarvis/commit/00ebfd6908804db49a31504474e3e80c27631580))
+* **tests:** end the conversation before reading its tool call history ([5f191a2](https://github.com/ffMathy/hey-jarvis/commit/5f191a22331f4865675b5a00be9c0e6eea617394))
+* **tests:** give the elevenlabs agent tests an MCP server that stays up ([#627](https://github.com/ffMathy/hey-jarvis/issues/627)) ([2ec1355](https://github.com/ffMathy/hey-jarvis/commit/2ec13551ed9e3660e91e661ae09511f6a52fa6b6))
+* **tests:** read tool calls from the conversation history, not the socket ([30a307d](https://github.com/ffMathy/hey-jarvis/commit/30a307df09203311055e5aa9ceb66c19710663dc))
+* **tests:** start the tunnel the elevenlabs agent tests depend on ([c4bbbaa](https://github.com/ffMathy/hey-jarvis/commit/c4bbbaa4ac1c3302995f83cdd774101287218161))
+* **tests:** wait for the weather tool call instead of racing it ([5313b17](https://github.com/ffMathy/hey-jarvis/commit/5313b175d581635c6019139546f7e30767d22072))
+
 ## [0.12.1](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.12.0...elevenlabs-v0.12.1) (2026-03-19)
 
 

@@ -1,5 +1,49 @@
 # Changelog
 
+## [0.11.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.10.0...home-assistant-voice-firmware-v0.11.0) (2026-08-18)
+
+
+### Features
+
+* **firmware:** compare the device's playback against ElevenLabs' own recording ([e6b8df0](https://github.com/ffMathy/hey-jarvis/commit/e6b8df003580838f6ed7a6b4a2001152e28c67a2))
+* **firmware:** detect stuttering in Jarvis's replies via a recorded round trip ([ddea7b5](https://github.com/ffMathy/hey-jarvis/commit/ddea7b5df5e4d4147379b02b23011c035a05b3cd))
+* **firmware:** proactive announcements that open a real conversation ([b47d281](https://github.com/ffMathy/hey-jarvis/commit/b47d281f25c758affec3cda7352f05163c8cbcfd))
+* **firmware:** proactive announcements with a VAD-timed silence window ([#658](https://github.com/ffMathy/hey-jarvis/issues/658)) ([bd96991](https://github.com/ffMathy/hey-jarvis/commit/bd969917871505c47908db64d78349670c14c0a4))
+* **firmware:** support USB flashing and add WSL toolchain setup ([cb85ef9](https://github.com/ffMathy/hey-jarvis/commit/cb85ef92ece7048896671ef48cad257e9ddfcc85))
+* **firmware:** verify playback fidelity against ElevenLabs' own recording ([#625](https://github.com/ffMathy/hey-jarvis/issues/625)) ([a9f607f](https://github.com/ffMathy/hey-jarvis/commit/a9f607f07bd80531c1beb32ebb914bb4091f9890))
+* scope credentials to a Jarvis vault, fix WSL toolchain and USB flashing ([#624](https://github.com/ffMathy/hey-jarvis/issues/624)) ([349cbcb](https://github.com/ffMathy/hey-jarvis/commit/349cbcb28d239777e5b0ebc1591b869b69b0d582))
+* **secrets:** scope credentials to a dedicated Jarvis vault ([1ea6f3c](https://github.com/ffMathy/hey-jarvis/commit/1ea6f3c430d494f66c8be64a68ca99bc898cf06d))
+
+
+### Bug Fixes
+
+* **firmware:** avoid size_t underflow in PSRAM delta log ([baa67e1](https://github.com/ffMathy/hey-jarvis/commit/baa67e109e12128003a0b388f1521871eb53940f))
+* **firmware:** bring the speaker up before the conversation, not on first audio ([eb0c3d3](https://github.com/ffMathy/hey-jarvis/commit/eb0c3d30c6d72ad720f0ff223ade4f2f5a04efdc))
+* **firmware:** eliminate the audio dropouts in Jarvis's replies ([#656](https://github.com/ffMathy/hey-jarvis/issues/656)) ([e80300f](https://github.com/ffMathy/hey-jarvis/commit/e80300f94d44f1dd6b36a5f8fd6e9d8551c245b5))
+* **firmware:** eliminate the last audio dropouts — 10/10 clean ([#657](https://github.com/ffMathy/hey-jarvis/issues/657)) ([70baccd](https://github.com/ffMathy/hey-jarvis/commit/70baccd213bc298d3e6030a45bb6da9a314fc234))
+* **firmware:** extract audio frames without parsing them as JSON ([4873880](https://github.com/ffMathy/hey-jarvis/commit/4873880f938e0519a833801b7d099795dc7aa8d3))
+* **firmware:** let the i2s peripheral drain before playing the reply ([f64845f](https://github.com/ffMathy/hey-jarvis/commit/f64845f6d1178a2634c5b3d7c934efd1494493e8))
+* **firmware:** never record while playing, it corrupts the audio being played ([070f5c4](https://github.com/ffMathy/hey-jarvis/commit/070f5c41f1e733eebbb7715f3fcb02484d16b52a))
+* **firmware:** prebuffer the opening of each reply, bounded by time ([9c42a67](https://github.com/ffMathy/hey-jarvis/commit/9c42a67b874c9bf4419b60cda76a3395bc0df497))
+* **firmware:** raise the activation chime to match the reply volume ([882fc5c](https://github.com/ffMathy/hey-jarvis/commit/882fc5c75c0f6655e6c928734c4c62faf6a41897))
+* **firmware:** start the speaker before writing the first audio chunk ([25b3387](https://github.com/ffMathy/hey-jarvis/commit/25b33870a071f7bec400473f8dc8935dfaa9fedd))
+* **firmware:** start the wake word engine and clear not_ready at boot ([5375167](https://github.com/ffMathy/hey-jarvis/commit/53751671a544c9657868ed814e884e73f781479a))
+* **firmware:** stop audio tags in the transcript reading as missing words ([7133019](https://github.com/ffMathy/hey-jarvis/commit/7133019b7e7610906a7b9553e326de60c2080a9a))
+* **firmware:** stop discarding audio the speaker buffer could not take ([8ed1d0e](https://github.com/ffMathy/hey-jarvis/commit/8ed1d0e69ef975c34ae0fed79d682c4604a552b5))
+* **firmware:** stop discarding audio the speaker buffer could not take ([#626](https://github.com/ffMathy/hey-jarvis/issues/626)) ([c4fb11f](https://github.com/ffMathy/hey-jarvis/commit/c4fb11f87c4a4c22b068b53077cde6f63701b2a1))
+* **firmware:** stop the speaker when the conversation ends ([f1e4c25](https://github.com/ffMathy/hey-jarvis/commit/f1e4c254ace9850d5edc50b2aa7d79c443b676a5))
+* **firmware:** stop tracing resolved secrets into the build log ([b41d1ae](https://github.com/ffMathy/hey-jarvis/commit/b41d1ae395c235249fcbe975f2e638b640cfe9b1))
+* **firmware:** time the announcement window from VAD, not from ElevenLabs ([8dd0697](https://github.com/ffMathy/hey-jarvis/commit/8dd06972153d68a410ecca5caa8e55d4740d8b25))
+* **firmware:** use a pro model for the comparison, and corroborate it deterministically ([30d5b3d](https://github.com/ffMathy/hey-jarvis/commit/30d5b3d653031f556ab6a0ec6cb776674cd3795d))
+* **firmware:** wait for the activation chime on every conversation ([e6b847b](https://github.com/ffMathy/hey-jarvis/commit/e6b847bfb2c533408a6aedfaaa6b0c752270ae25))
+* **firmware:** wait until the device is listening before speaking the command ([8a8174c](https://github.com/ffMathy/hey-jarvis/commit/8a8174ca46619faa59f1dd9c1cb3c8c7087065a0))
+
+
+### Documentation
+
+* **firmware:** document registering the voice device in home assistant ([5eb59c1](https://github.com/ffMathy/hey-jarvis/commit/5eb59c18079bde7f3918204d9ddd56e7b45b4ec8))
+* **firmware:** record what the wake word test verified, and its limitation ([c0ae619](https://github.com/ffMathy/hey-jarvis/commit/c0ae61951b536eb223c3c4d9e8f426318d32cf89))
+
 ## [0.10.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.9.1...home-assistant-voice-firmware-v0.10.0) (2026-03-15)
 
 
