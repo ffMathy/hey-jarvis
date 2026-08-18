@@ -401,9 +401,61 @@ Only stops when 100% certain about:
 - "What are the expected inputs and outputs?"
 - "Are there any existing patterns to follow?"
 
+### Routing Planner Agent
+Plans the task DAG that fulfils a voice request, and nothing else:
+- **No tools, no sub-agents**: it emits the graph; `routingWorkflow` executes it
+- **Structured output**: returns `{ tasks: [{ id, agent, prompt, dependsOn }] }`
+- **Agent catalog as input**: receives every public agent's ID, description and tool names
+- **Dependencies model data flow**: a task lists the IDs of the tasks whose results it needs
+
+Separating planning from execution is what makes the routing graph inspectable. The plan is a
+value the workflow owns, so every task shows up as a step in Mastra Studio instead of being
+buried inside one agent's tool-call loop.
+
+The plan is sanitized before it runs: tasks assigned to unknown agents are dropped, duplicate
+IDs are collapsed, and dependencies on non-existent tasks (as well as any edge that would close
+a cycle) are removed, so a hallucinated graph can never deadlock the executor.
+
 *Note: Additional agents will be added as the project evolves.*
 
 ## Available Workflows
+
+### Routing Workflow (DAG)
+The entry point for every voice request. It is a plain Mastra workflow that plans a DAG and then
+executes it wave by wave, suspending whenever it has something to report.
+
+**Workflows:**
+- **`routingWorkflow`**: the DAG engine — plan, hand off, execute, report, repeat
+- **`routePromptWorkflow`**: MCP tool that starts a `routingWorkflow` run for a user query
+- **`getNextInstructionsWorkflow`**: MCP tool that resumes that run and returns what finished since the last call
+- **`getCurrentDagWorkflow`**: inspects the planned graph and each task's status
+
+**Workflow Steps:**
+1. **`plan-tasks`**: Routing Planner Agent turns the query into a task DAG, stored as workflow state
+2. **`hand-off-to-caller`**: suspends immediately, so `routePromptWorkflow` can return the pending task IDs
+3. **`routingWaveWorkflow`** (looped with `.dountil()` until every task has finished):
+   - **`select-ready-tasks`**: picks the tasks whose dependencies have all finished
+   - **`execute-task`** (`.foreach()`, concurrency 5): calls the assigned agent, with its dependencies' results appended to the prompt
+   - **`record-task-results`**: writes the results back into workflow state
+   - **`report-progress`**: suspends with the newly finished results
+4. **`finalize-routing`**: returns the final batch of results as the workflow output
+
+**Suspend/Resume Contract:**
+Each suspension is one poll from Jarvis. `routePromptWorkflow` starts the run and reads the
+hand-off suspension; every `getNextInstructionsWorkflow` call resumes it, which runs the next
+wave and suspends again. Leaf tasks (nothing depends on them) carry the answers the user asked
+for, so their results are handed over with an instruction to summarize; intermediate tasks only
+get a brief acknowledgement. When `async: true`, nobody is going to poll, so the workflow is
+driven to completion in the background instead.
+
+**Failure Handling:**
+An agent that throws fails only its own task — the rest of the wave still completes. If a wave
+selects no tasks while work is outstanding, the remaining tasks are failed rather than looped on.
+
+**Testing in Studio:**
+`routingWorkflow` is registered on the Mastra instance, so it can be run straight from Studio:
+fill in a `userQuery`, watch the planner produce the graph, follow each task's agent call, and
+resume the suspensions by hand.
 
 ### 📅 Workflow Scheduling
 

@@ -1,3 +1,4 @@
+import { Mastra } from '@mastra/core';
 import type { AgentConfig } from '@mastra/core/agent';
 import type { StandardSchemaWithJSON } from '@mastra/core/schema';
 import type { ToolExecuteFunction, ToolExecutionContext } from '@mastra/core/tools';
@@ -33,6 +34,36 @@ export type AnyWorkflow = import('@mastra/core/workflows').Workflow<
  */
 // biome-ignore lint/suspicious/noExplicitAny: Mastra WorkflowResult type requires `any` in its Step bound
 export type AnyWorkflowResult = import('@mastra/core/workflows').WorkflowResult<unknown, unknown, unknown, any[]>;
+
+let workflowRuntime: Mastra | undefined;
+
+/**
+ * The Mastra instance a workflow falls back to when it is not registered on the
+ * application's instance.
+ *
+ * Suspend and resume persist the run snapshot through the workflow's Mastra
+ * instance, so a workflow with no instance cannot be resumed at all. Workflows
+ * listed in `mastra/index.ts` are bound to the app instance when it is
+ * constructed, which overrides this fallback; the fallback is what keeps
+ * suspendable workflows working in the standalone MCP server process and in
+ * tests.
+ *
+ * @example
+ * ```typescript
+ * export const myWorkflow = createWorkflow({
+ *   id: 'myWorkflow',
+ *   mastra: getWorkflowRuntime(),
+ *   inputSchema: z.object({}),
+ *   outputSchema: z.object({}),
+ * })
+ *   .then(suspendingStep)
+ *   .commit();
+ * ```
+ */
+export function getWorkflowRuntime(): Mastra {
+  workflowRuntime ??= new Mastra({});
+  return workflowRuntime;
+}
 
 /**
  * Creates a new Mastra Workflow with sensible defaults for the Hey Jarvis system.
