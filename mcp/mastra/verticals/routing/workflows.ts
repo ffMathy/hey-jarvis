@@ -1,8 +1,24 @@
 import type { Agent } from '@mastra/core/agent';
 import z from 'zod';
-import { createStep, createWorkflow } from '../../utils';
+import { createStep, createWorkflow, getWorkflowRuntime } from '../../utils';
 import { getPublicAgents } from '..';
-import { getRoutingSupervisorAgent } from './agents.js';
+import { getRoutingPlannerAgent } from './agents.js';
+
+/* -------------------------------------------------------------------------- */
+/* Public contract                                                            */
+/* -------------------------------------------------------------------------- */
+/*
+ * These schemas are what the MCP server (and therefore the ElevenLabs Jarvis
+ * agent) sees. They are deliberately unchanged: a routing request is still a
+ * DAG of tasks, and the caller still polls for instructions until everything
+ * has finished.
+ *
+ * What changed is the machinery underneath. Instead of a hand-rolled promise
+ * registry with completion listeners and timers, the DAG is now a real Mastra
+ * workflow: a planner agent emits the graph, the tasks are executed as workflow
+ * steps that call the target agents, and the workflow suspends every time it
+ * has something to report. `getNextInstructionsWorkflow` is just a resume.
+ */
 
 const outputTaskSchema = z.object({
   id: z.string().describe('The unique task ID for this task'),
@@ -33,243 +49,25 @@ export const inputSchema = z.object({
     ),
 });
 
-export const dagSchema = outputSchema.extend({
-  executionPromise: z.promise(z.void()).optional().describe('Internal promise tracking DAG execution'),
-  tasks: z.array(
-    outputTaskSchema.extend({
-      executionPromise: z.promise(outputTaskSchema).optional().describe('Internal promise tracking task execution'),
-      result: z.unknown().optional().describe('Result of the task execution'),
-      reported: z.boolean().optional().describe('Whether the task result has been reported back to Jarvis'),
-    }),
-  ),
+const taskStatusSchema = z.enum(['pending', 'running', 'completed', 'failed']);
+
+const dagTaskSchema = outputTaskSchema.extend({
+  status: taskStatusSchema.describe('Current execution status of the task'),
+  result: z.unknown().optional().describe('Result of the task execution'),
+  reported: z.boolean().describe('Whether the task result has been reported back to Jarvis'),
 });
 
-export type AgentProvider = () => Promise<Agent[]>;
-
-/**
- * A function that executes the supervisor's routing logic.
- * It receives the user query and available agents, and is responsible for
- * populating tasks in the workflow state via injectTask/simulateTaskCompletion.
- * Used for testing to inject mock behavior.
- */
-export type SupervisorExecutor = (userQuery: string, agents: Agent[]) => Promise<void>;
-
-/**
- * Workflow state that contains all globally needed state for routing workflows.
- * This can be replaced by tests for mocking purposes.
- */
-export interface WorkflowState {
-  agentProvider: AgentProvider;
-  supervisorExecutor?: SupervisorExecutor;
-  taskCompletedListeners: Array<(task: z.infer<typeof outputTaskSchema>) => void>;
-  currentDAG: z.infer<typeof dagSchema>;
-}
-
-function createDefaultWorkflowState(): WorkflowState {
-  return {
-    agentProvider: getPublicAgents,
-    taskCompletedListeners: [],
-    currentDAG: {
-      tasks: [],
-      executionPromise: undefined,
-    },
-  };
-}
-
-let workflowState: WorkflowState = createDefaultWorkflowState();
-
-/**
- * Sets the entire workflow state. Use this in tests to inject mock state.
- * If no state is provided, resets to the default state.
- */
-export function setWorkflowState(state?: Partial<WorkflowState>): void {
-  if (!state) {
-    workflowState = createDefaultWorkflowState();
-  } else {
-    workflowState = {
-      ...createDefaultWorkflowState(),
-      ...state,
-    };
-  }
-}
-
-/**
- * Gets the current workflow state. Primarily useful for tests.
- */
-export function getWorkflowState(): WorkflowState {
-  return workflowState;
-}
-
-// Backward-compatible accessors - delegating to workflowState
-
-export function setAgentProvider(provider: AgentProvider): void {
-  workflowState.agentProvider = provider;
-}
-
-export function resetAgentProvider(): void {
-  workflowState.agentProvider = getPublicAgents;
-}
-
-export function getTaskCompletedListenersCount(): number {
-  return workflowState.taskCompletedListeners.length;
-}
-
-export function clearTaskCompletedListeners(): void {
-  workflowState.taskCompletedListeners.length = 0;
-}
-
-export function resetCurrentDAG() {
-  workflowState.currentDAG = {
-    tasks: [],
-    executionPromise: undefined,
-  };
-}
-
-export function getCurrentDAG(): z.infer<typeof dagSchema> {
-  return workflowState.currentDAG;
-}
-
-export function injectTask(task: z.infer<typeof outputTaskSchema>): void {
-  workflowState.currentDAG.tasks.push({ ...task, executionPromise: undefined, result: undefined, reported: undefined });
-}
-
-export function simulateTaskCompletion(taskId: string, result: unknown): void {
-  const task = workflowState.currentDAG.tasks.find((t) => t.id === taskId);
-  if (!task) {
-    throw new Error(`Task with ID ${taskId} not found`);
-  }
-  task.result = result;
-
-  for (const listener of workflowState.taskCompletedListeners) {
-    listener(task);
-  }
-}
-
-/**
- * Executes the supervisor agent with delegation hooks to track task progress.
- * Uses the injected supervisorExecutor if available (for testing), otherwise
- * creates a real supervisor agent that delegates to sub-agents.
- */
-async function startSupervisorExecution(userQuery: string, agents: Agent[]): Promise<void> {
-  if (workflowState.supervisorExecutor) {
-    return workflowState.supervisorExecutor(userQuery, agents);
-  }
-
-  const agentsMap: Record<string, Agent> = {};
-  for (const agent of agents) {
-    agentsMap[agent.id] = agent;
-  }
-
-  const supervisor = await getRoutingSupervisorAgent(agentsMap);
-  let delegationCounter = 0;
-  // Map toolCallId → taskId to correctly match concurrent delegations to the same agent
-  const toolCallToTask = new Map<string, string>();
-  // Track completed task IDs per iteration so later delegations can depend on earlier ones
-  const completedTaskIdsByIteration = new Map<number, string[]>();
-
-  // maxSteps limits the total number of LLM iterations the supervisor can perform.
-  // 10 is sufficient for most multi-agent routing scenarios while preventing runaway loops.
-  await supervisor.generate([{ role: 'user', content: userQuery }], {
-    maxSteps: 10,
-    modelSettings: { temperature: 0 },
-    delegation: {
-      onDelegationStart: async (ctx) => {
-        delegationCounter++;
-        const taskId = `${ctx.primitiveId}-delegation-${delegationCounter}`;
-        toolCallToTask.set(ctx.toolCallId, taskId);
-
-        // Tasks in later iterations depend on all tasks completed in prior iterations
-        const dependsOn: string[] = [];
-        for (let i = 1; i < ctx.iteration; i++) {
-          const ids = completedTaskIdsByIteration.get(i);
-          if (ids) {
-            dependsOn.push(...ids);
-          }
-        }
-
-        workflowState.currentDAG.tasks.push({
-          id: taskId,
-          agent: ctx.primitiveId,
-          prompt: ctx.prompt,
-          dependsOn,
-        });
-        console.log(`→ Delegating to: ${ctx.primitiveId} (task: ${taskId}, dependsOn: [${dependsOn.join(', ')}])`);
-        return { proceed: true };
-      },
-      onDelegationComplete: async (ctx) => {
-        const taskId = toolCallToTask.get(ctx.toolCallId);
-        const task = taskId ? workflowState.currentDAG.tasks.find((t) => t.id === taskId) : undefined;
-        if (task) {
-          task.result = ctx.result?.text || '';
-
-          // Track which tasks completed in which iteration for dependency inference
-          const iterationTasks = completedTaskIdsByIteration.get(ctx.iteration) || [];
-          iterationTasks.push(task.id);
-          completedTaskIdsByIteration.set(ctx.iteration, iterationTasks);
-
-          console.log(`✓ Completed: ${ctx.primitiveId} (task: ${task.id})`);
-          for (const listener of workflowState.taskCompletedListeners) {
-            listener(task);
-          }
-        }
-      },
-    },
-  });
-
-  console.log('Supervisor execution complete.');
-  workflowState.currentDAG.executionPromise = undefined;
-}
-
-const routeWithSupervisorStep = createStep({
-  id: 'route-with-supervisor',
-  description: 'Route user prompt via supervisor agent that delegates to sub-agents',
-  inputSchema: inputSchema,
-  outputSchema: z.object({
-    instructions: z.string().describe('Instructions for Jarvis to follow'),
-    taskIdsInProgress: z.array(z.string()).describe('IDs of tasks currently in progress'),
-  }),
-  execute: async (context) => {
-    if (!workflowState.currentDAG.executionPromise) {
-      const agents = await workflowState.agentProvider();
-      workflowState.currentDAG.executionPromise = startSupervisorExecution(context.inputData.userQuery, agents);
-    }
-
-    const isAsync = context.inputData.async === true;
-    const taskIdsInProgress = workflowState.currentDAG.tasks.filter((t) => t.result === undefined).map((t) => t.id);
-
-    if (isAsync) {
-      return {
-        instructions:
-          'The request is being processed in the background and will complete on its own. End the call now.',
-        taskIdsInProgress,
-      };
-    }
-
-    return {
-      instructions:
-        'The request is now being processed in the background. Call getNextInstructionsWorkflow to check on the status and receive the next instructions.',
-      taskIdsInProgress,
-    };
-  },
+export const dagSchema = z.object({
+  userQuery: z.string().describe('The user query the DAG was planned for'),
+  tasks: z.array(dagTaskSchema),
 });
 
-export const getCurrentDagWorkflow = createWorkflow({
-  id: 'getCurrentDagWorkflow',
-  inputSchema: z.object({}),
-  outputSchema: dagSchema,
-})
-  .then(
-    createStep({
-      id: 'get-current-dag',
-      description: 'Get the current DAG of tasks',
-      inputSchema: z.object({}),
-      outputSchema: dagSchema,
-      execute: async () => {
-        return workflowState.currentDAG;
-      },
-    }),
-  )
-  .commit();
+export type Dag = z.infer<typeof dagSchema>;
+
+const routeAcknowledgementSchema = z.object({
+  instructions: z.string().describe('Instructions for Jarvis to follow'),
+  taskIdsInProgress: z.array(z.string()).describe('IDs of tasks currently in progress'),
+});
 
 const instructionsOutputSchema = z.object({
   instructions: z.string().describe('Instructions for Jarvis to follow'),
@@ -285,80 +83,674 @@ const instructionsOutputSchema = z.object({
   taskIdsInProgress: z.array(z.string()).optional().describe('IDs of tasks still pending'),
 });
 
-const getNextInstructionsStep = createStep({
-  id: 'get-next-instructions',
-  description: 'Get next instructions based on DAG state',
-  inputSchema: z.object({}),
-  outputSchema: instructionsOutputSchema,
-  execute: async () => {
-    async function waitForNextInstructions(): Promise<z.infer<typeof instructionsOutputSchema>> {
-      const tasks = workflowState.currentDAG.tasks;
+/**
+ * Instruction strings handed back to Jarvis. They are part of the outward
+ * contract — `elevenlabs/src/assets/agent-prompt.md` documents this loop — so
+ * treat them as API surface rather than log messages.
+ */
+const INSTRUCTIONS = {
+  async: 'The request is being processed in the background and will complete on its own. End the call now.',
+  poll: 'The request is now being processed in the background. Call getNextInstructionsWorkflow to check on the status and receive the next instructions.',
+  stillProcessing:
+    'Still processing your request. Call getNextInstructionsWorkflow again to wait a bit longer for it to complete.',
+  summarize: 'Summarize the new completed task results in a detailed manner.',
+  acknowledge: 'Mention briefly that you have received the information in less than 5 words.',
+} as const;
 
-      const completedUnreportedTasks = tasks.filter((t) => t.result !== undefined && !t.reported);
-      if (completedUnreportedTasks.length === 0) {
-        const completedTask = await waitForNextCompletedTask();
-        completedUnreportedTasks.push(completedTask);
+const ALL_TASKS_COMPLETED_INSTRUCTIONS = `All tasks have completed. ${INSTRUCTIONS.summarize}`;
+
+/** How long a single poll may block before we tell Jarvis to call again. */
+const POLL_DEADLINE_MS = 15_000;
+
+/** How many tasks of a single DAG wave may call their agent at the same time. */
+const TASK_CONCURRENCY = 5;
+
+/* -------------------------------------------------------------------------- */
+/* Injectable collaborators                                                   */
+/* -------------------------------------------------------------------------- */
+
+export type AgentProvider = () => Promise<Agent[]>;
+
+/** Turns a user query plus the routable agents into a task DAG. */
+export type TaskPlanner = (userQuery: string, agents: Agent[]) => Promise<z.infer<typeof outputSchema>>;
+
+let agentProvider: AgentProvider = getPublicAgents;
+let taskPlanner: TaskPlanner | undefined;
+let agentsById: Promise<Map<string, Agent>> | undefined;
+
+/** Overrides the set of agents the router may route to. Used by tests. */
+export function setAgentProvider(provider: AgentProvider): void {
+  agentProvider = provider;
+  agentsById = undefined;
+}
+
+/** Overrides DAG planning so tests can supply a deterministic graph. */
+export function setTaskPlanner(planner: TaskPlanner): void {
+  taskPlanner = planner;
+}
+
+/** Restores the real agent provider and planner, and forgets the active run. */
+export function resetRoutingOverrides(): void {
+  agentProvider = getPublicAgents;
+  taskPlanner = undefined;
+  agentsById = undefined;
+  activeRouting = undefined;
+}
+
+async function getAgentsById(): Promise<Map<string, Agent>> {
+  agentsById ??= agentProvider().then((agents) => new Map(agents.map((agent) => [agent.id, agent])));
+  return agentsById;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Planning                                                                   */
+/* -------------------------------------------------------------------------- */
+
+async function describeAgent(agent: Agent): Promise<string> {
+  const toolNames = await agent
+    .listTools()
+    .then((tools) => Object.keys(tools))
+    .catch(() => [] as string[]);
+
+  const description = agent.getDescription() || 'No description provided.';
+  const tools = toolNames.length > 0 ? `\nTools: ${toolNames.join(', ')}` : '';
+  return `## ${agent.id}\n${description}${tools}`;
+}
+
+async function planWithPlannerAgent(userQuery: string, agents: Agent[]): Promise<z.infer<typeof outputSchema>> {
+  const catalog = (await Promise.all(agents.map(describeAgent))).join('\n\n');
+  const planner = await getRoutingPlannerAgent();
+
+  const response = await planner.generate(
+    [
+      {
+        role: 'user',
+        content: `Plan the task DAG for this user request.\n\n# User request\n${userQuery}\n\n# Available agents\n${catalog}`,
+      },
+    ],
+    {
+      structuredOutput: { schema: outputSchema },
+      modelSettings: { temperature: 0 },
+      toolChoice: 'none',
+    },
+  );
+
+  if (response.object) {
+    return outputSchema.parse(response.object);
+  }
+
+  const text = response.text?.trim();
+  if (text?.startsWith('{')) {
+    return outputSchema.parse(JSON.parse(text));
+  }
+
+  throw new Error('Routing planner did not return a task DAG');
+}
+
+/**
+ * Drops anything the planner may have hallucinated: unknown agents, duplicate
+ * IDs, dependencies on tasks that do not exist, self-references and cycles.
+ * A malformed graph would otherwise deadlock the executor.
+ */
+function sanitizePlan(tasks: z.infer<typeof outputTaskSchema>[], knownAgentIds: Set<string>): Dag['tasks'] {
+  const accepted = new Map<string, z.infer<typeof outputTaskSchema>>();
+
+  for (const task of tasks) {
+    if (!knownAgentIds.has(task.agent)) {
+      console.warn(`Routing plan referenced unknown agent "${task.agent}"; dropping task "${task.id}".`);
+      continue;
+    }
+    if (accepted.has(task.id)) {
+      console.warn(`Routing plan contained duplicate task ID "${task.id}"; keeping the first one.`);
+      continue;
+    }
+    accepted.set(task.id, task);
+  }
+
+  // Keep only dependencies that point at another accepted task, then drop any
+  // edge that would close a cycle by walking the graph in topological order.
+  const resolved = new Set<string>();
+  const ordered: Dag['tasks'] = [];
+  const remaining = new Map(
+    [...accepted.values()].map((task) => [
+      task.id,
+      { ...task, dependsOn: task.dependsOn.filter((id) => id !== task.id && accepted.has(id)) },
+    ]),
+  );
+
+  while (remaining.size > 0) {
+    const ready = [...remaining.values()].filter((task) => task.dependsOn.every((id) => resolved.has(id)));
+    const batch = ready.length > 0 ? ready : [...remaining.values()].slice(0, 1);
+
+    for (const task of batch) {
+      const dependsOn = task.dependsOn.filter((id) => resolved.has(id));
+      if (dependsOn.length !== task.dependsOn.length) {
+        console.warn(`Routing plan had a cyclic dependency on task "${task.id}"; dropping the offending edges.`);
       }
+      ordered.push({ ...task, dependsOn, status: 'pending', reported: false });
+      resolved.add(task.id);
+      remaining.delete(task.id);
+    }
+  }
 
-      const allResults = completedUnreportedTasks.map((t) => ({
-        task: t,
-        isLeaf: !tasks.some((other) => other.dependsOn.includes(t.id)),
-      }));
+  return ordered;
+}
 
-      //we want to report leaves first if they exist, because leaves contain the *final* information that the user asked for. other nodes are just intermediary.
-      const leafResults = allResults.filter((x) => x.isLeaf);
-      const resultsToUse = leafResults.length > 0 ? leafResults : allResults;
-      for (const result of resultsToUse) {
-        result.task.reported = true;
-      }
+/* -------------------------------------------------------------------------- */
+/* DAG workflow                                                               */
+/* -------------------------------------------------------------------------- */
 
-      const isLeaf = resultsToUse.some((x) => x.isLeaf);
+const waveSignalSchema = z.object({
+  isComplete: z.boolean().describe('Whether every task in the DAG has finished'),
+});
 
-      const areAllTasksCompleted = tasks.every((t) => t.result !== undefined);
-      if (areAllTasksCompleted) {
-        //reset DAG for next time
-        setTimeout(() => resetCurrentDAG(), 10_000);
-      }
+const taskExecutionSchema = z.object({
+  taskId: z.string(),
+  agent: z.string(),
+  prompt: z.string(),
+});
 
-      const summarizeCompletedTasksInstruction = 'Summarize the new completed task results in a detailed manner.';
+const taskResultSchema = z.object({
+  taskId: z.string(),
+  result: z.string(),
+  failed: z.boolean(),
+});
 
-      let instructions = '';
-      if (areAllTasksCompleted) {
-        instructions = `All tasks have completed. ${summarizeCompletedTasksInstruction}`;
-      } else {
-        instructions = `More tasks have finished since last time, but not all tasks have completed yet. `;
-        instructions += isLeaf
-          ? `${summarizeCompletedTasksInstruction}`
-          : 'Mention briefly that you have received the information in less than 5 words.';
-        instructions += `, then call getNextInstructionsWorkflow again.`;
-      }
+const emptyDag = (): Dag => ({ userQuery: '', tasks: [] });
+
+function isFinished(task: Dag['tasks'][number]): boolean {
+  return task.status === 'completed' || task.status === 'failed';
+}
+
+function isLeaf(task: Dag['tasks'][number], tasks: Dag['tasks']): boolean {
+  return !tasks.some((other) => other.dependsOn.includes(task.id));
+}
+
+/**
+ * Builds the payload Jarvis receives for one poll, and marks the tasks it
+ * covers as reported so the next poll only carries new information.
+ *
+ * Leaves carry the answers the user actually asked for; intermediate tasks are
+ * plumbing. When a wave produced any leaf we hand over the results and ask for
+ * a summary, otherwise we only acknowledge progress.
+ */
+function buildProgressReport(tasks: Dag['tasks']): z.infer<typeof instructionsOutputSchema> {
+  const newlyFinished = tasks.filter((task) => isFinished(task) && !task.reported);
+  const includesLeaf = newlyFinished.some((task) => isLeaf(task, tasks));
+  const remaining = tasks.filter((task) => !isFinished(task));
+
+  for (const task of newlyFinished) {
+    task.reported = true;
+  }
+
+  const instructions =
+    remaining.length === 0
+      ? ALL_TASKS_COMPLETED_INSTRUCTIONS
+      : `More tasks have finished since last time, but not all tasks have completed yet. ${
+          includesLeaf ? INSTRUCTIONS.summarize : INSTRUCTIONS.acknowledge
+        } Then call getNextInstructionsWorkflow again.`;
+
+  return {
+    instructions,
+    completedTaskResults: newlyFinished.map((task) => ({
+      id: task.id,
+      result: includesLeaf ? task.result : undefined,
+    })),
+    taskIdsInProgress: remaining.map((task) => task.id),
+  };
+}
+
+const planTasksStep = createStep({
+  id: 'plan-tasks',
+  description: 'Ask the routing planner agent for the DAG of tasks that fulfils the user query',
+  inputSchema: z.object({ userQuery: z.string() }),
+  outputSchema: outputSchema,
+  stateSchema: dagSchema,
+  execute: async ({ inputData, setState }) => {
+    const agents = [...(await getAgentsById()).values()];
+    const plan = await (taskPlanner ?? planWithPlannerAgent)(inputData.userQuery, agents);
+    const tasks = sanitizePlan(plan.tasks, new Set(agents.map((agent) => agent.id)));
+
+    console.log(`Planned ${tasks.length} task(s) for routing query.`);
+    setState({ userQuery: inputData.userQuery, tasks });
+
+    return { tasks: tasks.map(({ id, agent, prompt, dependsOn }) => ({ id, agent, prompt, dependsOn })) };
+  },
+});
+
+const handOffStep = createStep({
+  id: 'hand-off-to-caller',
+  description: 'Suspend once the plan exists so the caller can start polling for instructions',
+  inputSchema: outputSchema,
+  outputSchema: waveSignalSchema,
+  stateSchema: dagSchema,
+  suspendSchema: routeAcknowledgementSchema,
+  resumeSchema: z.object({ acknowledged: z.boolean().default(true) }),
+  execute: async ({ resumeData, state, suspend }) => {
+    if (!resumeData) {
+      await suspend({
+        instructions: INSTRUCTIONS.poll,
+        taskIdsInProgress: state.tasks.filter((task) => !isFinished(task)).map((task) => task.id),
+      });
+    }
+
+    return { isComplete: state.tasks.length === 0 };
+  },
+});
+
+const selectReadyTasksStep = createStep({
+  id: 'select-ready-tasks',
+  description: 'Pick the tasks whose dependencies have all finished',
+  inputSchema: waveSignalSchema,
+  outputSchema: z.array(taskExecutionSchema),
+  stateSchema: dagSchema,
+  execute: async ({ state, setState }) => {
+    const finishedIds = new Set(state.tasks.filter(isFinished).map((task) => task.id));
+    const ready = state.tasks.filter(
+      (task) => task.status === 'pending' && task.dependsOn.every((id) => finishedIds.has(id)),
+    );
+
+    const readyIds = new Set(ready.map((task) => task.id));
+    setState({
+      ...state,
+      tasks: state.tasks.map((task) => (readyIds.has(task.id) ? { ...task, status: 'running' as const } : task)),
+    });
+
+    const resultsById = new Map(state.tasks.filter(isFinished).map((task) => [task.id, task.result]));
+
+    return ready.map((task) => {
+      const dependencyContext = task.dependsOn
+        .map((id) => `## Result of "${id}"\n${formatResult(resultsById.get(id))}`)
+        .join('\n\n');
 
       return {
-        instructions: instructions,
-        completedTaskResults: allResults.map((x) => ({
-          id: x.task.id,
-          result: isLeaf ? x.task.result : undefined,
-        })),
-        taskIdsInProgress: isLeaf ? tasks.filter((t) => t.result === undefined).map((t) => t.id) : undefined,
+        taskId: task.id,
+        agent: task.agent,
+        prompt: dependencyContext
+          ? `${task.prompt}\n\n# Results of the tasks this depends on\n${dependencyContext}`
+          : task.prompt,
+      };
+    });
+  },
+});
+
+function formatResult(result: unknown): string {
+  if (result === undefined || result === null) {
+    return '(no result)';
+  }
+  return typeof result === 'string' ? result : JSON.stringify(result);
+}
+
+const executeTaskStep = createStep({
+  id: 'execute-task',
+  description: 'Run a single DAG task by calling the agent it was assigned to',
+  inputSchema: taskExecutionSchema,
+  outputSchema: taskResultSchema,
+  execute: async ({ inputData }) => {
+    const agent = (await getAgentsById()).get(inputData.agent);
+    if (!agent) {
+      return {
+        taskId: inputData.taskId,
+        result: `No agent named "${inputData.agent}" is available.`,
+        failed: true,
       };
     }
 
-    const result = await Promise.race<z.infer<typeof instructionsOutputSchema>>([
-      waitForNextInstructions(),
-      new Promise<z.infer<typeof instructionsOutputSchema>>((resolve) =>
-        setTimeout(
-          () =>
-            resolve({
-              instructions:
-                'Still processing your request. Call getNextInstructionsWorkflow again to wait a bit longer for it to complete.',
-            }),
-          15000,
-        ),
-      ),
-    ]);
-    console.log('getNextInstructionsWorkflow result:', result);
+    console.log(`→ Delegating to: ${inputData.agent} (task: ${inputData.taskId})`);
 
-    return result;
+    try {
+      const response = await agent.generate([{ role: 'user', content: inputData.prompt }]);
+      console.log(`✓ Completed: ${inputData.agent} (task: ${inputData.taskId})`);
+      return { taskId: inputData.taskId, result: response.text ?? '', failed: false };
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`✗ Failed: ${inputData.agent} (task: ${inputData.taskId})`, error);
+      return { taskId: inputData.taskId, result: `Task failed: ${message}`, failed: true };
+    }
+  },
+});
+
+const recordTaskResultsStep = createStep({
+  id: 'record-task-results',
+  description: 'Write the results of the wave back into the DAG state',
+  inputSchema: z.array(taskResultSchema),
+  outputSchema: waveSignalSchema,
+  stateSchema: dagSchema,
+  execute: async ({ inputData, state, setState }) => {
+    const resultsById = new Map(inputData.map((result) => [result.taskId, result]));
+
+    let tasks = state.tasks.map((task) => {
+      const result = resultsById.get(task.id);
+      if (!result) {
+        return task;
+      }
+      return { ...task, status: result.failed ? ('failed' as const) : ('completed' as const), result: result.result };
+    });
+
+    // Nothing ran and work is still outstanding: the remaining dependencies can
+    // never be satisfied, so fail them rather than spinning forever.
+    if (inputData.length === 0 && tasks.some((task) => !isFinished(task))) {
+      const stuck = tasks.filter((task) => !isFinished(task)).map((task) => task.id);
+      console.warn(`Routing DAG stalled with unsatisfiable dependencies: ${stuck.join(', ')}`);
+      tasks = tasks.map((task) =>
+        isFinished(task)
+          ? task
+          : {
+              ...task,
+              status: 'failed' as const,
+              result: 'Task was skipped: its dependencies could not be satisfied.',
+            },
+      );
+    }
+
+    setState({ ...state, tasks });
+
+    return { isComplete: tasks.every(isFinished) };
+  },
+});
+
+const reportProgressStep = createStep({
+  id: 'report-progress',
+  description: 'Suspend with the results of this wave so the caller can relay them',
+  inputSchema: waveSignalSchema,
+  outputSchema: waveSignalSchema,
+  stateSchema: dagSchema,
+  suspendSchema: instructionsOutputSchema,
+  resumeSchema: z.object({ acknowledged: z.boolean().default(true) }),
+  execute: async ({ inputData, resumeData, state, setState, suspend }) => {
+    // The final wave is reported by `finalizeStep` as the workflow's result,
+    // so there is nothing to suspend for once everything has finished.
+    if (inputData.isComplete || resumeData) {
+      return inputData;
+    }
+
+    const tasks = state.tasks.map((task) => ({ ...task }));
+    const report = buildProgressReport(tasks);
+    setState({ ...state, tasks });
+
+    await suspend(report);
+    return inputData;
+  },
+});
+
+/**
+ * One pass over the DAG: take every task whose dependencies are satisfied, run
+ * them against their agents in parallel, record what came back, then suspend so
+ * the caller can relay the news before the next pass starts.
+ */
+const routingWaveWorkflow = createWorkflow({
+  id: 'routingWaveWorkflow',
+  description: 'Executes one wave of ready DAG tasks and reports the results',
+  inputSchema: waveSignalSchema,
+  outputSchema: waveSignalSchema,
+  stateSchema: dagSchema,
+})
+  .then(selectReadyTasksStep)
+  .foreach(executeTaskStep, { concurrency: TASK_CONCURRENCY })
+  .then(recordTaskResultsStep)
+  .then(reportProgressStep)
+  .commit();
+
+const finalizeStep = createStep({
+  id: 'finalize-routing',
+  description: 'Report the results of the final wave',
+  inputSchema: waveSignalSchema,
+  outputSchema: instructionsOutputSchema,
+  stateSchema: dagSchema,
+  execute: async ({ state, setState }) => {
+    const tasks = state.tasks.map((task) => ({ ...task }));
+    const report = buildProgressReport(tasks);
+    setState({ ...state, tasks });
+
+    return { ...report, instructions: ALL_TASKS_COMPLETED_INSTRUCTIONS, taskIdsInProgress: [] };
+  },
+});
+
+/**
+ * The routing DAG as a first-class Mastra workflow.
+ *
+ * Run it directly from Mastra Studio to plan a graph, watch each task call its
+ * agent, and step through the suspend/resume handshake that the MCP tools drive
+ * in production.
+ */
+export const routingWorkflow = createWorkflow({
+  id: 'routingWorkflow',
+  mastra: getWorkflowRuntime(),
+  description: 'Plans a DAG of agent tasks for a user query and executes it wave by wave',
+  inputSchema: z.object({ userQuery: inputSchema.shape.userQuery }),
+  outputSchema: instructionsOutputSchema,
+  stateSchema: dagSchema,
+})
+  .then(planTasksStep)
+  .then(handOffStep)
+  .dountil(routingWaveWorkflow, async ({ inputData }) => inputData.isComplete === true)
+  .then(finalizeStep)
+  .commit();
+
+/* -------------------------------------------------------------------------- */
+/* Active run bookkeeping                                                     */
+/* -------------------------------------------------------------------------- */
+/*
+ * The MCP contract is two stateless tools, so we keep a pointer to the run they
+ * are talking about. That pointer plus the in-flight promise is the only state
+ * that lives outside the workflow — everything about the DAG itself is workflow
+ * state, persisted with the run snapshot.
+ */
+
+type RoutingRun = Awaited<ReturnType<typeof routingWorkflow.createRun>>;
+type RoutingResult = Awaited<ReturnType<RoutingRun['start']>>;
+
+interface ActiveRouting {
+  run: RoutingRun;
+  dag: Dag;
+  lastReport: z.infer<typeof instructionsOutputSchema>;
+  finished: boolean;
+  inFlight?: Promise<void>;
+}
+
+let activeRouting: ActiveRouting | undefined;
+
+/** Returns the DAG of the most recent routing request. Primarily for tests and Studio. */
+export function getCurrentDAG(): Dag {
+  return activeRouting?.dag ?? emptyDag();
+}
+
+/**
+ * Finds the report a suspended run is carrying. Suspend payloads are keyed by
+ * the path of the step that suspended, so the report sits one or two levels
+ * down depending on whether it came from the hand-off or from a wave.
+ */
+function readSuspendPayload(payload: unknown): z.infer<typeof instructionsOutputSchema> | undefined {
+  if (payload === null || typeof payload !== 'object') {
+    return undefined;
+  }
+
+  const report = instructionsOutputSchema.safeParse(payload);
+  if (report.success) {
+    return report.data;
+  }
+
+  for (const value of Object.values(payload)) {
+    const nested = readSuspendPayload(value);
+    if (nested) {
+      return nested;
+    }
+  }
+  return undefined;
+}
+
+function applyResult(routing: ActiveRouting, result: RoutingResult): void {
+  const state = dagSchema.safeParse(result.state);
+  if (state.success) {
+    routing.dag = state.data;
+  }
+
+  if (result.status === 'suspended') {
+    const report = readSuspendPayload(result.suspendPayload);
+    if (report) {
+      routing.lastReport = report;
+    }
+    return;
+  }
+
+  routing.finished = true;
+
+  if (result.status === 'success') {
+    const parsed = instructionsOutputSchema.safeParse(result.result);
+    routing.lastReport = parsed.success ? parsed.data : { instructions: ALL_TASKS_COMPLETED_INSTRUCTIONS };
+    return;
+  }
+
+  const error = result.status === 'failed' ? result.error : undefined;
+  const message = error instanceof Error ? error.message : String(error ?? `status ${result.status}`);
+  routing.lastReport = {
+    instructions: `The request could not be completed: ${message}. ${INSTRUCTIONS.summarize}`,
+    taskIdsInProgress: [],
+  };
+}
+
+/**
+ * Runs `operation` against the active routing run, making sure only one
+ * start/resume is ever in flight — a second poll waits on the first instead of
+ * resuming a run that is already moving.
+ */
+function beginOperation(routing: ActiveRouting, operation: () => Promise<RoutingResult>): Promise<void> {
+  if (routing.inFlight) {
+    return routing.inFlight;
+  }
+
+  const inFlight = operation()
+    .then((result) => applyResult(routing, result))
+    .catch((error: unknown) => {
+      routing.finished = true;
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('Routing workflow failed:', error);
+      routing.lastReport = {
+        instructions: `The request could not be completed: ${message}. ${INSTRUCTIONS.summarize}`,
+        taskIdsInProgress: [],
+      };
+    })
+    .finally(() => {
+      if (routing.inFlight === inFlight) {
+        routing.inFlight = undefined;
+      }
+    });
+
+  routing.inFlight = inFlight;
+  return inFlight;
+}
+
+function resumeRouting(routing: ActiveRouting): Promise<void> {
+  if (routing.finished) {
+    return Promise.resolve();
+  }
+  return beginOperation(routing, () =>
+    routing.run.resume({
+      resumeData: { acknowledged: true },
+      outputOptions: { includeState: true },
+    }),
+  );
+}
+
+/** Resolves to `true` if the work landed before the deadline. */
+async function withDeadline(work: Promise<void>, deadlineMs: number): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<false>((resolve) => {
+    timer = setTimeout(() => resolve(false), deadlineMs);
+  });
+
+  try {
+    return await Promise.race([work.then(() => true), timeout]);
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
+}
+
+/** Keeps resuming until the DAG is done. Used for fire-and-forget requests. */
+async function driveToCompletion(routing: ActiveRouting): Promise<void> {
+  while (!routing.finished) {
+    await resumeRouting(routing);
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* MCP-facing workflows                                                       */
+/* -------------------------------------------------------------------------- */
+
+const routePromptStep = createStep({
+  id: 'route-prompt',
+  description: 'Plan the routing DAG for a user query and start executing it',
+  inputSchema: inputSchema,
+  outputSchema: routeAcknowledgementSchema,
+  execute: async ({ inputData }) => {
+    const run = await routingWorkflow.createRun();
+    const routing: ActiveRouting = {
+      run,
+      dag: { userQuery: inputData.userQuery, tasks: [] },
+      lastReport: { instructions: INSTRUCTIONS.poll, taskIdsInProgress: [] },
+      finished: false,
+    };
+    activeRouting = routing;
+
+    const started = beginOperation(routing, () =>
+      run.start({
+        inputData: { userQuery: inputData.userQuery },
+        initialState: emptyDag(),
+        outputOptions: { includeState: true },
+      }),
+    );
+
+    const landed = await withDeadline(started, POLL_DEADLINE_MS);
+
+    if (inputData.async) {
+      // Nobody is going to poll for us, so drive the DAG to the end ourselves.
+      void driveToCompletion(routing);
+      return {
+        instructions: INSTRUCTIONS.async,
+        taskIdsInProgress: landed ? (routing.lastReport.taskIdsInProgress ?? []) : [],
+      };
+    }
+
+    return {
+      instructions: INSTRUCTIONS.poll,
+      taskIdsInProgress: landed ? (routing.lastReport.taskIdsInProgress ?? []) : [],
+    };
+  },
+});
+
+export const routePromptWorkflow = createWorkflow({
+  id: 'routePromptWorkflow',
+  description: 'Workflow to route a user prompt to appropriate agents via a planned DAG of tasks',
+  inputSchema: inputSchema,
+  outputSchema: routeAcknowledgementSchema,
+})
+  .then(routePromptStep)
+  .commit();
+
+const getNextInstructionsStep = createStep({
+  id: 'get-next-instructions',
+  description: 'Resume the routing DAG and return whatever it has finished since the last call',
+  inputSchema: z.object({}),
+  outputSchema: instructionsOutputSchema,
+  execute: async () => {
+    const routing = activeRouting;
+    if (!routing) {
+      return { instructions: INSTRUCTIONS.stillProcessing };
+    }
+
+    if (routing.finished && !routing.inFlight) {
+      return routing.lastReport;
+    }
+
+    const landed = await withDeadline(resumeRouting(routing), POLL_DEADLINE_MS);
+    if (!landed) {
+      return { instructions: INSTRUCTIONS.stillProcessing };
+    }
+
+    console.log('getNextInstructionsWorkflow result:', routing.lastReport);
+    return routing.lastReport;
   },
 });
 
@@ -371,26 +763,19 @@ export const getNextInstructionsWorkflow = createWorkflow({
   .then(getNextInstructionsStep)
   .commit();
 
-export const routePromptWorkflow = createWorkflow({
-  id: 'routePromptWorkflow',
-  description: 'Workflow to route a user prompt to appropriate agents via a supervisor agent',
-  inputSchema: inputSchema,
-  outputSchema: routeWithSupervisorStep.outputSchema,
+export const getCurrentDagWorkflow = createWorkflow({
+  id: 'getCurrentDagWorkflow',
+  description: 'Workflow to inspect the DAG of the current routing request',
+  inputSchema: z.object({}),
+  outputSchema: dagSchema,
 })
-  .then(routeWithSupervisorStep)
+  .then(
+    createStep({
+      id: 'get-current-dag',
+      description: 'Get the current DAG of tasks',
+      inputSchema: z.object({}),
+      outputSchema: dagSchema,
+      execute: async () => getCurrentDAG(),
+    }),
+  )
   .commit();
-
-async function waitForNextCompletedTask() {
-  return new Promise<z.infer<typeof outputTaskSchema>>((resolve) => {
-    var listener = (task: z.infer<typeof outputTaskSchema>) => {
-      console.log('Next completed task', task.id);
-      resolve(task);
-
-      const index = workflowState.taskCompletedListeners.indexOf(listener);
-      if (index !== -1) {
-        workflowState.taskCompletedListeners.splice(index, 1);
-      }
-    };
-    workflowState.taskCompletedListeners.push(listener);
-  });
-}

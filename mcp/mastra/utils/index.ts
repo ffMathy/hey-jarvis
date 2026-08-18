@@ -18,5 +18,11 @@ export { createShortcut } from './shortcut-factory.js';
 // Test helper exports
 export { createTool } from './tool-factory.js';
 // Workflow exports
-export { createAgentStep, createStep, createToolStep, createWorkflow } from './workflows/workflow-factory.js';
+export {
+  createAgentStep,
+  createStep,
+  createToolStep,
+  createWorkflow,
+  getWorkflowRuntime,
+} from './workflows/workflow-factory.js';
 export { CronPatterns, validateCronExpression, WorkflowScheduler } from './workflows/workflow-scheduler.js';

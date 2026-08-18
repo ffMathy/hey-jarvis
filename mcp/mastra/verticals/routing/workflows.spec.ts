@@ -1,467 +1,353 @@
+import type { Agent } from '@mastra/core/agent';
 import { z } from 'zod';
 import {
   type AgentProvider,
   getCurrentDAG,
+  getCurrentDagWorkflow,
   getNextInstructionsWorkflow,
-  getTaskCompletedListenersCount,
-  injectTask,
+  resetRoutingOverrides,
   routePromptWorkflow,
-  type SupervisorExecutor,
   setAgentProvider,
-  setWorkflowState,
-  simulateTaskCompletion,
+  setTaskPlanner,
+  type TaskPlanner,
 } from './workflows.js';
 
-interface MockToolConfig {
-  name: string;
-  inputParams: string[];
+interface MockAgentOptions {
+  description?: string;
+  tools?: string[];
+  respond?: (prompt: string) => string | Promise<string>;
 }
 
-/** Structural subset of Agent that satisfies what workflows.ts actually uses at runtime */
 interface MockAgent {
   id: string;
   name: string;
   getDescription(): string;
-  generate(prompt: unknown): Promise<{ text: string }>;
-  listTools(): Promise<Record<string, { inputSchema?: { shape: Record<string, unknown> } }>>;
+  listTools(): Promise<Record<string, unknown>>;
+  generate: ReturnType<typeof jest.fn>;
+  prompts: string[];
 }
 
-function createMockAgent(id: string, description: string, tools?: MockToolConfig[]): MockAgent {
-  const mockTools: Record<string, { inputSchema?: { shape: Record<string, unknown> } }> = {};
+function createMockAgent(id: string, options: MockAgentOptions = {}): MockAgent {
+  const prompts: string[] = [];
 
-  if (tools) {
-    for (const tool of tools) {
-      const shape: Record<string, unknown> = {};
-      for (const param of tool.inputParams) {
-        shape[param] = z.string();
-      }
-      mockTools[tool.name] = {
-        inputSchema: { shape },
-      };
-    }
-  }
+  const generate = jest.fn(async (messages: unknown) => {
+    const prompt = Array.isArray(messages) ? String((messages[0] as { content?: unknown })?.content ?? '') : '';
+    prompts.push(prompt);
+    const respond = options.respond ?? (() => `Mock response from ${id}`);
+    return { text: await respond(prompt) };
+  });
 
-  const mockAgent: MockAgent = {
+  return {
     id,
     name: id,
-    getDescription: () => description,
-    generate: jest.fn().mockResolvedValue({ text: `Mock response from ${id}` }),
-    listTools: jest.fn().mockResolvedValue(mockTools),
+    getDescription: () => options.description ?? `Mock agent ${id}`,
+    listTools: async () => Object.fromEntries((options.tools ?? []).map((tool) => [tool, {}])),
+    generate,
+    prompts,
   };
-  return mockAgent;
 }
 
-function assertWorkflowSuccess<T>(workflowResult: { status: string; result?: T }): T {
-  expect(workflowResult.status).toBe('success');
-  if (workflowResult.status !== 'success') {
-    throw new Error(`Workflow failed with status: ${workflowResult.status}`);
-  }
-  return workflowResult.result as T;
+function useAgents(...agents: MockAgent[]): void {
+  const provider: AgentProvider = async () => agents as unknown as Agent[];
+  setAgentProvider(provider);
 }
 
-async function startWorkflowRun<TInput, TResult>(
-  workflow: {
-    createRun(): Promise<{ start: (args: { inputData: TInput }) => Promise<TResult> }>;
-  },
+type PlannedTask = { id: string; agent: string; prompt: string; dependsOn: string[] };
+
+function usePlan(...tasks: PlannedTask[]): void {
+  const planner: TaskPlanner = async () => ({ tasks });
+  setTaskPlanner(planner);
+}
+
+async function runWorkflow<TInput, TResult>(
+  workflow: { createRun(): Promise<{ start: (args: { inputData: TInput }) => Promise<TResult> }> },
   inputData: TInput,
 ): Promise<TResult> {
   const run = await workflow.createRun();
   return run.start({ inputData });
 }
 
-function createMockSupervisorExecutor(agentIds: string[]): SupervisorExecutor {
-  return async (userQuery, agents) => {
-    const targetAgentIds = new Set(agentIds);
-    // Phase 1: Inject all tasks synchronously (before any await)
-    for (const agent of agents) {
-      if (targetAgentIds.has(agent.id)) {
-        injectTask({
-          id: `${agent.id}-task`,
-          agent: agent.id,
-          prompt: userQuery,
-          dependsOn: [],
-        });
-      }
+const routeResultSchema = z.object({
+  instructions: z.string(),
+  taskIdsInProgress: z.array(z.string()),
+});
+
+const instructionsResultSchema = z.object({
+  instructions: z.string(),
+  completedTaskResults: z.array(z.object({ id: z.string(), result: z.unknown() })).optional(),
+  taskIdsInProgress: z.array(z.string()).optional(),
+});
+
+function assertSuccess<T>(result: { status: string; result?: unknown }, schema: z.ZodType<T>): T {
+  expect(result.status).toBe('success');
+  return schema.parse(result.result);
+}
+
+async function route(userQuery: string, isAsync = false) {
+  const result = await runWorkflow(routePromptWorkflow, { userQuery, async: isAsync });
+  return assertSuccess(result, routeResultSchema);
+}
+
+async function nextInstructions() {
+  const result = await runWorkflow(getNextInstructionsWorkflow, {});
+  return assertSuccess(result, instructionsResultSchema);
+}
+
+/** Polls until the DAG reports everything finished, collecting each report. */
+async function pollUntilComplete(maxPolls = 10) {
+  const reports: z.infer<typeof instructionsResultSchema>[] = [];
+  for (let i = 0; i < maxPolls; i++) {
+    const report = await nextInstructions();
+    reports.push(report);
+    if (report.instructions.startsWith('All tasks have completed')) {
+      return reports;
     }
-    // Phase 2: Execute tasks (with awaits)
-    for (const task of getCurrentDAG().tasks) {
-      if (task.result !== undefined) continue;
-      const agent = agents.find((a) => a.id === task.agent);
-      if (agent) {
-        const result = await agent.generate(task.prompt);
-        simulateTaskCompletion(task.id, result.text);
-      }
-    }
-  };
+  }
+  throw new Error(`DAG did not complete within ${maxPolls} polls: ${JSON.stringify(reports, null, 2)}`);
 }
 
 describe('Routing Workflows', () => {
   beforeEach(() => {
-    // Reset all workflow state in one call
-    setWorkflowState();
+    resetRoutingOverrides();
   });
 
   afterEach(() => {
-    // Reset all workflow state in one call
-    setWorkflowState();
+    resetRoutingOverrides();
+  });
+
+  describe('routePromptWorkflow', () => {
+    it('plans the DAG and hands the pending task IDs back to the caller', async () => {
+      useAgents(createMockAgent('weather'), createMockAgent('calendar'));
+      usePlan(
+        { id: 'weather-check', agent: 'weather', prompt: 'Get the weather', dependsOn: [] },
+        { id: 'calendar-check', agent: 'calendar', prompt: 'Get the calendar', dependsOn: [] },
+      );
+
+      const result = await route('What is the weather and what is on my calendar?');
+
+      expect(result.instructions).toContain('getNextInstructionsWorkflow');
+      expect(result.taskIdsInProgress).toEqual(['weather-check', 'calendar-check']);
+    });
+
+    it('does not run any task before the caller asks for instructions', async () => {
+      const weather = createMockAgent('weather');
+      useAgents(weather);
+      usePlan({ id: 'weather-check', agent: 'weather', prompt: 'Get the weather', dependsOn: [] });
+
+      await route('What is the weather?');
+
+      expect(weather.generate).not.toHaveBeenCalled();
+    });
+
+    it('tells Jarvis to end the call and drives the DAG itself when async', async () => {
+      const weather = createMockAgent('weather');
+      useAgents(weather);
+      usePlan({ id: 'weather-check', agent: 'weather', prompt: 'Get the weather', dependsOn: [] });
+
+      const result = await route('What is the weather?', true);
+
+      expect(result.instructions).toContain('End the call');
+      expect(result.instructions).not.toContain('getNextInstructionsWorkflow');
+
+      // The fire-and-forget driver keeps resuming without anyone polling.
+      await waitFor(() => getCurrentDAG().tasks.every((task) => task.status === 'completed'));
+      expect(weather.generate).toHaveBeenCalledTimes(1);
+    });
+
+    it('drops tasks assigned to agents that do not exist', async () => {
+      useAgents(createMockAgent('weather'));
+      usePlan(
+        { id: 'weather-check', agent: 'weather', prompt: 'Get the weather', dependsOn: [] },
+        { id: 'bogus', agent: 'teleporter', prompt: 'Teleport me', dependsOn: [] },
+      );
+
+      const result = await route('What is the weather?');
+
+      expect(result.taskIdsInProgress).toEqual(['weather-check']);
+    });
+
+    it('breaks cyclic dependencies rather than deadlocking', async () => {
+      const weather = createMockAgent('weather');
+      useAgents(weather);
+      usePlan(
+        { id: 'a', agent: 'weather', prompt: 'A', dependsOn: ['b'] },
+        { id: 'b', agent: 'weather', prompt: 'B', dependsOn: ['a'] },
+      );
+
+      await route('Do the impossible');
+      await pollUntilComplete();
+
+      expect(getCurrentDAG().tasks.every((task) => task.status === 'completed')).toBe(true);
+    });
+
+    it('ignores dependencies on tasks that were never planned', async () => {
+      useAgents(createMockAgent('weather'));
+      usePlan({ id: 'weather-check', agent: 'weather', prompt: 'Get the weather', dependsOn: ['ghost-task'] });
+
+      await route('What is the weather?');
+      const reports = await pollUntilComplete();
+
+      expect(reports.at(-1)?.completedTaskResults?.[0].id).toBe('weather-check');
+    });
   });
 
   describe('getNextInstructionsWorkflow', () => {
-    describe('timing behavior', () => {
-      it('should wait for task completion when called before routePromptWorkflow', async () => {
-        const mockAgent = createMockAgent('weather', 'Provides weather information');
-        const mockAgentProvider: AgentProvider = async () => [mockAgent];
-        setAgentProvider(mockAgentProvider);
+    it('runs the ready tasks and reports their results', async () => {
+      useAgents(createMockAgent('weather', { respond: () => 'Sunny, 22°C' }));
+      usePlan({ id: 'weather-check', agent: 'weather', prompt: 'Get the weather', dependsOn: [] });
 
-        injectTask({
-          id: 'get-weather',
-          agent: 'weather',
-          prompt: 'Get weather for Aarhus',
-          dependsOn: [],
-        });
+      await route('What is the weather?');
+      const report = await nextInstructions();
 
-        const instructionsPromise = startWorkflowRun(getNextInstructionsWorkflow, {});
-
-        await new Promise((resolve) => setTimeout(resolve, 100));
-
-        const listenersAfterWait = getTaskCompletedListenersCount();
-        expect(listenersAfterWait).toBe(1);
-
-        simulateTaskCompletion('get-weather', 'Sunny, 22°C');
-
-        const workflowResult = await instructionsPromise;
-        const result = assertWorkflowSuccess(workflowResult);
-        expect(result.instructions).toContain('All tasks have completed');
-        expect(result.completedTaskResults).toHaveLength(1);
-        expect(result.completedTaskResults?.[0].id).toBe('get-weather');
-      });
-
-      it('should properly handle listeners registered before any tasks exist', async () => {
-        const mockAgent = createMockAgent('weather', 'Provides weather information');
-        const mockAgentProvider: AgentProvider = async () => [mockAgent];
-        setAgentProvider(mockAgentProvider);
-
-        const instructionsPromise = startWorkflowRun(getNextInstructionsWorkflow, {});
-
-        await new Promise((resolve) => setTimeout(resolve, 50));
-
-        const listenersBeforeTask = getTaskCompletedListenersCount();
-        expect(listenersBeforeTask).toBe(1);
-
-        injectTask({
-          id: 'get-weather',
-          agent: 'weather',
-          prompt: 'Get weather for Aarhus',
-          dependsOn: [],
-        });
-
-        simulateTaskCompletion('get-weather', 'Sunny, 22°C');
-
-        const workflowResult = await instructionsPromise;
-        const result = assertWorkflowSuccess(workflowResult);
-        expect(result.instructions).toContain('All tasks have completed');
-        expect(result.completedTaskResults).toHaveLength(1);
-      });
-
-      it('should timeout and return processing message after 15 seconds', async () => {
-        const mockAgent = createMockAgent('weather', 'Provides weather information');
-        const mockAgentProvider: AgentProvider = async () => [mockAgent];
-        setAgentProvider(mockAgentProvider);
-
-        const startTime = Date.now();
-        const workflowResult = await startWorkflowRun(getNextInstructionsWorkflow, {});
-        const elapsed = Date.now() - startTime;
-
-        expect(elapsed).toBeGreaterThanOrEqual(14900);
-        expect(elapsed).toBeLessThan(16000);
-        const result = assertWorkflowSuccess(workflowResult);
-        expect(result.instructions).toContain('Still processing');
-      }, 20000);
+      expect(report.instructions).toContain('All tasks have completed');
+      expect(report.completedTaskResults).toHaveLength(1);
+      expect(report.completedTaskResults?.[0]).toEqual({ id: 'weather-check', result: 'Sunny, 22°C' });
+      expect(report.taskIdsInProgress).toEqual([]);
     });
 
-    describe('task reporting', () => {
-      it('should report leaf tasks with their full results', async () => {
-        const mockAgent = createMockAgent('weather', 'Provides weather information');
-        const mockAgentProvider: AgentProvider = async () => [mockAgent];
-        setAgentProvider(mockAgentProvider);
+    it('withholds intermediate results and asks for a brief acknowledgement', async () => {
+      useAgents(
+        createMockAgent('weather', { respond: () => 'Aarhus, Denmark' }),
+        createMockAgent('calendar', { respond: () => 'Standup at 9am' }),
+      );
+      usePlan(
+        { id: 'get-location', agent: 'weather', prompt: 'Where am I?', dependsOn: [] },
+        { id: 'get-weather', agent: 'calendar', prompt: 'Weather there?', dependsOn: ['get-location'] },
+      );
 
-        injectTask({
-          id: 'get-weather',
-          agent: 'weather',
-          prompt: 'Get weather for Aarhus',
-          dependsOn: [],
-        });
+      await route('What is the weather where I am?');
 
-        const instructionsPromise = startWorkflowRun(getNextInstructionsWorkflow, {});
+      const first = await nextInstructions();
+      expect(first.instructions).toContain('not all tasks have completed');
+      expect(first.instructions).toContain('less than 5 words');
+      expect(first.completedTaskResults).toEqual([{ id: 'get-location', result: undefined }]);
+      expect(first.taskIdsInProgress).toEqual(['get-weather']);
 
-        await new Promise((resolve) => setTimeout(resolve, 50));
-
-        simulateTaskCompletion('get-weather', { temperature: 22, condition: 'Sunny' });
-
-        const workflowResult = await instructionsPromise;
-        const result = assertWorkflowSuccess(workflowResult);
-        expect(result.completedTaskResults?.[0].result).toEqual({ temperature: 22, condition: 'Sunny' });
-      });
-
-      it('should not include results for non-leaf tasks', async () => {
-        const mockAgent = createMockAgent('weather', 'Provides weather information');
-        const mockAgentProvider: AgentProvider = async () => [mockAgent];
-        setAgentProvider(mockAgentProvider);
-
-        injectTask({
-          id: 'get-location',
-          agent: 'weather',
-          prompt: 'Get current location',
-          dependsOn: [],
-        });
-        injectTask({
-          id: 'get-weather',
-          agent: 'weather',
-          prompt: 'Get weather for location',
-          dependsOn: ['get-location'],
-        });
-
-        const instructionsPromise = startWorkflowRun(getNextInstructionsWorkflow, {});
-
-        await new Promise((resolve) => setTimeout(resolve, 50));
-
-        simulateTaskCompletion('get-location', 'Aarhus, Denmark');
-
-        const workflowResult = await instructionsPromise;
-        const result = assertWorkflowSuccess(workflowResult);
-        expect(result.completedTaskResults?.[0].id).toBe('get-location');
-        expect(result.completedTaskResults?.[0].result).toBeUndefined();
-        expect(result.instructions).toContain('not all tasks have completed');
-      });
-
-      it('should mark tasks as reported after returning them', async () => {
-        const mockAgent = createMockAgent('weather', 'Provides weather information');
-        const mockAgentProvider: AgentProvider = async () => [mockAgent];
-        setAgentProvider(mockAgentProvider);
-
-        injectTask({
-          id: 'task-1',
-          agent: 'weather',
-          prompt: 'Task 1',
-          dependsOn: [],
-        });
-        injectTask({
-          id: 'task-2',
-          agent: 'weather',
-          prompt: 'Task 2',
-          dependsOn: [],
-        });
-
-        const promise1 = startWorkflowRun(getNextInstructionsWorkflow, {});
-
-        await new Promise((resolve) => setTimeout(resolve, 50));
-        simulateTaskCompletion('task-1', 'Result 1');
-
-        const workflowResult1 = await promise1;
-        const result1 = assertWorkflowSuccess(workflowResult1);
-        expect(result1.completedTaskResults).toHaveLength(1);
-        expect(result1.completedTaskResults?.[0].id).toBe('task-1');
-
-        const promise2 = startWorkflowRun(getNextInstructionsWorkflow, {});
-
-        await new Promise((resolve) => setTimeout(resolve, 50));
-        simulateTaskCompletion('task-2', 'Result 2');
-
-        const workflowResult2 = await promise2;
-        const result2 = assertWorkflowSuccess(workflowResult2);
-        expect(result2.completedTaskResults).toHaveLength(1);
-        expect(result2.completedTaskResults?.[0].id).toBe('task-2');
-      });
+      const second = await nextInstructions();
+      expect(second.instructions).toContain('All tasks have completed');
+      expect(second.completedTaskResults).toEqual([{ id: 'get-weather', result: 'Standup at 9am' }]);
     });
 
-    describe('DAG reset behavior', () => {
-      it('should reset DAG when all tasks are completed', async () => {
-        const mockAgent = createMockAgent('weather', 'Provides weather information');
-        const mockAgentProvider: AgentProvider = async () => [mockAgent];
-        setAgentProvider(mockAgentProvider);
+    it('never reports the same task twice', async () => {
+      useAgents(createMockAgent('weather'), createMockAgent('calendar'));
+      usePlan(
+        { id: 'root', agent: 'weather', prompt: 'Root', dependsOn: [] },
+        { id: 'leaf-a', agent: 'calendar', prompt: 'Leaf A', dependsOn: ['root'] },
+        { id: 'leaf-b', agent: 'calendar', prompt: 'Leaf B', dependsOn: ['root'] },
+      );
 
-        injectTask({
-          id: 'single-task',
-          agent: 'weather',
-          prompt: 'Single task',
-          dependsOn: [],
-        });
+      await route('Do three things');
+      const reports = await pollUntilComplete();
 
-        expect(getCurrentDAG().tasks).toHaveLength(1);
+      const reportedIds = reports.flatMap((report) => report.completedTaskResults?.map((task) => task.id) ?? []);
+      expect(reportedIds).toEqual(['root', 'leaf-a', 'leaf-b']);
+    });
 
-        const instructionsPromise = startWorkflowRun(getNextInstructionsWorkflow, {});
+    it('feeds a task the results of the tasks it depends on', async () => {
+      const weather = createMockAgent('weather', { respond: () => 'Aarhus, Denmark' });
+      const commute = createMockAgent('commute');
+      useAgents(weather, commute);
+      usePlan(
+        { id: 'get-location', agent: 'weather', prompt: 'Where am I?', dependsOn: [] },
+        { id: 'get-commute', agent: 'commute', prompt: 'How long to work?', dependsOn: ['get-location'] },
+      );
 
-        await new Promise((resolve) => setTimeout(resolve, 50));
-        simulateTaskCompletion('single-task', 'Done');
+      await route('How long is my commute?');
+      await pollUntilComplete();
 
-        await instructionsPromise;
+      expect(commute.prompts[0]).toContain('How long to work?');
+      expect(commute.prompts[0]).toContain('Aarhus, Denmark');
+    });
 
-        // DAG reset happens after a 10 second delay via setTimeout
-        // Wait for the reset to occur
-        await new Promise((resolve) => setTimeout(resolve, 10100));
+    it('runs independent tasks in the same wave', async () => {
+      useAgents(createMockAgent('weather'), createMockAgent('calendar'));
+      usePlan(
+        { id: 'weather-check', agent: 'weather', prompt: 'Weather', dependsOn: [] },
+        { id: 'calendar-check', agent: 'calendar', prompt: 'Calendar', dependsOn: [] },
+      );
 
-        expect(getCurrentDAG().tasks).toHaveLength(0);
-      }, 15000);
+      await route('Weather and calendar');
+      const report = await nextInstructions();
 
-      it('should not reset DAG when tasks are still pending', async () => {
-        const mockAgent = createMockAgent('weather', 'Provides weather information');
-        const mockAgentProvider: AgentProvider = async () => [mockAgent];
-        setAgentProvider(mockAgentProvider);
+      expect(report.instructions).toContain('All tasks have completed');
+      expect(report.completedTaskResults?.map((task) => task.id)).toEqual(['weather-check', 'calendar-check']);
+    });
 
-        injectTask({
-          id: 'task-1',
-          agent: 'weather',
-          prompt: 'Task 1',
-          dependsOn: [],
-        });
-        injectTask({
-          id: 'task-2',
-          agent: 'weather',
-          prompt: 'Task 2',
-          dependsOn: [],
-        });
-
-        const instructionsPromise = startWorkflowRun(getNextInstructionsWorkflow, {});
-
-        await new Promise((resolve) => setTimeout(resolve, 50));
-        simulateTaskCompletion('task-1', 'Done 1');
-
-        await instructionsPromise;
-
-        expect(getCurrentDAG().tasks).toHaveLength(2);
+    it('keeps going when an agent throws', async () => {
+      const weather = createMockAgent('weather', {
+        respond: () => {
+          throw new Error('upstream exploded');
+        },
       });
+      const calendar = createMockAgent('calendar', { respond: () => 'Standup at 9am' });
+      useAgents(weather, calendar);
+      usePlan(
+        { id: 'weather-check', agent: 'weather', prompt: 'Weather', dependsOn: [] },
+        { id: 'calendar-check', agent: 'calendar', prompt: 'Calendar', dependsOn: [] },
+      );
+
+      await route('Weather and calendar');
+      const report = await nextInstructions();
+
+      expect(report.instructions).toContain('All tasks have completed');
+      const weatherResult = report.completedTaskResults?.find((task) => task.id === 'weather-check');
+      expect(String(weatherResult?.result)).toContain('upstream exploded');
+      expect(getCurrentDAG().tasks.find((task) => task.id === 'weather-check')?.status).toBe('failed');
+    });
+
+    it('tells the caller to try again when there is nothing being routed', async () => {
+      const report = await nextInstructions();
+      expect(report.instructions).toContain('Still processing');
+    });
+
+    it('repeats the final report instead of resuming a finished run', async () => {
+      useAgents(createMockAgent('weather'));
+      usePlan({ id: 'weather-check', agent: 'weather', prompt: 'Weather', dependsOn: [] });
+
+      await route('What is the weather?');
+      const first = await nextInstructions();
+      const second = await nextInstructions();
+
+      expect(second).toEqual(first);
     });
   });
 
-  describe('routePromptWorkflow with mock agents', () => {
-    it('should list available mock agents', async () => {
-      const weatherAgent = createMockAgent('weather', 'Provides weather information for any location');
-      const calendarAgent = createMockAgent('calendar', 'Manages calendar events and schedules');
+  describe('getCurrentDagWorkflow', () => {
+    it('exposes the planned graph and its execution status', async () => {
+      useAgents(createMockAgent('weather'), createMockAgent('calendar'));
+      usePlan(
+        { id: 'get-location', agent: 'weather', prompt: 'Where am I?', dependsOn: [] },
+        { id: 'get-weather', agent: 'calendar', prompt: 'Weather there?', dependsOn: ['get-location'] },
+      );
 
-      const mockAgentProvider: AgentProvider = async () => [weatherAgent, calendarAgent];
-      setWorkflowState({
-        agentProvider: mockAgentProvider,
-        supervisorExecutor: createMockSupervisorExecutor([weatherAgent.id, calendarAgent.id]),
-      });
+      await route('What is the weather where I am?');
 
-      const _result = await startWorkflowRun(routePromptWorkflow, {
-        userQuery: 'What is the weather in Aarhus?',
-        async: false,
-      });
+      const pending = assertSuccess(await runWorkflow(getCurrentDagWorkflow, {}), z.any());
+      expect(pending.userQuery).toBe('What is the weather where I am?');
+      expect(pending.tasks.map((task: { id: string; status: string }) => [task.id, task.status])).toEqual([
+        ['get-location', 'pending'],
+        ['get-weather', 'pending'],
+      ]);
 
-      const dag = getCurrentDAG();
-      expect(dag.tasks.length).toBeGreaterThanOrEqual(1);
+      await pollUntilComplete();
 
-      const weatherTask = dag.tasks.find((t) => t.agent === 'weather');
-      expect(weatherTask).toBeDefined();
+      const done = assertSuccess(await runWorkflow(getCurrentDagWorkflow, {}), z.any());
+      expect(done.tasks.every((task: { status: string }) => task.status === 'completed')).toBe(true);
     });
 
-    it('should start DAG execution and return tasks in progress with instructions', async () => {
-      const weatherAgent = createMockAgent('weather', 'Provides weather information for any location');
-      const mockAgentProvider: AgentProvider = async () => [weatherAgent];
-      setWorkflowState({
-        agentProvider: mockAgentProvider,
-        supervisorExecutor: createMockSupervisorExecutor([weatherAgent.id]),
-      });
-
-      const workflowResult = await startWorkflowRun(routePromptWorkflow, {
-        userQuery: 'What is the weather?',
-        async: false,
-      });
-
-      const result = assertWorkflowSuccess(workflowResult);
-      expect(result.taskIdsInProgress).toBeDefined();
-      expect(Array.isArray(result.taskIdsInProgress)).toBe(true);
-      expect(result.instructions).toBeDefined();
-      expect(typeof result.instructions).toBe('string');
-      expect(result.instructions).toContain('getNextInstructionsWorkflow');
-    });
-
-    it('should return end call instructions when async flag is true', async () => {
-      const weatherAgent = createMockAgent('weather', 'Provides weather information for any location');
-      const mockAgentProvider: AgentProvider = async () => [weatherAgent];
-      setWorkflowState({
-        agentProvider: mockAgentProvider,
-        supervisorExecutor: createMockSupervisorExecutor([weatherAgent.id]),
-      });
-
-      const workflowResult = await startWorkflowRun(routePromptWorkflow, {
-        userQuery: 'What is the weather?',
-        async: true,
-      });
-
-      const result = assertWorkflowSuccess(workflowResult);
-      expect(result.taskIdsInProgress).toBeDefined();
-      expect(result.instructions).toBeDefined();
-      expect(result.instructions).toContain('End the call');
-      expect(result.instructions).not.toContain('getNextInstructionsWorkflow');
-    });
-  });
-
-  describe('integration: calling getNextInstructionsWorkflow before routePromptWorkflow', () => {
-    it('should properly receive completed tasks even when waiting started before DAG creation', async () => {
-      const weatherAgent = createMockAgent('weather', 'Provides weather information for any location');
-      const mockAgentProvider: AgentProvider = async () => [weatherAgent];
-      setAgentProvider(mockAgentProvider);
-
-      const instructionsPromise = startWorkflowRun(getNextInstructionsWorkflow, {});
-
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      expect(getTaskCompletedListenersCount()).toBe(1);
-
-      injectTask({
-        id: 'weather-task',
-        agent: 'weather',
-        prompt: 'Get weather',
-        dependsOn: [],
-      });
-
-      simulateTaskCompletion('weather-task', 'Weather result: Sunny');
-
-      const workflowResult = await instructionsPromise;
-
-      const result = assertWorkflowSuccess(workflowResult);
-      expect(result.completedTaskResults).toHaveLength(1);
-      expect(result.completedTaskResults?.[0].id).toBe('weather-task');
-      expect(result.completedTaskResults?.[0].result).toBe('Weather result: Sunny');
-      expect(result.instructions).toContain('All tasks have completed');
-    });
-
-    it('should handle multiple getNextInstructionsWorkflow calls waiting in parallel', async () => {
-      const weatherAgent = createMockAgent('weather', 'Provides weather information');
-      const mockAgentProvider: AgentProvider = async () => [weatherAgent];
-      setAgentProvider(mockAgentProvider);
-
-      const promise1 = startWorkflowRun(getNextInstructionsWorkflow, {});
-      const promise2 = startWorkflowRun(getNextInstructionsWorkflow, {});
-
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      expect(getTaskCompletedListenersCount()).toBe(2);
-
-      injectTask({
-        id: 'task-a',
-        agent: 'weather',
-        prompt: 'Task A',
-        dependsOn: [],
-      });
-      injectTask({
-        id: 'task-b',
-        agent: 'weather',
-        prompt: 'Task B',
-        dependsOn: [],
-      });
-
-      simulateTaskCompletion('task-a', 'Result A');
-
-      const workflowResult1 = await promise1;
-      const result1 = assertWorkflowSuccess(workflowResult1);
-      expect(result1.completedTaskResults?.some((t: { id: string }) => t.id === 'task-a')).toBe(true);
-
-      simulateTaskCompletion('task-b', 'Result B');
-      const workflowResult2 = await promise2;
-      const result2 = assertWorkflowSuccess(workflowResult2);
-      expect(result2.completedTaskResults?.some((t: { id: string }) => t.id === 'task-b')).toBe(true);
+    it('is empty before anything has been routed', async () => {
+      const dag = assertSuccess(await runWorkflow(getCurrentDagWorkflow, {}), z.any());
+      expect(dag.tasks).toEqual([]);
     });
   });
 });
+
+async function waitFor(condition: () => boolean, timeoutMs = 5000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!condition()) {
+    if (Date.now() > deadline) {
+      throw new Error('Timed out waiting for condition');
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}

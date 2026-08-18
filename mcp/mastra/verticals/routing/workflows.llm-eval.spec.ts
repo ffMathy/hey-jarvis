@@ -1,25 +1,24 @@
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import type { Agent } from '@mastra/core/agent';
 import { generateObject } from 'ai';
 import { z } from 'zod';
 import { isOllamaAvailable } from '../../utils/providers/ollama-provider.js';
 import {
   type AgentProvider,
-  type dagSchema,
+  type Dag,
   getCurrentDAG,
-  injectTask,
-  resetCurrentDAG,
+  resetRoutingOverrides,
   routePromptWorkflow,
-  type SupervisorExecutor,
-  setWorkflowState,
-  simulateTaskCompletion,
+  setAgentProvider,
 } from './workflows.js';
 
 /**
  * LLM-Evaluated Routing Workflow Tests
  *
- * These tests verify that the DAG generation produces correct task dependencies
- * and routing decisions. Tests use LLM evaluation similar to the elevenlabs
- * project tests to validate semantic correctness.
+ * These tests exercise the real routing planner agent: they hand it a set of
+ * mock agents, let `routePromptWorkflow` plan a DAG, and then judge the graph
+ * with an LLM. Nothing is executed — planning stops at the hand-off suspension,
+ * so what is asserted here is purely the routing decision.
  */
 
 interface EvaluationResult {
@@ -28,18 +27,11 @@ interface EvaluationResult {
   reasoning: string;
 }
 
-type DAGType = z.infer<typeof dagSchema>;
-
 /**
  * Evaluates a DAG structure against specific criteria using an LLM
  */
-async function evaluateDAG(
-  dag: { tasks: Array<{ id: string; agent: string; prompt: string; dependsOn: string[] }> },
-  userQuery: string,
-  criteria: string,
-  googleApiKey?: string,
-): Promise<EvaluationResult> {
-  const apiKey = googleApiKey || process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY;
+async function evaluateDAG(dag: Dag, userQuery: string, criteria: string): Promise<EvaluationResult> {
+  const apiKey = process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY;
   if (!apiKey) {
     throw new Error('Google API key required: set HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY');
   }
@@ -101,14 +93,8 @@ Respond with:
 /**
  * Asserts that the DAG meets specific criteria
  */
-async function assertDAGCriteria(
-  dag: { tasks: Array<{ id: string; agent: string; prompt: string; dependsOn: string[] }> },
-  userQuery: string,
-  criteria: string,
-  minScore = 0.7,
-  googleApiKey?: string,
-): Promise<EvaluationResult> {
-  const result = await evaluateDAG(dag, userQuery, criteria, googleApiKey);
+async function assertDAGCriteria(dag: Dag, userQuery: string, criteria: string, minScore = 0.7): Promise<void> {
+  const result = await evaluateDAG(dag, userQuery, criteria);
 
   if (!result.passed || result.score < minScore) {
     const dagJson = JSON.stringify(dag, null, 2);
@@ -125,155 +111,61 @@ async function assertDAGCriteria(
     criteria,
     '\n',
     JSON.stringify(
-      dag.tasks.map((t) => ({ id: t.id, agent: t.agent, dependsOn: t.dependsOn })),
+      dag.tasks.map((task) => ({ id: task.id, agent: task.agent, dependsOn: task.dependsOn })),
       null,
       2,
     ),
     '\n',
     result,
   );
-
-  return result;
 }
 
-interface MockToolConfig {
-  name: string;
-  inputParams: string[];
-}
-
-/** Structural subset of Agent that satisfies what workflows.ts actually uses at runtime */
+/** Structural subset of Agent that the routing planner actually reads at runtime */
 interface MockAgent {
   id: string;
   name: string;
   getDescription(): string;
-  generate(prompt: unknown): Promise<{ text: string }>;
-  listTools(): Promise<Record<string, { inputSchema?: { shape: Record<string, unknown> } }>>;
+  listTools(): Promise<Record<string, unknown>>;
+  generate(messages: unknown): Promise<{ text: string }>;
 }
 
-function createMockAgent(id: string, description: string, tools?: MockToolConfig[]): MockAgent {
-  const mockTools: Record<string, { inputSchema?: { shape: Record<string, unknown> } }> = {};
-
-  if (tools) {
-    for (const tool of tools) {
-      const shape: Record<string, unknown> = {};
-      for (const param of tool.inputParams) {
-        shape[param] = z.string();
-      }
-      mockTools[tool.name] = {
-        inputSchema: { shape },
-      };
-    }
-  }
-
-  const mockAgent: MockAgent = {
+function createMockAgent(id: string, description: string): MockAgent {
+  return {
     id,
     name: id,
     getDescription: () => description,
-    generate: jest.fn().mockResolvedValue({ text: `Mock response from ${id}` }),
-    listTools: jest.fn().mockResolvedValue(mockTools),
-  };
-  return mockAgent;
-}
-
-/**
- * Creates a SupervisorExecutor that uses an LLM to make routing decisions.
- * This simulates how the supervisor agent decomposes queries into delegations,
- * but uses structured output to generate the task list for LLM evaluation.
- *
- * Note: Task execution is simulated synchronously with mock results since these
- * tests focus on evaluating routing decisions (which agents are selected and how
- * tasks are structured), not execution timing or actual agent responses.
- */
-function createLLMSupervisorExecutor(): SupervisorExecutor {
-  return async (userQuery, agents) => {
-    const apiKey = process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY;
-    if (!apiKey) {
-      throw new Error('Google API key required for LLM eval tests');
-    }
-
-    const google = createGoogleGenerativeAI({ apiKey });
-    const agentDescriptions = agents.map((a) => ({
-      id: a.id,
-      description: a.getDescription(),
-    }));
-
-    const taskSchema = z.object({
-      tasks: z.array(
-        z.object({
-          id: z.string().describe('Unique task ID in kebab-case'),
-          agent: z.string().describe('Agent ID to delegate to'),
-          prompt: z.string().describe('Self-contained prompt for the agent'),
-          dependsOn: z.array(z.string()).describe('IDs of prerequisite tasks'),
-        }),
-      ),
-    });
-
-    const result = await generateObject({
-      model: google('gemini-flash-lite-latest'),
-      temperature: 0,
-      schema: taskSchema,
-      maxRetries: 3,
-      prompt: `You are a task coordinator. Decompose this user query into tasks for available agents.
-
-User query: ${userQuery}
-
-Available agents:
-${JSON.stringify(agentDescriptions, null, 2)}
-
-Rules:
-- Only assign tasks to agents whose capabilities match
-- If Task B needs data from Task A, include Task A's ID in dependsOn
-- Tasks with no dependencies have empty dependsOn array
-- Prompts must be self-contained`,
-    });
-
-    for (const task of result.object.tasks) {
-      injectTask(task);
-    }
-
-    // Simulate task completion for all tasks
-    for (const task of getCurrentDAG().tasks) {
-      if (task.result === undefined) {
-        simulateTaskCompletion(task.id, `Mock result from ${task.agent}`);
-      }
-    }
+    listTools: async () => ({}),
+    generate: async () => ({ text: `Mock response from ${id}` }),
   };
 }
 
+function useAgents(...agents: MockAgent[]): void {
+  const provider: AgentProvider = async () => agents as unknown as Agent[];
+  setAgentProvider(provider);
+}
+
 /**
- * Helper to run workflow with retry logic for flaky LLM responses.
- * An optional `isValid` predicate can be supplied to retry when the DAG
- * is structurally valid but does not meet additional criteria.
+ * Plans a DAG with retry logic for flaky LLM responses.
+ * An optional `isValid` predicate retries when the DAG is structurally valid
+ * but does not meet additional criteria.
  */
-async function runWorkflowWithRetry(
-  userQuery: string,
-  maxAttempts = 8,
-  isValid?: (dag: DAGType) => boolean,
-): Promise<DAGType | undefined> {
-  let dag: DAGType | undefined;
+async function planWithRetry(userQuery: string, maxAttempts = 8, isValid?: (dag: Dag) => boolean): Promise<Dag> {
+  let dag: Dag = { userQuery, tasks: [] };
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    resetCurrentDAG();
-
-    let runResult: Awaited<ReturnType<Awaited<ReturnType<typeof routePromptWorkflow.createRun>>['start']>> | undefined;
     try {
       const run = await routePromptWorkflow.createRun();
-      runResult = await run.start({ inputData: { userQuery } });
-    } catch {
-      console.log(`Attempt ${attempt}: Workflow failed, retrying...`);
-      runResult = undefined;
-    }
+      const result = await run.start({ inputData: { userQuery, async: false } });
 
-    if (runResult !== undefined) {
-      dag = getCurrentDAG();
-      if (runResult.status === 'success' && dag.tasks.length >= 1) {
-        if (!isValid || isValid(dag)) {
+      if (result.status === 'success') {
+        dag = getCurrentDAG();
+        if (dag.tasks.length >= 1 && (!isValid || isValid(dag))) {
           return dag;
         }
-        console.log(`Attempt ${attempt}: DAG did not pass validation predicate, retrying...`);
-      } else {
-        console.log(`Attempt ${attempt}: Workflow succeeded but no tasks generated, retrying...`);
+        console.log(`Attempt ${attempt}: DAG did not pass validation, retrying...`);
       }
+    } catch (error: unknown) {
+      console.log(`Attempt ${attempt}: Planning failed, retrying...`, error);
     }
 
     await new Promise((resolve) => setTimeout(resolve, 750));
@@ -293,13 +185,11 @@ describe('Routing Workflows - LLM Evaluated', () => {
   });
 
   beforeEach(() => {
-    // Reset all workflow state in one call
-    setWorkflowState();
+    resetRoutingOverrides();
   });
 
   afterEach(() => {
-    // Reset all workflow state in one call
-    setWorkflowState();
+    resetRoutingOverrides();
   });
 
   describe('DAG Generation with Location-Based Weather Query', () => {
@@ -308,46 +198,35 @@ describe('Routing Workflows - LLM Evaluated', () => {
         return;
       }
 
-      // Create mock agents with descriptions matching the real agents
-      const weatherAgent = createMockAgent(
-        'weather',
-        `# Purpose  
-Provide weather data. Use this tool to **fetch the current conditions** or a **5-day forecast** for any location specified by city name, postal/ZIP code, or latitude/longitude coordinates. 
+      useAgents(
+        createMockAgent(
+          'weather',
+          `# Purpose
+Provide weather data. Use this tool to **fetch the current conditions** or a **5-day forecast** for any location specified by city name, postal/ZIP code, or latitude/longitude coordinates.
 
 **Location is mandatory and must be provided - the weather agent cannot tell a user's location.**
 
 # When to use
 - The user asks about today's weather, tomorrow's forecast, or the outlook for specific dates.
 - The user needs details for planning travel or outdoor activities.`,
-      );
-
-      const internetOfThingsAgent = createMockAgent(
-        'internetOfThings',
-        `# Purpose  
+        ),
+        createMockAgent(
+          'internetOfThings',
+          `# Purpose
 Control and monitor Internet of Things (IoT) devices. Use this agent to **turn devices on/off**, **adjust settings**, **query device states**, **get user locations via their phones**, and **view historical changes**.
 
 # When to use
 - You want to control IOT devices (lights, switches, climate control, media players, scenes).
 - You ask about the current state of devices.
 - You need to access user location data for location-based automations.`,
+        ),
       );
 
-      const mockAgentProvider: AgentProvider = async () => [weatherAgent, internetOfThingsAgent];
-      setWorkflowState({ agentProvider: mockAgentProvider, supervisorExecutor: createLLMSupervisorExecutor() });
-
       const userQuery = 'Check the weather for my current location';
+      const dag = await planWithRetry(userQuery);
 
-      const run = await routePromptWorkflow.createRun();
-      await run.start({
-        inputData: { userQuery },
-      });
-
-      const dag = getCurrentDAG();
-
-      // Verify the DAG was created with at least one task
       expect(dag.tasks.length).toBeGreaterThanOrEqual(1);
 
-      // Use LLM to evaluate that the DAG structure is correct
       await assertDAGCriteria(
         dag,
         userQuery,
@@ -367,35 +246,26 @@ The key validation is: the weather task's dependsOn array must include the locat
         return;
       }
 
-      const weatherAgent = createMockAgent(
-        'weather',
-        `# Purpose  
-Provide weather data. Use this tool to **fetch the current conditions** or a **5-day forecast** for any location specified by city name, postal/ZIP code, or latitude/longitude coordinates. 
+      useAgents(
+        createMockAgent(
+          'weather',
+          `# Purpose
+Provide weather data. Use this tool to **fetch the current conditions** or a **5-day forecast** for any location specified by city name, postal/ZIP code, or latitude/longitude coordinates.
 
 **Location is mandatory and must be provided - the weather agent cannot tell a user's location.**`,
-      );
-
-      const internetOfThingsAgent = createMockAgent(
-        'internetOfThings',
-        `# Purpose  
+        ),
+        createMockAgent(
+          'internetOfThings',
+          `# Purpose
 Control and monitor Internet of Things (IoT) devices. Use this agent to **get user locations via their phones**.`,
+        ),
       );
-
-      const mockAgentProvider: AgentProvider = async () => [weatherAgent, internetOfThingsAgent];
-      setWorkflowState({ agentProvider: mockAgentProvider, supervisorExecutor: createLLMSupervisorExecutor() });
 
       const userQuery = "What's the weather like where I am right now?";
-
-      const run = await routePromptWorkflow.createRun();
-      await run.start({
-        inputData: { userQuery },
-      });
-
-      const dag = getCurrentDAG();
+      const dag = await planWithRetry(userQuery);
 
       expect(dag.tasks.length).toBeGreaterThanOrEqual(1);
 
-      // Evaluate that location is fetched first, then weather
       await assertDAGCriteria(
         dag,
         userQuery,
@@ -408,62 +278,49 @@ Control and monitor Internet of Things (IoT) devices. Use this agent to **get us
       );
     }, 90000);
 
-    // Note: This test is more susceptible to LLM flakiness due to simpler query structure
-    // The DAG generation step occasionally receives malformed responses from Gemini
-    // Some LLM models (like gpt-4o-mini used in CI) may still generate unnecessary location tasks
     it('should NOT create location task when location is explicitly provided', async () => {
       if (!ollamaAvailable) {
         return;
       }
 
-      const weatherAgent = createMockAgent(
-        'weather',
-        `# Purpose
+      useAgents(
+        createMockAgent(
+          'weather',
+          `# Purpose
 Provide weather data for any location specified by city name or coordinates.
 
 **Location is mandatory and must be provided - the weather agent cannot tell a user's location.**`,
-      );
-
-      const internetOfThingsAgent = createMockAgent(
-        'internetOfThings',
-        `# Purpose
+        ),
+        createMockAgent(
+          'internetOfThings',
+          `# Purpose
 Control IoT devices and get user locations via their phones.`,
+        ),
       );
-
-      const mockAgentProvider: AgentProvider = async () => [weatherAgent, internetOfThingsAgent];
-      setWorkflowState({ agentProvider: mockAgentProvider, supervisorExecutor: createLLMSupervisorExecutor() });
 
       const userQuery = 'Please tell me what the weather is like in New York City today';
 
-      // Helper to detect unnecessary location tasks in the DAG
-      const hasUnnecessaryLocationTask = (tasks: DAGType['tasks']): boolean =>
+      // The location is spelled out in the query, so any location-lookup task is
+      // wasted work. Retry generously: smaller models keep adding one anyway.
+      const hasUnnecessaryLocationTask = (tasks: Dag['tasks']): boolean =>
         tasks.some(
-          (t) =>
-            t.agent === 'internetOfThings' ||
-            t.id.toLowerCase().includes('location') ||
-            (t.prompt.toLowerCase().includes('user') && t.prompt.toLowerCase().includes('location')),
+          (task) =>
+            task.agent === 'internetOfThings' ||
+            task.id.toLowerCase().includes('location') ||
+            (task.prompt.toLowerCase().includes('user') && task.prompt.toLowerCase().includes('location')),
         );
 
-      // Custom retry with validation: the DAG should NOT contain any location-related tasks
-      // when the location is explicitly provided in the query.
-      // Use more retries (10) because gemini-flash-lite-latest sometimes generates
-      // unnecessary location tasks despite explicit location in the query.
-      const dag = await runWorkflowWithRetry(userQuery, 10, (d) => !hasUnnecessaryLocationTask(d.tasks));
+      const dag = await planWithRetry(userQuery, 10, (planned) => !hasUnnecessaryLocationTask(planned.tasks));
 
-      // Fail if we couldn't get a valid DAG after all retry attempts
-      if (!dag || dag.tasks.length === 0) {
+      if (dag.tasks.length === 0) {
         throw new Error('Failed to generate valid DAG after max attempts');
       }
 
-      // Fail if the DAG contains unnecessary location tasks
       if (hasUnnecessaryLocationTask(dag.tasks)) {
-        const taskSummary = dag.tasks.map((t) => `${t.id}(${t.agent})`).join(', ');
+        const taskSummary = dag.tasks.map((task) => `${task.id}(${task.agent})`).join(', ');
         throw new Error(`LLM generated unnecessary location task despite explicit location in query: [${taskSummary}]`);
       }
 
-      expect(dag.tasks.length).toBeGreaterThanOrEqual(1);
-
-      // Evaluate that no location task is needed since location is provided
       await assertDAGCriteria(
         dag,
         userQuery,
@@ -483,26 +340,24 @@ Control IoT devices and get user locations via their phones.`,
         return;
       }
 
-      const weatherAgent = createMockAgent('weather', `Provide weather data. Location is mandatory.`);
-      const calendarAgent = createMockAgent('calendar', `Manage calendar events and schedules.`);
-      const commuteAgent = createMockAgent('commute', `Calculate travel times and distances between locations.`);
-
-      const mockAgentProvider: AgentProvider = async () => [weatherAgent, calendarAgent, commuteAgent];
-      setWorkflowState({ agentProvider: mockAgentProvider, supervisorExecutor: createLLMSupervisorExecutor() });
+      useAgents(
+        createMockAgent('weather', `Provide weather data. Location is mandatory.`),
+        createMockAgent('calendar', `Manage calendar events and schedules.`),
+        createMockAgent('commute', `Calculate travel times and distances between locations.`),
+      );
 
       const userQuery =
         'Check my calendar for today and tell me what the weather will be like for my first meeting, and how long it will take to get there';
 
-      const dag = await runWorkflowWithRetry(userQuery, 10);
+      const dag = await planWithRetry(userQuery, 10);
 
-      if (!dag || dag.tasks.length === 0) {
+      if (dag.tasks.length === 0) {
         console.warn('Skipping dependency-chain assertion due to transient DAG generation failures.');
         return;
       }
 
       expect(dag.tasks.length).toBeGreaterThanOrEqual(1);
 
-      // Evaluate that calendar comes first, then weather and commute depend on it
       await assertDAGCriteria(
         dag,
         userQuery,
