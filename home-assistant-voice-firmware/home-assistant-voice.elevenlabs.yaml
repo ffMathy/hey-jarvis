@@ -117,6 +117,15 @@ wifi:
   ssid: ${HEY_JARVIS_WIFI_SSID}
   password: ${HEY_JARVIS_WIFI_PASSWORD}
   id: wifi_id
+  # Reboot after this long without an association. Set explicitly because the default
+  # is 15min and inheriting it silently is how an unreachable network turns into a
+  # device that power-cycles all afternoon -- each reboot audible as a click from the
+  # speaker as the DAC comes up.
+  #
+  # 30min is the compromise: a reboot does clear a genuinely wedged adapter, but it
+  # cannot conjure back a router that is down, so doing it twice an hour through an
+  # outage is just noise. 0s would disable the recovery entirely.
+  reboot_timeout: 30min
   on_connect:
     - lambda: id(improv_ble_in_progress) = false;
     - script.execute: control_leds
@@ -128,6 +137,14 @@ logger:
 
 api:
   id: api_id
+  # Do NOT reboot merely because Home Assistant is away. This defaults to 15min too,
+  # and the same click-every-quarter-hour follows from it.
+  #
+  # Disabled rather than lengthened because the device's main job does not involve
+  # Home Assistant at all: the wake word opens an ElevenLabs conversation directly.
+  # Only announcements need the API, and those are pushed *from* Home Assistant, so a
+  # reboot cannot help them arrive -- it just interrupts whatever was being said.
+  reboot_timeout: 0s
   services:
     # Proactive announcement. The device speaks the message, then stays in a normal
     # conversation until the user has been silent for silence_seconds.
