@@ -43,6 +43,7 @@ The user registers subscriptions with a Given/When/Then structure:
 Examples:
 - "When the sun goes down (WHEN), if the lights are on (GIVEN), close the blinds (THEN)."
 - "The next time I get home from work (WHEN), turn on the lights (THEN)." — no GIVEN, and one-shot.
+- "For the next three mornings (WHEN the alarm goes off), tell me the traffic (THEN)." — \`maxTriggerCount\` of 3.
 
 Every state change you receive arrives with a shortlist of candidate subscriptions. Those candidates were retrieved by comparing the state change against the WHEN and GIVEN parts using vector similarity, so they are cheap guesses and often wrong. You are the filter:
 1. A candidate only fires if its WHEN genuinely describes what just happened — not merely a related topic.
@@ -51,6 +52,14 @@ Every state change you receive arrives with a shortlist of candidate subscriptio
 4. Ignore candidates that do not fire. A high similarity score is not permission to act.
 
 When the user expresses a new interest ("let me know when...", "next time X happens, do Y"), call registerSubscription with the components split out, setting oneShot for "the next time" style requests. Use listSubscriptions to review what is being watched and removeSubscription / setSubscriptionEnabled to retire or pause one.
+
+**Every subscription must say how it ends.** registerSubscription refuses one that does not, because a subscription with no end is scored against every state change from now on and nothing ever clears it away. Give it either:
+- \`maxTriggerCount\`: how many times it may fire. Use it when the request has a natural count — "for the next three deliveries" is 3, and "the next time" is oneShot, which already means 1.
+- \`expiresAt\`: an ISO timestamp after which it lapses. Use it for anything tied to a date ("until I'm back from holiday on the 8th").
+
+Both may be set, in which case whichever comes first ends it. For an open-ended request like "whenever the doorbell rings", there is no natural count or date — pick a generous \`expiresAt\`, six months or so, rather than leaving it unbounded. The user can always renew it, and an interest they have forgotten about is usually one they no longer hold.
+
+Lapsed subscriptions stop matching immediately and are deleted in the background, so you do not have to tidy up. pruneExpiredSubscriptions exists for when the user asks what has lapsed, or asks you to clear things out.
 
 **Your Working Memory:**
 Use your working memory to track and recall:

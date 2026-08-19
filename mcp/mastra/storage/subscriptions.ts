@@ -30,6 +30,18 @@ export interface NewSubscription extends SubscriptionComponents {
   source: string;
   /** When true, the subscription is disabled the first time it fires. */
   oneShot?: boolean;
+  /**
+   * How many times this may fire before it is spent. Null means no limit.
+   *
+   * A budget rather than a flag, so "remind me for the next three deliveries" is
+   * expressible without registering three subscriptions.
+   */
+  maxTriggerCount?: number | null;
+  /**
+   * ISO timestamp after which this stops matching and becomes eligible for deletion.
+   * Null means no deadline.
+   */
+  expiresAt?: string | null;
 }
 
 export interface Subscription extends SubscriptionComponents {
@@ -40,7 +52,14 @@ export interface Subscription extends SubscriptionComponents {
   createdAt: string;
   lastTriggeredAt: string | null;
   triggerCount: number;
+  /** Firing budget, or null when the subscription may fire indefinitely. */
+  maxTriggerCount: number | null;
+  /** Deadline as an ISO timestamp, or null when the subscription has none. */
+  expiresAt: string | null;
 }
+
+/** Why a subscription is finished, for logging and for telling the user. */
+export type SubscriptionExpiryReason = 'spent' | 'expired';
 
 /**
  * A subscription plus the embeddings of its components, as used by the matcher.
@@ -115,11 +134,40 @@ export class SubscriptionStorage {
         enabled INTEGER NOT NULL DEFAULT 1,
         created_at TEXT NOT NULL,
         last_triggered_at TEXT,
-        trigger_count INTEGER NOT NULL DEFAULT 0
+        trigger_count INTEGER NOT NULL DEFAULT 0,
+        max_trigger_count INTEGER,
+        expires_at TEXT
       )
     `);
 
+    // Databases created before subscriptions could expire are missing those columns.
+    // Adding them leaves existing rows NULL, which every check below reads as "no
+    // limit" -- so an old subscription behaves exactly as it did.
+    await this.addMissingColumns();
+
     this.initialized = true;
+  }
+
+  /**
+   * Adds any columns a database predating them is missing.
+   *
+   * SQLite has no `ADD COLUMN IF NOT EXISTS`, so the current columns are read back
+   * from `PRAGMA table_info` and only the absent ones are added.
+   */
+  private async addMissingColumns(): Promise<void> {
+    const existing = await this.client.execute('PRAGMA table_info(synapse_subscriptions)');
+    const columnNames = new Set(existing.rows.map((row) => String(row.name)));
+
+    const additions: Array<[string, string]> = [
+      ['max_trigger_count', 'INTEGER'],
+      ['expires_at', 'TEXT'],
+    ];
+
+    for (const [column, type] of additions) {
+      if (!columnNames.has(column)) {
+        await this.client.execute(`ALTER TABLE synapse_subscriptions ADD COLUMN ${column} ${type}`);
+      }
+    }
   }
 
   /**
@@ -149,6 +197,10 @@ export class SubscriptionStorage {
       createdAt: new Date().toISOString(),
       lastTriggeredAt: null,
       triggerCount: 0,
+      // oneShot is the older spelling of a one-firing budget. Folding it in here keeps
+      // a single rule for when a subscription is spent, rather than two that can drift.
+      maxTriggerCount: subscription.maxTriggerCount ?? (subscription.oneShot ? 1 : null),
+      expiresAt: subscription.expiresAt ?? null,
     };
 
     await this.client.execute({
@@ -156,8 +208,9 @@ export class SubscriptionStorage {
         INSERT INTO synapse_subscriptions (
           id, source, when_text, given_text, then_text,
           when_embedding, given_embedding, then_embedding,
-          one_shot, enabled, created_at, last_triggered_at, trigger_count
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          one_shot, enabled, created_at, last_triggered_at, trigger_count,
+          max_trigger_count, expires_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       args: [
         stored.id,
@@ -173,6 +226,8 @@ export class SubscriptionStorage {
         stored.createdAt,
         null,
         0,
+        stored.maxTriggerCount,
+        stored.expiresAt,
       ],
     });
 
@@ -190,11 +245,17 @@ export class SubscriptionStorage {
   async getAllEmbedded(options: { includeDisabled?: boolean } = {}): Promise<EmbeddedSubscription[]> {
     await this.initialize();
 
-    const result = await this.client.execute(
-      options.includeDisabled
+    // A subscription past its deadline is filtered out here as well as being pruned,
+    // so it stops matching the moment it expires rather than the next time something
+    // happens to run the prune.
+    const result = await this.client.execute({
+      sql: options.includeDisabled
         ? 'SELECT * FROM synapse_subscriptions ORDER BY created_at ASC'
-        : 'SELECT * FROM synapse_subscriptions WHERE enabled = 1 ORDER BY created_at ASC',
-    );
+        : `SELECT * FROM synapse_subscriptions
+           WHERE enabled = 1 AND (expires_at IS NULL OR expires_at > ?)
+           ORDER BY created_at ASC`,
+      args: options.includeDisabled ? [] : [new Date().toISOString()],
+    });
 
     return result.rows.map((row) => ({
       ...this.toSubscription(row),
@@ -211,11 +272,14 @@ export class SubscriptionStorage {
   async list(options: { includeDisabled?: boolean } = {}): Promise<Subscription[]> {
     await this.initialize();
 
-    const result = await this.client.execute(
-      options.includeDisabled
+    const result = await this.client.execute({
+      sql: options.includeDisabled
         ? 'SELECT * FROM synapse_subscriptions ORDER BY created_at ASC'
-        : 'SELECT * FROM synapse_subscriptions WHERE enabled = 1 ORDER BY created_at ASC',
-    );
+        : `SELECT * FROM synapse_subscriptions
+           WHERE enabled = 1 AND (expires_at IS NULL OR expires_at > ?)
+           ORDER BY created_at ASC`,
+      args: options.includeDisabled ? [] : [new Date().toISOString()],
+    });
 
     return result.rows.map((row) => this.toSubscription(row));
   }
@@ -252,6 +316,11 @@ export class SubscriptionStorage {
     }
 
     const triggeredAt = new Date().toISOString();
+    const triggerCount = existing.triggerCount + 1;
+
+    // Spent when the firing budget is used up. oneShot is the older spelling of a
+    // budget of one and is still honoured for rows written before the column existed.
+    const spent = existing.oneShot || (existing.maxTriggerCount !== null && triggerCount >= existing.maxTriggerCount);
 
     await this.client.execute({
       sql: `
@@ -259,15 +328,57 @@ export class SubscriptionStorage {
         SET last_triggered_at = ?, trigger_count = trigger_count + 1, enabled = ?
         WHERE id = ?
       `,
-      args: [triggeredAt, existing.oneShot ? 0 : 1, id],
+      args: [triggeredAt, spent ? 0 : 1, id],
     });
 
     return {
       ...existing,
-      enabled: !existing.oneShot,
+      enabled: !spent,
       lastTriggeredAt: triggeredAt,
-      triggerCount: existing.triggerCount + 1,
+      triggerCount,
     };
+  }
+
+  /**
+   * Deletes subscriptions that can never fire again.
+   *
+   * That is either of two things: the deadline has passed, or the firing budget is
+   * used up. Both are permanent, so the rows are removed rather than disabled —
+   * a disabled subscription is one a user might re-arm, whereas these are finished.
+   *
+   * Disabling by hand is left alone: `setEnabled(id, false)` is a pause, and pausing
+   * something should not eventually delete it.
+   *
+   * @param now - The moment to judge deadlines against, for testing. Defaults to now.
+   * @returns The subscriptions that were deleted, so the caller can say what went
+   */
+  async pruneExpired(now: Date = new Date()): Promise<Subscription[]> {
+    await this.initialize();
+
+    const timestamp = now.toISOString();
+    const doomed = await this.client.execute({
+      sql: `
+        SELECT * FROM synapse_subscriptions
+        WHERE (expires_at IS NOT NULL AND expires_at <= ?)
+           OR (max_trigger_count IS NOT NULL AND trigger_count >= max_trigger_count)
+      `,
+      args: [timestamp],
+    });
+
+    if (doomed.rows.length === 0) {
+      return [];
+    }
+
+    await this.client.execute({
+      sql: `
+        DELETE FROM synapse_subscriptions
+        WHERE (expires_at IS NOT NULL AND expires_at <= ?)
+           OR (max_trigger_count IS NOT NULL AND trigger_count >= max_trigger_count)
+      `,
+      args: [timestamp],
+    });
+
+    return doomed.rows.map((row) => this.toSubscription(row));
   }
 
   /**
@@ -323,6 +434,8 @@ export class SubscriptionStorage {
       createdAt: String(row.created_at),
       lastTriggeredAt: row.last_triggered_at === null ? null : String(row.last_triggered_at),
       triggerCount: Number(row.trigger_count),
+      maxTriggerCount: row.max_trigger_count == null ? null : Number(row.max_trigger_count),
+      expiresAt: row.expires_at == null ? null : String(row.expires_at),
     };
   }
 }

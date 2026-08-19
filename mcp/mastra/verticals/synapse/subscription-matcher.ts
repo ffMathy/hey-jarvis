@@ -167,6 +167,17 @@ export function formatSubscriptionMatches(matches: SubscriptionMatch[]): string 
         lines.push(`   Last triggered: ${subscription.lastTriggeredAt} (${subscription.triggerCount}x)`);
       }
 
+      // What is left of the subscription, so the agent can weigh acting now against
+      // spending the last of a limited budget on a marginal match.
+      if (subscription.maxTriggerCount !== null) {
+        const remaining = Math.max(0, subscription.maxTriggerCount - subscription.triggerCount);
+        lines.push(`   Firings left: ${remaining} of ${subscription.maxTriggerCount}`);
+      }
+
+      if (subscription.expiresAt) {
+        lines.push(`   Expires: ${subscription.expiresAt}`);
+      }
+
       return lines.join('\n');
     })
     .join('\n\n');

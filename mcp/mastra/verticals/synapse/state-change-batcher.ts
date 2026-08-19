@@ -190,6 +190,17 @@ export class StateChangeBatcher {
    */
   private async matchSubscriptions(changes: PendingStateChange[]): Promise<string[]> {
     const storage = await getSubscriptionStorage();
+    // Housekeeping on the way past. Lapsed subscriptions are already filtered out of
+    // matching, so this only reclaims rows -- but a batch is the natural moment for it,
+    // and it is a single DELETE against a table with tens of rows.
+    const pruned = await storage.pruneExpired();
+    if (pruned.length > 0) {
+      logger.info('[BATCHER] Pruned lapsed subscriptions', {
+        count: pruned.length,
+        ids: pruned.map((subscription) => subscription.id),
+      });
+    }
+
     const subscriptions = await storage.getAllEmbedded();
 
     if (subscriptions.length === 0) {
