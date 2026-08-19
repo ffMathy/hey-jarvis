@@ -1,0 +1,56 @@
+# Runs the Jarvis MCP server on an always-on host — a Raspberry Pi, a NAS, a small
+# server. See the "Running on a Raspberry Pi" section of README.md for the full walk
+# through, including what to put in the .env file next to this one.
+#
+#   docker compose up -d
+#
+# Images are pinned by digest rather than by tag, so what runs is exactly what was
+# reviewed. Bump them deliberately.
+
+services:
+  mcp:
+    # 1.9.0. Published for linux/amd64 and linux/arm64 — an arm64 (64-bit) OS is
+    # required, there is no 32-bit build and there cannot be one: Bun does not support
+    # 32-bit ARM. Raspberry Pi OS Lite 64-bit is the right image.
+    image: ghcr.io/ffmathy/mcp:1.9.0
+    container_name: hey-jarvis-mcp
+    restart: unless-stopped
+    environment:
+      # The only secret this host needs. Everything else is resolved at runtime by the
+      # 1Password CLI inside the container, from the op:// references in mcp/op.env, so
+      # no API key is ever written to this machine.
+      OP_SERVICE_ACCOUNT_TOKEN: ${OP_SERVICE_ACCOUNT_TOKEN:?create a .env file beside this one containing OP_SERVICE_ACCOUNT_TOKEN=...}
+      # Without this, storage lands in /tmp/mcp and every restart silently discards the
+      # OAuth credentials, device state, e-mail state, noise baselines and token usage.
+      HEY_JARVIS_STORAGE_PATH: /data
+    volumes:
+      - mcp-data:/data
+    ports:
+      # 4111 Mastra Studio + API, 4112 MCP endpoint. Published on the LAN for local
+      # access; ElevenLabs reaches 4112 through the tunnel below, not through these.
+      - '4111:4111'
+      - '4112:4112'
+
+  cloudflared:
+    # Digest-only reference: immutable, and no ":latest" to drift underneath you.
+    image: docker.io/cloudflare/cloudflared@sha256:0aa26e284f05e6c77ae375b8c9c11d9eb6a448fb7bcd8d40f31cb6176189eb38
+    container_name: hey-jarvis-tunnel
+    restart: unless-stopped
+    # Shares the mcp container's network namespace on purpose. The tunnel's ingress is
+    # configured in the Zero Trust dashboard as http://localhost:4112, and this is what
+    # makes that keep meaning the MCP server. Route it at a service name instead and
+    # the dashboard has to change too.
+    network_mode: 'service:mcp'
+    command: tunnel --protocol http2 --no-autoupdate run
+    environment:
+      # Passed as an environment variable rather than on the command line, where `ps`
+      # would expose it.
+      TUNNEL_TOKEN: ${HEY_JARVIS_CLOUDFLARED_TUNNEL_TOKEN:?add HEY_JARVIS_CLOUDFLARED_TUNNEL_TOKEN to the .env file, or delete this service if the tunnel runs elsewhere}
+    depends_on:
+      mcp:
+        # The image ships a health check that probes /health on both ports, so the
+        # tunnel does not come up in front of a server that is not answering yet.
+        condition: service_healthy
+
+volumes:
+  mcp-data:
