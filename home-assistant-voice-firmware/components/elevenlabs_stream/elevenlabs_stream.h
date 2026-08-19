@@ -129,6 +129,25 @@ public:
   // own playback. 0 means the clock is not running.
   uint32_t silence_started_ms_{0};
 
+  // True from the moment a connection attempt begins until it reaches ON or fails.
+  //
+  // StreamState is OFF/ON only, and ON is not set until roughly 1.75s after the socket
+  // opens, so "already ON" does not cover the window in which a connection is being
+  // built. Without this, a second start() inside that window walks straight past the
+  // guard and calls connect() again -- which stops and destroys the websocket client
+  // from the main task while the websocket's own task may still be inside the message
+  // handler. That is the reboot seen when triggering announce twice in a row.
+  bool starting_{false};
+
+  // Set when the agent invokes the end_call system tool. The stream is not torn down on
+  // the spot: end_call is usually preceded by a goodbye, and the tool response arrives
+  // while that audio is still playing. loop() waits for the speaker to drain first.
+  bool end_call_requested_{false};
+  // When that request arrived, so the goodbye is given a moment to start. The tool
+  // response can land before the speech that accompanies it has been synthesised, and
+  // hanging up on an empty buffer would cut the agent off mid-farewell.
+  uint32_t end_call_requested_ms_{0};
+
   // Triggers - simplified
   std::vector<Trigger<> *> on_start_triggers_;
   std::vector<Trigger<> *> on_end_triggers_;
