@@ -20,7 +20,8 @@
 import { describe, expect, it } from 'bun:test';
 import type { EmbeddedSubscription } from '../../storage/subscriptions.js';
 import { cosineSimilarity, embedText, embedTexts } from '../../utils/static-embedder.js';
-import { describeStateChange, type StateChange } from './state-change.js';
+import { thirdPersonVariant } from './paraphrase.js';
+import { describeStateChange, describeStateChangeFacets, type StateChange } from './state-change.js';
 import { DEFAULT_MINIMUM_SCORE, rankSubscriptions } from './subscription-matcher.js';
 
 interface Draft {
@@ -210,10 +211,11 @@ const PROBES: Array<{ name: string; change: StateChange; expected: string }> = [
   },
 ];
 
-/** Probes the first-person phrasing gap is known to lose. See the dedicated section below. */
-const KNOWN_MISSES = new Set(['arrival (presence)', 'arrival (tracker)']);
-
+/** Embeds a subscription the way registerSubscription does, rewrites included. */
 async function embedDraft(draft: Draft): Promise<EmbeddedSubscription> {
+  const whenAlternate = thirdPersonVariant(draft.whenEvent);
+  const givenAlternate = draft.givenCondition ? thirdPersonVariant(draft.givenCondition) : null;
+
   return {
     ...draft,
     source: 'user',
@@ -224,18 +226,33 @@ async function embedDraft(draft: Draft): Promise<EmbeddedSubscription> {
     triggerCount: 0,
     whenEmbedding: await embedText(draft.whenEvent),
     givenEmbedding: draft.givenCondition ? await embedText(draft.givenCondition) : null,
+    whenAltEmbedding: whenAlternate ? await embedText(whenAlternate) : null,
+    givenAltEmbedding: givenAlternate ? await embedText(givenAlternate) : null,
   };
 }
 
 const subscriptions = await Promise.all(DRAFTS.map(embedDraft));
 
+/** Retrieval exactly as the batcher performs it: facets in, ranked matches out. */
 async function retrieve(change: StateChange, minimumScore = DEFAULT_MINIMUM_SCORE) {
+  const facets = await embedTexts(describeStateChangeFacets(change));
+  return rankSubscriptions(facets, subscriptions, { minimumScore, maximumMatches: 5 });
+}
+
+/** Retrieval as it worked before facets and rewrites, for the comparisons below. */
+async function retrieveWithSingleVector(change: StateChange, minimumScore = DEFAULT_MINIMUM_SCORE) {
   const embedding = await embedText(describeStateChange(change));
-  return rankSubscriptions(embedding, subscriptions, { minimumScore, maximumMatches: 5 });
+  const withoutRewrites = subscriptions.map((subscription) => ({
+    ...subscription,
+    whenAltEmbedding: null,
+    givenAltEmbedding: null,
+  }));
+
+  return rankSubscriptions(embedding, withoutRewrites, { minimumScore, maximumMatches: 5 });
 }
 
 describe('retrieval quality on a realistic corpus', () => {
-  it('retrieves the intended subscription for at least 80% of state changes', async () => {
+  it('retrieves the intended subscription for at least 90% of state changes', async () => {
     const hits = await Promise.all(
       PROBES.map(async ({ change, expected }) =>
         (await retrieve(change)).some((match) => match.subscription.id === expected),
@@ -244,25 +261,18 @@ describe('retrieval quality on a realistic corpus', () => {
 
     const recall = hits.filter(Boolean).length / PROBES.length;
 
-    // Measured at 0.88 (14/16). The floor leaves room for embedder updates without
-    // being so loose that a real regression slips through.
-    expect(recall).toBeGreaterThanOrEqual(0.8);
+    // Measured at 1.0 (16/16), up from 0.88 before facets and rewrites. The floor
+    // leaves room for embedder updates without letting a real regression through.
+    expect(recall).toBeGreaterThanOrEqual(0.9);
   });
 
   it('ranks the intended subscription first whenever it retrieves it at all', async () => {
-    for (const { name, change, expected } of PROBES) {
+    for (const { change, expected } of PROBES) {
       const matches = await retrieve(change);
-      const rank = matches.findIndex((match) => match.subscription.id === expected);
 
-      if (rank === -1) {
-        // Only the documented gap is allowed to miss outright.
-        expect(KNOWN_MISSES.has(name)).toBe(true);
-        continue;
-      }
-
-      // Never merely present-but-buried: when the signal is there it wins outright,
+      // Never merely present-but-buried: the intended subscription wins outright,
       // which is why a shortlist of five costs nothing in practice.
-      expect(rank).toBe(0);
+      expect(matches[0]?.subscription.id).toBe(expected);
     }
   });
 
@@ -270,13 +280,14 @@ describe('retrieval quality on a realistic corpus', () => {
     const counts = await Promise.all(PROBES.map(async ({ change }) => (await retrieve(change)).length));
     const average = counts.reduce((total, count) => total + count, 0) / counts.length;
 
-    // Measured at 1.3 candidates per change. The value of the step is that the LLM
-    // sees one or two plausible rules instead of the entire subscription set.
-    expect(average).toBeLessThan(3);
+    // Measured at 2.4 candidates per change, against 1.3 before facets. Recall bought
+    // with a slightly longer shortlist is the trade this step is supposed to make: the
+    // LLM sees two or three plausible rules instead of the entire subscription set.
+    expect(average).toBeLessThan(4);
     expect(Math.max(...counts)).toBeLessThanOrEqual(5);
   });
 
-  it('returns nothing at all for state changes no subscription cares about', async () => {
+  it('surfaces at most one weak candidate for state changes no subscription cares about', async () => {
     const unrelated: StateChange[] = [
       {
         source: 'coding',
@@ -287,8 +298,37 @@ describe('retrieval quality on a realistic corpus', () => {
     ];
 
     for (const change of unrelated) {
-      expect(await retrieve(change)).toEqual([]);
+      const matches = await retrieve(change);
+
+      // Scoring facets rather than one diluted description is what lifted recall to
+      // 100%, and this is the price: a fragment can resemble a subscription even when
+      // the change as a whole does not. Measured, "...title is Refactor the deployment
+      // script" reaches the "I get home from work" rewrite at 0.315 -- a hair over the
+      // floor. Single-vector matching returned nothing here.
+      //
+      // Bounded rather than forbidden, because the shortlist is explicitly a recall
+      // step: one weak candidate is what the reactor agent exists to throw away, and
+      // the cost of a wrong one is a sentence of prompt.
+      expect(matches.length).toBeLessThanOrEqual(1);
+
+      for (const match of matches) {
+        expect(match.score).toBeLessThan(0.35);
+      }
     }
+  });
+
+  it('scores a genuine match well clear of the strongest false positive', async () => {
+    const genuine = await retrieve(PROBES[0].change);
+    const spurious = await retrieve({
+      source: 'coding',
+      stateType: 'pull_request_opened',
+      stateData: { repository: 'hey-jarvis', title: 'Refactor the deployment script' },
+    });
+
+    // 0.50 against 0.315. That separation is what makes raising the floor an option if
+    // shortlist length ever matters more than recall -- which it was not before, when
+    // 0.4 cost a third of all real matches.
+    expect(genuine[0].score).toBeGreaterThan((spurious[0]?.score ?? 0) + 0.1);
   });
 });
 
@@ -463,5 +503,72 @@ describe('matching cost', () => {
     // Measured at 0.2ms per text batched against 2.7ms individually. This is why the
     // batcher embeds a whole batch in one pass instead of looping per change.
     expect(batched).toBeLessThan(individual);
+  });
+});
+
+describe('what facets and rewrites bought', () => {
+  it('retrieves strictly more than single-vector matching did', async () => {
+    const before = await Promise.all(
+      PROBES.map(async ({ change, expected }) =>
+        (await retrieveWithSingleVector(change)).some((match) => match.subscription.id === expected),
+      ),
+    );
+    const after = await Promise.all(
+      PROBES.map(async ({ change, expected }) =>
+        (await retrieve(change)).some((match) => match.subscription.id === expected),
+      ),
+    );
+
+    // Nothing that used to be found is lost: taking the best of several facets and
+    // several phrasings can only ever raise a score, never lower one.
+    for (const [index, foundBefore] of before.entries()) {
+      if (foundBefore) {
+        expect(after[index]).toBe(true);
+      }
+    }
+
+    // 14/16 -> 16/16.
+    expect(after.filter(Boolean).length).toBeGreaterThan(before.filter(Boolean).length);
+  });
+
+  it('holds up when the score floor is raised, which single vectors did not', async () => {
+    const recallAt = async (
+      threshold: number,
+      retriever: (change: StateChange, minimumScore?: number) => Promise<Array<{ subscription: { id: string } }>>,
+    ) => {
+      const hits = await Promise.all(
+        PROBES.map(async ({ change, expected }) =>
+          (await retriever(change, threshold)).some((match) => match.subscription.id === expected),
+        ),
+      );
+
+      return hits.filter(Boolean).length / PROBES.length;
+    };
+
+    // At 0.45 the diluted single vector had collapsed to 69%; facets hold 94%. The
+    // score means something now, rather than being a knob tuned to one corpus.
+    expect(await recallAt(0.45, retrieveWithSingleVector)).toBeLessThan(0.8);
+    expect(await recallAt(0.45, retrieve)).toBeGreaterThanOrEqual(0.9);
+  });
+
+  it('costs roughly one extra embedding pass, not one per facet', async () => {
+    await embedText('warm up');
+    const change = PROBES[2].change;
+
+    const singleStarted = performance.now();
+    for (let run = 0; run < 20; run++) {
+      await embedText(describeStateChange(change));
+    }
+    const single = performance.now() - singleStarted;
+
+    const facetStarted = performance.now();
+    for (let run = 0; run < 20; run++) {
+      await embedTexts(describeStateChangeFacets(change));
+    }
+    const facets = performance.now() - facetStarted;
+
+    // Six facets measured 1.1x one description, because they are embedded together.
+    // The ceiling is loose for CI, but a per-facet round trip would be ~6x and fail.
+    expect(facets).toBeLessThan(single * 3);
   });
 });

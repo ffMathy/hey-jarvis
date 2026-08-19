@@ -3,6 +3,7 @@ import { getSubscriptionStorage } from '../../storage/index.js';
 import { logger } from '../../utils/logger.js';
 import { embedTexts } from '../../utils/static-embedder.js';
 import { createTool } from '../../utils/tool-factory.js';
+import { thirdPersonVariant } from './paraphrase.js';
 import {
   DEFAULT_MAXIMUM_MATCHES,
   DEFAULT_MINIMUM_SCORE,
@@ -73,11 +74,21 @@ export const registerSubscription = createTool({
       oneShot: inputData.oneShot,
     });
 
-    const [whenEmbedding, thenEmbedding, givenEmbedding] = await embedTexts([
-      inputData.whenEvent,
-      inputData.thenAction,
-      ...(inputData.givenCondition ? [inputData.givenCondition] : []),
-    ]);
+    // A first-person clause is also stored in the third person. Users say "when I get
+    // home from work"; devices report "person is Mathias, state is arrived home", and
+    // the static embedder cannot connect the two on its own. Matching takes the better
+    // of the two phrasings, so the rewrite can only add reach.
+    const whenAlternate = thirdPersonVariant(inputData.whenEvent);
+    const givenAlternate = inputData.givenCondition ? thirdPersonVariant(inputData.givenCondition) : null;
+
+    const texts = [inputData.whenEvent, inputData.thenAction];
+    const givenIndex = inputData.givenCondition ? texts.push(inputData.givenCondition) - 1 : -1;
+    const whenAlternateIndex = whenAlternate ? texts.push(whenAlternate) - 1 : -1;
+    const givenAlternateIndex = givenAlternate ? texts.push(givenAlternate) - 1 : -1;
+
+    const embeddings = await embedTexts(texts);
+    const [whenEmbedding, thenEmbedding] = embeddings;
+    const givenEmbedding = givenIndex === -1 ? undefined : embeddings[givenIndex];
 
     if (!whenEmbedding || !thenEmbedding) {
       throw new Error('Failed to embed the subscription components');
@@ -96,6 +107,8 @@ export const registerSubscription = createTool({
         whenEvent: whenEmbedding,
         thenAction: thenEmbedding,
         givenCondition: givenEmbedding ?? null,
+        whenEventAlternate: whenAlternateIndex === -1 ? null : embeddings[whenAlternateIndex],
+        givenConditionAlternate: givenAlternateIndex === -1 ? null : embeddings[givenAlternateIndex],
       },
     );
 

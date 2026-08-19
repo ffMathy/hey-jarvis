@@ -3,7 +3,7 @@ import { getSubscriptionStorage } from '../../storage/index.js';
 import { logger } from '../../utils/logger.js';
 import { embedTexts } from '../../utils/static-embedder.js';
 import { getStateChangeReactorAgent } from './agent.js';
-import { describeStateChange, type StateChange } from './state-change.js';
+import { describeStateChange, describeStateChangeFacets, type StateChange } from './state-change.js';
 import { formatSubscriptionMatches, rankSubscriptions } from './subscription-matcher.js';
 
 export type { StateChange } from './state-change.js';
@@ -198,10 +198,20 @@ export class StateChangeBatcher {
 
     // Load the subscriptions once and embed the whole batch in one pass, rather
     // than repeating both per change.
-    const descriptions = changes.map(describeStateChange);
-    const embeddings = await embedTexts(descriptions);
+    // Each change is rendered into several overlapping facets and scored on its best
+    // one, which stops a long description diluting a strong match in one of its parts.
+    // Every facet of every change goes into a single embedding pass and is then split
+    // back apart, so the batch still costs one call into the embedder.
+    const facetsPerChange = changes.map(describeStateChangeFacets);
+    const embeddings = await embedTexts(facetsPerChange.flat());
 
-    return embeddings.map((embedding) => formatSubscriptionMatches(rankSubscriptions(embedding, subscriptions)));
+    let offset = 0;
+    return facetsPerChange.map((facets) => {
+      const embeddingsForChange = embeddings.slice(offset, offset + facets.length);
+      offset += facets.length;
+
+      return formatSubscriptionMatches(rankSubscriptions(embeddingsForChange, subscriptions));
+    });
   }
 
   /**
