@@ -77,6 +77,8 @@ describe('Synapse Tools Integration Tests', () => {
         givenCondition: 'the lights are on',
         thenAction: 'close the blinds',
         source: 'synapse-tools-spec',
+        // oneShot is shorthand for maxTriggerCount: 1, which satisfies the requirement
+        // that every subscription declares how it ends.
         oneShot: true,
       });
 
@@ -123,6 +125,9 @@ describe('Synapse Tools Integration Tests', () => {
         thenAction: 'add milk to the shopping list',
         source: 'synapse-tools-spec',
         oneShot: false,
+        // Recurring, but not forever: registration insists on an end, so a subscription
+        // cannot be created that is scored against every state change indefinitely.
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
       });
 
       try {
