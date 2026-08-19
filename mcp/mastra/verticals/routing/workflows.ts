@@ -57,9 +57,28 @@ const dagTaskSchema = outputTaskSchema.extend({
   reported: z.boolean().describe('Whether the task result has been reported back to Jarvis'),
 });
 
+/**
+ * The routing DAG, which is also the workflow's state.
+ *
+ * Both fields default to empty because the state has to validate *before* the
+ * workflow starts, and at that point nothing has been planned yet — `plan-tasks`
+ * is what fills it in, on the first step. Without the defaults, starting a run
+ * meant hand-writing an initial state that the first step immediately threw away:
+ *
+ *   Invalid initial data:
+ *   - userQuery: expected string, received undefined
+ *   - tasks: expected array, received undefined
+ *
+ * which made the workflow effectively impossible to try from Mastra Studio, where
+ * you would have to know the shape of a state you are not supposed to supply.
+ *
+ * An empty DAG is also the honest representation of "no plan yet", so the steps
+ * that read state before planning now see an empty task list rather than failing
+ * validation.
+ */
 export const dagSchema = z.object({
-  userQuery: z.string().describe('The user query the DAG was planned for'),
-  tasks: z.array(dagTaskSchema),
+  userQuery: z.string().default('').describe('The user query the DAG was planned for'),
+  tasks: z.array(dagTaskSchema).default([]),
 });
 
 export type Dag = z.infer<typeof dagSchema>;
