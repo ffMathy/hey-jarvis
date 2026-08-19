@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.11.0](https://github.com/ffMathy/hey-jarvis/compare/root-v1.10.0...root-v1.11.0) (2026-08-19)
+
+
+### Features
+
+* **coding:** implement issues with claude cloud sessions ([80ff60f](https://github.com/ffMathy/hey-jarvis/commit/80ff60fe33f7f2c57d7a31ae3bba55699167e99f))
+* **coding:** implement issues with claude cloud sessions ([#663](https://github.com/ffMathy/hey-jarvis/issues/663)) ([204e1e9](https://github.com/ffMathy/hey-jarvis/commit/204e1e9071c629a5503825d558bfa21f953201cb))
+
+
+### Bug Fixes
+
+* **firmware:** stop upload flashing placeholder builds, and set reboot timeouts ([30020c0](https://github.com/ffMathy/hey-jarvis/commit/30020c0fe0e11c2e27236d8f9d1b5aa1e3438c04))
+* **firmware:** stop upload flashing placeholder builds, and set reboot timeouts ([#666](https://github.com/ffMathy/hey-jarvis/issues/666)) ([153125a](https://github.com/ffMathy/hey-jarvis/commit/153125aef19ffdae9ac4e9d5e72cac93a5d20be4))
+
 ## [1.10.0](https://github.com/ffMathy/hey-jarvis/compare/root-v1.9.1...root-v1.10.0) (2026-08-18)
 
 
