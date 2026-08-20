@@ -28,6 +28,9 @@ async function embedSubscription(draft: SubscriptionDraft, index: number): Promi
     expiresAt: null,
     whenEmbedding: await embedText(draft.whenEvent),
     givenEmbedding: draft.givenCondition ? await embedText(draft.givenCondition) : null,
+    // These fixtures score the literal phrasing only, so no alternate is supplied.
+    whenAltEmbedding: null,
+    givenAltEmbedding: null,
   };
 }
 
