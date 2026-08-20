@@ -17,6 +17,15 @@ const CONVERSATION_TIMEOUT_MS = 90000;
  */
 const TOOL_CALL_TIMEOUT_MS = 90000;
 
+/**
+ * How long to wait before concluding that a tool was *not* called. An absence
+ * only means something once a call has had time to appear, but there is no
+ * event to wait for, so this is a flat window rather than a poll — kept far
+ * shorter than TOOL_CALL_TIMEOUT_MS because every negative assertion waits it
+ * out in full, whereas a positive one usually returns long before its deadline.
+ */
+const NO_TOOL_CALL_GRACE_MS = 20000;
+
 const RELEVANT_TOOL_NAME_FRAGMENTS = ['weather', 'home_assistant', 'route'];
 
 /** Message types that getTranscriptText already renders. */
@@ -25,6 +34,21 @@ const TRANSCRIPT_MESSAGE_TYPES = ['user_message', 'agent_response', 'agent_chat_
 function isRelevantToolName(toolName: string): boolean {
   const lowercased = toolName.toLowerCase();
   return RELEVANT_TOOL_NAME_FRAGMENTS.some((fragment) => lowercased.includes(fragment));
+}
+
+/** `routePromptWorkflow` — the one tool that hands a request off to the sub-agents. */
+function isRoutingToolName(toolName: string): boolean {
+  return toolName.toLowerCase().includes('route');
+}
+
+/**
+ * Any of the MCP server's tools. It exposes exactly two — `routePromptWorkflow`
+ * and `getNextInstructionsWorkflow` — and the second only ever follows the
+ * first, so this is what "the agent delegated rather than answering" looks like.
+ */
+function isDelegationToolName(toolName: string): boolean {
+  const lowercased = toolName.toLowerCase();
+  return lowercased.includes('route') || lowercased.includes('instruction');
 }
 
 /**
@@ -51,6 +75,64 @@ function describeNonTranscriptMessages(messages: ServerMessage[]): string {
     .map((message) => JSON.stringify(message).slice(0, 400));
 
   return details.length > 0 ? details.join('\n') : '(none)';
+}
+
+/**
+ * An agent whose MCP server never connected has nothing to call, so say that
+ * outright rather than waiting out the tool call timeout and reporting the
+ * absence as if the agent had chosen not to call one.
+ */
+function assertMcpServerConnected(conversation: TestConversation): void {
+  const disconnectedIntegrations = findDisconnectedIntegrations(conversation.getMessages());
+  if (disconnectedIntegrations.length === 0) return;
+
+  throw new Error(
+    `The agent reported no connection to its MCP server, leaving it without tools: ` +
+      `[${disconnectedIntegrations.join(', ')}]. ElevenLabs has to be able to reach the MCP server ` +
+      `through the cloudflared tunnel for this test to mean anything.`,
+  );
+}
+
+/** Everything the socket saw, for a failure message that can actually be diagnosed. */
+function describeConversation(conversation: TestConversation, toolNames: string[]): string {
+  const messages = conversation.getMessages();
+  return (
+    `All tool calls: [${toolNames.join(', ')}]\n` +
+    `Message types received: [${messages.map((message) => message.type).join(', ')}]\n` +
+    `Messages not in the transcript:\n${describeNonTranscriptMessages(messages)}\n` +
+    `Transcript:\n${conversation.getTranscriptText()}`
+  );
+}
+
+/** Waits for a matching tool call, and fails with the whole conversation if none arrives. */
+async function assertToolCalled(
+  conversation: TestConversation,
+  matches: (toolName: string) => boolean,
+  expectation: string,
+): Promise<string[]> {
+  assertMcpServerConnected(conversation);
+
+  const toolNames = await conversation.waitForCalledToolNames(matches, TOOL_CALL_TIMEOUT_MS);
+  if (toolNames.some(matches)) return toolNames;
+
+  throw new Error(`${expectation}, but no such tool call was made.\n${describeConversation(conversation, toolNames)}`);
+}
+
+/** Gives a tool call time to appear, then fails if one did. */
+async function assertToolNotCalled(
+  conversation: TestConversation,
+  matches: (toolName: string) => boolean,
+  expectation: string,
+): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, NO_TOOL_CALL_GRACE_MS));
+
+  const toolNames = await conversation.getCalledToolNames();
+  const unexpected = toolNames.filter(matches);
+  if (unexpected.length === 0) return;
+
+  throw new Error(
+    `${expectation}, but it called [${unexpected.join(', ')}].\n${describeConversation(conversation, toolNames)}`,
+  );
 }
 
 /**
@@ -140,6 +222,118 @@ describe('Agent Prompt Specifications', () => {
     );
   });
 
+  // The agent's whole purpose is to hand work to `routePromptWorkflow`. It has a
+  // standing licence not to, for the handful of things it can answer from its own
+  // prompt — and the failure mode is that licence spreading to requests it cannot
+  // possibly answer, where a witty "let me have a look" reads, to the agent, like
+  // the job is done. To the user it reads as an answer that never arrives.
+  describe('Tool Calling', () => {
+    it(
+      'should route a hesitantly phrased calendar request',
+      async () => {
+        await withConversationRetry(
+          () => new TestConversation({ agentId, apiKey, googleApiKey }),
+          async (conversation) => {
+            await conversation.connect();
+            // Verbatim from a real conversation. The agent replied "Naturally,
+            // sir. Let me see what trivial engagements await you." and then
+            // called nothing at all, leaving the promise unpaid. The filler
+            // words are part of the case: this is how the request arrives from
+            // speech, and a stumbling request is still a request.
+            await conversation.sendMessage('Hey, Jarvis. Uh, could you, uh, check my calendar, please?');
+
+            await assertToolCalled(
+              conversation,
+              isRoutingToolName,
+              'Expected the agent to hand the calendar request to routePromptWorkflow',
+            );
+          },
+        );
+      },
+      (CONVERSATION_TIMEOUT_MS + TOOL_CALL_TIMEOUT_MS) * MAX_CONVERSATION_RETRIES,
+    );
+
+    it(
+      'should keep a promise to check by making the call it promised',
+      async () => {
+        await withConversationRetry(
+          () => new TestConversation({ agentId, apiKey, googleApiKey }),
+          async (conversation) => {
+            await conversation.connect();
+            await conversation.sendMessage("What's on my calendar today?");
+
+            await assertToolCalled(
+              conversation,
+              isRoutingToolName,
+              'Expected the agent to hand the calendar request to routePromptWorkflow',
+            );
+
+            // The tool call alone is not the whole contract: the transcript must
+            // not read as an agent that announced a lookup and then went quiet.
+            await conversation.assertCriteria(
+              'The agent does not leave the user hanging on a bare promise. Either it reports something about the calendar, ' +
+                'or its promise to go and look is followed in the transcript by a TOOL line showing the lookup actually happening. ' +
+                'A transcript whose final agent message only promises to check, with no tool call after it, fails this criteria.',
+              0.9,
+            );
+          },
+        );
+      },
+      (CONVERSATION_TIMEOUT_MS + TOOL_CALL_TIMEOUT_MS) * MAX_CONVERSATION_RETRIES,
+    );
+
+    it(
+      'should route a request about the house rather than inventing an answer',
+      async () => {
+        await withConversationRetry(
+          () => new TestConversation({ agentId, apiKey, googleApiKey }),
+          async (conversation) => {
+            await conversation.connect();
+            // Nothing in the prompt says which lights are on, so the only honest
+            // reply is a routed one — an unrouted answer here is fabricated.
+            await conversation.sendMessage('Are any of the lights still on downstairs?');
+
+            await assertToolCalled(
+              conversation,
+              isRelevantToolName,
+              'Expected the agent to route a question it cannot answer from its own prompt',
+            );
+          },
+        );
+      },
+      (CONVERSATION_TIMEOUT_MS + TOOL_CALL_TIMEOUT_MS) * MAX_CONVERSATION_RETRIES,
+    );
+
+    // The other half of the rule, and the reason it is easy to get wrong in the
+    // other direction: pushing the agent to route more must not make it route
+    // the things it is supposed to answer on the spot.
+    it(
+      'should answer from its own prompt without routing',
+      async () => {
+        await withConversationRetry(
+          () => new TestConversation({ agentId, apiKey, googleApiKey }),
+          async (conversation) => {
+            await conversation.connect();
+            await conversation.sendMessage('What is your name?');
+
+            await assertToolNotCalled(
+              conversation,
+              isDelegationToolName,
+              'Expected the agent to state its own name outright rather than delegating it',
+            );
+
+            await conversation.assertCriteria(
+              'The agent states its own name — Jarvis — directly in its reply, rather than deferring, ' +
+                'promising to find out, or explaining that it cannot say.',
+              0.9,
+            );
+          },
+        );
+      },
+      (CONVERSATION_TIMEOUT_MS + NO_TOOL_CALL_GRACE_MS) * MAX_CONVERSATION_RETRIES,
+    );
+  });
+
   describe('No Follow-up Questions', () => {
     it(
       'should call weather tools when asking about weather',
@@ -151,32 +345,13 @@ describe('Agent Prompt Specifications', () => {
             // Request that implies tool usage but is vague about details
             await conversation.sendMessage("What's the weather like right now?");
 
-            // An agent whose MCP server never connected has nothing to call, so
-            // say that outright rather than waiting out the tool call timeout and
-            // reporting the absence as if the agent had chosen not to call one.
-            const disconnectedIntegrations = findDisconnectedIntegrations(conversation.getMessages());
-            if (disconnectedIntegrations.length > 0) {
-              throw new Error(
-                `The agent reported no connection to its MCP server, leaving it without tools: ` +
-                  `[${disconnectedIntegrations.join(', ')}]. ElevenLabs has to be able to reach the MCP server ` +
-                  `through the cloudflared tunnel for this test to mean anything.`,
-              );
-            }
-
             // Verify a tool was called — the agent may call weather tools directly
             // or use the routePromptWorkflow which internally dispatches to weather.
-            const toolNames = await conversation.waitForCalledToolNames(isRelevantToolName, TOOL_CALL_TIMEOUT_MS);
-
-            if (!toolNames.some(isRelevantToolName)) {
-              const messages = conversation.getMessages();
-              throw new Error(
-                `Expected weather, home assistant, or routing tool to be called, but no relevant tool calls found. ` +
-                  `All tool calls: [${toolNames.join(', ')}]\n` +
-                  `Message types received: [${messages.map((message) => message.type).join(', ')}]\n` +
-                  `Messages not in the transcript:\n${describeNonTranscriptMessages(messages)}\n` +
-                  `Transcript:\n${conversation.getTranscriptText()}`,
-              );
-            }
+            await assertToolCalled(
+              conversation,
+              isRelevantToolName,
+              'Expected a weather, home assistant, or routing tool to be called',
+            );
 
             // Then verify no follow-up questions using LLM evaluation
             await conversation.assertCriteria(
@@ -186,7 +361,7 @@ describe('Agent Prompt Specifications', () => {
           },
         );
       },
-      // This is the one test that also waits on a tool call, so it needs that
+      // This is one of the tests that also waits on a tool call, so it needs that
       // budget on top of the conversation's.
       (CONVERSATION_TIMEOUT_MS + TOOL_CALL_TIMEOUT_MS) * MAX_CONVERSATION_RETRIES,
     );
