@@ -7,6 +7,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { getCorsOptions } from './cors.js';
 import { getTokenUsageStorage } from './storage/index.js';
+import { stripTransferEncodingHeader } from './streaming-headers.js';
 import { TokenTrackingProcessor, TokenUsageExporter } from './utils/token-usage-exporter.js';
 import { storageRetentionWorkflow, tokenUsageTools } from './verticals/api/index.js';
 import { calendarTools, getCalendarAgent } from './verticals/calendar/index.js';
@@ -129,6 +130,9 @@ export async function getMastra(): Promise<Mastra> {
     server: {
       studioBase: process.env.MASTRA_STUDIO_BASE_URL,
       port: process.env.MASTRA_SERVER_PORT ? Number(process.env.MASTRA_SERVER_PORT) : 4111,
+      // Applies to the server `mastra dev` builds around this instance — the one that
+      // actually serves 4111 in the Docker image. See streaming-headers.ts.
+      middleware: [stripTransferEncodingHeader],
     },
   });
 }
@@ -160,6 +164,9 @@ export async function logTokenUsageSummary(): Promise<void> {
 // We do not need any special adapters for Bun here; Hono works out of the box.
 const app = new Hono();
 app.use('*', cors(getCorsOptions()));
+// The `server.middleware` entry above covers `mastra dev`; this covers the same routes
+// when this file is served directly (`turbo serve --filter=mcp`).
+app.use('*', stripTransferEncodingHeader);
 
 export const mastra = await getMastra();
 

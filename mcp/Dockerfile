@@ -1,7 +1,14 @@
 # Build stage - use Bun image for building
 # Pinned by digest so the base image is immutable; Dependabot keeps the tag and
 # digest in sync. Keep the version aligned with `packageManager` in package.json.
-FROM docker.io/oven/bun:1.3.9-alpine@sha256:9028ee7a60a04777190f0c3129ce49c73384d3fc918f3e5c75f5af188e431981 AS builder
+#
+# 1.3.10 or newer, and never back below it: up to 1.3.9 Bun emitted its own
+# `Transfer-Encoding: chunked` on top of one the application had already set, and Go's
+# net/http — which is how cloudflared reaches this origin — rejects a response carrying
+# the header twice. Every streaming route 502'd through the tunnel. `engines.bun` in
+# package.json holds the same floor, and mastra/streaming-headers.ts stops the
+# application from setting the header at all.
+FROM docker.io/oven/bun:1.3.14-alpine@sha256:5acc90a93e91ff07bf72aa90a7c9f0fa189765aec90b47bdbf2152d2196383c0 AS builder
 
 WORKDIR /workspace
 
@@ -33,7 +40,7 @@ COPY mcp/ ./mcp/
 FROM docker.io/1password/op:2.39.0@sha256:3cd5a1febc662c93d46b944b983b301e710da5c016ef63be9d436cf2b1ed30d5 AS onepassword
 
 # Production stage - use Bun Alpine for runtime (needed for mastra studio CLI)
-FROM docker.io/oven/bun:1.3.9-alpine@sha256:9028ee7a60a04777190f0c3129ce49c73384d3fc918f3e5c75f5af188e431981 AS production
+FROM docker.io/oven/bun:1.3.14-alpine@sha256:5acc90a93e91ff07bf72aa90a7c9f0fa189765aec90b47bdbf2152d2196383c0 AS production
 
 ENV HOST=0.0.0.0
 ENV NODE_ENV=production
