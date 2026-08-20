@@ -178,3 +178,5 @@ dist-spec
 
 .claude/worktrees/
 .turbo/polygraph
+# Stray local test logs
+test-output.txt
