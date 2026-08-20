@@ -16,16 +16,16 @@ TypeScript-based integration connecting ElevenLabs voice AI agents with the Hey 
 elevenlabs/
 ├── src/
 │   ├── main.ts                      # Main entry point for CLI operations
-│   ├── assets/
-│   │   ├── agent-config.json        # ElevenLabs agent configuration
-│   │   └── agent-prompt.md          # Agent personality and behavior prompt
-│   └── test-utils/
-│       ├── test-conversation.ts     # LLM-based test evaluation framework
-│       ├── websocket-client.ts      # ElevenLabs WebSocket client
-│       └── agent-prompt.spec.ts     # Agent behavior specification tests
+│   └── assets/
+│       ├── agent-config.json        # ElevenLabs agent configuration
+│       └── agent-prompt.md          # Agent personality and behavior prompt
+├── tests/
+│   ├── specs/                       # Agent behavior specification tests
+│   ├── utils/                       # Conversation framework, tunnel, MCP helpers
+│   └── README.md                    # How the tests are wired together
 ├── AGENTS.md                        # This file
-├── project.json                     # TURBO project configuration
-└── op.env                          # 1Password environment variable references
+├── package.json                     # Project scripts, run through Turborepo
+└── op.env                           # 1Password environment variable references
 ```
 
 ## TURBO Commands
