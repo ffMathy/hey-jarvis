@@ -225,11 +225,22 @@ Use this tool when:
 - User wants to see recent API calls
 - User needs detailed usage logs`,
   inputSchema: z.object({
-    limit: z.number().optional().default(20).describe('Number of records to return (default: 20, max: 100)'),
+    limit: z
+      .number()
+      .int()
+      .nonnegative()
+      .optional()
+      .default(20)
+      .describe('Number of records to return (default: 20, max: 100)'),
   }),
   execute: async (inputData) => {
     const storage = await getTokenUsageStorage();
-    const limit = Math.min(inputData.limit ?? 20, 100);
+    // Clamped at both ends. Math.min alone let a negative limit through, and SQLite
+    // reads a negative LIMIT as "no limit", so `limit: -1` returned the entire table
+    // rather than the capped page the description promises. The schema now rejects it
+    // too; this stays because the tool is also reachable from callers that build the
+    // input by hand.
+    const limit = Math.min(Math.max(inputData.limit ?? 20, 0), 100);
 
     const records = await storage.getRecentUsage(limit);
 

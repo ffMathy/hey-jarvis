@@ -1,4 +1,6 @@
 // API vertical exports
+
+export { storageRetentionWorkflow } from './retention-workflow.js';
 export { createWorkflowApiHandler, registerApiRoutes, registerWorkflowApi } from './routes.js';
 export type { AddToShoppingListInput, ShoppingListResponse } from './schemas.js';
 export { addToShoppingListSchema, shoppingListResponseSchema } from './schemas.js';

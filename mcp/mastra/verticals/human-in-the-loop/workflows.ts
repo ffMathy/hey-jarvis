@@ -100,11 +100,25 @@ function createAwaitEmailResponseStep<TResponseSchema extends z.ZodObject<z.ZodR
         const parsed = outputSchema.parse(resumeData);
         const { senderEmail } = parsed;
 
-        // Validate sender email
-        if (senderEmail && recipientEmail && senderEmail.toLowerCase() !== recipientEmail.toLowerCase()) {
-          throw new Error(
-            `Security validation failed: Email sender ${senderEmail} does not match expected recipient ${recipientEmail}`,
-          );
+        // Validate sender email.
+        //
+        // The empty string is rejected rather than skipped. This guard used to be
+        // `senderEmail && ...`, so resuming with `senderEmail: ''` fell straight through
+        // it and the approval was accepted from nobody -- a falsy value disabling an
+        // authorisation check is the classic fail-open. An absent sender is not evidence
+        // that the right person replied, so it is treated as the failure it is.
+        if (recipientEmail) {
+          if (!senderEmail) {
+            throw new Error(
+              `Security validation failed: no sender address on a response expected from ${recipientEmail}`,
+            );
+          }
+
+          if (senderEmail.toLowerCase() !== recipientEmail.toLowerCase()) {
+            throw new Error(
+              `Security validation failed: Email sender ${senderEmail} does not match expected recipient ${recipientEmail}`,
+            );
+          }
         }
 
         return parsed;

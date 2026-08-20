@@ -4,6 +4,7 @@ import {
   emailCheckingWorkflow,
   formRepliesDetectionWorkflow,
   iotMonitoringWorkflow,
+  storageRetentionWorkflow,
   weatherMonitoringWorkflow,
   weeklyMealPlanningWorkflow,
 } from './verticals/index.js';
@@ -62,6 +63,16 @@ export async function initializeScheduler(): Promise<WorkflowScheduler> {
     schedule: CronPatterns.EVERY_3_HOURS,
     inputData: {},
     runOnStartup: true,
+  });
+
+  // Storage retention - nightly
+  // Trims token usage rows past their retention window. Nothing called the cleanup this
+  // runs, so the table grew for the life of the database; midnight is chosen because the
+  // delete is the only write that touches every row and the device is otherwise idle.
+  scheduler.schedule({
+    workflow: storageRetentionWorkflow,
+    schedule: CronPatterns.DAILY_AT_MIDNIGHT,
+    inputData: {},
   });
 
   return scheduler;

@@ -43,8 +43,11 @@ export const stateChangeNotificationWorkflow = createWorkflow({
           stateType: inputData.stateType,
         });
 
-        // Save to memory for semantic recall
-        const memory = await createMemory();
+        // Saved for recent context, not for semantic recall: this is the same
+        // per-state-change write the batcher makes, and embedding machine events with
+        // the hosted model costs a round trip each to make them searchable by meaning.
+        // See CreateMemoryOptions.enableSemanticRecall.
+        const memory = await createMemory({ enableSemanticRecall: false });
         await memory.saveMessages({
           messages: [
             {
