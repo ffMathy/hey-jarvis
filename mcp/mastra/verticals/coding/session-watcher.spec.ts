@@ -24,7 +24,7 @@ function runningEvent(id: string): ReportedSessionEvent {
 }
 
 function thinkingEvent(id: string): ClaudeSessionEvent {
-  return { id, type: 'agent.thinking', processed_at: PROCESSED_AT, thinking: 'hmm', signature: 'sig' };
+  return { id, type: 'agent.thinking', processed_at: PROCESSED_AT };
 }
 
 /** Waits for the watcher's detached event loop to drain. */
@@ -116,7 +116,6 @@ describe('isReportableEvent', () => {
         id: 'e',
         type: 'span.model_request_start',
         processed_at: PROCESSED_AT,
-        thread_id: 'thread_1',
       }),
     ).toBe(false);
   });

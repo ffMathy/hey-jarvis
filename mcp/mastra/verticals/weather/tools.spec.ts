@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it } from 'bun:test';
+import { executeTool } from '../../utils/tool-factory.js';
 import { weatherTools } from './tools';
 
 describe('Weather Tools Integration Tests', () => {
@@ -11,7 +12,7 @@ describe('Weather Tools Integration Tests', () => {
 
   describe('getCurrentWeatherByCity', () => {
     it('should fetch current weather for a city', async () => {
-      const result = await weatherTools.getCurrentWeatherByCity.execute({
+      const result = await executeTool(weatherTools.getCurrentWeatherByCity, {
         cityName: 'aarhus,dk',
       });
 
@@ -49,7 +50,7 @@ describe('Weather Tools Integration Tests', () => {
 
     it('should handle invalid city gracefully', async () => {
       await expect(async () => {
-        await weatherTools.getCurrentWeatherByCity.execute({
+        await executeTool(weatherTools.getCurrentWeatherByCity, {
           cityName: 'thiscitydoesnotexist123456',
         });
       }).toThrow();
@@ -59,7 +60,7 @@ describe('Weather Tools Integration Tests', () => {
   describe('getCurrentWeatherByCoordinates', () => {
     it('should fetch current weather for GPS coordinates', async () => {
       // Coordinates for Aarhus, Denmark
-      const result = await weatherTools.getCurrentWeatherByCoordinates.execute({
+      const result = await executeTool(weatherTools.getCurrentWeatherByCoordinates, {
         latitude: 56.1629,
         longitude: 10.2039,
       });
@@ -94,7 +95,7 @@ describe('Weather Tools Integration Tests', () => {
 
   describe('getForecastByCity', () => {
     it('should fetch 5-day forecast for a city', async () => {
-      const result = await weatherTools.getForecastByCity.execute({
+      const result = await executeTool(weatherTools.getForecastByCity, {
         cityName: 'aarhus,dk',
       });
 
@@ -133,7 +134,7 @@ describe('Weather Tools Integration Tests', () => {
   describe('getForecastByCoordinates', () => {
     it('should fetch 5-day forecast for GPS coordinates', async () => {
       // Coordinates for Aarhus, Denmark
-      const result = await weatherTools.getForecastByCoordinates.execute({
+      const result = await executeTool(weatherTools.getForecastByCoordinates, {
         latitude: 56.1629,
         longitude: 10.2039,
       });

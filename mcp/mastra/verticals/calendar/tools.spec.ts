@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it } from 'bun:test';
+import { executeTool } from '../../utils/tool-factory.js';
 import { getAllCalendars, getCalendarEvents } from './tools';
 
 describe('Calendar Tools Integration Tests', () => {
@@ -17,7 +18,7 @@ describe('Calendar Tools Integration Tests', () => {
 
   describe('getAllCalendars', () => {
     it('should retrieve all calendars', async () => {
-      const result = await getAllCalendars.execute({});
+      const result = await executeTool(getAllCalendars, {});
 
       // Validate structure
       expect(result).toBeDefined();
@@ -30,7 +31,7 @@ describe('Calendar Tools Integration Tests', () => {
 
   describe('getCalendarEvents', () => {
     it('should retrieve calendar events', async () => {
-      const result = await getCalendarEvents.execute({
+      const result = await executeTool(getCalendarEvents, {
         calendarId: 'primary',
         maxResults: 5,
       });
