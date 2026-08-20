@@ -240,6 +240,7 @@ image — because CORS never applies there.
 | Symptom | Cause |
 | --- | --- |
 | Cloudflare sign-in page instead of Studio | Access policy rejected you. Browser access needs an identity (email) policy; a service-token policy must use the **Service Auth** action (`non_identity`), since an `allow` action still demands an identity. |
+| Studio loads, but every agent chat comes back as a Cloudflare `502` | The origin answered a streaming route with `Transfer-Encoding: chunked` twice, and `cloudflared` — a Go HTTP client — refuses that outright. `docker logs <tunnel container>` shows `too many transfer encodings: ["chunked" "chunked"]` against `/api/agents/.../stream` or `/threads/subscribe`. Non-streaming routes are unaffected, which is why the UI itself looks healthy. Guarded on both sides now: `mastra/streaming-headers.ts` stops the application from setting the header, and the image runs Bun ≥ 1.3.10, which no longer duplicates it. |
 | `404` on `/agents`, but `/health` works | The API server is running without Studio — use `serve:all`, not `serve`. |
 | Tunnel connects but serves the wrong thing | The hostname's ingress points at the other port. 4111 is Studio, 4112 is MCP. |
 
