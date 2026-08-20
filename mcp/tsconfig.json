@@ -6,6 +6,6 @@
     "tsBuildInfoFile": "../dist/mcp/tsconfig.tsbuildinfo",
     "types": ["bun-types", "node"]
   },
-  "include": ["mastra/**/*", "lib/**/*"],
-  "exclude": ["**/node_modules", "**/.*/", "**/dist", "**/build", "**/*.spec.ts", "tests/**/*"]
+  "include": ["mastra/**/*", "lib/**/*", "tests/**/*"],
+  "exclude": ["**/node_modules", "**/.*/", "**/dist", "**/build"]
 }

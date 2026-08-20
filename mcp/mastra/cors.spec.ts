@@ -1,3 +1,4 @@
+import { describe, expect, it } from 'bun:test';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { getAllowedOrigins, getCorsOptions } from './cors.js';

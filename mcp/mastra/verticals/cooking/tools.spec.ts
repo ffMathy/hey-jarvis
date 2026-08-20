@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it } from 'bun:test';
+import { executeTool } from '../../utils/tool-factory.js';
 import { cookingTools } from './tools';
 
 interface RecipeShape {
@@ -91,7 +92,7 @@ describe('Cooking Tools Integration Tests', () => {
   describe('getRecipeById', () => {
     it('should fetch a recipe by ID and validate schema', async () => {
       // Using a known recipe ID from Valdemarsro
-      const result = await cookingTools.getRecipeById.execute({ recipeId: '51796' });
+      const result = await executeTool(cookingTools.getRecipeById, { recipeId: '51796' });
 
       // Validate structure
       expect(result).toBeDefined();
@@ -106,7 +107,7 @@ describe('Cooking Tools Integration Tests', () => {
 
   describe('searchRecipes', () => {
     it('should search for recipes and validate schema', async () => {
-      const result = await cookingTools.searchRecipes.execute({ searchTerm: 'kylling' });
+      const result = await executeTool(cookingTools.searchRecipes, { searchTerm: 'kylling' });
 
       // Validate structure
       expect(result).toBeDefined();
@@ -133,7 +134,7 @@ describe('Cooking Tools Integration Tests', () => {
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
       const fromDate = thirtyDaysAgo.toISOString().split('T')[0];
 
-      const result = await cookingTools.getAllRecipes.execute({ fromDate });
+      const result = await executeTool(cookingTools.getAllRecipes, { fromDate });
 
       // Validate structure
       expect(result).toBeDefined();
@@ -171,14 +172,20 @@ describe('Cooking Tools Integration Tests', () => {
 
   describe('getSearchFilters', () => {
     it('should fetch search filters', async () => {
-      const result = await cookingTools.getSearchFilters.execute({});
+      const result = await executeTool(cookingTools.getSearchFilters, {});
 
       // Validate structure
       expect(result).toBeDefined();
       expect(result.filters).toBeDefined();
 
+      // The tool's `filters` output has no declared shape, so narrow before reading its keys.
+      const { filters } = result;
+      if (typeof filters !== 'object' || filters === null) {
+        throw new Error(`Expected search filters to be an object, got ${typeof filters}`);
+      }
+
       console.log('✅ Search filters fetched successfully');
-      console.log('   Available filters:', Object.keys(result.filters));
+      console.log('   Available filters:', Object.keys(filters));
     }, 30000);
   });
 });

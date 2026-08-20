@@ -10,6 +10,7 @@
 
 import { describe, expect, it } from 'bun:test';
 import type { Subscription } from '../../storage/subscriptions.js';
+import { executeTool } from '../../utils/tool-factory.js';
 import { formatSubscriptionMatches, type SubscriptionMatch } from './subscription-matcher.js';
 import { registerSubscription, removeSubscription } from './subscription-tools.js';
 
@@ -25,49 +26,49 @@ describe('registerSubscription refusing an endless subscription', () => {
     // The cost of forgetting is invisible and cumulative — an endless subscription is
     // scored against every state change forever and nothing ever removes it — so this
     // fails loudly rather than quietly accepting one.
-    expect(registerSubscription.execute({ ...BASE })).rejects.toThrow(/needs an end/);
+    await expect(executeTool(registerSubscription, { ...BASE })).rejects.toThrow(/needs an end/);
   });
 
   it('explains both ways of supplying one, so the model can retry', async () => {
-    expect(registerSubscription.execute({ ...BASE })).rejects.toThrow(/maxTriggerCount/);
-    expect(registerSubscription.execute({ ...BASE })).rejects.toThrow(/expiresAt/);
+    await expect(executeTool(registerSubscription, { ...BASE })).rejects.toThrow(/maxTriggerCount/);
+    await expect(executeTool(registerSubscription, { ...BASE })).rejects.toThrow(/expiresAt/);
   });
 
   it('accepts oneShot, which supplies the budget implicitly', async () => {
     // oneShot means "fire once", which is an end. Demanding maxTriggerCount as well
     // would be asking the model to say the same thing twice.
-    const result = await registerSubscription.execute({ ...BASE, oneShot: true });
+    const result = await executeTool(registerSubscription, { ...BASE, oneShot: true });
 
     try {
       expect(result.registered).toBe(true);
       expect(result.subscription.maxTriggerCount).toBe(1);
     } finally {
-      await removeSubscription.execute({ subscriptionId: result.subscription.id });
+      await executeTool(removeSubscription, { subscriptionId: result.subscription.id });
     }
   });
 
   it('accepts a deadline on its own', async () => {
     const expiresAt = new Date(Date.now() + 60_000).toISOString();
-    const result = await registerSubscription.execute({ ...BASE, expiresAt });
+    const result = await executeTool(registerSubscription, { ...BASE, expiresAt });
 
     try {
       expect(result.subscription.expiresAt).toBe(expiresAt);
       expect(result.subscription.maxTriggerCount).toBeNull();
     } finally {
-      await removeSubscription.execute({ subscriptionId: result.subscription.id });
+      await executeTool(removeSubscription, { subscriptionId: result.subscription.id });
     }
   });
 
   it('accepts a budget on its own, and keeps both when given both', async () => {
     const expiresAt = new Date(Date.now() + 60_000).toISOString();
-    const result = await registerSubscription.execute({ ...BASE, maxTriggerCount: 5, expiresAt });
+    const result = await executeTool(registerSubscription, { ...BASE, maxTriggerCount: 5, expiresAt });
 
     try {
       // Whichever comes first ends the subscription.
       expect(result.subscription.maxTriggerCount).toBe(5);
       expect(result.subscription.expiresAt).toBe(expiresAt);
     } finally {
-      await removeSubscription.execute({ subscriptionId: result.subscription.id });
+      await executeTool(removeSubscription, { subscriptionId: result.subscription.id });
     }
   });
 });

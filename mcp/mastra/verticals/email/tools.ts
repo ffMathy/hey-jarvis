@@ -170,7 +170,15 @@ export const findEmails = createTool({
       filters.push(`hasAttachments eq ${hasAttachment}`);
     }
 
-    const baseUrl = `${GRAPH_API_BASE}/me/mailFolders/${folder}/messages?$top=${limit}&$orderby=receivedDateTime desc`;
+    // $orderby is omitted whenever a search is being run. Microsoft Graph rejects the
+    // combination outright -- "The query parameter '$orderBy' is not supported with
+    // '$search'" (error code SearchWithOrderBy, HTTP 400) -- so every searchQuery call
+    // this tool ever made failed. It went unnoticed because the only test exercising the
+    // filter passed a parameter name the tool does not accept, so the argument was
+    // dropped and the request never carried a search at all. Graph returns search hits
+    // by relevance, which is the sensible order for a search anyway.
+    const ordering = searchQuery ? '' : '&$orderby=receivedDateTime desc';
+    const baseUrl = `${GRAPH_API_BASE}/me/mailFolders/${folder}/messages?$top=${limit}${ordering}`;
     const filterExpression = filters.length > 0 ? filters.join(' and ') : undefined;
     const url = buildGraphApiUrlWithFilter(baseUrl, filterExpression, searchQuery);
 
@@ -449,7 +457,9 @@ export const sendEmail = createTool({
     bccRecipients: z.array(z.string()).optional().describe('Array of BCC recipient email addresses'),
   }),
   outputSchema: z.object({
-    messageId: z.string(),
+    messageId: z
+      .string()
+      .describe("Always the literal 'sent': Graph's sendMail answers 202 with no body, so there is no id to report"),
     subject: z.string(),
     success: z.boolean(),
     message: z.string(),

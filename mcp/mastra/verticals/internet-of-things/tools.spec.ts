@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it } from 'bun:test';
+import { executeTool } from '../../utils/tool-factory.js';
 import { fetchHistoricalStates, getAllDevices, getAllServices } from './tools';
 
 // These tests require a Cloudflared tunnel URL in HEY_JARVIS_HOME_ASSISTANT_URL
@@ -7,7 +8,7 @@ import { fetchHistoricalStates, getAllDevices, getAllServices } from './tools';
 describe('IoT Tools Integration Tests', () => {
   describe('getAllDevices', () => {
     it('should retrieve all devices from Home Assistant', async () => {
-      const result = await getAllDevices.execute({});
+      const result = await executeTool(getAllDevices, {});
 
       // Validate structure
       expect(result).toBeDefined();
@@ -20,7 +21,7 @@ describe('IoT Tools Integration Tests', () => {
 
   describe('getAllServices', () => {
     it('should retrieve all services from Home Assistant', async () => {
-      const result = await getAllServices.execute({});
+      const result = await executeTool(getAllServices, {});
 
       // Validate structure
       expect(result).toBeDefined();
@@ -38,12 +39,12 @@ describe('IoT Tools Integration Tests', () => {
     let entityId: string;
 
     beforeAll(async () => {
-      const devicesResult = await getAllDevices.execute({});
+      const devicesResult = await executeTool(getAllDevices, {});
       expect(devicesResult.devices.length).toBeGreaterThan(0);
 
       const firstDevice = devicesResult.devices[0];
-      expect(firstDevice.entities?.length).toBeGreaterThan(0);
-      entityId = firstDevice.entities![0].id;
+      expect(firstDevice.entities.length).toBeGreaterThan(0);
+      entityId = firstDevice.entities[0].id;
     }, 30000);
 
     it('should fetch historical states with explicit time range', async () => {

@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'bun:test';
+import { executeTool } from '../../utils/tool-factory.js';
 import { findProductInCatalog, getCurrentCartContents } from './tools';
 
 describe('Shopping Tools Integration Tests', () => {
   describe('findProductInCatalog', () => {
     it('should search for products in the catalog', async () => {
-      const result = await findProductInCatalog.execute({
+      const result = await executeTool(findProductInCatalog, {
         search_query: 'mælk',
       });
 
@@ -32,7 +33,7 @@ describe('Shopping Tools Integration Tests', () => {
 
   describe('getCurrentCartContents', () => {
     it('should retrieve cart contents', async () => {
-      const result = await getCurrentCartContents.execute({});
+      const result = await executeTool(getCurrentCartContents, {});
 
       // Validate structure
       expect(result).toBeDefined();

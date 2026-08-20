@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import type { ZodTypeAny } from 'zod';
 import { shoppingListWorkflow } from '../shopping/workflows.js';
 import * as apiVertical from './index.js';
 import { addToShoppingListSchema, shoppingListResponseSchema } from './schemas.js';
@@ -54,13 +55,17 @@ describe('addToShoppingListSchema', () => {
     const validBody = { prompt: 'Add milk' };
     const emptyPromptBody = { prompt: '' };
 
-    expect(addToShoppingListSchema.safeParse(validBody).success).toBe(
-      shoppingListWorkflow.inputSchema.safeParse(validBody).success,
-    );
+    // A workflow's schemas are typed as Standard Schema, which has no `safeParse`, even
+    // though what Mastra holds is the Zod schema it was built with. `routes.ts` casts
+    // the same way for the same reason -- these tests assert against what it actually
+    // validates.
+    const workflowInput = shoppingListWorkflow.inputSchema as ZodTypeAny;
+
+    expect(addToShoppingListSchema.safeParse(validBody).success).toBe(workflowInput.safeParse(validBody).success);
     expect(addToShoppingListSchema.safeParse(emptyPromptBody).success).toBe(
-      shoppingListWorkflow.inputSchema.safeParse(emptyPromptBody).success,
+      workflowInput.safeParse(emptyPromptBody).success,
     );
-    expect(addToShoppingListSchema.safeParse({}).success).toBe(shoppingListWorkflow.inputSchema.safeParse({}).success);
+    expect(addToShoppingListSchema.safeParse({}).success).toBe(workflowInput.safeParse({}).success);
   });
 });
 

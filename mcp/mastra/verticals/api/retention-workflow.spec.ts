@@ -15,6 +15,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { mkdtemp, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import path from 'path';
+import type { ZodTypeAny } from 'zod';
 import { TokenUsageStorage } from '../../storage/token-usage.js';
 import { storageRetentionWorkflow } from './retention-workflow.js';
 
@@ -84,11 +85,11 @@ describe('the workflow wiring', () => {
   });
 
   it('takes no input, so it can be scheduled with an empty payload', () => {
-    expect(storageRetentionWorkflow.inputSchema.safeParse({}).success).toBe(true);
+    expect((storageRetentionWorkflow.inputSchema as ZodTypeAny).safeParse({}).success).toBe(true);
   });
 
   it('reports what it deleted, so a nightly run is auditable', () => {
-    const parsed = storageRetentionWorkflow.outputSchema.safeParse({
+    const parsed = (storageRetentionWorkflow.outputSchema as ZodTypeAny).safeParse({
       tokenUsageRecordsDeleted: 3,
       cutoff: new Date().toISOString(),
     });

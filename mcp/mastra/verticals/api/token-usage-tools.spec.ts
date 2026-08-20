@@ -41,6 +41,88 @@ async function recordUsage(model: string, promptTokens: number, completionTokens
   await storage.recordUsage({ model, provider, promptTokens, completionTokens });
 }
 
+/**
+ * Typed stand-ins for the four token usage tools.
+ *
+ * None of them declares an `outputSchema`, so Mastra has no output type to infer and
+ * `executeTool` resolves to `unknown`. `executeTool` is also typed with a tool's parsed
+ * input, in which a defaulted field like `resetPeriod` or `limit` is required -- while
+ * omitting it, and letting the default apply, is exactly what several tests below check.
+ *
+ * These shapes mirror what each `execute` actually accepts and returns, so the
+ * assertions stay typed. Giving the tools real output schemas would be the better fix,
+ * but that changes the contract they publish to the agent and belongs in its own change.
+ */
+type Executable<TInput, TResult> = Parameters<typeof executeTool<TInput, TResult>>[0];
+
+interface UsageTotals {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  requestCount: number;
+}
+
+interface TokenUsageResult extends Partial<UsageTotals> {
+  success: boolean;
+  message?: string;
+  model?: string;
+  provider?: string;
+  models?: Array<UsageTotals & { model: string; provider: string }>;
+  totals?: UsageTotals;
+  period?: { startDate?: string; endDate?: string };
+}
+
+interface QuotaInfo {
+  model: string;
+  currentUsage: number;
+  maxQuota: number;
+  remainingTokens: number;
+  percentUsed: number;
+  isOverQuota: boolean;
+}
+
+interface CheckQuotaResult {
+  success: boolean;
+  message?: string;
+  quota?: QuotaInfo;
+  quotas?: QuotaInfo[];
+}
+
+interface SetQuotaResult {
+  success: boolean;
+  message: string;
+  quota: { model: string; maxTokens: number; resetPeriod: 'daily' | 'monthly' | 'yearly' };
+}
+
+interface RecentUsageResult {
+  success: boolean;
+  count: number;
+  records?: Array<{
+    id: number;
+    model: string;
+    provider: string;
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+    timestamp: string;
+    traceId: string | null;
+    agentId: string | null;
+    workflowId: string | null;
+  }>;
+}
+
+const getTokenUsage = (input: { model?: string; startDate?: string; endDate?: string }) =>
+  executeTool(getTokenUsageTool as Executable<typeof input, TokenUsageResult>, input);
+
+const checkTokenQuota = (input: { model?: string }) =>
+  executeTool(checkTokenQuotaTool as Executable<typeof input, CheckQuotaResult>, input);
+
+const setTokenQuota = (input: { model: string; maxTokens: number; resetPeriod?: 'daily' | 'monthly' | 'yearly' }) =>
+  executeTool(setTokenQuotaTool as Executable<typeof input, SetQuotaResult>, input);
+
+const getRecentTokenUsage = (input: { limit?: number }) =>
+  executeTool(getRecentTokenUsageTool as Executable<typeof input, RecentUsageResult>, input);
+
 describe('tokenUsageTools', () => {
   it('exposes the four token usage tools under their documented ids', () => {
     expect(Object.keys(tokenUsageTools).sort()).toEqual([
@@ -59,7 +141,7 @@ describe('tokenUsageTools', () => {
 describe('getTokenUsageTool', () => {
   describe('all models', () => {
     it('reports an empty summary and zeroed totals when nothing has been recorded', async () => {
-      const result = await executeTool(getTokenUsageTool, {});
+      const result = await getTokenUsage({});
 
       expect(result).toEqual({
         success: true,
@@ -74,7 +156,7 @@ describe('getTokenUsageTool', () => {
       await recordUsage('gemini-flash-latest', 200, 100);
       await recordUsage('gpt-4', 10, 5, 'openai');
 
-      const result = await executeTool(getTokenUsageTool, {});
+      const result = await getTokenUsage({});
 
       expect(result.models).toEqual([
         {
@@ -103,7 +185,7 @@ describe('getTokenUsageTool', () => {
     });
 
     it('echoes the requested period back as ISO strings', async () => {
-      const result = await executeTool(getTokenUsageTool, {
+      const result = await getTokenUsage({
         startDate: '2024-01-01T00:00:00.000Z',
         endDate: '2024-02-01T00:00:00.000Z',
       });
@@ -117,7 +199,7 @@ describe('getTokenUsageTool', () => {
     it('leaves out records that fall outside the requested window', async () => {
       await recordUsage('gemini-flash-latest', 100, 50);
 
-      const result = await executeTool(getTokenUsageTool, {
+      const result = await getTokenUsage({
         startDate: '2020-01-01T00:00:00.000Z',
         endDate: '2020-12-31T00:00:00.000Z',
       });
@@ -136,7 +218,7 @@ describe('getTokenUsageTool', () => {
 
       const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
       const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
-      const result = await executeTool(getTokenUsageTool, {
+      const result = await getTokenUsage({
         startDate: yesterday.toISOString(),
         endDate: tomorrow.toISOString(),
       });
@@ -156,7 +238,7 @@ describe('getTokenUsageTool', () => {
       await recordUsage('gemini-flash-latest', 200, 100);
       await recordUsage('gpt-4', 999, 999, 'openai');
 
-      const result = await executeTool(getTokenUsageTool, { model: 'gemini-flash-latest' });
+      const result = await getTokenUsage({ model: 'gemini-flash-latest' });
 
       expect(result).toEqual({
         success: true,
@@ -173,7 +255,7 @@ describe('getTokenUsageTool', () => {
     it('reports failure for a model that has never been used', async () => {
       await recordUsage('gemini-flash-latest', 100, 50);
 
-      const result = await executeTool(getTokenUsageTool, { model: 'claude-imaginary' });
+      const result = await getTokenUsage({ model: 'claude-imaginary' });
 
       expect(result).toEqual({
         success: false,
@@ -184,7 +266,7 @@ describe('getTokenUsageTool', () => {
     it('reports failure when the window excludes every record for that model', async () => {
       await recordUsage('gemini-flash-latest', 100, 50);
 
-      const result = await executeTool(getTokenUsageTool, {
+      const result = await getTokenUsage({
         model: 'gemini-flash-latest',
         startDate: '2020-01-01T00:00:00.000Z',
         endDate: '2020-12-31T00:00:00.000Z',
@@ -196,7 +278,7 @@ describe('getTokenUsageTool', () => {
 
   describe('date parsing', () => {
     it('rejects a malformed start date without touching storage', async () => {
-      const result = await executeTool(getTokenUsageTool, { startDate: 'last tuesday' });
+      const result = await getTokenUsage({ startDate: 'last tuesday' });
 
       expect(result).toEqual({
         success: false,
@@ -205,7 +287,7 @@ describe('getTokenUsageTool', () => {
     });
 
     it('rejects a malformed end date', async () => {
-      const result = await executeTool(getTokenUsageTool, {
+      const result = await getTokenUsage({
         startDate: '2024-01-01T00:00:00.000Z',
         endDate: '2024-13-45',
       });
@@ -219,7 +301,7 @@ describe('getTokenUsageTool', () => {
     it('silently ignores an empty-string date instead of rejecting it', async () => {
       // An empty string is falsy, so it never reaches `new Date()` and the
       // query runs unfiltered rather than reporting a bad date.
-      const result = await executeTool(getTokenUsageTool, { startDate: '', endDate: '' });
+      const result = await getTokenUsage({ startDate: '', endDate: '' });
 
       expect(result.success).toBe(true);
       expect(result.period).toEqual({ startDate: undefined, endDate: undefined });
@@ -228,7 +310,7 @@ describe('getTokenUsageTool', () => {
     it('accepts a plain calendar date', async () => {
       await recordUsage('gemini-flash-latest', 100, 50);
 
-      const result = await executeTool(getTokenUsageTool, { startDate: '2020-01-01' });
+      const result = await getTokenUsage({ startDate: '2020-01-01' });
 
       expect(result.success).toBe(true);
       expect(result.period?.startDate).toBe('2020-01-01T00:00:00.000Z');
@@ -240,7 +322,7 @@ describe('getTokenUsageTool', () => {
 describe('checkTokenQuotaTool', () => {
   describe('a single model', () => {
     it('reports failure when the model has no quota', async () => {
-      const result = await executeTool(checkTokenQuotaTool, { model: 'gemini-flash-latest' });
+      const result = await checkTokenQuota({ model: 'gemini-flash-latest' });
 
       expect(result).toEqual({
         success: false,
@@ -251,7 +333,7 @@ describe('checkTokenQuotaTool', () => {
     it('reports a freshly configured quota as entirely unused', async () => {
       await storage.setQuota('gemini-flash-latest', 1_000_000, 'monthly');
 
-      const result = await executeTool(checkTokenQuotaTool, { model: 'gemini-flash-latest' });
+      const result = await checkTokenQuota({ model: 'gemini-flash-latest' });
 
       expect(result).toEqual({
         success: true,
@@ -271,7 +353,7 @@ describe('checkTokenQuotaTool', () => {
       await recordUsage('gemini-flash-latest', 100, 50);
       await recordUsage('gpt-4', 900, 900, 'openai');
 
-      const result = await executeTool(checkTokenQuotaTool, { model: 'gemini-flash-latest' });
+      const result = await checkTokenQuota({ model: 'gemini-flash-latest' });
 
       expect(result.quota?.currentUsage).toBe(150);
       expect(result.quota?.remainingTokens).toBe(850);
@@ -281,7 +363,7 @@ describe('checkTokenQuotaTool', () => {
       await storage.setQuota('gemini-flash-latest', 3, 'monthly');
       await recordUsage('gemini-flash-latest', 1, 0);
 
-      const result = await executeTool(checkTokenQuotaTool, { model: 'gemini-flash-latest' });
+      const result = await checkTokenQuota({ model: 'gemini-flash-latest' });
 
       expect(result.quota?.percentUsed).toBe(33.33);
     });
@@ -290,7 +372,7 @@ describe('checkTokenQuotaTool', () => {
       await storage.setQuota('gemini-flash-latest', 100, 'monthly');
       await recordUsage('gemini-flash-latest', 60, 40);
 
-      const result = await executeTool(checkTokenQuotaTool, { model: 'gemini-flash-latest' });
+      const result = await checkTokenQuota({ model: 'gemini-flash-latest' });
 
       expect(result.quota).toEqual({
         model: 'gemini-flash-latest',
@@ -306,7 +388,7 @@ describe('checkTokenQuotaTool', () => {
       await storage.setQuota('gemini-flash-latest', 100, 'monthly');
       await recordUsage('gemini-flash-latest', 60, 41);
 
-      const result = await executeTool(checkTokenQuotaTool, { model: 'gemini-flash-latest' });
+      const result = await checkTokenQuota({ model: 'gemini-flash-latest' });
 
       expect(result.quota?.isOverQuota).toBe(true);
       expect(result.quota?.remainingTokens).toBe(0);
@@ -317,7 +399,7 @@ describe('checkTokenQuotaTool', () => {
       await storage.setQuota('gemini-flash-latest', 100, 'monthly');
       await recordUsage('gemini-flash-latest', 200, 50);
 
-      const result = await executeTool(checkTokenQuotaTool, { model: 'gemini-flash-latest' });
+      const result = await checkTokenQuota({ model: 'gemini-flash-latest' });
 
       expect(result.quota?.remainingTokens).toBe(0);
       expect(result.quota?.percentUsed).toBe(250);
@@ -328,7 +410,7 @@ describe('checkTokenQuotaTool', () => {
       await storage.setQuota('gemini-flash-latest', 500, 'daily');
       await recordUsage('gemini-flash-latest', 100, 50);
 
-      const result = await executeTool(checkTokenQuotaTool, { model: 'gemini-flash-latest' });
+      const result = await checkTokenQuota({ model: 'gemini-flash-latest' });
 
       expect(result.quota?.currentUsage).toBe(150);
     });
@@ -338,7 +420,7 @@ describe('checkTokenQuotaTool', () => {
     it('reports failure when nothing has a quota', async () => {
       await recordUsage('gemini-flash-latest', 100, 50);
 
-      const result = await executeTool(checkTokenQuotaTool, {});
+      const result = await checkTokenQuota({});
 
       expect(result).toEqual({
         success: false,
@@ -351,7 +433,7 @@ describe('checkTokenQuotaTool', () => {
       await storage.setQuota('gpt-4', 200, 'monthly');
       await recordUsage('gemini-flash-latest', 100, 50);
 
-      const result = await executeTool(checkTokenQuotaTool, {});
+      const result = await checkTokenQuota({});
 
       expect(result.success).toBe(true);
       expect(result.quotas).toHaveLength(2);
@@ -370,7 +452,7 @@ describe('checkTokenQuotaTool', () => {
 
 describe('setTokenQuotaTool', () => {
   it('stores the quota and defaults the reset period to monthly', async () => {
-    const result = await executeTool(setTokenQuotaTool, { model: 'gemini-flash-latest', maxTokens: 1000 });
+    const result = await setTokenQuota({ model: 'gemini-flash-latest', maxTokens: 1000 });
 
     expect(result).toEqual({
       success: true,
@@ -381,7 +463,7 @@ describe('setTokenQuotaTool', () => {
   });
 
   it('honours an explicit reset period', async () => {
-    const result = await executeTool(setTokenQuotaTool, {
+    const result = await setTokenQuota({
       model: 'gemini-flash-latest',
       maxTokens: 1000,
       resetPeriod: 'yearly',
@@ -391,8 +473,8 @@ describe('setTokenQuotaTool', () => {
   });
 
   it('overwrites an existing quota rather than adding a second one', async () => {
-    await executeTool(setTokenQuotaTool, { model: 'gemini-flash-latest', maxTokens: 1000 });
-    await executeTool(setTokenQuotaTool, { model: 'gemini-flash-latest', maxTokens: 500, resetPeriod: 'daily' });
+    await setTokenQuota({ model: 'gemini-flash-latest', maxTokens: 1000 });
+    await setTokenQuota({ model: 'gemini-flash-latest', maxTokens: 500, resetPeriod: 'daily' });
 
     const quotas = await storage.getAllQuotaInfo();
     expect(quotas).toHaveLength(1);
@@ -401,27 +483,23 @@ describe('setTokenQuotaTool', () => {
 
   it('leaves recorded usage untouched when the quota changes', async () => {
     await recordUsage('gemini-flash-latest', 100, 50);
-    await executeTool(setTokenQuotaTool, { model: 'gemini-flash-latest', maxTokens: 1000 });
+    await setTokenQuota({ model: 'gemini-flash-latest', maxTokens: 1000 });
 
-    const quota = await executeTool(checkTokenQuotaTool, { model: 'gemini-flash-latest' });
+    const quota = await checkTokenQuota({ model: 'gemini-flash-latest' });
     expect(quota.quota?.currentUsage).toBe(150);
   });
 
   it('rejects a quota of zero tokens', async () => {
-    await expect(executeTool(setTokenQuotaTool, { model: 'gemini-flash-latest', maxTokens: 0 })).rejects.toThrow(
-      'failed validation',
-    );
+    await expect(setTokenQuota({ model: 'gemini-flash-latest', maxTokens: 0 })).rejects.toThrow('failed validation');
   });
 
   it('rejects a negative quota', async () => {
-    await expect(executeTool(setTokenQuotaTool, { model: 'gemini-flash-latest', maxTokens: -1 })).rejects.toThrow(
-      'failed validation',
-    );
+    await expect(setTokenQuota({ model: 'gemini-flash-latest', maxTokens: -1 })).rejects.toThrow('failed validation');
   });
 
   it('rejects an unknown reset period', async () => {
     await expect(
-      executeTool(setTokenQuotaTool, {
+      setTokenQuota({
         model: 'gemini-flash-latest',
         maxTokens: 1000,
         // @ts-expect-error the enum only allows daily, monthly and yearly
@@ -433,7 +511,7 @@ describe('setTokenQuotaTool', () => {
 
 describe('getRecentTokenUsageTool', () => {
   it('returns an empty list when nothing has been recorded', async () => {
-    const result = await executeTool(getRecentTokenUsageTool, {});
+    const result = await getRecentTokenUsage({});
 
     expect(result).toEqual({ success: true, records: [], count: 0 });
   });
@@ -449,7 +527,7 @@ describe('getRecentTokenUsageTool', () => {
       workflowId: 'shoppingListWorkflow',
     });
 
-    const result = await executeTool(getRecentTokenUsageTool, {});
+    const result = await getRecentTokenUsage({});
 
     expect(result.records).toHaveLength(1);
     expect(result.records?.[0]).toEqual({
@@ -471,7 +549,7 @@ describe('getRecentTokenUsageTool', () => {
     // SQL NULL unchanged, so callers see null.
     await recordUsage('gemini-flash-latest', 100, 50);
 
-    const result = await executeTool(getRecentTokenUsageTool, {});
+    const result = await getRecentTokenUsage({});
 
     expect(result.records?.[0].traceId).toBeNull();
     expect(result.records?.[0].agentId).toBeNull();
@@ -485,7 +563,7 @@ describe('getRecentTokenUsageTool', () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
     await recordUsage('model-new', 200, 100);
 
-    const result = await executeTool(getRecentTokenUsageTool, {});
+    const result = await getRecentTokenUsage({});
 
     expect(result.records?.map((record) => record.model)).toEqual(['model-new', 'model-old']);
   });
@@ -495,7 +573,7 @@ describe('getRecentTokenUsageTool', () => {
       await recordUsage(`model-${index}`, 10, 5);
     }
 
-    const result = await executeTool(getRecentTokenUsageTool, {});
+    const result = await getRecentTokenUsage({});
 
     expect(result.count).toBe(20);
     expect(result.records).toHaveLength(20);
@@ -506,7 +584,7 @@ describe('getRecentTokenUsageTool', () => {
       await recordUsage(`model-${index}`, 10, 5);
     }
 
-    const result = await executeTool(getRecentTokenUsageTool, { limit: 3 });
+    const result = await getRecentTokenUsage({ limit: 3 });
 
     expect(result.count).toBe(3);
   });
@@ -516,7 +594,7 @@ describe('getRecentTokenUsageTool', () => {
       await recordUsage(`model-${index}`, 10, 5);
     }
 
-    const result = await executeTool(getRecentTokenUsageTool, { limit: 1000 });
+    const result = await getRecentTokenUsage({ limit: 1000 });
 
     expect(result.count).toBe(100);
   });
@@ -524,7 +602,7 @@ describe('getRecentTokenUsageTool', () => {
   it('returns nothing for a limit of zero', async () => {
     await recordUsage('gemini-flash-latest', 100, 50);
 
-    const result = await executeTool(getRecentTokenUsageTool, { limit: 0 });
+    const result = await getRecentTokenUsage({ limit: 0 });
 
     expect(result).toEqual({ success: true, records: [], count: 0 });
   });
@@ -537,6 +615,6 @@ describe('getRecentTokenUsageTool', () => {
       await recordUsage(`model-${index}`, 10, 5);
     }
 
-    expect(executeTool(getRecentTokenUsageTool, { limit: -1 })).rejects.toThrow();
+    expect(getRecentTokenUsage({ limit: -1 })).rejects.toThrow();
   });
 });

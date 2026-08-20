@@ -15,6 +15,20 @@ import { withRetry } from '../retry.js';
 import { executeTool } from '../tool-factory.js';
 
 /**
+ * One suspended step as {@link createWorkflowStateReader} reports it: the id, the path to
+ * resume it by, and the payload it suspended with.
+ */
+export type { WorkflowSuspendedStep } from '@mastra/core/workflows';
+/**
+ * Reads a persisted workflow run snapshot without touching its raw shape.
+ *
+ * Re-exported so callers that recover a suspended run from storage — locating the step to
+ * resume and the payload it suspended with — keep importing workflow plumbing from this
+ * factory rather than from `@mastra/core` directly.
+ */
+export { createWorkflowStateReader } from '@mastra/core/workflows';
+
+/**
  * A Workflow with all generic parameters set to their defaults.
  * Used when accepting any workflow instance without caring about specific types.
  */

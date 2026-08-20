@@ -527,10 +527,10 @@ export function initializeScheduler(): WorkflowScheduler {
 └───────── Minute (0-59)
 ```
 
-**Currently Scheduled Workflows:**
-1. **Weather Monitoring** - Runs every hour at minute 0
+**Currently Scheduled Workflows** (see `mastra/scheduler.ts`):
+1. **Weather Monitoring** - Runs every 3 hours
    - Workflow: `weatherMonitoringWorkflow`
-   - Schedule: `0 * * * *`
+   - Schedule: `0 */3 * * *`
    - Purpose: Updates weather information and notifies other agents of changes
 
 2. **Weekly Meal Planning** - Runs every Sunday at 8:00 AM
@@ -538,15 +538,22 @@ export function initializeScheduler(): WorkflowScheduler {
    - Schedule: `0 8 * * 0`
    - Purpose: Generates weekly meal plan with Danish recipes
 
-3. **Check for New Emails** - Runs every 30 minutes + on startup
-   - Workflow: `checkForNewEmails`
-   - Schedule: `*/30 * * * *`
+3. **Email Checking** - Runs every minute + on startup
+   - Workflow: `emailCheckingWorkflow`
+   - Schedule: `* * * * *`
    - Run on startup: **Yes**
-   - Purpose: Checks for new emails and processes form replies
+   - Purpose: Tracks which emails have arrived; does not trigger the state reactor
 
-4. **IoT Device Monitoring** - Runs every 5 minutes + on startup
+4. **Form Replies Detection** - Runs every 3 hours + on startup
+   - Workflow: `formRepliesDetectionWorkflow`
+   - Schedule: `0 */3 * * *`
+   - Run on startup: **Yes**
+   - Purpose: Resumes the suspended runs that inbound form replies answer, and registers the
+     emails as a state change
+
+5. **IoT Device Monitoring** - Runs every 3 hours + on startup
    - Workflow: `iotMonitoringWorkflow`
-   - Schedule: `*/5 * * * *`
+   - Schedule: `0 */3 * * *`
    - Run on startup: **Yes**
    - Purpose: Monitors Home Assistant devices and registers state changes
 
@@ -766,29 +773,37 @@ Demonstrates email-based workflow suspension and resumption with a 3-step approv
 - **Step 1 - Budget Approval**: Requests approval for project budget (Yes/No + comments)
 - **Step 2 - Vendor Selection**: Requests vendor selection (Vendor name + justification)
 - **Step 3 - Final Confirmation**: Requests final action confirmation (Confirm/Cancel + notes)
-- **Email integration**: Sends form request emails with embedded workflow IDs
-- **Security validation**: Validates sender email and workflow ID before resuming
-- **LLM parsing**: Uses Gemini to extract structured data from email responses
-- **14-day timeout**: Each suspend step times out after 14 days by default
+- **Email integration**: Sends form request emails carrying the id of the suspended run
+- **Security validation**: Only a reply from the address that was asked is accepted
+- **LLM parsing**: `parseEmailReply()` turns the free text of the reply into the typed response
+- **No timeout**: A suspended request waits until it is answered — nothing expires it, and the
+  email does not claim otherwise
 
 **Email Format:**
-- Subject: `Form Request [WF-{workflowId}]: {question}`
-- Body: Question + instructions + workflow ID + expiry date
-- Resume trigger: Reply email with matching workflow ID in subject
+- Subject: `Form Request [RUN-{runId}/REQ-{requestId}]: {question}`
+- Body: Question + instructions + the request reference (`{runId}/{requestId}`)
+- Resume trigger: A reply whose subject still carries both ids
 
 **Workflow Steps:**
-1. **Initialize**: Store recipient email in workflow state
+1. **Initialize**: Pass the recipient, project name and budget through
 2. **Request Budget Approval**: Send email, suspend workflow, wait for reply
-3. **Check Approval**: Validate response and decide if workflow continues
-4. **Request Vendor Selection**: If approved, send email, suspend, wait for reply
+3. **Stop When Budget Is Rejected**: A "no" finishes the run with `approvalGranted: false`
+4. **Request Vendor Selection**: Send email, suspend, wait for reply
 5. **Request Final Confirmation**: Send email, suspend, wait for reply
 6. **Format Output**: Generate final result with all collected data
 
 **Security Features:**
-- Workflow ID embedded in email subject: `[WF-{id}]`
-- Sender email validation against expected recipient
-- Workflow state stores expected reply email
-- 14-day timeout prevents indefinite suspension
+- Run id embedded in the email subject: `[RUN-{runId}/...]` — unlike a workflow id, which is
+  shared by every run and every recipient
+- Request id alongside it: `[.../REQ-{requestId}]`, minted per question. Every stage of one run
+  suspends under the same run id, so the request id is what says *which* question a reply
+  answers; a reply is only accepted for the request the run is still waiting on
+- Sender validated against the address the request was sent to; an empty sender is refused
+  rather than skipped
+- A reply that fails validation is refused and the request stays open, so a wrong-sender,
+  duplicate or late reply cannot destroy a pending approval or answer the wrong question
+- An empty reply body is refused rather than handed to the parsing agent
+- `recipientEmail` is required: there is no default address a stray Studio run could mail
 
 **Usage Example:**
 ```typescript
@@ -803,23 +818,23 @@ const result = await run.start({
 
 // Workflow suspends and sends email
 // User replies to email with answer
-// checkForFormRepliesWorkflow (runs every 5 minutes) detects reply and resumes workflow
+// formRepliesDetectionWorkflow (runs every 3 hours) finds the reply and resumes the run
 ```
 
 **Helper Functions:**
-- `sendFormRequest()`: Sends email with workflow ID and suspends workflow
-- `parseEmailResponse()`: Uses LLM to extract structured data from email body
+- `getSendEmailAndAwaitResponseWorkflow(slug, responseSchema)`: Reusable send-and-wait workflow,
+  embeddable in any parent workflow with `.then(...)`
+- `parseEmailReply()`: Uses the email parsing agent to extract the typed answer from a reply
 
-### Check for New Emails Workflow
-Parent workflow that orchestrates email discovery, form reply processing, and state change registration with **persistent tracking** of the last seen email:
-- **`checkForNewEmails`**: Scheduled workflow that runs every 30 minutes + on startup
-- **Step 1 - Search NEW Emails**: Uses `findNewEmailsSinceLastCheck` function with persistent storage to fetch only emails received since the last workflow run
+### Email Checking Workflow
+Tracks which emails have arrived, with **persistent tracking** of the last seen email. It does
+not touch form replies or the state reactor — that is the form replies workflow below, which
+keeps its own last-seen state under a separate storage key:
+- **`emailCheckingWorkflow`**: Scheduled workflow that runs every minute + on startup
+- **Step 1 - Search NEW Emails**: Uses `findNewEmailsSinceLastCheck` with persistent storage to fetch only emails received since the last workflow run
 - **Step 2 - Store in State**: Stores new emails in workflow state and tracks the most recent email ID/timestamp
-- **Step 3 - Parallel Processing**:
-  - Process form replies (delegates to checkForFormRepliesWorkflow)
-  - Register state changes for notification system
-- **Step 4 - Update Last Seen**: Updates the `email_last_seen` database table with the most recent email
-- **Step 5 - Format Output**: Returns summary with email count and update status
+- **Step 3 - Update Last Seen**: Updates the `email_last_seen` database table with the most recent email
+- **Step 4 - Format Output**: Returns summary with email count and update status
 
 **Key Feature - Persistent Email Tracking:**
 The workflow uses the `email_last_seen` database table to track which emails have been processed:
@@ -831,8 +846,8 @@ The workflow uses the `email_last_seen` database table to track which emails hav
 **Email State Functions:**
 These are internal functions (not exposed as agent tools) for tracking email state:
 ```typescript
-// Find only NEW emails since last check (used by workflow)
-const result = await findNewEmailsSinceLastCheck('inbox', 50);
+// Find only NEW emails since last check (storage key, mailbox folder, limit)
+const result = await findNewEmailsSinceLastCheck('inbox', 'inbox', 50);
 
 // Manually update last seen state
 await updateLastSeenEmail('inbox', 'email-id-123', '2025-12-01T10:00:00Z');
@@ -847,61 +862,48 @@ await clearLastSeenEmailState('inbox');
 **Scheduled Execution:**
 ```typescript
 scheduler.schedule({
-  workflow: checkForNewEmails,
-  schedule: CronPatterns.EVERY_30_MINUTES,
+  workflow: emailCheckingWorkflow,
+  schedule: CronPatterns.EVERY_MINUTE,
   inputData: {},
   runOnStartup: true,
 });
 ```
 
-### Email Checking Workflow
-Automatically processes incoming email replies to form requests and resumes suspended workflows:
-- **`checkForFormRepliesWorkflow`**: Scheduled workflow that runs every 5 minutes
-- **Step 1 - Search**: Searches inbox for unread emails
-- **Step 2 - Extract**: Extracts workflow IDs from email subjects using regex `[WF-{id}]`
-- **Step 3 - Process**: For each email with workflow ID:
-  - Gets workflow run by ID
-  - Parses email body using LLM
-  - Resumes workflow with parsed data
-  - Registers state change for tracking
-- **Step 4 - Summary**: Returns count of processed emails and resumed workflows
+### Form Replies Detection Workflow
+Automatically processes incoming email replies to form requests and resumes the suspended runs
+they answer:
+- **`formRepliesDetectionWorkflow`**: Scheduled workflow that runs every 3 hours
+- **Step 1 - Search**: Finds emails received since this workflow's own last check
+  (storage key `inbox-form-replies`)
+- **Step 2 - Extract**: Reads the run id and request id out of the subject with
+  `parseFormRequestSubject()` — the same function that builds the subject writes it, so the two
+  sides cannot drift apart
+- **Step 3 - Process**: For each email carrying the token:
+  - Finds the run by asking each registered workflow whether it holds it
+  - Hands the reply to the step that suspended, which checks the request id and the sender, and
+    parses the free text with the email parsing agent
+  - Counts the reply as resumed, rejected, or (no such run) an error
+- **Step 4 - Register**: Registers the emails as a state change for the notification system
+- **Step 5 - Summary**: Returns counts of emails processed, replies found, runs resumed and
+  replies rejected
 
 **Scheduled Execution:**
 ```typescript
 scheduler.schedule({
-  workflowId: 'checkForFormRepliesWorkflow',
-  schedule: CronPatterns.EVERY_5_MINUTES,
+  workflow: formRepliesDetectionWorkflow,
+  schedule: CronPatterns.EVERY_3_HOURS,
   inputData: {},
+  runOnStartup: true,
 });
 ```
 
-**State Change Registration:**
-When a form reply is successfully processed, registers a state change:
-```typescript
-await registerStateChange.execute({
-  source: 'email',
-  stateType: 'form_reply_processed',
-  stateData: {
-    workflowId,
-    senderEmail: email.from.address,
-    emailSubject: email.subject,
-    receivedDateTime: email.receivedDateTime,
-  },
-});
-```
-
-**Current Limitations:**
-- Workflow run retrieval not yet implemented (requires Mastra enhancement)
-- Uses email body preview instead of full body
-- Only supports `humanInTheLoopDemoWorkflow` (hardcoded workflow type)
-- Manual workflow resume implementation needed
-
-**Future Enhancements:**
-- Support multiple workflow types
-- Fetch full email body for better parsing
-- Implement workflow run registry for pending workflows
-- Add workflow type detection from email metadata
-- Support email threading for multi-turn conversations
+**When a reply is refused:**
+A refused reply leaves the run suspended exactly where it was, so the person who was asked can
+still answer. Replies are refused when they come from an address other than the one the request
+was sent to, when they answer a request the run has already moved past, when the body is blank,
+and when the parsing agent cannot read an answer out of them. Each is counted in
+`repliesRejected` rather than reported as an error, because nothing has gone wrong with the
+system. Only a token naming a run that does not exist is reported as an error.
 
 ## Processors
 

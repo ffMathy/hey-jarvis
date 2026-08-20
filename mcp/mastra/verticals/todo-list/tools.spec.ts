@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it } from 'bun:test';
+import { executeTool } from '../../utils/tool-factory.js';
 import { getAllTaskLists, getAllTasks } from './tools';
 
 describe('Todo List Tools Integration Tests', () => {
@@ -17,7 +18,7 @@ describe('Todo List Tools Integration Tests', () => {
 
   describe('getAllTaskLists', () => {
     it('should retrieve all task lists', async () => {
-      const result = await getAllTaskLists.execute({});
+      const result = await executeTool(getAllTaskLists, {});
 
       // Validate structure
       expect(result).toBeDefined();
@@ -30,8 +31,11 @@ describe('Todo List Tools Integration Tests', () => {
 
   describe('getAllTasks', () => {
     it('should retrieve all tasks', async () => {
-      const result = await getAllTasks.execute({
+      // Mastra types the call site with the schema's *output*, so the defaulted
+      // fields have to be spelled out here.
+      const result = await executeTool(getAllTasks, {
         taskListId: '@default',
+        showCompleted: false,
         maxResults: 10,
       });
 

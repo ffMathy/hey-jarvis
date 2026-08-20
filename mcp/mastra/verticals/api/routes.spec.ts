@@ -2,8 +2,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import express, { type Request as ExpressRequest, type Response as ExpressResponse, type NextFunction } from 'express';
 import type { Server } from 'http';
 import { z } from 'zod';
-import { createStep, createWorkflow } from '../../utils/workflows/workflow-factory.js';
-import { createWorkflowApiHandler, registerApiRoutes, registerWorkflowApi } from './routes.js';
+import { createStep, createWorkflow, getWorkflowRuntime } from '../../utils/workflows/workflow-factory.js';
+import { createWorkflowApiHandler, extractWorkflowError, registerApiRoutes, registerWorkflowApi } from './routes.js';
 
 /**
  * A workflow that simply hands its input back, used to assert what a caller
@@ -60,6 +60,8 @@ const nestedWorkflow = createWorkflow({
   )
   .commit();
 
+const FAILURE_MESSAGE = 'the greengrocer is closed';
+
 const failingWorkflow = createWorkflow({
   id: 'failingWorkflow',
   inputSchema: z.object({ prompt: z.string() }),
@@ -71,10 +73,29 @@ const failingWorkflow = createWorkflow({
       inputSchema: z.object({ prompt: z.string() }),
       outputSchema: z.object({ never: z.string() }),
       execute: async () => {
-        throw new Error('the greengrocer is closed');
+        throw new Error(FAILURE_MESSAGE);
       },
     }),
   )
+  .commit();
+
+const suspendingStep = createStep({
+  id: 'always-suspends',
+  description: 'Suspends, so the run ends without an error to report.',
+  inputSchema: z.object({}),
+  outputSchema: z.object({}),
+  suspendSchema: z.object({}),
+  execute: async ({ suspend }) => await suspend({}),
+});
+
+// Suspending persists a run snapshot, which needs a Mastra instance to persist through.
+const suspendingWorkflow = createWorkflow({
+  id: 'suspendingWorkflow',
+  mastra: getWorkflowRuntime(),
+  inputSchema: z.object({}),
+  outputSchema: z.object({}),
+})
+  .then(suspendingStep)
   .commit();
 
 /**
@@ -292,15 +313,14 @@ describe('createWorkflowApiHandler', () => {
       expect(body.error).toBeDefined();
     });
 
-    it('loses the step error message because Mastra reports a plain object', async () => {
-      // `extractWorkflowError` only unwraps `result.error` when it is an
-      // `Error` instance, but Mastra 1.58 reports `{ message, name }`. The real
-      // cause ("the greengrocer is closed") never reaches the caller.
+    it('carries the step error message through to the caller', async () => {
+      // This used to report nothing but the status: `extractWorkflowError` only
+      // unwrapped `result.error` when it was an `Error` instance, and Mastra 1.58
+      // reports `{ message, name }`. The real cause now reaches the caller.
       const response = await postJson('/api/failing', { prompt: 'buy milk' });
       const body = await readBody(response);
 
-      expect(body.error).toBe('Workflow failed with status failed');
-      expect(body.error).not.toContain('greengrocer');
+      expect(body.error).toBe(FAILURE_MESSAGE);
     });
   });
 
@@ -368,5 +388,46 @@ describe('registerApiRoutes', () => {
   it('answers POST only', async () => {
     const response = await fetch(`${baseUrl}/api/shopping-list`);
     expect(response.status).toBe(404);
+  });
+});
+
+/**
+ * On a failed run the API layer's only job is to tell the caller why it failed.
+ *
+ * Mastra serialises the error before the result leaves the engine, so the field the
+ * handler reads holds a plain object rather than the `Error` its type promises. The
+ * shapes `extractErrorMessage` has to understand are pinned next to it in
+ * `utils/errors.spec.ts`; these tests pin what a real failing run actually produces.
+ */
+describe('extractWorkflowError', () => {
+  it('surfaces the step failure from a real failed run', async () => {
+    const run = await failingWorkflow.createRun();
+    const result = await run.start({ inputData: { prompt: 'buy milk' } });
+
+    expect(result.status).toBe('failed');
+    expect(extractWorkflowError(result)).toBe(FAILURE_MESSAGE);
+  });
+
+  it('gets a plain object rather than an Error, which is why the naive check lost the message', async () => {
+    const run = await failingWorkflow.createRun();
+    const result = await run.start({ inputData: { prompt: 'buy milk' } });
+
+    if (result.status !== 'failed') {
+      throw new Error(`Expected the run to fail, but it reported ${result.status}.`);
+    }
+
+    // Mastra's types promise an `Error` here, but `toJSON` has already run by the time
+    // the result reaches us, so an `instanceof Error` check finds nothing to report.
+    expect(result.error).not.toBeInstanceOf(Error);
+    expect(result.error).toMatchObject({ message: FAILURE_MESSAGE, name: 'Error' });
+  });
+
+  it('falls back to the status when the result carries no error at all', async () => {
+    // A suspended run is the everyday non-success result with nothing to explain.
+    const run = await suspendingWorkflow.createRun();
+    const result = await run.start({ inputData: {} });
+
+    expect(result.status).toBe('suspended');
+    expect(extractWorkflowError(result)).toBe('Workflow failed with status suspended');
   });
 });
