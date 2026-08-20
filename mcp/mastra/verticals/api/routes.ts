@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response, Router } from 'express';
 import type { ZodTypeAny } from 'zod';
+import { extractErrorMessage } from '../../utils/errors.js';
 import { logger } from '../../utils/logger.js';
 import type { AnyWorkflow, AnyWorkflowResult } from '../../utils/workflows/workflow-factory.js';
 import { shoppingListWorkflow } from '../shopping/workflows.js';
@@ -24,13 +25,12 @@ function formatValidationErrors(zodError: {
 }
 
 /**
- * Extracts an error message from a workflow result.
+ * Extracts an error message from a workflow result, falling back to the status
+ * when the result carries no detail at all.
  */
-function extractWorkflowError(result: AnyWorkflowResult): string {
-  if ('error' in result && result.error instanceof Error) {
-    return result.error.message;
-  }
-  return `Workflow failed with status ${result.status}`;
+export function extractWorkflowError(result: AnyWorkflowResult): string {
+  const error: unknown = 'error' in result ? result.error : undefined;
+  return extractErrorMessage(error) ?? `Workflow failed with status ${result.status}`;
 }
 
 /**
@@ -69,7 +69,7 @@ export function createWorkflowApiHandler(
           }
         }
 
-        console.log(`[API] ${workflowName} request received`);
+        logger.info('[API] Request received', { workflowName });
 
         const run = await workflow.createRun();
         const result = await run.start({

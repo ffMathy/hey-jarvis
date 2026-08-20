@@ -23,8 +23,14 @@ async function embedSubscription(draft: SubscriptionDraft, index: number): Promi
     createdAt: new Date().toISOString(),
     lastTriggeredAt: null,
     triggerCount: 0,
+    // Ranking never looks at how a subscription ends, so these fixtures leave it open.
+    maxTriggerCount: null,
+    expiresAt: null,
     whenEmbedding: await embedText(draft.whenEvent),
     givenEmbedding: draft.givenCondition ? await embedText(draft.givenCondition) : null,
+    // These fixtures score the literal phrasing only, so no alternate is supplied.
+    whenAltEmbedding: null,
+    givenAltEmbedding: null,
   };
 }
 

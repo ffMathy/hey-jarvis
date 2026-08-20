@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'bun:test';
-import { synapseTools } from './tools';
+import { executeTool } from '../../utils/tool-factory.js';
+import { synapseTools } from './tools.js';
 
 describe('Synapse Tools Integration Tests', () => {
   describe('registerStateChange', () => {
     it('should register a state change successfully', async () => {
-      const result = await synapseTools.registerStateChange.execute({
+      const result = await executeTool(synapseTools.registerStateChange, {
         source: 'test',
         stateType: 'test_state_change',
         stateData: {
@@ -28,7 +29,7 @@ describe('Synapse Tools Integration Tests', () => {
 
   describe('getStateChangeBatcherStats', () => {
     it('should return batcher statistics', async () => {
-      const result = await synapseTools.getStateChangeBatcherStats.execute({});
+      const result = await executeTool(synapseTools.getStateChangeBatcherStats, {});
 
       // Validate structure
       expect(result).toBeDefined();
@@ -50,14 +51,14 @@ describe('Synapse Tools Integration Tests', () => {
   describe('flushStateChanges', () => {
     it('should flush pending state changes', async () => {
       // First register a change
-      await synapseTools.registerStateChange.execute({
+      await executeTool(synapseTools.registerStateChange, {
         source: 'test',
         stateType: 'test_flush',
         stateData: { test: 'data' },
       });
 
       // Then flush
-      const result = await synapseTools.flushStateChanges.execute({});
+      const result = await executeTool(synapseTools.flushStateChanges, {});
 
       // Validate structure
       expect(result).toBeDefined();
@@ -72,11 +73,13 @@ describe('Synapse Tools Integration Tests', () => {
 
   describe('subscriptions', () => {
     it('should register, retrieve, trigger and remove a Given/When/Then subscription', async () => {
-      const registered = await synapseTools.registerSubscription.execute({
+      const registered = await executeTool(synapseTools.registerSubscription, {
         whenEvent: 'the sun goes down',
         givenCondition: 'the lights are on',
         thenAction: 'close the blinds',
         source: 'synapse-tools-spec',
+        // oneShot is shorthand for maxTriggerCount: 1, which satisfies the requirement
+        // that every subscription declares how it ends.
         oneShot: true,
       });
 
@@ -87,11 +90,11 @@ describe('Synapse Tools Integration Tests', () => {
       const subscriptionId = registered.subscription.id;
 
       try {
-        const listed = await synapseTools.listSubscriptions.execute({ includeDisabled: false });
+        const listed = await executeTool(synapseTools.listSubscriptions, { includeDisabled: false });
         expect(listed.subscriptions.some((subscription) => subscription.id === subscriptionId)).toBe(true);
 
         // Vector retrieval should surface it from a paraphrase of the WHEN.
-        const found = await synapseTools.findRelevantSubscriptions.execute({
+        const found = await executeTool(synapseTools.findRelevantSubscriptions, {
           description: 'the sun has gone down and it is getting dark outside',
           minimumScore: 0.3,
           maximumMatches: 5,
@@ -101,32 +104,35 @@ describe('Synapse Tools Integration Tests', () => {
         expect(match?.whenScore ?? 0).toBeGreaterThan(0.3);
 
         // One-shot subscriptions retire once they fire.
-        const triggered = await synapseTools.markSubscriptionTriggered.execute({ subscriptionId });
+        const triggered = await executeTool(synapseTools.markSubscriptionTriggered, { subscriptionId });
         expect(triggered.triggered).toBe(true);
         expect(triggered.stillEnabled).toBe(false);
 
-        const afterTrigger = await synapseTools.listSubscriptions.execute({ includeDisabled: false });
+        const afterTrigger = await executeTool(synapseTools.listSubscriptions, { includeDisabled: false });
         expect(afterTrigger.subscriptions.some((subscription) => subscription.id === subscriptionId)).toBe(false);
 
         console.log('✅ Subscription lifecycle verified');
         console.log('   - Id:', subscriptionId);
         console.log('   - WHEN similarity:', match?.whenScore);
       } finally {
-        const removed = await synapseTools.removeSubscription.execute({ subscriptionId });
+        const removed = await executeTool(synapseTools.removeSubscription, { subscriptionId });
         expect(removed.removed).toBe(true);
       }
     }, 15000);
 
     it('should not match a subscription against an unrelated state change', async () => {
-      const registered = await synapseTools.registerSubscription.execute({
+      const registered = await executeTool(synapseTools.registerSubscription, {
         whenEvent: 'the milk in the fridge expires',
         thenAction: 'add milk to the shopping list',
         source: 'synapse-tools-spec',
         oneShot: false,
+        // Recurring, but not forever: registration insists on an end, so a subscription
+        // cannot be created that is scored against every state change indefinitely.
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
       });
 
       try {
-        const found = await synapseTools.findRelevantSubscriptions.execute({
+        const found = await executeTool(synapseTools.findRelevantSubscriptions, {
           description: 'coding pull request opened: title is Refactor the deployment script',
           minimumScore: 0.3,
           maximumMatches: 5,
@@ -134,7 +140,7 @@ describe('Synapse Tools Integration Tests', () => {
 
         expect(found.matches.some((candidate) => candidate.subscription.id === registered.subscription.id)).toBe(false);
       } finally {
-        await synapseTools.removeSubscription.execute({ subscriptionId: registered.subscription.id });
+        await executeTool(synapseTools.removeSubscription, { subscriptionId: registered.subscription.id });
       }
     }, 15000);
   });

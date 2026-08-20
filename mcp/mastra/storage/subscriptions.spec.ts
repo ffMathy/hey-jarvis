@@ -157,3 +157,132 @@ describe('SubscriptionStorage', () => {
     expect(await storage.remove(stored.id)).toBe(false);
   });
 });
+
+describe('SubscriptionStorage expiry', () => {
+  /** A moment far enough back or forward that clock skew cannot reach it. */
+  const past = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const future = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+
+  async function add(overrides: Partial<Parameters<typeof storage.add>[0]> = {}) {
+    return await storage.add(
+      {
+        source: 'user',
+        whenEvent: 'the sun goes down',
+        thenAction: 'close the blinds',
+        ...overrides,
+      },
+      await embeddingsFor('the sun goes down', 'close the blinds'),
+    );
+  }
+
+  describe('a firing budget', () => {
+    it('stays armed until the budget is used up', async () => {
+      const stored = await add({ maxTriggerCount: 3 });
+      expect(stored.maxTriggerCount).toBe(3);
+
+      expect((await storage.markTriggered(stored.id))?.enabled).toBe(true);
+      expect((await storage.markTriggered(stored.id))?.enabled).toBe(true);
+
+      const spent = await storage.markTriggered(stored.id);
+      expect(spent?.triggerCount).toBe(3);
+      expect(spent?.enabled).toBe(false);
+    });
+
+    it('is what oneShot means, so the two cannot disagree', async () => {
+      const stored = await add({ oneShot: true });
+
+      // oneShot is the older spelling of a budget of one. Recording it as such keeps a
+      // single rule for "spent" rather than two that can drift apart.
+      expect(stored.maxTriggerCount).toBe(1);
+      expect((await storage.markTriggered(stored.id))?.enabled).toBe(false);
+    });
+
+    it('never runs out when no budget was set', async () => {
+      const stored = await add({ expiresAt: future });
+      expect(stored.maxTriggerCount).toBeNull();
+
+      for (let firing = 0; firing < 5; firing++) {
+        expect((await storage.markTriggered(stored.id))?.enabled).toBe(true);
+      }
+    });
+  });
+
+  describe('a deadline', () => {
+    it('hides an expired subscription from matching and from listing', async () => {
+      await add({ expiresAt: past });
+
+      expect(await storage.list()).toEqual([]);
+      expect(await storage.getAllEmbedded()).toEqual([]);
+    });
+
+    it('leaves a subscription alone until its deadline passes', async () => {
+      const stored = await add({ expiresAt: future });
+
+      expect((await storage.list()).map((subscription) => subscription.id)).toEqual([stored.id]);
+      expect(stored.expiresAt).toBe(future);
+    });
+
+    it('still shows expired subscriptions when explicitly asked for everything', async () => {
+      const stored = await add({ expiresAt: past });
+
+      // includeDisabled is "show me the lot", which is what a user asking why something
+      // stopped happening needs to see.
+      const all = await storage.list({ includeDisabled: true });
+      expect(all.map((subscription) => subscription.id)).toEqual([stored.id]);
+    });
+  });
+
+  describe('pruneExpired', () => {
+    it('deletes subscriptions whose deadline has passed', async () => {
+      const doomed = await add({ expiresAt: past });
+      const kept = await add({ expiresAt: future });
+
+      const removed = await storage.pruneExpired();
+
+      expect(removed.map((subscription) => subscription.id)).toEqual([doomed.id]);
+      expect(await storage.get(doomed.id)).toBeNull();
+      expect(await storage.get(kept.id)).not.toBeNull();
+    });
+
+    it('deletes subscriptions that have used up their firings', async () => {
+      const stored = await add({ maxTriggerCount: 1 });
+      await storage.markTriggered(stored.id);
+
+      expect((await storage.pruneExpired()).map((subscription) => subscription.id)).toEqual([stored.id]);
+      expect(await storage.get(stored.id)).toBeNull();
+    });
+
+    it('leaves a subscription that was merely paused', async () => {
+      const stored = await add({ expiresAt: future });
+      await storage.setEnabled(stored.id, false);
+
+      // Disabling by hand is a pause, and a pause should not quietly become a deletion.
+      expect(await storage.pruneExpired()).toEqual([]);
+      expect(await storage.get(stored.id)).not.toBeNull();
+    });
+
+    it('leaves subscriptions with no end at all, which predate the columns', async () => {
+      const stored = await add();
+
+      expect(stored.maxTriggerCount).toBeNull();
+      expect(stored.expiresAt).toBeNull();
+      expect(await storage.pruneExpired()).toEqual([]);
+      expect(await storage.get(stored.id)).not.toBeNull();
+    });
+
+    it('reports nothing when there is nothing to do', async () => {
+      await add({ expiresAt: future });
+
+      expect(await storage.pruneExpired()).toEqual([]);
+    });
+
+    it('judges deadlines against a supplied moment', async () => {
+      const stored = await add({ expiresAt: future });
+
+      // Nothing to prune now, but everything to prune tomorrow.
+      expect(await storage.pruneExpired()).toEqual([]);
+      const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      expect((await storage.pruneExpired(tomorrow)).map((subscription) => subscription.id)).toEqual([stored.id]);
+    });
+  });
+});

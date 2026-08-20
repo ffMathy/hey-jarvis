@@ -1,3 +1,4 @@
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import type { Agent } from '@mastra/core/agent';
 import { generateObject } from 'ai';
@@ -87,7 +88,7 @@ Respond with:
 - "reasoning" (string): Clear explanation with specific examples from the DAG`,
   });
 
-  return result.object as EvaluationResult;
+  return result.object;
 }
 
 /**

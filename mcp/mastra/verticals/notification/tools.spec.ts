@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'bun:test';
+import { executeTool } from '../../utils/tool-factory.js';
 import { notifyDevice } from './tools';
 
 describe('Notification Tools Integration Tests', () => {
   describe('notifyDevice', () => {
     it('should handle missing Home Assistant configuration gracefully', async () => {
-      const result = await notifyDevice.execute({
+      const result = await executeTool(notifyDevice, {
         message: 'Test notification',
         conversationTimeout: 5000,
       });
@@ -25,7 +26,7 @@ describe('Notification Tools Integration Tests', () => {
     }, 10000);
 
     it('should validate input schema', async () => {
-      const result = await notifyDevice.execute({
+      const result = await executeTool(notifyDevice, {
         message: 'Test with device name',
         deviceName: 'test_device',
         conversationTimeout: 3000,

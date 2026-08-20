@@ -1,7 +1,25 @@
 import { beforeAll, describe, expect, it } from 'bun:test';
 import { Mastra } from '@mastra/core';
+import { z } from 'zod';
 import { isOllamaAvailable } from '../../utils/providers/ollama-provider.js';
 import { weatherMonitoringWorkflow } from './workflows.js';
+
+const workflowResultSchema = z.object({
+  registered: z.boolean(),
+  message: z.string(),
+});
+
+/**
+ * Asserts the run succeeded and hands back its typed result.
+ *
+ * Mastra's run result is a discriminated union in which `result` only exists on
+ * the success branch, so the status has to be narrowed rather than merely
+ * asserted on.
+ */
+function expectSuccessfulResult(execution: { status: string; result?: unknown }) {
+  expect(execution.status).toBe('success');
+  return workflowResultSchema.parse(execution.result);
+}
 
 describe('weatherMonitoringWorkflow', () => {
   let ollamaAvailable = false;
@@ -43,11 +61,11 @@ describe('weatherMonitoringWorkflow', () => {
 
     // Verify the workflow completes successfully
     expect(execution).toBeDefined();
-    expect(execution.status).toBe('success');
-    expect(execution.result).toBeDefined();
-    expect(execution.result.registered).toBeDefined();
-    expect(typeof execution.result.registered).toBe('boolean');
-    expect(typeof execution.result.message).toBe('string');
+
+    const result = expectSuccessfulResult(execution);
+    expect(result.registered).toBeDefined();
+    expect(typeof result.registered).toBe('boolean');
+    expect(typeof result.message).toBe('string');
   }, 120000); // Increased timeout to allow for model pulling
 
   it('should complete workflow with proper structure', async () => {
@@ -61,12 +79,12 @@ describe('weatherMonitoringWorkflow', () => {
     const execution = await run.start({ inputData: {} });
 
     // Verify that the workflow completed
-    expect(execution.status).toBe('success');
-    expect(execution.result).toBeDefined();
+    const result = expectSuccessfulResult(execution);
+    expect(result).toBeDefined();
 
     // Verify the result has the expected keys
-    expect('registered' in execution.result).toBe(true);
-    expect('message' in execution.result).toBe(true);
+    expect('registered' in result).toBe(true);
+    expect('message' in result).toBe(true);
   }, 120000); // Increased timeout to allow for model pulling
 
   it('should have correct workflow structure', () => {

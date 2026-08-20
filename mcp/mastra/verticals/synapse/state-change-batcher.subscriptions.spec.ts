@@ -16,6 +16,7 @@ import { beforeEach, describe, expect, it, mock } from 'bun:test';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import path from 'path';
+import * as realStorage from '../../storage/index.js';
 import { type SubscriptionEmbeddings, SubscriptionStorage } from '../../storage/subscriptions.js';
 import { embedText } from '../../utils/static-embedder.js';
 
@@ -40,7 +41,12 @@ mock.module('../../memory/index.js', () => ({
   }),
 }));
 
+// `mock.module` is process-global in Bun and replaces the whole module, so the real
+// exports are spread back in: other specs sharing this process reach for the rest of
+// the storage surface (`getVectorStorageProvider` among them), and a mock carrying only
+// the one function turns that into a module-resolution error somewhere unrelated.
 mock.module('../../storage/index.js', () => ({
+  ...realStorage,
   getSubscriptionStorage: async () => storage,
 }));
 

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { getSubscriptionStorage } from '../../storage/index.js';
+import type { SubscriptionEmbeddings } from '../../storage/subscriptions.js';
 import { logger } from '../../utils/logger.js';
 import { embedTexts } from '../../utils/static-embedder.js';
 import { createTool } from '../../utils/tool-factory.js';
@@ -21,6 +22,8 @@ const subscriptionSchema = z.object({
   createdAt: z.string(),
   lastTriggeredAt: z.string().nullable(),
   triggerCount: z.number(),
+  maxTriggerCount: z.number().nullable(),
+  expiresAt: z.string().nullable(),
 });
 
 /**
@@ -32,10 +35,51 @@ const subscriptionSchema = z.object({
  * matched against; the `thenAction` is embedded too so the action text can be searched
  * and deduplicated later.
  */
+/**
+ * Embeds everything a subscription needs stored, in a single pass.
+ *
+ * A first-person clause is also stored in the third person. Users say "when I get home
+ * from work"; devices report "person is Mathias, state is arrived home", and the static
+ * embedder cannot connect the two on its own. Matching takes the better of the two
+ * phrasings, so the rewrite can only add reach.
+ *
+ * The alternates are optional, which is why the texts are gathered into one array with
+ * their positions remembered rather than embedded separately: the embedder is called
+ * once however many phrasings there turned out to be.
+ */
+async function embedSubscriptionComponents(input: {
+  whenEvent: string;
+  givenCondition?: string;
+  thenAction: string;
+}): Promise<SubscriptionEmbeddings> {
+  const whenAlternate = thirdPersonVariant(input.whenEvent);
+  const givenAlternate = input.givenCondition ? thirdPersonVariant(input.givenCondition) : null;
+
+  const texts = [input.whenEvent, input.thenAction];
+  const givenIndex = input.givenCondition ? texts.push(input.givenCondition) - 1 : -1;
+  const whenAlternateIndex = whenAlternate ? texts.push(whenAlternate) - 1 : -1;
+  const givenAlternateIndex = givenAlternate ? texts.push(givenAlternate) - 1 : -1;
+
+  const embeddings = await embedTexts(texts);
+  const [whenEmbedding, thenEmbedding] = embeddings;
+
+  if (!whenEmbedding || !thenEmbedding) {
+    throw new Error('Failed to embed the subscription components');
+  }
+
+  return {
+    whenEvent: whenEmbedding,
+    thenAction: thenEmbedding,
+    givenCondition: givenIndex === -1 ? null : (embeddings[givenIndex] ?? null),
+    whenEventAlternate: whenAlternateIndex === -1 ? null : (embeddings[whenAlternateIndex] ?? null),
+    givenConditionAlternate: givenAlternateIndex === -1 ? null : (embeddings[givenAlternateIndex] ?? null),
+  };
+}
+
 export const registerSubscription = createTool({
   id: 'registerSubscription',
   description:
-    'Registers a subscription (a point of interest) using a Given/When/Then structure. Use this whenever the user shows interest in something or asks for something to happen when something else happens. The WHEN is the triggering event, the GIVEN is an optional precondition, and the THEN is the action. Example: "When the sun goes down, if the lights are on, close the blinds."',
+    'Registers a subscription (a point of interest) using a Given/When/Then structure. Use this whenever the user shows interest in something or asks for something to happen when something else happens. The WHEN is the triggering event, the GIVEN is an optional precondition, and the THEN is the action. Example: "When the sun goes down, if the lights are on, close the blinds." You MUST give it an end: either maxTriggerCount (how many firings) or expiresAt (a date), or both. Nothing watches forever, and a subscription with no end quietly accumulates for the rest of the system\'s life.',
   inputSchema: z.object({
     whenEvent: z
       .string()
@@ -59,7 +103,21 @@ export const registerSubscription = createTool({
       .boolean()
       .default(false)
       .describe(
-        'True when the subscription should only ever fire once, e.g. "the NEXT time I get home from work". Defaults to false (recurring).',
+        'True when the subscription should only ever fire once, e.g. "the NEXT time I get home from work". Shorthand for maxTriggerCount: 1. Defaults to false (recurring).',
+      ),
+    maxTriggerCount: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe(
+        'How many times this may fire before it is deleted. Use when the request has a natural count: "remind me for the next three deliveries" is 3. Omit for something open-ended like "whenever the doorbell rings", and give expiresAt instead.',
+      ),
+    expiresAt: z
+      .string()
+      .optional()
+      .describe(
+        'ISO 8601 timestamp after which this is deleted, e.g. "2026-09-01T00:00:00.000Z". Use for anything tied to a date ("until I get back from holiday on the 8th") and as the catch-all for open-ended requests, where a generous horizon such as six months is better than none.',
       ),
   }),
   outputSchema: z.object({
@@ -67,32 +125,28 @@ export const registerSubscription = createTool({
     subscription: subscriptionSchema,
   }),
   execute: async (inputData) => {
+    // Every subscription has to say how it ends. Enforced here rather than only in the
+    // schema description, because the cost of forgetting is invisible and cumulative:
+    // an endless subscription is scored against every state change forever, and nothing
+    // ever removes it. Throwing gives the model a specific thing to fix and retry.
+    const oneShot = inputData.oneShot ?? false;
+    const maxTriggerCount = inputData.maxTriggerCount ?? (oneShot ? 1 : null);
+
+    if (maxTriggerCount === null && !inputData.expiresAt) {
+      throw new Error(
+        'A subscription needs an end: pass maxTriggerCount (how many times it may fire), expiresAt (an ISO timestamp), or both. For an open-ended request, pick a generous expiresAt such as six months out rather than leaving it unbounded.',
+      );
+    }
+
     logger.info('Registering subscription', {
       whenEvent: inputData.whenEvent,
       givenCondition: inputData.givenCondition,
       thenAction: inputData.thenAction,
-      oneShot: inputData.oneShot,
+      maxTriggerCount,
+      expiresAt: inputData.expiresAt ?? null,
     });
 
-    // A first-person clause is also stored in the third person. Users say "when I get
-    // home from work"; devices report "person is Mathias, state is arrived home", and
-    // the static embedder cannot connect the two on its own. Matching takes the better
-    // of the two phrasings, so the rewrite can only add reach.
-    const whenAlternate = thirdPersonVariant(inputData.whenEvent);
-    const givenAlternate = inputData.givenCondition ? thirdPersonVariant(inputData.givenCondition) : null;
-
-    const texts = [inputData.whenEvent, inputData.thenAction];
-    const givenIndex = inputData.givenCondition ? texts.push(inputData.givenCondition) - 1 : -1;
-    const whenAlternateIndex = whenAlternate ? texts.push(whenAlternate) - 1 : -1;
-    const givenAlternateIndex = givenAlternate ? texts.push(givenAlternate) - 1 : -1;
-
-    const embeddings = await embedTexts(texts);
-    const [whenEmbedding, thenEmbedding] = embeddings;
-    const givenEmbedding = givenIndex === -1 ? undefined : embeddings[givenIndex];
-
-    if (!whenEmbedding || !thenEmbedding) {
-      throw new Error('Failed to embed the subscription components');
-    }
+    const embeddings = await embedSubscriptionComponents(inputData);
 
     const storage = await getSubscriptionStorage();
     const subscription = await storage.add(
@@ -101,15 +155,11 @@ export const registerSubscription = createTool({
         whenEvent: inputData.whenEvent,
         givenCondition: inputData.givenCondition,
         thenAction: inputData.thenAction,
-        oneShot: inputData.oneShot,
+        oneShot,
+        maxTriggerCount,
+        expiresAt: inputData.expiresAt ?? null,
       },
-      {
-        whenEvent: whenEmbedding,
-        thenAction: thenEmbedding,
-        givenCondition: givenEmbedding ?? null,
-        whenEventAlternate: whenAlternateIndex === -1 ? null : embeddings[whenAlternateIndex],
-        givenConditionAlternate: givenAlternateIndex === -1 ? null : embeddings[givenAlternateIndex],
-      },
+      embeddings,
     );
 
     return { registered: true, subscription };
@@ -278,6 +328,41 @@ export const setSubscriptionEnabled = createTool({
   },
 });
 
+/**
+ * Deletes the subscriptions that can no longer fire.
+ */
+export const pruneExpiredSubscriptions = createTool({
+  id: 'pruneExpiredSubscriptions',
+  description:
+    'Deletes subscriptions that have run out of firings or passed their expiry date. They are already ignored when matching, so this is housekeeping rather than something the user is waiting on. Use it when asked to tidy up, or to report what has lapsed.',
+  inputSchema: z.object({}),
+  outputSchema: z.object({
+    removed: z.array(subscriptionSchema),
+    count: z.number(),
+    message: z.string(),
+  }),
+  execute: async () => {
+    const storage = await getSubscriptionStorage();
+    const removed = await storage.pruneExpired();
+
+    if (removed.length > 0) {
+      logger.info('Pruned expired subscriptions', {
+        count: removed.length,
+        ids: removed.map((subscription) => subscription.id),
+      });
+    }
+
+    return {
+      removed,
+      count: removed.length,
+      message:
+        removed.length === 0
+          ? 'No subscriptions had lapsed'
+          : `Removed ${removed.length} lapsed subscription${removed.length === 1 ? '' : 's'}`,
+    };
+  },
+});
+
 export const subscriptionTools = {
   registerSubscription,
   listSubscriptions,
@@ -285,4 +370,5 @@ export const subscriptionTools = {
   markSubscriptionTriggered,
   removeSubscription,
   setSubscriptionEnabled,
+  pruneExpiredSubscriptions,
 };

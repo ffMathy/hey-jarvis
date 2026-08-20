@@ -5,6 +5,11 @@ set -euo pipefail
 # stream serial logs. Requires real WiFi credentials, so it goes through
 # 1Password (unlike the plain `build`, which only needs placeholders).
 #
+# `upload` and `run` both recompile first, under those real credentials, because
+# `esphome upload` on its own flashes whatever binary is already in the build
+# directory -- which after a `build` is one carrying placeholder credentials.
+# invoke-esphome.sh also refuses outright to flash such a binary.
+#
 # Usage:
 #   bun run --cwd home-assistant-voice-firmware flash            # auto-detect port
 #   ESPHOME_DEVICE=/dev/ttyACM0 bun run --cwd ... flash          # explicit port

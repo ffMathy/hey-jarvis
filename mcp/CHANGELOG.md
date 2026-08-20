@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.10.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.9.0...mcp-v1.10.0) (2026-08-19)
+
+
+### Features
+
+* **coding:** implement issues with claude cloud sessions ([80ff60f](https://github.com/ffMathy/hey-jarvis/commit/80ff60fe33f7f2c57d7a31ae3bba55699167e99f))
+* **coding:** implement issues with claude cloud sessions ([#663](https://github.com/ffMathy/hey-jarvis/issues/663)) ([204e1e9](https://github.com/ffMathy/hey-jarvis/commit/204e1e9071c629a5503825d558bfa21f953201cb))
+
 ## [1.9.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.8.1...mcp-v1.9.0) (2026-08-18)
 
 

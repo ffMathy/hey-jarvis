@@ -75,6 +75,13 @@ static const float ANNOUNCEMENT_SPEECH_THRESHOLD = 0.5f;
 // How long an announcement waits for the agent's first audio before giving up on it.
 static const uint32_t ANNOUNCEMENT_FIRST_AUDIO_TIMEOUT_MS = 20000;
 
+// After the agent invokes end_call, how long to let its farewell start arriving before
+// treating an empty speaker as "finished talking".
+static const uint32_t END_CALL_SPEECH_GRACE_MS = 1500;
+
+// Hard ceiling on that wait, in case the farewell never stops or never comes.
+static const uint32_t END_CALL_MAX_WAIT_MS = 20000;
+
 // Helper to convert StreamState enum to string
 static const char* stream_state_to_string(StreamState state) {
   switch (state) {
@@ -87,6 +94,10 @@ static const char* stream_state_to_string(StreamState state) {
 
 void ElevenLabsStream::handle_websocket_disconnected() {
   ESP_LOGI(TAG, "WS_EVENT: WEBSOCKET_EVENT_DISCONNECTED");
+  // Whatever else happened, no connection is being built any more. Missing this would
+  // wedge the component: start_stream would refuse every future call.
+  this->starting_ = false;
+  this->end_call_requested_ = false;
   this->set_state(StreamState::OFF);
   ESP_LOGD(TAG, "WS_EVENT: Triggering end events (%zu triggers)", this->on_end_triggers_.size());
   for (auto *trigger : this->on_end_triggers_) {
@@ -113,6 +124,26 @@ bool ElevenLabsStream::decode_and_play_base64_audio(const char* base64_data) {
   // announcement's reply window must stay shut: connecting, fetching a signed URL and
   // synthesising the first message can easily outlast three seconds of "silence".
   this->agent_has_spoken_ = true;
+
+  // speaker_is_active_ is set here for the same reason, and this is a fix rather than a
+  // tidy-up. It used to be set only in the JSON audio branch -- but the fast path was
+  // added precisely so that audio frames would stop going through the parser, and it
+  // never set the flag. Since essentially every frame takes the fast path, the flag
+  // stayed false for entire replies, and four things quietly depended on it:
+  //
+  //   - the microphone echo gate, so the device streamed its own speech back to the
+  //     agent while talking
+  //   - the vad_score echo guard, so the agent's own voice scored as the user speaking
+  //   - the announcement window's "is the agent still talking" test, which is why an
+  //     announcement hung up around the time it started speaking instead of after
+  //   - the LED's replying state, which never came on
+  if (!this->speaker_is_active_) {
+    ESP_LOGI(TAG, "DECODE_B64: Setting speaker_is_active_ = true");
+    this->speaker_is_active_ = true;
+    for (auto *trigger : this->on_replying_triggers_) {
+      trigger->trigger();
+    }
+  }
 
   // Log PSRAM before decode
   size_t psram_before_decode = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
@@ -388,6 +419,33 @@ void ElevenLabsStream::loop() {
     last_psram_log = millis();
   }
   
+  // Is the agent's voice still coming out of the speaker?
+  //
+  // has_buffered_data(), not is_running(): the speaker is started once per conversation
+  // and stopped only at the end, so is_running() is true throughout and would never let
+  // either of the checks below fire.
+  const bool agent_speaking = this->speaker_is_active_ ||
+                              (this->elevenlabs_speaker_ != nullptr &&
+                               this->elevenlabs_speaker_->has_buffered_data());
+
+  // The agent invoked end_call. Hang up -- but only once it has stopped talking.
+  //
+  // Nothing did this before: end_call arrives as an agent_tool_response, which was
+  // logged and discarded, so asking Jarvis to end the call did nothing on the device.
+  // ElevenLabs has no "conversation ended" client event to fall back on either; the
+  // tool response is the whole signal.
+  if (this->end_call_requested_ && this->state_ == StreamState::ON) {
+    const uint32_t waited = millis() - this->end_call_requested_ms_;
+    const bool farewell_done = !agent_speaking && waited >= END_CALL_SPEECH_GRACE_MS;
+    if (farewell_done || waited >= END_CALL_MAX_WAIT_MS) {
+      ESP_LOGI(TAG, "LOOP: Agent invoked end_call%s, ending conversation",
+               farewell_done ? " and has finished speaking" : " (gave up waiting for it to finish)");
+      this->end_call_requested_ = false;
+      this->stop_stream();
+      return;
+    }
+  }
+
   // An announcement hangs up if nobody answers it.
   //
   // The clock is held at zero, rather than merely reset, for as long as there is any
@@ -413,13 +471,7 @@ void ElevenLabsStream::loop() {
       return;
     }
 
-    const bool agent_busy = !this->agent_has_spoken_ || this->speaker_is_active_ ||
-                            // has_buffered_data(), not is_running(): the speaker is
-                            // started once for the whole conversation and only stopped
-                            // at the end, so is_running() would be true throughout and
-                            // the clock would never get to start.
-                            (this->elevenlabs_speaker_ != nullptr &&
-                             this->elevenlabs_speaker_->has_buffered_data());
+    const bool agent_busy = !this->agent_has_spoken_ || agent_speaking;
     if (agent_busy) {
       this->silence_started_ms_ = 0;
     } else if (this->silence_started_ms_ == 0) {
@@ -464,20 +516,37 @@ bool ElevenLabsStream::start_stream(const std::string &initial_message, uint32_t
   ESP_LOGD(TAG, "START_STREAM: Agent ID='%s'", this->agent_id_.c_str());
   ESP_LOGD(TAG, "START_STREAM: Initial message='%s', timeout=%u ms", initial_message.c_str(), timeout_ms);
 
+  // Refuse before touching any state.
+  //
+  // These checks used to sit below the assignments, so a rejected start still reset
+  // agent_has_spoken_, re-armed the reply window and moved connection_start_time_ on
+  // the conversation already in progress -- leaving a live call convinced the agent had
+  // never spoken, which stalls its window until the no-audio timeout kills it.
+  //
+  // `starting_` covers the gap the state enum does not. StreamState is OFF/ON only, and
+  // ON is not reached until about 1.75s after the socket opens, so a second announce
+  // inside that window would otherwise reach connect() again and destroy the websocket
+  // client from this task while the websocket task is still using it.
+  if (this->state_ == StreamState::ON) {
+    ESP_LOGW(TAG, "START_STREAM: Cannot start stream - already ON");
+    return false;
+  }
+  if (this->starting_) {
+    ESP_LOGW(TAG, "START_STREAM: Cannot start stream - a connection is already being established");
+    return false;
+  }
+
   // Store the initial message and response window for this session
   this->initial_message_ = initial_message;
   this->response_window_ms_ = timeout_ms;
   this->awaiting_response_ = timeout_ms > 0;
   this->agent_has_spoken_ = false;
   this->silence_started_ms_ = 0;
+  this->end_call_requested_ = false;
+  this->starting_ = true;
 
   this->connection_start_time_ = millis();
   ESP_LOGD(TAG, "START_STREAM: Connection start time set to %d", this->connection_start_time_);
-  
-  if (this->state_ == StreamState::ON) {
-    ESP_LOGW(TAG, "START_STREAM: Cannot start stream - already ON");
-    return false;
-  }
 
   ESP_LOGD(TAG, "SET_STATE: Triggering replying events (%zu triggers)", this->on_replying_triggers_.size());
   for (auto *trigger : this->on_replying_triggers_) {
@@ -514,6 +583,7 @@ bool ElevenLabsStream::start_stream(const std::string &initial_message, uint32_t
           ESP_LOGD(TAG, "WS_EVENT: Setting state to ON");
 
           this->set_state(StreamState::ON);
+          this->starting_ = false;  // Connection established; start_stream may be called again
           this->speaker_is_active_ = false; // Mark speaker as inactive
           
           ESP_LOGD(TAG, "SET_STATE: Starting microphone capture");
@@ -605,6 +675,8 @@ void ElevenLabsStream::stop_stream() {
   this->agent_has_spoken_ = false;
   this->silence_started_ms_ = 0;
   this->response_window_ms_ = 0;
+  this->end_call_requested_ = false;
+  this->starting_ = false;
   
   // Disconnect WebSocket client
   if (this->client_) {
@@ -892,15 +964,9 @@ void ElevenLabsStream::parse_json_message_from_buffer(uint8_t *buffer, size_t le
         // Update timing for state management
         this->last_audio_response_time_ = millis();
 
-        if(!this->speaker_is_active_) {
-          ESP_LOGI(TAG, "AUDIO_EVENT: Setting speaker_is_active_ = true");
-          this->speaker_is_active_ = true;
-          
-          for (auto *trigger : this->on_replying_triggers_) {
-              trigger->trigger();
-          }
-        }
-        
+        // speaker_is_active_ and the replying triggers are handled inside
+        // decode_and_play_base64_audio, which both this branch and the fast path share.
+
         // Decode base64 audio data and play it immediately
         bool decode_success = this->decode_and_play_base64_audio(audio_base64);
         if (!decode_success) {
@@ -1057,6 +1123,16 @@ void ElevenLabsStream::parse_json_message_from_buffer(uint8_t *buffer, size_t le
       const char* tool_name = tool_response["tool_name"];
       ESP_LOGD(TAG, "PARSE_JSON_BUF: Tool response - Name: %s", 
                tool_name ? tool_name : "NULL");
+
+      // end_call is the agent agreeing to hang up, and it is the only notice given:
+      // ElevenLabs sends no conversation-ended event. Record it and let loop() do the
+      // teardown once the farewell has played -- stop_stream() destroys the websocket
+      // client, and this runs on the websocket's own task.
+      if (tool_name != nullptr && strcmp(tool_name, "end_call") == 0) {
+        ESP_LOGI(TAG, "PARSE_JSON_BUF: Agent invoked end_call; will end the conversation once it stops speaking");
+        this->end_call_requested_ = true;
+        this->end_call_requested_ms_ = millis();
+      }
     } else {
       ESP_LOGW(TAG, "PARSE_JSON_BUF: No agent_tool_response_event found");
     }
@@ -1084,6 +1160,8 @@ void ElevenLabsStream::handle_error(const std::string &error_message) {
   if (this->client_) {
     this->client_->disconnect();
   }
+  this->starting_ = false;
+  this->end_call_requested_ = false;
   this->set_state(StreamState::OFF);
   ESP_LOGD(TAG, "ERROR: Triggering error events (%zu triggers)", this->on_error_triggers_.size());
   for (auto *trigger : this->on_error_triggers_) {

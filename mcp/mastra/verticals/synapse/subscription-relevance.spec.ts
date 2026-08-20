@@ -224,6 +224,9 @@ async function embedDraft(draft: Draft): Promise<EmbeddedSubscription> {
     createdAt: new Date().toISOString(),
     lastTriggeredAt: null,
     triggerCount: 0,
+    // Retrieval never looks at how a subscription ends, so these fixtures leave it open.
+    maxTriggerCount: null,
+    expiresAt: null,
     whenEmbedding: await embedText(draft.whenEvent),
     givenEmbedding: draft.givenCondition ? await embedText(draft.givenCondition) : null,
     whenAltEmbedding: whenAlternate ? await embedText(whenAlternate) : null,

@@ -1,7 +1,9 @@
+import { afterEach, beforeEach, describe, expect, it, type Mock, mock } from 'bun:test';
 import type { Agent } from '@mastra/core/agent';
 import { z } from 'zod';
 import {
   type AgentProvider,
+  dagSchema,
   getCurrentDAG,
   getCurrentDagWorkflow,
   getNextInstructionsWorkflow,
@@ -23,14 +25,14 @@ interface MockAgent {
   name: string;
   getDescription(): string;
   listTools(): Promise<Record<string, unknown>>;
-  generate: ReturnType<typeof jest.fn>;
+  generate: Mock<(messages: unknown) => Promise<{ text: string }>>;
   prompts: string[];
 }
 
 function createMockAgent(id: string, options: MockAgentOptions = {}): MockAgent {
   const prompts: string[] = [];
 
-  const generate = jest.fn(async (messages: unknown) => {
+  const generate = mock(async (messages: unknown) => {
     const prompt = Array.isArray(messages) ? String((messages[0] as { content?: unknown })?.content ?? '') : '';
     prompts.push(prompt);
     const respond = options.respond ?? (() => `Mock response from ${id}`);
@@ -187,7 +189,8 @@ describe('Routing Workflows', () => {
       await route('What is the weather?');
       const reports = await pollUntilComplete();
 
-      expect(reports.at(-1)?.completedTaskResults?.[0].id).toBe('weather-check');
+      const lastReport = reports[reports.length - 1];
+      expect(lastReport.completedTaskResults?.[0].id).toBe('weather-check');
     });
   });
 
@@ -322,21 +325,21 @@ describe('Routing Workflows', () => {
 
       await route('What is the weather where I am?');
 
-      const pending = assertSuccess(await runWorkflow(getCurrentDagWorkflow, {}), z.any());
+      const pending = assertSuccess(await runWorkflow(getCurrentDagWorkflow, {}), dagSchema);
       expect(pending.userQuery).toBe('What is the weather where I am?');
-      expect(pending.tasks.map((task: { id: string; status: string }) => [task.id, task.status])).toEqual([
+      expect(pending.tasks.map((task) => [task.id, task.status])).toEqual([
         ['get-location', 'pending'],
         ['get-weather', 'pending'],
       ]);
 
       await pollUntilComplete();
 
-      const done = assertSuccess(await runWorkflow(getCurrentDagWorkflow, {}), z.any());
-      expect(done.tasks.every((task: { status: string }) => task.status === 'completed')).toBe(true);
+      const done = assertSuccess(await runWorkflow(getCurrentDagWorkflow, {}), dagSchema);
+      expect(done.tasks.every((task) => task.status === 'completed')).toBe(true);
     });
 
     it('is empty before anything has been routed', async () => {
-      const dag = assertSuccess(await runWorkflow(getCurrentDagWorkflow, {}), z.any());
+      const dag = assertSuccess(await runWorkflow(getCurrentDagWorkflow, {}), dagSchema);
       expect(dag.tasks).toEqual([]);
     });
   });
