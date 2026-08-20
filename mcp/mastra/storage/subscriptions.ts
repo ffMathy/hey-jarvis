@@ -67,6 +67,16 @@ export type SubscriptionExpiryReason = 'spent' | 'expired';
 export interface EmbeddedSubscription extends Subscription {
   whenEmbedding: Float32Array;
   givenEmbedding: Float32Array | null;
+  /**
+   * Embedding of a third-person rewrite of `whenEvent`, when it was phrased in the
+   * first person. Matching takes the better of this and {@link whenEmbedding}, so a
+   * subscription is reachable both from how the user said it and from how a device
+   * reports it. Null when the clause contained no first-person pronouns, and on rows
+   * written before the column existed.
+   */
+  whenAltEmbedding: Float32Array | null;
+  /** The same, for `givenCondition`. */
+  givenAltEmbedding: Float32Array | null;
 }
 
 /** The embeddings supplied when creating a subscription. */
@@ -74,6 +84,10 @@ export interface SubscriptionEmbeddings {
   whenEvent: Float32Array;
   givenCondition: Float32Array | null;
   thenAction: Float32Array;
+  /** Third-person rewrite of `whenEvent`, when there was one to make. */
+  whenEventAlternate?: Float32Array | null;
+  /** Third-person rewrite of `givenCondition`, when there was one to make. */
+  givenConditionAlternate?: Float32Array | null;
 }
 
 /**
@@ -135,14 +149,18 @@ export class SubscriptionStorage {
         created_at TEXT NOT NULL,
         last_triggered_at TEXT,
         trigger_count INTEGER NOT NULL DEFAULT 0,
+        when_alt_embedding BLOB,
+        given_alt_embedding BLOB,
         max_trigger_count INTEGER,
         expires_at TEXT
       )
     `);
 
-    // Databases created before subscriptions could expire are missing those columns.
-    // Adding them leaves existing rows NULL, which every check below reads as "no
-    // limit" -- so an old subscription behaves exactly as it did.
+    // Databases created before the alternate phrasings or before subscriptions could
+    // expire are missing those columns. Adding them is cheap and leaves existing rows
+    // NULL, which every check below reads as "no alternate phrasing" or "no limit" —
+    // so an old subscription behaves exactly as it did, and picks up the alternate
+    // phrasings whenever it is next re-registered.
     await this.addMissingColumns();
 
     this.initialized = true;
@@ -159,6 +177,8 @@ export class SubscriptionStorage {
     const columnNames = new Set(existing.rows.map((row) => String(row.name)));
 
     const additions: Array<[string, string]> = [
+      ['when_alt_embedding', 'BLOB'],
+      ['given_alt_embedding', 'BLOB'],
       ['max_trigger_count', 'INTEGER'],
       ['expires_at', 'TEXT'],
     ];
@@ -209,8 +229,9 @@ export class SubscriptionStorage {
           id, source, when_text, given_text, then_text,
           when_embedding, given_embedding, then_embedding,
           one_shot, enabled, created_at, last_triggered_at, trigger_count,
+          when_alt_embedding, given_alt_embedding,
           max_trigger_count, expires_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       args: [
         stored.id,
@@ -226,6 +247,8 @@ export class SubscriptionStorage {
         stored.createdAt,
         null,
         0,
+        embeddings.whenEventAlternate ? toBlob(embeddings.whenEventAlternate) : null,
+        embeddings.givenConditionAlternate ? toBlob(embeddings.givenConditionAlternate) : null,
         stored.maxTriggerCount,
         stored.expiresAt,
       ],
@@ -261,6 +284,8 @@ export class SubscriptionStorage {
       ...this.toSubscription(row),
       whenEmbedding: fromBlob(row.when_embedding),
       givenEmbedding: row.given_embedding === null ? null : fromBlob(row.given_embedding),
+      whenAltEmbedding: row.when_alt_embedding == null ? null : fromBlob(row.when_alt_embedding),
+      givenAltEmbedding: row.given_alt_embedding == null ? null : fromBlob(row.given_alt_embedding),
     }));
   }
 

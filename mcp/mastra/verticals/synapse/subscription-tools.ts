@@ -1,8 +1,10 @@
 import { z } from 'zod';
 import { getSubscriptionStorage } from '../../storage/index.js';
+import type { SubscriptionEmbeddings } from '../../storage/subscriptions.js';
 import { logger } from '../../utils/logger.js';
 import { embedTexts } from '../../utils/static-embedder.js';
 import { createTool } from '../../utils/tool-factory.js';
+import { thirdPersonVariant } from './paraphrase.js';
 import {
   DEFAULT_MAXIMUM_MATCHES,
   DEFAULT_MINIMUM_SCORE,
@@ -33,6 +35,47 @@ const subscriptionSchema = z.object({
  * matched against; the `thenAction` is embedded too so the action text can be searched
  * and deduplicated later.
  */
+/**
+ * Embeds everything a subscription needs stored, in a single pass.
+ *
+ * A first-person clause is also stored in the third person. Users say "when I get home
+ * from work"; devices report "person is Mathias, state is arrived home", and the static
+ * embedder cannot connect the two on its own. Matching takes the better of the two
+ * phrasings, so the rewrite can only add reach.
+ *
+ * The alternates are optional, which is why the texts are gathered into one array with
+ * their positions remembered rather than embedded separately: the embedder is called
+ * once however many phrasings there turned out to be.
+ */
+async function embedSubscriptionComponents(input: {
+  whenEvent: string;
+  givenCondition?: string;
+  thenAction: string;
+}): Promise<SubscriptionEmbeddings> {
+  const whenAlternate = thirdPersonVariant(input.whenEvent);
+  const givenAlternate = input.givenCondition ? thirdPersonVariant(input.givenCondition) : null;
+
+  const texts = [input.whenEvent, input.thenAction];
+  const givenIndex = input.givenCondition ? texts.push(input.givenCondition) - 1 : -1;
+  const whenAlternateIndex = whenAlternate ? texts.push(whenAlternate) - 1 : -1;
+  const givenAlternateIndex = givenAlternate ? texts.push(givenAlternate) - 1 : -1;
+
+  const embeddings = await embedTexts(texts);
+  const [whenEmbedding, thenEmbedding] = embeddings;
+
+  if (!whenEmbedding || !thenEmbedding) {
+    throw new Error('Failed to embed the subscription components');
+  }
+
+  return {
+    whenEvent: whenEmbedding,
+    thenAction: thenEmbedding,
+    givenCondition: givenIndex === -1 ? null : (embeddings[givenIndex] ?? null),
+    whenEventAlternate: whenAlternateIndex === -1 ? null : (embeddings[whenAlternateIndex] ?? null),
+    givenConditionAlternate: givenAlternateIndex === -1 ? null : (embeddings[givenAlternateIndex] ?? null),
+  };
+}
+
 export const registerSubscription = createTool({
   id: 'registerSubscription',
   description:
@@ -103,15 +146,7 @@ export const registerSubscription = createTool({
       expiresAt: inputData.expiresAt ?? null,
     });
 
-    const [whenEmbedding, thenEmbedding, givenEmbedding] = await embedTexts([
-      inputData.whenEvent,
-      inputData.thenAction,
-      ...(inputData.givenCondition ? [inputData.givenCondition] : []),
-    ]);
-
-    if (!whenEmbedding || !thenEmbedding) {
-      throw new Error('Failed to embed the subscription components');
-    }
+    const embeddings = await embedSubscriptionComponents(inputData);
 
     const storage = await getSubscriptionStorage();
     const subscription = await storage.add(
@@ -124,11 +159,7 @@ export const registerSubscription = createTool({
         maxTriggerCount,
         expiresAt: inputData.expiresAt ?? null,
       },
-      {
-        whenEvent: whenEmbedding,
-        thenAction: thenEmbedding,
-        givenCondition: givenEmbedding ?? null,
-      },
+      embeddings,
     );
 
     return { registered: true, subscription };

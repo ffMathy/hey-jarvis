@@ -15,8 +15,8 @@
 import { getSubscriptionStorage } from '../../storage/index.js';
 import type { EmbeddedSubscription, Subscription } from '../../storage/subscriptions.js';
 import { logger } from '../../utils/logger.js';
-import { cosineSimilarity, embedText } from '../../utils/static-embedder.js';
-import { describeStateChange, type StateChange } from './state-change.js';
+import { cosineSimilarity, embedTexts } from '../../utils/static-embedder.js';
+import { describeStateChangeFacets, type StateChange } from './state-change.js';
 
 /**
  * Minimum similarity for a subscription to be considered relevant.
@@ -26,6 +26,30 @@ import { describeStateChange, type StateChange } from './state-change.js';
  * than precision here because the LLM filters afterwards.
  */
 export const DEFAULT_MINIMUM_SCORE = 0.3;
+
+/**
+ * Best similarity between any facet of what happened and any phrasing of one
+ * subscription component.
+ *
+ * Both sides are deliberately plural. A state change is embedded as several
+ * overlapping fragments so that a long description cannot dilute a strong match in one
+ * of its parts, and a subscription carries a third-person rewrite alongside the user's
+ * own wording so it is reachable from either. Taking the maximum means neither can make
+ * matching worse than it was with a single vector on each side.
+ */
+function bestSimilarity(facets: Float32Array[], components: Array<Float32Array | null>): number {
+  let best = Number.NEGATIVE_INFINITY;
+
+  for (const facet of facets) {
+    for (const component of components) {
+      if (component) {
+        best = Math.max(best, cosineSimilarity(facet, component));
+      }
+    }
+  }
+
+  return best;
+}
 
 /** Maximum number of subscriptions handed to the LLM for one state change. */
 export const DEFAULT_MAXIMUM_MATCHES = 5;
@@ -75,8 +99,7 @@ export async function findRelevantSubscriptions(
     return [];
   }
 
-  const descriptionEmbedding = await embedText(description);
-  const matches = rankSubscriptions(descriptionEmbedding, subscriptions, options);
+  const matches = rankSubscriptions(await embedTexts([description]), subscriptions, options);
 
   logger.info('[SYNAPSE] Matched subscriptions', {
     description,
@@ -93,22 +116,26 @@ export async function findRelevantSubscriptions(
  * Split out from {@link findRelevantSubscriptions} so the ranking rules can be
  * exercised (and reused) without touching storage.
  *
- * @param descriptionEmbedding - Embedding of what happened
+ * @param descriptionEmbedding - Embedding of what happened, or several embeddings when
+ *   the state change was rendered into overlapping facets
  * @param subscriptions - Subscriptions with their `whenEvent`/`givenCondition` embeddings
  * @param options - Score floor and shortlist size
  * @returns Matches above the score floor, strongest first
  */
 export function rankSubscriptions(
-  descriptionEmbedding: Float32Array,
+  descriptionEmbedding: Float32Array | Float32Array[],
   subscriptions: EmbeddedSubscription[],
   options: SubscriptionMatchOptions = {},
 ): SubscriptionMatch[] {
   const { minimumScore = DEFAULT_MINIMUM_SCORE, maximumMatches = DEFAULT_MAXIMUM_MATCHES } = options;
+  // A single embedding is still accepted, so a caller that has only a description in
+  // hand does not have to know about facets.
+  const facets = Array.isArray(descriptionEmbedding) ? descriptionEmbedding : [descriptionEmbedding];
 
   return subscriptions
-    .map(({ whenEmbedding, givenEmbedding, ...subscription }) => {
-      const whenScore = cosineSimilarity(descriptionEmbedding, whenEmbedding);
-      const givenScore = givenEmbedding ? cosineSimilarity(descriptionEmbedding, givenEmbedding) : null;
+    .map(({ whenEmbedding, givenEmbedding, whenAltEmbedding, givenAltEmbedding, ...subscription }) => {
+      const whenScore = bestSimilarity(facets, [whenEmbedding, whenAltEmbedding]);
+      const givenScore = givenEmbedding ? bestSimilarity(facets, [givenEmbedding, givenAltEmbedding]) : null;
 
       return {
         subscription,
@@ -133,7 +160,26 @@ export async function findSubscriptionsForStateChange(
   change: StateChange,
   options: SubscriptionMatchOptions = {},
 ): Promise<SubscriptionMatch[]> {
-  return await findRelevantSubscriptions(describeStateChange(change), options);
+  const storage = await getSubscriptionStorage();
+  const subscriptions = await storage.getAllEmbedded({ includeDisabled: options.includeDisabled ?? false });
+
+  if (subscriptions.length === 0) {
+    return [];
+  }
+
+  // Facets rather than one description: see describeStateChangeFacets for why, and for
+  // the measurement that justifies the extra embeddings.
+  const facets = await embedTexts(describeStateChangeFacets(change));
+  const matches = rankSubscriptions(facets, subscriptions, options);
+
+  logger.info('[SYNAPSE] Matched subscriptions', {
+    stateType: change.stateType,
+    facetCount: facets.length,
+    candidateCount: subscriptions.length,
+    matchCount: matches.length,
+  });
+
+  return matches;
 }
 
 /**
