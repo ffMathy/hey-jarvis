@@ -11,6 +11,7 @@ import {
 } from '@mastra/core/workflows';
 import type { z } from 'zod';
 import { createAgent } from '../agent-factory.js';
+import { withRetry } from '../retry.js';
 import { executeTool } from '../tool-factory.js';
 
 /**
@@ -262,12 +263,21 @@ export function createAgentStep<
       // and generate() exposes both .object and .text on the result so we can
       // fall back to text parsing for models that don't support structured output
       // (e.g. Ollama's Hailo cluster strips the JSON-mode `format` field).
+      // Both generate() calls below go through withRetry, because the provider failing
+      // transiently and the model failing to honour a schema are different problems with
+      // different fixes. Without it a single upstream 500 -- which the SDK itself flags
+      // `isRetryable` -- takes down the whole workflow run, and the fallback path below
+      // would just make the same doomed call a second time with no delay.
       let structuredResponse: Awaited<ReturnType<typeof agent.generate>>;
       try {
-        structuredResponse = await agent.generate(messages, {
-          structuredOutput: { schema: config.outputSchema },
-          toolChoice: 'none',
-        });
+        structuredResponse = await withRetry(
+          () =>
+            agent.generate(messages, {
+              structuredOutput: { schema: config.outputSchema },
+              toolChoice: 'none',
+            }),
+          { label: `agent step "${config.id}" (structured)` },
+        );
       } catch (error: unknown) {
         // Structured output failed — retry with plain text.
         // STRUCTURED_OUTPUT_SCHEMA_VALIDATION_FAILED is expected with smaller/local models
@@ -290,7 +300,9 @@ export function createAgentStep<
           );
         }
 
-        structuredResponse = await agent.generate(messages, { toolChoice: 'none' });
+        structuredResponse = await withRetry(() => agent.generate(messages, { toolChoice: 'none' }), {
+          label: `agent step "${config.id}" (text fallback)`,
+        });
       }
 
       if (structuredResponse.object !== undefined && structuredResponse.object !== null) {

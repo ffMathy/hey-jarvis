@@ -8,7 +8,7 @@ import { cors } from 'hono/cors';
 import { getCorsOptions } from './cors.js';
 import { getTokenUsageStorage } from './storage/index.js';
 import { TokenTrackingProcessor, TokenUsageExporter } from './utils/token-usage-exporter.js';
-import { tokenUsageTools } from './verticals/api/index.js';
+import { storageRetentionWorkflow, tokenUsageTools } from './verticals/api/index.js';
 import { calendarTools, getCalendarAgent } from './verticals/calendar/index.js';
 import { codingTools, getCodingAgent, getRequirementsInterviewerAgent } from './verticals/coding/index.js';
 import { commuteTools, getCommuteAgent } from './verticals/commute/index.js';
@@ -72,6 +72,7 @@ export async function getMastra(): Promise<Mastra> {
       },
     }),
     workflows: {
+      storageRetentionWorkflow,
       weatherMonitoringWorkflow,
       generateMealPlanWorkflow,
       weeklyMealPlanningWorkflow,

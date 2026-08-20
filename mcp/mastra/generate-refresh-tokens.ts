@@ -16,6 +16,10 @@
  *   bun run --cwd mcp generate-tokens
  *   # OR directly:
  *   bun run mcp/mastra/generate-refresh-tokens.ts
+ *
+ * The refresh token itself is only summarised (length + last three characters). Pass
+ * --reveal-token, or set HEY_JARVIS_REVEAL_REFRESH_TOKEN=1, when you need the full value to
+ * copy into 1Password or an environment variable. Revealing is refused on CI runners.
  */
 
 import * as http from 'http';
@@ -27,6 +31,74 @@ import { getCredentialsStorage } from './storage/index.js';
 const PORT = 3000;
 
 const PROVIDERS: OAuthProvider[] = [googleProvider, microsoftProvider];
+
+/** Ways to ask for the full refresh token instead of just its fingerprint. */
+const REVEAL_TOKEN_FLAG = '--reveal-token';
+const REVEAL_TOKEN_ENV_VAR = 'HEY_JARVIS_REVEAL_REFRESH_TOKEN';
+
+/**
+ * Describes a secret without disclosing it: its length plus the last three characters, which is
+ * all a human needs to tell two tokens apart or to confirm which one they just stored.
+ */
+export function fingerprintSecret(secret: string): string {
+  return `${secret.length} characters, ending in "${secret.slice(-3)}"`;
+}
+
+/**
+ * Recognises the runner-agnostic CI flag, plus GitHub Actions for the case where a workflow only
+ * sets its own. Both are set by the runner, never by a human at a terminal.
+ */
+export function isContinuousIntegration(): boolean {
+  return !!process.env.CI || !!process.env.GITHUB_ACTIONS;
+}
+
+function isRevealRequested(): boolean {
+  return process.argv.includes(REVEAL_TOKEN_FLAG) || !!process.env[REVEAL_TOKEN_ENV_VAR];
+}
+
+/**
+ * A refresh token stays valid for months, so every place it is printed becomes a place the
+ * credential now lives: terminal scrollback, a shared screen, a tmux capture — and on CI, a build
+ * log that is retained and readable by everyone with access to the repository. The script stores
+ * the token itself, so printing it is a convenience rather than a necessity; it happens when the
+ * operator explicitly asks, or when storage failed and the terminal is the only remaining copy.
+ * Neither reason applies on a CI runner, where nobody is watching and the log outlives the job.
+ */
+export function shouldRevealToken({ storedSuccessfully }: { storedSuccessfully: boolean }): boolean {
+  if (isContinuousIntegration()) {
+    return false;
+  }
+
+  return isRevealRequested() || !storedSuccessfully;
+}
+
+/**
+ * Reports the freshly minted token: the fingerprint always, the full value only when revealing it
+ * is warranted.
+ */
+function reportRefreshToken(provider: OAuthProvider, refreshToken: string, storedSuccessfully: boolean): void {
+  console.log(`📝 Your ${provider.name} refresh token: ${fingerprintSecret(refreshToken)}`);
+
+  if (shouldRevealToken({ storedSuccessfully })) {
+    console.log('─'.repeat(70));
+    console.log(refreshToken);
+    console.log('─'.repeat(70));
+    console.log(`   Environment variable: ${provider.refreshTokenEnvVar}="${refreshToken}"`);
+    console.log('');
+    return;
+  }
+
+  if (isContinuousIntegration()) {
+    console.log('   🔒 Full value hidden: this looks like a CI environment, and build logs outlive the job.');
+  } else {
+    console.log(
+      `   🔒 Full value hidden. Re-run with ${REVEAL_TOKEN_FLAG} (or ${REVEAL_TOKEN_ENV_VAR}=1) to print it,`,
+    );
+    console.log('      after deleting the stored copy so this provider is not skipped.');
+  }
+
+  console.log('');
+}
 
 /**
  * Validates that required environment variables are set for a provider
@@ -166,9 +238,7 @@ function startCallbackServer(provider: OAuthProvider, client: unknown): Promise<
 /**
  * Process a single OAuth provider
  */
-async function processProvider(
-  provider: OAuthProvider,
-): Promise<{ provider: string; credentials?: { clientId: string; clientSecret: string; refreshToken: string } }> {
+async function processProvider(provider: OAuthProvider): Promise<{ provider: string; success: boolean }> {
   console.log(`\n${'='.repeat(70)}`);
   console.log(`🔐 ${provider.name} OAuth2 Setup`);
   console.log('='.repeat(70));
@@ -180,7 +250,7 @@ async function processProvider(
   if (existingToken) {
     console.log('✅ Refresh token already exists in Mastra storage');
     console.log('⏭️  Skipping token generation\n');
-    return { provider: provider.name };
+    return { provider: provider.name, success: false };
   }
 
   console.log('📋 Prerequisites:');
@@ -212,37 +282,42 @@ async function processProvider(
     console.error('   To fix this:');
     console.error('   1. Revoke access in your account settings');
     console.error('   2. Run this script again');
-    return { provider: provider.name };
+    return { provider: provider.name, success: false };
   }
 
-  console.log('✅ Authorization successful!\n');
-  console.log('📝 Your refresh token:');
-  console.log('─'.repeat(70));
-  console.log(tokens.refresh_token);
-  console.log('─'.repeat(70));
-  console.log('');
+  const refreshToken = tokens.refresh_token;
 
-  // Always store in Mastra storage
-  const credStorage = await getCredentialsStorage();
-  await credStorage.setRefreshToken(provider.name.toLowerCase(), tokens.refresh_token);
-  console.log('✅ Stored refresh token in Mastra storage (mastra.sql.db)');
+  console.log('✅ Authorization successful!\n');
+
+  // Store before reporting anything, because a token that made it into storage never has to be
+  // shown at all. getCredentialsStorage() memoises its instance, so this reuses the one above.
+  let storageError: unknown;
+  try {
+    await credentialsStorage.setRefreshToken(provider.name.toLowerCase(), refreshToken);
+    console.log('✅ Stored refresh token in Mastra storage (mastra.sql.db)');
+  } catch (error) {
+    // The authorization cannot be replayed, so a storage failure is the one case where printing
+    // the token is the lesser evil: without it the operator has to revoke access and start over.
+    storageError = error;
+    console.error('❌ Could not store the refresh token in Mastra storage.');
+  }
   console.log('⚠️  Note: Client ID and secret must still be set in environment variables\n');
+
+  reportRefreshToken(provider, refreshToken, storageError === undefined);
 
   console.log('💾 Token storage information:\n');
   provider.storageInstructions.forEach((instruction) => {
     console.log(`   ${instruction}`);
   });
   console.log('');
-  console.log(`   Environment variable: ${provider.refreshTokenEnvVar}="${tokens.refresh_token}"\n`);
 
-  return {
-    provider: provider.name,
-    credentials: {
-      clientId: credentials.clientId,
-      clientSecret: credentials.clientSecret,
-      refreshToken: tokens.refresh_token,
-    },
-  };
+  // A failed write aborted the script before this change, and still does — but only once the
+  // operator has seen the token, which is otherwise lost with the process.
+  if (storageError !== undefined) {
+    throw storageError;
+  }
+
+  return { provider: provider.name, success: true };
 }
 
 /**
@@ -258,11 +333,7 @@ async function main() {
   const results: Array<{ provider: string; success: boolean }> = [];
 
   for (const provider of PROVIDERS) {
-    const result = await processProvider(provider);
-    results.push({
-      provider: result.provider,
-      success: !!result.credentials,
-    });
+    results.push(await processProvider(provider));
   }
 
   console.log(`\n${'='.repeat(70)}`);
@@ -286,12 +357,16 @@ async function main() {
   console.log('   if environment variables are not set.\n');
 }
 
-void (async () => {
-  try {
-    await main();
-  } catch (error) {
-    console.error('❌ Unexpected error:');
-    console.error(error);
-    process.exit(1);
-  }
-})();
+// Guarded so that importing this module — the spec does, to cover the token-disclosure rules —
+// does not kick off a browser-based OAuth flow.
+if (import.meta.main) {
+  void (async () => {
+    try {
+      await main();
+    } catch (error) {
+      console.error('❌ Unexpected error:');
+      console.error(error);
+      process.exit(1);
+    }
+  })();
+}

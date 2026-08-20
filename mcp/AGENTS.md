@@ -1238,13 +1238,19 @@ bun run --cwd mcp generate-tokens
 # This will:
 # 1. Open your browser for Google authorization
 # 2. Request access to Calendar and Tasks
-# 3. Generate and display your refresh token
+# 3. Generate and store your refresh token
 ```
 
 The script will guide you through:
 - Opening the Google authorization page
 - Granting access to your Calendar and Tasks
 - Receiving your long-lived refresh token
+
+The token is written straight to Mastra storage and only summarised on screen (length + last three
+characters), so a durable credential does not linger in terminal scrollback. When you need the full
+value — to copy it into 1Password, for example — delete the stored copy and re-run with
+`--reveal-token` (or `HEY_JARVIS_REVEAL_REFRESH_TOKEN=1`). Revealing is refused when a CI
+environment is detected, because build logs outlive the job.
 
 **Step 4: Store Credentials Securely**
 
