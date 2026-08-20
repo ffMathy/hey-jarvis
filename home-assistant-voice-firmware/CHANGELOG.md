@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.11.2](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.11.1...home-assistant-voice-firmware-v0.11.2) (2026-08-20)
+
+
+### Bug Fixes
+
+* **firmware:** announce plays before its window, survives a second trigger, and honours end_call ([fa88102](https://github.com/ffMathy/hey-jarvis/commit/fa881021abe72bbe483b83e9a27266b9068704be))
+* **firmware:** announce plays before its window, survives a second trigger, and honours end_call ([#669](https://github.com/ffMathy/hey-jarvis/issues/669)) ([25ceda2](https://github.com/ffMathy/hey-jarvis/commit/25ceda2ac4b76b4378c82ec3e65177a34b35aa4f))
+* **firmware:** stop upload flashing placeholder builds, and set reboo… ([#667](https://github.com/ffMathy/hey-jarvis/issues/667)) ([1ce5ead](https://github.com/ffMathy/hey-jarvis/commit/1ce5eade0fd44fd83b95d0055f43c42a0f95dcad))
+
 ## [0.11.1](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.11.0...home-assistant-voice-firmware-v0.11.1) (2026-08-19)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.1](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.13.0...elevenlabs-v0.13.1) (2026-08-20)
+
+
+### Bug Fixes
+
+* **firmware:** stop upload flashing placeholder builds, and set reboo… ([#667](https://github.com/ffMathy/hey-jarvis/issues/667)) ([1ce5ead](https://github.com/ffMathy/hey-jarvis/commit/1ce5eade0fd44fd83b95d0055f43c42a0f95dcad))
+
 ## [0.13.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.12.1...elevenlabs-v0.13.0) (2026-08-18)
 
 

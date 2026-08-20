@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.12.0](https://github.com/ffMathy/hey-jarvis/compare/root-v1.11.0...root-v1.12.0) (2026-08-20)
+
+
+### Features
+
+* **synapse:** give every subscription an end, and prune the ones that reach it ([e8baba9](https://github.com/ffMathy/hey-jarvis/commit/e8baba9494a1446b3c0e68810750db0593cb7c27))
+* **synapse:** give every subscription an end, and prune the ones that reach it ([#673](https://github.com/ffMathy/hey-jarvis/issues/673)) ([27171d0](https://github.com/ffMathy/hey-jarvis/commit/27171d0808aced24466dd6d16cd807d019f468d2))
+* **synapse:** score state changes by facet, and store a third-person rewrite ([b1a98a5](https://github.com/ffMathy/hey-jarvis/commit/b1a98a5e7a1fb33a72b5938166bf7b8ddd55c24c))
+* **synapse:** score state changes by facet, and store a third-person rewrite ([#672](https://github.com/ffMathy/hey-jarvis/issues/672)) ([8062c00](https://github.com/ffMathy/hey-jarvis/commit/8062c00ac451d97e56ba99038742f26c9dcb95f8))
+
+
+### Bug Fixes
+
+* **email:** match a reply to the question it answers, not the first one waiting ([a9f10b9](https://github.com/ffMathy/hey-jarvis/commit/a9f10b96c9872950ea5d50c0f9b4ce7bc8965a9e))
+* **email:** match a reply to the question it answers, not the first one waiting ([#677](https://github.com/ffMathy/hey-jarvis/issues/677)) ([ce47686](https://github.com/ffMathy/hey-jarvis/commit/ce47686e4cb1620fca67bd86fe4337e4fa81deb6))
+* **firmware:** announce plays before its window, survives a second trigger, and honours end_call ([fa88102](https://github.com/ffMathy/hey-jarvis/commit/fa881021abe72bbe483b83e9a27266b9068704be))
+* **firmware:** announce plays before its window, survives a second trigger, and honours end_call ([#669](https://github.com/ffMathy/hey-jarvis/issues/669)) ([25ceda2](https://github.com/ffMathy/hey-jarvis/commit/25ceda2ac4b76b4378c82ec3e65177a34b35aa4f))
+* **firmware:** stop upload flashing placeholder builds, and set reboo… ([#667](https://github.com/ffMathy/hey-jarvis/issues/667)) ([1ce5ead](https://github.com/ffMathy/hey-jarvis/commit/1ce5eade0fd44fd83b95d0055f43c42a0f95dcad))
+* **mcp:** close the email approval loop, surface real workflow errors, typecheck the tests ([f30f120](https://github.com/ffMathy/hey-jarvis/commit/f30f1206f2aeedfa9a48b885d33365f286a83bfe))
+* **mcp:** close the email approval loop, surface real workflow errors, typecheck the tests ([#676](https://github.com/ffMathy/hey-jarvis/issues/676)) ([24527ac](https://github.com/ffMathy/hey-jarvis/commit/24527ac0e1d34c94d96f430c9a9a8c798ec3dd77))
+* **mcp:** stop losing state changes on upstream blips, and put a floor under retention ([1929d35](https://github.com/ffMathy/hey-jarvis/commit/1929d35158a554d7f8ec82f1f11bb677e4a8413a))
+* **mcp:** stop losing state changes on upstream blips, and put a floor under retention ([#675](https://github.com/ffMathy/hey-jarvis/issues/675)) ([ddecc9d](https://github.com/ffMathy/hey-jarvis/commit/ddecc9d68a93c5568444434cc5b00200020661dc))
+* **routing:** let the routing workflow start without a hand-written initial state ([2321b1f](https://github.com/ffMathy/hey-jarvis/commit/2321b1f62f977ba019e414cae48757a3b0d70ed4))
+* **routing:** let the routing workflow start without a hand-written initial state ([#674](https://github.com/ffMathy/hey-jarvis/issues/674)) ([00782bf](https://github.com/ffMathy/hey-jarvis/commit/00782bf0acb17274f21bf90221db3eda23e1ad93))
+
 ## [1.11.0](https://github.com/ffMathy/hey-jarvis/compare/root-v1.10.0...root-v1.11.0) (2026-08-19)
 
 
