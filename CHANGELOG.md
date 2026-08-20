@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.1](https://github.com/ffMathy/hey-jarvis/compare/root-v1.12.0...root-v1.12.1) (2026-08-20)
+
+
+### Bug Fixes
+
+* **mcp:** stop the tunnel rejecting every agent stream as a bad gateway ([#679](https://github.com/ffMathy/hey-jarvis/issues/679)) ([ccff8c2](https://github.com/ffMathy/hey-jarvis/commit/ccff8c277f4152500578470026d0b90674efd154))
+
 ## [1.12.0](https://github.com/ffMathy/hey-jarvis/compare/root-v1.11.0...root-v1.12.0) (2026-08-20)
 
 
