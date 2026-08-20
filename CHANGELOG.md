@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.2](https://github.com/ffMathy/hey-jarvis/compare/root-v1.12.1...root-v1.12.2) (2026-08-20)
+
+
+### Bug Fixes
+
+* **prompt:** route what was promised instead of stopping at the promise ([#681](https://github.com/ffMathy/hey-jarvis/issues/681)) ([126145f](https://github.com/ffMathy/hey-jarvis/commit/126145f281a3803486c52e8ce46ecd18bf57ec1f))
+
 ## [1.12.1](https://github.com/ffMathy/hey-jarvis/compare/root-v1.12.0...root-v1.12.1) (2026-08-20)
 
 
