@@ -1,3 +1,4 @@
+import { describe, expect, it } from 'bun:test';
 import type { ToolExecuteContext, ToolExecutionContext } from '@mastra/core/tools';
 import { createToolExecutionContext, executeTool } from './tool-factory.js';
 

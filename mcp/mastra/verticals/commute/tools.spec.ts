@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it } from 'bun:test';
+import { executeTool } from '../../utils/tool-factory.js';
 import { commuteTools } from './tools';
 
 /**
@@ -55,15 +56,12 @@ describe('Commute Tools Integration Tests', () => {
 
   describe('getTravelTime', () => {
     it('should fetch travel time between two cities', async () => {
-      const result = await commuteTools.getTravelTime.execute!(
-        {
-          origin: 'Aarhus, Denmark',
-          destination: 'Copenhagen, Denmark',
-          mode: 'driving',
-          includeTraffic: true,
-        },
-        {},
-      );
+      const result = await executeTool(commuteTools.getTravelTime, {
+        origin: 'Aarhus, Denmark',
+        destination: 'Copenhagen, Denmark',
+        mode: 'driving',
+        includeTraffic: true,
+      });
 
       // Validate structure
       expect(result).toBeDefined();
@@ -94,15 +92,12 @@ describe('Commute Tools Integration Tests', () => {
 
     it('should handle coordinates as input', async () => {
       // Coordinates for Aarhus and Copenhagen
-      const result = await commuteTools.getTravelTime.execute!(
-        {
-          origin: '56.1629,10.2039',
-          destination: '55.6761,12.5683',
-          mode: 'driving',
-          includeTraffic: false,
-        },
-        {},
-      );
+      const result = await executeTool(commuteTools.getTravelTime, {
+        origin: '56.1629,10.2039',
+        destination: '55.6761,12.5683',
+        mode: 'driving',
+        includeTraffic: false,
+      });
 
       expect(result).toBeDefined();
       expect(result.distance.value).toBeGreaterThan(150000);
@@ -110,15 +105,12 @@ describe('Commute Tools Integration Tests', () => {
     }, 30000);
 
     it('should support different travel modes', async () => {
-      const result = await commuteTools.getTravelTime.execute!(
-        {
-          origin: 'Aarhus, Denmark',
-          destination: 'Aarhus C, Denmark',
-          mode: 'walking',
-          includeTraffic: false,
-        },
-        {},
-      );
+      const result = await executeTool(commuteTools.getTravelTime, {
+        origin: 'Aarhus, Denmark',
+        destination: 'Aarhus C, Denmark',
+        mode: 'walking',
+        includeTraffic: false,
+      });
 
       expect(result).toBeDefined();
       expect(result.mode).toBe('walking');
@@ -128,15 +120,12 @@ describe('Commute Tools Integration Tests', () => {
 
   describe('searchPlacesAlongRoute', () => {
     it('should find EV charging stations along a route', async () => {
-      const result = await commuteTools.searchPlacesAlongRoute.execute!(
-        {
-          origin: 'Aarhus, Denmark',
-          destination: 'Copenhagen, Denmark',
-          searchQuery: 'EV charging station',
-          maxResults: 5,
-        },
-        {},
-      );
+      const result = await executeTool(commuteTools.searchPlacesAlongRoute, {
+        origin: 'Aarhus, Denmark',
+        destination: 'Copenhagen, Denmark',
+        searchQuery: 'EV charging station',
+        maxResults: 5,
+      });
 
       // Validate structure
       expect(result).toBeDefined();
@@ -163,15 +152,12 @@ describe('Commute Tools Integration Tests', () => {
     }, 45000); // Longer timeout as this makes multiple API calls
 
     it('should find restaurants along a route', async () => {
-      const result = await commuteTools.searchPlacesAlongRoute.execute!(
-        {
-          origin: 'Aarhus, Denmark',
-          destination: 'Odense, Denmark',
-          searchQuery: 'restaurant',
-          maxResults: 3,
-        },
-        {},
-      );
+      const result = await executeTool(commuteTools.searchPlacesAlongRoute, {
+        origin: 'Aarhus, Denmark',
+        destination: 'Odense, Denmark',
+        searchQuery: 'restaurant',
+        maxResults: 3,
+      });
 
       expect(result).toBeDefined();
       expect(result.places.length).toBeGreaterThan(0);
@@ -184,15 +170,12 @@ describe('Commute Tools Integration Tests', () => {
 
   describe('searchPlacesByDistance', () => {
     it('should find nearby gas stations ordered by distance', async () => {
-      const result = await commuteTools.searchPlacesByDistance.execute!(
-        {
-          location: 'Aarhus, Denmark',
-          searchQuery: 'gas station',
-          radius: 5000,
-          maxResults: 5,
-        },
-        {},
-      );
+      const result = await executeTool(commuteTools.searchPlacesByDistance, {
+        location: 'Aarhus, Denmark',
+        searchQuery: 'gas station',
+        radius: 5000,
+        maxResults: 5,
+      });
 
       // Validate structure
       expect(result).toBeDefined();
@@ -226,15 +209,12 @@ describe('Commute Tools Integration Tests', () => {
     }, 30000);
 
     it('should find coffee shops with larger radius', async () => {
-      const result = await commuteTools.searchPlacesByDistance.execute!(
-        {
-          location: 'Aarhus C, Denmark',
-          searchQuery: 'coffee shop',
-          radius: 2000,
-          maxResults: 10,
-        },
-        {},
-      );
+      const result = await executeTool(commuteTools.searchPlacesByDistance, {
+        location: 'Aarhus C, Denmark',
+        searchQuery: 'coffee shop',
+        radius: 2000,
+        maxResults: 10,
+      });
 
       expect(result).toBeDefined();
       expect(result.places.length).toBeGreaterThan(0);
@@ -247,13 +227,10 @@ describe('Commute Tools Integration Tests', () => {
 
   describe('getPlaceDetails', () => {
     it('should fetch details for a specific place by name', async () => {
-      const result = await commuteTools.getPlaceDetails.execute!(
-        {
-          placeName: 'Aros Aarhus Kunstmuseum',
-          location: 'Aarhus, Denmark',
-        },
-        {},
-      );
+      const result = await executeTool(commuteTools.getPlaceDetails, {
+        placeName: 'Aros Aarhus Kunstmuseum',
+        location: 'Aarhus, Denmark',
+      });
 
       // Validate structure
       expect(result).toBeDefined();
@@ -282,13 +259,10 @@ describe('Commute Tools Integration Tests', () => {
     }, 30000);
 
     it('should include reviews when available', async () => {
-      const result = await commuteTools.getPlaceDetails.execute!(
-        {
-          placeName: 'Aarhus Domkirke',
-          location: 'Aarhus, Denmark',
-        },
-        {},
-      );
+      const result = await executeTool(commuteTools.getPlaceDetails, {
+        placeName: 'Aarhus Domkirke',
+        location: 'Aarhus, Denmark',
+      });
 
       expect(result).toBeDefined();
       expect(typeof result.name).toBe('string');

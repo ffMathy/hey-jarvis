@@ -1,16 +1,43 @@
 import { describe, expect, it } from 'bun:test';
+import type { StandardSchemaWithJSON } from '@mastra/core/schema';
 import { sendTextMessage } from './tools';
+
+const { inputSchema, outputSchema } = sendTextMessage;
+
+// Without both schemas every assertion below would be vacuous, so fail loudly.
+if (!inputSchema || !outputSchema) {
+  throw new Error('sendTextMessage must declare both an input and an output schema');
+}
+
+/**
+ * Validates a value against a tool schema, throwing when it does not conform.
+ *
+ * Mastra exposes tool schemas through the Standard Schema interface, whose
+ * `validate` reports failures in its return value rather than throwing. These
+ * tests assert on rejection, so failures are turned back into exceptions.
+ */
+function parseWithSchema<TInput, TOutput>(schema: StandardSchemaWithJSON<TInput, TOutput>, value: unknown): TOutput {
+  const result = schema['~standard'].validate(value);
+
+  if (result instanceof Promise) {
+    throw new Error('Schema validated asynchronously, so its result cannot be asserted on synchronously');
+  }
+
+  if (result.issues) {
+    throw new Error(result.issues.map((issue) => issue.message).join('; '));
+  }
+
+  return result.value;
+}
 
 // These tests exercise the sendTextMessage input contract only — they make no
 // Twilio calls, so they need no credentials and send no SMS. Sending a real
 // message from CI is not viable: Twilio rejects any placeholder number with
 // error 21211, and a genuine number would be texted on every single run.
 describe('Phone Tools', () => {
-  const inputSchema = sendTextMessage.inputSchema;
-
   describe('sendTextMessage input schema', () => {
     it('accepts an E.164 number with a message', () => {
-      const parsed = inputSchema.parse({
+      const parsed = parseWithSchema(inputSchema, {
         phoneNumber: '+15551234567',
         message: 'Test message',
       });
@@ -20,19 +47,19 @@ describe('Phone Tools', () => {
     });
 
     it('rejects input with no phone number', () => {
-      expect(() => inputSchema.parse({ message: 'Test message' })).toThrow();
+      expect(() => parseWithSchema(inputSchema, { message: 'Test message' })).toThrow();
     });
 
     it('rejects input with no message', () => {
-      expect(() => inputSchema.parse({ phoneNumber: '+15551234567' })).toThrow();
+      expect(() => parseWithSchema(inputSchema, { phoneNumber: '+15551234567' })).toThrow();
     });
 
     it('rejects a non-string phone number', () => {
-      expect(() => inputSchema.parse({ phoneNumber: 15551234567, message: 'Test message' })).toThrow();
+      expect(() => parseWithSchema(inputSchema, { phoneNumber: 15551234567, message: 'Test message' })).toThrow();
     });
 
     it('rejects a non-string message', () => {
-      expect(() => inputSchema.parse({ phoneNumber: '+15551234567', message: 42 })).toThrow();
+      expect(() => parseWithSchema(inputSchema, { phoneNumber: '+15551234567', message: 42 })).toThrow();
     });
   });
 
@@ -42,7 +69,7 @@ describe('Phone Tools', () => {
     });
 
     it('declares the result shape callers depend on', () => {
-      const parsed = sendTextMessage.outputSchema.parse({
+      const parsed = parseWithSchema(outputSchema, {
         success: true,
         message: 'Text message sent successfully to +15551234567',
         messageSid: 'SM00000000000000000000000000000000',
@@ -53,7 +80,7 @@ describe('Phone Tools', () => {
     });
 
     it('treats messageSid as optional, since a failed send has none', () => {
-      const parsed = sendTextMessage.outputSchema.parse({
+      const parsed = parseWithSchema(outputSchema, {
         success: false,
         message: 'Could not send',
       });

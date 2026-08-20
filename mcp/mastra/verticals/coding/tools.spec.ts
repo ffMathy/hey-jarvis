@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it } from 'bun:test';
+import { executeTool } from '../../utils/tool-factory.js';
 import { listUserRepositories, searchRepositories } from './tools';
 
 describe('Coding Tools Integration Tests', () => {
@@ -13,7 +14,7 @@ describe('Coding Tools Integration Tests', () => {
 
   describe('searchRepositories', () => {
     it('should search for repositories on GitHub', async () => {
-      const result = await searchRepositories.execute({
+      const result = await executeTool(searchRepositories, {
         query: 'typescript language:typescript',
         maxResults: 5,
       });
@@ -38,9 +39,8 @@ describe('Coding Tools Integration Tests', () => {
 
   describe('listUserRepositories', () => {
     it('should list user repositories', async () => {
-      const result = await listUserRepositories.execute({
-        maxResults: 5,
-      });
+      // The tool takes only an optional username; it always returns the full list.
+      const result = await executeTool(listUserRepositories, {});
 
       // Validate structure
       expect(result).toBeDefined();
