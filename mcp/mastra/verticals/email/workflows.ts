@@ -404,7 +404,7 @@ type RunLookup =
  * A run that is found but cannot take the reply does not end the search, because a run id
  * is only unique per workflow; the reason is reported only if no workflow is waiting.
  */
-async function findRunAwaitingEmailReply(mastra: Mastra, runId: string): Promise<RunLookup> {
+async function findRunAwaitingEmailReply(mastra: Mastra, runId: string, requestId: string): Promise<RunLookup> {
   let firstRunThatCannotTakeIt: string | undefined;
 
   for (const workflow of Object.values(mastra.listWorkflows())) {
@@ -413,21 +413,57 @@ async function findRunAwaitingEmailReply(mastra: Mastra, runId: string): Promise
       continue;
     }
 
-    const suspendedStep =
-      state.status === 'suspended' ? createWorkflowStateReader(state).getSuspendedStep() : undefined;
+    const reader = state.status === 'suspended' ? createWorkflowStateReader(state) : undefined;
+    const suspendedSteps = reader?.getSuspendedSteps() ?? [];
+    const awaitingSteps = suspendedSteps.filter((step) => isAwaitingEmailReply(step.path));
 
-    const suspendedPath = suspendedStep?.path;
+    // Pick the question this reply actually answers.
+    //
+    // A run can hold more than one suspension at once — two send-and-wait workflows in a
+    // `.parallel()` both wait at the same time — and the reader's singular
+    // `getSuspendedStep()` is defined as `getSuspendedSteps()[0]`, so it hands back
+    // whichever sorts first and silently drops the rest. Every reply would then be offered
+    // to that same step; the step's own request-id check would correctly refuse the ones
+    // meant for its sibling, but those questions could never be answered by email at all,
+    // because no reply would ever be shown to them.
+    //
+    // Falling back to the first awaiting step keeps the ordinary single-question case
+    // exactly as it was: the reply is offered, and the step decides whether it answers the
+    // request it is waiting on.
+    const suspendedStep = awaitingSteps.find((step) => requestIdWaitedOnBy(step) === requestId) ?? awaitingSteps[0];
 
-    if (suspendedStep && isAwaitingEmailReply(suspendedPath)) {
+    if (suspendedStep) {
       return { kind: 'awaiting', workflow, suspendedStep };
     }
 
-    firstRunThatCannotTakeIt ??= describeRunThatCannotTakeTheReply(workflow.id, runId, state.status, suspendedPath);
+    firstRunThatCannotTakeIt ??= describeRunThatCannotTakeTheReply(
+      workflow.id,
+      runId,
+      state.status,
+      suspendedSteps[0]?.path,
+    );
   }
 
   return firstRunThatCannotTakeIt
     ? { kind: 'not-awaiting', description: firstRunThatCannotTakeIt }
     : { kind: 'not-found', description: `No workflow run with id ${runId} was found` };
+}
+
+/**
+ * The request id a suspended step is waiting on, when it recorded one.
+ *
+ * `suspendPayload` is typed `any` by Mastra, so it is narrowed here rather than trusted,
+ * keeping the `any` from spreading into the caller.
+ */
+function requestIdWaitedOnBy(step: WorkflowSuspendedStep): string | undefined {
+  const payload: unknown = step.suspendPayload;
+
+  if (payload && typeof payload === 'object' && 'requestId' in payload) {
+    const { requestId } = payload as { requestId: unknown };
+    return typeof requestId === 'string' ? requestId : undefined;
+  }
+
+  return undefined;
 }
 
 /**
@@ -471,7 +507,7 @@ async function applyFormReply(
   email: z.infer<typeof emailObjectSchema>,
   { runId, requestId }: { runId: string; requestId: string },
 ): Promise<FormReplyOutcome> {
-  const pendingRun = await findRunAwaitingEmailReply(mastra, runId);
+  const pendingRun = await findRunAwaitingEmailReply(mastra, runId, requestId);
   if (pendingRun.kind === 'not-found') {
     return { kind: 'unmatched', description: pendingRun.description };
   }
