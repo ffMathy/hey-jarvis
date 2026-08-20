@@ -73,9 +73,12 @@ mock.module('../human-in-the-loop/agents.js', () => ({
   },
 }));
 
-const { buildFormRequestSubject, getSendEmailAndAwaitResponseWorkflow, humanInTheLoopDemoWorkflow } = await import(
-  '../human-in-the-loop/workflows.js'
-);
+const {
+  buildFormRequestSubject,
+  getSendEmailAndAwaitResponseWorkflow,
+  humanInTheLoopDemoWorkflow,
+  parseFormRequestSubject,
+} = await import('../human-in-the-loop/workflows.js');
 const { formRepliesDetectionWorkflow } = await import('./workflows.js');
 
 /** Narrows a workflow result so the status-specific fields are reachable. */
@@ -113,6 +116,25 @@ const awaitSomethingElseWorkflow = createWorkflow({
       execute: async ({ resumeData, suspend }) => resumeData ?? (await suspend({})),
     }),
   )
+  .commit();
+
+/**
+ * Two questions asked at once.
+ *
+ * A run can hold more than one suspension, and this is the shape that produces it. It
+ * exists because the reply handler used to ask the state reader for "the" suspended step,
+ * which is defined as the first of them: every reply was offered to whichever sorted
+ * first, so the other question could never be answered by email at all.
+ */
+const askTwoAtOnceWorkflow = createWorkflow({
+  id: 'askTwoAtOnceWorkflow',
+  inputSchema: z.object({ recipientEmail: z.string(), question: z.string() }),
+  outputSchema: z.object({}).loose(),
+})
+  .parallel([
+    getSendEmailAndAwaitResponseWorkflow('firstOfTwo', approvalResponseSchema),
+    getSendEmailAndAwaitResponseWorkflow('secondOfTwo', approvalResponseSchema),
+  ])
   .commit();
 
 const RESUME_FAILURE_MESSAGE = 'the ledger refused the approval';
@@ -170,6 +192,7 @@ const mastra = new Mastra({
     awaitApprovalWorkflow,
     awaitSomethingElseWorkflow,
     failsAfterReplyWorkflow,
+    askTwoAtOnceWorkflow,
     humanInTheLoopDemoWorkflow,
     formReplyHarness,
   },
@@ -547,5 +570,57 @@ describe('processFormReplies', () => {
 
     expect(summary).toMatchObject({ emailsProcessed: 2, formRepliesFound: 2, workflowsResumed: 1 });
     expect(summary.errors).toHaveLength(1);
+  });
+});
+
+describe('a run waiting on two questions at once', () => {
+  /** Starts the parallel workflow and returns the two request emails it sent. */
+  async function askTwoQuestions() {
+    const run = await mastra.getWorkflow('askTwoAtOnceWorkflow').createRun();
+    const started = await run.start({
+      inputData: { recipientEmail: 'boss@example.com', question: 'Approve?' },
+    });
+
+    assertStatus(started, 'suspended');
+    expect(sentEmails).toHaveLength(2);
+
+    return sentEmails.map((email) => email.subject);
+  }
+
+  it('answers the question the reply was sent for, not whichever suspended first', async () => {
+    const [firstSubject, secondSubject] = await askTwoQuestions();
+
+    // Two suspensions, two distinct request ids.
+    expect(parseFormRequestSubject(firstSubject)?.requestId).not.toBe(
+      parseFormRequestSubject(secondSubject)?.requestId,
+    );
+
+    stagedAnswer = { approved: true };
+    const summary = await processReplies([
+      inboundReply({ subject: `Re: ${secondSubject}`, from: 'boss@example.com', content: 'Yes' }),
+    ]);
+
+    // Before the reply handler matched on the request id, this reply was offered to the
+    // first suspended step, which refused it -- so the run advanced not at all and the
+    // second question was unanswerable by email for as long as the first stayed open.
+    expect(summary).toMatchObject({ formRepliesFound: 1, workflowsResumed: 1, repliesRejected: 0, errors: [] });
+    expect(parsedReplyBodies).toEqual(['Yes']);
+  });
+
+  it('still lets the other question be answered afterwards', async () => {
+    const [firstSubject, secondSubject] = await askTwoQuestions();
+
+    stagedAnswer = { approved: true };
+    await processReplies([
+      inboundReply({ subject: `Re: ${secondSubject}`, from: 'boss@example.com', content: 'Yes to the second' }),
+    ]);
+
+    const summary = await processReplies([
+      inboundReply({ subject: `Re: ${firstSubject}`, from: 'boss@example.com', content: 'Yes to the first' }),
+    ]);
+
+    // Answering one must not strand the other: both were asked, both can be answered.
+    expect(summary).toMatchObject({ workflowsResumed: 1, repliesRejected: 0, errors: [] });
+    expect(parsedReplyBodies).toEqual(['Yes to the second', 'Yes to the first']);
   });
 });
