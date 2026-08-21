@@ -1,4 +1,10 @@
 export {
+  type AcknowledgementTiming,
+  classifyAcknowledgementTiming,
+  describeMessageOrder,
+  stripAudioTags,
+} from './acknowledgement-timing';
+export {
   type ElevenLabsConversationOptions,
   ElevenLabsConversationStrategy,
 } from './elevenlabs-conversation-strategy';

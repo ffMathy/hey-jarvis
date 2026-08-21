@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, it } from 'bun:test';
 import { startMcpServerForTestingPurposes, stopMcpServer } from '../../../mcp/tests/utils/mcp-server-manager.js';
 import { deployTestAgent } from '../../src/main.js';
+import { classifyAcknowledgementTiming, describeMessageOrder } from '../utils/acknowledgement-timing.js';
 import type { ServerMessage } from '../utils/conversation-strategy.js';
 import { reportMcpIntegrations } from '../utils/mcp-integration.js';
 import { findSpokenToolCalls } from '../utils/spoken-tool-call.js';
@@ -118,6 +119,24 @@ function assertNoSpokenToolCall(conversation: TestConversation): void {
     `The agent spoke its tooling aloud rather than leaving the tool call silent. ` +
       `Saying a tool's name does not call it — the words simply go to the speakers.\n` +
       `${spoken.join('\n')}\n\nTranscript:\n${conversation.getTranscriptText()}`,
+  );
+}
+
+/**
+ * Fails if the user was left in silence while the request was being routed. Routing
+ * is where the wait lives — the plan has to be built and dispatched before a single
+ * result exists — so an acknowledgement that arrives fused to the final answer is one
+ * the user never actually got.
+ */
+function assertSpokeBeforeRouting(conversation: TestConversation): void {
+  const timing = classifyAcknowledgementTiming(conversation.getMessages());
+  if (timing.kind !== 'silent') return;
+
+  throw new Error(
+    `The agent routed the request without saying anything first, leaving the user in ` +
+      `silence until the whole lookup finished.\n` +
+      `Message order: ${describeMessageOrder(conversation.getMessages())}\n\n` +
+      `Transcript:\n${conversation.getTranscriptText()}`,
   );
 }
 
@@ -328,6 +347,30 @@ describe('Agent Prompt Specifications', () => {
                 'A transcript whose final agent message only promises to check, with no tool call after it, fails this criteria.',
               0.9,
             );
+          },
+        );
+      },
+      (CONVERSATION_TIMEOUT_MS + TOOL_CALL_TIMEOUT_MS) * MAX_CONVERSATION_RETRIES,
+    );
+
+    it(
+      'should speak before routing rather than leaving the user in silence',
+      async () => {
+        await withConversationRetry(
+          () => new TestConversation({ agentId, apiKey, googleApiKey }),
+          async (conversation) => {
+            await conversation.connect();
+            // Verbatim from a real conversation. The tool was called this time, but
+            // the agent said nothing at all until it was done, then delivered
+            // "Naturally, sir. Your sole engagement today is..." — the
+            // acknowledgement welded onto the answer, long after it could serve as
+            // one.
+            await conversation.sendMessage('Hey, Jarvis, could you check my calendar for today?');
+
+            await assertToolCalled(conversation, isRoutingToolName, 'Expected the agent to route the calendar request');
+
+            assertNoSpokenToolCall(conversation);
+            assertSpokeBeforeRouting(conversation);
           },
         );
       },

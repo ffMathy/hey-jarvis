@@ -109,7 +109,12 @@ const instructionsOutputSchema = z.object({
  */
 const INSTRUCTIONS = {
   async: 'The request is being processed in the background and will complete on its own. End the call now.',
-  poll: 'The request is now being processed in the background. Call getNextInstructionsWorkflow to check on the status and receive the next instructions.',
+  // Queueing is the longest silence in the whole loop — planning the DAG and
+  // running the first wave both happen behind it — and it is the one step whose
+  // instructions never asked for a word to the user. Jarvis went straight from
+  // routing to polling without speaking, so the user heard nothing between
+  // asking and the final answer.
+  poll: 'The request is now being processed in the background. Before you call anything else, make sure the user has actually heard from you: if you have not spoken since he made the request, give him a brief acknowledgement now, because he is otherwise left sitting in silence while this runs. Then call getNextInstructionsWorkflow to check on the status and receive the next instructions.',
   stillProcessing:
     'Still processing your request. Call getNextInstructionsWorkflow again to wait a bit longer for it to complete.',
   summarize: 'Summarize the new completed task results in a detailed manner.',

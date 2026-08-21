@@ -131,6 +131,21 @@ describe('Routing Workflows', () => {
       expect(result.taskIdsInProgress).toEqual(['weather-check', 'calendar-check']);
     });
 
+    it('asks Jarvis to speak before polling, so the user is not left in silence', async () => {
+      useAgents(createMockAgent('calendar'));
+      usePlan({ id: 'calendar-check', agent: 'calendar', prompt: 'Get the calendar', dependsOn: [] });
+
+      const result = await route('Check my calendar for today');
+
+      // Queueing hides the longest wait in the loop — the DAG is planned and its
+      // first wave runs behind it. Without this, Jarvis routed and then polled
+      // without a word, and the user heard nothing at all until the final answer.
+      expect(result.instructions).toContain('acknowledgement');
+      expect(result.instructions).toContain('silence');
+      // The polling half of the contract has to survive the addition.
+      expect(result.instructions).toContain('getNextInstructionsWorkflow');
+    });
+
     it('does not run any task before the caller asks for instructions', async () => {
       const weather = createMockAgent('weather');
       useAgents(weather);
