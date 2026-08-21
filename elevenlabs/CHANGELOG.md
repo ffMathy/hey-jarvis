@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.3](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.13.2...elevenlabs-v0.13.3) (2026-08-21)
+
+
+### Bug Fixes
+
+* **prompt:** stop the agent reading its tool calls out loud ([#683](https://github.com/ffMathy/hey-jarvis/issues/683)) ([899ccc6](https://github.com/ffMathy/hey-jarvis/commit/899ccc658e51d279bc217c1df9e27d0ef392f3e3))
+
 ## [0.13.2](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.13.1...elevenlabs-v0.13.2) (2026-08-20)
 
 
