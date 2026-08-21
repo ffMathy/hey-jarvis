@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.4](https://github.com/ffMathy/hey-jarvis/compare/root-v1.12.3...root-v1.12.4) (2026-08-21)
+
+
+### Bug Fixes
+
+* **routing:** ask for a word to the user when queueing, not just polling ([#685](https://github.com/ffMathy/hey-jarvis/issues/685)) ([9a0a52b](https://github.com/ffMathy/hey-jarvis/commit/9a0a52ba6a0ebcdfcae9f699cef913d101610704))
+
 ## [1.12.3](https://github.com/ffMathy/hey-jarvis/compare/root-v1.12.2...root-v1.12.3) (2026-08-21)
 
 
