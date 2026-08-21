@@ -3,6 +3,7 @@ import { startMcpServerForTestingPurposes, stopMcpServer } from '../../../mcp/te
 import { deployTestAgent } from '../../src/main.js';
 import type { ServerMessage } from '../utils/conversation-strategy.js';
 import { reportMcpIntegrations } from '../utils/mcp-integration.js';
+import { findSpokenToolCalls } from '../utils/spoken-tool-call.js';
 import { TestConversation } from '../utils/test-conversation.js';
 import { ensureTunnelRunning, stopTunnel } from '../utils/tunnel-manager.js';
 
@@ -101,6 +102,22 @@ function describeConversation(conversation: TestConversation, toolNames: string[
     `Message types received: [${messages.map((message) => message.type).join(', ')}]\n` +
     `Messages not in the transcript:\n${describeNonTranscriptMessages(messages)}\n` +
     `Transcript:\n${conversation.getTranscriptText()}`
+  );
+}
+
+/**
+ * Fails if the agent read its own plumbing out to the user. Worth asserting even
+ * alongside assertToolCalled: reciting the call and making it are independent, and
+ * an agent that does both still leaves sir listening to machinery.
+ */
+function assertNoSpokenToolCall(conversation: TestConversation): void {
+  const spoken = findSpokenToolCalls(conversation.getMessages());
+  if (spoken.length === 0) return;
+
+  throw new Error(
+    `The agent spoke its tooling aloud rather than leaving the tool call silent. ` +
+      `Saying a tool's name does not call it — the words simply go to the speakers.\n` +
+      `${spoken.join('\n')}\n\nTranscript:\n${conversation.getTranscriptText()}`,
   );
 }
 
@@ -222,11 +239,14 @@ describe('Agent Prompt Specifications', () => {
     );
   });
 
-  // The agent's whole purpose is to hand work to `routePromptWorkflow`. It has a
-  // standing licence not to, for the handful of things it can answer from its own
-  // prompt — and the failure mode is that licence spreading to requests it cannot
-  // possibly answer, where a witty "let me have a look" reads, to the agent, like
-  // the job is done. To the user it reads as an answer that never arrives.
+  // The agent's whole purpose is to hand work to `routePromptWorkflow`, and there
+  // are two observed ways it fails to. It can treat a witty "let me have a look" as
+  // though the job were done, and stop — its licence to answer simple things itself,
+  // spread to requests it cannot possibly answer. Or it can *say* the call instead of
+  // making it, reciting `routePromptWorkflow(userQuery="...")` in the same breathless
+  // voice as the rest of its reply. Both leave sir waiting on an answer that never
+  // comes, so every eval here checks the transcript stayed clean of plumbing as well
+  // as that the tool actually ran.
   describe('Tool Calling', () => {
     it(
       'should route a hesitantly phrased calendar request',
@@ -242,10 +262,41 @@ describe('Agent Prompt Specifications', () => {
             // speech, and a stumbling request is still a request.
             await conversation.sendMessage('Hey, Jarvis. Uh, could you, uh, check my calendar, please?');
 
+            assertNoSpokenToolCall(conversation);
             await assertToolCalled(
               conversation,
               isRoutingToolName,
               'Expected the agent to hand the calendar request to routePromptWorkflow',
+            );
+          },
+        );
+      },
+      (CONVERSATION_TIMEOUT_MS + TOOL_CALL_TIMEOUT_MS) * MAX_CONVERSATION_RETRIES,
+    );
+
+    it(
+      'should call the tool silently rather than reciting it',
+      async () => {
+        await withConversationRetry(
+          () => new TestConversation({ agentId, apiKey, googleApiKey }),
+          async (conversation) => {
+            await conversation.connect();
+            // Verbatim from a real conversation. The agent gave its acknowledgement
+            // and then said, out loud and in character,
+            //   routePromptWorkflow(userQuery="Check my calendar for today")
+            // having copied the shape of the worked example in the prompt instead of
+            // performing what it depicts. No tool ran; the words just went to the
+            // speakers.
+            await conversation.sendMessage('Hey, Jarvis. Um, could you check my calendar for today?');
+
+            // Checked before the tool-call wait so this exact failure is named
+            // outright, rather than surfacing as a generic timeout 90 seconds later.
+            assertNoSpokenToolCall(conversation);
+
+            await assertToolCalled(
+              conversation,
+              isRoutingToolName,
+              'Expected the agent to actually call routePromptWorkflow, not merely say it',
             );
           },
         );
@@ -262,6 +313,7 @@ describe('Agent Prompt Specifications', () => {
             await conversation.connect();
             await conversation.sendMessage("What's on my calendar today?");
 
+            assertNoSpokenToolCall(conversation);
             await assertToolCalled(
               conversation,
               isRoutingToolName,
@@ -293,6 +345,7 @@ describe('Agent Prompt Specifications', () => {
             // reply is a routed one — an unrouted answer here is fabricated.
             await conversation.sendMessage('Are any of the lights still on downstairs?');
 
+            assertNoSpokenToolCall(conversation);
             await assertToolCalled(
               conversation,
               isRelevantToolName,
@@ -316,6 +369,7 @@ describe('Agent Prompt Specifications', () => {
             await conversation.connect();
             await conversation.sendMessage('What is your name?');
 
+            assertNoSpokenToolCall(conversation);
             await assertToolNotCalled(
               conversation,
               isDelegationToolName,

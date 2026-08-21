@@ -8,6 +8,7 @@ This directory contains all test files for the ElevenLabs integration project.
 tests/
 ├── specs/          # Test specification files (*.spec.ts, *.test.ts)
 │   ├── agent-prompt.spec.ts
+│   ├── spoken-tool-call.spec.ts
 │   └── retry-with-backoff.spec.ts
 └── utils/          # Test utility functions and helpers
     ├── test-conversation.ts
@@ -15,6 +16,7 @@ tests/
     ├── elevenlabs-conversation-strategy.ts
     ├── gemini-mastra-conversation-strategy.ts
     ├── mcp-integration.ts
+    ├── spoken-tool-call.ts
     ├── tunnel-manager.ts
     ├── cloudflare-access.ts
     └── process-manager.ts
@@ -31,6 +33,7 @@ Test utility functions are located in `tests/utils/`:
 - `elevenlabs-conversation-strategy.ts` - ElevenLabs WebSocket strategy
 - `gemini-mastra-conversation-strategy.ts` - Gemini/Mastra evaluation strategy
 - `mcp-integration.ts` - Reports how ElevenLabs is configured to reach the MCP server
+- `spoken-tool-call.ts` - Detects an agent reciting a tool call instead of making one
 - `tunnel-manager.ts` - Cloudflare tunnel management
 - `cloudflare-access.ts` - Cloudflare Access service token handling
 - `process-manager.ts` - Child process lifecycle for the tunnel
@@ -55,3 +58,7 @@ Tests require the following environment variables (managed via 1Password):
 Tests start the MCP server and Cloudflare tunnel, and only then deploy the test
 agent. ElevenLabs reads the agent's MCP tool list when the agent is updated, so
 deploying before the tunnel is up leaves the agent with no tools to call.
+
+`spoken-tool-call.spec.ts` and `retry-with-backoff.spec.ts` need none of this —
+they are pure logic and run offline, so they still give useful signal when the
+credentials or the tunnel are unavailable.
