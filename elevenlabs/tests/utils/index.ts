@@ -7,6 +7,11 @@ export {
   GeminiMastraConversationStrategy,
 } from './gemini-mastra-conversation-strategy';
 export {
+  findSpokenToolCalls,
+  findSpokenToolCallsInText,
+  SPOKEN_TOOL_CALL_PATTERNS,
+} from './spoken-tool-call';
+export {
   type ConversationOptions,
   type EvaluationResult,
   TestConversation,
