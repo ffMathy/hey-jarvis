@@ -140,8 +140,10 @@ describe('Routing Workflows', () => {
       // Queueing hides the longest wait in the loop — the DAG is planned and its
       // first wave runs behind it. Without this, Jarvis routed and then polled
       // without a word, and the user heard nothing at all until the final answer.
-      expect(result.instructions).toContain('acknowledgement');
       expect(result.instructions).toContain('silence');
+      // Said here and nowhere else. The agent prompt used to ask for the same line,
+      // and Jarvis obligingly delivered it twice.
+      expect(result.instructions).toContain('nowhere else');
       // The polling half of the contract has to survive the addition.
       expect(result.instructions).toContain('getNextInstructionsWorkflow');
     });
@@ -244,6 +246,21 @@ describe('Routing Workflows', () => {
       const second = await nextInstructions();
       expect(second.instructions).toContain('All tasks have completed');
       expect(second.completedTaskResults).toEqual([{ id: 'get-weather', result: 'Standup at 9am' }]);
+    });
+
+    it('points a finished request back at routing for whatever the user asks next', async () => {
+      useAgents(createMockAgent('calendar', { respond: () => 'A birthday' }));
+      usePlan({ id: 'calendar-check', agent: 'calendar', prompt: 'Get the calendar', dependsOn: [] });
+
+      await route('Check my calendar');
+      const report = await nextInstructions();
+
+      expect(report.instructions).toContain('All tasks have completed');
+      // Finishing one request is not finishing the conversation. Asked next to check
+      // the blinds and lights, Jarvis promised to look and called nothing — the last
+      // instruction of the loop had left it with no pointer back to the tool.
+      expect(report.instructions).toContain('routePromptWorkflow');
+      expect(report.instructions).toContain('not the conversation');
     });
 
     it('never reports the same task twice', async () => {

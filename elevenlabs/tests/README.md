@@ -36,7 +36,8 @@ Test utility functions are located in `tests/utils/`:
 - `gemini-mastra-conversation-strategy.ts` - Gemini/Mastra evaluation strategy
 - `mcp-integration.ts` - Reports how ElevenLabs is configured to reach the MCP server
 - `spoken-tool-call.ts` - Detects an agent reciting a tool call instead of making one
-- `acknowledgement-timing.ts` - Places the agent's first words relative to the work it queued
+- `acknowledgement-timing.ts` - Whether the user heard anything before the results,
+  and whether he was told twice that he is being attended to
 - `tunnel-manager.ts` - Cloudflare tunnel management
 - `cloudflare-access.ts` - Cloudflare Access service token handling
 - `process-manager.ts` - Child process lifecycle for the tunnel

@@ -2,6 +2,8 @@ export {
   type AcknowledgementTiming,
   classifyAcknowledgementTiming,
   describeMessageOrder,
+  findLookupPromisesBeforeRouting,
+  LOOKUP_PROMISE_PATTERNS,
   stripAudioTags,
 } from './acknowledgement-timing';
 export {
