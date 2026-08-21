@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.2](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.11.1...mcp-v1.11.2) (2026-08-21)
+
+
+### Bug Fixes
+
+* **routing:** ask for a word to the user when queueing, not just polling ([#685](https://github.com/ffMathy/hey-jarvis/issues/685)) ([9a0a52b](https://github.com/ffMathy/hey-jarvis/commit/9a0a52ba6a0ebcdfcae9f699cef913d101610704))
+
 ## [1.11.1](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.11.0...mcp-v1.11.1) (2026-08-20)
 
 
