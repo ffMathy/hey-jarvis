@@ -109,19 +109,29 @@ const instructionsOutputSchema = z.object({
  */
 const INSTRUCTIONS = {
   async: 'The request is being processed in the background and will complete on its own. End the call now.',
-  // Queueing is the longest silence in the whole loop — planning the DAG and
-  // running the first wave both happen behind it — and it is the one step whose
-  // instructions never asked for a word to the user. Jarvis went straight from
-  // routing to polling without speaking, so the user heard nothing between
-  // asking and the final answer.
-  poll: 'The request is now being processed in the background. Before you call anything else, make sure the user has actually heard from you: if you have not spoken since he made the request, give him a brief acknowledgement now, because he is otherwise left sitting in silence while this runs. Then call getNextInstructionsWorkflow to check on the status and receive the next instructions.',
+  // Queueing hides the longest silence in the loop: planning the DAG and running
+  // the first wave both happen behind it. This is the only place the "I'm on it"
+  // line is specified. It was once asked for here *and* in the agent prompt, and
+  // Jarvis duly delivered both — "Let me check your calendar." then "I'm on it,
+  // sir." — so the prompt now stays out of it and this string is unconditional.
+  poll: 'The request is now being processed in the background. Say a short line in your own voice telling the user you are on it — under six words, spoken now, because he is otherwise left sitting in silence while this runs. This is the only such line he should hear, so give it here and nowhere else. Then call getNextInstructionsWorkflow to check on the status and receive the next instructions.',
   stillProcessing:
     'Still processing your request. Call getNextInstructionsWorkflow again to wait a bit longer for it to complete.',
   summarize: 'Summarize the new completed task results in a detailed manner.',
   acknowledge: 'Mention briefly that you have received the information in less than 5 words.',
 } as const;
 
-const ALL_TASKS_COMPLETED_INSTRUCTIONS = `All tasks have completed. ${INSTRUCTIONS.summarize}`;
+/**
+ * Finishing one request does not finish the conversation. Jarvis summarised a
+ * completed calendar lookup and then, asked to check the blinds and lights, promised
+ * to look and called nothing: the loop's last instruction left it holding no pointer
+ * back to the tool.
+ */
+const ALL_TASKS_COMPLETED_INSTRUCTIONS =
+  `All tasks have completed. ${INSTRUCTIONS.summarize} ` +
+  'That finishes this request, but not the conversation: if the user asks for anything further, ' +
+  'send it through routePromptWorkflow exactly as you did this one. Answering a later request from ' +
+  'memory, or promising to look and then calling nothing, leaves him with nothing at all.';
 
 /** How long a single poll may block before we tell Jarvis to call again. */
 const POLL_DEADLINE_MS = 15_000;

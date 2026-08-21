@@ -1,7 +1,11 @@
 import { afterAll, beforeAll, describe, it } from 'bun:test';
 import { startMcpServerForTestingPurposes, stopMcpServer } from '../../../mcp/tests/utils/mcp-server-manager.js';
 import { deployTestAgent } from '../../src/main.js';
-import { classifyAcknowledgementTiming, describeMessageOrder } from '../utils/acknowledgement-timing.js';
+import {
+  classifyAcknowledgementTiming,
+  describeMessageOrder,
+  findLookupPromisesBeforeRouting,
+} from '../utils/acknowledgement-timing.js';
 import type { ServerMessage } from '../utils/conversation-strategy.js';
 import { reportMcpIntegrations } from '../utils/mcp-integration.js';
 import { findSpokenToolCalls } from '../utils/spoken-tool-call.js';
@@ -123,21 +127,54 @@ function assertNoSpokenToolCall(conversation: TestConversation): void {
 }
 
 /**
- * Fails if the user was left in silence while the request was being routed. Routing
- * is where the wait lives — the plan has to be built and dispatched before a single
- * result exists — so an acknowledgement that arrives fused to the final answer is one
- * the user never actually got.
+ * Fails if the user heard nothing until the results themselves landed. The
+ * acknowledgement is allowed to arrive after the first tool call — that is where it
+ * comes from, the routing tool's own instructions — so this counts utterances rather
+ * than racing them against the call.
  */
-function assertSpokeBeforeRouting(conversation: TestConversation): void {
+function assertUserHeardSomethingFirst(conversation: TestConversation): void {
   const timing = classifyAcknowledgementTiming(conversation.getMessages());
   if (timing.kind !== 'silent') return;
 
   throw new Error(
-    `The agent routed the request without saying anything first, leaving the user in ` +
-      `silence until the whole lookup finished.\n` +
+    `The agent said nothing between the request and the results, so its one utterance ` +
+      `arrived with the acknowledgement fused onto the front of the answer.\n` +
       `Message order: ${describeMessageOrder(conversation.getMessages())}\n\n` +
       `Transcript:\n${conversation.getTranscriptText()}`,
   );
+}
+
+/**
+ * Fails if the agent announced the lookup itself. That line belongs to the routing
+ * tool, which issues it once the request is queued; saying one first leaves the user
+ * told twice that he is being attended to.
+ */
+function assertDidNotAnnounceTheLookup(conversation: TestConversation): void {
+  const promises = findLookupPromisesBeforeRouting(conversation.getMessages());
+  if (promises.length === 0) return;
+
+  throw new Error(
+    `The agent announced the lookup before routing, so the user hears it twice — once ` +
+      `here and once from the routing tool's own instructions.\n` +
+      `Said before routing: ${promises.map((promise) => JSON.stringify(promise)).join(', ')}\n\n` +
+      `Transcript:\n${conversation.getTranscriptText()}`,
+  );
+}
+
+/**
+ * Polls until the agent has made a tool call it had not made before, so a later turn
+ * can be told apart from the calls its predecessors already produced.
+ */
+async function waitForToolCallsBeyond(conversation: TestConversation, baseline: number): Promise<string[]> {
+  const deadline = Date.now() + TOOL_CALL_TIMEOUT_MS;
+  let toolNames = await conversation.getCalledToolNames();
+
+  while (toolNames.length <= baseline && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    toolNames = await conversation.getCalledToolNames();
+  }
+
+  return toolNames;
 }
 
 /** Waits for a matching tool call, and fails with the whole conversation if none arrives. */
@@ -354,7 +391,7 @@ describe('Agent Prompt Specifications', () => {
     );
 
     it(
-      'should speak before routing rather than leaving the user in silence',
+      'should acknowledge once, without leaving the user in silence',
       async () => {
         await withConversationRetry(
           () => new TestConversation({ agentId, apiKey, googleApiKey }),
@@ -370,11 +407,53 @@ describe('Agent Prompt Specifications', () => {
             await assertToolCalled(conversation, isRoutingToolName, 'Expected the agent to route the calendar request');
 
             assertNoSpokenToolCall(conversation);
-            assertSpokeBeforeRouting(conversation);
+            assertUserHeardSomethingFirst(conversation);
+            assertDidNotAnnounceTheLookup(conversation);
           },
         );
       },
       (CONVERSATION_TIMEOUT_MS + TOOL_CALL_TIMEOUT_MS) * MAX_CONVERSATION_RETRIES,
+    );
+
+    it(
+      'should route a second request after the first one finished',
+      async () => {
+        await withConversationRetry(
+          () => new TestConversation({ agentId, apiKey, googleApiKey }),
+          async (conversation) => {
+            await conversation.connect();
+
+            // First request: routed and answered, exactly as it should be.
+            await conversation.sendMessage('Hey, Jarvis, could you check my calendar?');
+            await assertToolCalled(conversation, isRoutingToolName, 'Expected the agent to route the first request');
+
+            const toolCallsAfterFirstRequest = (await conversation.getCalledToolNames()).length;
+
+            // Second request, in the same conversation. This is where it went wrong:
+            // having finished one loop, the agent answered "Let me check on those
+            // blinds and lights for you, sir." and called nothing at all. Every eval
+            // before this one was single-turn, so nothing caught it.
+            await conversation.sendMessage(
+              'Could you check if the blinds are lowered and if all the lights are off in the apartment?',
+            );
+
+            const toolNames = await waitForToolCallsBeyond(conversation, toolCallsAfterFirstRequest);
+            if (toolNames.length <= toolCallsAfterFirstRequest) {
+              throw new Error(
+                `The agent routed the first request but not the second, so the follow-up ` +
+                  `was promised and never carried out.\n` +
+                  `Tool calls after the first request: ${toolCallsAfterFirstRequest}; ` +
+                  `after the second: ${toolNames.length}\n` +
+                  `All tool calls: [${toolNames.join(', ')}]\n\n` +
+                  `Transcript:\n${conversation.getTranscriptText()}`,
+              );
+            }
+
+            assertNoSpokenToolCall(conversation);
+          },
+        );
+      },
+      (CONVERSATION_TIMEOUT_MS * 2 + TOOL_CALL_TIMEOUT_MS) * MAX_CONVERSATION_RETRIES,
     );
 
     it(
