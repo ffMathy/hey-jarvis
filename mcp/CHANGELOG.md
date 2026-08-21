@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.3](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.11.2...mcp-v1.11.3) (2026-08-21)
+
+
+### Bug Fixes
+
+* **routing:** own the acknowledgement in one place, and point the loop back at itself ([#687](https://github.com/ffMathy/hey-jarvis/issues/687)) ([6d2cb67](https://github.com/ffMathy/hey-jarvis/commit/6d2cb67d166a2f8e3e959032d85643ba80e05a83))
+
 ## [1.11.2](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.11.1...mcp-v1.11.2) (2026-08-21)
 
 
