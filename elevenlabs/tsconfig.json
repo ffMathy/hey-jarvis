@@ -1,17 +1,22 @@
 {
   "extends": "../tsconfig.base.json",
-  "files": [],
-  "include": [],
-  "references": [
-    {
-      "path": "./tsconfig.app.json"
-    },
-    {
-      "path": "./tsconfig.spec.json"
-    }
-  ],
   "compilerOptions": {
+    "rootDir": "..",
+    "types": ["bun-types", "node"],
     "esModuleInterop": true,
-    "resolveJsonModule": true
-  }
+    "resolveJsonModule": true,
+    // Nothing is emitted for this project — `bun` runs the TypeScript directly and
+    // .scripts/build.sh produces no output — so `composite` would only oblige us to
+    // list every file the tests reach into over in `mcp`, for declarations nobody
+    // reads. Turning it off lets the cross-project imports resolve as sources.
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "incremental": false
+  },
+  // The tests import mcp sources directly, so they need mcp's ambient module
+  // declarations along with them — without those, every untyped dependency mcp
+  // declares for itself reappears here as an implicit any.
+  "include": ["src/**/*.ts", "src/**/*.json", "tests/**/*.ts", "../mcp/mastra/types/**/*.d.ts"],
+  "exclude": ["**/node_modules", "**/.*/", "**/dist", "**/build"]
 }
