@@ -3,6 +3,7 @@ import { startMcpServerForTestingPurposes, stopMcpServer } from '../../../mcp/te
 import { deployTestAgent } from '../../src/main.js';
 import {
   classifyAcknowledgementTiming,
+  countResponsesAfterRequest,
   describeMessageOrder,
   findLookupPromisesBeforeRouting,
 } from '../utils/acknowledgement-timing.js';
@@ -188,6 +189,28 @@ async function waitForToolCallsBeyond(conversation: TestConversation, baseline: 
   }
 
   return toolNames;
+}
+
+/**
+ * Fails if the agent delivered everything in one go rather than as each result
+ * landed. A request covering two things should be spoken in three parts: the
+ * "I'm on it" the routing tool asks for, then each answer as it arrives.
+ *
+ * The engine returns a poll on the *first* task to finish, so this holds unless
+ * both agents happen to finish before the first poll even starts — rare against
+ * real agents, and absorbed by the retry wrapper when it happens.
+ */
+function assertReportedProgressively(conversation: TestConversation, minimumResponses: number): void {
+  const spoken = countResponsesAfterRequest(conversation.getMessages());
+  if (spoken >= minimumResponses) return;
+
+  throw new Error(
+    `The agent spoke ${spoken} time(s) after the request but should have spoken at least ` +
+      `${minimumResponses}: an acknowledgement, then each result as it landed. Delivering them ` +
+      `fused together means the user waited on the slowest part before hearing any of it.\n` +
+      `Message order: ${describeMessageOrder(conversation.getMessages())}\n\n` +
+      `Transcript:\n${conversation.getTranscriptText()}`,
+  );
 }
 
 /** Waits for a matching tool call, and fails with the whole conversation if none arrives. */
@@ -484,24 +507,28 @@ describe('Agent Prompt Specifications', () => {
               'Expected the agent to route a request covering two separate things',
             );
 
-            // Two independent lookups mean the loop runs more than once: route,
-            // then poll until each has landed. A single call would mean it
-            // answered half the question and stopped.
-            const toolNames = await conversation.getCalledToolNames();
-            if (toolNames.length < 2) {
+            // Two independent lookups, each reported as it lands, means the loop
+            // runs three times: route, then a poll per result. Two calls would
+            // mean both answers arrived fused into one delivery.
+            const toolNames = await waitForToolCallsBeyond(conversation, 2);
+            if (toolNames.length < 3) {
               throw new Error(
-                `Expected the agent to keep polling until both answers arrived, but it made ` +
-                  `only ${toolNames.length} tool call(s): [${toolNames.join(', ')}]\n\n` +
+                `Expected the agent to poll once per result, but it made only ` +
+                  `${toolNames.length} tool call(s): [${toolNames.join(', ')}]. Two means both answers ` +
+                  `came back together, so the user waited on the slower one to hear either.\n\n` +
                   `Transcript:\n${conversation.getTranscriptText()}`,
               );
             }
 
             assertNoSpokenToolCall(conversation);
             assertUserHeardSomethingFirst(conversation);
+            // Acknowledgement, then the weather, then the calendar.
+            assertReportedProgressively(conversation, 3);
 
             await conversation.assertCriteria(
               'The agent addresses BOTH things the user asked about — the weather AND the calendar. ' +
-                'Neither is silently dropped, and neither is deferred with a promise to look later.',
+                'Neither is silently dropped, and neither is deferred with a promise to look later. ' +
+                'It reports them as it learns them rather than holding everything back for one final answer.',
               0.9,
             );
           },
@@ -578,10 +605,14 @@ describe('Agent Prompt Specifications', () => {
 
             assertNoSpokenToolCall(conversation);
 
+            assertUserHeardSomethingFirst(conversation);
+
             await conversation.assertCriteria(
-              'The agent ends by naming which day of the week is busiest, and that conclusion is drawn from ' +
-                'the calendar it looked up rather than invented or left unanswered. It does not stop after ' +
-                'merely listing the calendar without answering the question that was asked of it.',
+              'The agent ends by naming which day of the week is busiest. Crucially, that conclusion is ' +
+                'visibly grounded in the calendar it actually looked up: it refers to specific engagements, ' +
+                'days or times that came back from the lookup, rather than naming a day with nothing behind ' +
+                'it. It does not stop after merely listing the calendar without answering the question, and ' +
+                'it does not answer the question without having looked.',
               0.9,
             );
           },

@@ -1,6 +1,7 @@
 export {
   type AcknowledgementTiming,
   classifyAcknowledgementTiming,
+  countResponsesAfterRequest,
   describeMessageOrder,
   findLookupPromisesBeforeRouting,
   LOOKUP_PROMISE_PATTERNS,

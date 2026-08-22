@@ -60,6 +60,20 @@ function spokenAfterRequest(messages: ServerMessage[], requestIndex: number): st
   return spoken;
 }
 
+/**
+ * How many times the agent actually said something after the user's last request.
+ *
+ * With results delivered per task, a request covering two things should produce
+ * three: the "I'm on it" the routing tool asks for, then one delivery per result
+ * as it lands. Two means they arrived fused together — the batching that the
+ * per-task change exists to remove.
+ */
+export function countResponsesAfterRequest(messages: ServerMessage[]): number {
+  const requestIndex = lastIndexOfType(messages, 'user_message');
+  if (requestIndex === -1) return 0;
+  return spokenAfterRequest(messages, requestIndex).length;
+}
+
 export function classifyAcknowledgementTiming(messages: ServerMessage[]): AcknowledgementTiming {
   const requestIndex = lastIndexOfType(messages, 'user_message');
   if (requestIndex === -1) return { kind: 'no-request' };
