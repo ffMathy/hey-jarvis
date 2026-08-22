@@ -627,10 +627,13 @@ let activeRouting: ActiveRouting | undefined;
  */
 function publishCompletion(taskId: string, result: string, failed: boolean): void {
   const routing = activeRouting;
-  if (!routing || !routing.dag.tasks.some((task) => task.id === taskId)) {
+  if (!routing) {
     return;
   }
-  if (routing.completions.some((completion) => completion.taskId === taskId)) {
+
+  const belongsToCurrentDag = routing.dag.tasks.some((task) => task.id === taskId);
+  const alreadyRecorded = routing.completions.some((completion) => completion.taskId === taskId);
+  if (!belongsToCurrentDag || alreadyRecorded) {
     return;
   }
 
