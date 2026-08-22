@@ -1,8 +1,15 @@
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { generateObject } from 'ai';
 import { z } from 'zod';
+import {
+  classifyAcknowledgementTiming,
+  countResponsesAfterRequest,
+  describeMessageOrder,
+  findLookupPromisesBeforeRouting,
+} from './acknowledgement-timing';
 import type { ConversationStrategy, ServerMessage } from './conversation-strategy';
 import { ElevenLabsConversationStrategy } from './elevenlabs-conversation-strategy';
+import { findSpokenToolCalls } from './spoken-tool-call';
 
 export interface ConversationOptions {
   agentId: string;
@@ -62,6 +69,42 @@ export class TestConversation {
   }
 
   /**
+   * What the connection itself showed, extracted mechanically rather than read out
+   * of the prose. A regex knows whether a tool name was spoken and the message log
+   * knows whether a tool ran; a model reading a transcript only guesses at both.
+   *
+   * This goes to the evaluator alongside the transcript so its score rests on facts
+   * it was handed, leaving it to judge the thing it is actually good at: whether
+   * what happened satisfies the criteria.
+   */
+  getEvidenceText(): string {
+    const messages = this.getMessages();
+
+    const toolCalls = messages
+      .filter((message) => message.type === 'mcp_tool_call')
+      .map((message, index) => `  ${index + 1}. ${message.mcp_tool_call.tool_name} (${message.mcp_tool_call.state})`);
+
+    const spokenToolCalls = findSpokenToolCalls(messages);
+    const lookupPromises = findLookupPromisesBeforeRouting(messages);
+
+    return [
+      `Tool calls the agent actually made, in order (${toolCalls.length} total):`,
+      toolCalls.length > 0 ? toolCalls.join('\n') : '  (none)',
+      '',
+      `Times the agent spoke after the user's last request: ${countResponsesAfterRequest(messages)}`,
+      `Acknowledgement timing: ${classifyAcknowledgementTiming(messages).kind}`,
+      `  ("acknowledged" = the user heard something before the results; "silent" = the`,
+      `   agent said nothing until the whole lookup had finished; "no-tool-call" = nothing`,
+      `   was routed, so the question does not arise)`,
+      '',
+      `Tool names spoken aloud by the agent: ${spokenToolCalls.length > 0 ? spokenToolCalls.join('; ') : 'none'}`,
+      `Lookups the agent announced before routing: ${lookupPromises.length > 0 ? lookupPromises.join('; ') : 'none'}`,
+      '',
+      `Message order: ${describeMessageOrder(messages)}`,
+    ].join('\n');
+  }
+
+  /**
    * Poll for the tools the agent invoked until one matches, or the timeout elapses.
    * The agent answers before its tool finishes, so the calls are not necessarily
    * all in by the time sendMessage() returns.
@@ -94,6 +137,7 @@ export class TestConversation {
    */
   async evaluate(criteria: string, maxRetries = 3): Promise<EvaluationResult> {
     const transcriptText = this.getTranscriptText();
+    const evidenceText = this.getEvidenceText();
     const schema = z.object({
       passed: z.boolean().describe('Whether the criteria was met'),
       score: z.number().min(0).max(1).describe('Confidence score from 0 to 1'),
@@ -119,12 +163,21 @@ CONVERSATION TRANSCRIPT (COMPLETE):
 ${transcriptText}
 \`\`\`
 
+MECHANICALLY EXTRACTED EVIDENCE:
+This was read directly off the connection, not inferred from the transcript above.
+It is authoritative — where it disagrees with your reading of the prose, believe it.
+\`\`\`
+${evidenceText}
+\`\`\`
+
 EVALUATION CRITERIA:
 \`\`\`markdown
 ${criteria}
 \`\`\`
 
 Please evaluate whether the FULL conversation meets the specified criteria. Consider:
+- The mechanically extracted evidence, which settles any question about what tools ran,
+  what was spoken aloud, and in what order — do not second-guess it from the prose
 - ALL messages in the transcript, not just the first or last
 - The semantic meaning and intent, not just exact wording
 - The overall flow and context across the ENTIRE conversation

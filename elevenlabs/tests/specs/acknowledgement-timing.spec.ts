@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import {
   classifyAcknowledgementTiming,
+  countResponsesAfterRequest,
   findLookupPromisesBeforeRouting,
   stripAudioTags,
 } from '../utils/acknowledgement-timing.js';
@@ -142,6 +143,46 @@ describe('findLookupPromisesBeforeRouting', () => {
     ]);
 
     expect(promises).toEqual([]);
+  });
+});
+
+describe('countResponsesAfterRequest', () => {
+  it('counts each delivery of a request answered in parts', () => {
+    // What a two-part request looks like once results are reported as they land.
+    const spoken = countResponsesAfterRequest([
+      said('Hello sir, how can I help?'),
+      asked("What's the weather, and what's on my calendar?"),
+      said("[dry] I'm on it, sir."),
+      called('routePromptWorkflow'),
+      said('Fifteen degrees and overcast, sir.'),
+      called('getNextInstructionsWorkflow'),
+      said('And a single birthday on your calendar.'),
+    ]);
+
+    expect(spoken).toBe(3);
+  });
+
+  it('counts the batched delivery as fewer', () => {
+    // The same request answered in one lump: the user waited on the slower half
+    // to hear either.
+    const spoken = countResponsesAfterRequest([
+      asked("What's the weather, and what's on my calendar?"),
+      said("[dry] I'm on it, sir."),
+      called('routePromptWorkflow'),
+      said('Fifteen degrees and overcast, and a single birthday, sir.'),
+    ]);
+
+    expect(spoken).toBe(2);
+  });
+
+  it('ignores the greeting and counts nothing before the request', () => {
+    expect(countResponsesAfterRequest([said('Hello sir, how can I help?'), asked('Check my calendar.')])).toBe(0);
+  });
+
+  it('does not count a reply that was only audio tags', () => {
+    const spoken = countResponsesAfterRequest([asked('Check my calendar.'), said('[sighs]'), said('A birthday.')]);
+
+    expect(spoken).toBe(1);
   });
 });
 
