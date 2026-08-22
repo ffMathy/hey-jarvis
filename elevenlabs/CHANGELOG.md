@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.13.5...elevenlabs-v0.14.0) (2026-08-22)
+
+
+### Features
+
+* **routing:** report each task as it finishes instead of waiting for its wave ([#689](https://github.com/ffMathy/hey-jarvis/issues/689)) ([c1c5523](https://github.com/ffMathy/hey-jarvis/commit/c1c55230542a08853f25a0c9e6ee8f9304321596))
+
 ## [0.13.5](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.13.4...elevenlabs-v0.13.5) (2026-08-21)
 
 
