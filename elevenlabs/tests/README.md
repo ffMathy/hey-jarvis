@@ -52,6 +52,29 @@ bunx turbo test --filter=elevenlabs
 bunx turbo test --filter=elevenlabs --verbose
 ```
 
+## How the conversation evals decide
+
+Every end-to-end eval ends the same way: it waits for the conversation to settle,
+then calls `assertCriteria(criteria, minimumScore)`. An LLM reads the conversation
+and returns a score, and the test passes or fails on that score.
+
+The model is not asked to infer what happened from the prose. Alongside the
+transcript it receives an evidence block extracted mechanically from the socket:
+
+- every tool call the agent made, in order, with its state
+- how many times the agent spoke after the user's last request
+- whether the user heard anything before the results arrived
+- any tool name spoken aloud, and any lookup announced before routing
+- the full message order
+
+Regexes and message ordering are far better than a language model at "was this tool
+called" and "was this name said out loud". So the detectors do the seeing, the
+evidence is marked authoritative in the prompt, and the model is left to judge the
+thing it is actually good at — whether what happened satisfies the criteria.
+
+The one exception is a disconnected MCP server, which fails hard rather than being
+scored. That is a broken precondition, not a result worth judging.
+
 ## Test Requirements
 
 Tests require the following environment variables (managed via 1Password):

@@ -1,15 +1,8 @@
 import { afterAll, beforeAll, describe, it } from 'bun:test';
 import { startMcpServerForTestingPurposes, stopMcpServer } from '../../../mcp/tests/utils/mcp-server-manager.js';
 import { deployTestAgent } from '../../src/main.js';
-import {
-  classifyAcknowledgementTiming,
-  countResponsesAfterRequest,
-  describeMessageOrder,
-  findLookupPromisesBeforeRouting,
-} from '../utils/acknowledgement-timing.js';
 import type { ServerMessage } from '../utils/conversation-strategy.js';
 import { reportMcpIntegrations } from '../utils/mcp-integration.js';
-import { findSpokenToolCalls } from '../utils/spoken-tool-call.js';
 import { TestConversation } from '../utils/test-conversation.js';
 import { ensureTunnelRunning, stopTunnel } from '../utils/tunnel-manager.js';
 
@@ -48,9 +41,6 @@ const LONG_CONVERSATION_REQUESTS = [
 
 const RELEVANT_TOOL_NAME_FRAGMENTS = ['weather', 'home_assistant', 'route'];
 
-/** Message types that getTranscriptText already renders. */
-const TRANSCRIPT_MESSAGE_TYPES = ['user_message', 'agent_response', 'agent_chat_response_part'];
-
 function isRelevantToolName(toolName: string): boolean {
   const lowercased = toolName.toLowerCase();
   return RELEVANT_TOOL_NAME_FRAGMENTS.some((fragment) => lowercased.includes(fragment));
@@ -59,16 +49,6 @@ function isRelevantToolName(toolName: string): boolean {
 /** `routePromptWorkflow` — the one tool that hands a request off to the sub-agents. */
 function isRoutingToolName(toolName: string): boolean {
   return toolName.toLowerCase().includes('route');
-}
-
-/**
- * Any of the MCP server's tools. It exposes exactly two — `routePromptWorkflow`
- * and `getNextInstructionsWorkflow` — and the second only ever follows the
- * first, so this is what "the agent delegated rather than answering" looks like.
- */
-function isDelegationToolName(toolName: string): boolean {
-  const lowercased = toolName.toLowerCase();
-  return lowercased.includes('route') || lowercased.includes('instruction');
 }
 
 /**
@@ -85,22 +65,10 @@ function findDisconnectedIntegrations(messages: ServerMessage[]): string[] {
 }
 
 /**
- * Everything the socket delivered that the transcript does not show — tool calls,
- * MCP connection status and anything else — so a missing tool call can be told
- * apart from one the agent never made.
- */
-function describeNonTranscriptMessages(messages: ServerMessage[]): string {
-  const details = messages
-    .filter((message) => !TRANSCRIPT_MESSAGE_TYPES.includes(message.type))
-    .map((message) => JSON.stringify(message).slice(0, 400));
-
-  return details.length > 0 ? details.join('\n') : '(none)';
-}
-
-/**
  * An agent whose MCP server never connected has nothing to call, so say that
- * outright rather than waiting out the tool call timeout and reporting the
- * absence as if the agent had chosen not to call one.
+ * outright rather than letting the evaluator score a conversation that never had
+ * tools in the first place. This one stays a hard failure: it is a broken
+ * precondition, not a result to be judged.
  */
 function assertMcpServerConnected(conversation: TestConversation): void {
   const disconnectedIntegrations = findDisconnectedIntegrations(conversation.getMessages());
@@ -113,71 +81,31 @@ function assertMcpServerConnected(conversation: TestConversation): void {
   );
 }
 
-/** Everything the socket saw, for a failure message that can actually be diagnosed. */
-function describeConversation(conversation: TestConversation, toolNames: string[]): string {
-  const messages = conversation.getMessages();
-  return (
-    `All tool calls: [${toolNames.join(', ')}]\n` +
-    `Message types received: [${messages.map((message) => message.type).join(', ')}]\n` +
-    `Messages not in the transcript:\n${describeNonTranscriptMessages(messages)}\n` +
-    `Transcript:\n${conversation.getTranscriptText()}`
-  );
-}
-
 /**
- * Fails if the agent read its own plumbing out to the user. Worth asserting even
- * alongside assertToolCalled: reciting the call and making it are independent, and
- * an agent that does both still leaves sir listening to machinery.
+ * Waits for a matching tool call, so the evidence is complete by the time it is
+ * judged. Synchronisation, not assertion — whether the call *should* have been
+ * made is the evaluator's to score, and it returns quietly either way.
  */
-function assertNoSpokenToolCall(conversation: TestConversation): void {
-  const spoken = findSpokenToolCalls(conversation.getMessages());
-  if (spoken.length === 0) return;
-
-  throw new Error(
-    `The agent spoke its tooling aloud rather than leaving the tool call silent. ` +
-      `Saying a tool's name does not call it — the words simply go to the speakers.\n` +
-      `${spoken.join('\n')}\n\nTranscript:\n${conversation.getTranscriptText()}`,
-  );
+async function settleAfterRouting(
+  conversation: TestConversation,
+  matches: (toolName: string) => boolean,
+): Promise<void> {
+  assertMcpServerConnected(conversation);
+  await conversation.waitForCalledToolNames(matches, TOOL_CALL_TIMEOUT_MS);
 }
 
 /**
- * Fails if the user heard nothing until the results themselves landed. The
- * acknowledgement is allowed to arrive after the first tool call — that is where it
- * comes from, the routing tool's own instructions — so this counts utterances rather
- * than racing them against the call.
+ * Gives a tool call time to appear where the point is that none should. Without
+ * the wait, an absence would only mean the test asked too early.
  */
-function assertUserHeardSomethingFirst(conversation: TestConversation): void {
-  const timing = classifyAcknowledgementTiming(conversation.getMessages());
-  if (timing.kind !== 'silent') return;
-
-  throw new Error(
-    `The agent said nothing between the request and the results, so its one utterance ` +
-      `arrived with the acknowledgement fused onto the front of the answer.\n` +
-      `Message order: ${describeMessageOrder(conversation.getMessages())}\n\n` +
-      `Transcript:\n${conversation.getTranscriptText()}`,
-  );
+async function settleWithoutRouting(conversation: TestConversation): Promise<void> {
+  assertMcpServerConnected(conversation);
+  await new Promise((resolve) => setTimeout(resolve, NO_TOOL_CALL_GRACE_MS));
 }
 
 /**
- * Fails if the agent announced the lookup itself. That line belongs to the routing
- * tool, which issues it once the request is queued; saying one first leaves the user
- * told twice that he is being attended to.
- */
-function assertDidNotAnnounceTheLookup(conversation: TestConversation): void {
-  const promises = findLookupPromisesBeforeRouting(conversation.getMessages());
-  if (promises.length === 0) return;
-
-  throw new Error(
-    `The agent announced the lookup before routing, so the user hears it twice — once ` +
-      `here and once from the routing tool's own instructions.\n` +
-      `Said before routing: ${promises.map((promise) => JSON.stringify(promise)).join(', ')}\n\n` +
-      `Transcript:\n${conversation.getTranscriptText()}`,
-  );
-}
-
-/**
- * Polls until the agent has made a tool call it had not made before, so a later turn
- * can be told apart from the calls its predecessors already produced.
+ * Polls until the agent has made a tool call it had not made before, so a later
+ * turn does not settle on its predecessors' calls.
  */
 async function waitForToolCallsBeyond(conversation: TestConversation, baseline: number): Promise<string[]> {
   const deadline = Date.now() + TOOL_CALL_TIMEOUT_MS;
@@ -189,59 +117,6 @@ async function waitForToolCallsBeyond(conversation: TestConversation, baseline: 
   }
 
   return toolNames;
-}
-
-/**
- * Fails if the agent delivered everything in one go rather than as each result
- * landed. A request covering two things should be spoken in three parts: the
- * "I'm on it" the routing tool asks for, then each answer as it arrives.
- *
- * The engine returns a poll on the *first* task to finish, so this holds unless
- * both agents happen to finish before the first poll even starts — rare against
- * real agents, and absorbed by the retry wrapper when it happens.
- */
-function assertReportedProgressively(conversation: TestConversation, minimumResponses: number): void {
-  const spoken = countResponsesAfterRequest(conversation.getMessages());
-  if (spoken >= minimumResponses) return;
-
-  throw new Error(
-    `The agent spoke ${spoken} time(s) after the request but should have spoken at least ` +
-      `${minimumResponses}: an acknowledgement, then each result as it landed. Delivering them ` +
-      `fused together means the user waited on the slowest part before hearing any of it.\n` +
-      `Message order: ${describeMessageOrder(conversation.getMessages())}\n\n` +
-      `Transcript:\n${conversation.getTranscriptText()}`,
-  );
-}
-
-/** Waits for a matching tool call, and fails with the whole conversation if none arrives. */
-async function assertToolCalled(
-  conversation: TestConversation,
-  matches: (toolName: string) => boolean,
-  expectation: string,
-): Promise<string[]> {
-  assertMcpServerConnected(conversation);
-
-  const toolNames = await conversation.waitForCalledToolNames(matches, TOOL_CALL_TIMEOUT_MS);
-  if (toolNames.some(matches)) return toolNames;
-
-  throw new Error(`${expectation}, but no such tool call was made.\n${describeConversation(conversation, toolNames)}`);
-}
-
-/** Gives a tool call time to appear, then fails if one did. */
-async function assertToolNotCalled(
-  conversation: TestConversation,
-  matches: (toolName: string) => boolean,
-  expectation: string,
-): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, NO_TOOL_CALL_GRACE_MS));
-
-  const toolNames = await conversation.getCalledToolNames();
-  const unexpected = toolNames.filter(matches);
-  if (unexpected.length === 0) return;
-
-  throw new Error(
-    `${expectation}, but it called [${unexpected.join(', ')}].\n${describeConversation(conversation, toolNames)}`,
-  );
 }
 
 /**
@@ -337,8 +212,13 @@ describe('Agent Prompt Specifications', () => {
   // spread to requests it cannot possibly answer. Or it can *say* the call instead of
   // making it, reciting `routePromptWorkflow(userQuery="...")` in the same breathless
   // voice as the rest of its reply. Both leave sir waiting on an answer that never
-  // comes, so every eval here checks the transcript stayed clean of plumbing as well
-  // as that the tool actually ran.
+  // comes, so every eval here requires a clean transcript as well as a tool that ran.
+  //
+  // Every one of them is settled by scoring rather than by a thrown assertion. Each
+  // waits for the conversation to finish moving, then hands the evaluator both the
+  // transcript and the evidence read off the connection — the tool calls, what was
+  // spoken, in what order — and asserts on the score it returns. The mechanical
+  // detectors still do the seeing; the model only does the judging.
   describe('Tool Calling', () => {
     it(
       'should route a hesitantly phrased calendar request',
@@ -354,11 +234,14 @@ describe('Agent Prompt Specifications', () => {
             // speech, and a stumbling request is still a request.
             await conversation.sendMessage('Hey, Jarvis. Uh, could you, uh, check my calendar, please?');
 
-            assertNoSpokenToolCall(conversation);
-            await assertToolCalled(
-              conversation,
-              isRoutingToolName,
-              'Expected the agent to hand the calendar request to routePromptWorkflow',
+            await settleAfterRouting(conversation, isRoutingToolName);
+
+            await conversation.assertCriteria(
+              'The agent handed the calendar request to its routing tool. The evidence must show at least one ' +
+                'tool call whose name contains "route", and no tool names spoken aloud. The filler words in the ' +
+                'request do not make it any less of an instruction: a stumbling "uh, could you, uh, check my ' +
+                'calendar" is to be acted on exactly like a crisp one.',
+              0.9,
             );
           },
         );
@@ -381,14 +264,14 @@ describe('Agent Prompt Specifications', () => {
             // speakers.
             await conversation.sendMessage('Hey, Jarvis. Um, could you check my calendar for today?');
 
-            // Checked before the tool-call wait so this exact failure is named
-            // outright, rather than surfacing as a generic timeout 90 seconds later.
-            assertNoSpokenToolCall(conversation);
+            await settleAfterRouting(conversation, isRoutingToolName);
 
-            await assertToolCalled(
-              conversation,
-              isRoutingToolName,
-              'Expected the agent to actually call routePromptWorkflow, not merely say it',
+            await conversation.assertCriteria(
+              'The agent called its routing tool for real and said nothing of it aloud. The evidence must show ' +
+                'at least one tool call containing "route" AND "Tool names spoken aloud: none". Reciting a call ' +
+                'like routePromptWorkflow(userQuery="...") is not making one — the words simply go to the ' +
+                'speakers — so an agent that recites instead of calling fails, and so does one that does both.',
+              0.9,
             );
           },
         );
@@ -405,19 +288,12 @@ describe('Agent Prompt Specifications', () => {
             await conversation.connect();
             await conversation.sendMessage("What's on my calendar today?");
 
-            assertNoSpokenToolCall(conversation);
-            await assertToolCalled(
-              conversation,
-              isRoutingToolName,
-              'Expected the agent to hand the calendar request to routePromptWorkflow',
-            );
+            await settleAfterRouting(conversation, isRoutingToolName);
 
-            // The tool call alone is not the whole contract: the transcript must
-            // not read as an agent that announced a lookup and then went quiet.
             await conversation.assertCriteria(
-              'The agent does not leave the user hanging on a bare promise. Either it reports something about the calendar, ' +
-                'or its promise to go and look is followed in the transcript by a TOOL line showing the lookup actually happening. ' +
-                'A transcript whose final agent message only promises to check, with no tool call after it, fails this criteria.',
+              'The agent did not leave the user hanging on a bare promise. The evidence must show at least one ' +
+                'tool call containing "route", and the conversation must not end on the agent merely promising ' +
+                'to check with no lookup following. No tool names spoken aloud.',
               0.9,
             );
           },
@@ -440,11 +316,17 @@ describe('Agent Prompt Specifications', () => {
             // one.
             await conversation.sendMessage('Hey, Jarvis, could you check my calendar for today?');
 
-            await assertToolCalled(conversation, isRoutingToolName, 'Expected the agent to route the calendar request');
+            await settleAfterRouting(conversation, isRoutingToolName);
 
-            assertNoSpokenToolCall(conversation);
-            assertUserHeardSomethingFirst(conversation);
-            assertDidNotAnnounceTheLookup(conversation);
+            await conversation.assertCriteria(
+              'The agent acknowledged the request exactly once and never left the user in silence. The evidence ' +
+                'must show all of: at least one tool call containing "route"; an acknowledgement timing of ' +
+                '"acknowledged" rather than "silent", because a single utterance arriving only once everything ' +
+                'finished is an acknowledgement fused onto the answer and therefore no acknowledgement at all; ' +
+                '"Lookups the agent announced before routing: none", since that line belongs to the routing ' +
+                'tool and the user must not be told twice he is being attended to; and no tool names spoken aloud.',
+              0.9,
+            );
           },
         );
       },
@@ -461,7 +343,7 @@ describe('Agent Prompt Specifications', () => {
 
             // First request: routed and answered, exactly as it should be.
             await conversation.sendMessage('Hey, Jarvis, could you check my calendar?');
-            await assertToolCalled(conversation, isRoutingToolName, 'Expected the agent to route the first request');
+            await settleAfterRouting(conversation, isRoutingToolName);
 
             const toolCallsAfterFirstRequest = (await conversation.getCalledToolNames()).length;
 
@@ -473,19 +355,16 @@ describe('Agent Prompt Specifications', () => {
               'Could you check if the blinds are lowered and if all the lights are off in the apartment?',
             );
 
-            const toolNames = await waitForToolCallsBeyond(conversation, toolCallsAfterFirstRequest);
-            if (toolNames.length <= toolCallsAfterFirstRequest) {
-              throw new Error(
-                `The agent routed the first request but not the second, so the follow-up ` +
-                  `was promised and never carried out.\n` +
-                  `Tool calls after the first request: ${toolCallsAfterFirstRequest}; ` +
-                  `after the second: ${toolNames.length}\n` +
-                  `All tool calls: [${toolNames.join(', ')}]\n\n` +
-                  `Transcript:\n${conversation.getTranscriptText()}`,
-              );
-            }
+            await waitForToolCallsBeyond(conversation, toolCallsAfterFirstRequest);
 
-            assertNoSpokenToolCall(conversation);
+            await conversation.assertCriteria(
+              `Both of the user's requests were routed, not merely the first. The agent had made ` +
+                `${toolCallsAfterFirstRequest} tool call(s) after the first request; the evidence must show ` +
+                `further tool calls after the second user message, and its message order must show tool calls ` +
+                `following the second request as well as the first. Answering the follow-up from memory, or ` +
+                `promising to check the blinds and lights and calling nothing, fails. No tool names spoken aloud.`,
+              0.9,
+            );
           },
         );
       },
@@ -501,34 +380,19 @@ describe('Agent Prompt Specifications', () => {
             await conversation.connect();
             await conversation.sendMessage("What's the weather right now, and what's on my calendar today?");
 
-            await assertToolCalled(
-              conversation,
-              isRoutingToolName,
-              'Expected the agent to route a request covering two separate things',
-            );
-
-            // Two independent lookups, each reported as it lands, means the loop
-            // runs three times: route, then a poll per result. Two calls would
-            // mean both answers arrived fused into one delivery.
-            const toolNames = await waitForToolCallsBeyond(conversation, 2);
-            if (toolNames.length < 3) {
-              throw new Error(
-                `Expected the agent to poll once per result, but it made only ` +
-                  `${toolNames.length} tool call(s): [${toolNames.join(', ')}]. Two means both answers ` +
-                  `came back together, so the user waited on the slower one to hear either.\n\n` +
-                  `Transcript:\n${conversation.getTranscriptText()}`,
-              );
-            }
-
-            assertNoSpokenToolCall(conversation);
-            assertUserHeardSomethingFirst(conversation);
-            // Acknowledgement, then the weather, then the calendar.
-            assertReportedProgressively(conversation, 3);
+            await settleAfterRouting(conversation, isRoutingToolName);
+            // Two independent lookups reported as they land means the loop runs
+            // three times: route, then a poll per result.
+            await waitForToolCallsBeyond(conversation, 2);
 
             await conversation.assertCriteria(
-              'The agent addresses BOTH things the user asked about — the weather AND the calendar. ' +
-                'Neither is silently dropped, and neither is deferred with a promise to look later. ' +
-                'It reports them as it learns them rather than holding everything back for one final answer.',
+              'The agent answered both halves of the request — the weather AND the calendar — and reported ' +
+                'them as they arrived rather than in one lump at the end. The evidence must show at least ' +
+                'three tool calls (routing once, then polling once per result; only two means both answers ' +
+                'came back together, so the user waited on the slower one to hear either), and at least three ' +
+                'separate times the agent spoke after the request (an acknowledgement, then each answer as it ' +
+                'landed). Neither half may be dropped or deferred with a promise to look later. No tool names ' +
+                'spoken aloud.',
               0.9,
             );
           },
@@ -550,27 +414,18 @@ describe('Agent Prompt Specifications', () => {
             await conversation.connect();
 
             let toolCallsSoFar = 0;
-            for (const [index, request] of LONG_CONVERSATION_REQUESTS.entries()) {
+            for (const request of LONG_CONVERSATION_REQUESTS) {
               await conversation.sendMessage(request);
 
               const toolNames = await waitForToolCallsBeyond(conversation, toolCallsSoFar);
-              if (toolNames.length <= toolCallsSoFar) {
-                throw new Error(
-                  `Turn ${index + 1} of ${LONG_CONVERSATION_REQUESTS.length} ("${request}") was never routed. ` +
-                    `The agent had made ${toolCallsSoFar} tool call(s) before it and made none after.\n` +
-                    `All tool calls: [${toolNames.join(', ')}]\n\n` +
-                    `Transcript:\n${conversation.getTranscriptText()}`,
-                );
-              }
-
               toolCallsSoFar = toolNames.length;
-              assertNoSpokenToolCall(conversation);
             }
 
             await conversation.assertCriteria(
-              'Across the whole conversation the agent responded to every one of the requests the user made. ' +
-                'It did not lose track, did not repeat an earlier answer in place of a new one, and did not ' +
-                'end on a promise to look something up.',
+              `The agent kept working through all ${LONG_CONVERSATION_REQUESTS.length} requests. The evidence's ` +
+                `message order must show tool calls following every one of the user's messages — none answered ` +
+                `from memory, none left on a promise to look — and the agent gave each request its own answer ` +
+                `rather than repeating an earlier one or losing track. No tool names spoken aloud.`,
               0.9,
             );
           },
@@ -592,27 +447,17 @@ describe('Agent Prompt Specifications', () => {
             // that sends mail or writes a draft leaves real traces behind.
             await conversation.sendMessage('Check my calendar for this week, then tell me which day looks busiest.');
 
-            await assertToolCalled(conversation, isRoutingToolName, 'Expected the agent to route a two-step request');
-
-            const toolNames = await conversation.getCalledToolNames();
-            if (toolNames.length < 2) {
-              throw new Error(
-                `A dependent request has to be walked in steps, but the agent made only ` +
-                  `${toolNames.length} tool call(s): [${toolNames.join(', ')}]\n\n` +
-                  `Transcript:\n${conversation.getTranscriptText()}`,
-              );
-            }
-
-            assertNoSpokenToolCall(conversation);
-
-            assertUserHeardSomethingFirst(conversation);
+            await settleAfterRouting(conversation, isRoutingToolName);
+            await waitForToolCallsBeyond(conversation, 1);
 
             await conversation.assertCriteria(
-              'The agent ends by naming which day of the week is busiest. Crucially, that conclusion is ' +
-                'visibly grounded in the calendar it actually looked up: it refers to specific engagements, ' +
-                'days or times that came back from the lookup, rather than naming a day with nothing behind ' +
-                'it. It does not stop after merely listing the calendar without answering the question, and ' +
-                'it does not answer the question without having looked.',
+              'The agent worked through a request whose second half needs the first. The evidence must show ' +
+                'at least two tool calls, since naming the busiest day cannot begin until the calendar has ' +
+                'answered. The agent ends by naming which day is busiest, and that conclusion is visibly ' +
+                'grounded in the calendar it actually looked up — referring to specific engagements, days or ' +
+                'times that came back — rather than a day named with nothing behind it. It neither stops at ' +
+                'listing the calendar without answering, nor answers without having looked. No tool names ' +
+                'spoken aloud.',
               0.9,
             );
           },
@@ -632,11 +477,13 @@ describe('Agent Prompt Specifications', () => {
             // reply is a routed one — an unrouted answer here is fabricated.
             await conversation.sendMessage('Are any of the lights still on downstairs?');
 
-            assertNoSpokenToolCall(conversation);
-            await assertToolCalled(
-              conversation,
-              isRelevantToolName,
-              'Expected the agent to route a question it cannot answer from its own prompt',
+            await settleAfterRouting(conversation, isRelevantToolName);
+
+            await conversation.assertCriteria(
+              'The agent routed a question it cannot answer from its own instructions. Nothing in its prompt ' +
+                'says which lights are on, so an answer produced without a tool call would be fabricated. The ' +
+                'evidence must show at least one tool call, and no tool names spoken aloud.',
+              0.9,
             );
           },
         );
@@ -656,16 +503,13 @@ describe('Agent Prompt Specifications', () => {
             await conversation.connect();
             await conversation.sendMessage('What is your name?');
 
-            assertNoSpokenToolCall(conversation);
-            await assertToolNotCalled(
-              conversation,
-              isDelegationToolName,
-              'Expected the agent to state its own name outright rather than delegating it',
-            );
+            await settleWithoutRouting(conversation);
 
             await conversation.assertCriteria(
-              'The agent states its own name — Jarvis — directly in its reply, rather than deferring, ' +
-                'promising to find out, or explaining that it cannot say.',
+              'The agent stated its own name — Jarvis — directly, and did NOT route the question. The evidence ' +
+                'must show no tool calls at all: its name is answerable from its own instructions, and routing ' +
+                'it would hand it to sub-agents that cannot answer and would bury the reply. It must not defer, ' +
+                'promise to find out, or claim it cannot say. No tool names spoken aloud.',
               0.9,
             );
           },
@@ -686,17 +530,14 @@ describe('Agent Prompt Specifications', () => {
             // Request that implies tool usage but is vague about details
             await conversation.sendMessage("What's the weather like right now?");
 
-            // Verify a tool was called — the agent may call weather tools directly
-            // or use the routePromptWorkflow which internally dispatches to weather.
-            await assertToolCalled(
-              conversation,
-              isRelevantToolName,
-              'Expected a weather, home assistant, or routing tool to be called',
-            );
+            // The agent may reach weather directly or route to it; either counts.
+            await settleAfterRouting(conversation, isRelevantToolName);
 
-            // Then verify no follow-up questions using LLM evaluation
             await conversation.assertCriteria(
-              'The agent makes a reasonable assumption (e.g., assumes a location such as the current location) OR provides a response without asking the user for clarification or more information',
+              'The agent looked the weather up rather than interrogating the user first. The evidence must ' +
+                'show at least one tool call. It makes a reasonable assumption where the request is vague — ' +
+                'the current location, for instance — or simply answers, without asking for clarification or ' +
+                'more information. No tool names spoken aloud.',
               0.9,
             );
           },

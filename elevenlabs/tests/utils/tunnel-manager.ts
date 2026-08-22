@@ -223,8 +223,8 @@ export async function ensureTunnelRunning(): Promise<void> {
       maxRetries: 60,
       initialDelay: 1000,
       backoffMultiplier: 1, // Linear retry (1 second between attempts)
-      shouldRetry: (error) => !error.message.startsWith('Tunnel reachable but Access refused'),
-      onRetry: (error, attempt, _delay) => {
+      shouldRetry: (error: Error) => !error.message.startsWith('Tunnel reachable but Access refused'),
+      onRetry: (error: Error, attempt: number, _delay: number) => {
         // Log extra diagnostics every 10 attempts
         if (attempt % 10 === 0) {
           console.log(`🔍 Tunnel diagnostics (attempt ${attempt}/60):`);
