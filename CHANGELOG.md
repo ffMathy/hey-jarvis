@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.13.0](https://github.com/ffMathy/hey-jarvis/compare/root-v1.12.5...root-v1.13.0) (2026-08-22)
+
+
+### Features
+
+* **routing:** report each task as it finishes instead of waiting for its wave ([#689](https://github.com/ffMathy/hey-jarvis/issues/689)) ([c1c5523](https://github.com/ffMathy/hey-jarvis/commit/c1c55230542a08853f25a0c9e6ee8f9304321596))
+
 ## [1.12.5](https://github.com/ffMathy/hey-jarvis/compare/root-v1.12.4...root-v1.12.5) (2026-08-21)
 
 
