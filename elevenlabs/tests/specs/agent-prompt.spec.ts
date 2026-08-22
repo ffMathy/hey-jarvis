@@ -32,6 +32,19 @@ const TOOL_CALL_TIMEOUT_MS = 90000;
  */
 const NO_TOOL_CALL_GRACE_MS = 20000;
 
+/**
+ * The long back-and-forth eval's turns, each a request that cannot be answered
+ * without a tool. Declared here so the test's timeout scales with the list
+ * rather than with a number kept in step by hand.
+ */
+const LONG_CONVERSATION_REQUESTS = [
+  'Could you check my calendar for today?',
+  "And what's the weather like right now?",
+  'Are any lights still on downstairs?',
+  "What's on my shopping list?",
+  'Anything on my calendar tomorrow?',
+];
+
 const RELEVANT_TOOL_NAME_FRAGMENTS = ['weather', 'home_assistant', 'route'];
 
 /** Message types that getTranscriptText already renders. */
@@ -454,6 +467,127 @@ describe('Agent Prompt Specifications', () => {
         );
       },
       (CONVERSATION_TIMEOUT_MS * 2 + TOOL_CALL_TIMEOUT_MS) * MAX_CONVERSATION_RETRIES,
+    );
+
+    it(
+      'should handle several things asked at once, reporting as they land',
+      async () => {
+        await withConversationRetry(
+          () => new TestConversation({ agentId, apiKey, googleApiKey }),
+          async (conversation) => {
+            await conversation.connect();
+            await conversation.sendMessage("What's the weather right now, and what's on my calendar today?");
+
+            await assertToolCalled(
+              conversation,
+              isRoutingToolName,
+              'Expected the agent to route a request covering two separate things',
+            );
+
+            // Two independent lookups mean the loop runs more than once: route,
+            // then poll until each has landed. A single call would mean it
+            // answered half the question and stopped.
+            const toolNames = await conversation.getCalledToolNames();
+            if (toolNames.length < 2) {
+              throw new Error(
+                `Expected the agent to keep polling until both answers arrived, but it made ` +
+                  `only ${toolNames.length} tool call(s): [${toolNames.join(', ')}]\n\n` +
+                  `Transcript:\n${conversation.getTranscriptText()}`,
+              );
+            }
+
+            assertNoSpokenToolCall(conversation);
+            assertUserHeardSomethingFirst(conversation);
+
+            await conversation.assertCriteria(
+              'The agent addresses BOTH things the user asked about — the weather AND the calendar. ' +
+                'Neither is silently dropped, and neither is deferred with a promise to look later.',
+              0.9,
+            );
+          },
+        );
+      },
+      (CONVERSATION_TIMEOUT_MS + TOOL_CALL_TIMEOUT_MS) * MAX_CONVERSATION_RETRIES,
+    );
+
+    it(
+      'should keep routing across a long back-and-forth',
+      async () => {
+        // Each request follows an answer to the last. The second-request failure
+        // that prompted the multi-turn eval showed the loop can stop pointing
+        // back at the tool once a request finishes; this walks far enough out to
+        // catch it going stale later rather than immediately.
+        await withConversationRetry(
+          () => new TestConversation({ agentId, apiKey, googleApiKey }),
+          async (conversation) => {
+            await conversation.connect();
+
+            let toolCallsSoFar = 0;
+            for (const [index, request] of LONG_CONVERSATION_REQUESTS.entries()) {
+              await conversation.sendMessage(request);
+
+              const toolNames = await waitForToolCallsBeyond(conversation, toolCallsSoFar);
+              if (toolNames.length <= toolCallsSoFar) {
+                throw new Error(
+                  `Turn ${index + 1} of ${LONG_CONVERSATION_REQUESTS.length} ("${request}") was never routed. ` +
+                    `The agent had made ${toolCallsSoFar} tool call(s) before it and made none after.\n` +
+                    `All tool calls: [${toolNames.join(', ')}]\n\n` +
+                    `Transcript:\n${conversation.getTranscriptText()}`,
+                );
+              }
+
+              toolCallsSoFar = toolNames.length;
+              assertNoSpokenToolCall(conversation);
+            }
+
+            await conversation.assertCriteria(
+              'Across the whole conversation the agent responded to every one of the requests the user made. ' +
+                'It did not lose track, did not repeat an earlier answer in place of a new one, and did not ' +
+                'end on a promise to look something up.',
+              0.9,
+            );
+          },
+        );
+      },
+      (CONVERSATION_TIMEOUT_MS * LONG_CONVERSATION_REQUESTS.length + TOOL_CALL_TIMEOUT_MS) * MAX_CONVERSATION_RETRIES,
+    );
+
+    it(
+      'should work through a request whose second half needs the first',
+      async () => {
+        await withConversationRetry(
+          () => new TestConversation({ agentId, apiKey, googleApiKey }),
+          async (conversation) => {
+            await conversation.connect();
+            // The second half cannot start until the first has answered, so this
+            // plans as a chain rather than as two independent lookups. Kept
+            // read-only on purpose: CI drives the real MCP server, and an eval
+            // that sends mail or writes a draft leaves real traces behind.
+            await conversation.sendMessage('Check my calendar for this week, then tell me which day looks busiest.');
+
+            await assertToolCalled(conversation, isRoutingToolName, 'Expected the agent to route a two-step request');
+
+            const toolNames = await conversation.getCalledToolNames();
+            if (toolNames.length < 2) {
+              throw new Error(
+                `A dependent request has to be walked in steps, but the agent made only ` +
+                  `${toolNames.length} tool call(s): [${toolNames.join(', ')}]\n\n` +
+                  `Transcript:\n${conversation.getTranscriptText()}`,
+              );
+            }
+
+            assertNoSpokenToolCall(conversation);
+
+            await conversation.assertCriteria(
+              'The agent ends by naming which day of the week is busiest, and that conclusion is drawn from ' +
+                'the calendar it looked up rather than invented or left unanswered. It does not stop after ' +
+                'merely listing the calendar without answering the question that was asked of it.',
+              0.9,
+            );
+          },
+        );
+      },
+      (CONVERSATION_TIMEOUT_MS + TOOL_CALL_TIMEOUT_MS) * MAX_CONVERSATION_RETRIES,
     );
 
     it(

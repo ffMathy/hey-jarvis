@@ -308,21 +308,38 @@ function isLeaf(task: Dag['tasks'][number], tasks: Dag['tasks']): boolean {
  * plumbing. When a wave produced any leaf we hand over the results and ask for
  * a summary, otherwise we only acknowledge progress.
  */
+function moreToComeInstructions(includesLeaf: boolean): string {
+  return (
+    `More tasks have finished since last time, but not all tasks have completed yet. ` +
+    `${includesLeaf ? INSTRUCTIONS.summarize : INSTRUCTIONS.acknowledge} ` +
+    `Then call getNextInstructionsWorkflow again.`
+  );
+}
+
+/**
+ * Whether this task's result has already reached Jarvis. A task can be relayed
+ * either by the wave report or, the moment it finishes, by a poll — so both
+ * consult the same set and neither can deliver the same result twice.
+ */
+function alreadyReported(task: Dag['tasks'][number]): boolean {
+  return task.reported || activeRouting?.reportedTaskIds.has(task.id) === true;
+}
+
+function markReported(task: Dag['tasks'][number]): void {
+  task.reported = true;
+  activeRouting?.reportedTaskIds.add(task.id);
+}
+
 function buildProgressReport(tasks: Dag['tasks']): z.infer<typeof instructionsOutputSchema> {
-  const newlyFinished = tasks.filter((task) => isFinished(task) && !task.reported);
+  const newlyFinished = tasks.filter((task) => isFinished(task) && !alreadyReported(task));
   const includesLeaf = newlyFinished.some((task) => isLeaf(task, tasks));
   const remaining = tasks.filter((task) => !isFinished(task));
 
   for (const task of newlyFinished) {
-    task.reported = true;
+    markReported(task);
   }
 
-  const instructions =
-    remaining.length === 0
-      ? ALL_TASKS_COMPLETED_INSTRUCTIONS
-      : `More tasks have finished since last time, but not all tasks have completed yet. ${
-          includesLeaf ? INSTRUCTIONS.summarize : INSTRUCTIONS.acknowledge
-        } Then call getNextInstructionsWorkflow again.`;
+  const instructions = remaining.length === 0 ? ALL_TASKS_COMPLETED_INSTRUCTIONS : moreToComeInstructions(includesLeaf);
 
   return {
     instructions,
@@ -423,11 +440,9 @@ const executeTaskStep = createStep({
   execute: async ({ inputData }) => {
     const agent = (await getAgentsById()).get(inputData.agent);
     if (!agent) {
-      return {
-        taskId: inputData.taskId,
-        result: `No agent named "${inputData.agent}" is available.`,
-        failed: true,
-      };
+      const result = `No agent named "${inputData.agent}" is available.`;
+      publishCompletion(inputData.taskId, result, true);
+      return { taskId: inputData.taskId, result, failed: true };
     }
 
     console.log(`→ Delegating to: ${inputData.agent} (task: ${inputData.taskId})`);
@@ -435,10 +450,13 @@ const executeTaskStep = createStep({
     try {
       const response = await agent.generate([{ role: 'user', content: inputData.prompt }]);
       console.log(`✓ Completed: ${inputData.agent} (task: ${inputData.taskId})`);
-      return { taskId: inputData.taskId, result: response.text ?? '', failed: false };
+      const result = response.text ?? '';
+      publishCompletion(inputData.taskId, result, false);
+      return { taskId: inputData.taskId, result, failed: false };
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(`✗ Failed: ${inputData.agent} (task: ${inputData.taskId})`, error);
+      publishCompletion(inputData.taskId, `Task failed: ${message}`, true);
       return { taskId: inputData.taskId, result: `Task failed: ${message}`, failed: true };
     }
   },
@@ -574,15 +592,111 @@ export const routingWorkflow = createWorkflow({
 type RoutingRun = Awaited<ReturnType<typeof routingWorkflow.createRun>>;
 type RoutingResult = Awaited<ReturnType<RoutingRun['start']>>;
 
+interface TaskCompletion {
+  taskId: string;
+  result: string;
+  failed: boolean;
+}
+
 interface ActiveRouting {
   run: RoutingRun;
   dag: Dag;
   lastReport: z.infer<typeof instructionsOutputSchema>;
   finished: boolean;
   inFlight?: Promise<void>;
+  /** Every task that has finished, in the order it finished. */
+  completions: TaskCompletion[];
+  /** Tasks whose results have already reached Jarvis, by either route. */
+  reportedTaskIds: Set<string>;
+  /** Polls parked waiting for the next task to land. */
+  completionWaiters: (() => void)[];
 }
 
 let activeRouting: ActiveRouting | undefined;
+
+/**
+ * Records a finished task and wakes any poll waiting on one.
+ *
+ * A wave is a barrier — every task in it runs before the wave reports — so
+ * without this a fast task's result sat unseen until the slowest task beside it
+ * finished. Measured on a two-task wave, the weather answer was ready at 100ms
+ * and reached the user at 20s, held up by the calendar beside it.
+ *
+ * Only tasks belonging to the DAG now being routed are recorded, so a straggler
+ * from a superseded request cannot report itself into its successor.
+ */
+function publishCompletion(taskId: string, result: string, failed: boolean): void {
+  const routing = activeRouting;
+  if (!routing || !routing.dag.tasks.some((task) => task.id === taskId)) {
+    return;
+  }
+  if (routing.completions.some((completion) => completion.taskId === taskId)) {
+    return;
+  }
+
+  routing.completions.push({ taskId, result, failed });
+
+  const waiters = routing.completionWaiters;
+  routing.completionWaiters = [];
+  for (const wake of waiters) {
+    wake();
+  }
+}
+
+/** Resolves once a task has finished that no poll has relayed yet. */
+function waitForCompletion(routing: ActiveRouting): Promise<void> {
+  const unreported = routing.completions.some((completion) => !routing.reportedTaskIds.has(completion.taskId));
+  if (unreported) {
+    return Promise.resolve();
+  }
+  return new Promise<void>((resolve) => {
+    routing.completionWaiters.push(resolve);
+  });
+}
+
+/**
+ * A report covering the tasks that have finished since the last poll, built
+ * without waiting for the rest of their wave. Returns undefined when there is
+ * nothing new, or when the whole DAG is done — the latter is the workflow's own
+ * closing report to make, and it carries the final summary.
+ */
+function buildCompletionReport(routing: ActiveRouting): z.infer<typeof instructionsOutputSchema> | undefined {
+  const pending = routing.completions.filter((completion) => !routing.reportedTaskIds.has(completion.taskId));
+  if (pending.length === 0) {
+    return undefined;
+  }
+
+  const tasks = routing.dag.tasks;
+  const finishedIds = new Set(routing.completions.map((completion) => completion.taskId));
+  const remaining = tasks.filter((task) => !finishedIds.has(task.id));
+  if (remaining.length === 0) {
+    return undefined;
+  }
+
+  const taskById = new Map(tasks.map((task) => [task.id, task]));
+  const includesLeaf = pending.some((completion) => {
+    const task = taskById.get(completion.taskId);
+    return task ? isLeaf(task, tasks) : false;
+  });
+
+  for (const completion of pending) {
+    routing.reportedTaskIds.add(completion.taskId);
+    const task = taskById.get(completion.taskId);
+    if (task) {
+      task.reported = true;
+    }
+  }
+
+  return {
+    instructions: moreToComeInstructions(includesLeaf),
+    // Intermediate results are plumbing; only leaves carry an answer worth relaying.
+    completedTaskResults: pending.map((completion) => ({
+      id: completion.taskId,
+      result: includesLeaf ? completion.result : undefined,
+    })),
+    taskIdsInProgress: remaining.map((task) => task.id),
+  };
+}
 
 /** Returns the DAG of the most recent routing request. Primarily for tests and Studio. */
 export function getCurrentDAG(): Dag {
@@ -702,6 +816,39 @@ async function withDeadline(work: Promise<void>, deadlineMs: number): Promise<bo
   }
 }
 
+/** Whether a report actually carries something the user has not heard yet. */
+function hasNews(report: z.infer<typeof instructionsOutputSchema>): boolean {
+  return (report.completedTaskResults?.length ?? 0) > 0;
+}
+
+/**
+ * Waits for whichever comes first: the wave finishing, a single task finishing,
+ * or the deadline. The wave's own report wins ties — it is the authoritative
+ * one, and it filters out anything a poll has already relayed.
+ */
+async function raceForProgress(
+  routing: ActiveRouting,
+  resumed: Promise<void>,
+  deadlineMs: number,
+): Promise<'wave-finished' | 'task-finished' | 'timeout'> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<'timeout'>((resolve) => {
+    timer = setTimeout(() => resolve('timeout'), deadlineMs);
+  });
+
+  try {
+    return await Promise.race([
+      resumed.then(() => 'wave-finished' as const),
+      waitForCompletion(routing).then(() => 'task-finished' as const),
+      timeout,
+    ]);
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
+}
+
 /** Keeps resuming until the DAG is done. Used for fire-and-forget requests. */
 async function driveToCompletion(routing: ActiveRouting): Promise<void> {
   while (!routing.finished) {
@@ -725,6 +872,9 @@ const routePromptStep = createStep({
       dag: { userQuery: inputData.userQuery, tasks: [] },
       lastReport: { instructions: INSTRUCTIONS.poll, taskIdsInProgress: [] },
       finished: false,
+      completions: [],
+      reportedTaskIds: new Set(),
+      completionWaiters: [],
     };
     activeRouting = routing;
 
@@ -778,13 +928,43 @@ const getNextInstructionsStep = createStep({
       return routing.lastReport;
     }
 
-    const landed = await withDeadline(resumeRouting(routing), POLL_DEADLINE_MS);
-    if (!landed) {
-      return { instructions: INSTRUCTIONS.stillProcessing };
+    // Keep the DAG moving, but do not block on the whole wave: whichever task
+    // finishes first is worth relaying, and the rest are still coming. Loop
+    // because not every wake-up carries news — a wave whose results the polls
+    // already relayed has nothing left to add, and neither does the last task
+    // of the DAG, whose closing summary is the workflow's own to make.
+    const deadlineAt = Date.now() + POLL_DEADLINE_MS;
+
+    while (Date.now() < deadlineAt) {
+      const resumed = resumeRouting(routing);
+      const outcome = await raceForProgress(routing, resumed, deadlineAt - Date.now());
+
+      if (outcome === 'timeout') {
+        break;
+      }
+
+      if (outcome === 'task-finished') {
+        const report = buildCompletionReport(routing);
+        if (report) {
+          console.log('getNextInstructionsWorkflow partial result:', report);
+          return report;
+        }
+        // Everything has finished; wait for the run to produce its closing report.
+        await withDeadline(resumed, Math.max(0, deadlineAt - Date.now()));
+      }
+
+      if (routing.finished) {
+        console.log('getNextInstructionsWorkflow result:', routing.lastReport);
+        return routing.lastReport;
+      }
+
+      if (hasNews(routing.lastReport)) {
+        console.log('getNextInstructionsWorkflow result:', routing.lastReport);
+        return routing.lastReport;
+      }
     }
 
-    console.log('getNextInstructionsWorkflow result:', routing.lastReport);
-    return routing.lastReport;
+    return { instructions: INSTRUCTIONS.stillProcessing };
   },
 });
 

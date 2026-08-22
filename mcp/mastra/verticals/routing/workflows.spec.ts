@@ -49,6 +49,29 @@ function createMockAgent(id: string, options: MockAgentOptions = {}): MockAgent 
   };
 }
 
+interface GatedAgent {
+  agent: MockAgent;
+  finish: () => void;
+}
+
+/** An agent that hangs until the test releases it. */
+function createGatedAgent(id: string, answer: string): GatedAgent {
+  let release: () => void = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+
+  return {
+    agent: createMockAgent(id, {
+      respond: async () => {
+        await gate;
+        return answer;
+      },
+    }),
+    finish: release,
+  };
+}
+
 function useAgents(...agents: MockAgent[]): void {
   const provider: AgentProvider = async () => agents as unknown as Agent[];
   setAgentProvider(provider);
@@ -261,6 +284,71 @@ describe('Routing Workflows', () => {
       // instruction of the loop had left it with no pointer back to the tool.
       expect(report.instructions).toContain('routePromptWorkflow');
       expect(report.instructions).toContain('not the conversation');
+    });
+
+    it('reports a finished task without waiting for the slow one beside it', async () => {
+      // Both tasks are independent, so they share a wave. The wave itself is a
+      // barrier, and results used to be withheld until every task in it had
+      // returned: measured on this exact shape, a result ready at 100ms reached
+      // the user at 20s, held up purely by the task next to it.
+      const calendar = createGatedAgent('calendar', 'A birthday');
+      useAgents(createMockAgent('weather', { respond: () => 'Sunny, 22°C' }), calendar.agent);
+      usePlan(
+        { id: 'weather-check', agent: 'weather', prompt: 'Weather?', dependsOn: [] },
+        { id: 'calendar-check', agent: 'calendar', prompt: 'Calendar?', dependsOn: [] },
+      );
+
+      await route('What is the weather and what is on my calendar?');
+
+      // The calendar agent has not been released, so this can only be the
+      // weather result arriving on its own.
+      const first = await nextInstructions();
+      expect(first.completedTaskResults).toEqual([{ id: 'weather-check', result: 'Sunny, 22°C' }]);
+      expect(first.taskIdsInProgress).toEqual(['calendar-check']);
+      expect(first.instructions).toContain('not all tasks have completed');
+      expect(first.instructions).toContain('getNextInstructionsWorkflow');
+
+      calendar.finish();
+
+      const second = await nextInstructions();
+      expect(second.instructions).toContain('All tasks have completed');
+      expect(second.completedTaskResults).toEqual([{ id: 'calendar-check', result: 'A birthday' }]);
+      expect(second.taskIdsInProgress).toEqual([]);
+    });
+
+    it('walks a dependent chain one task at a time, carrying the context forward', async () => {
+      // "Check the calendar for the week, then send me an email summarising it."
+      // The email cannot start until the calendar has answered, and it needs
+      // that answer in hand when it does.
+      const calendar = createMockAgent('calendar', {
+        respond: () => 'Mon: standup at 9. Wed: design review at 14.',
+      });
+      const email = createMockAgent('email', { respond: () => 'Summary sent to you, sir.' });
+      useAgents(calendar, email);
+      usePlan(
+        { id: 'calendar-week', agent: 'calendar', prompt: "This week's calendar?", dependsOn: [] },
+        { id: 'send-email', agent: 'email', prompt: 'Email a summary of it', dependsOn: ['calendar-week'] },
+      );
+
+      await route('Check my calendar for the week, then email me a summary');
+
+      // The calendar is plumbing for the email, not an answer in its own right,
+      // so its result is withheld and only its progress is relayed.
+      const first = await nextInstructions();
+      expect(first.completedTaskResults).toEqual([{ id: 'calendar-week', result: undefined }]);
+      expect(first.taskIdsInProgress).toEqual(['send-email']);
+      expect(first.instructions).toContain('less than 5 words');
+
+      const second = await nextInstructions();
+      expect(second.instructions).toContain('All tasks have completed');
+      expect(second.completedTaskResults).toEqual([{ id: 'send-email', result: 'Summary sent to you, sir.' }]);
+      expect(second.taskIdsInProgress).toEqual([]);
+
+      // The whole point of the dependency: the email agent was handed what the
+      // calendar found, not merely told to go and summarise something.
+      expect(email.prompts).toHaveLength(1);
+      expect(email.prompts[0]).toContain('Email a summary of it');
+      expect(email.prompts[0]).toContain('Mon: standup at 9. Wed: design review at 14.');
     });
 
     it('never reports the same task twice', async () => {
