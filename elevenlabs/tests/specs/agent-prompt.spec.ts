@@ -1,10 +1,11 @@
 import { afterAll, beforeAll, describe, it } from 'bun:test';
-import { startMcpServerForTestingPurposes, stopMcpServer } from '../../../mcp/tests/utils/mcp-server-manager.js';
-import { deployTestAgent } from '../../src/main.js';
 import { assertMcpServerConnected } from '../utils/mcp-connection.js';
-import { reportMcpIntegrations } from '../utils/mcp-integration.js';
 import { TestConversation } from '../utils/test-conversation.js';
-import { ensureTunnelRunning, stopTunnel } from '../utils/tunnel-manager.js';
+import {
+  startTestEnvironment,
+  stopTestEnvironment,
+  TEST_ENVIRONMENT_SETUP_TIMEOUT_MS,
+} from '../utils/test-environment.js';
 
 const MAX_CONVERSATION_RETRIES = 3;
 
@@ -134,26 +135,12 @@ describe('Agent Prompt Specifications', () => {
   const apiKey = process.env.HEY_JARVIS_ELEVENLABS_API_KEY;
   const googleApiKey = process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY;
 
-  // Order matters. ElevenLabs hosts the agent and reads its MCP tool list when
-  // the agent is updated, so the server has to be answering on its public
-  // hostname before the deploy — otherwise the agent is left holding
-  // tool_count: 0 for a URL that only came alive afterwards.
-  beforeAll(async () => {
-    if (!process.env.HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID) {
-      throw new Error('HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID environment variable is required');
-    }
-    await startMcpServerForTestingPurposes();
-    await ensureTunnelRunning();
-    await deployTestAgent();
-    await reportMcpIntegrations();
-    // The MCP server and cloudflared registering with Cloudflare's edge can each
-    // take tens of seconds on a cold CI runner, before the deploy even starts.
-  }, 240000);
+  beforeAll(startTestEnvironment, TEST_ENVIRONMENT_SETUP_TIMEOUT_MS);
 
-  afterAll(() => {
-    stopMcpServer();
-    stopTunnel();
-  });
+  // Awaited, so the server and tunnel are down before the next spec file starts
+  // its own. Firing this and moving on left the teardown to shoot the next
+  // file's server the moment it came up.
+  afterAll(stopTestEnvironment);
 
   describe('Personality & Tone', () => {
     it(

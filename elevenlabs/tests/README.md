@@ -23,6 +23,7 @@ tests/
     ├── mcp-integration.ts
     ├── routing-loop.ts
     ├── spoken-tool-call.ts
+    ├── test-environment.ts
     ├── tunnel-manager.ts
     ├── cloudflare-access.ts
     └── process-manager.ts
@@ -45,6 +46,9 @@ Test utility functions are located in `tests/utils/`:
   what each call delivered, what was still running, and anything the loop's own
   reports contradict
 - `spoken-tool-call.ts` - Detects an agent reciting a tool call instead of making one
+- `test-environment.ts` - Brings the MCP server and tunnel up and down around a
+  spec file. Both halves live here because both spec files share the same ports,
+  so the teardown of one has to finish before the setup of the next begins
 - `acknowledgement-timing.ts` - Whether the user heard anything before the results,
   and whether he was told twice that he is being attended to
 - `tunnel-manager.ts` - Cloudflare tunnel management

@@ -127,9 +127,11 @@ export interface RoutingLoopStep {
   /** Position among all the tool calls of the conversation, 1-based. */
   position: number;
   toolName: string;
-  state: 'success' | 'loading';
+  state: 'success' | 'loading' | 'failure';
   kind: RoutingLoopStepKind;
   report?: RoutingReport;
+  /** What came back, kept so a call carrying no report can still say what it carried. */
+  rawResult: unknown;
   /** Task IDs whose results this call handed over, in the order it listed them. */
   delivered: string[];
   /** Task IDs the call said were still running, or undefined if it did not say. */
@@ -145,6 +147,8 @@ export interface RoutingLoop {
   deliveredTaskIds: string[];
   /** Task IDs the loop announced as running but never delivered. */
   undeliveredTaskIds: string[];
+  /** Calls ElevenLabs could not complete, which is where a loop usually dies. */
+  failedCalls: RoutingLoopStep[];
   /** Whether a closing report arrived, so the request was seen through to the end. */
   finished: boolean;
 }
@@ -152,7 +156,7 @@ export interface RoutingLoop {
 interface ToolCallRecord {
   position: number;
   toolName: string;
-  state: 'success' | 'loading';
+  state: 'success' | 'loading' | 'failure';
   result: unknown;
 }
 
@@ -179,9 +183,11 @@ function readToolCalls(messages: ServerMessage[]): ToolCallRecord[] {
     byCallId.set(key, {
       position: existing?.position ?? byCallId.size + 1,
       toolName: call.tool_name,
-      // A success supersedes the loading event it followed; the result rides along with it.
+      // Whichever event settles the call supersedes the loading one it followed,
+      // and carries the payload — the error on a failure as much as the report
+      // on a success.
       state: call.state,
-      result: call.state === 'success' ? call.result : (existing?.result ?? call.result),
+      result: call.state === 'loading' ? (existing?.result ?? call.result) : call.result,
     });
   }
 
@@ -209,6 +215,7 @@ function toLoopStep(record: ToolCallRecord): RoutingLoopStep | undefined {
     state: record.state,
     kind,
     report,
+    rawResult: record.result,
     delivered: report?.completedTaskResults?.map((task) => task.id) ?? [],
     inProgress: report?.taskIdsInProgress,
   };
@@ -230,6 +237,7 @@ export function readRoutingLoop(messages: ServerMessage[]): RoutingLoop {
     polls,
     deliveredTaskIds,
     undeliveredTaskIds: [...announced].filter((id) => !delivered.has(id)),
+    failedCalls: steps.filter((step) => step.state === 'failure'),
     finished: polls.some((step) => isFinalReport(step.report)),
   };
 }
@@ -248,6 +256,12 @@ export function findRoutingLoopViolations(loop: RoutingLoop): string[] {
 
 function findStructureViolations(loop: RoutingLoop): string[] {
   const violations: string[] = [];
+
+  // Named first and named specifically: a failed call is why a loop stops, and
+  // "stopped before its closing report" describes the symptom rather than it.
+  for (const step of loop.failedCalls) {
+    violations.push(`the ${step.kind === 'route' ? 'routing' : 'polling'} call ${step.toolName} came back failed`);
+  }
 
   if (loop.routeCalls.length === 0) {
     violations.push(`nothing was routed: ${ROUTE_TOOL_NAME} was never called`);
@@ -361,11 +375,26 @@ function findProgressViolations(loop: RoutingLoop): string[] {
   return violations;
 }
 
+/**
+ * What a call that carried no report was carrying instead. On a failure that is
+ * the error ElevenLabs handed back, which is the only account of why the loop
+ * stopped, so it is quoted rather than summarised away.
+ */
+function describePayload(step: RoutingLoopStep): string {
+  if (step.report) {
+    return '';
+  }
+  const payload = JSON.stringify(step.rawResult ?? null);
+  return ` (no report in the result; it carried: ${payload.slice(0, PAYLOAD_EXCERPT_LENGTH)})`;
+}
+
+/** Enough of an unreadable payload to name the cause, without pasting a recipe into the evidence. */
+const PAYLOAD_EXCERPT_LENGTH = 400;
+
 function describeStep(step: RoutingLoopStep): string {
   const delivered = step.delivered.length > 0 ? step.delivered.join(', ') : 'nothing';
   const inProgress = step.inProgress ? step.inProgress.join(', ') || 'nothing' : 'unstated';
-  const unreadable = step.report ? '' : ' (no report could be read from the result)';
-  return `  ${step.position}. ${step.toolName} [${step.state}] → delivered: ${delivered}; still running: ${inProgress}${unreadable}`;
+  return `  ${step.position}. ${step.toolName} [${step.state}] → delivered: ${delivered}; still running: ${inProgress}${describePayload(step)}`;
 }
 
 /**
@@ -388,24 +417,48 @@ export function describeRoutingLoop(loop: RoutingLoop): string {
 }
 
 /**
- * Waits for the loop to reach its closing report.
+ * How long the conversation may say nothing at all before the loop is taken for
+ * dead. A poll blocks for at most fifteen seconds and the agent answers within a
+ * few more, so a running loop is never quiet for anything like this long — but a
+ * loop that gave up is quiet forever, and waiting out the full budget for one
+ * turns a two-minute failure into an eight-minute one.
+ */
+const DEFAULT_STALL_TIMEOUT_MS = 90000;
+
+export interface WaitForRoutingLoopOptions {
+  /** Silence after which a loop that has not finished is taken for dead. */
+  stallMs?: number;
+  pollIntervalMs?: number;
+}
+
+/**
+ * Waits for the loop to reach its closing report, or to go quiet for long enough
+ * that it plainly will not.
  *
  * Takes a message accessor rather than the conversation itself, so the detectors
  * stay free of the harness that feeds them. Returns whatever the loop looks like
- * when the deadline passes, so a loop that stalled is reported as a stalled loop
- * rather than as a timeout with nothing left to read.
+ * when it settles, so a loop that stalled is reported as a stalled loop rather
+ * than as a timeout with nothing left to read.
  */
 export async function waitForRoutingLoopToFinish(
   getMessages: () => ServerMessage[],
   timeoutMs: number,
-  pollIntervalMs = 1000,
+  { stallMs = DEFAULT_STALL_TIMEOUT_MS, pollIntervalMs = 1000 }: WaitForRoutingLoopOptions = {},
 ): Promise<RoutingLoop> {
   const deadline = Date.now() + timeoutMs;
-  let loop = readRoutingLoop(getMessages());
+  let messages = getMessages();
+  let loop = readRoutingLoop(messages);
+  let lastChangeAt = Date.now();
 
-  while (!loop.finished && Date.now() < deadline) {
+  while (!loop.finished && Date.now() < deadline && Date.now() - lastChangeAt < stallMs) {
     await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
-    loop = readRoutingLoop(getMessages());
+
+    const latest = getMessages();
+    if (latest.length !== messages.length) {
+      lastChangeAt = Date.now();
+    }
+    messages = latest;
+    loop = readRoutingLoop(messages);
   }
 
   return loop;

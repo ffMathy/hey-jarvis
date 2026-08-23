@@ -32,6 +32,7 @@ export {
   type RoutingLoopStep,
   type RoutingReport,
   readRoutingLoop,
+  type WaitForRoutingLoopOptions,
   waitForRoutingLoopToFinish,
 } from './routing-loop';
 export {
@@ -44,3 +45,8 @@ export {
   type EvaluationResult,
   TestConversation,
 } from './test-conversation';
+export {
+  startTestEnvironment,
+  stopTestEnvironment,
+  TEST_ENVIRONMENT_SETUP_TIMEOUT_MS,
+} from './test-environment';

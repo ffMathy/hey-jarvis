@@ -7,6 +7,7 @@ import {
   parseRoutingReport,
   type RoutingReport,
   readRoutingLoop,
+  waitForRoutingLoopToFinish,
 } from '../utils/routing-loop.js';
 
 /**
@@ -20,7 +21,11 @@ import {
 let nextCallId = 0;
 
 /** An MCP tool call as ElevenLabs reports it: the payload arrives as a text part. */
-function called(toolName: string, payload?: unknown, state: 'success' | 'loading' = 'success'): ServerMessage {
+function called(
+  toolName: string,
+  payload?: unknown,
+  state: 'success' | 'loading' | 'failure' = 'success',
+): ServerMessage {
   nextCallId += 1;
   return {
     type: 'mcp_tool_call',
@@ -270,5 +275,99 @@ describe('describeRoutingLoop', () => {
     const description = describeRoutingLoop(readRoutingLoop([routed('a', 'b'), polled(['a'], ['b'])]));
     expect(description).toContain('Reached its closing report: no');
     expect(description).toContain('stopped before its closing report');
+  });
+});
+
+/**
+ * The failure mode the first live run actually produced: a poll comes back
+ * `failure`, the agent says "there was a slight hiccup" and never calls again.
+ * The loop is dead at that point, and the evidence has to say so in those terms
+ * rather than leaving "stopped before its closing report" to stand for it.
+ */
+describe('a call that came back failed', () => {
+  const withFailedPoll = (): ServerMessage[] => [
+    routed('a', 'b', 'c'),
+    polled(['a'], ['b', 'c']),
+    called('getNextInstructionsWorkflow', { error: 'tool call failed' }, 'failure'),
+  ];
+
+  it('names the failed call rather than only its consequence', () => {
+    const violations = findRoutingLoopViolations(readRoutingLoop(withFailedPoll()));
+
+    expect(violations.join('\n')).toContain('getNextInstructionsWorkflow came back failed');
+    expect(violations[0]).toContain('came back failed');
+  });
+
+  it('collects the failed calls so a test can point at them', () => {
+    const loop = readRoutingLoop(withFailedPoll());
+
+    expect(loop.failedCalls).toHaveLength(1);
+    expect(loop.failedCalls[0].state).toBe('failure');
+    expect(loop.finished).toBe(false);
+  });
+
+  it('quotes what the failed call carried, since that is the only account of why', () => {
+    const description = describeRoutingLoop(readRoutingLoop(withFailedPoll()));
+
+    expect(description).toContain('[failure]');
+    expect(description).toContain('tool call failed');
+  });
+
+  it('keeps the settled result rather than the loading event it followed', () => {
+    // The failure event carries the error; the loading event before it carried
+    // nothing. Preferring the earlier one would throw away the reason.
+    const loop = readRoutingLoop([
+      {
+        type: 'mcp_tool_call',
+        mcp_tool_call: { tool_name: 'routePromptWorkflow', tool_call_id: 'call-y', state: 'loading', result: [] },
+      } as unknown as ServerMessage,
+      {
+        type: 'mcp_tool_call',
+        mcp_tool_call: {
+          tool_name: 'routePromptWorkflow',
+          tool_call_id: 'call-y',
+          state: 'failure',
+          result: [{ type: 'text', text: 'upstream refused the payload' }],
+        },
+      } as unknown as ServerMessage,
+    ]);
+
+    expect(loop.steps).toHaveLength(1);
+    expect(loop.steps[0].state).toBe('failure');
+    expect(describeRoutingLoop(loop)).toContain('upstream refused the payload');
+  });
+});
+
+describe('waitForRoutingLoopToFinish', () => {
+  it('returns as soon as the closing report has landed', async () => {
+    const loop = await waitForRoutingLoopToFinish(healthyLoop, 5000, { stallMs: 5000, pollIntervalMs: 5 });
+    expect(loop.finished).toBe(true);
+  });
+
+  it('gives up on a loop that has gone quiet, rather than waiting out the budget', async () => {
+    // A dead loop is silent forever. Waiting the full budget for one turned a
+    // two-minute failure into an eight-minute one, twice, on the first live run.
+    const messages = [routed('a', 'b'), polled(['a'], ['b'])];
+    const startedAt = Date.now();
+
+    const loop = await waitForRoutingLoopToFinish(() => messages, 60000, { stallMs: 60, pollIntervalMs: 5 });
+
+    expect(loop.finished).toBe(false);
+    expect(Date.now() - startedAt).toBeLessThan(5000);
+  });
+
+  it('keeps waiting while the conversation is still moving', async () => {
+    const messages: ServerMessage[] = [routed('a', 'b')];
+    const timer = setInterval(() => {
+      if (messages.length === 1) messages.push(polled(['a'], ['b']));
+      else if (messages.length === 2) messages.push(polled(['b'], []));
+    }, 20);
+
+    try {
+      const loop = await waitForRoutingLoopToFinish(() => messages, 5000, { stallMs: 200, pollIntervalMs: 5 });
+      expect(loop.finished).toBe(true);
+    } finally {
+      clearInterval(timer);
+    }
   });
 });
