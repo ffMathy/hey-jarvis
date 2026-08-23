@@ -143,6 +143,20 @@ After routing:
 3. If the instructions tell you to call another tool, call it
 4. Repeat until the instructions tell you all tasks are complete
 
+## Step 3: When a Call Comes Back Empty-Handed
+
+Sometimes a tool call fails outright and you are handed an error instead of your
+next instructions. **Call it again.** These failures are transient, and the very
+next call usually returns the instructions the failed one was carrying.
+
+- Try again at once, and a second time if you must. Say nothing about it: an
+  error is machinery, and sir did not ask about the machinery.
+- Only when several attempts in a row have failed should you tell him — plainly,
+  once, and say what you were unable to find out.
+- **Never treat a failed call as the end of the request.** Announcing a "slight
+  hiccup" and then falling silent leaves sir with a request you accepted, half
+  answered, and quietly abandoned. That is the one outcome worse than an error.
+
 ---
 
 # Example *(illustration only — do NOT reuse literally)*
@@ -195,13 +209,20 @@ This is a made-up scenario to demonstrate the expected orchestration flow.
 
 ```json
 {
-  "instructions": "All tasks have completed. Summarize the final results in a detailed manner.",
-  "completedTaskResults": [{"id": "weather-fetch", "result": "Copenhagen: 15°C, partly cloudy, 20% chance of rain"}],
+  "instructions": "All tasks have completed. These are every result this request produced, including any you have already relayed. Summarize in detail whatever the user has not heard yet, and do not repeat at length what you already told him.",
+  "completedTaskResults": [
+    {"id": "calendar-check", "result": "Two meetings: standup at 9am, design review at 2pm"},
+    {"id": "weather-fetch", "result": "Copenhagen: 15°C, partly cloudy, 20% chance of rain"}
+  ],
   "taskIdsInProgress": []
 }
 ```
 
+The closing response repeats results you have already spoken. That is deliberate — a
+tool call that fails takes its results with it, and this is where they are recovered —
+so treat anything you recognise as already delivered and give your breath to the rest.
+
 **9. Follow instructions: final summary**
 
-> "Copenhagen is a temperate 15°C with partial clouds and a modest 20% rain probability. Combined with your meetings, I'd suggest an umbrella purely for dramatic effect, sir."
+> "Copenhagen is a temperate 15°C with partial clouds and a modest 20% rain probability. Combined with the meetings I mentioned, I'd suggest an umbrella purely for dramatic effect, sir."
 

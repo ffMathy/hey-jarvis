@@ -1,10 +1,11 @@
 import { afterAll, beforeAll, describe, it } from 'bun:test';
-import { startMcpServerForTestingPurposes, stopMcpServer } from '../../../mcp/tests/utils/mcp-server-manager.js';
-import { deployTestAgent } from '../../src/main.js';
-import type { ServerMessage } from '../utils/conversation-strategy.js';
-import { reportMcpIntegrations } from '../utils/mcp-integration.js';
+import { assertMcpServerConnected } from '../utils/mcp-connection.js';
 import { TestConversation } from '../utils/test-conversation.js';
-import { ensureTunnelRunning, stopTunnel } from '../utils/tunnel-manager.js';
+import {
+  startTestEnvironment,
+  stopTestEnvironment,
+  TEST_ENVIRONMENT_SETUP_TIMEOUT_MS,
+} from '../utils/test-environment.js';
 
 const MAX_CONVERSATION_RETRIES = 3;
 
@@ -52,36 +53,6 @@ function isRoutingToolName(toolName: string): boolean {
 }
 
 /**
- * Integrations the agent could not connect to, as it reported them.
- * With none connected the agent has no tools at all, and answers by writing
- * something that reads like a tool call into its own reply instead of making one.
- */
-function findDisconnectedIntegrations(messages: ServerMessage[]): string[] {
-  return messages
-    .filter((message) => message.type === 'mcp_connection_status')
-    .flatMap((message) => message.mcp_connection_status.integrations)
-    .filter((integration) => !integration.is_connected)
-    .map((integration) => `${integration.integration_id} (${integration.tool_count} tools)`);
-}
-
-/**
- * An agent whose MCP server never connected has nothing to call, so say that
- * outright rather than letting the evaluator score a conversation that never had
- * tools in the first place. This one stays a hard failure: it is a broken
- * precondition, not a result to be judged.
- */
-function assertMcpServerConnected(conversation: TestConversation): void {
-  const disconnectedIntegrations = findDisconnectedIntegrations(conversation.getMessages());
-  if (disconnectedIntegrations.length === 0) return;
-
-  throw new Error(
-    `The agent reported no connection to its MCP server, leaving it without tools: ` +
-      `[${disconnectedIntegrations.join(', ')}]. ElevenLabs has to be able to reach the MCP server ` +
-      `through the cloudflared tunnel for this test to mean anything.`,
-  );
-}
-
-/**
  * Waits for a matching tool call, so the evidence is complete by the time it is
  * judged. Synchronisation, not assertion — whether the call *should* have been
  * made is the evaluator's to score, and it returns quietly either way.
@@ -90,7 +61,7 @@ async function settleAfterRouting(
   conversation: TestConversation,
   matches: (toolName: string) => boolean,
 ): Promise<void> {
-  assertMcpServerConnected(conversation);
+  assertMcpServerConnected(conversation.getMessages());
   await conversation.waitForCalledToolNames(matches, TOOL_CALL_TIMEOUT_MS);
 }
 
@@ -99,7 +70,7 @@ async function settleAfterRouting(
  * the wait, an absence would only mean the test asked too early.
  */
 async function settleWithoutRouting(conversation: TestConversation): Promise<void> {
-  assertMcpServerConnected(conversation);
+  assertMcpServerConnected(conversation.getMessages());
   await new Promise((resolve) => setTimeout(resolve, NO_TOOL_CALL_GRACE_MS));
 }
 
@@ -164,26 +135,12 @@ describe('Agent Prompt Specifications', () => {
   const apiKey = process.env.HEY_JARVIS_ELEVENLABS_API_KEY;
   const googleApiKey = process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY;
 
-  // Order matters. ElevenLabs hosts the agent and reads its MCP tool list when
-  // the agent is updated, so the server has to be answering on its public
-  // hostname before the deploy — otherwise the agent is left holding
-  // tool_count: 0 for a URL that only came alive afterwards.
-  beforeAll(async () => {
-    if (!process.env.HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID) {
-      throw new Error('HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID environment variable is required');
-    }
-    await startMcpServerForTestingPurposes();
-    await ensureTunnelRunning();
-    await deployTestAgent();
-    await reportMcpIntegrations();
-    // The MCP server and cloudflared registering with Cloudflare's edge can each
-    // take tens of seconds on a cold CI runner, before the deploy even starts.
-  }, 240000);
+  beforeAll(startTestEnvironment, TEST_ENVIRONMENT_SETUP_TIMEOUT_MS);
 
-  afterAll(() => {
-    stopMcpServer();
-    stopTunnel();
-  });
+  // Awaited, so the server and tunnel are down before the next spec file starts
+  // its own. Firing this and moving on left the teardown to shoot the next
+  // file's server the moment it came up.
+  afterAll(stopTestEnvironment);
 
   describe('Personality & Tone', () => {
     it(

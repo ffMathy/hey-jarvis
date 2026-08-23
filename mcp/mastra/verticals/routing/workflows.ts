@@ -128,13 +128,32 @@ const INSTRUCTIONS = {
  * back to the tool.
  */
 const ALL_TASKS_COMPLETED_INSTRUCTIONS =
-  `All tasks have completed. ${INSTRUCTIONS.summarize} ` +
+  'All tasks have completed. These are every result this request produced, including any you have ' +
+  'already relayed. Summarize in detail whatever the user has not heard yet, and do not repeat at ' +
+  'length what you already told him — a few words tying it together is enough for those. ' +
   'That finishes this request, but not the conversation: if the user asks for anything further, ' +
   'send it through routePromptWorkflow exactly as you did this one. Answering a later request from ' +
   'memory, or promising to look and then calling nothing, leaves him with nothing at all.';
 
-/** How long a single poll may block before we tell Jarvis to call again. */
-const POLL_DEADLINE_MS = 15_000;
+/**
+ * How long a single poll may block before we tell Jarvis to call again.
+ *
+ * This has to fit inside the caller's own tool-call budget, which is the shorter
+ * of the two: ElevenLabs gives up on a call that takes too long and reports it as
+ * failed, and a failed poll is not a delayed answer but a lost one — Jarvis is
+ * handed an error where it expected instructions, and has been observed to
+ * abandon the request outright ("there was a slight hiccup, sir").
+ *
+ * This was 15s, comfortably past the 8 seconds `cascadeTimeoutSeconds` allows in
+ * `elevenlabs/src/assets/agent-config.json`, and end-to-end runs showed exactly
+ * the split that implies: every poll that returned inside 4.4s succeeded, and the
+ * ones that blocked on toward the deadline — 9.3s, 10.9s, 13.7s — came back
+ * failed. Blocking is a convenience anyway, not the mechanism: a poll with
+ * nothing to report says so and asks to be called again, so the cost of a short
+ * deadline is an extra silent round trip and the cost of a long one is the whole
+ * request.
+ */
+const POLL_DEADLINE_MS = 5_000;
 
 /** How many tasks of a single DAG wave may call their agent at the same time. */
 const TASK_CONCURRENCY = 5;
@@ -351,6 +370,38 @@ function buildProgressReport(tasks: Dag['tasks']): z.infer<typeof instructionsOu
   };
 }
 
+/**
+ * The closing report, which carries every result the request produced rather
+ * than only the ones that finished last.
+ *
+ * A result is marked reported the moment its report is *built*, so a response
+ * lost between here and Jarvis takes those results with it and no later poll
+ * ever mentions them again. That is not hypothetical: an end-to-end run had two
+ * `getNextInstructionsWorkflow` calls fail at the ElevenLabs boundary, and the
+ * user simply never heard about his calendar or his recipe — while the loop
+ * closed with "All tasks have completed", which was true of the DAG and false of
+ * what he had been told.
+ *
+ * The server cannot tell a retry from an ordinary next poll, so it can never
+ * know which reports actually landed; acknowledging on the following call would
+ * confirm precisely the report that was lost. What it can do is make the last
+ * word complete. Intermediate reports still deliver incrementally — that is what
+ * keeps the user from sitting in silence — and this one sweeps up anything that
+ * went missing on the way, with the instructions asking Jarvis to dwell only on
+ * what is new to him.
+ */
+function buildClosingReport(tasks: Dag['tasks']): z.infer<typeof instructionsOutputSchema> {
+  for (const task of tasks) {
+    markReported(task);
+  }
+
+  return {
+    instructions: ALL_TASKS_COMPLETED_INSTRUCTIONS,
+    completedTaskResults: tasks.map((task) => ({ id: task.id, result: task.result })),
+    taskIdsInProgress: [],
+  };
+}
+
 const planTasksStep = createStep({
   id: 'plan-tasks',
   description: 'Ask the routing planner agent for the DAG of tasks that fulfils the user query',
@@ -551,10 +602,10 @@ const finalizeStep = createStep({
   stateSchema: dagSchema,
   execute: async ({ state, setState }) => {
     const tasks = state.tasks.map((task) => ({ ...task }));
-    const report = buildProgressReport(tasks);
+    const report = buildClosingReport(tasks);
     setState({ ...state, tasks });
 
-    return { ...report, instructions: ALL_TASKS_COMPLETED_INSTRUCTIONS, taskIdsInProgress: [] };
+    return report;
   },
 });
 

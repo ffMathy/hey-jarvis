@@ -79,7 +79,13 @@ interface McpToolCallEvent {
   mcp_tool_call: {
     tool_name: string;
     tool_call_id: string;
-    state: 'success' | 'loading';
+    /**
+     * `failure` is as real as the other two: a call ElevenLabs could not complete
+     * is reported, and the agent is left holding an error where it expected its
+     * next instructions. Leaving it off the union made a failed call read as a
+     * successful one carrying an unreadable payload.
+     */
+    state: 'success' | 'loading' | 'failure';
     result: unknown[];
   };
 }
