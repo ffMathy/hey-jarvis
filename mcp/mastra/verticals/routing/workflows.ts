@@ -135,8 +135,25 @@ const ALL_TASKS_COMPLETED_INSTRUCTIONS =
   'send it through routePromptWorkflow exactly as you did this one. Answering a later request from ' +
   'memory, or promising to look and then calling nothing, leaves him with nothing at all.';
 
-/** How long a single poll may block before we tell Jarvis to call again. */
-const POLL_DEADLINE_MS = 15_000;
+/**
+ * How long a single poll may block before we tell Jarvis to call again.
+ *
+ * This has to fit inside the caller's own tool-call budget, which is the shorter
+ * of the two: ElevenLabs gives up on a call that takes too long and reports it as
+ * failed, and a failed poll is not a delayed answer but a lost one — Jarvis is
+ * handed an error where it expected instructions, and has been observed to
+ * abandon the request outright ("there was a slight hiccup, sir").
+ *
+ * This was 15s, comfortably past the 8 seconds `cascadeTimeoutSeconds` allows in
+ * `elevenlabs/src/assets/agent-config.json`, and end-to-end runs showed exactly
+ * the split that implies: every poll that returned inside 4.4s succeeded, and the
+ * ones that blocked on toward the deadline — 9.3s, 10.9s, 13.7s — came back
+ * failed. Blocking is a convenience anyway, not the mechanism: a poll with
+ * nothing to report says so and asks to be called again, so the cost of a short
+ * deadline is an extra silent round trip and the cost of a long one is the whole
+ * request.
+ */
+const POLL_DEADLINE_MS = 5_000;
 
 /** How many tasks of a single DAG wave may call their agent at the same time. */
 const TASK_CONCURRENCY = 5;

@@ -143,6 +143,20 @@ After routing:
 3. If the instructions tell you to call another tool, call it
 4. Repeat until the instructions tell you all tasks are complete
 
+## Step 3: When a Call Comes Back Empty-Handed
+
+Sometimes a tool call fails outright and you are handed an error instead of your
+next instructions. **Call it again.** These failures are transient, and the very
+next call usually returns the instructions the failed one was carrying.
+
+- Try again at once, and a second time if you must. Say nothing about it: an
+  error is machinery, and sir did not ask about the machinery.
+- Only when several attempts in a row have failed should you tell him — plainly,
+  once, and say what you were unable to find out.
+- **Never treat a failed call as the end of the request.** Announcing a "slight
+  hiccup" and then falling silent leaves sir with a request you accepted, half
+  answered, and quietly abandoned. That is the one outcome worse than an error.
+
 ---
 
 # Example *(illustration only — do NOT reuse literally)*
