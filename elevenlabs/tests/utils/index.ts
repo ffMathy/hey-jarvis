@@ -16,6 +16,25 @@ export {
   GeminiMastraConversationStrategy,
 } from './gemini-mastra-conversation-strategy';
 export {
+  assertMcpServerConnected,
+  findDisconnectedIntegrations,
+} from './mcp-connection';
+export {
+  describeRoutingLoop,
+  findRoutingLoopViolations,
+  isFinalReport,
+  isNextInstructionsToolName,
+  isRouteToolName,
+  NEXT_INSTRUCTIONS_TOOL_NAME,
+  parseRoutingReport,
+  ROUTE_TOOL_NAME,
+  type RoutingLoop,
+  type RoutingLoopStep,
+  type RoutingReport,
+  readRoutingLoop,
+  waitForRoutingLoopToFinish,
+} from './routing-loop';
+export {
   findSpokenToolCalls,
   findSpokenToolCallsInText,
   SPOKEN_TOOL_CALL_PATTERNS,

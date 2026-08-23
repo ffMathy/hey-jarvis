@@ -9,6 +9,7 @@ import {
 } from './acknowledgement-timing';
 import type { ConversationStrategy, ServerMessage } from './conversation-strategy';
 import { ElevenLabsConversationStrategy } from './elevenlabs-conversation-strategy';
+import { describeRoutingLoop, readRoutingLoop } from './routing-loop';
 import { findSpokenToolCalls } from './spoken-tool-call';
 
 export interface ConversationOptions {
@@ -87,6 +88,12 @@ export class TestConversation {
     const spokenToolCalls = findSpokenToolCalls(messages);
     const lookupPromises = findLookupPromisesBeforeRouting(messages);
 
+    // Only shown once something was routed. A conversation with no routing in it
+    // has no loop to describe, and an empty section would be noise in the evals
+    // whose whole point is that nothing was called.
+    const routingLoop = readRoutingLoop(messages);
+    const routingSection = routingLoop.steps.length > 0 ? ['', describeRoutingLoop(routingLoop)] : [];
+
     return [
       `Tool calls the agent actually made, in order (${toolCalls.length} total):`,
       toolCalls.length > 0 ? toolCalls.join('\n') : '  (none)',
@@ -101,6 +108,7 @@ export class TestConversation {
       `Lookups the agent announced before routing: ${lookupPromises.length > 0 ? lookupPromises.join('; ') : 'none'}`,
       '',
       `Message order: ${describeMessageOrder(messages)}`,
+      ...routingSection,
     ].join('\n');
   }
 
