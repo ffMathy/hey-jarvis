@@ -235,12 +235,13 @@ describe('Routing Orchestration', () => {
         await conversation.assertCriteria(
           'The tasks that depend on earlier ones were actually given what those produced, which the tool results ' +
             'in the transcript show directly. Specifically: the weather is for the location that was looked up ' +
-            'rather than one invented or asked for; the traffic check is for a departure time derived from the ' +
-            "workplace calendar rather than an arbitrary hour; and the to-do reminder's contents are the " +
-            'ingredients of the lasagna recipe that was actually fetched, not a generic list. Where a dependency ' +
-            'produced nothing, the dependent task must say so rather than proceeding on an invented value. A ' +
-            'downstream task whose result contradicts, ignores or plainly predates the result it was supposed to ' +
-            'build on fails.',
+            'rather than one invented or asked for; the traffic answer concerns the commute to work at the time ' +
+            "the workplace calendar implies; and the to-do reminder's contents are the ingredients of the " +
+            'lasagna recipe that was actually fetched, not a generic list. Where a dependency produced nothing ' +
+            'usable — no workplace calendar to infer a departure time from, say — the dependent task must say ' +
+            'so, and substituting a different source without a word does not count as saying so. A downstream ' +
+            'task whose result contradicts, ignores or plainly predates the result it was supposed to build on ' +
+            'fails.',
           0.8,
         );
       },

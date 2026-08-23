@@ -257,10 +257,15 @@ export function findRoutingLoopViolations(loop: RoutingLoop): string[] {
 function findStructureViolations(loop: RoutingLoop): string[] {
   const violations: string[] = [];
 
-  // Named first and named specifically: a failed call is why a loop stops, and
-  // "stopped before its closing report" describes the symptom rather than it.
-  for (const step of loop.failedCalls) {
-    violations.push(`the ${step.kind === 'route' ? 'routing' : 'polling'} call ${step.toolName} came back failed`);
+  // A failed call only matters if the loop did not come back from it. Calls do
+  // fail at the ElevenLabs boundary, and a retry that goes on to deliver
+  // everything has honoured the contract — what the caller was owed, he got.
+  // When the loop *did* die, naming the failed call first says why, where
+  // "stopped before its closing report" only says that.
+  if (!loop.finished) {
+    for (const step of loop.failedCalls) {
+      violations.push(`the ${step.kind === 'route' ? 'routing' : 'polling'} call ${step.toolName} came back failed`);
+    }
   }
 
   if (loop.routeCalls.length === 0) {
@@ -293,7 +298,12 @@ function findDeliveryViolations(loop: RoutingLoop): string[] {
   const announcedSoFar = new Set<string>();
 
   for (const step of loop.steps) {
-    violations.push(...findHandOverViolations(step, deliveredSoFar, announcedSoFar));
+    // The closing report recaps every result the request produced, deliberately:
+    // it is how a hand-over lost to a failed call still reaches the user. Held to
+    // the mid-flight rule it would read as delivering everything a second time.
+    if (!isFinalReport(step.report)) {
+      violations.push(...findHandOverViolations(step, deliveredSoFar, announcedSoFar));
+    }
     violations.push(...findResurrectedTaskViolations(step, deliveredSoFar, announcedSoFar));
   }
 
@@ -411,6 +421,8 @@ export function describeRoutingLoop(loop: RoutingLoop): string {
     '',
     `Task results delivered, in the order the loop delivered them: ${loop.deliveredTaskIds.join(', ') || 'none'}`,
     `Tasks announced but never delivered: ${loop.undeliveredTaskIds.join(', ') || 'none'}`,
+    `Calls that came back failed: ${loop.failedCalls.length}` +
+      (loop.failedCalls.length > 0 && loop.finished ? ' (the loop retried and carried on)' : ''),
     `Reached its closing report: ${loop.finished ? 'yes' : 'no'}`,
     `Contradictions between the loop's own reports: ${violations.length > 0 ? violations.join('; ') : 'none'}`,
   ].join('\n');

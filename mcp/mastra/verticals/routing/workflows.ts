@@ -128,7 +128,9 @@ const INSTRUCTIONS = {
  * back to the tool.
  */
 const ALL_TASKS_COMPLETED_INSTRUCTIONS =
-  `All tasks have completed. ${INSTRUCTIONS.summarize} ` +
+  'All tasks have completed. These are every result this request produced, including any you have ' +
+  'already relayed. Summarize in detail whatever the user has not heard yet, and do not repeat at ' +
+  'length what you already told him — a few words tying it together is enough for those. ' +
   'That finishes this request, but not the conversation: if the user asks for anything further, ' +
   'send it through routePromptWorkflow exactly as you did this one. Answering a later request from ' +
   'memory, or promising to look and then calling nothing, leaves him with nothing at all.';
@@ -351,6 +353,38 @@ function buildProgressReport(tasks: Dag['tasks']): z.infer<typeof instructionsOu
   };
 }
 
+/**
+ * The closing report, which carries every result the request produced rather
+ * than only the ones that finished last.
+ *
+ * A result is marked reported the moment its report is *built*, so a response
+ * lost between here and Jarvis takes those results with it and no later poll
+ * ever mentions them again. That is not hypothetical: an end-to-end run had two
+ * `getNextInstructionsWorkflow` calls fail at the ElevenLabs boundary, and the
+ * user simply never heard about his calendar or his recipe — while the loop
+ * closed with "All tasks have completed", which was true of the DAG and false of
+ * what he had been told.
+ *
+ * The server cannot tell a retry from an ordinary next poll, so it can never
+ * know which reports actually landed; acknowledging on the following call would
+ * confirm precisely the report that was lost. What it can do is make the last
+ * word complete. Intermediate reports still deliver incrementally — that is what
+ * keeps the user from sitting in silence — and this one sweeps up anything that
+ * went missing on the way, with the instructions asking Jarvis to dwell only on
+ * what is new to him.
+ */
+function buildClosingReport(tasks: Dag['tasks']): z.infer<typeof instructionsOutputSchema> {
+  for (const task of tasks) {
+    markReported(task);
+  }
+
+  return {
+    instructions: ALL_TASKS_COMPLETED_INSTRUCTIONS,
+    completedTaskResults: tasks.map((task) => ({ id: task.id, result: task.result })),
+    taskIdsInProgress: [],
+  };
+}
+
 const planTasksStep = createStep({
   id: 'plan-tasks',
   description: 'Ask the routing planner agent for the DAG of tasks that fulfils the user query',
@@ -551,10 +585,10 @@ const finalizeStep = createStep({
   stateSchema: dagSchema,
   execute: async ({ state, setState }) => {
     const tasks = state.tasks.map((task) => ({ ...task }));
-    const report = buildProgressReport(tasks);
+    const report = buildClosingReport(tasks);
     setState({ ...state, tasks });
 
-    return { ...report, instructions: ALL_TASKS_COMPLETED_INSTRUCTIONS, taskIdsInProgress: [] };
+    return report;
   },
 });
 

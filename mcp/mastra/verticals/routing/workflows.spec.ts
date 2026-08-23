@@ -266,9 +266,15 @@ describe('Routing Workflows', () => {
       expect(first.completedTaskResults).toEqual([{ id: 'get-location', result: undefined }]);
       expect(first.taskIdsInProgress).toEqual(['get-weather']);
 
+      // The closing report recaps everything, including the intermediate result
+      // withheld above: it is the last chance to say anything, so it carries the
+      // lot rather than only what finished last.
       const second = await nextInstructions();
       expect(second.instructions).toContain('All tasks have completed');
-      expect(second.completedTaskResults).toEqual([{ id: 'get-weather', result: 'Standup at 9am' }]);
+      expect(second.completedTaskResults).toEqual([
+        { id: 'get-location', result: 'Aarhus, Denmark' },
+        { id: 'get-weather', result: 'Standup at 9am' },
+      ]);
     });
 
     it('points a finished request back at routing for whatever the user asks next', async () => {
@@ -312,7 +318,10 @@ describe('Routing Workflows', () => {
 
       const second = await nextInstructions();
       expect(second.instructions).toContain('All tasks have completed');
-      expect(second.completedTaskResults).toEqual([{ id: 'calendar-check', result: 'A birthday' }]);
+      expect(second.completedTaskResults).toEqual([
+        { id: 'weather-check', result: 'Sunny, 22°C' },
+        { id: 'calendar-check', result: 'A birthday' },
+      ]);
       expect(second.taskIdsInProgress).toEqual([]);
     });
 
@@ -341,7 +350,10 @@ describe('Routing Workflows', () => {
 
       const second = await nextInstructions();
       expect(second.instructions).toContain('All tasks have completed');
-      expect(second.completedTaskResults).toEqual([{ id: 'send-email', result: 'Summary sent to you, sir.' }]);
+      expect(second.completedTaskResults).toEqual([
+        { id: 'calendar-week', result: 'Mon: standup at 9. Wed: design review at 14.' },
+        { id: 'send-email', result: 'Summary sent to you, sir.' },
+      ]);
       expect(second.taskIdsInProgress).toEqual([]);
 
       // The whole point of the dependency: the email agent was handed what the
@@ -351,7 +363,7 @@ describe('Routing Workflows', () => {
       expect(email.prompts[0]).toContain('Mon: standup at 9. Wed: design review at 14.');
     });
 
-    it('never reports the same task twice', async () => {
+    it('never relays the same task twice while the request is still running', async () => {
       useAgents(createMockAgent('weather'), createMockAgent('calendar'));
       usePlan(
         { id: 'root', agent: 'weather', prompt: 'Root', dependsOn: [] },
@@ -362,8 +374,38 @@ describe('Routing Workflows', () => {
       await route('Do three things');
       const reports = await pollUntilComplete();
 
-      const reportedIds = reports.flatMap((report) => report.completedTaskResults?.map((task) => task.id) ?? []);
-      expect(reportedIds).toEqual(['root', 'leaf-a', 'leaf-b']);
+      // Mid-flight reports carry only what is new — hearing a result twice while
+      // waiting is noise. The closing report is the exception and is checked below.
+      const inFlight = reports.slice(0, -1);
+      const relayedIds = inFlight.flatMap((report) => report.completedTaskResults?.map((task) => task.id) ?? []);
+      expect(relayedIds).toEqual([...new Set(relayedIds)]);
+      expect(relayedIds).toEqual(['root', 'leaf-a', 'leaf-b'].slice(0, relayedIds.length));
+    });
+
+    // The failure this exists for: an end-to-end run had two polls fail at the
+    // ElevenLabs boundary, and because a result is marked reported when its report
+    // is *built*, the calendar and the recipe those responses carried were never
+    // mentioned again. The loop still closed with "All tasks have completed" — true
+    // of the DAG, false of what the user had been told.
+    it('recaps every result at the close, so nothing is lost with a dropped response', async () => {
+      useAgents(createMockAgent('weather'), createMockAgent('calendar'));
+      usePlan(
+        { id: 'root', agent: 'weather', prompt: 'Root', dependsOn: [] },
+        { id: 'leaf-a', agent: 'calendar', prompt: 'Leaf A', dependsOn: ['root'] },
+        { id: 'leaf-b', agent: 'calendar', prompt: 'Leaf B', dependsOn: ['root'] },
+      );
+
+      await route('Do three things');
+      const reports = await pollUntilComplete();
+      const closing = reports[reports.length - 1];
+
+      expect(closing.instructions).toContain('All tasks have completed');
+      expect(closing.completedTaskResults?.map((task) => task.id)).toEqual(['root', 'leaf-a', 'leaf-b']);
+      // Every one carries its result, including the intermediate whose result was
+      // withheld on the way through — a recap that omitted it would still lose it.
+      expect(closing.completedTaskResults?.every((task) => task.result !== undefined)).toBe(true);
+      // And it says so, so Jarvis recaps briefly rather than reading everything twice.
+      expect(closing.instructions).toContain('already relayed');
     });
 
     it('feeds a task the results of the tasks it depends on', async () => {

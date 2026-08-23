@@ -55,6 +55,20 @@ const polled = (delivered: string[], stillRunning: string[]): ServerMessage =>
   });
 
 /**
+ * The closing report, which recaps every result the request produced — including
+ * those already relayed — so that a hand-over lost to a failed call still reaches
+ * the user. See `buildClosingReport` in the routing workflow.
+ */
+const recapped = (allTaskIds: string[]): ServerMessage =>
+  called('getNextInstructionsWorkflow', {
+    instructions:
+      'All tasks have completed. These are every result this request produced, including any you have ' +
+      'already relayed.',
+    completedTaskResults: allTaskIds.map((id) => ({ id, result: `Result of ${id}` })),
+    taskIdsInProgress: [],
+  });
+
+/**
  * The full happy path, shaped like the DAG the lasagna request actually plans:
  * one route call naming the whole graph, then a poll per wave as the tasks land,
  * ending on the closing report.
@@ -225,9 +239,11 @@ describe('findRoutingLoopViolations', () => {
     expect(violations.join('\n')).toContain('never polled');
   });
 
-  it('catches the same result being delivered twice', () => {
+  it('catches the same result being delivered twice mid-flight', () => {
+    // Both polls are mid-flight — the closing recap is deliberately exempt, and
+    // is covered separately below.
     const violations = findRoutingLoopViolations(
-      readRoutingLoop([routed('a', 'b'), polled(['a'], ['b']), polled(['a', 'b'], [])]),
+      readRoutingLoop([routed('a', 'b', 'c'), polled(['a'], ['b', 'c']), polled(['a', 'b'], ['c'])]),
     );
     expect(violations.join('\n')).toContain('"a" was delivered twice');
   });
@@ -291,6 +307,21 @@ describe('a call that came back failed', () => {
     called('getNextInstructionsWorkflow', { error: 'tool call failed' }, 'failure'),
   ];
 
+  it('is forgiven when the loop retried and still delivered everything', () => {
+    // Calls do fail at the ElevenLabs boundary. A retry that goes on to deliver
+    // the lot has honoured the contract — what the caller was owed, he got — so
+    // the hiccup belongs in the evidence, not in the list of contradictions.
+    const recovered = [
+      routed('a', 'b'),
+      polled(['a'], ['b']),
+      called('getNextInstructionsWorkflow', { error: 'tool call failed' }, 'failure'),
+      recapped(['a', 'b']),
+    ];
+
+    expect(findRoutingLoopViolations(readRoutingLoop(recovered))).toEqual([]);
+    expect(describeRoutingLoop(readRoutingLoop(recovered))).toContain('the loop retried and carried on');
+  });
+
   it('names the failed call rather than only its consequence', () => {
     const violations = findRoutingLoopViolations(readRoutingLoop(withFailedPoll()));
 
@@ -335,6 +366,24 @@ describe('a call that came back failed', () => {
     expect(loop.steps).toHaveLength(1);
     expect(loop.steps[0].state).toBe('failure');
     expect(describeRoutingLoop(loop)).toContain('upstream refused the payload');
+  });
+});
+
+describe('the closing recap', () => {
+  it('is not counted as delivering everything a second time', () => {
+    // Every result goes out again at the close, by design. Held to the mid-flight
+    // rule — nothing relayed twice — the recap would read as a contract breach.
+    const loop = readRoutingLoop([routed('a', 'b'), polled(['a'], ['b']), recapped(['a', 'b'])]);
+
+    expect(findRoutingLoopViolations(loop)).toEqual([]);
+    expect(loop.finished).toBe(true);
+    expect(loop.undeliveredTaskIds).toEqual([]);
+  });
+
+  it('still catches a result relayed twice before the close', () => {
+    const loop = readRoutingLoop([routed('a', 'b'), polled(['a'], ['b']), polled(['a'], ['b']), recapped(['a', 'b'])]);
+
+    expect(findRoutingLoopViolations(loop).join('\n')).toContain('"a" was delivered twice');
   });
 });
 
