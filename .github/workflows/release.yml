@@ -28,12 +28,60 @@ jobs:
       contents: write
       pull-requests: write
     outputs:
-      release_created: ${{ steps.release.outputs.release_created }}
-      tag_name: ${{ steps.release.outputs.tag_name }}
-      version: ${{ steps.release.outputs.version }}
+      # A release is cut either by the run that follows a human merging the
+      # release pull request, or — now that the pull request merges itself — by
+      # the tagging step further down in this same run.
+      release_created: ${{ steps.release.outputs.release_created || steps.tag.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name || steps.tag.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version || steps.tag.outputs.version }}
+      sha: ${{ steps.release.outputs.sha || steps.tag.outputs.sha }}
     steps:
       - name: Release using "Release Please"
         id: release
+        uses: googleapis/release-please-action@v4.4.1
+        with:
+          config-file: .github/release-please-config.json
+          manifest-file: .github/.release-please-manifest.json
+          target-branch: main
+
+      # A release pull request only restates commits that already went through
+      # review and CI on main, so it never needs a second human read. Hand it to
+      # GitHub's auto-merge, which lands it once branch protection is satisfied;
+      # auto-merge refuses a pull request that has nothing left to wait for, so
+      # fall back to merging it outright.
+      - name: Auto-merge the release pull request
+        id: merge
+        if: ${{ steps.release.outputs.prs_created == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_PRS: ${{ steps.release.outputs.prs }}
+        run: |
+          set -euo pipefail
+
+          merged=false
+          for number in $(jq -r '.[].number' <<<"$RELEASE_PRS"); do
+            echo "Merging release pull request #${number}"
+            gh pr merge "${number}" --squash --auto ||
+              gh pr merge "${number}" --squash
+
+            if [ "$(gh pr view "${number}" --json merged --jq '.merged')" = 'true' ]; then
+              merged=true
+            else
+              echo "::notice::Pull request #${number} is waiting on auto-merge. Its own merge starts no workflow run, so the release is tagged by the next run of this workflow."
+            fi
+          done
+
+          echo "merged=${merged}" >> "$GITHUB_OUTPUT"
+
+      # A merge performed with GITHUB_TOKEN does not start another workflow run,
+      # so the push that just landed on main never comes back around to tag the
+      # release. Run Release Please once more instead: it picks up the release
+      # pull request it has just seen merged and cuts the tags and GitHub
+      # releases here, in the same run, so `deploy` below has something to ship.
+      - name: Tag the merged release
+        id: tag
+        if: ${{ steps.merge.outputs.merged == 'true' }}
         uses: googleapis/release-please-action@v4.4.1
         with:
           config-file: .github/release-please-config.json
@@ -64,6 +112,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6.1.0
         with:
+          # Check out the commit that was actually tagged. When the release
+          # pull request merged inside this same run, that commit is newer than
+          # the one this run started from, and only it carries the bumped
+          # versions the deploy publishes.
+          ref: ${{ needs.release.outputs.sha }}
           # The deploy runs project code and container builds; don't leave a
           # usable GitHub token behind in .git/config.
           persist-credentials: false
