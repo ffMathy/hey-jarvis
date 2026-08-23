@@ -90,6 +90,25 @@ The agent prompt in `src/assets/agent-prompt.md` defines:
 - **Addressing**: Always call the user "sir"
 - **No Follow-ups**: Make assumptions rather than asking clarifying questions
 - **Conciseness**: Brief, witty acknowledgements (5-15 words, max 20)
+- **When to reach for a tool**: answer outright or route, and never both
+
+Keep it short. The prompt is carried by a small voice model on every turn, so
+anything it does not need in order to decide its *next* utterance does not
+belong in it.
+
+### What belongs in the routing instructions instead
+
+Every response from `routePromptWorkflow` and `getNextInstructionsWorkflow`
+carries an `instructions` field, and the prompt's only rule about the loop is
+to follow that field literally. So the run-time mechanics — how long to keep
+polling, what to say between reports, what to do with a failed call, that a
+finished request does not finish the conversation — live in `INSTRUCTIONS` and
+`ALL_TASKS_COMPLETED_INSTRUCTIONS` in
+[`mcp/mastra/verticals/routing/workflows.ts`](../mcp/mastra/verticals/routing/workflows.ts),
+where they arrive exactly when they apply.
+
+State each such rule in one place only. Asking for the same line here *and*
+there is how Jarvis once acknowledged the same request twice.
 
 ## Contributing
 - **Update agent-prompt.md** for behavior changes

@@ -104,8 +104,16 @@ const instructionsOutputSchema = z.object({
 
 /**
  * Instruction strings handed back to Jarvis. They are part of the outward
- * contract — `elevenlabs/src/assets/agent-prompt.md` documents this loop — so
- * treat them as API surface rather than log messages.
+ * contract — `elevenlabs/src/assets/agent-prompt.md` points the agent at this
+ * field — so treat them as API surface rather than log messages.
+ *
+ * They also carry the loop itself. The agent prompt used to spell out how to
+ * poll, what to say between reports and what to do with a failed call, and the
+ * voice model running it is a small one: every rule kept there is context it
+ * pays for on every turn, whether or not a routing request is in flight, and
+ * every rule stated in both places is a rule it can obey twice. So the prompt
+ * now says only "do what the instructions field says", and the specifics live
+ * here, where they arrive exactly when they apply.
  */
 const INSTRUCTIONS = {
   async: 'The request is being processed in the background and will complete on its own. End the call now.',
@@ -114,10 +122,16 @@ const INSTRUCTIONS = {
   // line is specified. It was once asked for here *and* in the agent prompt, and
   // Jarvis duly delivered both — "Let me check your calendar." then "I'm on it,
   // sir." — so the prompt now stays out of it and this string is unconditional.
-  poll: 'The request is now being processed in the background. Say a short line in your own voice telling the user you are on it — under six words, spoken now, because he is otherwise left sitting in silence while this runs. This is the only such line he should hear, so give it here and nowhere else. Then call getNextInstructionsWorkflow to check on the status and receive the next instructions.',
+  //
+  // This is also the one instruction guaranteed to reach Jarvis before any
+  // polling starts, so it is where the shape of the rest of the loop belongs:
+  // keep calling, keep following each response, and treat a failed call as
+  // something to retry rather than as the end of the request.
+  poll: 'The request is now being processed in the background. Say a short line in your own voice telling the user you are on it — under six words, spoken now, because he is otherwise left sitting in silence while this runs. This is the only such line he should hear, so give it here and nowhere else. Then call getNextInstructionsWorkflow to check on the status and receive the next instructions, and keep doing exactly what each response tells you until one of them says every task has completed. If a call hands you an error instead of instructions, call it again straight away and say nothing about it — those failures are transient, and only when several attempts in a row have failed should you tell the user plainly what you could not find out. An error is never the end of the request.',
   stillProcessing:
-    'Still processing your request. Call getNextInstructionsWorkflow again to wait a bit longer for it to complete.',
-  summarize: 'Summarize the new completed task results in a detailed manner.',
+    'Still processing your request. Call getNextInstructionsWorkflow again to wait a bit longer for it to complete. Say nothing to the user in the meantime — he has already been told you are on it, and has no use for a running commentary on the waiting.',
+  summarize:
+    'Summarize the new completed task results in a detailed manner, in your own voice — never read a task ID, a tool name or the raw response aloud.',
   acknowledge: 'Mention briefly that you have received the information in less than 5 words.',
 } as const;
 
@@ -130,9 +144,11 @@ const INSTRUCTIONS = {
 const ALL_TASKS_COMPLETED_INSTRUCTIONS =
   'All tasks have completed. These are every result this request produced, including any you have ' +
   'already relayed. Summarize in detail whatever the user has not heard yet, and do not repeat at ' +
-  'length what you already told him — a few words tying it together is enough for those. ' +
+  'length what you already told him — a few words tying it together is enough for those. Speak it ' +
+  'in your own voice: never read a task ID, a tool name or the raw response aloud. ' +
   'That finishes this request, but not the conversation: if the user asks for anything further, ' +
-  'send it through routePromptWorkflow exactly as you did this one. Answering a later request from ' +
+  'send it through routePromptWorkflow exactly as you did this one, however small it sounds and ' +
+  'however many times you have already done it. Answering a later request from ' +
   'memory, or promising to look and then calling nothing, leaves him with nothing at all.';
 
 /**
@@ -331,7 +347,8 @@ function moreToComeInstructions(includesLeaf: boolean): string {
   return (
     `More tasks have finished since last time, but not all tasks have completed yet. ` +
     `${includesLeaf ? INSTRUCTIONS.summarize : INSTRUCTIONS.acknowledge} ` +
-    `Then call getNextInstructionsWorkflow again.`
+    `Then call getNextInstructionsWorkflow again, without announcing that you are checking — ` +
+    `the user was told once that you are on it, and wants the results rather than the machinery.`
   );
 }
 
