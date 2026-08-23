@@ -171,6 +171,23 @@ describe('Routing Workflows', () => {
       expect(result.instructions).toContain('getNextInstructionsWorkflow');
     });
 
+    it('carries the loop and its failure handling, so the prompt does not have to', async () => {
+      useAgents(createMockAgent('calendar'));
+      usePlan({ id: 'calendar-check', agent: 'calendar', prompt: 'Get the calendar', dependsOn: [] });
+
+      const result = await route('Check my calendar for today');
+
+      // The agent prompt used to spell all of this out for a small voice model that
+      // pays for it on every turn. It says only "do what the instructions say" now,
+      // so the first instruction it ever sees has to describe the whole loop: keep
+      // calling until told otherwise, and retry a call that fails instead of
+      // treating the error as an answer.
+      expect(result.instructions).toContain('keep doing exactly what each response tells you');
+      expect(result.instructions).toContain('every task has completed');
+      expect(result.instructions).toContain('call it again');
+      expect(result.instructions).toContain('never the end of the request');
+    });
+
     it('does not run any task before the caller asks for instructions', async () => {
       const weather = createMockAgent('weather');
       useAgents(weather);
@@ -263,6 +280,9 @@ describe('Routing Workflows', () => {
       const first = await nextInstructions();
       expect(first.instructions).toContain('not all tasks have completed');
       expect(first.instructions).toContain('less than 5 words');
+      // Each further poll is a machine action like the first one, and the user has
+      // no use for hearing that it happened.
+      expect(first.instructions).toContain('without announcing that you are checking');
       expect(first.completedTaskResults).toEqual([{ id: 'get-location', result: undefined }]);
       expect(first.taskIdsInProgress).toEqual(['get-weather']);
 
@@ -463,6 +483,10 @@ describe('Routing Workflows', () => {
     it('tells the caller to try again when there is nothing being routed', async () => {
       const report = await nextInstructions();
       expect(report.instructions).toContain('Still processing');
+      // A poll with nothing to report is not a cue to speak. The "I'm on it" line
+      // was already given when the request was queued, and the prompt no longer
+      // carries a rule about staying quiet through the wait, so this one does.
+      expect(report.instructions).toContain('Say nothing to the user in the meantime');
     });
 
     it('repeats the final report instead of resuming a finished run', async () => {
