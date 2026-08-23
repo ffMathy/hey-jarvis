@@ -144,9 +144,12 @@ reviewable `initialize` target — never from a `postinstall`. Do not reintroduc
 
 ### GitHub Actions
 
-Every `uses:` is pinned to a full commit SHA with the version in a trailing
-comment (`uses: actions/checkout@d23441a… # v6.1.0`); tags are mutable and a
-retagged action runs with the workflow's token. Workflows default to
+Every `uses:` is pinned through `.github/workflows/actions.lock`, which records
+the commit each tag resolved to; GitHub runs that commit, so a retagged action
+cannot slip in under the workflow's token. Regenerate the lockfile with
+`gh actions-lock` after adding or bumping an action — never rewrite the `uses:`
+lines to bare SHAs by hand, which desynchronises them from the lockfile and
+makes GitHub reject every workflow in the repository. Workflows default to
 `permissions: {}` and opt into the minimum they need, and checkouts use
 `persist-credentials: false` so project code never inherits a usable token.
 
@@ -156,6 +159,27 @@ where a malicious pull request could read other jobs' secrets, poison the tool
 cache, or persist between runs. Registering one already requires repository
 admin; the CI check makes the other half explicit by rejecting any workflow that
 targets a runner we do not rent from GitHub.
+
+### Releases
+
+`Release` runs on every push to `main` and does the whole release itself — no
+human clicks merge. Release Please opens (or updates) the release pull request,
+the workflow immediately hands that pull request to GitHub's auto-merge, and
+falls back to merging it outright when auto-merge has nothing to wait for. The
+pull request is safe to merge unattended: it only restates commits that already
+passed review and CI on `main`, plus the version bumps and changelog entries
+derived from them.
+
+Merging it is not the end of the run, because a merge performed with
+`GITHUB_TOKEN` does not start another workflow run. So the same run invokes
+Release Please a second time to tag the release it just merged, and `deploy`
+checks out that tagged commit (`needs.release.outputs.sha`) rather than the
+commit the run started from — only the tagged commit carries the bumped
+versions. If auto-merge does park the pull request instead of merging it, the
+release is tagged by the next run of the workflow, and the run log says so.
+
+To hold a release back, hold the commits back: anything that lands on `main`
+ships on the next run.
 
 ## 1Password Authentication
 
