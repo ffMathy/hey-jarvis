@@ -54,18 +54,29 @@ const fakeAuthClient = {
 };
 
 /**
+ * The real `getGoogleAuth`, captured before the mock below replaces it.
+ *
+ * Read eagerly on purpose: `realGoogleAuth.getGoogleAuth` is a live binding, so
+ * reading it *after* `mock.module` yields the mock itself and a fallback through
+ * it recurses until the stack blows. Holding the original function object here
+ * keeps the fallback pointed at the real implementation.
+ */
+const actualGetGoogleAuth = realGoogleAuth.getGoogleAuth;
+
+/**
  * Whether the stand-in auth client is in force.
  *
- * `mock.module` is process-global in Bun, so this file's substitution would
- * otherwise follow the calendar and todo-list specs — which do talk to Google —
- * into their own runs. Deferring to the real implementation whenever this file
- * is not driving keeps the mock local in effect if not in scope.
+ * `mock.module` is process-global in Bun, and the calendar and todo-list
+ * verticals share this same auth module — so without the fallback this file's
+ * substitution would follow their specs, which do talk to Google, into their own
+ * runs. Deferring to the real implementation whenever this file is not driving
+ * keeps the mock local in effect if not in scope.
  */
 let isAuthMocked = false;
 
 mock.module('../../credentials/google-auth.js', () => ({
   ...realGoogleAuth,
-  getGoogleAuth: async () => (isAuthMocked ? fakeAuthClient : realGoogleAuth.getGoogleAuth()),
+  getGoogleAuth: async () => (isAuthMocked ? fakeAuthClient : actualGetGoogleAuth()),
 }));
 
 const {
@@ -103,6 +114,40 @@ afterAll(() => {
   // Hand the real Google client back to any spec that runs after this one.
   isAuthMocked = false;
   clearContactsCache();
+});
+
+/**
+ * Guards the substitution above rather than the contacts code.
+ *
+ * This file mocks a module the calendar and todo-list verticals also import, so
+ * a mistake here breaks specs that have nothing to do with contacts — and the
+ * first version of it did: the fallback was read lazily, resolved back to the
+ * mock, and recursed until the stack blew. That only surfaced where Google
+ * credentials exist, so it passed locally and failed in CI.
+ */
+describe('auth module substitution', () => {
+  it('holds the real auth function, not the mock that replaced it', () => {
+    expect(actualGetGoogleAuth).not.toBe(realGoogleAuth.getGoogleAuth);
+  });
+
+  it('leaves the real implementation reachable for the specs that share this module', async () => {
+    isAuthMocked = false;
+
+    const failure = await realGoogleAuth.getGoogleAuth().then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+
+    // With credentials configured this resolves; without them the real
+    // implementation throws its own credentials error. Either way, reaching it
+    // must not recurse back through the mock.
+    if (failure !== undefined) {
+      const message = failure instanceof Error ? failure.message : String(failure);
+
+      expect(message).not.toMatch(/call stack/i);
+      expect(message).toMatch(/Google OAuth2 credentials/);
+    }
+  });
 });
 
 describe('normalizePhoneNumber', () => {
