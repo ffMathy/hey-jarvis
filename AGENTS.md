@@ -124,7 +124,6 @@ blocks them, so nobody has to re-derive it:
 | `js-yaml`         | `gray-matter` calls `safeLoad`/`safeDump`, removed in v4            |
 | `minimatch`       | `serve-handler` calls the CJS export as a function; v9+ exports an object |
 | `path-to-regexp`  | Same — `serve-handler` calls `pathToRegExp(...)` directly           |
-| `@ai-sdk/provider-utils` | The vulnerable copy is a v3 dependency; the fix is a v4 API break |
 
 Three of those trace to `serve-handler` ← `serve` ← the `mastra` CLI, so a single
 upstream bump there would clear them.
