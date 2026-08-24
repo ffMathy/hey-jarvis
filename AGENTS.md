@@ -181,6 +181,18 @@ release is tagged by the next run of the workflow, and the run log says so.
 To hold a release back, hold the commits back: anything that lands on `main`
 ships on the next run.
 
+What counts as releasable is `changelog-sections` in
+`.github/release-please-config.json`: `feat`, `fix`, `perf`, `refactor` and
+`docs` cut a release, and everything else — `test`, `build`, `ci`, `chore` —
+lands on `main` without one. A batch made up only of those types produces no
+release pull request at all, and the run says `No user facing commits found
+since <sha> - skipping`. That is the expected outcome, not a broken workflow.
+
+The config is checked against Release Please's schema through its `$schema`
+key, which is worth keeping: the key was previously spelled `changelog-types`,
+which the schema does not define, so the whole block was silently ignored and
+`refactor` and `docs` commits never released.
+
 ## 1Password Authentication
 
 This project uses **1Password CLI** for secure environment variable management.

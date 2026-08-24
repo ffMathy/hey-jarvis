@@ -1,7 +1,8 @@
 {
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
   "include-component-in-tag": true,
   "include-v-in-tag": true,
-  "changelog-types": [
+  "changelog-sections": [
     { "type": "feat", "section": "Features", "hidden": false },
     { "type": "fix", "section": "Bug Fixes", "hidden": false },
     { "type": "perf", "section": "Performance Improvements", "hidden": false },
