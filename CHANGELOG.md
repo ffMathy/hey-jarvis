@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.13.1](https://github.com/ffMathy/hey-jarvis/compare/root-v1.13.0...root-v1.13.1) (2026-08-24)
+
+
+### Bug Fixes
+
+* **config:** spell the release please changelog key so it takes effect ([#696](https://github.com/ffMathy/hey-jarvis/issues/696)) ([6439725](https://github.com/ffMathy/hey-jarvis/commit/6439725bf73a20b4971f0c65e907d8ed31929200))
+
+
+### Code Refactoring
+
+* **elevenlabs:** move the routing loop out of the prompt and into its instructions ([#694](https://github.com/ffMathy/hey-jarvis/issues/694)) ([7973bb0](https://github.com/ffMathy/hey-jarvis/commit/7973bb0c7315375031795541fdf27de6ca631b50))
+
 ## [1.13.0](https://github.com/ffMathy/hey-jarvis/compare/root-v1.12.5...root-v1.13.0) (2026-08-22)
 
 
