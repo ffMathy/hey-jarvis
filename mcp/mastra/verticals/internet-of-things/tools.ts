@@ -91,8 +91,14 @@ const getHomeAssistantConfig = () => {
   return { url, token };
 };
 
-// Helper function to make Home Assistant API calls
-async function callHomeAssistantApi(endpoint: string, method = 'GET', body?: unknown) {
+/**
+ * Makes a Home Assistant REST API call.
+ *
+ * Exported so sibling verticals that talk to the same instance -- the notification vertical
+ * renders presence templates and calls announce/notify services -- go through one place that
+ * knows how the add-on, the tunnel and the supervisor token fit together.
+ */
+export async function callHomeAssistantApi(endpoint: string, method = 'GET', body?: unknown) {
   const { url, token } = getHomeAssistantConfig();
   const apiUrl = `${url}/api/${endpoint}`;
 

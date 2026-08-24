@@ -137,60 +137,96 @@ Provides general cooking and recipe search capabilities:
 **Part of cooking vertical**: This agent handles general recipe-related queries, while specialized meal planning agents handle the complex multi-step planning workflows.
 
 ### Notification Agent
-Provides proactive notification delivery to Home Assistant Voice Preview Edition devices:
-- **2 notification tools**: Send voice notifications and register state changes for reactive analysis
-- **Google Gemini model**: Uses `gemini-flash-latest` for natural language processing
-- **Reactive analysis**: Uses semantic recall to determine if state changes warrant user notification
-- **Agent network**: Employs Mastra Agent Network for intelligent notification decision-making
-- **Proactive messaging**: Triggers conversations without wake word activation
-- **Configurable timeout**: Default 5-second timeout after notification delivery
-- **Device targeting**: Can notify specific devices or broadcast to all available devices
-- **Home Assistant integration**: Works through ESPHome API service calls
-- **Error reporting**: Configured with error reporting processor (see Processors section)
+Delivers a message to a person over whichever channel actually reaches them, based on where they are:
+- **4 notification tools**: `sendNotification`, `notifyDevice`, `sendPushNotification`, `getPrimaryUserPresence`
+- **Local Qwen3 model** via Ollama, with a fallback provider — the agent only classifies target and urgency, so a small model is enough
+- **Deterministic routing**: the channel is decided in code (`routing.ts`), not by the model
+- **Presence-aware**: reads the car, the house and the phone's ringer out of Home Assistant before deciding
+- **Error reporting**: configured with the error reporting processor (see Processors section)
 
-**Key Capabilities:**
-- **State Change Registration** (`registerStateChange` tool):
-  - Accepts state changes from any vertical (weather, shopping, calendar, etc.)
-  - Persists state changes to semantic memory for context-aware analysis
-  - Triggers reactive notification workflow via agent network
-  - Free-form state types (e.g., "weather_update", "task_deadline_approaching")
-- **Proactive Notifications** (`notifyDevice` tool):
-  - Send notifications proactively without user initiation
-  - Start interactive conversations after notification
-  - Automatically timeout if no user response within configured period
-  - Support for custom notification messages
-  - Integration with Home Assistant automation system
-  - Automatic error reporting to GitHub when failures occur
+**Who is being notified (`target`):**
+The target is an object, and there are exactly two shapes:
+- `{ "type": "user" }` — the primary user of the house (Mathias). Carries no contact details: Jarvis works out how to reach him from where he is.
+- `{ "type": "contact", "name": ..., "phoneNumber": ..., "email": ... }` — anybody else. Needs a phone number, an email address, or both; a contact with neither is refused.
 
-**Reactive Notification Pattern:**
-The notification agent uses an **agent network-based workflow** to analyze state changes:
-1. Other verticals call `registerStateChange` tool when significant events occur
-2. State change is saved to semantic memory for context preservation
-3. State change notification workflow is triggered asynchronously
-4. The state change is matched against registered subscriptions via static embeddings (see [Synapse Subscriptions](#synapse-subscriptions-points-of-interest))
-5. Agent network analyzes the state change and its candidate subscriptions using semantic recall
-6. Network determines if notification is warranted based on significance and context
-7. If needed, notification is sent automatically via `notifyDevice` tool
+**How the channel is chosen:**
 
-**Example Use Cases:**
-- Weather vertical detects significant temperature change → automatic notification
-- Calendar vertical sees upcoming deadline → proactive reminder
-- Shopping vertical completes order → confirmation notification
-- Custom automation triggers state change → intelligent notification decision
+```
+target is the user?
+├─ in the car?          → phone call from Jarvis (ElevenLabs), urgent or not
+├─ at home?
+│   ├─ urgent + phone audible   → Home Assistant Voice announcement
+│   ├─ urgent + phone silenced  → push notification (time-sensitive)
+│   └─ not urgent              → push notification
+└─ out?
+    ├─ urgent      → phone call from Jarvis
+    └─ not urgent  → push notification
 
-**Example State Change Registration:**
+target is a contact?
+├─ has a phone number + urgent      → phone call from Jarvis
+├─ has a phone number, not urgent   → SMS via Twilio
+└─ email only                       → email
+```
+
+A driver cannot read a push notification, so being in the car wins over everything else. A phone on
+silent or in do-not-disturb is the user asking the house to stay quiet, so an urgent message that
+would have been announced falls back to a push notification instead of being dropped.
+
+**How presence is worked out** (`presence.ts`, one Home Assistant template render):
+- **Home** — the `person.*` entity's state is `home`.
+- **In the car** — either the phone says so (companion-app activity recognition reporting
+  `automotive`/`in_vehicle`, or a live Android Auto / car Bluetooth connection), or the car says so
+  (Tessie reporting somebody on board or a non-parked shift state) *and* the user's GPS is within
+  150m of it. The occupancy check is what stops a car parked in the driveway from turning every
+  message sent at home into a phone call.
+- **Phone silenced** — `_ringer_mode` on silent/vibrate, any `_do_not_disturb` sensor that is not
+  off, an active iOS `_focus`, or an Android `_interruption_filter` that is not `all`. A phone that
+  reports nothing counts as audible, so a missing sensor never suppresses an urgent announcement.
+
+**Available Tools:**
+- **`sendNotification`**: the one to use. Takes `target`, `message`, `isUrgent` and an optional
+  `title`, picks the channel from the tree above, delivers it, and reports which channel it used
+  and why.
+- **`notifyDevice`**: announces a message on the Home Assistant Voice Preview Edition speakers via
+  the firmware's ESPHome `announce` service. The service is discovered at call time, because the
+  device is flashed with `name_add_mac_suffix: true` and is therefore called
+  `esphome.hass_elevenlabs_<mac>_announce`.
+- **`sendPushNotification`**: pushes through the Home Assistant companion app
+  (`notify.mobile_app_*`). Urgent pushes ask for a time-sensitive interruption so they surface
+  through a focus mode.
+- **`getPrimaryUserPresence`**: reports in-car / home / phone-silenced and the reason for each.
+  `sendNotification` does this for itself; the tool exists for answering "where is he?" and for
+  tracing a surprising route.
+
+**Required Environment Variables:**
+- `HEY_JARVIS_PRIMARY_USER_PHONE_NUMBER`: the primary user's own number in E.164 format. Needed
+  before Jarvis can call or text him — a `user` target carries no number of its own.
+- `HEY_JARVIS_PRIMARY_USER_NAME` (optional): the primary user's name. Defaults to `Mathias`, and is
+  what person and phone entities are matched against.
+- `HEY_JARVIS_PRIMARY_USER_PHONE_DEVICE` (optional): device slug of his phone, e.g. `mathias_iphone`.
+  Set this when the phone is not named after its owner — companion-app entities are named after the
+  device, so without it a two-phone household cannot be told apart.
+- `HEY_JARVIS_PRIMARY_USER_NOTIFY_SERVICE` (optional): pins the companion-app notify service, e.g.
+  `notify.mobile_app_mathias_iphone`. Otherwise it is discovered, and discovery refuses to guess
+  between several phones.
+- `HEY_JARVIS_CAR_NAME` (optional): the car's name, when it is not a Tesla behind Tessie.
+
+**Example Usage:**
 ```typescript
-// From weather monitoring workflow
-await registerStateChange.execute({
-  source: 'weather',
-  stateType: 'weather_update',
-  stateData: {
-    location: 'Aarhus, Denmark',
-    weatherInfo: result,
-    timestamp: new Date().toISOString(),
-  },
+// Let the routing decide
+await executeTool(sendNotification, {
+  target: { type: 'user' },
+  message: 'There is water on the utility room floor.',
+  isUrgent: true,
+});
+
+// Somebody else entirely
+await executeTool(sendNotification, {
+  target: { type: 'contact', name: 'Julie', phoneNumber: '+4512345678' },
+  message: 'The Bilka order arrives between 17 and 18.',
 });
 ```
+
 
 ### Phone Vertical (Tools Only)
 Provides outbound phone call capabilities via ElevenLabs Twilio integration:
@@ -567,44 +603,45 @@ View logs in the terminal when workflows execute:
    Status: success
 ```
 
-### Notification Workflow
-Proactive notification delivery workflow with validation and device targeting:
-- **`notificationWorkflow`**: Sends proactive voice notifications to Home Assistant Voice Preview Edition devices
-- **Step 1 - Validation**: Ensures notification message is not empty and within reasonable length (max 500 characters)
-- **Step 2 - Delivery**: Sends notification via ESPHome service with configurable timeout
-- **Device support**: Can target specific device by name or broadcast to all devices
-- **Timeout configuration**: Default 5-second conversation timeout, configurable per notification
-- **Error handling**: Graceful failure messages for validation errors and API failures
+### Voice Announcements
+Announcing on the Home Assistant Voice Preview Edition speakers is a tool (`notifyDevice`), not a
+workflow — there is nothing to orchestrate, and the routing that decides *whether* to announce lives
+in the notification vertical (see [Notification Agent](#notification-agent)).
 
 **Technical Implementation:**
-- Uses ESPHome API service: `esphome.{device_name}_send_notification`
-- Parameters: `message` (string), `timeout` (integer in milliseconds)
-- Requires device firmware with ElevenLabs integration and custom action support
-- Works within Home Assistant environment with Supervisor token
+- Uses the ESPHome API service the Hey Jarvis firmware exposes: `esphome.{device_name}_announce`
+- Parameters: `message` (string), `silence_seconds` (integer)
+- The device is flashed with `name_add_mac_suffix: true`, so the service name carries a MAC suffix
+  and is discovered from Home Assistant at call time rather than hardcoded
+- The device speaks the message and then stays in a normal conversation until the room has been
+  silent for `silence_seconds`, so the user can simply answer back
+- An announcement is suppressed by the device itself while its master mute switch is on
 
 **Usage Example:**
 ```typescript
-await mastra.workflows.notificationWorkflow.execute({
-  message: "Sir, your meeting starts in 5 minutes",
-  deviceName: "hass_elevenlabs", // Optional: defaults to "hass_elevenlabs"
-  conversationTimeout: 5000, // Optional: defaults to 5000ms
+await executeTool(notifyDevice, {
+  message: 'Sir, your meeting starts in 5 minutes',
+  deviceName: 'kitchen', // Optional: announces on every voice device when omitted
+  silenceSeconds: 3, // Optional: defaults to 3
 });
 ```
 
 **ESPHome Device Configuration:**
-The target device must have the following service configured:
+The target device must expose this service (it is part of
+`home-assistant-voice-firmware/home-assistant-voice.elevenlabs.yaml`):
 ```yaml
 api:
   services:
-    - service: send_notification
+    - service: announce
       variables:
         message: string
-        timeout: int
+        silence_seconds: int
       then:
         - elevenlabs_stream.start:
             initial_message: !lambda 'return message;'
-            timeout: !lambda 'return timeout;'
+            timeout: !lambda 'return silence_seconds > 0 ? silence_seconds * 1000 : 3000;'
 ```
+
 
 ### State Change Notification Workflow
 Reactive notification workflow using agent network for intelligent state change analysis:
@@ -624,7 +661,7 @@ Reactive notification workflow using agent network for intelligent state change 
    - Actionability: Can the user do something about it?
    - Timing: Is this time-sensitive or urgent?
    - Context: What else is happening (from semantic recall)?
-5. **Conditional Notification**: If warranted, sends notification via `notifyDevice` tool
+5. **Conditional Notification**: If warranted, hands the message to the notification agent, which routes it via `sendNotification`
 
 **Technical Implementation:**
 - Uses `AgentNetwork` from `@mastra/core` for multi-agent coordination
@@ -1152,6 +1189,7 @@ All environment variables use the `HEY_JARVIS_` prefix for easy management and D
 - **GitHub**: `HEY_JARVIS_GITHUB_API_TOKEN` for GitHub API access (coding agent and error reporting processor)
 - **Claude cloud sessions**: `HEY_JARVIS_ANTHROPIC_API_KEY`, `HEY_JARVIS_CLAUDE_AGENT_ID`, `HEY_JARVIS_CLAUDE_ENVIRONMENT_ID` for the coding vertical's implementation sessions
 - **WiFi**: `HEY_JARVIS_WIFI_SSID`, `HEY_JARVIS_WIFI_PASSWORD` for Home Assistant Voice Firmware
+- **Notifications**: `HEY_JARVIS_PRIMARY_USER_PHONE_NUMBER` so Jarvis can call or text the primary user; optionally `HEY_JARVIS_PRIMARY_USER_NAME`, `HEY_JARVIS_PRIMARY_USER_PHONE_DEVICE`, `HEY_JARVIS_PRIMARY_USER_NOTIFY_SERVICE` and `HEY_JARVIS_CAR_NAME` to pin down which person, phone and car the routing looks at
 
 #### Development Setup
 1. **Install 1Password CLI**: Follow [1Password CLI installation guide](https://developer.1password.com/docs/cli/get-started/)
