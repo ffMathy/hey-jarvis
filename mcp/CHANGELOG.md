@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.1](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.12.0...mcp-v1.12.1) (2026-08-24)
+
+
+### Code Refactoring
+
+* **elevenlabs:** move the routing loop out of the prompt and into its instructions ([#694](https://github.com/ffMathy/hey-jarvis/issues/694)) ([7973bb0](https://github.com/ffMathy/hey-jarvis/commit/7973bb0c7315375031795541fdf27de6ca631b50))
+
 ## [1.12.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.11.3...mcp-v1.12.0) (2026-08-22)
 
 
