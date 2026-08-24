@@ -164,19 +164,36 @@ targets a runner we do not rent from GitHub.
 
 `Release` runs on every push to `main` and does the whole release itself — no
 human clicks merge. Release Please opens (or updates) the release pull request,
-the workflow immediately hands that pull request to GitHub's auto-merge, and
-falls back to merging it outright when auto-merge has nothing to wait for. The
-pull request is safe to merge unattended: it only restates commits that already
-passed review and CI on `main`, plus the version bumps and changelog entries
-derived from them.
+and the workflow merges it: outright if nothing gates it, otherwise by arming
+auto-merge so it lands the moment whatever gates it clears. The pull request is
+safe to merge unattended: it only restates commits that already passed review
+and CI on `main`, plus the version bumps and changelog entries derived from
+them.
 
 Merging it is not the end of the run, because a merge performed with
 `GITHUB_TOKEN` does not start another workflow run. So the same run invokes
 Release Please a second time to tag the release it just merged, and `deploy`
 checks out that tagged commit (`needs.release.outputs.sha`) rather than the
 commit the run started from — only the tagged commit carries the bumped
-versions. If auto-merge does park the pull request instead of merging it, the
-release is tagged by the next run of the workflow, and the run log says so.
+versions.
+
+#### The release pull request needs a token of its own
+
+GitHub starts no workflow run for anything `GITHUB_TOKEN` did, and that
+includes opening the release pull request: its `CI` run is recorded as a
+`startup_failure` before any job begins, and no check ever appears on it. If
+`build` is a required check on `main`, auto-merge then waits on a check that
+can never report, and the release sits there forever — which is exactly what
+happened to #697.
+
+So set `RELEASE_PLEASE_TOKEN` to a token that is not `GITHUB_TOKEN` (a personal
+access token or a GitHub App installation token with `contents: write` and
+`pull-requests: write`). Release Please opens the pull request as that identity,
+CI runs on it for real, auto-merge lands it once green, and the merge starts the
+run that tags the release. Without that secret the workflow falls back to
+`GITHUB_TOKEN` and fails the run with the reason rather than parking quietly —
+the other way out is to exempt `release-please--branches--main` from the rule
+that blocks it.
 
 To hold a release back, hold the commits back: anything that lands on `main`
 ships on the next run.

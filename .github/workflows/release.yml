@@ -40,39 +40,60 @@ jobs:
         id: release
         uses: googleapis/release-please-action@v4.4.1
         with:
+          # Falls back to GITHUB_TOKEN, whose pull requests never get checks.
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
           config-file: .github/release-please-config.json
           manifest-file: .github/.release-please-manifest.json
           target-branch: main
 
       # A release pull request only restates commits that already went through
-      # review and CI on main, so it never needs a second human read. Hand it to
-      # GitHub's auto-merge, which lands it once branch protection is satisfied;
-      # auto-merge refuses a pull request that has nothing left to wait for, so
-      # fall back to merging it outright.
+      # review and CI on main, so it never needs a second human read.
       - name: Auto-merge the release pull request
         id: merge
         if: ${{ steps.release.outputs.prs_created == 'true' }}
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           RELEASE_PRS: ${{ steps.release.outputs.prs }}
         run: |
           set -euo pipefail
 
           merged=false
+          blocked=false
           for number in $(jq -r '.[].number' <<<"$RELEASE_PRS"); do
             echo "Merging release pull request #${number}"
-            gh pr merge "${number}" --squash --auto ||
-              gh pr merge "${number}" --squash
 
-            if [ "$(gh pr view "${number}" --json merged --jq '.merged')" = 'true' ]; then
+            # Merge it outright first. Branch protection still applies — a token
+            # cannot merge past a rule it does not satisfy — so this lands only
+            # what is already allowed to land, and it keeps the tagging step
+            # below inside this same run.
+            if gh pr merge "${number}" --squash; then
               merged=true
+              continue
+            fi
+
+            # Something still gates the merge, so leave auto-merge armed: the
+            # release then lands by itself the moment that clears.
+            gh pr merge "${number}" --squash --auto || true
+
+            # Whether that is worth waiting for depends on who opened the pull
+            # request. GitHub starts no workflow run for one opened with
+            # GITHUB_TOKEN, so a required check on it never reports and
+            # auto-merge waits on it forever — a release going nowhere behind a
+            # green run. Any other author gets real checks, and waiting is
+            # exactly right.
+            if [ "$(gh pr view "${number}" --json author --jq '.author.login')" = 'github-actions' ]; then
+              blocked=true
+              echo "::error::Release pull request #${number} cannot merge itself. It was opened with GITHUB_TOKEN, so no workflow runs against it and any required check stays pending forever. Give Release Please a token of its own in the RELEASE_PLEASE_TOKEN secret, or exempt release-please--branches--main from the rule that blocks it."
             else
-              echo "::notice::Pull request #${number} is waiting on auto-merge. Its own merge starts no workflow run, so the release is tagged by the next run of this workflow."
+              echo "::notice::Release pull request #${number} is waiting on auto-merge, and lands once its checks pass."
             fi
           done
 
           echo "merged=${merged}" >> "$GITHUB_OUTPUT"
+
+          # Fail the run rather than let a stuck release look like a finished one.
+          [ "${blocked}" = false ]
 
       # A merge performed with GITHUB_TOKEN does not start another workflow run,
       # so the push that just landed on main never comes back around to tag the
@@ -84,6 +105,8 @@ jobs:
         if: ${{ steps.merge.outputs.merged == 'true' }}
         uses: googleapis/release-please-action@v4.4.1
         with:
+          # Falls back to GITHUB_TOKEN, whose pull requests never get checks.
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
           config-file: .github/release-please-config.json
           manifest-file: .github/.release-please-manifest.json
           target-branch: main
