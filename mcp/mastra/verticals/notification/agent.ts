@@ -2,6 +2,7 @@ import type { Agent } from '@mastra/core/agent';
 import { createAgent } from '../../utils/agent-factory.js';
 import { getOllamaModelOrFallback } from '../../utils/providers/ollama-provider.js';
 import { inferUserLocation } from '../internet-of-things/tools.js';
+import { lookupContact } from '../phone/contacts.js';
 import { initiatePhoneCall, sendTextMessage } from '../phone/tools.js';
 import { notificationTools } from './tools.js';
 
@@ -17,6 +18,9 @@ let notificationAgent: Awaited<ReturnType<typeof createAgent>> | null = null;
  * - Home Assistant voice devices (when user is home)
  * - Text messages via Twilio (when user is away, non-urgent)
  * - Phone calls via ElevenLabs/Twilio (when user is away, urgent)
+ *
+ * Both off-site channels need an E.164 number, so the agent can resolve a
+ * recipient's name against the user's Google contacts to find one.
  *
  * Uses a local Qwen3 model via Ollama for cost-efficiency.
  */
@@ -38,6 +42,12 @@ Your job is to send notifications to users using the most appropriate channel ba
 1. **Home Assistant Voice Devices** (notifyDevice): Use when the user IS HOME. This speaks the notification through smart home voice devices.
 2. **Text Message** (sendTextMessage): Use when the user is AWAY FROM HOME and the message is NOT URGENT. Good for informational updates.
 3. **Phone Call** (initiatePhoneCall): Use when the user is AWAY FROM HOME and the message IS URGENT or requires immediate attention.
+
+**Resolving Who To Contact:**
+Both sendTextMessage and initiatePhoneCall need a phone number in E.164 format (e.g. "+4512345678"). When you were given a name instead of a number, use lookupContact to resolve it against the user's address book:
+- Use the number from a match whose \`isE164\` is true — a number without it cannot be dialled, so treat that contact as having no number
+- If the result sets \`isAmbiguous\`, ask the user which person they meant instead of picking one
+- If there is no match, say so rather than guessing a number
 
 **Decision Process:**
 1. First, use inferUserLocation to check where the user is located
@@ -73,6 +83,7 @@ Your job is to send notifications to users using the most appropriate channel ba
       ...notificationTools,
       inferUserLocation,
       initiatePhoneCall,
+      lookupContact,
       sendTextMessage,
     },
   });

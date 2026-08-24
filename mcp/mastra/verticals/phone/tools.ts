@@ -2,6 +2,7 @@ import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import twilio from 'twilio';
 import { z } from 'zod';
 import { createTool } from '../../utils/tool-factory.js';
+import { contactTools } from './contacts.js';
 
 const ELEVENLABS_PHONE_NUMBER_ID = 'Q8MKRgesP6ZKPi4NMyKu';
 
@@ -150,4 +151,5 @@ export const initiatePhoneCall = createTool({
 export const phoneTools = {
   initiatePhoneCall,
   sendTextMessage,
+  ...contactTools,
 };

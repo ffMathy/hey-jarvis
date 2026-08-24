@@ -31,7 +31,7 @@ The project is organized by business domain. Each vertical contains its own agen
 | `human-in-the-loop` | Form-based approval workflows |
 | `internet-of-things` | Smart home device control (Home Assistant) |
 | `notification` | Multi-channel alerts (voice, SMS, calls) |
-| `phone` | Phone calls and texts (Twilio/ElevenLabs) |
+| `phone` | Phone calls and texts (Twilio/ElevenLabs), contacts (Google People) |
 | `routing` | DAG-based task routing and orchestration |
 | `shopping` | Bilka grocery shopping (Danish) |
 | `synapse` | IoT state change reactor |

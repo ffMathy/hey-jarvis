@@ -11,10 +11,14 @@ export const googleProvider: OAuthProvider = {
   clientIdEnvVar: 'HEY_JARVIS_GOOGLE_CLIENT_ID',
   clientSecretEnvVar: 'HEY_JARVIS_GOOGLE_CLIENT_SECRET',
   refreshTokenEnvVar: 'HEY_JARVIS_GOOGLE_REFRESH_TOKEN',
-  scopes: ['https://www.googleapis.com/auth/calendar', 'https://www.googleapis.com/auth/tasks'],
+  scopes: [
+    'https://www.googleapis.com/auth/calendar',
+    'https://www.googleapis.com/auth/tasks',
+    'https://www.googleapis.com/auth/contacts.readonly',
+  ],
   setupInstructions: [
     'Create a Google Cloud Project at https://console.cloud.google.com',
-    'Enable Google Calendar API and Google Tasks API',
+    'Enable Google Calendar API, Google Tasks API and Google People API',
     'Create OAuth 2.0 credentials (Web application type)',
     `Add ${REDIRECT_URI} to authorized redirect URIs`,
   ],

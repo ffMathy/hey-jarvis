@@ -51,7 +51,8 @@ mcp/
 │   │       ├── tools.ts
 │   │       ├── workflows.ts
 │   │       └── index.ts
-│   │   └── phone/           # Phone calls (tools only)
+│   │   └── phone/           # Phone calls, texts and contacts (tools only)
+│   │       ├── contacts.ts
 │   │       ├── tools.ts
 │   │       └── index.ts
 │   ├── processors/      # Output processors for post-processing
@@ -145,6 +146,7 @@ Provides proactive notification delivery to Home Assistant Voice Preview Edition
 - **Proactive messaging**: Triggers conversations without wake word activation
 - **Configurable timeout**: Default 5-second timeout after notification delivery
 - **Device targeting**: Can notify specific devices or broadcast to all available devices
+- **Contact resolution**: Carries `lookupContact`, so a recipient named in the request can be resolved to the E.164 number the SMS and call channels require
 - **Home Assistant integration**: Works through ESPHome API service calls
 - **Error reporting**: Configured with error reporting processor (see Processors section)
 
@@ -193,23 +195,35 @@ await registerStateChange.execute({
 ```
 
 ### Phone Vertical (Tools Only)
-Provides outbound phone call capabilities via ElevenLabs Twilio integration:
-- **1 phone tool**: Initiate outbound phone calls using ElevenLabs conversational agents
-- **No agents or workflows**: This vertical exposes only the tool for use by other agents
+Provides outbound calling, texting and contact lookup:
+- **4 phone tools**: Place calls, send texts, and read the user's Google address book
+- **No agents or workflows**: This vertical exposes only tools for use by other agents
 - **Twilio integration**: Uses ElevenLabs Conversational AI platform with Twilio for phone calls
 - **Custom first message**: Each call can specify a custom greeting message for the recipient
 - **Conversation support**: After the initial message, the agent can engage in conversation with the recipient
+- **Contact resolution**: Turns a spoken name ("mom", "Sarah") into the E.164 number the calling and texting tools require
 
-**Available Tool:**
+**Available Tools:**
 - **`initiatePhoneCall`**: Initiates an outbound phone call to a specified phone number
   - Requires phone number in E.164 format (e.g., "+1234567890")
   - Accepts a custom first message for the agent to speak
   - Returns conversation ID and call SID on success
   - Uses ElevenLabs conversational agent for the phone interaction
+- **`sendTextMessage`**: Sends an SMS via Twilio to a phone number in E.164 format
+- **`lookupContact`**: Resolves a name or nickname to matching contacts and their phone numbers
+  - Matching ignores case, accents and punctuation, so voice transcripts match stored spellings
+  - Returns several matches with `isAmbiguous` set, rather than guessing between two people of the same name
+  - Filters to contacts that have a phone number by default (`requirePhoneNumber`)
+- **`getContacts`**: Lists the whole address book, with `maxResults` and `forceRefresh`
+  - Reads Google Contacts, which is what syncs to the user's phone — nothing runs on the phone itself
+  - Numbers are normalized to E.164 via `libphonenumber-js`; one that cannot be placed is returned as stored with `isE164: false`
+  - Results are cached for 5 minutes, since a lookup ranks the entire address book locally
 
 **Required Environment Variables:**
 - `HEY_JARVIS_ELEVENLABS_API_KEY`: ElevenLabs API key for authentication
 - `HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID` or `HEY_JARVIS_ELEVENLABS_AGENT_ID`: ID of the ElevenLabs conversational agent to use (test agent ID takes precedence if set)
+- `HEY_JARVIS_TWILIO_ACCOUNT_SID`, `HEY_JARVIS_TWILIO_AUTH_TOKEN`, `HEY_JARVIS_TWILIO_PHONE_NUMBER`: Twilio credentials for `sendTextMessage`
+- `HEY_JARVIS_GOOGLE_CLIENT_ID`, `HEY_JARVIS_GOOGLE_CLIENT_SECRET`, `HEY_JARVIS_GOOGLE_REFRESH_TOKEN`: Google OAuth2 credentials for the contact tools
 
 **Example Usage:**
 ```typescript
@@ -218,6 +232,15 @@ await phoneTools.initiatePhoneCall.execute({
   phoneNumber: '+1234567890',
   firstMessage: 'Hello, this is Jarvis calling to remind you about your upcoming appointment.',
 });
+
+// Resolve a spoken name, then text whoever it turned out to be
+const { matches } = await executeTool(lookupContact, { name: 'mom' });
+const [contact] = matches;
+const number = contact?.phoneNumbers.find((phoneNumber) => phoneNumber.isE164);
+
+if (number) {
+  await executeTool(sendTextMessage, { phoneNumber: number.value, message: 'Running 10 minutes late' });
+}
 ```
 
 **Setup Requirements:**
@@ -227,6 +250,9 @@ await phoneTools.initiatePhoneCall.execute({
 4. Store the credentials in 1Password:
    - `op://Personal/ElevenLabs/API key`
    - `op://Personal/ElevenLabs/Jarvis agent ID`
+5. Enable the **Google People API** in the Google Cloud project, then re-run `bun run --cwd mcp generate-tokens`
+   - The contacts scope (`contacts.readonly`) is new, and a refresh token minted before it was added does not carry it
+   - See [Google OAuth2 Setup](#google-oauth2-setup) for how to force regeneration
 
 ### Coding Agent
 Manages GitHub repositories and coordinates feature implementation:
@@ -1183,7 +1209,7 @@ If you encounter 1Password CLI authentication issues:
 
 ### Google OAuth2 Setup
 
-The Calendar and Todo-List verticals use Google's official `googleapis` NPM package for accessing Google Calendar and Google Tasks APIs. These APIs require OAuth2 authentication as they access private user data.
+The Calendar, Todo-List and Phone verticals use Google's official `googleapis` NPM package for accessing the Google Calendar, Google Tasks and Google People APIs. These APIs require OAuth2 authentication as they access private user data.
 
 #### Token Generation Behavior
 
@@ -1203,7 +1229,7 @@ bun run --cwd mcp generate-tokens
 ```
 
 #### Why OAuth2?
-- **Private Data Access**: Google Calendar and Tasks contain personal information that requires user consent
+- **Private Data Access**: Google Calendar, Tasks and Contacts contain personal information that requires user consent
 - **API Key Limitation**: API keys only work for public data, not private calendars or task lists
 - **Automatic Token Refresh**: The `googleapis` library handles access token refresh automatically
 - **Long-Lived Tokens**: Refresh tokens remain valid for 6+ months with regular use
@@ -1216,6 +1242,7 @@ bun run --cwd mcp generate-tokens
 3. Enable the following APIs:
    - Google Calendar API
    - Google Tasks API
+   - Google People API
 
 **Step 2: Configure OAuth2 Credentials**
 1. Navigate to **APIs & Services** → **Credentials**
@@ -1237,7 +1264,7 @@ bun run --cwd mcp generate-tokens
 
 # This will:
 # 1. Open your browser for Google authorization
-# 2. Request access to Calendar and Tasks
+# 2. Request access to Calendar, Tasks and Contacts
 # 3. Generate and store your refresh token
 ```
 
