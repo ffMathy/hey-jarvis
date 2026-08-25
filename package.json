@@ -13,6 +13,7 @@
     "build": "turbo build",
     "serve": "turbo serve",
     "test": "turbo test",
+    "test:integration": "turbo test:integration",
     "deploy": "turbo deploy",
     "lint": "turbo lint",
     "format": "bunx biome format --write .",

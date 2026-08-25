@@ -13,11 +13,17 @@ bunx turbo <target> --filter=<project>
 ```bash
 bunx turbo serve --filter=<project>    # Start development server
 bunx turbo build --filter=<project>    # Build for production
-bunx turbo test  --filter=<project>    # Run tests
+bunx turbo test  --filter=<project>    # Run the mocked tests (no secrets needed)
 bunx turbo lint  --filter=<project>    # Run linter
+
+bunx turbo test:integration --filter=<project>   # Tests that use real credentials
 
 bunx turbo test --filter=<project> -- -- path/to/file.spec.ts   # Single test file
 ```
+
+`test` and `test:integration` split the suite by file name: `*.integration.spec.ts`
+belongs to the latter, everything else to the former. Only `test:integration`
+resolves secrets from 1Password.
 
 Omit `--filter` to run a target across the whole workspace:
 

@@ -4,23 +4,16 @@ name: CI
 
 on:
   pull_request:
-    types: [opened, synchronize, labeled]
+    # `ready_for_review` is what lets the integration tests start the moment a
+    # draft is marked ready; `synchronize` keeps them running on every push
+    # after that.
+    types: [opened, synchronize, labeled, ready_for_review]
     branches: [ main ]
 
 # Least privilege by default: every job below opts into exactly what it needs.
 permissions: {}
 
 env:
-  # Every HEY_JARVIS_* secret is resolved at run time from the `Jarvis`
-  # 1Password vault by .scripts/run-with-env.sh, so CI needs only this one token
-  # instead of mirroring ~30 values as GitHub Actions secrets.
-  OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-
-  # The firmware build only ever needs placeholders, so real WiFi credentials
-  # never have to reach CI.
-  HEY_JARVIS_WIFI_SSID: "dummy-wifi-ssid-for-ci"
-  HEY_JARVIS_WIFI_PASSWORD: "dummy-wifi-password-for-ci"
-
   GITHUB_ACTIONS: true
 
 jobs:
@@ -35,6 +28,12 @@ jobs:
       contents: read
       packages: read
       models: read
+
+    env:
+      # The firmware build only ever needs placeholders, so real WiFi credentials
+      # never have to reach CI.
+      HEY_JARVIS_WIFI_SSID: "dummy-wifi-ssid-for-ci"
+      HEY_JARVIS_WIFI_PASSWORD: "dummy-wifi-password-for-ci"
 
     steps:
       - name: Free Disk Space (Ubuntu)
@@ -70,6 +69,10 @@ jobs:
           restore-keys: |
             turbo-cache-${{ runner.os }}-
 
+      # No OP_SERVICE_ACCOUNT_TOKEN reaches this job. `turbo test` runs only the
+      # mocked half of the suite, and the absence of the token is what keeps it
+      # honest: a test that quietly started reaching for a real credential fails
+      # here instead of passing on someone else's account.
       - name: Build and test in dev container
         uses: devcontainers/ci@v0.3.1900000450
         env:
@@ -99,7 +102,91 @@ jobs:
             TURBO_TOKEN
             TURBO_TEAM
 
-            OP_SERVICE_ACCOUNT_TOKEN
-
             HEY_JARVIS_WIFI_SSID
             HEY_JARVIS_WIFI_PASSWORD
+
+  # The other half of the suite: the tests that hold real conversations, call
+  # real APIs and spend real quota. A draft pull request is still being written,
+  # so it gets none of this — the run starts when the pull request is marked
+  # ready for review, and then repeats on every push while it stays that way.
+  integration-tests:
+    if: ${{ github.event.pull_request.draft == false }}
+
+    concurrency:
+      group: integration-tests-${{ github.actor }}-${{ github.head_ref || github.ref }}
+      cancel-in-progress: true
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 60  # The conversation evals run several minutes each
+    permissions:
+      contents: read
+      packages: read
+      models: read
+
+    env:
+      # Every HEY_JARVIS_* secret is resolved at run time from the `Jarvis`
+      # 1Password vault by .scripts/run-with-env.sh, so CI needs only this one
+      # token instead of mirroring ~30 values as GitHub Actions secrets.
+      OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+
+    steps:
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: false
+          dotnet: true
+          haskell: true
+          large-packages: false
+          docker-images: false
+          swap-storage: false
+
+      - name: Checkout
+        uses: actions/checkout@v6.1.0
+        with:
+          fetch-depth: 0  # Fetch all history for turbo affected detection to work
+          # This job runs pull request code with a 1Password service account
+          # token in scope; never leave a usable GitHub token beside it.
+          persist-credentials: false
+
+      - name: Fetch base branch
+        run: git fetch origin main:main
+
+      - name: Set lowercase repository owner
+        run: echo "REPO_OWNER_LC=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
+
+      - name: Restore Turborepo cache
+        uses: actions/cache@v5.1.0
+        with:
+          path: .turbo
+          key: turbo-cache-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            turbo-cache-${{ runner.os }}-
+
+      - name: Run integration tests in dev container
+        uses: devcontainers/ci@v0.3.1900000450
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          IMAGE_TAG: pr-${{ github.event.pull_request.number }}
+          IMAGE_OWNER: ${{ env.REPO_OWNER_LC }}
+          REGISTRY: ghcr.io
+          TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+          TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+          WORKSPACE_ROOT: /workspaces/hey-jarvis
+        with:
+          imageName: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
+          cacheFrom: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
+          push: never
+          runCmd: turbo test:integration
+          env: |
+            GITHUB_ACTIONS
+            GITHUB_TOKEN
+            GITHUB_ACTOR
+            IMAGE_TAG
+            IMAGE_OWNER
+            REGISTRY
+            WORKSPACE_ROOT
+            TURBO_TOKEN
+            TURBO_TEAM
+
+            OP_SERVICE_ACCOUNT_TOKEN
