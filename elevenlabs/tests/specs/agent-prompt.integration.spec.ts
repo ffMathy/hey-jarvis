@@ -128,6 +128,7 @@ async function withConversationRetry(
  * - No follow-up questions (making reasonable assumptions)
  * - Concise acknowledgements (5-15 words, hard cap 20)
  * - Teasing user inefficiencies while remaining charming and helpful
+ * - Stepping out of character for a flat, diagnostic readout when told "analysis"
  */
 describe('Agent Prompt Specifications', () => {
   // Non-null assertion safe here because beforeAll throws if these are undefined
@@ -473,6 +474,83 @@ describe('Agent Prompt Specifications', () => {
         );
       },
       (CONVERSATION_TIMEOUT_MS + NO_TOOL_CALL_GRACE_MS) * MAX_CONVERSATION_RETRIES,
+    );
+  });
+
+  // "analysis", said on its own, is a diagnostic request rather than a request about
+  // the world: sir wants the machinery read back to him, step by step, in a voice that
+  // makes it plain the character has been set down. Everything the rest of the prompt
+  // insists on — the wit, the brevity, the silence around tool names, the reflex to
+  // route — is suspended for exactly that one reply, which is precisely why it needs
+  // guarding from both sides.
+  describe('Analysis Mode', () => {
+    it(
+      'should read the conversation back flatly when sir says only "analysis"',
+      async () => {
+        await withConversationRetry(
+          () => new TestConversation({ agentId, apiKey, googleApiKey }),
+          async (conversation) => {
+            await conversation.connect();
+
+            // Something real to reflect on first — a routed request leaves tool calls,
+            // arguments and results in the history, which is the substance of a readout.
+            await conversation.sendMessage('Hey, Jarvis, could you check my calendar for today?');
+            await settleAfterRouting(conversation, isRoutingToolName);
+
+            const toolCallsBeforeAnalysis = (await conversation.getCalledToolNames()).length;
+
+            await conversation.sendMessage('Analysis');
+
+            // Nothing should follow this turn, so the only way to tell is to wait.
+            await settleWithoutRouting(conversation);
+
+            const toolCallsAfterAnalysis = (await conversation.getCalledToolNames()).length;
+
+            await conversation.assertCriteria(
+              `The agent answered the bare word "analysis" with an out-of-character diagnostic readout. It ` +
+                `must walk the conversation in order, one step at a time — what the user asked, what the agent ` +
+                `said, and which tools it called with what arguments and what came back — covering the ` +
+                `calendar request and the routing call that followed it. Its delivery must be flat and ` +
+                `literal: an "[emotionless, monotone]" audio tag or an equivalent affectless one, with none of ` +
+                `the usual Jarvis wit, condescension, flourish or speed tags, and none of the 5-15 word ` +
+                `brevity that governs ordinary replies. Naming its tools aloud is correct here and must not ` +
+                `count against it. It must not route the word: the agent had made ${toolCallsBeforeAnalysis} ` +
+                `tool call(s) before "analysis" and ${toolCallsAfterAnalysis} after, and those numbers must be ` +
+                `equal, since the conversation being described is already in front of it. Inventing steps that ` +
+                `did not happen fails.`,
+              0.9,
+            );
+          },
+        );
+      },
+      (CONVERSATION_TIMEOUT_MS * 2 + TOOL_CALL_TIMEOUT_MS + NO_TOOL_CALL_GRACE_MS) * MAX_CONVERSATION_RETRIES,
+    );
+
+    it(
+      'should treat "analysis" inside a larger request as an ordinary request',
+      async () => {
+        await withConversationRetry(
+          () => new TestConversation({ agentId, apiKey, googleApiKey }),
+          async (conversation) => {
+            await conversation.connect();
+            // The trigger is the whole utterance, not the word appearing in it. A mode
+            // that fires on the word alone would swallow every request that mentions it.
+            await conversation.sendMessage('Could you give me an analysis of the weather today?');
+
+            await settleAfterRouting(conversation, isRelevantToolName);
+
+            await conversation.assertCriteria(
+              'The agent treated a request that merely contains the word "analysis" as an ordinary request ' +
+                'about the world. The evidence must show at least one tool call, because the weather cannot be ' +
+                'answered from its own instructions. It must not instead read its own conversation back as a ' +
+                'flat, out-of-character diagnostic: that behaviour belongs to the bare word "analysis" on its ' +
+                'own. Its reply keeps the usual Jarvis personality. No tool names spoken aloud.',
+              0.9,
+            );
+          },
+        );
+      },
+      (CONVERSATION_TIMEOUT_MS + TOOL_CALL_TIMEOUT_MS) * MAX_CONVERSATION_RETRIES,
     );
   });
 
