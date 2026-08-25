@@ -97,7 +97,7 @@ const getGoogleMapsClient = () => {
         '4. Go to "Credentials" → "Create Credentials" → "API Key"\n' +
         '5. Set HEY_JARVIS_GOOGLE_MAPS_API_KEY environment variable\n' +
         '\n' +
-        'Store in 1Password: op://Personal/Google/Hey Jarvis API key',
+        'Store in 1Password: op://Jarvis/Google/Hey Jarvis API key',
     );
   }
   return { client: new Client({}), apiKey };

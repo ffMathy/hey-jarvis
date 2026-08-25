@@ -22,8 +22,8 @@ export const microsoftProvider: OAuthProvider = {
   ],
   storageInstructions: [
     '1Password (Recommended):',
-    '  - Store in "Microsoft OAuth" item in "Personal" vault',
-    '  - Fields: client id, client secret, refresh token',
+    '  - Store in the "Microsoft" item in the "Jarvis" vault',
+    '  - Fields: Hey Jarvis client ID, Hey Jarvis client secret, Hey Jarvis refresh token',
     '',
     'Environment Variables:',
     '  - Set HEY_JARVIS_MICROSOFT_CLIENT_ID, HEY_JARVIS_MICROSOFT_CLIENT_SECRET, HEY_JARVIS_MICROSOFT_REFRESH_TOKEN',

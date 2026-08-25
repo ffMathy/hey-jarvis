@@ -24,8 +24,8 @@ export const googleProvider: OAuthProvider = {
   ],
   storageInstructions: [
     '1Password (Recommended):',
-    '  - Store in "Google OAuth" item in "Personal" vault',
-    '  - Fields: client id, client secret, refresh token',
+    '  - Store in the "Google" item in the "Jarvis" vault',
+    '  - Fields: Hey Jarvis client ID, Hey Jarvis client secret, Hey Jarvis refresh token',
     '',
     'Environment Variables:',
     '  - Set HEY_JARVIS_GOOGLE_CLIENT_ID, HEY_JARVIS_GOOGLE_CLIENT_SECRET, HEY_JARVIS_GOOGLE_REFRESH_TOKEN',
