@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.1](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.15.0...elevenlabs-v0.15.1) (2026-08-25)
+
+
+### Bug Fixes
+
+* **prompt:** make ending a call a real tool call, not a stage direction ([#705](https://github.com/ffMathy/hey-jarvis/issues/705)) ([b276087](https://github.com/ffMathy/hey-jarvis/commit/b27608750d6d2b25756c9e95efd08c4233c6624d))
+
 ## [0.15.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.14.1...elevenlabs-v0.15.0) (2026-08-25)
 
 

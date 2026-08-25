@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.14.1](https://github.com/ffMathy/hey-jarvis/compare/root-v1.14.0...root-v1.14.1) (2026-08-25)
+
+
+### Bug Fixes
+
+* **prompt:** make ending a call a real tool call, not a stage direction ([#705](https://github.com/ffMathy/hey-jarvis/issues/705)) ([b276087](https://github.com/ffMathy/hey-jarvis/commit/b27608750d6d2b25756c9e95efd08c4233c6624d))
+
 ## [1.14.0](https://github.com/ffMathy/hey-jarvis/compare/root-v1.13.1...root-v1.14.0) (2026-08-25)
 
 
