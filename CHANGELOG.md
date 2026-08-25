@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.14.0](https://github.com/ffMathy/hey-jarvis/compare/root-v1.13.1...root-v1.14.0) (2026-08-25)
+
+
+### Features
+
+* **mcp:** route notifications by target and presence ([#701](https://github.com/ffMathy/hey-jarvis/issues/701)) ([980d0ec](https://github.com/ffMathy/hey-jarvis/commit/980d0ec981323d99f4c95352f76a415ff9602128))
+* **prompt:** add an analysis mode that reads the conversation back flatly ([#704](https://github.com/ffMathy/hey-jarvis/issues/704)) ([fb0ac3a](https://github.com/ffMathy/hey-jarvis/commit/fb0ac3a2f4ccb54c98b12093deeae8967b6f8463))
+* **tools:** add google people api contact lookup to phone vertical ([#700](https://github.com/ffMathy/hey-jarvis/issues/700)) ([51ac561](https://github.com/ffMathy/hey-jarvis/commit/51ac561e8c506a1adcf9664e52a53752f1e76cc0))
+
 ## [1.13.1](https://github.com/ffMathy/hey-jarvis/compare/root-v1.13.0...root-v1.13.1) (2026-08-24)
 
 

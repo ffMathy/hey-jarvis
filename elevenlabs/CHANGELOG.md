@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.14.1...elevenlabs-v0.15.0) (2026-08-25)
+
+
+### Features
+
+* **prompt:** add an analysis mode that reads the conversation back flatly ([#704](https://github.com/ffMathy/hey-jarvis/issues/704)) ([fb0ac3a](https://github.com/ffMathy/hey-jarvis/commit/fb0ac3a2f4ccb54c98b12093deeae8967b6f8463))
+
 ## [0.14.1](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.14.0...elevenlabs-v0.14.1) (2026-08-24)
 
 
