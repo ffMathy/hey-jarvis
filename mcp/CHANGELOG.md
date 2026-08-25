@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.13.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.12.1...mcp-v1.13.0) (2026-08-25)
+
+
+### Features
+
+* **mcp:** route notifications by target and presence ([#701](https://github.com/ffMathy/hey-jarvis/issues/701)) ([980d0ec](https://github.com/ffMathy/hey-jarvis/commit/980d0ec981323d99f4c95352f76a415ff9602128))
+* **tools:** add google people api contact lookup to phone vertical ([#700](https://github.com/ffMathy/hey-jarvis/issues/700)) ([51ac561](https://github.com/ffMathy/hey-jarvis/commit/51ac561e8c506a1adcf9664e52a53752f1e76cc0))
+
 ## [1.12.1](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.12.0...mcp-v1.12.1) (2026-08-24)
 
 
