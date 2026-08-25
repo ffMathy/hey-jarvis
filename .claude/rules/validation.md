@@ -38,6 +38,26 @@ Do NOT consider your work complete until:
 - All tests pass without skipping any
 - The build succeeds (if applicable)
 
+## Unit Tests vs Integration Tests
+
+The suite is split in two by file name:
+
+- `*.spec.ts` / `*.test.ts` — mocked, offline, no credentials. Run by `turbo test`.
+- `*.integration.spec.ts` — real credentials, real APIs, real quota. Run by `turbo test:integration`.
+
+Only `test:integration` goes through `run-with-env.sh`, so only it resolves
+secrets from 1Password. `turbo test` runs with none of them, on purpose.
+
+In CI, `turbo test` runs on every push; `turbo test:integration` runs only once
+the pull request is out of draft, and then on every push after that.
+
+A new test belongs in `test:integration` when it needs a credential, reaches the
+network, or starts the MCP server. Give it the `*.integration.spec.ts` suffix and
+the runner picks it up — there is no list to maintain.
+
+Never reach for a real credential from a `*.spec.ts` file to make it pass. Either
+mock the dependency, or rename the file so it runs where the credentials live.
+
 ## How to Run Tests
 
 **CRITICAL: Always delegate validation to the `validation` agent.** Never run tests, linting, or builds directly in the main conversation context. The validation agent is purpose-built for this — it captures full output and reports results back.
@@ -45,6 +65,7 @@ Do NOT consider your work complete until:
 Use the Task tool with `subagent_type: "validation"` to run:
 - Linting: `bunx turbo lint --filter=<project>`
 - Tests: `bunx turbo test --filter=<project>`
+- Integration tests: `bunx turbo test:integration --filter=<project>` (needs 1Password)
 - Builds: `bunx turbo build --filter=<project>`
 - Full workspace checks: `bunx turbo lint && bunx turbo test && bunx turbo build`
 

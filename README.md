@@ -39,9 +39,13 @@ bunx turbo serve --filter=home-assistant-voice-firmware     # Flash firmware ove
 - **Supply chain**: Bun-only installs, exact version pins, a 7-day release cooldown, no dependency install scripts, SHA-pinned Actions — see [AGENTS.md](./AGENTS.md#supply-chain-security)
 
 ```bash
-bunx turbo test      # Test affected projects
-bunx turbo lint      # Lint everything
-bunx biome check --write .          # Format + lint
+bunx turbo test              # Mocked tests — no credentials needed
+bunx turbo test:integration  # The tests that call real services
+bunx turbo lint              # Lint everything
+bunx biome check --write .   # Format + lint
 ```
+
+CI runs `turbo test` on every push. `turbo test:integration` waits until the
+pull request is marked ready for review, and then runs on every push after that.
 
 Each project has an `AGENTS.md` with detailed development guidelines.

@@ -1077,6 +1077,18 @@ bun install mastra --global
 
 ### Testing Requirements
 
+**Where a test belongs**
+
+A spec that needs a credential, reaches the network, or starts the MCP server is
+named `*.integration.spec.ts` and runs under `turbo test:integration`, which is
+the only target that resolves secrets from 1Password. Everything else keeps the
+plain `*.spec.ts` suffix and runs under `turbo test`, which carries no secrets at
+all — so a test that quietly starts reaching for one fails there rather than
+passing on someone's personal account.
+
+CI runs `turbo test` on every push, and `turbo test:integration` only once the
+pull request is out of draft, then on every push after that.
+
 **CRITICAL: Test Server Startup Must Use run-with-env.sh**
 
 When starting the MCP server for testing purposes, **ALWAYS use `run-with-env.sh` directly with tsx** to ensure proper environment variable loading from 1Password without nested TURBO process issues:
