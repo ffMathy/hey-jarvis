@@ -52,6 +52,31 @@ function isRoutingToolName(toolName: string): boolean {
   return toolName.toLowerCase().includes('route');
 }
 
+/** `end_call` — the system tool that hangs up. */
+function isEndCallToolName(toolName: string): boolean {
+  return toolName.toLowerCase().includes('end_call');
+}
+
+/**
+ * Polls until the agent has invoked a matching system tool, or the window closes.
+ * Hanging up follows the closing line rather than replacing it, so reading the
+ * absence too early would only mean the reply had not finished yet.
+ */
+async function waitForSystemToolCall(
+  conversation: TestConversation,
+  matches: (toolName: string) => boolean,
+): Promise<string[]> {
+  const deadline = Date.now() + NO_TOOL_CALL_GRACE_MS;
+  let toolNames = conversation.getInvokedSystemToolNames();
+
+  while (!toolNames.some(matches) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    toolNames = conversation.getInvokedSystemToolNames();
+  }
+
+  return toolNames;
+}
+
 /**
  * Waits for a matching tool call, so the evidence is complete by the time it is
  * judged. Synchronisation, not assertion — whether the call *should* have been
@@ -129,6 +154,7 @@ async function withConversationRetry(
  * - Concise acknowledgements (5-15 words, hard cap 20)
  * - Teasing user inefficiencies while remaining charming and helpful
  * - Stepping out of character for a flat, diagnostic readout when told "analysis"
+ * - Hanging up through the end_call tool rather than narrating it
  */
 describe('Agent Prompt Specifications', () => {
   // Non-null assertion safe here because beforeAll throws if these are undefined
@@ -477,6 +503,52 @@ describe('Agent Prompt Specifications', () => {
     );
   });
 
+  // Ending the call is the one request that cannot be met by speaking: the reply is a
+  // tool call, and a bracketed "[end_call invoked]" standing in for it is worse than
+  // nothing — a tag is never spoken, so sir hears silence on a line that stays open.
+  // The tool's own description used to demonstrate that very marker, which is why this
+  // guards both halves: the call has to run, and the words standing in for it must not
+  // appear.
+  describe('Ending The Call', () => {
+    it(
+      'should hang up by calling end_call when sir asks for the call to be ended',
+      async () => {
+        await withConversationRetry(
+          () => new TestConversation({ agentId, apiKey, googleApiKey }),
+          async (conversation) => {
+            await conversation.connect();
+
+            // A request first, so the closing line has something of its own to land on.
+            await conversation.sendMessage('Hey, Jarvis, could you check my calendar for today?');
+            await settleAfterRouting(conversation, isRoutingToolName);
+
+            await conversation.sendMessage('Thank you, that will be all. Could you end the call?');
+            const systemTools = await waitForSystemToolCall(conversation, isEndCallToolName);
+
+            if (!systemTools.some(isEndCallToolName)) {
+              throw new Error(
+                'The agent never invoked end_call after sir asked for the call to be ended. ' +
+                  `System tools invoked: ${systemTools.length > 0 ? systemTools.join(', ') : 'none'}.\n\n` +
+                  `Transcript:\n${conversation.getTranscriptText()}`,
+              );
+            }
+
+            await conversation.assertCriteria(
+              'The agent answered a request to end the call with a single short closing line in ' +
+                'character, tied to what this conversation was about. It must not ask whether the call ' +
+                'should really be ended, and must not close with something bland. It must not write the ' +
+                'call down in place of making it: "[end_call invoked]", "*hangs up*" or any similar ' +
+                'stand-in in its reply fails, and the evidence lists both the system tools it invoked and ' +
+                'any tool name it spoke aloud.',
+              0.9,
+            );
+          },
+        );
+      },
+      (CONVERSATION_TIMEOUT_MS * 2 + TOOL_CALL_TIMEOUT_MS + NO_TOOL_CALL_GRACE_MS) * MAX_CONVERSATION_RETRIES,
+    );
+  });
+
   // "analysis", said on its own, is a diagnostic request rather than a request about
   // the world: sir wants the machinery read back to him, step by step, in a voice that
   // makes it plain the character has been set down. Everything the rest of the prompt
@@ -511,7 +583,7 @@ describe('Agent Prompt Specifications', () => {
                 `must walk the conversation in order, one step at a time — what the user asked, what the agent ` +
                 `said, and which tools it called with what arguments and what came back — covering the ` +
                 `calendar request and the routing call that followed it. Its delivery must be flat and ` +
-                `literal: an "[emotionless, monotone]" audio tag or an equivalent affectless one, with none of ` +
+                `literal: a "[robot-like]" audio tag or an equivalent machine-voiced one, with none of ` +
                 `the usual Jarvis wit, condescension, flourish or speed tags, and none of the 5-15 word ` +
                 `brevity that governs ordinary replies. Naming its tools aloud is correct here and must not ` +
                 `count against it. It must not route the word: the agent had made ${toolCallsBeforeAnalysis} ` +

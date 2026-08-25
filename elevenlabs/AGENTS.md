@@ -103,8 +103,11 @@ The agent prompt in `src/assets/agent-prompt.md` defines:
 - **No Follow-ups**: Make assumptions rather than asking clarifying questions
 - **Conciseness**: Brief, witty acknowledgements (5-15 words, max 20)
 - **When to reach for a tool**: answer outright or route, and never both
-- **Analysis Mode**: the bare word "analysis" drops the persona for a flat, monotone
-  step-by-step readout of the conversation and the tool calls in it
+- **Analysis Mode**: the bare word "analysis" drops the persona for a flat,
+  robot-like step-by-step readout of the conversation and the tool calls in it
+- **Ending the call**: a closing line in character, then the `end_call` tool — a
+  written "[end_call invoked]" is a stage direction, not a call, and leaves the
+  line open
 
 Keep it short. The prompt is carried by a small voice model on every turn, so
 anything it does not need in order to decide its *next* utterance does not

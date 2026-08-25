@@ -19,6 +19,10 @@ describe('findSpokenToolCallsInText', () => {
       'routePromptWorkflow(userQuery = "spaces around the equals")',
       '[dry] I shall now invoke getNextInstructionsWorkflow, sir.',
       'Calling transfer_to_agent now, sir.',
+      // The whole reply, verbatim, from a call that never hung up: a witty farewell
+      // followed by a bracketed note standing in for the tool it should have called.
+      '[sounding like Jarvis from the Iron Man movies] As you wish, sir. Do try not to miss me too much. [end_call invoked]',
+      '→ end_call',
       // A tool this codebase does not have. The generic shape still catches it, so a
       // renamed or newly added tool does not silently escape the net.
       'unknownFutureTool(someArgument="value")',
@@ -44,6 +48,10 @@ describe('findSpokenToolCallsInText', () => {
       'The route (scenic = the long way) would take an hour, sir.',
       'Shall I take the A4 (the faster road) instead, sir?',
       '[matter-of-factly] Two of your three lights remain on, sir.',
+      // Saying goodbye is not the failure — writing the call down instead of making
+      // it is. A closing line belongs in the transcript; the call itself does not.
+      'Ending the call now, sir. [dry] Do try not to miss me too much.',
+      '[sighs] As you wish, sir. I shall end the call.',
     ];
 
     for (const spoken of speech) {
