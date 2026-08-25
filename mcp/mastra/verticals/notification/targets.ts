@@ -1,4 +1,13 @@
 import { z } from 'zod';
+import { getPrimaryUserName } from '../presence/index.js';
+
+/**
+ * The person a `user` target means.
+ *
+ * Owned by the presence vertical, because that is what has to find them among the household's
+ * people, and re-exported here so callers building a target never have to reach across for it.
+ */
+export { getPrimaryUserName };
 
 /**
  * Who a notification is for.
@@ -39,16 +48,6 @@ export const notificationTargetSchema = z
 export type UserTarget = z.infer<typeof userTargetSchema>;
 export type ContactTarget = z.infer<typeof contactTargetSchema>;
 export type NotificationTarget = z.infer<typeof notificationTargetSchema>;
-
-/**
- * The person a `user` target means.
- *
- * Read through a function rather than captured in a module constant so tests -- and a future
- * household with a different primary user -- can change it without reloading the module.
- */
-export function getPrimaryUserName(): string {
-  return process.env.HEY_JARVIS_PRIMARY_USER_NAME?.trim() || 'Mathias';
-}
 
 /**
  * The primary user's own phone number, used when he has to be called or texted.

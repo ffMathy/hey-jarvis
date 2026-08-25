@@ -51,8 +51,11 @@ mcp/
 │   │       ├── tools.ts
 │   │       ├── workflows.ts
 │   │       └── index.ts
-│   │   └── phone/           # Phone calls (tools only)
-│   │       ├── tools.ts
+│   │   ├── phone/           # Phone calls (tools only)
+│   │   │   ├── tools.ts
+│   │   │   └── index.ts
+│   │   └── presence/        # Where the user is (shortcuts only)
+│   │       ├── shortcuts.ts
 │   │       └── index.ts
 │   ├── processors/      # Output processors for post-processing
 │   │   ├── error-reporting.ts
@@ -172,16 +175,16 @@ A driver cannot read a push notification, so being in the car wins over everythi
 silent or in do-not-disturb is the user asking the house to stay quiet, so an urgent message that
 would have been announced falls back to a push notification instead of being dropped.
 
-**How presence is worked out** (`presence.ts`, one Home Assistant template render):
-- **Home** — the `person.*` entity's state is `home`.
-- **In the car** — either the phone says so (companion-app activity recognition reporting
-  `automotive`/`in_vehicle`, or a live Android Auto / car Bluetooth connection), or the car says so
-  (Tessie reporting somebody on board or a non-parked shift state) *and* the user's GPS is within
-  150m of it. The occupancy check is what stops a car parked in the driveway from turning every
-  message sent at home into a phone call.
-- **Phone silenced** — `_ringer_mode` on silent/vibrate, any `_do_not_disturb` sensor that is not
-  off, an active iOS `_focus`, or an Android `_interruption_filter` that is not `all`. A phone that
-  reports nothing counts as audible, so a missing sensor never suppresses an urgent announcement.
+**How presence is worked out:**
+- **In the car** and **at home** are answered by the [Presence Vertical](#presence-vertical-shortcuts-only).
+- **Phone silenced** is answered by this vertical's own shortcut (`notification/shortcuts.ts`),
+  since whether to speak out loud is a notification question: `_ringer_mode` on silent/vibrate, any
+  `_do_not_disturb` sensor that is not off, an active iOS `_focus`, or an Android
+  `_interruption_filter` that is not `all`. A phone that reports nothing counts as audible, so a
+  missing sensor never suppresses an urgent announcement, and another person's silent phone never
+  silences the user's.
+- `notification/presence.ts` composes the three into the single reading the router takes. All three
+  read the same devices, so they are fetched once and handed to each.
 
 **Available Tools:**
 - **`sendNotification`**: the one to use. Takes `target`, `message`, `isUrgent` and an optional
@@ -227,6 +230,41 @@ await executeTool(sendNotification, {
 });
 ```
 
+
+### Presence Vertical (Shortcuts Only)
+Answers where the primary user is. No agents, no workflows and no tools of its own — everything it
+knows comes from the Internet of Things vertical, and what lives here is the *reading* of it.
+
+**Available Shortcuts** (`presence/shortcuts.ts`):
+- **`getUserLocation`**: the primary user's own location, a shortcut onto the IoT vertical's
+  `inferUserLocation` narrowed to the one person this vertical is about.
+- **`getPresenceDevices`**: the car and the user's phone, a shortcut onto `getAllDevices` filtered
+  to the two devices any presence question turns on.
+
+**Available Functions:**
+- **`isUserHome()`**: Home Assistant already answers this — a person entity's state is the zone they
+  are in, and `home` is the zone the house is in. The zone list is checked too, so a person standing
+  in a named sub-zone of the property still counts as home.
+- **`isUserInCar()`**: two independent signals, either of which is enough. The *phone* says so —
+  companion-app activity recognition reporting `automotive`/`in_vehicle`, or a live Android Auto or
+  car Bluetooth connection, which works in any car including one the house cannot see. Or the *car*
+  says so — Tessie reporting somebody on board, a non-parked shift state or a non-zero speed — *and*
+  the user's GPS is within 150m of it. The occupancy half is what makes the second signal usable: a
+  car parked in the driveway sits within GPS range of somebody standing in the kitchen, so proximity
+  alone would put the user in the car every time he is home.
+- **`fetchPresenceSources()`**: both questions read the same two sources, so a caller asking more
+  than one fetches once and passes the result to each.
+
+Each answer comes back as `{ answer, reason }` — the reason is carried through to the notification
+routing, so a surprising route can be traced back to the sensor that caused it.
+
+**Required Environment Variables:**
+- `HEY_JARVIS_PRIMARY_USER_NAME` (optional): the primary user's name, defaulting to `Mathias`. It is
+  what person entities and companion-app devices are matched against.
+- `HEY_JARVIS_PRIMARY_USER_PHONE_DEVICE` (optional): the device name of his phone, e.g.
+  `Mathias' iPhone`. Set this when the phone is not named after its owner — companion-app devices
+  are named after the phone, so without it a two-phone household cannot be told apart.
+- `HEY_JARVIS_CAR_NAME` (optional): the car's name, when it is not a Tesla behind Tessie.
 
 ### Phone Vertical (Tools Only)
 Provides outbound phone call capabilities via ElevenLabs Twilio integration:

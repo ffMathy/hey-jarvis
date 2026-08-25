@@ -1,6 +1,7 @@
 import type { Agent } from '@mastra/core/agent';
 import { createAgent } from '../../utils/agent-factory.js';
 import { getOllamaModelOrFallback } from '../../utils/providers/ollama-provider.js';
+import { notificationShortcuts } from './shortcuts.js';
 import { getPrimaryUserName } from './targets.js';
 import { notificationTools } from './tools.js';
 
@@ -70,7 +71,7 @@ Somebody asks you to tell a person something. You work out **who** it is for and
 2. Target: \`{"type": "contact", "name": "Julie", "phoneNumber": "+4512345678"}\`, isUrgent: true
 3. sendNotification reports: phone-call
 4. You answer: "Called Julie about the water leak."`,
-    tools: notificationTools,
+    tools: { ...notificationTools, ...notificationShortcuts },
   });
 
   return notificationAgent;

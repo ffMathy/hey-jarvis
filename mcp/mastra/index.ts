@@ -30,6 +30,7 @@ import {
 import { getInternetOfThingsAgent, internetOfThingsTools } from './verticals/internet-of-things/index.js';
 import { getNotificationAgent, notificationTools } from './verticals/notification/index.js';
 import { phoneTools } from './verticals/phone/index.js';
+import { presenceShortcuts } from './verticals/presence/index.js';
 import { getRoutingPlannerAgent } from './verticals/routing/agents.js';
 import {
   getCurrentDagWorkflow,
@@ -117,6 +118,7 @@ export async function getMastra(): Promise<Mastra> {
       ...internetOfThingsTools,
       ...notificationTools,
       ...phoneTools,
+      ...presenceShortcuts,
       ...shoppingTools,
       ...synapseTools,
       ...todoListTools,

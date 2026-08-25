@@ -1,6 +1,5 @@
 import { callHomeAssistantApi } from '../internet-of-things/tools.js';
-import { getPrimaryUserPhoneDeviceSlug, slugify } from './presence.js';
-import { getPrimaryUserName } from './targets.js';
+import { getPrimaryUserName, getPrimaryUserPhoneDeviceSlug, slugify } from '../presence/index.js';
 
 /** A Home Assistant service, split into the two halves its API path is built from. */
 export interface HomeAssistantService {
