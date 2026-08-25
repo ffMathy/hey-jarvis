@@ -554,6 +554,18 @@ export interface UserLocation {
   }>;
 }
 
+/**
+ * A zone as the presence template renders it: Home Assistant's own snake_case, straight out of
+ * the JSON.
+ */
+interface RenderedZone {
+  entity_id: string;
+  friendly_name: string;
+  latitude: number;
+  longitude: number;
+  radius: number;
+}
+
 // Interface for zone data
 interface ZoneData {
   entityId: string;
@@ -561,6 +573,25 @@ interface ZoneData {
   latitude: number;
   longitude: number;
   radius: number;
+}
+
+/**
+ * Converts rendered zones into the camelCase shape the rest of the tool — and its output schema —
+ * is written against.
+ *
+ * Without this step `zone.friendlyName` reads `undefined` off a payload that spells it
+ * `friendly_name`, and comparing a person's state against it throws for any house that has zones
+ * at all. Exported so the naming boundary between Home Assistant's JSON and this codebase stays
+ * covered by a test.
+ */
+export function toZoneData(rendered: RenderedZone[]): ZoneData[] {
+  return rendered.map((zone) => ({
+    entityId: zone.entity_id,
+    friendlyName: zone.friendly_name,
+    latitude: zone.latitude,
+    longitude: zone.longitude,
+    radius: zone.radius,
+  }));
 }
 
 /**
@@ -653,7 +684,7 @@ export const inferUserLocation = createTool({
     const data = typeof response === 'string' ? JSON.parse(response) : response;
 
     const persons = data.persons || [];
-    const zones: ZoneData[] = data.zones || [];
+    const zones = toZoneData(data.zones || []);
 
     // Calculate distances from each person to each zone
     const users: UserLocation[] = persons
