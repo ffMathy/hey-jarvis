@@ -11,7 +11,7 @@ Rules for handling secrets, environment variables, and sensitive data.
 Environment variables frequently contain sensitive secrets (API keys, tokens, passwords, connection strings). Treat **all** environment variables as potentially sensitive — not just the ones that look like secrets.
 
 ❌ **NEVER** run `echo $VAR`, `printenv`, `env`, or any command that outputs environment variable values
-❌ **NEVER** read `.env`, `.env.local`, `.env.production`, `op.env.local`, or similar files (the `block-op-env.js` hook enforces this)
+❌ **NEVER** read `.env`, `.env.local`, `.env.production`, `op.env.local`, or similar files
 ❌ **NEVER** write code that logs or prints `process.env.VAR` values at runtime
 ❌ **NEVER** use `console.log(process.env.SECRET)` or equivalent in any language
 ❌ **NEVER** include environment variable values in commit messages, comments, or output
