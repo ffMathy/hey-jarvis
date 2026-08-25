@@ -22,11 +22,21 @@
       "dependsOn": ["lint"],
       "outputs": ["../coverage/**"]
     },
+    "test:integration": {
+      "dependsOn": ["lint"],
+      "cache": false,
+      "outputs": []
+    },
     "deploy:test": {
       "cache": false
     },
     "elevenlabs#test": {
       "dependsOn": ["lint", "mcp#test"],
+      "cache": false,
+      "outputs": []
+    },
+    "elevenlabs#test:integration": {
+      "dependsOn": ["lint", "mcp#test:integration"],
       "cache": false,
       "outputs": []
     },

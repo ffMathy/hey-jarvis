@@ -44,7 +44,8 @@ This is an Turborepo monorepo containing intelligent voice assistant components:
 
 - `bunx turbo serve --filter=<project>` - Start development server
 - `bunx turbo build --filter=<project>` - Build for production
-- `bunx turbo test --filter=<project>` - Run tests
+- `bunx turbo test --filter=<project>` - Run the mocked tests
+- `bunx turbo test:integration --filter=<project>` - Run the tests that need real credentials
 - `bunx turbo lint --filter=<project>` - Run linter
 - `bunx turbo <target>` - Run a target across packages (optionally narrowed with `--filter`)
 
@@ -158,6 +159,14 @@ where a malicious pull request could read other jobs' secrets, poison the tool
 cache, or persist between runs. Registering one already requires repository
 admin; the CI check makes the other half explicit by rejecting any workflow that
 targets a runner we do not rent from GitHub.
+
+The `OP_SERVICE_ACCOUNT_TOKEN` that unlocks the whole `Jarvis` vault is scoped to
+the one job that cannot do without it. `CI / build` — which compiles the firmware
+and runs `turbo test` over untrusted pull request code on every push — is given
+no vault token at all; only `CI / integration-tests` is, and that job does not
+run while the pull request is a draft. So the window in which a pull request can
+reach the vault opens when its author marks it ready for review, which is also
+the point at which someone is expected to be reading the diff.
 
 ### Releases
 
@@ -350,13 +359,31 @@ bunx turbo build --filter=mcp
 
 ### Testing Changes
 
+The suite is split in two by file name.
+
+| | `*.spec.ts` / `*.test.ts` | `*.integration.spec.ts` |
+| --- | --- | --- |
+| Target | `turbo test` | `turbo test:integration` |
+| Secrets | none — the job runs with an empty environment | the full `Jarvis` vault, via `run-with-env.sh` |
+| Talks to | nothing outside the process | real APIs, a real Home Assistant, a real ElevenLabs agent |
+| Runs in CI | every push | every push once the pull request is out of draft |
+
 ```bash
-# Test specific project
+# The mocked tests — no 1Password sign-in needed
 bunx turbo test --filter=mcp
 
-# Test affected projects
+# The ones that spend real quota
+bunx turbo test:integration --filter=mcp
+
+# Everything, across packages
 bunx turbo test
 ```
+
+A new test belongs in `test:integration` if it needs a credential, reaches the
+network, or starts the MCP server. Name it `*.integration.spec.ts` and it lands
+there on its own; the `test` job carries no secrets at all, so a test that
+quietly starts reaching for one fails there rather than passing on someone's
+personal account.
 
 <!-- turbo configuration start-->
 <!-- Leave the start & end comments to automatically receive updates. -->

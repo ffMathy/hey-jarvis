@@ -6,13 +6,13 @@ This directory contains all test files for the ElevenLabs integration project.
 
 ```
 tests/
-├── specs/          # Test specification files (*.spec.ts, *.test.ts)
-│   ├── agent-prompt.spec.ts
-│   ├── routing-orchestration.spec.ts
-│   ├── acknowledgement-timing.spec.ts
-│   ├── routing-loop.spec.ts
-│   ├── spoken-tool-call.spec.ts
-│   └── retry-with-backoff.spec.ts
+├── specs/          # Test specification files
+│   ├── agent-prompt.integration.spec.ts          # live — needs credentials + tunnel
+│   ├── routing-orchestration.integration.spec.ts # live — needs credentials + tunnel
+│   ├── acknowledgement-timing.spec.ts            # offline
+│   ├── routing-loop.spec.ts                      # offline
+│   ├── spoken-tool-call.spec.ts                  # offline
+│   └── retry-with-backoff.spec.ts                # offline
 └── utils/          # Test utility functions and helpers
     ├── test-conversation.ts
     ├── conversation-strategy.ts
@@ -58,12 +58,20 @@ Test utility functions are located in `tests/utils/`:
 ## Running Tests
 
 ```bash
-# Run all tests
+# The offline detector coverage — no credentials, no tunnel
 bunx turbo test --filter=elevenlabs
 
-# Run tests with verbose output
+# The live conversation evals — credentials, tunnel, real agent
+bunx turbo test:integration --filter=elevenlabs
+
+# Either one, with verbose output
 bunx turbo test --filter=elevenlabs --verbose
 ```
+
+The `*.integration.spec.ts` suffix is what decides which half a spec lands in.
+CI runs the offline half on every push and the live half only once the pull
+request is out of draft, so a conversation eval never spends quota on work that
+is still being written.
 
 ## How the conversation evals decide
 
@@ -106,7 +114,7 @@ unavailable.
 
 ## The orchestration eval
 
-`routing-orchestration.spec.ts` is the one eval that watches a whole request run
+`routing-orchestration.integration.spec.ts` is the one eval that watches a whole request run
 rather than a single turn. It sends the multi-part request that
 `mcp/mastra/verticals/routing/workflows.ts` carries as its default — weather at
 the current location, today's calendar, traffic for the time the work calendar
@@ -119,7 +127,7 @@ costs minutes of real agent work and the angles are all questions about the same
 run. The loop's shape is asserted mechanically from the tool results
 (`routing-loop.ts`); what came back is scored by the evaluator.
 
-Unlike the evals in `agent-prompt.spec.ts`, this one is **not read-only**: the
+Unlike the evals in `agent-prompt.integration.spec.ts`, this one is **not read-only**: the
 request ends in a to-do item, so a run leaves a task behind in Google Tasks. That
 is inherent to the request being tested, but worth knowing before pointing it at
 an account you care about.

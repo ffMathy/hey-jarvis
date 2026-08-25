@@ -2,9 +2,24 @@
 
 This directory contains tests for the Hey Jarvis MCP server.
 
+## Two halves
+
+Specs named `*.integration.spec.ts` need real credentials — they start the MCP
+server, call real APIs, and spend real quota. Everything else is mocked and runs
+offline with an empty environment.
+
+```bash
+bunx turbo test --filter=mcp              # the mocked half; no 1Password sign-in
+bunx turbo test:integration --filter=mcp  # the half that needs the vault
+```
+
+CI runs the mocked half on every push, and the integration half only once the
+pull request is out of draft. Anything below that mentions 1Password applies to
+the integration half alone.
+
 ## Test Files
 
-### `mcp-client-connection.spec.ts`
+### `mcp-client-connection.integration.spec.ts`
 Jest-based tests for the MCP server using the Mastra NPM package `@mastra/mcp` to create an MCP client and verify connectivity and functionality.
 
 **Features tested:**
@@ -30,7 +45,7 @@ The tests automatically start the MCP server in the background using Node.js `ch
 
 ### Run All Tests
 ```bash
-bunx turbo test --filter=mcp
+bunx turbo test:integration --filter=mcp
 ```
 
 The MCP server will automatically start and stop with the test run.
@@ -50,7 +65,7 @@ bunx jest --watch
 ### Run Specific Test File
 ```bash
 cd mcp
-bunx jest mcp-client-connection.spec.ts
+bunx jest mcp-client-connection.integration.spec.ts
 ```
 
 ### Run Tests with Coverage

@@ -41,7 +41,7 @@ import {
  * being announced, that the loop is run to its closing report, and that the tasks
  * downstream of another were actually fed what came back from it.
  *
- * Note that this one is not read-only, unlike the evals in `agent-prompt.spec.ts`:
+ * Note that this one is not read-only, unlike the evals in `agent-prompt.integration.spec.ts`:
  * the request ends in a to-do item, and CI drives the real MCP server, so a run
  * leaves a task behind in Google Tasks. That is inherent to the request being
  * tested — it is what the routing default asks for — but it is worth knowing
