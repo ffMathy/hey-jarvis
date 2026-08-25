@@ -1,6 +1,7 @@
 import type { Agent } from '@mastra/core/agent';
 import { createAgent } from '../../utils/agent-factory.js';
 import { getOllamaModelOrFallback } from '../../utils/providers/ollama-provider.js';
+import { lookupContact } from '../phone/contacts.js';
 import { notificationShortcuts } from './shortcuts.js';
 import { getPrimaryUserName } from './targets.js';
 import { notificationTools } from './tools.js';
@@ -41,6 +42,12 @@ Somebody asks you to tell a person something. You work out **who** it is for and
 - Anybody else is a contact. Pass \`{"type": "contact"}\` with their name, and their phoneNumber (in E.164 format, e.g. "+4512345678") and/or email address. A contact with neither cannot be reached, so say so instead of guessing at a number.
 - When it is not stated who a message is for, it is for the primary user.
 
+**Finding a contact's number:**
+When you were given a contact's name but no number, look it up with lookupContact rather than reporting them unreachable:
+- Use a number whose \`isE164\` is true. One without it cannot be dialled, so treat that contact as having no number.
+- If the result sets \`isAmbiguous\`, ask which person was meant instead of picking one.
+- If nothing matches, say so. Never invent a number.
+
 **Working out urgency (isUrgent):**
 - URGENT: security alerts, intruders, fire or smoke, water leaks, medical situations, anything where a delay causes damage, and anything the requester explicitly calls urgent.
 - NOT URGENT: weather updates, shopping and delivery news, calendar reminders, routine status changes, anything informational. This is the default — treat a message as urgent only when waiting would actually cost something.
@@ -71,7 +78,7 @@ Somebody asks you to tell a person something. You work out **who** it is for and
 2. Target: \`{"type": "contact", "name": "Julie", "phoneNumber": "+4512345678"}\`, isUrgent: true
 3. sendNotification reports: phone-call
 4. You answer: "Called Julie about the water leak."`,
-    tools: { ...notificationTools, ...notificationShortcuts },
+    tools: { ...notificationTools, ...notificationShortcuts, lookupContact },
   });
 
   return notificationAgent;

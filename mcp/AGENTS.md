@@ -51,7 +51,8 @@ mcp/
 │   │       ├── tools.ts
 │   │       ├── workflows.ts
 │   │       └── index.ts
-│   │   ├── phone/           # Phone calls (tools only)
+│   │   ├── phone/           # Phone calls, texts and contacts (tools only)
+│   │   │   ├── contacts.ts
 │   │   │   ├── tools.ts
 │   │   │   └── index.ts
 │   │   └── presence/        # Where the user is (shortcuts only)
@@ -145,6 +146,7 @@ Delivers a message to a person over whichever channel actually reaches them, bas
 - **Local Qwen3 model** via Ollama, with a fallback provider — the agent only classifies target and urgency, so a small model is enough
 - **Deterministic routing**: the channel is decided in code (`routing.ts`), not by the model
 - **Presence-aware**: reads the car, the house and the phone's ringer out of Home Assistant before deciding
+- **Contact resolution**: also carries `lookupContact`, so a `contact` target named without a number can be resolved to the E.164 number the call and SMS channels require, instead of being reported unreachable
 - **Error reporting**: configured with the error reporting processor (see Processors section)
 
 **Who is being notified (`target`):**
@@ -267,23 +269,35 @@ routing, so a surprising route can be traced back to the sensor that caused it.
 - `HEY_JARVIS_CAR_NAME` (optional): the car's name, when it is not a Tesla behind Tessie.
 
 ### Phone Vertical (Tools Only)
-Provides outbound phone call capabilities via ElevenLabs Twilio integration:
-- **1 phone tool**: Initiate outbound phone calls using ElevenLabs conversational agents
-- **No agents or workflows**: This vertical exposes only the tool for use by other agents
+Provides outbound calling, texting and contact lookup:
+- **4 phone tools**: Place calls, send texts, and read the user's Google address book
+- **No agents or workflows**: This vertical exposes only tools for use by other agents
 - **Twilio integration**: Uses ElevenLabs Conversational AI platform with Twilio for phone calls
 - **Custom first message**: Each call can specify a custom greeting message for the recipient
 - **Conversation support**: After the initial message, the agent can engage in conversation with the recipient
+- **Contact resolution**: Turns a spoken name ("mom", "Sarah") into the E.164 number the calling and texting tools require
 
-**Available Tool:**
+**Available Tools:**
 - **`initiatePhoneCall`**: Initiates an outbound phone call to a specified phone number
   - Requires phone number in E.164 format (e.g., "+1234567890")
   - Accepts a custom first message for the agent to speak
   - Returns conversation ID and call SID on success
   - Uses ElevenLabs conversational agent for the phone interaction
+- **`sendTextMessage`**: Sends an SMS via Twilio to a phone number in E.164 format
+- **`lookupContact`**: Resolves a name or nickname to matching contacts and their phone numbers
+  - Matching ignores case, accents and punctuation, so voice transcripts match stored spellings
+  - Returns several matches with `isAmbiguous` set, rather than guessing between two people of the same name
+  - Filters to contacts that have a phone number by default (`requirePhoneNumber`)
+- **`getContacts`**: Lists the whole address book, with `maxResults` and `forceRefresh`
+  - Reads Google Contacts, which is what syncs to the user's phone — nothing runs on the phone itself
+  - Numbers are normalized to E.164 via `libphonenumber-js`; one that cannot be placed is returned as stored with `isE164: false`
+  - Results are cached for 5 minutes, since a lookup ranks the entire address book locally
 
 **Required Environment Variables:**
 - `HEY_JARVIS_ELEVENLABS_API_KEY`: ElevenLabs API key for authentication
 - `HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID` or `HEY_JARVIS_ELEVENLABS_AGENT_ID`: ID of the ElevenLabs conversational agent to use (test agent ID takes precedence if set)
+- `HEY_JARVIS_TWILIO_ACCOUNT_SID`, `HEY_JARVIS_TWILIO_AUTH_TOKEN`, `HEY_JARVIS_TWILIO_PHONE_NUMBER`: Twilio credentials for `sendTextMessage`
+- `HEY_JARVIS_GOOGLE_CLIENT_ID`, `HEY_JARVIS_GOOGLE_CLIENT_SECRET`, `HEY_JARVIS_GOOGLE_REFRESH_TOKEN`: Google OAuth2 credentials for the contact tools
 
 **Example Usage:**
 ```typescript
@@ -292,6 +306,15 @@ await phoneTools.initiatePhoneCall.execute({
   phoneNumber: '+1234567890',
   firstMessage: 'Hello, this is Jarvis calling to remind you about your upcoming appointment.',
 });
+
+// Resolve a spoken name, then text whoever it turned out to be
+const { matches } = await executeTool(lookupContact, { name: 'mom' });
+const [contact] = matches;
+const number = contact?.phoneNumbers.find((phoneNumber) => phoneNumber.isE164);
+
+if (number) {
+  await executeTool(sendTextMessage, { phoneNumber: number.value, message: 'Running 10 minutes late' });
+}
 ```
 
 **Setup Requirements:**
@@ -299,8 +322,26 @@ await phoneTools.initiatePhoneCall.execute({
 2. Create a conversational agent in ElevenLabs
 3. Configure a Twilio phone number in ElevenLabs for outbound calls
 4. Store the credentials in 1Password:
-   - `op://Personal/ElevenLabs/API key`
-   - `op://Personal/ElevenLabs/Jarvis agent ID`
+   - `op://Jarvis/ElevenLabs/API key`
+   - `op://Jarvis/ElevenLabs/Jarvis agent ID`
+   - `op://Jarvis/Twilio/Account SID`, `op://Jarvis/Twilio/Auth token`, `op://Jarvis/Twilio/Phone number` for `sendTextMessage`
+5. The contact tools reuse the **existing** Google OAuth credentials — no new 1Password item or field:
+   - `op://Jarvis/Google/Hey Jarvis client ID` → `HEY_JARVIS_GOOGLE_CLIENT_ID` (unchanged)
+   - `op://Jarvis/Google/Hey Jarvis client secret` → `HEY_JARVIS_GOOGLE_CLIENT_SECRET` (unchanged)
+   - `op://Jarvis/Google/Hey Jarvis refresh token` → `HEY_JARVIS_GOOGLE_REFRESH_TOKEN` (**value must be replaced**)
+6. Enable the **Google People API** in the Google Cloud project, then mint a refresh token carrying the contacts scope:
+   ```bash
+   # generate-tokens skips a provider that already has a stored token, so clear it first
+   sqlite3 mcp/mastra.sql.db "DELETE FROM oauth_credentials WHERE provider='google';"
+
+   # --reveal-token prints the full value so it can be pasted into 1Password;
+   # without it only a fingerprint is shown, and revealing is refused on CI
+   bun run --cwd mcp generate-tokens --reveal-token
+   ```
+   - Paste the new value into the `refresh token` field of the **Google OAuth** item in the **Personal** vault
+   - Updating 1Password is what matters for CI and deployment: both resolve `mcp/op.env` through `OP_SERVICE_ACCOUNT_TOKEN`, so a stale vault copy leaves them on a token without the contacts scope
+   - Client ID and secret are always read from environment variables; only the refresh token can also live in Mastra storage
+   - See [Google OAuth2 Setup](#google-oauth2-setup) for the full flow
 
 ### Coding Agent
 Manages GitHub repositories and coordinates feature implementation:
@@ -416,7 +457,7 @@ Google Maps APIs require an API key rather than OAuth2 credentials. If you alrea
    - Places API (New)
    - Geocoding API
 4. Go to **Credentials** → **Create Credentials** → **API Key** (or reuse existing)
-5. Store the API key in 1Password: `op://Personal/Google/Hey Jarvis API key`
+5. Store the API key in 1Password: `op://Jarvis/Google/Hey Jarvis API key`
 6. Set environment variable: `HEY_JARVIS_GOOGLE_MAPS_API_KEY`
 
 **Note:**
@@ -1231,7 +1272,7 @@ All environment variables use the `HEY_JARVIS_` prefix for easy management and D
 - **Weather**: `HEY_JARVIS_OPENWEATHERMAP_API_KEY` for weather data
 - **Google Maps**: `HEY_JARVIS_GOOGLE_MAPS_API_KEY` for navigation, travel time estimation and place search
 - **Google Gemini**: `HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY` for language models and embeddings. Deliberately separate from the Maps key -- they are restricted to different APIs and are not interchangeable.
-- **Google OAuth2 (Calendar & Tasks)**: `HEY_JARVIS_GOOGLE_CLIENT_ID`, `HEY_JARVIS_GOOGLE_CLIENT_SECRET`, `HEY_JARVIS_GOOGLE_REFRESH_TOKEN` for accessing Google Calendar and Tasks APIs (see [Google OAuth2 Setup](#google-oauth2-setup) below)
+- **Google OAuth2 (Calendar, Tasks & Contacts)**: `HEY_JARVIS_GOOGLE_CLIENT_ID`, `HEY_JARVIS_GOOGLE_CLIENT_SECRET`, `HEY_JARVIS_GOOGLE_REFRESH_TOKEN` for accessing the Google Calendar, Tasks and People APIs (see [Google OAuth2 Setup](#google-oauth2-setup) below)
 - **Shopping (Bilka)**: `HEY_JARVIS_BILKA_EMAIL`, `HEY_JARVIS_BILKA_PASSWORD`, `HEY_JARVIS_BILKA_API_KEY` for authentication
 - **Shopping (Search)**: `HEY_JARVIS_ALGOLIA_API_KEY`, `HEY_JARVIS_ALGOLIA_APPLICATION_ID`, `HEY_JARVIS_BILKA_USER_TOKEN` for product search
 - **ElevenLabs**: `HEY_JARVIS_ELEVENLABS_API_KEY`, `HEY_JARVIS_ELEVENLABS_AGENT_ID`, `HEY_JARVIS_ELEVENLABS_VOICE_ID` for voice AI (test agent ID `HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID` takes precedence for phone calls)
@@ -1271,7 +1312,7 @@ If you encounter 1Password CLI authentication issues:
 
 ### Google OAuth2 Setup
 
-The Calendar and Todo-List verticals use Google's official `googleapis` NPM package for accessing Google Calendar and Google Tasks APIs. These APIs require OAuth2 authentication as they access private user data.
+The Calendar, Todo-List and Phone verticals use Google's official `googleapis` NPM package for accessing the Google Calendar, Google Tasks and Google People APIs. These APIs require OAuth2 authentication as they access private user data.
 
 #### Token Generation Behavior
 
@@ -1291,7 +1332,7 @@ bun run --cwd mcp generate-tokens
 ```
 
 #### Why OAuth2?
-- **Private Data Access**: Google Calendar and Tasks contain personal information that requires user consent
+- **Private Data Access**: Google Calendar, Tasks and Contacts contain personal information that requires user consent
 - **API Key Limitation**: API keys only work for public data, not private calendars or task lists
 - **Automatic Token Refresh**: The `googleapis` library handles access token refresh automatically
 - **Long-Lived Tokens**: Refresh tokens remain valid for 6+ months with regular use
@@ -1304,6 +1345,7 @@ bun run --cwd mcp generate-tokens
 3. Enable the following APIs:
    - Google Calendar API
    - Google Tasks API
+   - Google People API
 
 **Step 2: Configure OAuth2 Credentials**
 1. Navigate to **APIs & Services** → **Credentials**
@@ -1325,13 +1367,13 @@ bun run --cwd mcp generate-tokens
 
 # This will:
 # 1. Open your browser for Google authorization
-# 2. Request access to Calendar and Tasks
+# 2. Request access to Calendar, Tasks and Contacts
 # 3. Generate and store your refresh token
 ```
 
 The script will guide you through:
 - Opening the Google authorization page
-- Granting access to your Calendar and Tasks
+- Granting access to your Calendar, Tasks and Contacts
 - Receiving your long-lived refresh token
 
 The token is written straight to Mastra storage and only summarised on screen (length + last three
@@ -1362,6 +1404,35 @@ bun run --cwd mcp generate-tokens
 - Single source for refresh tokens across deployments
 
 **Note**: Client ID and secret must always be provided via environment variables for security.
+
+#### 1Password Items
+
+`mcp/op.env` maps each environment variable to an `op://` reference, resolved at process start by
+`run-with-env.sh` — through the 1Password CLI locally, and through `OP_SERVICE_ACCOUNT_TOKEN` in CI
+and deployment. Everything lives in the **Jarvis** vault:
+
+| Environment variable | 1Password reference |
+| --- | --- |
+| `HEY_JARVIS_GOOGLE_CLIENT_ID` | `op://Jarvis/Google/Hey Jarvis client ID` |
+| `HEY_JARVIS_GOOGLE_CLIENT_SECRET` | `op://Jarvis/Google/Hey Jarvis client secret` |
+| `HEY_JARVIS_GOOGLE_REFRESH_TOKEN` | `op://Jarvis/Google/Hey Jarvis refresh token` |
+
+Adopting another Google API in a vertical needs no new item or field — Calendar, Tasks and Contacts
+all authenticate with this one credential. What it does need is a **new refresh token value**,
+because the scopes a token carries are fixed when it is minted:
+
+```bash
+# generate-tokens skips a provider that already has a stored token, so clear it first
+sqlite3 mcp/mastra.sql.db "DELETE FROM oauth_credentials WHERE provider='google';"
+
+# --reveal-token prints the full value to paste into 1Password; without it only a
+# fingerprint is shown, and revealing is refused when CI is detected
+bun run --cwd mcp generate-tokens --reveal-token
+```
+
+Then update the `Hey Jarvis refresh token` field on the **Google** item. Updating 1Password is the
+step that matters beyond your own machine: the Mastra copy is local, so CI and the deployed
+assistant keep using the vault's token until it is replaced.
 
 #### Token Lifecycle
 
@@ -1478,7 +1549,7 @@ await credentialsStorage.deleteRefreshToken('google');
 The token generation script (`mcp/generate-refresh-tokens.ts`) is designed to support multiple OAuth providers through a common interface. All configured providers will be processed automatically when the script runs.
 
 OAuth provider configurations are defined in separate files under `mcp/mastra/credentials/`:
-- `mcp/mastra/credentials/google.ts` - Google Calendar and Tasks provider
+- `mcp/mastra/credentials/google.ts` - Google Calendar, Tasks and Contacts provider
 - `mcp/mastra/credentials/microsoft.ts` - Microsoft Outlook/Email provider
 - `mcp/mastra/credentials/types.ts` - Shared TypeScript interfaces
 - `mcp/mastra/credentials/index.ts` - Module exports
@@ -1633,7 +1704,7 @@ if (response.refreshToken && response.refreshToken !== refreshToken) {
 The token generation script (`mcp/generate-refresh-tokens.ts`) is designed to support multiple OAuth providers through a common interface. All configured providers will be processed automatically when the script runs.
 
 OAuth provider configurations are defined in separate files under `mcp/mastra/credentials/`:
-- `mcp/mastra/credentials/google.ts` - Google Calendar and Tasks provider
+- `mcp/mastra/credentials/google.ts` - Google Calendar, Tasks and Contacts provider
 - `mcp/mastra/credentials/microsoft.ts` - Microsoft Outlook/Email provider
 - `mcp/mastra/credentials/types.ts` - Shared TypeScript interfaces
 - `mcp/mastra/credentials/index.ts` - Module exports
@@ -1763,9 +1834,9 @@ const PROVIDERS: OAuthProvider[] = [
 
 5. **Update Environment Files**: Add new variables to `mcp/op.env`
    ```bash
-   HEY_JARVIS_YOUR_PROVIDER_CLIENT_ID="op://Personal/Your Provider/client id"
-   HEY_JARVIS_YOUR_PROVIDER_CLIENT_SECRET="op://Personal/Your Provider/client secret"
-   HEY_JARVIS_YOUR_PROVIDER_REFRESH_TOKEN="op://Personal/Your Provider/refresh token"
+   HEY_JARVIS_YOUR_PROVIDER_CLIENT_ID="op://Jarvis/Your Provider/Hey Jarvis client ID"
+   HEY_JARVIS_YOUR_PROVIDER_CLIENT_SECRET="op://Jarvis/Your Provider/Hey Jarvis client secret"
+   HEY_JARVIS_YOUR_PROVIDER_REFRESH_TOKEN="op://Jarvis/Your Provider/Hey Jarvis refresh token"
    ```
 
 6. **Run Token Generation**: Execute `bun run --cwd mcp generate-tokens`
