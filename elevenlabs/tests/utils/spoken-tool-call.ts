@@ -12,6 +12,11 @@ export const SPOKEN_TOOL_CALL_PATTERNS: { pattern: RegExp; description: string }
   { pattern: /routePromptWorkflow/i, description: 'the routePromptWorkflow tool name' },
   { pattern: /getNextInstructionsWorkflow/i, description: 'the getNextInstructionsWorkflow tool name' },
   { pattern: /transfer_to_agent/i, description: 'the transfer_to_agent tool name' },
+  // Hanging up has its own way of going wrong: rather than reciting the call, the
+  // agent writes a stage direction for it — `[end_call invoked]` — which is an audio
+  // tag as far as the voice is concerned, so the user hears nothing and stays on a
+  // line that was never closed.
+  { pattern: /end_call/i, description: 'the end_call tool name' },
   {
     // `something(argument=` — code, not speech. The opening bracket has to follow the
     // name with nothing in between, which is what separates it from the parenthetical

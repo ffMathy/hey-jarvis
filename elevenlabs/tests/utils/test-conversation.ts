@@ -85,6 +85,7 @@ export class TestConversation {
       .filter((message) => message.type === 'mcp_tool_call')
       .map((message, index) => `  ${index + 1}. ${message.mcp_tool_call.tool_name} (${message.mcp_tool_call.state})`);
 
+    const systemToolCalls = this.getInvokedSystemToolNames();
     const spokenToolCalls = findSpokenToolCalls(messages);
     const lookupPromises = findLookupPromisesBeforeRouting(messages);
 
@@ -104,12 +105,24 @@ export class TestConversation {
       `   agent said nothing until the whole lookup had finished; "no-tool-call" = nothing`,
       `   was routed, so the question does not arise)`,
       '',
+      `System tools the agent invoked: ${systemToolCalls.length > 0 ? systemToolCalls.join(', ') : 'none'}`,
       `Tool names spoken aloud by the agent: ${spokenToolCalls.length > 0 ? spokenToolCalls.join('; ') : 'none'}`,
       `Lookups the agent announced before routing: ${lookupPromises.length > 0 ? lookupPromises.join('; ') : 'none'}`,
       '',
       `Message order: ${describeMessageOrder(messages)}`,
       ...routingSection,
     ].join('\n');
+  }
+
+  /**
+   * Names of the system tools the agent invoked — `end_call`, `transfer_to_agent`.
+   * They do not travel over MCP, so they arrive as `agent_tool_response` events and
+   * getCalledToolNames, which reads `mcp_tool_call`, never sees them.
+   */
+  getInvokedSystemToolNames(): string[] {
+    return this.getMessages()
+      .filter((message) => message.type === 'agent_tool_response')
+      .map((message) => message.agent_tool_response.tool_name);
   }
 
   /**
