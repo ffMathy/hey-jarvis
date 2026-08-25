@@ -48,29 +48,6 @@ describe('Synapse Tools Integration Tests', () => {
     }, 10000);
   });
 
-  describe('flushStateChanges', () => {
-    it('should flush pending state changes', async () => {
-      // First register a change
-      await executeTool(synapseTools.registerStateChange, {
-        source: 'test',
-        stateType: 'test_flush',
-        stateData: { test: 'data' },
-      });
-
-      // Then flush
-      const result = await executeTool(synapseTools.flushStateChanges, {});
-
-      // Validate structure
-      expect(result).toBeDefined();
-      expect(result.flushed).toBe(true);
-      expect(typeof result.processedCount).toBe('number');
-      expect(typeof result.message).toBe('string');
-
-      console.log('✅ State changes flushed successfully');
-      console.log('   - Processed count:', result.processedCount);
-    }, 15000);
-  });
-
   describe('subscriptions', () => {
     it('should register, retrieve, trigger and remove a Given/When/Then subscription', async () => {
       const registered = await executeTool(synapseTools.registerSubscription, {

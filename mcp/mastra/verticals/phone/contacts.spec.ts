@@ -66,11 +66,13 @@ const actualGetGoogleAuth = realGoogleAuth.getGoogleAuth;
 /**
  * Whether the stand-in auth client is in force.
  *
- * `mock.module` is process-global in Bun, and the calendar and todo-list
- * verticals share this same auth module — so without the fallback this file's
- * substitution would follow their specs, which do talk to Google, into their own
- * runs. Deferring to the real implementation whenever this file is not driving
- * keeps the mock local in effect if not in scope.
+ * `mock.module` is process-global in Bun, so this file's substitution reaches
+ * every other spec sharing the process — and `credentials/google-auth.js` is
+ * shared with the calendar and todo-list verticals. Those two are integration
+ * specs, which run in a separate process from this one, so today nothing else in
+ * the unit run reaches for it; the fallback is what keeps that from being load
+ * bearing. Deferring to the real implementation whenever this file is not
+ * driving keeps the mock local in effect if not in scope.
  */
 let isAuthMocked = false;
 
@@ -119,11 +121,13 @@ afterAll(() => {
 /**
  * Guards the substitution above rather than the contacts code.
  *
- * This file mocks a module the calendar and todo-list verticals also import, so
- * a mistake here breaks specs that have nothing to do with contacts — and the
- * first version of it did: the fallback was read lazily, resolved back to the
- * mock, and recursed until the stack blew. That only surfaced where Google
- * credentials exist, so it passed locally and failed in CI.
+ * This file mocks a module three verticals import, so a mistake here breaks
+ * specs that have nothing to do with contacts — and the first version of it did:
+ * the fallback was read lazily, resolved back to the mock, and recursed until
+ * the stack blew. It only surfaced where Google credentials exist, so it passed
+ * locally and failed in CI. Splitting the suite has since put the specs it broke
+ * in another process, which makes these two the thing keeping the substitution
+ * honest.
  */
 describe('auth module substitution', () => {
   it('holds the real auth function, not the mock that replaced it', () => {

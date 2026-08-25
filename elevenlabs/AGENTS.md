@@ -30,7 +30,8 @@ elevenlabs/
 
 ## TURBO Commands
 ```bash
-bunx turbo test --filter=elevenlabs     # Run tests
+bunx turbo test --filter=elevenlabs     # Run the offline tests
+bunx turbo test:integration --filter=elevenlabs  # Run the live conversation evals
 bunx turbo build --filter=elevenlabs    # Build the project
 bunx turbo deploy --filter=elevenlabs   # Update ElevenLabs agent configuration
 bun run --cwd elevenlabs refresh  # Fetch current agent configuration
@@ -45,6 +46,17 @@ Required (via 1Password):
 - `HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY` - Google Gemini API for test evaluations
 
 ## Testing Guidelines
+
+### Where a test belongs
+
+A spec that connects to ElevenLabs, brings up the tunnel or scores a real
+conversation is named `*.integration.spec.ts` and runs under
+`turbo test:integration`, which is the only target that resolves the credentials
+above. A spec that only exercises the detectors keeps the plain `*.spec.ts`
+suffix and runs under `turbo test`, which carries no secrets at all.
+
+CI runs the offline half on every push and the live half only once the pull
+request is out of draft — so an eval never spends quota on work in progress.
 
 ### Test Score Requirements
 All tests must use strict score requirements (>0.9 for 90%+ confidence):

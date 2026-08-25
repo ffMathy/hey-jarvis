@@ -20,6 +20,7 @@ export * from './human-in-the-loop/index.js';
 export * from './internet-of-things/index.js';
 export * from './notification/index.js';
 export * from './phone/index.js';
+export * from './presence/index.js';
 export * from './shopping/index.js';
 export * from './synapse/index.js';
 export * from './todo-list/index.js';

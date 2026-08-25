@@ -30,7 +30,8 @@ The project is organized by business domain. Each vertical contains its own agen
 | `email` | Gmail search, draft, reply |
 | `human-in-the-loop` | Form-based approval workflows |
 | `internet-of-things` | Smart home device control (Home Assistant) |
-| `notification` | Multi-channel alerts (voice, SMS, calls) |
+| `notification` | Alerts routed to whoever they are for, over whichever channel reaches them (call, voice announcement, push, SMS, email) |
+| `presence` | Where the primary user is: in the car, at home, or out |
 | `phone` | Phone calls and texts (Twilio/ElevenLabs), contacts (Google People) |
 | `routing` | DAG-based task routing and orchestration |
 | `shopping` | Bilka grocery shopping (Danish) |
