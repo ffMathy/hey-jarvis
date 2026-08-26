@@ -108,12 +108,12 @@ const instructionsOutputSchema = z.object({
  * field — so treat them as API surface rather than log messages.
  *
  * They also carry the loop itself. The agent prompt used to spell out how to
- * poll, what to say between reports and what to do with a failed call, and the
- * voice model running it is a small one: every rule kept there is context it
- * pays for on every turn, whether or not a routing request is in flight, and
- * every rule stated in both places is a rule it can obey twice. So the prompt
- * now says only "do what the instructions field says", and the specifics live
- * here, where they arrive exactly when they apply.
+ * poll, what to say between reports and what to do with a failed call: every
+ * rule kept there is context the voice model pays for on every turn, whether or
+ * not a routing request is in flight, and every rule stated in both places is a
+ * rule it can obey twice. So the prompt now says only "do what the instructions
+ * field says", and the specifics live here, where they arrive exactly when they
+ * apply.
  */
 const INSTRUCTIONS = {
   async: 'The request is being processed in the background and will complete on its own. End the call now.',
