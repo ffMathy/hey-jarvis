@@ -2,8 +2,19 @@ import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { Agent } from '@mastra/core/agent';
 import { readFile } from 'fs/promises';
 import { getPublicAgents } from 'mcp/mastra/mcp-server.js';
-import agentConfig from '../../src/assets/agent-config.json';
 import type { ConversationStrategy, ServerMessage, UserMessageEvent } from './conversation-strategy.js';
+
+/**
+ * The model this strategy stands the agent up on.
+ *
+ * It is deliberately not the `llm` from `agent-config.json`. That field names a
+ * model on ElevenLabs' roster, which is not the same roster Google serves: it
+ * was handed to `createGoogleGenerativeAI` verbatim, so every run died on an
+ * unknown model the moment production stopped happening to run a Gemini. This
+ * strategy is a local stand-in for the real agent, not a copy of it, and a
+ * stand-in that cannot start is worth nothing.
+ */
+const SIMULATION_MODEL = 'gemini-flash-latest';
 
 export interface GeminiMastraConversationOptions {
   apiKey?: string;
@@ -66,7 +77,7 @@ export class GeminiMastraConversationStrategy implements ConversationStrategy {
         id: 'jarvis',
         name: 'J.A.R.V.I.S.',
         instructions: agentPrompt,
-        model: googleProvider(agentConfig.conversationConfig.agent.prompt.llm),
+        model: googleProvider(SIMULATION_MODEL),
         agents,
         tools,
         workflows: {},
