@@ -36,6 +36,16 @@ import { isValidationError, createTool as mastraCreateTool, noopObserve } from '
 export const createTool = mastraCreateTool;
 
 /**
+ * The Mastra handle a tool is given in its execution context.
+ *
+ * Deliberately wider than the `Mastra` class: the runtime hands tools a structural view of
+ * it, so a helper that a tool passes this along to has to accept that view rather than the
+ * class, or the call does not typecheck. Re-exported here so verticals keep taking their
+ * Mastra types from the factory.
+ */
+export type ToolMastra = NonNullable<ToolExecuteContext<ToolExecutionContext>['mastra']>;
+
+/**
  * The subset of a Mastra tool needed to invoke it directly.
  *
  * Declared structurally rather than as `Tool<...>` so that shortcuts, workflow

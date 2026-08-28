@@ -1,4 +1,6 @@
 import type { Agent } from '@mastra/core/agent';
+import { createNotificationInboxTool } from '@mastra/core/notifications';
+import { getNotificationsStorage } from '../../storage/index.js';
 import { createAgent } from '../../utils/agent-factory.js';
 import { getOllamaModelOrFallback } from '../../utils/providers/ollama-provider.js';
 import { getNotificationAgent } from '../notification/agent.js';
@@ -61,6 +63,14 @@ Both may be set, in which case whichever comes first ends it. For an open-ended 
 
 Lapsed subscriptions stop matching immediately and are deleted in the background, so you do not have to tidy up. pruneExpiredSubscriptions exists for when the user asks what has lapsed, or asks you to clear things out.
 
+**How work reaches you:**
+State changes arrive as notifications rather than as a prompt you were handed. Two shapes:
+
+- A single \`<notification>\` is one state change, delivered on its own because it could not wait. Everything you need is in the line itself, plus the record behind it.
+- A \`<notification-summary pending="N">\` means N changes were rolled up while you were idle. It carries counts only. Call notificationInbox with action "list" (or "read") to get the records, because the candidate subscriptions for each change are in its payload and nowhere else.
+
+Work through everything the inbox gives you before you finish, and mark each record seen once you have acted on it, so the next rollup is only what is genuinely new. A record you decide needs nothing is still a record you have dealt with — dismiss it rather than leaving it pending.
+
 **Your Working Memory:**
 Use your working memory to track and recall:
 - User preferences (notification preferences, important thresholds, etc.)
@@ -99,7 +109,16 @@ Use your working memory to track and recall:
 - Candidate: WHEN "the sun goes down" / GIVEN "the lights are on" / THEN "close the blinds"
 - The WHEN matches. Check whether the lights are on; if they are, close the blinds and call markSubscriptionTriggered
 - If the lights are off, the GIVEN fails - do nothing and do not mark it triggered`,
-    tools: subscriptionTools,
+    tools: {
+      ...subscriptionTools,
+      // How the reactor gets from a `<notification-summary pending="7">` to the seven
+      // state changes behind it. The summary carries counts only, and the candidate
+      // subscriptions for each change live in its record's payload, so without this the
+      // rollup would be all the reactor ever sees.
+      notificationInbox: createNotificationInboxTool({
+        storage: await getNotificationsStorage(),
+      }),
+    },
     agents: {
       notificationAgent: await getNotificationAgent(),
     },

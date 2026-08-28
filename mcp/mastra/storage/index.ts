@@ -42,6 +42,22 @@ export async function getSqlStorageProvider(): Promise<LibSQLStore> {
   });
 }
 
+/**
+ * The notifications domain of the shared SQL store.
+ *
+ * `getStore` resolves to `undefined` for a domain the adapter does not implement, which
+ * for the notification inbox is not a case worth threading through every caller — LibSQL
+ * implements it, and if that ever stops being true the reactor's inbox is broken and
+ * should say so at construction rather than at the first rollup.
+ */
+export async function getNotificationsStorage() {
+  const store = await (await getSqlStorageProvider()).getStore('notifications');
+  if (!store) {
+    throw new Error('The configured SQL storage provider does not implement the notifications domain.');
+  }
+  return store;
+}
+
 export async function getVectorStorageProvider(): Promise<LibSQLVector> {
   await ensureDatabaseDirectory();
 

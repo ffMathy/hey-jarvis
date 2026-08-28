@@ -649,7 +649,7 @@ const registerEmailsStateChange = createStep({
   }),
   outputSchema: z.object({
     registered: z.boolean(),
-    batched: z.boolean(),
+    duplicate: z.boolean(),
     message: z.string(),
   }),
   execute: async ({ state, inputData, mastra }) => {
@@ -659,7 +659,7 @@ const registerEmailsStateChange = createStep({
       console.log('⏭️  No emails to register with state reactor');
       return {
         registered: false,
-        batched: false,
+        duplicate: false,
         message: 'No emails to register',
       };
     }
@@ -698,7 +698,7 @@ const processEmailTriggersStep = createStep({
   stateSchema: sharedEmailStateSchema,
   inputSchema: z.object({
     registered: z.boolean(),
-    batched: z.boolean(),
+    duplicate: z.boolean(),
     message: z.string(),
   }),
   outputSchema: z.object({
