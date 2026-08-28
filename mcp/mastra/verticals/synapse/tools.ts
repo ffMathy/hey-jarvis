@@ -1,16 +1,20 @@
 import { z } from 'zod';
-import { logger } from '../../utils/logger.js';
 import { createTool } from '../../utils/tool-factory.js';
-import { stateChangeBatcher } from './state-change-batcher.js';
+import { registerStateChangeNotification } from './state-change-notifier.js';
 import { subscriptionTools } from './subscription-tools.js';
 import { stateChangeNotificationWorkflow } from './workflows.js';
 
-// Register state change tool for reactive notifications
-// This tool uses a batcher to optimize token usage by processing multiple state changes together
+/**
+ * Files a state change for the State Change Reactor.
+ *
+ * Batching, duplicate suppression and retry all live in Mastra's notification pipeline
+ * now, so this tool only has to hand the change over. See
+ * {@link ./state-change-notifier.ts} for what replaced the old in-memory batcher.
+ */
 export const registerStateChange = createTool({
   id: 'registerStateChange',
   description:
-    'Registers a state change event. State changes are batched and processed together to optimize token usage. Use this when significant state changes occur that might warrant user notification.',
+    'Registers a state change event. Changes are filed as notifications for the State Change Reactor, which sees them rolled up rather than one at a time. Identical repeats of a change collapse into the record already waiting. Use this when significant state changes occur that might warrant user notification.',
   inputSchema: z.object({
     source: z
       .string()
@@ -22,81 +26,37 @@ export const registerStateChange = createTool({
   }),
   outputSchema: z.object({
     registered: z.boolean(),
-    batched: z
-      .boolean()
-      .describe('True if the change is waiting in the batch queue, false if it was processed immediately'),
+    duplicate: z.boolean().describe('True if this collapsed into a change that was already waiting'),
     message: z.string(),
   }),
-  execute: async (inputData) => {
-    logger.info('Registering state change', {
-      stateType: inputData.stateType,
-      source: inputData.source,
-    });
+  execute: async (inputData, context) => {
+    if (!context.mastra) {
+      // Not defensive padding: the reactor's notification storage is reached through the
+      // Mastra instance it is registered on, so without one there is nowhere to file this.
+      throw new Error('registerStateChange needs a Mastra instance to file the change against.');
+    }
 
-    // Add to batcher for optimized processing
-    await stateChangeBatcher.add({
-      source: inputData.source,
-      stateType: inputData.stateType,
-      stateData: inputData.stateData,
-    });
+    const result = await registerStateChangeNotification(
+      {
+        source: inputData.source,
+        stateType: inputData.stateType,
+        stateData: inputData.stateData,
+      },
+      context.mastra,
+    );
 
-    const stats = stateChangeBatcher.getStats();
     return {
       registered: true,
-      batched: stats.pendingCount > 0,
-      message: `State change ${inputData.stateType} registered. Batch: ${stats.pendingCount} pending, ${stats.totalProcessed} processed`,
+      duplicate: result.duplicate,
+      message: result.duplicate
+        ? `State change ${inputData.stateType} matched one already waiting; nothing new was queued.`
+        : `State change ${inputData.stateType} registered (${result.action}).`,
     };
-  },
-});
-
-// Tool to flush pending state changes immediately
-export const flushStateChanges = createTool({
-  id: 'flushStateChanges',
-  description:
-    'Immediately process all pending state changes without waiting for the batch timeout. Useful when you need immediate processing of accumulated changes.',
-  inputSchema: z.object({}),
-  outputSchema: z.object({
-    flushed: z.boolean(),
-    processedCount: z.number(),
-    message: z.string(),
-  }),
-  execute: async () => {
-    const statsBefore = stateChangeBatcher.getStats();
-    await stateChangeBatcher.flush();
-    const statsAfter = stateChangeBatcher.getStats();
-
-    const processedInFlush = statsAfter.totalProcessed - statsBefore.totalProcessed;
-
-    return {
-      flushed: true,
-      processedCount: processedInFlush,
-      message: `Flushed ${processedInFlush} state changes. Total: ${statsAfter.totalProcessed} processed, ${statsAfter.batchesProcessed} batches`,
-    };
-  },
-});
-
-// Tool to get batcher statistics
-export const getStateChangeBatcherStats = createTool({
-  id: 'getStateChangeBatcherStats',
-  description: 'Get current statistics for the state change batcher, including pending changes and processing status.',
-  inputSchema: z.object({}),
-  outputSchema: z.object({
-    totalReceived: z.number(),
-    totalProcessed: z.number(),
-    batchesProcessed: z.number(),
-    pendingCount: z.number(),
-    isProcessing: z.boolean(),
-    droppedCount: z.number().describe('Number of state changes dropped after exceeding retry limit'),
-  }),
-  execute: async () => {
-    return stateChangeBatcher.getStats();
   },
 });
 
 export const synapseTools = {
   registerStateChange,
-  flushStateChanges,
-  getStateChangeBatcherStats,
   ...subscriptionTools,
 };
 

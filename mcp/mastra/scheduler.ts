@@ -1,79 +1,66 @@
 import { mastra } from './index.js';
-import { CronPatterns, WorkflowScheduler } from './utils/workflows/workflow-scheduler.js';
-import {
-  emailCheckingWorkflow,
-  formRepliesDetectionWorkflow,
-  iotMonitoringWorkflow,
-  storageRetentionWorkflow,
-  weatherMonitoringWorkflow,
-  weeklyMealPlanningWorkflow,
-} from './verticals/index.js';
+import { reconcileSchedules, SCHEDULED_WORKFLOWS, TIMEZONE } from './schedule-reconciler.js';
+import { logger } from './utils/logger.js';
 
 /**
- * Configure scheduled workflows
+ * Boot wiring for the scheduled workflows.
  *
- * This file defines all workflows that should run on recurring schedules.
- * Add new scheduled workflows here to enable automatic execution.
+ * What runs when lives in {@link ./schedule-reconciler.ts}; this file is only the part
+ * that needs the application's Mastra instance.
  */
-export async function initializeScheduler(): Promise<WorkflowScheduler> {
-  const scheduler = new WorkflowScheduler(mastra, {
-    timezone: 'Europe/Copenhagen',
-    onError: (error, workflowId) => {
-      console.error(`\n🚨 Scheduled workflow error: ${workflowId}`);
-      console.error(`   ${error.message}`);
-    },
+/**
+ * Whether a declared workflow is actually registered on the instance that will run it.
+ *
+ * A schedule row names its target by id. When the scheduler cannot resolve that id it
+ * deletes the row after a few ticks, so a workflow declared here but left out of
+ * `mastra/index.ts` would simply stop being scheduled about thirty seconds after boot,
+ * silently. The old scheduler refused to start in that situation and this keeps that.
+ */
+function isRegistered(workflowId: string): boolean {
+  try {
+    return Boolean(mastra.getWorkflowById(workflowId));
+  } catch {
+    return false;
+  }
+}
+
+export async function initializeScheduler(): Promise<void> {
+  const unregistered = SCHEDULED_WORKFLOWS.filter((declaration) => !isRegistered(declaration.workflowId));
+  if (unregistered.length > 0) {
+    throw new Error(
+      `Scheduled workflows are not registered with Mastra: ${unregistered
+        .map((declaration) => declaration.workflowId)
+        .join(', ')}. Add them to the \`workflows\` map in mastra/index.ts.`,
+    );
+  }
+
+  // Workers first: the scheduler worker only starts when there is storage for it to poll,
+  // and the workflow event processor it publishes fires to has to be listening before the
+  // first one arrives.
+  await mastra.startWorkers();
+
+  const scheduleIdsByWorkflowId = await reconcileSchedules(mastra.schedules);
+  logger.info('Workflow schedules reconciled', {
+    count: scheduleIdsByWorkflowId.size,
+    timezone: TIMEZONE,
   });
 
-  // Weather monitoring - every 3 hours
-  scheduler.schedule({
-    workflow: weatherMonitoringWorkflow,
-    schedule: CronPatterns.EVERY_3_HOURS,
-    inputData: {},
-  });
+  for (const declaration of SCHEDULED_WORKFLOWS) {
+    if (!declaration.runOnStartup) {
+      continue;
+    }
 
-  // Weekly meal planning - every Sunday at 8am
-  scheduler.schedule({
-    workflow: weeklyMealPlanningWorkflow,
-    schedule: CronPatterns.WEEKLY_SUNDAY_8AM,
-    inputData: {},
-  });
+    const scheduleId = scheduleIdsByWorkflowId.get(declaration.workflowId);
+    if (!scheduleId) {
+      continue;
+    }
 
-  // Email checking - every minute
-  // Checks for new emails and updates tracking (does NOT trigger state reactor)
-  scheduler.schedule({
-    workflow: emailCheckingWorkflow,
-    schedule: CronPatterns.EVERY_MINUTE,
-    inputData: {},
-    runOnStartup: true,
-  });
-
-  // Form replies detection - every 3 hours
-  // Processes form reply emails and triggers state reactor for notifications
-  scheduler.schedule({
-    workflow: formRepliesDetectionWorkflow,
-    schedule: CronPatterns.EVERY_3_HOURS,
-    inputData: {},
-    runOnStartup: true,
-  });
-
-  // IoT device monitoring - every 3 hours
-  // Polls Home Assistant for state changes, filters out devices/entities with 'sensitive' label.
-  scheduler.schedule({
-    workflow: iotMonitoringWorkflow,
-    schedule: CronPatterns.EVERY_3_HOURS,
-    inputData: {},
-    runOnStartup: true,
-  });
-
-  // Storage retention - nightly
-  // Trims token usage rows past their retention window. Nothing called the cleanup this
-  // runs, so the table grew for the life of the database; midnight is chosen because the
-  // delete is the only write that touches every row and the device is otherwise idle.
-  scheduler.schedule({
-    workflow: storageRetentionWorkflow,
-    schedule: CronPatterns.DAILY_AT_MIDNIGHT,
-    inputData: {},
-  });
-
-  return scheduler;
+    // Fired off the schedule and not awaited: these exist to catch up on whatever happened
+    // while the process was down, and the server should not wait on that before it starts
+    // serving. A failure is logged rather than propagated, for the same reason the old
+    // scheduler swallowed one — there is no caller that can act on it.
+    void mastra.schedules
+      .run(scheduleId)
+      .catch((error) => logger.error('Startup run failed', { workflowId: declaration.workflowId, error }));
+  }
 }

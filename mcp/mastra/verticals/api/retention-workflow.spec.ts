@@ -79,8 +79,9 @@ describe('the retention window', () => {
 
 describe('the workflow wiring', () => {
   it('is registered under the id the scheduler looks up', () => {
-    // WorkflowScheduler.schedule() throws when the id is not registered with Mastra, so
-    // a rename here has to stay in step with mastra/index.ts.
+    // The schedule row stores this id as its target, and the scheduler deletes a row
+    // whose target it cannot resolve, so a rename here has to stay in step with both
+    // mastra/index.ts and the declaration in mastra/schedule-reconciler.ts.
     expect(storageRetentionWorkflow.id).toBe('storageRetentionWorkflow');
   });
 

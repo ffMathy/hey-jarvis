@@ -1,26 +1,31 @@
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
+import { beforeAll, describe, it } from 'bun:test';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import type { Agent } from '@mastra/core/agent';
 import { generateObject } from 'ai';
 import { z } from 'zod';
+import { createAgent } from '../../utils/index.js';
 import { isOllamaAvailable } from '../../utils/providers/ollama-provider.js';
-import {
-  type AgentProvider,
-  type Dag,
-  getCurrentDAG,
-  resetRoutingOverrides,
-  routePromptWorkflow,
-  setAgentProvider,
-} from './workflows.js';
+import { SUPERVISOR_INSTRUCTIONS } from './agents.js';
 
 /**
- * LLM-Evaluated Routing Workflow Tests
+ * LLM-evaluated routing decisions.
  *
- * These tests exercise the real routing planner agent: they hand it a set of
- * mock agents, let `routePromptWorkflow` plan a DAG, and then judge the graph
- * with an LLM. Nothing is executed — planning stops at the hand-off suspension,
- * so what is asserted here is purely the routing decision.
+ * These tests exercise the real supervisor: they give it a set of stand-in agents, let it
+ * decide what to delegate, and judge those delegations with an LLM.
+ *
+ * They used to judge a task DAG. The DAG is gone — ordering, parallelism and dependency
+ * passing are the supervisor's own delegation loop now — so what is judged is the sequence
+ * of delegations it actually made, which is the same routing decision expressed differently.
+ * A dependency is no longer an edge in a graph; it shows up as a second delegation whose
+ * prompt carries the first one's answer.
  */
+
+/** One delegation the supervisor made, as the hooks observe it. */
+interface ObservedDelegation {
+  agentId: string;
+  prompt: string;
+  result?: string;
+}
 
 interface EvaluationResult {
   passed: boolean;
@@ -28,10 +33,11 @@ interface EvaluationResult {
   reasoning: string;
 }
 
-/**
- * Evaluates a DAG structure against specific criteria using an LLM
- */
-async function evaluateDAG(dag: Dag, userQuery: string, criteria: string): Promise<EvaluationResult> {
+async function evaluateDelegations(
+  delegations: ObservedDelegation[],
+  userQuery: string,
+  criteria: string,
+): Promise<EvaluationResult> {
   const apiKey = process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY;
   if (!apiKey) {
     throw new Error('Google API key required: set HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY');
@@ -45,12 +51,12 @@ async function evaluateDAG(dag: Dag, userQuery: string, criteria: string): Promi
     reasoning: z.string().describe('Explanation of why the criteria was or was not met'),
   });
 
-  const dagDescription = dag.tasks
+  const transcript = delegations
     .map(
-      (task) =>
-        `- Task "${task.id}" (agent: ${task.agent})
-   Prompt: ${task.prompt}
-   Depends on: ${task.dependsOn.length > 0 ? task.dependsOn.join(', ') : '(none - root task)'}`,
+      (delegation, index) =>
+        `${index + 1}. Delegated to "${delegation.agentId}"
+   Prompt: ${delegation.prompt}
+   Answered: ${delegation.result ?? '(still running)'}`,
     )
     .join('\n\n');
 
@@ -59,16 +65,16 @@ async function evaluateDAG(dag: Dag, userQuery: string, criteria: string): Promi
     temperature: 0,
     schema,
     maxRetries: 3,
-    prompt: `You are evaluating whether a generated DAG (Directed Acyclic Graph) of tasks correctly handles a user query.
+    prompt: `You are evaluating whether a routing agent delegated a user's request to the right specialized agents, in the right order.
 
 USER QUERY:
 \`\`\`
 ${userQuery}
 \`\`\`
 
-GENERATED DAG TASKS:
+DELEGATIONS THE ROUTER MADE, IN ORDER:
 \`\`\`
-${dagDescription}
+${transcript}
 \`\`\`
 
 EVALUATION CRITERIA:
@@ -76,106 +82,105 @@ EVALUATION CRITERIA:
 ${criteria}
 \`\`\`
 
-Please evaluate whether the DAG structure meets the specified criteria. Consider:
-- The order of tasks (via dependsOn relationships)
-- The agent assignments
-- The prompts given to each task
-- The logical flow of data between tasks
+Consider:
+- Which agents were chosen, and whether each was the right one for that part of the request
+- The order of the delegations
+- Whether a delegation that needed a value from an earlier one actually carries that value in its prompt
+- Whether any delegation was unnecessary
 
 Respond with:
 - "passed" (boolean): Whether the criteria is met
 - "score" (number 0-1): Confidence score
-- "reasoning" (string): Clear explanation with specific examples from the DAG`,
+- "reasoning" (string): Clear explanation citing specific delegations`,
   });
 
   return result.object;
 }
 
-/**
- * Asserts that the DAG meets specific criteria
- */
-async function assertDAGCriteria(dag: Dag, userQuery: string, criteria: string, minScore = 0.7): Promise<void> {
-  const result = await evaluateDAG(dag, userQuery, criteria);
+async function assertDelegationCriteria(
+  delegations: ObservedDelegation[],
+  userQuery: string,
+  criteria: string,
+  minScore = 0.7,
+): Promise<void> {
+  const result = await evaluateDelegations(delegations, userQuery, criteria);
 
   if (!result.passed || result.score < minScore) {
-    const dagJson = JSON.stringify(dag, null, 2);
     throw new Error(
-      `DAG failed to meet criteria (scored: ${result.score} but needed: ${minScore}):\n` +
+      `Routing failed to meet criteria (scored: ${result.score} but needed: ${minScore}):\n` +
         `Criteria: ${criteria}\n` +
         `Reasoning: ${result.reasoning}\n\n` +
-        `DAG:\n${dagJson}`,
+        `Delegations:\n${JSON.stringify(delegations, null, 2)}`,
     );
   }
 
-  console.debug(
-    '✅ ',
-    criteria,
-    '\n',
-    JSON.stringify(
-      dag.tasks.map((task) => ({ id: task.id, agent: task.agent, dependsOn: task.dependsOn })),
-      null,
-      2,
-    ),
-    '\n',
-    result,
-  );
-}
-
-/** Structural subset of Agent that the routing planner actually reads at runtime */
-interface MockAgent {
-  id: string;
-  name: string;
-  getDescription(): string;
-  listTools(): Promise<Record<string, unknown>>;
-  generate(messages: unknown): Promise<{ text: string }>;
-}
-
-function createMockAgent(id: string, description: string): MockAgent {
-  return {
-    id,
-    name: id,
-    getDescription: () => description,
-    listTools: async () => ({}),
-    generate: async () => ({ text: `Mock response from ${id}` }),
-  };
-}
-
-function useAgents(...agents: MockAgent[]): void {
-  const provider: AgentProvider = async () => agents as unknown as Agent[];
-  setAgentProvider(provider);
+  console.debug('✅ ', criteria, '\n', JSON.stringify(delegations, null, 2), '\n', result);
 }
 
 /**
- * Plans a DAG with retry logic for flaky LLM responses.
- * An optional `isValid` predicate retries when the DAG is structurally valid
- * but does not meet additional criteria.
+ * A stand-in for one of the routable agents: real enough for the supervisor to delegate to,
+ * trivial enough that its answer is fixed and the routing decision is what is being judged.
  */
-async function planWithRetry(userQuery: string, maxAttempts = 8, isValid?: (dag: Dag) => boolean): Promise<Dag> {
-  let dag: Dag = { userQuery, tasks: [] };
-
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    try {
-      const run = await routePromptWorkflow.createRun();
-      const result = await run.start({ inputData: { userQuery, async: false } });
-
-      if (result.status === 'success') {
-        dag = getCurrentDAG();
-        if (dag.tasks.length >= 1 && (!isValid || isValid(dag))) {
-          return dag;
-        }
-        console.log(`Attempt ${attempt}: DAG did not pass validation, retrying...`);
-      }
-    } catch (error: unknown) {
-      console.log(`Attempt ${attempt}: Planning failed, retrying...`, error);
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 750));
-  }
-
-  return dag;
+async function createStandInAgent(id: string, description: string, answer: string): Promise<Agent> {
+  return createAgent({
+    id,
+    name: id,
+    description,
+    instructions: `You are a stand-in for the ${id} agent in a test. Whatever you are asked, reply with exactly: ${answer}`,
+    memory: undefined,
+  });
 }
 
-describe('Routing Workflows - LLM Evaluated', () => {
+/** Runs the supervisor over a query and records every delegation it makes. */
+async function route(userQuery: string, agents: Agent[]): Promise<ObservedDelegation[]> {
+  const delegations: ObservedDelegation[] = [];
+
+  const supervisor = await createAgent({
+    id: 'routing-supervisor-under-test',
+    name: 'RoutingSupervisorUnderTest',
+    instructions: SUPERVISOR_INSTRUCTIONS,
+    agents: Object.fromEntries(agents.map((agent) => [agent.id, agent])),
+    memory: undefined,
+  });
+
+  await supervisor.generate(userQuery, {
+    maxSteps: 10,
+    delegation: {
+      onDelegationStart: (context) => {
+        delegations.push({ agentId: context.primitiveId, prompt: context.prompt });
+      },
+      onDelegationComplete: (context) => {
+        const observed = delegations.find(
+          (delegation) => delegation.agentId === context.primitiveId && delegation.result === undefined,
+        );
+        if (observed) {
+          observed.result = context.result.text;
+        }
+      },
+    },
+  });
+
+  return delegations;
+}
+
+const WEATHER_DESCRIPTION = `# Purpose
+Provide weather data. Use this tool to **fetch the current conditions** or a **5-day forecast** for any location specified by city name, postal/ZIP code, or latitude/longitude coordinates.
+
+**Location is mandatory and must be provided - the weather agent cannot tell a user's location.**
+
+# When to use
+- The user asks about today's weather, tomorrow's forecast, or the outlook for specific dates.
+- The user needs details for planning travel or outdoor activities.`;
+
+const IOT_DESCRIPTION = `# Purpose
+Control and monitor Internet of Things (IoT) devices. Use this agent to **turn devices on/off**, **adjust settings**, **query device states**, **get user locations via their phones**, and **view historical changes**.
+
+# When to use
+- You want to control IOT devices (lights, switches, climate control, media players, scenes).
+- You ask about the current state of devices.
+- You need to access user location data for location-based automations.`;
+
+describe('Routing - LLM Evaluated', () => {
   let ollamaAvailable = false;
 
   beforeAll(async () => {
@@ -185,190 +190,65 @@ describe('Routing Workflows - LLM Evaluated', () => {
     }
   });
 
-  beforeEach(() => {
-    resetRoutingOverrides();
-  });
+  it('looks up the location before the weather when the user does not give one', async () => {
+    if (!ollamaAvailable) {
+      return;
+    }
 
-  afterEach(() => {
-    resetRoutingOverrides();
-  });
+    const userQuery = 'Check the weather for my current location';
+    const delegations = await route(userQuery, [
+      await createStandInAgent('weather', WEATHER_DESCRIPTION, 'It is 8 degrees and raining.'),
+      await createStandInAgent('internetOfThings', IOT_DESCRIPTION, 'The user is in Aarhus, Denmark.'),
+    ]);
 
-  describe('DAG Generation with Location-Based Weather Query', () => {
-    it('should create location task before weather task when asking for weather at current location', async () => {
-      if (!ollamaAvailable) {
-        return;
-      }
+    await assertDelegationCriteria(
+      delegations,
+      userQuery,
+      `The router should:
+1. Delegate to internetOfThings first to find the user's current location, since the weather agent cannot determine it
+2. Then delegate to weather
+3. The weather delegation's prompt MUST contain the location that internetOfThings answered with (Aarhus), because the weather agent is told it cannot work out a location itself
 
-      useAgents(
-        createMockAgent(
-          'weather',
-          `# Purpose
-Provide weather data. Use this tool to **fetch the current conditions** or a **5-day forecast** for any location specified by city name, postal/ZIP code, or latitude/longitude coordinates.
+The key validation is that the weather delegation happened after the location lookup and carries its answer.`,
+      0.8,
+    );
+  }, 120000);
 
-**Location is mandatory and must be provided - the weather agent cannot tell a user's location.**
+  it('does not look up a location the user already gave', async () => {
+    if (!ollamaAvailable) {
+      return;
+    }
 
-# When to use
-- The user asks about today's weather, tomorrow's forecast, or the outlook for specific dates.
-- The user needs details for planning travel or outdoor activities.`,
-        ),
-        createMockAgent(
-          'internetOfThings',
-          `# Purpose
-Control and monitor Internet of Things (IoT) devices. Use this agent to **turn devices on/off**, **adjust settings**, **query device states**, **get user locations via their phones**, and **view historical changes**.
+    const userQuery = 'What is the weather in Copenhagen?';
+    const delegations = await route(userQuery, [
+      await createStandInAgent('weather', WEATHER_DESCRIPTION, 'It is 8 degrees and raining.'),
+      await createStandInAgent('internetOfThings', IOT_DESCRIPTION, 'The user is in Aarhus, Denmark.'),
+    ]);
 
-# When to use
-- You want to control IOT devices (lights, switches, climate control, media players, scenes).
-- You ask about the current state of devices.
-- You need to access user location data for location-based automations.`,
-        ),
-      );
+    await assertDelegationCriteria(
+      delegations,
+      userQuery,
+      `The router should delegate to the weather agent with Copenhagen as the location, and should NOT delegate to internetOfThings at all — the user already supplied the location, so looking it up is work nobody asked for.`,
+      0.8,
+    );
+  }, 120000);
 
-      const userQuery = 'Check the weather for my current location';
-      const dag = await planWithRetry(userQuery);
+  it('delegates independent parts of a request separately', async () => {
+    if (!ollamaAvailable) {
+      return;
+    }
 
-      expect(dag.tasks.length).toBeGreaterThanOrEqual(1);
+    const userQuery = 'What is the weather in Copenhagen, and are the lights on?';
+    const delegations = await route(userQuery, [
+      await createStandInAgent('weather', WEATHER_DESCRIPTION, 'It is 8 degrees and raining.'),
+      await createStandInAgent('internetOfThings', IOT_DESCRIPTION, 'The hallway light is on.'),
+    ]);
 
-      await assertDAGCriteria(
-        dag,
-        userQuery,
-        `The DAG should have the following structure:
-1. There should be a task that gets the user's current location (using the internetOfThings agent, since it can access user locations via their phones)
-2. There should be a task that gets the weather (using the weather agent)
-3. The weather task MUST depend on the location task (via dependsOn), because the weather agent requires a location and cannot determine the user's location itself
-4. The location task should have no dependencies (it's a root task)
-
-The key validation is: the weather task's dependsOn array must include the location task's ID.`,
-        0.8,
-      );
-    }, 90000);
-
-    it('should create proper DAG structure for multi-step weather at current location query', async () => {
-      if (!ollamaAvailable) {
-        return;
-      }
-
-      useAgents(
-        createMockAgent(
-          'weather',
-          `# Purpose
-Provide weather data. Use this tool to **fetch the current conditions** or a **5-day forecast** for any location specified by city name, postal/ZIP code, or latitude/longitude coordinates.
-
-**Location is mandatory and must be provided - the weather agent cannot tell a user's location.**`,
-        ),
-        createMockAgent(
-          'internetOfThings',
-          `# Purpose
-Control and monitor Internet of Things (IoT) devices. Use this agent to **get user locations via their phones**.`,
-        ),
-      );
-
-      const userQuery = "What's the weather like where I am right now?";
-      const dag = await planWithRetry(userQuery);
-
-      expect(dag.tasks.length).toBeGreaterThanOrEqual(1);
-
-      await assertDAGCriteria(
-        dag,
-        userQuery,
-        `Verify the DAG correctly sequences location retrieval before weather lookup:
-1. The DAG must contain a task that retrieves the user's location (assigned to internetOfThings agent)
-2. The DAG must contain a task that retrieves weather data (assigned to weather agent)
-3. The weather task must have a dependency (in its dependsOn array) on the location task
-4. This dependency is required because the weather agent explicitly states it "cannot tell a user's location"`,
-        0.8,
-      );
-    }, 90000);
-
-    it('should NOT create location task when location is explicitly provided', async () => {
-      if (!ollamaAvailable) {
-        return;
-      }
-
-      useAgents(
-        createMockAgent(
-          'weather',
-          `# Purpose
-Provide weather data for any location specified by city name or coordinates.
-
-**Location is mandatory and must be provided - the weather agent cannot tell a user's location.**`,
-        ),
-        createMockAgent(
-          'internetOfThings',
-          `# Purpose
-Control IoT devices and get user locations via their phones.`,
-        ),
-      );
-
-      const userQuery = 'Please tell me what the weather is like in New York City today';
-
-      // The location is spelled out in the query, so any location-lookup task is
-      // wasted work. Retry generously: smaller models keep adding one anyway.
-      const hasUnnecessaryLocationTask = (tasks: Dag['tasks']): boolean =>
-        tasks.some(
-          (task) =>
-            task.agent === 'internetOfThings' ||
-            task.id.toLowerCase().includes('location') ||
-            (task.prompt.toLowerCase().includes('user') && task.prompt.toLowerCase().includes('location')),
-        );
-
-      const dag = await planWithRetry(userQuery, 10, (planned) => !hasUnnecessaryLocationTask(planned.tasks));
-
-      if (dag.tasks.length === 0) {
-        throw new Error('Failed to generate valid DAG after max attempts');
-      }
-
-      if (hasUnnecessaryLocationTask(dag.tasks)) {
-        const taskSummary = dag.tasks.map((task) => `${task.id}(${task.agent})`).join(', ');
-        throw new Error(`LLM generated unnecessary location task despite explicit location in query: [${taskSummary}]`);
-      }
-
-      await assertDAGCriteria(
-        dag,
-        userQuery,
-        `Verify the DAG handles explicit location correctly:
-1. Since the user explicitly specified "New York City", there should be NO need for a location-lookup task
-2. The weather task should either have no dependencies, OR only depend on non-location tasks
-3. The weather task should be assigned to the weather agent
-4. The internetOfThings agent should NOT be used for location lookup because the location was already provided`,
-        0.7,
-      );
-    }, 120000);
-  });
-
-  describe('DAG Dependency Validation', () => {
-    it('should create proper dependency chain for complex queries', async () => {
-      if (!ollamaAvailable) {
-        return;
-      }
-
-      useAgents(
-        createMockAgent('weather', `Provide weather data. Location is mandatory.`),
-        createMockAgent('calendar', `Manage calendar events and schedules.`),
-        createMockAgent('commute', `Calculate travel times and distances between locations.`),
-      );
-
-      const userQuery =
-        'Check my calendar for today and tell me what the weather will be like for my first meeting, and how long it will take to get there';
-
-      const dag = await planWithRetry(userQuery, 10);
-
-      if (dag.tasks.length === 0) {
-        console.warn('Skipping dependency-chain assertion due to transient DAG generation failures.');
-        return;
-      }
-
-      expect(dag.tasks.length).toBeGreaterThanOrEqual(1);
-
-      await assertDAGCriteria(
-        dag,
-        userQuery,
-        `Verify the DAG correctly handles the complex dependency:
-1. There should be a task for checking the calendar (calendar agent)
-2. There should be tasks for weather and/or commute calculations
-3. Both weather and commute tasks need to know the meeting location, so they should depend on the calendar task
-4. The calendar task should be a root task (no dependencies)`,
-        0.7,
-      );
-    }, 90000);
-  });
+    await assertDelegationCriteria(
+      delegations,
+      userQuery,
+      `The router should delegate the weather question to the weather agent and the lights question to internetOfThings. Neither delegation depends on the other, so neither prompt needs to carry the other's answer.`,
+      0.8,
+    );
+  }, 120000);
 });

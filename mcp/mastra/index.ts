@@ -6,7 +6,7 @@ import { CloudExporter, DefaultExporter, Observability, SamplingStrategyType } f
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { getCorsOptions } from './cors.js';
-import { getTokenUsageStorage } from './storage/index.js';
+import { getSqlStorageProvider, getTokenUsageStorage } from './storage/index.js';
 import { stripTransferEncodingHeader } from './streaming-headers.js';
 import { TokenTrackingProcessor, TokenUsageExporter } from './utils/token-usage-exporter.js';
 import { storageRetentionWorkflow, tokenUsageTools } from './verticals/api/index.js';
@@ -31,12 +31,11 @@ import { getInternetOfThingsAgent, internetOfThingsTools } from './verticals/int
 import { getNotificationAgent, notificationTools } from './verticals/notification/index.js';
 import { phoneTools } from './verticals/phone/index.js';
 import { presenceShortcuts } from './verticals/presence/index.js';
-import { getRoutingPlannerAgent } from './verticals/routing/agents.js';
+import { getRoutingSupervisorAgent } from './verticals/routing/agents.js';
 import {
-  getCurrentDagWorkflow,
   getNextInstructionsWorkflow,
+  respondToApprovalWorkflow,
   routePromptWorkflow,
-  routingWorkflow,
 } from './verticals/routing/workflows.js';
 import { getShoppingListAgent, getShoppingListSummaryAgent, shoppingTools } from './verticals/shopping/index.js';
 import { getStateChangeReactorAgent, synapseTools } from './verticals/synapse/index.js';
@@ -63,6 +62,16 @@ export async function getMastra(): Promise<Mastra> {
       name: 'Mastra',
       level: 'info',
     }),
+    // Shared with the agents' memory, which opens the same file. Storage on the instance
+    // itself is what the schedules domain persists its rows to -- without it,
+    // `mastra.schedules` has nowhere to write and the scheduler worker never starts.
+    storage: await getSqlStorageProvider(),
+    scheduler: {
+      onError: (error, { scheduleId }) => {
+        console.error(`\n🚨 Scheduled workflow error: ${scheduleId}`);
+        console.error(`   ${error instanceof Error ? error.message : String(error)}`);
+      },
+    },
     observability: new Observability({
       configs: {
         default: {
@@ -85,9 +94,8 @@ export async function getMastra(): Promise<Mastra> {
       formRepliesDetectionWorkflow,
       iotMonitoringWorkflow,
       routePromptWorkflow,
-      getCurrentDagWorkflow,
       getNextInstructionsWorkflow,
-      routingWorkflow,
+      respondToApprovalWorkflow,
     },
     agents: toAgentMap([
       await getCalendarAgent(),
@@ -99,7 +107,7 @@ export async function getMastra(): Promise<Mastra> {
       await getInternetOfThingsAgent(),
       await getNotificationAgent(),
       await getRequirementsInterviewerAgent(),
-      await getRoutingPlannerAgent(),
+      await getRoutingSupervisorAgent(),
       await getShoppingListAgent(),
       await getShoppingListSummaryAgent(),
       await getStateChangeReactorAgent(),
