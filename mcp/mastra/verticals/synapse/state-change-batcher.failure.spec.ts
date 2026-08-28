@@ -14,17 +14,17 @@ import { beforeEach, describe, expect, it, mock } from 'bun:test';
 
 /** Flipped by individual tests to make the batch's LLM call fail. */
 let failures = 0;
-let networkCalls = 0;
+let reactorCalls = 0;
 
 mock.module('./agent.js', () => ({
   getStateChangeReactorAgent: async () => ({
-    network: async () => {
-      networkCalls++;
+    generate: async () => {
+      reactorCalls++;
       if (failures > 0) {
         failures--;
         throw Object.assign(new Error('Internal error encountered.'), { statusCode: 500 });
       }
-      return { result: { registered: true, analyzed: true } };
+      return { text: 'Analyzed.' };
     },
   }),
 }));
@@ -41,7 +41,7 @@ function change(id: number) {
 
 beforeEach(() => {
   failures = 0;
-  networkCalls = 0;
+  reactorCalls = 0;
 });
 
 describe('a batch that fails', () => {
@@ -73,7 +73,7 @@ describe('a batch that fails', () => {
 
     expect(batcher.getStats().totalProcessed).toBe(1);
     expect(batcher.getPendingCount()).toBe(0);
-    expect(networkCalls).toBe(2);
+    expect(reactorCalls).toBe(2);
   });
 
   it('does not wedge the batcher', async () => {

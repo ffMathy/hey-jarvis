@@ -28,9 +28,9 @@ const prompts: string[] = [];
 
 mock.module('./agent.js', () => ({
   getStateChangeReactorAgent: async () => ({
-    network: async (prompt: string) => {
+    generate: async (prompt: string) => {
       prompts.push(prompt);
-      return { result: { registered: true, analyzed: true } };
+      return { text: 'Analyzed.' };
     },
   }),
 }));

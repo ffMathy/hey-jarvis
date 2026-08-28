@@ -4,8 +4,8 @@ import { type StateChange, StateChangeBatcher } from './state-change-batcher.js'
 // Mock the dependencies to avoid actual API calls
 mock.module('./agent.js', () => ({
   getStateChangeReactorAgent: async () => ({
-    network: async () => ({
-      result: { registered: true, analyzed: true },
+    generate: async () => ({
+      text: 'Analyzed.',
     }),
   }),
 }));

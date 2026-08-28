@@ -7,8 +7,8 @@ export interface CreateMemoryOptions {
    * Whether to enable working memory for the agent.
    * Default: true
    *
-   * Disable for coordination agents that use .network() to avoid
-   * the updateWorkingMemory tool being injected into network routing.
+   * Disable for coordination agents that should not be handed the
+   * updateWorkingMemory tool alongside their delegation tools.
    */
   enableWorkingMemory?: boolean;
   /**

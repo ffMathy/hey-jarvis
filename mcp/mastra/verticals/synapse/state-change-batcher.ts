@@ -3,6 +3,7 @@ import { getSubscriptionStorage } from '../../storage/index.js';
 import { logger } from '../../utils/logger.js';
 import { embedTexts } from '../../utils/static-embedder.js';
 import { getStateChangeReactorAgent } from './agent.js';
+import { runStateChangeReactor } from './reactor-run.js';
 import { describeStateChangeFacets, type StateChange } from './state-change.js';
 import { formatSubscriptionMatches, rankSubscriptions } from './subscription-matcher.js';
 
@@ -361,8 +362,7 @@ If multiple notifications are warranted, you can combine related ones into a sin
     const matchedSubscriptions = await this.matchSubscriptions(changes);
     const batchPrompt = this.buildBatchPrompt(changes, matchedSubscriptions);
 
-    const networkStream = await reactorAgent.network(batchPrompt);
-    await networkStream.result;
+    await runStateChangeReactor(reactorAgent, batchPrompt);
     logger.info('[BATCHER] Agent analysis completed', {
       changesCount: changes.length,
     });
