@@ -1,6 +1,11 @@
 import z from 'zod';
 import { createStep, createWorkflow } from '../../utils';
-import { DEFAULT_ROUTING_SESSION_ID, getRoutingRuntime, type RoutingProgress } from './controller.js';
+import {
+  DEFAULT_ROUTING_SESSION_ID,
+  getRoutingRuntime,
+  type PendingApproval,
+  type RoutingProgress,
+} from './controller.js';
 
 /* -------------------------------------------------------------------------- */
 /* Public contract                                                            */
@@ -92,6 +97,26 @@ const INSTRUCTIONS = {
   summarize:
     'Summarize the new completed task results in a detailed manner, in your own voice — never read an agent name, a tool name or the raw response aloud.',
 } as const;
+
+/**
+ * Asking the user to approve something that would change the world.
+ *
+ * The request is paused until it is answered, so this instruction has to be unambiguous
+ * about the fact that nothing happens until Jarvis calls back. It also has to be spoken
+ * rather than merely thought about: the caller is on a voice call, and an approval nobody
+ * is asked for is an approval that never arrives.
+ */
+function approvalInstructions(approval: PendingApproval): string {
+  return (
+    `Before anything else, ask the user to approve this, out loud and now, in your own voice: ` +
+    `"${approval.request}". Nothing is happening while you wait — the request is paused on ` +
+    `this answer, and it stays paused until you send one. Describe what is about to happen ` +
+    `in plain words; never read the agent name or the raw request aloud. ` +
+    `When he answers, call respondToApprovalWorkflow with approved set to true if he agreed ` +
+    `and false if he did not, and then carry on calling getNextInstructionsWorkflow as before. ` +
+    `If he declines, that part of the request is dropped and the rest continues.`
+  );
+}
 
 /**
  * Finishing one request does not finish the conversation. Jarvis summarised a completed
@@ -250,6 +275,12 @@ const getNextInstructionsStep = createStep({
     const deadlineAt = Date.now() + POLL_DEADLINE_MS;
 
     while (Date.now() < deadlineAt) {
+      // A parked approval outranks everything: the run cannot move until it is answered, so
+      // reporting anything else first would leave the user waiting on a question nobody asked.
+      if (progress.approval) {
+        return { instructions: approvalInstructions(progress.approval) };
+      }
+
       // A finished request reports everything, including what earlier polls already
       // relayed, so a dropped response cannot lose a result for good.
       if (progress.finished) {
@@ -265,6 +296,10 @@ const getNextInstructionsStep = createStep({
       if (!landed) {
         break;
       }
+    }
+
+    if (progress.approval) {
+      return { instructions: approvalInstructions(progress.approval) };
     }
 
     if (progress.finished) {
@@ -285,4 +320,38 @@ export const getNextInstructionsWorkflow = createWorkflow({
   outputSchema: instructionsOutputSchema,
 })
   .then(getNextInstructionsStep)
+  .commit();
+
+const respondToApprovalStep = createStep({
+  id: 'respond-to-approval',
+  description: "Answer the approval a routing request is paused on with the user's decision",
+  inputSchema: z.object({
+    approved: z.boolean().describe('True if the user agreed to it, false if he declined'),
+    sessionId: z.string().optional().describe('The session returned by routePromptWorkflow'),
+  }),
+  outputSchema: z.object({
+    instructions: z.string().describe('Instructions for Jarvis to follow'),
+  }),
+  execute: async ({ inputData }) => {
+    await getRoutingRuntime().respondToApproval(inputData.sessionId ?? DEFAULT_ROUTING_SESSION_ID, inputData.approved);
+
+    return {
+      instructions:
+        'The answer has been passed on and the request has resumed. Say nothing about it — he has just told you, and does not need it repeated. Call getNextInstructionsWorkflow to pick the loop back up.',
+    };
+  },
+});
+
+export const respondToApprovalWorkflow = createWorkflow({
+  id: 'respondToApprovalWorkflow',
+  description: 'Workflow to approve or decline an action a routing request is paused on',
+  inputSchema: z.object({
+    approved: z.boolean().describe('True if the user agreed to it, false if he declined'),
+    sessionId: z.string().optional().describe('The session returned by routePromptWorkflow'),
+  }),
+  outputSchema: z.object({
+    instructions: z.string().describe('Instructions for Jarvis to follow'),
+  }),
+})
+  .then(respondToApprovalStep)
   .commit();

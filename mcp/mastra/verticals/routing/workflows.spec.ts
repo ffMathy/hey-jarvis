@@ -21,7 +21,7 @@ import {
   resetRoutingRuntime,
   setRoutingRuntime,
 } from './controller.js';
-import { getNextInstructionsWorkflow, routePromptWorkflow } from './workflows.js';
+import { getNextInstructionsWorkflow, respondToApprovalWorkflow, routePromptWorkflow } from './workflows.js';
 
 const progressBySessionId = new Map<string, RoutingProgress>();
 
@@ -34,6 +34,9 @@ function progressFor(sessionId: string): RoutingProgress {
   return progress;
 }
 
+/** Approvals answered through the fake runtime, so the spec can assert what was relayed. */
+const answeredApprovals: { sessionId: string; toolCallId: string; approved: boolean }[] = [];
+
 const fakeRuntime: RoutingRuntime = {
   async start(sessionId) {
     const progress = progressFor(sessionId);
@@ -42,6 +45,15 @@ const fakeRuntime: RoutingRuntime = {
   },
   async get(sessionId) {
     return progressFor(sessionId);
+  },
+  async respondToApproval(sessionId, approved) {
+    const progress = progressFor(sessionId);
+    const approval = progress.approval;
+    if (!approval) {
+      return;
+    }
+    progress.approval = undefined;
+    answeredApprovals.push({ sessionId, toolCallId: approval.toolCallId, approved });
   },
 };
 
@@ -83,6 +95,7 @@ function resultOf<T>(outcome: WorkflowResult<T>): T {
 
 beforeEach(() => {
   progressBySessionId.clear();
+  answeredApprovals.length = 0;
   setRoutingRuntime(fakeRuntime);
 });
 
@@ -275,5 +288,77 @@ describe('two callers at once', () => {
 
     expect(forA.instructions).not.toContain('All tasks have completed');
     expect(forA.completedTaskResults).toEqual([{ id: 'weather', result: 'It is 8 degrees.' }]);
+  });
+});
+
+describe('approvals', () => {
+  function requestApproval(progress: RoutingProgress, agentId: string, request: string): void {
+    progress.handle({
+      type: 'tool_approval_required',
+      toolCallId: `approval-${agentId}`,
+      toolName: agentId,
+      args: { prompt: request },
+    });
+  }
+
+  it('asks the user out loud before an agent acts on the world', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'email Mathias the recipe', async: false });
+    requestApproval(progressFor(DEFAULT_ROUTING_SESSION_ID), 'email', 'Send Mathias the lasagna recipe');
+
+    const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(outcome.instructions).toContain('Send Mathias the lasagna recipe');
+    expect(outcome.instructions).toContain('respondToApprovalWorkflow');
+    // The run is parked, so the caller has to know that waiting will not resolve it.
+    expect(outcome.instructions).toContain('paused');
+  });
+
+  it('reports the approval ahead of results that are already waiting', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'weather, then email it', async: false });
+    const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    delegate(progress, 'weather', 'It is 8 degrees.');
+    requestApproval(progress, 'email', 'Send Mathias the forecast');
+
+    const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    // Nothing moves until this is answered, so a summary first would leave the user waiting
+    // on a question he was never asked.
+    expect(outcome.instructions).toContain('Send Mathias the forecast');
+    expect(outcome.completedTaskResults).toBeUndefined();
+  });
+
+  it('relays the decision and lets the loop carry on', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'email Mathias the recipe', async: false });
+    const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    requestApproval(progress, 'email', 'Send Mathias the lasagna recipe');
+
+    const outcome = resultOf(await runWorkflow(respondToApprovalWorkflow, { approved: true }));
+
+    expect(answeredApprovals).toEqual([
+      { sessionId: DEFAULT_ROUTING_SESSION_ID, toolCallId: 'approval-email', approved: true },
+    ]);
+    expect(outcome.instructions).toContain('getNextInstructionsWorkflow');
+  });
+
+  it('relays a refusal too', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'email Mathias the recipe', async: false });
+    requestApproval(progressFor(DEFAULT_ROUTING_SESSION_ID), 'email', 'Send Mathias the lasagna recipe');
+
+    await runWorkflow(respondToApprovalWorkflow, { approved: false });
+
+    expect(answeredApprovals[0].approved).toBe(false);
+  });
+
+  it('stops asking once the decision has been sent', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'email Mathias the recipe', async: false });
+    const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    requestApproval(progress, 'email', 'Send Mathias the lasagna recipe');
+    await runWorkflow(respondToApprovalWorkflow, { approved: true });
+
+    delegate(progress, 'email', 'Sent.');
+    const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(outcome.instructions).not.toContain('respondToApprovalWorkflow');
+    expect(outcome.completedTaskResults).toEqual([{ id: 'email', result: 'Sent.' }]);
   });
 });

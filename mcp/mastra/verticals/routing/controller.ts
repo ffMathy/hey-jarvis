@@ -31,6 +31,40 @@ import { getRoutingSupervisorAgent } from './agents.js';
  */
 export const DEFAULT_ROUTING_SESSION_ID = 'jarvis-voice';
 
+/**
+ * Which delegations change something in the world, and so are worth asking about first.
+ *
+ * The controller gates the tools of the run it drives, and for the routing supervisor those
+ * tools are the delegations themselves. So the unit of approval is "may I ask the email
+ * agent to do this", not "may I send this exact email" — coarser than gating the leaf tool
+ * call, because a subagent's own tool calls happen inside its loop and never reach this
+ * session's gate.
+ *
+ * Coarse is the safe direction: a prompt the user did not strictly need costs a sentence,
+ * where a missed one costs an email nobody meant to send. Anything not listed here only
+ * reads, so it runs without asking.
+ */
+const ACTING_AGENT_IDS = new Set(['email', 'internetOfThings', 'shoppingList', 'todoList', 'notification', 'coding']);
+
+/**
+ * Maps a delegation tool back to a permission category.
+ *
+ * Mastra names a subagent's delegation tool after its key in the `agents` map, which is the
+ * agent's id, so this can match on ids directly.
+ */
+function resolveToolCategory(toolName: string): 'read' | 'execute' | null {
+  return ACTING_AGENT_IDS.has(toolName) ? 'execute' : 'read';
+}
+
+/** One approval the run is parked on, waiting for the user to answer. */
+export interface PendingApproval {
+  toolCallId: string;
+  /** The agent the supervisor wants to delegate to. */
+  agentId: string;
+  /** What it intends to ask that agent to do. */
+  request: string;
+}
+
 /** One delegation that has finished, as the poll loop reports it. */
 export interface DelegationOutcome {
   /** The agent that was delegated to. */
@@ -55,6 +89,8 @@ export class RoutingProgress {
   summary?: string;
   finished = false;
   error?: string;
+  /** The approval the run is parked on, if any. */
+  approval?: PendingApproval;
 
   /** Polls parked waiting for the next delegation to land. */
   private waiters: (() => void)[] = [];
@@ -73,6 +109,7 @@ export class RoutingProgress {
     this.summary = undefined;
     this.error = undefined;
     this.finished = false;
+    this.approval = undefined;
     this.delegateNameByToolCallId.clear();
   }
 
@@ -87,7 +124,7 @@ export class RoutingProgress {
 
   /** Resolves once another delegation lands, or immediately if one is already waiting. */
   wait(): Promise<void> {
-    if (this.pending.length > 0 || this.finished) {
+    if (this.pending.length > 0 || this.finished || this.approval) {
       return Promise.resolve();
     }
     return new Promise<void>((resolve) => {
@@ -102,6 +139,18 @@ export class RoutingProgress {
 
   /** Folds one session event into the buffer. */
   handle(event: AgentControllerEvent): void {
+    // The run is now parked and will not move until this is answered, so it takes priority
+    // over anything else the poll might have reported.
+    if (event.type === 'tool_approval_required') {
+      this.approval = {
+        toolCallId: event.toolCallId,
+        agentId: event.toolName,
+        request: describeApprovalRequest(event.args),
+      };
+      this.wake();
+      return;
+    }
+
     if (event.type === 'tool_start') {
       this.delegateNameByToolCallId.set(event.toolCallId, event.toolName);
       return;
@@ -147,6 +196,22 @@ export class RoutingProgress {
     this.finished = true;
     this.wake();
   }
+}
+
+/**
+ * Renders what the supervisor is asking a delegated agent to do, for reading aloud.
+ *
+ * A delegation's arguments carry the prompt it wants to send; anything else is described by
+ * its JSON rather than dropped, so an approval prompt is never blank.
+ */
+function describeApprovalRequest(args: unknown): string {
+  if (typeof args === 'string') {
+    return args;
+  }
+  if (args && typeof args === 'object' && 'prompt' in args && typeof args.prompt === 'string') {
+    return args.prompt;
+  }
+  return JSON.stringify(args ?? null);
 }
 
 /**
@@ -201,6 +266,8 @@ export interface RoutingRuntime {
   start(sessionId: string, userQuery: string): Promise<RoutingProgress>;
   /** The buffer for a session, whether or not anything has been routed on it. */
   get(sessionId: string): Promise<RoutingProgress>;
+  /** Answers the approval the run is parked on. */
+  respondToApproval(sessionId: string, approved: boolean): Promise<void>;
 }
 
 let controller: AgentController | undefined;
@@ -218,6 +285,7 @@ async function getController(): Promise<AgentController> {
     // One mode. The controller's mode machinery exists for plan/build/review style
     // applications; routing has a single job and switches between nothing.
     modes: [{ id: 'route', name: 'Route', metadata: { default: true } }],
+    toolCategoryResolver: resolveToolCategory,
   });
 
   await controller.init();
@@ -242,6 +310,11 @@ async function getSession(sessionId: string) {
   const progress = new RoutingProgress();
   progressBySessionId.set(sessionId, progress);
   session.subscribe((event) => progress.handle(event));
+
+  // Reading is free; acting on the world is asked about. Set once per session, because the
+  // policies are the session's and a request should not have to restate them.
+  await session.permissions.setForCategory({ category: 'read', policy: 'allow' });
+  await session.permissions.setForCategory({ category: 'execute', policy: 'ask' });
 
   return { session, progress };
 }
@@ -271,6 +344,21 @@ const agentControllerRuntime: RoutingRuntime = {
 
   async get(sessionId) {
     return (await getSession(sessionId)).progress;
+  },
+
+  async respondToApproval(sessionId, approved) {
+    const { session, progress } = await getSession(sessionId);
+    const approval = progress.approval;
+    if (!approval) {
+      return;
+    }
+
+    progress.approval = undefined;
+    session.respondToToolApproval({
+      decision: approved ? 'approve' : 'decline',
+      toolCallId: approval.toolCallId,
+      declineContext: approved ? undefined : { reason: 'The user declined it.' },
+    });
   },
 };
 

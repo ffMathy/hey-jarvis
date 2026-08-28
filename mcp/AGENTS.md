@@ -568,6 +568,29 @@ A result is handed over exactly once while the request is running. The closing r
 exception: it recaps *every* result, including ones earlier polls already relayed, so a response
 dropped on the way cannot lose an answer for good.
 
+**Approvals:**
+Delegating to an agent that acts on the world — email, IoT, the shopping list, the todo list,
+notifications, coding — is gated. The controller resolves those delegations to the `execute`
+permission category and the session's policy for it is `ask`, so the run parks on
+`tool_approval_required` before any of them happens. Everything else resolves to `read` and is
+allowed outright.
+
+The approval reaches the user through the same poll loop as everything else:
+`getNextInstructionsWorkflow` reports it ahead of any result that is waiting (nothing moves
+until it is answered), with instructions to ask out loud and then call
+**`respondToApprovalWorkflow`** with the decision. Declining drops that delegation; the rest of
+the request continues.
+
+The unit of approval is the delegation, not the leaf tool call — "may I ask the email agent to
+do this", not "may I send this exact email" — because a subagent's own tool calls happen inside
+its loop and never reach this session's gate. That is coarser than ideal, and coarse in the safe
+direction: a prompt the user did not strictly need costs a sentence, a missed one costs an email
+nobody meant to send.
+
+This is separate from the email round-trip in the human-in-the-loop vertical, which stays for
+what it is good at: asking a person a *question* mid-workflow and parsing the answer. Use the
+approval gate for "may I do this", and `sendEmailAndAwaitResponse` for "what should I do".
+
 **Failure Handling:**
 A delegation that fails is reported like any other result, and the supervisor carries on with
 the rest of the request. A run that falls over reports the failure in its instructions.
@@ -868,6 +891,12 @@ await mastra.workflows.implementFeatureWorkflow.execute({
 The workflow uses Mastra's suspend/resume pattern in the Requirements Interviewer step, allowing the agent to ask questions and wait for user responses before proceeding.
 
 ### Human-in-the-Loop Demo Workflow
+
+> **For gating an action, not asking a question, see Routing → Approvals.** A routing request
+> parks on `tool_approval_required` and is answered over the voice loop with
+> `respondToApprovalWorkflow`. The email round-trip below is for putting an actual question to a
+> person and parsing their reply.
+
 Demonstrates email-based workflow suspension and resumption with a 3-step approval process:
 - **`humanInTheLoopDemoWorkflow`**: Multi-step approval workflow with email-based human input
 - **Step 1 - Budget Approval**: Requests approval for project budget (Yes/No + comments)

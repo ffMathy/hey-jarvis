@@ -8,7 +8,11 @@ import { initializeScheduler } from './scheduler.js';
 import { createTool } from './utils/tool-factory.js';
 import type { AnyWorkflow } from './utils/workflows/workflow-factory.js';
 import { getPublicAgents, registerApiRoutes, registerShoppingTriggers } from './verticals/index.js';
-import { getNextInstructionsWorkflow, routePromptWorkflow } from './verticals/routing/workflows.js';
+import {
+  getNextInstructionsWorkflow,
+  respondToApprovalWorkflow,
+  routePromptWorkflow,
+} from './verticals/routing/workflows.js';
 
 // Re-export for cross-project imports
 export { getPublicAgents };
@@ -49,6 +53,7 @@ export async function startMcpServer() {
     tools: {
       routePromptWorkflow: createSimplifiedWorkflowTool(routePromptWorkflow),
       getNextInstructionsWorkflow: createSimplifiedWorkflowTool(getNextInstructionsWorkflow),
+      respondToApprovalWorkflow: createSimplifiedWorkflowTool(respondToApprovalWorkflow),
     },
   });
 

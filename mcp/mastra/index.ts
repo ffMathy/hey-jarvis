@@ -32,7 +32,11 @@ import { getNotificationAgent, notificationTools } from './verticals/notificatio
 import { phoneTools } from './verticals/phone/index.js';
 import { presenceShortcuts } from './verticals/presence/index.js';
 import { getRoutingSupervisorAgent } from './verticals/routing/agents.js';
-import { getNextInstructionsWorkflow, routePromptWorkflow } from './verticals/routing/workflows.js';
+import {
+  getNextInstructionsWorkflow,
+  respondToApprovalWorkflow,
+  routePromptWorkflow,
+} from './verticals/routing/workflows.js';
 import { getShoppingListAgent, getShoppingListSummaryAgent, shoppingTools } from './verticals/shopping/index.js';
 import { getStateChangeReactorAgent, synapseTools } from './verticals/synapse/index.js';
 import { getTodoListAgent, todoListTools } from './verticals/todo-list/index.js';
@@ -91,6 +95,7 @@ export async function getMastra(): Promise<Mastra> {
       iotMonitoringWorkflow,
       routePromptWorkflow,
       getNextInstructionsWorkflow,
+      respondToApprovalWorkflow,
     },
     agents: toAgentMap([
       await getCalendarAgent(),
