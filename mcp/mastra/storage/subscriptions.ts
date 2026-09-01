@@ -118,6 +118,44 @@ function fromBlob(value: unknown): Float32Array {
   throw new Error(`Expected a stored embedding blob, received ${typeof value}`);
 }
 
+/**
+ * Every column except the embedding blobs.
+ *
+ * Spelled out rather than `SELECT *` so a read with no use for a vector never pays to
+ * carry one: an embedding is 256 float32s, and a row holds up to five of them, so
+ * `SELECT *` moves several kilobytes per row to hand back a few short strings.
+ */
+const METADATA_COLUMNS = [
+  'id',
+  'source',
+  'when_text',
+  'given_text',
+  'then_text',
+  'one_shot',
+  'enabled',
+  'created_at',
+  'last_triggered_at',
+  'trigger_count',
+  'max_trigger_count',
+  'expires_at',
+].join(', ');
+
+/**
+ * The metadata columns plus the embeddings the matcher actually scores against.
+ *
+ * `then_embedding` is left out deliberately: nothing reads it back. Matching scores
+ * `whenEvent` and `givenCondition` only, and what the LLM needs downstream is the
+ * `thenAction` text rather than its vector. It is still written, so a later use for it
+ * needs no backfill.
+ */
+const MATCHING_COLUMNS = [
+  METADATA_COLUMNS,
+  'when_embedding',
+  'given_embedding',
+  'when_alt_embedding',
+  'given_alt_embedding',
+].join(', ');
+
 export class SubscriptionStorage {
   private client: Client;
   private initialized = false;
@@ -273,8 +311,8 @@ export class SubscriptionStorage {
     // happens to run the prune.
     const result = await this.client.execute({
       sql: options.includeDisabled
-        ? 'SELECT * FROM synapse_subscriptions ORDER BY created_at ASC'
-        : `SELECT * FROM synapse_subscriptions
+        ? `SELECT ${MATCHING_COLUMNS} FROM synapse_subscriptions ORDER BY created_at ASC`
+        : `SELECT ${MATCHING_COLUMNS} FROM synapse_subscriptions
            WHERE enabled = 1 AND (expires_at IS NULL OR expires_at > ?)
            ORDER BY created_at ASC`,
       args: options.includeDisabled ? [] : [new Date().toISOString()],
@@ -299,8 +337,8 @@ export class SubscriptionStorage {
 
     const result = await this.client.execute({
       sql: options.includeDisabled
-        ? 'SELECT * FROM synapse_subscriptions ORDER BY created_at ASC'
-        : `SELECT * FROM synapse_subscriptions
+        ? `SELECT ${METADATA_COLUMNS} FROM synapse_subscriptions ORDER BY created_at ASC`
+        : `SELECT ${METADATA_COLUMNS} FROM synapse_subscriptions
            WHERE enabled = 1 AND (expires_at IS NULL OR expires_at > ?)
            ORDER BY created_at ASC`,
       args: options.includeDisabled ? [] : [new Date().toISOString()],
@@ -316,7 +354,7 @@ export class SubscriptionStorage {
     await this.initialize();
 
     const result = await this.client.execute({
-      sql: 'SELECT * FROM synapse_subscriptions WHERE id = ?',
+      sql: `SELECT ${METADATA_COLUMNS} FROM synapse_subscriptions WHERE id = ?`,
       args: [id],
     });
 
@@ -383,7 +421,7 @@ export class SubscriptionStorage {
     const timestamp = now.toISOString();
     const doomed = await this.client.execute({
       sql: `
-        SELECT * FROM synapse_subscriptions
+        SELECT ${METADATA_COLUMNS} FROM synapse_subscriptions
         WHERE (expires_at IS NOT NULL AND expires_at <= ?)
            OR (max_trigger_count IS NOT NULL AND trigger_count >= max_trigger_count)
       `,
