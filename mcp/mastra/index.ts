@@ -6,7 +6,7 @@ import { CloudExporter, DefaultExporter, Observability, SamplingStrategyType } f
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { getCorsOptions } from './cors.js';
-import { getTokenUsageStorage } from './storage/index.js';
+import { getMastraStorageProvider, getTokenUsageStorage } from './storage/index.js';
 import { stripTransferEncodingHeader } from './streaming-headers.js';
 import { TokenTrackingProcessor, TokenUsageExporter } from './utils/token-usage-exporter.js';
 import { storageRetentionWorkflow, tokenUsageTools } from './verticals/api/index.js';
@@ -59,6 +59,9 @@ function toAgentMap(agents: Agent[]): Record<string, Agent> {
 
 export async function getMastra(): Promise<Mastra> {
   return new Mastra({
+    // Without this Mastra keeps workflow runs, schedules and traces in RAM and loses
+    // them on restart. See getMastraStorageProvider for why observability is composed.
+    storage: await getMastraStorageProvider(),
     logger: new PinoLogger({
       name: 'Mastra',
       level: 'info',
