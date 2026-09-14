@@ -22,6 +22,7 @@ import {
   resolveToolCategoryForTest,
   setRoutingRuntime,
 } from './controller.js';
+import { clearDelegationFailures, recordDelegationFailure } from './delegation-failures.js';
 import { getNextInstructionsWorkflow, respondToApprovalWorkflow, routePromptWorkflow } from './workflows.js';
 
 const progressBySessionId = new Map<string, RoutingProgress>();
@@ -103,6 +104,7 @@ function resultOf<T>(outcome: WorkflowResult<T>): T {
 beforeEach(() => {
   progressBySessionId.clear();
   answeredApprovals.length = 0;
+  clearDelegationFailures();
   setRoutingRuntime(fakeRuntime);
 });
 
@@ -337,6 +339,41 @@ describe('delegation tool names', () => {
 });
 
 describe('failed delegations', () => {
+  it('rejoins the reason the delegation hook recorded with the failure the session reports', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false });
+    const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
+
+    // This is the real shape: `onDelegationComplete` sees the error before Mastra wraps it,
+    // and the session's `tool_end` carries only the wrapper. Neither half names the problem
+    // on its own.
+    progress.handle({ type: 'tool_start', toolCallId: 'call-1', toolName: 'agent-weather', args: {} });
+    recordDelegationFailure('call-1', 'weather', new Error('OpenWeather rejected the API key'));
+    progress.handle({
+      type: 'tool_end',
+      toolCallId: 'call-1',
+      result: { text: '[Agent:RoutingSupervisor] - Failed agent tool execution for weather' },
+      isError: true,
+    });
+
+    const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(outcome.completedTaskResults?.[0].result).toContain('Failed agent tool execution for weather');
+    expect(outcome.completedTaskResults?.[0].result).toContain('OpenWeather rejected the API key');
+  });
+
+  it('reports a successful delegation without a stale reason attached to it', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false });
+    const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
+
+    // A reason left unclaimed by an earlier failure must not follow a later tool call.
+    recordDelegationFailure('call-stale', 'weather', new Error('an old failure'));
+    delegate(progress, 'weather', 'It is 8 degrees.');
+
+    const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(outcome.completedTaskResults).toEqual([{ id: 'weather', result: 'It is 8 degrees.' }]);
+  });
+
   it('reports why a delegation failed, not just that it did', async () => {
     await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false });
     const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);

@@ -4,6 +4,7 @@ import { AgentController } from '@mastra/core/agent-controller';
 import { getSqlStorageProvider } from '../../storage/index.js';
 import { logger } from '../../utils/logger.js';
 import { getRoutingSupervisorAgent, ROUTING_SUPERVISOR_AGENT_ID } from './agents.js';
+import { clearDelegationFailures, describeErrorChain, takeDelegationFailure } from './delegation-failures.js';
 
 /**
  * The routing runtime: one shared AgentController, one Session per caller.
@@ -130,6 +131,7 @@ export class RoutingProgress {
 
   /** Clears everything, for a new request on an existing session. */
   reset(): void {
+    clearDelegationFailures();
     this.pending = [];
     this.all = [];
     this.summary = undefined;
@@ -186,9 +188,14 @@ export class RoutingProgress {
     // what lets a fast answer reach the user without waiting for the slow one beside it:
     // the supervisor may still be mid-run, but this result is already worth relaying.
     if (event.type === 'tool_end') {
+      const reported = formatDelegationResult(event.result);
+      // Mastra's headline says which agent failed but never why; the reason was put aside by
+      // `onDelegationComplete` before the wrapping, under this same tool call id.
+      const reason = event.isError ? takeDelegationFailure(event.toolCallId) : undefined;
+
       this.pending.push({
         agentId: this.delegateNameByToolCallId.get(event.toolCallId) ?? 'an agent',
-        result: formatDelegationResult(event.result),
+        result: reason && !reported.includes(reason) ? `${reported}: ${reason}` : reported,
         failed: event.isError,
       });
       this.all.push(this.pending[this.pending.length - 1]);
@@ -238,31 +245,6 @@ function describeApprovalRequest(args: unknown): string {
     return args.prompt;
   }
   return JSON.stringify(args ?? null);
-}
-
-/**
- * Everything an error says about itself, its `cause` chain included.
- *
- * Mastra reports a failed delegation as `[Agent:X] - Failed agent tool execution for Y` and
- * carries the reason underneath, on `cause`. Reporting only the top line told the user, and
- * the logs, that eight delegations failed without once saying why — so the chain is walked
- * and every distinct message kept.
- */
-function describeErrorChain(error: unknown): string {
-  const messages: string[] = [];
-  let current: unknown = error;
-
-  // Bounded rather than `while (current)`: a cause chain that loops back on itself would
-  // otherwise hang the poll that is trying to report the failure.
-  for (let depth = 0; depth < 8 && current instanceof Error; depth += 1) {
-    const message = current.message.trim();
-    if (message && !messages.includes(message)) {
-      messages.push(message);
-    }
-    current = current.cause;
-  }
-
-  return messages.join(': ');
 }
 
 /**

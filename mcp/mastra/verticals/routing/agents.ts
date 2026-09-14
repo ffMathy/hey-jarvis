@@ -1,6 +1,7 @@
 import type { Agent } from '@mastra/core/agent';
 import { createAgent } from '../../utils/index.js';
 import { getPublicAgents } from '..';
+import { recordDelegationFailure } from './delegation-failures.js';
 
 const SUPERVISOR_INSTRUCTIONS = `You are the router for the Hey Jarvis assistant. A request arrives that needs work from the specialized agents available to you, and your job is to get all of it done and report back.
 
@@ -59,5 +60,19 @@ export async function getRoutingSupervisorAgent(): Promise<Agent> {
     // The router coordinates; it has no business remembering across requests, and the
     // agents it delegates to keep their own memory.
     memory: undefined,
+    defaultOptions: {
+      delegation: {
+        // The only place the real reason for a failed delegation is available. Mastra wraps
+        // it in a `MastraError` on the way out and the session sees only that wrapper, so a
+        // failure that is not caught here reaches the user as "Failed agent tool execution
+        // for weather" and nothing more.
+        onDelegationComplete: ({ success, error, toolCallId, primitiveId }) => {
+          if (success || !error) {
+            return;
+          }
+          recordDelegationFailure(toolCallId, primitiveId, error);
+        },
+      },
+    },
   });
 }
