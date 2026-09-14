@@ -48,6 +48,14 @@ export const ROUTING_SUPERVISOR_AGENT_ID = 'routing-supervisor';
  * So the reason is taken before any of that happens, from the one call this vertical owns.
  * These agents are already mutated here to swap their memory; this rides along with that.
  * The error is re-thrown untouched, so the supervisor still sees the failure it would have.
+ *
+ * This covers a run that fails on its way up, which is what the evidence points at: the
+ * delegations fail within milliseconds of each other and leave no span behind, so whatever
+ * goes wrong goes wrong before there is a run to trace. It does *not* cover a failure part
+ * way through a stream that started cleanly -- `stream` returns as soon as the run is under
+ * way and Mastra consumes `fullStream` itself, so that throw lands in its loop. Wrapping
+ * that too would mean replacing a read-only property, which needs a cast this project does
+ * not allow.
  */
 function reportFailuresOf(agent: Agent): void {
   const stream = agent.stream.bind(agent);
