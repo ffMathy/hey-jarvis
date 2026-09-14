@@ -1,6 +1,7 @@
 import type { Agent } from '@mastra/core/agent';
 import { createMemory } from '../../memory/index.js';
 import { createAgent } from '../../utils/index.js';
+import { logger } from '../../utils/logger.js';
 import { getPublicAgents } from '..';
 
 const SUPERVISOR_INSTRUCTIONS = `You are the router for the Hey Jarvis assistant. A request arrives that needs work from the specialized agents available to you, and your job is to get all of it done and report back.
@@ -32,6 +33,51 @@ export { SUPERVISOR_INSTRUCTIONS };
  * registered with, rather than the two drifting apart.
  */
 export const ROUTING_SUPERVISOR_AGENT_ID = 'routing-supervisor';
+
+/**
+ * Makes a subagent say why it failed, on its way out.
+ *
+ * Mastra catches whatever `stream` throws and re-throws a `MastraError` reading
+ * `[Agent:RoutingSupervisor] - Failed agent tool execution for calendar`, keeping the real
+ * error only as that wrapper's `cause`. Every route the cause could take out of the process
+ * is closed: the session flattens the thrown error to its top-level message before emitting
+ * `tool_end`, and the wrapper goes to `logger.trackException`, which reports to the
+ * observability adapter rather than the log. A live run failed all five delegations and
+ * named the agents five times without once saying what went wrong.
+ *
+ * So the reason is taken before any of that happens, from the one call this vertical owns.
+ * These agents are already mutated here to swap their memory; this rides along with that.
+ * The error is re-thrown untouched, so the supervisor still sees the failure it would have.
+ */
+function reportFailuresOf(agent: Agent): void {
+  const stream = agent.stream.bind(agent);
+  const generate = agent.generate.bind(agent);
+
+  const report = (error: unknown) => {
+    logger.error('Subagent failed', { agentId: agent.id, error });
+  };
+
+  agent.stream = async (...args: Parameters<typeof stream>) => {
+    try {
+      return await stream(...args);
+    } catch (error) {
+      report(error);
+      throw error;
+    }
+  };
+
+  // Delegation takes the stream path for v2 models, which is every model here. `generate`
+  // is covered anyway: a reason missed because the call went the other way costs another
+  // round trip through a live voice request to find out.
+  agent.generate = async (...args: Parameters<typeof generate>) => {
+    try {
+      return await generate(...args);
+    } catch (error) {
+      report(error);
+      throw error;
+    }
+  };
+}
 
 /**
  * The agent that fulfils a routing request by delegating to the specialized agents.
@@ -70,6 +116,7 @@ export async function getRoutingSupervisorAgent(): Promise<Agent> {
   // the same reason.
   for (const agent of routableAgents) {
     agent.__setMemory(leanMemory);
+    reportFailuresOf(agent);
   }
 
   return createAgent({
