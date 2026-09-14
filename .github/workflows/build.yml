@@ -89,8 +89,9 @@ jobs:
           cacheFrom: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
           push: never
           runCmd: |
-            turbo build
-            turbo test
+            bun install --frozen-lockfile
+            bunx turbo build
+            bunx turbo test
           env: |
             GITHUB_ACTIONS
             GITHUB_TOKEN
@@ -177,7 +178,9 @@ jobs:
           imageName: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
           cacheFrom: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
           push: never
-          runCmd: turbo test:integration
+          runCmd: |
+            bun install --frozen-lockfile
+            bunx turbo test:integration
           env: |
             GITHUB_ACTIONS
             GITHUB_TOKEN
