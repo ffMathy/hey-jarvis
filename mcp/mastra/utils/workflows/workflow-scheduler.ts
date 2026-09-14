@@ -14,6 +14,33 @@ interface SchedulerOptions {
 }
 
 /**
+ * An `Error` for a value that may not be one.
+ *
+ * A failed run does not hand back the Error its step threw: Mastra serializes it on the way
+ * through the run snapshot, so `result.error` arrives as a plain object that still carries
+ * `message` and `stack`. Passing that through `String(...)` yields `[object Object]` and
+ * throws away the only account of what went wrong.
+ */
+function toError(value: unknown): Error {
+  if (value instanceof Error) {
+    return value;
+  }
+
+  if (typeof value === 'object' && value !== null && 'message' in value && typeof value.message === 'string') {
+    const error = new Error(value.message);
+    if ('name' in value && typeof value.name === 'string') {
+      error.name = value.name;
+    }
+    if ('stack' in value && typeof value.stack === 'string') {
+      error.stack = value.stack;
+    }
+    return error;
+  }
+
+  return new Error(String(value));
+}
+
+/**
  * Workflow Scheduler for Mastra
  *
  * Enables cron-based scheduling of Mastra workflows using node-cron.
@@ -51,14 +78,18 @@ interface SchedulerOptions {
 export class WorkflowScheduler {
   private mastra: Mastra;
   private scheduledTasks: Map<string, ScheduledTask> = new Map();
-  private startupWorkflows: Map<string, Record<string, unknown>> = new Map();
+  private scheduledInputData: Map<string, Record<string, unknown>> = new Map();
+  /** Workflows to run once as soon as {@link start} is called. */
+  private startupWorkflows: Set<string> = new Set();
+  /** Workflows with a tick still in flight. See {@link runNow}. */
+  private runningWorkflows: Set<string> = new Set();
   private options: SchedulerOptions;
 
   constructor(mastra: Mastra, options: SchedulerOptions = {}) {
     this.mastra = mastra;
     this.options = {
       timezone: options.timezone || 'Europe/Copenhagen',
-      onError: options.onError || this.defaultErrorHandler,
+      onError: options.onError ?? ((error, workflowId) => this.defaultErrorHandler(error, workflowId)),
     };
   }
 
@@ -84,7 +115,7 @@ export class WorkflowScheduler {
     const task = cron.schedule(
       schedule,
       async () => {
-        await this.executeWorkflow(workflowId, inputData);
+        await this.runNow(workflowId);
       },
       {
         timezone: this.options.timezone,
@@ -93,10 +124,11 @@ export class WorkflowScheduler {
 
     // Store task reference
     this.scheduledTasks.set(workflowId, task);
+    this.scheduledInputData.set(workflowId, inputData);
 
     // Track startup workflows
     if (runOnStartup) {
-      this.startupWorkflows.set(workflowId, inputData);
+      this.startupWorkflows.add(workflowId);
     }
 
     console.log(`📅 Scheduled workflow: ${workflowId}`);
@@ -119,15 +151,9 @@ export class WorkflowScheduler {
     // Execute startup workflows immediately (don't await - run in background)
     if (this.startupWorkflows.size > 0) {
       console.log(`\n🏃 Executing ${this.startupWorkflows.size} startup workflow(s)...`);
-      this.startupWorkflows.forEach((inputData, workflowId) => {
+      this.startupWorkflows.forEach((workflowId) => {
         console.log(`   🚀 Running on startup: ${workflowId}`);
-        void (async () => {
-          try {
-            await this.executeWorkflow(workflowId, inputData);
-          } catch (error) {
-            console.error(`   ❌ Startup workflow ${workflowId} failed:`, error);
-          }
-        })();
+        void this.runNow(workflowId);
       });
     }
 
@@ -156,6 +182,8 @@ export class WorkflowScheduler {
     if (task) {
       task.stop();
       this.scheduledTasks.delete(workflowId);
+      this.scheduledInputData.delete(workflowId);
+      this.startupWorkflows.delete(workflowId);
       console.log(`⏹️  Stopped workflow: ${workflowId}`);
     }
   }
@@ -165,6 +193,40 @@ export class WorkflowScheduler {
    */
   getScheduledWorkflows(): string[] {
     return Array.from(this.scheduledTasks.keys());
+  }
+
+  /**
+   * Runs a scheduled workflow immediately, exactly as a cron tick would.
+   *
+   * A tick is skipped while the previous run of the same workflow is still in flight.
+   * `node-cron` fires on the clock regardless of how long the last callback took, so
+   * without this a workflow scheduled every minute — `emailCheckingWorkflow` is — starts a
+   * second run whenever one takes longer than a minute. Those overlapping runs duplicate
+   * whatever the workflow does, and each one that the process outlives is left behind in
+   * storage as an active run for Mastra to try (and fail) to restart on the next boot.
+   *
+   * Anything the run throws is reported through the scheduler's `onError` handler rather
+   * than escaping into the cron callback, where it would surface as an unhandled rejection
+   * with no workflow name attached.
+   *
+   * @returns whether the workflow ran; `false` means the tick was skipped.
+   */
+  async runNow(workflowId: string): Promise<boolean> {
+    if (this.runningWorkflows.has(workflowId)) {
+      console.warn(`⏭️  Skipped scheduled run of ${workflowId}: the previous run is still in flight`);
+      return false;
+    }
+
+    this.runningWorkflows.add(workflowId);
+    try {
+      await this.executeWorkflow(workflowId, this.scheduledInputData.get(workflowId) ?? {});
+    } catch (error) {
+      this.options.onError?.(toError(error), workflowId);
+    } finally {
+      this.runningWorkflows.delete(workflowId);
+    }
+
+    return true;
   }
 
   /**
@@ -180,11 +242,24 @@ export class WorkflowScheduler {
     const result = await run.start({ inputData });
 
     const duration = Date.now() - startTime;
-    console.log(`✅ Workflow completed successfully (${duration}ms)`);
-    console.log(`   Status: ${result.status}`);
 
-    // Log result if it's not too large and workflow succeeded
-    if (result.status === 'success' && result.result && JSON.stringify(result.result).length < 500) {
+    // A failed run used to be announced as "✅ Workflow completed successfully" with the
+    // real status on the line below it, so the only record of a scheduled workflow failing
+    // was a green checkmark.
+    if (result.status === 'failed') {
+      throw toError(result.error);
+    }
+
+    if (result.status !== 'success') {
+      console.warn(`⚠️  Workflow ${workflowId} did not finish (${duration}ms)`);
+      console.warn(`   Status: ${result.status}`);
+      return;
+    }
+
+    console.log(`✅ Workflow completed successfully (${duration}ms)`);
+
+    // Log result if it's not too large
+    if (result.result && JSON.stringify(result.result).length < 500) {
       console.log(`   Result:`, result.result);
     }
   }

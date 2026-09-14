@@ -1,13 +1,13 @@
 import { Mastra } from '@mastra/core';
 import type { Agent } from '@mastra/core/agent';
 import { MastraServer } from '@mastra/hono';
-import { PinoLogger } from '@mastra/loggers';
 import { CloudExporter, DefaultExporter, Observability, SamplingStrategyType } from '@mastra/observability';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { getCorsOptions } from './cors.js';
-import { getSqlStorageProvider, getTokenUsageStorage } from './storage/index.js';
+import { getMastraStorageProvider, getTokenUsageStorage } from './storage/index.js';
 import { stripTransferEncodingHeader } from './streaming-headers.js';
+import { createLogger } from './utils/logger.js';
 import { TokenTrackingProcessor, TokenUsageExporter } from './utils/token-usage-exporter.js';
 import { storageRetentionWorkflow, tokenUsageTools } from './verticals/api/index.js';
 import { calendarTools, getCalendarAgent } from './verticals/calendar/index.js';
@@ -58,16 +58,15 @@ function toAgentMap(agents: Agent[]): Record<string, Agent> {
 
 export async function getMastra(): Promise<Mastra> {
   return new Mastra({
-    logger: new PinoLogger({
-      name: 'Mastra',
-      level: 'info',
-    }),
-    // Shared with the agents' memory, which opens the same file. Background tasks persist
-    // their records here, which is what makes a delegation outlive the run that dispatched
-    // it; without storage on the instance the manager has nowhere to write, and the
-    // instance was also silently falling back to an in-memory store and warning that it was
-    // not production-safe.
-    storage: await getSqlStorageProvider(),
+    // Without this Mastra keeps workflow runs, schedules, background tasks and traces in
+    // RAM and loses them on restart. See getMastraStorageProvider for why observability is
+    // composed.
+    storage: await getMastraStorageProvider(),
+    // Mastra reports its own failures — a workflow run that could not be restarted at
+    // boot, a scheduler tick that threw — by handing the error to this logger as a plain
+    // field. `createLogger` is what makes those fields readable; a bare PinoLogger prints
+    // them as `error: {}`.
+    logger: createLogger('Mastra'),
     // Routing delegates to subagents through the background task manager, so that a
     // delegation is a durable record rather than a promise held in this process. That is
     // what `getNextInstructionsWorkflow` polls, and it is why a result survives a restart

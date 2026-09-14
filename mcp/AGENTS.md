@@ -612,7 +612,8 @@ Workflows can be executed on recurring cron schedules using the built-in `Workfl
 - **Cron-based scheduling**: Uses standard cron expressions for flexible timing
 - **Automatic execution**: Workflows run in the background without manual intervention
 - **Run on startup**: Optionally execute workflows immediately when the scheduler starts
-- **Error handling**: Failed executions are logged with detailed error information
+- **No overlapping runs**: A tick is skipped while the previous run of the same workflow is still in flight, so a workflow that outlives its interval (`emailCheckingWorkflow` runs every minute) never has two runs going at once
+- **Error handling**: A run that throws — or that comes back with `status: 'failed'` — is reported through the scheduler's `onError` handler with the error intact
 - **Timezone support**: Configurable timezone (defaults to Europe/Copenhagen)
 - **Pre-defined patterns**: Common schedules available via `CronPatterns`
 
