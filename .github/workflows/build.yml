@@ -88,13 +88,8 @@ jobs:
           imageName: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
           cacheFrom: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
           push: never
-          # `bunx turbo`, never a bare `turbo`: the bare name resolves to the
-          # global npm install from the `turborepo-npm` devcontainer feature,
-          # which is an unpinned version outside bun.lock and currently ships
-          # without its linux-64 binary, so it dies before any target runs.
-          # `bunx` uses the turbo pinned in devDependencies, which is the one
-          # this repository actually tests against.
           runCmd: |
+            bun install --frozen-lockfile
             bunx turbo build
             bunx turbo test
           env: |
@@ -183,9 +178,9 @@ jobs:
           imageName: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
           cacheFrom: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
           push: never
-          # Same reason as the build job: resolve turbo from bun.lock, not from
-          # the devcontainer feature's global npm install.
-          runCmd: bunx turbo test:integration
+          runCmd: |
+            bun install --frozen-lockfile
+            bunx turbo test:integration
           env: |
             GITHUB_ACTIONS
             GITHUB_TOKEN

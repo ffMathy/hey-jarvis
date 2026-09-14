@@ -142,9 +142,9 @@ jobs:
           imageName: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
           cacheFrom: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
           push: always
-          # Same reason as in build.yml: resolve turbo from bun.lock rather than
-          # the devcontainer feature's unpinned global npm install.
-          runCmd: bunx turbo deploy
+          runCmd: |
+            bun install --frozen-lockfile
+            bunx turbo deploy
           env: |
             GITHUB_TOKEN
             GITHUB_ACTOR
