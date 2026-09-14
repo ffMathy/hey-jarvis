@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import { createTool, executeTool } from '../../utils/tool-factory.js';
+import { recipeCatalogEntrySchema, toPlainTextSummary } from './recipe-catalog.js';
 
 // Interface for Valdemarsro Recipe API responses
-interface Recipe {
+interface ValdemarsroRecipe {
   recipe_id: number;
   title: string;
   description: string;
@@ -30,7 +31,7 @@ interface Recipe {
 }
 
 interface RecipeResponse {
-  data: Recipe;
+  data: ValdemarsroRecipe;
 }
 
 interface SearchResponse {
@@ -42,7 +43,7 @@ interface SearchResponse {
 }
 
 interface RecipePageResponse {
-  data: Recipe[];
+  data: ValdemarsroRecipe[];
   pagination: {
     page: number;
     max_pages: number;
@@ -62,7 +63,7 @@ const getApiKey = () => {
 };
 
 // Shared recipe schema used by multiple tools
-const recipeSchema = z
+export const recipeSchema = z
   .object({
     id: z.number(),
     title: z.string(),
@@ -144,52 +145,84 @@ export const searchRecipes = createTool({
   },
 });
 
+// Shared input for the two paginated recipe listings
+const recipeListingInputSchema = z.object({
+  fromDate: z.string().optional().describe('Optional from date filter'),
+  amount: z.number().optional().describe('Optional maximum number of recipes to retrieve, or all recipes if not set'),
+});
+
+/**
+ * Walks the paginated recipe endpoint, mapping each recipe as it arrives.
+ *
+ * Mapping per page rather than afterwards keeps the caller free to decide how
+ * much of a recipe it actually wants to hold on to.
+ *
+ * @param options - From-date filter and an optional cap on how many to collect
+ * @param mapRecipe - Turns a raw API recipe into the caller's shape
+ */
+async function fetchRecipePages<TRecipe>(
+  options: { fromDate?: string; amount?: number },
+  mapRecipe: (recipe: ValdemarsroRecipe) => TRecipe,
+): Promise<TRecipe[]> {
+  const apiKey = getApiKey();
+
+  async function getPage(page: number) {
+    let url = `https://www.valdemarsro.dk/api/v2/recipes/page/${page}?api_key=${apiKey}`;
+
+    if (options.fromDate) {
+      url += `&fromdate=${encodeURIComponent(options.fromDate)}`;
+    }
+
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch recipes: ${response.statusText}`);
+    }
+
+    return (await response.json()) as RecipePageResponse;
+  }
+
+  const collected: TRecipe[] = [];
+
+  let currentPage = 0;
+  let hasNext = true;
+  while (hasNext) {
+    const page = await getPage(currentPage++);
+
+    collected.push(...page.data.map(mapRecipe));
+
+    if (options.amount && collected.length >= options.amount) {
+      return collected.slice(0, options.amount);
+    }
+
+    hasNext = page.pagination.page < page.pagination.max_pages;
+  }
+
+  return collected;
+}
+
 // Tool to get all recipes with pagination
 export const getAllRecipes = createTool({
   id: 'getAllRecipes',
   description: 'Get all recipes from Valdemarsro with pagination support',
-  inputSchema: z.object({
-    fromDate: z.string().optional().describe('Optional from date filter'),
-    amount: z.number().optional().describe('Optional maximum number of recipes to retrieve, or all recipes if not set'),
-  }),
+  inputSchema: recipeListingInputSchema,
   outputSchema: z.array(recipeSchema).describe('Array of all recipes from Valdemarsro suitable for meal planning'),
-  execute: async (inputData, _context) => {
-    async function getPage(page: number) {
-      const apiKey = getApiKey();
-      let url = `https://www.valdemarsro.dk/api/v2/recipes/page/${page}?api_key=${apiKey}`;
+  execute: async (inputData, _context) => await fetchRecipePages(inputData, mapValdemarsroRecipe),
+});
 
-      if (inputData.fromDate) {
-        url += `&fromdate=${encodeURIComponent(inputData.fromDate)}`;
-      }
-
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch recipes: ${response.statusText}`);
-      }
-
-      const data = (await response.json()) as RecipePageResponse;
-      return data;
-    }
-
-    const allRecipes = [];
-
-    let currentPage = 0;
-    let hasNext = true;
-    while (hasNext) {
-      const page = await getPage(currentPage++);
-
-      const recipes = page.data.map(mapValdemarsroRecipe);
-      allRecipes.push(...recipes);
-
-      if (inputData.amount && allRecipes.length >= inputData.amount) {
-        return allRecipes.slice(0, inputData.amount);
-      }
-
-      hasNext = page.pagination.page < page.pagination.max_pages;
-    }
-
-    return allRecipes;
-  },
+// Tool to browse the recipe catalogue without its bulk.
+// `getAllRecipes` returns every ingredient and every direction of every recipe,
+// which is far more than a recipe *selection* needs and more than a model's
+// input token limit allows. This returns the same recipes as compact entries;
+// fetch the chosen ones in full with `getRecipeById` afterwards.
+export const getRecipeCatalog = createTool({
+  id: 'getRecipeCatalog',
+  description:
+    'Get a compact catalogue of all Valdemarsro recipes (title, categories and a short summary, without ingredients or directions), suitable for choosing recipes before fetching them in full',
+  inputSchema: recipeListingInputSchema,
+  outputSchema: z
+    .array(recipeCatalogEntrySchema)
+    .describe('Array of compact recipe entries from Valdemarsro suitable for meal planning'),
+  execute: async (inputData, _context) => await fetchRecipePages(inputData, mapValdemarsroCatalogEntry),
 });
 
 // Tool to get search filters
@@ -222,10 +255,11 @@ export const cookingTools = {
   searchRecipes,
   getRecipeById,
   getAllRecipes,
+  getRecipeCatalog,
   getSearchFilters,
 };
 
-function mapValdemarsroRecipe(recipe: Recipe) {
+function mapValdemarsroRecipe(recipe: ValdemarsroRecipe) {
   const ingredients = recipe.ingredients
     .filter((item) => item.ingrediens?.name)
     .map((item) => {
@@ -240,10 +274,13 @@ function mapValdemarsroRecipe(recipe: Recipe) {
   // Extract preparation time from tid object (total time in minutes as string)
   const preparationTime = recipe.fields.tid?.i_alt;
 
-  // Extract servings from personer_maengde object (antal as number)
-  const servings = recipe.fields.personer_maengde?.antal
+  // Extract servings from personer_maengde object (antal as number).
+  // The field is free text, so a value like "4-6" parses fine but "efter behov"
+  // yields NaN — which the schema rejects, taking the whole run down with it.
+  const parsedServings = recipe.fields.personer_maengde?.antal
     ? parseInt(recipe.fields.personer_maengde.antal, 10)
     : undefined;
+  const servings = Number.isFinite(parsedServings) ? parsedServings : undefined;
 
   return {
     id: recipe.recipe_id,
@@ -254,6 +291,19 @@ function mapValdemarsroRecipe(recipe: Recipe) {
     ingredients,
     url: recipe.url,
     imageUrl: recipe.media,
+    preparationTime,
+    servings,
+  };
+}
+
+function mapValdemarsroCatalogEntry(recipe: ValdemarsroRecipe) {
+  const { id, title, categories, description, preparationTime, servings } = mapValdemarsroRecipe(recipe);
+
+  return {
+    id,
+    title,
+    categories,
+    summary: toPlainTextSummary(description),
     preparationTime,
     servings,
   };

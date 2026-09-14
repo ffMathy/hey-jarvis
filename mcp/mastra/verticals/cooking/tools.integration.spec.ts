@@ -170,6 +170,36 @@ describe('Cooking Tools Integration Tests', () => {
     }, 60000);
   });
 
+  describe('getRecipeCatalog', () => {
+    it('should fetch compact catalogue entries without ingredients or directions', async () => {
+      // Fetch recipes from last 30 days to limit results
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const fromDate = thirtyDaysAgo.toISOString().split('T')[0];
+
+      const result = await executeTool(cookingTools.getRecipeCatalog, { fromDate });
+
+      expect(Array.isArray(result)).toBe(true);
+      expect(result.length).toBeGreaterThan(0);
+
+      for (const entry of result) {
+        expect(typeof entry.id).toBe('number');
+        expect(typeof entry.title).toBe('string');
+        expect(Array.isArray(entry.categories)).toBe(true);
+        expect(typeof entry.summary).toBe('string');
+        // The whole point of the catalogue: no recipe bulk, and no markup in
+        // the summary that a prompt would have to carry.
+        expect(entry).not.toHaveProperty('ingredients');
+        expect(entry).not.toHaveProperty('directions');
+        expect(entry.summary).not.toContain('<');
+        expect(entry.summary.length).toBeLessThanOrEqual(160);
+      }
+
+      console.log(`✅ Fetched ${result.length} catalogue entries from last 30 days`);
+      console.log('   First entry:', result[0].title);
+    }, 60000);
+  });
+
   describe('getSearchFilters', () => {
     it('should fetch search filters', async () => {
       const result = await executeTool(cookingTools.getSearchFilters, {});
