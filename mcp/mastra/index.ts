@@ -77,23 +77,6 @@ export async function getMastra(): Promise<Mastra> {
         mastraLogger.error('Scheduled workflow failed', { scheduleId, error });
       },
     },
-    // Routing delegates to subagents through the background task manager, so that a
-    // delegation is a durable record rather than a promise held in this process. That is
-    // what `getNextInstructionsWorkflow` polls, and it is why a result survives a restart
-    // between the call that started it and the call that asks for it.
-    //
-    // Concurrency is bounded because the subagents share one hosted model quota, and a
-    // voice request that fans out to six agents at once should queue rather than fail.
-    backgroundTasks: {
-      enabled: true,
-      globalConcurrency: 10,
-      perAgentConcurrency: 5,
-      backpressure: 'queue',
-      // Comfortably longer than any delegation should take. The caller's own patience is
-      // far shorter -- the poll loop reports what is still running -- so this exists to
-      // stop a wedged delegation occupying a slot forever, not to bound what the user waits.
-      defaultTimeoutMs: 300_000,
-    },
     observability: new Observability({
       configs: {
         default: {

@@ -93,15 +93,10 @@ export async function getRoutingSupervisorAgent(): Promise<Agent> {
     // across requests anyway -- it holds one request at a time and the thread is the
     // session's, not a memory of past calls.
     memory: leanMemory,
-    // Every tool this agent has is a delegation, so all of them are dispatched as durable
-    // background tasks rather than awaited inside the supervisor's turn.
-    //
-    // That is what lets the supervisor answer the caller immediately while the work it
-    // asked for is still being done, which is the shape the two-tool voice contract has
-    // always wanted: `routePromptWorkflow` returns at once and
-    // `getNextInstructionsWorkflow` reports what has landed. It also means a delegation is
-    // a row with a status, a result and an error, so it survives a restart and its failure
-    // arrives with a reason attached instead of a wrapper that has lost one.
-    backgroundTasks: { tools: 'all' },
+    // Delegations are *not* dispatched as background tasks. `backgroundTasks: { tools: 'all' }`
+    // was tried and did nothing: a live run announced three delegations and the task manager
+    // held no rows for any of them, so they ran in the supervisor's own turn regardless.
+    // The session's event stream reports them completely -- `tool_start` opening each one and
+    // `tool_end` carrying its answer -- so that is what the poll reads.
   });
 }

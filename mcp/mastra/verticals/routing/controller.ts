@@ -1,7 +1,6 @@
 import type { Agent } from '@mastra/core/agent';
 import type { AgentControllerEvent } from '@mastra/core/agent-controller';
 import { AgentController } from '@mastra/core/agent-controller';
-import type { BackgroundTask } from '@mastra/core/background-tasks';
 import { getSqlStorageProvider } from '../../storage/index.js';
 import { logger } from '../../utils/logger.js';
 import { getRoutingSupervisorAgent, ROUTING_SUPERVISOR_AGENT_ID } from './agents.js';
@@ -48,9 +47,6 @@ export function agentIdFromDelegationTool(toolName: string): string {
   return toolName.startsWith(DELEGATION_TOOL_PREFIX) ? toolName.slice(DELEGATION_TOOL_PREFIX.length) : toolName;
 }
 
-/** A task that has not settled yet, and so is still worth telling the caller about. */
-const ACTIVE_TASK_STATUSES = new Set<BackgroundTask['status']>(['pending', 'running', 'suspended']);
-
 /** One delegation that has finished, as the poll loop reports it. */
 export interface DelegationOutcome {
   /** The agent that was delegated to. */
@@ -70,23 +66,23 @@ export interface DelegationOutcome {
  */
 export class RoutingProgress {
   /**
-   * The tool call ids this session has dispatched, which is how its delegations are found.
+   * Delegations that have started and not yet answered, by tool call id.
    *
-   * Not the session's `resourceId`, which is the obvious choice and does not work: a
-   * background task records the resourceId of the *run's memory scope*, and the supervisor
-   * holds no memory, so the run has no scope and every row is written with `resourceId`
-   * undefined. Filtering on it matched nothing, so a poll reported no delegations and no
-   * progress, for ever.
-   *
-   * A tool call id comes off this session's own event stream, so it is session-scoped by
-   * construction — the isolation no longer depends on a field the framework may not set.
+   * This is the whole of what "in progress" means. An earlier design read it from the
+   * background task manager instead, and a live run settled it: the supervisor announced
+   * three delegations and the manager held no rows for any of them. Delegations run in the
+   * supervisor's own turn, in the foreground, so the session's event stream is the only
+   * place they are visible -- and it is a complete one, since every delegation opens with
+   * `tool_start` and closes with `tool_end`.
    */
-  readonly dispatchedToolCallIds = new Set<string>();
-  /** Task ids already handed to the caller, so a result is reported exactly once. */
-  readonly reportedTaskIds = new Set<string>();
+  readonly inFlightByToolCallId = new Map<string, string>();
+  /** Outcomes not yet handed to the caller. */
+  pending: DelegationOutcome[] = [];
+  /** Every outcome this request produced, for the closing recap. */
+  all: DelegationOutcome[] = [];
   /** The supervisor's own closing text, once the run has produced it. */
   summary?: string;
-  /** Whether the supervisor's loop has ended. Delegations may still be running. */
+  /** Whether the supervisor's loop has ended. */
   agentFinished = false;
   error?: string;
 
@@ -95,8 +91,9 @@ export class RoutingProgress {
 
   /** Clears everything, for a new request on an existing session. */
   reset(): void {
-    this.dispatchedToolCallIds.clear();
-    this.reportedTaskIds.clear();
+    this.inFlightByToolCallId.clear();
+    this.pending = [];
+    this.all = [];
     this.summary = undefined;
     this.error = undefined;
     this.agentFinished = false;
@@ -111,17 +108,9 @@ export class RoutingProgress {
     }
   }
 
-  /**
-   * Resolves when the session next says something that changes what a poll may report.
-   *
-   * `agentFinished` deliberately does not short-circuit this. The supervisor's turn ending
-   * does not end the request — delegations it dispatched outlive it — so returning here on
-   * that alone would send the poll straight back round to find nothing new, and spin for
-   * the whole deadline. An outright failure does change the answer, and it still wakes a
-   * parked poll through {@link wake}.
-   */
+  /** Resolves when there is something new to say, or the request has ended. */
   wait(): Promise<void> {
-    if (this.error) {
+    if (this.pending.length > 0 || this.error || this.isFinished()) {
       return Promise.resolve();
     }
     return new Promise<void>((resolve) => {
@@ -129,28 +118,49 @@ export class RoutingProgress {
     });
   }
 
+  /**
+   * Whether the request is done.
+   *
+   * The supervisor's turn ending is necessary but not sufficient on its own: a delegation
+   * it opened can still be unanswered when the turn's own stream closes, and closing the
+   * loop then would drop that answer.
+   */
+  isFinished(): boolean {
+    return this.agentFinished && this.inFlightByToolCallId.size === 0;
+  }
+
   /** Whether this session has never been asked to route anything. */
   isIdle(): boolean {
-    return !this.agentFinished && this.dispatchedToolCallIds.size === 0 && this.reportedTaskIds.size === 0;
+    return !this.agentFinished && this.all.length === 0 && this.inFlightByToolCallId.size === 0;
   }
 
   /** Folds one session event into the buffer. */
   handle(event: AgentControllerEvent): void {
-    // Every delegation this request makes passes through here, which is what makes the
-    // task rows findable afterwards.
     if (event.type === 'tool_start') {
-      this.dispatchedToolCallIds.add(event.toolCallId);
-      logger.info('Routing delegated', {
-        agentId: agentIdFromDelegationTool(event.toolName),
-        toolCallId: event.toolCallId,
-      });
+      const agentId = agentIdFromDelegationTool(event.toolName);
+      this.inFlightByToolCallId.set(event.toolCallId, agentId);
+      logger.info('Routing delegated', { agentId, toolCallId: event.toolCallId });
       return;
     }
 
-    // `tool_end` is deliberately not a delegation outcome. A delegation dispatched as a
-    // background task returns an acknowledgement the moment it is queued, so this fires
-    // with that acknowledgement rather than with the agent's answer. Reporting it would
-    // tell the user a question had been answered while it was still being asked.
+    if (event.type === 'tool_end') {
+      const agentId = this.inFlightByToolCallId.get(event.toolCallId) ?? 'an agent';
+      this.inFlightByToolCallId.delete(event.toolCallId);
+
+      const outcome: DelegationOutcome = {
+        agentId,
+        result: formatDelegationResult(event.result),
+        failed: event.isError,
+      };
+      if (event.isError) {
+        logger.error('Delegation did not complete', { agentId, result: outcome.result });
+      }
+
+      this.pending.push(outcome);
+      this.all.push(outcome);
+      this.wake();
+      return;
+    }
 
     if (event.type === 'message_end' && event.message.role === 'assistant') {
       const text = extractText(event.message);
@@ -167,7 +177,8 @@ export class RoutingProgress {
 
     if (event.type === 'agent_end') {
       logger.info('Routing supervisor finished its turn', {
-        delegations: this.dispatchedToolCallIds.size,
+        delegations: this.all.length,
+        stillRunning: this.inFlightByToolCallId.size,
       });
       this.agentFinished = true;
       this.wake();
@@ -223,45 +234,38 @@ function extractText(message: { content?: unknown }): string {
     .trim();
 }
 
-/**
- * Turns a settled task into something worth reading aloud.
- *
- * A failure reports the framework's own message rather than a generic one. Mastra records
- * the underlying error on the task — the reason the delegation failed, not merely that it
- * did — which is the thing an earlier implementation could not get at, because the only
- * copy it saw had already been wrapped for the model's benefit.
- */
-export function describeSettledTask(task: BackgroundTask): DelegationOutcome {
-  const agentId = agentIdFromDelegationTool(task.toolName);
-
-  if (task.status === 'completed') {
-    return { agentId, result: formatDelegationResult(task.result), failed: false };
-  }
-
-  const reason = task.error?.message ?? `The delegation ${task.status.replace('_', ' ')}.`;
-  logger.error('Delegation did not complete', {
-    agentId,
-    taskId: task.id,
-    status: task.status,
-    error: task.error?.message,
-    stack: task.error?.stack,
-  });
-
-  return { agentId, result: reason, failed: true };
-}
-
-/** What one poll can see of a request, once the task records are folded in. */
+/** What one poll can see of a request. */
 export interface RoutingSnapshot {
-  /** Delegations that have settled since the last poll. */
+  /** Delegations that have answered since the last poll. */
   landed: DelegationOutcome[];
   /** Everything this request produced, for the closing recap. */
   all: DelegationOutcome[];
-  /** Delegations still running, by task id. */
-  inProgressTaskIds: string[];
+  /** The agents still working, by name. */
+  inProgress: string[];
   /** Whether the supervisor is done *and* nothing is still running. */
   finished: boolean;
   summary?: string;
   error?: string;
+}
+
+/**
+ * Folds the buffer into what a single poll is allowed to say.
+ *
+ * Taking a snapshot hands its `landed` outcomes over, so one must not be taken and
+ * discarded -- those results would never be reported again.
+ */
+export function buildSnapshot(progress: RoutingProgress): RoutingSnapshot {
+  const landed = progress.pending;
+  progress.pending = [];
+
+  return {
+    landed,
+    all: progress.all,
+    inProgress: [...new Set(progress.inFlightByToolCallId.values())],
+    finished: progress.isFinished(),
+    summary: progress.summary,
+    error: progress.error,
+  };
 }
 
 /**
@@ -280,12 +284,9 @@ export interface RoutingRuntime {
   waitForChange(sessionId: string, deadlineMs: number): Promise<void>;
 }
 
-/** Just enough of the Mastra instance to reach the supervisor and the task records. */
+/** Just enough of the Mastra instance to reach the registered supervisor. */
 interface RoutingMastra {
   getAgentById(id: string): Agent;
-  backgroundTaskManager?: {
-    listTasks(filter: { agentId?: string }): Promise<{ tasks: BackgroundTask[] }>;
-  };
 }
 
 let controller: AgentController | undefined;
@@ -298,7 +299,7 @@ const progressBySessionId = new Map<string, RoutingProgress>();
  * The controller has to drive the supervisor that is *registered* on that instance, not a
  * second copy of it: `getRoutingSupervisorAgent()` builds a fresh agent per call, so calling
  * it here produced an agent the instance had never seen, whose `mastra` handle was
- * undefined. It is also the only route to `backgroundTaskManager`.
+ * undefined.
  *
  * It arrives through the workflow steps because importing the instance directly would close
  * an import cycle — the instance imports these workflows in order to register them.
@@ -312,9 +313,7 @@ export function rememberMastraRegistry(mastra: RoutingMastra | undefined): void 
   }
 
   if (!registry) {
-    logger.info('Routing resolved its Mastra instance', {
-      backgroundTasksEnabled: Boolean(mastra.backgroundTaskManager),
-    });
+    logger.info('Routing resolved its Mastra instance', {});
   }
   registry = mastra;
 }
@@ -385,56 +384,6 @@ async function getSession(sessionId: string) {
   return { session, progress };
 }
 
-/** Every delegation this session has dispatched, settled or not. */
-async function listSessionTasks(sessionId: string, progress: RoutingProgress): Promise<BackgroundTask[]> {
-  const manager = registry?.backgroundTaskManager;
-  if (!manager) {
-    logger.warn('Background tasks are not enabled; no delegation can be reported', { sessionId });
-    return [];
-  }
-
-  // Every delegation in the process belongs to the one supervisor, so this narrows the read
-  // to routing and nothing else. Which of them are *this* caller's is then decided by the
-  // tool call ids the session announced, rather than by a field on the row.
-  const { tasks } = await manager.listTasks({ agentId: ROUTING_SUPERVISOR_AGENT_ID });
-  const mine = tasks.filter((task) => progress.dispatchedToolCallIds.has(task.toolCallId));
-
-  // The case every dead poll looks like from the outside: the supervisor is running and
-  // nothing can be seen of it. Saying which half is missing -- no delegation announced, or
-  // announced but no row to match -- is the difference between diagnosing it and guessing.
-  if (mine.length === 0 && !progress.agentFinished) {
-    logger.info('Routing poll found no delegations for this request', {
-      sessionId,
-      announced: progress.dispatchedToolCallIds.size,
-      supervisorTasksInStore: tasks.length,
-    });
-  }
-
-  return mine;
-}
-
-/** Folds the task records into what a single poll is allowed to say. */
-export function buildSnapshot(progress: RoutingProgress, tasks: BackgroundTask[]): RoutingSnapshot {
-  const settled = tasks.filter((task) => !ACTIVE_TASK_STATUSES.has(task.status));
-  const active = tasks.filter((task) => ACTIVE_TASK_STATUSES.has(task.status));
-
-  const landed = settled.filter((task) => !progress.reportedTaskIds.has(task.id)).map(describeSettledTask);
-  for (const task of settled) {
-    progress.reportedTaskIds.add(task.id);
-  }
-
-  return {
-    landed,
-    all: settled.map(describeSettledTask),
-    inProgressTaskIds: active.map((task) => task.id),
-    // The supervisor's loop ending is not the request ending: it dispatches delegations that
-    // outlive its own turn, which is the whole point of dispatching them in the background.
-    finished: progress.agentFinished && active.length === 0,
-    summary: progress.summary,
-    error: progress.error,
-  };
-}
-
 const agentControllerRuntime: RoutingRuntime = {
   async start(sessionId, userQuery) {
     const { session, progress } = await getSession(sessionId);
@@ -447,9 +396,6 @@ const agentControllerRuntime: RoutingRuntime = {
       session.abort();
     }
 
-    // Resetting drops the tool call ids of the request being superseded, and a delegation is
-    // only ever this request's if its id is in that set — so the previous request's rows stop
-    // matching here rather than having to be swept up and marked reported.
     progress.reset();
 
     // Not awaited: the caller is a voice assistant on a short tool-call deadline, and the
@@ -457,10 +403,7 @@ const agentControllerRuntime: RoutingRuntime = {
     void session
       .sendMessage({ content: userQuery })
       .then(() => {
-        logger.info('Routing supervisor run settled', {
-          sessionId,
-          delegations: progress.dispatchedToolCallIds.size,
-        });
+        logger.info('Routing supervisor run settled', { sessionId, delegations: progress.all.length });
       })
       .catch((error: unknown) => {
         progress.fail(error instanceof Error ? error.message : String(error));
@@ -469,43 +412,21 @@ const agentControllerRuntime: RoutingRuntime = {
 
   async poll(sessionId) {
     const { progress } = await getSession(sessionId);
-    return buildSnapshot(progress, await listSessionTasks(sessionId, progress));
+    return buildSnapshot(progress);
   },
 
   async waitForChange(sessionId, deadlineMs) {
     const { progress } = await getSession(sessionId);
 
-    // Two things can change what a poll would say, and only one of them is an event. The
-    // session announces its own ending; a delegation settling is a row changing in storage,
-    // which nothing here is notified about. So the wait races the session against a re-read,
-    // rather than trusting either alone.
-    // `pollForSettledTask` already gives up at the deadline, so it bounds the race.
-    await Promise.race([progress.wait(), pollForSettledTask(sessionId, progress, deadlineMs)]);
+    // Everything that changes what a poll would say arrives as a session event, so the wait
+    // is the event stream against the deadline. Nothing has to be re-read from storage,
+    // because nothing about this request lives there.
+    await Promise.race([progress.wait(), delay(deadlineMs)]);
   },
 };
 
-/** How often a blocked poll re-reads the task records while it waits. */
-const TASK_REREAD_INTERVAL_MS = 250;
-
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
-}
-
-/** Resolves once a delegation the caller has not heard about has settled. */
-async function pollForSettledTask(sessionId: string, progress: RoutingProgress, deadlineMs: number): Promise<void> {
-  const until = Date.now() + deadlineMs;
-
-  while (Date.now() < until) {
-    await delay(Math.min(TASK_REREAD_INTERVAL_MS, until - Date.now()));
-
-    const tasks = await listSessionTasks(sessionId, progress);
-    const hasNews = tasks.some(
-      (task) => !ACTIVE_TASK_STATUSES.has(task.status) && !progress.reportedTaskIds.has(task.id),
-    );
-    if (hasNews) {
-      return;
-    }
-  }
 }
 
 let runtime: RoutingRuntime = agentControllerRuntime;

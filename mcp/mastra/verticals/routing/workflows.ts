@@ -206,9 +206,9 @@ function buildProgressReport(snapshot: RoutingSnapshot): z.infer<typeof instruct
   return {
     instructions: moreToComeInstructions(),
     completedTaskResults: snapshot.landed.map((outcome) => ({ id: outcome.agentId, result: outcome.result })),
-    // Finally answerable: a delegation is a durable task with an id, so what is still
+    // Finally answerable: the session says which delegations are open, so what is still
     // running can be named rather than asserted to be nothing.
-    taskIdsInProgress: snapshot.inProgressTaskIds,
+    taskIdsInProgress: snapshot.inProgress,
   };
 }
 
@@ -276,7 +276,7 @@ const getNextInstructionsStep = createStep({
       if (remaining <= 0) {
         return {
           instructions: INSTRUCTIONS.stillProcessing,
-          taskIdsInProgress: snapshot.inProgressTaskIds,
+          taskIdsInProgress: snapshot.inProgress,
         };
       }
 

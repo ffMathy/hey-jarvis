@@ -15,7 +15,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import type { MastraDBMessage } from '@mastra/core/agent';
 import type { AgentControllerEvent } from '@mastra/core/agent-controller';
-import type { BackgroundTask } from '@mastra/core/background-tasks';
 import {
   buildSnapshot,
   DEFAULT_ROUTING_SESSION_ID,
@@ -32,7 +31,6 @@ import {
 } from './workflows.js';
 
 const progressBySessionId = new Map<string, RoutingProgress>();
-const tasksBySessionId = new Map<string, BackgroundTask[]>();
 
 function progressFor(sessionId: string): RoutingProgress {
   let progress = progressBySessionId.get(sessionId);
@@ -43,73 +41,42 @@ function progressFor(sessionId: string): RoutingProgress {
   return progress;
 }
 
-function tasksFor(sessionId: string): BackgroundTask[] {
-  let tasks = tasksBySessionId.get(sessionId);
-  if (!tasks) {
-    tasks = [];
-    tasksBySessionId.set(sessionId, tasks);
-  }
-  return tasks;
-}
+let nextToolCallId = 0;
 
 /**
- * One delegation, as the background task manager records it.
+ * Opens a delegation, the way the session announces one.
  *
- * The tool name is `agent-<id>`, which is how Mastra actually names a delegation tool and
- * therefore how it lands on the task row. Emitting the bare id here is what let that prefix
- * go unnoticed once already: the permission lookup and every reported agent name silently
- * took a tool name for an agent id.
+ * The tool name is `agent-<id>`, which is how Mastra names a delegation tool. Emitting the
+ * bare id is what let that prefix go unnoticed once already.
  */
-function task(agentId: string, overrides: Partial<BackgroundTask> = {}): BackgroundTask {
-  return {
-    id: `task-${agentId}-${Math.random().toString(36).slice(2)}`,
-    status: 'completed',
-    toolName: `agent-${agentId}`,
-    toolCallId: `call-${agentId}-${Math.random().toString(36).slice(2)}`,
-    args: {},
-    agentId: 'routing-supervisor',
-    runId: 'run-1',
-    result: { text: 'done' },
-    createdAt: new Date(),
-    retryCount: 0,
-    maxRetries: 0,
-    timeoutMs: 300_000,
-    ...overrides,
-  };
-}
-
-/**
- * Records one delegation against a session, the way a real one arrives.
- *
- * The session announces the tool call first and the task row appears separately; a poll only
- * treats a row as this caller's if its tool call id came through that announcement. Pushing
- * the row alone, without the `tool_start`, is what production looked like when the filter was
- * keyed on `resourceId` instead — rows existed and no poll would claim any of them.
- */
-function dispatch(sessionId: string, agentId: string, overrides: Partial<BackgroundTask> = {}): BackgroundTask {
-  const record = task(agentId, overrides);
+function startDelegation(sessionId: string, agentId: string): string {
+  nextToolCallId += 1;
+  const toolCallId = `call-${agentId}-${nextToolCallId}`;
   progressFor(sessionId).handle({
     type: 'tool_start',
-    toolCallId: record.toolCallId,
-    toolName: record.toolName,
+    toolCallId,
+    toolName: `agent-${agentId}`,
     args: {},
   });
-  tasksFor(sessionId).push(record);
-  return record;
+  return toolCallId;
+}
+
+/** Answers a delegation that was opened. */
+function finishDelegation(sessionId: string, toolCallId: string, result: unknown, isError = false): void {
+  progressFor(sessionId).handle({ type: 'tool_end', toolCallId, result, isError });
+}
+
+/** One delegation, opened and answered — the common case. */
+function delegate(sessionId: string, agentId: string, text: string): void {
+  finishDelegation(sessionId, startDelegation(sessionId, agentId), { text });
 }
 
 const fakeRuntime: RoutingRuntime = {
   async start(sessionId) {
-    const progress = progressFor(sessionId);
-    progress.reset();
-    tasksBySessionId.set(sessionId, []);
+    progressFor(sessionId).reset();
   },
   async poll(sessionId) {
-    const progress = progressFor(sessionId);
-    // Mirrors what the real runtime does: the manager is asked for the supervisor's tasks,
-    // and the session's own tool call ids decide which of them belong to this caller.
-    const mine = tasksFor(sessionId).filter((task) => progress.dispatchedToolCallIds.has(task.toolCallId));
-    return buildSnapshot(progress, mine);
+    return buildSnapshot(progressFor(sessionId));
   },
   async waitForChange(_sessionId, deadlineMs) {
     // Nothing in these tests settles on its own — the spec arranges state up front — so a
@@ -155,7 +122,6 @@ function resultOf<T>(outcome: WorkflowResult<T>): T {
 
 beforeEach(() => {
   progressBySessionId.clear();
-  tasksBySessionId.clear();
   setRoutingRuntime(fakeRuntime);
   // A poll with nothing to report blocks until its deadline by design. That is five seconds
   // in production, which every such case here would otherwise sit through.
@@ -214,7 +180,7 @@ describe('routePromptWorkflow', () => {
 describe('getNextInstructionsWorkflow', () => {
   it('reports a delegation that has finished', async () => {
     await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false });
-    dispatch(DEFAULT_ROUTING_SESSION_ID, 'weather', { result: { text: 'It is 8 degrees.' } });
+    delegate(DEFAULT_ROUTING_SESSION_ID, 'weather', 'It is 8 degrees.');
 
     const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
 
@@ -224,8 +190,8 @@ describe('getNextInstructionsWorkflow', () => {
 
   it('hands a result over exactly once while the request is still running', async () => {
     await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false });
-    dispatch(DEFAULT_ROUTING_SESSION_ID, 'weather', { result: { text: 'It is 8 degrees.' } });
-    dispatch(DEFAULT_ROUTING_SESSION_ID, 'calendar', { status: 'running', result: undefined });
+    delegate(DEFAULT_ROUTING_SESSION_ID, 'weather', 'It is 8 degrees.');
+    startDelegation(DEFAULT_ROUTING_SESSION_ID, 'calendar');
 
     const first = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
     const second = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
@@ -238,18 +204,18 @@ describe('getNextInstructionsWorkflow', () => {
 
   it('names what is still running, so the caller knows the request is not stalled', async () => {
     await runWorkflow(routePromptWorkflow, { userQuery: 'weather and calendar', async: false });
-    dispatch(DEFAULT_ROUTING_SESSION_ID, 'weather', { result: { text: 'It is 8 degrees.' } });
-    const pending = dispatch(DEFAULT_ROUTING_SESSION_ID, 'calendar', { status: 'running', result: undefined });
+    delegate(DEFAULT_ROUTING_SESSION_ID, 'weather', 'It is 8 degrees.');
+    startDelegation(DEFAULT_ROUTING_SESSION_ID, 'calendar');
 
     const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
 
-    expect(outcome.taskIdsInProgress).toEqual([pending.id]);
+    expect(outcome.taskIdsInProgress).toEqual(['calendar']);
   });
 
   it('does not close the request while a delegation is still running', async () => {
     await runWorkflow(routePromptWorkflow, { userQuery: 'weather and calendar', async: false });
     const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
-    dispatch(DEFAULT_ROUTING_SESSION_ID, 'calendar', { status: 'running', result: undefined });
+    startDelegation(DEFAULT_ROUTING_SESSION_ID, 'calendar');
 
     // The supervisor's turn ends as soon as it has dispatched, which is the whole point of
     // dispatching in the background. Treating that as the end of the request would close
@@ -264,12 +230,12 @@ describe('getNextInstructionsWorkflow', () => {
   it('recaps every result once the request is done, including ones already relayed', async () => {
     await runWorkflow(routePromptWorkflow, { userQuery: 'weather and calendar', async: false });
     const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
-    dispatch(DEFAULT_ROUTING_SESSION_ID, 'weather', { result: { text: 'It is 8 degrees.' } });
+    delegate(DEFAULT_ROUTING_SESSION_ID, 'weather', 'It is 8 degrees.');
 
     const first = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
     expect(first.completedTaskResults).toHaveLength(1);
 
-    dispatch(DEFAULT_ROUTING_SESSION_ID, 'calendar', { result: { text: 'Dentist at four.' } });
+    delegate(DEFAULT_ROUTING_SESSION_ID, 'calendar', 'Dentist at four.');
     progress.handle(assistantMessage('Eight degrees, and the dentist at four.'));
     endSupervisorTurn(progress);
 
@@ -305,8 +271,8 @@ describe('two callers at once', () => {
       sessionId: 'caller-b',
     });
 
-    dispatch('caller-a', 'weather', { result: { text: 'It is 8 degrees.' } });
-    dispatch('caller-b', 'calendar', { result: { text: 'Dentist at four.' } });
+    delegate('caller-a', 'weather', 'It is 8 degrees.');
+    delegate('caller-b', 'calendar', 'Dentist at four.');
 
     const forA = resultOf(await runWorkflow(getNextInstructionsWorkflow, { sessionId: 'caller-a' }));
 
@@ -323,7 +289,7 @@ describe('delegation tool names', () => {
    */
   it('names the agent, not the delegation tool, in a report', async () => {
     await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false });
-    dispatch(DEFAULT_ROUTING_SESSION_ID, 'weather', { result: { text: 'It is 8 degrees.' } });
+    delegate(DEFAULT_ROUTING_SESSION_ID, 'weather', 'It is 8 degrees.');
 
     const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
 
@@ -331,32 +297,19 @@ describe('delegation tool names', () => {
   });
 });
 
-describe('finding a request\u2019s delegations', () => {
+describe('scoping a request\u2019s delegations', () => {
   it('claims a delegation the session announced', async () => {
     await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false });
-    dispatch(DEFAULT_ROUTING_SESSION_ID, 'weather', { result: { text: 'It is 8 degrees.' } });
+    delegate(DEFAULT_ROUTING_SESSION_ID, 'weather', 'It is 8 degrees.');
 
     const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
 
     expect(outcome.completedTaskResults).toEqual([{ id: 'weather', result: 'It is 8 degrees.' }]);
   });
 
-  it('ignores a task row the session never announced', async () => {
-    await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false });
-
-    // A row belonging to some other request, sitting in the same store. Without the tool call
-    // id to tie it to this session there is nothing on the row that says whose it is.
-    tasksFor(DEFAULT_ROUTING_SESSION_ID).push(task('weather', { result: { text: 'Someone else.' } }));
-
-    const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
-
-    expect(outcome.completedTaskResults).toBeUndefined();
-    expect(outcome.instructions).toContain('Still processing');
-  });
-
   it('stops claiming the previous request\u2019s delegations once a new one starts', async () => {
     await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false });
-    dispatch(DEFAULT_ROUTING_SESSION_ID, 'weather', { result: { text: 'It is 8 degrees.' } });
+    delegate(DEFAULT_ROUTING_SESSION_ID, 'weather', 'It is 8 degrees.');
 
     // A second request supersedes the first, so the first request's answers are no longer
     // this request's to report.
@@ -371,33 +324,38 @@ describe('finding a request\u2019s delegations', () => {
 describe('failed delegations', () => {
   it('reports why a delegation failed, not just that it did', async () => {
     await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false });
-    dispatch(DEFAULT_ROUTING_SESSION_ID, 'weather', {
-      status: 'failed',
-      result: undefined,
-      error: { message: 'OpenWeather rejected the API key' },
-    });
+    finishDelegation(
+      DEFAULT_ROUTING_SESSION_ID,
+      startDelegation(DEFAULT_ROUTING_SESSION_ID, 'weather'),
+      { text: 'OpenWeather rejected the API key' },
+      true,
+    );
 
     const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
 
-    // The task row carries the underlying error, which is the thing the previous
-    // implementation could not get at: the only copy it saw had already been wrapped for
-    // the model, leaving "Failed agent tool execution for weather" and nothing more.
+    // A failed delegation still reports what went wrong rather than only that it did.
     expect(outcome.completedTaskResults?.[0].result).toContain('OpenWeather rejected the API key');
   });
 
-  it('says something useful when a delegation times out without an error', async () => {
+  it('reads a result that is not the usual shape', async () => {
     await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false });
-    dispatch(DEFAULT_ROUTING_SESSION_ID, 'weather', { status: 'timed_out', result: undefined });
+    finishDelegation(DEFAULT_ROUTING_SESSION_ID, startDelegation(DEFAULT_ROUTING_SESSION_ID, 'weather'), 'plain text');
 
     const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
 
-    expect(outcome.completedTaskResults?.[0].result).toContain('timed out');
+    // A result that is not the usual `{ text }` still has to read as something.
+    expect(outcome.completedTaskResults?.[0].result).toBe('plain text');
   });
 
   it('carries on reporting the rest of the request when one delegation fails', async () => {
     await runWorkflow(routePromptWorkflow, { userQuery: 'weather and calendar', async: false });
-    dispatch(DEFAULT_ROUTING_SESSION_ID, 'weather', { status: 'failed', result: undefined, error: { message: 'no' } });
-    dispatch(DEFAULT_ROUTING_SESSION_ID, 'calendar', { result: { text: 'Dentist at four.' } });
+    finishDelegation(
+      DEFAULT_ROUTING_SESSION_ID,
+      startDelegation(DEFAULT_ROUTING_SESSION_ID, 'weather'),
+      { text: 'no' },
+      true,
+    );
+    delegate(DEFAULT_ROUTING_SESSION_ID, 'calendar', 'Dentist at four.');
 
     const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
 
