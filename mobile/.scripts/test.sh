@@ -16,10 +16,12 @@ if [ $# -gt 0 ]; then
   exec bun test "$@"
 fi
 
+# mobile/tests/e2e holds Playwright specs, which are driven by `turbo e2e`, not
+# here — they import `@playwright/test` and would fail outright under `bun test`.
 mapfile -t files < <(
   find mobile \
     -type d -name node_modules -prune -o \
-    \( -name '*.spec.ts' -o -name '*.test.ts' \) -print | sort
+    \( -name '*.spec.ts' -o -name '*.test.ts' \) -not -path '*/e2e/*' -print | sort
 )
 
 if [ ${#files[@]} -eq 0 ]; then

@@ -15,3 +15,7 @@
 *.p12
 *.key
 *.mobileprovision
+
+# Playwright output from `turbo e2e`
+/playwright-report
+/test-results

@@ -55,6 +55,10 @@
       "dependsOn": ["build"],
       "outputs": ["playwright-report/**", "test-results/**"]
     },
+    "mobile#e2e": {
+      "dependsOn": ["lint", "typecheck"],
+      "outputs": ["playwright-report/**", "test-results/**", "dist/**"]
+    },
     "initialize": {
       "cache": true
     }

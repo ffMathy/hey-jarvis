@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { parseServerSettings, type ServerSettings } from './server-settings';
 import { theme } from './theme';
 
@@ -37,8 +37,13 @@ export function SettingsScreen({ settings, onSave, onCancel }: SettingsScreenPro
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>Server settings</Text>
       <Text style={styles.explanation}>
-        Jarvis runs on your own server. The phone never holds an ElevenLabs key — it asks the server for one
-        conversation at a time.
+        Jarvis runs on your own server. This app never holds an ElevenLabs key — it asks the server for one conversation
+        at a time.
+      </Text>
+      <Text style={styles.explanation} testID="storage-note">
+        {Platform.OS === 'web'
+          ? 'In a browser the access token is kept in local storage, which is not a keystore: anything running on this page can read it. On Android it goes in the keystore instead.'
+          : 'The access token is kept in the Android keystore.'}
       </Text>
 
       <View style={styles.field}>
@@ -51,6 +56,7 @@ export function SettingsScreen({ settings, onSave, onCancel }: SettingsScreenPro
           autoCorrect={false}
           keyboardType="url"
           placeholder="https://jarvis.example.com"
+          testID="server-url"
           placeholderTextColor={theme.colors.mutedText}
         />
       </View>
@@ -65,13 +71,18 @@ export function SettingsScreen({ settings, onSave, onCancel }: SettingsScreenPro
           autoCorrect={false}
           secureTextEntry
           placeholder="HEY_JARVIS_MOBILE_APP_ACCESS_TOKEN"
+          testID="access-token"
           placeholderTextColor={theme.colors.mutedText}
         />
       </View>
 
-      {problem ? <Text style={styles.problem}>{problem}</Text> : null}
+      {problem ? (
+        <Text style={styles.problem} testID="settings-problem">
+          {problem}
+        </Text>
+      ) : null}
 
-      <Pressable accessibilityRole="button" style={styles.primaryButton} onPress={save}>
+      <Pressable accessibilityRole="button" style={styles.primaryButton} onPress={save} testID="save-settings">
         <Text style={styles.primaryButtonLabel}>Save</Text>
       </Pressable>
 

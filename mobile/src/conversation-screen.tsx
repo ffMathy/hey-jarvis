@@ -1,10 +1,11 @@
 import { useConversationControls, useConversationMode, useConversationStatus } from '@elevenlabs/react-native';
 import * as Linking from 'expo-linking';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, PermissionsAndroid, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { type AssistantRegistration, openAssistantSettings } from '../modules/jarvis-assistant';
 import { isAssistLaunch } from './assist-link';
 import { requestConversationToken } from './conversation-token';
+import { requestMicrophoneAccess } from './microphone-permission';
 import type { ServerSettings } from './server-settings';
 import { theme } from './theme';
 import { useAssistantRegistration } from './use-assistant-registration';
@@ -43,11 +44,7 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
     setIsStarting(true);
 
     try {
-      // WebRTC asks for the microphone itself when the session opens, but it
-      // asks in the middle of connecting — so a refusal surfaces as a failed
-      // connection rather than as the permission prompt it actually was.
-      const permission = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
-      if (permission !== PermissionsAndroid.RESULTS.GRANTED) {
+      if (!(await requestMicrophoneAccess())) {
         setProblem('Jarvis needs the microphone in order to listen.');
         return;
       }
@@ -92,12 +89,15 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>J.A.R.V.I.S.</Text>
-      <Text style={styles.status}>{describeState(status, mode)}</Text>
+      <Text style={styles.status} testID="conversation-status">
+        {describeState(status, mode)}
+      </Text>
 
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={live ? 'End the conversation' : 'Talk to Jarvis'}
         style={[styles.talkButton, live && styles.talkButtonLive]}
+        testID="talk"
         disabled={busy}
         onPress={() => (live ? endSession() : void start())}
       >
@@ -108,11 +108,20 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
         )}
       </Pressable>
 
-      {problem ? <Text style={styles.problem}>{problem}</Text> : null}
+      {problem ? (
+        <Text style={styles.problem} testID="conversation-problem">
+          {problem}
+        </Text>
+      ) : null}
 
       <AssistantCard registration={registration} />
 
-      <Pressable accessibilityRole="button" onPress={onEditSettings} style={styles.secondaryButton}>
+      <Pressable
+        accessibilityRole="button"
+        onPress={onEditSettings}
+        style={styles.secondaryButton}
+        testID="open-settings"
+      >
         <Text style={styles.secondaryButtonLabel}>Server settings</Text>
       </Pressable>
     </ScrollView>
@@ -142,6 +151,23 @@ function describeState(status: string, mode: string): string {
  */
 function AssistantCard({ registration }: { registration: AssistantRegistration }) {
   const [problem, setProblem] = useState<string | undefined>(undefined);
+
+  // On web every signal below reads false, and it would read false forever: the
+  // assistant role is Android's, and no amount of tapping changes that. Saying so
+  // is better than showing a setup step that leads nowhere.
+  if (Platform.OS === 'web') {
+    return (
+      <View style={styles.card}>
+        <Text style={styles.cardHeading} testID="assistant-card-heading">
+          Talking to Jarvis in a browser
+        </Text>
+        <Text style={styles.cardBody}>
+          The conversation works here. Taking over the assist gesture — holding home or power — is something only the
+          Android app can do.
+        </Text>
+      </View>
+    );
+  }
 
   if (registration.roleHeld && registration.voiceInteractionActive) {
     return (

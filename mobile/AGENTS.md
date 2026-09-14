@@ -4,9 +4,9 @@
 
 ## Overview
 
-An Expo app that registers as the phone's **default digital assistant** on Android, replacing Gemini or Google Assistant, and answers as Jarvis over a live ElevenLabs voice conversation.
+An Expo app that registers as the phone's **default digital assistant** on Android, replacing Gemini or Google Assistant, and answers as Jarvis over a live ElevenLabs voice conversation. It also builds for web, where the conversation works and the assistant role does not.
 
-Android only. Apple does not let an app replace Siri, so an iOS target would ship something that cannot do the one thing this project exists for.
+No iOS target: Apple does not let an app replace Siri, so it would ship something that cannot do the one thing this project exists for.
 
 ## TURBO Commands
 
@@ -15,6 +15,7 @@ bunx turbo lint --filter=mobile       # Biome
 bunx turbo typecheck --filter=mobile  # tsgo
 bunx turbo test --filter=mobile       # the offline suite
 bunx turbo build --filter=mobile      # bundles the JS for Android into dist/mobile
+bunx turbo e2e --filter=mobile        # exports for web and drives it in Chromium
 ```
 
 To run it on a device (needs the Android SDK, which CI does not have):
@@ -60,12 +61,17 @@ mobile/
     ├── assist-link.ts            # what "opened by the assistant" looks like
     ├── conversation-token.ts     # the call to the MCP server
     ├── server-settings.ts        # validation of what the user typed
-    └── settings-storage.ts       # expo-secure-store
+    ├── settings-storage.ts       # platform-agnostic half of persistence
+    ├── platform-contracts.ts     # the shapes the .web.ts pairs below must keep
+    ├── key-value-store.ts        # keystore on Android …
+    ├── key-value-store.web.ts    # … localStorage in a browser
+    ├── microphone-permission.ts      # PermissionsAndroid …
+    └── microphone-permission.web.ts  # … getUserMedia
 ```
 
 ## Configuration
 
-The app ships with no server address and no credential. Both are typed into the settings screen on first run and kept in `expo-secure-store`:
+The app ships with no server address and no credential. Both are typed into the settings screen on first run and kept in the Android keystore — or, on web, in `localStorage`:
 
 | Setting | What it is |
 | --- | --- |
@@ -111,6 +117,19 @@ It deliberately does **not** pin `react`, `react-native`, `livekit-client` and t
 
 `eas.json` pins bun to `1.3.14` in a `base` profile the three real profiles extend. Without it an EAS build uses whatever bun its image happens to ship, while the repository pins `packageManager` and `engines.bun` — so keep the three in step. It has to be an exact version; the schema validates it with `semver.valid`, which rejects a range.
 
+## Web
+
+`platforms` includes `web`, and the conversation genuinely works there: `@elevenlabs/react-native` resolves through its `browser` export condition to the plain `@elevenlabs/react` build, which speaks WebRTC through the browser rather than through LiveKit's native modules. The same components, the same provider, no branching in the screens.
+
+Two things do differ, and each is a pair of files Metro picks between rather than a conditional:
+
+- **Storage.** `expo-secure-store` ships `export default {}` as its web implementation, so the native path does not degrade on web — it throws. `key-value-store.web.ts` uses `localStorage` instead, and the settings screen says so, because `localStorage` is not a keystore.
+- **The microphone.** `PermissionsAndroid` is not part of `react-native-web`. `microphone-permission.web.ts` asks by requesting a stream and releasing it again, so a refusal still surfaces as a permission problem rather than as a failed connection.
+
+`platform-contracts.ts` holds the types both halves implement, so neither can drift — nothing else in the app imports both.
+
+What does **not** work on web is the assistant role, and it never will: it is Android's. The assistant card says that outright instead of offering a setup step that leads nowhere.
+
 ## Testing
 
 Everything under `src/` that can be tested without a device is, and it runs in the ordinary offline suite:
@@ -122,6 +141,23 @@ bunx turbo test --filter=mobile
 Tests must not import React Native or any Expo native module — there is no runtime for them under `bun test`. Keep logic worth testing in plain `.ts` files (`assist-link.ts`, `server-settings.ts`, `conversation-token.ts`) and let the `.tsx` files stay thin enough to read.
 
 `turbo build` bundles the JavaScript with Metro rather than assembling an APK. That needs no Android SDK, so it runs in CI, and it still catches the failures a bundle can catch: an import that does not resolve, a native module missing from the tree, a file no test imports. The installable build comes from EAS.
+
+### The browser tests
+
+`turbo e2e --filter=mobile` exports the production web build and drives it in Chromium — the real bundle, served over HTTP, clicked through. It runs in CI alongside the rest.
+
+The boundary is the ElevenLabs session, which needs a real conversation token and real quota. Everything up to it is exercised for real: settings validation, persistence across a reload, the assistant card's web state, and the request to `/api/voice/conversation-token` with its bearer token and participant name. The token endpoint is intercepted with `page.route`, and every non-localhost request is aborted so a test can never dial out.
+
+Set `CHROMIUM_EXECUTABLE_PATH` to run against a Chromium that Playwright did not install itself — useful in a sandbox that ships a browser of a different build than the pinned `@playwright/test` expects. Leave it unset everywhere else.
+
+### What cannot be tested here, and what stands in for it
+
+There is no Android emulator in CI or in an agent sandbox: that needs the Android SDK and a KVM device, and the SDK only comes from `dl.google.com`. So the device-level behaviour — the assist gesture, the role picker, the session opening the app — is genuinely unverified until someone runs it on hardware. The commands above under "Becoming the assistant" are how to check it there.
+
+Two things that would otherwise ride on reasoning alone have been checked another way, and are worth re-checking the same way if the manifest or the Kotlin changes:
+
+- The Kotlin compiles against a real `android.jar`, which is what catches a misused framework API.
+- The library manifest merges as intended. Running AGP's own `ManifestMerger2` over the generated app manifest plus this module's and LiveKit's, with `REMOVE_TOOLS_DECLARATIONS` on, puts all four components in the output with `exported="true"` and `BIND_VOICE_INTERACTION` intact, and confirms `blockedPermissions` really does drop LiveKit's `CAMERA`.
 
 ## Scope Guidelines for Commits
 

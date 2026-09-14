@@ -9,12 +9,14 @@
     "format": "cd .. && bunx biome format --write mobile",
     "build": "cd .. && bash mobile/.scripts/build.sh",
     "test": "cd .. && bash mobile/.scripts/test.sh",
+    "e2e": "bunx playwright test --config playwright.config.ts",
     "start": "bunx expo start --dev-client",
     "android": "bunx expo run:android",
     "native:prebuild": "bunx expo prebuild --platform android"
   },
   "dependencies": {
     "@elevenlabs/react-native": "1.2.26",
+    "@expo/metro-runtime": "57.0.15",
     "@livekit/react-native": "2.12.0",
     "@livekit/react-native-expo-plugin": "1.0.2",
     "@livekit/react-native-webrtc": "144.1.2",
@@ -25,7 +27,9 @@
     "expo-status-bar": "57.0.1",
     "livekit-client": "2.22.2",
     "react": "19.2.3",
-    "react-native": "0.86.3"
+    "react-dom": "19.2.3",
+    "react-native": "0.86.3",
+    "react-native-web": "0.21.2"
   },
   "devDependencies": {
     "@types/react": "19.2.18",

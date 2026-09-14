@@ -20,6 +20,14 @@
     "declarationMap": false,
     "incremental": false
   },
-  "include": ["index.ts", "app.config.ts", "src/**/*.ts", "src/**/*.tsx", "modules/**/*.ts"],
+  "include": [
+    "index.ts",
+    "app.config.ts",
+    "playwright.config.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "modules/**/*.ts",
+    "tests/**/*.ts"
+  ],
   "exclude": ["**/node_modules", "**/.expo", "**/android", "**/ios", "**/dist"]
 }

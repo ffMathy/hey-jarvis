@@ -92,6 +92,7 @@ jobs:
             bun install --frozen-lockfile
             bunx turbo build
             bunx turbo test
+            bunx turbo e2e --filter=mobile
           env: |
             GITHUB_ACTIONS
             GITHUB_TOKEN

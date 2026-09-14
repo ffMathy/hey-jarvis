@@ -22,10 +22,20 @@ const config: ExpoConfig = {
   scheme: 'heyjarvis',
   userInterfaceStyle: 'dark',
   backgroundColor: '#05070d',
-  // Android only. Apple has no equivalent of the assistant role — Siri cannot be
-  // replaced — so an iOS target would ship something that cannot do the one
-  // thing this app exists for.
-  platforms: ['android'],
+  // No iOS target. Apple has no equivalent of the assistant role — Siri cannot
+  // be replaced — so it would ship something that cannot do the one thing this
+  // app exists for.
+  //
+  // Web is here for a smaller reason, but a real one: the conversation is the
+  // whole app apart from the assist gesture, and it runs in a browser on the
+  // same `ConversationProvider` over the browser's own WebRTC. Taking over the
+  // assist gesture stays Android's, and the app says so when it is on web rather
+  // than leaving a button that cannot work.
+  platforms: ['android', 'web'],
+  web: {
+    bundler: 'metro',
+    output: 'single',
+  },
   android: {
     package: 'com.ffmathy.heyjarvis',
     permissions: [

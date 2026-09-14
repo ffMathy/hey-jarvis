@@ -1,12 +1,13 @@
-import * as SecureStore from 'expo-secure-store';
+import { readStoredValue, writeStoredValue } from './key-value-store';
 import type { ServerSettings } from './server-settings';
 
 /**
  * Where the server address and access token live.
  *
- * `expo-secure-store` rather than plain storage, because the access token mints
- * live microphone sessions into the house — it is a credential, and a phone is
- * lost more often than a server is.
+ * The storage underneath differs by platform — the Android keystore, or
+ * `localStorage` in a browser — and `key-value-store.ts` against
+ * `key-value-store.web.ts` is where that difference is kept. Everything above
+ * this line is the same on both.
  */
 const STORAGE_KEY = 'jarvis.server-settings';
 
@@ -34,7 +35,7 @@ function readSettings(stored: string): ServerSettings | undefined {
  * never wedge the app on a screen it cannot leave.
  */
 export async function loadServerSettings(): Promise<ServerSettings | undefined> {
-  const stored = await SecureStore.getItemAsync(STORAGE_KEY);
+  const stored = await readStoredValue(STORAGE_KEY);
   if (!stored) {
     return undefined;
   }
@@ -47,5 +48,5 @@ export async function loadServerSettings(): Promise<ServerSettings | undefined> 
 }
 
 export async function saveServerSettings(settings: ServerSettings): Promise<void> {
-  await SecureStore.setItemAsync(STORAGE_KEY, JSON.stringify(settings));
+  await writeStoredValue(STORAGE_KEY, JSON.stringify(settings));
 }
