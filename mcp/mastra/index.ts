@@ -57,6 +57,12 @@ function toAgentMap(agents: Agent[]): Record<string, Agent> {
   }, {});
 }
 
+/**
+ * The instance logger, held so the scheduler's error handler can report through the same
+ * one rather than going around it to the console.
+ */
+const mastraLogger = createLogger('Mastra');
+
 export async function getMastra(): Promise<Mastra> {
   return new Mastra({
     // Without this Mastra keeps workflow runs, schedules and traces in RAM and loses
@@ -66,7 +72,15 @@ export async function getMastra(): Promise<Mastra> {
     // boot, a scheduler tick that threw — by handing the error to this logger as a plain
     // field. `createLogger` is what makes those fields readable; a bare PinoLogger prints
     // them as `error: {}`.
-    logger: createLogger('Mastra'),
+    logger: mastraLogger,
+    // Where `mastra.schedules` reports a scheduled run that threw, and the only place it
+    // does: without a handler the rejection is swallowed, with no schedule id attached to
+    // say which one it was.
+    scheduler: {
+      onError: (error, { scheduleId }) => {
+        mastraLogger.error('Scheduled workflow failed', { scheduleId, error });
+      },
+    },
     observability: new Observability({
       configs: {
         default: {

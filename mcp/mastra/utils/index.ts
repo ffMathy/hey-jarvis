@@ -17,6 +17,7 @@ export { createScorersConfig, getDefaultScorers } from './scorers-config.js';
 export { createShortcut } from './shortcut-factory.js';
 // Test helper exports
 export { createTool } from './tool-factory.js';
+export { CronPatterns } from './workflows/cron-patterns.js';
 // Workflow exports
 export {
   createAgentStep,
@@ -25,4 +26,3 @@ export {
   createWorkflow,
   getWorkflowRuntime,
 } from './workflows/workflow-factory.js';
-export { CronPatterns, validateCronExpression, WorkflowScheduler } from './workflows/workflow-scheduler.js';

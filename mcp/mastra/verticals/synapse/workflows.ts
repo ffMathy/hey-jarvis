@@ -3,6 +3,7 @@ import { createMemory } from '../../memory/index.js';
 import { logger } from '../../utils/logger.js';
 import { createStep, createWorkflow } from '../../utils/workflows/workflow-factory.js';
 import { getStateChangeReactorAgent } from './agent.js';
+import { runStateChangeReactor } from './reactor-run.js';
 import { describeStateChange } from './state-change.js';
 import { findRelevantSubscriptions, formatSubscriptionMatches } from './subscription-matcher.js';
 
@@ -159,23 +160,22 @@ These candidates are suggestions, not decisions. For each one, confirm that its 
 
 Then analyze this state change using your working memory and context. Decide if the user should be notified or if any other action is needed. If you decide to notify, delegate to the Notification agent with a clear message to send.`;
 
-        // Execute agent network - the reactor will decide and potentially call notification agent
-        const networkStream = await reactorAgent.network(analysisPrompt);
+        // Run the reactor as a supervisor - it decides what fires and delegates to the
+        // Notification agent itself. Blocks until the whole delegation loop is done.
+        const reasoning = await runStateChangeReactor(reactorAgent, analysisPrompt);
 
-        // Wait for the network execution to complete
-        const workflowResult = await networkStream.result;
-
-        if (!workflowResult) {
+        if (reasoning.trim() === '') {
           return {
             registered: true,
             analyzed: false,
-            reasoning: 'No result from agent network',
+            reasoning: 'The reactor finished without producing a response.',
           };
         }
 
         return {
           registered: true,
           analyzed: true,
+          reasoning,
         };
       },
     }),
