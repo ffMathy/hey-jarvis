@@ -1,8 +1,16 @@
 import { z } from 'zod';
 import { createAgentStep, createStep, createToolStep, createWorkflow, getModel } from '../../utils/index.js';
+import { executeTool } from '../../utils/tool-factory.js';
 import { getSendEmailAndAwaitResponseWorkflow } from '../human-in-the-loop/workflows.js';
 import { shoppingListWorkflow } from '../shopping/workflows.js';
-import { getAllRecipes } from './tools.js';
+import {
+  MAX_RECIPE_CANDIDATES,
+  RECIPES_PER_MEAL_PLAN,
+  recipeCatalogEntrySchema,
+  resolveSelectedRecipeIds,
+  shortlistRecipeCandidates,
+} from './recipe-catalog.js';
+import { getRecipeById, getRecipeCatalog, recipeSchema } from './tools.js';
 
 // Use Gemini Flash for cooking workflows - better quality for recipe processing
 const cookingModel = getModel('gemini-flash-latest');
@@ -33,7 +41,8 @@ const mealPlanSchema = z.array(
 // Uses Gemini Flash for cooking workflow - better quality for recipe processing
 const generateMealPlanStateSchema = z
   .object({
-    preferences: z.string(), // Used by generate-complete-meal-plan step
+    preferences: z.string(), // Used by the selection and scheduling steps
+    candidateRecipeIds: z.array(z.number()), // The shortlist the selector was given
   })
   .partial();
 
@@ -66,18 +75,125 @@ export const generateMealPlanWorkflow = createWorkflow({
   )
   .then(
     createToolStep({
-      id: 'get-all-recipes',
-      description: 'Fetches all recipes for meal planning',
-      tool: getAllRecipes,
+      id: 'get-recipe-catalog',
+      description: 'Fetches the compact recipe catalogue for meal planning',
+      tool: getRecipeCatalog,
       inputOverrides: {
         amount: process.env.IS_DEVCONTAINER ? 10 : undefined,
       },
     }),
   )
   .then(
+    createStep({
+      id: 'shortlist-recipe-candidates',
+      description: 'Narrows the catalogue down to a shortlist that fits in a prompt',
+      stateSchema: generateMealPlanStateSchema,
+      // The tool step ahead of this one erases its own output type, so the
+      // catalogue arrives untyped and is parsed back into shape here.
+      inputSchema: getRecipeCatalog.outputSchema! as z.ZodTypeAny,
+      outputSchema: z.object({
+        candidates: z.array(recipeCatalogEntrySchema),
+      }),
+      execute: async ({ inputData, setState, state }) => {
+        const catalog = z.array(recipeCatalogEntrySchema).parse(inputData);
+
+        const candidates = shortlistRecipeCandidates(catalog, {
+          preferences: state?.preferences,
+          limit: MAX_RECIPE_CANDIDATES,
+        });
+
+        if (candidates.length === 0) {
+          throw new Error('No recipes available to build a meal plan from.');
+        }
+
+        setState({
+          ...state,
+          candidateRecipeIds: candidates.map((candidate) => candidate.id),
+        });
+
+        return { candidates };
+      },
+    }),
+  )
+  .then(
+    createAgentStep({
+      id: 'select-meal-plan-recipes',
+      description: "Picks the recipes this week's meal plan will be built from",
+      agentConfig: {
+        model: cookingModel,
+        id: 'mealPlanRecipeSelector',
+        name: 'MealPlanRecipeSelector',
+        instructions: `You are a recipe selection specialist.
+
+      Your ONLY job is to pick exactly ${RECIPES_PER_MEAL_PLAN} recipes for a weekly dinner plan.
+
+      Selection rules:
+      1. Only pick recipes from the candidates you are given, by their id
+      2. Prefer dinner dishes ("aftensmad")
+      3. Pick recipes that differ from each other in main ingredient and style
+      4. Honour the user's preferences when they are given
+      5. Avoid weird soups such as "burgersuppe", "tacosuppe" and "lasagnesuppe"
+
+      Return only the ids. Do NOT invent ids, and do NOT write the meal plan.`,
+        description: 'Specialized agent for picking the recipes behind a weekly meal plan',
+        tools: undefined,
+      },
+      stateSchema: generateMealPlanStateSchema,
+      inputSchema: z.object({
+        candidates: z.array(recipeCatalogEntrySchema),
+      }),
+      outputSchema: z.object({
+        selectedRecipeIds: z
+          .array(z.number())
+          .describe(`The ids of exactly ${RECIPES_PER_MEAL_PLAN} recipes chosen from the candidates`),
+      }),
+      prompt: ({ inputData, state }) => {
+        const preferencesText = state?.preferences ? `\n\nUser preferences: ${state.preferences}` : '';
+
+        return `Pick exactly ${RECIPES_PER_MEAL_PLAN} recipes for this week's dinner plan from the following candidates:
+
+${JSON.stringify(inputData.candidates, null, 2)}
+
+Return the ids of the recipes you picked.${preferencesText}`;
+      },
+    }),
+  )
+  .then(
+    createStep({
+      id: 'fetch-selected-recipes',
+      description: 'Loads the full recipes behind the selected ids',
+      stateSchema: generateMealPlanStateSchema,
+      inputSchema: z.object({
+        selectedRecipeIds: z.array(z.number()),
+      }),
+      outputSchema: z.object({
+        recipes: z.array(recipeSchema),
+      }),
+      execute: async ({ inputData, mastra, state }) => {
+        const recipeIds = resolveSelectedRecipeIds(
+          inputData.selectedRecipeIds,
+          state?.candidateRecipeIds ?? [],
+          RECIPES_PER_MEAL_PLAN,
+        );
+
+        if (recipeIds.length === 0) {
+          throw new Error('The recipe selector returned no usable recipe ids.');
+        }
+
+        const recipes = await Promise.all(
+          recipeIds.map(
+            async (recipeId) => await executeTool(getRecipeById, { recipeId: recipeId.toString() }, { mastra }),
+          ),
+        );
+
+        return { recipes };
+      },
+    }),
+  )
+  .then(
     createAgentStep({
       id: 'generate-complete-meal-plan',
-      description: 'Uses meal plan agents to select recipes and generate complete meal plan',
+      description: 'Schedules the selected recipes across the week',
       agentConfig: {
         model: cookingModel,
         id: 'mealPlanGenerator',
@@ -103,18 +219,20 @@ export const generateMealPlanWorkflow = createWorkflow({
         tools: undefined,
       },
       stateSchema: generateMealPlanStateSchema,
-      inputSchema: getAllRecipes.outputSchema! as z.ZodTypeAny,
+      inputSchema: z.object({
+        recipes: z.array(recipeSchema),
+      }),
       outputSchema: z.object({
         mealplan: mealPlanSchema,
       }),
       prompt: ({ inputData, state }) => {
         const preferencesText = state?.preferences ? `\n\nUser preferences: ${state.preferences}` : '';
 
-        return `Create a detailed weekly meal plan by first selecting 2 optimal recipes from the following options, then generating a complete meal plan with proper scheduling and scaled ingredients:
+        return `Create a detailed weekly meal plan from these already selected recipes, with proper scheduling and scaled ingredients:
 
-${JSON.stringify(inputData, null, 2)}
+${JSON.stringify(inputData.recipes, null, 2)}
 
-Focus on dinner/evening meals (look for "aftensmad" or similar categories). Generate the complete meal plan with proper scheduling.${preferencesText}`;
+Use every recipe given, and only those recipes. Generate the complete meal plan with proper scheduling.${preferencesText}`;
       },
     }),
   )

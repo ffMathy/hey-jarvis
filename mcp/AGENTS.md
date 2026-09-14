@@ -1140,7 +1140,8 @@ const getCurrentWeatherStep = createToolStep({
 #### **Weekly Meal Planning Workflow**  
 - **Before**: Complex custom steps calling multiple agents
 - **After**: Tool-as-step for recipe fetching + agent-as-step for meal planning
-- **Improvement**: Tool-as-step for `getAllRecipes`, agent-as-step for `mealPlanGenerator`
+- **Improvement**: Tool-as-step for `getRecipeCatalog`, agent-as-step for `mealPlanRecipeSelector` and `mealPlanGenerator`
+- **Token budget**: Recipes are chosen from the compact catalogue and only the chosen ones are fetched in full with `getRecipeById`, so no prompt ever carries every recipe
 
 #### **Shopping List Workflow**
 - **Before**: 5 complex custom steps with inline agent creation
