@@ -65,7 +65,7 @@ function task(agentId: string, overrides: Partial<BackgroundTask> = {}): Backgro
     id: `task-${agentId}-${Math.random().toString(36).slice(2)}`,
     status: 'completed',
     toolName: `agent-${agentId}`,
-    toolCallId: `call-${agentId}`,
+    toolCallId: `call-${agentId}-${Math.random().toString(36).slice(2)}`,
     args: {},
     agentId: 'routing-supervisor',
     runId: 'run-1',
@@ -78,9 +78,22 @@ function task(agentId: string, overrides: Partial<BackgroundTask> = {}): Backgro
   };
 }
 
-/** Records one delegation against a session, as the manager would. */
+/**
+ * Records one delegation against a session, the way a real one arrives.
+ *
+ * The session announces the tool call first and the task row appears separately; a poll only
+ * treats a row as this caller's if its tool call id came through that announcement. Pushing
+ * the row alone, without the `tool_start`, is what production looked like when the filter was
+ * keyed on `resourceId` instead — rows existed and no poll would claim any of them.
+ */
 function dispatch(sessionId: string, agentId: string, overrides: Partial<BackgroundTask> = {}): BackgroundTask {
   const record = task(agentId, overrides);
+  progressFor(sessionId).handle({
+    type: 'tool_start',
+    toolCallId: record.toolCallId,
+    toolName: record.toolName,
+    args: {},
+  });
   tasksFor(sessionId).push(record);
   return record;
 }
@@ -92,7 +105,11 @@ const fakeRuntime: RoutingRuntime = {
     tasksBySessionId.set(sessionId, []);
   },
   async poll(sessionId) {
-    return buildSnapshot(progressFor(sessionId), tasksFor(sessionId));
+    const progress = progressFor(sessionId);
+    // Mirrors what the real runtime does: the manager is asked for the supervisor's tasks,
+    // and the session's own tool call ids decide which of them belong to this caller.
+    const mine = tasksFor(sessionId).filter((task) => progress.dispatchedToolCallIds.has(task.toolCallId));
+    return buildSnapshot(progress, mine);
   },
   async waitForChange(_sessionId, deadlineMs) {
     // Nothing in these tests settles on its own — the spec arranges state up front — so a
@@ -311,6 +328,43 @@ describe('delegation tool names', () => {
     const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
 
     expect(outcome.completedTaskResults).toEqual([{ id: 'weather', result: 'It is 8 degrees.' }]);
+  });
+});
+
+describe('finding a request\u2019s delegations', () => {
+  it('claims a delegation the session announced', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false });
+    dispatch(DEFAULT_ROUTING_SESSION_ID, 'weather', { result: { text: 'It is 8 degrees.' } });
+
+    const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(outcome.completedTaskResults).toEqual([{ id: 'weather', result: 'It is 8 degrees.' }]);
+  });
+
+  it('ignores a task row the session never announced', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false });
+
+    // A row belonging to some other request, sitting in the same store. Without the tool call
+    // id to tie it to this session there is nothing on the row that says whose it is.
+    tasksFor(DEFAULT_ROUTING_SESSION_ID).push(task('weather', { result: { text: 'Someone else.' } }));
+
+    const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(outcome.completedTaskResults).toBeUndefined();
+    expect(outcome.instructions).toContain('Still processing');
+  });
+
+  it('stops claiming the previous request\u2019s delegations once a new one starts', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false });
+    dispatch(DEFAULT_ROUTING_SESSION_ID, 'weather', { result: { text: 'It is 8 degrees.' } });
+
+    // A second request supersedes the first, so the first request's answers are no longer
+    // this request's to report.
+    await runWorkflow(routePromptWorkflow, { userQuery: 'what is on my calendar', async: false });
+
+    const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(outcome.completedTaskResults).toBeUndefined();
   });
 });
 

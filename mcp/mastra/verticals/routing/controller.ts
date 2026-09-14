@@ -69,6 +69,19 @@ export interface DelegationOutcome {
  * ended.
  */
 export class RoutingProgress {
+  /**
+   * The tool call ids this session has dispatched, which is how its delegations are found.
+   *
+   * Not the session's `resourceId`, which is the obvious choice and does not work: a
+   * background task records the resourceId of the *run's memory scope*, and the supervisor
+   * holds no memory, so the run has no scope and every row is written with `resourceId`
+   * undefined. Filtering on it matched nothing, so a poll reported no delegations and no
+   * progress, for ever.
+   *
+   * A tool call id comes off this session's own event stream, so it is session-scoped by
+   * construction — the isolation no longer depends on a field the framework may not set.
+   */
+  readonly dispatchedToolCallIds = new Set<string>();
   /** Task ids already handed to the caller, so a result is reported exactly once. */
   readonly reportedTaskIds = new Set<string>();
   /** The supervisor's own closing text, once the run has produced it. */
@@ -82,6 +95,7 @@ export class RoutingProgress {
 
   /** Clears everything, for a new request on an existing session. */
   reset(): void {
+    this.dispatchedToolCallIds.clear();
     this.reportedTaskIds.clear();
     this.summary = undefined;
     this.error = undefined;
@@ -117,17 +131,22 @@ export class RoutingProgress {
 
   /** Whether this session has never been asked to route anything. */
   isIdle(): boolean {
-    return !this.agentFinished && this.reportedTaskIds.size === 0;
+    return !this.agentFinished && this.dispatchedToolCallIds.size === 0 && this.reportedTaskIds.size === 0;
   }
 
   /** Folds one session event into the buffer. */
   handle(event: AgentControllerEvent): void {
-    // The run is now parked and will not move until this is answered, so it takes priority
-    // over anything else the poll might have reported.
-    // `tool_end` is deliberately not a delegation outcome any more. A delegation dispatched
-    // as a background task returns an acknowledgement the moment it is queued, so this
-    // fires with that acknowledgement rather than with the agent's answer. Reporting it
-    // would tell the user a question had been answered while it was still being asked.
+    // Every delegation this request makes passes through here, which is what makes the
+    // task rows findable afterwards.
+    if (event.type === 'tool_start') {
+      this.dispatchedToolCallIds.add(event.toolCallId);
+      return;
+    }
+
+    // `tool_end` is deliberately not a delegation outcome. A delegation dispatched as a
+    // background task returns an acknowledgement the moment it is queued, so this fires
+    // with that acknowledgement rather than with the agent's answer. Reporting it would
+    // tell the user a question had been answered while it was still being asked.
 
     if (event.type === 'message_end' && event.message.role === 'assistant') {
       const text = extractText(event.message);
@@ -257,7 +276,7 @@ export interface RoutingRuntime {
 interface RoutingMastra {
   getAgentById(id: string): Agent;
   backgroundTaskManager?: {
-    listTasks(filter: { resourceId?: string }): Promise<{ tasks: BackgroundTask[] }>;
+    listTasks(filter: { agentId?: string }): Promise<{ tasks: BackgroundTask[] }>;
   };
 }
 
@@ -349,18 +368,18 @@ async function getSession(sessionId: string) {
 }
 
 /** Every delegation this session has dispatched, settled or not. */
-async function listSessionTasks(sessionId: string): Promise<BackgroundTask[]> {
+async function listSessionTasks(sessionId: string, progress: RoutingProgress): Promise<BackgroundTask[]> {
   const manager = registry?.backgroundTaskManager;
   if (!manager) {
     logger.warn('Background tasks are not enabled; no delegation can be reported', { sessionId });
     return [];
   }
 
-  // Scoped by the session's own resourceId, which `createSession({ resourceId })` sets and
-  // every task dispatched inside its runs inherits. This is what keeps one caller's
-  // delegations out of another's report.
-  const { tasks } = await manager.listTasks({ resourceId: sessionId });
-  return tasks;
+  // Every delegation in the process belongs to the one supervisor, so this narrows the read
+  // to routing and nothing else. Which of them are *this* caller's is then decided by the
+  // tool call ids the session announced, rather than by a field on the row.
+  const { tasks } = await manager.listTasks({ agentId: ROUTING_SUPERVISOR_AGENT_ID });
+  return tasks.filter((task) => progress.dispatchedToolCallIds.has(task.toolCallId));
 }
 
 /** Folds the task records into what a single poll is allowed to say. */
@@ -397,13 +416,10 @@ const agentControllerRuntime: RoutingRuntime = {
       session.abort();
     }
 
-    // Anything already on the record belongs to the request being superseded, so it is
-    // marked reported rather than replayed into the new one.
-    const previous = await listSessionTasks(sessionId);
+    // Resetting drops the tool call ids of the request being superseded, and a delegation is
+    // only ever this request's if its id is in that set — so the previous request's rows stop
+    // matching here rather than having to be swept up and marked reported.
     progress.reset();
-    for (const task of previous) {
-      progress.reportedTaskIds.add(task.id);
-    }
 
     // Not awaited: the caller is a voice assistant on a short tool-call deadline, and the
     // whole contract is that it polls for results rather than waiting for them.
@@ -414,7 +430,7 @@ const agentControllerRuntime: RoutingRuntime = {
 
   async poll(sessionId) {
     const { progress } = await getSession(sessionId);
-    return buildSnapshot(progress, await listSessionTasks(sessionId));
+    return buildSnapshot(progress, await listSessionTasks(sessionId, progress));
   },
 
   async waitForChange(sessionId, deadlineMs) {
@@ -443,7 +459,7 @@ async function pollForSettledTask(sessionId: string, progress: RoutingProgress, 
   while (Date.now() < until) {
     await delay(Math.min(TASK_REREAD_INTERVAL_MS, until - Date.now()));
 
-    const tasks = await listSessionTasks(sessionId);
+    const tasks = await listSessionTasks(sessionId, progress);
     const hasNews = tasks.some(
       (task) => !ACTIVE_TASK_STATUSES.has(task.status) && !progress.reportedTaskIds.has(task.id),
     );
