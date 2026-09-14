@@ -2,14 +2,13 @@
  * The poll loop, which is the part of routing this vertical still owns.
  *
  * Ordering, parallelism and dependency passing are the supervisor's job inside its own
- * delegation loop; concurrency, persistence and retry are the background task manager's.
- * What is left here is the contract with Jarvis: what a poll returns, when it blocks, that
- * a result is relayed exactly once, and that the closing report recaps everything in case a
- * response was lost on the way.
+ * delegation loop. What is left here is the contract with Jarvis: what a poll returns, when
+ * it blocks, that a result is relayed exactly once, and that the closing report recaps
+ * everything in case a response was lost on the way.
  *
- * The task manager is faked, so nothing here calls a model — but the folding itself is the
- * real {@link buildSnapshot} over real {@link BackgroundTask} records, so what a poll is
- * allowed to say is covered rather than stubbed around.
+ * Nothing here calls a model. Delegations are driven by feeding the same session events a
+ * real run emits — `tool_start` opening one and `tool_end` answering it — so the folding
+ * itself is covered rather than stubbed around.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';

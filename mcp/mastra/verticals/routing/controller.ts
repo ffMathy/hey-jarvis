@@ -6,21 +6,20 @@ import { logger } from '../../utils/logger.js';
 import { getRoutingSupervisorAgent, ROUTING_SUPERVISOR_AGENT_ID } from './agents.js';
 
 /**
- * The routing runtime: one shared AgentController, one Session per caller, and one durable
- * background task per delegation.
+ * The routing runtime: one shared AgentController, one Session per caller.
  *
- * Two things this vertical used to own are now the framework's. The Session owns request
- * identity: the previous implementation kept the in-flight request in a module-global, so a
- * second request replaced the first and the poll tool — which takes no arguments, and so
- * cannot say which request it is asking about — could only ever be answered from whichever
- * request happened to be last. `createSession({ resourceId })` is get-or-create and
- * isolated, and it is what makes concurrent requests safe.
+ * The Session owns request identity. The implementation this replaced kept the in-flight
+ * request in a module-global, so a second request replaced the first and the poll tool —
+ * which takes no arguments, and so cannot say which request it is asking about — could only
+ * ever be answered from whichever request happened to be last. `createSession({ resourceId })`
+ * is get-or-create and isolated, and it is what makes concurrent requests safe.
  *
- * The background task manager owns delegation state. A delegation is a row with a status,
- * a result and an error, scoped to the session's `resourceId` — not a promise held in this
- * process and folded into a buffer as events arrive. That is what the poll reads. It means
- * a result survives a restart between the call that started it and the call that asks for
- * it, and it is why `taskIdsInProgress` can mean something again.
+ * The Session also owns what the poll reports. Delegations run inside the supervisor's own
+ * turn, so the session's event stream is where they surface: `tool_start` opens one and
+ * `tool_end` carries its answer. Durable background tasks were tried for this and did not
+ * work — a live run announced three delegations and the task manager held no rows for any of
+ * them — so nothing about a request lives in storage, and nothing has to be read back from
+ * there.
  */
 
 /**
@@ -37,8 +36,8 @@ export const DEFAULT_ROUTING_SESSION_ID = 'jarvis-voice';
  * What Mastra prefixes a subagent's delegation tool with.
  *
  * The tool is registered as `agent-${key}` for each key in the `agents` map, not as the key
- * itself — and the background task records it under that same name. Reading a tool name as an
- * agent id without taking the prefix off gets `agent-weather` where it means `weather`.
+ * itself. Reading a tool name as an agent id without taking the prefix off gets
+ * `agent-weather` where it means `weather`.
  */
 const DELEGATION_TOOL_PREFIX = 'agent-';
 
@@ -59,10 +58,9 @@ export interface DelegationOutcome {
 /**
  * Everything one routing request has produced that the caller has not yet been told.
  *
- * Delegation outcomes are not accumulated here — they live in the task records, and this
- * only remembers which of them have already been handed over. What is kept is the part the
- * task records cannot express: the supervisor's own closing text, and whether its loop has
- * ended.
+ * Everything a poll can report is folded in here as the session emits it: which delegations
+ * are open, what the answered ones said, the supervisor's own closing text, and whether its
+ * turn has ended.
  */
 export class RoutingProgress {
   /**
