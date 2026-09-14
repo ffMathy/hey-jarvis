@@ -4,6 +4,10 @@
 /android
 /ios
 
+# Gradle's output for the local modules, written by any native build
+/modules/*/android/build/
+/modules/*/android/.cxx/
+
 # Expo CLI state and bundler output
 .expo/
 /dist
