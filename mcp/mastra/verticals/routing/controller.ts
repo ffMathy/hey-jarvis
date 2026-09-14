@@ -140,6 +140,10 @@ export class RoutingProgress {
     // task rows findable afterwards.
     if (event.type === 'tool_start') {
       this.dispatchedToolCallIds.add(event.toolCallId);
+      logger.info('Routing delegated', {
+        agentId: agentIdFromDelegationTool(event.toolName),
+        toolCallId: event.toolCallId,
+      });
       return;
     }
 
@@ -162,6 +166,9 @@ export class RoutingProgress {
     }
 
     if (event.type === 'agent_end') {
+      logger.info('Routing supervisor finished its turn', {
+        delegations: this.dispatchedToolCallIds.size,
+      });
       this.agentFinished = true;
       this.wake();
     }
@@ -169,6 +176,7 @@ export class RoutingProgress {
 
   /** Marks the request as failed, for an error the session never got to report. */
   fail(message: string): void {
+    logger.error('Routing request failed', { error: message });
     this.error = message;
     this.agentFinished = true;
     this.wake();
@@ -296,9 +304,19 @@ const progressBySessionId = new Map<string, RoutingProgress>();
  * an import cycle — the instance imports these workflows in order to register them.
  */
 export function rememberMastraRegistry(mastra: RoutingMastra | undefined): void {
-  if (mastra) {
-    registry = mastra;
+  if (!mastra) {
+    // The steps are the only route to the instance, so losing it here disables both the
+    // registered supervisor and the task manager -- and does so quietly.
+    logger.warn('Routing workflow step ran without a Mastra instance');
+    return;
   }
+
+  if (!registry) {
+    logger.info('Routing resolved its Mastra instance', {
+      backgroundTasksEnabled: Boolean(mastra.backgroundTaskManager),
+    });
+  }
+  registry = mastra;
 }
 
 /**
@@ -379,7 +397,20 @@ async function listSessionTasks(sessionId: string, progress: RoutingProgress): P
   // to routing and nothing else. Which of them are *this* caller's is then decided by the
   // tool call ids the session announced, rather than by a field on the row.
   const { tasks } = await manager.listTasks({ agentId: ROUTING_SUPERVISOR_AGENT_ID });
-  return tasks.filter((task) => progress.dispatchedToolCallIds.has(task.toolCallId));
+  const mine = tasks.filter((task) => progress.dispatchedToolCallIds.has(task.toolCallId));
+
+  // The case every dead poll looks like from the outside: the supervisor is running and
+  // nothing can be seen of it. Saying which half is missing -- no delegation announced, or
+  // announced but no row to match -- is the difference between diagnosing it and guessing.
+  if (mine.length === 0 && !progress.agentFinished) {
+    logger.info('Routing poll found no delegations for this request', {
+      sessionId,
+      announced: progress.dispatchedToolCallIds.size,
+      supervisorTasksInStore: tasks.length,
+    });
+  }
+
+  return mine;
 }
 
 /** Folds the task records into what a single poll is allowed to say. */
@@ -423,9 +454,17 @@ const agentControllerRuntime: RoutingRuntime = {
 
     // Not awaited: the caller is a voice assistant on a short tool-call deadline, and the
     // whole contract is that it polls for results rather than waiting for them.
-    void session.sendMessage({ content: userQuery }).catch((error: unknown) => {
-      progress.fail(error instanceof Error ? error.message : String(error));
-    });
+    void session
+      .sendMessage({ content: userQuery })
+      .then(() => {
+        logger.info('Routing supervisor run settled', {
+          sessionId,
+          delegations: progress.dispatchedToolCallIds.size,
+        });
+      })
+      .catch((error: unknown) => {
+        progress.fail(error instanceof Error ? error.message : String(error));
+      });
   },
 
   async poll(sessionId) {
