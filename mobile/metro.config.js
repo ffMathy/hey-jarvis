@@ -9,24 +9,6 @@ const path = require('path');
 const projectRoot = __dirname;
 const workspaceRoot = path.resolve(projectRoot, '..');
 
-/**
- * Packages that must never appear twice in one bundle.
- *
- * Two copies of React is the familiar version of this problem. The one that
- * matters more here is quieter: `@elevenlabs/react-native` calls
- * `registerGlobals()` from `@livekit/react-native` to install the WebRTC globals,
- * and `@elevenlabs/client` reads them back. If those two ever looked at different
- * physical copies, the session would report itself connected and then produce
- * silence, with no error anywhere.
- */
-const SINGLETON_PACKAGES = [
-  'react',
-  'react-native',
-  'livekit-client',
-  '@livekit/react-native',
-  '@livekit/react-native-webrtc',
-];
-
 const config = getDefaultConfig(projectRoot);
 
 config.watchFolders = [workspaceRoot];
@@ -34,35 +16,30 @@ config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, 'node_modules'),
   path.resolve(workspaceRoot, 'node_modules'),
 ];
+
 // `disableHierarchicalLookup` is the usual monorepo advice and is wrong here.
 // Bun's isolated linker gives every package its own `node_modules` alongside it
-// under `node_modules/.bun/<name>@<version>/`, and walking up from the importing
-// file is how a package's own dependencies are found at all — switching it off
-// makes `expo` unable to resolve `expo-modules-core`. Duplicate copies are kept
-// out by the resolver below instead, which is the narrower tool for that job.
-
-const upstreamResolveRequest = config.resolver.resolveRequest;
-
-const resolve = (context, moduleName, platform) =>
-  (upstreamResolveRequest ?? context.resolveRequest)(context, moduleName, platform);
-
-/**
- * Resolves the packages above as if every import of them came from the app's own
- * entry point, so they all land on the same copy however deep in the tree the
- * importer sits.
- *
- * Anchoring on the entry file rather than on each package's `package.json` is
- * deliberate: several of these declare an `exports` map with no `./package.json`
- * entry, and asking for one is an outright resolution error.
- */
-config.resolver.resolveRequest = (context, moduleName, platform) => {
-  const isSingleton = SINGLETON_PACKAGES.some((name) => moduleName === name || moduleName.startsWith(`${name}/`));
-
-  if (!isSingleton) {
-    return resolve(context, moduleName, platform);
-  }
-
-  return resolve({ ...context, originModulePath: path.join(projectRoot, 'index.ts') }, moduleName, platform);
-};
+// under `node_modules/.bun/<name>@<version>+<hash>/`, and walking up from the
+// importing file is how a package's own dependencies are found at all —
+// switching it off leaves `expo` unable to resolve `expo-modules-core`.
+//
+// The other half of that advice — a resolver forcing `react`, `react-native`,
+// `livekit-client` and the two LiveKit packages to one copy each — is
+// deliberately absent, and it is worth saying why, because the failure it would
+// guard against is a quiet one: `@elevenlabs/react-native` installs the WebRTC
+// globals through `@livekit/react-native` and `@elevenlabs/client` reads them
+// back, so two copies would connect and then play silence, with no error
+// anywhere.
+//
+// It is absent because it was measured and does nothing. Bun's store is keyed by
+// version *and* dependency closure, so it really can hold one package twice — 19
+// of them here at the time of writing, `expo` and `babel-preset-expo` among them
+// — but none of those five are in that set, and bundling with the resolver and
+// without it produced the same hash and the same 895 modules. If a dependency
+// bump ever does split one of them, the symptom is silence on a connected
+// session and the fix is a `resolver.resolveRequest` anchoring those names on
+// this package's entry point. Measure before adding it back rather than carrying
+// it on the strength of the reasoning: that is how it came to be here the first
+// time.
 
 module.exports = config;

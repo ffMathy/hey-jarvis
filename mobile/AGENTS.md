@@ -105,7 +105,9 @@ Versions are pinned exactly, and every one of them has to clear the repository's
 - `livekit-client` is a direct dependency even though it is transitive, so only one copy can resolve.
 - `@config-plugins/react-native-webrtc` is deliberately **not** installed. Its Android half only adds permissions, and two of them — `CAMERA` and `SYSTEM_ALERT_WINDOW` — have no business in a voice assistant. `app.config.ts` declares the permissions this app actually uses and blocks `CAMERA`, which LiveKit's own manifest would otherwise merge in.
 
-`metro.config.js` pins `react`, `react-native`, `livekit-client` and both LiveKit packages to one copy each. This is not hygiene: `@elevenlabs/react-native` installs the WebRTC globals through `@livekit/react-native` and `@elevenlabs/client` reads them back, so two copies produce a session that reports itself connected and then plays silence.
+`metro.config.js` points Metro at both this package's `node_modules` and the workspace root's, and keeps hierarchical lookup **on** — the usual monorepo advice to switch it off breaks bun's isolated layout, where walking up from the importing file is how a package finds its own dependencies.
+
+It deliberately does **not** pin `react`, `react-native`, `livekit-client` and the LiveKit packages to one copy each, which is the other half of that advice. Bun's store is keyed by version and dependency closure, so it can hold a package twice — 19 of them do here — but none of those five, and bundling with and without the resolver gives the same hash and the same module count. The comment in the file says what the symptom would be if a bump ever splits one of them, and asks you to measure before adding it back.
 
 ## Testing
 
