@@ -783,9 +783,98 @@ export interface HistoricalStatesOptions {
 }
 
 /**
+ * Longest `filter_entity_id` value a single history request may carry, measured
+ * after URL encoding.
+ *
+ * Home Assistant takes the filter in the query string, and aiohttp rejects a
+ * request line longer than 8 KB outright. Staying well under that leaves room
+ * for the base URL, the timestamps and the remaining parameters.
+ */
+const MAX_HISTORY_FILTER_LENGTH = 3500;
+
+/**
+ * Splits entity IDs into batches whose encoded `filter_entity_id` value stays
+ * within `maxLength`.
+ *
+ * An installation with a few hundred entities produces a filter far longer than
+ * a request line allows, so asking for every entity at once fails on the
+ * transport before Home Assistant ever looks at the query. An ID that exceeds
+ * the limit on its own still gets a batch of its own — dropping it silently
+ * would hide the entity from every baseline it belongs to.
+ *
+ * Exported for testing: the batching only kicks in against an installation
+ * large enough to overflow, which no test can rely on.
+ *
+ * @param entityIds - Entity IDs to split, in order
+ * @param maxLength - Maximum encoded filter length per batch
+ * @returns Batches of entity IDs, in order, with no empty batch
+ */
+export function batchEntityIdsForHistory(entityIds: string[], maxLength = MAX_HISTORY_FILTER_LENGTH): string[][] {
+  const batches: string[][] = [];
+  let current: string[] = [];
+  let currentLength = 0;
+
+  for (const entityId of entityIds) {
+    // URLSearchParams percent-encodes the separating comma, so every ID after
+    // the first costs its own encoded length plus three characters for "%2C".
+    const encodedLength = encodeURIComponent(entityId).length;
+    const cost = current.length === 0 ? encodedLength : encodedLength + 3;
+
+    if (current.length > 0 && currentLength + cost > maxLength) {
+      batches.push(current);
+      current = [entityId];
+      currentLength = encodedLength;
+      continue;
+    }
+
+    current.push(entityId);
+    currentLength += cost;
+  }
+
+  if (current.length > 0) {
+    batches.push(current);
+  }
+
+  return batches;
+}
+
+/** Fetches every entity ID known to Home Assistant, which is cheap enough for one render. */
+async function fetchAllEntityIds(): Promise<string[]> {
+  const template = `{{ states|map(attribute='entity_id')|list|to_json }}`;
+  const response = await callHomeAssistantApi('template', 'POST', { template });
+  const ids: unknown = typeof response === 'string' ? JSON.parse(response) : response;
+
+  return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : [];
+}
+
+/** Requests the history of one batch of entities. */
+async function fetchHistoryBatch(
+  entityIds: string[],
+  startTime: string,
+  endTime: string,
+  minimalResponse: boolean,
+): Promise<Array<HistoricalStateEntry[]>> {
+  const params = new URLSearchParams();
+  params.append('end_time', endTime);
+  if (minimalResponse) {
+    params.append('minimal_response', '');
+  }
+  params.append('filter_entity_id', entityIds.join(','));
+
+  const response = await callHomeAssistantApi(`history/period/${startTime}?${params.toString()}`);
+
+  return Array.isArray(response) ? (response as Array<HistoricalStateEntry[]>) : [];
+}
+
+/**
  * Fetch historical state data for all entities from Home Assistant over a specified time period.
  * Returns the full state history with timestamps, useful for analyzing state fluctuations and patterns.
  * This function is used internally by workflows to establish noise baselines for filtering insignificant state changes.
+ *
+ * Home Assistant rejects a history query that leaves out `filter_entity_id` — it
+ * answers `filter_entity_id is missing` with a 400 — so "every entity" has to be
+ * spelled out as an explicit list. It is resolved here when the caller supplies
+ * none, and split across as many requests as the query string needs.
  *
  * @param options - Configuration options for fetching historical states
  * @returns Historical state data keyed by entity ID
@@ -795,32 +884,21 @@ export async function fetchHistoricalStates(options: HistoricalStatesOptions = {
   const startTime = options.startTime || new Date(Date.now() - 15 * 60 * 1000).toISOString();
   const minimalResponse = options.minimalResponse ?? true;
 
-  // Build the endpoint URL
-  let endpoint = `history/period/${startTime}`;
+  const entityIds = options.entityIds?.length ? options.entityIds : await fetchAllEntityIds();
 
-  // Add query parameters
-  const params = new URLSearchParams();
-  params.append('end_time', endTime);
-  if (minimalResponse) {
-    params.append('minimal_response', '');
-  }
-  if (options.entityIds && options.entityIds.length > 0) {
-    params.append('filter_entity_id', options.entityIds.join(','));
-  }
-
-  endpoint += `?${params.toString()}`;
-
-  const response = (await callHomeAssistantApi(endpoint)) as Array<HistoricalStateEntry[]>;
-
-  // Convert array response to a record keyed by entity_id
+  // Convert array responses to a record keyed by entity_id
   const history: Record<string, HistoricalStateEntry[]> = {};
   let entityCount = 0;
 
-  for (const entityHistory of response) {
-    if (Array.isArray(entityHistory) && entityHistory.length > 0) {
-      const entityId = entityHistory[0].entity_id;
-      history[entityId] = entityHistory;
-      entityCount++;
+  for (const batch of batchEntityIdsForHistory(entityIds)) {
+    const response = await fetchHistoryBatch(batch, startTime, endTime, minimalResponse);
+
+    for (const entityHistory of response) {
+      if (Array.isArray(entityHistory) && entityHistory.length > 0) {
+        const entityId = entityHistory[0].entity_id;
+        history[entityId] = entityHistory;
+        entityCount++;
+      }
     }
   }
 
