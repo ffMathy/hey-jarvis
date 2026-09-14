@@ -1,3 +1,4 @@
+import { InMemoryStore, MastraCompositeStore, type RetentionConfig } from '@mastra/core/storage';
 import { LibSQLStore, LibSQLVector } from '@mastra/libsql';
 import { mkdir } from 'fs/promises';
 import path from 'path';
@@ -5,6 +6,7 @@ import { CredentialsStorage } from './credentials.js';
 import { DeviceStateStorage } from './device-state.js';
 import { EmailStateStorage } from './email-state.js';
 import { EntityNoiseBaselineStorage } from './entity-noise-baseline.js';
+import { withFeedbackFrom } from './observability.js';
 import { SubscriptionStorage } from './subscriptions.js';
 import { TokenUsageStorage } from './token-usage.js';
 
@@ -33,22 +35,90 @@ function getSqlDatabasePath(): string {
   return path.join(databaseDirectory, 'mastra.sql.db');
 }
 
-export async function getSqlStorageProvider(): Promise<LibSQLStore> {
-  await ensureDatabaseDirectory();
+let sqlStorageProviderInstance: LibSQLStore | null = null;
 
-  return new LibSQLStore({
-    id: 'hey-jarvis-sql-storage',
-    url: `file:${getSqlDatabasePath()}`,
-  });
+export async function getSqlStorageProvider(): Promise<LibSQLStore> {
+  if (!sqlStorageProviderInstance) {
+    await ensureDatabaseDirectory();
+
+    sqlStorageProviderInstance = new LibSQLStore({
+      id: 'hey-jarvis-sql-storage',
+      url: `file:${getSqlDatabasePath()}`,
+    });
+  }
+  return sqlStorageProviderInstance;
 }
 
-export async function getVectorStorageProvider(): Promise<LibSQLVector> {
-  await ensureDatabaseDirectory();
+let vectorStorageProviderInstance: LibSQLVector | null = null;
 
-  return new LibSQLVector({
-    id: 'hey-jarvis-vector-storage',
-    url: `file:${path.join(databaseDirectory, 'mastra.vector.db')}`,
+export async function getVectorStorageProvider(): Promise<LibSQLVector> {
+  if (!vectorStorageProviderInstance) {
+    await ensureDatabaseDirectory();
+
+    vectorStorageProviderInstance = new LibSQLVector({
+      id: 'hey-jarvis-vector-storage',
+      url: `file:${path.join(databaseDirectory, 'mastra.vector.db')}`,
+    });
+  }
+  return vectorStorageProviderInstance;
+}
+
+/**
+ * How long Mastra's own append-only tables are kept.
+ *
+ * Both of these grow as a side effect of the system simply running: observability
+ * samples every span (`SamplingStrategyType.ALWAYS` in mastra/index.ts) and the
+ * schedulers start workflow runs around the clock, on a device that is never switched
+ * off. `token_usage` already grew for the life of the database this way, which is why
+ * storageRetentionWorkflow exists; giving Mastra a durable store without a policy would
+ * reintroduce the same leak on two more tables.
+ *
+ * Memory is deliberately absent: threads and messages are the user's own conversation
+ * history, not telemetry, so they are kept until something deletes them on purpose.
+ */
+const MASTRA_RETENTION: RetentionConfig = {
+  observability: { spans: { maxAge: '14d' } },
+  workflows: { workflowSnapshot: { maxAge: '30d' } },
+};
+
+let mastraStorageProviderInstance: MastraCompositeStore | null = null;
+
+/**
+ * Builds the storage adapter for the Mastra instance itself.
+ *
+ * Without this Mastra falls back to an in-memory store and says so on every boot: "No
+ * `storage` configured on Mastra — falling back to an in-memory store. In-memory storage
+ * is not durable". Everything Mastra owns — workflow runs, schedules, traces,
+ * notifications — was being kept in RAM and lost on restart, even though the LibSQL
+ * database backing agent memory was right here.
+ *
+ * Feedback is served from a separate in-memory store because LibSQL does not implement
+ * that part of the observability domain at all; see storage/observability.ts. Feedback
+ * left in Studio therefore lasts as long as the process does, which is the most any
+ * store here can offer for it, and better than the 500 the endpoint answers otherwise.
+ */
+export async function getMastraStorageProvider(): Promise<MastraCompositeStore> {
+  if (mastraStorageProviderInstance) {
+    return mastraStorageProviderInstance;
+  }
+
+  const sqlStorageProvider = await getSqlStorageProvider();
+  const durableObservability = await sqlStorageProvider.getStore('observability');
+  const feedbackObservability = await new InMemoryStore({ id: 'hey-jarvis-feedback-storage' }).getStore(
+    'observability',
+  );
+
+  mastraStorageProviderInstance = new MastraCompositeStore({
+    id: 'hey-jarvis-mastra-storage',
+    default: sqlStorageProvider,
+    domains:
+      durableObservability && feedbackObservability
+        ? { observability: withFeedbackFrom(durableObservability, feedbackObservability) }
+        : undefined,
+    retention: MASTRA_RETENTION,
   });
+
+  return mastraStorageProviderInstance;
 }
 
 let credentialsStorageInstance: CredentialsStorage | null = null;

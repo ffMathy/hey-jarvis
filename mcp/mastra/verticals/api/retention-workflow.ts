@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { getTokenUsageStorage } from '../../storage/index.js';
+import { getMastraStorageProvider, getTokenUsageStorage } from '../../storage/index.js';
 import { logger } from '../../utils/logger.js';
 import { createStep, createWorkflow } from '../../utils/workflows/workflow-factory.js';
 
@@ -14,21 +14,32 @@ import { createStep, createWorkflow } from '../../utils/workflows/workflow-facto
 const TOKEN_USAGE_RETENTION_DAYS = 90;
 
 /**
- * Deletes token usage records past their retention window.
+ * What one run of the workflow deleted.
+ *
+ * `mastraRowsDeleted` counts rows across every Mastra-owned table with a policy, so a
+ * run that trims spans and workflow snapshots reports one number rather than a shape
+ * that changes with the retention config.
+ */
+const retentionResultSchema = z.object({
+  tokenUsageRecordsDeleted: z.number(),
+  mastraRowsDeleted: z.number(),
+  cutoff: z.string(),
+});
+
+/**
+ * Deletes records past their retention window.
  *
  * `cleanupOldRecords` has existed and been tested since token accounting was added, but
  * nothing ever called it outside its own tests, so `token_usage` grew for the life of
  * the database — one row per model call, on a device that is never turned off. This is
- * the caller.
+ * the caller. Mastra's own append-only tables grow the same way now that it has a
+ * durable store, so they are pruned here too.
  */
 export const storageRetentionWorkflow = createWorkflow({
   id: 'storageRetentionWorkflow',
   description: 'Deletes storage records that have passed their retention window',
   inputSchema: z.object({}),
-  outputSchema: z.object({
-    tokenUsageRecordsDeleted: z.number(),
-    cutoff: z.string(),
-  }),
+  outputSchema: retentionResultSchema,
 })
   .then(
     createStep({
@@ -51,6 +62,37 @@ export const storageRetentionWorkflow = createWorkflow({
         });
 
         return { tokenUsageRecordsDeleted, cutoff: cutoff.toISOString() };
+      },
+    }),
+  )
+  .then(
+    createStep({
+      id: 'prune-mastra-storage',
+      description: "Deletes rows past the retention policies declared on Mastra's own storage",
+      inputSchema: z.object({
+        tokenUsageRecordsDeleted: z.number(),
+        cutoff: z.string(),
+      }),
+      outputSchema: retentionResultSchema,
+      /**
+       * Prunes the tables Mastra fills on its own.
+       *
+       * `prune()` deletes in bounded, resumable batches and reports `done: false` when
+       * eligible rows remain, so an overdue first run cannot lock the database for the
+       * length of a full backlog — whatever is left goes on the next nightly tick.
+       */
+      execute: async ({ inputData }) => {
+        const storage = await getMastraStorageProvider();
+        const results = await storage.prune();
+        const mastraRowsDeleted = results.reduce((total, result) => total + result.deleted, 0);
+
+        logger.info('[RETENTION] Pruned Mastra storage', {
+          mastraRowsDeleted,
+          tables: results.map(({ domain, table, deleted, done }) => ({ domain, table, deleted, done })),
+          hasMore: results.some(({ done }) => !done),
+        });
+
+        return { ...inputData, mastraRowsDeleted };
       },
     }),
   )
