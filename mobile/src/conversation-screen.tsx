@@ -1,9 +1,9 @@
 import { useConversationControls, useConversationMode, useConversationStatus } from '@elevenlabs/react-native';
 import * as Linking from 'expo-linking';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { type AssistantRegistration, openAssistantSettings } from '../modules/jarvis-assistant';
-import { isAssistLaunch } from './assist-link';
+import { createAssistLaunchClaim } from './assist-link';
 import { requestConversationToken } from './conversation-token';
 import { requestMicrophoneAccess } from './microphone-permission';
 import type { ServerSettings } from './server-settings';
@@ -14,6 +14,9 @@ interface ConversationScreenProps {
   settings: ServerSettings;
   onEditSettings: () => void;
 }
+
+/** Summonings already acted on in this process. */
+const claimAssistLaunch = createAssistLaunchClaim();
 
 /** Whether a conversation is open, or on its way to being open. */
 function isLive(status: string): boolean {
@@ -68,20 +71,20 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
 
   // Opened by the assistant gesture rather than from the launcher: the user has
   // already said what amounts to "hey Jarvis", so making them press a button
-  // afterwards would be asking twice. Guarded by a ref because `useURL` re-emits
-  // the same URL across re-renders, and a second start would tear down the first.
-  const handledLaunchUrl = useRef<string | undefined>(undefined);
+  // afterwards would be asking twice. Each summoning is claimed once, for the
+  // life of the process — see `createAssistLaunchClaim` for why neither a
+  // per-render nor a per-mount guard is enough. A summoning that arrives while a
+  // conversation is open or starting is claimed and left alone, since starting
+  // again would tear down the one already under way.
   useEffect(() => {
-    if (!launchUrl || handledLaunchUrl.current === launchUrl || !isAssistLaunch(launchUrl)) {
+    if (!claimAssistLaunch(launchUrl)) {
       return;
     }
 
-    handledLaunchUrl.current = launchUrl;
-
-    if (!isLive(status)) {
+    if (!isLive(status) && !isStarting) {
       void start();
     }
-  }, [launchUrl, start, status]);
+  }, [launchUrl, start, status, isStarting]);
 
   const live = isLive(status);
   const busy = isStarting || status === 'connecting';

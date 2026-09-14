@@ -41,3 +41,34 @@ export function isAssistLaunch(url: string | null | undefined): boolean {
 
   return path.replace(/^\/+/, '').replace(/\/+$/, '').toLowerCase() === ASSIST_PATH;
 }
+
+/**
+ * Says yes exactly once for each summoning, and no for everything else.
+ *
+ * The same summoning is seen more than once: `useURL` hands the URL back on
+ * every render, and when the conversation screen is mounted again — after the
+ * settings screen, say — it reads the activity's original launch URL afresh.
+ * Acting on it again would start a conversation the user did not ask for, or
+ * tear down the one already running. So a URL is acted on the first time only.
+ *
+ * That only works because each summoning is a different URL: the session adds a
+ * `summon` value that changes every time (see `AssistLauncher.kt`). Without it,
+ * every summoning after the first in the same process would look like the first
+ * one again, and be ignored — which is what a device showed before that value
+ * existed.
+ *
+ * Kept for the life of the process rather than of a component, because the
+ * launch URL outlives any one mount of the screen.
+ */
+export function createAssistLaunchClaim(): (url: string | null | undefined) => boolean {
+  const claimed = new Set<string>();
+
+  return (url) => {
+    if (!url || !isAssistLaunch(url) || claimed.has(url)) {
+      return false;
+    }
+
+    claimed.add(url);
+    return true;
+  };
+}
