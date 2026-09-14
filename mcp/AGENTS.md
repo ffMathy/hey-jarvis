@@ -545,7 +545,6 @@ small, fast surface, and everything else happens behind them.
 **Workflows:**
 - **`routePromptWorkflow`**: starts a request and returns at once, with the session to poll
 - **`getNextInstructionsWorkflow`**: reports whatever has landed since the last call
-- **`respondToApprovalWorkflow`**: answers an approval the request is parked on
 
 **How a request runs:**
 1. `routePromptWorkflow` hands the query to the supervisor's session and returns immediately —
@@ -576,22 +575,20 @@ asks to be called again. That deadline has to fit inside ElevenLabs' `cascadeTim
 The closing report recaps every result, including ones earlier polls already relayed, so a
 response dropped on the way cannot lose an answer for good.
 
-**Approvals:**
-Delegating to an agent that acts on the world — email, IoT, the shopping list, the todo list,
-notifications, coding — is gated. Those delegations resolve to the `execute` permission
-category with an `ask` policy, so the run parks on `tool_approval_required` before any of them
-happens. Everything else is `read` and runs outright.
+**Two tools, deliberately:**
+The voice model gets `routePromptWorkflow` and `getNextInstructionsWorkflow` and nothing else.
+That is a hard constraint, not an accident of the current design: the model on the call is
+chosen for speed, and every extra tool is surface it has to reason about on a latency budget
+that has no room for it.
+
+It is also the reason there is no approval gate on this path. Gating a delegation means parking
+the run and asking, and an answer needs a tool to come back through — a third tool, which the
+constraint above rules out. A gate the caller cannot answer is worse than no gate: the run
+parks, every poll repeats the same question, and the request never finishes.
 
 Mastra names a delegation tool `agent-<id>`, not `<id>`, and records it under that name on the
-task row. The prefix has to come off before the name can be matched against an agent id.
-Matching the raw name resolves every delegation to `read`, which does not fail loudly — it just
-means nothing is ever asked about and the gate is gone.
-
-The approval reaches the user through the same poll loop, reported ahead of any result that is
-waiting (nothing moves until it is answered), and is answered with `respondToApprovalWorkflow`.
-The unit of approval is the delegation, not the leaf tool call, because a subagent's own tool
-calls happen inside its loop and never reach this session's gate. That is coarse in the safe
-direction.
+task row, so the prefix comes off before the name is read as an agent id — otherwise a report
+names `agent-weather` where it means `weather`.
 
 **Concurrent callers:**
 `createSession({ resourceId })` is get-or-create and isolated, and the task records are scoped

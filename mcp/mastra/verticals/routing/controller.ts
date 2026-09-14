@@ -38,9 +38,8 @@ export const DEFAULT_ROUTING_SESSION_ID = 'jarvis-voice';
  * What Mastra prefixes a subagent's delegation tool with.
  *
  * The tool is registered as `agent-${key}` for each key in the `agents` map, not as the key
- * itself — and the background task records it under that same name. Matching the raw name
- * against agent ids never matches, which silently resolves every delegation to `read` and
- * leaves the approval gate inert.
+ * itself — and the background task records it under that same name. Reading a tool name as an
+ * agent id without taking the prefix off gets `agent-weather` where it means `weather`.
  */
 const DELEGATION_TOOL_PREFIX = 'agent-';
 
@@ -49,45 +48,8 @@ export function agentIdFromDelegationTool(toolName: string): string {
   return toolName.startsWith(DELEGATION_TOOL_PREFIX) ? toolName.slice(DELEGATION_TOOL_PREFIX.length) : toolName;
 }
 
-/**
- * Which delegations change something in the world, and so are worth asking about first.
- *
- * The controller gates the tools of the run it drives, and for the routing supervisor those
- * tools are the delegations themselves. So the unit of approval is "may I ask the email
- * agent to do this", not "may I send this exact email" — coarser than gating the leaf tool
- * call, because a subagent's own tool calls happen inside its loop and never reach this
- * session's gate.
- *
- * Coarse is the safe direction: a prompt the user did not strictly need costs a sentence,
- * where a missed one costs an email nobody meant to send. Anything not listed here only
- * reads, so it runs without asking.
- */
-const ACTING_AGENT_IDS = new Set(['email', 'internetOfThings', 'shoppingList', 'todoList', 'notification', 'coding']);
-
-/** Maps a delegation tool back to a permission category. */
-function resolveToolCategory(toolName: string): 'read' | 'execute' | null {
-  return ACTING_AGENT_IDS.has(agentIdFromDelegationTool(toolName)) ? 'execute' : 'read';
-}
-
-/**
- * The permission lookup, exposed for the spec.
- *
- * It is handed to the controller rather than called from this vertical, so without this the
- * only way to cover it would be to stand up a real session and a model.
- */
-export const resolveToolCategoryForTest = resolveToolCategory;
-
 /** A task that has not settled yet, and so is still worth telling the caller about. */
 const ACTIVE_TASK_STATUSES = new Set<BackgroundTask['status']>(['pending', 'running', 'suspended']);
-
-/** One approval the run is parked on, waiting for the user to answer. */
-export interface PendingApproval {
-  toolCallId: string;
-  /** The agent the supervisor wants to delegate to. */
-  agentId: string;
-  /** What it intends to ask that agent to do. */
-  request: string;
-}
 
 /** One delegation that has finished, as the poll loop reports it. */
 export interface DelegationOutcome {
@@ -103,8 +65,8 @@ export interface DelegationOutcome {
  *
  * Delegation outcomes are not accumulated here — they live in the task records, and this
  * only remembers which of them have already been handed over. What is kept is the part the
- * task records cannot express: the approval the run is parked on, the supervisor's own
- * closing text, and whether its loop has ended.
+ * task records cannot express: the supervisor's own closing text, and whether its loop has
+ * ended.
  */
 export class RoutingProgress {
   /** Task ids already handed to the caller, so a result is reported exactly once. */
@@ -114,8 +76,6 @@ export class RoutingProgress {
   /** Whether the supervisor's loop has ended. Delegations may still be running. */
   agentFinished = false;
   error?: string;
-  /** The approval the run is parked on, if any. */
-  approval?: PendingApproval;
 
   /** Polls parked waiting for the next delegation to land. */
   private waiters: (() => void)[] = [];
@@ -126,7 +86,6 @@ export class RoutingProgress {
     this.summary = undefined;
     this.error = undefined;
     this.agentFinished = false;
-    this.approval = undefined;
   }
 
   /** Wakes every poll parked on this request. */
@@ -144,11 +103,11 @@ export class RoutingProgress {
    * `agentFinished` deliberately does not short-circuit this. The supervisor's turn ending
    * does not end the request — delegations it dispatched outlive it — so returning here on
    * that alone would send the poll straight back round to find nothing new, and spin for
-   * the whole deadline. An approval or an outright failure do change the answer, and both
-   * still wake a parked poll through {@link wake}.
+   * the whole deadline. An outright failure does change the answer, and it still wakes a
+   * parked poll through {@link wake}.
    */
   wait(): Promise<void> {
-    if (this.approval || this.error) {
+    if (this.error) {
       return Promise.resolve();
     }
     return new Promise<void>((resolve) => {
@@ -165,16 +124,6 @@ export class RoutingProgress {
   handle(event: AgentControllerEvent): void {
     // The run is now parked and will not move until this is answered, so it takes priority
     // over anything else the poll might have reported.
-    if (event.type === 'tool_approval_required') {
-      this.approval = {
-        toolCallId: event.toolCallId,
-        agentId: agentIdFromDelegationTool(event.toolName),
-        request: describeApprovalRequest(event.args),
-      };
-      this.wake();
-      return;
-    }
-
     // `tool_end` is deliberately not a delegation outcome any more. A delegation dispatched
     // as a background task returns an acknowledgement the moment it is queued, so this
     // fires with that acknowledgement rather than with the agent's answer. Reporting it
@@ -205,22 +154,6 @@ export class RoutingProgress {
     this.agentFinished = true;
     this.wake();
   }
-}
-
-/**
- * Renders what the supervisor is asking a delegated agent to do, for reading aloud.
- *
- * A delegation's arguments carry the prompt it wants to send; anything else is described by
- * its JSON rather than dropped, so an approval prompt is never blank.
- */
-function describeApprovalRequest(args: unknown): string {
-  if (typeof args === 'string') {
-    return args;
-  }
-  if (args && typeof args === 'object' && 'prompt' in args && typeof args.prompt === 'string') {
-    return args.prompt;
-  }
-  return JSON.stringify(args ?? null);
 }
 
 /**
@@ -302,7 +235,6 @@ export interface RoutingSnapshot {
   finished: boolean;
   summary?: string;
   error?: string;
-  approval?: PendingApproval;
 }
 
 /**
@@ -319,8 +251,6 @@ export interface RoutingRuntime {
   poll(sessionId: string): Promise<RoutingSnapshot>;
   /** Resolves when the request next changes, or after `deadlineMs`. */
   waitForChange(sessionId: string, deadlineMs: number): Promise<void>;
-  /** Answers the approval the run is parked on. */
-  respondToApproval(sessionId: string, approved: boolean): Promise<void>;
 }
 
 /** Just enough of the Mastra instance to reach the supervisor and the task records. */
@@ -390,7 +320,6 @@ async function getController(): Promise<AgentController> {
     // One mode. The controller's mode machinery exists for plan/build/review style
     // applications; routing has a single job and switches between nothing.
     modes: [{ id: 'route', name: 'Route', metadata: { default: true } }],
-    toolCategoryResolver: resolveToolCategory,
   });
 
   await controller.init();
@@ -415,11 +344,6 @@ async function getSession(sessionId: string) {
   const progress = new RoutingProgress();
   progressBySessionId.set(sessionId, progress);
   session.subscribe((event) => progress.handle(event));
-
-  // Reading is free; acting on the world is asked about. Set once per session, because the
-  // policies are the session's and a request should not have to restate them.
-  await session.permissions.setForCategory({ category: 'read', policy: 'allow' });
-  await session.permissions.setForCategory({ category: 'execute', policy: 'ask' });
 
   return { session, progress };
 }
@@ -458,7 +382,6 @@ export function buildSnapshot(progress: RoutingProgress, tasks: BackgroundTask[]
     finished: progress.agentFinished && active.length === 0,
     summary: progress.summary,
     error: progress.error,
-    approval: progress.approval,
   };
 }
 
@@ -498,26 +421,11 @@ const agentControllerRuntime: RoutingRuntime = {
     const { progress } = await getSession(sessionId);
 
     // Two things can change what a poll would say, and only one of them is an event. The
-    // session announces approvals and its own ending; a delegation settling is a row
-    // changing in storage, which nothing here is notified about. So the wait races the
-    // session against a re-read, rather than trusting either alone.
+    // session announces its own ending; a delegation settling is a row changing in storage,
+    // which nothing here is notified about. So the wait races the session against a re-read,
+    // rather than trusting either alone.
     // `pollForSettledTask` already gives up at the deadline, so it bounds the race.
     await Promise.race([progress.wait(), pollForSettledTask(sessionId, progress, deadlineMs)]);
-  },
-
-  async respondToApproval(sessionId, approved) {
-    const { session, progress } = await getSession(sessionId);
-    const approval = progress.approval;
-    if (!approval) {
-      return;
-    }
-
-    progress.approval = undefined;
-    session.respondToToolApproval({
-      decision: approved ? 'approve' : 'decline',
-      toolCallId: approval.toolCallId,
-      declineContext: approved ? undefined : { reason: 'The user declined it.' },
-    });
   },
 };
 

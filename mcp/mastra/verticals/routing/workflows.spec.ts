@@ -22,13 +22,11 @@ import {
   RoutingProgress,
   type RoutingRuntime,
   resetRoutingRuntime,
-  resolveToolCategoryForTest,
   setRoutingRuntime,
 } from './controller.js';
 import {
   getNextInstructionsWorkflow,
   resetPollDeadlineForTest,
-  respondToApprovalWorkflow,
   routePromptWorkflow,
   setPollDeadlineForTest,
 } from './workflows.js';
@@ -87,9 +85,6 @@ function dispatch(sessionId: string, agentId: string, overrides: Partial<Backgro
   return record;
 }
 
-/** Approvals answered through the fake runtime, so the spec can assert what was relayed. */
-const answeredApprovals: { sessionId: string; toolCallId: string; approved: boolean }[] = [];
-
 const fakeRuntime: RoutingRuntime = {
   async start(sessionId) {
     const progress = progressFor(sessionId);
@@ -104,15 +99,6 @@ const fakeRuntime: RoutingRuntime = {
     // wait here can only ever run out. Consuming the deadline rather than returning at once
     // is what keeps the poll loop from spinning through it in tight iterations.
     await new Promise((resolve) => setTimeout(resolve, deadlineMs));
-  },
-  async respondToApproval(sessionId, approved) {
-    const progress = progressFor(sessionId);
-    const approval = progress.approval;
-    if (!approval) {
-      return;
-    }
-    progress.approval = undefined;
-    answeredApprovals.push({ sessionId, toolCallId: approval.toolCallId, approved });
   },
 };
 
@@ -153,7 +139,6 @@ function resultOf<T>(outcome: WorkflowResult<T>): T {
 beforeEach(() => {
   progressBySessionId.clear();
   tasksBySessionId.clear();
-  answeredApprovals.length = 0;
   setRoutingRuntime(fakeRuntime);
   // A poll with nothing to report blocks until its deadline by design. That is five seconds
   // in production, which every such case here would otherwise sit through.
@@ -327,27 +312,6 @@ describe('delegation tool names', () => {
 
     expect(outcome.completedTaskResults).toEqual([{ id: 'weather', result: 'It is 8 degrees.' }]);
   });
-
-  it('names the agent, not the delegation tool, in an approval', async () => {
-    await runWorkflow(routePromptWorkflow, { userQuery: 'email Mathias', async: false });
-    const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
-    progress.handle({
-      type: 'tool_approval_required',
-      toolCallId: 'approval-email',
-      toolName: 'agent-email',
-      args: { prompt: 'Send the recipe' },
-    });
-
-    expect(progress.approval?.agentId).toBe('email');
-  });
-
-  it('resolves an acting agent to the execute category through its prefixed tool name', () => {
-    // The gate is what stands between a spoken request and an email going out, so a lookup
-    // that silently answers `read` for every delegation is the whole gate gone.
-    expect(resolveToolCategoryForTest('agent-email')).toBe('execute');
-    expect(resolveToolCategoryForTest('agent-internetOfThings')).toBe('execute');
-    expect(resolveToolCategoryForTest('agent-weather')).toBe('read');
-  });
 });
 
 describe('failed delegations', () => {
@@ -385,73 +349,5 @@ describe('failed delegations', () => {
 
     const ids = outcome.completedTaskResults?.map((entry) => entry.id);
     expect(ids).toEqual(['weather', 'calendar']);
-  });
-});
-
-describe('approvals', () => {
-  function requestApproval(progress: RoutingProgress, agentId: string, request: string): void {
-    progress.handle({
-      type: 'tool_approval_required',
-      toolCallId: `approval-${agentId}`,
-      toolName: `agent-${agentId}`,
-      args: { prompt: request },
-    });
-  }
-
-  it('asks the user out loud before an agent acts on the world', async () => {
-    await runWorkflow(routePromptWorkflow, { userQuery: 'email Mathias the recipe', async: false });
-    requestApproval(progressFor(DEFAULT_ROUTING_SESSION_ID), 'email', 'Send Mathias the lasagna recipe');
-
-    const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
-
-    expect(outcome.instructions).toContain('Send Mathias the lasagna recipe');
-    expect(outcome.instructions).toContain('respondToApprovalWorkflow');
-    // The run is parked, so the caller has to know that waiting will not resolve it.
-    expect(outcome.instructions).toContain('paused');
-  });
-
-  it('reports the approval ahead of results that are already waiting', async () => {
-    await runWorkflow(routePromptWorkflow, { userQuery: 'weather, then email it', async: false });
-    const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
-    dispatch(DEFAULT_ROUTING_SESSION_ID, 'weather', { result: { text: 'It is 8 degrees.' } });
-    requestApproval(progress, 'email', 'Send Mathias the forecast');
-
-    const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
-
-    // Nothing moves until this is answered, so a summary first would leave the user waiting
-    // on a question he was never asked.
-    expect(outcome.instructions).toContain('Send Mathias the forecast');
-    expect(outcome.completedTaskResults).toBeUndefined();
-  });
-
-  it('relays the decision and lets the loop carry on', async () => {
-    await runWorkflow(routePromptWorkflow, { userQuery: 'email Mathias the recipe', async: false });
-    requestApproval(progressFor(DEFAULT_ROUTING_SESSION_ID), 'email', 'Send Mathias the lasagna recipe');
-
-    const outcome = resultOf(await runWorkflow(respondToApprovalWorkflow, { approved: true }));
-
-    expect(answeredApprovals).toEqual([
-      { sessionId: DEFAULT_ROUTING_SESSION_ID, toolCallId: 'approval-email', approved: true },
-    ]);
-    expect(outcome.instructions).toContain('getNextInstructionsWorkflow');
-  });
-
-  it('relays a refusal too', async () => {
-    await runWorkflow(routePromptWorkflow, { userQuery: 'email Mathias the recipe', async: false });
-    requestApproval(progressFor(DEFAULT_ROUTING_SESSION_ID), 'email', 'Send Mathias the lasagna recipe');
-
-    await runWorkflow(respondToApprovalWorkflow, { approved: false });
-
-    expect(answeredApprovals[0].approved).toBe(false);
-  });
-
-  it('stops asking once the decision has been sent', async () => {
-    await runWorkflow(routePromptWorkflow, { userQuery: 'email Mathias the recipe', async: false });
-    requestApproval(progressFor(DEFAULT_ROUTING_SESSION_ID), 'email', 'Send Mathias the lasagna recipe');
-
-    await runWorkflow(respondToApprovalWorkflow, { approved: true });
-    const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
-
-    expect(outcome.instructions).not.toContain('respondToApprovalWorkflow');
   });
 });
