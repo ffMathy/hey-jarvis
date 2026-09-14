@@ -24,7 +24,7 @@
         naming the session and recognition services.
     -->
     <service
-      android:name=".JarvisVoiceInteractionService"
+      android:name="expo.modules.jarvisassistant.JarvisVoiceInteractionService"
       android:exported="true"
       android:permission="android.permission.BIND_VOICE_INTERACTION">
       <intent-filter>
@@ -37,7 +37,7 @@
 
     <!-- Creates one session per summoning. Also bound by the system only. -->
     <service
-      android:name=".JarvisVoiceInteractionSessionService"
+      android:name="expo.modules.jarvisassistant.JarvisVoiceInteractionSessionService"
       android:exported="true"
       android:permission="android.permission.BIND_VOICE_INTERACTION" />
 
@@ -54,7 +54,7 @@
       that does not resolve takes the system process down with it.
     -->
     <service
-      android:name=".JarvisRecognitionService"
+      android:name="expo.modules.jarvisassistant.JarvisRecognitionService"
       android:exported="true">
       <intent-filter>
         <action android:name="android.speech.RecognitionService" />
@@ -75,7 +75,7 @@
       the conversation screen rather than a second window in front of it.
     -->
     <activity
-      android:name=".JarvisAssistActivity"
+      android:name="expo.modules.jarvisassistant.JarvisAssistActivity"
       android:exported="true"
       android:excludeFromRecents="true"
       android:noHistory="true"
