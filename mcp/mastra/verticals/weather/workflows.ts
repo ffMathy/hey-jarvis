@@ -59,7 +59,7 @@ const registerWeatherStateChange = createStep({
   }),
   outputSchema: z.object({
     registered: z.boolean(),
-    batched: z.boolean(),
+    duplicate: z.boolean(),
     message: z.string(),
   }),
   execute: async (params) => {
@@ -85,7 +85,7 @@ export const weatherMonitoringWorkflow = createWorkflow({
   inputSchema: z.object({}),
   outputSchema: z.object({
     registered: z.boolean(),
-    batched: z.boolean(),
+    duplicate: z.boolean(),
     message: z.string(),
   }),
 })

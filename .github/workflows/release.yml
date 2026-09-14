@@ -142,7 +142,9 @@ jobs:
           imageName: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
           cacheFrom: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
           push: always
-          runCmd: turbo deploy
+          runCmd: |
+            bun install --frozen-lockfile
+            bunx turbo deploy
           env: |
             GITHUB_TOKEN
             GITHUB_ACTOR

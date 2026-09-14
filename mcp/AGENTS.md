@@ -606,104 +606,86 @@ they said, which is what a trace shows.
 
 ### 📅 Workflow Scheduling
 
-Workflows can be executed on recurring cron schedules using the built-in `WorkflowScheduler`. The scheduler automatically starts when the MCP server launches and manages all scheduled workflows.
+Scheduled workflows run through Mastra's built-in `mastra.schedules`, which persists each
+schedule as a storage row rather than holding it in memory.
 
 **Key Features:**
-- **Cron-based scheduling**: Uses standard cron expressions for flexible timing
-- **Automatic execution**: Workflows run in the background without manual intervention
-- **Run on startup**: Optionally execute workflows immediately when the scheduler starts
-- **No overlapping runs**: A tick is skipped while the previous run of the same workflow is still in flight, so a workflow that outlives its interval (`emailCheckingWorkflow` runs every minute) never has two runs going at once
-- **Error handling**: A run that throws — or that comes back with `status: 'failed'` — is reported through the scheduler's `onError` handler with the error intact
-- **Timezone support**: Configurable timezone (defaults to Europe/Copenhagen)
-- **Pre-defined patterns**: Common schedules available via `CronPatterns`
+- **Durable**: a schedule survives a restart or redeploy, and can be paused, resumed, retimed or
+  fired once through `mastra.schedules` (and over `/api/schedules`) with no deploy
+- **Reconciled on boot**: `mastra/schedule-reconciler.ts` is the source of truth; the stored rows
+  are brought in line with it every time the server starts
+- **Timezone support**: every cadence is stored with `Europe/Copenhagen`
+- **Run on startup**: a declaration can also fire once at boot, for workflows that catch up on
+  what happened while the process was down
+- **Pre-defined patterns**: cadences named in `utils/workflows/cron-patterns.ts`
+- **Error handling**: a scheduled run that throws is reported through the instance's
+  `scheduler.onError`, which logs it with the schedule id and the error intact. Without that
+  handler the rejection is swallowed with nothing to say which schedule it came from.
 
 **How to Schedule a Workflow:**
 
-Edit `mcp/mastra/scheduler.ts` to add new scheduled workflows:
+Add a declaration to `SCHEDULED_WORKFLOWS` in `mcp/mastra/schedule-reconciler.ts`:
 
 ```typescript
-import { WorkflowScheduler, CronPatterns } from './utils/workflow-scheduler.js';
-
-export function initializeScheduler(): WorkflowScheduler {
-  const scheduler = new WorkflowScheduler(mastra, {
-    timezone: 'Europe/Copenhagen',
-  });
-
-  // Add your scheduled workflow
-  scheduler.schedule({
-    workflow: myWorkflow,
-    schedule: CronPatterns.EVERY_HOUR, // or custom: '0 * * * *'
-    inputData: {},
-  });
-
-  // Add workflow that also runs immediately on startup
-  scheduler.schedule({
-    workflow: myStartupWorkflow,
-    schedule: CronPatterns.EVERY_30_MINUTES,
-    inputData: {},
-    runOnStartup: true, // Execute immediately when scheduler starts
-  });
-
-  return scheduler;
-}
+export const SCHEDULED_WORKFLOWS: ScheduledWorkflowDeclaration[] = [
+  {
+    workflowId: myWorkflow.id,
+    cron: CronPatterns.EVERY_3_HOURS,
+  },
+  {
+    workflowId: myStartupWorkflow.id,
+    cron: CronPatterns.EVERY_MINUTE,
+    runOnStartup: true,
+  },
+];
 ```
 
-**Available Cron Patterns:**
+The workflow must also be registered in the `workflows` map in `mastra/index.ts` — the boot path
+refuses to start otherwise, because a schedule whose target cannot be resolved is deleted by the
+scheduler about thirty seconds later, silently.
+
+**Reconciliation rules:**
+- Rows are matched to declarations by workflow id
+- Removing a declaration deletes its row; a durable row outlives the code that created it
+- The sweep only touches rows tagged `managedBy: hey-jarvis-scheduler`, so a schedule created at
+  runtime or by another feature survives a deploy
+- A runtime pause is not permanent: reconciliation restates `status: active`, because the
+  declarations are what say whether a schedule should be running
+
+**Available Cron Patterns** (`utils/workflows/cron-patterns.ts`):
 - `EVERY_MINUTE`: `* * * * *`
-- `EVERY_5_MINUTES`: `*/5 * * * *`
-- `EVERY_15_MINUTES`: `*/15 * * * *`
-- `EVERY_30_MINUTES`: `*/30 * * * *`
-- `EVERY_HOUR`: `0 * * * *`
-- `EVERY_2_HOURS`: `0 */2 * * *`
-- `EVERY_6_HOURS`: `0 */6 * * *`
-- `EVERY_12_HOURS`: `0 */12 * * *`
+- `EVERY_3_HOURS`: `0 */3 * * *`
 - `DAILY_AT_MIDNIGHT`: `0 0 * * *`
-- `DAILY_AT_NOON`: `0 12 * * *`
-- `DAILY_AT_8AM`: `0 8 * * *`
 - `WEEKLY_SUNDAY_8AM`: `0 8 * * 0`
-- `WEEKLY_MONDAY_9AM`: `0 9 * * 1`
-- `MONTHLY_FIRST_DAY`: `0 0 1 * *`
 
-**Custom Cron Expressions:**
-```
-* * * * *
-│ │ │ │ │
-│ │ │ │ └─ Day of week (0-6, Sunday = 0)
-│ │ │ └─── Month (1-12)
-│ │ └───── Day of month (1-31)
-│ └─────── Hour (0-23)
-└───────── Minute (0-59)
-```
+Mastra validates the expression when the row is created, so a new cadence can be added verbatim
+in standard 5-field form; croner nicknames (`@hourly`, `@daily`) work too.
 
-**Currently Scheduled Workflows** (see `mastra/scheduler.ts`):
+**Currently Scheduled Workflows** (see `mastra/schedule-reconciler.ts`):
 1. **Weather Monitoring** - Runs every 3 hours
    - Workflow: `weatherMonitoringWorkflow`
-   - Schedule: `0 */3 * * *`
    - Purpose: Updates weather information and notifies other agents of changes
 
 2. **Weekly Meal Planning** - Runs every Sunday at 8:00 AM
    - Workflow: `weeklyMealPlanningWorkflow`
-   - Schedule: `0 8 * * 0`
    - Purpose: Generates weekly meal plan with Danish recipes
 
 3. **Email Checking** - Runs every minute + on startup
    - Workflow: `emailCheckingWorkflow`
-   - Schedule: `* * * * *`
-   - Run on startup: **Yes**
    - Purpose: Tracks which emails have arrived; does not trigger the state reactor
 
 4. **Form Replies Detection** - Runs every 3 hours + on startup
    - Workflow: `formRepliesDetectionWorkflow`
-   - Schedule: `0 */3 * * *`
-   - Run on startup: **Yes**
    - Purpose: Resumes the suspended runs that inbound form replies answer, and registers the
      emails as a state change
 
 5. **IoT Device Monitoring** - Runs every 3 hours + on startup
    - Workflow: `iotMonitoringWorkflow`
-   - Schedule: `0 */3 * * *`
-   - Run on startup: **Yes**
    - Purpose: Monitors Home Assistant devices and registers state changes
+
+6. **Storage Retention** - Runs nightly at midnight
+   - Workflow: `storageRetentionWorkflow`
+   - Purpose: Trims token usage rows past their retention window
 
 **Monitoring Scheduled Workflows:**
 
@@ -917,6 +899,7 @@ await mastra.workflows.implementFeatureWorkflow.execute({
 The workflow uses Mastra's suspend/resume pattern in the Requirements Interviewer step, allowing the agent to ask questions and wait for user responses before proceeding.
 
 ### Human-in-the-Loop Demo Workflow
+
 Demonstrates email-based workflow suspension and resumption with a 3-step approval process:
 - **`humanInTheLoopDemoWorkflow`**: Multi-step approval workflow with email-based human input
 - **Step 1 - Budget Approval**: Requests approval for project budget (Yes/No + comments)
