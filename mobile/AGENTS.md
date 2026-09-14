@@ -152,7 +152,21 @@ Set `CHROMIUM_EXECUTABLE_PATH` to run against a Chromium that Playwright did not
 
 ### What cannot be tested here, and what stands in for it
 
-There is no Android emulator in CI or in an agent sandbox: that needs the Android SDK and a KVM device, and the SDK only comes from `dl.google.com`. So the device-level behaviour — the assist gesture, the role picker, the session opening the app — is genuinely unverified until someone runs it on hardware. The commands above under "Becoming the assistant" are how to check it there.
+There is no Android emulator in an agent sandbox: that needs the Android SDK and hardware virtualisation, and the SDK only comes from `dl.google.com`. So the device-level behaviour — the assist gesture, the role picker, the session opening the app — is genuinely unverified until someone runs it on hardware or an emulator. The commands above under "Becoming the assistant" are how to check it there, and this is the one-line version:
+
+```bash
+adb shell cmd role get-role-holders android.app.role.ASSISTANT  # is Jarvis the assistant?
+adb shell settings get secure voice_interaction_service          # "" means the degraded path
+adb shell input keyevent 219                                     # KEYCODE_ASSIST — the button
+adb shell am start -a android.intent.action.ASSIST               # the activity path instead
+adb logcat -s JarvisAssistant VoiceInteractionServiceInfo        # what the session logged
+```
+
+`keyevent 219` is the one that matters: it goes through the same path as the real button, so it reaches `JarvisVoiceInteractionSession.onShow` rather than the `ASSIST` activity, and is the only way to exercise `startAssistantActivity` short of holding the hardware button.
+
+A GitHub-hosted runner *does* have KVM, so an emulator job is possible in principle — but adding one means a new `uses:` entry, and every action here is pinned through `.github/workflows/actions.lock`. Regenerate it with `gh actions-lock` in the same change, or GitHub rejects every workflow in the repository.
+
+What guards the handover in the meantime is `src/assist-link.contract.spec.ts`: it reads the URL out of `AssistLauncher.kt`, the `scheme` out of `app.config.ts` and `ASSIST_URL` out of `assist-link.ts`, and fails if they disagree. That drift is silent otherwise — the build passes, the app installs, the registration stays valid, and the gesture opens an app that waits to be asked again.
 
 Two things that would otherwise ride on reasoning alone have been checked another way, and are worth re-checking the same way if the manifest or the Kotlin changes:
 

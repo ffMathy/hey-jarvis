@@ -10,8 +10,10 @@ import android.net.Uri
  * The scheme has to stay in step with two other places: `scheme` in
  * `mobile/app.config.ts`, which is what makes the app's main activity answer it,
  * and `ASSIST_URL` in `mobile/src/assist-link.ts`, which is what reads it on the
- * other side. There is no way to share a constant across that boundary, so the
- * three are kept honest by naming each other.
+ * other side. There is no way to share a constant across that boundary, so
+ * `mobile/src/assist-link.contract.spec.ts` reads all three out of the sources
+ * and fails if they disagree — drift here breaks nothing loudly, it just leaves
+ * the gesture opening an app that waits to be asked a second time.
  */
 internal const val ASSIST_URL = "heyjarvis://assist"
 
