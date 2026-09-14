@@ -131,6 +131,29 @@ describe('createLogger', () => {
     expect(fields.error).toBe(error);
   });
 
+  it('prints one from a child logger, which is the only kind an agent is given', () => {
+    // `MastraBase.__setLogger` hands every agent `logger.child({ component })`, and Pino
+    // builds that child from its own class. A root-only fix reaches nothing that reports
+    // a delegation failure.
+    const child = createLogger('test').child({ component: 'AGENT' });
+    const printed = mock();
+    child.error = printed;
+
+    child.trackException(new Error('boom'));
+
+    expect(printed).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps printing however deep the child chain goes', () => {
+    const grandchild = createLogger('test').child({ component: 'AGENT' }).child({ runId: 'abc' });
+    const printed = mock();
+    grandchild.error = printed;
+
+    grandchild.trackException(new Error('boom'));
+
+    expect(printed).toHaveBeenCalledTimes(1);
+  });
+
   it('carries the cause, which is the only place the real failure is kept', () => {
     const cause = new Error('Could not load the default credentials');
     const wrapper = new Error('[Agent:RoutingSupervisor] - Failed agent tool execution for calendar', { cause });
