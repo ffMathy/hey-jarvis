@@ -149,7 +149,7 @@
       "disableFirstMessageInterruptions": true,
       "maxConversationDurationMessage": "",
       "prompt": {
-        "llm": "qwen35-397b-a17b",
+        "llm": "claude-sonnet-5",
         "opener": null,
         "enableReasoningSummary": false,
         "temperature": 0,

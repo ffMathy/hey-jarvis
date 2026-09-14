@@ -109,9 +109,32 @@ The agent prompt in `src/assets/agent-prompt.md` defines:
   written "[end_call invoked]" is a stage direction, not a call, and leaves the
   line open
 
-Keep it short. The prompt is carried by a small voice model on every turn, so
-anything it does not need in order to decide its *next* utterance does not
-belong in it.
+Keep it short. The prompt is carried on every turn, so anything the agent does
+not need in order to decide its *next* utterance does not belong in it — that is
+a latency and cost argument, and it holds no matter how capable the model is.
+
+## The conversational model
+
+`conversationConfig.agent.prompt.llm` in `src/assets/agent-config.json` names the
+model that runs the conversation: it decides every line, and it is the thing that
+either calls `end_call` and `routePromptWorkflow` or merely talks about calling
+them.
+
+It is `claude-sonnet-5`, and the reason is a transcript. On `qwen35-397b-a17b`
+Jarvis was asked three times in a row to end the call, said "ending the call now"
+each time, and never called `end_call` — the line stayed open until sir gave up.
+The same conversation had it narrating the wait it had just been told to keep
+quiet about, and answering a calendar lookup with wit instead of a result. None
+of that is a prompt gap: every one of those rules is already stated once, plainly,
+in `agent-prompt.md` or in the `instructions` field. They were read and not
+followed, which is the one failure a longer prompt cannot fix.
+
+So the trade is deliberate. A frontier model costs more per turn and answers a
+little slower than the hosted open-weight tier, and in exchange the instructions
+that are already written get obeyed. If this is ever revisited, the value must be
+one of the ids in `Llm` from `@elevenlabs/elevenlabs-js/api` — ElevenLabs rejects
+anything else — and the question to ask of a candidate is not how it reads, but
+whether it hangs up when it says it is hanging up.
 
 ### What belongs in the routing instructions instead
 

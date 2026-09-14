@@ -177,8 +177,8 @@ describe('Routing Workflows', () => {
 
       const result = await route('Check my calendar for today');
 
-      // The agent prompt used to spell all of this out for a small voice model that
-      // pays for it on every turn. It says only "do what the instructions say" now,
+      // The agent prompt used to spell all of this out, on every turn, whether or
+      // not a request was in flight. It says only "do what the instructions say" now,
       // so the first instruction it ever sees has to describe the whole loop: keep
       // calling until told otherwise, and retry a call that fails instead of
       // treating the error as an answer.
