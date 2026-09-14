@@ -83,17 +83,29 @@ echo '  all present'
 # --- Boot ------------------------------------------------------------------
 
 started_emulator=false
+forced_display_on=false
 
-# An emulator this script booted is shut down however the script ends. Left
-# running after a failure, it is picked up by the next run as "the device
-# already attached", with the previous run's app and role still on it.
-shut_down_emulator() {
+# Whatever this script changed is put back however it ends, not only when it
+# reaches the end. An emulator it booted and left running is picked up by the
+# next run as "the device already attached", with the previous run's app and
+# role still on it; and a device that was already attached would otherwise keep
+# its display forced on and its lock screen disabled after any failure, which
+# nothing announces and nobody thinks to look for.
+#
+# The display is restored before the emulator is killed, because a dead emulator
+# takes no adb shell.
+restore_device() {
+  if [ "$forced_display_on" = true ]; then
+    adb shell svc power stayon false >/dev/null 2>&1 || true
+    adb shell locksettings set-disabled false >/dev/null 2>&1 || true
+  fi
+
   if [ "$started_emulator" = true ]; then
     echo '→ Shutting the emulator down'
     adb emu kill >/dev/null 2>&1 || true
   fi
 }
-trap shut_down_emulator EXIT
+trap restore_device EXIT
 
 if [ -z "$(adb devices | awk 'NR>1 && $2=="device" {print $1}')" ]; then
   echo "→ Booting $AVD_NAME (headless)"
@@ -221,6 +233,7 @@ while :; do
   esac
 
   adb shell input keyevent "$KEYCODE_WAKEUP"
+  forced_display_on=true
   adb shell svc power stayon true
   adb shell locksettings set-disabled true >/dev/null || true
   adb shell wm dismiss-keyguard
@@ -291,6 +304,3 @@ echo "  launch: $launch"
 
 echo
 echo "✓ The assistant button opened Jarvis, through the voice interaction session."
-
-adb shell svc power stayon false
-adb shell locksettings set-disabled false >/dev/null || true

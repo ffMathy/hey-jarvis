@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { ASSIST_URL, isAssistLaunch } from './assist-link';
+import { ASSIST_URL, createAssistLaunchClaim, isAssistLaunch } from './assist-link';
 
 /**
  * The handover from the Kotlin side to the JavaScript side.
@@ -34,14 +34,23 @@ function readConfiguredScheme(): string {
   return match?.[1] ?? '';
 }
 
+const ASSIST_LAUNCHER = 'modules/jarvis-assistant/android/src/main/java/expo/modules/jarvisassistant/AssistLauncher.kt';
+
 /** The URL the voice interaction session actually launches. */
 function readKotlinAssistUrl(): string {
-  const source = readSource(
-    'modules/jarvis-assistant/android/src/main/java/expo/modules/jarvisassistant/AssistLauncher.kt',
-  );
+  const source = readSource(ASSIST_LAUNCHER);
   const match = /ASSIST_URL\s*=\s*"([^"]+)"/.exec(source);
 
   expect(match, 'AssistLauncher.kt should declare an ASSIST_URL').not.toBeNull();
+  return match?.[1] ?? '';
+}
+
+/** The name of the value the session puts on each summoning to tell it apart. */
+function readKotlinSummonParameter(): string {
+  const source = readSource(ASSIST_LAUNCHER);
+  const match = /SUMMON_PARAMETER\s*=\s*"([^"]+)"/.exec(source);
+
+  expect(match, 'AssistLauncher.kt should declare a SUMMON_PARAMETER').not.toBeNull();
   return match?.[1] ?? '';
 }
 
@@ -61,5 +70,32 @@ describe('the assist handover between Kotlin and TypeScript', () => {
 
     expect(readKotlinAssistUrl().startsWith(`${scheme}://`)).toBe(true);
     expect(ASSIST_URL.startsWith(`${scheme}://`)).toBe(true);
+  });
+
+  it('marks each summoning with a query value rather than a path segment', () => {
+    // `summoningUri()` appends the marker to ASSIST_URL, and where it appends it
+    // decides whether any of this works. As a query the path stays `assist`, so
+    // `isAssistLaunch` still says yes; appended as a path segment the URL becomes
+    // `heyjarvis://assist/<value>`, which it rejects — and then no summoning at
+    // all would start listening. Everything else would still pass: the app opens,
+    // in an assistant task, and sits there waiting to be asked a second time.
+    expect(readSource(ASSIST_LAUNCHER)).toMatch(/appendQueryParameter\(\s*SUMMON_PARAMETER/);
+  });
+
+  it('launches a URL the app both recognises and can tell from the last one', () => {
+    // The marker exists because the app is kept running between summonings, so
+    // the second one arrives at a process that has already seen the first. Both
+    // halves have to hold: each summoned URL is an assist launch, and two
+    // summonings are two different launches rather than one seen twice.
+    const parameter = readKotlinSummonParameter();
+    const first = `${readKotlinAssistUrl()}?${parameter}=1000`;
+    const second = `${readKotlinAssistUrl()}?${parameter}=2000`;
+
+    expect(isAssistLaunch(first)).toBe(true);
+    expect(isAssistLaunch(second)).toBe(true);
+
+    const claim = createAssistLaunchClaim();
+    expect(claim(first)).toBe(true);
+    expect(claim(second)).toBe(true);
   });
 });
