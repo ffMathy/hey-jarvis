@@ -50,7 +50,10 @@ export const ROUTING_SUPERVISOR_AGENT_ID = 'routing-supervisor';
  */
 export async function getRoutingSupervisorAgent(): Promise<Agent> {
   const routableAgents = await getPublicAgents();
-  const delegationMemory = await createMemory({ enableSemanticRecall: false, enableWorkingMemory: false });
+  // Lean on both sides: no semantic recall, no working memory. See below for why the
+  // subagents get it, and {@link getRoutingSupervisorAgent}'s `memory` for why the
+  // supervisor needs a memory at all.
+  const leanMemory = await createMemory({ enableSemanticRecall: false, enableWorkingMemory: false });
 
   // Delegation runs a subagent *memory-backed*, which the path this replaced never did:
   // the DAG executor called `agent.generate([...])` with no memory option at all, so no
@@ -66,7 +69,7 @@ export async function getRoutingSupervisorAgent(): Promise<Agent> {
   // ElevenLabs' 8s cascade timeout. The synapse vertical already made this same trade for
   // the same reason.
   for (const agent of routableAgents) {
-    agent.__setMemory(delegationMemory);
+    agent.__setMemory(leanMemory);
   }
 
   return createAgent({
@@ -75,9 +78,21 @@ export async function getRoutingSupervisorAgent(): Promise<Agent> {
     description: 'Fulfils a user request by delegating each part of it to the specialized agents.',
     instructions: SUPERVISOR_INSTRUCTIONS,
     agents: Object.fromEntries(routableAgents.map((agent) => [agent.id, agent])),
-    // The router coordinates; it has no business remembering across requests, and the
-    // agents it delegates to keep their own memory.
-    memory: undefined,
+    // An AgentController session is thread-backed -- it maps to a Mastra thread, and that
+    // is where `sendMessage` writes the turn it is about to run. An agent with no memory
+    // gives it no thread to write into, and the run never happens: no events reach the
+    // session, so nothing is delegated, nothing fails, and every poll reports a request
+    // that is still going. `memory: undefined` here is what made routing hang.
+    //
+    // It is the same omission that made the first attempt at finding the delegations fail.
+    // A background task records the resourceId of the run's memory scope, and a run with no
+    // memory has no scope, so every row was written with `resourceId` undefined.
+    //
+    // Semantic recall and working memory stay off, for the reason the subagents have them
+    // off: this is the latency-critical path, and the supervisor has nothing worth recalling
+    // across requests anyway -- it holds one request at a time and the thread is the
+    // session's, not a memory of past calls.
+    memory: leanMemory,
     // Every tool this agent has is a delegation, so all of them are dispatched as durable
     // background tasks rather than awaited inside the supervisor's turn.
     //
