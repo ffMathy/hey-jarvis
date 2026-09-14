@@ -575,6 +575,12 @@ permission category and the session's policy for it is `ask`, so the run parks o
 `tool_approval_required` before any of them happens. Everything else resolves to `read` and is
 allowed outright.
 
+Mastra names a delegation tool `agent-<id>`, not `<id>`, so the prefix has to come off before
+the name can be matched against an agent id. Matching the raw tool name resolves every
+delegation to `read`, which does not fail loudly — it just means nothing is ever asked about
+and the gate is gone. The same prefix is why a report would otherwise name `agent-weather`
+where it means `weather`.
+
 The approval reaches the user through the same poll loop as everything else:
 `getNextInstructionsWorkflow` reports it ahead of any result that is waiting (nothing moves
 until it is answered), with instructions to ask out loud and then call

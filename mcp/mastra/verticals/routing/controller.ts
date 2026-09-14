@@ -1,8 +1,9 @@
+import type { Agent } from '@mastra/core/agent';
 import type { AgentControllerEvent } from '@mastra/core/agent-controller';
 import { AgentController } from '@mastra/core/agent-controller';
 import { getSqlStorageProvider } from '../../storage/index.js';
 import { logger } from '../../utils/logger.js';
-import { getRoutingSupervisorAgent } from './agents.js';
+import { getRoutingSupervisorAgent, ROUTING_SUPERVISOR_AGENT_ID } from './agents.js';
 
 /**
  * The routing runtime: one shared AgentController, one Session per caller.
@@ -47,14 +48,39 @@ export const DEFAULT_ROUTING_SESSION_ID = 'jarvis-voice';
 const ACTING_AGENT_IDS = new Set(['email', 'internetOfThings', 'shoppingList', 'todoList', 'notification', 'coding']);
 
 /**
+ * What Mastra prefixes a subagent's delegation tool with.
+ *
+ * The tool is registered as `agent-${key}` for each key in the `agents` map, not as the key
+ * itself. Matching the raw tool name against agent ids therefore never matched, which made
+ * {@link resolveToolCategory} answer `read` for every delegation and left the approval gate
+ * inert: `email`, `internetOfThings` and the rest ran outright. It also put `agent-weather`
+ * where the reports name the agent.
+ */
+const DELEGATION_TOOL_PREFIX = 'agent-';
+
+/** The agent a delegation tool delegates to. */
+function agentIdFromDelegationTool(toolName: string): string {
+  return toolName.startsWith(DELEGATION_TOOL_PREFIX) ? toolName.slice(DELEGATION_TOOL_PREFIX.length) : toolName;
+}
+
+/**
  * Maps a delegation tool back to a permission category.
  *
- * Mastra names a subagent's delegation tool after its key in the `agents` map, which is the
- * agent's id, so this can match on ids directly.
+ * Mastra names a subagent's delegation tool after its key in the `agents` map — which is the
+ * agent's id — behind {@link DELEGATION_TOOL_PREFIX}, so the prefix has to come off before
+ * the id can be matched.
  */
 function resolveToolCategory(toolName: string): 'read' | 'execute' | null {
-  return ACTING_AGENT_IDS.has(toolName) ? 'execute' : 'read';
+  return ACTING_AGENT_IDS.has(agentIdFromDelegationTool(toolName)) ? 'execute' : 'read';
 }
+
+/**
+ * The permission lookup, exposed for the spec.
+ *
+ * It is handed to the controller rather than called from this vertical, so without this the
+ * only way to cover it would be to stand up a real session and a model.
+ */
+export const resolveToolCategoryForTest = resolveToolCategory;
 
 /** One approval the run is parked on, waiting for the user to answer. */
 export interface PendingApproval {
@@ -144,7 +170,7 @@ export class RoutingProgress {
     if (event.type === 'tool_approval_required') {
       this.approval = {
         toolCallId: event.toolCallId,
-        agentId: event.toolName,
+        agentId: agentIdFromDelegationTool(event.toolName),
         request: describeApprovalRequest(event.args),
       };
       this.wake();
@@ -152,7 +178,7 @@ export class RoutingProgress {
     }
 
     if (event.type === 'tool_start') {
-      this.delegateNameByToolCallId.set(event.toolCallId, event.toolName);
+      this.delegateNameByToolCallId.set(event.toolCallId, agentIdFromDelegationTool(event.toolName));
       return;
     }
 
@@ -215,6 +241,31 @@ function describeApprovalRequest(args: unknown): string {
 }
 
 /**
+ * Everything an error says about itself, its `cause` chain included.
+ *
+ * Mastra reports a failed delegation as `[Agent:X] - Failed agent tool execution for Y` and
+ * carries the reason underneath, on `cause`. Reporting only the top line told the user, and
+ * the logs, that eight delegations failed without once saying why — so the chain is walked
+ * and every distinct message kept.
+ */
+function describeErrorChain(error: unknown): string {
+  const messages: string[] = [];
+  let current: unknown = error;
+
+  // Bounded rather than `while (current)`: a cause chain that loops back on itself would
+  // otherwise hang the poll that is trying to report the failure.
+  for (let depth = 0; depth < 8 && current instanceof Error; depth += 1) {
+    const message = current.message.trim();
+    if (message && !messages.includes(message)) {
+      messages.push(message);
+    }
+    current = current.cause;
+  }
+
+  return messages.join(': ');
+}
+
+/**
  * Renders whatever a delegation tool returned as text.
  *
  * A subagent result is usually `{ text }`, but a failure or a tool that returned something
@@ -224,8 +275,14 @@ function formatDelegationResult(result: unknown): string {
   if (typeof result === 'string') {
     return result;
   }
+  if (result instanceof Error) {
+    return describeErrorChain(result);
+  }
   if (result && typeof result === 'object' && 'text' in result && typeof result.text === 'string') {
-    return result.text;
+    // A Mastra failure arrives as `{ text }` with the reason on the error beside it, so the
+    // headline alone is not the whole story.
+    const cause = 'cause' in result ? describeErrorChain(result.cause) : '';
+    return cause ? `${result.text}: ${cause}` : result.text;
   }
   return JSON.stringify(result ?? null);
 }
@@ -273,6 +330,57 @@ export interface RoutingRuntime {
 let controller: AgentController | undefined;
 const progressBySessionId = new Map<string, RoutingProgress>();
 
+/** Just enough of the Mastra instance to find the registered supervisor, without importing it. */
+interface AgentRegistry {
+  getAgentById(id: string): Agent;
+}
+
+let registry: AgentRegistry | undefined;
+
+/**
+ * Remembers the Mastra instance the routing workflows are running under.
+ *
+ * The controller has to drive the supervisor that is *registered* on that instance, not a
+ * second copy of it. `getRoutingSupervisorAgent()` builds a fresh agent per call, so calling
+ * it here produced an agent the instance had never seen: its `mastra` handle was undefined,
+ * and every subagent tool that reaches for one — `coding` resolves the requirements
+ * interviewer that way — got nothing to reach for.
+ *
+ * It arrives through the workflow steps because importing the instance directly would close
+ * an import cycle: the instance imports these workflows in order to register them.
+ */
+export function rememberMastraRegistry(mastra: AgentRegistry | undefined): void {
+  if (mastra) {
+    registry = mastra;
+  }
+}
+
+/**
+ * The supervisor the controller drives.
+ *
+ * Falls back to building one only when there is no instance to ask, which in practice means
+ * a caller that never went through the workflows. It is warned about rather than done
+ * silently, because a supervisor off the registry is the one whose delegations work.
+ */
+async function resolveSupervisorAgent(): Promise<Agent> {
+  try {
+    const registered = registry?.getAgentById(ROUTING_SUPERVISOR_AGENT_ID);
+    if (registered) {
+      return registered;
+    }
+  } catch (error) {
+    logger.warn('Could not resolve the registered routing supervisor', {
+      agentId: ROUTING_SUPERVISOR_AGENT_ID,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  logger.warn('Routing supervisor is not registered on the Mastra instance; building an unregistered one', {
+    agentId: ROUTING_SUPERVISOR_AGENT_ID,
+  });
+  return getRoutingSupervisorAgent();
+}
+
 async function getController(): Promise<AgentController> {
   if (controller) {
     return controller;
@@ -280,7 +388,7 @@ async function getController(): Promise<AgentController> {
 
   controller = new AgentController({
     id: 'routing-controller',
-    agent: await getRoutingSupervisorAgent(),
+    agent: await resolveSupervisorAgent(),
     storage: await getSqlStorageProvider(),
     // One mode. The controller's mode machinery exists for plan/build/review style
     // applications; routing has a single job and switches between nothing.
@@ -378,4 +486,5 @@ export function resetRoutingRuntime(): void {
   runtime = agentControllerRuntime;
   progressBySessionId.clear();
   controller = undefined;
+  registry = undefined;
 }

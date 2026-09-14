@@ -5,6 +5,7 @@ import {
   getRoutingRuntime,
   type PendingApproval,
   type RoutingProgress,
+  rememberMastraRegistry,
 } from './controller.js';
 
 /* -------------------------------------------------------------------------- */
@@ -243,7 +244,8 @@ const routePromptStep = createStep({
   description: 'Hand a user request to the routing supervisor and start it running',
   inputSchema: inputSchema,
   outputSchema: routeAcknowledgementSchema,
-  execute: async ({ inputData }) => {
+  execute: async ({ inputData, mastra }) => {
+    rememberMastraRegistry(mastra);
     const sessionId = inputData.sessionId ?? DEFAULT_ROUTING_SESSION_ID;
     await getRoutingRuntime().start(sessionId, inputData.userQuery);
 
@@ -270,7 +272,8 @@ const getNextInstructionsStep = createStep({
     sessionId: z.string().optional().describe('The session returned by routePromptWorkflow'),
   }),
   outputSchema: instructionsOutputSchema,
-  execute: async ({ inputData }) => {
+  execute: async ({ inputData, mastra }) => {
+    rememberMastraRegistry(mastra);
     const progress = await getRoutingRuntime().get(inputData.sessionId ?? DEFAULT_ROUTING_SESSION_ID);
     const deadlineAt = Date.now() + POLL_DEADLINE_MS;
 
@@ -332,7 +335,8 @@ const respondToApprovalStep = createStep({
   outputSchema: z.object({
     instructions: z.string().describe('Instructions for Jarvis to follow'),
   }),
-  execute: async ({ inputData }) => {
+  execute: async ({ inputData, mastra }) => {
+    rememberMastraRegistry(mastra);
     await getRoutingRuntime().respondToApproval(inputData.sessionId ?? DEFAULT_ROUTING_SESSION_ID, inputData.approved);
 
     return {

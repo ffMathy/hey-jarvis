@@ -25,6 +25,14 @@ You are done when every part of the request that some agent can handle has been 
 export { SUPERVISOR_INSTRUCTIONS };
 
 /**
+ * The id the supervisor is registered under on the Mastra instance.
+ *
+ * Shared so the controller can ask for the registered agent by the same name it was
+ * registered with, rather than the two drifting apart.
+ */
+export const ROUTING_SUPERVISOR_AGENT_ID = 'routing-supervisor';
+
+/**
  * The agent that fulfils a routing request by delegating to the specialized agents.
  *
  * This replaces a planner that emitted a task DAG for a separate executor to run. The DAG
@@ -43,7 +51,7 @@ export async function getRoutingSupervisorAgent(): Promise<Agent> {
   const routableAgents = await getPublicAgents();
 
   return createAgent({
-    id: 'routing-supervisor',
+    id: ROUTING_SUPERVISOR_AGENT_ID,
     name: 'RoutingSupervisor',
     description: 'Fulfils a user request by delegating each part of it to the specialized agents.',
     instructions: SUPERVISOR_INSTRUCTIONS,

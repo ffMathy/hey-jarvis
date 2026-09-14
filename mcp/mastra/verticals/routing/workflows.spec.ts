@@ -19,6 +19,7 @@ import {
   RoutingProgress,
   type RoutingRuntime,
   resetRoutingRuntime,
+  resolveToolCategoryForTest,
   setRoutingRuntime,
 } from './controller.js';
 import { getNextInstructionsWorkflow, respondToApprovalWorkflow, routePromptWorkflow } from './workflows.js';
@@ -65,10 +66,16 @@ async function runWorkflow<TInput, TResult>(
   return run.start({ inputData });
 }
 
-/** The events a session emits when one delegation runs to completion. */
+/**
+ * The events a session emits when one delegation runs to completion.
+ *
+ * The tool name is `agent-<id>`, which is how Mastra actually names a delegation tool.
+ * Emitting the bare id here is what let the prefix go unnoticed: the permission lookup and
+ * every reported agent name silently took the tool name for an agent id.
+ */
 function delegate(progress: RoutingProgress, agentId: string, result: string, isError = false): void {
   const toolCallId = `call-${agentId}-${Math.random().toString(36).slice(2)}`;
-  progress.handle({ type: 'tool_start', toolCallId, toolName: agentId, args: {} });
+  progress.handle({ type: 'tool_start', toolCallId, toolName: `agent-${agentId}`, args: {} });
   progress.handle({ type: 'tool_end', toolCallId, result: { text: result }, isError });
 }
 
@@ -291,12 +298,75 @@ describe('two callers at once', () => {
   });
 });
 
+describe('delegation tool names', () => {
+  /**
+   * Mastra registers a subagent's delegation tool as `agent-<id>`, not `<id>`. Everything
+   * that reads a tool name as an agent id has to take the prefix off first, and the two
+   * places it matters are the reports and the permission category.
+   */
+  it('names the agent, not the delegation tool, in a report', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false });
+    const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    delegate(progress, 'weather', 'It is 8 degrees.');
+
+    const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(outcome.completedTaskResults).toEqual([{ id: 'weather', result: 'It is 8 degrees.' }]);
+  });
+
+  it('names the agent, not the delegation tool, in an approval', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'email Mathias', async: false });
+    const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    progress.handle({
+      type: 'tool_approval_required',
+      toolCallId: 'approval-email',
+      toolName: 'agent-email',
+      args: { prompt: 'Send the recipe' },
+    });
+
+    expect(progress.approval?.agentId).toBe('email');
+  });
+
+  it('resolves an acting agent to the execute category through its prefixed tool name', () => {
+    // The gate is what stands between a spoken request and an email going out, so a lookup
+    // that silently answers `read` for every delegation is the whole gate gone.
+    expect(resolveToolCategoryForTest('agent-email')).toBe('execute');
+    expect(resolveToolCategoryForTest('agent-internetOfThings')).toBe('execute');
+    expect(resolveToolCategoryForTest('agent-weather')).toBe('read');
+  });
+});
+
+describe('failed delegations', () => {
+  it('reports why a delegation failed, not just that it did', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false });
+    const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
+
+    // This is the shape Mastra hands back: a headline naming the agent, with the reason
+    // underneath on `cause`. Reporting the headline alone said eight delegations failed
+    // without once saying why.
+    progress.handle({ type: 'tool_start', toolCallId: 'call-1', toolName: 'agent-weather', args: {} });
+    progress.handle({
+      type: 'tool_end',
+      toolCallId: 'call-1',
+      result: Object.assign(new Error('[Agent:RoutingSupervisor] - Failed agent tool execution for weather'), {
+        cause: new Error('OpenWeather rejected the API key'),
+      }),
+      isError: true,
+    });
+
+    const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(outcome.completedTaskResults?.[0].result).toContain('Failed agent tool execution for weather');
+    expect(outcome.completedTaskResults?.[0].result).toContain('OpenWeather rejected the API key');
+  });
+});
+
 describe('approvals', () => {
   function requestApproval(progress: RoutingProgress, agentId: string, request: string): void {
     progress.handle({
       type: 'tool_approval_required',
       toolCallId: `approval-${agentId}`,
-      toolName: agentId,
+      toolName: `agent-${agentId}`,
       args: { prompt: request },
     });
   }
