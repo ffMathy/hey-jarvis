@@ -12,7 +12,6 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
-import type { MastraDBMessage } from '@mastra/core/agent';
 import type { AgentControllerEvent } from '@mastra/core/agent-controller';
 import {
   buildSnapshot,
@@ -101,11 +100,11 @@ function assistantMessage(text: string): AgentControllerEvent {
       role: 'assistant',
       content: { format: 2, parts: [{ type: 'text', text }] },
       createdAt: new Date(),
-    } as unknown as MastraDBMessage,
+    },
   };
 }
 
-/** The supervisor's own loop ending. Delegations may still be running behind it. */
+/** The supervisor's own loop ending, which ends the request: delegations run inside it. */
 function endSupervisorTurn(progress: RoutingProgress): void {
   progress.handle({ type: 'agent_end' });
 }
@@ -211,19 +210,54 @@ describe('getNextInstructionsWorkflow', () => {
     expect(outcome.taskIdsInProgress).toEqual(['calendar']);
   });
 
-  it('does not close the request while a delegation is still running', async () => {
+  it('closes the request when the turn ends, reporting a delegation that never answered', async () => {
     await runWorkflow(routePromptWorkflow, { userQuery: 'weather and calendar', async: false });
     const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    delegate(DEFAULT_ROUTING_SESSION_ID, 'weather', 'It is 8 degrees.');
     startDelegation(DEFAULT_ROUTING_SESSION_ID, 'calendar');
 
-    // The supervisor's turn ends as soon as it has dispatched, which is the whole point of
-    // dispatching in the background. Treating that as the end of the request would close
-    // the loop on work that has not happened yet.
+    // Delegations run inside the supervisor's turn, so one still open when that turn ends
+    // has no later event coming. Waiting for it is what left a live request polling
+    // "Still processing" until the caller gave up.
     endSupervisorTurn(progress);
+
+    const closing = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(closing.instructions).toContain('All tasks have completed');
+    expect(closing.taskIdsInProgress).toEqual([]);
+    // The unanswered one is reported rather than dropped: the caller should hear that the
+    // calendar was asked and did not answer, not simply never hear of it.
+    const calendar = closing.completedTaskResults?.find((entry) => entry.id === 'calendar');
+    expect(calendar?.result).toContain('did not report a result');
+  });
+
+  it('reports an approval it cannot answer instead of waiting for one that never comes', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'send an email', async: false });
+    const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    startDelegation(DEFAULT_ROUTING_SESSION_ID, 'email');
+
+    // Nothing on this path can approve — the voice model has two tools and neither is an
+    // approval — so the run would park until the session was torn down.
+    progress.handle({ type: 'tool_approval_required', toolCallId: 'call-email-1', toolName: 'agent-email', args: {} });
 
     const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
 
-    expect(outcome.instructions).not.toContain('All tasks have completed');
+    expect(outcome.instructions).toContain('could not be completed');
+    expect(outcome.instructions).toContain('email');
+    expect(outcome.taskIdsInProgress).toEqual([]);
+  });
+
+  it('still hands over the results that landed before a failure', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'weather and calendar', async: false });
+    const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    delegate(DEFAULT_ROUTING_SESSION_ID, 'weather', 'It is 8 degrees.');
+
+    progress.fail('the supervisor could not be reached');
+
+    const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(outcome.instructions).toContain('could not be completed');
+    expect(outcome.completedTaskResults).toEqual([{ id: 'weather', result: 'It is 8 degrees.' }]);
   });
 
   it('recaps every result once the request is done, including ones already relayed', async () => {

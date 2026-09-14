@@ -176,8 +176,14 @@ export function resetPollDeadlineForTest(): void {
  */
 function buildClosingReport(snapshot: RoutingSnapshot): z.infer<typeof instructionsOutputSchema> {
   if (snapshot.error) {
+    // Whatever landed before the failure is still the user's answer to part of what he
+    // asked, so it goes with the apology rather than being dropped alongside the rest.
+    const answered = snapshot.all.filter((outcome) => !outcome.failed);
     return {
       instructions: `The request could not be completed: ${snapshot.error}. ${INSTRUCTIONS.summarize}`,
+      ...(answered.length > 0 && {
+        completedTaskResults: answered.map((outcome) => ({ id: outcome.agentId, result: outcome.result })),
+      }),
       taskIdsInProgress: [],
     };
   }

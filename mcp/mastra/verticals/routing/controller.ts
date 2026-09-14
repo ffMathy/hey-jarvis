@@ -1,5 +1,5 @@
 import type { Agent } from '@mastra/core/agent';
-import type { AgentControllerEvent } from '@mastra/core/agent-controller';
+import type { AgentControllerEvent, ToolCategory } from '@mastra/core/agent-controller';
 import { AgentController } from '@mastra/core/agent-controller';
 import { getSqlStorageProvider } from '../../storage/index.js';
 import { logger } from '../../utils/logger.js';
@@ -46,6 +46,28 @@ export function agentIdFromDelegationTool(toolName: string): string {
   return toolName.startsWith(DELEGATION_TOOL_PREFIX) ? toolName.slice(DELEGATION_TOOL_PREFIX.length) : toolName;
 }
 
+/**
+ * The one permission category every tool on this path belongs to, so that it can be granted.
+ *
+ * The controller runs the supervisor with `requireToolApproval` on -- there is no way to turn
+ * that off from the public API -- and resolves each call through a chain that ends in
+ * `ask`: an explicit per-tool policy, session-wide yolo, a session grant, then the tool's
+ * category. A tool that matches nothing falls off the end of that chain and parks.
+ *
+ * Removing the approval gate removed the category resolver with it, which left every
+ * delegation matching nothing: `getToolCategory` answers `null` without one, so the category
+ * branch is skipped entirely and every call resolves to `ask`. A live run showed exactly
+ * that -- three delegations opened and none of them ever answered -- because `ask` on this
+ * path means parked forever. Nothing can approve: the voice model has two tools and neither
+ * is an approval.
+ *
+ * So the tools are given a category and {@link grantRoutingPermissions} grants it. `other`
+ * is what Mastra documents as an unmapped tool's category; naming it is what makes it
+ * grantable. This covers the controller's own built-in tools as well as the delegations,
+ * which is the point of doing it by category rather than by tool name.
+ */
+const ROUTING_TOOL_CATEGORY: ToolCategory = 'other';
+
 /** One delegation that has finished, as the poll loop reports it. */
 export interface DelegationOutcome {
   /** The agent that was delegated to. */
@@ -70,8 +92,12 @@ export class RoutingProgress {
    * background task manager instead, and a live run settled it: the supervisor announced
    * three delegations and the manager held no rows for any of them. Delegations run in the
    * supervisor's own turn, in the foreground, so the session's event stream is the only
-   * place they are visible -- and it is a complete one, since every delegation opens with
-   * `tool_start` and closes with `tool_end`.
+   * place they are visible.
+   *
+   * A delegation opens with `tool_start` and normally closes with `tool_end`, but nothing
+   * guarantees the second arrives -- a call parked on an approval never produces one. So
+   * the end of the turn closes out whatever is left rather than this map being trusted to
+   * drain on its own.
    */
   readonly inFlightByToolCallId = new Map<string, string>();
   /** Outcomes not yet handed to the caller. */
@@ -119,12 +145,14 @@ export class RoutingProgress {
   /**
    * Whether the request is done.
    *
-   * The supervisor's turn ending is necessary but not sufficient on its own: a delegation
-   * it opened can still be unanswered when the turn's own stream closes, and closing the
-   * loop then would drop that answer.
+   * The supervisor's turn ending is the whole of it, because delegations run inside that
+   * turn: anything still open when it ends has no later event coming. An earlier version
+   * also waited for the in-flight map to empty, which is where a stuck delegation turned
+   * into a poll loop that never terminated. Ending the turn now empties that map itself,
+   * reporting whatever was open as unanswered rather than waiting on it.
    */
   isFinished(): boolean {
-    return this.agentFinished && this.inFlightByToolCallId.size === 0;
+    return this.agentFinished;
   }
 
   /** Whether this session has never been asked to route anything. */
@@ -168,6 +196,18 @@ export class RoutingProgress {
       return;
     }
 
+    if (event.type === 'tool_approval_required') {
+      // Unreachable while the category grant holds, and an unbounded wait if it ever stops
+      // holding: the run parks until something approves, and on this path nothing can --
+      // the voice model has two tools and neither is an approval. Reporting it is the
+      // difference between a caller that hears why its request died and one that polls
+      // until the call is dropped.
+      this.fail(
+        `Routing was asked to approve a call to ${agentIdFromDelegationTool(event.toolName)}, which it has no way to answer.`,
+      );
+      return;
+    }
+
     if (event.type === 'error') {
       this.fail(event.error.message);
       return;
@@ -176,17 +216,35 @@ export class RoutingProgress {
     if (event.type === 'agent_end') {
       logger.info('Routing supervisor finished its turn', {
         delegations: this.all.length,
-        stillRunning: this.inFlightByToolCallId.size,
+        unanswered: this.inFlightByToolCallId.size,
       });
+      this.abandonOpenDelegations('did not report a result before the supervisor finished');
       this.agentFinished = true;
       this.wake();
     }
+  }
+
+  /**
+   * Closes out delegations that will never answer, so the caller hears about them.
+   *
+   * Dropping them silently would lose the fact that an agent was asked at all, and keeping
+   * them open would leave the request unfinishable.
+   */
+  private abandonOpenDelegations(reason: string): void {
+    for (const agentId of this.inFlightByToolCallId.values()) {
+      logger.warn('Delegation never answered', { agentId, reason });
+      const outcome: DelegationOutcome = { agentId, result: reason, failed: true };
+      this.pending.push(outcome);
+      this.all.push(outcome);
+    }
+    this.inFlightByToolCallId.clear();
   }
 
   /** Marks the request as failed, for an error the session never got to report. */
   fail(message: string): void {
     logger.error('Routing request failed', { error: message });
     this.error = message;
+    this.abandonOpenDelegations('was still running when the request failed');
     this.agentFinished = true;
     this.wake();
   }
@@ -351,6 +409,8 @@ async function getController(): Promise<AgentController> {
     id: 'routing-controller',
     agent: await resolveSupervisorAgent(),
     storage: await getSqlStorageProvider(),
+    // Without this every tool resolves to `ask` and parks. See ROUTING_TOOL_CATEGORY.
+    toolCategoryResolver: () => ROUTING_TOOL_CATEGORY,
     // One mode. The controller's mode machinery exists for plan/build/review style
     // applications; routing has a single job and switches between nothing.
     modes: [{ id: 'route', name: 'Route', metadata: { default: true } }],
@@ -369,6 +429,12 @@ async function getController(): Promise<AgentController> {
  */
 async function getSession(sessionId: string) {
   const session = await (await getController()).createSession({ resourceId: sessionId });
+
+  // In-memory and idempotent, so it costs nothing to reassert and cannot be missed by a
+  // session that outlived the grant. This is the half of the permission fix that makes the
+  // category mean "allowed" rather than merely "named".
+  session.grantCategory(ROUTING_TOOL_CATEGORY);
+
   const existing = progressBySessionId.get(sessionId);
 
   if (existing) {
