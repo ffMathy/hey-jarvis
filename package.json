@@ -7,7 +7,8 @@
   "workspaces": [
     "mcp",
     "elevenlabs",
-    "home-assistant-voice-firmware"
+    "home-assistant-voice-firmware",
+    "mobile"
   ],
   "scripts": {
     "build": "turbo build",

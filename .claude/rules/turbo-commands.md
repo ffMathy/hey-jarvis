@@ -37,6 +37,7 @@ bunx turbo build
 
 - `mcp` — Mastra AI-powered Model Context Protocol server
 - `elevenlabs` — ElevenLabs voice interface integration
+- `mobile` — Expo app that registers as the phone's default assistant
 - `home-assistant-voice-firmware` — ESPHome firmware
 
 ## Timeouts

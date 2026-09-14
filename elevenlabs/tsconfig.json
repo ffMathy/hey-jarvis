@@ -2,6 +2,14 @@
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
     "rootDir": "..",
+    // Nothing should ever emit from this project, but `rootDir` is the workspace
+    // root and the `include` below reaches into `mcp`, so anything that does emit
+    // without an `outDir` scatters .js and .js.map files beside the sources of two
+    // packages at once. A `tsgo --build` of the workspace root does exactly that,
+    // and leaves 130 untracked files behind for the next `biome check --write` to
+    // reformat. Naming an output directory makes that outcome harmless — and it is
+    // the one `.scripts/test.sh` already deletes before each run.
+    "outDir": "../dist/elevenlabs-spec",
     "types": ["bun-types", "node"],
     "esModuleInterop": true,
     "resolveJsonModule": true,

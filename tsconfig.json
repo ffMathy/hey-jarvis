@@ -2,8 +2,5 @@
   "extends": "./tsconfig.base.json",
   "files": [],
   "include": [],
-  "references": [
-    { "path": "./mcp" },
-    { "path": "./elevenlabs" }
-  ]
+  "references": [{ "path": "./mcp" }, { "path": "./elevenlabs" }, { "path": "./mobile" }]
 }

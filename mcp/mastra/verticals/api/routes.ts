@@ -4,6 +4,7 @@ import { extractErrorMessage } from '../../utils/errors.js';
 import { logger } from '../../utils/logger.js';
 import type { AnyWorkflow, AnyWorkflowResult } from '../../utils/workflows/workflow-factory.js';
 import { shoppingListWorkflow } from '../shopping/workflows.js';
+import { registerConversationTokenRoute } from './conversation-token.js';
 
 /**
  * Standard API response structure for workflow endpoints.
@@ -150,7 +151,7 @@ export function registerWorkflowApi(router: Router, config: WorkflowApiConfig): 
 
 /**
  * Registers all API routes on the provided Express router.
- * These routes are intended to be called from Home Assistant via REST calls.
+ * These routes are called from Home Assistant and from the Android app over REST.
  *
  * @param router - The Express router to register routes on
  * @returns Array of registered API paths for logging purposes
@@ -166,6 +167,9 @@ export function registerApiRoutes(router: Router): string[] {
       description: 'Add items to the shopping list using natural language',
     }),
   );
+
+  // What the Android app asks for before it can open a voice conversation.
+  registeredPaths.push(registerConversationTokenRoute(router));
 
   // Add more workflow APIs here as needed:
   // registeredPaths.push(registerWorkflowApi(router, { path: '/api/weather', workflow: weatherWorkflow }));

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  `selectableAsDefault` defaults to true, and the default is wrong here.
+
+  This recogniser exists only because a voice interaction service is rejected
+  without one; it recognises nothing. Letting the platform offer it as the
+  device-wide speech recogniser would let some unrelated app end up talking to a
+  service that answers every request with an error.
+-->
+<recognition-service
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:selectableAsDefault="false" />
