@@ -86,6 +86,30 @@ export function unwrapErrors(value: unknown, depth = 0): unknown {
 }
 
 /**
+ * A Pino logger that also writes down the exceptions Mastra hands it.
+ *
+ * `trackException` is how Mastra reports an error it has already handled — and
+ * `PinoLogger`'s implementation forwards it to the observability adapter and nowhere else,
+ * so with no telemetry backend attached the error is simply gone. Nothing prints it.
+ *
+ * That is not a theoretical gap. Routing delegations are wrapped in a `MastraError` whose
+ * message is `[Agent:RoutingSupervisor] - Failed agent tool execution for calendar`, the
+ * real failure kept only as its `cause`; the wrapper is tracked and then thrown. A live run
+ * failed seven delegations out of eight and the log named the agent seven times without
+ * once saying what went wrong, because the only copy of the reason went to an adapter that
+ * was not there.
+ *
+ * `cause` is what {@link unwrapErrors} was written to follow, so printing the tracked error
+ * as an ordinary field is all it takes to get the reason back.
+ */
+class ExceptionPrintingLogger extends PinoLogger {
+  trackException(error: Error, metadata?: Record<string, unknown>): void {
+    this.error('Tracked exception', { ...metadata, error });
+    super.trackException(error, metadata);
+  }
+}
+
+/**
  * Creates a Pino logger that prints errors instead of swallowing them.
  *
  * Use this rather than constructing `PinoLogger` directly, so that every logger in the
@@ -93,7 +117,7 @@ export function unwrapErrors(value: unknown, depth = 0): unknown {
  * scheduler failures — shares the same error handling.
  */
 export function createLogger(name: string): PinoLogger {
-  return new PinoLogger({
+  return new ExceptionPrintingLogger({
     name,
     level: 'info',
     formatters: {
