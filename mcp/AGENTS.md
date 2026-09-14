@@ -516,94 +516,61 @@ Only stops when 100% certain about:
 - "What are the expected inputs and outputs?"
 - "Are there any existing patterns to follow?"
 
-### Routing Supervisor Agent
-Fulfils a voice request by delegating each part of it to the specialized agents:
-- **Subagents, not tools**: every public agent is attached to it, so Mastra generates one
-  delegation tool per agent and the supervisor loop drives them
-- **No memory of its own**: it coordinates one request; the agents it delegates to keep theirs
-- **Decides its own ordering**: parallelism, sequencing and carrying one agent's answer into
-  the next agent's prompt are all decisions inside the delegation loop
+### Routing Planner Agent
+Plans the task DAG that fulfils a voice request, and nothing else:
+- **No tools, no sub-agents**: it emits the graph; `routingWorkflow` executes it
+- **Structured output**: returns `{ tasks: [{ id, agent, prompt, dependsOn }] }`
+- **Agent catalog as input**: receives every public agent's ID, description and tool names
+- **Dependencies model data flow**: a task lists the IDs of the tasks whose results it needs
 
-This replaced a planner that emitted a task DAG for a separate wave executor to run. The DAG
-was explicit and inspectable, and giving that up is the real cost of the change; what it buys
-is that ordering, dependency passing and failure handling stop being ~1000 lines of scheduler,
-completion registry and report bookkeeping maintained in this repo.
+Separating planning from execution is what makes the routing graph inspectable. The plan is a
+value the workflow owns, so every task shows up as a step in Mastra Studio instead of being
+buried inside one agent's tool-call loop.
 
-Progress is observed through the session's event stream — a delegation is a tool call, so a
-finished one arrives as `tool_end` — which is what lets a fast answer reach the user without
-waiting for the slow one beside it.
+The plan is sanitized before it runs: tasks assigned to unknown agents are dropped, duplicate
+IDs are collapsed, and dependencies on non-existent tasks (as well as any edge that would close
+a cycle) are removed, so a hallucinated graph can never deadlock the executor.
 
 *Note: Additional agents will be added as the project evolves.*
 
 ## Available Workflows
 
-### Routing
-The entry point for every voice request. An `AgentController` hosts the Routing Supervisor, and
-each caller gets its own `Session`.
+### Routing Workflow (DAG)
+The entry point for every voice request. It is a plain Mastra workflow that plans a DAG and then
+executes it wave by wave, suspending whenever it has something to report.
 
 **Workflows:**
-- **`routePromptWorkflow`**: MCP tool that starts a request on the caller's session and returns
-  the "I'm on it, keep polling" instructions
-- **`getNextInstructionsWorkflow`**: MCP tool that returns whatever has finished since the last
-  call, blocking briefly for something new rather than returning empty
+- **`routingWorkflow`**: the DAG engine — plan, hand off, execute, report, repeat
+- **`routePromptWorkflow`**: MCP tool that starts a `routingWorkflow` run for a user query
+- **`getNextInstructionsWorkflow`**: MCP tool that resumes that run and returns what finished since the last call
+- **`getCurrentDagWorkflow`**: inspects the planned graph and each task's status
 
-**Why a Session:**
-The in-flight request used to live in a module-global, so a second routing request replaced the
-first and the poll tool — which need not name a request — could only ever be answered from
-whichever was last. `controller.createSession({ resourceId })` is get-or-create and isolated:
-two callers get separate threads, run state and event buses, and a session never delivers its
-events to another session's subscribers.
+**Workflow Steps:**
+1. **`plan-tasks`**: Routing Planner Agent turns the query into a task DAG, stored as workflow state
+2. **`hand-off-to-caller`**: suspends immediately, so `routePromptWorkflow` can return the pending task IDs
+3. **`routingWaveWorkflow`** (looped with `.dountil()` until every task has finished):
+   - **`select-ready-tasks`**: picks the tasks whose dependencies have all finished
+   - **`execute-task`** (`.foreach()`, concurrency 5): calls the assigned agent, with its dependencies' results appended to the prompt
+   - **`record-task-results`**: writes the results back into workflow state
+   - **`report-progress`**: suspends with the newly finished results
+4. **`finalize-routing`**: returns the final batch of results as the workflow output
 
-`routePromptWorkflow` returns the `sessionId` it used, and `getNextInstructionsWorkflow` accepts
-one. A caller that passes neither shares a single default session, which is what the ElevenLabs
-agent does today.
-
-**Poll Contract:**
-Each `getNextInstructionsWorkflow` call blocks for up to 5 seconds waiting for a delegation to
-land, then reports whatever is new and asks to be called again. The deadline has to fit inside
-ElevenLabs' own `cascadeTimeoutSeconds` (8s): a poll that overruns comes back to Jarvis as a
-failed call, and a failed poll is a lost answer rather than a delayed one.
-
-A result is handed over exactly once while the request is running. The closing report is the
-exception: it recaps *every* result, including ones earlier polls already relayed, so a response
-dropped on the way cannot lose an answer for good.
-
-**Approvals:**
-Delegating to an agent that acts on the world — email, IoT, the shopping list, the todo list,
-notifications, coding — is gated. The controller resolves those delegations to the `execute`
-permission category and the session's policy for it is `ask`, so the run parks on
-`tool_approval_required` before any of them happens. Everything else resolves to `read` and is
-allowed outright.
-
-Mastra names a delegation tool `agent-<id>`, not `<id>`, so the prefix has to come off before
-the name can be matched against an agent id. Matching the raw tool name resolves every
-delegation to `read`, which does not fail loudly — it just means nothing is ever asked about
-and the gate is gone. The same prefix is why a report would otherwise name `agent-weather`
-where it means `weather`.
-
-The approval reaches the user through the same poll loop as everything else:
-`getNextInstructionsWorkflow` reports it ahead of any result that is waiting (nothing moves
-until it is answered), with instructions to ask out loud and then call
-**`respondToApprovalWorkflow`** with the decision. Declining drops that delegation; the rest of
-the request continues.
-
-The unit of approval is the delegation, not the leaf tool call — "may I ask the email agent to
-do this", not "may I send this exact email" — because a subagent's own tool calls happen inside
-its loop and never reach this session's gate. That is coarser than ideal, and coarse in the safe
-direction: a prompt the user did not strictly need costs a sentence, a missed one costs an email
-nobody meant to send.
-
-This is separate from the email round-trip in the human-in-the-loop vertical, which stays for
-what it is good at: asking a person a *question* mid-workflow and parsing the answer. Use the
-approval gate for "may I do this", and `sendEmailAndAwaitResponse` for "what should I do".
+**Suspend/Resume Contract:**
+Each suspension is one poll from Jarvis. `routePromptWorkflow` starts the run and reads the
+hand-off suspension; every `getNextInstructionsWorkflow` call resumes it, which runs the next
+wave and suspends again. Leaf tasks (nothing depends on them) carry the answers the user asked
+for, so their results are handed over with an instruction to summarize; intermediate tasks only
+get a brief acknowledgement. When `async: true`, nobody is going to poll, so the workflow is
+driven to completion in the background instead.
 
 **Failure Handling:**
-A delegation that fails is reported like any other result, and the supervisor carries on with
-the rest of the request. A run that falls over reports the failure in its instructions.
+An agent that throws fails only its own task — the rest of the wave still completes. If a wave
+selects no tasks while work is outstanding, the remaining tasks are failed rather than looped on.
 
 **Testing in Studio:**
-Both workflows are registered on the Mastra instance. `routePromptWorkflow` starts a request;
-call `getNextInstructionsWorkflow` repeatedly to watch the delegations arrive.
+`routingWorkflow` is registered on the Mastra instance, so it can be run straight from Studio:
+fill in a `userQuery`, watch the planner produce the graph, follow each task's agent call, and
+resume the suspensions by hand.
 
 ### 📅 Workflow Scheduling
 
@@ -619,6 +586,9 @@ schedule as a storage row rather than holding it in memory.
 - **Run on startup**: a declaration can also fire once at boot, for workflows that catch up on
   what happened while the process was down
 - **Pre-defined patterns**: cadences named in `utils/workflows/cron-patterns.ts`
+- **Error handling**: a scheduled run that throws is reported through the instance's
+  `scheduler.onError`, which logs it with the schedule id and the error intact. Without that
+  handler the rejection is swallowed with nothing to say which schedule it came from.
 
 **How to Schedule a Workflow:**
 
@@ -897,11 +867,6 @@ await mastra.workflows.implementFeatureWorkflow.execute({
 The workflow uses Mastra's suspend/resume pattern in the Requirements Interviewer step, allowing the agent to ask questions and wait for user responses before proceeding.
 
 ### Human-in-the-Loop Demo Workflow
-
-> **For gating an action, not asking a question, see Routing → Approvals.** A routing request
-> parks on `tool_approval_required` and is answered over the voice loop with
-> `respondToApprovalWorkflow`. The email round-trip below is for putting an actual question to a
-> person and parsing their reply.
 
 Demonstrates email-based workflow suspension and resumption with a 3-step approval process:
 - **`humanInTheLoopDemoWorkflow`**: Multi-step approval workflow with email-based human input

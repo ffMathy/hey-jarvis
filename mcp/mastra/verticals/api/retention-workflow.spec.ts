@@ -92,9 +92,22 @@ describe('the workflow wiring', () => {
   it('reports what it deleted, so a nightly run is auditable', () => {
     const parsed = (storageRetentionWorkflow.outputSchema as ZodTypeAny).safeParse({
       tokenUsageRecordsDeleted: 3,
+      mastraRowsDeleted: 12,
       cutoff: new Date().toISOString(),
     });
 
     expect(parsed.success).toBe(true);
+  });
+
+  it('accounts for the Mastra tables too, not just token usage', () => {
+    // Traces and workflow snapshots only became durable once Mastra was given a real
+    // storage adapter; leaving them out of the report would hide the growth that
+    // retention exists to bound.
+    const parsed = (storageRetentionWorkflow.outputSchema as ZodTypeAny).safeParse({
+      tokenUsageRecordsDeleted: 3,
+      cutoff: new Date().toISOString(),
+    });
+
+    expect(parsed.success).toBe(false);
   });
 });
