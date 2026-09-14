@@ -1,4 +1,5 @@
 import type { Agent } from '@mastra/core/agent';
+import { createMemory } from '../../memory/index.js';
 import { createAgent } from '../../utils/index.js';
 import { getPublicAgents } from '..';
 import { recordDelegationFailure } from './delegation-failures.js';
@@ -50,6 +51,24 @@ export const ROUTING_SUPERVISOR_AGENT_ID = 'routing-supervisor';
  */
 export async function getRoutingSupervisorAgent(): Promise<Agent> {
   const routableAgents = await getPublicAgents();
+  const delegationMemory = await createMemory({ enableSemanticRecall: false, enableWorkingMemory: false });
+
+  // Delegation runs a subagent *memory-backed*, which the path this replaced never did:
+  // the DAG executor called `agent.generate([...])` with no memory option at all, so no
+  // thread was created, nothing was embedded, and the agents' own Memory was inert. Mastra
+  // builds a thread and resource per delegation instead, which switches on semantic recall
+  // — a hosted `gemini-embedding-001` round trip per message — working memory, and vector
+  // writes, on every single delegation.
+  //
+  // None of that is wanted here and all of it is in the way. The supervisor holds the
+  // request; a subagent is asked one self-contained question and answers it, so there is
+  // nothing across calls for it to recall. What the embedder does buy is latency, on the
+  // one path in this repo that cannot afford any: the poll deadline is 5s against
+  // ElevenLabs' 8s cascade timeout. The synapse vertical already made this same trade for
+  // the same reason.
+  for (const agent of routableAgents) {
+    agent.__setMemory(delegationMemory);
+  }
 
   return createAgent({
     id: ROUTING_SUPERVISOR_AGENT_ID,
