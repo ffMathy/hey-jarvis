@@ -166,6 +166,8 @@ adb logcat -s JarvisAssistant VoiceInteractionServiceInfo        # what the sess
 
 A GitHub-hosted runner *does* have KVM, so an emulator job is possible in principle — but adding one means a new `uses:` entry, and every action here is pinned through `.github/workflows/actions.lock`. Regenerate it with `gh actions-lock` in the same change, or GitHub rejects every workflow in the repository.
 
+`.scripts/verify-assistant-on-emulator.sh` encodes the whole check — boot a headless AVD, install, grant the role, press KEYCODE_ASSIST, assert Jarvis is the resumed activity — so it is run the same way each time instead of being reconstructed from memory. It checks every prerequisite before touching anything and names what is missing. **It has never been run to completion by anyone who wrote it**: only its preflight was exercised, in an environment that fails at the first check. Treat the first green run as the real test of the script as well as of the app.
+
 What guards the handover in the meantime is `src/assist-link.contract.spec.ts`: it reads the URL out of `AssistLauncher.kt`, the `scheme` out of `app.config.ts` and `ASSIST_URL` out of `assist-link.ts`, and fails if they disagree. That drift is silent otherwise — the build passes, the app installs, the registration stays valid, and the gesture opens an app that waits to be asked again.
 
 Two things that would otherwise ride on reasoning alone have been checked another way, and are worth re-checking the same way if the manifest or the Kotlin changes:
