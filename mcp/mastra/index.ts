@@ -6,7 +6,7 @@ import { CloudExporter, DefaultExporter, Observability, SamplingStrategyType } f
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { getCorsOptions } from './cors.js';
-import { getTokenUsageStorage } from './storage/index.js';
+import { getSqlStorageProvider, getTokenUsageStorage } from './storage/index.js';
 import { stripTransferEncodingHeader } from './streaming-headers.js';
 import { TokenTrackingProcessor, TokenUsageExporter } from './utils/token-usage-exporter.js';
 import { storageRetentionWorkflow, tokenUsageTools } from './verticals/api/index.js';
@@ -31,12 +31,11 @@ import { getInternetOfThingsAgent, internetOfThingsTools } from './verticals/int
 import { getNotificationAgent, notificationTools } from './verticals/notification/index.js';
 import { phoneTools } from './verticals/phone/index.js';
 import { presenceShortcuts } from './verticals/presence/index.js';
-import { getRoutingPlannerAgent } from './verticals/routing/agents.js';
+import { getRoutingSupervisorAgent } from './verticals/routing/agents.js';
 import {
-  getCurrentDagWorkflow,
   getNextInstructionsWorkflow,
+  respondToApprovalWorkflow,
   routePromptWorkflow,
-  routingWorkflow,
 } from './verticals/routing/workflows.js';
 import { getShoppingListAgent, getShoppingListSummaryAgent, shoppingTools } from './verticals/shopping/index.js';
 import { getStateChangeReactorAgent, synapseTools } from './verticals/synapse/index.js';
@@ -63,6 +62,29 @@ export async function getMastra(): Promise<Mastra> {
       name: 'Mastra',
       level: 'info',
     }),
+    // Shared with the agents' memory, which opens the same file. Background tasks persist
+    // their records here, which is what makes a delegation outlive the run that dispatched
+    // it; without storage on the instance the manager has nowhere to write, and the
+    // instance was also silently falling back to an in-memory store and warning that it was
+    // not production-safe.
+    storage: await getSqlStorageProvider(),
+    // Routing delegates to subagents through the background task manager, so that a
+    // delegation is a durable record rather than a promise held in this process. That is
+    // what `getNextInstructionsWorkflow` polls, and it is why a result survives a restart
+    // between the call that started it and the call that asks for it.
+    //
+    // Concurrency is bounded because the subagents share one hosted model quota, and a
+    // voice request that fans out to six agents at once should queue rather than fail.
+    backgroundTasks: {
+      enabled: true,
+      globalConcurrency: 10,
+      perAgentConcurrency: 5,
+      backpressure: 'queue',
+      // Comfortably longer than any delegation should take. The caller's own patience is
+      // far shorter -- the poll loop reports what is still running -- so this exists to
+      // stop a wedged delegation occupying a slot forever, not to bound what the user waits.
+      defaultTimeoutMs: 300_000,
+    },
     observability: new Observability({
       configs: {
         default: {
@@ -85,9 +107,8 @@ export async function getMastra(): Promise<Mastra> {
       formRepliesDetectionWorkflow,
       iotMonitoringWorkflow,
       routePromptWorkflow,
-      getCurrentDagWorkflow,
       getNextInstructionsWorkflow,
-      routingWorkflow,
+      respondToApprovalWorkflow,
     },
     agents: toAgentMap([
       await getCalendarAgent(),
@@ -99,7 +120,7 @@ export async function getMastra(): Promise<Mastra> {
       await getInternetOfThingsAgent(),
       await getNotificationAgent(),
       await getRequirementsInterviewerAgent(),
-      await getRoutingPlannerAgent(),
+      await getRoutingSupervisorAgent(),
       await getShoppingListAgent(),
       await getShoppingListSummaryAgent(),
       await getStateChangeReactorAgent(),

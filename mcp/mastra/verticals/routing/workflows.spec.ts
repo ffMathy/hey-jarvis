@@ -1,88 +1,120 @@
-import { afterEach, beforeEach, describe, expect, it, type Mock, mock } from 'bun:test';
-import type { Agent } from '@mastra/core/agent';
-import { z } from 'zod';
+/**
+ * The poll loop, which is the part of routing this vertical still owns.
+ *
+ * Ordering, parallelism and dependency passing are the supervisor's job inside its own
+ * delegation loop; concurrency, persistence and retry are the background task manager's.
+ * What is left here is the contract with Jarvis: what a poll returns, when it blocks, that
+ * a result is relayed exactly once, and that the closing report recaps everything in case a
+ * response was lost on the way.
+ *
+ * The task manager is faked, so nothing here calls a model — but the folding itself is the
+ * real {@link buildSnapshot} over real {@link BackgroundTask} records, so what a poll is
+ * allowed to say is covered rather than stubbed around.
+ */
+
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+import type { MastraDBMessage } from '@mastra/core/agent';
+import type { AgentControllerEvent } from '@mastra/core/agent-controller';
+import type { BackgroundTask } from '@mastra/core/background-tasks';
 import {
-  type AgentProvider,
-  dagSchema,
-  getCurrentDAG,
-  getCurrentDagWorkflow,
+  buildSnapshot,
+  DEFAULT_ROUTING_SESSION_ID,
+  RoutingProgress,
+  type RoutingRuntime,
+  resetRoutingRuntime,
+  resolveToolCategoryForTest,
+  setRoutingRuntime,
+} from './controller.js';
+import {
   getNextInstructionsWorkflow,
-  resetRoutingOverrides,
+  resetPollDeadlineForTest,
+  respondToApprovalWorkflow,
   routePromptWorkflow,
-  setAgentProvider,
-  setTaskPlanner,
-  type TaskPlanner,
+  setPollDeadlineForTest,
 } from './workflows.js';
 
-interface MockAgentOptions {
-  description?: string;
-  tools?: string[];
-  respond?: (prompt: string) => string | Promise<string>;
+const progressBySessionId = new Map<string, RoutingProgress>();
+const tasksBySessionId = new Map<string, BackgroundTask[]>();
+
+function progressFor(sessionId: string): RoutingProgress {
+  let progress = progressBySessionId.get(sessionId);
+  if (!progress) {
+    progress = new RoutingProgress();
+    progressBySessionId.set(sessionId, progress);
+  }
+  return progress;
 }
 
-interface MockAgent {
-  id: string;
-  name: string;
-  getDescription(): string;
-  listTools(): Promise<Record<string, unknown>>;
-  generate: Mock<(messages: unknown) => Promise<{ text: string }>>;
-  prompts: string[];
+function tasksFor(sessionId: string): BackgroundTask[] {
+  let tasks = tasksBySessionId.get(sessionId);
+  if (!tasks) {
+    tasks = [];
+    tasksBySessionId.set(sessionId, tasks);
+  }
+  return tasks;
 }
 
-function createMockAgent(id: string, options: MockAgentOptions = {}): MockAgent {
-  const prompts: string[] = [];
-
-  const generate = mock(async (messages: unknown) => {
-    const prompt = Array.isArray(messages) ? String((messages[0] as { content?: unknown })?.content ?? '') : '';
-    prompts.push(prompt);
-    const respond = options.respond ?? (() => `Mock response from ${id}`);
-    return { text: await respond(prompt) };
-  });
-
+/**
+ * One delegation, as the background task manager records it.
+ *
+ * The tool name is `agent-<id>`, which is how Mastra actually names a delegation tool and
+ * therefore how it lands on the task row. Emitting the bare id here is what let that prefix
+ * go unnoticed once already: the permission lookup and every reported agent name silently
+ * took a tool name for an agent id.
+ */
+function task(agentId: string, overrides: Partial<BackgroundTask> = {}): BackgroundTask {
   return {
-    id,
-    name: id,
-    getDescription: () => options.description ?? `Mock agent ${id}`,
-    listTools: async () => Object.fromEntries((options.tools ?? []).map((tool) => [tool, {}])),
-    generate,
-    prompts,
+    id: `task-${agentId}-${Math.random().toString(36).slice(2)}`,
+    status: 'completed',
+    toolName: `agent-${agentId}`,
+    toolCallId: `call-${agentId}`,
+    args: {},
+    agentId: 'routing-supervisor',
+    runId: 'run-1',
+    result: { text: 'done' },
+    createdAt: new Date(),
+    retryCount: 0,
+    maxRetries: 0,
+    timeoutMs: 300_000,
+    ...overrides,
   };
 }
 
-interface GatedAgent {
-  agent: MockAgent;
-  finish: () => void;
+/** Records one delegation against a session, as the manager would. */
+function dispatch(sessionId: string, agentId: string, overrides: Partial<BackgroundTask> = {}): BackgroundTask {
+  const record = task(agentId, overrides);
+  tasksFor(sessionId).push(record);
+  return record;
 }
 
-/** An agent that hangs until the test releases it. */
-function createGatedAgent(id: string, answer: string): GatedAgent {
-  let release: () => void = () => {};
-  const gate = new Promise<void>((resolve) => {
-    release = resolve;
-  });
+/** Approvals answered through the fake runtime, so the spec can assert what was relayed. */
+const answeredApprovals: { sessionId: string; toolCallId: string; approved: boolean }[] = [];
 
-  return {
-    agent: createMockAgent(id, {
-      respond: async () => {
-        await gate;
-        return answer;
-      },
-    }),
-    finish: release,
-  };
-}
-
-function useAgents(...agents: MockAgent[]): void {
-  const provider: AgentProvider = async () => agents as unknown as Agent[];
-  setAgentProvider(provider);
-}
-
-type PlannedTask = { id: string; agent: string; prompt: string; dependsOn: string[] };
-
-function usePlan(...tasks: PlannedTask[]): void {
-  const planner: TaskPlanner = async () => ({ tasks });
-  setTaskPlanner(planner);
-}
+const fakeRuntime: RoutingRuntime = {
+  async start(sessionId) {
+    const progress = progressFor(sessionId);
+    progress.reset();
+    tasksBySessionId.set(sessionId, []);
+  },
+  async poll(sessionId) {
+    return buildSnapshot(progressFor(sessionId), tasksFor(sessionId));
+  },
+  async waitForChange(_sessionId, deadlineMs) {
+    // Nothing in these tests settles on its own — the spec arranges state up front — so a
+    // wait here can only ever run out. Consuming the deadline rather than returning at once
+    // is what keeps the poll loop from spinning through it in tight iterations.
+    await new Promise((resolve) => setTimeout(resolve, deadlineMs));
+  },
+  async respondToApproval(sessionId, approved) {
+    const progress = progressFor(sessionId);
+    const approval = progress.approval;
+    if (!approval) {
+      return;
+    }
+    progress.approval = undefined;
+    answeredApprovals.push({ sessionId, toolCallId: approval.toolCallId, approved });
+  },
+};
 
 async function runWorkflow<TInput, TResult>(
   workflow: { createRun(): Promise<{ start: (args: { inputData: TInput }) => Promise<TResult> }> },
@@ -92,451 +124,334 @@ async function runWorkflow<TInput, TResult>(
   return run.start({ inputData });
 }
 
-const routeResultSchema = z.object({
-  instructions: z.string(),
-  taskIdsInProgress: z.array(z.string()),
-});
-
-const instructionsResultSchema = z.object({
-  instructions: z.string(),
-  completedTaskResults: z.array(z.object({ id: z.string(), result: z.unknown() })).optional(),
-  taskIdsInProgress: z.array(z.string()).optional(),
-});
-
-function assertSuccess<T>(result: { status: string; result?: unknown }, schema: z.ZodType<T>): T {
-  expect(result.status).toBe('success');
-  return schema.parse(result.result);
+function assistantMessage(text: string): AgentControllerEvent {
+  return {
+    type: 'message_end',
+    message: {
+      id: 'assistant-1',
+      role: 'assistant',
+      content: { format: 2, parts: [{ type: 'text', text }] },
+      createdAt: new Date(),
+    } as unknown as MastraDBMessage,
+  };
 }
 
-async function route(userQuery: string, isAsync = false) {
-  const result = await runWorkflow(routePromptWorkflow, { userQuery, async: isAsync });
-  return assertSuccess(result, routeResultSchema);
+/** The supervisor's own loop ending. Delegations may still be running behind it. */
+function endSupervisorTurn(progress: RoutingProgress): void {
+  progress.handle({ type: 'agent_end' });
 }
 
-async function nextInstructions() {
-  const result = await runWorkflow(getNextInstructionsWorkflow, {});
-  return assertSuccess(result, instructionsResultSchema);
-}
+type WorkflowResult<T> = { status: string; result?: T };
 
-/** Polls until the DAG reports everything finished, collecting each report. */
-async function pollUntilComplete(maxPolls = 10) {
-  const reports: z.infer<typeof instructionsResultSchema>[] = [];
-  for (let i = 0; i < maxPolls; i++) {
-    const report = await nextInstructions();
-    reports.push(report);
-    if (report.instructions.startsWith('All tasks have completed')) {
-      return reports;
-    }
+function resultOf<T>(outcome: WorkflowResult<T>): T {
+  if (outcome.status !== 'success' || !outcome.result) {
+    throw new Error(`workflow did not succeed: ${outcome.status}`);
   }
-  throw new Error(`DAG did not complete within ${maxPolls} polls: ${JSON.stringify(reports, null, 2)}`);
+  return outcome.result;
 }
 
-describe('Routing Workflows', () => {
-  beforeEach(() => {
-    resetRoutingOverrides();
+beforeEach(() => {
+  progressBySessionId.clear();
+  tasksBySessionId.clear();
+  answeredApprovals.length = 0;
+  setRoutingRuntime(fakeRuntime);
+  // A poll with nothing to report blocks until its deadline by design. That is five seconds
+  // in production, which every such case here would otherwise sit through.
+  setPollDeadlineForTest(50);
+});
+
+afterEach(() => {
+  resetRoutingRuntime();
+  resetPollDeadlineForTest();
+});
+
+describe('routePromptWorkflow', () => {
+  it('asks Jarvis to speak before polling, so the user is not left in silence', async () => {
+    const outcome = resultOf(
+      await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false }),
+    );
+
+    expect(outcome.instructions).toContain('in your own voice');
+    expect(outcome.instructions).toContain('getNextInstructionsWorkflow');
   });
 
-  afterEach(() => {
-    resetRoutingOverrides();
+  it('carries the loop and its failure handling, so the prompt does not have to', async () => {
+    const outcome = resultOf(
+      await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false }),
+    );
+
+    // A failed poll is a lost answer, not a delayed one, so the instruction to retry has to
+    // travel with the loop rather than living in the agent prompt.
+    expect(outcome.instructions).toContain('call it again straight away');
+    expect(outcome.instructions).toContain('never the end of the request');
   });
 
-  describe('routePromptWorkflow', () => {
-    it('plans the DAG and hands the pending task IDs back to the caller', async () => {
-      useAgents(createMockAgent('weather'), createMockAgent('calendar'));
-      usePlan(
-        { id: 'weather-check', agent: 'weather', prompt: 'Get the weather', dependsOn: [] },
-        { id: 'calendar-check', agent: 'calendar', prompt: 'Get the calendar', dependsOn: [] },
-      );
+  it('tells Jarvis to end the call when the request is fire-and-forget', async () => {
+    const outcome = resultOf(await runWorkflow(routePromptWorkflow, { userQuery: 'turn the lights off', async: true }));
 
-      const result = await route('What is the weather and what is on my calendar?');
-
-      expect(result.instructions).toContain('getNextInstructionsWorkflow');
-      expect(result.taskIdsInProgress).toEqual(['weather-check', 'calendar-check']);
-    });
-
-    it('asks Jarvis to speak before polling, so the user is not left in silence', async () => {
-      useAgents(createMockAgent('calendar'));
-      usePlan({ id: 'calendar-check', agent: 'calendar', prompt: 'Get the calendar', dependsOn: [] });
-
-      const result = await route('Check my calendar for today');
-
-      // Queueing hides the longest wait in the loop — the DAG is planned and its
-      // first wave runs behind it. Without this, Jarvis routed and then polled
-      // without a word, and the user heard nothing at all until the final answer.
-      expect(result.instructions).toContain('silence');
-      // Said here and nowhere else. The agent prompt used to ask for the same line,
-      // and Jarvis obligingly delivered it twice.
-      expect(result.instructions).toContain('nowhere else');
-      // The polling half of the contract has to survive the addition.
-      expect(result.instructions).toContain('getNextInstructionsWorkflow');
-    });
-
-    it('carries the loop and its failure handling, so the prompt does not have to', async () => {
-      useAgents(createMockAgent('calendar'));
-      usePlan({ id: 'calendar-check', agent: 'calendar', prompt: 'Get the calendar', dependsOn: [] });
-
-      const result = await route('Check my calendar for today');
-
-      // The agent prompt used to spell all of this out, on every turn, whether or
-      // not a request was in flight. It says only "do what the instructions say" now,
-      // so the first instruction it ever sees has to describe the whole loop: keep
-      // calling until told otherwise, and retry a call that fails instead of
-      // treating the error as an answer.
-      expect(result.instructions).toContain('keep doing exactly what each response tells you');
-      expect(result.instructions).toContain('every task has completed');
-      expect(result.instructions).toContain('call it again');
-      expect(result.instructions).toContain('never the end of the request');
-    });
-
-    it('does not run any task before the caller asks for instructions', async () => {
-      const weather = createMockAgent('weather');
-      useAgents(weather);
-      usePlan({ id: 'weather-check', agent: 'weather', prompt: 'Get the weather', dependsOn: [] });
-
-      await route('What is the weather?');
-
-      expect(weather.generate).not.toHaveBeenCalled();
-    });
-
-    it('tells Jarvis to end the call and drives the DAG itself when async', async () => {
-      const weather = createMockAgent('weather');
-      useAgents(weather);
-      usePlan({ id: 'weather-check', agent: 'weather', prompt: 'Get the weather', dependsOn: [] });
-
-      const result = await route('What is the weather?', true);
-
-      expect(result.instructions).toContain('End the call');
-      expect(result.instructions).not.toContain('getNextInstructionsWorkflow');
-
-      // The fire-and-forget driver keeps resuming without anyone polling.
-      await waitFor(() => getCurrentDAG().tasks.every((task) => task.status === 'completed'));
-      expect(weather.generate).toHaveBeenCalledTimes(1);
-    });
-
-    it('drops tasks assigned to agents that do not exist', async () => {
-      useAgents(createMockAgent('weather'));
-      usePlan(
-        { id: 'weather-check', agent: 'weather', prompt: 'Get the weather', dependsOn: [] },
-        { id: 'bogus', agent: 'teleporter', prompt: 'Teleport me', dependsOn: [] },
-      );
-
-      const result = await route('What is the weather?');
-
-      expect(result.taskIdsInProgress).toEqual(['weather-check']);
-    });
-
-    it('breaks cyclic dependencies rather than deadlocking', async () => {
-      const weather = createMockAgent('weather');
-      useAgents(weather);
-      usePlan(
-        { id: 'a', agent: 'weather', prompt: 'A', dependsOn: ['b'] },
-        { id: 'b', agent: 'weather', prompt: 'B', dependsOn: ['a'] },
-      );
-
-      await route('Do the impossible');
-      await pollUntilComplete();
-
-      expect(getCurrentDAG().tasks.every((task) => task.status === 'completed')).toBe(true);
-    });
-
-    it('ignores dependencies on tasks that were never planned', async () => {
-      useAgents(createMockAgent('weather'));
-      usePlan({ id: 'weather-check', agent: 'weather', prompt: 'Get the weather', dependsOn: ['ghost-task'] });
-
-      await route('What is the weather?');
-      const reports = await pollUntilComplete();
-
-      const lastReport = reports[reports.length - 1];
-      expect(lastReport.completedTaskResults?.[0].id).toBe('weather-check');
-    });
+    expect(outcome.instructions).toContain('End the call now');
   });
 
-  describe('getNextInstructionsWorkflow', () => {
-    it('runs the ready tasks and reports their results', async () => {
-      useAgents(createMockAgent('weather', { respond: () => 'Sunny, 22°C' }));
-      usePlan({ id: 'weather-check', agent: 'weather', prompt: 'Get the weather', dependsOn: [] });
+  it('hands back the session so a poll can name the request it is asking about', async () => {
+    const outcome = resultOf(
+      await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false, sessionId: 'caller-a' }),
+    );
 
-      await route('What is the weather?');
-      const report = await nextInstructions();
-
-      expect(report.instructions).toContain('All tasks have completed');
-      expect(report.completedTaskResults).toHaveLength(1);
-      expect(report.completedTaskResults?.[0]).toEqual({ id: 'weather-check', result: 'Sunny, 22°C' });
-      expect(report.taskIdsInProgress).toEqual([]);
-    });
-
-    it('withholds intermediate results and asks for a brief acknowledgement', async () => {
-      useAgents(
-        createMockAgent('weather', { respond: () => 'Aarhus, Denmark' }),
-        createMockAgent('calendar', { respond: () => 'Standup at 9am' }),
-      );
-      usePlan(
-        { id: 'get-location', agent: 'weather', prompt: 'Where am I?', dependsOn: [] },
-        { id: 'get-weather', agent: 'calendar', prompt: 'Weather there?', dependsOn: ['get-location'] },
-      );
-
-      await route('What is the weather where I am?');
-
-      const first = await nextInstructions();
-      expect(first.instructions).toContain('not all tasks have completed');
-      expect(first.instructions).toContain('less than 5 words');
-      // Each further poll is a machine action like the first one, and the user has
-      // no use for hearing that it happened.
-      expect(first.instructions).toContain('without announcing that you are checking');
-      expect(first.completedTaskResults).toEqual([{ id: 'get-location', result: undefined }]);
-      expect(first.taskIdsInProgress).toEqual(['get-weather']);
-
-      // The closing report recaps everything, including the intermediate result
-      // withheld above: it is the last chance to say anything, so it carries the
-      // lot rather than only what finished last.
-      const second = await nextInstructions();
-      expect(second.instructions).toContain('All tasks have completed');
-      expect(second.completedTaskResults).toEqual([
-        { id: 'get-location', result: 'Aarhus, Denmark' },
-        { id: 'get-weather', result: 'Standup at 9am' },
-      ]);
-    });
-
-    it('points a finished request back at routing for whatever the user asks next', async () => {
-      useAgents(createMockAgent('calendar', { respond: () => 'A birthday' }));
-      usePlan({ id: 'calendar-check', agent: 'calendar', prompt: 'Get the calendar', dependsOn: [] });
-
-      await route('Check my calendar');
-      const report = await nextInstructions();
-
-      expect(report.instructions).toContain('All tasks have completed');
-      // Finishing one request is not finishing the conversation. Asked next to check
-      // the blinds and lights, Jarvis promised to look and called nothing — the last
-      // instruction of the loop had left it with no pointer back to the tool.
-      expect(report.instructions).toContain('routePromptWorkflow');
-      expect(report.instructions).toContain('not the conversation');
-    });
-
-    it('reports a finished task without waiting for the slow one beside it', async () => {
-      // Both tasks are independent, so they share a wave. The wave itself is a
-      // barrier, and results used to be withheld until every task in it had
-      // returned: measured on this exact shape, a result ready at 100ms reached
-      // the user at 20s, held up purely by the task next to it.
-      const calendar = createGatedAgent('calendar', 'A birthday');
-      useAgents(createMockAgent('weather', { respond: () => 'Sunny, 22°C' }), calendar.agent);
-      usePlan(
-        { id: 'weather-check', agent: 'weather', prompt: 'Weather?', dependsOn: [] },
-        { id: 'calendar-check', agent: 'calendar', prompt: 'Calendar?', dependsOn: [] },
-      );
-
-      await route('What is the weather and what is on my calendar?');
-
-      // The calendar agent has not been released, so this can only be the
-      // weather result arriving on its own.
-      const first = await nextInstructions();
-      expect(first.completedTaskResults).toEqual([{ id: 'weather-check', result: 'Sunny, 22°C' }]);
-      expect(first.taskIdsInProgress).toEqual(['calendar-check']);
-      expect(first.instructions).toContain('not all tasks have completed');
-      expect(first.instructions).toContain('getNextInstructionsWorkflow');
-
-      calendar.finish();
-
-      const second = await nextInstructions();
-      expect(second.instructions).toContain('All tasks have completed');
-      expect(second.completedTaskResults).toEqual([
-        { id: 'weather-check', result: 'Sunny, 22°C' },
-        { id: 'calendar-check', result: 'A birthday' },
-      ]);
-      expect(second.taskIdsInProgress).toEqual([]);
-    });
-
-    it('walks a dependent chain one task at a time, carrying the context forward', async () => {
-      // "Check the calendar for the week, then send me an email summarising it."
-      // The email cannot start until the calendar has answered, and it needs
-      // that answer in hand when it does.
-      const calendar = createMockAgent('calendar', {
-        respond: () => 'Mon: standup at 9. Wed: design review at 14.',
-      });
-      const email = createMockAgent('email', { respond: () => 'Summary sent to you, sir.' });
-      useAgents(calendar, email);
-      usePlan(
-        { id: 'calendar-week', agent: 'calendar', prompt: "This week's calendar?", dependsOn: [] },
-        { id: 'send-email', agent: 'email', prompt: 'Email a summary of it', dependsOn: ['calendar-week'] },
-      );
-
-      await route('Check my calendar for the week, then email me a summary');
-
-      // The calendar is plumbing for the email, not an answer in its own right,
-      // so its result is withheld and only its progress is relayed.
-      const first = await nextInstructions();
-      expect(first.completedTaskResults).toEqual([{ id: 'calendar-week', result: undefined }]);
-      expect(first.taskIdsInProgress).toEqual(['send-email']);
-      expect(first.instructions).toContain('less than 5 words');
-
-      const second = await nextInstructions();
-      expect(second.instructions).toContain('All tasks have completed');
-      expect(second.completedTaskResults).toEqual([
-        { id: 'calendar-week', result: 'Mon: standup at 9. Wed: design review at 14.' },
-        { id: 'send-email', result: 'Summary sent to you, sir.' },
-      ]);
-      expect(second.taskIdsInProgress).toEqual([]);
-
-      // The whole point of the dependency: the email agent was handed what the
-      // calendar found, not merely told to go and summarise something.
-      expect(email.prompts).toHaveLength(1);
-      expect(email.prompts[0]).toContain('Email a summary of it');
-      expect(email.prompts[0]).toContain('Mon: standup at 9. Wed: design review at 14.');
-    });
-
-    it('never relays the same task twice while the request is still running', async () => {
-      useAgents(createMockAgent('weather'), createMockAgent('calendar'));
-      usePlan(
-        { id: 'root', agent: 'weather', prompt: 'Root', dependsOn: [] },
-        { id: 'leaf-a', agent: 'calendar', prompt: 'Leaf A', dependsOn: ['root'] },
-        { id: 'leaf-b', agent: 'calendar', prompt: 'Leaf B', dependsOn: ['root'] },
-      );
-
-      await route('Do three things');
-      const reports = await pollUntilComplete();
-
-      // Mid-flight reports carry only what is new — hearing a result twice while
-      // waiting is noise. The closing report is the exception and is checked below.
-      const inFlight = reports.slice(0, -1);
-      const relayedIds = inFlight.flatMap((report) => report.completedTaskResults?.map((task) => task.id) ?? []);
-      expect(relayedIds).toEqual([...new Set(relayedIds)]);
-      expect(relayedIds).toEqual(['root', 'leaf-a', 'leaf-b'].slice(0, relayedIds.length));
-    });
-
-    // The failure this exists for: an end-to-end run had two polls fail at the
-    // ElevenLabs boundary, and because a result is marked reported when its report
-    // is *built*, the calendar and the recipe those responses carried were never
-    // mentioned again. The loop still closed with "All tasks have completed" — true
-    // of the DAG, false of what the user had been told.
-    it('recaps every result at the close, so nothing is lost with a dropped response', async () => {
-      useAgents(createMockAgent('weather'), createMockAgent('calendar'));
-      usePlan(
-        { id: 'root', agent: 'weather', prompt: 'Root', dependsOn: [] },
-        { id: 'leaf-a', agent: 'calendar', prompt: 'Leaf A', dependsOn: ['root'] },
-        { id: 'leaf-b', agent: 'calendar', prompt: 'Leaf B', dependsOn: ['root'] },
-      );
-
-      await route('Do three things');
-      const reports = await pollUntilComplete();
-      const closing = reports[reports.length - 1];
-
-      expect(closing.instructions).toContain('All tasks have completed');
-      expect(closing.completedTaskResults?.map((task) => task.id)).toEqual(['root', 'leaf-a', 'leaf-b']);
-      // Every one carries its result, including the intermediate whose result was
-      // withheld on the way through — a recap that omitted it would still lose it.
-      expect(closing.completedTaskResults?.every((task) => task.result !== undefined)).toBe(true);
-      // And it says so, so Jarvis recaps briefly rather than reading everything twice.
-      expect(closing.instructions).toContain('already relayed');
-    });
-
-    it('feeds a task the results of the tasks it depends on', async () => {
-      const weather = createMockAgent('weather', { respond: () => 'Aarhus, Denmark' });
-      const commute = createMockAgent('commute');
-      useAgents(weather, commute);
-      usePlan(
-        { id: 'get-location', agent: 'weather', prompt: 'Where am I?', dependsOn: [] },
-        { id: 'get-commute', agent: 'commute', prompt: 'How long to work?', dependsOn: ['get-location'] },
-      );
-
-      await route('How long is my commute?');
-      await pollUntilComplete();
-
-      expect(commute.prompts[0]).toContain('How long to work?');
-      expect(commute.prompts[0]).toContain('Aarhus, Denmark');
-    });
-
-    it('runs independent tasks in the same wave', async () => {
-      useAgents(createMockAgent('weather'), createMockAgent('calendar'));
-      usePlan(
-        { id: 'weather-check', agent: 'weather', prompt: 'Weather', dependsOn: [] },
-        { id: 'calendar-check', agent: 'calendar', prompt: 'Calendar', dependsOn: [] },
-      );
-
-      await route('Weather and calendar');
-      const report = await nextInstructions();
-
-      expect(report.instructions).toContain('All tasks have completed');
-      expect(report.completedTaskResults?.map((task) => task.id)).toEqual(['weather-check', 'calendar-check']);
-    });
-
-    it('keeps going when an agent throws', async () => {
-      const weather = createMockAgent('weather', {
-        respond: () => {
-          throw new Error('upstream exploded');
-        },
-      });
-      const calendar = createMockAgent('calendar', { respond: () => 'Standup at 9am' });
-      useAgents(weather, calendar);
-      usePlan(
-        { id: 'weather-check', agent: 'weather', prompt: 'Weather', dependsOn: [] },
-        { id: 'calendar-check', agent: 'calendar', prompt: 'Calendar', dependsOn: [] },
-      );
-
-      await route('Weather and calendar');
-      const report = await nextInstructions();
-
-      expect(report.instructions).toContain('All tasks have completed');
-      const weatherResult = report.completedTaskResults?.find((task) => task.id === 'weather-check');
-      expect(String(weatherResult?.result)).toContain('upstream exploded');
-      expect(getCurrentDAG().tasks.find((task) => task.id === 'weather-check')?.status).toBe('failed');
-    });
-
-    it('tells the caller to try again when there is nothing being routed', async () => {
-      const report = await nextInstructions();
-      expect(report.instructions).toContain('Still processing');
-      // A poll with nothing to report is not a cue to speak. The "I'm on it" line
-      // was already given when the request was queued, and the prompt no longer
-      // carries a rule about staying quiet through the wait, so this one does.
-      expect(report.instructions).toContain('Say nothing to the user in the meantime');
-    });
-
-    it('repeats the final report instead of resuming a finished run', async () => {
-      useAgents(createMockAgent('weather'));
-      usePlan({ id: 'weather-check', agent: 'weather', prompt: 'Weather', dependsOn: [] });
-
-      await route('What is the weather?');
-      const first = await nextInstructions();
-      const second = await nextInstructions();
-
-      expect(second).toEqual(first);
-    });
+    expect(outcome.sessionId).toBe('caller-a');
   });
 
-  describe('getCurrentDagWorkflow', () => {
-    it('exposes the planned graph and its execution status', async () => {
-      useAgents(createMockAgent('weather'), createMockAgent('calendar'));
-      usePlan(
-        { id: 'get-location', agent: 'weather', prompt: 'Where am I?', dependsOn: [] },
-        { id: 'get-weather', agent: 'calendar', prompt: 'Weather there?', dependsOn: ['get-location'] },
-      );
+  it('defaults to one shared session when the caller does not identify itself', async () => {
+    const outcome = resultOf(
+      await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false }),
+    );
 
-      await route('What is the weather where I am?');
-
-      const pending = assertSuccess(await runWorkflow(getCurrentDagWorkflow, {}), dagSchema);
-      expect(pending.userQuery).toBe('What is the weather where I am?');
-      expect(pending.tasks.map((task) => [task.id, task.status])).toEqual([
-        ['get-location', 'pending'],
-        ['get-weather', 'pending'],
-      ]);
-
-      await pollUntilComplete();
-
-      const done = assertSuccess(await runWorkflow(getCurrentDagWorkflow, {}), dagSchema);
-      expect(done.tasks.every((task) => task.status === 'completed')).toBe(true);
-    });
-
-    it('is empty before anything has been routed', async () => {
-      const dag = assertSuccess(await runWorkflow(getCurrentDagWorkflow, {}), dagSchema);
-      expect(dag.tasks).toEqual([]);
-    });
+    expect(outcome.sessionId).toBe(DEFAULT_ROUTING_SESSION_ID);
   });
 });
 
-async function waitFor(condition: () => boolean, timeoutMs = 5000): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (!condition()) {
-    if (Date.now() > deadline) {
-      throw new Error('Timed out waiting for condition');
-    }
-    await new Promise((resolve) => setTimeout(resolve, 10));
+describe('getNextInstructionsWorkflow', () => {
+  it('reports a delegation that has finished', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false });
+    dispatch(DEFAULT_ROUTING_SESSION_ID, 'weather', { result: { text: 'It is 8 degrees.' } });
+
+    const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(outcome.completedTaskResults).toEqual([{ id: 'weather', result: 'It is 8 degrees.' }]);
+    expect(outcome.instructions).toContain('not finished yet');
+  });
+
+  it('hands a result over exactly once while the request is still running', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false });
+    dispatch(DEFAULT_ROUTING_SESSION_ID, 'weather', { result: { text: 'It is 8 degrees.' } });
+    dispatch(DEFAULT_ROUTING_SESSION_ID, 'calendar', { status: 'running', result: undefined });
+
+    const first = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+    const second = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(first.completedTaskResults).toEqual([{ id: 'weather', result: 'It is 8 degrees.' }]);
+    // Nothing new settled, and the weather result has already been relayed.
+    expect(second.completedTaskResults).toBeUndefined();
+    expect(second.instructions).toContain('Still processing');
+  });
+
+  it('names what is still running, so the caller knows the request is not stalled', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'weather and calendar', async: false });
+    dispatch(DEFAULT_ROUTING_SESSION_ID, 'weather', { result: { text: 'It is 8 degrees.' } });
+    const pending = dispatch(DEFAULT_ROUTING_SESSION_ID, 'calendar', { status: 'running', result: undefined });
+
+    const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(outcome.taskIdsInProgress).toEqual([pending.id]);
+  });
+
+  it('does not close the request while a delegation is still running', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'weather and calendar', async: false });
+    const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    dispatch(DEFAULT_ROUTING_SESSION_ID, 'calendar', { status: 'running', result: undefined });
+
+    // The supervisor's turn ends as soon as it has dispatched, which is the whole point of
+    // dispatching in the background. Treating that as the end of the request would close
+    // the loop on work that has not happened yet.
+    endSupervisorTurn(progress);
+
+    const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(outcome.instructions).not.toContain('All tasks have completed');
+  });
+
+  it('recaps every result once the request is done, including ones already relayed', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'weather and calendar', async: false });
+    const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    dispatch(DEFAULT_ROUTING_SESSION_ID, 'weather', { result: { text: 'It is 8 degrees.' } });
+
+    const first = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+    expect(first.completedTaskResults).toHaveLength(1);
+
+    dispatch(DEFAULT_ROUTING_SESSION_ID, 'calendar', { result: { text: 'Dentist at four.' } });
+    progress.handle(assistantMessage('Eight degrees, and the dentist at four.'));
+    endSupervisorTurn(progress);
+
+    const closing = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(closing.instructions).toContain('All tasks have completed');
+    // A response lost on the way must not take a result with it, so the last word carries
+    // everything the request produced rather than only what is new.
+    const ids = closing.completedTaskResults?.map((entry) => entry.id);
+    expect(ids).toContain('weather');
+    expect(ids).toContain('calendar');
+    expect(ids).toContain('summary');
+    expect(closing.taskIdsInProgress).toEqual([]);
+  });
+
+  it('reports a request that failed outright rather than going quiet', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false });
+    progressFor(DEFAULT_ROUTING_SESSION_ID).fail('the supervisor could not be reached');
+
+    const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(outcome.instructions).toContain('could not be completed');
+    expect(outcome.instructions).toContain('the supervisor could not be reached');
+  });
+});
+
+describe('two callers at once', () => {
+  it('keeps one caller’s delegations out of the other’s report', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false, sessionId: 'caller-a' });
+    await runWorkflow(routePromptWorkflow, {
+      userQuery: 'what is on my calendar',
+      async: false,
+      sessionId: 'caller-b',
+    });
+
+    dispatch('caller-a', 'weather', { result: { text: 'It is 8 degrees.' } });
+    dispatch('caller-b', 'calendar', { result: { text: 'Dentist at four.' } });
+
+    const forA = resultOf(await runWorkflow(getNextInstructionsWorkflow, { sessionId: 'caller-a' }));
+
+    expect(forA.completedTaskResults).toEqual([{ id: 'weather', result: 'It is 8 degrees.' }]);
+  });
+});
+
+describe('delegation tool names', () => {
+  /**
+   * Mastra registers a subagent's delegation tool as `agent-<id>`, not `<id>`, and records
+   * it under that name. Everything that reads a tool name as an agent id has to take the
+   * prefix off first, and the two places it matters are the reports and the permission
+   * category.
+   */
+  it('names the agent, not the delegation tool, in a report', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false });
+    dispatch(DEFAULT_ROUTING_SESSION_ID, 'weather', { result: { text: 'It is 8 degrees.' } });
+
+    const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(outcome.completedTaskResults).toEqual([{ id: 'weather', result: 'It is 8 degrees.' }]);
+  });
+
+  it('names the agent, not the delegation tool, in an approval', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'email Mathias', async: false });
+    const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    progress.handle({
+      type: 'tool_approval_required',
+      toolCallId: 'approval-email',
+      toolName: 'agent-email',
+      args: { prompt: 'Send the recipe' },
+    });
+
+    expect(progress.approval?.agentId).toBe('email');
+  });
+
+  it('resolves an acting agent to the execute category through its prefixed tool name', () => {
+    // The gate is what stands between a spoken request and an email going out, so a lookup
+    // that silently answers `read` for every delegation is the whole gate gone.
+    expect(resolveToolCategoryForTest('agent-email')).toBe('execute');
+    expect(resolveToolCategoryForTest('agent-internetOfThings')).toBe('execute');
+    expect(resolveToolCategoryForTest('agent-weather')).toBe('read');
+  });
+});
+
+describe('failed delegations', () => {
+  it('reports why a delegation failed, not just that it did', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false });
+    dispatch(DEFAULT_ROUTING_SESSION_ID, 'weather', {
+      status: 'failed',
+      result: undefined,
+      error: { message: 'OpenWeather rejected the API key' },
+    });
+
+    const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    // The task row carries the underlying error, which is the thing the previous
+    // implementation could not get at: the only copy it saw had already been wrapped for
+    // the model, leaving "Failed agent tool execution for weather" and nothing more.
+    expect(outcome.completedTaskResults?.[0].result).toContain('OpenWeather rejected the API key');
+  });
+
+  it('says something useful when a delegation times out without an error', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false });
+    dispatch(DEFAULT_ROUTING_SESSION_ID, 'weather', { status: 'timed_out', result: undefined });
+
+    const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(outcome.completedTaskResults?.[0].result).toContain('timed out');
+  });
+
+  it('carries on reporting the rest of the request when one delegation fails', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'weather and calendar', async: false });
+    dispatch(DEFAULT_ROUTING_SESSION_ID, 'weather', { status: 'failed', result: undefined, error: { message: 'no' } });
+    dispatch(DEFAULT_ROUTING_SESSION_ID, 'calendar', { result: { text: 'Dentist at four.' } });
+
+    const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    const ids = outcome.completedTaskResults?.map((entry) => entry.id);
+    expect(ids).toEqual(['weather', 'calendar']);
+  });
+});
+
+describe('approvals', () => {
+  function requestApproval(progress: RoutingProgress, agentId: string, request: string): void {
+    progress.handle({
+      type: 'tool_approval_required',
+      toolCallId: `approval-${agentId}`,
+      toolName: `agent-${agentId}`,
+      args: { prompt: request },
+    });
   }
-}
+
+  it('asks the user out loud before an agent acts on the world', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'email Mathias the recipe', async: false });
+    requestApproval(progressFor(DEFAULT_ROUTING_SESSION_ID), 'email', 'Send Mathias the lasagna recipe');
+
+    const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(outcome.instructions).toContain('Send Mathias the lasagna recipe');
+    expect(outcome.instructions).toContain('respondToApprovalWorkflow');
+    // The run is parked, so the caller has to know that waiting will not resolve it.
+    expect(outcome.instructions).toContain('paused');
+  });
+
+  it('reports the approval ahead of results that are already waiting', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'weather, then email it', async: false });
+    const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    dispatch(DEFAULT_ROUTING_SESSION_ID, 'weather', { result: { text: 'It is 8 degrees.' } });
+    requestApproval(progress, 'email', 'Send Mathias the forecast');
+
+    const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    // Nothing moves until this is answered, so a summary first would leave the user waiting
+    // on a question he was never asked.
+    expect(outcome.instructions).toContain('Send Mathias the forecast');
+    expect(outcome.completedTaskResults).toBeUndefined();
+  });
+
+  it('relays the decision and lets the loop carry on', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'email Mathias the recipe', async: false });
+    requestApproval(progressFor(DEFAULT_ROUTING_SESSION_ID), 'email', 'Send Mathias the lasagna recipe');
+
+    const outcome = resultOf(await runWorkflow(respondToApprovalWorkflow, { approved: true }));
+
+    expect(answeredApprovals).toEqual([
+      { sessionId: DEFAULT_ROUTING_SESSION_ID, toolCallId: 'approval-email', approved: true },
+    ]);
+    expect(outcome.instructions).toContain('getNextInstructionsWorkflow');
+  });
+
+  it('relays a refusal too', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'email Mathias the recipe', async: false });
+    requestApproval(progressFor(DEFAULT_ROUTING_SESSION_ID), 'email', 'Send Mathias the lasagna recipe');
+
+    await runWorkflow(respondToApprovalWorkflow, { approved: false });
+
+    expect(answeredApprovals[0].approved).toBe(false);
+  });
+
+  it('stops asking once the decision has been sent', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'email Mathias the recipe', async: false });
+    requestApproval(progressFor(DEFAULT_ROUTING_SESSION_ID), 'email', 'Send Mathias the lasagna recipe');
+
+    await runWorkflow(respondToApprovalWorkflow, { approved: true });
+    const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(outcome.instructions).not.toContain('respondToApprovalWorkflow');
+  });
+});
