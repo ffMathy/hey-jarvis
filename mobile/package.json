@@ -8,6 +8,7 @@
     "lint": "cd .. && bunx biome check --write mobile",
     "format": "cd .. && bunx biome format --write mobile",
     "build": "cd .. && bash mobile/.scripts/build.sh",
+    "build:apk": "cd .. && bash mobile/.scripts/build-apk.sh",
     "test": "cd .. && bash mobile/.scripts/test.sh",
     "e2e": "bunx playwright test --config playwright.config.ts",
     "start": "bunx expo start --dev-client",

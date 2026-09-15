@@ -15,8 +15,19 @@ bunx turbo lint --filter=mobile       # Biome
 bunx turbo typecheck --filter=mobile  # tsgo
 bunx turbo test --filter=mobile       # the offline suite
 bunx turbo build --filter=mobile      # bundles the JS for Android into dist/mobile
+bunx turbo build:apk --filter=mobile  # installable arm64 release APK into dist/mobile-apk (needs JDK + Android SDK)
 bunx turbo e2e --filter=mobile        # exports for web and drives it in Chromium
 ```
+
+## Getting an APK onto a phone
+
+The **Mobile APK** workflow (`.github/workflows/mobile-apk.yml`) builds one on every push to `main` and every pull request that touches the app — `mobile/**`, the lockfile, or the build configuration — and can be started by hand from the Actions tab. Open the run and download `jarvis-<commit>.apk` from its Artifacts; it is uploaded unzipped, so it is the APK itself. Artifacts are kept for 30 days.
+
+It runs `build:apk` straight on the runner rather than in the dev container CI uses, because the runner image already has the Android SDK with its licences accepted. Three things about the APK worth knowing:
+
+- **arm64-v8a only.** That is what phones run, and each extra ABI compiles every native module again. For an x86_64 emulator, build locally with `reactNativeArchitectures=x86_64`, or use `.scripts/verify-assistant-on-emulator.sh`, which does.
+- **Signed with the Expo template's debug keystore**, the same well-known key everywhere. CI and local builds therefore install over each other, which is what side-loading wants — but anyone can sign an update with that key, so it is not a distribution build. Anything published goes through EAS (`eas.json`'s `production` profile) with a real key.
+- **It is the release variant**: the JS bundle is embedded, no Metro and no development client, and nothing configured — the server address and access token are typed into the settings screen on first run, as on any install.
 
 To run it on a device (needs the Android SDK, which CI does not have):
 
@@ -140,7 +151,7 @@ bunx turbo test --filter=mobile
 
 Tests must not import React Native or any Expo native module — there is no runtime for them under `bun test`. Keep logic worth testing in plain `.ts` files (`assist-link.ts`, `server-settings.ts`, `conversation-token.ts`) and let the `.tsx` files stay thin enough to read.
 
-`turbo build` bundles the JavaScript with Metro rather than assembling an APK. That needs no Android SDK, so it runs in CI, and it still catches the failures a bundle can catch: an import that does not resolve, a native module missing from the tree, a file no test imports. The installable build comes from EAS.
+`turbo build` bundles the JavaScript with Metro rather than assembling an APK. That needs no Android SDK, so it runs in CI's dev container on every push, and it still catches the failures a bundle can catch: an import that does not resolve, a native module missing from the tree, a file no test imports. The native build — Kotlin, Gradle, the manifest merge — is exercised by the Mobile APK workflow, only when the app changes.
 
 ### The browser tests
 
