@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.15.1...elevenlabs-v0.16.0) (2026-09-15)
+
+
+### Features
+
+* **elevenlabs:** run the conversation on claude-sonnet-5 ([#707](https://github.com/ffMathy/hey-jarvis/issues/707)) ([b7100fb](https://github.com/ffMathy/hey-jarvis/commit/b7100fb3bf17b5ee9c34e51d9b5030c516e1460b))
+
 ## [0.15.1](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.15.0...elevenlabs-v0.15.1) (2026-08-25)
 
 
