@@ -35,6 +35,31 @@ export { SUPERVISOR_INSTRUCTIONS };
 export const ROUTING_SUPERVISOR_AGENT_ID = 'routing-supervisor';
 
 /**
+ * Relays a call unchanged, reporting whatever it throws on the way past.
+ *
+ * A rejected promise is reported without being awaited, and a synchronous throw without
+ * being made asynchronous, because some of these accessors resolve to a plain value and
+ * turning that into a promise would change how Mastra reads them.
+ */
+function reportFrom<TArgs extends unknown[], TResult>(
+  call: (...args: TArgs) => TResult,
+  report: (error: unknown) => void,
+): (...args: TArgs) => TResult {
+  return (...args: TArgs): TResult => {
+    try {
+      const result = call(...args);
+      if (result instanceof Promise) {
+        result.catch(report);
+      }
+      return result;
+    } catch (error) {
+      report(error);
+      throw error;
+    }
+  };
+}
+
+/**
  * Reports what a stream throws while it is being read, without changing what it yields.
  *
  * `stream` returns as soon as the run is under way, so a failure part-way through lands in
@@ -104,6 +129,15 @@ function reportFailuresOf(agent: Agent): void {
   const report = (error: unknown) => {
     logger.error('Subagent failed', { agentId: agent.id, error });
   };
+
+  // Everything the delegation asks the agent before it runs it. A throw in any of these
+  // never reaches `stream`, so none of it was covered by wrapping the run -- which is the
+  // shape the evidence has: no span, because there is no run to trace, and nothing from the
+  // wrappers, because the call they wrap is never made.
+  agent.getModel = reportFrom(agent.getModel.bind(agent), report);
+  agent.getDefaultOptions = reportFrom(agent.getDefaultOptions.bind(agent), report);
+  agent.getInstructions = reportFrom(agent.getInstructions.bind(agent), report);
+  agent.getMemory = reportFrom(agent.getMemory.bind(agent), report);
 
   agent.stream = async (...args: Parameters<typeof stream>) => {
     let result: Awaited<ReturnType<typeof stream>>;
