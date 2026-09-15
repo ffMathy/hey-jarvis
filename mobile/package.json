@@ -4,6 +4,7 @@
   "private": true,
   "main": "index.ts",
   "scripts": {
+    "initialize": "cd .. && bash mobile/.scripts/initialize.sh",
     "typecheck": "tsgo --noEmit --project tsconfig.json",
     "lint": "cd .. && bunx biome check --write mobile",
     "format": "cd .. && bunx biome format --write mobile",
@@ -12,7 +13,8 @@
     "test": "cd .. && bash mobile/.scripts/test.sh",
     "e2e": "bunx playwright test --config playwright.config.ts",
     "start": "bunx expo start --dev-client",
-    "android": "bunx expo run:android",
+    "android": "bash .scripts/initialize.sh && bunx expo run:android",
+    "eas-build-post-install": "bash .scripts/initialize.sh",
     "native:prebuild": "bunx expo prebuild --platform android"
   },
   "dependencies": {
@@ -21,6 +23,7 @@
     "@livekit/react-native": "2.12.0",
     "@livekit/react-native-expo-plugin": "1.0.2",
     "@livekit/react-native-webrtc": "144.1.2",
+    "@shopify/react-native-skia": "2.6.2",
     "expo": "57.0.20",
     "expo-dev-client": "57.0.18",
     "expo-linking": "57.0.9",
@@ -30,9 +33,12 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.86.3",
-    "react-native-web": "0.21.2"
+    "react-native-reanimated": "4.5.1",
+    "react-native-web": "0.21.2",
+    "react-native-worklets": "0.10.1"
   },
   "devDependencies": {
+    "@babel/core": "7.29.7",
     "@types/react": "19.2.18",
     "babel-preset-expo": "57.0.10",
     "bun-types": "1.3.14"

@@ -67,7 +67,13 @@ mobile/
 │   └── android/src/main/         # Kotlin, the merged manifest, and res/xml
 └── src/
     ├── app.tsx                   # root component and the two screens
-    ├── conversation-screen.tsx
+    ├── conversation-screen.tsx   # the hologram, the Talk button and the assistant card
+    ├── jarvis-hologram.tsx       # the hologram on Android …
+    ├── jarvis-hologram.web.tsx   # … and in a browser, once CanvasKit has loaded
+    ├── jarvis-hologram-view.tsx  # Skia canvas, Reanimated clocks, reading the voice
+    ├── hologram-drawing.ts       # what one frame of the hologram looks like (worklets)
+    ├── jarvis-voice.ts           # Jarvis's voice as the SDK measures it
+    ├── voice-levels.ts           # spectrum folding and easing, frame-rate independent
     ├── settings-screen.tsx
     ├── assist-link.ts            # what "opened by the assistant" looks like
     ├── conversation-token.ts     # minting a conversation token from ElevenLabs
@@ -79,6 +85,24 @@ mobile/
     ├── microphone-permission.ts      # PermissionsAndroid …
     └── microphone-permission.web.ts  # … getUserMedia
 ```
+
+## The hologram
+
+The conversation screen is built around Jarvis as the films drew him: a golden, see-through sphere of broken arcs, specks, glass panels and struts around a knotted core, turning slowly on its own and swelling with his voice.
+
+```
+@elevenlabs/react-native  getOutputVolume / getOutputByteFrequencyData   (native LiveKit processors, ~25 Hz)
+  └─ jarvis-voice.ts      read every 40 ms on the JS thread
+       └─ voice-levels.ts perceivedLevel + foldSpectrum → 24 log-spaced bands (targets)
+            └─ jarvis-hologram-view.tsx   UI thread, every frame: easeLevel/easeBands toward the targets
+                 └─ hologram-drawing.ts   drawHologram(canvas, size, frame, scene, resources) → Skia Picture
+```
+
+What the voice does to it, and why each layer is where it is, is written at the top of `hologram-drawing.ts`. Three things are worth knowing before changing it:
+
+- **It is all worklets.** `drawHologram` and every helper it calls start with `'worklet'` and use only their arguments, because the picture is recorded on the UI thread. The scene (plain numbers, built once from a fixed seed) and the resources (paints, shaders and mutable `PathBuilder`s, built once) are created per mounted canvas and must never be shared between two.
+- **Loudness is eased on the UI thread, not the JS thread.** The SDK refreshes about 25 times a second; easing toward each reading every frame is what keeps the pulse smooth, and `easeLevel` is exponential so the pulse is the same on a 60 Hz and a 120 Hz screen.
+- **It was designed by looking, and is tested by looking.** `hologram-drawing.spec.ts` renders it headlessly through CanvasKit — the same Skia API calls — and asserts on pixels: it moves when silent, loud speech is clearly brighter than silence, which bands are sounding changes the picture, and it stays inside its square. The device check is `.scripts/verify-hologram-on-emulator.sh`, below.
 
 ## Configuration
 
@@ -137,6 +161,11 @@ Versions are pinned exactly, and every one of them has to clear the repository's
 
 It deliberately does **not** pin `react`, `react-native`, `livekit-client` and the LiveKit packages to one copy each, which is the other half of that advice. Bun's store is keyed by version and dependency closure, so it can hold a package twice — 19 of them do here — but none of those five, and bundling with and without the resolver gives the same hash and the same module count. The comment in the file says what the symptom would be if a bump ever splits one of them, and asks you to measure before adding it back.
 
+The hologram adds three native packages, each at the version Expo 57 pins in `bundledNativeModules.json`: `@shopify/react-native-skia` 2.6.2, `react-native-reanimated` 4.5.1 and `react-native-worklets` 0.10.1. Two consequences that are easy to trip over:
+
+- **`turbo initialize` has to have run.** Skia gets its prebuilt native libraries, and `canvaskit.wasm` for the web, from its own postinstall — which never runs here. `.scripts/initialize.sh` does those two copies instead (nothing is downloaded), and `build:apk` and `e2e` depend on it. Without it an Android build fails in CMake and the web hologram cannot load.
+- **`@babel/core` is pinned to 7.29.7 as a dev dependency.** Worklets' Babel plugin compiles each worklet by calling `@babel/core` itself, and declares it as a peer with any version. Left alone, bun satisfied that peer with the Babel 8 that `mastra`'s deployer brings into the workspace, and the release bundle failed with `Requires Babel "^7.0.0-0", but was loaded with "8.0.1"`. The pin gives this package the Babel its Expo preset uses; `mastra` keeps its own 8.
+
 `eas.json` pins bun to `1.3.14` in a `base` profile the three real profiles extend. Without it an EAS build uses whatever bun its image happens to ship, while the repository pins `packageManager` and `engines.bun` — so keep the three in step. It has to be an exact version; the schema validates it with `semver.valid`, which rejects a range.
 
 ## Web
@@ -149,6 +178,8 @@ Two things do differ, and each is a pair of files Metro picks between rather tha
 - **The microphone.** `PermissionsAndroid` is not part of `react-native-web`. `microphone-permission.web.ts` asks by requesting a stream and releasing it again, so a refusal still surfaces as a permission problem rather than as a failed connection.
 
 `platform-contracts.ts` holds the types both halves implement, so neither can drift — nothing else in the app imports both.
+
+The hologram is the third pair, and a different kind: Skia's web build is WebAssembly that has to be fetched before anything Skia-backed can even be imported. `jarvis-hologram.web.tsx` loads the view lazily through `WithSkiaWeb`, holding its space empty meanwhile, and CanvasKit is served from the site root — `turbo initialize` copies `canvaskit.wasm` into `public/`, which the web export publishes — so a browser never reaches for a CDN.
 
 What does **not** work on web is the assistant role, and it never will: it is Android's. The assistant card says that outright instead of offering a setup step that leads nowhere.
 
@@ -168,7 +199,7 @@ Tests must not import React Native or any Expo native module — there is no run
 
 `turbo e2e --filter=mobile` exports the production web build and drives it in Chromium — the real bundle, served over HTTP, clicked through. It runs in CI alongside the rest.
 
-The boundary is the ElevenLabs session, which needs a real API key and real quota. Everything up to it is exercised for real: settings validation, persistence across a reload, the assistant card's web state, and the token request to ElevenLabs — its `xi-api-key` header, agent ID and participant name, and that the key never appears in the URL — along with how a rejected key and an unknown agent are explained. The token URL is intercepted with `page.route`; every other non-localhost request is aborted, and non-local WebSockets are closed, so a test can never dial out. Playwright answers CORS preflights for routed requests itself, so whether ElevenLabs' real CORS policy admits the web build is **not** covered — the test checks instead that the request carries no header besides `xi-api-key`, which is all a preflight would have to allow.
+The boundary is the ElevenLabs session, which needs a real API key and real quota. Everything up to it is exercised for real: settings validation, persistence across a reload, the assistant card's web state, the hologram drawing and moving with CanvasKit loaded from the export's own `canvaskit.wasm`, and the token request to ElevenLabs — its `xi-api-key` header, agent ID and participant name, and that the key never appears in the URL — along with how a rejected key and an unknown agent are explained. The token URL is intercepted with `page.route`; every other non-localhost request is aborted, and non-local WebSockets are closed, so a test can never dial out. Playwright answers CORS preflights for routed requests itself, so whether ElevenLabs' real CORS policy admits the web build is **not** covered — the test checks instead that the request carries no header besides `xi-api-key`, which is all a preflight would have to allow.
 
 Set `CHROMIUM_EXECUTABLE_PATH` to run against a Chromium that Playwright did not install itself — useful in a sandbox that ships a browser of a different build than the pinned `@playwright/test` expects. Leave it unset everywhere else.
 
@@ -210,6 +241,33 @@ Two things that would otherwise ride on reasoning alone have been checked anothe
 
 - The Kotlin compiles against a real `android.jar`, which is what catches a misused framework API.
 - The library manifest merges as intended. Running AGP's own `ManifestMerger2` over the generated app manifest plus this module's and LiveKit's, with `REMOVE_TOOLS_DECLARATIONS` on, puts all four components in the output with `exported="true"` and `BIND_VOICE_INTERACTION` intact, and confirms `blockedPermissions` really does drop LiveKit's `CAMERA`.
+
+### The hologram on a device
+
+`.scripts/verify-hologram-on-emulator.sh` checks what the headless spec cannot: that the hologram animates inside the real app, through Reanimated and native Skia, and pulses with a voice. There is no ElevenLabs session on an emulator, so it builds the release app with `JARVIS_VOICE_REPLAY=1`, which makes Metro swap `jarvis-voice.ts` for `tests/hologram-preview/jarvis-voice.replay.ts`. That replays an espeak-ng line as RMS volume and a 1024-bin spectrum every 40 ms — the spectrum as Web Audio's `AnalyserNode` reports it, which is what the ElevenLabs web SDK hands over — looping six seconds of silence and then the line. The script fills in placeholder settings, records the screen for 180 s, and has `measure-pulse.ts` compare the hologram's brightness in each frame with the level the app should have been drawing. The thresholds were fixed before anything was measured: correlation at least 0.5, and at least 0.2 better than the same voice played backwards. The hologram must also be at least 1.1× brighter while speaking than while silent, and keep moving while silent: the change from one tenth of a second to the next, averaged over each two seconds of silence, must be at least 1/255 per pixel in every one of them. Averaged, because screenrecord only emits a frame when the screen changes, so at an emulator's frame rate most tenth-second pairs are one frame repeated.
+
+The script boots its own AVD, `jarvis-hologram-check`, and prints how to create it when it is missing; a device that is already attached is used instead, and the script says so.
+
+**It passes.** It was run on 2026-09-15 on the same WSL2 machine, against AVD `jarvis-hologram-check`: the same android-34 `google_apis` x86_64 image at 540×960 and 240 dpi, 4 cores, 2 GB, `-gpu swiftshader_indirect`. The results:
+
+| Measure | Result | Threshold |
+| --- | --- | --- |
+| Correlation with the voice | 0.719 | ≥ 0.5 |
+| Correlation with the reversed voice | 0.344 (margin 0.375) | margin ≥ 0.2 |
+| Brightness, speaking ÷ silent | 57.6 ÷ 34.1 = 1.69 | ≥ 1.1 |
+| Mean change per tenth of a second, stillest two seconds of silence | 1.06 (1.69 over all silence, 5.36 speaking) | ≥ 1 in every two seconds |
+
+That last margin is thin, and why matters before anyone reads it as a hologram that nearly stopped. The stillest two seconds were the first after speech ended. They held five distinct frames, like the two seconds after them, each differing from the one before by 4.2/255 per pixel against 7.1–7.6 later. The hologram was moving throughout. What pulls the number down is the emulator's frame rate: with five frames in twenty tenth-second samples, three samples in four are one frame repeated and count as 0. A slower emulator run could fail this check with nothing wrong in the app. The threshold was set before this run and has been left where it is.
+
+An earlier run on the same AVD failed that check, correctly: the clock then capped each frame's step at 100 ms. At the emulator's roughly 370 ms a frame, that turned the hologram at about a quarter of real speed (stillest two seconds 0.99, all silence 1.22). The cap is gone.
+
+The stills it leaves in `tests/hologram-preview/evidence/` show the same thing by eye: during silence, a dim sphere of thin arcs that keeps turning; during speech, a brighter and fuller one.
+
+Read those numbers with three caveats:
+
+- **The voice was replayed eight times slower than it was spoken.** The emulator draws with a software GPU. The recording holds 487 distinct frames in 180 s, about 2.7 a second. Profiling the app on the larger Pixel 6 AVD with `simpleperf` put most of each frame in carrying GL calls through the emulator's pipe: about 64% kernel and GL transport, 12% Skia, 4% Hermes. At that rate, syllables four times a second cannot be followed however correct the app is. The slowdown was set for that reason before any measurement, and it only stretches how long each reading lasts: the folding, the real-time easing, the drawing and the thresholds are unchanged. `-gpu host` crashed this machine's emulator (D3D12/Vulkan under WSL2), and `-gpu guest` fell back to a slower software renderer. Earlier runs stopped on the environment, before producing a measurement: an emulator killed by a segfault while Gradle compiled beside it, "not responding" dialogs over the app, and `adb input text` dropping characters. The script handles each of these.
+- **The replay is not what the Android SDK hands over.** On Android, `getOutputVolume` and `getOutputByteFrequencyData` come from LiveKit's native processors (`@livekit/react-native` 2.12.0), not an `AnalyserNode`. Their spectrum is a comb: the SDK asks for 1024 bars, but at 48 kHz only 169 FFT bins fall in 100–8000 Hz, so every bar between two of them reads 0, and two of the hologram's 24 bands can never light. Their volume reads 16-bit samples from a big-endian `ByteBuffer` over little-endian audio — WebRTC's native library never sets a byte order on it — so anything louder than near-silence reads close to full scale. The spectrum follows from the arithmetic in `MultibandVolumeProcessor.kt`; the byte order is read from the code, not yet seen on a device. Either way, the pulse on a phone would be flatter and more on/off than the replay shows.
+- **Not checked:** how smooth it is on a phone's GPU at full frame rate, and whether it follows a live ElevenLabs session rather than a replay. `jarvis-voice.ts` reads `getOutputVolume` and `getOutputByteFrequencyData` in `try`/`catch` and treats a failure as silence. A real session that never feeds the processors would show a hologram that turns but never swells, not an error.
 
 ## Scope Guidelines for Commits
 

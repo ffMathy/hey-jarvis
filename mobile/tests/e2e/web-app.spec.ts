@@ -130,6 +130,55 @@ test('saves valid settings, shows the conversation, and remembers across a reloa
   await expect(page.getByTestId('api-key')).toHaveCount(0);
 });
 
+test('draws the hologram and keeps it moving, from a CanvasKit the site serves itself', async ({ page }) => {
+  const canvasKitResponses: Array<{ hostname: string; status: number }> = [];
+  page.on('response', (response) => {
+    const url = new URL(response.url());
+    if (url.pathname.endsWith('canvaskit.wasm')) {
+      canvasKitResponses.push({ hostname: url.hostname, status: response.status() });
+    }
+  });
+  const pageErrors: string[] = [];
+  page.on('pageerror', (error) => pageErrors.push(error.message));
+
+  await page.goto('/');
+  await configureElevenLabs(page);
+
+  // Nothing Skia-backed renders until CanvasKit has loaded, so a canvas at all
+  // means the WebAssembly arrived. Every other host is aborted, so it can only
+  // have come from the export's own `public/` — which `turbo initialize` fills.
+  const hologram = page.getByTestId('hologram');
+  await expect(hologram.locator('canvas')).toBeVisible();
+  expect(canvasKitResponses).toEqual([{ hostname: 'localhost', status: 200 }]);
+
+  // It turns on its own, with no conversation open, so each look differs from the
+  // one before. Twice, because the first change could be the first draw landing
+  // on an empty canvas; a picture drawn once and never again fails the second.
+  for (let change = 0; change < 2; change++) {
+    const previousLook = await hologram.screenshot();
+    await expect.poll(async () => (await hologram.screenshot()).equals(previousLook), { timeout: 10000 }).toBe(false);
+  }
+
+  expect(pageErrors).toEqual([]);
+});
+
+test('keeps the conversation screen working when CanvasKit cannot load', async ({ page }) => {
+  await page.route('**/canvaskit.wasm', async (route: Route) => {
+    await route.fulfill({ status: 404, body: 'Not found' });
+  });
+
+  await page.goto('/');
+  await configureElevenLabs(page);
+
+  // The hologram is decoration. Waiting for its placeholder means the failed load
+  // has already happened, so the rest of the screen — the part that talks to
+  // Jarvis — is checked after it, not before it had the chance to break.
+  await expect(page.getByTestId('hologram-unavailable')).toBeVisible();
+  await expect(page.getByTestId('hologram').locator('canvas')).toHaveCount(0);
+  await expect(page.getByTestId('talk')).toBeEnabled();
+  await expect(page.getByTestId('conversation-status')).toHaveText('Standing by.');
+});
+
 test('asks ElevenLabs for a conversation token for the agent, with the API key', async ({ page }) => {
   const tokenRequests: Array<{ url: URL; method: string; headers: Record<string, string> }> = [];
 

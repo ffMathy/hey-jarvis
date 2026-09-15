@@ -2,8 +2,8 @@
 # Run mobile tests.
 #
 # Everything here is offline by design. The suite covers the pure TypeScript the
-# app is built out of — the assist deep link, the server settings, the token
-# client — and none of it needs a device, an emulator or a credential, so it
+# app is built out of — the assist deep link, the ElevenLabs settings, the token
+# client, the voice levels and the hologram, drawn headlessly — and none of it needs a device, an emulator or a credential, so it
 # runs on every push alongside the rest of the mocked suite.
 #
 # Usage:

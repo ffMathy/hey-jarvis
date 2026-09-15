@@ -1,12 +1,24 @@
 import { useConversationControls, useConversationMode, useConversationStatus } from '@elevenlabs/react-native';
 import * as Linking from 'expo-linking';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  StatusBar as NativeStatusBar,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { type AssistantRegistration, openAssistantSettings } from '../modules/jarvis-assistant';
 import { createAssistLaunchClaim } from './assist-link';
 import { requestConversationToken } from './conversation-token';
-import { requestMicrophoneAccess } from './microphone-permission';
 import type { ElevenLabsSettings } from './elevenlabs-settings';
+import { JarvisHologram } from './jarvis-hologram';
+import { useJarvisVoice } from './jarvis-voice';
+import { requestMicrophoneAccess } from './microphone-permission';
 import { theme } from './theme';
 import { useAssistantRegistration } from './use-assistant-registration';
 
@@ -17,6 +29,9 @@ interface ConversationScreenProps {
 
 /** Summonings already acted on in this process. */
 const claimAssistLaunch = createAssistLaunchClaim();
+
+/** The hologram never grows past this, however wide the screen: beyond it, it stops reading as a presence and starts reading as wallpaper. */
+const MAXIMUM_HOLOGRAM_SIZE = 380;
 
 /** Whether a conversation is open, or on its way to being open. */
 function isLive(status: string): boolean {
@@ -36,6 +51,9 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
   const { status } = useConversationStatus();
   const { mode } = useConversationMode();
   const registration = useAssistantRegistration();
+  const voice = useJarvisVoice();
+  const { width } = useWindowDimensions();
+  const hologramSize = Math.min(width - theme.spacing.large * 2, MAXIMUM_HOLOGRAM_SIZE);
 
   const [problem, setProblem] = useState<string | undefined>(undefined);
   const [isStarting, setIsStarting] = useState(false);
@@ -95,6 +113,15 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
       <Text style={styles.status} testID="conversation-status">
         {describeState(status, mode)}
       </Text>
+
+      <View
+        accessible
+        accessibilityLabel="Jarvis hologram"
+        style={{ width: hologramSize, height: hologramSize }}
+        testID="hologram"
+      >
+        <JarvisHologram size={hologramSize} voice={voice} />
+      </View>
 
       <Pressable
         accessibilityRole="button"
@@ -231,6 +258,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: theme.spacing.large,
+    // The app draws edge to edge, and with the hologram the screen is taller than
+    // a small phone: scrolled to the top, the title would sit under the status bar.
+    paddingTop: theme.spacing.large + (NativeStatusBar.currentHeight ?? 0),
     gap: theme.spacing.large,
   },
   title: {
@@ -243,10 +273,13 @@ const styles = StyleSheet.create({
     color: theme.colors.mutedText,
     fontSize: 16,
   },
+  // A pill rather than the large disc it used to be: the hologram above it is
+  // what the eye should land on, and the button only has to be easy to hit.
   talkButton: {
-    width: 168,
-    height: 168,
-    borderRadius: 84,
+    minWidth: 168,
+    height: 56,
+    borderRadius: 28,
+    paddingHorizontal: theme.spacing.large,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: theme.colors.accent,

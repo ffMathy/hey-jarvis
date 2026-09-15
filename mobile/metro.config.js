@@ -42,4 +42,22 @@ config.resolver.nodeModulesPaths = [
 // it on the strength of the reasoning: that is how it came to be here the first
 // time.
 
+// For `.scripts/verify-hologram-on-emulator.sh` only: an emulator has no
+// ElevenLabs session, so that script bundles the app with a recorded voice in
+// place of the live one. Only `src/`'s own import of `./jarvis-voice` is
+// redirected, and only when the script sets the variable — an ordinary build,
+// and every CI build, never takes this branch.
+if (process.env.JARVIS_VOICE_REPLAY === '1') {
+  const sourceRoot = path.join(projectRoot, 'src') + path.sep;
+  const replayVoice = path.join(projectRoot, 'tests', 'hologram-preview', 'jarvis-voice.replay.ts');
+  const defaultResolveRequest = config.resolver.resolveRequest;
+
+  config.resolver.resolveRequest = (context, moduleName, platform) => {
+    if (moduleName === './jarvis-voice' && context.originModulePath.startsWith(sourceRoot)) {
+      return { type: 'sourceFile', filePath: replayVoice };
+    }
+    return (defaultResolveRequest ?? context.resolveRequest)(context, moduleName, platform);
+  };
+}
+
 module.exports = config;
