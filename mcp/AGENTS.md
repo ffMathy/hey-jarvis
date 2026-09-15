@@ -516,61 +516,90 @@ Only stops when 100% certain about:
 - "What are the expected inputs and outputs?"
 - "Are there any existing patterns to follow?"
 
-### Routing Planner Agent
-Plans the task DAG that fulfils a voice request, and nothing else:
-- **No tools, no sub-agents**: it emits the graph; `routingWorkflow` executes it
-- **Structured output**: returns `{ tasks: [{ id, agent, prompt, dependsOn }] }`
-- **Agent catalog as input**: receives every public agent's ID, description and tool names
-- **Dependencies model data flow**: a task lists the IDs of the tasks whose results it needs
+### Routing Supervisor Agent
+Fulfils a voice request by delegating each part of it to the specialized agents:
+- **The ten public agents are its subagents**, so Mastra generates one delegation tool per agent
+- **No tools of its own**: every tool it has is a delegation
+- **No memory**: the request is the supervisor's to hold, not to remember across calls
 
-Separating planning from execution is what makes the routing graph inspectable. The plan is a
-value the workflow owns, so every task shows up as a step in Mastra Studio instead of being
-buried inside one agent's tool-call loop.
+Ordering, parallelism and dependency passing are the model's job inside its own delegation loop.
+That replaced a planner that emitted a task DAG for a separate wave scheduler to execute —
+around a thousand lines of planner, sanitizer, wave loop, completion registry and report
+bookkeeping. What was lost with it is a Studio *graph* of the machinery; what a given request
+actually did is in the Observability tab, per delegation, which is the more useful of the two.
 
-The plan is sanitized before it runs: tasks assigned to unknown agents are dropped, duplicate
-IDs are collapsed, and dependencies on non-existent tasks (as well as any edge that would close
-a cycle) are removed, so a hallucinated graph can never deadlock the executor.
+Its subagents are handed a memory with semantic recall and working memory both off. Delegation
+runs a subagent memory-backed, which the DAG executor never did — it called `agent.generate()`
+with no memory option, so the agents' own `Memory` was inert. A subagent is asked one
+self-contained question and answers it, so there is nothing across calls to recall, and the
+hosted embedder would only buy latency on the one path that cannot afford it.
 
 *Note: Additional agents will be added as the project evolves.*
 
 ## Available Workflows
 
-### Routing Workflow (DAG)
-The entry point for every voice request. It is a plain Mastra workflow that plans a DAG and then
-executes it wave by wave, suspending whenever it has something to report.
+### Routing
+The entry point for every voice request. Two MCP tools, deliberately: the voice model gets a
+small, fast surface, and everything else happens behind them.
 
 **Workflows:**
-- **`routingWorkflow`**: the DAG engine — plan, hand off, execute, report, repeat
-- **`routePromptWorkflow`**: MCP tool that starts a `routingWorkflow` run for a user query
-- **`getNextInstructionsWorkflow`**: MCP tool that resumes that run and returns what finished since the last call
-- **`getCurrentDagWorkflow`**: inspects the planned graph and each task's status
+- **`routePromptWorkflow`**: starts a request and returns at once, with the session to poll
+- **`getNextInstructionsWorkflow`**: reports whatever has landed since the last call
 
-**Workflow Steps:**
-1. **`plan-tasks`**: Routing Planner Agent turns the query into a task DAG, stored as workflow state
-2. **`hand-off-to-caller`**: suspends immediately, so `routePromptWorkflow` can return the pending task IDs
-3. **`routingWaveWorkflow`** (looped with `.dountil()` until every task has finished):
-   - **`select-ready-tasks`**: picks the tasks whose dependencies have all finished
-   - **`execute-task`** (`.foreach()`, concurrency 5): calls the assigned agent, with its dependencies' results appended to the prompt
-   - **`record-task-results`**: writes the results back into workflow state
-   - **`report-progress`**: suspends with the newly finished results
-4. **`finalize-routing`**: returns the final batch of results as the workflow output
+**How a request runs:**
+1. `routePromptWorkflow` hands the query to the supervisor's session and returns immediately —
+   it does not wait for the supervisor, let alone for the agents it delegates to.
+2. The supervisor works out which agents cover which parts, and delegates. Every delegation is
+   dispatched as a **background task**, so its own turn ends as soon as it has asked.
+3. `getNextInstructionsWorkflow` reads the task records for the session and reports the ones
+   that have settled since the last poll. A result is handed over exactly once.
+4. When the supervisor's turn has ended *and* no task is still running, the request is done and
+   the closing report recaps everything.
 
-**Suspend/Resume Contract:**
-Each suspension is one poll from Jarvis. `routePromptWorkflow` starts the run and reads the
-hand-off suspension; every `getNextInstructionsWorkflow` call resumes it, which runs the next
-wave and suspends again. Leaf tasks (nothing depends on them) carry the answers the user asked
-for, so their results are handed over with an instruction to summarize; intermediate tasks only
-get a brief acknowledgement. When `async: true`, nobody is going to poll, so the workflow is
-driven to completion in the background instead.
+**Why background tasks:**
+A delegation is a durable row — status, result, error — scoped to the session's `resourceId`,
+not a promise held in this process. So a result survives a restart between the call that
+started it and the call that asks for it; `taskIdsInProgress` can name what is outstanding
+instead of asserting there is nothing; concurrency, retries and timeouts are the framework's;
+and a failure arrives with the underlying error on the record rather than a wrapper that has
+lost it.
 
-**Failure Handling:**
-An agent that throws fails only its own task — the rest of the wave still completes. If a wave
-selects no tasks while work is outstanding, the remaining tasks are failed rather than looped on.
+The supervisor's turn ending is **not** the request ending. It dispatches work that outlives
+it, which is the whole point, so a poll that treated `agent_end` as completion would close the
+loop on answers that had not arrived.
 
-**Testing in Studio:**
-`routingWorkflow` is registered on the Mastra instance, so it can be run straight from Studio:
-fill in a `userQuery`, watch the planner produce the graph, follow each task's agent call, and
-resume the suspensions by hand.
+**Polling contract:**
+A poll blocks up to `POLL_DEADLINE_MS` (5s) waiting for something to report, then says so and
+asks to be called again. That deadline has to fit inside ElevenLabs' `cascadeTimeoutSeconds`
+(8s): a poll that times out at the ElevenLabs boundary is a *lost* answer, not a delayed one.
+The closing report recaps every result, including ones earlier polls already relayed, so a
+response dropped on the way cannot lose an answer for good.
+
+**Two tools, deliberately:**
+The voice model gets `routePromptWorkflow` and `getNextInstructionsWorkflow` and nothing else.
+That is a hard constraint, not an accident of the current design: the model on the call is
+chosen for speed, and every extra tool is surface it has to reason about on a latency budget
+that has no room for it.
+
+It is also the reason there is no approval gate on this path. Gating a delegation means parking
+the run and asking, and an answer needs a tool to come back through — a third tool, which the
+constraint above rules out. A gate the caller cannot answer is worse than no gate: the run
+parks, every poll repeats the same question, and the request never finishes.
+
+Mastra names a delegation tool `agent-<id>`, not `<id>`, and records it under that name on the
+task row, so the prefix comes off before the name is read as an agent id — otherwise a report
+names `agent-weather` where it means `weather`.
+
+**Concurrent callers:**
+`createSession({ resourceId })` is get-or-create and isolated, and the task records are scoped
+by the same `resourceId`. Two callers get two sessions and neither can see the other's
+delegations.
+
+**Inspecting a request:**
+Traces, in Studio's Observability tab — model calls, each delegation, timings and errors for
+one request. Workflows are the only thing Studio draws as a graph, and the graph of this
+machinery would be the same picture every time; what varies is which agents were asked and what
+they said, which is what a trace shows.
 
 ### 📅 Workflow Scheduling
 

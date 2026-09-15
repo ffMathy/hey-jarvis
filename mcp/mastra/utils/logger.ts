@@ -86,20 +86,50 @@ export function unwrapErrors(value: unknown, depth = 0): unknown {
 }
 
 /**
- * Creates a Pino logger that prints errors instead of swallowing them.
+ * Makes a logger print the exceptions Mastra hands it, and its children do the same.
  *
- * Use this rather than constructing `PinoLogger` directly, so that every logger in the
- * process — including the one handed to Mastra itself, which is what reports workflow and
- * scheduler failures — shares the same error handling.
+ * `trackException` is how Mastra reports an error it has already handled — and
+ * `PinoLogger`'s implementation forwards it to the observability adapter and nowhere else,
+ * so with no telemetry backend attached the error is simply gone. Nothing prints it.
+ *
+ * That is not a theoretical gap. Routing delegations are wrapped in a `MastraError` whose
+ * message is `[Agent:RoutingSupervisor] - Failed agent tool execution for calendar`, the
+ * real failure kept only as its `cause`; the wrapper is tracked and then thrown. A live run
+ * failed every delegation it made and the log named the agents without once saying what
+ * went wrong, because the only copy of the reason went to an adapter that was not there.
+ *
+ * The children matter as much as the root. `MastraBase.__setLogger` gives every agent,
+ * workflow and storage provider `logger.child({ component })`, and a child is built by
+ * Pino's own class — so behaviour added by subclassing the root is exactly what an agent
+ * does not get. Patching the instance, and its children as they are made, is what reaches
+ * the loggers that actually report these failures.
+ *
+ * `cause` is what {@link unwrapErrors} was written to follow, so printing the tracked error
+ * as an ordinary field is all it takes to get the reason back.
  */
+function printTrackedExceptions(logger: PinoLogger): PinoLogger {
+  const trackException = logger.trackException.bind(logger);
+  const child = logger.child.bind(logger);
+
+  logger.trackException = (error: Error, metadata?: Record<string, unknown>) => {
+    logger.error('Tracked exception', { ...metadata, error });
+    trackException(error, metadata);
+  };
+  logger.child = (bindings: Record<string, unknown>) => printTrackedExceptions(child(bindings));
+
+  return logger;
+}
+
 export function createLogger(name: string): PinoLogger {
-  return new PinoLogger({
-    name,
-    level: 'info',
-    formatters: {
-      log: (object: Record<string, unknown>) => unwrapErrors(object) as Record<string, unknown>,
-    },
-  });
+  return printTrackedExceptions(
+    new PinoLogger({
+      name,
+      level: 'info',
+      formatters: {
+        log: (object: Record<string, unknown>) => unwrapErrors(object) as Record<string, unknown>,
+      },
+    }),
+  );
 }
 
 /**

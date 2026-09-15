@@ -31,13 +31,8 @@ import { getInternetOfThingsAgent, internetOfThingsTools } from './verticals/int
 import { getNotificationAgent, notificationTools } from './verticals/notification/index.js';
 import { phoneTools } from './verticals/phone/index.js';
 import { presenceShortcuts } from './verticals/presence/index.js';
-import { getRoutingPlannerAgent } from './verticals/routing/agents.js';
-import {
-  getCurrentDagWorkflow,
-  getNextInstructionsWorkflow,
-  routePromptWorkflow,
-  routingWorkflow,
-} from './verticals/routing/workflows.js';
+import { getRoutingSupervisorAgent } from './verticals/routing/agents.js';
+import { getNextInstructionsWorkflow, routePromptWorkflow } from './verticals/routing/workflows.js';
 import { getShoppingListAgent, getShoppingListSummaryAgent, shoppingTools } from './verticals/shopping/index.js';
 import { getStateChangeReactorAgent, synapseTools } from './verticals/synapse/index.js';
 import { getTodoListAgent, todoListTools } from './verticals/todo-list/index.js';
@@ -65,8 +60,9 @@ const mastraLogger = createLogger('Mastra');
 
 export async function getMastra(): Promise<Mastra> {
   return new Mastra({
-    // Without this Mastra keeps workflow runs, schedules and traces in RAM and loses
-    // them on restart. See getMastraStorageProvider for why observability is composed.
+    // Without this Mastra keeps workflow runs, schedules, background tasks and traces in
+    // RAM and loses them on restart. See getMastraStorageProvider for why observability is
+    // composed.
     storage: await getMastraStorageProvider(),
     // Mastra reports its own failures — a workflow run that could not be restarted at
     // boot, a scheduler tick that threw — by handing the error to this logger as a plain
@@ -103,9 +99,7 @@ export async function getMastra(): Promise<Mastra> {
       formRepliesDetectionWorkflow,
       iotMonitoringWorkflow,
       routePromptWorkflow,
-      getCurrentDagWorkflow,
       getNextInstructionsWorkflow,
-      routingWorkflow,
     },
     agents: toAgentMap([
       await getCalendarAgent(),
@@ -117,7 +111,7 @@ export async function getMastra(): Promise<Mastra> {
       await getInternetOfThingsAgent(),
       await getNotificationAgent(),
       await getRequirementsInterviewerAgent(),
-      await getRoutingPlannerAgent(),
+      await getRoutingSupervisorAgent(),
       await getShoppingListAgent(),
       await getShoppingListSummaryAgent(),
       await getStateChangeReactorAgent(),

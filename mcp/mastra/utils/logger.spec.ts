@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'bun:test';
-import { unwrapErrors } from './logger';
+import { describe, expect, it, mock } from 'bun:test';
+import { createLogger, unwrapErrors } from './logger';
 
 /**
  * The symptom these tests pin down:
@@ -106,5 +106,60 @@ describe('unwrapErrors', () => {
     cyclic.self = cyclic;
 
     expect(() => unwrapErrors(cyclic)).not.toThrow();
+  });
+});
+
+/**
+ * `trackException` is how Mastra reports an error it has already handled, and Pino's own
+ * implementation forwards it to the observability adapter and nowhere else. With no
+ * telemetry backend attached that is a silent drop: a live routing run failed seven
+ * delegations out of eight and the log named the agent seven times without once saying why.
+ */
+describe('createLogger', () => {
+  it('prints a tracked exception instead of forwarding it into the void', () => {
+    const logger = createLogger('test');
+    const error = new Error('[Agent:RoutingSupervisor] - Failed agent tool execution for calendar', {
+      cause: new Error('Could not load the default credentials'),
+    });
+    const printed = mock();
+    logger.error = printed;
+
+    logger.trackException(error);
+
+    expect(printed).toHaveBeenCalledTimes(1);
+    const [, fields] = printed.mock.calls[0] as [string, { error: Error }];
+    expect(fields.error).toBe(error);
+  });
+
+  it('prints one from a child logger, which is the only kind an agent is given', () => {
+    // `MastraBase.__setLogger` hands every agent `logger.child({ component })`, and Pino
+    // builds that child from its own class. A root-only fix reaches nothing that reports
+    // a delegation failure.
+    const child = createLogger('test').child({ component: 'AGENT' });
+    const printed = mock();
+    child.error = printed;
+
+    child.trackException(new Error('boom'));
+
+    expect(printed).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps printing however deep the child chain goes', () => {
+    const grandchild = createLogger('test').child({ component: 'AGENT' }).child({ runId: 'abc' });
+    const printed = mock();
+    grandchild.error = printed;
+
+    grandchild.trackException(new Error('boom'));
+
+    expect(printed).toHaveBeenCalledTimes(1);
+  });
+
+  it('carries the cause, which is the only place the real failure is kept', () => {
+    const cause = new Error('Could not load the default credentials');
+    const wrapper = new Error('[Agent:RoutingSupervisor] - Failed agent tool execution for calendar', { cause });
+
+    const unwrapped = unwrapErrors({ error: wrapper }) as { error: { cause: { message: string } } };
+
+    expect(unwrapped.error.cause.message).toBe('Could not load the default credentials');
   });
 });
