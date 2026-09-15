@@ -12,10 +12,10 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
-import type { AgentControllerEvent } from '@mastra/core/agent-controller';
 import {
   buildSnapshot,
   DEFAULT_ROUTING_SESSION_ID,
+  type RoutingEvent,
   RoutingProgress,
   type RoutingRuntime,
   resetRoutingRuntime,
@@ -50,12 +50,7 @@ let nextToolCallId = 0;
 function startDelegation(sessionId: string, agentId: string): string {
   nextToolCallId += 1;
   const toolCallId = `call-${agentId}-${nextToolCallId}`;
-  progressFor(sessionId).handle({
-    type: 'tool_start',
-    toolCallId,
-    toolName: `agent-${agentId}`,
-    args: {},
-  });
+  progressFor(sessionId).handle({ type: 'tool_start', toolCallId, toolName: `agent-${agentId}` });
   return toolCallId;
 }
 
@@ -92,21 +87,14 @@ async function runWorkflow<TInput, TResult>(
   return run.start({ inputData });
 }
 
-function assistantMessage(text: string): AgentControllerEvent {
-  return {
-    type: 'message_end',
-    message: {
-      id: 'assistant-1',
-      role: 'assistant',
-      content: { format: 2, parts: [{ type: 'text', text }] },
-      createdAt: new Date(),
-    },
-  };
+/** The supervisor's own closing words, which arrive a fragment at a time. */
+function assistantText(text: string): RoutingEvent {
+  return { type: 'text', text };
 }
 
 /** The supervisor's own loop ending, which ends the request: delegations run inside it. */
 function endSupervisorTurn(progress: RoutingProgress): void {
-  progress.handle({ type: 'agent_end' });
+  progress.handle({ type: 'finished' });
 }
 
 type WorkflowResult<T> = { status: string; result?: T };
@@ -231,22 +219,6 @@ describe('getNextInstructionsWorkflow', () => {
     expect(calendar?.result).toContain('did not report a result');
   });
 
-  it('reports an approval it cannot answer instead of waiting for one that never comes', async () => {
-    await runWorkflow(routePromptWorkflow, { userQuery: 'send an email', async: false });
-    const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
-    startDelegation(DEFAULT_ROUTING_SESSION_ID, 'email');
-
-    // Nothing on this path can approve — the voice model has two tools and neither is an
-    // approval — so the run would park until the session was torn down.
-    progress.handle({ type: 'tool_approval_required', toolCallId: 'call-email-1', toolName: 'agent-email', args: {} });
-
-    const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
-
-    expect(outcome.instructions).toContain('could not be completed');
-    expect(outcome.instructions).toContain('email');
-    expect(outcome.taskIdsInProgress).toEqual([]);
-  });
-
   it('still hands over the results that landed before a failure', async () => {
     await runWorkflow(routePromptWorkflow, { userQuery: 'weather and calendar', async: false });
     const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
@@ -269,7 +241,7 @@ describe('getNextInstructionsWorkflow', () => {
     expect(first.completedTaskResults).toHaveLength(1);
 
     delegate(DEFAULT_ROUTING_SESSION_ID, 'calendar', 'Dentist at four.');
-    progress.handle(assistantMessage('Eight degrees, and the dentist at four.'));
+    progress.handle(assistantText('Eight degrees, and the dentist at four.'));
     endSupervisorTurn(progress);
 
     const closing = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));

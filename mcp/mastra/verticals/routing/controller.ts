@@ -1,27 +1,27 @@
 import type { Agent } from '@mastra/core/agent';
-import type { AgentControllerEvent, ToolCategory } from '@mastra/core/agent-controller';
-import { AgentController } from '@mastra/core/agent-controller';
-import { getSqlStorageProvider } from '../../storage/index.js';
 import { logger } from '../../utils/logger.js';
 import { getRoutingSupervisorAgent, ROUTING_SUPERVISOR_AGENT_ID } from './agents.js';
 
 /**
- * The routing runtime: one shared AgentController, one Session per caller.
+ * The routing runtime: the supervisor, run directly, one buffer per caller.
  *
- * The Session owns request identity. The implementation this replaced kept the in-flight
- * request in a module-global, so a second request replaced the first and the poll tool —
- * which takes no arguments, and so cannot say which request it is asking about — could only
- * ever be answered from whichever request happened to be last. `createSession({ resourceId })`
- * is get-or-create and isolated, and it is what makes concurrent requests safe.
+ * This drove the supervisor through an `AgentController` Session until an integration test
+ * settled that the two do not compose. The same weather question answers in five seconds
+ * when the supervisor is asked directly, and fails every time through the controller.
  *
- * The Session also owns what the poll reports. Delegations run inside the supervisor's own
- * turn, so the session's event stream is where they surface: `tool_start` opens one and
- * `tool_end` carries its answer. Durable background tasks were tried for this and did not
- * work — a live run announced three delegations and the task manager held no rows for any of
- * them — so nothing about a request lives in storage, and nothing has to be read back from
- * there.
+ * The mechanism is that the controller never calls `agent.stream()` -- it drives the agent
+ * through `sendSignal` and `queueMessage` -- while every branch of Mastra's delegation tool
+ * that actually runs a subagent is gated on `methodType` being one of `generate`,
+ * `generateLegacy`, `stream` or `streamLegacy`. A signal-driven turn takes none of them, so
+ * the subagent is never run: no span, no error from the agent, and eight rounds of
+ * instrumentation on the subagent that never fired once.
+ *
+ * So the supervisor is run directly and its chunk stream is read here. Everything the
+ * controller was adopted for has a smaller local equivalent: request identity is the buffer
+ * map below, superseding is an `AbortController`, and the chunks report delegations better
+ * than the session events did -- `tool-error` carries the error itself, where the session
+ * had already flattened it to a message by the time a poll could read it.
  */
-
 /**
  * The session every caller shares when none identifies itself.
  *
@@ -47,26 +47,23 @@ export function agentIdFromDelegationTool(toolName: string): string {
 }
 
 /**
- * The one permission category every tool on this path belongs to, so that it can be granted.
+ * What a routing request can report, folded from the supervisor's chunk stream.
  *
- * The controller runs the supervisor with `requireToolApproval` on -- there is no way to turn
- * that off from the public API -- and resolves each call through a chain that ends in
- * `ask`: an explicit per-tool policy, session-wide yolo, a session grant, then the tool's
- * category. A tool that matches nothing falls off the end of that chain and parks.
- *
- * Removing the approval gate removed the category resolver with it, which left every
- * delegation matching nothing: `getToolCategory` answers `null` without one, so the category
- * branch is skipped entirely and every call resolves to `ask`. A live run showed exactly
- * that -- three delegations opened and none of them ever answered -- because `ask` on this
- * path means parked forever. Nothing can approve: the voice model has two tools and neither
- * is an approval.
- *
- * So the tools are given a category and {@link grantRoutingPermissions} grants it. `other`
- * is what Mastra documents as an unmapped tool's category; naming it is what makes it
- * grantable. This covers the controller's own built-in tools as well as the delegations,
- * which is the point of doing it by category rather than by tool name.
+ * Its own union rather than Mastra's chunk type, because only these five things change what
+ * a poll may say and the chunk union is wide. Naming them here is also what lets the poll
+ * loop be tested without a model: the spec feeds these directly.
  */
-const ROUTING_TOOL_CATEGORY: ToolCategory = 'other';
+export type RoutingEvent =
+  /** A delegation was asked for. */
+  | { type: 'tool_start'; toolCallId: string; toolName: string }
+  /** A delegation answered, or failed with `isError`. */
+  | { type: 'tool_end'; toolCallId: string; result: unknown; isError: boolean }
+  /** A fragment of the supervisor's own closing words. */
+  | { type: 'text'; text: string }
+  /** The run failed outright. */
+  | { type: 'error'; message: string }
+  /** The supervisor's turn ended. */
+  | { type: 'finished' };
 
 /** One delegation that has finished, as the poll loop reports it. */
 export interface DelegationOutcome {
@@ -160,8 +157,8 @@ export class RoutingProgress {
     return !this.agentFinished && this.all.length === 0 && this.inFlightByToolCallId.size === 0;
   }
 
-  /** Folds one session event into the buffer. */
-  handle(event: AgentControllerEvent): void {
+  /** Folds one event from the supervisor's run into the buffer. */
+  handle(event: RoutingEvent): void {
     if (event.type === 'tool_start') {
       const agentId = agentIdFromDelegationTool(event.toolName);
       this.inFlightByToolCallId.set(event.toolCallId, agentId);
@@ -188,32 +185,19 @@ export class RoutingProgress {
       return;
     }
 
-    if (event.type === 'message_end' && event.message.role === 'assistant') {
-      const text = extractText(event.message);
-      if (text) {
-        this.summary = text;
-      }
-      return;
-    }
-
-    if (event.type === 'tool_approval_required') {
-      // Unreachable while the category grant holds, and an unbounded wait if it ever stops
-      // holding: the run parks until something approves, and on this path nothing can --
-      // the voice model has two tools and neither is an approval. Reporting it is the
-      // difference between a caller that hears why its request died and one that polls
-      // until the call is dropped.
-      this.fail(
-        `Routing was asked to approve a call to ${agentIdFromDelegationTool(event.toolName)}, which it has no way to answer.`,
-      );
+    if (event.type === 'text') {
+      // The supervisor's closing words arrive a fragment at a time, so they accumulate
+      // rather than replace: keeping only the last chunk would report its last few letters.
+      this.summary = (this.summary ?? '') + event.text;
       return;
     }
 
     if (event.type === 'error') {
-      this.fail(event.error.message);
+      this.fail(event.message);
       return;
     }
 
-    if (event.type === 'agent_end') {
+    if (event.type === 'finished') {
       logger.info('Routing supervisor finished its turn', {
         delegations: this.all.length,
         unanswered: this.inFlightByToolCallId.size,
@@ -264,30 +248,6 @@ export function formatDelegationResult(result: unknown): string {
     return result.text;
   }
   return JSON.stringify(result ?? null);
-}
-
-/** Pulls the plain text out of an assistant message, whatever parts it is built from. */
-function extractText(message: { content?: unknown }): string {
-  const content = message.content;
-  if (typeof content === 'string') {
-    return content;
-  }
-  if (!content || typeof content !== 'object' || !('parts' in content) || !Array.isArray(content.parts)) {
-    return '';
-  }
-
-  return content.parts
-    .filter((part): part is { type: 'text'; text: string } => {
-      return (
-        typeof part === 'object' &&
-        part !== null &&
-        (part as { type?: unknown }).type === 'text' &&
-        typeof (part as { text?: unknown }).text === 'string'
-      );
-    })
-    .map((part) => part.text)
-    .join('')
-    .trim();
 }
 
 /** What one poll can see of a request. */
@@ -345,25 +305,22 @@ interface RoutingMastra {
   getAgentById(id: string): Agent;
 }
 
-let controller: AgentController | undefined;
 let registry: RoutingMastra | undefined;
 const progressBySessionId = new Map<string, RoutingProgress>();
+const abortBySessionId = new Map<string, AbortController>();
 
 /**
  * Remembers the Mastra instance the routing workflows are running under.
  *
- * The controller has to drive the supervisor that is *registered* on that instance, not a
- * second copy of it: `getRoutingSupervisorAgent()` builds a fresh agent per call, so calling
- * it here produced an agent the instance had never seen, whose `mastra` handle was
- * undefined.
+ * The supervisor that is *registered* on that instance is the one to drive, not a second
+ * copy: `getRoutingSupervisorAgent()` builds a fresh agent per call, so calling it here
+ * produced an agent the instance had never seen, whose `mastra` handle was undefined.
  *
  * It arrives through the workflow steps because importing the instance directly would close
- * an import cycle — the instance imports these workflows in order to register them.
+ * an import cycle -- the instance imports these workflows in order to register them.
  */
 export function rememberMastraRegistry(mastra: RoutingMastra | undefined): void {
   if (!mastra) {
-    // The steps are the only route to the instance, so losing it here disables both the
-    // registered supervisor and the task manager -- and does so quietly.
     logger.warn('Routing workflow step ran without a Mastra instance');
     return;
   }
@@ -375,7 +332,7 @@ export function rememberMastraRegistry(mastra: RoutingMastra | undefined): void 
 }
 
 /**
- * The supervisor the controller drives.
+ * The supervisor to run.
  *
  * Falls back to building one only when there is no instance to ask, which in practice means
  * a caller that never went through the workflows. It is warned about rather than done
@@ -400,92 +357,128 @@ async function resolveSupervisorAgent(): Promise<Agent> {
   return getRoutingSupervisorAgent();
 }
 
-async function getController(): Promise<AgentController> {
-  if (controller) {
-    return controller;
-  }
-
-  controller = new AgentController({
-    id: 'routing-controller',
-    agent: await resolveSupervisorAgent(),
-    storage: await getSqlStorageProvider(),
-    // Without this every tool resolves to `ask` and parks. See ROUTING_TOOL_CATEGORY.
-    toolCategoryResolver: () => ROUTING_TOOL_CATEGORY,
-    // One mode. The controller's mode machinery exists for plan/build/review style
-    // applications; routing has a single job and switches between nothing.
-    modes: [{ id: 'route', name: 'Route', metadata: { default: true } }],
-  });
-
-  await controller.init();
-  return controller;
-}
-
-/**
- * The session for a caller, and the buffer its events accumulate into.
- *
- * `createSession` is get-or-create, so the subscription is attached only the first time —
- * subscribing again per request would deliver each event to the buffer once per past
- * request.
- */
-async function getSession(sessionId: string) {
-  const session = await (await getController()).createSession({ resourceId: sessionId });
-
-  // In-memory and idempotent, so it costs nothing to reassert and cannot be missed by a
-  // session that outlived the grant. This is the half of the permission fix that makes the
-  // category mean "allowed" rather than merely "named".
-  session.grantCategory(ROUTING_TOOL_CATEGORY);
-
+/** The buffer a caller's request accumulates into. Get-or-create, so callers stay isolated. */
+function progressFor(sessionId: string): RoutingProgress {
   const existing = progressBySessionId.get(sessionId);
-
   if (existing) {
-    return { session, progress: existing };
+    return existing;
   }
 
   const progress = new RoutingProgress();
   progressBySessionId.set(sessionId, progress);
-  session.subscribe((event) => progress.handle(event));
-
-  return { session, progress };
+  return progress;
 }
 
-const agentControllerRuntime: RoutingRuntime = {
-  async start(sessionId, userQuery) {
-    const { session, progress } = await getSession(sessionId);
+/** One chunk off the supervisor's stream, as far as routing needs to read it. */
+function asRoutingEvent(chunk: unknown): RoutingEvent | undefined {
+  if (typeof chunk !== 'object' || chunk === null || !('type' in chunk) || !('payload' in chunk)) {
+    return undefined;
+  }
 
-    // A new request on the same session supersedes the old one, which is what the caller
-    // means: the voice assistant has moved on. Aborting is what makes that true rather than
-    // leaving the previous run delegating in the background.
-    if (!progress.agentFinished && !progress.isIdle()) {
+  const { type, payload } = chunk;
+  if (typeof type !== 'string' || typeof payload !== 'object' || payload === null) {
+    return undefined;
+  }
+
+  const field = (name: string): unknown => (name in payload ? Reflect.get(payload, name) : undefined);
+  const toolCallId = field('toolCallId');
+
+  if (type === 'tool-call' && typeof toolCallId === 'string') {
+    const toolName = field('toolName');
+    return { type: 'tool_start', toolCallId, toolName: typeof toolName === 'string' ? toolName : '' };
+  }
+
+  if (type === 'tool-result' && typeof toolCallId === 'string') {
+    return { type: 'tool_end', toolCallId, result: field('result'), isError: field('isError') === true };
+  }
+
+  // The reason a delegation failed, still an error rather than the message Mastra flattens
+  // it to downstream. This is the chunk the old session events could not carry.
+  if (type === 'tool-error' && typeof toolCallId === 'string') {
+    return { type: 'tool_end', toolCallId, result: field('error'), isError: true };
+  }
+
+  if (type === 'text-delta') {
+    const text = field('text');
+    return typeof text === 'string' ? { type: 'text', text } : undefined;
+  }
+
+  return undefined;
+}
+
+/**
+ * Reads the supervisor's run into the caller's buffer, to the end.
+ *
+ * The stream ending is the turn ending, whether it ended by finishing or by being aborted
+ * for a newer request, so `finished` is reported from the same place either way.
+ */
+async function consumeRun(
+  sessionId: string,
+  progress: RoutingProgress,
+  chunks: { getReader(): { read(): Promise<{ done: boolean; value?: unknown }>; releaseLock(): void } },
+): Promise<void> {
+  const reader = chunks.getReader();
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+
+      const event = asRoutingEvent(value);
+      if (event) {
+        progress.handle(event);
+      }
+    }
+  } catch (error) {
+    progress.fail(error instanceof Error ? error.message : String(error));
+    return;
+  } finally {
+    reader.releaseLock();
+  }
+
+  progress.handle({ type: 'finished' });
+  logger.info('Routing supervisor run settled', { sessionId, delegations: progress.all.length });
+}
+
+const supervisorRuntime: RoutingRuntime = {
+  async start(sessionId, userQuery) {
+    const progress = progressFor(sessionId);
+
+    // A new request supersedes the one before it, which is what the caller means: the voice
+    // assistant has moved on. Aborting is what makes that true rather than leaving the
+    // previous run delegating behind it.
+    const running = abortBySessionId.get(sessionId);
+    if (running && !progress.agentFinished && !progress.isIdle()) {
       logger.info('Superseding a routing request that was still running', { sessionId });
-      session.abort();
+      running.abort();
     }
 
+    const abort = new AbortController();
+    abortBySessionId.set(sessionId, abort);
     progress.reset();
+
+    const supervisor = await resolveSupervisorAgent();
 
     // Not awaited: the caller is a voice assistant on a short tool-call deadline, and the
     // whole contract is that it polls for results rather than waiting for them.
-    void session
-      .sendMessage({ content: userQuery })
-      .then(() => {
-        logger.info('Routing supervisor run settled', { sessionId, delegations: progress.all.length });
-      })
+    void supervisor
+      .stream(userQuery, { abortSignal: abort.signal })
+      .then((result) => consumeRun(sessionId, progress, result.fullStream))
       .catch((error: unknown) => {
         progress.fail(error instanceof Error ? error.message : String(error));
       });
   },
 
   async poll(sessionId) {
-    const { progress } = await getSession(sessionId);
-    return buildSnapshot(progress);
+    return buildSnapshot(progressFor(sessionId));
   },
 
   async waitForChange(sessionId, deadlineMs) {
-    const { progress } = await getSession(sessionId);
-
-    // Everything that changes what a poll would say arrives as a session event, so the wait
-    // is the event stream against the deadline. Nothing has to be re-read from storage,
-    // because nothing about this request lives there.
-    await Promise.race([progress.wait(), delay(deadlineMs)]);
+    // Everything that changes what a poll would say arrives on the run's own stream, so the
+    // wait is that stream against the deadline.
+    await Promise.race([progressFor(sessionId).wait(), delay(deadlineMs)]);
   },
 };
 
@@ -493,7 +486,7 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
 }
 
-let runtime: RoutingRuntime = agentControllerRuntime;
+let runtime: RoutingRuntime = supervisorRuntime;
 
 export function getRoutingRuntime(): RoutingRuntime {
   return runtime;
@@ -506,8 +499,8 @@ export function setRoutingRuntime(next: RoutingRuntime): void {
 
 /** Restores the real runtime and forgets every session's buffered progress. */
 export function resetRoutingRuntime(): void {
-  runtime = agentControllerRuntime;
+  runtime = supervisorRuntime;
   progressBySessionId.clear();
-  controller = undefined;
+  abortBySessionId.clear();
   registry = undefined;
 }
