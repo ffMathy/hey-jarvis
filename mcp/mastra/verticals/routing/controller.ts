@@ -170,12 +170,21 @@ export class RoutingProgress {
       const agentId = this.inFlightByToolCallId.get(event.toolCallId) ?? 'an agent';
       this.inFlightByToolCallId.delete(event.toolCallId);
 
+      const answer = formatDelegationResult(event.result);
+
+      // An empty answer is not one. A subagent that stops on a tool-calls step returns no
+      // text at all, which reaches the caller as a delegation that succeeded and said
+      // nothing -- and Jarvis, told to summarize it, has nothing to summarize and no reason
+      // to mention that anything went wrong. Mastra documents this shape well enough to
+      // offer `resultText` on the delegation hook for correcting it, which is not reachable
+      // from here, so it is named here instead.
+      const answeredWithNothing = !event.isError && answer.length === 0;
       const outcome: DelegationOutcome = {
         agentId,
-        result: formatDelegationResult(event.result),
-        failed: event.isError,
+        result: answeredWithNothing ? 'finished without answering' : answer,
+        failed: event.isError || answeredWithNothing,
       };
-      if (event.isError) {
+      if (outcome.failed) {
         logger.error('Delegation did not complete', { agentId, result: outcome.result });
       }
 

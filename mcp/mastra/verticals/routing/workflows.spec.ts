@@ -219,6 +219,19 @@ describe('getNextInstructionsWorkflow', () => {
     expect(calendar?.result).toContain('did not report a result');
   });
 
+  it('does not pass off an empty answer as a result', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'what is on my calendar', async: false });
+    // What a subagent that stopped on a tool-calls step returns. Relayed as-is it reads to
+    // the caller as a delegation that worked and had nothing to say.
+    finishDelegation(DEFAULT_ROUTING_SESSION_ID, startDelegation(DEFAULT_ROUTING_SESSION_ID, 'calendar'), {
+      text: '',
+    });
+
+    const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(outcome.completedTaskResults).toEqual([{ id: 'calendar', result: 'finished without answering' }]);
+  });
+
   it('still hands over the results that landed before a failure', async () => {
     await runWorkflow(routePromptWorkflow, { userQuery: 'weather and calendar', async: false });
     const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
