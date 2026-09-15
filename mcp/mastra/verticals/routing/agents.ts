@@ -35,6 +35,46 @@ export { SUPERVISOR_INSTRUCTIONS };
 export const ROUTING_SUPERVISOR_AGENT_ID = 'routing-supervisor';
 
 /**
+ * Reports what a stream throws while it is being read, without changing what it yields.
+ *
+ * `stream` returns as soon as the run is under way, so a failure part-way through lands in
+ * Mastra's own `for await` over `fullStream` rather than in the call this vertical wrapped.
+ * That is where the delegation failures have to be: the agents here are the exact objects
+ * the delegation tool runs -- `listAgents` hands back the configured map itself, so the
+ * wrapper is installed -- and it has never once fired.
+ *
+ * The stream is teed rather than rebuilt. One branch goes to Mastra untouched, the other is
+ * drained here only to see how it ends; `tee` keeps the type, so shadowing the read-only
+ * `fullStream` getter with an own property needs no cast and no foreign stream
+ * implementation. Draining eagerly is also what stops the tee buffering.
+ */
+function reportStreamErrors<
+  TStream extends {
+    tee(): [TStream, TStream];
+    getReader(): { read(): Promise<{ done: boolean }>; releaseLock(): void };
+  },
+>(result: { fullStream: TStream }, report: (error: unknown) => void): void {
+  const [forMastra, forUs] = result.fullStream.tee();
+  Object.defineProperty(result, 'fullStream', { value: forMastra, configurable: true });
+
+  void (async () => {
+    const reader = forUs.getReader();
+    try {
+      while (true) {
+        const { done } = await reader.read();
+        if (done) {
+          return;
+        }
+      }
+    } catch (error) {
+      report(error);
+    } finally {
+      reader.releaseLock();
+    }
+  })();
+}
+
+/**
  * Makes a subagent say why it failed, on its way out.
  *
  * Mastra catches whatever `stream` throws and re-throws a `MastraError` reading
@@ -66,12 +106,16 @@ function reportFailuresOf(agent: Agent): void {
   };
 
   agent.stream = async (...args: Parameters<typeof stream>) => {
+    let result: Awaited<ReturnType<typeof stream>>;
     try {
-      return await stream(...args);
+      result = await stream(...args);
     } catch (error) {
       report(error);
       throw error;
     }
+
+    reportStreamErrors(result, report);
+    return result;
   };
 
   // Delegation takes the stream path for v2 models, which is every model here. `generate`
