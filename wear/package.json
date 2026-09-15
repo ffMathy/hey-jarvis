@@ -1,0 +1,8 @@
+{
+  "name": "wear",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build:apk": "cd .. && bash wear/.scripts/build-apk.sh"
+  }
+}

@@ -8,7 +8,8 @@
     "mcp",
     "elevenlabs",
     "home-assistant-voice-firmware",
-    "mobile"
+    "mobile",
+    "wear"
   ],
   "scripts": {
     "build": "turbo build",

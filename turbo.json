@@ -55,7 +55,7 @@
       "dependsOn": ["build"],
       "outputs": ["playwright-report/**", "test-results/**"]
     },
-    "mobile#build:apk": {
+    "build:apk": {
       "cache": false,
       "outputs": []
     },

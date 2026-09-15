@@ -1,0 +1,95 @@
+# This workflow is managed by gh actions-lock.
+
+name: Wear APK
+
+# Builds the Wear OS app and uploads the APK as a workflow artifact, unzipped,
+# so it can be installed on a watch over wireless debugging — see wear/AGENTS.md.
+#
+# Only changes that can alter the watch app start it. It is a plain Gradle build
+# with no JavaScript, so unlike the phone app it needs no Node.
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'wear/**'
+      - 'package.json'
+      - 'turbo.json'
+      - '.github/workflows/wear-apk.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'wear/**'
+      - 'package.json'
+      - 'turbo.json'
+      - '.github/workflows/wear-apk.yml'
+  workflow_dispatch:
+
+# Least privilege by default: the job below opts into exactly what it needs.
+permissions: {}
+
+jobs:
+  apk:
+    concurrency:
+      group: wear-apk-${{ github.head_ref || github.ref }}
+      cancel-in-progress: true
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Checkout is the only thing that needs the token. Uploading an artifact goes
+    # through the Actions runtime's own credential, not GITHUB_TOKEN.
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.1.0
+        with:
+          # The build runs untrusted pull request code; never leave a usable
+          # GitHub token behind in .git/config for it to pick up.
+          persist-credentials: false
+
+      # Only to run the build through Turborepo, like every other task here.
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2.2.0
+        with:
+          bun-version-file: package.json
+
+      - name: Set up JDK
+        uses: actions/setup-java@v6.0.0
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Restore Gradle dependency cache
+        uses: actions/cache@v5.1.0
+        with:
+          path: |
+            ~/.gradle/wrapper
+            ~/.gradle/caches/modules-2
+          key: gradle-wear-${{ runner.os }}-${{ hashFiles('wear/**/*.gradle.kts', 'wear/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-wear-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # The runner image's Android SDK, with its licences already accepted.
+      - name: Build APK
+        run: bunx turbo build:apk --filter=wear
+
+      # The artifact is named after the file. On a pull request GITHUB_SHA is
+      # GitHub's temporary merge commit, so the branch head is used there instead.
+      - name: Name APK after the commit
+        env:
+          COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: mv dist/wear-apk/jarvis-wear.apk "dist/wear-apk/jarvis-wear-${COMMIT_SHA::7}.apk"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          path: dist/wear-apk/jarvis-wear-*.apk
+          # Uploaded as the file itself rather than zipped, so it can go straight
+          # to `adb install`.
+          archive: false
+          if-no-files-found: error
+          retention-days: 30
