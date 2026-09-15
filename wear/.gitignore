@@ -1,0 +1,12 @@
+# Gradle and Android build output
+/.gradle/
+/.kotlin/
+/build/
+/app/build/
+
+# Written by Android Studio with this machine's SDK path
+/local.properties
+
+# Signing material never belongs in the repository
+*.jks
+*.keystore

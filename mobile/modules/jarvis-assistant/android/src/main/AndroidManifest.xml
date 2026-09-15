@@ -1,0 +1,100 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+  <!--
+    Everything Android needs in order to offer Jarvis where Gemini and Google
+    Assistant are offered.
+
+    This is a Gradle library project, so this manifest is merged into the app's
+    own at build time — the same way `expo-file-system` declares its file
+    provider. That keeps the declarations next to the Kotlin that implements
+    them, rather than in a config plugin patching a file `expo prebuild`
+    regenerates.
+  -->
+  <application>
+
+    <!--
+      The service the system binds to when Jarvis is the chosen assistant. Three
+      things here are load-bearing, and getting any of them wrong means the app
+      simply never appears in the picker, with no error anywhere:
+
+      - the BIND_VOICE_INTERACTION permission, which is what proves to the system
+        that only it may bind this service;
+      - the exact action name below, which is how the system finds it at all;
+      - the `android.voice_interaction` meta-data, which points at the resource
+        naming the session and recognition services.
+    -->
+    <service
+      android:name="expo.modules.jarvisassistant.JarvisVoiceInteractionService"
+      android:exported="true"
+      android:permission="android.permission.BIND_VOICE_INTERACTION">
+      <intent-filter>
+        <action android:name="android.service.voice.VoiceInteractionService" />
+      </intent-filter>
+      <meta-data
+        android:name="android.voice_interaction"
+        android:resource="@xml/jarvis_voice_interaction_service" />
+    </service>
+
+    <!-- Creates one session per summoning. Also bound by the system only. -->
+    <service
+      android:name="expo.modules.jarvisassistant.JarvisVoiceInteractionSessionService"
+      android:exported="true"
+      android:permission="android.permission.BIND_VOICE_INTERACTION" />
+
+    <!--
+      A recognition service that recognises nothing, because the speech
+      recognition happens inside the conversation rather than in front of it.
+      It exists because the system's parser rejects a voice interaction service
+      whose resource does not name one, and a rejected service is one that never
+      shows up in the assistant picker.
+
+      It has to be a real, instantiable class at exactly the name the resource
+      gives. On API 29 and 30 the system copies that name straight into the
+      device-wide speech recogniser setting when the role is granted, and a name
+      that does not resolve takes the system process down with it.
+    -->
+    <service
+      android:name="expo.modules.jarvisassistant.JarvisRecognitionService"
+      android:exported="true">
+      <intent-filter>
+        <action android:name="android.speech.RecognitionService" />
+        <category android:name="android.intent.category.DEFAULT" />
+      </intent-filter>
+      <meta-data
+        android:name="android.speech"
+        android:resource="@xml/jarvis_recognition_service" />
+    </service>
+
+    <!--
+      The other way an assistant is summoned. Holding the assistant role covers
+      the home-button long press and the power-button gesture; this covers the
+      devices and launchers that fire a plain ASSIST intent instead, and it
+      works whether or not Jarvis holds the role.
+
+      It draws nothing: it forwards to the app and finishes, so the user sees
+      the conversation screen rather than a second window in front of it.
+    -->
+    <activity
+      android:name="expo.modules.jarvisassistant.JarvisAssistActivity"
+      android:exported="true"
+      android:excludeFromRecents="true"
+      android:noHistory="true"
+      android:launchMode="singleInstance"
+      android:theme="@android:style/Theme.NoDisplay">
+      <intent-filter>
+        <action android:name="android.intent.action.ASSIST" />
+        <category android:name="android.intent.category.DEFAULT" />
+      </intent-filter>
+      <intent-filter>
+        <action android:name="android.intent.action.VOICE_COMMAND" />
+        <category android:name="android.intent.category.DEFAULT" />
+      </intent-filter>
+      <intent-filter>
+        <action android:name="android.intent.action.SEARCH_LONG_PRESS" />
+        <category android:name="android.intent.category.DEFAULT" />
+      </intent-filter>
+    </activity>
+
+  </application>
+
+</manifest>

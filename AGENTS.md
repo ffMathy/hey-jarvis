@@ -28,11 +28,13 @@ Prefer a rule over a skill. Use the [`remember`](.claude/skills/remember/SKILL.m
 
 This is an Turborepo monorepo containing intelligent voice assistant components:
 
-| Project                           | Description                                     |
-| --------------------------------- | ----------------------------------------------- |
-| **mcp**                           | Mastra AI-powered Model Context Protocol server |
-| **elevenlabs**                    | ElevenLabs voice interface integration          |
-| **home-assistant-voice-firmware** | ESPHome firmware for voice hardware             |
+| Project                           | Description                                       |
+| --------------------------------- | ------------------------------------------------- |
+| **mcp**                           | Mastra AI-powered Model Context Protocol server   |
+| **elevenlabs**                    | ElevenLabs voice interface integration            |
+| **mobile**                        | Expo app that is the phone's default assistant    |
+| **wear**                          | Wear OS prototype that is the watch's assistant   |
+| **home-assistant-voice-firmware** | ESPHome firmware for voice hardware               |
 
 ## Development Commands
 
@@ -311,6 +313,8 @@ Each project has its own AGENTS.md with specialized instructions:
 
 - **mcp/AGENTS.md** - Mastra agents, tools, workflows, and vertical organization
 - **elevenlabs/AGENTS.md** - Voice integration and testing guidelines
+- **mobile/AGENTS.md** - The Android assistant app, and what makes Android accept it as one
+- **wear/AGENTS.md** - The Wear OS prototype, and how to try it as a Pixel Watch's assistant
 - **home-assistant-voice-firmware/AGENTS.md** - Firmware development
 
 ## Contributing

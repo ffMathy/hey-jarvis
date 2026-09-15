@@ -1,0 +1,33 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    // Nothing emits from here either — Metro compiles the sources for the device —
+    // but see the same note in `elevenlabs/tsconfig.json`: an emit with no `outDir`
+    // lands beside the sources, and this project is referenced from the workspace
+    // root like that one is.
+    "outDir": "../dist/mobile-tsc",
+    "jsx": "react-jsx",
+    "lib": ["esnext", "dom"],
+    "types": ["bun-types"],
+    "esModuleInterop": true,
+    // Nothing is emitted for this project — Metro compiles the sources for the
+    // device and `.scripts/build.sh` only bundles them — so `composite` would
+    // buy declarations nobody reads, at the price of having to list every file
+    // the app reaches into. The same reasoning as in `elevenlabs/tsconfig.json`.
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "incremental": false
+  },
+  "include": [
+    "index.ts",
+    "app.config.ts",
+    "playwright.config.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "modules/**/*.ts",
+    "tests/**/*.ts"
+  ],
+  "exclude": ["**/node_modules", "**/.expo", "**/android", "**/ios", "**/dist"]
+}

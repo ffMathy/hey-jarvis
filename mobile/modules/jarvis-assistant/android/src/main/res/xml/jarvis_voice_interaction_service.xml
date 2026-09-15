@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  What the system reads to decide whether this app can be an assistant at all.
+
+  `sessionService` and `recognitionService` are both required: the framework's
+  parser records a parse error and drops the service if either is missing, and a
+  dropped service means the app never appears in the assistant picker, silently.
+
+  `supportsAssist` is what makes the ASSIST gesture — long-pressing home, or
+  holding the power button — reach this app rather than only the hotword.
+
+  `supportsLaunchVoiceAssistFromKeyguard` stays false: Jarvis runs the house, so
+  answering from the lock screen would let anyone holding the phone do the same.
+-->
+<voice-interaction-service
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:sessionService="expo.modules.jarvisassistant.JarvisVoiceInteractionSessionService"
+    android:recognitionService="expo.modules.jarvisassistant.JarvisRecognitionService"
+    android:supportsAssist="true"
+    android:supportsLaunchVoiceAssistFromKeyguard="false"
+    android:supportsLocalInteraction="false" />

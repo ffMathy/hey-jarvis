@@ -1,0 +1,25 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'expo.modules.jarvisaudio'
+version = '0.1.0'
+
+android {
+  namespace 'expo.modules.jarvisaudio'
+  defaultConfig {
+    versionCode 1
+    versionName '0.1.0'
+  }
+  lint {
+    abortOnError false
+  }
+}
+
+dependencies {
+  // WebRTC's recorder and tracks, and LiveKit's hold on them — the same two
+  // projects @livekit/react-native-expo-plugin's own module depends on.
+  implementation project(':livekit_react-native')
+  implementation project(':livekit_react-native-webrtc')
+}
