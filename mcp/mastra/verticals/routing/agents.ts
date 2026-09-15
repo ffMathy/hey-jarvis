@@ -166,67 +166,6 @@ function reportFailuresOf(agent: Agent): void {
 }
 
 /**
- * Whether a supervisor stream chunk is a tool call reporting a failure.
- *
- * Narrowed by hand because the chunk union is wide and only this one member matters here.
- */
-function isToolErrorChunk(chunk: unknown): chunk is { type: 'tool-error'; payload: Record<string, unknown> } {
-  return (
-    typeof chunk === 'object' &&
-    chunk !== null &&
-    'type' in chunk &&
-    chunk.type === 'tool-error' &&
-    'payload' in chunk &&
-    typeof chunk.payload === 'object' &&
-    chunk.payload !== null
-  );
-}
-
-/**
- * Reports a failed delegation from the supervisor's own stream, where the error still is one.
- *
- * Seven rounds of wrapping the subagent produced nothing, each round eliminating a path the
- * throw does not take. This stops chasing the throw and reads the place the error provably
- * survives instead: Mastra catches whatever the delegation threw, wraps it in a
- * `MastraError` whose `cause` is the original, and emits it as a `tool-error` chunk on the
- * supervisor's stream. That chunk is where `Failed agent tool execution for <agent>` comes
- * from -- so the object carrying the reason is demonstrably there, and only stops being one
- * later, when the session flattens it to its top-level message.
- *
- * Teeing means Mastra still gets every chunk untouched; this only looks.
- */
-function reportDelegationErrorsOf(agent: Agent): void {
-  const stream = agent.stream.bind(agent);
-
-  agent.stream = async (...args: Parameters<typeof stream>) => {
-    const result = await stream(...args);
-    const [forMastra, forUs] = result.fullStream.tee();
-    Object.defineProperty(result, 'fullStream', { value: forMastra, configurable: true });
-
-    void (async () => {
-      const reader = forUs.getReader();
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) {
-            return;
-          }
-          if (isToolErrorChunk(value)) {
-            logger.error('Delegation threw', { chunk: value.payload });
-          }
-        }
-      } catch (error) {
-        logger.error('Supervisor stream failed', { error });
-      } finally {
-        reader.releaseLock();
-      }
-    })();
-
-    return result;
-  };
-}
-
-/**
  * The agent that fulfils a routing request by delegating to the specialized agents.
  *
  * This replaces a planner that emitted a task DAG for a separate executor to run. The DAG
@@ -293,8 +232,6 @@ export async function getRoutingSupervisorAgent(): Promise<Agent> {
     // The session's event stream reports them completely -- `tool_start` opening each one and
     // `tool_end` carrying its answer -- so that is what the poll reads.
   });
-
-  reportDelegationErrorsOf(supervisor);
 
   return supervisor;
 }
