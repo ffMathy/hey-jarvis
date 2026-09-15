@@ -7,6 +7,8 @@ interface SettingsScreenProps {
   settings: ElevenLabsSettings | undefined;
   onSave: (settings: ElevenLabsSettings) => void;
   onCancel: (() => void) | undefined;
+  /** Opens sample mode. Only offered before the app is set up, when there is nothing else to look at. */
+  onTrySample: (() => void) | undefined;
 }
 
 /**
@@ -15,7 +17,7 @@ interface SettingsScreenProps {
  * Both values are typed in rather than compiled in. Shipping the API key inside
  * the app would put a live credential in every copy of the bundle.
  */
-export function SettingsScreen({ settings, onSave, onCancel }: SettingsScreenProps) {
+export function SettingsScreen({ settings, onSave, onCancel, onTrySample }: SettingsScreenProps) {
   const [apiKey, setApiKey] = useState(settings?.apiKey ?? '');
   const [agentId, setAgentId] = useState(settings?.agentId ?? '');
   const [problem, setProblem] = useState<string | undefined>(undefined);
@@ -94,6 +96,12 @@ export function SettingsScreen({ settings, onSave, onCancel }: SettingsScreenPro
       {onCancel ? (
         <Pressable accessibilityRole="button" style={styles.secondaryButton} onPress={onCancel}>
           <Text style={styles.secondaryButtonLabel}>Cancel</Text>
+        </Pressable>
+      ) : null}
+
+      {onTrySample ? (
+        <Pressable accessibilityRole="button" style={styles.secondaryButton} onPress={onTrySample} testID="try-sample">
+          <Text style={styles.secondaryButtonLabel}>No key yet? Try the hologram with your own voice</Text>
         </Pressable>
       ) : null}
     </ScrollView>

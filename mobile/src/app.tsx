@@ -12,21 +12,42 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { ConversationScreen } from './conversation-screen';
 import type { ElevenLabsSettings } from './elevenlabs-settings';
+import { SampleScreen } from './sample-screen';
 import { SettingsScreen } from './settings-screen';
 import { loadElevenLabsSettings, saveElevenLabsSettings } from './settings-storage';
 import { theme } from './theme';
+
+/** Which screen is showing. */
+type Screen = 'loading' | 'sample' | 'settings' | 'conversation';
+
+function chooseScreen(state: {
+  isLoaded: boolean;
+  hasSettings: boolean;
+  isEditingSettings: boolean;
+  isSampling: boolean;
+}): Screen {
+  if (!state.isLoaded) {
+    return 'loading';
+  }
+  if (!state.hasSettings) {
+    return state.isSampling ? 'sample' : 'settings';
+  }
+  return state.isEditingSettings ? 'settings' : 'conversation';
+}
 
 /**
  * The whole app: a conversation, and the settings it needs in order to happen.
  *
  * No router. Two screens, one of which only exists until the other one can work,
  * is a `useState` — and an assistant that has to load a navigation tree before it
- * can answer is an assistant that answers late.
+ * can answer is an assistant that answers late. The third, sample mode, is a
+ * side trip from setup and back.
  */
 export function App() {
   const [settings, setSettings] = useState<ElevenLabsSettings | undefined>(undefined);
   const [isLoaded, setIsLoaded] = useState(false);
   const [isEditingSettings, setIsEditingSettings] = useState(false);
+  const [isSampling, setIsSampling] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -41,21 +62,25 @@ export function App() {
     void saveElevenLabsSettings(saved);
   };
 
+  const screen = chooseScreen({ isLoaded, hasSettings: settings !== undefined, isEditingSettings, isSampling });
+
   return (
     <ConversationProvider>
       <StatusBar style="light" />
       <View style={styles.root}>
-        {!isLoaded ? (
-          <ActivityIndicator color={theme.colors.accent} />
-        ) : !settings || isEditingSettings ? (
+        {screen === 'loading' ? <ActivityIndicator color={theme.colors.accent} /> : null}
+        {screen === 'sample' ? <SampleScreen onLeave={() => setIsSampling(false)} /> : null}
+        {screen === 'settings' ? (
           <SettingsScreen
             settings={settings}
             onSave={save}
             onCancel={settings ? () => setIsEditingSettings(false) : undefined}
+            onTrySample={settings ? undefined : () => setIsSampling(true)}
           />
-        ) : (
+        ) : null}
+        {screen === 'conversation' && settings ? (
           <ConversationScreen settings={settings} onEditSettings={() => setIsEditingSettings(true)} />
-        )}
+        ) : null}
       </View>
     </ConversationProvider>
   );

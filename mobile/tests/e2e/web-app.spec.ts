@@ -13,6 +13,15 @@ import { expect, type Page, type Route, test } from '@playwright/test';
 
 const CONVERSATION_TOKEN_URL = 'https://api.elevenlabs.io/v1/convai/conversation/token**';
 
+declare global {
+  interface Window {
+    /** Every microphone stream the page opened, kept by `watchMicrophone`. */
+    microphoneStreams?: MediaStream[];
+    /** The loudest spectrum value any analyser has handed the page, kept by `watchMicrophone`. */
+    loudestSpectrumValue?: number;
+  }
+}
+
 const API_KEY = 'sk_not-a-real-key';
 const AGENT_ID = 'agent_01jz0123456789';
 
@@ -86,6 +95,46 @@ async function configureElevenLabs(page: Page): Promise<void> {
   await expect(page.getByTestId('talk')).toBeVisible();
 }
 
+/**
+ * Waits for the hologram to be drawn and to keep moving: each look differs from
+ * the one before. Twice, because the first change could be the first draw landing
+ * on an empty canvas; a picture drawn once and never again fails the second.
+ */
+async function expectHologramToKeepMoving(page: Page): Promise<void> {
+  const hologram = page.getByTestId('hologram');
+  await expect(hologram.locator('canvas')).toBeVisible();
+
+  for (let change = 0; change < 2; change++) {
+    const previousLook = await hologram.screenshot();
+    await expect.poll(async () => (await hologram.screenshot()).equals(previousLook), { timeout: 10000 }).toBe(false);
+  }
+}
+
+/**
+ * Keeps, in the page, every microphone stream it opens and the loudest spectrum
+ * value any analyser gives it — so a test can tell the microphone's audio really
+ * reached the readings, and that the stream was closed afterwards.
+ */
+async function watchMicrophone(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    window.microphoneStreams = [];
+    window.loudestSpectrumValue = 0;
+
+    const getUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    navigator.mediaDevices.getUserMedia = async (constraints) => {
+      const stream = await getUserMedia(constraints);
+      window.microphoneStreams?.push(stream);
+      return stream;
+    };
+
+    const getByteFrequencyData = AnalyserNode.prototype.getByteFrequencyData;
+    AnalyserNode.prototype.getByteFrequencyData = function (array) {
+      getByteFrequencyData.call(this, array);
+      window.loudestSpectrumValue = Math.max(window.loudestSpectrumValue ?? 0, ...array);
+    };
+  });
+}
+
 test.beforeEach(async ({ page }) => {
   await blockExternalRequests(page);
 });
@@ -147,19 +196,40 @@ test('draws the hologram and keeps it moving, from a CanvasKit the site serves i
   // Nothing Skia-backed renders until CanvasKit has loaded, so a canvas at all
   // means the WebAssembly arrived. Every other host is aborted, so it can only
   // have come from the export's own `public/` — which `turbo initialize` fills.
-  const hologram = page.getByTestId('hologram');
-  await expect(hologram.locator('canvas')).toBeVisible();
+  await expect(page.getByTestId('hologram').locator('canvas')).toBeVisible();
   expect(canvasKitResponses).toEqual([{ hostname: 'localhost', status: 200 }]);
 
-  // It turns on its own, with no conversation open, so each look differs from the
-  // one before. Twice, because the first change could be the first draw landing
-  // on an empty canvas; a picture drawn once and never again fails the second.
-  for (let change = 0; change < 2; change++) {
-    const previousLook = await hologram.screenshot();
-    await expect.poll(async () => (await hologram.screenshot()).equals(previousLook), { timeout: 10000 }).toBe(false);
-  }
+  // It turns on its own, with no conversation open.
+  await expectHologramToKeepMoving(page);
 
   expect(pageErrors).toEqual([]);
+});
+
+test('offers sample mode before setup, listening to the microphone, and comes back from it', async ({ page }) => {
+  await watchMicrophone(page);
+  await page.goto('/');
+  await page.getByTestId('try-sample').click();
+
+  // The browser here has a fake microphone, granted up front (see
+  // playwright.config.ts), so the page gets as far as listening.
+  await expect(page.getByTestId('sample-status')).toHaveText('Listening to you — say something.');
+  await expect(page.getByTestId('sample-problem')).toHaveCount(0);
+
+  // Chromium's fake microphone beeps. The beep has to reach the readings the
+  // hologram is drawn from — a hologram that merely turns proves nothing, since
+  // it turns with no audio at all.
+  await expect.poll(() => page.evaluate(() => window.loudestSpectrumValue ?? 0), { timeout: 10000 }).toBeGreaterThan(0);
+  await expectHologramToKeepMoving(page);
+
+  await page.getByTestId('leave-sample').click();
+  await expect(page.getByTestId('api-key')).toBeVisible();
+
+  // And leaving hands the microphone back.
+  const trackStates = await page.evaluate(() =>
+    (window.microphoneStreams ?? []).flatMap((stream) => stream.getTracks().map((track) => track.readyState)),
+  );
+  expect(trackStates.length).toBeGreaterThan(0);
+  expect(trackStates.every((state) => state === 'ended')).toBe(true);
 });
 
 test('keeps the conversation screen working when CanvasKit cannot load', async ({ page }) => {
@@ -243,6 +313,8 @@ test('lets the settings be reopened and corrected, and uses the correction', asy
   await configureElevenLabs(page);
 
   await page.getByTestId('open-settings').click();
+  // Sample mode is for before there is a Jarvis to talk to, not after.
+  await expect(page.getByTestId('try-sample')).toHaveCount(0);
   // Both values come back, so fixing one does not mean pasting the key again.
   await expect(page.getByTestId('api-key')).toHaveValue(API_KEY);
   await expect(page.getByTestId('agent-id')).toHaveValue(AGENT_ID);

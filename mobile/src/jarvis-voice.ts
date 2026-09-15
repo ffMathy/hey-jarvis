@@ -1,66 +1,66 @@
-import { useConversationControls, useConversationMode, useConversationStatus } from '@elevenlabs/react-native';
-import { useMemo } from 'react';
+import { useConversationMode, useConversationStatus, useRawConversation } from '@elevenlabs/react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { jarvisAudio } from '../modules/jarvis-audio';
+import { followAgentAudioTrack, type NativeTrackIds, roomOfConversation } from './agent-audio-track';
+import type { UseJarvisVoice } from './platform-contracts';
+import { useSdkVoiceReaders } from './sdk-voice-readers';
+import { createTappedVoiceReaders } from './tapped-voice';
 
 /**
- * Jarvis's voice, as far as anything drawn from it needs to know.
+ * The conversation's output audio on Android.
  *
- * One module, so it can be swapped whole: the device check in
- * `.scripts/verify-hologram-on-emulator.sh` builds the app with
- * `tests/hologram-preview/jarvis-voice.replay.ts` in its place, because an
- * emulator has no ElevenLabs session to listen to. Everything downstream — the
- * folding, the easing, the drawing — is then what a phone runs. (The readings
- * themselves are not: see "The hologram on a device" in mobile/AGENTS.md.)
- */
-export interface JarvisVoice {
-  /** Whether a conversation is open. Nothing is read from the voice otherwise. */
-  listening: boolean;
-  /** Whether Jarvis is talking right now, rather than waiting for the user. */
-  speaking: boolean;
-  /** RMS volume of what Jarvis is saying, 0–1. */
-  getVolume: () => number;
-  /** Byte spectrum of it, 0–255 per bin across 100–8000 Hz. Empty when there is nothing to report. */
-  getSpectrum: () => ArrayLike<number>;
-}
-
-const SILENCE = new Uint8Array(0);
-
-/**
- * The conversation's output audio, as the SDK measures it.
+ * Read from Jarvis's own WebRTC track: `modules/jarvis-audio` keeps the samples
+ * that play on it, and `tapped-voice.ts` analyses them the way a browser would.
+ * The SDK's own readers are only the fallback, until that track is found or if
+ * it cannot be. They come from LiveKit's processors, whose spectrum is mostly
+ * empty and whose volume reads the bytes of each sample swapped (see "The
+ * hologram on a device" in mobile/AGENTS.md), so a hologram drawn from them
+ * turns and flashes rather than following his voice.
  *
- * On Android these readers are native LiveKit processors on the agent's WebRTC
- * track; in a browser, an AnalyserNode. The SDK creates them on first call, and
- * before a session exists they may throw or return nothing — which has to read as
- * silence, not as a crash on the screen the hologram is drawn on.
+ * One module, so it can be swapped whole: `.scripts/verify-hologram-on-emulator.sh`
+ * can build the app with `tests/hologram-preview/jarvis-voice.replay.ts` in its
+ * place, since an emulator has no ElevenLabs session to listen to.
  */
-export function useJarvisVoice(): JarvisVoice {
-  const { getOutputVolume, getOutputByteFrequencyData } = useConversationControls();
+export const useJarvisVoice: UseJarvisVoice = () => {
   const { status } = useConversationStatus();
   const { mode } = useConversationMode();
+  const conversation = useRawConversation();
+  const sdkReaders = useSdkVoiceReaders();
+  const [agentTrack, setAgentTrack] = useState<NativeTrackIds | undefined>(undefined);
+  const [isTapped, setIsTapped] = useState(false);
 
-  // The readers are kept apart from the flags so they stay the same functions
-  // while Jarvis switches between speaking and listening — which happens many
-  // times a conversation. New readers would restart the hologram's polling, and
-  // the restart would show as a dip at the very moment he starts to talk.
-  const readers = useMemo(
-    () => ({
-      getVolume: () => {
-        try {
-          return getOutputVolume();
-        } catch {
-          return 0;
-        }
-      },
-      getSpectrum: () => {
-        try {
-          return getOutputByteFrequencyData() ?? SILENCE;
-        } catch {
-          return SILENCE;
-        }
-      },
-    }),
-    [getOutputVolume, getOutputByteFrequencyData],
-  );
+  useEffect(() => {
+    const room = conversation ? roomOfConversation(conversation) : undefined;
+    if (!room) {
+      setAgentTrack(undefined);
+      return;
+    }
+    return followAgentAudioTrack(room, setAgentTrack);
+  }, [conversation]);
+
+  useEffect(() => {
+    const audio = jarvisAudio;
+    if (!audio || !agentTrack) {
+      return;
+    }
+    try {
+      audio.listenToTrack(agentTrack.peerConnectionId, agentTrack.trackId);
+    } catch {
+      // Not found natively after all: the SDK's readers carry on.
+      return;
+    }
+    setIsTapped(true);
+    return () => {
+      audio.stopListeningToTrack();
+      setIsTapped(false);
+    };
+  }, [agentTrack]);
+
+  // Made once, so they stay the same functions for the life of the screen — see
+  // `useSdkVoiceReaders` for why that matters.
+  const tappedReaders = useMemo(() => (jarvisAudio ? createTappedVoiceReaders(jarvisAudio) : undefined), []);
+  const readers = isTapped && tappedReaders ? tappedReaders : sdkReaders;
 
   const listening = status === 'connected';
   return { listening, speaking: listening && mode === 'speaking', ...readers };
-}
+};

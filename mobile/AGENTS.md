@@ -65,14 +65,24 @@ mobile/
 ├── modules/jarvis-assistant/     # the local Expo module that owns the assistant registration
 │   ├── index.ts                  # the JS side
 │   └── android/src/main/         # Kotlin, the merged manifest, and res/xml
+├── modules/jarvis-audio/         # raw audio for the hologram: the microphone, or Jarvis's WebRTC track
 └── src/
-    ├── app.tsx                   # root component and the two screens
+    ├── app.tsx                   # root component: settings, conversation, and sample mode
     ├── conversation-screen.tsx   # the hologram, the Talk button and the assistant card
+    ├── sample-screen.tsx         # sample mode: the hologram following the user's own voice
     ├── jarvis-hologram.tsx       # the hologram on Android …
     ├── jarvis-hologram.web.tsx   # … and in a browser, once CanvasKit has loaded
     ├── jarvis-hologram-view.tsx  # Skia canvas, Reanimated clocks, reading the voice
     ├── hologram-drawing.ts       # what one frame of the hologram looks like (worklets)
-    ├── jarvis-voice.ts           # Jarvis's voice as the SDK measures it
+    ├── hologram-size.ts          # how big it is drawn on this screen
+    ├── jarvis-voice.ts           # Jarvis's voice on Android: his track, tapped and analysed …
+    ├── jarvis-voice.web.ts       # … and in a browser, as the SDK measures it
+    ├── sample-voice.ts           # the user's voice on Android, from WebRTC's recorder …
+    ├── sample-voice.web.ts       # … and in a browser, through an AnalyserNode
+    ├── agent-audio-track.ts      # finding Jarvis's track in the conversation's LiveKit room
+    ├── tapped-voice.ts           # raw samples from modules/jarvis-audio → volume and spectrum
+    ├── voice-analysis.ts         # the FFT and RMS, the same for live audio and the emulator replay
+    ├── sdk-voice-readers.ts      # the SDK's own readers, made safe to call before a session
     ├── voice-levels.ts           # spectrum folding and easing, frame-rate independent
     ├── settings-screen.tsx
     ├── assist-link.ts            # what "opened by the assistant" looks like
@@ -91,12 +101,36 @@ mobile/
 The conversation screen is built around Jarvis as the films drew him: a golden, see-through sphere of broken arcs, specks, glass panels and struts around a knotted core, turning slowly on its own and swelling with his voice.
 
 ```
-@elevenlabs/react-native  getOutputVolume / getOutputByteFrequencyData   (native LiveKit processors, ~25 Hz)
-  └─ jarvis-voice.ts      read every 40 ms on the JS thread
+Android, in a conversation     Jarvis's WebRTC track ─ modules/jarvis-audio (AudioTap) ─ tapped-voice.ts ─ voice-analysis.ts
+Android, in sample mode        WebRTC's recorder ────── modules/jarvis-audio (AudioTap) ─ tapped-voice.ts ─ voice-analysis.ts
+Browser, in a conversation     @elevenlabs/react-native getOutputVolume / getOutputByteFrequencyData (AnalyserNode)
+Browser, in sample mode        getUserMedia ─ AnalyserNode
+  └─ a JarvisVoice (platform-contracts.ts), read every 40 ms on the JS thread
        └─ voice-levels.ts perceivedLevel + foldSpectrum → 24 log-spaced bands (targets)
             └─ jarvis-hologram-view.tsx   UI thread, every frame: easeLevel/easeBands toward the targets
                  └─ hologram-drawing.ts   drawHologram(canvas, size, frame, scene, resources) → Skia Picture
 ```
+
+Every source hands the hologram the same two readings — a volume, and 1024 bytes of spectrum across 100–8000 Hz on Web Audio's decibel scale — so the drawing never knows which it is listening to. The volume is not quite the same quantity everywhere: on Android it is the RMS of the last 40 ms; in a browser it is what the ElevenLabs web SDK reports, the mean of that spectrum, and sample mode in a browser takes it the same way so the user's voice and Jarvis's are on one scale there. The two scales differ, so the same speech pulses somewhat differently in a browser than on a phone.
+
+### Why Android analyses the audio itself
+
+On Android the SDK's two readers come from LiveKit's native processors (`@livekit/react-native` 2.12.0), and neither is usable for this:
+
+- **The spectrum is a comb.** The SDK asks for 1024 bars; at 48 kHz only 169 FFT bins fall in 100–8000 Hz, and every bar between two of them reads 0 (`MultibandVolumeProcessor.kt`). Two of the hologram's 24 bands could never light.
+- **The volume reads each sample with its bytes swapped.** WebRTC hands sinks a `ByteBuffer` in Java's default big-endian order over little-endian PCM — the recorded-samples dispatcher wraps it with `ByteBuffer.wrap`, and the native sink wrapper sets no order — and `VolumeProcessor.kt` reads it as it comes, so anything above near-silence reads close to full scale. This one is read from the code; the app no longer goes through it, and it has not been measured.
+
+So `modules/jarvis-audio` hangs its own `AudioTap` off the same audio — Jarvis's remote track in a conversation, or WebRTC's recorder in sample mode — reading the bytes little-endian into a ring of the last third of a second, and JavaScript pulls from it and analyses it with `voice-analysis.ts`. That is the same code that turns the emulator check's recorded voice into its replayed readings, so what the replay shows is what a phone computes.
+
+Finding Jarvis's track takes one step outside the SDK's public surface: `useRawConversation()` is public, but the LiveKit room is on the conversation's protected `connection`. `agent-audio-track.ts` reaches it with `Reflect.get`, checks it is a real `livekit-client` `Room`, and follows the participant whose identity contains "agent" — as the SDK's own code does. `agent-audio-track.contract.spec.ts` reads the installed SDK and fails if any of that moves. If the track cannot be found anyway, the hologram falls back to the SDK's readers described above: it still draws and nothing fails, but it flashes towards full brightness on any sound from Jarvis instead of following him, and two of its bands stay dark.
+
+## Sample mode
+
+Before the app is set up there is nothing for the hologram to follow, so the settings screen offers **"No key yet? Try the hologram with your own voice"**. It opens `sample-screen.tsx`: the same hologram, listening to the microphone instead of Jarvis. Once settings are saved it is no longer offered.
+
+- **Nothing leaves the device.** No conversation is started; the native tap keeps the last third of a second of audio and overwrites it.
+- **On Android it uses WebRTC's own recorder**, started with `JavaAudioDeviceModule.requestStartRecording()` — no connection, no network, and no second recorder to fight a conversation for the microphone: a conversation that starts meanwhile shares it, and it stays open until both have let go. The microphone opens only while the screen is mounted and the app is in front, and closes synchronously on either, so it has let go before whatever comes next asks.
+- **In a browser it is `getUserMedia` into an `AnalyserNode`** with the ElevenLabs web SDK's settings (`fftSize` 2048, smoothing 0.8), not connected to the speakers.
 
 What the voice does to it, and why each layer is where it is, is written at the top of `hologram-drawing.ts`. Three things are worth knowing before changing it:
 
@@ -244,30 +278,36 @@ Two things that would otherwise ride on reasoning alone have been checked anothe
 
 ### The hologram on a device
 
-`.scripts/verify-hologram-on-emulator.sh` checks what the headless spec cannot: that the hologram animates inside the real app, through Reanimated and native Skia, and pulses with a voice. There is no ElevenLabs session on an emulator, so it builds the release app with `JARVIS_VOICE_REPLAY=1`, which makes Metro swap `jarvis-voice.ts` for `tests/hologram-preview/jarvis-voice.replay.ts`. That replays an espeak-ng line as RMS volume and a 1024-bin spectrum every 40 ms — the spectrum as Web Audio's `AnalyserNode` reports it, which is what the ElevenLabs web SDK hands over — looping six seconds of silence and then the line. The script fills in placeholder settings, records the screen for 180 s, and has `measure-pulse.ts` compare the hologram's brightness in each frame with the level the app should have been drawing. The thresholds were fixed before anything was measured: correlation at least 0.5, and at least 0.2 better than the same voice played backwards. The hologram must also be at least 1.1× brighter while speaking than while silent, and keep moving while silent: the change from one tenth of a second to the next, averaged over each two seconds of silence, must be at least 1/255 per pixel in every one of them. Averaged, because screenrecord only emits a frame when the screen changes, so at an emulator's frame rate most tenth-second pairs are one frame repeated.
+`.scripts/verify-hologram-on-emulator.sh` checks what the headless spec cannot: that the hologram animates inside the real app, through Reanimated and native Skia, and pulses with a voice. An emulator has no ElevenLabs session, so the voice comes from one of two places, chosen with `JARVIS_VOICE`:
+
+- **`microphone`, the default:** the release app as it ships, in sample mode. An espeak-ng line is played into the emulator's microphone through its gRPC controller (`tests/hologram-preview/inject-microphone.ts`, HTTP/2 and two hand-encoded protobuf messages, no gRPC tooling), so the voice goes through everything a phone uses: WebRTC's recorder, `modules/jarvis-audio`, `voice-analysis.ts`, the hologram. First it plays a tone and checks the app heard it within 1 dB of the loudness Android's own audio HAL logged for the same stream (`dumpsys media.audio_flinger`), and heard the silence around it as silence.
+- **`replay`:** the app built with `JARVIS_VOICE_REPLAY=1`, which makes Metro swap `jarvis-voice.ts` for `tests/hologram-preview/jarvis-voice.replay.ts`, replaying readings made offline from the line. Nothing native about the audio is exercised; it isolates the drawing.
+
+Both loop six seconds of silence and then the line, record the screen for 180 s, and have `measure-pulse.ts` compare the hologram's brightness in each frame with the level the app should have been drawing. The thresholds were fixed before anything was measured: correlation at least 0.5, and at least 0.2 better than the same voice played backwards. The hologram must also be at least 1.1× brighter while speaking than while silent, and keep moving while silent: the change from one tenth of a second to the next, averaged over each two seconds of silence, must be at least 1/255 per pixel in every one of them. Averaged, because screenrecord only emits a frame when the screen changes, so at an emulator's frame rate most tenth-second pairs are one frame repeated.
 
 The script boots its own AVD, `jarvis-hologram-check`, and prints how to create it when it is missing; a device that is already attached is used instead, and the script says so.
 
-**It passes.** It was run on 2026-09-15 on the same WSL2 machine, against AVD `jarvis-hologram-check`: the same android-34 `google_apis` x86_64 image at 540×960 and 240 dpi, 4 cores, 2 GB, `-gpu swiftshader_indirect`. The results:
+**Both pass.** Run on 2026-09-15 on the same WSL2 machine, against AVD `jarvis-hologram-check`: the same android-34 `google_apis` x86_64 image at 540×960 and 240 dpi, 4 cores, 2 GB, `-gpu swiftshader_indirect`.
 
-| Measure | Result | Threshold |
-| --- | --- | --- |
-| Correlation with the voice | 0.719 | ≥ 0.5 |
-| Correlation with the reversed voice | 0.344 (margin 0.375) | margin ≥ 0.2 |
-| Brightness, speaking ÷ silent | 57.6 ÷ 34.1 = 1.69 | ≥ 1.1 |
-| Mean change per tenth of a second, stillest two seconds of silence | 1.06 (1.69 over all silence, 5.36 speaking) | ≥ 1 in every two seconds |
-
-That last margin is thin, and why matters before anyone reads it as a hologram that nearly stopped. The stillest two seconds were the first after speech ended. They held five distinct frames, like the two seconds after them, each differing from the one before by 4.2/255 per pixel against 7.1–7.6 later. The hologram was moving throughout. What pulls the number down is the emulator's frame rate: with five frames in twenty tenth-second samples, three samples in four are one frame repeated and count as 0. A slower emulator run could fail this check with nothing wrong in the app. The threshold was set before this run and has been left where it is.
-
-An earlier run on the same AVD failed that check, correctly: the clock then capped each frame's step at 100 ms. At the emulator's roughly 370 ms a frame, that turned the hologram at about a quarter of real speed (stillest two seconds 0.99, all silence 1.22). The cap is gone.
+| Measure | `microphone` | `replay` | Threshold |
+| --- | --- | --- | --- |
+| Tone: the app ÷ Android's HAL | 0.1412 ÷ 0.1413 (−0.01 dB); silence around it ≤ 0.0001 | — | within 1 dB; silence ≤ 0.01 |
+| Correlation with the voice | 0.739 | 0.719 | ≥ 0.5 |
+| Correlation with the reversed voice | 0.372 (margin 0.367) | 0.344 (margin 0.375) | margin ≥ 0.2 |
+| Brightness, speaking ÷ silent | 61.7 ÷ 36.7 = 1.68 | 57.6 ÷ 34.1 = 1.69 | ≥ 1.1 |
+| Mean change per tenth of a second, stillest two seconds of silence | 1.46 (2.41 over all silence) | 1.06 (1.69 over all silence) | ≥ 1 in every two seconds |
+| Distinct frames recorded in 180 s | 462 | 487 | — |
 
 The stills it leaves in `tests/hologram-preview/evidence/` show the same thing by eye: during silence, a dim sphere of thin arcs that keeps turning; during speech, a brighter and fuller one.
 
-Read those numbers with three caveats:
+What those numbers do and do not say:
 
-- **The voice was replayed eight times slower than it was spoken.** The emulator draws with a software GPU. The recording holds 487 distinct frames in 180 s, about 2.7 a second. Profiling the app on the larger Pixel 6 AVD with `simpleperf` put most of each frame in carrying GL calls through the emulator's pipe: about 64% kernel and GL transport, 12% Skia, 4% Hermes. At that rate, syllables four times a second cannot be followed however correct the app is. The slowdown was set for that reason before any measurement, and it only stretches how long each reading lasts: the folding, the real-time easing, the drawing and the thresholds are unchanged. `-gpu host` crashed this machine's emulator (D3D12/Vulkan under WSL2), and `-gpu guest` fell back to a slower software renderer. Earlier runs stopped on the environment, before producing a measurement: an emulator killed by a segfault while Gradle compiled beside it, "not responding" dialogs over the app, and `adb input text` dropping characters. The script handles each of these.
-- **The replay is not what the Android SDK hands over.** On Android, `getOutputVolume` and `getOutputByteFrequencyData` come from LiveKit's native processors (`@livekit/react-native` 2.12.0), not an `AnalyserNode`. Their spectrum is a comb: the SDK asks for 1024 bars, but at 48 kHz only 169 FFT bins fall in 100–8000 Hz, so every bar between two of them reads 0, and two of the hologram's 24 bands can never light. Their volume reads 16-bit samples from a big-endian `ByteBuffer` over little-endian audio — WebRTC's native library never sets a byte order on it — so anything louder than near-silence reads close to full scale. The spectrum follows from the arithmetic in `MultibandVolumeProcessor.kt`; the byte order is read from the code, not yet seen on a device. Either way, the pulse on a phone would be flatter and more on/off than the replay shows.
-- **Not checked:** how smooth it is on a phone's GPU at full frame rate, and whether it follows a live ElevenLabs session rather than a replay. `jarvis-voice.ts` reads `getOutputVolume` and `getOutputByteFrequencyData` in `try`/`catch` and treats a failure as silence. A real session that never feeds the processors would show a hologram that turns but never swells, not an error.
+- **The microphone run proves the bytes are read right, independently of the tone's own level.** The emulator's injection path doubles the amplitude before Android sees it: a tone injected at RMS 0.0707 was logged by the HAL at −17.0 dBFS, RMS 0.1413, and one at 0.177 read 0.354 — linear, so a gain, not clipping. The app agreed with the HAL both times. A sample read with its bytes swapped would not be off by a clean factor; it would read as loud noise. The emulator records at 8 kHz, which is also what caught `voiceRangeBins` repeating the top bin across frequencies 8 kHz audio cannot hold; they now read as silence.
+- **The replay numbers predate the shared analyser.** That run replayed readings from the first version of `analyse-voice.ts`, whose spectrum window started at each reading rather than ending there, and which had its own copy of the FFT. It has not been re-run since `analyse-voice.ts` moved onto `voice-analysis.ts`; the microphone run, which uses the new analysis end to end, has.
+- **The margins are not always wide.** An earlier microphone run, with another session's Chromium busy on the same machine, drew only 356 frames in 180 s and cleared the reversed voice by 0.243 against 0.2 (correlation 0.651); the one in the table drew 462 and cleared it by 0.367. The replay's stillest two seconds of silence were 1.06 against 1: the first two seconds after speech, holding five distinct frames that each changed by 4.2/255 per pixel, diluted by the three samples in four that repeat a frame. Neither threshold was moved after a run. A slower emulator could fail either with nothing wrong in the app.
+- **The voice is played eight times slower than it was spoken.** The emulator draws with a software GPU at 2–3 frames a second — profiling on the larger Pixel 6 AVD put most of each frame in carrying GL calls through the emulator's pipe (about 64% kernel and GL transport, 12% Skia, 4% Hermes) — and syllables four times a second cannot be followed at that rate however correct the app is. The slowdown was set for that reason before any measurement: in replay each reading is held longer, and for the microphone the audio itself is slowed with `atempo`, pitch kept. The analysis, the folding, the real-time easing, the drawing and the thresholds are unchanged. `-gpu host` crashed this machine's emulator (D3D12/Vulkan under WSL2), and `-gpu guest` fell back to a slower software renderer.
+- **Earlier runs failed, and each failure is handled in the script:** an emulator killed by a segfault while Gradle compiled beside it, "not responding" dialogs over the app, `adb input text` dropping characters, and — correctly — a clock that capped each frame's step at 100 ms and so turned the hologram at a quarter of real speed on a 370 ms-a-frame emulator.
+- **Not checked:** how smooth it is on a phone's GPU at full frame rate; a live ElevenLabs session, where `jarvis-voice.ts` has to find Jarvis's track in the room and `listenToTrack` has to attach to a remote track rather than the recorder (the fallback if either fails is the SDK's readers); and the LiveKit byte-order problem itself, which is read from the code and which the app now avoids rather than measures.
 
 ## Scope Guidelines for Commits
 

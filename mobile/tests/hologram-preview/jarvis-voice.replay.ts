@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { JarvisVoice } from '../../src/jarvis-voice';
+import type { JarvisVoice, UseJarvisVoice } from '../../src/platform-contracts';
 
 /**
  * A recorded Jarvis, for looking at the hologram where no conversation can run.
@@ -70,7 +70,7 @@ function decodeBase64(text: string): Uint8Array {
   return bytes;
 }
 
-export function useJarvisVoice(): JarvisVoice {
+export const useJarvisVoice: UseJarvisVoice = (): JarvisVoice => {
   const frames = useMemo(
     () => recording.frames.map((frame) => ({ volume: frame.volume, spectrum: decodeBase64(frame.spectrum) })),
     [],
@@ -103,4 +103,4 @@ export function useJarvisVoice(): JarvisVoice {
   );
 
   return { listening: true, speaking, ...readers };
-}
+};

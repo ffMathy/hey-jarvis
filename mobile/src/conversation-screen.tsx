@@ -9,13 +9,13 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  useWindowDimensions,
   View,
 } from 'react-native';
 import { type AssistantRegistration, openAssistantSettings } from '../modules/jarvis-assistant';
 import { createAssistLaunchClaim } from './assist-link';
 import { requestConversationToken } from './conversation-token';
 import type { ElevenLabsSettings } from './elevenlabs-settings';
+import { useHologramSize } from './hologram-size';
 import { JarvisHologram } from './jarvis-hologram';
 import { useJarvisVoice } from './jarvis-voice';
 import { requestMicrophoneAccess } from './microphone-permission';
@@ -29,9 +29,6 @@ interface ConversationScreenProps {
 
 /** Summonings already acted on in this process. */
 const claimAssistLaunch = createAssistLaunchClaim();
-
-/** The hologram never grows past this, however wide the screen: beyond it, it stops reading as a presence and starts reading as wallpaper. */
-const MAXIMUM_HOLOGRAM_SIZE = 380;
 
 /** Whether a conversation is open, or on its way to being open. */
 function isLive(status: string): boolean {
@@ -52,8 +49,7 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
   const { mode } = useConversationMode();
   const registration = useAssistantRegistration();
   const voice = useJarvisVoice();
-  const { width } = useWindowDimensions();
-  const hologramSize = Math.min(width - theme.spacing.large * 2, MAXIMUM_HOLOGRAM_SIZE);
+  const hologramSize = useHologramSize();
 
   const [problem, setProblem] = useState<string | undefined>(undefined);
   const [isStarting, setIsStarting] = useState(false);

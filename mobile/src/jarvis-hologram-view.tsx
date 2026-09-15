@@ -2,13 +2,13 @@ import { Canvas, Picture, Skia } from '@shopify/react-native-skia';
 import { useEffect, useMemo } from 'react';
 import { useDerivedValue, useFrameCallback, useSharedValue } from 'react-native-reanimated';
 import { createHologramResources, createHologramScene, drawHologram } from './hologram-drawing';
-import type { JarvisVoice } from './jarvis-voice';
+import type { JarvisVoice } from './platform-contracts';
 import { easeBands, easeLevel, foldSpectrum, perceivedLevel, VOICE_BAND_COUNT } from './voice-levels';
 
 export interface JarvisHologramProps {
   /** Width and height of the square it is drawn in, in points. */
   size: number;
-  /** Jarvis's voice: whether to listen to it, and how to read it. */
+  /** The voice it follows — Jarvis's, or the user's in sample mode: whether to listen, and how to read it. */
   voice: JarvisVoice;
 }
 
