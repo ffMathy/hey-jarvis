@@ -9,9 +9,9 @@ import type { ReadStoredValue, WriteStoredValue } from './platform-contracts';
  *
  * The difference is real and worth stating plainly rather than papering over:
  * `localStorage` is not a keystore. Anything running on the page's origin can
- * read the access token, and it survives until the site data is cleared. That is
- * the ordinary bargain for a browser app, and it is why the settings screen says
- * where the token is kept when it is running on web.
+ * read the ElevenLabs API key, unencrypted, and it survives until the site data
+ * is cleared. That is the ordinary bargain for a browser app, and it is why the
+ * settings screen says where the key is kept when it is running on web.
  *
  * Every access is wrapped because `localStorage` is not always there to be used:
  * a browser with site data blocked throws on the property access itself, and

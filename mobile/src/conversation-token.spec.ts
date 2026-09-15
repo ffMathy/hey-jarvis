@@ -71,9 +71,19 @@ describe('requestConversationToken', () => {
   });
 
   it('explains a rejected API key in terms of the setting to fix', async () => {
-    const fetchStub = createFetchStub(jsonResponse({ detail: { status: 'invalid_api_key' } }, 401));
+    const fetchStub = createFetchStub(
+      jsonResponse({ detail: { status: 'invalid_api_key', message: 'Invalid API key' } }, 401),
+    );
 
     await expect(requestConversationToken(SETTINGS, fetchStub)).rejects.toThrow(/rejected the API key/);
+  });
+
+  it('explains a right key without permission, which ElevenLabs also answers with 401', async () => {
+    // The app recommends a restricted key; one restricted too far must not be
+    // reported as a typo the user will keep re-pasting.
+    const fetchStub = createFetchStub(jsonResponse({ detail: { status: 'missing_permissions' } }, 401));
+
+    await expect(requestConversationToken(SETTINGS, fetchStub)).rejects.toThrow(/not allowed to start conversations/);
   });
 
   it('explains a key that exists but may not start conversations', async () => {
@@ -83,17 +93,29 @@ describe('requestConversationToken', () => {
   });
 
   it('explains an agent ID the account does not have', async () => {
-    for (const status of [404, 422]) {
-      const fetchStub = createFetchStub(jsonResponse({}, status));
+    const fetchStub = createFetchStub(jsonResponse({}, 404));
 
-      await expect(requestConversationToken(SETTINGS, fetchStub)).rejects.toThrow(/no agent with that ID/);
-    }
+    await expect(requestConversationToken(SETTINGS, fetchStub)).rejects.toThrow(/no agent with that ID/);
   });
 
-  it('explains being rate limited or out of credits', async () => {
+  it('explains a malformed agent ID, which ElevenLabs answers with 400', async () => {
+    const fetchStub = createFetchStub(jsonResponse({ detail: { status: 'invalid_agent_id' } }, 400));
+
+    await expect(requestConversationToken(SETTINGS, fetchStub)).rejects.toThrow(/no agent with that ID/);
+  });
+
+  it('explains an account out of credits', async () => {
+    const fetchStub = createFetchStub(jsonResponse({ detail: { code: 'insufficient_credits' } }, 402));
+
+    await expect(requestConversationToken(SETTINGS, fetchStub)).rejects.toThrow(/run out of credits/);
+  });
+
+  it('explains being rate limited without blaming credits', async () => {
     const fetchStub = createFetchStub(jsonResponse({}, 429));
 
-    await expect(requestConversationToken(SETTINGS, fetchStub)).rejects.toThrow(/out of credits/);
+    const error = await requestConversationToken(SETTINGS, fetchStub).catch((caught: unknown) => caught);
+    expect(String(error)).toContain('Try again shortly');
+    expect(String(error)).not.toContain('credits');
   });
 
   it('reports the status when ElevenLabs fails for some other reason', async () => {
@@ -102,10 +124,24 @@ describe('requestConversationToken', () => {
     await expect(requestConversationToken(SETTINGS, fetchStub)).rejects.toThrow(/HTTP 500/);
   });
 
-  it('never repeats the response body in the error, since it can echo the key', async () => {
-    const fetchStub = createFetchStub(jsonResponse({ detail: 'bad key sk_a-secret-key' }, 401));
+  it('copes with an error body that is not JSON', async () => {
+    const fetchStub = createFetchStub(new Response('<html>Bad gateway</html>', { status: 502 }));
 
-    await expect(requestConversationToken(SETTINGS, fetchStub)).rejects.not.toThrow(/sk_a-secret-key/);
+    await expect(requestConversationToken(SETTINGS, fetchStub)).rejects.toThrow(/HTTP 502/);
+  });
+
+  it('never repeats anything from the response in an error, on any path, since it can echo the key', async () => {
+    const echo = { detail: { status: 'sk_a-secret-key', code: 'sk_a-secret-key', message: 'bad key sk_a-secret-key' } };
+    const responses = [400, 401, 402, 403, 404, 422, 429, 500, 503].map((status) => jsonResponse(echo, status));
+    responses.push(jsonResponse({ ...echo, conversation_id: 'conv_1' }));
+
+    for (const response of responses) {
+      const error = await requestConversationToken(SETTINGS, createFetchStub(response)).catch(
+        (caught: unknown) => caught,
+      );
+      expect(error).toBeInstanceOf(Error);
+      expect(String(error)).not.toContain('sk_a-secret-key');
+    }
   });
 
   it('refuses a successful response that carries no token, rather than passing undefined on', async () => {

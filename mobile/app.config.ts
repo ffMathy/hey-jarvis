@@ -60,6 +60,12 @@ const config: ExpoConfig = {
   },
   plugins: [
     'expo-dev-client',
+    // Applies expo-secure-store's Auto Backup and data-extraction rules, which
+    // keep its storage — where the ElevenLabs API key lives — out of cloud backups
+    // and device-to-device transfers. Without them the encrypted entry is backed
+    // up anyway: undecryptable elsewhere, since the keystore key does not travel,
+    // but copied off the phone all the same.
+    'expo-secure-store',
     // Writes the meta-data that LiveKit's own lifecycle listener reads at
     // startup to pick an audio mode. Without it the native audio session is set
     // up for media playback rather than a call: the microphone routes to the

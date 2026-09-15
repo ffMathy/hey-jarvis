@@ -54,6 +54,10 @@ export function SettingsScreen({ settings, onSave, onCancel }: SettingsScreenPro
           autoCapitalize="none"
           autoCorrect={false}
           secureTextEntry
+          // Kept out of password managers and autofill: saving the key there would
+          // copy it off the device, out of the keystore it is meant to live in.
+          autoComplete="off"
+          importantForAutofill="no"
           placeholder="sk_…"
           testID="api-key"
           placeholderTextColor={theme.colors.mutedText}
@@ -68,6 +72,9 @@ export function SettingsScreen({ settings, onSave, onCancel }: SettingsScreenPro
           onChangeText={setAgentId}
           autoCapitalize="none"
           autoCorrect={false}
+          // Not autofill either, or it gets offered as the "username" for the key.
+          autoComplete="off"
+          importantForAutofill="no"
           placeholder="agent_…"
           testID="agent-id"
           placeholderTextColor={theme.colors.mutedText}

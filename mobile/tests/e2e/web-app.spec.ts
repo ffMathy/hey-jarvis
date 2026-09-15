@@ -23,6 +23,9 @@ const AGENT_ID = 'agent_01jz0123456789';
  * most recently added match first — answers before this one aborts. Without it a
  * session that got as far as a token would go on to dial ElevenLabs for real,
  * which is slow, flaky and, with a made-up key, pointless.
+ *
+ * WebSockets are closed separately, because `page.route` never sees them: the
+ * conversation itself opens one to ElevenLabs once it has a token.
  */
 async function blockExternalRequests(page: Page): Promise<void> {
   await page.route('**/*', async (route: Route) => {
@@ -34,28 +37,45 @@ async function blockExternalRequests(page: Page): Promise<void> {
 
     await route.abort();
   });
+
+  await page.routeWebSocket(/^wss?:\/\/(?!localhost[:/]|127\.0\.0\.1[:/])/, (webSocket) => webSocket.close());
 }
 
 /**
  * Answers a request to the token endpoint the way ElevenLabs would.
  *
- * The browser sends the API key in a custom header, which makes the request
- * cross-origin with a preflight: an OPTIONS request that has to be allowed before
- * the real GET is sent at all. Both are answered here, so the test sees the GET.
+ * The API key travels in a custom header, which in a real browser makes the
+ * request cross-origin with a preflight. Playwright answers preflights for routed
+ * requests itself, so this suite cannot tell whether ElevenLabs' own CORS policy
+ * allows the app's origin; what it can check is that the request carries no
+ * header beyond the key, which is what that preflight would have to allow.
  */
 async function answerTokenRequest(route: Route, status: number, body: unknown): Promise<void> {
-  const corsHeaders = {
-    'access-control-allow-origin': '*',
-    'access-control-allow-headers': 'xi-api-key',
-    'access-control-allow-methods': 'GET',
-  };
+  await route.fulfill({
+    status,
+    contentType: 'application/json',
+    headers: { 'access-control-allow-origin': '*' },
+    body: JSON.stringify(body),
+  });
+}
 
-  if (route.request().method() === 'OPTIONS') {
-    await route.fulfill({ status: 204, headers: corsHeaders });
-    return;
-  }
-
-  await route.fulfill({ status, contentType: 'application/json', headers: corsHeaders, body: JSON.stringify(body) });
+/** Whether a header is one a browser adds on its own, rather than one the app chose to send. */
+function isBrowserHeader(name: string): boolean {
+  return (
+    name.startsWith('sec-') ||
+    [
+      'accept',
+      'accept-encoding',
+      'accept-language',
+      'cache-control',
+      'connection',
+      'host',
+      'origin',
+      'pragma',
+      'referer',
+      'user-agent',
+    ].includes(name)
+  );
 }
 
 /** Fills in the settings screen and saves, leaving the app on the conversation screen. */
@@ -111,13 +131,13 @@ test('saves valid settings, shows the conversation, and remembers across a reloa
 });
 
 test('asks ElevenLabs for a conversation token for the agent, with the API key', async ({ page }) => {
-  const tokenRequests: Array<{ url: URL; method: string; apiKey: string | undefined }> = [];
+  const tokenRequests: Array<{ url: URL; method: string; headers: Record<string, string> }> = [];
 
   await page.route(CONVERSATION_TOKEN_URL, async (route: Route) => {
     tokenRequests.push({
       url: new URL(route.request().url()),
       method: route.request().method(),
-      apiKey: route.request().headers()['xi-api-key'],
+      headers: route.request().headers(),
     });
 
     await answerTokenRequest(route, 200, { token: 'a-webrtc-token', conversation_id: 'conv_1' });
@@ -127,12 +147,16 @@ test('asks ElevenLabs for a conversation token for the agent, with the API key',
   await configureElevenLabs(page);
   await page.getByTestId('talk').click();
 
-  await expect.poll(() => tokenRequests.filter((request) => request.method === 'GET').length).toBe(1);
-  const request = tokenRequests.find((candidate) => candidate.method === 'GET');
-  expect(request?.apiKey).toBe(API_KEY);
+  await expect.poll(() => tokenRequests.length).toBe(1);
+  const [request] = tokenRequests;
+  expect(request?.method).toBe('GET');
+  expect(request?.headers['xi-api-key']).toBe(API_KEY);
   expect(request?.url.searchParams.get('agent_id')).toBe(AGENT_ID);
   expect(request?.url.searchParams.get('participant_name')).toBe('jarvis-android');
   expect(request?.url.toString()).not.toContain(API_KEY);
+  // Nothing but the key, so the cross-origin preflight has only that to allow.
+  const chosenHeaders = Object.keys(request?.headers ?? {}).filter((name) => !isBrowserHeader(name));
+  expect(chosenHeaders).toEqual(['xi-api-key']);
 });
 
 test('explains a rejected API key in terms of the setting to fix', async ({ page }) => {
@@ -159,10 +183,25 @@ test('explains an agent ID the account does not have', async ({ page }) => {
   await expect(page.getByTestId('conversation-problem')).toContainText('no agent with that ID');
 });
 
-test('lets the settings be reopened and corrected', async ({ page }) => {
+test('lets the settings be reopened and corrected, and uses the correction', async ({ page }) => {
+  const agentIds: Array<string | null> = [];
+  await page.route(CONVERSATION_TOKEN_URL, async (route: Route) => {
+    agentIds.push(new URL(route.request().url()).searchParams.get('agent_id'));
+    await answerTokenRequest(route, 404, { detail: 'Not found' });
+  });
+
   await page.goto('/');
   await configureElevenLabs(page);
 
   await page.getByTestId('open-settings').click();
+  // Both values come back, so fixing one does not mean pasting the key again.
+  await expect(page.getByTestId('api-key')).toHaveValue(API_KEY);
   await expect(page.getByTestId('agent-id')).toHaveValue(AGENT_ID);
+
+  await page.getByTestId('agent-id').fill('agent_corrected');
+  await page.getByTestId('save-settings').click();
+  await expect(page.getByTestId('talk')).toBeVisible();
+  await page.getByTestId('talk').click();
+
+  await expect.poll(() => agentIds).toEqual(['agent_corrected']);
 });

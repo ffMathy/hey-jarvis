@@ -49,6 +49,14 @@ export function describeAgentIdProblem(rawAgentId: string): string | undefined {
     return 'The agent ID has a space in it. Paste just the ID.';
   }
 
+  // Agent IDs are letters, digits and underscores (a hyphen is let through, to
+  // be safe). Anything else is a paste of
+  // the wrong thing — the agent's dashboard URL, or a whole `NAME=value` line —
+  // which ElevenLabs would only reject later, less helpfully.
+  if (!/^[A-Za-z0-9_-]+$/.test(agentId)) {
+    return 'The agent ID should be just the ID, like agent_01jz…, not a link or a line from a file.';
+  }
+
   return undefined;
 }
 

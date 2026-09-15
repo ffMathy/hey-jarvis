@@ -31,6 +31,15 @@ describe('describeAgentIdProblem', () => {
   it('refuses an agent ID with a space inside it', () => {
     expect(describeAgentIdProblem('agent_01 jz')).toContain('space');
   });
+
+  it('refuses a dashboard link or a whole line from an env file', () => {
+    expect(describeAgentIdProblem('https://elevenlabs.io/app/agents/agents/agent_01jz')).toContain('just the ID');
+    expect(describeAgentIdProblem('HEY_JARVIS_ELEVENLABS_AGENT_ID=agent_01jz')).toContain('just the ID');
+  });
+
+  it('accepts an older agent ID without the agent_ prefix', () => {
+    expect(describeAgentIdProblem('J3Pbu5gP6NNKBscdCdwB')).toBeUndefined();
+  });
 });
 
 describe('parseElevenLabsSettings', () => {

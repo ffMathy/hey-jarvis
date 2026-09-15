@@ -39,14 +39,14 @@ function readSettings(stored: string): ElevenLabsSettings | undefined {
  * never wedge the app on a screen it cannot leave.
  */
 export async function loadElevenLabsSettings(): Promise<ElevenLabsSettings | undefined> {
-  const stored = await readStoredValue(STORAGE_KEY);
-  if (!stored) {
-    return undefined;
-  }
-
   try {
-    return readSettings(stored);
+    const stored = await readStoredValue(STORAGE_KEY);
+    return stored ? readSettings(stored) : undefined;
   } catch {
+    // Reading can throw as well as parsing: the keystore key protecting the entry
+    // can be invalidated by an OS update or a restore. Answering "nothing stored"
+    // opens the settings screen, where a new key can be saved over it — instead
+    // of a spinner the user could never get past.
     return undefined;
   }
 }

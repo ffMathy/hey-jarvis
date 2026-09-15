@@ -4,9 +4,11 @@ import type { ReadStoredValue, WriteStoredValue } from './platform-contracts';
 /**
  * Storage on a phone: the Android keystore, by way of `expo-secure-store`.
  *
- * What is kept here mints live microphone sessions into the house, so it belongs
- * behind the keystore rather than in ordinary app storage — a phone is lost far
- * more often than a server is.
+ * What is kept here is an ElevenLabs API key — an account credential, not a
+ * session — so it belongs behind the keystore rather than in ordinary app
+ * storage. `elevenlabs-settings.ts` says why it should also be a key made for this
+ * app alone, and mobile/AGENTS.md what the keystore does and does not protect it
+ * from.
  *
  * The web build takes `key-value-store.web.ts` instead, which is a real
  * difference in kind and not just in API. See the note there.
