@@ -5,23 +5,24 @@ import { expect, type Page, type Route, test } from '@playwright/test';
  *
  * Everything here is the production web export — the same bundle `expo export`
  * produces for deployment — served over HTTP and clicked through with Chromium.
- * What it cannot cover is the ElevenLabs session itself, which needs a real
- * conversation token and real quota; that boundary is where the requests are
- * intercepted, and the assertions are about what the app sends to its own server
- * rather than what ElevenLabs does with it.
+ * What it cannot cover is the ElevenLabs session itself, which needs a real API
+ * key and real quota; the token request is where the browser is stopped, and the
+ * assertions are about what the app sends to ElevenLabs rather than what
+ * ElevenLabs does with it.
  */
 
-const CONVERSATION_TOKEN_PATH = '**/api/voice/conversation-token';
+const CONVERSATION_TOKEN_URL = 'https://api.elevenlabs.io/v1/convai/conversation/token**';
 
-const SERVER_URL = 'https://jarvis.example.com';
-const ACCESS_TOKEN = 'a-shared-secret-the-phone-holds';
+const API_KEY = 'sk_not-a-real-key';
+const AGENT_ID = 'agent_01jz0123456789';
 
 /**
- * Stops the page reaching anything but the server under test.
+ * Stops the page reaching anything but the app under test.
  *
- * Without this a session that gets as far as a token would go on to dial
- * ElevenLabs for real, which is slow, flaky and — with a made-up token —
- * pointless. Blocking it makes the failure immediate and local.
+ * Registered first, so any route a test adds afterwards — Playwright tries the
+ * most recently added match first — answers before this one aborts. Without it a
+ * session that got as far as a token would go on to dial ElevenLabs for real,
+ * which is slow, flaky and, with a made-up key, pointless.
  */
 async function blockExternalRequests(page: Page): Promise<void> {
   await page.route('**/*', async (route: Route) => {
@@ -35,10 +36,32 @@ async function blockExternalRequests(page: Page): Promise<void> {
   });
 }
 
+/**
+ * Answers a request to the token endpoint the way ElevenLabs would.
+ *
+ * The browser sends the API key in a custom header, which makes the request
+ * cross-origin with a preflight: an OPTIONS request that has to be allowed before
+ * the real GET is sent at all. Both are answered here, so the test sees the GET.
+ */
+async function answerTokenRequest(route: Route, status: number, body: unknown): Promise<void> {
+  const corsHeaders = {
+    'access-control-allow-origin': '*',
+    'access-control-allow-headers': 'xi-api-key',
+    'access-control-allow-methods': 'GET',
+  };
+
+  if (route.request().method() === 'OPTIONS') {
+    await route.fulfill({ status: 204, headers: corsHeaders });
+    return;
+  }
+
+  await route.fulfill({ status, contentType: 'application/json', headers: corsHeaders, body: JSON.stringify(body) });
+}
+
 /** Fills in the settings screen and saves, leaving the app on the conversation screen. */
-async function configureServer(page: Page): Promise<void> {
-  await page.getByTestId('server-url').fill(SERVER_URL);
-  await page.getByTestId('access-token').fill(ACCESS_TOKEN);
+async function configureElevenLabs(page: Page): Promise<void> {
+  await page.getByTestId('api-key').fill(API_KEY);
+  await page.getByTestId('agent-id').fill(AGENT_ID);
   await page.getByTestId('save-settings').click();
   await expect(page.getByTestId('talk')).toBeVisible();
 }
@@ -50,29 +73,28 @@ test.beforeEach(async ({ page }) => {
 test('opens on the settings screen, because nothing is configured yet', async ({ page }) => {
   await page.goto('/');
 
-  await expect(page.getByTestId('server-url')).toBeVisible();
-  await expect(page.getByTestId('access-token')).toBeVisible();
+  await expect(page.getByTestId('api-key')).toBeVisible();
+  await expect(page.getByTestId('agent-id')).toBeVisible();
 
-  // The web build keeps the token somewhere materially less safe than the phone
+  // The web build keeps the key somewhere materially less safe than the phone
   // does, and the screen has to say so rather than imply a keystore.
   await expect(page.getByTestId('storage-note')).toContainText('local storage');
 });
 
-test('refuses a plain-http server address, which would put the token on the wire in clear', async ({ page }) => {
+test('refuses to save without an agent ID', async ({ page }) => {
   await page.goto('/');
 
-  await page.getByTestId('server-url').fill('http://jarvis.example.com');
-  await page.getByTestId('access-token').fill(ACCESS_TOKEN);
+  await page.getByTestId('api-key').fill(API_KEY);
   await page.getByTestId('save-settings').click();
 
-  await expect(page.getByTestId('settings-problem')).toContainText('https');
+  await expect(page.getByTestId('settings-problem')).toContainText('agent');
   // Still on the settings screen: a refused save must not fall through.
   await expect(page.getByTestId('talk')).toHaveCount(0);
 });
 
 test('saves valid settings, shows the conversation, and remembers across a reload', async ({ page }) => {
   await page.goto('/');
-  await configureServer(page);
+  await configureElevenLabs(page);
 
   await expect(page.getByTestId('conversation-status')).toHaveText('Standing by.');
 
@@ -85,70 +107,62 @@ test('saves valid settings, shows the conversation, and remembers across a reloa
   // Straight back to the conversation, which is only possible if the settings
   // survived in localStorage — the native keystore path throws on web.
   await expect(page.getByTestId('talk')).toBeVisible();
-  await expect(page.getByTestId('server-url')).toHaveCount(0);
+  await expect(page.getByTestId('api-key')).toHaveCount(0);
 });
 
-test('asks its own server for a conversation token, presenting the access token as a bearer', async ({ page }) => {
-  const tokenRequests: Array<{ authorization: string | undefined; body: string | undefined }> = [];
+test('asks ElevenLabs for a conversation token for the agent, with the API key', async ({ page }) => {
+  const tokenRequests: Array<{ url: URL; method: string; apiKey: string | undefined }> = [];
 
-  await page.route(CONVERSATION_TOKEN_PATH, async (route: Route) => {
+  await page.route(CONVERSATION_TOKEN_URL, async (route: Route) => {
     tokenRequests.push({
-      authorization: route.request().headers().authorization,
-      body: route.request().postData() ?? undefined,
+      url: new URL(route.request().url()),
+      method: route.request().method(),
+      apiKey: route.request().headers()['xi-api-key'],
     });
 
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ success: true, data: { token: 'a-webrtc-token', conversationId: 'conv_1' } }),
-    });
+    await answerTokenRequest(route, 200, { token: 'a-webrtc-token', conversation_id: 'conv_1' });
   });
 
   await page.goto('/');
-  await configureServer(page);
+  await configureElevenLabs(page);
   await page.getByTestId('talk').click();
 
-  await expect.poll(() => tokenRequests.length).toBe(1);
-  expect(tokenRequests[0]?.authorization).toBe(`Bearer ${ACCESS_TOKEN}`);
-  expect(JSON.parse(tokenRequests[0]?.body ?? '{}')).toEqual({ participantName: 'jarvis-android' });
+  await expect.poll(() => tokenRequests.filter((request) => request.method === 'GET').length).toBe(1);
+  const request = tokenRequests.find((candidate) => candidate.method === 'GET');
+  expect(request?.apiKey).toBe(API_KEY);
+  expect(request?.url.searchParams.get('agent_id')).toBe(AGENT_ID);
+  expect(request?.url.searchParams.get('participant_name')).toBe('jarvis-android');
+  expect(request?.url.toString()).not.toContain(API_KEY);
 });
 
-test('explains a rejected access token in terms of the setting to fix', async ({ page }) => {
-  await page.route(CONVERSATION_TOKEN_PATH, async (route: Route) => {
-    await route.fulfill({
-      status: 401,
-      contentType: 'application/json',
-      body: JSON.stringify({ success: false, message: 'A valid bearer token is required.' }),
-    });
+test('explains a rejected API key in terms of the setting to fix', async ({ page }) => {
+  await page.route(CONVERSATION_TOKEN_URL, async (route: Route) => {
+    await answerTokenRequest(route, 401, { detail: { status: 'invalid_api_key' } });
   });
 
   await page.goto('/');
-  await configureServer(page);
+  await configureElevenLabs(page);
   await page.getByTestId('talk').click();
 
-  await expect(page.getByTestId('conversation-problem')).toContainText('HEY_JARVIS_MOBILE_APP_ACCESS_TOKEN');
+  await expect(page.getByTestId('conversation-problem')).toContainText('rejected the API key');
 });
 
-test('explains a server that has not been given an access token at all', async ({ page }) => {
-  await page.route(CONVERSATION_TOKEN_PATH, async (route: Route) => {
-    await route.fulfill({
-      status: 503,
-      contentType: 'application/json',
-      body: JSON.stringify({ success: false }),
-    });
+test('explains an agent ID the account does not have', async ({ page }) => {
+  await page.route(CONVERSATION_TOKEN_URL, async (route: Route) => {
+    await answerTokenRequest(route, 404, { detail: 'Not found' });
   });
 
   await page.goto('/');
-  await configureServer(page);
+  await configureElevenLabs(page);
   await page.getByTestId('talk').click();
 
-  await expect(page.getByTestId('conversation-problem')).toContainText('not configured');
+  await expect(page.getByTestId('conversation-problem')).toContainText('no agent with that ID');
 });
 
 test('lets the settings be reopened and corrected', async ({ page }) => {
   await page.goto('/');
-  await configureServer(page);
+  await configureElevenLabs(page);
 
   await page.getByTestId('open-settings').click();
-  await expect(page.getByTestId('server-url')).toHaveValue(SERVER_URL);
+  await expect(page.getByTestId('agent-id')).toHaveValue(AGENT_ID);
 });

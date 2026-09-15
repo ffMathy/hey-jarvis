@@ -1022,35 +1022,6 @@ and when the parsing agent cannot read an answer out of them. Each is counted in
 `repliesRejected` rather than reported as an error, because nothing has gone wrong with the
 system. Only a token naming a run that does not exist is reported as an error.
 
-## REST Endpoints
-
-Plain HTTP routes on the MCP server (port 4112), for callers that are not the ElevenLabs
-agent. Registered in [`verticals/api/routes.ts`](mastra/verticals/api/routes.ts).
-
-| Method | Path | Called by |
-| --- | --- | --- |
-| POST | `/api/shopping-list` | Home Assistant |
-| POST | `/api/voice/conversation-token` | The Android app in [`mobile/`](../mobile/AGENTS.md) |
-
-### Conversation Token
-
-Mints one short-lived ElevenLabs WebRTC token so the phone can hold a conversation with the
-Jarvis agent without ever holding an ElevenLabs API key — a key that could read every past
-conversation and rewrite the agent, and that cannot be kept secret inside an app bundle.
-
-**Required Environment Variables:**
-- `HEY_JARVIS_MOBILE_APP_ACCESS_TOKEN`: the shared secret the app presents as a bearer token.
-  Until it is set the endpoint answers 503 and mints nothing, so an unconfigured server is a
-  closed one rather than an open one. It is deliberately separate from the Cloudflare Access
-  service token in front of the tunnel, because the same server also answers on the LAN, where
-  Access never sees the request.
-- `HEY_JARVIS_ELEVENLABS_API_KEY` and `HEY_JARVIS_ELEVENLABS_AGENT_ID`: already required by the
-  rest of the project.
-
-WebRTC rather than a signed WebSocket URL is not a preference: `@elevenlabs/react-native` refuses
-a signed URL outright, because a WebSocket session needs Web Audio APIs that React Native has not
-got.
-
 ## Processors
 
 ### 🔍 **Output Processors**

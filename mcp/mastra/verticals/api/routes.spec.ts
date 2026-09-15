@@ -361,8 +361,8 @@ describe('registerWorkflowApi', () => {
 });
 
 describe('registerApiRoutes', () => {
-  it('registers exactly the endpoints the outside world calls', () => {
-    expect(registeredApiPaths).toEqual(['/api/shopping-list', '/api/voice/conversation-token']);
+  it('registers exactly the shopping list endpoint', () => {
+    expect(registeredApiPaths).toEqual(['/api/shopping-list']);
   });
 
   it('validates the shopping list body before running the workflow', async () => {

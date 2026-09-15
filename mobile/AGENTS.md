@@ -27,7 +27,7 @@ It runs `build:apk` straight on the runner rather than in the dev container CI u
 
 - **arm64-v8a only.** That is what phones run, and each extra ABI compiles every native module again. For an x86_64 emulator, build locally with `reactNativeArchitectures=x86_64`, or use `.scripts/verify-assistant-on-emulator.sh`, which does.
 - **Signed with the Expo template's debug keystore**, the same well-known key everywhere. CI and local builds therefore install over each other, which is what side-loading wants — but anyone can sign an update with that key, so it is not a distribution build. Anything published goes through EAS (`eas.json`'s `production` profile) with a real key.
-- **It is the release variant**: the JS bundle is embedded, no Metro and no development client, and nothing configured — the server address and access token are typed into the settings screen on first run, as on any install.
+- **It is the release variant**: the JS bundle is embedded, no Metro and no development client, and nothing configured — the ElevenLabs API key and agent ID are typed into the settings screen on first run, as on any install.
 
 To run it on a device (needs the Android SDK, which CI does not have):
 
@@ -48,8 +48,8 @@ phone (assist gesture)
   └─ JarvisVoiceInteractionSession          modules/jarvis-assistant (Kotlin)
        └─ heyjarvis://assist                deep link into the app
             └─ ConversationScreen           src/conversation-screen.tsx
-                 ├─ POST /api/voice/conversation-token   → the MCP server
-                 └─ WebRTC session                       → the ElevenLabs Jarvis agent
+                 ├─ GET /v1/convai/conversation/token   → ElevenLabs, with the API key
+                 └─ WebRTC session                      → the ElevenLabs Jarvis agent
 ```
 
 The agent on the other end is the same one `elevenlabs/` deploys, with the same prompt and the same `routePromptWorkflow` tools. This app adds a way to reach it, not a second Jarvis.
@@ -70,8 +70,8 @@ mobile/
     ├── conversation-screen.tsx
     ├── settings-screen.tsx
     ├── assist-link.ts            # what "opened by the assistant" looks like
-    ├── conversation-token.ts     # the call to the MCP server
-    ├── server-settings.ts        # validation of what the user typed
+    ├── conversation-token.ts     # minting a conversation token from ElevenLabs
+    ├── elevenlabs-settings.ts    # validation of what the user typed
     ├── settings-storage.ts       # platform-agnostic half of persistence
     ├── platform-contracts.ts     # the shapes the .web.ts pairs below must keep
     ├── key-value-store.ts        # keystore on Android …
@@ -82,14 +82,16 @@ mobile/
 
 ## Configuration
 
-The app ships with no server address and no credential. Both are typed into the settings screen on first run and kept in the Android keystore — or, on web, in `localStorage`:
+The app ships with no credential. It talks to ElevenLabs directly, and both settings are typed into the settings screen on first run and kept in the Android keystore — or, on web, in `localStorage`:
 
 | Setting | What it is |
 | --- | --- |
-| Server address | The Jarvis MCP server, over **https** — the access token goes with every request |
-| Access token | The value of `HEY_JARVIS_MOBILE_APP_ACCESS_TOKEN` on that server |
+| API key | An ElevenLabs API key, sent as `xi-api-key` to ElevenLabs and nowhere else |
+| Agent ID | The Jarvis agent — the value of `HEY_JARVIS_ELEVENLABS_AGENT_ID` |
 
-The ElevenLabs API key never reaches the phone. `POST /api/voice/conversation-token` on the MCP server mints a single short-lived WebRTC conversation token per conversation; that endpoint refuses to answer at all unless `HEY_JARVIS_MOBILE_APP_ACCESS_TOKEN` is set, so an unconfigured server is a closed one rather than an open one.
+For each conversation the app asks `GET https://api.elevenlabs.io/v1/convai/conversation/token` for a WebRTC token for that agent, and the session runs on the token; the key itself is used for nothing else. `conversation-token.ts` turns each failure into what to fix — a rejected key, a key without permission to start conversations, an agent ID the account does not have, rate limiting — and never repeats a response body, since one can echo the request that carried the key.
+
+This used to go through the MCP server, which held the key and handed the phone tokens behind a shared secret. It was changed so the app needs nothing but ElevenLabs: no server address, no second secret, no tunnel to reach. The price is a real credential on the phone, so give the app **its own key**, restricted to what a conversation needs where the account allows it — then a lost phone is one revoked key, not every integration on the account. The keystore keeps it out of reach of other apps and out of backups; it does not make it safe to share.
 
 ## Becoming the assistant
 
@@ -149,7 +151,7 @@ Everything under `src/` that can be tested without a device is, and it runs in t
 bunx turbo test --filter=mobile
 ```
 
-Tests must not import React Native or any Expo native module — there is no runtime for them under `bun test`. Keep logic worth testing in plain `.ts` files (`assist-link.ts`, `server-settings.ts`, `conversation-token.ts`) and let the `.tsx` files stay thin enough to read.
+Tests must not import React Native or any Expo native module — there is no runtime for them under `bun test`. Keep logic worth testing in plain `.ts` files (`assist-link.ts`, `elevenlabs-settings.ts`, `conversation-token.ts`) and let the `.tsx` files stay thin enough to read.
 
 `turbo build` bundles the JavaScript with Metro rather than assembling an APK. That needs no Android SDK, so it runs in CI's dev container on every push, and it still catches the failures a bundle can catch: an import that does not resolve, a native module missing from the tree, a file no test imports. The native build — Kotlin, Gradle, the manifest merge — is exercised by the Mobile APK workflow, only when the app changes.
 
@@ -157,7 +159,7 @@ Tests must not import React Native or any Expo native module — there is no run
 
 `turbo e2e --filter=mobile` exports the production web build and drives it in Chromium — the real bundle, served over HTTP, clicked through. It runs in CI alongside the rest.
 
-The boundary is the ElevenLabs session, which needs a real conversation token and real quota. Everything up to it is exercised for real: settings validation, persistence across a reload, the assistant card's web state, and the request to `/api/voice/conversation-token` with its bearer token and participant name. The token endpoint is intercepted with `page.route`, and every non-localhost request is aborted so a test can never dial out.
+The boundary is the ElevenLabs session, which needs a real API key and real quota. Everything up to it is exercised for real: settings validation, persistence across a reload, the assistant card's web state, and the token request to ElevenLabs — its `xi-api-key` header, agent ID and participant name, and that the key never appears in the URL — along with how a rejected key and an unknown agent are explained. The token URL is intercepted with `page.route` (preflight included, since a custom header makes the request cross-origin with one), and every other non-localhost request is aborted so a test can never dial out.
 
 Set `CHROMIUM_EXECUTABLE_PATH` to run against a Chromium that Playwright did not install itself — useful in a sandbox that ships a browser of a different build than the pinned `@playwright/test` expects. Leave it unset everywhere else.
 
@@ -189,7 +191,7 @@ A GitHub-hosted runner *does* have KVM, so an emulator job is possible in princi
 
 The last run, against a fresh AVD with a warm Gradle cache, took 4½ minutes end to end; earlier ones on the same machine took closer to ten while other work competed for memory, most of it first boot and waiting out the role controller. The very first build on a machine adds twenty.
 
-What the script does **not** cover is whether the conversation then starts on its own, because that needs a configured server. It was checked by hand on the same emulator, pointing the app at a local listener that logs one line per token request — one line per `start()`. That found a real bug: only the first summoning after the app process started opened the microphone, and every later one brought Jarvis to the front and waited for a tap (`0, 0, 0` requests for three summonings; `1` for tapping Talk). The system keeps an assistant's process alive while it holds the role, so on a phone that is almost every summoning. It is fixed — each summoning now carries a `summon` value that differs every time, and the screen claims each URL once per process (`createAssistLaunchClaim` in `assist-link.ts`) — and the same measurement then gave one request for every summoning. One summoning out of fourteen after the fix produced no request, immediately after a reinstall, and did not happen again in thirteen further attempts, including ones that recreated those conditions; its log had already been cleared, so its cause is unknown.
+What the script does **not** cover is whether the conversation then starts on its own, because that needs a real session. It was checked by hand on the same emulator, pointing the app (then still configured with a server address) at a local listener that logged one line per token request — one line per `start()`. That found a real bug: only the first summoning after the app process started opened the microphone, and every later one brought Jarvis to the front and waited for a tap (`0, 0, 0` requests for three summonings; `1` for tapping Talk). The system keeps an assistant's process alive while it holds the role, so on a phone that is almost every summoning. It is fixed — each summoning now carries a `summon` value that differs every time, and the screen claims each URL once per process (`createAssistLaunchClaim` in `assist-link.ts`) — and the same measurement then gave one request for every summoning. One summoning out of fourteen after the fix produced no request, immediately after a reinstall, and did not happen again in thirteen further attempts, including ones that recreated those conditions; its log had already been cleared, so its cause is unknown.
 
 Two things the emulator showed about the role itself, both Android's behaviour rather than the app's: **Force stop** and **Clear storage** on Jarvis's App info screen each hand the assistant role straight back to the default — `VoiceInteractionManager` logs `Force stopping current voice interactor` and clears the role holder. An app update and ordinary process death keep it. So a user who force-stops Jarvis has to pick it again in Settings, and the assistant card will say so when the app next comes to the foreground.
 

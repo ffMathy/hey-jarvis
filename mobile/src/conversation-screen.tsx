@@ -6,12 +6,12 @@ import { type AssistantRegistration, openAssistantSettings } from '../modules/ja
 import { createAssistLaunchClaim } from './assist-link';
 import { requestConversationToken } from './conversation-token';
 import { requestMicrophoneAccess } from './microphone-permission';
-import type { ServerSettings } from './server-settings';
+import type { ElevenLabsSettings } from './elevenlabs-settings';
 import { theme } from './theme';
 import { useAssistantRegistration } from './use-assistant-registration';
 
 interface ConversationScreenProps {
-  settings: ServerSettings;
+  settings: ElevenLabsSettings;
   onEditSettings: () => void;
 }
 
@@ -28,8 +28,8 @@ function isLive(status: string): boolean {
  *
  * One button, because a summoned assistant should need no reading. Everything
  * else on it is there to explain the two states the user cannot fix by pressing
- * that button: not being the phone's assistant, and not being able to reach the
- * server.
+ * that button: not being the phone's assistant, and not being able to reach
+ * ElevenLabs.
  */
 export function ConversationScreen({ settings, onEditSettings }: ConversationScreenProps) {
   const { startSession, endSession } = useConversationControls();
@@ -125,7 +125,7 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
         style={styles.secondaryButton}
         testID="open-settings"
       >
-        <Text style={styles.secondaryButtonLabel}>Server settings</Text>
+        <Text style={styles.secondaryButtonLabel}>ElevenLabs settings</Text>
       </Pressable>
     </ScrollView>
   );

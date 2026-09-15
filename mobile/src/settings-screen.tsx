@@ -1,28 +1,27 @@
 import { useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { parseServerSettings, type ServerSettings } from './server-settings';
+import { type ElevenLabsSettings, parseElevenLabsSettings } from './elevenlabs-settings';
 import { theme } from './theme';
 
 interface SettingsScreenProps {
-  settings: ServerSettings | undefined;
-  onSave: (settings: ServerSettings) => void;
+  settings: ElevenLabsSettings | undefined;
+  onSave: (settings: ElevenLabsSettings) => void;
   onCancel: (() => void) | undefined;
 }
 
 /**
- * Where the phone is told which Jarvis it belongs to.
+ * Where the phone is told which Jarvis it talks to.
  *
- * Both values are typed in rather than compiled in. The alternative — shipping
- * the server address and a credential inside the app — would put a live key to
- * the house in every copy of the bundle.
+ * Both values are typed in rather than compiled in. Shipping the API key inside
+ * the app would put a live credential in every copy of the bundle.
  */
 export function SettingsScreen({ settings, onSave, onCancel }: SettingsScreenProps) {
-  const [serverUrl, setServerUrl] = useState(settings?.serverUrl ?? 'https://');
-  const [accessToken, setAccessToken] = useState(settings?.accessToken ?? '');
+  const [apiKey, setApiKey] = useState(settings?.apiKey ?? '');
+  const [agentId, setAgentId] = useState(settings?.agentId ?? '');
   const [problem, setProblem] = useState<string | undefined>(undefined);
 
   const save = () => {
-    const result = parseServerSettings(serverUrl, accessToken);
+    const result = parseElevenLabsSettings(apiKey, agentId);
 
     if ('problem' in result) {
       setProblem(result.problem);
@@ -35,43 +34,42 @@ export function SettingsScreen({ settings, onSave, onCancel }: SettingsScreenPro
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Server settings</Text>
+      <Text style={styles.title}>ElevenLabs</Text>
       <Text style={styles.explanation}>
-        Jarvis runs on your own server. This app never holds an ElevenLabs key — it asks the server for one conversation
-        at a time.
+        Jarvis is an ElevenLabs agent, and this app talks to it directly. Use an API key made for this app alone, so
+        that a lost phone means revoking one key.
       </Text>
       <Text style={styles.explanation} testID="storage-note">
         {Platform.OS === 'web'
-          ? 'In a browser the access token is kept in local storage, which is not a keystore: anything running on this page can read it. On Android it goes in the keystore instead.'
-          : 'The access token is kept in the Android keystore.'}
+          ? 'In a browser the API key is kept in local storage, which is not a keystore: anything running on this page can read it. On Android it goes in the keystore instead.'
+          : 'The API key is kept in the Android keystore.'}
       </Text>
 
       <View style={styles.field}>
-        <Text style={styles.label}>Server address</Text>
+        <Text style={styles.label}>API key</Text>
         <TextInput
           style={styles.input}
-          value={serverUrl}
-          onChangeText={setServerUrl}
+          value={apiKey}
+          onChangeText={setApiKey}
           autoCapitalize="none"
           autoCorrect={false}
-          keyboardType="url"
-          placeholder="https://jarvis.example.com"
-          testID="server-url"
+          secureTextEntry
+          placeholder="sk_…"
+          testID="api-key"
           placeholderTextColor={theme.colors.mutedText}
         />
       </View>
 
       <View style={styles.field}>
-        <Text style={styles.label}>Access token</Text>
+        <Text style={styles.label}>Agent ID</Text>
         <TextInput
           style={styles.input}
-          value={accessToken}
-          onChangeText={setAccessToken}
+          value={agentId}
+          onChangeText={setAgentId}
           autoCapitalize="none"
           autoCorrect={false}
-          secureTextEntry
-          placeholder="HEY_JARVIS_MOBILE_APP_ACCESS_TOKEN"
-          testID="access-token"
+          placeholder="agent_…"
+          testID="agent-id"
           placeholderTextColor={theme.colors.mutedText}
         />
       </View>

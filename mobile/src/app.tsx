@@ -11,9 +11,9 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { ConversationScreen } from './conversation-screen';
-import type { ServerSettings } from './server-settings';
+import type { ElevenLabsSettings } from './elevenlabs-settings';
 import { SettingsScreen } from './settings-screen';
-import { loadServerSettings, saveServerSettings } from './settings-storage';
+import { loadElevenLabsSettings, saveElevenLabsSettings } from './settings-storage';
 import { theme } from './theme';
 
 /**
@@ -24,21 +24,21 @@ import { theme } from './theme';
  * can answer is an assistant that answers late.
  */
 export function App() {
-  const [settings, setSettings] = useState<ServerSettings | undefined>(undefined);
+  const [settings, setSettings] = useState<ElevenLabsSettings | undefined>(undefined);
   const [isLoaded, setIsLoaded] = useState(false);
   const [isEditingSettings, setIsEditingSettings] = useState(false);
 
   useEffect(() => {
     void (async () => {
-      setSettings(await loadServerSettings());
+      setSettings(await loadElevenLabsSettings());
       setIsLoaded(true);
     })();
   }, []);
 
-  const save = (saved: ServerSettings) => {
+  const save = (saved: ElevenLabsSettings) => {
     setSettings(saved);
     setIsEditingSettings(false);
-    void saveServerSettings(saved);
+    void saveElevenLabsSettings(saved);
   };
 
   return (

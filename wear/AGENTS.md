@@ -22,7 +22,11 @@ There is no `build`, `lint` or `test` task, on purpose: CI's `turbo build` runs 
 
 `app/src/main/AndroidManifest.xml` gives `AssistActivity` an intent filter for `android.intent.action.ASSIST` and `VOICE_ASSIST`. That is the whole registration — no `VoiceInteractionService`, unlike the phone app. Wear OS offers any app with such an activity under **Digital assistant app**, which is how Home Assistant's watch app is registered too.
 
-`applicationId` is the phone app's, `com.ffmathy.heyjarvis`. The Wearable Data Layer only connects a phone app and a watch app that share a package name and a signing key, and the real app will need it to get the server address and token from the phone rather than having them typed on a watch.
+`applicationId` is the phone app's, `com.ffmathy.heyjarvis`. The Wearable Data Layer only connects a phone app and a watch app that share a package name and a signing key, and the real app will need it.
+
+## Credentials, for the real app
+
+Like the phone app, the watch app will talk to ElevenLabs directly with an ElevenLabs API key and the Jarvis agent ID — no server in between — and will keep the key in the **watch's own Android Keystore**, never in its APK or in plain preferences. The key should reach the watch from the phone over the Data Layer rather than be typed on it: a key is long, and a watch keyboard is not where anyone should enter one. Once it arrives, the watch stores it and no longer needs the phone to be nearby to start a conversation. None of this exists yet; the prototype holds no credential at all.
 
 ## What has been verified
 
