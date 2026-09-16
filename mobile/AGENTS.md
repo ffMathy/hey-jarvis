@@ -318,6 +318,18 @@ Run on 2026-09-15 on the same WSL2 machine, against AVD `jarvis-hologram-check`:
 | Mean change per tenth of a second, stillest two seconds of silence | 1.46 (2.41 over all silence) | 1.06 (1.69 over all silence) | ≥ 1 in every two seconds |
 | Distinct frames recorded in 180 s | 462 | 487 | — |
 
+**That run is the original pulsing hologram, and the check does not pass today.** It is kept because what it proves about the audio path still holds. The drawing has since been rebuilt around the film study and then rebuilt again around the user's asks, and on the same emulator it now renders 286 distinct frames in 180 s where the original managed 462 — about 1.6 a second. The three activity rules cannot be met at that rate: sampled ten times a second, five of every six samples are the same frame as the one before, so nothing can correlate with a voice. The latest run (2026-09-16, `microphone`, the turning-and-glowing drawing) reads:
+
+| Measure | Got | Threshold | |
+| --- | --- | --- | --- |
+| Tone: the app ÷ Android's HAL | 0.1412 ÷ 0.1413 | within 1 dB | pass |
+| Brightness, speaking ÷ silent | 1.052 | 1.02 to 1.3 | pass |
+| Correlation with the voice | 0.181 | ≥ 0.5 | fail |
+| Activity, speaking ÷ silent | 1.178 | ≥ 1.3 | fail |
+| Mean change per tenth of a second, stillest two seconds of silence | 0.76 | ≥ 1 | fail |
+
+Every one of those has improved with each build — motion 0.56 → 0.65 → 0.76, correlation 0.062 → 0.068 → 0.181 — and all three are limited by the frame rate rather than by what the drawing does. The emulator rasterises in software (`-gpu host` segfaults on this machine), and `dumpsys gfxinfo` puts 1200 ms of each 1208 ms frame on the CPU with 8 ms of drawing. **Do not adjust these thresholds to make it pass.** Either the drawing gets several times cheaper again, or this check is honestly reported as unable to measure it, and the phone is the judge.
+
 The stills that run left in `tests/hologram-preview/evidence/` show the same thing by eye: during silence, a dim sphere of thin arcs that keeps turning; during speech, a brighter and fuller one. The film design is meant to look different there — the same brightness either way, and a busier, looser ball while he talks — which is the change the re-run has to confirm.
 
 What those numbers do and do not say:
