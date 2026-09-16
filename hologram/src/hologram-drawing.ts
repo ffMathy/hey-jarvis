@@ -393,25 +393,31 @@ const SPARKLE_TEXEL_SIZE = 0.018;
  * at 384 px — not one channel of one pixel differs, and the frame is 8% cheaper.
  */
 /**
- * How far the backdrop's shadow reaches, in sphere radii, and how dark it is at the middle.
+ * The backdrop's shadow: black under the sphere, gone by the edge of the square it is drawn in.
  *
  * Jarvis is drawn over whatever the user was already looking at — a home screen, another app —
  * and on a pale one he washed out: warm amber strokes over a bright photograph read as a smudge
- * rather than as a hologram. This is a soft shadow under him, black at the core and gone by its
- * own edge, so the sphere always has something dark to sit against wherever it is summoned.
- * Asked for by the user, and their phrasing is the design: "black in the center and transparent
- * towards the edges, to help emphasize it and pop it out more".
+ * rather than as a hologram. This is a soft shadow under him, so the sphere always has something
+ * dark to sit against wherever it is summoned. Asked for by the user, and their phrasing is the
+ * design: "black in the center and transparent towards the edges, to help emphasize it and pop it
+ * out more".
  *
- * Past the limb, at 2.1R, because a shadow that ended at the sphere would draw a ring around it.
+ * **Its reach is not a constant, and that is the whole point.** It was 2.1 sphere radii, which at
+ * this SPHERE_FRACTION is wider than the square the hologram is given — so the circle was cut off
+ * by the canvas and the shadow ended in four straight edges, a visible box around Jarvis on the
+ * home screen. The reach is worked out per frame instead, as exactly half the square, so the
+ * shadow is the square's inscribed circle: it reaches zero precisely where it would otherwise be
+ * clipped, and the corners past it are left untouched. It holds whatever the voice does to the
+ * sphere's size, which is what made the old fixed reach wrong in two different ways at once.
+ *
  * It is inside the arrival fade, so it comes up with him rather than appearing first as a dark
  * disc on an empty screen.
  */
-const BACKDROP_REACH = 2.1;
 /**
  * Side of the backdrop's prebuilt ramp, in texels.
  *
  * Drawn from a texture rather than from a gradient shader, and the difference is not small: a
- * radial gradient evaluated over a circle this wide — nearly fourteen times the sphere's own area
+ * radial gradient evaluated over a circle this wide — several times the sphere's own area
  * — cost 11 ms a frame at 384 px, a 42% rise on the whole drawing, which on a phone the user had
  * already called laggy is not a trade worth making for a shadow. Sampling a small image costs
  * nothing measurable. Ninety-six texels across four radii is a change of about one alpha level per
@@ -419,13 +425,16 @@ const BACKDROP_REACH = 2.1;
  */
 const BACKDROP_TEXELS = 96;
 /**
- * The backdrop's darkness, as distance in reaches paired with alpha.
+ * The backdrop's darkness, as distance from its middle — 0 to 1 across its reach — paired with
+ * alpha.
  *
- * It holds nearly flat out to 0.45 — which is 0.95R, the limb — so the whole sphere sits on the
- * same dark and only what is beyond it fades. A ramp that started falling at the middle left the
- * limb half as dark as the core, and the sphere read as sitting in a dip rather than on a shadow.
+ * It holds nearly flat out to 0.55, which covers the sphere and a little past its limb, so the
+ * whole of Jarvis sits on the same dark and only what is beyond him fades. A ramp that started
+ * falling at the middle left the limb half as dark as the core, and the sphere read as sitting in
+ * a dip rather than on a shadow. The last stop is zero, which is what lets the circle end exactly
+ * at the square's edge with nothing to see there.
  */
-const BACKDROP_RAMP = [0, 0xcc, 0.45, 0xb4, 0.62, 0x70, 0.8, 0x28, 1, 0];
+const BACKDROP_RAMP = [0, 0xcc, 0.55, 0xb4, 0.72, 0x70, 0.88, 0x28, 1, 0];
 const LIMB_BLOOM_RADIUS = 0.995;
 const LIMB_BLOOM_BAND = 0.25;
 const LIMB_RIDGE_RADIUS = 0.955;
@@ -1268,7 +1277,7 @@ export function createHologramResources(Skia: SkiaApiType, scene: Scene) {
 
   // The core: a bloom elongated along the lower-left to upper-right diagonal, with a
   // darker orange interior inside the hot ring, never white.
-  // The shadow Jarvis sits on; see BACKDROP_REACH. Alpha only — it darkens what is behind
+  // The shadow Jarvis sits on; see BACKDROP_RAMP. Alpha only — it darkens what is behind
   // without tinting it, so a blue wallpaper stays blue underneath.
   //
   // The one paint in the drawing that is not screened. Everything else here is light being added
@@ -1614,15 +1623,19 @@ function analyseFrame(frame: HologramFrame, size: number, scene: Scene) {
   // the sentence rather than stepping up and sitting there; the envelope keeps it from dropping
   // back to nothing between syllables.
   const swell = SWELL_WITH_VOICE * (0.7 * voice + 0.3 * agitation);
+  // The sphere grows into place and, with `arrival` fading the whole of it, fades in.
+  //
+  // It used to assemble instead: the fill spreading patch by patch, the fragments arriving in the
+  // film's reveal order behind the dial's band, the limb ragged until late, each layer on its own
+  // ramp. The user asked for the ceremony to go, so every layer now comes up together and the
+  // growth does the work the staggering used to.
+  const radius = size * SPHERE_FRACTION * (ARRIVAL_SMALLEST + (1 - ARRIVAL_SMALLEST) * arrival) * (1 + swell);
   return {
     time,
-    // The sphere grows into place and, with `arrival` fading the whole of it, fades in.
-    //
-    // It used to assemble instead: the fill spreading patch by patch, the fragments arriving in
-    // the film's reveal order behind the dial's band, the limb ragged until late, each layer on
-    // its own ramp. The user asked for the ceremony to go, so every layer now comes up together
-    // and the growth does the work the staggering used to.
-    radius: size * SPHERE_FRACTION * (ARRIVAL_SMALLEST + (1 - ARRIVAL_SMALLEST) * arrival) * (1 + swell),
+    radius,
+    // Half the square, in sphere radii: how far the backdrop reaches, so its circle is the one
+    // the square inscribes. See BACKDROP_RAMP — it has to end at zero exactly there.
+    backdropReach: size / 2 / radius,
     intro,
     arrival,
     bodyShare: script.density,
@@ -2860,20 +2873,25 @@ function drawIntro(canvas: HologramCanvas, resources: Resources, state: FrameSta
 
 /** Draws one frame of the hologram into a size×size square. */
 /**
- * The shadow the sphere sits on: black at the core, gone by {@link BACKDROP_REACH}.
+ * The shadow the sphere sits on: black under Jarvis, gone by the edge of his square.
  *
  * First thing inside the arrival layer, so everything else is drawn over it and it fades in with
  * the rest of him. It does not take `glowGain`: it is the dark he is seen against, and brightening
  * the dark with his voice would work against the glow rather than with it.
+ *
+ * `state.backdropReach` is half the square measured in sphere radii, so this circle is the
+ * square's inscribed circle however big the voice has made the sphere. See the note on
+ * {@link BACKDROP_RAMP} for why it must end at zero exactly there.
  */
-function drawBackdrop(canvas: HologramCanvas, resources: Resources) {
+function drawBackdrop(canvas: HologramCanvas, resources: Resources, state: FrameState) {
   'worklet';
   // Drawn in the texture's own space, so its middle lands on the sphere's: the same trick the
   // warm volume used before it was removed.
   const half = BACKDROP_TEXELS / 2;
+  const reach = state.backdropReach;
   canvas.save();
-  canvas.translate(-BACKDROP_REACH, -BACKDROP_REACH);
-  canvas.scale(BACKDROP_REACH / half, BACKDROP_REACH / half);
+  canvas.translate(-reach, -reach);
+  canvas.scale(reach / half, reach / half);
   canvas.drawCircle(half, half, half, resources.backdropFill);
   canvas.restore();
 }
@@ -2903,7 +2921,7 @@ export function drawHologram(
     resources.arrivalFade.setAlphaf(state.arrival);
     canvas.saveLayer(resources.arrivalFade);
   }
-  drawBackdrop(canvas, resources);
+  drawBackdrop(canvas, resources, state);
   drawInnerShells(canvas, resources, state);
   drawBody(canvas, resources, scene, state);
   drawLines(canvas, resources, scene, state);

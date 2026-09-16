@@ -498,8 +498,8 @@ describe('the hologram', () => {
     // than the screen it is drawn over.
     let outside = 0;
     let outsideCount = 0;
-    let corner = 0;
-    let cornerCount = 0;
+    let border = 0;
+    let borderCount = 0;
     for (let y = 0; y < SIZE; y++) {
       for (let x = 0; x < SIZE; x++) {
         const radius = radiusOf(x, y);
@@ -508,22 +508,24 @@ describe('the hologram', () => {
           outside += here;
           outsideCount++;
         }
-        // The far corners are past the shadow's reach, and must be left exactly as they were:
-        // a backdrop that tinted the whole square would be a grey box around the hologram.
-        if (radius > 2.4) {
-          corner += here;
-          cornerCount++;
+        // Every pixel along the square's own edge, which is where the shadow has to have reached
+        // nothing. It is not enough to check the corners: the first version of this reached wider
+        // than the square, so it was cut off in four straight lines through the middles of the
+        // sides — a visible box around Jarvis on the home screen, which is what the user saw.
+        if (x < 2 || y < 2 || x >= SIZE - 2 || y >= SIZE - 2) {
+          border += here;
+          borderCount++;
         }
       }
     }
 
     expect(outsideCount).toBeGreaterThan(0);
-    expect(cornerCount).toBeGreaterThan(0);
+    expect(borderCount).toBeGreaterThan(0);
     // A quarter darker at least. It measures 38% darker; the bound is where it is so that a
     // future round can soften the shadow a little without this failing, but not so far that the
     // shadow could quietly stop doing its job.
     expect(outside / outsideCount).toBeLessThan(background * 0.75);
-    expect(corner / cornerCount).toBeCloseTo(background, 0);
+    expect(border / borderCount).toBeCloseTo(background, 0);
   });
 
   it('stays inside its square even at full volume, rather than being clipped at the edges', () => {
