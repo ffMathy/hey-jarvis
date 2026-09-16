@@ -17,9 +17,11 @@ import {
   NO_BURST_AGE_SECONDS,
   ONSET_RISE,
   perceivedLevel,
+  QUIETEST_LOUD_VOICE,
   RELEASE_SECONDS,
   SPEECH_LEVEL,
   VOICE_BAND_COUNT,
+  voiceDrive,
 } from './voice-levels';
 
 /** A spectrum the size the SDK hands back, with `fill` for every bin. */
@@ -278,6 +280,33 @@ describe('createVoiceActivityState', () => {
 
   it('hands out a fresh state each time, so two holograms never share one', () => {
     expect(createVoiceActivityState()).not.toBe(createVoiceActivityState());
+  });
+});
+
+describe('voiceDrive', () => {
+  it('fills the range for a quiet voice and for a loud one alike', () => {
+    // The point of it: a microphone that never gets past a fifth of full scale should still
+    // drive the sphere as hard as one that reaches the top, because the user's evidently does
+    // not, and the sphere answering the absolute number is why they saw almost no change.
+    expect(voiceDrive(0.12, 0.12)).toBeCloseTo(1, 9);
+    expect(voiceDrive(0.8, 0.8)).toBeCloseTo(1, 9);
+    // and half as loud as this voice gets is half the answer, either way
+    expect(voiceDrive(0.06, 0.12)).toBeCloseTo(0.5, 9);
+    expect(voiceDrive(0.4, 0.8)).toBeCloseTo(0.5, 9);
+  });
+
+  it('will not amplify a hiss into a voice', () => {
+    // A silent room's hiss is the loudest thing in a silent room. Without a floor under what
+    // counts as loud, it would drive the sphere as hard as shouting does.
+    expect(voiceDrive(0.02, 0.02)).toBeLessThan(0.2);
+    expect(voiceDrive(0.04, 0.04)).toBeLessThanOrEqual(QUIETEST_LOUD_VOICE * 3);
+  });
+
+  it('never reports more than full, whatever it is given', () => {
+    expect(voiceDrive(1, 0.1)).toBe(1);
+    expect(voiceDrive(0.5, 0)).toBe(1);
+    expect(voiceDrive(0, 0.5)).toBe(0);
+    expect(voiceDrive(Number.NaN, 0.5)).toBe(0);
   });
 });
 

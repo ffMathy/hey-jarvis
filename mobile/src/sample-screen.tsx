@@ -1,8 +1,11 @@
+import { useEffect, useState } from 'react';
 import { StatusBar as NativeStatusBar, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useHologramSize } from './hologram-size';
 import { JarvisHologram } from './jarvis-hologram';
+import type { JarvisVoice } from './platform-contracts';
 import { useSampleVoice } from './sample-voice';
 import { theme } from './theme';
+import { perceivedLevel, SPEECH_LEVEL } from './voice-levels';
 
 interface SampleScreenProps {
   onLeave: () => void;
@@ -17,6 +20,42 @@ function describeListening(listening: boolean, problem: string | undefined): str
 }
 
 /**
+ * What the microphone is actually giving the hologram, sampled for the line below it.
+ *
+ * Here because three rounds of making the sphere answer more loudly to speech did not change
+ * what the user saw, which points at the reading rather than at the drawing: a sphere told
+ * about a level of zero looks the same however hard it is told to react. This says what the
+ * level is, what the loudest reading so far was, and whether that clears the threshold speech
+ * has to clear — enough to tell "the microphone is quiet" from "the drawing is too subtle"
+ * without a cable and a laptop.
+ */
+function useHeardLevel(voice: JarvisVoice) {
+  const [heard, setHeard] = useState({ level: 0, loudest: 0 });
+
+  useEffect(() => {
+    if (!voice.listening) {
+      setHeard({ level: 0, loudest: 0 });
+      return;
+    }
+    const read = () =>
+      setHeard((previous) => {
+        const level = perceivedLevel(voice.getVolume());
+        return { level, loudest: Math.max(previous.loudest, level) };
+      });
+    const timer = setInterval(read, 100);
+    return () => clearInterval(timer);
+  }, [voice]);
+
+  return heard;
+}
+
+/** The reading, and whether it is enough to stir the sphere. */
+function describeHeard({ level, loudest }: { level: number; loudest: number }): string {
+  const speech = loudest >= SPEECH_LEVEL ? 'loud enough' : 'too quiet to count as speech';
+  return `level ${level.toFixed(2)} · loudest ${loudest.toFixed(2)} · ${speech}`;
+}
+
+/**
  * Sample mode: the hologram, listening to the user instead of Jarvis.
  *
  * Offered before the app is set up, so there is something to see — and a way to
@@ -26,12 +65,16 @@ function describeListening(listening: boolean, problem: string | undefined): str
 export function SampleScreen({ onLeave }: SampleScreenProps) {
   const { voice, problem } = useSampleVoice();
   const hologramSize = useHologramSize();
+  const heard = useHeardLevel(voice);
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>J.A.R.V.I.S.</Text>
       <Text style={styles.status} testID="sample-status">
         {describeListening(voice.listening, problem)}
+      </Text>
+      <Text style={styles.heard} testID="sample-heard">
+        {describeHeard(heard)}
       </Text>
 
       <View
@@ -81,6 +124,11 @@ const styles = StyleSheet.create({
   status: {
     color: theme.colors.mutedText,
     fontSize: 16,
+  },
+  heard: {
+    color: theme.colors.mutedText,
+    fontSize: 13,
+    opacity: 0.75,
   },
   explanation: {
     color: theme.colors.mutedText,

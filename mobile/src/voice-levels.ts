@@ -150,6 +150,30 @@ export function easeBands(current: number[], target: number[], deltaSeconds: num
  * through the microphone in sample mode — none of which should stir the sphere.
  */
 export const SPEECH_LEVEL = 0.15;
+/** How long the memory of a voice's loudest moment takes to fade. */
+export const LOUDEST_MEMORY_SECONDS = 12;
+/**
+ * The quietest a voice's loudest moment is taken to be.
+ *
+ * Without a floor, a silent room's hiss would become its own loudest moment and the sphere
+ * would answer the hiss at full strength. With it, the most a quiet voice can be amplified is
+ * about eight times, and anything quieter than this simply stays quiet.
+ */
+export const QUIETEST_LOUD_VOICE = 0.12;
+
+/**
+ * How loud this voice is for its own range, 0-1: what the glow and the swell answer to.
+ *
+ * {@link SPEECH_LEVEL} still decides whether it counts as speech at all, on the raw reading, so
+ * a hiss cannot talk its way past the gate by being the loudest hiss around.
+ */
+export function voiceDrive(level: number, loudest: number): number {
+  'worklet';
+  if (!(level > 0) || !Number.isFinite(level)) {
+    return 0;
+  }
+  return Math.min(1, level / Math.max(QUIETEST_LOUD_VOICE, loudest));
+}
 
 /**
  * How long agitation takes to build once speech is present. The film's sphere
@@ -269,6 +293,17 @@ export interface VoiceActivityState {
   burstStrength: number;
   /** How many bursts there have been, so each can throw its chips from a different, repeatable place. */
   burstCount: number;
+  /**
+   * The loudest this voice has been lately, which is what its own loudness is judged against.
+   *
+   * A phone microphone in a quiet room and a tone injected into an emulator are nowhere near
+   * the same loudness, and the sphere answered the absolute number: the user, whose microphone
+   * is evidently at the quiet end, saw almost nothing however hard the answer was turned up.
+   * Judged against this instead, a quiet voice fills the sphere as completely as a loud one.
+   * It rises the moment a reading beats it and falls back over LOUDEST_MEMORY_SECONDS, so it
+   * follows whoever is talking now rather than the loudest thing it ever heard.
+   */
+  loudest: number;
   /** How many bursts the flurry in progress has thrown. Resets when the rim rests, and when speech stops. */
   burstsInFlurry: number;
   /** The level the previous frame saw, which has held from then until now. */
@@ -300,6 +335,7 @@ export function createVoiceActivityState(): VoiceActivityState {
     burstAge: NO_BURST_AGE_SECONDS,
     burstStrength: 0,
     burstCount: 0,
+    loudest: 0,
     burstsInFlurry: 0,
     heldLevel: 0,
     quietestInThisSlice: 0,
@@ -321,6 +357,15 @@ export function createVoiceActivityState(): VoiceActivityState {
  * Agitation after `deltaSeconds` in which `heldLevel` held: up a linear ramp if
  * that was speech, down one if it was not.
  */
+/** The loudest this voice has been lately: up at once to anything louder, back down slowly. */
+function rememberLoudest(loudest: number, level: number, deltaSeconds: number): number {
+  'worklet';
+  if (level > loudest) {
+    return level;
+  }
+  return loudest + (level - loudest) * Math.min(1, deltaSeconds / LOUDEST_MEMORY_SECONDS);
+}
+
 function rampAgitation(agitation: number, heldLevel: number, deltaSeconds: number): number {
   'worklet';
   return heldLevel >= SPEECH_LEVEL
@@ -450,6 +495,7 @@ export function advanceVoiceActivity(
     return state;
   }
   const level = rawLevel > 0 && Number.isFinite(rawLevel) ? Math.min(1, rawLevel) : 0;
+  state.loudest = rememberLoudest(state.loudest, level, deltaSeconds);
   state.agitation = rampAgitation(state.agitation, state.heldLevel, deltaSeconds);
   slideChangeWindow(state, state.heldLevel, level, deltaSeconds);
   state.heldLevel = level;

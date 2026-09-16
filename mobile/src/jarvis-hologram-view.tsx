@@ -11,6 +11,7 @@ import {
   foldSpectrum,
   perceivedLevel,
   VOICE_BAND_COUNT,
+  voiceDrive,
 } from './voice-levels';
 
 export interface JarvisHologramProps {
@@ -136,7 +137,10 @@ export default function JarvisHologramView({ size, voice }: JarvisHologramProps)
       size,
       {
         time: current.time,
-        level: current.level,
+        // Judged against how loud this voice actually gets, not against full scale. A phone
+        // microphone in a quiet room never comes near 1, and the sphere answering the absolute
+        // number is why the user saw almost no change however far the answer was turned up.
+        level: voiceDrive(current.level, activity.loudest),
         bands: current.bands,
         speaking: current.speaking,
         agitation: activity.agitation,
