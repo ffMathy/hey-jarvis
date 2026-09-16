@@ -1,21 +1,20 @@
 /**
  * The poll loop, which is the part of routing this vertical still owns.
  *
- * Ordering, parallelism and dependency passing are the supervisor's job inside its own
- * delegation loop. What is left here is the contract with Jarvis: what a poll returns, when
- * it blocks, that a result is relayed exactly once, and that the closing report recaps
+ * Ordering, parallelism and dependency passing are written into the plan, and running it is
+ * Mastra's job. What is left here is the contract with Jarvis: what a poll returns, when it
+ * blocks, that a result is relayed exactly once, and that the closing report recaps
  * everything in case a response was lost on the way.
  *
- * Nothing here calls a model. Delegations are driven by feeding the same session events a
- * real run emits — `tool_start` opening one and `tool_end` answering it — so the folding
- * itself is covered rather than stubbed around.
+ * Nothing here calls a model or registers a workflow. Delegations are driven by feeding the
+ * same events a real plan run folds into — one announced when the plan is built, one closed
+ * when its step finishes — so the folding itself is covered rather than stubbed around.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import {
   buildSnapshot,
   DEFAULT_ROUTING_SESSION_ID,
-  type RoutingEvent,
   RoutingProgress,
   type RoutingRuntime,
   resetRoutingRuntime,
@@ -39,34 +38,35 @@ function progressFor(sessionId: string): RoutingProgress {
   return progress;
 }
 
-let nextToolCallId = 0;
+let nextDelegationId = 0;
 
 /**
- * Opens a delegation, the way the session announces one.
+ * Announces a delegation, the way building a plan announces every one it contains.
  *
- * The tool name is `agent-<id>`, which is how Mastra names a delegation tool. Emitting the
- * bare id is what let that prefix go unnoticed once already.
+ * The id is the plan's agent step id, which is what a step result carries back.
  */
 function startDelegation(sessionId: string, agentId: string): string {
-  nextToolCallId += 1;
-  const toolCallId = `call-${agentId}-${nextToolCallId}`;
-  progressFor(sessionId).handle({ type: 'tool_start', toolCallId, toolName: `agent-${agentId}` });
-  return toolCallId;
+  nextDelegationId += 1;
+  const delegationId = `plan-chain-0-${nextDelegationId}-${agentId}`;
+  progressFor(sessionId).handle({ type: 'delegation_start', delegationId, agentId });
+  return delegationId;
 }
 
-/** Answers a delegation that was opened. */
-function finishDelegation(sessionId: string, toolCallId: string, result: unknown, isError = false): void {
-  progressFor(sessionId).handle({ type: 'tool_end', toolCallId, result, isError });
+/** Answers a delegation that was announced. */
+function finishDelegation(sessionId: string, delegationId: string, result: unknown, isError = false): void {
+  progressFor(sessionId).handle({ type: 'delegation_end', delegationId, result, isError });
 }
 
-/** One delegation, opened and answered — the common case. */
+/** One delegation, announced and answered — the common case. */
 function delegate(sessionId: string, agentId: string, text: string): void {
   finishDelegation(sessionId, startDelegation(sessionId, agentId), { text });
 }
 
 const fakeRuntime: RoutingRuntime = {
   async start(sessionId) {
-    progressFor(sessionId).reset();
+    // A fresh buffer, the way the real runtime starts one: a superseded run keeps folding
+    // into the buffer it was handed, so a new request must not be handed the same object.
+    progressBySessionId.set(sessionId, new RoutingProgress());
   },
   async poll(sessionId) {
     return buildSnapshot(progressFor(sessionId));
@@ -87,13 +87,8 @@ async function runWorkflow<TInput, TResult>(
   return run.start({ inputData });
 }
 
-/** The supervisor's own closing words, which arrive a fragment at a time. */
-function assistantText(text: string): RoutingEvent {
-  return { type: 'text', text };
-}
-
-/** The supervisor's own loop ending, which ends the request: delegations run inside it. */
-function endSupervisorTurn(progress: RoutingProgress): void {
+/** The plan run ending, which ends the request: every delegation is a step inside it. */
+function endPlanRun(progress: RoutingProgress): void {
   progress.handle({ type: 'finished' });
 }
 
@@ -204,10 +199,10 @@ describe('getNextInstructionsWorkflow', () => {
     delegate(DEFAULT_ROUTING_SESSION_ID, 'weather', 'It is 8 degrees.');
     startDelegation(DEFAULT_ROUTING_SESSION_ID, 'calendar');
 
-    // Delegations run inside the supervisor's turn, so one still open when that turn ends
-    // has no later event coming. Waiting for it is what left a live request polling
+    // Every delegation is a step of the plan run, so one still outstanding when that run
+    // ends has no later event coming. Waiting for it is what left a live request polling
     // "Still processing" until the caller gave up.
-    endSupervisorTurn(progress);
+    endPlanRun(progress);
 
     const closing = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
 
@@ -237,7 +232,7 @@ describe('getNextInstructionsWorkflow', () => {
     const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
     delegate(DEFAULT_ROUTING_SESSION_ID, 'weather', 'It is 8 degrees.');
 
-    progress.fail('the supervisor could not be reached');
+    progress.fail('the plan could not be registered');
 
     const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
 
@@ -254,8 +249,7 @@ describe('getNextInstructionsWorkflow', () => {
     expect(first.completedTaskResults).toHaveLength(1);
 
     delegate(DEFAULT_ROUTING_SESSION_ID, 'calendar', 'Dentist at four.');
-    progress.handle(assistantText('Eight degrees, and the dentist at four.'));
-    endSupervisorTurn(progress);
+    endPlanRun(progress);
 
     const closing = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
 
@@ -265,18 +259,17 @@ describe('getNextInstructionsWorkflow', () => {
     const ids = closing.completedTaskResults?.map((entry) => entry.id);
     expect(ids).toContain('weather');
     expect(ids).toContain('calendar');
-    expect(ids).toContain('summary');
     expect(closing.taskIdsInProgress).toEqual([]);
   });
 
   it('reports a request that failed outright rather than going quiet', async () => {
     await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false });
-    progressFor(DEFAULT_ROUTING_SESSION_ID).fail('the supervisor could not be reached');
+    progressFor(DEFAULT_ROUTING_SESSION_ID).fail('the plan could not be registered');
 
     const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
 
     expect(outcome.instructions).toContain('could not be completed');
-    expect(outcome.instructions).toContain('the supervisor could not be reached');
+    expect(outcome.instructions).toContain('the plan could not be registered');
   });
 });
 
@@ -298,16 +291,17 @@ describe('two callers at once', () => {
   });
 });
 
-describe('delegation tool names', () => {
+describe('a result that arrives twice', () => {
   /**
-   * Mastra registers a subagent's delegation tool as `agent-<id>`, not `<id>`, and records
-   * it under that name. Everything that reads a tool name as an agent id has to take the
-   * prefix off first, and the two places it matters are the reports and the permission
-   * category.
+   * A chain reports a result of its own — its last step's answer — alongside that step's.
+   * Relaying both would have Jarvis say the same thing twice, so the first event to close a
+   * delegation reports it and the rest are dropped.
    */
-  it('names the agent, not the delegation tool, in a report', async () => {
+  it('relays it once', async () => {
     await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false });
-    delegate(DEFAULT_ROUTING_SESSION_ID, 'weather', 'It is 8 degrees.');
+    const delegationId = startDelegation(DEFAULT_ROUTING_SESSION_ID, 'weather');
+    finishDelegation(DEFAULT_ROUTING_SESSION_ID, delegationId, { text: 'It is 8 degrees.' });
+    finishDelegation(DEFAULT_ROUTING_SESSION_ID, delegationId, { text: 'It is 8 degrees.' });
 
     const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
 

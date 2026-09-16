@@ -16,19 +16,19 @@ import {
  * `getNextInstructionsWorkflow` until one of the responses says everything has finished.
  * `elevenlabs/src/assets/agent-prompt.md` needs no change.
  *
- * What changed is underneath. A request used to be planned into a task DAG and executed by
- * a wave scheduler this file owned, with a module-global holding the one in-flight run. It
- * is now a supervisor agent delegating to the specialized agents inside an AgentController
- * Session — one session per caller, so a second request cannot displace the first.
+ * What changed is underneath. A request used to be planned into a task DAG run by a wave
+ * scheduler this file owned, and then a supervisor agent delegating inside one tool-call
+ * loop. It is now a plan: the planner writes down which agents to ask and in what order,
+ * Mastra registers that plan as a workflow built for this one request, and the run of it is
+ * what the polls report. See ./controller.ts.
  */
 
 const inputSchema = z.object({
-  userQuery: z
-    .string()
-    .describe("The user's routing query")
-    .default(
-      "I'd like to check the weather for my current location, and check my calendar for today. If I have any calendars regarding my workplace, I'd like to infer when I typically go to work, and check the traffic conditions for that time. Additionally, I am planning on making a lasagna, so please fetch the recipes for that and add a reminder to my to-do list with the ingredients, for when I get home from work.",
-    ),
+  // No default. This carried a worked example of a request -- weather, calendar, commute and
+  // a lasagna recipe -- which meant a caller that forgot the field did not get an error but a
+  // stranger's errand, planned and run in full. The field is what the tool is for, so it is
+  // required.
+  userQuery: z.string().describe("The user's routing query"),
   async: z
     .boolean()
     .optional()
@@ -60,10 +60,7 @@ const instructionsOutputSchema = z.object({
     )
     .optional()
     .describe('Results that have finished since the last call, if any'),
-  taskIdsInProgress: z
-    .array(z.string())
-    .optional()
-    .describe('Kept for the caller contract; the supervisor decides its own remaining work'),
+  taskIdsInProgress: z.array(z.string()).optional().describe('The agents the plan is still waiting on'),
 });
 
 export { inputSchema, instructionsOutputSchema };
@@ -188,17 +185,9 @@ function buildClosingReport(snapshot: RoutingSnapshot): z.infer<typeof instructi
     };
   }
 
-  const results = snapshot.all.map((outcome) => ({ id: outcome.agentId, result: outcome.result }));
-
-  // The supervisor's own closing text is the one thing that saw every result together, so
-  // it leads. The individual results follow it for the recap.
-  if (snapshot.summary) {
-    results.unshift({ id: 'summary', result: snapshot.summary });
-  }
-
   return {
     instructions: ALL_TASKS_COMPLETED_INSTRUCTIONS,
-    completedTaskResults: results,
+    completedTaskResults: snapshot.all.map((outcome) => ({ id: outcome.agentId, result: outcome.result })),
     taskIdsInProgress: [],
   };
 }
@@ -212,8 +201,8 @@ function buildProgressReport(snapshot: RoutingSnapshot): z.infer<typeof instruct
   return {
     instructions: moreToComeInstructions(),
     completedTaskResults: snapshot.landed.map((outcome) => ({ id: outcome.agentId, result: outcome.result })),
-    // Finally answerable: the session says which delegations are open, so what is still
-    // running can be named rather than asserted to be nothing.
+    // Answerable because the plan is written down before anything runs: what is still
+    // outstanding is known, not inferred from whatever happened to start.
     taskIdsInProgress: snapshot.inProgress,
   };
 }
@@ -224,7 +213,7 @@ function buildProgressReport(snapshot: RoutingSnapshot): z.infer<typeof instruct
 
 const routePromptStep = createStep({
   id: 'route-prompt',
-  description: 'Hand a user request to the routing supervisor and start it running',
+  description: 'Plan a user request into a workflow and start it running',
   inputSchema: inputSchema,
   outputSchema: routeAcknowledgementSchema,
   execute: async ({ inputData, mastra }) => {
@@ -250,7 +239,7 @@ export const routePromptWorkflow = createWorkflow({
 
 const getNextInstructionsStep = createStep({
   id: 'get-next-instructions',
-  description: 'Return whatever the routing supervisor has produced since the last call',
+  description: 'Return whatever the routing plan has produced since the last call',
   inputSchema: z.object({
     sessionId: z.string().optional().describe('The session returned by routePromptWorkflow'),
   }),

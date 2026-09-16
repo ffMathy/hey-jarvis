@@ -5,27 +5,21 @@ import { generateObject } from 'ai';
 import { z } from 'zod';
 import { createAgent } from '../../utils/index.js';
 import { isOllamaAvailable } from '../../utils/providers/ollama-provider.js';
-import { SUPERVISOR_INSTRUCTIONS } from './agents.js';
+import type { PlannedChain } from './plan.js';
+import { keepRunnableDelegations, plannerInstructions, planSchema } from './planner.js';
 
 /**
  * LLM-evaluated routing decisions.
  *
- * These tests exercise the real supervisor: they give it a set of stand-in agents, let it
- * decide what to delegate, and judge those delegations with an LLM.
+ * These tests exercise the real planner instructions: they give it a set of stand-in agents,
+ * let it write a plan, and judge that plan with an LLM.
  *
- * They used to judge a task DAG. The DAG is gone — ordering, parallelism and dependency
- * passing are the supervisor's own delegation loop now — so what is judged is the sequence
- * of delegations it actually made, which is the same routing decision expressed differently.
- * A dependency is no longer an edge in a graph; it shows up as a second delegation whose
- * prompt carries the first one's answer.
+ * They used to judge a task DAG, and then the delegations a supervisor made inside its own
+ * loop. What is judged now is the plan itself, which is the same routing decision expressed
+ * a third way — and the most directly readable of the three, because ordering and dependency
+ * are structural rather than implied. Independent work is separate chains; a dependency is a
+ * second delegation in the *same* chain, which is what hands it the first one's answer.
  */
-
-/** One delegation the supervisor made, as the hooks observe it. */
-interface ObservedDelegation {
-  agentId: string;
-  prompt: string;
-  result?: string;
-}
 
 interface EvaluationResult {
   passed: boolean;
@@ -33,11 +27,29 @@ interface EvaluationResult {
   reasoning: string;
 }
 
-async function evaluateDelegations(
-  delegations: ObservedDelegation[],
-  userQuery: string,
-  criteria: string,
-): Promise<EvaluationResult> {
+/** The plan as a transcript the judge can read. */
+function describePlan(chains: PlannedChain[]): string {
+  if (chains.length === 0) {
+    return '(the planner returned no chains at all)';
+  }
+
+  return chains
+    .map(
+      (chain, chainIndex) =>
+        `Chain ${chainIndex + 1} (runs at the same time as the other chains):\n` +
+        chain.delegations
+          .map(
+            (delegation, index) =>
+              `  ${index + 1}. Delegated to "${delegation.agentId}"` +
+              `${index > 0 ? ' — is handed the previous delegation’s answer automatically' : ''}\n` +
+              `     Prompt: ${delegation.prompt}`,
+          )
+          .join('\n'),
+    )
+    .join('\n\n');
+}
+
+async function evaluatePlan(chains: PlannedChain[], userQuery: string, criteria: string): Promise<EvaluationResult> {
   const apiKey = process.env.HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY;
   if (!apiKey) {
     throw new Error('Google API key required: set HEY_JARVIS_GOOGLE_GENERATIVE_AI_API_KEY');
@@ -51,30 +63,23 @@ async function evaluateDelegations(
     reasoning: z.string().describe('Explanation of why the criteria was or was not met'),
   });
 
-  const transcript = delegations
-    .map(
-      (delegation, index) =>
-        `${index + 1}. Delegated to "${delegation.agentId}"
-   Prompt: ${delegation.prompt}
-   Answered: ${delegation.result ?? '(still running)'}`,
-    )
-    .join('\n\n');
-
   const result = await generateObject({
     model: google('gemini-flash-latest'),
     temperature: 0,
     schema,
     maxRetries: 3,
-    prompt: `You are evaluating whether a routing agent delegated a user's request to the right specialized agents, in the right order.
+    prompt: `You are evaluating whether a routing planner turned a user's request into the right plan.
+
+A plan is a set of chains. Chains run at the same time as each other. The delegations inside one chain run in order, and every delegation after the first is automatically handed the previous one's answer along with its own prompt.
 
 USER QUERY:
 \`\`\`
 ${userQuery}
 \`\`\`
 
-DELEGATIONS THE ROUTER MADE, IN ORDER:
+THE PLAN:
 \`\`\`
-${transcript}
+${describePlan(chains)}
 \`\`\`
 
 EVALUATION CRITERIA:
@@ -84,8 +89,8 @@ ${criteria}
 
 Consider:
 - Which agents were chosen, and whether each was the right one for that part of the request
-- The order of the delegations
-- Whether a delegation that needed a value from an earlier one actually carries that value in its prompt
+- Whether work that depends on another part is in the same chain, after the part it depends on
+- Whether independent work is in separate chains, so it runs at once
 - Whether any delegation was unnecessary
 
 Respond with:
@@ -97,70 +102,60 @@ Respond with:
   return result.object;
 }
 
-async function assertDelegationCriteria(
-  delegations: ObservedDelegation[],
+async function assertPlanCriteria(
+  chains: PlannedChain[],
   userQuery: string,
   criteria: string,
   minScore = 0.7,
 ): Promise<void> {
-  const result = await evaluateDelegations(delegations, userQuery, criteria);
+  const result = await evaluatePlan(chains, userQuery, criteria);
 
   if (!result.passed || result.score < minScore) {
     throw new Error(
       `Routing failed to meet criteria (scored: ${result.score} but needed: ${minScore}):\n` +
         `Criteria: ${criteria}\n` +
         `Reasoning: ${result.reasoning}\n\n` +
-        `Delegations:\n${JSON.stringify(delegations, null, 2)}`,
+        `Plan:\n${JSON.stringify(chains, null, 2)}`,
     );
   }
 
-  console.debug('✅ ', criteria, '\n', JSON.stringify(delegations, null, 2), '\n', result);
+  console.debug('✅ ', criteria, '\n', JSON.stringify(chains, null, 2), '\n', result);
 }
 
 /**
- * A stand-in for one of the routable agents: real enough for the supervisor to delegate to,
- * trivial enough that its answer is fixed and the routing decision is what is being judged.
+ * A stand-in for one of the routable agents: real enough to be described in the catalogue,
+ * trivial enough that nothing about it but its description matters. The planner never runs
+ * an agent, so a stand-in only has to exist and say what it is for.
  */
-async function createStandInAgent(id: string, description: string, answer: string): Promise<Agent> {
+async function createStandInAgent(id: string, description: string): Promise<Agent> {
   return createAgent({
     id,
     name: id,
     description,
-    instructions: `You are a stand-in for the ${id} agent in a test. Whatever you are asked, reply with exactly: ${answer}`,
+    instructions: `You are a stand-in for the ${id} agent in a test.`,
     memory: undefined,
   });
 }
 
-/** Runs the supervisor over a query and records every delegation it makes. */
-async function route(userQuery: string, agents: Agent[]): Promise<ObservedDelegation[]> {
-  const delegations: ObservedDelegation[] = [];
-
-  const supervisor = await createAgent({
-    id: 'routing-supervisor-under-test',
-    name: 'RoutingSupervisorUnderTest',
-    instructions: SUPERVISOR_INSTRUCTIONS,
-    agents: Object.fromEntries(agents.map((agent) => [agent.id, agent])),
+/** Plans a query against a set of stand-in agents, using the real planner instructions. */
+async function plan(userQuery: string, agents: Agent[]): Promise<PlannedChain[]> {
+  const planner = await createAgent({
+    id: 'routing-planner-under-test',
+    name: 'RoutingPlannerUnderTest',
+    instructions: plannerInstructions(agents),
     memory: undefined,
   });
 
-  await supervisor.generate(userQuery, {
-    maxSteps: 10,
-    delegation: {
-      onDelegationStart: (context) => {
-        delegations.push({ agentId: context.primitiveId, prompt: context.prompt });
-      },
-      onDelegationComplete: (context) => {
-        const observed = delegations.find(
-          (delegation) => delegation.agentId === context.primitiveId && delegation.result === undefined,
-        );
-        if (observed) {
-          observed.result = context.result.text;
-        }
-      },
-    },
+  const response = await planner.generate(userQuery, {
+    structuredOutput: { schema: planSchema },
+    toolChoice: 'none',
   });
 
-  return delegations;
+  if (!response.object) {
+    throw new Error('The planner did not return a plan');
+  }
+
+  return keepRunnableDelegations(response.object.chains, new Set(agents.map((agent) => agent.id)));
 }
 
 const WEATHER_DESCRIPTION = `# Purpose
@@ -190,26 +185,25 @@ describe('Routing - LLM Evaluated', () => {
     }
   });
 
-  it('looks up the location before the weather when the user does not give one', async () => {
+  it('chains the location lookup before the weather when the user does not give one', async () => {
     if (!ollamaAvailable) {
       return;
     }
 
     const userQuery = 'Check the weather for my current location';
-    const delegations = await route(userQuery, [
-      await createStandInAgent('weather', WEATHER_DESCRIPTION, 'It is 8 degrees and raining.'),
-      await createStandInAgent('internetOfThings', IOT_DESCRIPTION, 'The user is in Aarhus, Denmark.'),
+    const chains = await plan(userQuery, [
+      await createStandInAgent('weather', WEATHER_DESCRIPTION),
+      await createStandInAgent('internetOfThings', IOT_DESCRIPTION),
     ]);
 
-    await assertDelegationCriteria(
-      delegations,
+    await assertPlanCriteria(
+      chains,
       userQuery,
-      `The router should:
-1. Delegate to internetOfThings first to find the user's current location, since the weather agent cannot determine it
-2. Then delegate to weather
-3. The weather delegation's prompt MUST contain the location that internetOfThings answered with (Aarhus), because the weather agent is told it cannot work out a location itself
+      `The plan should:
+1. Delegate to internetOfThings to find the user's current location, since the weather agent cannot determine it
+2. Delegate to weather AFTER it, IN THE SAME CHAIN, so the weather delegation is handed the location
 
-The key validation is that the weather delegation happened after the location lookup and carries its answer.`,
+Two separate chains would be wrong: the weather delegation would then run without the location it needs. The key validation is that both delegations are in one chain, in that order.`,
       0.8,
     );
   }, 120000);
@@ -220,34 +214,34 @@ The key validation is that the weather delegation happened after the location lo
     }
 
     const userQuery = 'What is the weather in Copenhagen?';
-    const delegations = await route(userQuery, [
-      await createStandInAgent('weather', WEATHER_DESCRIPTION, 'It is 8 degrees and raining.'),
-      await createStandInAgent('internetOfThings', IOT_DESCRIPTION, 'The user is in Aarhus, Denmark.'),
+    const chains = await plan(userQuery, [
+      await createStandInAgent('weather', WEATHER_DESCRIPTION),
+      await createStandInAgent('internetOfThings', IOT_DESCRIPTION),
     ]);
 
-    await assertDelegationCriteria(
-      delegations,
+    await assertPlanCriteria(
+      chains,
       userQuery,
-      `The router should delegate to the weather agent with Copenhagen as the location, and should NOT delegate to internetOfThings at all — the user already supplied the location, so looking it up is work nobody asked for.`,
+      `The plan should contain exactly one delegation, to the weather agent, with Copenhagen as the location. It should NOT delegate to internetOfThings at all — the user already supplied the location, so looking it up is work nobody asked for.`,
       0.8,
     );
   }, 120000);
 
-  it('delegates independent parts of a request separately', async () => {
+  it('puts independent parts of a request in separate chains, so they run at once', async () => {
     if (!ollamaAvailable) {
       return;
     }
 
     const userQuery = 'What is the weather in Copenhagen, and are the lights on?';
-    const delegations = await route(userQuery, [
-      await createStandInAgent('weather', WEATHER_DESCRIPTION, 'It is 8 degrees and raining.'),
-      await createStandInAgent('internetOfThings', IOT_DESCRIPTION, 'The hallway light is on.'),
+    const chains = await plan(userQuery, [
+      await createStandInAgent('weather', WEATHER_DESCRIPTION),
+      await createStandInAgent('internetOfThings', IOT_DESCRIPTION),
     ]);
 
-    await assertDelegationCriteria(
-      delegations,
+    await assertPlanCriteria(
+      chains,
       userQuery,
-      `The router should delegate the weather question to the weather agent and the lights question to internetOfThings. Neither delegation depends on the other, so neither prompt needs to carry the other's answer.`,
+      `The plan should have two chains of one delegation each: the weather question to the weather agent and the lights question to internetOfThings. Neither depends on the other, so putting them in one chain would make the user wait for no reason.`,
       0.8,
     );
   }, 120000);
