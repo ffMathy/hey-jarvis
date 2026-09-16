@@ -83,8 +83,8 @@ export function SampleScreen({ onLeave }: SampleScreenProps) {
 
   return (
     <Pressable accessibilityRole="button" accessibilityLabel="Close" style={styles.scrim} onPress={onLeave}>
-      <Pressable style={styles.card} onPress={() => {}} testID="sample-card">
-        <Text style={styles.title}>J.A.R.V.I.S.</Text>
+      {/* Swallows its own taps, so watching the hologram is not a way to leave by accident. */}
+      <Pressable style={styles.content} onPress={() => {}} testID="sample-content">
         <Text style={styles.status} testID="sample-status">
           {describeListening(voice.listening, problem)}
         </Text>
@@ -103,12 +103,7 @@ export function SampleScreen({ onLeave }: SampleScreenProps) {
           <Text style={styles.problem} testID="sample-problem">
             {problem}
           </Text>
-        ) : (
-          <Text style={styles.explanation}>
-            Sample mode. The hologram stirs with your voice the way it will with Jarvis's. Nothing is recorded or sent
-            anywhere.
-          </Text>
-        )}
+        ) : null}
 
         <Pressable accessibilityRole="button" style={styles.secondaryButton} onPress={onLeave} testID="leave-sample">
           <Text style={styles.secondaryButtonLabel}>Back to setup</Text>
@@ -130,22 +125,11 @@ const styles = StyleSheet.create({
     paddingTop: theme.spacing.large + (NativeStatusBar.currentHeight ?? 0),
     backgroundColor: 'rgba(3, 5, 11, 0.55)',
   },
-  card: {
+  /** No card behind it: the hologram and its two lines sit straight on the scrim. */
+  content: {
     alignItems: 'center',
     justifyContent: 'center',
-    alignSelf: 'stretch',
-    borderRadius: 28,
-    borderWidth: 1,
-    borderColor: 'rgba(240, 168, 76, 0.22)',
-    backgroundColor: 'rgba(5, 7, 13, 0.92)',
-    padding: theme.spacing.large,
     gap: theme.spacing.large,
-  },
-  title: {
-    color: theme.colors.text,
-    fontSize: 28,
-    letterSpacing: 6,
-    fontWeight: '600',
   },
   status: {
     color: theme.colors.mutedText,
@@ -155,11 +139,6 @@ const styles = StyleSheet.create({
     color: theme.colors.mutedText,
     fontSize: 13,
     opacity: 0.75,
-  },
-  explanation: {
-    color: theme.colors.mutedText,
-    lineHeight: 20,
-    textAlign: 'center',
   },
   problem: {
     color: theme.colors.danger,
