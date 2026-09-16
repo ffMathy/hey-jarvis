@@ -49,16 +49,26 @@ export default function JarvisHologramView({ size, voice }: JarvisHologramProps)
   const scene = useMemo(() => createHologramScene(SCENE_SEED), []);
   const resources = useMemo(() => createHologramResources(Skia, scene), [scene]);
 
-  const time = useSharedValue(0);
-  const level = useSharedValue(0);
-  const bands = useSharedValue<number[]>(new Array(VOICE_BAND_COUNT).fill(0));
   const targetLevel = useSharedValue(0);
   const targetBands = useSharedValue<number[]>(new Array(VOICE_BAND_COUNT).fill(0));
   const speakingNow = useSharedValue(speaking);
-  // What one frame cannot see: whether the voice just started, just stopped, and
-  // how long ago the rim last threw chips. Advanced on the UI thread from the
-  // raw reading, because easing is exactly what smears those moments into slopes.
-  const activity = useSharedValue(createVoiceActivityState());
+  // Everything the drawing reads, in one value, advanced once a frame.
+  //
+  // These were six shared values — the clock, the level, the bands, and the
+  // tracker's agitation, burst age and burst count. Each write is a reason for the
+  // picture below to be recorded again, and each `.value` read of an object copies
+  // it out of the UI runtime, so a frame that wrote four of them and read the
+  // tracker's four fields separately paid for both several times over. What one
+  // frame cannot see — whether the voice just started or stopped, and how long ago
+  // the rim last threw chips — is the tracker's state, which rides along here so it
+  // is advanced in place by the same `modify`.
+  const frame = useSharedValue({
+    time: 0,
+    level: 0,
+    bands: new Array(VOICE_BAND_COUNT).fill(0) as number[],
+    speaking,
+    activity: createVoiceActivityState(),
+  });
 
   useEffect(() => {
     speakingNow.value = speaking;
@@ -96,41 +106,45 @@ export default function JarvisHologramView({ size, voice }: JarvisHologramProps)
   // stops talking. A step is deliberately not capped: a slow frame has to
   // move the hologram as far as the time it stood for, or it turns slower
   // wherever frames are slow.
-  useFrameCallback((frame) => {
-    const deltaSeconds = (frame.timeSincePreviousFrame ?? DEFAULT_FRAME_MS) / 1000;
-    time.value += deltaSeconds;
-    level.value = easeLevel(level.value, targetLevel.value, deltaSeconds);
-    bands.modify((current) => {
+  // Inside `modify` for the reason voice-levels.ts explains: the tracker writes
+  // into the state object it is given, and only `modify` hands the worklet the one
+  // the UI runtime owns. Assigning a state from the JS runtime would leave every
+  // write silently dropped in a development build. The rest of the frame is
+  // advanced in the same call, so the picture is asked for once.
+  useFrameCallback((info) => {
+    const deltaSeconds = (info.timeSincePreviousFrame ?? DEFAULT_FRAME_MS) / 1000;
+    frame.modify((current) => {
       'worklet';
-      return easeBands(current, targetBands.value, deltaSeconds);
-    });
-    // Inside `modify` for the reason voice-levels.ts explains: the tracker writes
-    // into the state object it is given, and only `modify` hands the worklet the
-    // one the UI runtime owns. Assigning a state from the JS runtime would leave
-    // every write silently dropped in a development build.
-    activity.modify((state) => {
-      'worklet';
-      return advanceVoiceActivity(state, targetLevel.value, deltaSeconds);
+      current.time += deltaSeconds;
+      current.level = easeLevel(current.level, targetLevel.value, deltaSeconds);
+      current.bands = easeBands(current.bands, targetBands.value, deltaSeconds);
+      current.speaking = speakingNow.value;
+      advanceVoiceActivity(current.activity, targetLevel.value, deltaSeconds);
+      return current;
     });
   });
 
   const picture = useDerivedValue(() => {
+    // Read once: this is a copy out of the UI runtime, and the drawing wants nine
+    // fields of it.
+    const current = frame.value;
+    const activity = current.activity;
     const recorder = Skia.PictureRecorder();
     const canvas = recorder.beginRecording(Skia.XYWHRect(0, 0, size, size));
     drawHologram(
       canvas,
       size,
       {
-        time: time.value,
-        level: level.value,
-        bands: bands.value,
-        speaking: speakingNow.value,
-        agitation: activity.value.agitation,
-        burstAge: activity.value.burstAge,
-        burstStrength: activity.value.burstStrength,
-        burstCount: activity.value.burstCount,
+        time: current.time,
+        level: current.level,
+        bands: current.bands,
+        speaking: current.speaking,
+        agitation: activity.agitation,
+        burstAge: activity.burstAge,
+        burstStrength: activity.burstStrength,
+        burstCount: activity.burstCount,
         // The materialisation plays once, from the moment this canvas mounted.
-        appearance: Math.min(1, time.value / MATERIALISE_SECONDS),
+        appearance: Math.min(1, current.time / MATERIALISE_SECONDS),
       },
       scene,
       resources,

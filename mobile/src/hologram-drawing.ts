@@ -310,8 +310,8 @@ const CHIP_HOLD_SECONDS = 0.13;
 const CHIP_GONE_SECONDS = 0.2;
 
 // Strides of the flat scene tables (the builders describe the fields).
-const BODY_STRIDE = 8;
-const STREAM_STRIDE = 10;
+const BODY_STRIDE = 9;
+const STREAM_STRIDE = 11;
 const SPECK_STRIDE = 5;
 const CRESCENT_PIECE_STRIDE = 3;
 const CRESCENT_PIECES_PER_STRAND = 14;
@@ -593,8 +593,9 @@ function pickGlyphAndLength(random: Random, x: number, y: number, radius: number
 /**
  * The fragment body: the film's "circuit" texture of short bright strokes, nearly all of them
  * pinned in screen space (the film's body does not spin). Stride {@link BODY_STRIDE}: x, y,
- * unit direction x, y, length, rate (cycles per second), id (0..1), and a code packing the
- * glyph and the fragment's class (see {@link FRAGMENT_CODE_GLYPH_STEP}).
+ * unit direction x, y, length, rate (cycles per second), id (0..1), a code packing the
+ * glyph and the fragment's class (see {@link FRAGMENT_CODE_GLYPH_STEP}), and the order it
+ * arrives in while the ball forms (see {@link revealOrder}).
  *
  * Twice as many fragments as before, so that the light comes from the particles rather than
  * from the wash behind them. Twice the rows would have put the scene over the size a phone
@@ -634,18 +635,21 @@ function buildBody(random: Random) {
     const direction = pickFragmentAngle(random, x, y);
     pickGlyphAndLength(random, x, y, radius, shape);
     const pool = random() < 1 / 3 ? 1 : 0;
+    // Drawn in the order the row used to draw them in, so the same seed still builds
+    // the same ball: the rate first, then the id, then the inner-shell coin.
+    const rate = pickFragmentRate(random, pool);
+    const id = random();
+    const onInnerShell = radius > 0.3 && radius < 0.62 && random() < 0.55 ? 6 : 0;
     body.push(
       x,
       y,
       Math.cos(direction),
       Math.sin(direction),
       shape[1],
-      pickFragmentRate(random, pool),
-      random(),
-      brightness +
-        3 * pool +
-        (radius > 0.3 && radius < 0.62 && random() < 0.55 ? 6 : 0) +
-        FRAGMENT_CODE_GLYPH_STEP * shape[0],
+      rate,
+      id,
+      brightness + 3 * pool + onInnerShell + FRAGMENT_CODE_GLYPH_STEP * shape[0],
+      revealOrder(x, y, id),
     );
   }
   return body;
@@ -666,17 +670,26 @@ function buildStream(random: Random) {
     const longitude = random() * Math.PI * 2;
     const half = pickFragmentLength(random) * 0.5;
     const pool = random() < 1 / 3 ? 1 : 0;
+    const restX = shell * Math.cos(latitude) * Math.sin(longitude);
+    const restY = shell * Math.sin(latitude);
+    // Same as the body: the row's randoms are drawn in their old order.
+    const rate = pickFragmentRate(random, pool);
+    const phase = random();
+    const id = random();
+    const brightnessCode = pickBrightness(random) + 3 * pool;
+    const glyph = random() < 0.2 ? 1 : 0;
     stream.push(
-      shell * Math.cos(latitude) * Math.sin(longitude),
-      shell * Math.sin(latitude),
+      restX,
+      restY,
       shell * Math.cos(latitude) * Math.cos(longitude),
       Math.cos(longitude) * half,
       -Math.sin(longitude) * half,
-      pickFragmentRate(random, pool),
-      random(),
-      random(),
-      pickBrightness(random) + 3 * pool,
-      random() < 0.2 ? 1 : 0,
+      rate,
+      phase,
+      id,
+      brightnessCode,
+      glyph,
+      revealOrder(restX, restY, id),
     );
   }
   return stream;
@@ -1663,6 +1676,19 @@ function revealKey(x: number, y: number) {
   return clamp01(0.72 * across + 0.28 * patches);
 }
 
+/**
+ * The order a fragment joins the ball in, 0..1: low arrives first.
+ *
+ * Worked out once, when the scene is built, because it never changes — it is the
+ * film's reveal pattern at the fragment's place, dithered by its id. It used to be
+ * worked out inside the frame, which meant two `Math.sin` per fragment per frame,
+ * about 3,400 native trig calls a frame on the phone for numbers that were the same
+ * every time. That is the one thing in the loop the scene can remember for it.
+ */
+function revealOrder(x: number, y: number, id: number) {
+  return 0.55 * revealKey(x, y) + 0.45 * fraction(id * 7.31);
+}
+
 /** A clock angle (degrees clockwise from 12 o'clock) as canvas radians (from 3 o'clock, y down). */
 function clockRadians(clockDegrees: number) {
   'worklet';
@@ -2038,10 +2064,9 @@ function appendGlyph(
  * film's order — in patches, behind the dial's band on the left first (revealKey) — and once it
  * has formed the script's slow fragment density thins them out a little.
  */
-function fragmentShown(x: number, y: number, id: number, state: FrameState) {
+function fragmentShown(revealOrder: number, state: FrameState) {
   'worklet';
-  const key = 0.55 * revealKey(x, y) + 0.45 * fraction(id * 7.31);
-  return clamp01((state.bodyShare * 1.12 - key) * 9);
+  return clamp01((state.bodyShare * 1.12 - revealOrder) * 9);
 }
 
 /**
@@ -2100,7 +2125,7 @@ function appendBody(builders: PathBuilder[], body: number[], state: FrameState) 
     const pool = code - turning * 2 >= 3 ? 1 : 0;
     const id = body[offset + 6];
     const phase = fraction(id * FRAGMENT_PHASE_FROM_ID);
-    const shown = fragmentShown(body[offset], body[offset + 1], id, state);
+    const shown = fragmentShown(body[offset + 8], state);
     if (shown <= 0) continue;
     const rate = body[offset + 5];
     const strength = shown * fragmentStrength(time, rate, phase, id, pool, state);
@@ -2147,7 +2172,7 @@ function appendStream(builders: PathBuilder[], stream: number[], state: FrameSta
     const code = stream[offset + 8];
     const pool = code >= 3 ? 1 : 0;
     const id = stream[offset + 7];
-    const shown = fragmentShown(stream[offset], stream[offset + 1], id, state);
+    const shown = fragmentShown(stream[offset + 10], state);
     if (shown <= 0) continue;
     const strength = shown * fragmentStrength(time, stream[offset + 5], stream[offset + 6], id, pool, state);
     if (strength < FRAGMENT_FAINTEST) continue;
