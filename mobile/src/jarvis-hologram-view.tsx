@@ -1,9 +1,17 @@
 import { Canvas, Picture, Skia } from '@shopify/react-native-skia';
 import { useEffect, useMemo } from 'react';
 import { useDerivedValue, useFrameCallback, useSharedValue } from 'react-native-reanimated';
-import { createHologramResources, createHologramScene, drawHologram } from './hologram-drawing';
+import { createHologramResources, createHologramScene, drawHologram, MATERIALISE_SECONDS } from './hologram-drawing';
 import type { JarvisVoice } from './platform-contracts';
-import { easeBands, easeLevel, foldSpectrum, perceivedLevel, VOICE_BAND_COUNT } from './voice-levels';
+import {
+  advanceVoiceActivity,
+  createVoiceActivityState,
+  easeBands,
+  easeLevel,
+  foldSpectrum,
+  perceivedLevel,
+  VOICE_BAND_COUNT,
+} from './voice-levels';
 
 export interface JarvisHologramProps {
   /** Width and height of the square it is drawn in, in points. */
@@ -26,14 +34,15 @@ const DEFAULT_FRAME_MS = 16;
 const SCENE_SEED = 1337;
 
 /**
- * Jarvis, drawn: a golden holographic sphere that turns on its own and swells
- * with his voice.
+ * Jarvis, drawn: a golden holographic sphere that turns on its own and grows
+ * agitated while he speaks.
  *
  * Three clocks keep each other honest. The JS thread reads the voice every
  * 40 ms and stores it as a target. The UI thread, every frame, eases the drawn
- * level toward that target and advances time. And the picture is re-recorded
- * from those values on the UI thread, so neither a busy JS thread nor a slow
- * reading can make the animation stutter — at worst the pulse lags a frame.
+ * level toward that target, advances the voice-activity tracker and advances
+ * time. And the picture is re-recorded from those values on the UI thread, so
+ * neither a busy JS thread nor a slow reading can make the animation stutter —
+ * at worst the sphere reacts a frame late.
  */
 export default function JarvisHologramView({ size, voice }: JarvisHologramProps) {
   const { listening, speaking, getVolume, getSpectrum } = voice;
@@ -46,6 +55,10 @@ export default function JarvisHologramView({ size, voice }: JarvisHologramProps)
   const targetLevel = useSharedValue(0);
   const targetBands = useSharedValue<number[]>(new Array(VOICE_BAND_COUNT).fill(0));
   const speakingNow = useSharedValue(speaking);
+  // What one frame cannot see: whether the voice just started, just stopped, and
+  // how long ago the rim last threw chips. Advanced on the UI thread from the
+  // raw reading, because easing is exactly what smears those moments into slopes.
+  const activity = useSharedValue(createVoiceActivityState());
 
   useEffect(() => {
     speakingNow.value = speaking;
@@ -67,6 +80,9 @@ export default function JarvisHologramView({ size, voice }: JarvisHologramProps)
 
     return () => {
       clearInterval(timer);
+      // Silence, not a reset: the tracker is left to settle on its own over its
+      // release, so a conversation ending looks like Jarvis stopping talking
+      // rather than the sphere going slack between two frames.
       targetLevel.value = 0;
       targetBands.value = new Array(VOICE_BAND_COUNT).fill(0);
     };
@@ -88,6 +104,14 @@ export default function JarvisHologramView({ size, voice }: JarvisHologramProps)
       'worklet';
       return easeBands(current, targetBands.value, deltaSeconds);
     });
+    // Inside `modify` for the reason voice-levels.ts explains: the tracker writes
+    // into the state object it is given, and only `modify` hands the worklet the
+    // one the UI runtime owns. Assigning a state from the JS runtime would leave
+    // every write silently dropped in a development build.
+    activity.modify((state) => {
+      'worklet';
+      return advanceVoiceActivity(state, targetLevel.value, deltaSeconds);
+    });
   });
 
   const picture = useDerivedValue(() => {
@@ -96,7 +120,18 @@ export default function JarvisHologramView({ size, voice }: JarvisHologramProps)
     drawHologram(
       canvas,
       size,
-      { time: time.value, level: level.value, bands: bands.value, speaking: speakingNow.value },
+      {
+        time: time.value,
+        level: level.value,
+        bands: bands.value,
+        speaking: speakingNow.value,
+        agitation: activity.value.agitation,
+        burstAge: activity.value.burstAge,
+        burstStrength: activity.value.burstStrength,
+        burstCount: activity.value.burstCount,
+        // The materialisation plays once, from the moment this canvas mounted.
+        appearance: Math.min(1, time.value / MATERIALISE_SECONDS),
+      },
       scene,
       resources,
     );

@@ -49,7 +49,7 @@ export function SampleScreen({ onLeave }: SampleScreenProps) {
         </Text>
       ) : (
         <Text style={styles.explanation}>
-          Sample mode. The hologram pulses to your voice the way it will to Jarvis's. Nothing is recorded or sent
+          Sample mode. The hologram stirs with your voice the way it will with Jarvis's. Nothing is recorded or sent
           anywhere.
         </Text>
       )}

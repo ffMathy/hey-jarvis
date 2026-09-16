@@ -1,10 +1,10 @@
 #!/bin/bash
-# Look at the Jarvis hologram on an emulator, and measure that it pulses with a voice.
+# Look at the Jarvis hologram on an emulator, and measure that it stirs with a voice without flashing.
 #
 # The hologram's drawing is covered offline (`src/hologram-drawing.spec.ts`
 # renders it headlessly), but whether it animates in the app, on the UI thread,
 # through Reanimated and native Skia, is something only a running Android shows.
-# An emulator has no ElevenLabs session to pulse to, so the voice comes from one
+# An emulator has no ElevenLabs session to listen to, so the voice comes from one
 # of two places, chosen with JARVIS_VOICE:
 #
 #   microphone (the default) — the app as it ships, in sample mode, with a voice
@@ -22,9 +22,13 @@
 #
 # Either way it then records the screen and checks two things:
 #   1. the hologram keeps moving while the voice is silent;
-#   2. its brightness follows the voice — by correlation, with a reversed-voice
-#      control — and is brighter while it speaks than while it does not.
-#      Thresholds live in `tests/hologram-preview/measure-pulse.ts`.
+#   2. it grows busier while the voice speaks — how much it changes from one tenth
+#      of a second to the next, against the agitation envelope the app's own
+#      tracker makes from the same voice, by correlation with a reversed-agitation
+#      control — while its brightness does *not* ride the voice. The film's Jarvis
+#      shows speech as activity, not as a pulse, so a brightness pulse is a
+#      failure here rather than the thing being looked for. Thresholds live in
+#      `tests/hologram-preview/measure-pulse.ts`.
 #
 # Screenshots, the screen recording and the measurements are left in
 # mobile/tests/hologram-preview/evidence/ — not under dist/, which every web
@@ -66,6 +70,15 @@ SILENCE_MS=6000
 # time) and the drawing are the app's own, and the thresholds in measure-pulse.ts
 # are the same as for a real-time run.
 VOICE_SLOWDOWN=8
+# The line is played in bursts of this long with a silence of the same length
+# between them, rather than as one unbroken speech. This is for the measurement,
+# not the look: what is checked is whether the hologram's activity follows the
+# voice, and a recording that is 94% speech gives that comparison almost nothing
+# to hold on to — the reference is then nearly a constant, and even a perfect
+# hologram could not correlate with it above about 0.3. Alternating halves make
+# the comparison meaningful without touching a single threshold.
+SPEECH_CHUNK_SECONDS=6
+SILENCE_CHUNK_SECONDS=6
 # A little over one and a half loops of silence plus the slowed line, which is as
 # long as screenrecord records.
 RECORD_SECONDS=180
@@ -96,7 +109,7 @@ case "$VOICE_SOURCE" in
   *) fail "JARVIS_VOICE must be 'microphone' or 'replay', not '$VOICE_SOURCE'." ;;
 esac
 [ -r /dev/kvm ] && [ -w /dev/kvm ] || fail "/dev/kvm is missing or not usable by $(id -un); see verify-assistant-on-emulator.sh."
-for tool in adb emulator espeak-ng ffmpeg bun; do
+for tool in adb emulator espeak-ng ffmpeg ffprobe bun; do
   command -v "$tool" >/dev/null || fail "$tool is not on PATH."
 done
 emulator -list-avds | grep -qx "$AVD_NAME" || fail "No AVD called '$AVD_NAME'. Create the one the documented run used:
@@ -120,6 +133,31 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Rewrites `$1` as speech in chunks of `$2` seconds separated by silences of `$3`
+# seconds, into `$4`.
+pace_voice() {
+  local input="$1" speech="$2" gap="$3" output="$4"
+  local directory="$OUTPUT_DIR/paced" list piece start=0 index=0 duration
+  duration="$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$input")"
+  rm -rf "$directory"
+  mkdir -p "$directory"
+  ffmpeg -nostdin -loglevel error -y -f lavfi -i "anullsrc=r=16000:cl=mono:d=$gap" \
+    -c:a pcm_s16le "$directory/gap.wav"
+  list="$directory/pieces.txt"
+  : >"$list"
+  while awk -v start="$start" -v duration="$duration" 'BEGIN { exit !(start < duration) }'; do
+    piece="$(printf 'piece-%02d.wav' "$index")"
+    ffmpeg -nostdin -loglevel error -y -ss "$start" -t "$speech" -i "$input" -c:a pcm_s16le "$directory/$piece"
+    # Names alone: the concat demuxer resolves what it reads against the list's own
+    # directory, so a path relative to anywhere else lands somewhere that is not there.
+    printf "file '%s'\nfile 'gap.wav'\n" "$piece" >>"$list"
+    start="$(awk -v start="$start" -v speech="$speech" 'BEGIN { print start + speech }')"
+    index=$((index + 1))
+  done
+  ffmpeg -nostdin -loglevel error -y -f concat -safe 0 -i "$list" \
+    -c:a pcm_s16le -ar 16000 -ac 1 "$output"
+}
+
 # --- The voice --------------------------------------------------------------
 
 echo '→ Recording a voice'
@@ -129,17 +167,24 @@ espeak-ng -v en-gb -s 150 -p 35 -w "$OUTPUT_DIR/voice-raw.wav" \
 ffmpeg -loglevel error -y -i "$OUTPUT_DIR/voice-raw.wav" -ac 1 -ar 16000 -c:a pcm_s16le "$OUTPUT_DIR/voice.wav"
 
 if [ "$VOICE_SOURCE" = replay ]; then
-  # Readings taken from the line as spoken, each then held eight times as long.
-  bun "$PREVIEW_DIR/analyse-voice.ts" "$OUTPUT_DIR/voice.wav" "$RECORDING" "$VOICE_SLOWDOWN"
+  # Paced before slowing, so that each reading being held eight times longer turns
+  # the chunks into the documented seconds, and the readings are taken from that.
+  pace_voice "$OUTPUT_DIR/voice.wav" \
+    "$(awk -v s="$SPEECH_CHUNK_SECONDS" -v d="$VOICE_SLOWDOWN" 'BEGIN { print s / d }')" \
+    "$(awk -v s="$SILENCE_CHUNK_SECONDS" -v d="$VOICE_SLOWDOWN" 'BEGIN { print s / d }')" \
+    "$OUTPUT_DIR/voice-paced.wav"
+  bun "$PREVIEW_DIR/analyse-voice.ts" "$OUTPUT_DIR/voice-paced.wav" "$RECORDING" "$VOICE_SLOWDOWN"
 else
-  # The audio itself slowed, pitch kept (atempo halves at most once per pass), and
-  # the readings taken from that — which is what the app will be hearing.
+  # The audio itself slowed, pitch kept (atempo halves at most once per pass), then
+  # paced, and the readings taken from that — which is what the app will be hearing.
   ffmpeg -loglevel error -y -i "$OUTPUT_DIR/voice.wav" \
     -af 'atempo=0.5,atempo=0.5,atempo=0.5' -ar 16000 -c:a pcm_s16le "$OUTPUT_DIR/voice-slowed.wav"
-  bun "$PREVIEW_DIR/analyse-voice.ts" "$OUTPUT_DIR/voice-slowed.wav" "$RECORDING"
-  # What is played into the microphone, over and over: the silence, then the line.
+  pace_voice "$OUTPUT_DIR/voice-slowed.wav" "$SPEECH_CHUNK_SECONDS" "$SILENCE_CHUNK_SECONDS" \
+    "$OUTPUT_DIR/voice-paced.wav"
+  bun "$PREVIEW_DIR/analyse-voice.ts" "$OUTPUT_DIR/voice-paced.wav" "$RECORDING"
+  # What is played into the microphone, over and over: the silence, then the paced line.
   ffmpeg -loglevel error -y \
-    -f lavfi -i "anullsrc=r=16000:cl=mono:d=$((SILENCE_MS / 1000))" -i "$OUTPUT_DIR/voice-slowed.wav" \
+    -f lavfi -i "anullsrc=r=16000:cl=mono:d=$((SILENCE_MS / 1000))" -i "$OUTPUT_DIR/voice-paced.wav" \
     -filter_complex '[0][1]concat=n=2:v=0:a=1' -f s16le -ac 1 -ar 16000 "$OUTPUT_DIR/microphone-loop.pcm"
   # And the tone check: two seconds of silence, three of tone, three of silence.
   ffmpeg -loglevel error -y \
@@ -318,13 +363,37 @@ until bounds="$(find_hologram)"; do
   sleep 5
 done
 read -r left top width height <<<"$bounds"
-# A margin, so the swell with loud speech stays inside the measured area.
-margin=$((width / 12))
+# Two crops, because the two measurements want different pictures.
+#
+# The sphere crop is the golden region a screenshot found, with a small margin:
+# it is what the silence rule judges, and that rule's threshold is an absolute
+# amount of change per pixel, so the framing it was set against has to stay.
+sphere_margin=$((width / 12))
+sphere_left=$((left > sphere_margin ? left - sphere_margin : 0))
+sphere_top=$((top > sphere_margin ? top - sphere_margin : 0))
+sphere_width=$((width + 2 * sphere_margin))
+sphere_height=$((height + 2 * sphere_margin))
+# The wide crop adds a quarter of the sphere's width on each side — half its
+# radius — because speech throws chips off the rim out past it, and a crop of the
+# sphere alone would measure the one part of the picture that deliberately does
+# not change while missing the part that does.
+margin=$((width / 4))
 left=$((left > margin ? left - margin : 0))
-top=$((top - margin))
+top=$((top > margin ? top - margin : 0))
 width=$((width + 2 * margin))
 height=$((height + 2 * margin))
-echo "  hologram at ${left},${top} ${width}x${height}"
+# ffmpeg refuses a crop that leaves the frame, and a wide margin on a 540-pixel
+# screen can ask for one. The screenshot the hologram was found in is the same
+# size as what screenrecord will record, so it says where the edges are. Asked for
+# a separator, this ffprobe's csv writer rejects a trailing space, so take its
+# default comma.
+IFS=, read -r screen_width screen_height < <(ffprobe -v error -select_streams v:0 \
+  -show_entries stream=width,height -of csv=p=0 "$OUTPUT_DIR/screen.png")
+width=$((left + width > screen_width ? screen_width - left : width))
+height=$((top + height > screen_height ? screen_height - top : height))
+sphere_width=$((sphere_left + sphere_width > screen_width ? screen_width - sphere_left : sphere_width))
+sphere_height=$((sphere_top + sphere_height > screen_height ? screen_height - sphere_top : sphere_height))
+echo "  hologram at ${sphere_left},${sphere_top} ${sphere_width}x${sphere_height}, measured with chips out to ${left},${top} ${width}x${height}"
 cp "$OUTPUT_DIR/screen.png" "$OUTPUT_DIR/hologram-screen.png"
 
 # --- Hearing a known loudness -------------------------------------------------
@@ -397,19 +466,27 @@ fi
 
 echo '→ Measuring it'
 crop="crop=${width}:${height}:${left}:${top}"
+sphere_crop="crop=${sphere_width}:${sphere_height}:${sphere_left}:${sphere_top}"
 # Mean brightness of the hologram in every frame, resampled to a steady rate.
 ffmpeg -loglevel error -y -i "$OUTPUT_DIR/hologram.mp4" \
   -vf "fps=25,$crop,signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=$OUTPUT_DIR/brightness.txt" -f null -
-# How much it changes from one tenth of a second to the next.
+# How much it changes from one tenth of a second to the next. Ten a second is what
+# measure-pulse.ts's half-second moving average is built on — five samples a
+# window — and what its per-window silence check counts coverage against, so this
+# rate is part of the measurement rather than a detail of the ffmpeg call.
 ffmpeg -loglevel error -y -i "$OUTPUT_DIR/hologram.mp4" \
-  -vf "fps=10,$crop,tblend=all_mode=difference,signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=$OUTPUT_DIR/motion.txt" -f null -
+  -vf "fps=10,$crop,tblend=all_mode=difference,signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=$OUTPUT_DIR/activity.txt" -f null -
+# And the same over the sphere alone, for the silence rule: its threshold counts
+# change per pixel, so the black margin the wide crop adds would dilute it.
+ffmpeg -loglevel error -y -i "$OUTPUT_DIR/hologram.mp4" \
+  -vf "fps=10,$sphere_crop,tblend=all_mode=difference,signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=$OUTPUT_DIR/motion.txt" -f null -
 # Stills twice a second, for looking at.
 rm -f "$OUTPUT_DIR"/frame-*.png
 ffmpeg -loglevel error -y -i "$OUTPUT_DIR/hologram.mp4" -vf "fps=2,$crop" "$OUTPUT_DIR/frame-%03d.png"
 
 bun "$PREVIEW_DIR/measure-pulse.ts" "$RECORDING" "$OUTPUT_DIR/brightness.txt" \
-  "$SILENCE_MS" "$OUTPUT_DIR/pulse.json" "$OUTPUT_DIR/motion.txt" ||
-  fail "The hologram did not animate, or did not pulse with the voice — see $OUTPUT_DIR/pulse.json."
+  "$SILENCE_MS" "$OUTPUT_DIR/pulse.json" "$OUTPUT_DIR/motion.txt" "$OUTPUT_DIR/activity.txt" ||
+  fail "The hologram did not animate, did not stir with the voice, or flashed with it — see $OUTPUT_DIR/pulse.json."
 
 echo
-echo "✓ The hologram animates, and pulses with the voice ($VOICE_SOURCE). Evidence in $OUTPUT_DIR/."
+echo "✓ The hologram animates, and stirs with the voice without flashing ($VOICE_SOURCE). Evidence in $OUTPUT_DIR/."

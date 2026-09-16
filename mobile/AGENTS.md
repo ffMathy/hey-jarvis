@@ -83,7 +83,7 @@ mobile/
     ├── tapped-voice.ts           # raw samples from modules/jarvis-audio → volume and spectrum
     ├── voice-analysis.ts         # the FFT and RMS, the same for live audio and the emulator replay
     ├── sdk-voice-readers.ts      # the SDK's own readers, made safe to call before a session
-    ├── voice-levels.ts           # spectrum folding and easing, frame-rate independent
+    ├── voice-levels.ts           # spectrum folding, easing, and the agitation/burst tracker
     ├── settings-screen.tsx
     ├── assist-link.ts            # what "opened by the assistant" looks like
     ├── conversation-token.ts     # minting a conversation token from ElevenLabs
@@ -98,7 +98,9 @@ mobile/
 
 ## The hologram
 
-The conversation screen is built around Jarvis as the films drew him: a golden, see-through sphere of broken arcs, specks, glass panels and struts around a knotted core, turning slowly on its own and swelling with his voice.
+The conversation screen is built around Jarvis as the film drew him: the golden sphere from the *Avengers: Age of Ultron* lab scene. A round, see-through, warm amber ball, brightest at its core and never dark inside, textured with short bright strokes, bounded by one rim element at a time — a bright crescent on the left limb, a segmented ladder ring, or a thin ring — with at most two slow protrusions and a hooked ring at the core. It turns on its own, it materialises when it first appears, and when Jarvis talks it does **not** brighten or swell: it grows agitated.
+
+None of those numbers are a guess. The proportions, the colours, the rotation speeds, what changes while Jarvis speaks and the order the ball assembles itself in were all measured frame by frame from the scene itself, and `hologram-drawing.ts` cites that study section by section beside the code each finding produced.
 
 ```
 Android, in a conversation     Jarvis's WebRTC track ─ modules/jarvis-audio (AudioTap) ─ tapped-voice.ts ─ voice-analysis.ts
@@ -107,11 +109,12 @@ Browser, in a conversation     @elevenlabs/react-native getOutputVolume / getOut
 Browser, in sample mode        getUserMedia ─ AnalyserNode
   └─ a JarvisVoice (platform-contracts.ts), read every 40 ms on the JS thread
        └─ voice-levels.ts perceivedLevel + foldSpectrum → 24 log-spaced bands (targets)
-            └─ jarvis-hologram-view.tsx   UI thread, every frame: easeLevel/easeBands toward the targets
+            └─ jarvis-hologram-view.tsx   UI thread, every frame: easeLevel/easeBands toward the
+                 targets, and advanceVoiceActivity on the *raw* reading → agitation and chip bursts
                  └─ hologram-drawing.ts   drawHologram(canvas, size, frame, scene, resources) → Skia Picture
 ```
 
-Every source hands the hologram the same two readings — a volume, and 1024 bytes of spectrum across 100–8000 Hz on Web Audio's decibel scale — so the drawing never knows which it is listening to. The volume is not quite the same quantity everywhere: on Android it is the RMS of the last 40 ms; in a browser it is what the ElevenLabs web SDK reports, the mean of that spectrum, and sample mode in a browser takes it the same way so the user's voice and Jarvis's are on one scale there. The two scales differ, so the same speech pulses somewhat differently in a browser than on a phone.
+Every source hands the hologram the same two readings — a volume, and 1024 bytes of spectrum across 100–8000 Hz on Web Audio's decibel scale — so the drawing never knows which it is listening to. The volume is not quite the same quantity everywhere: on Android it is the RMS of the last 40 ms; in a browser it is what the ElevenLabs web SDK reports, the mean of that spectrum, and sample mode in a browser takes it the same way so the user's voice and Jarvis's are on one scale there. The two scales differ, so the threshold at which the sphere counts a voice as speech sits in a slightly different place in a browser than on a phone.
 
 ### Why Android analyses the audio itself
 
@@ -122,7 +125,7 @@ On Android the SDK's two readers come from LiveKit's native processors (`@liveki
 
 So `modules/jarvis-audio` hangs its own `AudioTap` off the same audio — Jarvis's remote track in a conversation, or WebRTC's recorder in sample mode — reading the bytes little-endian into a ring of the last third of a second, and JavaScript pulls from it and analyses it with `voice-analysis.ts`. That is the same code that turns the emulator check's recorded voice into its replayed readings, so what the replay shows is what a phone computes.
 
-Finding Jarvis's track takes one step outside the SDK's public surface: `useRawConversation()` is public, but the LiveKit room is on the conversation's protected `connection`. `agent-audio-track.ts` reaches it with `Reflect.get`, checks it is a real `livekit-client` `Room`, and follows the participant whose identity contains "agent" — as the SDK's own code does. `agent-audio-track.contract.spec.ts` reads the installed SDK and fails if any of that moves. If the track cannot be found anyway, the hologram falls back to the SDK's readers described above: it still draws and nothing fails, but it flashes towards full brightness on any sound from Jarvis instead of following him, and two of its bands stay dark.
+Finding Jarvis's track takes one step outside the SDK's public surface: `useRawConversation()` is public, but the LiveKit room is on the conversation's protected `connection`. `agent-audio-track.ts` reaches it with `Reflect.get`, checks it is a real `livekit-client` `Room`, and follows the participant whose identity contains "agent" — as the SDK's own code does. `agent-audio-track.contract.spec.ts` reads the installed SDK and fails if any of that moves. If the track cannot be found anyway, the hologram falls back to the SDK's readers described above: it still draws and nothing fails, but a volume that reads near full scale for any sound at all makes the sphere treat every noise from Jarvis as full-blown speech — agitation snapping on and off with the reading rather than following his syllables — and two of its bands stay dark.
 
 ## Sample mode
 
@@ -132,11 +135,16 @@ Before the app is set up there is nothing for the hologram to follow, so the set
 - **On Android it uses WebRTC's own recorder**, started with `JavaAudioDeviceModule.requestStartRecording()` — no connection, no network, and no second recorder to fight a conversation for the microphone: a conversation that starts meanwhile shares it, and it stays open until both have let go. The microphone opens only while the screen is mounted and the app is in front, and closes synchronously on either, so it has let go before whatever comes next asks.
 - **In a browser it is `getUserMedia` into an `AnalyserNode`** with the ElevenLabs web SDK's settings (`fftSize` 2048, smoothing 0.8), not connected to the speakers.
 
-What the voice does to it, and why each layer is where it is, is written at the top of `hologram-drawing.ts`. Three things are worth knowing before changing it:
+What each layer is, what the voice does to it, and which finding of the film study each number came from is written at the top of `hologram-drawing.ts`. These are the things worth knowing before changing it:
 
-- **It is all worklets.** `drawHologram` and every helper it calls start with `'worklet'` and use only their arguments, because the picture is recorded on the UI thread. The scene (plain numbers, built once from a fixed seed) and the resources (paints, shaders and mutable `PathBuilder`s, built once) are created per mounted canvas and must never be shared between two.
-- **Loudness is eased on the UI thread, not the JS thread.** The SDK refreshes about 25 times a second; easing toward each reading every frame is what keeps the pulse smooth, and `easeLevel` is exponential so the pulse is the same on a 60 Hz and a 120 Hz screen.
-- **It was designed by looking, and is tested by looking.** `hologram-drawing.spec.ts` renders it headlessly through CanvasKit — the same Skia API calls — and asserts on pixels: it moves when silent, loud speech is clearly brighter than silence, which bands are sounding changes the picture, and it stays inside its square. The device check is `.scripts/verify-hologram-on-emulator.sh`, below.
+- **Layers, back to front.** A warm volume fill (one textured circle: the ball is lit through, never a dark disc with light drawn on it); the inner shells — a two-armed whorl winding out of the core, a long loop, a saturated arc, data streaks; the fragment body, about 840 short strokes and glyphs inside 0.94R plus a turning shell below the core; comet arcs and spokes; the core's bloom, hooked ring and knot; the bright fragments, their hot cores and the blinking specks; a hairline ring at the limb; the rolling ladder truss; the bright left crescent; the fraying and streak arcs; the protrusion the script has out; the latest burst's chips; rare accents; and, only while it forms, the intro.
+- **Idle motion, and only idle motion.** Nothing breathes, pulses or flickers as a whole. The outer rim layer rolls clockwise in the screen plane at 11°/s; the inner layer — whorl, loop, arc and a quarter of the fragments — counter-turns at 5°/s; the rest of the body is pinned, each fragment living on its own 0.3–0.65 s clock and re-lighting near where it was, with a shell below the core turning about the vertical axis into the film's sideways counter-streams. A 59-second script (plus a second track on a 41-second period) decides which rim element leads, which protrusion is out and how dense the fragments are, handing each over within a second or so.
+- **Speech is activity, not brightness.** This is the one thing most likely to be "fixed" back into a bug. In the film the sphere's brightness and silhouette hold while Jarvis talks — measured at ±3% and ±1% — and what changes is behaviour: fragments turn over about half again as fast, the crescent splits into thin arcs and opens gaps, the hot highlights all but go, the limb frays outward, and slabs of light break off the left limb on syllable onsets and in the gaps after them. So the drawing ignores `level` entirely. `voice-levels.ts` turns the raw readings into an **agitation** envelope (up over 0.15 s while speech is present, down over 0.4 s, the same for a whisper as for a shout) and into **chip bursts**, which come in flurries of two a quarter-second apart and then rest for 1.2 s, as the film's do. A hologram that brightens with the voice is wrong, and both `hologram-drawing.spec.ts` and the emulator check fail it.
+- **Onsets and gaps need memory, and memory needs `modify`.** `advanceVoiceActivity` writes into a state object that lives from frame to frame, and it is fed the *raw* reading rather than the eased one, because easing is exactly what smears a syllable's start into a slope. The view advances it inside `activity.modify(...)`, the way the bands are eased: a shared value assigned from the JS runtime gets a warning-only setter in the UI runtime, so writing to it directly would drop every update in silence in a development build and work in release. `voice-levels.ts`'s header says so at length.
+- **It materialises.** The first 3.6 seconds after the canvas mounts replay the film's assembly — a point of light, sparks, band pieces, a spoked dial that snaps on and then breaks up, fragments arriving in patches with the fill washing in behind them, a tilted equatorial ring sweeping through — driven by `appearance = min(1, time / MATERIALISE_SECONDS)`, which the view computes from its own clock. At `appearance` 1 nothing of the intro is left.
+- **It is all worklets.** `drawHologram` and every helper it calls start with `'worklet'` and use only their arguments and module-level number constants — no mutable module state, no closures, no `Math.random` while drawing; randomness comes from the seeded scene. The scene (flat number arrays, built once from a fixed seed) and the resources (paints, shaders, textures and mutable `PathBuilder`s, built once) are created per mounted canvas and must never be shared between two.
+- **Loudness is eased on the UI thread, not the JS thread.** The SDK refreshes about 25 times a second; easing toward each reading every frame is what keeps the bands smooth, and `easeLevel` is exponential so the result is the same on a 60 Hz and a 120 Hz screen. The tracker is frame-rate independent for the same reason, and tested at 30, 60, 90 and 144 Hz.
+- **It was designed by looking, and is tested by looking.** `hologram-drawing.spec.ts` renders it headlessly through CanvasKit — the same Skia API calls — and asserts on pixels: it moves when silent, it holds its brightness whether he speaks softly or loudly, speech shows as chips beyond the limb and more change than when calm, which bands are sounding changes the picture, the rim turns while the body stays put, it materialises and leaves nothing behind, nothing pops at a script boundary, no frame of the materialisation turns a tenth of the light on at once, and it stays inside its square. The device check is `.scripts/verify-hologram-on-emulator.sh`, below.
 
 ## Configuration
 
@@ -278,18 +286,29 @@ Two things that would otherwise ride on reasoning alone have been checked anothe
 
 ### The hologram on a device
 
-`.scripts/verify-hologram-on-emulator.sh` checks what the headless spec cannot: that the hologram animates inside the real app, through Reanimated and native Skia, and pulses with a voice. An emulator has no ElevenLabs session, so the voice comes from one of two places, chosen with `JARVIS_VOICE`:
+`.scripts/verify-hologram-on-emulator.sh` checks what the headless spec cannot: that the hologram animates inside the real app, through Reanimated and native Skia, and stirs with a voice. An emulator has no ElevenLabs session, so the voice comes from one of two places, chosen with `JARVIS_VOICE`:
 
 - **`microphone`, the default:** the release app as it ships, in sample mode. An espeak-ng line is played into the emulator's microphone through its gRPC controller (`tests/hologram-preview/inject-microphone.ts`, HTTP/2 and two hand-encoded protobuf messages, no gRPC tooling), so the voice goes through everything a phone uses: WebRTC's recorder, `modules/jarvis-audio`, `voice-analysis.ts`, the hologram. First it plays a tone and checks the app heard it within 1 dB of the loudness Android's own audio HAL logged for the same stream (`dumpsys media.audio_flinger`), and heard the silence around it as silence.
 - **`replay`:** the app built with `JARVIS_VOICE_REPLAY=1`, which makes Metro swap `jarvis-voice.ts` for `tests/hologram-preview/jarvis-voice.replay.ts`, replaying readings made offline from the line. Nothing native about the audio is exercised; it isolates the drawing.
 
-Both loop six seconds of silence and then the line, record the screen for 180 s, and have `measure-pulse.ts` compare the hologram's brightness in each frame with the level the app should have been drawing. The thresholds were fixed before anything was measured: correlation at least 0.5, and at least 0.2 better than the same voice played backwards. The hologram must also be at least 1.1× brighter while speaking than while silent, and keep moving while silent: the change from one tenth of a second to the next, averaged over each two seconds of silence, must be at least 1/255 per pixel in every one of them. Averaged, because screenrecord only emits a frame when the screen changes, so at an emulator's frame rate most tenth-second pairs are one frame repeated.
+Both loop six seconds of silence and then the line, record the screen for 180 s, and have `measure-pulse.ts` judge the recording. Because the film's Jarvis shows speech as activity rather than as a pulse, what it compares is **how much the hologram changes** — the mean frame difference from one tenth of a second to the next, smoothed over half a second — against the **agitation envelope** the app's own `advanceVoiceActivity` makes from the same recorded readings. Activity is measured over a crop widened by a quarter of the sphere's width on each side — half its radius — so the chips thrown out past the rim are inside the measured area rather than cut off by it. The silence rule keeps the old, sphere-sized crop, because its threshold counts change per pixel and the wider crop's black margin would dilute it.
+
+The thresholds are fixed in the file, before anything is measured:
+
+- activity correlates with agitation at **0.5** or better, and at least **0.2** better than with the same agitation played backwards — the control for how much of any best-of-many-offsets match is luck;
+- the hologram is at least **1.3×** busier while he speaks than while he is silent;
+- it keeps moving through silence: the raw change per tenth of a second, averaged over each two seconds of silence, is at least **1/255** per pixel in *every* judged stretch (averaged, because screenrecord only emits a frame when the screen changes, so at an emulator's frame rate most tenth-second pairs are one frame repeated);
+- and the film guard — mean brightness while speaking is **at most 1.3×** the silent mean. A hologram that flashes with the voice fails here, which is the opposite of what the previous design was asked for.
+
+Brightness against agitation is reported in `pulse.json` as a number to look at, and nothing passes or fails on it.
 
 The script boots its own AVD, `jarvis-hologram-check`, and prints how to create it when it is missing; a device that is already attached is used instead, and the script says so.
 
-**Both pass.** Run on 2026-09-15 on the same WSL2 machine, against AVD `jarvis-hologram-check`: the same android-34 `google_apis` x86_64 image at 540×960 and 240 dpi, 4 cores, 2 GB, `-gpu swiftshader_indirect`.
+**Both passed — on the previous design.** The run below measured the hologram as it was before the film redesign, when brightness was meant to follow loudness and `measure-pulse.ts` asked it to; its correlation and brightness-ratio rows answer a question the check no longer asks, and the brightness ratio of 1.68–1.69 would now fail the film guard by design. **The check has to be re-run on this design**, and this table replaced with what it reports, before the device behaviour can be called verified again. The tone, frame-count and emulator rows below still describe the machine and the audio path, which have not changed.
 
-| Measure | `microphone` | `replay` | Threshold |
+Run on 2026-09-15 on the same WSL2 machine, against AVD `jarvis-hologram-check`: the same android-34 `google_apis` x86_64 image at 540×960 and 240 dpi, 4 cores, 2 GB, `-gpu swiftshader_indirect`.
+
+| Measure | `microphone` | `replay` | Threshold then |
 | --- | --- | --- | --- |
 | Tone: the app ÷ Android's HAL | 0.1412 ÷ 0.1413 (−0.01 dB); silence around it ≤ 0.0001 | — | within 1 dB; silence ≤ 0.01 |
 | Correlation with the voice | 0.739 | 0.719 | ≥ 0.5 |
@@ -298,7 +317,7 @@ The script boots its own AVD, `jarvis-hologram-check`, and prints how to create 
 | Mean change per tenth of a second, stillest two seconds of silence | 1.46 (2.41 over all silence) | 1.06 (1.69 over all silence) | ≥ 1 in every two seconds |
 | Distinct frames recorded in 180 s | 462 | 487 | — |
 
-The stills it leaves in `tests/hologram-preview/evidence/` show the same thing by eye: during silence, a dim sphere of thin arcs that keeps turning; during speech, a brighter and fuller one.
+The stills that run left in `tests/hologram-preview/evidence/` show the same thing by eye: during silence, a dim sphere of thin arcs that keeps turning; during speech, a brighter and fuller one. The film design is meant to look different there — the same brightness either way, and a busier, looser ball while he talks — which is the change the re-run has to confirm.
 
 What those numbers do and do not say:
 

@@ -1,90 +1,198 @@
-// The J.A.R.V.I.S. hologram: the golden, audio-reactive globe that stands in for
-// Tony Stark's AI assistant in the Iron Man films, drawn every frame with React
+// The J.A.R.V.I.S. hologram: the golden sphere of light that stands in for Tony
+// Stark's AI in the Avengers: Age of Ultron lab scene, drawn every frame with React
 // Native Skia's imperative canvas API from a Reanimated worklet.
 //
 // WHAT IT DEPICTS
-// A tilted, slowly spinning sphere made of broken amber (#f0a040) line fragments
-// with pale-gold (#ffe6b0) highlights instead of a solid surface. There is no haze
-// at the limb: the silhouette comes from ragged fragments, protruding struts and a
-// crown of spikes. A big soft tapered "C" ribbon, open on the right, curls into a
-// knotted gold core; horizontal data streaks fade out of the core; translucent
-// cool blue glass panels float mostly behind the gold. Depth: the back hemisphere
-// is finer (1 px), dimmer and has no glow pass.
+// The film's J.A.R.V.I.S.: a round, glowing, translucent amber ball, brightest at its
+// core and never dark inside, textured with short bright "circuit" strokes, bounded by
+// one dominant rim element at a time (a bright crescent on the left limb, a segmented
+// ladder ring, or a thin ring), with at most two large, slow protrusions and a small
+// hooked ring at the core. Everything is warm orange to amber: no blue, no white, no
+// halo past 1.1R. Measurements and requirements come from the film study
+// (jarvis-reference.md), cited below by section.
 //
-// LAYERS, drawn back to front
-//   drawInteriorWarmth  faint warm fill inside the sphere (no limb halo)
-//   drawRimWave         a brightness wave travelling around the rim, alive even when silent
-//   drawGlassPanels     blue glass panels with data lines, and a few long grid lines
-//   drawSphereShells    nested shells of broken latitude/longitude arcs, dashes and radial
-//                       ticks: the outer frame in two rim groups (back hemisphere, then
-//                       front), then the inner counter-rotating frame
-//   drawRimRings        prebuilt dashed rings hugging the limb
-//   drawSpecks          a volumetric field of specks, some twinkling into sparks
-//   drawOrbitalRings    tilted dashed rings on the sphere
-//   drawSpectrum        crown spikes, rim combs and protruding struts
-//   drawCrescent        the "C" ribbon in three width tiers, and an arc hugging the core
-//   drawCoreBloom       the warm core bloom and its comet tail
-//   drawDataStreaks     horizontal streaks from the core, fading out in three tiers
-//   drawKnot            small tilted loops forming the knotted core gyroscope
+// LAYERS, drawn back to front (unit space, R = 1, y down; clock angles in degrees
+// clockwise from 12 o'clock)
+//   drawVolumeFill      the warm volume (P0.1): one circle with a prebuilt texture — level
+//                       from 0.35R out to the limb, heavier on the upper left, broken into
+//                       sideways-stretched clouds with deep red-brown pockets between them
+//                       (the pockets fall to about half the median), brightest where the fragment
+//                       body crowds, see-through toward the lower-right limb and ragged at its
+//                       edge. While the ball forms it arrives as a thickening haze with brighter
+//                       ragged patches where the fragments have already landed
+//   drawInnerShells     the whorl: two wide spiral arms winding out of the core to 0.76R,
+//                       furry with short fragments across them, plus the long loop rising 37°
+//                       past the core, the saturated ")" arc at 0.57R and the faint near half of
+//                       the edge-on ellipse — all of it turning the other way; and data streaks
+//   drawBody            the fragment body's dim and mid strokes: 840 fragments inside 0.94R
+//                       (dashes and L, bracket, T, Z glyphs, rings and cell outlines mostly near
+//                       the core; median 0.036R, clumped into the mass with bare fill between the
+//                       clumps, heavier on the left) and a 336-fragment turning shell in the lower
+//                       hemisphere. A quarter of those between 0.3R and 0.85R ride the
+//                       counter-turning inner layer; the rest are pinned. Mid and bright strokes
+//                       vary in brightness along their length (a tiled sparkle texture). Fewer
+//                       strokes, each wider than the film's hairlines would be, so the texture
+//                       reads as ribbons rather than as line art (film run widths 0.022-0.031R)
+//   drawLines           comet arcs curling from the core to the lower right; radial spokes
+//                       or a swoosh fan of hairlines when the script calls for them
+//   drawCore            elongated bloom with a darker middle, the hooked 0.1R ring softened by
+//                       its glow, the bar, and a furry knot of spikes on the ring's upper left,
+//                       re-drawn 6 times a second
+//   drawBodyHighlights  the bright fragments with a tight glow and a narrow hot core (the film's
+//                       #ffd26c, pulled toward orange so stacked strokes stay amber); warm specks
+//                       and blinking peach ones
+//   drawThinRing        a hairline circle at 1R, brightest from 1 to 4 o'clock, over a lumpy ridge
+//                       of light just inside the limb that rolls with the rim layer
+//   drawTruss           the rolling rim layer: the ladder truss (a hot outer rail at 1.035R, a
+//                       finer inner rail at 0.935R, amber haze between them, fine rungs about
+//                       every 9°, circuit traces, paired hanging struts, 190° of arc in three
+//                       pieces), the thin ring's ticks where they pass 1-5 o'clock, and the fan
+//                       of strands on the right
+//   drawCrescent        the bright left crescent from 11 o'clock round to 7: four strands in
+//                       width tiers (glow, thin #dca131, medium, wide, #ffda53 core) and a
+//                       tight limb bloom (a radial ring profile times a sweep mask)
+//   drawFray            while he talks: strands fraying off the upper-left limb, streak arcs
+//                       at 1.2-1.27R, and horizontal streaks slipping out of the right limb
+//   drawProtrusions     the script's protrusions: equator strut (a glowing rod with a hot core),
+//                       ribbon loop, hook tendril, streak bundle, ear ring, pole fan (glowing
+//                       rails, never quite regular)
+//   drawChips           the latest burst's rim chips: solid amber slabs that break up rather
+//                       than fade
+//   drawAccents         the jagged lightning filament and the very rare two-frame red segment
+//   drawIntro           only while materialising: point of light, sparks, band pieces, the spoked
+//                       dial (pieces of uneven length that thin to a rail and break into ragged
+//                       chips), and the tilted equatorial ring of rails and fine ticks
 //
-// HOW THE VOICE DRIVES IT (see analyseFrame)
-// Voice only ever adds bounded offsets, never level × time, so motion cannot jump.
-// `speaking` scales every audio value by 1 while speaking and by 0.8 while listening
-// with a residual level (no step at level 0).
+// IDLE MOTION (section 3; nothing breathes, pulses or flickers as a whole)
+// - The outer rim layer rolls clockwise in the screen plane at 11°/s: the truss, the thin
+//   ring's ticks, and the breaks in the crescent's strands (the crescent's brightness
+//   itself stays on the left, where the film shows it).
+// - The inner layer — the whorl, the loop, the ")" arc and a quarter of the fragments between
+//   0.3R and 0.85R — turns counter-clockwise at 5°/s about the core;
+//   the strand fan turns counter-clockwise at 3.5°/s and fades in and out on a 14 s cycle.
+// - The rest of the fragment body does not turn. Each fragment lives on its own clock, lit for
+//   0.3-0.65 s and fading in and out over a quarter of that, and re-lights a little along
+//   or across from where it was — about 10% renewed per film frame, as measured. Below
+//   the core, a shell turns about the vertical axis at 0.21 rad/s, so its front drifts
+//   right at 0.1-0.2 R/s and its dimmer back drifts left: the film's counter-streams.
+// - The core's brightness drifts ±3% over about 12 s; comet arcs grow, slide and fade
+//   over 5-9 s each.
+// - A script (a loop of 12 epochs, 3-8 s each, about 59 s in all, plus a second track
+//   on a 41 s period) decides which rim element dominates — the other two stay faintly
+//   present, handing over within 1.2 s — which protrusion is out, whether spokes, a swoosh
+//   or a lightning filament show, how dense the fragments are (0.9-1.02), and when the
+//   red segment flashes. A protrusion grows over 0.5-1.5 s (eased out), holds 1-3 s and
+//   dissolves in 0.5 s: its solid body goes first, leaving a hollow outline whose rails
+//   bead, shrink to dots and fall away as sparks. The two tracks never put more than two
+//   protrusions out at once.
 //
-//   level  Clamped to 0..1 and scaled as above, then energy = level^0.8 (perceptual:
-//          keeps loud troughs clearly above soft). Energy only adds a small swell: the
-//          sphere radius grows by up to 2.5% (bass adds up to 1.2% more), glow passes
-//          get up to 25% brighter, and it gives small nudges to arc growth, fragment
-//          reveal, the C ribbon, the core and the knot. While listening, the level also
-//          makes the glass panels up to 60% more present.
-//   bands  24 magnitudes, low frequency first. Band averages get more gain the higher
-//          they are, because speech is low-heavy:
-//            0-4    ×1.1  bass: zone 0 (shells below 0.66), the inner frame, the C ribbon
-//                         (sweep, radius, width, brightness), the core bloom, the knot and
-//                         the sphere radius
-//            5-8    ×1.3  zone 1: shells 0.66-0.83, rim ring 0.8, orbital ring 0.9
-//            9-12   ×1.8  zone 2: shells 0.83-0.9, rim rings 0.855 and 0.9, orbital ring 0.97
-//            13-17  ×2.6  zone 3: shells 0.9-0.96, rim ring 0.94, orbital ring 1.0
-//            18-23  ×3.5  zone 4: shells from 0.96, rim rings 0.975 and 1.01
-//            5-13   ×1.6  mids: interior warmth, glass panels, the C's curl, the comet
-//                         tail and the data streaks
-//            14-23  ×3    highs: size and brightness of the twinkling sparks
-//          Frequency zones follow shell radius: lows inside, highs on the outer rim. A
-//          zone's energy swells its shells, lengthens its unsplit arcs at both ends, and
-//          reveals its short dashes and ticks through a smooth threshold on per-element
-//          random ids (dashes grow, so nothing pops). The outer frame's line widths,
-//          glow and highlights follow the average of zones 1-2 for fragments below shell
-//          0.9 and of zones 3-4 above it; zones 3-4 also drive the rim wave and specks.
-//          Crown spikes, rim combs and struts form a readable spectrum by screen angle:
-//          each follows the (interpolated) band under it, lows at the top and highs at
-//          the bottom, mirrored left and right, and its tip grows with band^1.5 in a
-//          bright pale-gold path.
+// HOW THE FRAME DRIVES IT (see analyseFrame). The film's sphere does not brighten or
+// swell with his voice, so neither does this one: disc brightness while talking stays
+// within a few percent of silence and the silhouette within 1%. Speech shows as activity.
+//   time        drives every clock above; every rate is fixed, so nothing depends on
+//               level × time and nothing jumps.
+//   level       deliberately unused: loudness has no counterpart in the film.
+//   speaking    unused too: agitation already says whether he is talking, and a flag that
+//               flips within one frame would make the sphere jump.
+//   agitation   gated by the intro (below), then:
+//               - mix = 0.65·agitation: calm fragments whose ids fall below mix fade out
+//                 and fast fragments (lit 0.13-0.28 s) whose ids fall below 2·mix fade in,
+//                 so the count lit, and the brightness, hold while churn rises by half; each
+//                 fragment also re-lights further from where it was, and the specks hand over
+//                 to a second, fixed, faster clock the same way, so the layer twinkles about
+//                 half again as fast without any speck's phase moving
+//               - hotShare = 1 − 0.35·agitation: the share of bright fragments still drawn
+//                 bright. Their hot cores all but go (−95%), which is what takes the film's
+//                 luma-200 highlights out on "Doctor." while the strokes stay bright
+//               - spread = agitation·(0.7 + 0.3·low), low = clamp((mean of bands 0-5 −
+//                 0.35) / 0.45): the crescent's strands move from 0.965-1.03R out to
+//                 0.94/1.02/1.10/1.19R, thin (wide tier −62%, medium −45%), open gaps, the
+//                 outer two gather 28° toward the upper left and shorten 40%, and every strand
+//                 keeps streaming out and back at about 0.1 R/s. Its hot core fades as
+//                 (1 − spread)², while its limb bloom holds, so the silhouette does not shrink;
+//                 the crescent shows at no less than
+//                 0.65·agitation even when another element leads
+//               - fray = agitation·(0.55 + 0.45·high), high = clamp((mean of bands 14-23 −
+//                 0.2) / 0.45): which fray strands (drifting out 0.12R per cycle), streak
+//                 arcs and right-limb streaks (0.3 R/s) show; each is a slot on its own clock
+//                 that agitation only lets through, fading by length
+//   burstAge, burstStrength, burstCount
+//               while burstAge < 0.2 s the latest burst's 3 + round(2·strength) chips are drawn
+//               (the strength as the tracker gave it, so a burst in flight while the ball is
+//               still forming cannot gain a chip): #f59a30 slabs with a hot middle and a soft
+//               edge, leaving the left limb about mid-height (clock 255-290°, or split between
+//               250° and 300° for one burst in three, chosen by hashing burstCount) from 1.04R.
+//               One leads, up to 0.33R along the limb by 0.14R across and thrown at 1.6-2.3 R/s;
+//               the others are half its length or less at 0.9-2.1 R/s, spread over 50° of limb
+//               round it rather than stacked at one clock. A small onset throws three, a loud
+//               one five. All of them fall 8-22° counter-clockwise toward 8 o'clock. Fully lit
+//               for 0.13 s, then each thins, shortens and snaps in two until it is gone at
+//               0.2 s. For 0.18 s the crescent loses pieces within 16° of the launch point.
+//               Bursts come in flurries of two a quarter of a second apart and then rest for
+//               1.2 s (the tracker's rule). On the check's recorded line that works out at
+//               about a third of a burst a second, so chips are on screen for roughly a
+//               tenth of the time he talks; connected speech simply offers fewer onsets
+//               sharp enough to throw one than the film's single word does. Only the latest
+//               burst is ever still in flight.
+//   appearance  keyframe time k = appearance / 0.75: the film's section 5 keyframes run
+//               over k 0-1 (2.7 s of MATERIALISE_SECONDS = 3.6 s) and the crescent grows
+//               back in over k 1-1.33. Point of light k 0-0.32; sparks from 0.06 (a row
+//               across the future top, a trail down the right, specks), each for 0.4;
+//               band pieces from 0.19; the spoked dial snaps on at 0.26 within 0.03, in pieces of
+//               uneven length, brightens to 0.49, loses its spokes by 0.64 and its right arc by
+//               0.69, and stays solid and hot until it breaks up over 0.7-0.9, each piece thinning
+//               to its outer rail, shortening from one end and drifting off the band; the tilted
+//               equatorial ring of rails and fine ticks (front and right side only) sweeps in over
+//               0.62-0.77 and drops out piece by piece over 0.84-0.96. The fragments arrive in
+//               patches, behind the band on the left first (revealKey), over 0.45-0.69, and the
+//               fill follows them patch by patch over 0.55-0.81; both run hot over 0.55-1, with
+//               a ragged left limb until 0.78-1; inner shells from 0.62, the core from 0.72,
+//               the rim layer from 0.84, protrusions at 0.95-1, and agitation and chips only
+//               from 0.8. At appearance 1 nothing of the intro is left.
 //
 // PERFORMANCE AND WORKLET RULES
 // - drawHologram and every helper it calls are worklets ('worklet' directive) that use
-//   only their arguments: no module-level mutable state, no closures over outer values.
+//   only their arguments and module-level number constants: no module-level mutable state,
+//   no closures over outer values, no Math.random while drawing. Randomness comes from the
+//   seeded scene, and per-cycle variation from an integer hash.
+// - The scene is flat number arrays (about 16,500 numbers), cloned into the worklet runtime
+//   once. The fill and sparkle textures and the whorl are built straight into Skia images and
+//   paths from a seed in the resources, so they are never copied. The textures are small
+//   (128² and 64²) and built with table lookups and separable noise, because this runs on the
+//   JS thread at every mount, on a phone, under an interpreter with no JIT.
 // - Build the scene and the resources ONCE per mounted canvas (a stable useMemo with no
 //   changing dependencies). The resources hold mutable PathBuilders, so two mounted
 //   canvases must never share one resources object.
 // - Every PathBuilder is made once in createHologramResources, reset at the start of each
 //   frame (so an exception mid-frame cannot leak contours into the next one) and reused:
 //   detach() hands out the path and resets the builder.
-// - Every paint uses Screen blending, so faint overlapping strokes add up like light: the
-//   glow comes from wide faint strokes, with no blur filters. It is drawn over black.
-// - Sphere geometry lives in unit space (sphere radius 1) and is drawn under
-//   canvas.translate(centre)·scale(radius), so gradient shaders are built once. Fragment
-//   endpoints are precomputed, so the frame loop does no trigonometry per fragment, and
-//   each arc fragment is one exact conic.
+// - Every paint uses Screen blending, so faint overlapping strokes add up like light: glow
+//   comes from wide faint strokes, gradients and the prebuilt textures, with no blur
+//   filters. It is drawn over black.
+// - Geometry lives in unit space under canvas.translate(centre)·scale(R), so gradient
+//   shaders are built once, and the rolling layers are drawn under canvas.rotate. Beyond
+//   paints, gradients and path builders, the textures use Data.fromBytes, Image.MakeImage
+//   (raster RGBA from bytes), Image.makeShaderOptions, Shader.MakeColor and Matrix().scale;
+//   like Shader.MakeBlend, MakeSweepGradient and PathBuilder.addCircle, each exists in React
+//   Native Skia 2.6.2's JSI API and in CanvasKit alike.
 import type { SkCanvas, Skia } from '@shopify/react-native-skia';
 // The enums come from the package's type module rather than from its root, which
 // imports react-native and so cannot load under `bun test` — where this file is
 // drawn for real, headlessly, in hologram-drawing.spec.ts. They are the same values.
-import { BlendMode, PaintStyle, StrokeCap, TileMode } from '@shopify/react-native-skia/lib/module/skia/types';
+import {
+  AlphaType,
+  BlendMode,
+  ColorType,
+  FilterMode,
+  MipmapMode,
+  PaintStyle,
+  StrokeCap,
+  TileMode,
+} from '@shopify/react-native-skia/lib/module/skia/types';
 
 /** What one frame of the hologram is drawn from. */
 export interface HologramFrame {
-  /** Seconds since the hologram started. All motion derives from this. */
+  /** Seconds since the hologram mounted, accumulated per frame. All motion derives from this. */
   time: number;
   /** Jarvis's voice level, eased, 0–1. */
   level: number;
@@ -92,6 +200,16 @@ export interface HologramFrame {
   bands: number[];
   /** Whether he is speaking, as opposed to the conversation merely being open. */
   speaking: boolean;
+  /** 0–1 speech-activity envelope: rises over about 0.15 s while speech is present, releases over about 0.4 s. */
+  agitation: number;
+  /** Seconds since the latest chip burst began; 10 or more when there has been none. */
+  burstAge: number;
+  /** 0–1 strength of the latest burst. */
+  burstStrength: number;
+  /** How many bursts there have been, so each throws its chips from a different, repeatable place. */
+  burstCount: number;
+  /** 0–1 materialisation progress, 1 = formed: the view passes min(1, time / MATERIALISE_SECONDS). */
+  appearance: number;
 }
 
 /**
@@ -102,7 +220,10 @@ export interface HologramFrame {
  * whose declarations TypeScript treats as a separate copy. The members used here
  * are identical in both, so asking only for those lets both pass without a cast.
  */
-export type HologramSkia = Pick<typeof Skia, 'Color' | 'Paint' | 'PathBuilder' | 'Shader'>;
+export type HologramSkia = Pick<
+  typeof Skia,
+  'Color' | 'Data' | 'Image' | 'Matrix' | 'Paint' | 'PathBuilder' | 'Shader'
+>;
 
 /** The canvas calls the hologram makes, for the same reason. */
 export type HologramCanvas = Pick<
@@ -111,6 +232,91 @@ export type HologramCanvas = Pick<
 >;
 
 type SkiaApiType = HologramSkia;
+
+// ---- constants (unit space: the sphere's radius R is 1, y points down) ---------------------
+// Clock angles are degrees clockwise from 12 o'clock, as the film study measures them.
+
+/**
+ * How long the view takes to count appearance from 0 to 1. The film's keyframes
+ * reach a formed ball at 2.7 s (see FORMED_APPEARANCE); the last 0.9 s grows the
+ * bright left crescent back in, as the film's does once the ball has formed.
+ */
+export const MATERIALISE_SECONDS = 3.6;
+/** The appearance at which the film's materialisation keyframes reach "formed": 2.7 s of 3.6. */
+const FORMED_APPEARANCE = 0.75;
+
+/** Sphere radius as a fraction of the square: leaves room for chips thrown to 1.5R and protrusions to 1.45R. */
+const SPHERE_FRACTION = 0.31;
+/** The outer rim layer rolls clockwise in the screen plane: one turn in about 33 s, as the film's ladder ring. */
+const ROLL_DEGREES_PER_SECOND = 11;
+/** The inner layer — the whorl, the loop and a quarter of the shell's fragments — turns the other way (shot d: -1.6 to -5.4°/s). */
+const SHELL_DEGREES_PER_SECOND = -5;
+/** The lower hemisphere's equatorial shell turns about the vertical axis, which reads as a sideways stream. */
+const STREAM_RADIANS_PER_SECOND = 0.21;
+const DEGREES_TO_RADIANS = 0.017453292519943295;
+/** The core sits a hair up and left of centre, well inside the film's 0.08R. */
+const CORE_X = -0.02;
+const CORE_Y = -0.02;
+/** How long a burst's chips stay fully lit, in seconds, and when the last of them has broken up and gone. */
+const CHIP_HOLD_SECONDS = 0.13;
+const CHIP_GONE_SECONDS = 0.2;
+
+// Strides of the flat scene tables (the builders describe the fields).
+const BODY_STRIDE = 10;
+const STREAM_STRIDE = 10;
+const SPECK_STRIDE = 5;
+const CRESCENT_PIECE_STRIDE = 3;
+const CRESCENT_PIECES_PER_STRAND = 14;
+const TRUSS_PIECE_STRIDE = 6;
+const FRAY_STRIDE = 5;
+const STREAK_ARC_STRIDE = 6;
+const LIMB_STREAK_STRIDE = 5;
+const RING_TICK_STRIDE = 2;
+const EPOCH_STRIDE = 10;
+const SECOND_TRACK_STRIDE = 5;
+const COMET_STRIDE = 5;
+const INTRO_SPARK_STRIDE = 5;
+/** How many points a fill patch's outline is drawn through; see buildFillBlobs. */
+const FILL_PATCH_POINTS = 16;
+const FILL_BLOB_STRIDE = 3 + FILL_PATCH_POINTS * 2;
+/**
+ * How much of the arriving glow is the wash that lies over the whole ball rather than the
+ * patches around the fragments. The film's glow comes in as a diffuse haze with brighter
+ * places in it (a f58-f70), so the patches must ride on something, not sit on black.
+ */
+const FILL_WASH_SHARE = 0.6;
+
+/**
+ * Side of the prebuilt fill texture in texels. It spans the sphere's 2R, so a texel is about
+ * 0.016R: the clouds are soft and linear filtering hides the texels, and at this size the
+ * texture builds in a few tens of milliseconds even on an interpreter without a JIT (the phone's
+ * Hermes), where 256 texels a side froze the JS thread for about 0.3 s at every mount.
+ */
+const FILL_TEXTURE_TEXELS = 128;
+/** Side of the tiled sparkle texture in texels, and how wide a texel is on the sphere: a stroke spans about two. */
+const SPARKLE_TEXTURE_TEXELS = 64;
+const SPARKLE_TEXEL_SIZE = 0.018;
+/** How far the fill's clouds swing its brightness: pockets fall to about half the median, clouds rise past 1.5×. */
+const FILL_CONTRAST = 4.6;
+
+/** A fragment is lit for this share of its clock's cycle, fading in and out over a quarter of that at each end. */
+const FRAGMENT_DUTY = 0.6;
+/**
+ * The specks' two clocks. Agitation moves the share of them on the fast clock, never a rate:
+ * a rate that moved would multiply `time` as well, so every change in agitation would shift
+ * every speck's blink phase at once — noise across the whole layer at each word boundary,
+ * growing with how long the sphere has been mounted. At full agitation they twinkle about
+ * half again as fast on average, and a handover costs one dot at a time.
+ */
+const SPECK_FAST_RATE = 2.2;
+const SPECK_FAST_SHARE = 0.55;
+/** The materialisation's equatorial ring: its major axis rises 28° to the right. */
+const EQUATOR_TILT_COS = 0.882947592858927;
+const EQUATOR_TILT_SIN = -0.4694715627858908;
+/** The rim element that dominates takes this long to hand over to the next. */
+const HANDOVER_SECONDS = 1.2;
+/** How long a protrusion takes to dissolve: hollow outline, beaded rails, dots, sparks, gone. */
+const DISSOLVE_SECONDS = 0.5;
 
 // ---- scene: random geometry, built once on the JS thread ---------------------------------
 
@@ -128,478 +334,430 @@ function createRandom(seed: number): Random {
   };
 }
 
-/** Frequency zone of a shell radius: 0 = lows (inner shell, core) up to 4 = highs (outer rim). */
-function zoneOfShell(shell: number) {
-  if (shell < 0.66) return 0;
-  if (shell < 0.83) return 1;
-  if (shell < 0.9) return 2;
-  if (shell < 0.96) return 3;
-  return 4;
-}
-
-/** A random [shell radius, layer]; layer 0 = outer frame, 1 = inner counter-rotating frame. */
-function pickShell(random: Random): [number, number] {
-  const roll = random();
-  if (roll < 0.58) return [0.74 + random() * 0.26, 0];
-  if (roll < 0.84) return [0.62 + random() * 0.24, 0];
-  return [0.3 + random() * 0.3, 1];
-}
-
-// Fragment specs, stride 9: kind (0 latitude arc, 1 longitude arc, 2 radial tick), shell,
-// fixed angle, start angle, sweep (tick: length), zone, layer, chunky (1 = short dash),
-// reveal id (a random 0..1 threshold; negative marks an arc split into pieces).
-
-/** Appends an arc, split into pieces of at most 0.9 rad. */
-function pushArcFragment(
-  specs: number[],
-  random: Random,
-  kind: number,
-  shell: number,
-  fixedAngle: number,
-  startAngle: number,
-  sweep: number,
-  layer: number,
-  chunky: number,
-) {
-  const pieces = Math.max(1, Math.ceil(sweep / 0.9));
-  const revealId = random();
-  // single-piece arcs may grow their sweep with the voice; split arcs are marked negative (fixed)
-  for (let piece = 0; piece < pieces; piece++) {
-    specs.push(
-      kind,
-      shell,
-      fixedAngle,
-      startAngle + (sweep * piece) / pieces,
-      sweep / pieces,
-      zoneOfShell(shell),
-      layer,
-      chunky,
-      pieces > 1 ? -revealId - 0.001 : revealId,
-    );
-  }
-}
-
-/** Long broken latitude and longitude arcs, and a few radial ticks. */
-function pushBrokenArcs(specs: number[], random: Random) {
-  const TAU = Math.PI * 2;
-  for (let i = 0; i < 230; i++) {
-    const [shell, layer] = pickShell(random);
-    const latitude = Math.asin(random() * 2 - 1) * 0.97;
-    const longitude = random() * TAU;
-    const kindRoll = random();
-    if (kindRoll < 0.66) {
-      const length = 0.06 + random() ** 2 * 0.5;
-      pushArcFragment(
-        specs,
-        random,
-        0,
-        shell,
-        latitude,
-        longitude,
-        length / Math.max(0.3, Math.cos(latitude)),
-        layer,
-        0,
-      );
-    } else if (kindRoll < 0.9) {
-      const length = 0.06 + random() ** 2 * 0.4;
-      pushArcFragment(specs, random, 1, shell, longitude, latitude - length / 2, length, layer, 0);
-    } else {
-      specs.push(2, shell, latitude, longitude, 0.02 + random() * 0.06, zoneOfShell(shell), layer, 0, random());
-    }
-  }
-}
-
-/** Longitude ribs in the rim band: broken meridians that sell the globe. */
-function pushRimRibs(specs: number[], random: Random) {
-  for (let i = 0; i < 7; i++) {
-    const longitude = (i / 7) * Math.PI + (random() - 0.5) * 0.3;
-    const shell = 0.93 + random() * 0.05;
-    let latitude = -1.25 + random() * 0.3;
-    while (latitude < 1.15) {
-      const length = 0.25 + random() * 0.55;
-      pushArcFragment(specs, random, 1, shell, longitude, latitude, Math.min(length, 1.3 - latitude), 0, 0);
-      latitude += length + 0.08 + random() * 0.3;
-    }
-  }
-}
-
-/** Short chunky data dashes (latitude) and ticks, revealed by the voice. */
-function pushDataDashes(specs: number[], random: Random) {
-  const TAU = Math.PI * 2;
-  for (let i = 0; i < 470; i++) {
-    const [shell, layer] = pickShell(random);
-    const latitude = Math.asin(random() * 2 - 1) * 0.97;
-    const longitude = random() * TAU;
-    const length = 0.014 + random() ** 2 * 0.07;
-    if (random() < 0.78) {
-      const sweep = length / Math.max(0.3, Math.cos(latitude));
-      specs.push(0, shell, latitude, longitude, sweep, zoneOfShell(shell), layer, 1, random());
-    } else {
-      specs.push(2, shell, latitude, longitude, length * 0.7, zoneOfShell(shell), layer, 1, random());
-    }
-  }
-}
-
-/** Unit-sphere point on a latitude circle (kind 0) or a longitude circle (kind 1). */
-function pointOnSphere(kind: number, fixedAngle: number, angle: number): [number, number, number] {
-  if (kind === 0) {
-    return [Math.cos(fixedAngle) * Math.cos(angle), Math.sin(fixedAngle), Math.cos(fixedAngle) * Math.sin(angle)];
-  }
-  return [Math.cos(angle) * Math.cos(fixedAngle), Math.sin(angle), Math.cos(angle) * Math.sin(fixedAngle)];
-}
-
 /**
- * Precomputes unit-sphere geometry so the frame loop does no trigonometry.
- * Stride 18: type (0 conic arc, 1 short dash as a chord, 2 radial tick), shell, zone, layer,
- * chunky, reveal id, a (x, y, z), b (x, y, z), c (x, y, z), weight, sinHalfSweep, centreY.
- *   type 0: a = start, b = conic control (already divided by the weight), c = end,
- *           weight = cos(half sweep), sinHalfSweep = sin(half sweep) or 0 when the arc must
- *           not grow, centreY = height of the circle's centre
- *   type 1: a = chord midpoint, b = half chord vector
- *   type 2: a = unit direction, b.x = base length
+ * How much of the film's fragment mass a spot keeps. The mass is uneven: the
+ * left half of the ball is nearly full, the upper right thinner and the lower
+ * right thinnest (shot g: 94-98% orange on the left, 66% upper right, 41% lower right).
  */
-function buildFragmentGeometry(specs: number[]) {
-  const geometry: number[] = [];
-  for (let offset = 0; offset < specs.length; offset += 9) {
-    const [kind, shell, fixedAngle, startAngle, sweep, zone, layer, chunky, signedRevealId] = specs.slice(
-      offset,
-      offset + 9,
-    );
-    const revealId = Math.abs(signedRevealId);
-    if (kind === 2) {
-      const direction = pointOnSphere(0, fixedAngle, startAngle);
-      geometry.push(2, shell, zone, layer, chunky, revealId, direction[0], direction[1], direction[2], sweep);
-      geometry.push(0, 0, 0, 0, 0, 1, 0, 0);
-    } else if (chunky > 0.5) {
-      const start = pointOnSphere(kind, fixedAngle, startAngle);
-      const end = pointOnSphere(kind, fixedAngle, startAngle + sweep);
-      geometry.push(1, shell, zone, layer, chunky, revealId);
-      geometry.push((start[0] + end[0]) / 2, (start[1] + end[1]) / 2, (start[2] + end[2]) / 2);
-      geometry.push((end[0] - start[0]) / 2, (end[1] - start[1]) / 2, (end[2] - start[2]) / 2);
-      geometry.push(0, 0, 0, 1, 0, 0);
-    } else {
-      const weight = Math.cos(sweep / 2);
-      const start = pointOnSphere(kind, fixedAngle, startAngle);
-      const middle = pointOnSphere(kind, fixedAngle, startAngle + sweep / 2);
-      const end = pointOnSphere(kind, fixedAngle, startAngle + sweep);
-      const centreY = kind === 0 ? Math.sin(fixedAngle) : 0;
-      geometry.push(0, shell, zone, layer, chunky, revealId, start[0], start[1], start[2]);
-      // latitude circles are centred on the axis at height y, so only x/z scale by 1/weight
-      geometry.push(middle[0] / weight, kind === 0 ? middle[1] : middle[1] / weight, middle[2] / weight);
-      geometry.push(end[0], end[1], end[2], weight, signedRevealId < 0 ? 0 : Math.sin(sweep / 2), centreY);
-    }
-  }
-  return geometry;
-}
-
-function pickSpeckShell(random: Random) {
-  const roll = random();
-  if (roll < 0.35) return 0.8 + random() * 0.19;
-  if (roll < 0.75) return 0.5 + random() * 0.3;
-  return 0.2 + random() * 0.3;
+function massWeight(x: number, y: number) {
+  if (x < 0) return y < 0 ? 1 : 0.93;
+  return y < 0 ? 0.78 : 0.52;
 }
 
 /**
- * Specks: mostly inside the sphere (a volumetric field), few at the rim, none outside.
- * Stride 10: shell, zone, phase, twinkle rate, swell spread, unit x, y, z, drift tangent x, z.
+ * Where the fragments crowd: the film's circuit texture comes in clumps and bands
+ * with darker, emptier stretches between them, not as an even pepper.
+ */
+function clusterWeight(x: number, y: number) {
+  const waves =
+    Math.sin(5.3 * x + 1.7) * Math.sin(4.1 * y - 0.6 + 1.9 * x) +
+    0.6 * Math.sin(9.7 * y + 2.3 * x + 0.4) +
+    0.35 * Math.sin(13.1 * x - 7.3 * y + 2.9);
+  return Math.min(1, Math.max(0.04, 0.5 + 0.48 * waves));
+}
+
+/** A fragment's direction: mostly near-horizontal, a fifth vertical, the rest diagonal; tangential near the limb. */
+function pickFragmentAngle(random: Random, x: number, y: number) {
+  const radius = Math.hypot(x, y);
+  if (radius > 0.8 && random() < 0.35) return Math.atan2(y, x) + Math.PI / 2 + (random() - 0.5) * 0.3;
+  const roll = random();
+  if (roll < 0.52) return (random() - 0.5) * 0.42;
+  if (roll < 0.7) return Math.PI / 2 + (random() - 0.5) * 0.35;
+  return random() * Math.PI;
+}
+
+/** A fragment's length: median 0.036R, 90th percentile 0.077R, and a few long streaks up to 0.32R. */
+function pickFragmentLength(random: Random) {
+  if (random() < 0.03) return 0.14 + random() * 0.18;
+  return 0.015 + 0.075 * random() ** 1.8;
+}
+
+/** A fragment's shape: 0 dash, 1 L, 2 bracket, 3 T, 4 Z, 5 tiny ring, 6 cell outline. */
+function pickGlyph(random: Random) {
+  const roll = random();
+  if (roll < 0.68) return 0;
+  if (roll < 0.78) return 1;
+  if (roll < 0.84) return 2;
+  if (roll < 0.9) return 3;
+  if (roll < 0.95) return 4;
+  if (roll < 0.98) return 5;
+  return 6;
+}
+
+/** Brightness class: 0 dim, 1 mid, 2 bright (the bright ones are the hot highlights speech thins out). */
+function pickBrightness(random: Random) {
+  const roll = random();
+  if (roll < 0.12) return 2;
+  return roll < 0.62 ? 1 : 0;
+}
+
+/**
+ * How often a fragment's clock cycles. Calm fragments (pool 0) stay lit 0.3-0.65 s,
+ * the film's idle churn of about 10% renewed per film frame; agitated ones (pool 1)
+ * half that, so swapping calm for agitated fragments raises the churn by half.
+ */
+function pickFragmentRate(random: Random, pool: number) {
+  const litSeconds = pool === 0 ? 0.3 + random() * 0.35 : 0.13 + random() * 0.15;
+  return FRAGMENT_DUTY / litSeconds;
+}
+
+/**
+ * A fragment's shape and how long it is, written into out[0] and out[1]. Rings and cell outlines
+ * crowd round the core; further out most of them are plain dashes. However it hops, a fragment
+ * stays inside the limb.
+ */
+function pickGlyphAndLength(random: Random, x: number, y: number, radius: number, out: number[]) {
+  const picked = pickGlyph(random);
+  const scatter = x * 37.1 + y * 11.3;
+  const glyph = picked >= 5 && radius > 0.4 && scatter - Math.floor(scatter) < 0.75 ? 0 : picked;
+  out[0] = glyph;
+  out[1] = Math.max(
+    0.012,
+    Math.min(glyph === 6 ? 0.04 + random() * 0.07 : pickFragmentLength(random), (1.02 - radius) / 1.1),
+  );
+}
+
+/**
+ * The fragment body: the film's "circuit" texture of short bright strokes, nearly all of them
+ * pinned in screen space (the film's body does not spin). Stride 10: x, y, unit direction x, y,
+ * length, glyph, rate (cycles per second), phase, id (0..1), and a code holding brightness
+ * (0-2) + 3 × pool + 6 × belongs to the turning shell.
+ *
+ * Two pools share the same places. Pool 0 is the calm set; pool 1, half its size,
+ * cycles twice as fast and only shows while he talks, standing in for calm fragments
+ * whose ids it takes over — so the count lit, and the brightness, stay the same.
+ *
+ * A quarter of the fragments between 0.3R and 0.85R ride the counter-turning inner shell
+ * instead of being pinned: the film's features in those bands drift back at 2-6°/s (section 3)
+ * while the body as a whole stays put.
+ */
+function buildBody(random: Random) {
+  const body: number[] = [];
+  const shape = [0, 0];
+  const fragmentCount = 840;
+  while (body.length < fragmentCount * BODY_STRIDE) {
+    // the body stops just inside the rim layer, which rolls over it
+    const radius = Math.sqrt(random()) * 0.94;
+    const angle = random() * Math.PI * 2;
+    const x = Math.cos(angle) * radius;
+    const y = Math.sin(angle) * radius;
+    // the lower hemisphere's stream carries some of the mass there
+    const streamShare = y > 0.12 ? 0.8 : 1;
+    const crowding = clusterWeight(x, y);
+    // the crowded clumps carry the bright glyphs, and the dim and mid ones keep out of the
+    // troughs between the clumps altogether, where the film shows bare fill (shot d: a quarter
+    // of its tiles have next to no strokes, a seventh twice the median)
+    const brightness = crowding > 0.72 && random() < 0.4 ? 2 : pickBrightness(random);
+    const crowded = brightness === 2 ? crowding : crowding * crowding * crowding;
+    if (random() > massWeight(x, y) * streamShare * crowded) continue;
+    const direction = pickFragmentAngle(random, x, y);
+    pickGlyphAndLength(random, x, y, radius, shape);
+    const pool = random() < 1 / 3 ? 1 : 0;
+    body.push(
+      x,
+      y,
+      Math.cos(direction),
+      Math.sin(direction),
+      shape[1],
+      shape[0],
+      pickFragmentRate(random, pool),
+      random(),
+      random(),
+      brightness + 3 * pool + (radius > 0.3 && radius < 0.85 && random() < 0.3 ? 6 : 0),
+    );
+  }
+  return body;
+}
+
+/**
+ * The lower hemisphere's stream: fragments on an equatorial shell below the core
+ * that turns about the vertical axis, so its front drifts right at 0.1-0.2 R/s and
+ * its dimmer back drifts left — the film's horizontal counter-streams.
+ * Stride 10: x, y, z (rest pose), half-length along the latitude x, z, rate, phase,
+ * id, brightness + 3 × pool, glyph (0 dash or 1 L).
+ */
+function buildStream(random: Random) {
+  const stream: number[] = [];
+  for (let i = 0; i < 336; i++) {
+    const shell = 0.42 + random() * 0.5;
+    const latitude = Math.asin(0.1 + random() * 0.72);
+    const longitude = random() * Math.PI * 2;
+    const half = pickFragmentLength(random) * 0.5;
+    const pool = random() < 1 / 3 ? 1 : 0;
+    stream.push(
+      shell * Math.cos(latitude) * Math.sin(longitude),
+      shell * Math.sin(latitude),
+      shell * Math.cos(latitude) * Math.cos(longitude),
+      Math.cos(longitude) * half,
+      -Math.sin(longitude) * half,
+      pickFragmentRate(random, pool),
+      random(),
+      random(),
+      pickBrightness(random) + 3 * pool,
+      random() < 0.2 ? 1 : 0,
+    );
+  }
+  return stream;
+}
+
+/**
+ * Specks: warm points that wink on and off slowly (0.6-2 Hz), and pale peach ones that
+ * blink faster. Stride 5: x, y, rate, phase, kind (0 warm, 1 peach).
  */
 function buildSpecks(random: Random) {
-  const TAU = Math.PI * 2;
   const specks: number[] = [];
-  for (let i = 0; i < 380; i++) {
-    const shell = pickSpeckShell(random);
-    const latitude = Math.asin(random() * 2 - 1);
-    const longitude = random() * TAU;
-    specks.push(
-      shell,
-      zoneOfShell(shell),
-      random() * TAU,
-      0.6 + random() * 3,
-      random(),
-      Math.cos(latitude) * Math.cos(longitude),
-      Math.sin(latitude),
-      Math.cos(latitude) * Math.sin(longitude),
-      -Math.sin(longitude) * Math.cos(latitude),
-      Math.cos(longitude) * Math.cos(latitude),
-    );
+  while (specks.length < 110 * SPECK_STRIDE) {
+    const radius = Math.sqrt(random()) * 1.02;
+    const angle = random() * Math.PI * 2;
+    const x = Math.cos(angle) * radius;
+    const y = Math.sin(angle) * radius;
+    if (random() > massWeight(x, y)) continue;
+    const peach = random() < 0.2;
+    specks.push(x, y, peach ? 3 + random() * 2 : 0.6 + random() * 1.4, random(), peach ? 1 : 0);
   }
   return specks;
 }
 
-/** 2D rim rings: prebuilt dashed paths animated by canvas transforms. Dashes in degrees. */
-function buildRimRings(random: Random) {
-  const radii = [0.8, 0.855, 0.9, 0.94, 0.975, 1.01];
-  const zones = [1, 2, 2, 3, 4, 4];
-  const rings: {
-    radius: number;
-    squash: number;
-    tilt: number;
-    speed: number;
-    zone: number;
-    width: number;
-    dashes: number[];
-  }[] = [];
-  for (let i = 0; i < radii.length; i++) {
-    const dashes: number[] = [];
-    let startDegrees = random() * 40;
-    while (startDegrees < 350) {
-      const lengthDegrees = 1.5 + random() ** 2 * 16;
-      dashes.push(startDegrees, Math.min(lengthDegrees, 360 - startDegrees));
-      startDegrees += lengthDegrees + 1.5 + random() * 14;
+/**
+ * The crescent's strands as rings of pieces in the rolling frame, so their breaks
+ * roll clockwise through the crescent while its brightness stays on the left.
+ * Stride 3 per piece, CRESCENT_PIECES_PER_STRAND pieces per strand, four strands:
+ * start (degrees), sweep (degrees), a 0..1 hash.
+ */
+function buildCrescentPieces(random: Random) {
+  const pieces: number[] = [];
+  for (let strand = 0; strand < 4; strand++) {
+    const weights: number[] = [];
+    for (let i = 0; i < CRESCENT_PIECES_PER_STRAND; i++) weights.push(0.6 + random());
+    const total = weights.reduce((sum, weight) => sum + weight, 0);
+    let start = random() * 360;
+    for (let i = 0; i < CRESCENT_PIECES_PER_STRAND; i++) {
+      const span = (weights[i] / total) * 360;
+      const gap = strand < 2 ? 2.2 + random() * 2.6 : 2.5 + random() * 6;
+      pieces.push(start, span - gap, random());
+      start += span;
     }
-    rings.push({
-      radius: radii[i],
-      squash: 0.9 + random() * 0.1,
-      tilt: random() * 180,
-      speed: (random() < 0.5 ? -1 : 1) * (6 + random() * 12),
-      zone: zones[i],
-      width: 0.8 + random() * 1.2,
-      dashes,
-    });
   }
-  return rings;
+  return pieces;
 }
 
-/** Tilted dashed orbital rings (3D), kept on the sphere. Dashes as [start, length] in radians. */
-function buildOrbitalRings(random: Random) {
-  const TAU = Math.PI * 2;
-  const layouts = [
-    { radius: 0.97, tiltX: 1.3, tiltZ: 0.35, speed: 0.22, zone: 2, gap: 0.3 },
-    { radius: 1.0, tiltX: 0.2, tiltZ: -0.5, speed: -0.16, zone: 3, gap: 0.35 },
-    { radius: 0.9, tiltX: 0.85, tiltZ: 1.1, speed: -0.09, zone: 1, gap: 0.45 },
+/**
+ * The segmented ladder ring ("crown truss"): pieces of about 9° along three partial
+ * arcs in the rolling frame, 190° of arc in all. Stride 6: start (degrees), sweep,
+ * circuit trace (0 none, 1 L, 2 Z, 3 T), hanging strut length (0 = none), hash, arc.
+ */
+function buildTruss(random: Random) {
+  const truss: number[] = [];
+  const arcs = [
+    [280, 380],
+    [195, 245],
+    [62, 102],
   ];
-  return layouts.map((layout) => {
-    const dashes: number[] = [];
-    let angle = random() * 0.3;
-    while (angle < TAU - 0.1) {
-      const length = Math.min(0.04 + random() ** 1.6 * 0.3, TAU - angle);
-      dashes.push(angle, length);
-      angle += length + 0.04 + random() * layout.gap;
+  arcs.forEach(([from, to], arc) => {
+    let degrees = from;
+    while (degrees < to - 4) {
+      // pieces meet end to end, so a leading truss has continuous rails with rungs across
+      const sweep = Math.min(to - degrees, 8 + random() * 3);
+      const traceRoll = random();
+      const trace = traceRoll < 0.45 ? 0 : 1 + Math.floor(random() * 3);
+      const strut = random() < 0.22 ? 0.12 + random() * 0.13 : 0;
+      truss.push(degrees, sweep, trace, strut, random(), arc);
+      degrees += sweep;
     }
-    return {
-      radius: layout.radius,
-      tiltX: layout.tiltX,
-      tiltZ: layout.tiltZ,
-      speed: layout.speed,
-      zone: layout.zone,
-      dashes,
-    };
   });
+  return truss;
 }
 
-/** Broken edge spikes (sparse, long). Stride 4: base angle (0 = top), length jitter, start radius, band offset. */
-function buildCrownSpikes(random: Random) {
-  const TAU = Math.PI * 2;
-  const spikeCount = 22;
-  const spikes: number[] = [];
-  for (let i = 0; i < spikeCount; i++) {
-    spikes.push(
-      ((i + (random() - 0.5) * 0.8) / spikeCount) * TAU,
-      0.25 + random() * 0.75,
-      0.94 + random() * 0.08,
-      (random() - 0.5) * 4,
-    );
-  }
-  return spikes;
-}
-
-// Glass panels, stride 8: x, y, z, width, height, orientation (0 facing, 1 side-on), first line, line count.
-// Panel data lines, stride 4: y fraction, start fraction, length fraction, reveal id.
-
-function pushPanel(
-  panels: number[],
-  panelLines: number[],
-  random: Random,
-  x: number,
-  y: number,
-  z: number,
-  width: number,
-  height: number,
-  side: number,
-) {
-  const firstLine = panelLines.length / 4;
-  const lineCount = 2 + Math.floor(random() * 4);
-  for (let k = 0; k < lineCount; k++) {
-    const startFraction = random() * 0.55;
-    panelLines.push(
-      (k + 0.5 + (random() - 0.5) * 0.4) / lineCount,
-      startFraction,
-      0.08 + random() * Math.min(0.4, 0.95 - startFraction - 0.08),
+/** Strands fraying off the upper-left limb while he talks. Stride 5: clock angle, sweep (degrees), rate, phase, threshold. */
+function buildFray(random: Random) {
+  const fray: number[] = [];
+  for (let i = 0; i < 22; i++) {
+    fray.push(
+      i < 16 ? 280 + random() * 74 : 200 + random() * 45,
+      3 + random() * 8,
+      0.7 + random() * 0.6,
       random(),
+      random() * 0.7,
     );
   }
-  panels.push(x, y, z, width, height, side, firstLine, lineCount);
+  return fray;
 }
 
-/** A random panel centre that keeps the panel out of the core (up to 200 tries, else the last try). */
-function placePanel(random: Random, width: number, height: number): [number, number, number] {
-  let x = 0;
-  let y = 0;
-  let z = 0;
-  let tries = 0;
-  do {
-    x = (random() - 0.5) * 1.5;
-    y = (random() - 0.5) * 1.5;
-    z = (random() - 0.7) * 1.0; // mostly behind the gold
-    // keep the whole panel out of the core: its nearest point must be >= ~0.35 from the centre
-    const nearestX = Math.max(0, Math.abs(x) - width / 2);
-    const nearestY = Math.max(0, Math.abs(y) - height / 2);
-    if (x * x + y * y + z * z <= 0.62 && nearestX * nearestX + nearestY * nearestY >= 0.12) break;
-  } while (++tries < 200);
-  return [x, y, z];
-}
-
-function buildPanels(random: Random) {
-  const panels: number[] = [];
-  const panelLines: number[] = [];
-  for (let i = 0; i < 9; i++) {
-    const tall = random() < 0.45;
-    const width = tall ? 0.14 + random() * 0.14 : 0.24 + random() * 0.26;
-    const height = tall ? 0.32 + random() * 0.3 : 0.12 + random() * 0.16;
-    const [x, y, z] = placePanel(random, width, height);
-    const side = random() < 0.3 ? 1 : 0;
-    pushPanel(panels, panelLines, random, x, y, z, width, height, side);
+/** Outer streak arcs at 1.2-1.27R, upper left, while he talks. Stride 6: clock centre, radius, sweep, rate, phase, threshold. */
+function buildStreakArcs(random: Random) {
+  const arcs: number[] = [];
+  for (let i = 0; i < 7; i++) {
+    arcs.push(
+      286 + i * 11 + random() * 6,
+      1.2 + random() * 0.07,
+      12 + random() * 12,
+      0.5 + random() * 0.4,
+      random(),
+      0.08 + (i / 6) * 0.5,
+    );
   }
-  // panels breaking out past the rim, upper right (y up in 3D)
-  pushPanel(panels, panelLines, random, 0.72, 0.62, 0.05, 0.3, 0.2, 0);
-  pushPanel(panels, panelLines, random, 0.95, 0.36, -0.1, 0.16, 0.34, 0);
-  pushPanel(panels, panelLines, random, 0.52, 0.86, 0.0, 0.22, 0.12, 0);
-  return { panels, panelLines };
+  return arcs;
 }
 
 /**
- * A few long straight grid lines near the panels. Stride 5: position across, depth z,
- * span start, span end, vertical (1: x = position and y spans; 0: y = position and x spans).
+ * Horizontal streaks slipping out of the right limb while he talks, as the film's
+ * sphere loosens on "Doctor.". Stride 5: height, length, rate, phase, threshold.
  */
-function buildGridLines(random: Random) {
-  const gridLines: number[] = [];
-  for (let i = 0; i < 4; i++) {
-    const vertical = i % 2 === 0 ? 1 : 0;
-    const position = (random() < 0.5 ? -1 : 1) * (0.3 + random() * 0.35);
-    const depth = -0.2 - random() * 0.4;
-    const spanStart = -0.2 - random() * 0.45;
-    const spanEnd = 0.1 + random() * 0.5;
-    gridLines.push(position, depth, spanStart, spanEnd, vertical);
-  }
-  return gridLines;
-}
-
-/**
- * Core knot: small tilted loops.
- * Stride 9: radius, tiltX, tiltZ, spin, sweep, phase, wobble phase, centre offset x, centre offset y.
- */
-function buildKnotLoops(random: Random) {
-  const TAU = Math.PI * 2;
-  const loops: number[] = [];
-  for (let i = 0; i < 8; i++) {
-    loops.push(
-      (0.04 + random() * 0.18) * 1.1 * (1 - i * 0.05),
-      random() * Math.PI,
-      random() * Math.PI,
-      (random() < 0.5 ? -1 : 1) * (0.8 + random() * 1.8),
-      1.6 + random() * 2.4,
-      random() * TAU,
-      random() * TAU,
-      -0.02 + (i / 7) * 0.1 + (random() - 0.5) * 0.04,
-      (random() - 0.5) * 0.07,
-    );
-  }
-  return loops;
-}
-
-/** Horizontal data streaks from the core, 8 rightward and 2 short leftward. Stride 5: y offset, start x, length, phase, speed. */
-function buildDataStreaks(random: Random) {
-  const TAU = Math.PI * 2;
+function buildLimbStreaks(random: Random) {
   const streaks: number[] = [];
-  for (let i = 0; i < 10; i++) {
-    const rightward = i < 8;
-    streaks.push(
-      (random() - 0.5) * 0.16,
-      rightward ? 0.02 + random() * 0.14 : -0.03 - random() * 0.05,
-      rightward ? 0.35 + random() * 0.45 : -(0.06 + random() * 0.1),
-      random() * TAU,
-      0.3 + random() * 0.9,
-    );
+  for (let i = 0; i < 16; i++) {
+    streaks.push(-0.42 + random() * 0.72, 0.08 + random() * 0.26, 0.75 + random() * 0.7, random(), random() * 0.75);
   }
   return streaks;
 }
 
-/** Screen angle of a rim comb in degrees, densest at 7-11 o'clock and the bottom. */
-function pickCombDegrees(random: Random) {
-  const roll = random();
-  if (roll < 0.62) return 120 + random() * 120;
-  if (roll < 0.84) return 55 + random() * 65;
-  return random() * 360;
+/** Ticks along the thin rim ring, in the rolling frame. Stride 2: angle (degrees), length. */
+function buildRingTicks(random: Random) {
+  const ticks: number[] = [];
+  let degrees = random() * 10;
+  while (degrees < 356) {
+    ticks.push(degrees, 0.025 + random() * 0.045);
+    degrees += 5 + random() * 12;
+  }
+  return ticks;
 }
 
 /**
- * Rim combs and circuit traces, packed into the 0.72..1.05 shell.
- * Stride 6: screen angle (0 = right, y down), base radius, type (0 comb, 1 circuit trace), then
- *   comb:  tooth count, tooth gap, first tooth (index into teeth, which holds tooth lengths)
- *   trace: jog, bend radius, end radius
+ * The slow script: a loop of epochs 3-8 s long, each handing the rim to one dominant
+ * element and bringing out at most one protrusion. Stride 10: start, duration,
+ * dominant (0 crescent, 1 truss, 2 thin ring), protrusion type, protrusion start
+ * (seconds into the epoch), grow seconds, hold seconds, line kind (0 none, 1 radial
+ * spokes, 2 swoosh fan, 3 lightning filament), fragment density, red flash time
+ * (seconds into the epoch, or -1).
  */
-function buildRimCombs(random: Random) {
-  const combs: number[] = [];
-  const teeth: number[] = [];
+function buildScript(random: Random) {
+  const epochs: number[] = [];
+  const dominants = [0, 1, 0, 2, 1, 0, 1, 2, 0, 1, 2, 1];
+  // protrusions: 0 none, 1 equator strut, 2 ribbon loop, 3 hook tendril, 4 streak bundle, 5 ear ring, 6 pole fan;
+  // the first epoch shows the formed ball plain, as the film does once it has formed
+  const protrusions = [0, 1, 3, 0, 2, 4, 0, 1, 5, 3, 6, 2];
+  const lineKinds = [0, 0, 1, 0, 2, 0, 3, 1, 0, 2, 3, 0];
+  let start = 0;
+  dominants.forEach((dominant, index) => {
+    const duration = index === 0 ? 7 : 3 + random() * 5;
+    const protrusion = protrusions[index];
+    const grow = 0.5 + random();
+    const dissolveStart = Math.max(0.3, duration - 0.3 - DISSOLVE_SECONDS);
+    const hold = Math.min(1 + random() * 2, Math.max(0.6, dissolveStart - grow - 0.3));
+    const protrusionStart = 0.3 + random() * Math.max(0, dissolveStart - grow - hold - 0.3);
+    epochs.push(
+      start,
+      duration,
+      dominant,
+      protrusion,
+      protrusionStart,
+      grow,
+      hold,
+      lineKinds[index],
+      0.9 + random() * 0.12,
+      index === 4 || index === 9 ? 0.5 + random() * (duration - 1) : -1,
+    );
+    start += duration;
+  });
+  return { epochs, period: start };
+}
+
+/**
+ * A second, sparser protrusion track on its own period, so a second protrusion is
+ * occasionally out beside the first — never more than two. Stride 5: start, type
+ * (4 bundle, 5 ear ring, 6 pole fan), grow, hold, a 0..1 hash.
+ */
+function buildSecondTrack(random: Random) {
+  const events: number[] = [];
+  let start = 9 + random() * 4;
+  const period = 41;
+  while (start < 38) {
+    const type = 4 + Math.floor(random() * 3);
+    const grow = 0.6 + random() * 0.8;
+    // an event near the end of the period is held for less, so it has gone before the loop wraps
+    const hold = Math.min(1 + random() * 1.5, period - 0.2 - start - grow - DISSOLVE_SECONDS);
+    events.push(start, type, grow, hold, random());
+    start += 11 + random() * 6;
+  }
+  return { events, period };
+}
+
+/** Comet arcs curling from the core to the lower right. Stride 5: period, phase, base angle (radians), radius, sweep. */
+function buildComets(random: Random) {
+  const comets: number[] = [];
+  for (let i = 0; i < 5; i++) {
+    comets.push(
+      5 + random() * 4,
+      random(),
+      -0.1 + i * 0.3 + random() * 0.2,
+      0.35 + random() * 0.4,
+      1.2 + random() * 0.8,
+    );
+  }
+  return comets;
+}
+
+/**
+ * The materialisation's sparks. Stride 5: x, y, when it appears (keyframe time 0..1),
+ * kind (0 the row across the future top, 1 the trail falling down the right, 2 scattered), hash.
+ */
+function buildIntroSparks(random: Random) {
+  const sparks: number[] = [];
+  for (let i = 0; i < 34; i++)
+    sparks.push(-0.95 + random() * 1.78, -1.2 + random() * 0.2, 0.06 + random() * 0.11, 0, random());
+  for (let i = 0; i < 18; i++) sparks.push(0.93 + random() * 0.05, 0, 0.1 + (i / 18) * 0.12, 1, random());
   for (let i = 0; i < 26; i++) {
-    const angle = (pickCombDegrees(random) * Math.PI) / 180;
-    if (random() < 0.68) {
-      const toothCount = 3 + Math.floor(random() * 5);
-      const firstTooth = teeth.length;
-      const baseRadius = 0.72 + random() * 0.16;
-      for (let k = 0; k < toothCount; k++) teeth.push(0.03 + random() ** 1.5 * (1.04 - baseRadius) * 0.95);
-      combs.push(angle, baseRadius, 0, toothCount, 0.011 + random() * 0.012, firstTooth);
-    } else {
-      const startRadius = 0.74 + random() * 0.12;
-      combs.push(
-        angle,
-        startRadius,
-        1,
-        (random() - 0.5) * 0.07,
-        startRadius + 0.04 + random() * 0.08,
-        0.95 + random() * 0.1,
-      );
+    const angle = random() * Math.PI * 2;
+    const radius = 0.3 + random() * 1.05;
+    sparks.push(Math.cos(angle) * radius, Math.sin(angle) * radius * 0.9, 0.08 + random() * 0.3, 2, random());
+  }
+  return sparks;
+}
+
+/**
+ * The patches the warm fill arrives in while the ball materialises: blobs whose union covers the
+ * disc, each appearing when the fragments around it do (see revealKey), so the glow follows the
+ * fragments rather than fading in as a disc with an edge of its own (film f47-f70).
+ *
+ * Each patch's outline is stored as points rather than as a radius, because a circle is the one
+ * shape the film never shows: its glow arrives as a wash with a ragged boundary, never as flat
+ * round discs. Every outline is a wobbled ring — three harmonics of a couple of tenths of its
+ * radius — so the union's edge is broken at the scale of the patches and again within each one.
+ * Storing the points also keeps trigonometry out of the frame: the drawing only scales them.
+ * Stride: x, y, the reveal key it waits for, then FILL_PATCH_POINTS pairs of point offsets.
+ */
+function buildFillBlobs(random: Random) {
+  const blobs: number[] = [];
+  const rings = [
+    [1, 0, 0.44],
+    [7, 0.42, 0.33],
+    [13, 0.73, 0.3],
+    [11, 0.96, 0.24],
+  ];
+  for (const [count, ring, size] of rings) {
+    for (let index = 0; index < count; index++) {
+      const angle = ((index + 0.45 * random()) / count) * Math.PI * 2;
+      const x = Math.cos(angle) * ring * (0.92 + 0.16 * random());
+      const y = Math.sin(angle) * ring * (0.92 + 0.16 * random());
+      // The glow follows the fragments a little behind them, along a straighter front than
+      // theirs: a patch that lit on its own, away from the swarm, would read as a lit shape
+      // rather than as the glow of the fragments under it.
+      blobs.push(x, y, clamp01(0.74 * revealKey(x, y) + 0.26 * (0.5 + 0.5 * x) + 0.04));
+      const radius = size * (0.86 + 0.28 * random());
+      const phases = [random() * Math.PI * 2, random() * Math.PI * 2, random() * Math.PI * 2];
+      for (let point = 0; point < FILL_PATCH_POINTS; point++) {
+        const around = (point / FILL_PATCH_POINTS) * Math.PI * 2;
+        const wobble =
+          1 +
+          0.26 * Math.sin(2 * around + phases[0]) +
+          0.17 * Math.sin(3 * around + phases[1]) +
+          0.11 * Math.sin(5 * around + phases[2]) +
+          0.07 * Math.sin(7 * around + phases[0] + phases[1]);
+        blobs.push(Math.cos(around) * radius * wobble, Math.sin(around) * radius * wobble);
+      }
     }
   }
-  return { combs, teeth };
-}
-
-/** Ladder: rail width; circuit: tangential jog; hanging comb: bar width. */
-function pickStrutWidthOrJog(random: Random, type: number) {
-  if (type === 0) return 0.022 + random() * 0.02;
-  if (type === 1) return (random() - 0.5) * 0.08;
-  return 0.06 + random() * 0.06;
-}
-
-/**
- * Protruding struts that break the silhouette: ladders, circuit traces with pads, hanging combs.
- * Weighted to 7-8 o'clock, the bottom (6 o'clock) and a frayed upper left.
- * Stride 7: screen angle (0 = right, y down), type (0 ladder, 1 circuit, 2 hanging comb),
- * start radius, end radius, width or jog, count, seed.
- */
-function buildStruts(random: Random) {
-  // [screen angle in degrees, type]
-  const layout = [
-    [118, 0],
-    [132, 1],
-    [141, 0],
-    [152, 2],
-    [163, 0],
-    [84, 2],
-    [97, 1],
-    [216, 0],
-    [232, 1],
-    [58, 1],
-  ];
-  const struts: number[] = [];
-  for (const [degrees, type] of layout) {
-    const angle = ((degrees + (random() - 0.5) * 8) * Math.PI) / 180;
-    const startRadius = 0.86 + random() * 0.1;
-    const endRadius = (degrees > 200 || degrees < 70 ? 1.1 : 1.15) + random() * 0.1;
-    const widthOrJog = pickStrutWidthOrJog(random, type);
-    struts.push(angle, type, startRadius, endRadius, widthOrJog, 3 + Math.floor(random() * 4), random());
-  }
-  return struts;
+  return blobs;
 }
 
 /** Keeps the worklet copy of the scene small. */
@@ -610,35 +768,27 @@ function roundToFiveDecimals(value: number) {
 /** Builds the hologram's random geometry once. Deterministic for a given seed; plain data only. */
 export function createHologramScene(seed: number) {
   const random = createRandom(seed);
-  const fragmentSpecs: number[] = [];
-  pushBrokenArcs(fragmentSpecs, random);
-  pushRimRibs(fragmentSpecs, random);
-  pushDataDashes(fragmentSpecs, random);
-  const fragments = buildFragmentGeometry(fragmentSpecs);
-  const specks = buildSpecks(random);
-  const rimRings = buildRimRings(random);
-  const orbitalRings = buildOrbitalRings(random);
-  const crownSpikes = buildCrownSpikes(random);
-  const { panels, panelLines } = buildPanels(random);
-  const gridLines = buildGridLines(random);
-  const knotLoops = buildKnotLoops(random);
-  const dataStreaks = buildDataStreaks(random);
-  const { combs, teeth } = buildRimCombs(random);
-  const struts = buildStruts(random);
+  const script = buildScript(random);
+  const secondTrack = buildSecondTrack(random);
   return {
-    fragments: fragments.map(roundToFiveDecimals),
-    specks: specks.map(roundToFiveDecimals),
-    rimRings,
-    orbitalRings,
-    crownSpikes: crownSpikes.map(roundToFiveDecimals),
-    rimCombs: combs.map(roundToFiveDecimals),
-    combTeeth: teeth.map(roundToFiveDecimals),
-    struts: struts.map(roundToFiveDecimals),
-    panels: panels.map(roundToFiveDecimals),
-    panelLines: panelLines.map(roundToFiveDecimals),
-    gridLines: gridLines.map(roundToFiveDecimals),
-    knotLoops: knotLoops.map(roundToFiveDecimals),
-    dataStreaks: dataStreaks.map(roundToFiveDecimals),
+    body: buildBody(random).map(roundToFiveDecimals),
+    stream: buildStream(random).map(roundToFiveDecimals),
+    specks: buildSpecks(random).map(roundToFiveDecimals),
+    crescentPieces: buildCrescentPieces(random).map(roundToFiveDecimals),
+    truss: buildTruss(random).map(roundToFiveDecimals),
+    fray: buildFray(random).map(roundToFiveDecimals),
+    streakArcs: buildStreakArcs(random).map(roundToFiveDecimals),
+    limbStreaks: buildLimbStreaks(random).map(roundToFiveDecimals),
+    ringTicks: buildRingTicks(random).map(roundToFiveDecimals),
+    epochs: script.epochs.map(roundToFiveDecimals),
+    scriptPeriod: roundToFiveDecimals(script.period),
+    secondTrack: secondTrack.events.map(roundToFiveDecimals),
+    secondTrackPeriod: secondTrack.period,
+    comets: buildComets(random).map(roundToFiveDecimals),
+    introSparks: buildIntroSparks(random).map(roundToFiveDecimals),
+    fillBlobs: buildFillBlobs(random).map(roundToFiveDecimals),
+    // only a seed: the static textures are built straight into paths, never copied to the worklet runtime
+    textureSeed: Math.floor(random() * 4294967296),
   };
 }
 
@@ -646,246 +796,670 @@ type Scene = ReturnType<typeof createHologramScene>;
 
 // ---- resources: Skia objects built once per mounted canvas --------------------------------
 
-/** Paints, gradient shaders, prebuilt rim ring paths and the reusable path builders. */
+type PathBuilder = ReturnType<SkiaApiType['PathBuilder']['Make']>;
+
+/** A circle arc (centre, radius, start angle, signed sweep) appended as conics of at most 0.8 rad. */
+function appendArc(
+  builder: PathBuilder,
+  centreX: number,
+  centreY: number,
+  radius: number,
+  startAngle: number,
+  sweep: number,
+) {
+  'worklet';
+  const pieces = Math.max(1, Math.ceil(Math.abs(sweep) / 0.8));
+  const step = sweep / pieces;
+  const halfStep = step * 0.5;
+  const weight = Math.cos(halfStep);
+  builder.moveTo(centreX + Math.cos(startAngle) * radius, centreY + Math.sin(startAngle) * radius);
+  for (let piece = 0; piece < pieces; piece++) {
+    const pieceStart = startAngle + step * piece;
+    builder.conicTo(
+      centreX + (Math.cos(pieceStart + halfStep) * radius) / weight,
+      centreY + (Math.sin(pieceStart + halfStep) * radius) / weight,
+      centreX + Math.cos(pieceStart + step) * radius,
+      centreY + Math.sin(pieceStart + step) * radius,
+      weight,
+    );
+  }
+}
+
+/** A rotated ellipse, or the first `share` of its turn from the end of its major axis, as a polyline (prebuilt only). */
+function appendEllipse(
+  builder: PathBuilder,
+  centreX: number,
+  centreY: number,
+  radiusX: number,
+  radiusY: number,
+  tilt: number,
+  steps: number,
+  share = 1,
+) {
+  const cosTilt = Math.cos(tilt);
+  const sinTilt = Math.sin(tilt);
+  for (let step = 0; step <= steps; step++) {
+    const angle = (step / steps) * Math.PI * 2 * share - (share < 1 ? Math.PI / 2 : 0);
+    const x = Math.cos(angle) * radiusX;
+    const y = Math.sin(angle) * radiusY;
+    const pointX = centreX + x * cosTilt - y * sinTilt;
+    const pointY = centreY + x * sinTilt + y * cosTilt;
+    if (step === 0) builder.moveTo(pointX, pointY);
+    else builder.lineTo(pointX, pointY);
+  }
+}
+
+/**
+ * Adds one octave of value noise, `across` cells wide and `down` cells tall over the whole
+ * texture, into `field` at `weight`. The lattice is interpolated along its rows first and then
+ * down the texture: the same smooth noise as sampling it texel by texel, for a fraction of the work.
+ */
+function addNoiseOctave(field: Float32Array, random: Random, across: number, down: number, weight: number) {
+  const texels = FILL_TEXTURE_TEXELS;
+  const width = across + 1;
+  const lattice = new Float32Array(width * (down + 1));
+  for (let index = 0; index < lattice.length; index++) lattice[index] = random();
+  const rows = new Float32Array((down + 1) * texels);
+  for (let column = 0; column < texels; column++) {
+    const x = ((column + 0.5) / texels) * across;
+    const cell = Math.min(across - 1, Math.floor(x));
+    const share = x - cell;
+    const blend = share * share * (3 - 2 * share);
+    for (let latticeRow = 0; latticeRow <= down; latticeRow++) {
+      const left = lattice[latticeRow * width + cell];
+      rows[latticeRow * texels + column] = left + (lattice[latticeRow * width + cell + 1] - left) * blend;
+    }
+  }
+  for (let row = 0; row < texels; row++) {
+    const y = ((row + 0.5) / texels) * down;
+    const cell = Math.min(down - 1, Math.floor(y));
+    const share = y - cell;
+    const blend = share * share * (3 - 2 * share) * weight;
+    const upper = cell * texels;
+    const lower = upper + texels;
+    const offset = row * texels;
+    for (let column = 0; column < texels; column++) {
+      const top = rows[upper + column];
+      field[offset + column] += top * weight + (rows[lower + column] - top) * blend;
+    }
+  }
+}
+
+/**
+ * The fill's brightness on black (luma, 0-255) before its clouds: hot at the core, level from
+ * about 0.35R, and at the limb as bright as the body inside it where the mass is (`limbMass` 1,
+ * section 2.2: the 0.8-0.92R band is as bright as 0.6-0.8R or brighter) but thinning to a
+ * see-through edge where it is not (film a: 84 at 0.92-1.02R away from the crescent).
+ */
+function fillProfile(radius: number, limbMass: number) {
+  if (radius <= 0.7) {
+    const stops = [0, 112, 0.12, 99, 0.3, 84, 0.5, 78, 0.7, 77];
+    let index = 2;
+    while (radius > stops[index]) index += 2;
+    const share = (radius - stops[index - 2]) / (stops[index] - stops[index - 2]);
+    return stops[index - 1] + (stops[index + 1] - stops[index - 1]) * share;
+  }
+  const share = Math.min(1, (radius - 0.7) / 0.2);
+  return 77 + (55 + 70 * limbMass - 77) * share * share * (3 - 2 * share);
+}
+
+/**
+ * The fill's colour at each brightness 0-255: deep red-brown in the pockets, amber through the
+ * middle, gold only at the hottest (the film's #562a10 pockets, #a35e26 body, #f0aa52 core), kept
+ * orange enough that strokes screened over it do not push it toward yellow. Three bytes a level,
+ * so a texel looks its colour up rather than interpolating it.
+ */
+function buildFillColourTable() {
+  // luma, red, green, blue
+  const stops = [
+    0, 0, 0, 0, 23.5, 44, 19, 7, 49.5, 86, 40, 15, 75, 126, 60, 22, 102, 164, 80, 30, 130, 200, 100, 40, 162, 238, 124,
+    50, 192, 255, 150, 64, 205, 255, 158, 68,
+  ];
+  const table = new Uint8Array(256 * 3);
+  let stop = 4;
+  for (let level = 0; level < 256; level++) {
+    while (stop < stops.length - 4 && level > stops[stop]) stop += 4;
+    const share = Math.min(1, Math.max(0, (level - stops[stop - 4]) / (stops[stop] - stops[stop - 4])));
+    for (let channel = 0; channel < 3; channel++) {
+      const low = stops[stop - 3 + channel];
+      table[level * 3 + channel] = Math.round(low + (stops[stop + 1 + channel] - low) * share);
+    }
+  }
+  return table;
+}
+
+/**
+ * The warm translucent volume as a texture, built once from the seed: the radial profile,
+ * weighted toward the upper left, broken into clouds — broad blotches, streaky mid-size clouds
+ * and fine wisps, stretched sideways as the film's are — with deep pockets between them, and
+ * brightest where the fragment body crowds. Premultiplied RGBA, row by row, over the square
+ * [-1, 1]². Its edge is ragged: where the broad clouds thin, the glow stops short of the limb.
+ */
+function buildFillTexture(random: Random) {
+  const texels = FILL_TEXTURE_TEXELS;
+  const count = texels * texels;
+  const broad = new Float32Array(count);
+  addNoiseOctave(broad, random, 4, 5, 0.46);
+  addNoiseOctave(broad, random, 9, 14, 0.54);
+  const wisps = new Float32Array(count);
+  addNoiseOctave(wisps, random, 18, 28, 0.65);
+  addNoiseOctave(wisps, random, 36, 56, 0.35);
+  // The edge is ragged on the broadest scale only — sweeps of about 60° of limb, not fine teeth:
+  // pinned detail as fine as the rim layer's rungs would hide them as they roll past.
+  const edgeField = new Float32Array(count);
+  addNoiseOctave(edgeField, random, 3, 4, 1);
+  const colours = buildFillColourTable();
+  const pixels = new Uint8Array(count * 4);
+  for (let row = 0; row < texels; row++) {
+    const y = ((row + 0.5) / texels) * 2 - 1;
+    for (let column = 0; column < texels; column++) {
+      const x = ((column + 0.5) / texels) * 2 - 1;
+      const radius = Math.sqrt(x * x + y * y);
+      if (radius >= 1.06) continue;
+      const texel = row * texels + column;
+      // the ragged edge: the glow reaches 0.9R in one sweep of the limb and 1.02R in the next
+      const edgeShare = Math.min(1, Math.max(0, (radius - 0.93 - 0.16 * (edgeField[texel] - 0.5)) / 0.1));
+      const edge = 1 - edgeShare * edgeShare * (3 - 2 * edgeShare);
+      if (edge <= 0) continue;
+      // Fine wisps give way to the broad clouds toward the limb: light pinned there must not carry
+      // detail as fine as the rim layer's rungs, or it hides them as they roll past.
+      const wispShare = 0.38 * (1 - Math.min(1, Math.max(0, (radius - 0.72) / 0.2)));
+      const noise = (1 - wispShare) * broad[texel] + wispShare * wisps[texel];
+      // the fill is brightest where the body crowds, but its troughs are shallower than the
+      // body's: bare fill is what shows between the clumps of strokes
+      const field = 0.62 * noise + 0.38 * (0.3 + 0.4 * (0.35 + 0.65 * clusterWeight(x, y)));
+      // the pockets open out from the core, which glows evenly
+      const contrast = FILL_CONTRAST * Math.min(1, Math.max(0, (radius - 0.06) / 0.3));
+      // how far along the diagonal from the heavy upper left (0) to the thin lower right (1)
+      const diagonal = Math.min(1, Math.max(0, (x + y) / 2.6 + 0.5));
+      const lean = Math.min(1, Math.max(0, (x + y) / (2 * Math.max(radius, 0.01)) + 0.45));
+      const limbMass = 1 - 0.62 * lean * lean * (3 - 2 * lean);
+      const intensity = fillProfile(radius, limbMass) * (1.08 - 0.3 * diagonal) * Math.exp(contrast * (field - 0.5));
+      const level = Math.min(255, Math.round(intensity)) * 3;
+      const offset = texel * 4;
+      pixels[offset] = Math.round(colours[level] * edge);
+      pixels[offset + 1] = Math.round(colours[level + 1] * edge);
+      pixels[offset + 2] = Math.round(colours[level + 2] * edge);
+      pixels[offset + 3] = Math.round(255 * edge);
+    }
+  }
+  return pixels;
+}
+
+/**
+ * Brightness along the body's strokes: a tiled field of soft random dips and hot spots
+ * (0.5-1), so a stroke is hot in places and dimmer in others rather than one flat tone.
+ * Premultiplied grey RGBA. Each texel comes from an integer hash of its index, which is far
+ * cheaper than the scene's generator on an interpreter.
+ */
+function buildSparkleTexture(seed: number) {
+  const texels = SPARKLE_TEXTURE_TEXELS;
+  const pixels = new Uint8Array(texels * texels * 4);
+  for (let texel = 0; texel < texels * texels; texel++) {
+    let mixed = Math.imul(texel ^ seed, 0x9e3779b1);
+    mixed ^= mixed >>> 15;
+    mixed = Math.imul(mixed, 0x85ebca77);
+    mixed ^= mixed >>> 13;
+    const roll = ((mixed >>> 16) & 0xffff) / 65536;
+    const second = (mixed & 0xffff) / 65536;
+    // mostly mid, some dips, a few hot spots
+    const value = roll < 0.25 ? 0.5 + roll : roll > 0.9 ? 1 : 0.72 + 0.2 * second;
+    const level = Math.round(255 * value);
+    pixels[texel * 4] = level;
+    pixels[texel * 4 + 1] = level;
+    pixels[texel * 4 + 2] = level;
+    pixels[texel * 4 + 3] = 255;
+  }
+  return pixels;
+}
+
+/** One unbroken stretch of a whorl arm, `stretch` radians of its spiral from `along`. */
+function appendWhorlStretch(
+  inner: PathBuilder,
+  outer: PathBuilder,
+  ticks: PathBuilder,
+  random: Random,
+  first: number,
+  firstAngle: number,
+  along: number,
+  stretch: number,
+) {
+  // Each turn is 2.7 times as wide as the one inside it, so an arm crosses the whole interior in
+  // under two turns: the film's whorl is one loose sweep with open fill between its passes, not
+  // a set of near-concentric rings.
+  const growth = Math.log(2.7) / (Math.PI * 2);
+  const steps = Math.ceil(stretch / 0.14);
+  let previousArm = ticks;
+  for (let step = 0; step <= steps; step++) {
+    const turned = along + (stretch * step) / steps;
+    const radius = first * Math.exp(growth * turned);
+    if (radius > 0.76) return;
+    const angle = firstAngle + turned;
+    const x = CORE_X + Math.cos(angle) * radius;
+    const y = CORE_Y + Math.sin(angle) * radius;
+    // an arm is bold round the core and thinner as it opens out past 0.46R; the two halves are
+    // drawn apart, so each is picked up where the other left it
+    const arm = radius < 0.46 ? inner : outer;
+    if (arm === previousArm) arm.lineTo(x, y);
+    else arm.moveTo(x, y);
+    previousArm = arm;
+    // the arms are furry with short fragments across them, as the film's are
+    if (random() < 0.3) {
+      const across = (0.014 + 0.035 * random()) * (random() < 0.5 ? -1 : 1);
+      ticks.moveTo(x, y);
+      ticks.lineTo(x + Math.cos(angle) * across, y + Math.sin(angle) * across);
+    }
+  }
+}
+
+/** One arm of the whorl: a spiral of broken stretches from `first` out to 0.76R. */
+function appendWhorlArm(
+  inner: PathBuilder,
+  outer: PathBuilder,
+  ticks: PathBuilder,
+  random: Random,
+  first: number,
+  firstAngle: number,
+  turns: number,
+) {
+  let along = 0;
+  while (along < turns) {
+    const stretch = Math.min(turns - along, 1.1 + random() * 1.5);
+    appendWhorlStretch(inner, outer, ticks, random, first, firstAngle, along, stretch);
+    // the gaps widen as an arm opens out
+    along += stretch + 0.12 + random() * 0.18 + 0.02 * along;
+  }
+}
+
+/**
+ * The whorl round the core (shot d f40-150, the ball's boldest inner feature): two nested spiral
+ * arms winding out from just outside the core's ring, each turn about 2.7× as wide as the one
+ * inside it, broken into long stretches with short gaps, reaching 0.76R in under two turns. Two wisps just inside
+ * the rim layer (shot b) keep them company out there. They are drawn wider than any stroke in
+ * the body and turn the other way from the rim (drawInnerShells), so the ball reads as one loose
+ * swirl over a field of fragments — the film's interior is a few fat luminous ribbons, not a
+ * star chart of hairlines of equal weight.
+ */
+function buildWhorl(Skia: SkiaApiType, random: Random) {
+  const whorl = Skia.PathBuilder.Make();
+  const outer = Skia.PathBuilder.Make();
+  const ticks = Skia.PathBuilder.Make();
+  appendWhorlArm(whorl, outer, ticks, random, 0.16, 3.5, 10.5);
+  appendWhorlArm(whorl, outer, ticks, random, 0.33, 1.1, 6.5);
+  appendArc(outer, CORE_X, CORE_Y, 0.7, 0.3, 0.8);
+  appendArc(outer, CORE_X, CORE_Y, 0.66, 1.35, 0.55);
+  return { whorlPath: whorl.build(), whorlOuterPath: outer.build(), whorlTickPath: ticks.build() };
+}
+
+/**
+ * The inner structure: the long bright loop rising 37° to the right past the core, the faint
+ * near half of the tall edge-on ellipse beside it, and two data streaks through the core.
+ */
+function buildInnerStructure(Skia: SkiaApiType) {
+  const loop = Skia.PathBuilder.Make();
+  appendEllipse(loop, 0.04, 0.03, 0.74, 0.2, -37 * DEGREES_TO_RADIANS, 56);
+  // the edge-on ellipse's near half only, faint
+  const edgeOn = Skia.PathBuilder.Make();
+  appendEllipse(edgeOn, 0.27, 0.02, 0.1, 0.44, 4 * DEGREES_TO_RADIANS, 20, 0.5);
+  // the ")" arc wrapping the core's right side at 0.57R: -60° to +40°, measured up from 3 o'clock
+  const bracket = Skia.PathBuilder.Make();
+  appendArc(bracket, CORE_X, CORE_Y, 0.575, 60 * DEGREES_TO_RADIANS, -100 * DEGREES_TO_RADIANS);
+  const streaks = Skia.PathBuilder.Make();
+  const streakRows = [
+    [-0.72, 0.6, 0.05],
+    [-0.5, 0.2, -0.065],
+  ];
+  for (const [from, to, y] of streakRows) {
+    streaks.moveTo(CORE_X + from, CORE_Y + y);
+    streaks.lineTo(CORE_X + to, CORE_Y + y);
+  }
+  return {
+    loopPath: loop.build(),
+    edgeOnPath: edgeOn.build(),
+    bracketPath: bracket.build(),
+    dataStreakPath: streaks.build(),
+  };
+}
+
+/** The core glyph: a hooked ring of radius 0.1R with a stem curling in, and the bar. The whorl's first turn is the film's second ring at 0.3R. */
+function buildCoreGlyph(Skia: SkiaApiType) {
+  const ring = Skia.PathBuilder.Make();
+  appendArc(ring, 0, 0, 0.1, -35 * DEGREES_TO_RADIANS, 305 * DEGREES_TO_RADIANS);
+  // the hook: from the ring's open end a short stem curls in toward the middle
+  const endAngle = 270 * DEGREES_TO_RADIANS;
+  ring.moveTo(Math.cos(endAngle) * 0.1, Math.sin(endAngle) * 0.1);
+  ring.lineTo(0.012, -0.055);
+  ring.lineTo(0.03, -0.02);
+  const bar = Skia.PathBuilder.Make();
+  bar.moveTo(-0.3, 0.012);
+  bar.lineTo(0.3, 0.012);
+  return { coreRingPath: ring.build(), coreBarPath: bar.build() };
+}
+
+/**
+ * The fan of strands on the right: four concentric strands from 1 to 5 o'clock whose
+ * clockwise ends peel out to 1.08R (shot d).
+ */
+function buildStrandFan(Skia: SkiaApiType) {
+  const fan = Skia.PathBuilder.Make();
+  const radii = [0.9, 0.95, 1.0, 1.03];
+  radii.forEach((radius, strand) => {
+    const from = 30 + strand * 6;
+    const to = 150 - strand * 4;
+    for (let degrees = from; degrees <= to; degrees += 5) {
+      const peel = Math.max(0, (degrees - (to - 30)) / 30);
+      const pointRadius = radius + peel * peel * (1.08 - radius);
+      const angle = (degrees - 90) * DEGREES_TO_RADIANS;
+      if (degrees === from) fan.moveTo(Math.cos(angle) * pointRadius, Math.sin(angle) * pointRadius);
+      else fan.lineTo(Math.cos(angle) * pointRadius, Math.sin(angle) * pointRadius);
+    }
+  });
+  return fan.build();
+}
+
+/** A colour from 0-255 channels, as the hex string Skia.Color takes. */
+function amberHex(red: number, green: number, blue: number) {
+  const channel = (value: number) =>
+    Math.round(Math.min(255, Math.max(0, value)))
+      .toString(16)
+      .padStart(2, '0');
+  return `#${channel(red)}${channel(green)}${channel(blue)}`;
+}
+
+/** Paints, gradient shaders, prebuilt paths and the reusable path builders. */
 export function createHologramResources(Skia: SkiaApiType, scene: Scene) {
-  const makeStroke = (color: string, strokeCap: StrokeCap) => {
+  const makePaint = (color: string, style: PaintStyle, strokeCap: StrokeCap) => {
     const paint = Skia.Paint();
     paint.setAntiAlias(true);
-    paint.setStyle(PaintStyle.Stroke);
+    paint.setStyle(style);
     paint.setColor(Skia.Color(color));
     paint.setBlendMode(BlendMode.Screen);
     paint.setStrokeCap(strokeCap);
     return paint;
   };
-  const makeRadialGradient = (colors: string[], positions: number[]) =>
-    Skia.Shader.MakeRadialGradient(
-      { x: 0, y: 0 },
-      1,
-      colors.map((color) => Skia.Color(color)),
-      positions,
-      TileMode.Clamp,
-    );
-  // Depth by screen radius: on the back hemisphere a fragment near the centre is
-  // far away (dim); on the front it is near (brighter); both meet at the limb, so
-  // a fragment crossing the limb changes bucket with no visible step.
-  const makeDepthStroke = (baseColor: string, front: boolean, strokeCap: StrokeCap) => {
-    const paint = makeStroke('#ffffff', strokeCap);
-    const centreAlpha = front ? 'd0' : '50';
-    const middleAlpha = front ? 'f0' : '98';
-    const limbAlpha = front ? 'ff' : 'e0';
-    paint.setShader(
-      makeRadialGradient(
-        [
-          `${baseColor}${centreAlpha}`,
-          `${baseColor}${middleAlpha}`,
-          `${baseColor}${limbAlpha}`,
-          `${baseColor}${limbAlpha}`,
-        ],
-        [0, 0.55, 0.84, 1],
+  const makeStroke = (color: string, strokeCap: StrokeCap) => makePaint(color, PaintStyle.Stroke, strokeCap);
+  const makeFill = (color: string) => makePaint(color, PaintStyle.Fill, StrokeCap.Butt);
+  const colors = (list: string[]) => list.map((color) => Skia.Color(color));
+  const radialGradient = (radius: number, list: string[], positions: number[]) =>
+    Skia.Shader.MakeRadialGradient({ x: 0, y: 0 }, radius, colors(list), positions, TileMode.Clamp);
+
+  // The warm translucent volume: a textured circle, drawn in texel space (see drawVolumeFill).
+  const texels = FILL_TEXTURE_TEXELS;
+  const fillImage = Skia.Image.MakeImage(
+    { width: texels, height: texels, alphaType: AlphaType.Premul, colorType: ColorType.RGBA_8888 },
+    Skia.Data.fromBytes(buildFillTexture(createRandom(scene.textureSeed))),
+    texels * 4,
+  );
+  if (!fillImage) throw new Error('The hologram could not make its fill texture');
+  const volumeFill = makeFill('#ffffff');
+  volumeFill.setShader(fillImage.makeShaderOptions(TileMode.Decal, TileMode.Decal, FilterMode.Linear, MipmapMode.None));
+
+  // The limb bloom: a tight ring profile around 1R, multiplied by a mask peaked at
+  // 8-9 o'clock (a sweep gradient starts at 3 o'clock and runs clockwise). No halo.
+  const limbBloomFill = makeFill('#ffffff');
+  limbBloomFill.setShader(
+    Skia.Shader.MakeBlend(
+      BlendMode.Modulate,
+      radialGradient(
+        1.12,
+        ['#ffffff00', '#ffffff00', '#ffffff70', '#ffffffff', '#ffffff80', '#ffffff00'],
+        [0, 0.79, 0.855, 0.895, 0.935, 0.985],
       ),
-    );
-    return paint;
-  };
-  const glowStroke = makeStroke('#e8862a', StrokeCap.Round);
-  const lineStroke = makeStroke('#f7a83c', StrokeCap.Round);
-  const dashStroke = makeStroke('#f8ae44', StrokeCap.Butt);
-  const paleGoldStroke = makeStroke('#ffe6b0', StrokeCap.Round);
-  const warmWhiteStroke = makeStroke('#fff0d4', StrokeCap.Round);
-  const sparkStroke = makeStroke('#f8c878', StrokeCap.Square);
-  const frontGlowStroke = makeDepthStroke('#e8862a', true, StrokeCap.Round);
-  const frontLineStroke = makeDepthStroke('#f7a83c', true, StrokeCap.Round);
-  const backLineStroke = makeDepthStroke('#e89a3c', false, StrokeCap.Round);
-  const frontDashStroke = makeDepthStroke('#f8ae44', true, StrokeCap.Butt);
-  const backDashStroke = makeDepthStroke('#e89a3c', false, StrokeCap.Butt);
-  const frontSpeckStroke = makeDepthStroke('#fbbd5a', true, StrokeCap.Square);
-  const backSpeckStroke = makeDepthStroke('#e8a048', false, StrokeCap.Square);
-
-  // cool blue-lavender glass panels
-  const panelFill = Skia.Paint();
-  panelFill.setAntiAlias(true);
-  panelFill.setStyle(PaintStyle.Fill);
-  panelFill.setBlendMode(BlendMode.Screen);
-  panelFill.setColor(Skia.Color('#7a8ed4'));
-  const panelEdgeStroke = makeStroke('#a8b6ec', StrokeCap.Butt);
-
-  const makeDiscFill = (colors: string[], positions: number[]) => {
-    const paint = Skia.Paint();
-    paint.setAntiAlias(true);
-    paint.setBlendMode(BlendMode.Screen);
-    paint.setShader(makeRadialGradient(colors, positions));
-    return paint;
-  };
-  // warm gold core bloom, no white-hot centre
-  const coreBloomFill = makeDiscFill(
-    ['#ffe2a0bf', '#ffd690a8', '#f8c06880', '#f0a04040', '#d8802c0e', '#c0601000'],
-    [0, 0.1, 0.25, 0.44, 0.7, 1],
+      Skia.Shader.MakeSweepGradient(
+        0,
+        0,
+        colors(['#e8801c00', '#e8801c00', '#ec8a2280', '#f0962aff', '#ec8a2280', '#e8801c00', '#e8801c00']),
+        [0, 0.27, 0.37, 0.47, 0.6, 0.7, 1],
+        TileMode.Clamp,
+      ),
+    ),
   );
-  // faint interior warmth only: peaks well inside the limb, nothing smooth at the edge
-  const interiorWarmthFill = makeDiscFill(
-    ['#e0801c00', '#e0801c05', '#e0801c0a', '#e0801c0e', '#e0801c04', '#e0801c00'],
-    [0, 0.25, 0.55, 0.72, 0.84, 0.9],
+
+  // The limb ridge under the thin ring: a ring profile peaked at 0.965R, lumpy round the circle
+  // (bright stretches and see-through ones, from the seed) and drawn in the rolling frame, so it
+  // rolls with the rest of the rim layer rather than sitting under it as an evenly lit coin edge.
+  const ridgeRandom = createRandom(scene.textureSeed ^ 0x68e31da4);
+  const ridgeColours: string[] = [];
+  const ridgeStops: number[] = [];
+  for (let stop = 0; stop < 30; stop++) {
+    const lit = stop === 29 ? ridgeColours[0] : undefined;
+    const strength = 0.18 + 0.82 * ridgeRandom() ** 0.8;
+    ridgeColours.push(lit ?? amberHex(0xd0 * strength, 0x7c * strength, 0x30 * strength));
+    ridgeStops.push(stop / 29);
+  }
+  const limbRidgeFill = makeFill('#ffffff');
+  limbRidgeFill.setShader(
+    Skia.Shader.MakeBlend(
+      BlendMode.Modulate,
+      radialGradient(
+        1.06,
+        ['#ffffff00', '#ffffff00', '#ffffff80', '#ffffffff', '#ffffff70', '#ffffff00'],
+        [0, 0.84, 0.885, 0.915, 0.94, 0.965],
+      ),
+      Skia.Shader.MakeSweepGradient(0, 0, colors(ridgeColours), ridgeStops, TileMode.Clamp),
+    ),
   );
-  // travelling brightness wave around the rim: a sweep gradient peaked at angle 0, rotated by the canvas
-  const rimWaveStroke = Skia.Paint();
-  rimWaveStroke.setAntiAlias(true);
-  rimWaveStroke.setStyle(PaintStyle.Stroke);
-  rimWaveStroke.setBlendMode(BlendMode.Screen);
-  rimWaveStroke.setShader(
+  // The thin rim ring, brightest from 1 to 4 o'clock.
+  const thinRingStroke = makeStroke('#ffffff', StrokeCap.Butt);
+  thinRingStroke.setShader(
     Skia.Shader.MakeSweepGradient(
       0,
       0,
-      ['#e8943aff', '#e0902e66', '#d8801c00', '#d8801c00', '#e0902e66', '#e8943aff'].map((color) => Skia.Color(color)),
-      [0, 0.06, 0.15, 0.85, 0.94, 1],
+      colors(['#e69c50', '#e69c50', '#9c5e2e', '#9c5e2e', '#e69c50', '#e69c50']),
+      [0, 0.09, 0.22, 0.7, 0.82, 1],
       TileMode.Clamp,
     ),
   );
 
-  // Prebuilt rim ring paths in unit space (radius 1), scaled per ring at draw time.
-  const rimPaths = scene.rimRings.map((ring) => {
-    const builder = Skia.PathBuilder.Make();
-    for (let k = 0; k < ring.dashes.length; k += 2) {
-      builder.addArc({ x: -1, y: -1, width: 2, height: 2 }, ring.dashes[k], ring.dashes[k + 1]);
-    }
-    return builder.build();
-  });
+  // The core: a bloom elongated along the lower-left to upper-right diagonal, with a
+  // darker orange interior inside the hot ring, never white.
+  const coreBloomFill = makeFill('#ffffff');
+  coreBloomFill.setShader(
+    radialGradient(
+      1,
+      ['#d06a2ec0', '#e88030e8', '#f68e30e8', '#e6802eb0', '#dc742a50', '#c8602600'],
+      [0, 0.22, 0.34, 0.5, 0.74, 1],
+    ),
+  );
+  const introPointFill = makeFill('#ffffff');
+  introPointFill.setShader(radialGradient(1, ['#ffd872', '#f8b04ac0', '#e8902a40', '#e8902a00'], [0, 0.25, 0.6, 1]));
 
-  // Reused path builders, one per batch of strokes that share a paint.
+  // The body's strokes vary in brightness along their length (see buildSparkleTexture).
+  const sparkleImage = Skia.Image.MakeImage(
+    {
+      width: SPARKLE_TEXTURE_TEXELS,
+      height: SPARKLE_TEXTURE_TEXELS,
+      alphaType: AlphaType.Premul,
+      colorType: ColorType.RGBA_8888,
+    },
+    Skia.Data.fromBytes(buildSparkleTexture(scene.textureSeed ^ 0x2545f491)),
+    SPARKLE_TEXTURE_TEXELS * 4,
+  );
+  if (!sparkleImage) throw new Error('The hologram could not make its sparkle texture');
+  const sparkleShader = sparkleImage.makeShaderOptions(
+    TileMode.Repeat,
+    TileMode.Repeat,
+    FilterMode.Linear,
+    MipmapMode.None,
+    Skia.Matrix().scale(SPARKLE_TEXEL_SIZE, SPARKLE_TEXEL_SIZE),
+  );
+  const makeSparkleStroke = (color: string, strokeCap: StrokeCap) => {
+    const paint = makeStroke(color, strokeCap);
+    paint.setShader(Skia.Shader.MakeBlend(BlendMode.Modulate, sparkleShader, Skia.Shader.MakeColor(Skia.Color(color))));
+    return paint;
+  };
+
   const makeBuilder = () => Skia.PathBuilder.Make();
   const pathBuilders = {
-    panelFillFront: makeBuilder(),
-    panelFillBack: makeBuilder(),
-    panelOutlines: makeBuilder(), // panel edges and grid lines
-    panelData: makeBuilder(),
-    // outer frame, by rim group and hemisphere: [low-mid back, low-mid front, high back, high front]
-    shellArcs: [makeBuilder(), makeBuilder(), makeBuilder(), makeBuilder()],
-    shellDashes: [makeBuilder(), makeBuilder(), makeBuilder(), makeBuilder()],
-    innerArcs: makeBuilder(),
-    innerDashes: makeBuilder(),
-    crown: makeBuilder(),
-    crownTips: makeBuilder(),
-    knot: makeBuilder(),
-    crescentTiers: [makeBuilder(), makeBuilder(), makeBuilder()], // thin, medium, wide
-    streakTiers: [makeBuilder(), makeBuilder(), makeBuilder()], // bright, fading, faint
-    ringBack: makeBuilder(),
-    ringFrontOuter: makeBuilder(),
-    ringFrontInner: makeBuilder(),
-    speckBack: makeBuilder(),
-    speckFront: makeBuilder(),
-    sparks: makeBuilder(),
-    hotSparks: makeBuilder(),
+    // dim, mid and bright, pinned and then the same three for the turning shell
+    body: [makeBuilder(), makeBuilder(), makeBuilder(), makeBuilder(), makeBuilder(), makeBuilder()],
+    fillBlobs: makeBuilder(),
+    specks: [makeBuilder(), makeBuilder()], // warm, peach
+    lines: makeBuilder(),
+    swoosh: makeBuilder(),
+    coreKnot: makeBuilder(),
+    truss: makeBuilder(),
+    trussInner: makeBuilder(),
+    trussHaze: makeBuilder(),
+    trussRungs: makeBuilder(),
+    trussDetail: makeBuilder(),
+    ringTicks: makeBuilder(),
+    crescent: [makeBuilder(), makeBuilder(), makeBuilder(), makeBuilder()], // thin, medium, wide, core
+    fray: makeBuilder(),
+    protrusionRod: makeBuilder(),
+    protrusionRails: makeBuilder(),
+    protrusionSparks: makeBuilder(),
+    chips: makeBuilder(),
+    chipCores: makeBuilder(),
+    lightning: makeBuilder(),
+    red: makeBuilder(),
+    introSparks: makeBuilder(),
+    introBand: makeBuilder(),
+    introInner: makeBuilder(),
+    introSpokes: makeBuilder(),
   };
   // one flat list, so the frame can reset them all first
   const allPathBuilders = [
-    pathBuilders.panelFillFront,
-    pathBuilders.panelFillBack,
-    pathBuilders.panelOutlines,
-    pathBuilders.panelData,
-    ...pathBuilders.shellArcs,
-    ...pathBuilders.shellDashes,
-    pathBuilders.innerArcs,
-    pathBuilders.innerDashes,
-    pathBuilders.crown,
-    pathBuilders.crownTips,
-    pathBuilders.knot,
-    ...pathBuilders.crescentTiers,
-    ...pathBuilders.streakTiers,
-    pathBuilders.ringBack,
-    pathBuilders.ringFrontOuter,
-    pathBuilders.ringFrontInner,
-    pathBuilders.speckBack,
-    pathBuilders.speckFront,
-    pathBuilders.sparks,
-    pathBuilders.hotSparks,
+    ...pathBuilders.body,
+    pathBuilders.fillBlobs,
+    ...pathBuilders.specks,
+    pathBuilders.lines,
+    pathBuilders.swoosh,
+    pathBuilders.coreKnot,
+    pathBuilders.truss,
+    pathBuilders.trussInner,
+    pathBuilders.trussHaze,
+    pathBuilders.trussRungs,
+    pathBuilders.trussDetail,
+    pathBuilders.ringTicks,
+    ...pathBuilders.crescent,
+    pathBuilders.fray,
+    pathBuilders.protrusionRod,
+    pathBuilders.protrusionRails,
+    pathBuilders.protrusionSparks,
+    pathBuilders.chips,
+    pathBuilders.chipCores,
+    pathBuilders.lightning,
+    pathBuilders.red,
+    pathBuilders.introSparks,
+    pathBuilders.introBand,
+    pathBuilders.introInner,
+    pathBuilders.introSpokes,
   ];
 
   return {
-    glowStroke,
-    lineStroke,
-    dashStroke,
-    paleGoldStroke,
-    warmWhiteStroke,
-    sparkStroke,
-    frontGlowStroke,
-    frontLineStroke,
-    backLineStroke,
-    frontDashStroke,
-    backDashStroke,
-    frontSpeckStroke,
-    backSpeckStroke,
-    panelFill,
-    panelEdgeStroke,
+    volumeFill,
+    limbBloomFill,
+    limbRidgeFill,
+    thinRingStroke,
     coreBloomFill,
-    interiorWarmthFill,
-    rimWaveStroke,
-    rimPaths,
+    introPointFill,
+    whorlGlowStroke: makeStroke('#d8701e', StrokeCap.Round),
+    whorlStroke: makeSparkleStroke('#f47e26', StrokeCap.Round),
+    whorlCoreStroke: makeSparkleStroke('#ff9c38', StrokeCap.Round),
+    bracketStroke: makeStroke('#e68727', StrokeCap.Round),
+    loopStroke: makeStroke('#e6862f', StrokeCap.Butt),
+    bodyDimStroke: makeStroke('#cc7a2c', StrokeCap.Butt),
+    bodyMidStroke: makeSparkleStroke('#f87c26', StrokeCap.Butt),
+    bodyBrightStroke: makeSparkleStroke('#ff8c28', StrokeCap.Butt),
+    bodyHotStroke: makeSparkleStroke('#ff9e3c', StrokeCap.Round),
+    bodyGlowStroke: makeStroke('#dc7420', StrokeCap.Round),
+    speckWarmStroke: makeStroke('#ffa44c', StrokeCap.Round),
+    speckPeachStroke: makeStroke('#ffc2a2', StrokeCap.Round),
+    lineStroke: makeStroke('#ec9440', StrokeCap.Butt),
+    coreRingStroke: makeStroke('#ffa440', StrokeCap.Round),
+    coreGlowStroke: makeStroke('#ec8c2c', StrokeCap.Round),
+    trussStroke: makeStroke('#f49838', StrokeCap.Butt),
+    trussGlowStroke: makeStroke('#c9812c', StrokeCap.Butt),
+    trussHazeStroke: makeStroke('#99561a', StrokeCap.Butt),
+    trussCoreStroke: makeStroke('#ffae46', StrokeCap.Butt),
+    crescentGlowStroke: makeStroke('#e07a1a', StrokeCap.Butt),
+    crescentThinStroke: makeStroke('#dca131', StrokeCap.Butt),
+    crescentMediumStroke: makeStroke('#f09430', StrokeCap.Butt),
+    crescentWideStroke: makeStroke('#fba838', StrokeCap.Butt),
+    crescentCoreStroke: makeStroke('#ffc244', StrokeCap.Butt),
+    frayStroke: makeStroke('#f0943a', StrokeCap.Butt),
+    chipGlowStroke: makeStroke('#f08a28', StrokeCap.Round),
+    chipFill: makeFill('#f59430'),
+    chipCoreFill: makeFill('#ffa840'),
+    rodGlowStroke: makeStroke('#dc8424', StrokeCap.Butt),
+    rodBodyStroke: makeStroke('#ea9838', StrokeCap.Butt),
+    rodCoreStroke: makeStroke('#ffb04a', StrokeCap.Butt),
+    railStroke: makeStroke('#f09c3c', StrokeCap.Butt),
+    sparkStroke: makeStroke('#ffae4e', StrokeCap.Round),
+    lightningStroke: makeStroke('#c39568', StrokeCap.Butt),
+    redStroke: makeStroke('#b3470f', StrokeCap.Butt),
+    introSparkStroke: makeStroke('#ffb848', StrokeCap.Round),
+    introGlowStroke: makeStroke('#e0801a', StrokeCap.Butt),
+    introBandStroke: makeStroke('#eca23c', StrokeCap.Butt),
+    introBandCoreStroke: makeStroke('#ffe961', StrokeCap.Butt),
+    introSpokeStroke: makeStroke('#e8a23c', StrokeCap.Butt),
+    ...buildWhorl(Skia, createRandom(scene.textureSeed ^ 0x5bd1e995)),
+    strandFanPath: buildStrandFan(Skia),
+    ...buildInnerStructure(Skia),
+    ...buildCoreGlyph(Skia),
     pathBuilders,
     allPathBuilders,
   };
 }
 
 type Resources = ReturnType<typeof createHologramResources>;
-type PathBuilders = Resources['pathBuilders'];
-type PathBuilder = ReturnType<SkiaApiType['PathBuilder']['Make']>;
 
-/** Per-frame scratch arrays, written before every read. */
-interface Scratch {
-  /** 3×3 rotation matrix for panels, orbital rings, the C and the knot (used in turn). */
-  rotation: number[];
-  pointA: number[];
-  pointB: number[];
-  /** Fragment endpoints: start xyz, next xyz (conic control or line end), arc end xyz, conic weight. */
-  endpoints: number[];
-}
-
-// ---- math and audio helpers (worklets) ----------------------------------------------------
+// ---- math helpers (worklets) --------------------------------------------------------------
+// Every worklet is declared after the worklets it calls: the worklets plugin captures what a
+// worklet calls at the moment the worklet is defined, so a helper declared further down would
+// be captured as undefined on the UI thread (bun runs this file untransformed and would not notice).
 
 function clamp01(value: number) {
   'worklet';
-  return value < 0 ? 0 : value > 1 ? 1 : value;
+  // Written so that a NaN lands on 0 rather than travelling on into the geometry:
+  // neither comparison is true of one, and every caller wants silence from it.
+  return value > 0 ? (value > 1 ? 1 : value) : 0;
 }
 
-/** Clamps to 0..maximum. */
-function limit(value: number, maximum: number) {
+/** Hermite smoothstep of a value clamped to 0..1. */
+function smooth01(value: number) {
   'worklet';
-  return value < 0 ? 0 : value > maximum ? maximum : value;
+  const clamped = value < 0 ? 0 : value > 1 ? 1 : value;
+  return clamped * clamped * (3 - 2 * clamped);
 }
 
-/** Rotation matrix = Rz(roll) * Rx(pitch) * Ry(yaw), written into matrix[0..8]. */
-function writeRotation(matrix: number[], yaw: number, pitch: number, roll: number) {
+/** Fractional part, for positive and negative values alike. */
+function fraction(value: number) {
   'worklet';
-  const cosYaw = Math.cos(yaw);
-  const sinYaw = Math.sin(yaw);
-  const cosPitch = Math.cos(pitch);
-  const sinPitch = Math.sin(pitch);
-  const cosRoll = Math.cos(roll);
-  const sinRoll = Math.sin(roll);
-  const sinPitchSinYaw = sinPitch * sinYaw;
-  const minusSinPitchCosYaw = -sinPitch * cosYaw;
-  matrix[0] = cosRoll * cosYaw - sinRoll * sinPitchSinYaw;
-  matrix[1] = -sinRoll * cosPitch;
-  matrix[2] = cosRoll * sinYaw - sinRoll * minusSinPitchCosYaw;
-  matrix[3] = sinRoll * cosYaw + cosRoll * sinPitchSinYaw;
-  matrix[4] = cosRoll * cosPitch;
-  matrix[5] = sinRoll * sinYaw + cosRoll * minusSinPitchCosYaw;
-  matrix[6] = -cosPitch * sinYaw;
-  matrix[7] = sinPitch;
-  matrix[8] = cosPitch * cosYaw;
+  return value - Math.floor(value);
 }
 
-/** Rotates by matrix and projects with mild perspective into unit space; out = [x, y, depth]. */
-function projectPoint(out: number[], matrix: number[], x: number, y: number, z: number) {
+/** A repeatable 0..1 hash of an integer. */
+function hashInteger(value: number) {
   'worklet';
-  const rotatedX = matrix[0] * x + matrix[1] * y + matrix[2] * z;
-  const rotatedY = matrix[3] * x + matrix[4] * y + matrix[5] * z;
-  const rotatedZ = matrix[6] * x + matrix[7] * y + matrix[8] * z;
-  const perspective = 3.6 / (3.6 - rotatedZ);
-  out[0] = rotatedX * perspective;
-  out[1] = -rotatedY * perspective;
-  out[2] = rotatedZ;
+  let mixed = Math.imul(value | 0, 0x9e3779b1);
+  mixed ^= mixed >>> 15;
+  mixed = Math.imul(mixed, 0x85ebca77);
+  mixed ^= mixed >>> 13;
+  return (mixed >>> 0) / 4294967296;
 }
 
-/** Mean of bands[firstBand..endBand) times gain, clamped to 0..1. */
-function bandAverage(bands: number[], firstBand: number, endBand: number, gain: number) {
+/**
+ * The order the ball fills in while it materialises, 0 (first) to 1 (last). In the film the
+ * fragments arrive behind the dial's band on the left and spread across to the right, in patches
+ * rather than evenly, and the glow comes with them.
+ */
+function revealKey(x: number, y: number) {
+  'worklet';
+  const across = clamp01((x + 1.15) / 2.2);
+  const patches = 0.5 + 0.5 * Math.sin(4.1 * x + 1.3) * Math.sin(3.3 * y - 0.7);
+  return clamp01(0.72 * across + 0.28 * patches);
+}
+
+/** A clock angle (degrees clockwise from 12 o'clock) as canvas radians (from 3 o'clock, y down). */
+function clockRadians(clockDegrees: number) {
+  'worklet';
+  return (clockDegrees - 90) * DEGREES_TO_RADIANS;
+}
+
+/** Mean of bands[firstBand..endBand), 0 when there are none. */
+function bandAverage(bands: number[], firstBand: number, endBand: number) {
   'worklet';
   let sum = 0;
   let count = 0;
@@ -893,1331 +1467,1748 @@ function bandAverage(bands: number[], firstBand: number, endBand: number, gain: 
     sum += bands[i];
     count++;
   }
-  return count ? clamp01((sum / count) * gain) : 0;
+  return count ? sum / count : 0;
 }
 
-/** Interpolated band at a fractional index, with extra gain for higher bands (speech is low-heavy). */
-function bandAtPosition(bands: number[], position: number) {
+// ---- the script: which rim element dominates, and which protrusions are out --------------
+
+/** Offset of the epoch playing at `localTime` seconds into the script's loop. */
+function findEpoch(epochs: number[], localTime: number) {
   'worklet';
-  const bandCount = bands.length;
-  if (bandCount === 0) return 0;
-  const clamped = position < 0 ? 0 : position > bandCount - 1 ? bandCount - 1 : position;
-  const index = Math.floor(clamped);
-  const fraction = clamped - index;
-  const value = bands[index] * (1 - fraction) + bands[index + 1 < bandCount ? index + 1 : bandCount - 1] * fraction;
-  return clamp01(value * (1 + (1.6 * clamped) / bandCount));
+  for (let offset = epochs.length - EPOCH_STRIDE; offset > 0; offset -= EPOCH_STRIDE) {
+    if (localTime >= epochs[offset]) return offset;
+  }
+  return 0;
 }
 
-/** Band for a fraction of a turn from the top: lows at the top, highs at the bottom, mirrored. */
-function mirroredBand(bands: number[], turn: number, offset: number) {
+/** How strongly a rim element shows when it is (1) or is not (0) the dominant one: the others never quite vanish. */
+function rimTarget(element: number, dominant: number) {
   'worklet';
-  const mirrored = turn < 0.5 ? 2 * turn : 2 - 2 * turn;
-  return bandAtPosition(bands, mirrored * (bands.length - 1) + offset);
-}
-
-/** Band magnitude for a screen angle (0 = right, y down): lows at the top, highs at the bottom, mirrored. */
-function bandForScreenAngle(bands: number[], angle: number) {
-  'worklet';
-  const TAU = Math.PI * 2;
-  const turn = ((((angle + Math.PI / 2) / TAU) % 1) + 1) % 1;
-  return mirroredBand(bands, turn, 0);
-}
-
-/** A radial segment at screen direction (cosAngle, sinAngle), shifted tangentially, from startRadius to endRadius. */
-function appendRadialSegment(
-  builder: PathBuilder,
-  cosAngle: number,
-  sinAngle: number,
-  tangentialOffset: number,
-  startRadius: number,
-  endRadius: number,
-) {
-  'worklet';
-  builder.moveTo(
-    cosAngle * startRadius - sinAngle * tangentialOffset,
-    sinAngle * startRadius + cosAngle * tangentialOffset,
-  );
-  builder.lineTo(
-    cosAngle * endRadius - sinAngle * tangentialOffset,
-    sinAngle * endRadius + cosAngle * tangentialOffset,
-  );
+  if (element === dominant) return 1;
+  return element === 0 ? 0.3 : element === 1 ? 0.42 : 0.2;
 }
 
 /**
- * A 3D circle arc (or a spiral, when the radii differ) in the plane y = 0 of the rotation
- * matrix, centred at the unit offset (offsetX, offsetY), appended as conics of at most 0.55 rad.
+ * A protrusion's growth (0..1) and dissolve (0..1) `elapsed` seconds after it began,
+ * written into out[offset], out[offset + 1]; growth is -1 before it starts or once gone.
  */
-function appendProjectedArc(
-  builder: PathBuilder,
-  matrix: number[],
-  startRadius: number,
-  endRadius: number,
-  startAngle: number,
-  sweep: number,
-  offsetX: number,
-  offsetY: number,
-  endPoint: number[],
-  controlPoint: number[],
-) {
+function protrusionPhase(elapsed: number, grow: number, hold: number, out: number[], offset: number) {
   'worklet';
-  const pieces = sweep > 0.55 ? Math.ceil(sweep / 0.55) : 1;
-  const step = sweep / pieces;
-  const halfStep = step * 0.5;
-  const weight = Math.cos(halfStep);
-  projectPoint(endPoint, matrix, Math.cos(startAngle) * startRadius, 0, Math.sin(startAngle) * startRadius);
-  builder.moveTo(endPoint[0] + offsetX, endPoint[1] + offsetY);
-  for (let piece = 0; piece < pieces; piece++) {
-    const pieceStart = startAngle + step * piece;
-    const middleRadius = startRadius + ((endRadius - startRadius) * (piece + 0.5)) / pieces;
-    const pieceEndRadius = startRadius + ((endRadius - startRadius) * (piece + 1)) / pieces;
-    projectPoint(
-      controlPoint,
-      matrix,
-      (Math.cos(pieceStart + halfStep) * middleRadius) / weight,
-      0,
-      (Math.sin(pieceStart + halfStep) * middleRadius) / weight,
-    );
-    projectPoint(
-      endPoint,
-      matrix,
-      Math.cos(pieceStart + step) * pieceEndRadius,
-      0,
-      Math.sin(pieceStart + step) * pieceEndRadius,
-    );
-    builder.conicTo(
-      controlPoint[0] + offsetX,
-      controlPoint[1] + offsetY,
-      endPoint[0] + offsetX,
-      endPoint[1] + offsetY,
-      weight,
-    );
+  const dissolve = (elapsed - grow - hold) / DISSOLVE_SECONDS;
+  if (elapsed < 0 || dissolve >= 1) {
+    out[offset] = -1;
+    out[offset + 1] = 0;
+    return;
   }
+  const growth = clamp01(elapsed / grow);
+  out[offset] = 1 - (1 - growth) * (1 - growth);
+  out[offset + 1] = clamp01(dissolve);
 }
 
-/** Everything a frame derives from time and voice; see the file header for the mapping. */
-function analyseFrame(frame: HologramFrame, size: number) {
+/**
+ * Reads the script at `time`: rim weights (crescent, truss, ring), fragment density,
+ * both protrusion tracks, the epoch's line kind and its envelope, and the red flash.
+ * Everything is a function of time alone, so it never jumps.
+ */
+function readScript(scene: Scene, time: number) {
   'worklet';
-  const TAU = Math.PI * 2;
-  const time = frame.time;
-  // listening with residual level reacts a little less than speaking (no step at level 0)
-  const speakingScale = frame.speaking ? 1 : 0.8;
-  const level = clamp01(frame.level) * speakingScale;
-  const energy = level ** 0.8; // perceptual energy: keeps loud troughs clearly above soft
-  const bands = frame.bands;
-
-  // zones by radius: 0 = lows / inner, 4 = highs / outer rim
-  const bassEnergy = bandAverage(bands, 0, 5, 1.1) * speakingScale;
-  const zoneEnergy = [
-    bassEnergy,
-    bandAverage(bands, 5, 9, 1.3) * speakingScale,
-    bandAverage(bands, 9, 13, 1.8) * speakingScale,
-    bandAverage(bands, 13, 18, 2.6) * speakingScale,
-    bandAverage(bands, 18, 24, 3.5) * speakingScale,
-  ];
-  // how far each zone's unsplit arcs grow at both ends, as cos/sin of the extra angle
-  const sweepCos = [1, 1, 1, 1, 1];
-  const sweepSin = [0, 0, 0, 0, 0];
-  for (let zone = 0; zone < 5; zone++) {
-    const extension = 0.2 * zoneEnergy[zone] + 0.02 * energy;
-    sweepCos[zone] = Math.cos(extension);
-    sweepSin[zone] = Math.sin(extension);
+  const epochs = scene.epochs;
+  const period = scene.scriptPeriod;
+  const repeat = Math.floor(time / period);
+  const localTime = time - repeat * period;
+  const offset = findEpoch(epochs, localTime);
+  const previous = offset === 0 ? epochs.length - EPOCH_STRIDE : offset - EPOCH_STRIDE;
+  const start = epochs[offset];
+  const duration = epochs[offset + 1];
+  const intoEpoch = localTime - start;
+  // the very first epoch has nothing before it to hand over from
+  const handover = offset === 0 && repeat === 0 ? 1 : smooth01(intoEpoch / HANDOVER_SECONDS);
+  const dominant = epochs[offset + 2];
+  const previousDominant = epochs[previous + 2];
+  const weights = [0, 0, 0];
+  for (let element = 0; element < 3; element++) {
+    const from = rimTarget(element, previousDominant);
+    weights[element] = from + (rimTarget(element, dominant) - from) * handover;
   }
+  // [type, growth, dissolve] for the epoch's protrusion, then the same for the second track and its hash
+  const protrusions = [epochs[offset + 3], -1, 0, 0, -1, 0, 0];
+  if (protrusions[0] !== 0) {
+    protrusionPhase(intoEpoch - epochs[offset + 4], epochs[offset + 5], epochs[offset + 6], protrusions, 1);
+  }
+  const track = scene.secondTrack;
+  const trackTime = time - Math.floor(time / scene.secondTrackPeriod) * scene.secondTrackPeriod;
+  for (let event = 0; event < track.length; event += SECOND_TRACK_STRIDE) {
+    const elapsed = trackTime - track[event];
+    if (elapsed < 0 || elapsed > track[event + 2] + track[event + 3] + DISSOLVE_SECONDS) continue;
+    protrusions[3] = track[event + 1];
+    protrusionPhase(elapsed, track[event + 2], track[event + 3], protrusions, 4);
+    protrusions[6] = track[event + 4];
+  }
+  const redAt = epochs[offset + 9];
+  const density = epochs[previous + 8] + (epochs[offset + 8] - epochs[previous + 8]) * handover;
+  return {
+    crescentWeight: weights[0],
+    trussWeight: weights[1],
+    ringWeight: weights[2],
+    density,
+    protrusions,
+    lineKind: epochs[offset + 7],
+    lineEnvelope: smooth01(intoEpoch / 1.0) * smooth01((duration - intoEpoch) / 1.0),
+    lineSeconds: intoEpoch,
+    lineSeed: repeat * 31 + offset,
+    redVisible: redAt >= 0 && intoEpoch >= redAt && intoEpoch < redAt + 2 / 24,
+  };
+}
 
-  const breathe = 1 + 0.02 * Math.sin(time * 1.1);
-  const radius = size * 0.335 * breathe * (1 + 0.025 * energy + 0.012 * bassEnergy);
-  const pitch = 0.36 + 0.06 * Math.sin(time * 0.23);
-  const roll = -0.2 + 0.04 * Math.sin(time * 0.17);
-  const outerRotation = [0, 0, 0, 0, 0, 0, 0, 0, 0];
-  const innerRotation = [0, 0, 0, 0, 0, 0, 0, 0, 0];
-  writeRotation(outerRotation, time * 0.26, pitch, roll);
-  writeRotation(innerRotation, -time * 0.38 + 0.8, pitch + 0.2, roll - 0.25);
-
+/** Everything a frame derives from its fields; see the file header for the mapping. */
+function analyseFrame(frame: HologramFrame, size: number, scene: Scene) {
+  'worklet';
+  const time = frame.time;
+  // keyframe time of the materialisation: 1 = formed, beyond it the crescent grows back in
+  const intro = clamp01(frame.appearance) / FORMED_APPEARANCE;
+  const activityGate = smooth01((intro - 0.8) / 0.2);
+  const agitation = clamp01(frame.agitation) * activityGate;
+  const bands = frame.bands;
+  const lowDrive = clamp01((bandAverage(bands, 0, 6) - 0.35) / 0.45);
+  const highDrive = clamp01((bandAverage(bands, 14, 24) - 0.2) / 0.45);
+  const burstAge = frame.burstAge >= 0 ? frame.burstAge : 10;
+  const script = readScript(scene, time);
+  const yaw = time * STREAM_RADIANS_PER_SECOND;
+  // the glow spreads from patch to patch a little behind the fragments (film f47-f70)
+  const fillSpread = smooth01((intro - 0.55) / 0.26);
   return {
     time,
-    speakingScale,
-    energy,
-    bands,
-    bassEnergy,
-    zoneEnergy,
-    sweepCos,
-    sweepSin,
-    midEnergy: bandAverage(bands, 5, 14, 1.6) * speakingScale,
-    highEnergy: bandAverage(bands, 14, 24, 3) * speakingScale,
-    // the outer frame's two rim groups: zones 1-2 (low-mid) and 3-4 (high)
-    lowMidRimEnergy: 0.5 * (zoneEnergy[1] + zoneEnergy[2]),
-    highRimEnergy: 0.5 * (zoneEnergy[3] + zoneEnergy[4]),
-    radius,
-    pixel: size / 720 / radius, // one 720-space pixel in unit space
-    glowGain: 1 + 0.25 * energy, // only for glow / haze passes
-    heartbeat: 1 + 0.05 * Math.sin(time * TAU * 0.4),
-    // listening: panels a little more present
-    panelPresence: 1 + 0.6 * (1 - speakingScale) * 5 * clamp01(frame.level),
-    pitch,
-    roll,
-    outerRotation,
-    innerRotation,
+    radius: size * SPHERE_FRACTION,
+    intro,
+    // The fill comes up with the spread as well as with its own ramp, so a patch that is still
+    // on its own is a thickening of the haze rather than a lit shape: the film's glow is never
+    // brighter in one place than the whole volume becomes.
+    fillAlpha: smooth01((intro - 0.5) / 0.16) * (0.68 + 0.32 * fillSpread),
+    fillSpread,
+    // The haze the patches ride on leads them, so the fill thickens out of a wash rather than
+    // arriving as lit shapes on black; FILL_WASH_SHARE says how much of the light it carries.
+    fillWash: smooth01((intro - 0.5) / 0.24),
+    bodyShare: smooth01((intro - 0.45) / 0.24) * script.density,
+    // the dense fill runs hot (film shot a f58-f80): most mid fragments burn bright, then settle
+    introHeat: 0.3 * smooth01((intro - 0.55) / 0.1) * (1 - smooth01((intro - 0.86) / 0.14)),
+    ragged: 1 - smooth01((intro - 0.78) / 0.22),
+    innerAlpha: smooth01((intro - 0.62) / 0.3),
+    coreAlpha: smooth01((intro - 0.72) / 0.14),
+    rimAlpha: smooth01((intro - 0.84) / 0.16),
+    crescentGrowth: smooth01((intro - 1) / 0.3333),
+    protrusionAlpha: smooth01((intro - 0.95) / 0.05),
+    agitation,
+    // three in five of the calm fragments hand over to fast ones at full agitation, so the
+    // turnover rises by about half (the film's churn on "Doctor." rises from 8 to 13 per frame)
+    mix: 0.65 * agitation,
+    // A third of the bright fragments step down while he talks, and the hot cores that make the
+    // film's luma-200 highlights go almost entirely (section 4.2: they drop by about 70%). The
+    // strokes themselves stay bright: it is the hot pixels that leave, not the texture.
+    hotShare: 1 - 0.35 * agitation,
+    spread: agitation * (0.7 + 0.3 * lowDrive),
+    frayDrive: agitation * (0.55 + 0.45 * highDrive),
+    burstAge,
+    burstStrength: clamp01(frame.burstStrength) * activityGate,
+    // how far the burst throws, and how many chips: the strength as the tracker gave it, so a
+    // burst in flight while the ball is still forming cannot gain a chip half way
+    burstReach: clamp01(frame.burstStrength),
+    burstCount: Math.floor(frame.burstCount),
+    // wrapped to one turn: the canvas takes float32 angles, which would lose the per-frame
+    // step of a sphere left mounted for hours
+    roll: fraction((time * ROLL_DEGREES_PER_SECOND) / 360) * 360,
+    shellTurn: fraction((time * SHELL_DEGREES_PER_SECOND) / 360) * 360,
+    streamCos: Math.cos(yaw),
+    streamSin: Math.sin(yaw),
+    // the core's brightness drifts a few percent over many seconds; it never beats
+    coreDrift: 1 + 0.03 * Math.sin(time * 0.53 + 1.1),
+    script,
   };
 }
 
 type FrameState = ReturnType<typeof analyseFrame>;
 
-// ---- layers (worklets), in drawing order ------------------------------------------------
+// ---- the volume ---------------------------------------------------------------------------
 
-/** Faint interior warmth (no limb halo). */
-function drawInteriorWarmth(canvas: HologramCanvas, resources: Resources, state: FrameState) {
+/**
+ * One arriving patch of glow: its stored outline points, scaled by how far it has grown, drawn
+ * as a smooth closed curve — each point is the control of a quadratic that ends half way to the
+ * next, which rounds the corners off a twelve-point ring without a single trigonometric call.
+ */
+function appendFillPatch(
+  builder: PathBuilder,
+  centreX: number,
+  centreY: number,
+  scale: number,
+  outline: number[],
+  first: number,
+) {
   'worklet';
-  resources.interiorWarmthFill.setAlphaf(clamp01((0.6 + 0.5 * state.midEnergy) * state.glowGain));
-  canvas.drawCircle(-0.015, 0.02, 1, resources.interiorWarmthFill);
+  let nextX = centreX + outline[first] * scale;
+  let nextY = centreY + outline[first + 1] * scale;
+  let x = centreX + outline[first + 2] * scale;
+  let y = centreY + outline[first + 3] * scale;
+  builder.moveTo((nextX + x) * 0.5, (nextY + y) * 0.5);
+  for (let point = 1; point <= FILL_PATCH_POINTS; point++) {
+    const after = first + ((point + 1) % FILL_PATCH_POINTS) * 2;
+    nextX = centreX + outline[after] * scale;
+    nextY = centreY + outline[after + 1] * scale;
+    builder.quadTo(x, y, (x + nextX) * 0.5, (y + nextY) * 0.5);
+    x = nextX;
+    y = nextY;
+  }
+  builder.close();
 }
 
-/** Travelling brightness wave around the rim, alive even when silent. */
-function drawRimWave(canvas: HologramCanvas, resources: Resources, state: FrameState) {
+/**
+ * The warm translucent fill: the prebuilt texture on a circle, drawn in texel space, so the
+ * image shader needs no matrix — the square [-1, 1]² maps onto its texels.
+ *
+ * While the ball forms it arrives the way the film's does (f47-f70): a faint wash over the whole
+ * volume that thickens as it spreads, with brighter patches where the fragments have already
+ * landed. The patches are one path with a ragged outline, so where they overlap the light does
+ * not double, and their alpha is set to come to the frame's fill level once screened over the
+ * wash — the patches are a concentration of the glow, never a lit shape on black. As the last
+ * of them arrive the wash takes over the whole of the light, so by the time the patches cover
+ * the ball they have nothing left to add and the drawing can go back to one circle without a
+ * step: their union never quite covers it, and the uncovered slivers would jump.
+ */
+function drawVolumeFill(canvas: HologramCanvas, resources: Resources, scene: Scene, state: FrameState) {
   'worklet';
-  const TAU = Math.PI * 2;
-  const time = state.time;
+  const alpha = state.fillAlpha;
+  if (alpha <= 0) return;
+  const half = FILL_TEXTURE_TEXELS / 2;
+  const spread = state.fillSpread;
   canvas.save();
-  canvas.rotate(((time * 0.55) % TAU) * (180 / Math.PI) + 40 * Math.sin(time * 0.2), 0, 0);
-  resources.rimWaveStroke.setStrokeWidth(0.2);
-  resources.rimWaveStroke.setAlphaf(clamp01((0.08 + 0.08 * state.highRimEnergy) * state.glowGain));
-  canvas.drawCircle(0, 0, 0.85, resources.rimWaveStroke);
+  canvas.translate(-1, -1);
+  canvas.scale(1 / half, 1 / half);
+  if (spread >= 1) {
+    // a little past the limb, so the texture's ragged edge is not cut round
+    resources.volumeFill.setAlphaf(alpha);
+    canvas.drawCircle(half, half, half * 1.06, resources.volumeFill);
+  } else {
+    const washShare = FILL_WASH_SHARE * state.fillWash;
+    const closing = smooth01((spread - 0.78) / 0.22);
+    const wash = alpha * (washShare + (1 - washShare) * closing);
+    resources.volumeFill.setAlphaf(wash);
+    canvas.drawCircle(half, half, half * 1.06, resources.volumeFill);
+    const patchAlpha = (alpha - wash) / (1 - wash);
+    if (patchAlpha < 0.004) {
+      canvas.restore();
+      return;
+    }
+    const blobs = scene.fillBlobs;
+    const builder = resources.pathBuilders.fillBlobs;
+    let patches = 0;
+    for (let offset = 0; offset < blobs.length; offset += FILL_BLOB_STRIDE) {
+      const grown = smooth01((spread * 1.35 - blobs[offset + 2]) / 0.34);
+      if (grown < 0.02) continue;
+      appendFillPatch(
+        builder,
+        half * (blobs[offset] + 1),
+        half * (blobs[offset + 1] + 1),
+        half * grown,
+        blobs,
+        offset + 3,
+      );
+      patches++;
+    }
+    const patchPath = builder.detach();
+    if (patches > 0) {
+      // screened over the wash, the two come to `alpha` where a patch has arrived
+      resources.volumeFill.setAlphaf(patchAlpha);
+      canvas.drawPath(patchPath, resources.volumeFill);
+    }
+  }
   canvas.restore();
 }
 
-/** A panel point offset from its centre: across its width and up its height, facing or side-on. */
-function projectPanelPoint(
-  out: number[],
-  matrix: number[],
+/**
+ * The inner layer, all of it turning the other way from the rim at a few degrees a second
+ * (section 3): the whorl winding out of the core, the bold loop rising past it, the ")" arc and
+ * the faint near half of the edge-on ellipse. The data streaks lie on the pinned body.
+ */
+function drawInnerShells(canvas: HologramCanvas, resources: Resources, state: FrameState) {
+  'worklet';
+  const alpha = state.innerAlpha;
+  if (alpha <= 0) return;
+  canvas.save();
+  canvas.rotate(state.shellTurn, CORE_X, CORE_Y);
+  // the arms are boldest round the core and thin out as they open past 0.46R
+  resources.whorlGlowStroke.setStrokeWidth(0.115);
+  resources.whorlGlowStroke.setAlphaf(0.26 * alpha);
+  canvas.drawPath(resources.whorlPath, resources.whorlGlowStroke);
+  resources.whorlGlowStroke.setStrokeWidth(0.082);
+  resources.whorlGlowStroke.setAlphaf(0.17 * alpha);
+  canvas.drawPath(resources.whorlOuterPath, resources.whorlGlowStroke);
+  resources.whorlStroke.setStrokeWidth(0.04);
+  resources.whorlStroke.setAlphaf(0.95 * alpha);
+  canvas.drawPath(resources.whorlPath, resources.whorlStroke);
+  resources.whorlStroke.setStrokeWidth(0.028);
+  resources.whorlStroke.setAlphaf(0.7 * alpha);
+  canvas.drawPath(resources.whorlOuterPath, resources.whorlStroke);
+  resources.whorlCoreStroke.setStrokeWidth(0.013);
+  resources.whorlCoreStroke.setAlphaf(0.6 * alpha * (1 - 0.5 * state.agitation));
+  canvas.drawPath(resources.whorlPath, resources.whorlCoreStroke);
+  resources.whorlStroke.setStrokeWidth(0.01);
+  resources.whorlStroke.setAlphaf(0.6 * alpha);
+  canvas.drawPath(resources.whorlTickPath, resources.whorlStroke);
+  resources.bodyGlowStroke.setStrokeWidth(0.056);
+  resources.bodyGlowStroke.setAlphaf(0.14 * alpha);
+  canvas.drawPath(resources.loopPath, resources.bodyGlowStroke);
+  resources.loopStroke.setStrokeWidth(0.023);
+  resources.loopStroke.setAlphaf(0.75 * alpha);
+  canvas.drawPath(resources.loopPath, resources.loopStroke);
+  resources.loopStroke.setStrokeWidth(0.012);
+  resources.loopStroke.setAlphaf(0.3 * alpha);
+  canvas.drawPath(resources.edgeOnPath, resources.loopStroke);
+  resources.bracketStroke.setStrokeWidth(0.03);
+  resources.bracketStroke.setAlphaf(0.6 * alpha);
+  canvas.drawPath(resources.bracketPath, resources.bracketStroke);
+  canvas.restore();
+  resources.loopStroke.setStrokeWidth(0.007);
+  resources.loopStroke.setAlphaf(0.32 * alpha * state.coreAlpha);
+  canvas.drawPath(resources.dataStreakPath, resources.loopStroke);
+}
+
+/**
+ * Appends one fragment's shape around (x, y) along the unit direction (unitX, unitY):
+ * 0 dash, 1 L, 2 bracket, 3 T, 4 Z, 5 tiny ring, 6 cell outline.
+ */
+function appendGlyph(
+  builder: PathBuilder,
+  glyph: number,
   x: number,
   y: number,
-  z: number,
-  across: number,
-  up: number,
-  side: boolean,
+  unitX: number,
+  unitY: number,
+  half: number,
 ) {
   'worklet';
-  if (side) projectPoint(out, matrix, x, y + up, z + across);
-  else projectPoint(out, matrix, x + across, y + up, z);
-}
-
-/** One glass panel: its quad into a fill builder and the outline builder, then its data lines. */
-function appendGlassPanel(
-  builders: PathBuilders,
-  matrix: number[],
-  scratch: Scratch,
-  panels: number[],
-  panelLines: number[],
-  offset: number,
-  state: FrameState,
-  reveal: number,
-) {
-  'worklet';
-  const time = state.time;
-  const x = panels[offset];
-  const y = panels[offset + 1] + 0.02 * Math.sin(time * 0.3 + offset);
-  const z = panels[offset + 2];
-  const halfWidth = panels[offset + 3] * 0.5 * (1 + 0.12 * state.midEnergy);
-  const halfHeight = panels[offset + 4] * 0.5;
-  const side = panels[offset + 5] > 0.5;
-  const fill = z < -0.15 ? builders.panelFillBack : builders.panelFillFront;
-  const outlines = builders.panelOutlines;
-  const pointA = scratch.pointA;
-  const pointB = scratch.pointB;
-
-  projectPanelPoint(pointA, matrix, x, y, z, -halfWidth, -halfHeight, side);
-  fill.moveTo(pointA[0], pointA[1]);
-  outlines.moveTo(pointA[0], pointA[1]);
-  const firstCornerX = pointA[0];
-  const firstCornerY = pointA[1];
-  for (let corner = 1; corner < 4; corner++) {
-    const across = corner === 3 ? -halfWidth : halfWidth;
-    const up = corner < 2 ? -halfHeight : halfHeight;
-    projectPanelPoint(pointA, matrix, x, y, z, across, up, side);
-    fill.lineTo(pointA[0], pointA[1]);
-    outlines.lineTo(pointA[0], pointA[1]);
-  }
-  fill.close();
-  outlines.lineTo(firstCornerX, firstCornerY);
-
-  const firstLine = panels[offset + 6];
-  const lineCount = panels[offset + 7];
-  for (let k = 0; k < lineCount; k++) {
-    const lineOffset = (firstLine + k) * 4;
-    const visibility = clamp01((panelLines[lineOffset + 3] - 0.55 + reveal * 1.4) * 3);
-    const length =
-      panelLines[lineOffset + 2] * (0.45 + 0.55 * visibility) * (0.85 + 0.15 * Math.sin(time * 0.9 + lineOffset));
-    const up = -halfHeight + panelLines[lineOffset] * 2 * halfHeight;
-    const startAcross = -halfWidth + panelLines[lineOffset + 1] * 2 * halfWidth;
-    const endAcross = startAcross + length * 2 * halfWidth;
-    projectPanelPoint(pointA, matrix, x, y, z, startAcross, up, side);
-    projectPanelPoint(pointB, matrix, x, y, z, endAcross, up, side);
-    builders.panelData.moveTo(pointA[0], pointA[1]);
-    builders.panelData.lineTo(pointB[0], pointB[1]);
-  }
-}
-
-function appendGridLines(outlines: PathBuilder, matrix: number[], scratch: Scratch, gridLines: number[]) {
-  'worklet';
-  const pointA = scratch.pointA;
-  const pointB = scratch.pointB;
-  for (let offset = 0; offset < gridLines.length; offset += 5) {
-    const position = gridLines[offset];
-    const depth = gridLines[offset + 1];
-    const spanStart = gridLines[offset + 2];
-    const spanEnd = gridLines[offset + 3];
-    if (gridLines[offset + 4] > 0.5) {
-      projectPoint(pointA, matrix, position, spanStart, depth);
-      projectPoint(pointB, matrix, position, spanEnd, depth);
-    } else {
-      projectPoint(pointA, matrix, spanStart, position, depth);
-      projectPoint(pointB, matrix, spanEnd, position, depth);
-    }
-    outlines.moveTo(pointA[0], pointA[1]);
-    outlines.lineTo(pointB[0], pointB[1]);
-  }
-}
-
-/** Glass panels and grid lines: translucent, cool, mostly behind the gold. */
-function drawGlassPanels(
-  canvas: HologramCanvas,
-  resources: Resources,
-  scene: Scene,
-  state: FrameState,
-  scratch: Scratch,
-) {
-  'worklet';
-  const time = state.time;
-  const midEnergy = state.midEnergy;
-  const builders = resources.pathBuilders;
-  const matrix = scratch.rotation;
-  writeRotation(matrix, 0.35 * Math.sin(time * 0.11) + 0.1, 0.1 * Math.sin(time * 0.07), -0.05);
-  const panels = scene.panels;
-  const reveal = 0.55 * midEnergy + 0.1 * state.energy;
-  for (let offset = 0; offset < panels.length; offset += 8) {
-    appendGlassPanel(builders, matrix, scratch, panels, scene.panelLines, offset, state, reveal);
-  }
-  appendGridLines(builders.panelOutlines, matrix, scratch, scene.gridLines);
-
-  const fillAlpha = limit((0.19 + 0.06 * midEnergy) * state.panelPresence, 0.32);
-  resources.panelFill.setAlphaf(fillAlpha);
-  canvas.drawPath(builders.panelFillFront.detach(), resources.panelFill);
-  resources.panelFill.setAlphaf(fillAlpha * 0.55);
-  canvas.drawPath(builders.panelFillBack.detach(), resources.panelFill);
-  resources.panelEdgeStroke.setStrokeWidth(1 * state.pixel);
-  resources.panelEdgeStroke.setAlphaf(limit((0.18 + 0.06 * midEnergy) * state.panelPresence, 0.3));
-  canvas.drawPath(builders.panelOutlines.detach(), resources.panelEdgeStroke);
-  const dataPath = builders.panelData.detach();
-  resources.glowStroke.setStrokeWidth(5 * state.pixel);
-  resources.glowStroke.setAlphaf(clamp01((0.04 + 0.06 * midEnergy) * state.glowGain));
-  canvas.drawPath(dataPath, resources.glowStroke);
-  resources.dashStroke.setStrokeWidth((2.4 + 1 * midEnergy) * state.pixel);
-  resources.dashStroke.setAlphaf(limit(0.55 + 0.3 * midEnergy, 0.85));
-  canvas.drawPath(dataPath, resources.dashStroke);
-}
-
-/** A latitude or longitude arc grown by the zone's extra angle at both ends: exact on the circle, no trig per arc. */
-function writeGrownArcEndpoints(
-  endpoints: number[],
-  geometry: number[],
-  offset: number,
-  scale: number,
-  sweepCos: number,
-  sweepSin: number,
-) {
-  'worklet';
-  const weight = geometry[offset + 15];
-  const sinHalfSweep = geometry[offset + 16];
-  const centreY = geometry[offset + 17];
-  // start, middle and end relative to the circle's centre
-  const startX = geometry[offset + 6];
-  const startY = geometry[offset + 7] - centreY;
-  const startZ = geometry[offset + 8];
-  const middleX = geometry[offset + 9] * weight;
-  const middleY = (geometry[offset + 10] - centreY) * weight;
-  const middleZ = geometry[offset + 11] * weight;
-  const endX = geometry[offset + 12];
-  const endY = geometry[offset + 13] - centreY;
-  const endZ = geometry[offset + 14];
-  const inverseSinHalfSweep = 1 / sinHalfSweep;
-  // tangents at the start and the end
-  const startTangentX = (middleX - startX * weight) * inverseSinHalfSweep;
-  const startTangentY = (middleY - startY * weight) * inverseSinHalfSweep;
-  const startTangentZ = (middleZ - startZ * weight) * inverseSinHalfSweep;
-  const endTangentX = (endX * weight - middleX) * inverseSinHalfSweep;
-  const endTangentY = (endY * weight - middleY) * inverseSinHalfSweep;
-  const endTangentZ = (endZ * weight - middleZ) * inverseSinHalfSweep;
-  const grownWeight = weight * sweepCos - sinHalfSweep * sweepSin;
-  const inverseGrownWeight = 1 / grownWeight;
-  endpoints[0] = (startX * sweepCos - startTangentX * sweepSin) * scale;
-  endpoints[1] = (centreY + startY * sweepCos - startTangentY * sweepSin) * scale;
-  endpoints[2] = (startZ * sweepCos - startTangentZ * sweepSin) * scale;
-  endpoints[3] = middleX * inverseGrownWeight * scale;
-  endpoints[4] = (centreY + middleY * inverseGrownWeight) * scale;
-  endpoints[5] = middleZ * inverseGrownWeight * scale;
-  endpoints[6] = (endX * sweepCos + endTangentX * sweepSin) * scale;
-  endpoints[7] = (centreY + endY * sweepCos + endTangentY * sweepSin) * scale;
-  endpoints[8] = (endZ * sweepCos + endTangentZ * sweepSin) * scale;
-  endpoints[9] = grownWeight;
-}
-
-/** Writes a fragment's scaled 3D endpoints (see Scratch.endpoints) for its type. */
-function writeFragmentEndpoints(
-  endpoints: number[],
-  geometry: number[],
-  offset: number,
-  scale: number,
-  visibility: number,
-  zoneEnergy: number,
-  zone: number,
-  state: FrameState,
-) {
-  'worklet';
-  const type = geometry[offset];
-  if (type === 0) {
-    if (geometry[offset + 16] > 0 && state.sweepSin[zone] > 0.002) {
-      writeGrownArcEndpoints(endpoints, geometry, offset, scale, state.sweepCos[zone], state.sweepSin[zone]);
-      return;
-    }
-    for (let i = 0; i < 9; i++) endpoints[i] = geometry[offset + 6 + i] * scale;
-    endpoints[9] = geometry[offset + 15];
-  } else if (type === 1) {
-    // short dash: a chord that lengthens as it is revealed
-    const halfLength = scale * (0.35 + 0.65 * visibility);
-    const middleX = geometry[offset + 6] * scale;
-    const middleY = geometry[offset + 7] * scale;
-    const middleZ = geometry[offset + 8] * scale;
-    endpoints[0] = middleX - geometry[offset + 9] * halfLength;
-    endpoints[1] = middleY - geometry[offset + 10] * halfLength;
-    endpoints[2] = middleZ - geometry[offset + 11] * halfLength;
-    endpoints[3] = middleX + geometry[offset + 9] * halfLength;
-    endpoints[4] = middleY + geometry[offset + 10] * halfLength;
-    endpoints[5] = middleZ + geometry[offset + 11] * halfLength;
-  } else {
-    // radial tick
-    const chunkyGain = geometry[offset + 4] > 0.5 ? 0.8 : 1.2;
-    const tipRadius = scale + geometry[offset + 9] * (0.4 + 0.6 * visibility) * (1 + chunkyGain * zoneEnergy);
-    for (let i = 0; i < 3; i++) {
-      endpoints[i] = geometry[offset + 6 + i] * scale;
-      endpoints[3 + i] = geometry[offset + 6 + i] * tipRadius;
-    }
-  }
-}
-
-/** The builder for a fragment: inner frame arcs/dashes, or the outer frame by rim group and hemisphere. */
-function pickFragmentBuilder(builders: PathBuilders, inner: boolean, chunky: boolean, zone: number, depth: number) {
-  'worklet';
-  if (inner) return chunky ? builders.innerDashes : builders.innerArcs;
-  const groupBuilders = chunky ? builders.shellDashes : builders.shellArcs;
-  return groupBuilders[(zone < 3 ? 0 : 2) + (depth < 0 ? 0 : 1)];
-}
-
-/** Rotates and projects a fragment's endpoints (the projection inlined) and appends it as a line or a conic. */
-function appendProjectedFragment(
-  builders: PathBuilders,
-  matrix: number[],
-  endpoints: number[],
-  isArc: boolean,
-  inner: boolean,
-  chunky: boolean,
-  zone: number,
-) {
-  'worklet';
-  const xFromX = matrix[0];
-  const xFromY = matrix[1];
-  const xFromZ = matrix[2];
-  const yFromX = matrix[3];
-  const yFromY = matrix[4];
-  const yFromZ = matrix[5];
-  const depthFromX = matrix[6];
-  const depthFromY = matrix[7];
-  const depthFromZ = matrix[8];
-  const startX = endpoints[0];
-  const startY = endpoints[1];
-  const startZ = endpoints[2];
-  const nextX = endpoints[3];
-  const nextY = endpoints[4];
-  const nextZ = endpoints[5];
-  let depth = depthFromX * startX + depthFromY * startY + depthFromZ * startZ;
-  let perspective = 3.6 / (3.6 - depth);
-  const screenStartX = (xFromX * startX + xFromY * startY + xFromZ * startZ) * perspective;
-  const screenStartY = -(yFromX * startX + yFromY * startY + yFromZ * startZ) * perspective;
-  depth = depthFromX * nextX + depthFromY * nextY + depthFromZ * nextZ;
-  perspective = 3.6 / (3.6 - depth);
-  const screenNextX = (xFromX * nextX + xFromY * nextY + xFromZ * nextZ) * perspective;
-  const screenNextY = -(yFromX * nextX + yFromY * nextY + yFromZ * nextZ) * perspective;
-  const builder = pickFragmentBuilder(builders, inner, chunky, zone, depth);
-  builder.moveTo(screenStartX, screenStartY);
-  if (!isArc) {
-    builder.lineTo(screenNextX, screenNextY);
+  const alongX = unitX * half;
+  const alongY = unitY * half;
+  if (glyph === 5) {
+    builder.addCircle(x, y, half * 0.45);
     return;
   }
-  const endX = endpoints[6];
-  const endY = endpoints[7];
-  const endZ = endpoints[8];
-  perspective = 3.6 / (3.6 - (depthFromX * endX + depthFromY * endY + depthFromZ * endZ));
-  builder.conicTo(
-    screenNextX,
-    screenNextY,
-    (xFromX * endX + xFromY * endY + xFromZ * endZ) * perspective,
-    -(yFromX * endX + yFromY * endY + yFromZ * endZ) * perspective,
-    endpoints[9],
-  );
-}
-
-/** Sorts every visible sphere fragment into its builder. */
-function appendSphereFragments(builders: PathBuilders, geometry: number[], state: FrameState, endpoints: number[]) {
-  'worklet';
-  for (let offset = 0; offset < geometry.length; offset += 18) {
-    const zone = geometry[offset + 2];
-    const inner = geometry[offset + 3] > 0.5;
-    const chunky = geometry[offset + 4] > 0.5;
-    const zoneEnergy = state.zoneEnergy[zone];
-    // voice reveals more of the detail: dash length grows smoothly from a per-element threshold
-    const visibility = chunky
-      ? clamp01((geometry[offset + 5] - 0.18 + 0.55 * zoneEnergy + 0.08 * state.energy) * 3)
-      : 1;
-    if (visibility < 0.03) continue;
-    const swell = inner ? 0.05 : 0.04 - 0.03 * (zone >> 2);
-    const scale = geometry[offset + 1] * (1 + swell * zoneEnergy + 0.01 * state.energy);
-    writeFragmentEndpoints(endpoints, geometry, offset, scale, visibility, zoneEnergy, zone, state);
-    const matrix = inner ? state.innerRotation : state.outerRotation;
-    appendProjectedFragment(builders, matrix, endpoints, geometry[offset] === 0, inner, chunky, zone);
+  // the normal, shorter than the length: ticks and cell heights
+  const normalX = -alongY * 0.55;
+  const normalY = alongX * 0.55;
+  if (glyph === 6) {
+    builder.moveTo(x - alongX - normalX, y - alongY - normalY);
+    builder.lineTo(x + alongX - normalX, y + alongY - normalY);
+    builder.lineTo(x + alongX + normalX, y + alongY + normalY);
+    builder.lineTo(x - alongX + normalX, y - alongY + normalY);
+    builder.close();
+    return;
+  }
+  if (glyph === 2 || glyph === 4) {
+    builder.moveTo(x - alongX + normalX, y - alongY + normalY);
+    builder.lineTo(x - alongX, y - alongY);
+    builder.lineTo(x + alongX, y + alongY);
+    builder.lineTo(x + alongX + (glyph === 2 ? normalX : -normalX), y + alongY + (glyph === 2 ? normalY : -normalY));
+    return;
+  }
+  builder.moveTo(x - alongX, y - alongY);
+  builder.lineTo(x + alongX, y + alongY);
+  if (glyph === 1) builder.lineTo(x + alongX + normalX, y + alongY + normalY);
+  else if (glyph === 3) {
+    builder.moveTo(x, y);
+    builder.lineTo(x + normalX * 1.4, y + normalY * 1.4);
   }
 }
 
-/** One rim group of the outer frame: the back hemisphere fine, dim and without glow; the front thicker and glowing. */
-function drawShellGroup(
-  canvas: HologramCanvas,
-  resources: Resources,
-  state: FrameState,
-  group: number,
-  groupEnergy: number,
-) {
+/**
+ * Whether a fragment is part of the ball at all, 0..1. While it materialises they arrive in the
+ * film's order — in patches, behind the dial's band on the left first (revealKey) — and once it
+ * has formed the script's slow fragment density thins them out a little.
+ */
+function fragmentShown(x: number, y: number, id: number, state: FrameState) {
   'worklet';
-  const pixel = state.pixel;
-  const builders = resources.pathBuilders;
-  const pulse = 1 + 0.14 * Math.sin(state.time * 0.9 + group * 2.9);
-  const brightness = (0.85 + 0.7 * groupEnergy) * pulse; // line brightness (capped below)
-  // back hemisphere: fine, dim, no glow
-  const backArcs = builders.shellArcs[group * 2].detach();
-  const backDashes = builders.shellDashes[group * 2].detach();
-  resources.backLineStroke.setStrokeWidth((0.8 + 0.5 * groupEnergy) * pixel);
-  resources.backLineStroke.setAlphaf(limit(0.7 * brightness, 0.85));
-  canvas.drawPath(backArcs, resources.backLineStroke);
-  resources.backDashStroke.setStrokeWidth((1.1 + 0.7 * groupEnergy) * pixel);
-  resources.backDashStroke.setAlphaf(limit(0.75 * brightness, 0.85));
-  canvas.drawPath(backDashes, resources.backDashStroke);
-  // front hemisphere: thicker, glow ~2x the stroke width
-  const arcs = builders.shellArcs[group * 2 + 1].detach();
-  const dashes = builders.shellDashes[group * 2 + 1].detach();
-  const dashWidth = (2.7 + 1.4 * groupEnergy) * pixel;
-  const lineWidth = (1.3 + 0.9 * groupEnergy) * pixel;
-  resources.frontGlowStroke.setAlphaf(clamp01((0.13 + 0.2 * groupEnergy) * state.glowGain * pulse));
-  resources.frontGlowStroke.setStrokeWidth(lineWidth * 2.6);
-  canvas.drawPath(arcs, resources.frontGlowStroke);
-  resources.frontGlowStroke.setAlphaf(clamp01((0.06 + 0.07 * groupEnergy) * state.glowGain * pulse));
-  resources.frontGlowStroke.setStrokeWidth(dashWidth * 2);
-  canvas.drawPath(dashes, resources.frontGlowStroke);
-  resources.frontLineStroke.setStrokeWidth(lineWidth);
-  resources.frontLineStroke.setAlphaf(limit(0.8 * brightness, 0.95));
-  canvas.drawPath(arcs, resources.frontLineStroke);
-  resources.frontDashStroke.setStrokeWidth(dashWidth);
-  resources.frontDashStroke.setAlphaf(limit(0.82 * brightness, 0.95));
-  canvas.drawPath(dashes, resources.frontDashStroke);
-  // band-revealed pale-gold filaments on the fine front arcs
-  resources.paleGoldStroke.setStrokeWidth((0.6 + 0.5 * groupEnergy) * pixel);
-  resources.paleGoldStroke.setAlphaf(limit(0.12 + groupEnergy * 1.3 + state.energy * 0.1, 0.95));
-  canvas.drawPath(arcs, resources.paleGoldStroke);
+  const key = 0.55 * revealKey(x, y) + 0.45 * fraction(id * 7.31);
+  return clamp01((state.bodyShare * 1.12 - key) * 9);
 }
 
-/** The inner counter-rotating frame, driven by the bass. */
-function drawInnerShell(canvas: HologramCanvas, resources: Resources, state: FrameState) {
+/**
+ * How lit a fragment is this frame, 0..1 (0 = dark): its clock's fade envelope times its pool's
+ * share. Pool 0 (calm) gives up the lowest ids as `mix` rises; pool 1 (fast) lights ids below
+ * 2·mix. Whether a fragment is there at all is fragmentShown.
+ */
+function fragmentStrength(time: number, rate: number, phase: number, id: number, pool: number, state: FrameState) {
   'worklet';
-  const bassEnergy = state.bassEnergy;
-  const innerArcs = resources.pathBuilders.innerArcs.detach();
-  const innerDashes = resources.pathBuilders.innerDashes.detach();
-  const dashWidth = (1.8 + 0.9 * bassEnergy) * state.pixel;
-  resources.glowStroke.setStrokeWidth(dashWidth * 2);
-  resources.glowStroke.setAlphaf(clamp01((0.05 + 0.05 * bassEnergy) * state.glowGain));
-  canvas.drawPath(innerDashes, resources.glowStroke);
-  resources.lineStroke.setStrokeWidth((0.9 + 0.5 * bassEnergy) * state.pixel);
-  resources.lineStroke.setAlphaf(limit(0.65 + 0.3 * bassEnergy, 0.95));
-  canvas.drawPath(innerArcs, resources.lineStroke);
-  resources.dashStroke.setStrokeWidth(dashWidth);
-  resources.dashStroke.setAlphaf(limit(0.75 + 0.25 * bassEnergy, 1));
-  canvas.drawPath(innerDashes, resources.dashStroke);
+  const cycles = time * rate + phase;
+  const life = cycles - Math.floor(cycles);
+  if (life >= FRAGMENT_DUTY) return 0;
+  const progress = life / FRAGMENT_DUTY;
+  const envelope = Math.min(1, progress * 4, (1 - progress) * 4);
+  const poolShare = pool === 0 ? clamp01((id - state.mix) * 12 + 1) : clamp01((2 * state.mix - id) * 12);
+  return envelope * poolShare;
 }
 
-/** Sphere fragments: nested shells of broken arcs, dashes and ticks on a tilted spinning axis. */
-function drawSphereShells(
-  canvas: HologramCanvas,
-  resources: Resources,
-  scene: Scene,
-  state: FrameState,
-  scratch: Scratch,
-) {
+/**
+ * Which body builder a fragment goes to: 0 dim, 1 mid, 2 bright. Fading fragments and
+ * thinned-out hot ones step down; while the ball forms, `heat` lifts mid ones up.
+ */
+function fragmentTier(brightness: number, strength: number, id: number, hotShare: number, heat: number) {
   'worklet';
-  appendSphereFragments(resources.pathBuilders, scene.fragments, state, scratch.endpoints);
-  drawShellGroup(canvas, resources, state, 0, state.lowMidRimEnergy);
-  drawShellGroup(canvas, resources, state, 1, state.highRimEnergy);
-  drawInnerShell(canvas, resources, state);
+  if (brightness === 2) {
+    if (strength <= 0.55) return 1;
+    const margin = hotShare - fraction(id * 13.7);
+    if (margin > 0) return 2;
+    // The share moves by a third in the 0.15 s it takes to grow agitated, so a plain cut would
+    // step a fortieth of the bright strokes down in a single frame. A fragment just past the
+    // share instead holds its brightness until its own clock fades it, so each one changes
+    // while it is dimming and the handover is spread over their cycles rather than over the ramp.
+    if (margin > -0.12 && strength > 0.86) return 2;
+    return 1;
+  }
+  if (brightness === 1 && strength > 0.4) return fraction(id * 5.3) < heat ? 2 : 1;
+  return 0;
 }
 
-/** Prebuilt rim rings: a dense broken band hugging the limb, animated only with canvas transforms. */
-function drawRimRings(canvas: HologramCanvas, resources: Resources, rimRings: Scene['rimRings'], state: FrameState) {
+/** The pinned fragment body, sorted into the dim, mid and bright builders. */
+function appendBody(builders: PathBuilder[], body: number[], state: FrameState) {
   'worklet';
   const time = state.time;
-  for (let i = 0; i < rimRings.length; i++) {
-    const ring = rimRings[i];
-    const zoneEnergy = state.zoneEnergy[ring.zone];
-    const ringRadius = ring.radius * (1 + 0.03 * zoneEnergy);
+  const ragged = state.ragged;
+  for (let offset = 0; offset < body.length; offset += BODY_STRIDE) {
+    const code = body[offset + 9];
+    const turning = code >= 6 ? 3 : 0;
+    const pool = code - turning * 2 >= 3 ? 1 : 0;
+    const id = body[offset + 8];
+    const shown = fragmentShown(body[offset], body[offset + 1], id, state);
+    if (shown <= 0) continue;
+    const strength = shown * fragmentStrength(time, body[offset + 6], body[offset + 7], id, pool, state);
+    if (strength < 0.08) continue;
+    const cycle = Math.floor(time * body[offset + 6] + body[offset + 7]);
+    const unitX = body[offset + 2];
+    const unitY = body[offset + 3];
+    const length = body[offset + 4];
+    // each time it re-lights, it does so a little along or across from where it was
+    const hop = fraction(cycle * 0.618034 + id * 9.7);
+    const along = (hop - 0.5) * 1.2 * length;
+    // while he talks the body loosens: a fragment re-lights further from where it was
+    const across = (fraction(hop * 23.17) - 0.5) * (0.03 + 0.05 * state.agitation);
+    let x = body[offset] + unitX * along - unitY * across;
+    let y = body[offset + 1] + unitY * along + unitX * across;
+    if (ragged > 0 && x < 0 && x * x + y * y > 0.5) {
+      // while forming, the left limb is ragged: fragments stray outward
+      const push = 1 + ragged * 0.16 * fraction(id * 3.7);
+      x *= push;
+      y *= push;
+    }
+    const tier = fragmentTier(code - 3 * pool - 2 * turning, strength, id, state.hotShare, state.introHeat);
+    appendGlyph(
+      builders[tier + turning],
+      body[offset + 5],
+      x,
+      y,
+      unitX,
+      unitY,
+      length * 0.5 * (0.35 + 0.65 * strength),
+    );
+  }
+}
+
+/** The lower hemisphere's turning shell: its front drifts right, its back (dim) drifts left. */
+function appendStream(builders: PathBuilder[], stream: number[], state: FrameState) {
+  'worklet';
+  const time = state.time;
+  const cosYaw = state.streamCos;
+  const sinYaw = state.streamSin;
+  for (let offset = 0; offset < stream.length; offset += STREAM_STRIDE) {
+    const code = stream[offset + 8];
+    const pool = code >= 3 ? 1 : 0;
+    const id = stream[offset + 7];
+    const shown = fragmentShown(stream[offset], stream[offset + 1], id, state);
+    if (shown <= 0) continue;
+    const strength = shown * fragmentStrength(time, stream[offset + 5], stream[offset + 6], id, pool, state);
+    if (strength < 0.08) continue;
+    const restX = stream[offset];
+    const restZ = stream[offset + 2];
+    const x = restX * cosYaw + restZ * sinYaw;
+    const depth = restZ * cosYaw - restX * sinYaw;
+    const y = stream[offset + 1];
+    // fade out before the limb, so nothing pops where the shell turns out of view
+    const edge = clamp01((0.86 - x * x - y * y) * 8);
+    if (edge * strength < 0.08) continue;
+    // a latitude runs horizontally on screen, foreshortened as it turns toward the limb
+    const halfX = stream[offset + 3] * cosYaw + stream[offset + 4] * sinYaw;
+    const tier = depth < 0 ? 0 : fragmentTier(code - 3 * pool, strength * edge, id, state.hotShare, state.introHeat);
+    const half = Math.abs(halfX) * (0.35 + 0.65 * strength * edge);
+    appendGlyph(builders[tier], stream[offset + 9], x, y, 1, 0, half);
+  }
+}
+
+/** The body's dim and mid strokes, pinned and turning (the bright ones are drawn later, over the core). */
+function drawBody(canvas: HologramCanvas, resources: Resources, scene: Scene, state: FrameState) {
+  'worklet';
+  const builders = resources.pathBuilders.body;
+  if (state.bodyShare <= 0) return;
+  appendBody(builders, scene.body, state);
+  appendStream(builders, scene.stream, state);
+  for (let group = 0; group < 2; group++) {
+    if (group === 1) {
+      canvas.save();
+      canvas.rotate(state.shellTurn, CORE_X, CORE_Y);
+    }
+    resources.bodyDimStroke.setStrokeWidth(0.0125);
+    resources.bodyDimStroke.setAlphaf(0.6);
+    canvas.drawPath(builders[group * 3].detach(), resources.bodyDimStroke);
+    const midPath = builders[group * 3 + 1].detach();
+    resources.bodyGlowStroke.setStrokeWidth(0.034);
+    resources.bodyGlowStroke.setAlphaf(0.11);
+    canvas.drawPath(midPath, resources.bodyGlowStroke);
+    resources.bodyMidStroke.setStrokeWidth(0.0155);
+    resources.bodyMidStroke.setAlphaf(0.85);
+    canvas.drawPath(midPath, resources.bodyMidStroke);
+    if (group === 1) canvas.restore();
+  }
+}
+
+/**
+ * The warm points that wink on and off, and the pale peach ones that blink: while he talks a
+ * growing share of them hand over from their calm clock to their fast one, so the layer twinkles
+ * about half again as fast without any speck's phase moving (see SPECK_FAST_RATE).
+ */
+function drawSpecks(canvas: HologramCanvas, resources: Resources, scene: Scene, state: FrameState) {
+  'worklet';
+  const specks = scene.specks;
+  const builders = resources.pathBuilders.specks;
+  const time = state.time;
+  const fastShare = SPECK_FAST_SHARE * state.agitation;
+  let counts = 0;
+  for (let offset = 0; offset < specks.length; offset += SPECK_STRIDE) {
+    if (fraction(specks[offset + 4] * 0.37 + specks[offset] * 5.1 + 0.5) > state.bodyShare) continue;
+    const phase = specks[offset + 3];
+    const onFastClock = fraction(phase * 31.7 + specks[offset + 1] * 3.1) < fastShare;
+    if (fraction(time * specks[offset + 2] * (onFastClock ? SPECK_FAST_RATE : 1) + phase) >= 0.5) continue;
+    const x = specks[offset];
+    const y = specks[offset + 1];
+    builders[specks[offset + 4]].moveTo(x, y);
+    builders[specks[offset + 4]].lineTo(x + 0.002, y);
+    counts++;
+  }
+  const warmPath = builders[0].detach();
+  const peachPath = builders[1].detach();
+  if (counts === 0) return;
+  resources.speckWarmStroke.setStrokeWidth(0.016);
+  resources.speckWarmStroke.setAlphaf(0.85);
+  canvas.drawPath(warmPath, resources.speckWarmStroke);
+  resources.speckPeachStroke.setStrokeWidth(0.013);
+  resources.speckPeachStroke.setAlphaf(0.7);
+  canvas.drawPath(peachPath, resources.speckPeachStroke);
+}
+
+/** The bright fragments with a tight amber glow, and the specks. */
+function drawBodyHighlights(canvas: HologramCanvas, resources: Resources, scene: Scene, state: FrameState) {
+  'worklet';
+  const brightPath = resources.pathBuilders.body[2].detach();
+  const turningBrightPath = resources.pathBuilders.body[5].detach();
+  if (state.bodyShare > 0) {
+    for (let group = 0; group < 2; group++) {
+      const path = group === 0 ? brightPath : turningBrightPath;
+      if (group === 1) {
+        canvas.save();
+        canvas.rotate(state.shellTurn, CORE_X, CORE_Y);
+      }
+      resources.bodyGlowStroke.setStrokeWidth(0.036);
+      resources.bodyGlowStroke.setAlphaf(0.2);
+      canvas.drawPath(path, resources.bodyGlowStroke);
+      resources.bodyBrightStroke.setStrokeWidth(0.0165);
+      resources.bodyBrightStroke.setAlphaf(1 - 0.25 * state.agitation);
+      canvas.drawPath(path, resources.bodyBrightStroke);
+      // a narrow hot core, the film's brightest strokes (#ffd26c, pulled a little toward orange)
+      resources.bodyHotStroke.setStrokeWidth(0.007);
+      resources.bodyHotStroke.setAlphaf(0.8 * (1 - 0.95 * state.agitation));
+      canvas.drawPath(path, resources.bodyHotStroke);
+      if (group === 1) canvas.restore();
+    }
+  }
+  drawSpecks(canvas, resources, scene, state);
+}
+
+// ---- lines: comets, spokes, the swoosh --------------------------------------------------
+
+/** Comet arcs from the core to the lower right, each on its own slow clock, sliding with the lower stream. */
+function appendComets(builder: PathBuilder, comets: number[], time: number) {
+  'worklet';
+  let shown = 0;
+  for (let offset = 0; offset < comets.length; offset += COMET_STRIDE) {
+    const life = fraction(time / comets[offset] + comets[offset + 1]);
+    if (life > 0.85) continue;
+    const grow = smooth01(life / 0.15);
+    const fade = 1 - smooth01((life - 0.7) / 0.15);
+    const sweep = comets[offset + 4] * grow;
+    const tail = comets[offset + 4] * (1 - fade);
+    const base = comets[offset + 2] + life * 0.35;
+    const radius = comets[offset + 3];
+    const centreX = CORE_X + Math.cos(base) * radius;
+    const centreY = CORE_Y + Math.sin(base) * radius;
+    if (sweep - tail < 0.05) continue;
+    appendArc(builder, centreX, centreY, radius, base + Math.PI + tail, sweep - tail);
+    shown++;
+  }
+  return shown;
+}
+
+/**
+ * Faint radial spokes from the core's rim at 0.14R, fanning over the lower half or toward
+ * 9-10 o'clock, as long as `envelope` lets them.
+ */
+function appendSpokes(builder: PathBuilder, seed: number, envelope: number) {
+  'worklet';
+  const towardNine = hashInteger(seed) < 0.4;
+  const count = 6;
+  for (let spoke = 0; spoke < count; spoke++) {
+    const clock = towardNine ? 270 + (spoke - 2.5) * 9 : 130 + spoke * 20;
+    const angle = clockRadians(clock + (hashInteger(seed * 7 + spoke) - 0.5) * 8);
+    // each spoke grows outward from the core's rim and shrinks back into it, so nothing pops
+    const reach = (0.31 + 0.4 * hashInteger(seed * 13 + spoke)) * envelope;
+    if (reach < 0.01) continue;
+    builder.moveTo(CORE_X + Math.cos(angle) * 0.14, CORE_Y + Math.sin(angle) * 0.14);
+    builder.lineTo(CORE_X + Math.cos(angle) * (0.14 + reach), CORE_Y + Math.sin(angle) * (0.14 + reach));
+  }
+}
+
+/** A fan of hairlines arcing over the core, rising to the right, building up line by line over 1.2 s. */
+function appendSwoosh(builder: PathBuilder, seconds: number) {
+  'worklet';
+  const lines = Math.floor(24 * clamp01(seconds / 1.2));
+  const tilt = -0.52;
+  const cosTilt = Math.cos(tilt);
+  const sinTilt = Math.sin(tilt);
+  for (let line = 0; line < lines; line++) {
+    const radius = 1.2 + line * 0.013;
+    // a circle whose top passes just above the core, rotated so the band rises 30° to the right
+    const localX = 0.05;
+    const localY = radius - 0.12 - line * 0.013;
+    appendArc(
+      builder,
+      CORE_X + localX * cosTilt - localY * sinTilt,
+      CORE_Y + localX * sinTilt + localY * cosTilt,
+      radius,
+      -Math.PI / 2 + tilt - 0.42,
+      0.84,
+    );
+  }
+}
+
+/** Comets always; spokes or the swoosh when the script's epoch calls for them. */
+function drawLines(canvas: HologramCanvas, resources: Resources, scene: Scene, state: FrameState) {
+  'worklet';
+  const alpha = state.innerAlpha * state.coreAlpha;
+  if (alpha <= 0) return;
+  const builders = resources.pathBuilders;
+  appendComets(builders.lines, scene.comets, state.time);
+  const script = state.script;
+  if (script.lineKind === 1) appendSpokes(builders.lines, script.lineSeed, script.lineEnvelope);
+  const linePath = builders.lines.detach();
+  resources.bodyGlowStroke.setStrokeWidth(0.034);
+  resources.bodyGlowStroke.setAlphaf(0.12 * alpha);
+  canvas.drawPath(linePath, resources.bodyGlowStroke);
+  resources.lineStroke.setStrokeWidth(0.013);
+  resources.lineStroke.setAlphaf(0.7 * alpha);
+  canvas.drawPath(linePath, resources.lineStroke);
+  if (script.lineKind === 2) {
+    appendSwoosh(builders.swoosh, script.lineSeconds);
+    resources.lineStroke.setStrokeWidth(0.006);
+    resources.lineStroke.setAlphaf(0.42 * alpha * script.lineEnvelope);
+    canvas.drawPath(builders.swoosh.detach(), resources.lineStroke);
+  }
+}
+
+// ---- the core -----------------------------------------------------------------------------
+
+/** The core: the elongated bloom, the hooked ring with its darker middle, the faint 0.3R ring, the bar and a spiky knot. */
+function drawCore(canvas: HologramCanvas, resources: Resources, state: FrameState) {
+  'worklet';
+  const alpha = state.coreAlpha;
+  if (alpha <= 0) return;
+  const brightness = alpha * state.coreDrift;
+  canvas.save();
+  canvas.translate(CORE_X, CORE_Y);
+  canvas.save();
+  canvas.rotate(-45, 0, 0);
+  canvas.scale(0.2, 0.29);
+  resources.coreBloomFill.setAlphaf(clamp01(0.52 * brightness));
+  canvas.drawCircle(0, 0, 1, resources.coreBloomFill);
+  canvas.restore();
+  // the furry knot of spikes on the ring's upper left, re-drawn a few times a second; it shares
+  // the glow below, which softens the ring too
+  const knot = resources.pathBuilders.coreKnot;
+  const step = Math.floor(state.time * 6);
+  for (let spike = 0; spike < 11; spike++) {
+    const angle = (spike / 11) * Math.PI * 2 + hashInteger(step * 11 + spike) * 0.6;
+    const length = 0.03 + 0.05 * hashInteger(step * 17 + spike);
+    knot.moveTo(-0.075, -0.07);
+    knot.lineTo(-0.075 + Math.cos(angle) * length, -0.07 + Math.sin(angle) * length);
+  }
+  const knotPath = knot.detach();
+  resources.coreGlowStroke.setStrokeWidth(0.075);
+  resources.coreGlowStroke.setAlphaf(0.2 * brightness);
+  canvas.drawPath(resources.coreRingPath, resources.coreGlowStroke);
+  canvas.drawPath(knotPath, resources.coreGlowStroke);
+  resources.coreGlowStroke.setStrokeWidth(0.04);
+  resources.coreGlowStroke.setAlphaf(0.3 * brightness);
+  canvas.drawPath(resources.coreBarPath, resources.coreGlowStroke);
+  canvas.drawPath(resources.coreRingPath, resources.coreGlowStroke);
+  resources.coreRingStroke.setStrokeWidth(0.017);
+  resources.coreRingStroke.setAlphaf(clamp01(0.62 * brightness));
+  canvas.drawPath(resources.coreRingPath, resources.coreRingStroke);
+  resources.coreRingStroke.setStrokeWidth(0.013);
+  resources.coreRingStroke.setAlphaf(clamp01(0.62 * brightness));
+  canvas.drawPath(resources.coreBarPath, resources.coreRingStroke);
+  resources.coreRingStroke.setStrokeWidth(0.009);
+  resources.coreRingStroke.setAlphaf(0.55 * alpha);
+  canvas.drawPath(knotPath, resources.coreRingStroke);
+  canvas.restore();
+}
+
+// ---- the rim ------------------------------------------------------------------------------
+
+/** A truss piece's circuit trace between the rails and its paired hanging strut. */
+function appendTrussDetail(detail: PathBuilder, start: number, trace: number, strut: number) {
+  'worklet';
+  const early = start + 0.045;
+  const late = start + 0.11;
+  const cosEarly = Math.cos(early);
+  const sinEarly = Math.sin(early);
+  const cosLate = Math.cos(late);
+  const sinLate = Math.sin(late);
+  if (trace === 1) {
+    detail.moveTo(cosEarly * 0.955, sinEarly * 0.955);
+    detail.lineTo(cosEarly * 1.005, sinEarly * 1.005);
+    detail.lineTo(cosLate * 1.005, sinLate * 1.005);
+  } else if (trace === 2) {
+    detail.moveTo(cosEarly * 0.95, sinEarly * 0.95);
+    detail.lineTo(cosEarly * 0.99, sinEarly * 0.99);
+    detail.lineTo(cosLate * 0.99, sinLate * 0.99);
+    detail.lineTo(cosLate * 1.03, sinLate * 1.03);
+  } else if (trace === 3) {
+    detail.moveTo(cosEarly * 1.02, sinEarly * 1.02);
+    detail.lineTo(cosLate * 1.02, sinLate * 1.02);
+    detail.moveTo((cosEarly + cosLate) * 0.4725, (sinEarly + sinLate) * 0.4725);
+    detail.lineTo((cosEarly + cosLate) * 0.5, (sinEarly + sinLate) * 0.5);
+  }
+  if (strut > 0) {
+    // a pair of struts 0.02R apart hanging from the inner rail toward the centre
+    const tangentX = -sinEarly * 0.02;
+    const tangentY = cosEarly * 0.02;
+    const inner = 0.935 - strut;
+    detail.moveTo(cosEarly * 0.935, sinEarly * 0.935);
+    detail.lineTo(cosEarly * inner, sinEarly * inner);
+    detail.moveTo(cosEarly * 0.935 + tangentX, sinEarly * 0.935 + tangentY);
+    detail.lineTo(cosEarly * inner + tangentX, sinEarly * inner + tangentY);
+  }
+}
+
+/**
+ * The segmented ladder ring, in the rolling frame (the canvas is already rotated), split
+ * by how bright each part is drawn: the outer rail (the brightest continuous line), the
+ * inner rail, the amber haze between them, and the fine rungs, circuit traces and hanging
+ * struts. Pieces pop in, lengthen and join as its weight rises, and break back into dashes
+ * as it falls.
+ */
+function appendTruss(builders: Resources['pathBuilders'], truss: number[], weight: number) {
+  'worklet';
+  let shown = 0;
+  for (let offset = 0; offset < truss.length; offset += TRUSS_PIECE_STRIDE) {
+    const visible = clamp01((weight * 1.15 - truss[offset + 4] * 0.55 - (truss[offset + 5] === 2 ? 0.2 : 0)) / 0.35);
+    if (visible < 0.08) continue;
+    shown++;
+    const start = clockRadians(truss[offset]);
+    const sweep = truss[offset + 1] * DEGREES_TO_RADIANS * visible;
+    appendArc(builders.truss, 0, 0, 1.035, start, sweep);
+    appendArc(builders.trussInner, 0, 0, 0.935, start, sweep);
+    if (visible < 0.5) continue;
+    appendArc(builders.trussHaze, 0, 0, 0.985, start, sweep);
+    const cosStart = Math.cos(start);
+    const sinStart = Math.sin(start);
+    builders.trussRungs.moveTo(cosStart * 0.935, sinStart * 0.935);
+    builders.trussRungs.lineTo(cosStart * 1.035, sinStart * 1.035);
+    if (visible < 0.9) continue;
+    appendTrussDetail(builders.trussDetail, start, truss[offset + 2], truss[offset + 3]);
+  }
+  return shown;
+}
+
+/**
+ * The rolling rim layer: the ladder truss, the thin ring's ticks and, when the truss
+ * leads, the fan of strands on the right.
+ */
+function drawTruss(canvas: HologramCanvas, resources: Resources, scene: Scene, state: FrameState) {
+  'worklet';
+  const script = state.script;
+  const weight = script.trussWeight * state.rimAlpha;
+  const builders = resources.pathBuilders;
+  canvas.save();
+  canvas.rotate(state.roll, 0, 0);
+  const shown = appendTruss(builders, scene.truss, weight);
+  const outerPath = builders.truss.detach();
+  const innerPath = builders.trussInner.detach();
+  const hazePath = builders.trussHaze.detach();
+  const rungPath = builders.trussRungs.detach();
+  const detailPath = builders.trussDetail.detach();
+  if (state.rimAlpha > 0) {
+    // the thin ring's ticks roll with the rest of the rim layer, but only show through the
+    // ring's bright stretch from 1 to 5 o'clock: the film has no graduated dial round the limb
+    const ticks = scene.ringTicks;
+    for (let offset = 0; offset < ticks.length; offset += RING_TICK_STRIDE) {
+      const onScreen = fraction((ticks[offset] + state.roll) / 360) * 360;
+      if (onScreen < 30 || onScreen > 150) continue;
+      const angle = clockRadians(ticks[offset]);
+      const half = ticks[offset + 1] * 0.5 * smooth01((onScreen - 30) / 20) * smooth01((150 - onScreen) / 20);
+      if (half < 0.004) continue;
+      builders.ringTicks.moveTo(Math.cos(angle) * (1 - half), Math.sin(angle) * (1 - half));
+      builders.ringTicks.lineTo(Math.cos(angle) * (1 + half), Math.sin(angle) * (1 + half));
+    }
+    resources.trussStroke.setStrokeWidth(0.009);
+    resources.trussStroke.setAlphaf((0.15 + 0.6 * script.ringWeight) * state.rimAlpha);
+    canvas.drawPath(builders.ringTicks.detach(), resources.trussStroke);
+  }
+  if (shown > 0) {
+    // leading, the ladder ring is a bold gold band (shot d, shot b's box-frame ribbon);
+    // faint, its dashes are fine
+    resources.trussHazeStroke.setStrokeWidth(0.1);
+    resources.trussHazeStroke.setAlphaf(0.42 * weight);
+    canvas.drawPath(hazePath, resources.trussHazeStroke);
+    resources.trussGlowStroke.setStrokeWidth(0.05 + 0.03 * weight);
+    resources.trussGlowStroke.setAlphaf(0.3 * (0.3 + 0.7 * weight));
+    canvas.drawPath(outerPath, resources.trussGlowStroke);
+    resources.trussStroke.setStrokeWidth(0.011 + 0.006 * weight);
+    resources.trussStroke.setAlphaf(0.35 + 0.4 * weight);
+    canvas.drawPath(innerPath, resources.trussStroke);
+    resources.trussStroke.setStrokeWidth(0.02 + 0.012 * weight);
+    resources.trussStroke.setAlphaf(0.5 + 0.45 * weight);
+    canvas.drawPath(outerPath, resources.trussStroke);
+    resources.trussCoreStroke.setStrokeWidth(0.008);
+    resources.trussCoreStroke.setAlphaf(0.85 * weight);
+    canvas.drawPath(outerPath, resources.trussCoreStroke);
+    // the rungs are finer than the outer rail, the circuit traces and struts finer still
+    resources.trussStroke.setStrokeWidth(0.016);
+    resources.trussStroke.setAlphaf(0.35 + 0.55 * weight);
+    canvas.drawPath(rungPath, resources.trussStroke);
+    resources.trussStroke.setStrokeWidth(0.006);
+    resources.trussStroke.setAlphaf(0.2 + 0.35 * weight);
+    canvas.drawPath(detailPath, resources.trussStroke);
+  }
+  canvas.restore();
+  // the strand fan turns counter-clockwise at 3.5°/s, as shot d's upper-right rim strands do,
+  // fading out and back on a 14 s cycle
+  const fanCycle = fraction(state.time / 14);
+  const fanAlpha = smooth01(fanCycle / 0.12) * smooth01((1 - fanCycle) / 0.12) * state.rimAlpha;
+  const fanWeight = clamp01((script.trussWeight - 0.35) / 0.5) * fanAlpha;
+  if (fanWeight > 0.02) {
     canvas.save();
-    canvas.rotate(ring.tilt + 8 * Math.sin(time * 0.05 + i), 0, 0);
-    canvas.scale(ringRadius, ringRadius * ring.squash);
-    canvas.rotate(time * ring.speed, 0, 0);
-    const inverseScale = state.pixel / ringRadius;
-    const path = resources.rimPaths[i];
-    const width = (1.3 + 1.8 * zoneEnergy) * inverseScale * ring.width;
-    resources.glowStroke.setStrokeWidth(width * 2.5);
-    resources.glowStroke.setAlphaf(clamp01((0.08 + 0.14 * zoneEnergy) * state.glowGain));
-    canvas.drawPath(path, resources.glowStroke);
-    resources.dashStroke.setStrokeWidth(width);
-    resources.dashStroke.setAlphaf(limit(0.5 + 0.45 * zoneEnergy, 0.95));
-    canvas.drawPath(path, resources.dashStroke);
+    canvas.rotate(-5 * fanCycle * 14 * 0.7, 0, 0);
+    resources.trussStroke.setStrokeWidth(0.008);
+    resources.trussStroke.setAlphaf(0.6 * fanWeight);
+    canvas.drawPath(resources.strandFanPath, resources.trussStroke);
     canvas.restore();
   }
 }
 
-function drawSpeckPaths(
-  canvas: HologramCanvas,
-  resources: Resources,
-  state: FrameState,
-  sparkCount: number,
-  hotSparkCount: number,
-) {
-  'worklet';
-  const builders = resources.pathBuilders;
-  const pixel = state.pixel;
-  const outerEnergy = state.highRimEnergy;
-  const highEnergy = state.highEnergy;
-  resources.backSpeckStroke.setStrokeWidth((1 + 0.4 * outerEnergy) * pixel);
-  resources.backSpeckStroke.setAlphaf(limit(0.7 + 0.25 * outerEnergy, 0.95));
-  canvas.drawPath(builders.speckBack.detach(), resources.backSpeckStroke);
-  resources.frontSpeckStroke.setStrokeWidth((2.5 + 1.1 * outerEnergy) * pixel);
-  resources.frontSpeckStroke.setAlphaf(limit(0.85 + 0.15 * outerEnergy, 1));
-  canvas.drawPath(builders.speckFront.detach(), resources.frontSpeckStroke);
-  const sparkPath = builders.sparks.detach();
-  const hotSparkPath = builders.hotSparks.detach();
-  if (sparkCount > 0) {
-    resources.sparkStroke.setStrokeWidth((2.4 + 1 * highEnergy) * pixel);
-    resources.sparkStroke.setAlphaf(limit(0.6 + 0.25 * highEnergy, 0.85));
-    canvas.drawPath(sparkPath, resources.sparkStroke);
-  }
-  if (hotSparkCount > 0) {
-    resources.paleGoldStroke.setStrokeWidth((2.8 + 1.2 * highEnergy) * pixel);
-    resources.paleGoldStroke.setAlphaf(limit(0.5 + 0.2 * highEnergy, 0.7));
-    canvas.drawPath(hotSparkPath, resources.paleGoldStroke);
-  }
-}
-
-/** Specks: zero-length square-cap segments in 4 paths (back, front, sparks, hot sparks). */
-function drawSpecks(canvas: HologramCanvas, resources: Resources, specks: number[], state: FrameState) {
-  'worklet';
-  const builders = resources.pathBuilders;
-  const time = state.time;
-  const matrix = state.outerRotation;
-  const xFromX = matrix[0];
-  const xFromY = matrix[1];
-  const xFromZ = matrix[2];
-  const yFromX = matrix[3];
-  const yFromY = matrix[4];
-  const yFromZ = matrix[5];
-  const depthFromX = matrix[6];
-  const depthFromY = matrix[7];
-  const depthFromZ = matrix[8];
-  let sparkCount = 0;
-  let hotSparkCount = 0;
-  for (let offset = 0; offset < specks.length; offset += 10) {
-    const zoneEnergy = state.zoneEnergy[specks[offset + 1]];
-    const scale = specks[offset] * (1 + (0.04 + 0.1 * specks[offset + 4]) * zoneEnergy);
-    const drift = 0.08 * Math.sin(time * 0.5 + specks[offset + 2]);
-    const x = (specks[offset + 5] + specks[offset + 8] * drift) * scale;
-    const y = specks[offset + 6] * scale;
-    const z = (specks[offset + 7] + specks[offset + 9] * drift) * scale;
-    const depth = depthFromX * x + depthFromY * y + depthFromZ * z;
-    const perspective = 3.6 / (3.6 - depth);
-    const screenX = (xFromX * x + xFromY * y + xFromZ * z) * perspective;
-    const screenY = -(yFromX * x + yFromY * y + yFromZ * z) * perspective;
-    // each speck goes to exactly one bucket: 2 builder calls per speck
-    const twinkle = Math.sin(time * specks[offset + 3] + specks[offset + 2]) + 0.5 * zoneEnergy;
-    let builder = depth < 0 ? builders.speckBack : builders.speckFront;
-    if (twinkle > 0.93 && depth > 0) {
-      builder = builders.hotSparks;
-      hotSparkCount++;
-    } else if (twinkle > 0.72 && depth > -0.4) {
-      builder = builders.sparks;
-      sparkCount++;
-    }
-    builder.moveTo(screenX, screenY);
-    builder.lineTo(screenX, screenY);
-  }
-  drawSpeckPaths(canvas, resources, state, sparkCount, hotSparkCount);
-}
-
-/** Appends one orbital ring's dashes as conics, each to the back or front builder by the depth of its middle. */
-function appendOrbitalRingDashes(
-  back: PathBuilder,
-  front: PathBuilder,
-  scratch: Scratch,
-  dashes: number[],
+/**
+ * Appends one crescent strand's pieces that fall inside a pinned clock window. The
+ * pieces roll with the rim layer, gaps open as `gapGrowth` rises, and pieces near a
+ * fresh burst's launch point are knocked out as the chips leave from there.
+ */
+function appendCrescentStrand(
+  builder: PathBuilder,
+  pieces: number[],
+  strand: number,
   radius: number,
-  extent: number,
-) {
-  'worklet';
-  const matrix = scratch.rotation;
-  const pointA = scratch.pointA;
-  const pointB = scratch.pointB;
-  for (let k = 0; k < dashes.length; k += 2) {
-    const startAngle = dashes[k];
-    const length = dashes[k + 1] * extent;
-    const halfLength = length * 0.5;
-    const weight = Math.cos(halfLength);
-    projectPoint(
-      pointB,
-      matrix,
-      (Math.cos(startAngle + halfLength) * radius) / weight,
-      0,
-      (Math.sin(startAngle + halfLength) * radius) / weight,
-    );
-    const builder = pointB[2] < 0 ? back : front;
-    projectPoint(pointA, matrix, Math.cos(startAngle) * radius, 0, Math.sin(startAngle) * radius);
-    builder.moveTo(pointA[0], pointA[1]);
-    const controlX = pointB[0];
-    const controlY = pointB[1];
-    projectPoint(pointA, matrix, Math.cos(startAngle + length) * radius, 0, Math.sin(startAngle + length) * radius);
-    builder.conicTo(controlX, controlY, pointA[0], pointA[1], weight);
-  }
-}
-
-/** Tilted dashed rings on the sphere; their dashes lengthen with their zone. */
-function drawOrbitalRings(
-  canvas: HologramCanvas,
-  resources: Resources,
-  orbitalRings: Scene['orbitalRings'],
+  drift: number,
+  windowFrom: number,
+  windowTo: number,
   state: FrameState,
-  scratch: Scratch,
+  shatterClock: number,
 ) {
   'worklet';
-  const builders = resources.pathBuilders;
-  let ringEnergy = 0;
-  for (let i = 0; i < orbitalRings.length; i++) {
-    const ring = orbitalRings[i];
-    const zoneEnergy = state.zoneEnergy[ring.zone];
-    ringEnergy += zoneEnergy / orbitalRings.length;
-    writeRotation(scratch.rotation, state.time * ring.speed, ring.tiltX + state.pitch, ring.tiltZ + state.roll);
-    const radius = ring.radius * (1 + 0.03 * zoneEnergy);
-    const extent = 0.5 + 0.5 * clamp01(0.35 + zoneEnergy * 1.2);
-    const front = ring.radius > 0.99 ? builders.ringFrontOuter : builders.ringFrontInner;
-    appendOrbitalRingDashes(builders.ringBack, front, scratch, ring.dashes, radius, extent);
-  }
-  const backPath = builders.ringBack.detach();
-  const frontOuterPath = builders.ringFrontOuter.detach();
-  const frontInnerPath = builders.ringFrontInner.detach();
-  const ringWidth = (1.1 + 0.8 * ringEnergy) * state.pixel;
-  resources.glowStroke.setStrokeWidth(ringWidth * 2.6);
-  resources.glowStroke.setAlphaf(clamp01((0.05 + 0.08 * ringEnergy) * state.glowGain));
-  canvas.drawPath(frontOuterPath, resources.glowStroke);
-  resources.lineStroke.setStrokeWidth(ringWidth * 0.8);
-  resources.lineStroke.setAlphaf(limit(0.22 + 0.15 * ringEnergy, 0.6));
-  canvas.drawPath(backPath, resources.lineStroke);
-  resources.lineStroke.setStrokeWidth(ringWidth);
-  resources.lineStroke.setAlphaf(limit(0.3 + 0.25 * ringEnergy, 0.6));
-  canvas.drawPath(frontInnerPath, resources.lineStroke);
-  resources.lineStroke.setAlphaf(limit(0.55 + 0.3 * ringEnergy, 0.85));
-  canvas.drawPath(frontOuterPath, resources.lineStroke);
-}
-
-/** Crown spikes; returns their mean band energy. */
-function appendCrownSpikes(crown: PathBuilder, tips: PathBuilder, spikes: number[], state: FrameState, spin: number) {
-  'worklet';
-  const TAU = Math.PI * 2;
-  let crownEnergy = 0;
-  for (let offset = 0; offset < spikes.length; offset += 4) {
-    const baseAngle = spikes[offset];
-    // lows at the top, highs at the bottom, mirrored
-    const bandEnergy = mirroredBand(state.bands, baseAngle / TAU, spikes[offset + 3]) * state.speakingScale;
-    const tipDrive = bandEnergy * Math.sqrt(bandEnergy); // band^1.5
-    crownEnergy += bandEnergy;
-    const length = spikes[offset + 1] * (0.06 + 0.012 * Math.sin(state.time * 0.7 + offset));
-    const growth = 0.1 * tipDrive;
-    const angle = baseAngle - Math.PI / 2 + spin;
-    const cosAngle = Math.cos(angle);
-    const sinAngle = Math.sin(angle);
-    const startRadius = spikes[offset + 2];
-    const endRadius = startRadius + length;
-    appendRadialSegment(crown, cosAngle, sinAngle, 0, startRadius, startRadius + length * 0.6);
-    appendRadialSegment(crown, cosAngle, sinAngle, 0, startRadius + length * 0.72, endRadius);
-    if (growth > 0.003) {
-      appendRadialSegment(tips, cosAngle, sinAngle, 0, endRadius + 0.006, endRadius + 0.006 + growth);
+  const gapGrowth = state.spread;
+  const shatter = state.burstAge < 0.18 ? (1 - state.burstAge / 0.18) * (0.5 + 0.5 * state.burstStrength) : 0;
+  const first = strand * CRESCENT_PIECES_PER_STRAND * CRESCENT_PIECE_STRIDE;
+  for (let piece = 0; piece < CRESCENT_PIECES_PER_STRAND; piece++) {
+    const offset = first + piece * CRESCENT_PIECE_STRIDE;
+    const sweep = pieces[offset + 1];
+    const hash = pieces[offset + 2];
+    // while he talks the split strands keep streaming outward and back at about 0.1 R/s, as the
+    // film's limb unravels on "Doctor." rather than holding a new shape
+    const along = radius + drift * Math.sin((state.time * 0.45 + hash) * 6.283185307179586);
+    const shrink = gapGrowth * sweep * (strand < 2 ? 0.1 + 0.45 * hash : 0.25 + 0.6 * hash) * 0.5;
+    let from = pieces[offset] + state.roll + shrink;
+    from -= 360 * Math.floor(from / 360);
+    const span = sweep - 2 * shrink;
+    // the window's ends are ragged and belong to the pieces rolling through them, so the
+    // crescent frays out at its tips rather than stopping at a fixed angle
+    const ragged = 14 * fraction(hash * 7.3 + strand * 0.37);
+    // a piece can straddle 12 o'clock: try it at its angle and one turn earlier
+    for (let turn = 0; turn < 2; turn++) {
+      const start = Math.max(from - 360 * turn, windowFrom + ragged);
+      const end = Math.min(from - 360 * turn + span, windowTo - ragged);
+      if (end - start < 0.6) continue;
+      if (shatter > hash && Math.abs((start + end) * 0.5 - shatterClock) < 16) continue;
+      appendArc(builder, 0, 0, along, clockRadians(start), (end - start) * DEGREES_TO_RADIANS);
     }
   }
-  return crownEnergy / (spikes.length / 4);
 }
 
-/** A rim comb: a tangential bar with teeth pointing outward. */
-function appendComb(
-  crown: PathBuilder,
-  tips: PathBuilder,
-  cosAngle: number,
-  sinAngle: number,
-  baseRadius: number,
-  toothCount: number,
-  toothGap: number,
-  teeth: number[],
-  firstTooth: number,
-  wobble: number,
-  tipDrive: number,
-) {
+/** Where the latest burst's chips leave the limb, as a clock angle: the left limb about mid-height. */
+function burstClock(burstCount: number) {
   'worklet';
-  const halfSpan = ((toothCount - 1) / 2) * toothGap;
-  crown.moveTo(cosAngle * baseRadius + sinAngle * halfSpan, sinAngle * baseRadius - cosAngle * halfSpan);
-  crown.lineTo(cosAngle * baseRadius - sinAngle * halfSpan, sinAngle * baseRadius + cosAngle * halfSpan);
-  for (let k = 0; k < toothCount; k++) {
-    const tangentialOffset = k * toothGap - halfSpan;
-    const toothEnd = baseRadius + teeth[firstTooth + k] * wobble;
-    appendRadialSegment(crown, cosAngle, sinAngle, tangentialOffset, baseRadius, toothEnd);
-    const growth = 0.08 * tipDrive * (0.6 + 0.4 * ((k * 0.618) % 1));
-    if (growth > 0.003) appendRadialSegment(tips, cosAngle, sinAngle, tangentialOffset, toothEnd, toothEnd + growth);
+  return 255 + hashInteger(burstCount * 131 + 7) * 35;
+}
+
+/**
+ * One crescent strand's radius, the deepest width tier it reaches and the clock angle it is
+ * centred on, written into out[0..2]. Calm, the four strands lie between 0.965R and 1.03R; split,
+ * they open out to 0.94-1.19R, and the outer two gather toward the upper left.
+ */
+function crescentStrandNumbers(strand: number, spread: number, out: number[]) {
+  'worklet';
+  let calm = 0.965;
+  let split = 0.94;
+  let deepestTier = 2;
+  if (strand === 1) {
+    calm = 0.99;
+    split = 1.02;
+    deepestTier = 3;
+  } else if (strand === 2) {
+    calm = 1.012;
+    split = 1.1;
+    deepestTier = 1;
+  } else if (strand === 3) {
+    calm = 1.03;
+    split = 1.19;
+    deepestTier = 0;
   }
+  out[0] = calm + spread * (split - calm);
+  out[1] = deepestTier;
+  out[2] = 262 + 28 * (strand >= 2 ? spread : 0);
 }
 
-/** A rim circuit trace: out to the bend radius, a tangential jog, then on to the end radius. */
-function appendCircuitTrace(
-  crown: PathBuilder,
-  tips: PathBuilder,
-  cosAngle: number,
-  sinAngle: number,
-  startRadius: number,
-  jog: number,
-  bendRadius: number,
-  endRadius: number,
-  tipDrive: number,
-) {
+/**
+ * Builds the crescent's four strands into the width-tier builders (0 thin, 1 medium,
+ * 2 wide, 3 core): the inner strands reach the wide and core tiers, the outer ones only
+ * the thin and medium. Tier windows are centred on 8:40 and scaled by `growth`.
+ */
+function appendCrescent(builders: PathBuilder[], pieces: number[], state: FrameState, growth: number) {
   'worklet';
-  crown.moveTo(cosAngle * startRadius, sinAngle * startRadius);
-  crown.lineTo(cosAngle * bendRadius, sinAngle * bendRadius);
-  const jogX = cosAngle * (bendRadius + 0.02) - sinAngle * jog;
-  const jogY = sinAngle * (bendRadius + 0.02) + cosAngle * jog;
-  crown.lineTo(jogX, jogY);
-  crown.lineTo(jogX + cosAngle * (endRadius - bendRadius - 0.02), jogY + sinAngle * (endRadius - bendRadius - 0.02));
-  const growth = 0.07 * tipDrive;
-  if (growth > 0.003) {
-    tips.moveTo(jogX + cosAngle * (endRadius - bendRadius - 0.02), jogY + sinAngle * (endRadius - bendRadius - 0.02));
-    tips.lineTo(
-      jogX + cosAngle * (endRadius - bendRadius - 0.02 + growth),
-      jogY + sinAngle * (endRadius - bendRadius - 0.02 + growth),
-    );
-  }
-}
-
-function appendRimCombs(crown: PathBuilder, tips: PathBuilder, scene: Scene, state: FrameState, spin: number) {
-  'worklet';
-  const combs = scene.rimCombs;
-  for (let offset = 0; offset < combs.length; offset += 6) {
-    const angle = combs[offset] + spin;
-    const bandEnergy = bandForScreenAngle(state.bands, combs[offset]) * state.speakingScale;
-    const tipDrive = bandEnergy * Math.sqrt(bandEnergy); // band^1.5
-    const cosAngle = Math.cos(angle);
-    const sinAngle = Math.sin(angle);
-    const baseRadius = combs[offset + 1];
-    if (combs[offset + 2] < 0.5) {
-      const wobble = 1 + 0.06 * Math.sin(state.time * 0.8 + offset);
-      appendComb(
-        crown,
-        tips,
-        cosAngle,
-        sinAngle,
-        baseRadius,
-        combs[offset + 3],
-        combs[offset + 4],
-        scene.combTeeth,
-        combs[offset + 5],
-        wobble,
-        tipDrive,
-      );
-    } else {
-      appendCircuitTrace(
-        crown,
-        tips,
-        cosAngle,
-        sinAngle,
-        baseRadius,
-        combs[offset + 3],
-        combs[offset + 4],
-        combs[offset + 5],
-        tipDrive,
+  const spread = state.spread;
+  const shatterClock = burstClock(state.burstCount);
+  const strandNumbers = [0, 0, 0];
+  for (let strand = 0; strand < 4; strand++) {
+    crescentStrandNumbers(strand, spread, strandNumbers);
+    const radius = strandNumbers[0];
+    const deepestTier = strandNumbers[1];
+    const strandCentre = strandNumbers[2];
+    // the outer strands, as they split off, shorten as well as gathering toward the upper left
+    const outer = strand >= 2 ? spread : 0;
+    for (let tier = 0; tier <= deepestTier; tier++) {
+      // 70, 56, 40 and 24 degrees of half-width, thin tier to core tier
+      const tierWidth = tier === 0 ? 70 : 72 - tier * 16;
+      const halfWidth = tierWidth * growth * (1 - 0.4 * outer);
+      appendCrescentStrand(
+        builders[tier],
+        pieces,
+        strand,
+        radius,
+        spread * (strand < 2 ? 0.025 : 0.06),
+        strandCentre - halfWidth,
+        strandCentre + halfWidth,
+        state,
+        shatterClock,
       );
     }
   }
 }
 
-/** Ladder strut: two rails, rungs, closed end. */
-function appendLadderStrut(
-  crown: PathBuilder,
-  tips: PathBuilder,
-  cosAngle: number,
-  sinAngle: number,
-  startRadius: number,
-  endRadius: number,
-  width: number,
-  rungCount: number,
-  growth: number,
+/**
+ * The bright crescent on the left limb, 11 o'clock round to 7, pinned in screen
+ * space while its breaks roll through it. Four strands in width tiers make a thick
+ * tapered band; while he talks they spread to 0.94-1.19R, thin, break up and lose
+ * their hot core.
+ */
+function drawCrescent(canvas: HologramCanvas, resources: Resources, scene: Scene, state: FrameState) {
+  'worklet';
+  const weight = Math.max(state.script.crescentWeight, 0.65 * state.agitation) * state.rimAlpha;
+  const growth = state.crescentGrowth;
+  if (weight <= 0.01 || growth <= 0.01) return;
+  const builders = resources.pathBuilders.crescent;
+  const spread = state.spread;
+  appendCrescent(builders, scene.crescentPieces, state, growth);
+  const thin = builders[0].detach();
+  const medium = builders[1].detach();
+  const wide = builders[2].detach();
+  const core = builders[3].detach();
+  // The bloom holds while the crescent splits. It lights more than half the limb, so dimming it
+  // would pull the measured silhouette in, and the film's does not shrink while he speaks — its
+  // width goes up, if anything. What leaves on "Doctor." is the hot core inside the crescent,
+  // and that is taken out below.
+  resources.limbBloomFill.setAlphaf(clamp01(0.42 * weight * growth));
+  canvas.drawCircle(0, 0, 1.12, resources.limbBloomFill);
+  resources.crescentGlowStroke.setStrokeWidth(0.1 * (1 - 0.5 * spread));
+  resources.crescentGlowStroke.setAlphaf(0.26 * weight);
+  canvas.drawPath(wide, resources.crescentGlowStroke);
+  resources.crescentThinStroke.setStrokeWidth(0.01);
+  resources.crescentThinStroke.setAlphaf(clamp01(0.8 * weight));
+  canvas.drawPath(thin, resources.crescentThinStroke);
+  resources.crescentMediumStroke.setStrokeWidth(0.026 * (1 - 0.45 * spread));
+  resources.crescentMediumStroke.setAlphaf(clamp01(0.8 * weight));
+  canvas.drawPath(medium, resources.crescentMediumStroke);
+  resources.crescentWideStroke.setStrokeWidth(0.056 * (1 - 0.62 * spread));
+  resources.crescentWideStroke.setAlphaf(clamp01(0.85 * weight * (1 - 0.3 * spread)));
+  canvas.drawPath(wide, resources.crescentWideStroke);
+  resources.crescentCoreStroke.setStrokeWidth(0.018 * (1 - 0.5 * spread));
+  resources.crescentCoreStroke.setAlphaf(clamp01(0.9 * weight * (1 - spread) * (1 - spread)));
+  canvas.drawPath(core, resources.crescentCoreStroke);
+}
+
+/**
+ * The thin rim ring: a hairline circle at 1R, brightest from 1 to 4 o'clock, on a soft
+ * ridge of light just inside the limb — the film's limb ridge (shots d, e, g: the
+ * 0.92-1.02R band 1.3-1.6× as bright as the band inside it) — which also shows under a
+ * leading ladder ring.
+ */
+function drawThinRing(canvas: HologramCanvas, resources: Resources, state: FrameState) {
+  'worklet';
+  const script = state.script;
+  const ridge = script.ringWeight * state.rimAlpha;
+  if (ridge > 0.01) {
+    canvas.save();
+    canvas.rotate(state.roll, 0, 0);
+    resources.limbRidgeFill.setAlphaf(clamp01(ridge));
+    canvas.drawCircle(0, 0, 1.06, resources.limbRidgeFill);
+    canvas.restore();
+  }
+  const weight = script.ringWeight * state.rimAlpha;
+  if (weight <= 0.01) return;
+  resources.thinRingStroke.setStrokeWidth(0.012 + 0.008 * weight);
+  resources.thinRingStroke.setAlphaf(clamp01(0.25 + 0.7 * weight));
+  canvas.drawCircle(0, 0, 1.0, resources.thinRingStroke);
+}
+
+/**
+ * While he talks: strands fraying outward off the upper-left limb at about 0.1 R/s,
+ * and thin streak arcs at 1.2-1.27R. Each is a slot on its own clock; agitation only
+ * decides which slots show, and a slot fades through its length, so nothing pops.
+ */
+function drawFray(canvas: HologramCanvas, resources: Resources, scene: Scene, state: FrameState) {
+  'worklet';
+  const drive = state.frayDrive;
+  if (drive <= 0.02) return;
+  const builder = resources.pathBuilders.fray;
+  const time = state.time;
+  const fray = scene.fray;
+  for (let offset = 0; offset < fray.length; offset += FRAY_STRIDE) {
+    const gate = clamp01((drive - fray[offset + 4]) * 5);
+    const life = fraction(time * fray[offset + 2] + fray[offset + 3]);
+    const visible = gate * (1 - smooth01((life - 0.55) / 0.35)) * smooth01(life / 0.1);
+    if (visible < 0.08) continue;
+    const sweep = fray[offset + 1] * visible * DEGREES_TO_RADIANS;
+    const centre = clockRadians(fray[offset]);
+    appendArc(builder, 0, 0, 1.0 + 0.17 * life, centre - sweep / 2, sweep);
+  }
+  const arcs = scene.streakArcs;
+  for (let offset = 0; offset < arcs.length; offset += STREAK_ARC_STRIDE) {
+    const gate = clamp01((drive - arcs[offset + 5]) * 4);
+    const life = fraction(time * arcs[offset + 3] + arcs[offset + 4]);
+    const visible = gate * smooth01(life / 0.2) * (1 - smooth01((life - 0.65) / 0.25));
+    if (visible < 0.08) continue;
+    const sweep = arcs[offset + 2] * visible * DEGREES_TO_RADIANS;
+    appendArc(builder, 0, 0, arcs[offset + 1], clockRadians(arcs[offset]) - sweep / 2, sweep);
+  }
+  const streaks = scene.limbStreaks;
+  for (let offset = 0; offset < streaks.length; offset += LIMB_STREAK_STRIDE) {
+    const gate = clamp01((drive - streaks[offset + 4]) * 4);
+    const life = fraction(time * streaks[offset + 2] + streaks[offset + 3]);
+    const visible = gate * smooth01(life / 0.15) * (1 - smooth01((life - 0.6) / 0.3));
+    if (visible < 0.08) continue;
+    const y = streaks[offset];
+    // leaving the limb at about 0.3 R/s, bright head first
+    const head = Math.sqrt(1 - y * y) * 0.96 + 0.3 * life;
+    builder.moveTo(head - streaks[offset + 1] * visible, y);
+    builder.lineTo(head, y);
+  }
+  resources.frayStroke.setStrokeWidth(0.011);
+  resources.frayStroke.setAlphaf(0.8);
+  canvas.drawPath(builder.detach(), resources.frayStroke);
+}
+
+// ---- protrusions --------------------------------------------------------------------------
+
+/**
+ * Appends a rail from (fromX, fromY) to (toX, toY) as `beads` beads. Solid while
+ * `dissolve` is 0; as it rises the beads shrink to dots, and past 0.6 they fall as sparks.
+ */
+function appendRail(
+  rails: PathBuilder,
+  sparks: PathBuilder,
+  fromX: number,
+  fromY: number,
+  toX: number,
+  toY: number,
+  beads: number,
+  dissolve: number,
 ) {
   'worklet';
-  const halfWidth = width * 0.5;
-  appendRadialSegment(crown, cosAngle, sinAngle, -halfWidth, startRadius, endRadius);
-  appendRadialSegment(crown, cosAngle, sinAngle, halfWidth, startRadius + 0.04, endRadius);
-  for (let k = 1; k <= rungCount; k++) {
-    const rungRadius = startRadius + 0.04 + ((endRadius - startRadius - 0.04) * k) / rungCount;
-    crown.moveTo(cosAngle * rungRadius + sinAngle * halfWidth, sinAngle * rungRadius - cosAngle * halfWidth);
-    crown.lineTo(cosAngle * rungRadius - sinAngle * halfWidth, sinAngle * rungRadius + cosAngle * halfWidth);
+  const stepX = (toX - fromX) / beads;
+  const stepY = (toY - fromY) / beads;
+  if (dissolve > 0.6) {
+    const fall = (dissolve - 0.6) * 0.3;
+    for (let bead = 0; bead < beads; bead += 2) {
+      const x = fromX + stepX * (bead + 0.5);
+      const y = fromY + stepY * (bead + 0.5) + fall * (1 + (bead % 3) * 0.5);
+      sparks.moveTo(x, y);
+      sparks.lineTo(x + 0.002, y);
+    }
+    return;
   }
-  if (growth > 0.003) {
-    appendRadialSegment(tips, cosAngle, sinAngle, -halfWidth, endRadius, endRadius + growth);
-    appendRadialSegment(tips, cosAngle, sinAngle, halfWidth, endRadius, endRadius + growth * 0.6);
+  const share = 1 - 0.85 * smooth01(dissolve / 0.55);
+  if (share > 0.97) {
+    rails.moveTo(fromX, fromY);
+    rails.lineTo(toX, toY);
+    return;
+  }
+  for (let bead = 0; bead < beads; bead++) {
+    const x = fromX + stepX * bead;
+    const y = fromY + stepY * bead;
+    rails.moveTo(x, y);
+    rails.lineTo(x + stepX * share, y + stepY * share);
   }
 }
 
-/** Circuit strut: a trace with a jog and a square pad pushed out by the tip growth. */
-function appendCircuitStrut(
-  crown: PathBuilder,
-  tips: PathBuilder,
-  cosAngle: number,
-  sinAngle: number,
-  startRadius: number,
-  endRadius: number,
-  jog: number,
-  seed: number,
-  growth: number,
-) {
+/** The equator strut: a solid golden rod at 9 o'clock from inside the sphere to a tip at 1.29R, 0.07R thick. */
+function appendStrut(builders: Resources['pathBuilders'], growth: number, dissolve: number) {
   'worklet';
-  const bendRadius = startRadius + (endRadius - startRadius) * (0.35 + 0.3 * seed);
-  crown.moveTo(cosAngle * startRadius, sinAngle * startRadius);
-  crown.lineTo(cosAngle * bendRadius, sinAngle * bendRadius);
-  crown.lineTo(cosAngle * (bendRadius + 0.03) - sinAngle * jog, sinAngle * (bendRadius + 0.03) + cosAngle * jog);
-  crown.lineTo(cosAngle * endRadius - sinAngle * jog, sinAngle * endRadius + cosAngle * jog);
-  const padRadius = endRadius + growth;
-  const padHalfSize = 0.012;
-  if (growth > 0.003) appendRadialSegment(tips, cosAngle, sinAngle, jog, endRadius, padRadius);
-  const nearRadius = padRadius - padHalfSize;
-  const farRadius = padRadius + padHalfSize;
-  crown.moveTo(
-    cosAngle * nearRadius - sinAngle * (jog - padHalfSize),
-    sinAngle * nearRadius + cosAngle * (jog - padHalfSize),
-  );
-  crown.lineTo(
-    cosAngle * farRadius - sinAngle * (jog - padHalfSize),
-    sinAngle * farRadius + cosAngle * (jog - padHalfSize),
-  );
-  crown.lineTo(
-    cosAngle * farRadius - sinAngle * (jog + padHalfSize),
-    sinAngle * farRadius + cosAngle * (jog + padHalfSize),
-  );
-  crown.lineTo(
-    cosAngle * nearRadius - sinAngle * (jog + padHalfSize),
-    sinAngle * nearRadius + cosAngle * (jog + padHalfSize),
-  );
-  crown.close();
+  const tipX = -0.62 - 0.67 * growth;
+  if (dissolve < 0.3) {
+    builders.protrusionRod.moveTo(-0.62, 0);
+    builders.protrusionRod.lineTo(tipX, 0);
+  }
+  if (dissolve > 0) {
+    appendRail(builders.protrusionRails, builders.protrusionSparks, -0.62, -0.035, tipX, -0.035, 10, dissolve);
+    appendRail(builders.protrusionRails, builders.protrusionSparks, -0.62, 0.035, tipX, 0.035, 10, dissolve);
+  }
 }
 
-/** Hanging comb strut: a tangential bar with long uneven teeth outward. */
-function appendHangingCombStrut(
-  crown: PathBuilder,
-  tips: PathBuilder,
-  cosAngle: number,
-  sinAngle: number,
-  startRadius: number,
-  endRadius: number,
-  width: number,
-  toothCount: number,
-  seed: number,
-  growth: number,
-) {
+/** A polyline of `samples` points along a protrusion's curve (kind 2 ribbon loop, 3 hook), offset across by `across`. */
+function curvePoint(kind: number, along: number, across: number, out: number[]) {
   'worklet';
-  const halfWidth = width * 0.5;
-  const barRadius = startRadius + 0.06;
-  crown.moveTo(cosAngle * barRadius + sinAngle * halfWidth, sinAngle * barRadius - cosAngle * halfWidth);
-  crown.lineTo(cosAngle * barRadius - sinAngle * halfWidth, sinAngle * barRadius + cosAngle * halfWidth);
-  appendRadialSegment(crown, cosAngle, sinAngle, 0, startRadius, barRadius);
-  for (let k = 0; k <= toothCount + 2; k++) {
-    const tangentialOffset = -halfWidth + (width * k) / (toothCount + 2);
-    const lengthFraction = 0.35 + 0.65 * ((seed + k * 0.618) % 1);
-    const toothEnd = barRadius + (endRadius - barRadius) * lengthFraction;
-    appendRadialSegment(crown, cosAngle, sinAngle, tangentialOffset, barRadius, toothEnd);
-    if (growth > 0.003) {
-      appendRadialSegment(tips, cosAngle, sinAngle, tangentialOffset, toothEnd, toothEnd + growth * lengthFraction);
+  if (kind === 2) {
+    // the ribbon loop: out of the left limb below 9 o'clock, to a tip at 1.27R, and back in above
+    const angle = along * Math.PI;
+    const reach = Math.sin(angle) ** 0.7;
+    out[0] = -0.9 - 0.37 * reach - across * reach;
+    out[1] = 0.3 * Math.cos(angle) + across * Math.cos(angle) * 0.4;
+    return;
+  }
+  // the hook tendril: horizontal 0.58R above centre, from inside out to 1.2R, its tip curling down
+  const straight = along < 0.8 ? along / 0.8 : 1;
+  const curl = along < 0.8 ? 0 : (along - 0.8) / 0.2;
+  const curlAngle = curl * Math.PI * 0.6;
+  out[0] = -0.4 - 0.72 * straight - Math.sin(curlAngle) * (0.12 + across);
+  out[1] = -0.58 + across + (1 - Math.cos(curlAngle)) * (0.12 + across);
+}
+
+/**
+ * The ribbon loop (6 parallel strands) or the hook tendril (3 strands), grown along their
+ * curve. The strands are not ruled lines: their spacing varies, each wanders a little and
+ * grows a little ahead of or behind the others.
+ */
+function appendCurveProtrusion(builders: Resources['pathBuilders'], kind: number, growth: number, dissolve: number) {
+  'worklet';
+  const strands = kind === 2 ? 6 : 3;
+  const samples = 12;
+  const point = [0, 0];
+  for (let strand = 0; strand < strands; strand++) {
+    const across = (strand - (strands - 1) / 2) * 0.022 * (1 + 0.35 * Math.sin(strand * 1.7 + kind));
+    const reach = growth * (0.88 + 0.12 * hashInteger(strand * 7 + kind));
+    curvePoint(kind, 0, across, point);
+    let previousX = point[0];
+    let previousY = point[1];
+    for (let sample = 1; sample <= samples; sample++) {
+      const along = (sample / samples) * reach;
+      curvePoint(kind, along, across, point);
+      const wander = 0.012 * Math.sin(along * 9 + strand * 2.3);
+      point[0] += wander;
+      point[1] += wander * 0.6;
+      appendRail(
+        builders.protrusionRails,
+        builders.protrusionSparks,
+        previousX,
+        previousY,
+        point[0],
+        point[1],
+        1,
+        dissolve,
+      );
+      previousX = point[0];
+      previousY = point[1];
     }
   }
 }
 
-function appendStruts(crown: PathBuilder, tips: PathBuilder, struts: number[], state: FrameState, spin: number) {
+/** Horizontal streaks leaving the lower-left limb at 7-8 o'clock, bright heads out front. */
+function appendStreakBundle(builders: Resources['pathBuilders'], growth: number, dissolve: number, seed: number) {
   'worklet';
-  for (let offset = 0; offset < struts.length; offset += 7) {
-    const angle = struts[offset] + spin;
-    const bandEnergy = bandForScreenAngle(state.bands, struts[offset]) * state.speakingScale;
-    const tipDrive = bandEnergy * Math.sqrt(bandEnergy); // band^1.5
-    const cosAngle = Math.cos(angle);
-    const sinAngle = Math.sin(angle);
-    const type = struts[offset + 1];
-    const startRadius = struts[offset + 2];
-    const endRadius = struts[offset + 3] + 0.01 * Math.sin(state.time * 0.6 + offset);
-    const widthOrJog = struts[offset + 4];
-    const count = struts[offset + 5];
-    const seed = struts[offset + 6];
-    const growth = 0.07 * tipDrive;
-    if (type === 0) {
-      appendLadderStrut(crown, tips, cosAngle, sinAngle, startRadius, endRadius, widthOrJog, count, growth);
-    } else if (type === 1) {
-      appendCircuitStrut(crown, tips, cosAngle, sinAngle, startRadius, endRadius, widthOrJog, seed, growth);
-    } else {
-      appendHangingCombStrut(crown, tips, cosAngle, sinAngle, startRadius, endRadius, widthOrJog, count, seed, growth);
+  for (let streak = 0; streak < 5; streak++) {
+    const y = 0.46 + streak * 0.045;
+    const limbX = -Math.sqrt(1 - y * y);
+    // it slides out of the limb and lengthens as it grows, so at growth 0 there is nothing to see
+    const out = (0.03 + 0.11 * hashInteger(seed * 97 + streak * 5)) * growth;
+    const length = (0.1 + 0.3 * hashInteger(seed * 89 + streak)) * growth;
+    if (length < 0.01) continue;
+    appendRail(
+      builders.protrusionRails,
+      builders.protrusionSparks,
+      limbX - out,
+      y,
+      limbX - out + length,
+      y,
+      4,
+      dissolve,
+    );
+    if (dissolve > 0.6) continue;
+    builders.protrusionSparks.moveTo(limbX - out, y);
+    builders.protrusionSparks.lineTo(limbX - out + 0.03 * growth, y);
+  }
+}
+
+/**
+ * The small closed "ear" ring reaching 1.4R at the top left — two lumpy loops, not quite
+ * concentric, with breaks — or the pole fan: strands bowing out of the right limb and
+ * converging just outside 3 o'clock, each reaching a little further or shorter.
+ */
+function appendRingOrFan(builders: Resources['pathBuilders'], kind: number, growth: number, dissolve: number) {
+  'worklet';
+  if (kind === 5) {
+    for (let loop = 0; loop < 2; loop++) {
+      const centreX = -0.85 + loop * 0.025;
+      const centreY = -0.85 - loop * 0.02;
+      const radius = 0.2 - loop * 0.04;
+      const steps = Math.floor(28 * growth * (1 - 0.15 * loop));
+      let previousX = 0;
+      let previousY = 0;
+      for (let step = 0; step <= steps; step++) {
+        const angle = 2.3 + loop * 0.4 + (step / 28) * Math.PI * 2;
+        const lumpy = radius * (1 + 0.05 * Math.sin(3 * angle + loop) + 0.025 * Math.sin(5 * angle + 2));
+        const x = centreX + Math.cos(angle) * lumpy;
+        const y = centreY + Math.sin(angle) * lumpy;
+        // a couple of breaks in each loop
+        if (step > 0 && (step + loop * 5) % 11 !== 0) {
+          appendRail(builders.protrusionRails, builders.protrusionSparks, previousX, previousY, x, y, 1, dissolve);
+        }
+        previousX = x;
+        previousY = y;
+      }
+    }
+    return;
+  }
+  for (let strand = 0; strand < 6; strand++) {
+    const angle = clockRadians(52 + strand * 15);
+    const fromX = Math.cos(angle) * 0.95;
+    const fromY = Math.sin(angle) * 0.95;
+    const reach = growth * (0.8 + 0.2 * hashInteger(strand * 13 + 5));
+    // a quadratic bow: out past the limb, then round to the meeting point at (1.18R, 0)
+    const bowX = Math.cos(angle) * 1.22;
+    const bowY = Math.sin(angle) * 1.0;
+    let previousX = fromX;
+    let previousY = fromY;
+    for (let step = 1; step <= 6; step++) {
+      const along = (step / 6) * reach;
+      const x = (1 - along) * (1 - along) * fromX + 2 * along * (1 - along) * bowX + along * along * 1.18;
+      const y = (1 - along) * (1 - along) * fromY + 2 * along * (1 - along) * bowY;
+      appendRail(builders.protrusionRails, builders.protrusionSparks, previousX, previousY, x, y, 1, dissolve);
+      previousX = x;
+      previousY = y;
     }
   }
 }
 
-/** The readable spectrum: crown spikes, rim combs and protruding struts, each following the band at its screen angle. */
-function drawSpectrum(canvas: HologramCanvas, resources: Resources, scene: Scene, state: FrameState) {
+/** One protrusion of `kind` at its growth and dissolve. */
+function appendProtrusion(
+  builders: Resources['pathBuilders'],
+  kind: number,
+  growth: number,
+  dissolve: number,
+  seed: number,
+) {
   'worklet';
+  if (kind === 1) appendStrut(builders, growth, dissolve);
+  else if (kind === 2 || kind === 3) appendCurveProtrusion(builders, kind, growth, dissolve);
+  else if (kind === 4) appendStreakBundle(builders, growth, dissolve, seed);
+  else if (kind === 5 || kind === 6) appendRingOrFan(builders, kind, growth, dissolve);
+}
+
+/** The script's protrusions: at most one per track, two at once. */
+function drawProtrusions(canvas: HologramCanvas, resources: Resources, state: FrameState) {
+  'worklet';
+  const alpha = state.protrusionAlpha;
+  const protrusions = state.script.protrusions;
+  if (alpha <= 0 || (protrusions[1] < 0 && protrusions[4] < 0)) return;
   const builders = resources.pathBuilders;
-  const crown = builders.crown;
-  const tips = builders.crownTips;
-  const spin = 0.22 * Math.sin(state.time * 0.05) + 0.08 * Math.sin(state.time * 0.13);
-  const crownEnergy = appendCrownSpikes(crown, tips, scene.crownSpikes, state, spin);
-  appendRimCombs(crown, tips, scene, state, spin);
-  appendStruts(crown, tips, scene.struts, state, spin);
-  const crownPath = crown.detach();
-  const tipPath = tips.detach();
-  resources.glowStroke.setStrokeWidth(3.4 * state.pixel);
-  resources.glowStroke.setAlphaf(clamp01((0.06 + 0.12 * crownEnergy) * state.glowGain));
-  canvas.drawPath(crownPath, resources.glowStroke);
-  resources.dashStroke.setStrokeWidth((1.3 + 0.5 * crownEnergy) * state.pixel);
-  resources.dashStroke.setAlphaf(limit(0.7 + 0.25 * crownEnergy, 0.95));
-  canvas.drawPath(crownPath, resources.dashStroke);
-  resources.glowStroke.setStrokeWidth(4.5 * state.pixel);
-  resources.glowStroke.setAlphaf(0.1);
-  canvas.drawPath(tipPath, resources.glowStroke);
-  resources.paleGoldStroke.setStrokeWidth(1.5 * state.pixel);
-  resources.paleGoldStroke.setAlphaf(0.95);
-  canvas.drawPath(tipPath, resources.paleGoldStroke);
+  // the rod is solid only while a protrusion has barely begun to dissolve
+  let rodSolid = 0;
+  if (protrusions[1] >= 0) {
+    appendProtrusion(builders, protrusions[0], protrusions[1], protrusions[2], 3);
+    rodSolid = Math.max(rodSolid, 1 - smooth01(protrusions[2] / 0.3));
+  }
+  if (protrusions[4] >= 0) {
+    appendProtrusion(builders, protrusions[3], protrusions[4], protrusions[5], Math.floor(protrusions[6] * 1000));
+    rodSolid = Math.max(rodSolid, 1 - smooth01(protrusions[5] / 0.3));
+  }
+  const rodPath = builders.protrusionRod.detach();
+  const rodAlpha = alpha * rodSolid;
+  if (rodAlpha > 0) {
+    // a glowing rod, not a flat bar: a soft halo, the golden body and a hot core peaking past 200
+    resources.rodGlowStroke.setStrokeWidth(0.17);
+    resources.rodGlowStroke.setAlphaf(0.26 * rodAlpha);
+    canvas.drawPath(rodPath, resources.rodGlowStroke);
+    resources.rodGlowStroke.setStrokeWidth(0.1);
+    resources.rodGlowStroke.setAlphaf(0.34 * rodAlpha);
+    canvas.drawPath(rodPath, resources.rodGlowStroke);
+    resources.rodBodyStroke.setStrokeWidth(0.064);
+    resources.rodBodyStroke.setAlphaf(0.66 * rodAlpha);
+    canvas.drawPath(rodPath, resources.rodBodyStroke);
+    resources.rodCoreStroke.setStrokeWidth(0.026);
+    resources.rodCoreStroke.setAlphaf(0.85 * rodAlpha);
+    canvas.drawPath(rodPath, resources.rodCoreStroke);
+  }
+  // rails glow like the rod: a soft halo, the golden line, a hot thread down the middle
+  const railPath = builders.protrusionRails.detach();
+  resources.rodGlowStroke.setStrokeWidth(0.045);
+  resources.rodGlowStroke.setAlphaf(0.24 * alpha);
+  canvas.drawPath(railPath, resources.rodGlowStroke);
+  resources.railStroke.setStrokeWidth(0.013);
+  resources.railStroke.setAlphaf(0.85 * alpha);
+  canvas.drawPath(railPath, resources.railStroke);
+  resources.rodCoreStroke.setStrokeWidth(0.005);
+  resources.rodCoreStroke.setAlphaf(0.55 * alpha);
+  canvas.drawPath(railPath, resources.rodCoreStroke);
+  resources.sparkStroke.setStrokeWidth(0.014);
+  resources.sparkStroke.setAlphaf(0.8 * alpha);
+  canvas.drawPath(builders.protrusionSparks.detach(), resources.sparkStroke);
 }
 
-/** The C's geometry: three width tiers of 3D arcs, open on the right, the top curling into the core. */
-function appendCrescent(tiers: PathBuilder[], state: FrameState, scratch: Scratch) {
-  'worklet';
-  const time = state.time;
-  const bassEnergy = state.bassEnergy;
-  const energy = state.energy;
-  const matrix = scratch.rotation;
-  const pointA = scratch.pointA;
-  const pointB = scratch.pointB;
-  const thin = tiers[0];
-  const medium = tiers[1];
-  const wide = tiers[2];
-  const yaw = 0.32 + 0.14 * Math.sin(time * 0.13);
-  writeRotation(matrix, yaw, Math.PI / 2 - 0.2 + 0.08 * Math.sin(time * 0.17), 0.08 * Math.sin(time * 0.1));
-  // ring angle a maps to screen angle ≈ a − yaw (y down); centre the C a little below 9 o'clock
-  const centreAngle = Math.PI - 0.12 + yaw + 0.12 * Math.sin(time * 0.07) + 0.06 * Math.sin(time * 0.19 + 1);
-  const sweep = 3.5 + 0.25 * bassEnergy + 0.06 * energy;
-  const radius = 0.74 * (1 + 0.04 * bassEnergy + 0.01 * energy);
-  const startAngle = centreAngle - sweep / 2;
-  const offsetX = 0.02;
-  const offsetY = 0.01;
-  // tier 1 (thin, full length): the ribbon's strands, ragged ends
-  appendProjectedArc(
-    thin,
-    matrix,
-    radius * 0.97,
-    radius * 0.97,
-    startAngle + 0.1,
-    sweep - 0.25,
-    offsetX,
-    offsetY,
-    pointA,
-    pointB,
-  );
-  appendProjectedArc(thin, matrix, radius, radius, startAngle, sweep, offsetX, offsetY, pointA, pointB);
-  const strandRadius = radius * (1.025 + 0.006 * Math.sin(time * 0.5 + 2));
-  appendProjectedArc(
-    thin,
-    matrix,
-    strandRadius,
-    radius * 1.025,
-    startAngle + 0.22,
-    sweep - 0.3,
-    offsetX,
-    offsetY,
-    pointA,
-    pointB,
-  );
-  const outerStrandRadius = radius * (1.05 + 0.008 * Math.sin(time * 0.6));
-  appendProjectedArc(
-    thin,
-    matrix,
-    outerStrandRadius,
-    radius * 1.05,
-    startAngle + 0.5,
-    sweep - 0.95,
-    offsetX,
-    offsetY,
-    pointA,
-    pointB,
-  );
-  appendProjectedArc(
-    thin,
-    matrix,
-    radius * 0.94,
-    radius * 0.94,
-    startAngle + 0.7,
-    sweep * 0.5,
-    offsetX,
-    offsetY,
-    pointA,
-    pointB,
-  );
-  // the curl: the top end keeps turning and spirals all the way in to the core
-  const curlSweep = 2.5 + 0.2 * state.midEnergy;
-  appendProjectedArc(thin, matrix, radius, 0.3, startAngle + sweep, curlSweep, offsetX, offsetY, pointA, pointB);
-  appendProjectedArc(
-    thin,
-    matrix,
-    radius * 0.97,
-    0.36,
-    startAngle + sweep - 0.25,
-    2.2,
-    offsetX,
-    offsetY,
-    pointA,
-    pointB,
-  );
-  // tier 2 (medium): middle 78% plus the start of the curl
-  const mediumSweep = sweep * 0.78;
-  const mediumStart = centreAngle - mediumSweep / 2;
-  appendProjectedArc(medium, matrix, radius, radius, mediumStart, mediumSweep, offsetX, offsetY, pointA, pointB);
-  const secondStart = centreAngle - mediumSweep * 0.42;
-  appendProjectedArc(
-    medium,
-    matrix,
-    radius * 1.025,
-    radius * 1.025,
-    secondStart,
-    mediumSweep * 0.84,
-    offsetX,
-    offsetY,
-    pointA,
-    pointB,
-  );
-  const curlStart = centreAngle + mediumSweep / 2 + (sweep - mediumSweep) / 2;
-  appendProjectedArc(medium, matrix, radius, radius * 0.62, curlStart, 1.2, offsetX, offsetY, pointA, pointB);
-  // tier 3 (widest, brightest): middle 50%
-  const wideSweep = sweep * 0.5;
-  const wideStart = centreAngle - wideSweep / 2;
-  appendProjectedArc(
-    wide,
-    matrix,
-    radius * 1.005,
-    radius * 1.005,
-    wideStart,
-    wideSweep,
-    offsetX,
-    offsetY,
-    pointA,
-    pointB,
-  );
-  // inner arc hugging the core on the upper right
-  writeRotation(matrix, -0.3 + 0.1 * Math.sin(time * 0.2), Math.PI / 2 - 0.35, 0);
-  const hugRadius = 0.33 * (1 + 0.08 * bassEnergy);
-  const hugStart = -1.4 + 0.3 * Math.sin(time * 0.15);
-  appendProjectedArc(
-    thin,
-    matrix,
-    hugRadius,
-    hugRadius,
-    hugStart,
-    1.6 + 0.5 * state.midEnergy,
-    0.08,
-    0.0,
-    pointA,
-    pointB,
-  );
-}
+// ---- chip bursts --------------------------------------------------------------------------
 
-/** The "C": a big soft tapered ribbon, open on the right, its top curling into the core. Tapering comes from width tiers. */
-function drawCrescent(canvas: HologramCanvas, resources: Resources, state: FrameState, scratch: Scratch) {
-  'worklet';
-  const tiers = resources.pathBuilders.crescentTiers;
-  appendCrescent(tiers, state, scratch);
-  const bassEnergy = state.bassEnergy;
-  const pixel = state.pixel;
-  const thinPath = tiers[0].detach();
-  const mediumPath = tiers[1].detach();
-  const widePath = tiers[2].detach();
-  const widthScale = 1 + 0.8 * bassEnergy + 0.15 * state.energy;
-  const brightness = 0.8 + 0.8 * bassEnergy;
-  resources.glowStroke.setStrokeWidth(40 * widthScale * pixel);
-  resources.glowStroke.setAlphaf(clamp01(0.12 * state.glowGain * brightness));
-  canvas.drawPath(widePath, resources.glowStroke);
-  resources.glowStroke.setStrokeWidth(20 * widthScale * pixel);
-  resources.glowStroke.setAlphaf(clamp01(0.12 * state.glowGain * brightness));
-  canvas.drawPath(mediumPath, resources.glowStroke);
-  resources.glowStroke.setStrokeWidth(6 * widthScale * pixel);
-  resources.glowStroke.setAlphaf(clamp01(0.12 * state.glowGain * brightness));
-  canvas.drawPath(thinPath, resources.glowStroke);
-  resources.lineStroke.setStrokeWidth((1 + 0.5 * bassEnergy) * pixel);
-  resources.lineStroke.setAlphaf(limit(0.8 * brightness, 0.95));
-  canvas.drawPath(thinPath, resources.lineStroke);
-  resources.lineStroke.setStrokeWidth((1.7 + 0.6 * bassEnergy) * pixel);
-  resources.lineStroke.setAlphaf(limit(0.6 * brightness, 0.85));
-  canvas.drawPath(mediumPath, resources.lineStroke);
-  resources.lineStroke.setStrokeWidth((2.5 + 0.8 * bassEnergy) * pixel);
-  resources.lineStroke.setAlphaf(limit(0.6 * brightness, 0.85));
-  canvas.drawPath(widePath, resources.lineStroke);
-  resources.paleGoldStroke.setStrokeWidth(1 * pixel);
-  resources.paleGoldStroke.setAlphaf(limit(0.35 * brightness, 0.6));
-  canvas.drawPath(widePath, resources.paleGoldStroke);
-}
-
-/** Warm core bloom, and its comet tail: the same bloom squashed and pushed right. */
-function drawCoreBloom(canvas: HologramCanvas, resources: Resources, state: FrameState, coreX: number, coreY: number) {
-  'worklet';
-  const bassEnergy = state.bassEnergy;
-  const midEnergy = state.midEnergy;
-  const coreRadius = (0.42 + 0.05 * state.energy + 0.1 * bassEnergy) * state.heartbeat;
-  canvas.save();
-  canvas.translate(coreX + 0.02, coreY);
-  canvas.scale(coreRadius * 1.15, coreRadius * 0.95);
-  resources.coreBloomFill.setAlphaf(0.7 + 0.3 * bassEnergy);
-  canvas.drawCircle(0, 0, 1, resources.coreBloomFill);
-  canvas.restore();
-  // comet tail: the same bloom squashed and pushed right
-  canvas.save();
-  canvas.translate(coreX + 0.16 + 0.03 * midEnergy, coreY + 0.005);
-  canvas.scale(coreRadius * (0.9 + 0.3 * midEnergy), coreRadius * 0.16);
-  resources.coreBloomFill.setAlphaf(0.3 + 0.15 * midEnergy);
-  canvas.drawCircle(0, 0, 1, resources.coreBloomFill);
-  canvas.restore();
-}
-
-/** Fading horizontal data streaks from the core: bright near the core, then fading and faint tiers. */
-function drawDataStreaks(
-  canvas: HologramCanvas,
-  resources: Resources,
-  streaks: number[],
-  state: FrameState,
-  coreX: number,
-  coreY: number,
+/** Appends a slab from its centre, unit tangent and half sizes. */
+function appendSlab(
+  builder: PathBuilder,
+  centreX: number,
+  centreY: number,
+  tangentX: number,
+  tangentY: number,
+  halfTangential: number,
+  halfRadial: number,
 ) {
   'worklet';
-  const time = state.time;
-  const midEnergy = state.midEnergy;
-  const tiers = resources.pathBuilders.streakTiers;
-  const bright = tiers[0];
-  const fading = tiers[1];
-  const faint = tiers[2];
-  for (let offset = 0; offset < streaks.length; offset += 5) {
-    const y = coreY + streaks[offset] * (1 + 0.4 * midEnergy);
-    const speed = streaks[offset + 4];
-    const phase = streaks[offset + 3];
-    const startX = coreX + streaks[offset + 1] + 0.05 * Math.sin(time * speed + phase);
-    const length = streaks[offset + 2] * (0.8 + 0.2 * Math.sin(time * speed * 1.3 + phase) + 0.35 * midEnergy);
-    if (length < 0) {
-      bright.moveTo(startX, y);
-      bright.lineTo(startX + length, y);
-    } else {
-      bright.moveTo(startX, y);
-      bright.lineTo(startX + length * 0.45, y);
-      fading.moveTo(startX + length * 0.45, y);
-      fading.lineTo(startX + length * 0.75, y);
-      faint.moveTo(startX + length * 0.75, y);
-      faint.lineTo(startX + length, y);
+  const alongX = tangentX * halfTangential;
+  const alongY = tangentY * halfTangential;
+  const outX = tangentY * halfRadial;
+  const outY = -tangentX * halfRadial;
+  builder.moveTo(centreX - alongX - outX, centreY - alongY - outY);
+  builder.lineTo(centreX + alongX - outX, centreY + alongY - outY);
+  builder.lineTo(centreX + alongX + outX, centreY + alongY + outY);
+  builder.lineTo(centreX - alongX + outX, centreY - alongY + outY);
+  builder.close();
+}
+
+/**
+ * One chip at `clock` and `radius`: a slab and its hot middle, sized from `seed`. While it
+ * breaks up (`breakUp` 0..1) it thins and shortens, and a gap opens across its middle that
+ * pushes the two halves apart.
+ */
+function appendChip(
+  bodies: PathBuilder,
+  cores: PathBuilder,
+  clock: number,
+  radius: number,
+  seed: number,
+  breakUp: number,
+  size: number,
+) {
+  'worklet';
+  const angle = clockRadians(clock);
+  const cosAngle = Math.cos(angle);
+  const sinAngle = Math.sin(angle);
+  const halfTangential = size * (0.11 + 0.055 * hashInteger(seed + 7)) * (1 - 0.35 * breakUp);
+  const halfRadial = size * (0.04 + 0.03 * hashInteger(seed + 11)) * (1 - breakUp) ** 1.5;
+  if (halfRadial < 0.004) return;
+  const gap = breakUp * halfTangential * 0.6;
+  const pieces = breakUp > 0 ? 2 : 1;
+  for (let piece = 0; piece < pieces; piece++) {
+    const pieceHalf = pieces === 1 ? halfTangential : (halfTangential - gap) * 0.5;
+    const shift = pieces === 1 ? 0 : (piece === 0 ? -1 : 1) * (gap + pieceHalf);
+    const centreX = cosAngle * radius - sinAngle * shift;
+    const centreY = sinAngle * radius + cosAngle * shift;
+    appendSlab(bodies, centreX, centreY, -sinAngle, cosAngle, pieceHalf, halfRadial);
+    appendSlab(cores, centreX, centreY, -sinAngle, cosAngle, pieceHalf * 0.8, halfRadial * 0.45);
+  }
+}
+
+/**
+ * One chip of a burst: where along the limb it leaves from, how fast, and how big. Chip 0 leads
+ * — the big slab the film throws, fastest and furthest — and the rest are half its length or
+ * less, spread along the limb round it. A split burst throws its chips at two clocks instead,
+ * alternating between them.
+ */
+function appendBurstChip(
+  bodies: PathBuilder,
+  cores: PathBuilder,
+  seed: number,
+  chip: number,
+  base: number,
+  split: boolean,
+  age: number,
+  flight: number,
+  breakUp: number,
+  size: number,
+) {
+  'worklet';
+  const upper = split && chip % 2 === 0;
+  const leads = chip === 0;
+  const along = split ? 16 : 52;
+  const centre = split ? (upper ? 300 : 250) : base;
+  const launch = centre + (hashInteger(seed) - 0.5) * along;
+  // they fall away counter-clockwise, down the left side, staying aligned with the limb
+  const clock = launch - (upper ? 14 : 8 + 14 * hashInteger(seed + 5)) * flight;
+  const speed = leads ? 1.6 + 0.7 * hashInteger(seed + 3) : 0.9 + 1.2 * hashInteger(seed + 3);
+  const chipSize = size * (leads ? 1.05 : 0.5 + 0.35 * hashInteger(seed + 9));
+  // they leave a little clear of the limb, as the film's do from the frame they appear
+  appendChip(bodies, cores, clock, 1.04 + speed * age, seed, breakUp, chipSize);
+}
+
+/**
+ * The latest burst's rim chips: 3-5 solid, soft-edged slabs breaking off the left limb about
+ * mid-height and flying out and down toward 8 o'clock. One leads — a big slab up to 0.33R along
+ * the limb, thrown hardest, as the film's f134-137 is — and the others are half its length or
+ * less, spread over 50° of limb round it rather than stacked at the same clock. They stay fully
+ * lit, as the film's do, for CHIP_HOLD_SECONDS; then each one thins, shortens and snaps in two
+ * until it is gone by CHIP_GONE_SECONDS, rather than dimming (a dimming amber slab turns brown
+ * on black). Where they leave from, and each chip's size and speed, come from the burst's
+ * number, so a burst always looks the same.
+ */
+function drawChips(canvas: HologramCanvas, resources: Resources, state: FrameState) {
+  'worklet';
+  const age = state.burstAge;
+  const strength = state.burstStrength;
+  if (age >= CHIP_GONE_SECONDS || strength <= 0) return;
+  const count = state.burstCount;
+  const bodies = resources.pathBuilders.chips;
+  const cores = resources.pathBuilders.chipCores;
+  // a small onset throws three small chips, a loud one five big ones
+  const chips = 3 + Math.round(state.burstReach * 2);
+  const size = 0.78 + 0.22 * state.burstReach;
+  // one burst in three splits between the upper left and the left below mid-height
+  const split = hashInteger(count * 53 + 1) < 0.33;
+  const base = burstClock(count);
+  const flight = age / CHIP_GONE_SECONDS;
+  const breakUp = clamp01((age - CHIP_HOLD_SECONDS) / (CHIP_GONE_SECONDS - CHIP_HOLD_SECONDS));
+  for (let chip = 0; chip < chips; chip++) {
+    appendBurstChip(bodies, cores, count * 211 + chip * 17, chip, base, split, age, flight, breakUp, size);
+  }
+  const bodyPath = bodies.detach();
+  const corePath = cores.detach();
+  // a soft edge: a faint wide outline, then the solid slab, then its hot middle
+  resources.chipGlowStroke.setStrokeWidth(0.028);
+  resources.chipGlowStroke.setAlphaf(0.5);
+  canvas.drawPath(bodyPath, resources.chipGlowStroke);
+  resources.chipFill.setAlphaf(1);
+  canvas.drawPath(bodyPath, resources.chipFill);
+  resources.chipCoreFill.setAlphaf(0.45);
+  canvas.drawPath(corePath, resources.chipCoreFill);
+}
+
+// ---- rare accents -------------------------------------------------------------------------
+
+/** The jagged lightning filament, re-jagged every film frame, and the very rare two-frame red segment. */
+function drawAccents(canvas: HologramCanvas, resources: Resources, state: FrameState) {
+  'worklet';
+  const script = state.script;
+  const alpha = state.rimAlpha;
+  if (alpha <= 0) return;
+  const builders = resources.pathBuilders;
+  if (script.lineKind === 3) {
+    const filmFrame = Math.floor(state.time * 24);
+    const anchor = clockRadians(40 + 70 * hashInteger(script.lineSeed * 3));
+    // it runs out toward the limb from inside and stops short of it, so it never reads as a protrusion
+    const startX = Math.cos(anchor) * 0.42;
+    const startY = Math.sin(anchor) * 0.42;
+    const length = 0.35 + 0.3 * hashInteger(script.lineSeed * 5);
+    builders.lightning.moveTo(startX, startY);
+    for (let joint = 1; joint <= 8; joint++) {
+      const along = (joint / 8) * length;
+      const jag = (hashInteger(filmFrame * 29 + joint) - 0.5) * 0.07;
+      builders.lightning.lineTo(
+        startX + Math.cos(anchor) * along - Math.sin(anchor) * jag,
+        startY + Math.sin(anchor) * along + Math.cos(anchor) * jag,
+      );
+    }
+    resources.lightningStroke.setStrokeWidth(0.008);
+    resources.lightningStroke.setAlphaf(0.85 * alpha * script.lineEnvelope);
+    canvas.drawPath(builders.lightning.detach(), resources.lightningStroke);
+  }
+  if (script.redVisible) {
+    const angle = clockRadians(360 * hashInteger(script.lineSeed * 7));
+    builders.red.moveTo(Math.cos(angle) * 0.9, Math.sin(angle) * 0.9);
+    builders.red.lineTo(Math.cos(angle + 0.12) * 0.9, Math.sin(angle + 0.12) * 0.9);
+    resources.redStroke.setStrokeWidth(0.016);
+    resources.redStroke.setAlphaf(0.9 * alpha);
+    canvas.drawPath(builders.red.detach(), resources.redStroke);
+  }
+}
+
+// ---- the materialisation ------------------------------------------------------------------
+
+/** The point of light, then single-pixel sparks: a row across the future top, a trail falling down the right, specks. */
+function drawIntroSparks(canvas: HologramCanvas, resources: Resources, scene: Scene, intro: number, time: number) {
+  'worklet';
+  const pointAlpha = smooth01(intro / 0.01) * (1 - smooth01((intro - 0.12) / 0.2));
+  if (pointAlpha > 0) {
+    canvas.save();
+    canvas.translate(0.68, -1.2);
+    canvas.scale(0.07, 0.07);
+    resources.introPointFill.setAlphaf(pointAlpha);
+    canvas.drawCircle(0, 0, 1, resources.introPointFill);
+    canvas.restore();
+  }
+  const builder = resources.pathBuilders.introSparks;
+  const sparks = scene.introSparks;
+  const filmFrame = Math.floor(time * 24);
+  let shown = 0;
+  for (let offset = 0; offset < sparks.length; offset += INTRO_SPARK_STRIDE) {
+    const since = intro - sparks[offset + 2];
+    if (since < 0 || since > 0.4) continue;
+    if (hashInteger(filmFrame * 7 + offset) < 0.3) continue;
+    const x = sparks[offset];
+    // the trail's sparks fall down the right side
+    const y = sparks[offset + 3] === 1 ? -1 + (sparks[offset + 2] - 0.1) * 16 + since * 1.5 : sparks[offset + 1];
+    builder.moveTo(x, y);
+    builder.lineTo(x + 0.002, y);
+    shown++;
+  }
+  const path = builder.detach();
+  if (shown === 0) return;
+  resources.introSparkStroke.setStrokeWidth(0.013);
+  resources.introSparkStroke.setAlphaf(0.9);
+  canvas.drawPath(path, resources.introSparkStroke);
+}
+
+/** A band piece: `strands` parallel lines along a polyline of points (x, y pairs), with cross-ticks. */
+function appendBandPiece(builder: PathBuilder, points: number[], strands: number) {
+  'worklet';
+  for (let strand = 0; strand < strands; strand++) {
+    const across = (strand - (strands - 1) / 2) * 0.025;
+    for (let index = 0; index + 3 < points.length; index += 2) {
+      const alongX = points[index + 2] - points[index];
+      const alongY = points[index + 3] - points[index + 1];
+      const length = Math.max(1e-4, Math.hypot(alongX, alongY));
+      const normalX = (-alongY / length) * across;
+      const normalY = (alongX / length) * across;
+      builder.moveTo(points[index] + normalX, points[index + 1] + normalY);
+      builder.lineTo(points[index + 2] + normalX, points[index + 3] + normalY);
+      if (strand === 0) {
+        for (let tick = 1; tick < 4; tick++) {
+          const x = points[index] + (alongX * tick) / 4;
+          const y = points[index + 1] + (alongY * tick) / 4;
+          builder.moveTo(x - normalX * 2, y - normalY * 2);
+          builder.lineTo(x + normalX * 2, y + normalY * 2);
+        }
+      }
     }
   }
-  const brightPath = bright.detach();
-  const fadingPath = fading.detach();
-  const faintPath = faint.detach();
-  resources.glowStroke.setStrokeWidth((5 + 4 * midEnergy) * state.pixel);
-  resources.glowStroke.setAlphaf(clamp01((0.07 + 0.14 * midEnergy) * state.glowGain));
-  canvas.drawPath(brightPath, resources.glowStroke);
-  resources.glowStroke.setAlphaf(clamp01((0.035 + 0.05 * midEnergy) * state.glowGain));
-  canvas.drawPath(fadingPath, resources.glowStroke);
-  resources.lineStroke.setStrokeWidth((1.2 + 0.7 * midEnergy) * state.pixel);
-  resources.lineStroke.setAlphaf(limit(0.65 + 0.2 * midEnergy, 0.9));
-  canvas.drawPath(brightPath, resources.lineStroke);
-  resources.lineStroke.setAlphaf(limit(0.36 + 0.15 * midEnergy, 0.6));
-  canvas.drawPath(fadingPath, resources.lineStroke);
-  resources.lineStroke.setAlphaf(limit(0.15 + 0.12 * midEnergy, 0.4));
-  canvas.drawPath(faintPath, resources.lineStroke);
 }
 
-/** The gold knotted gyroscope: small tilted loops around the core, swelling with the bass. */
-function drawKnot(
-  canvas: HologramCanvas,
-  resources: Resources,
-  knotLoops: number[],
-  state: FrameState,
-  scratch: Scratch,
-  coreX: number,
-  coreY: number,
-) {
+/** Band pieces appearing in place: a bent ladder chevron at the lower left, a hooked "7" at the top, chips on the right. */
+function appendBandPieces(builder: PathBuilder, intro: number) {
   'worklet';
-  const time = state.time;
-  const bassEnergy = state.bassEnergy;
-  const pixel = state.pixel;
-  const builder = resources.pathBuilders.knot;
-  canvas.save();
-  canvas.translate(coreX, coreY);
-  canvas.scale(1.1, 0.9);
-  canvas.translate(-coreX, -coreY);
-  const knotScale = 1 + 0.3 * bassEnergy + 0.12 * state.energy;
-  for (let offset = 0; offset < knotLoops.length; offset += 9) {
-    const wobble = knotLoops[offset + 6];
-    writeRotation(
-      scratch.rotation,
-      time * 0.3 + wobble,
-      knotLoops[offset + 1] + 0.3 * Math.sin(time * 0.5 + wobble),
-      knotLoops[offset + 2] + 0.25 * Math.sin(time * 0.37 + wobble),
-    );
-    const radius = knotLoops[offset] * knotScale;
-    const startAngle = knotLoops[offset + 5] + time * knotLoops[offset + 3] + 0.6 * state.energy;
-    const centreX = coreX + knotLoops[offset + 7] * knotScale + 0.02 * Math.sin(time * 0.8 + wobble);
-    const centreY = coreY + knotLoops[offset + 8] * knotScale + 0.018 * Math.cos(time * 0.6 + wobble);
-    const sweep = knotLoops[offset + 4];
-    appendProjectedArc(
-      builder,
-      scratch.rotation,
-      radius,
-      radius,
-      startAngle,
-      sweep,
-      centreX,
-      centreY,
-      scratch.pointA,
-      scratch.pointB,
-    );
+  if (intro >= 0.19) appendBandPiece(builder, [-1.05, 0.5, -0.82, 0.86, -0.42, 0.7], 3);
+  if (intro >= 0.21) appendBandPiece(builder, [-0.05, -1.04, 0.36, -1.02, 0.3, -0.82], 2);
+  if (intro >= 0.23) appendBandPiece(builder, [0.84, 0.28, 1.0, 0.3], 3);
+  if (intro >= 0.25) appendBandPiece(builder, [0.8, 0.9, 0.98, 0.84], 2);
+}
+
+/**
+ * The spoked dial that snaps on at keyframe 0.26: a thick C band from 12 o'clock round the left
+ * to about 5 o'clock at 0.9-1.05R, in pieces of uneven length, running on into a smaller
+ * foreshortened arc on the right that curls up, with about 30 spokes (often paired) to a hub at
+ * (+0.4R, 0). It holds and brightens, loses its spokes by 0.64 and its right arc by 0.69, and
+ * from 0.7 breaks up: each piece thins to its outer rail, then shortens from one end, drifts off
+ * the band and slides along it, until the last ragged chips have gone by 0.9. It never dims, as
+ * the film's stays solid and hot until it breaks (f65-f73).
+ */
+function appendDialBand(band: PathBuilder, inner: PathBuilder, breakUp: number) {
+  'worklet';
+  let from = 360;
+  for (let piece = 0; piece < 26 && from > 158; piece++) {
+    const hash = hashInteger(piece * 41 + 3);
+    const when = hashInteger(piece * 97 + 11);
+    const span = 5 + 14 * hash;
+    // each piece breaks at its own moment, and none of them is the same length
+    const remaining = 1 - clamp01((breakUp - when * 0.6) / 0.4);
+    const length = (span - 0.15 - 0.35 * hash) * remaining;
+    from -= span;
+    if (length <= 0.8) continue;
+    // it shortens from one end, slides along the band and drifts off it
+    const slide = breakUp * (when - 0.5) * 9;
+    const start = (when < 0.5 ? from + span - 0.2 : from + length + 0.2) + slide;
+    const drift = 1 + breakUp * (1 - remaining) * (when < 0.35 ? -0.07 : 0.03 + 0.12 * hash);
+    appendArc(band, 0, 0, 0.975 * drift, clockRadians(start), -length * DEGREES_TO_RADIANS);
+    // the band thins to its outer rail before it breaks
+    if (breakUp < 0.3 + 0.55 * hash) {
+      appendArc(inner, 0, 0, 0.925 * drift, clockRadians(start), -length * DEGREES_TO_RADIANS);
+    }
   }
-  const knotPath = builder.detach();
-  const brightness = 0.85 + 0.6 * bassEnergy;
-  resources.glowStroke.setStrokeWidth((12 + 8 * bassEnergy) * pixel);
-  resources.glowStroke.setAlphaf(clamp01(0.085 * state.glowGain * brightness));
-  canvas.drawPath(knotPath, resources.glowStroke);
-  resources.lineStroke.setStrokeWidth((1.8 + 1 * bassEnergy) * pixel);
-  resources.lineStroke.setAlphaf(limit(0.75 * brightness, 0.95));
-  canvas.drawPath(knotPath, resources.lineStroke);
-  resources.paleGoldStroke.setStrokeWidth((3.5 + 1.5 * bassEnergy) * pixel);
-  resources.paleGoldStroke.setAlphaf(limit(0.18 * brightness, 0.4));
-  canvas.drawPath(knotPath, resources.paleGoldStroke);
-  resources.warmWhiteStroke.setStrokeWidth((0.9 + 0.4 * bassEnergy) * pixel);
-  resources.warmWhiteStroke.setAlphaf(limit(0.35 * brightness, 0.45));
-  canvas.drawPath(knotPath, resources.warmWhiteStroke);
-  canvas.restore();
+}
+
+/**
+ * The spoked dial that snaps on at keyframe 0.26: the C band above, a smaller foreshortened arc
+ * on the right that curls up, and 17 pairs of spokes of uneven length toward a hub at (+0.4R, 0).
+ */
+function appendDial(band: PathBuilder, inner: PathBuilder, spokes: PathBuilder, intro: number, time: number) {
+  'worklet';
+  const filmFrame = Math.floor(time * 12);
+  appendDialBand(band, inner, smooth01((intro - 0.66) / 0.18));
+  // the smaller foreshortened arc on the right, curling up to (+0.9R, -0.55R)
+  const arcShare = 1 - smooth01((intro - 0.49) / 0.2);
+  if (arcShare > 0.05) {
+    for (let step = 0; step < 14 * arcShare; step++) {
+      const angleFrom = (100 - step * 10.5) * DEGREES_TO_RADIANS;
+      const angleTo = (100 - (step + 1) * 10.5) * DEGREES_TO_RADIANS;
+      band.moveTo(0.45 + Math.cos(angleFrom) * 0.55, 0.05 + Math.sin(angleFrom) * 0.92);
+      band.lineTo(0.45 + Math.cos(angleTo) * 0.55, 0.05 + Math.sin(angleTo) * 0.92);
+    }
+  }
+  const spokeShare = 1 - smooth01((intro - 0.5) / 0.14);
+  // Pairs about 11° apart along the band, not an even fan: the film's are "often paired", of
+  // uneven length with many stopping well short of the hub, and they pop in and out while the
+  // dial holds. Their hub is at (+0.4R, 0), off to the right of the sphere's centre.
+  for (let spoke = 0; spoke < 34 && spokeShare > 0; spoke++) {
+    if (hashInteger(filmFrame * 977 + spoke * 31) > 0.78 * spokeShare) continue;
+    const pair = Math.floor(spoke / 2);
+    const clock = 355 - pair * 11.4 - (spoke % 2) * 1.7;
+    const angle = clockRadians(clock);
+    const start = 0.9 + 0.055 * hashInteger(spoke * 7 + 3);
+    const startX = Math.cos(angle) * start;
+    const startY = Math.sin(angle) * start;
+    // a third of them run the whole way in; the rest stop between half way and the hub
+    const reach = hashInteger(spoke * 19 + 11) < 0.34 ? 1 : 0.42 + 0.46 * hashInteger(spoke * 23 + 5);
+    spokes.moveTo(startX, startY);
+    spokes.lineTo(startX + (0.4 - startX) * reach, startY - startY * reach);
+  }
+}
+
+/** A point on the tilted equatorial ellipse (1.2R × 0.7R about (+0.14R, -0.1R), major axis rising 28°), shrunk by `inset`. */
+function equatorialPoint(angle: number, inset: number, out: number[]) {
+  'worklet';
+  const along = Math.cos(angle) * (1.2 - inset);
+  const across = Math.sin(angle) * (0.7 - inset);
+  out[0] = 0.14 + along * EQUATOR_TILT_COS - across * EQUATOR_TILT_SIN;
+  out[1] = -0.1 + along * EQUATOR_TILT_SIN + across * EQUATOR_TILT_COS;
+}
+
+/**
+ * The tilted equatorial ladder ring: two thin glowing rails 0.07R apart with cross-ticks every
+ * three degrees and loose fragments alongside (`rails` takes the rails, ticks and fragments,
+ * `body` the line down the middle that carries the glow), sweeping in from the lower left along
+ * the front of the sphere and up its right side — the film's ring is never drawn behind — and
+ * then dropping out piece by piece, the far end first (f58-f78).
+ */
+function appendEquatorialRing(rails: PathBuilder, body: PathBuilder, intro: number) {
+  'worklet';
+  const reach = smooth01((intro - 0.62) / 0.15);
+  const fadeOut = smooth01((intro - 0.84) / 0.12);
+  const steps = Math.floor(64 * reach);
+  const point = [0, 0];
+  for (let step = 0; step < steps; step++) {
+    if (hashInteger(step * 29 + 5) * 0.75 + (step / 64) * 0.25 < fadeOut) continue;
+    const angle = (165 - step * 3) * DEGREES_TO_RADIANS;
+    const end = angle - 2.6 * DEGREES_TO_RADIANS;
+    for (let rail = 0; rail < 2; rail++) {
+      equatorialPoint(angle, rail * 0.07, point);
+      rails.moveTo(point[0], point[1]);
+      equatorialPoint(end, rail * 0.07, point);
+      rails.lineTo(point[0], point[1]);
+    }
+    // a cross-tick between the rails, and now and then a loose fragment outside them
+    equatorialPoint(angle, 0, point);
+    rails.moveTo(point[0], point[1]);
+    equatorialPoint(angle, 0.07, point);
+    rails.lineTo(point[0], point[1]);
+    const loose = hashInteger(step * 53 + 17);
+    if (loose < 0.22) {
+      equatorialPoint(angle, -0.035 - 0.07 * loose, point);
+      rails.moveTo(point[0], point[1]);
+      equatorialPoint(end - 2 * DEGREES_TO_RADIANS, -0.035 - 0.07 * loose, point);
+      rails.lineTo(point[0], point[1]);
+    }
+    // the band itself, down the middle between the rails
+    equatorialPoint(angle, 0.035, point);
+    body.moveTo(point[0], point[1]);
+    equatorialPoint(end, 0.035, point);
+    body.lineTo(point[0], point[1]);
+  }
+}
+
+/** Everything that only exists while the hologram materialises (keyframe time below 1). */
+function drawIntro(canvas: HologramCanvas, resources: Resources, scene: Scene, state: FrameState) {
+  'worklet';
+  const intro = state.intro;
+  if (intro >= 1) return;
+  drawIntroSparks(canvas, resources, scene, intro, state.time);
+  const builders = resources.pathBuilders;
+  const piecesAlpha = smooth01((intro - 0.19) / 0.02) * (1 - smooth01((intro - 0.3) / 0.15));
+  if (piecesAlpha > 0) appendBandPieces(builders.introBand, intro);
+  const bandPath = builders.introBand.detach();
+  if (piecesAlpha > 0) {
+    resources.introBandStroke.setStrokeWidth(0.01);
+    resources.introBandStroke.setAlphaf(0.9 * piecesAlpha);
+    canvas.drawPath(bandPath, resources.introBandStroke);
+  }
+  // the dial snaps on within two film frames and stays lit until its chips are gone
+  const dialAlpha = smooth01((intro - 0.26) / 0.03);
+  if (dialAlpha > 0 && intro < 0.91) {
+    appendDial(builders.introBand, builders.introInner, builders.introSpokes, intro, state.time);
+    const brighten = 0.65 + 0.35 * smooth01((intro - 0.27) / 0.22);
+    const dialPath = builders.introBand.detach();
+    const dialInnerPath = builders.introInner.detach();
+    resources.introGlowStroke.setStrokeWidth(0.13);
+    resources.introGlowStroke.setAlphaf(0.2 * dialAlpha * brighten);
+    canvas.drawPath(dialPath, resources.introGlowStroke);
+    canvas.drawPath(dialInnerPath, resources.introGlowStroke);
+    resources.introBandStroke.setStrokeWidth(0.05);
+    resources.introBandStroke.setAlphaf(0.75 * dialAlpha * brighten);
+    canvas.drawPath(dialPath, resources.introBandStroke);
+    canvas.drawPath(dialInnerPath, resources.introBandStroke);
+    resources.introBandCoreStroke.setStrokeWidth(0.02);
+    resources.introBandCoreStroke.setAlphaf(0.8 * dialAlpha * brighten);
+    canvas.drawPath(dialPath, resources.introBandCoreStroke);
+    canvas.drawPath(dialInnerPath, resources.introBandCoreStroke);
+    resources.introSpokeStroke.setStrokeWidth(0.007);
+    resources.introSpokeStroke.setAlphaf(0.75 * dialAlpha);
+    canvas.drawPath(builders.introSpokes.detach(), resources.introSpokeStroke);
+  }
+  if (intro >= 0.62 && intro < 0.97) {
+    // rails and fine ticks over a glowing band, as the film's is
+    appendEquatorialRing(builders.introBand, builders.introSpokes, intro);
+    const ringAlpha = smooth01((intro - 0.62) / 0.02);
+    const railPath = builders.introBand.detach();
+    const bandBodyPath = builders.introSpokes.detach();
+    resources.introGlowStroke.setStrokeWidth(0.14);
+    resources.introGlowStroke.setAlphaf(0.3 * ringAlpha);
+    canvas.drawPath(bandBodyPath, resources.introGlowStroke);
+    resources.introBandStroke.setStrokeWidth(0.066);
+    resources.introBandStroke.setAlphaf(0.42 * ringAlpha);
+    canvas.drawPath(bandBodyPath, resources.introBandStroke);
+    resources.introBandStroke.setStrokeWidth(0.01);
+    resources.introBandStroke.setAlphaf(0.95 * ringAlpha);
+    canvas.drawPath(railPath, resources.introBandStroke);
+    resources.introBandCoreStroke.setStrokeWidth(0.005);
+    resources.introBandCoreStroke.setAlphaf(0.6 * ringAlpha);
+    canvas.drawPath(railPath, resources.introBandCoreStroke);
+  }
 }
 
 /** Draws one frame of the hologram into a size×size square. */
@@ -2233,31 +3224,23 @@ export function drawHologram(
   const allPathBuilders = resources.allPathBuilders;
   for (let i = 0; i < allPathBuilders.length; i++) allPathBuilders[i].reset();
 
-  const state = analyseFrame(frame, size);
-  const scratch: Scratch = {
-    rotation: [0, 0, 0, 0, 0, 0, 0, 0, 0],
-    pointA: [0, 0, 0],
-    pointB: [0, 0, 0],
-    endpoints: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  };
-  // the core's centre in unit space
-  const coreX = 0.07;
-  const coreY = 0.03;
-
+  const state = analyseFrame(frame, size, scene);
   canvas.save();
   canvas.translate(size / 2, size / 2);
-  canvas.scale(state.radius * 0.95, state.radius * 1.05); // the film's sphere is a taller oval
-  drawInteriorWarmth(canvas, resources, state);
-  drawRimWave(canvas, resources, state);
-  drawGlassPanels(canvas, resources, scene, state, scratch);
-  drawSphereShells(canvas, resources, scene, state, scratch);
-  drawRimRings(canvas, resources, scene.rimRings, state);
-  drawSpecks(canvas, resources, scene.specks, state);
-  drawOrbitalRings(canvas, resources, scene.orbitalRings, state, scratch);
-  drawSpectrum(canvas, resources, scene, state);
-  drawCrescent(canvas, resources, state, scratch);
-  drawCoreBloom(canvas, resources, state, coreX, coreY);
-  drawDataStreaks(canvas, resources, scene.dataStreaks, state, coreX, coreY);
-  drawKnot(canvas, resources, scene.knotLoops, state, scratch, coreX, coreY);
+  canvas.scale(state.radius, state.radius);
+  drawVolumeFill(canvas, resources, scene, state);
+  drawInnerShells(canvas, resources, state);
+  drawBody(canvas, resources, scene, state);
+  drawLines(canvas, resources, scene, state);
+  drawCore(canvas, resources, state);
+  drawBodyHighlights(canvas, resources, scene, state);
+  drawThinRing(canvas, resources, state);
+  drawTruss(canvas, resources, scene, state);
+  drawCrescent(canvas, resources, scene, state);
+  drawFray(canvas, resources, scene, state);
+  drawProtrusions(canvas, resources, state);
+  drawChips(canvas, resources, state);
+  drawAccents(canvas, resources, state);
+  drawIntro(canvas, resources, scene, state);
   canvas.restore();
 }

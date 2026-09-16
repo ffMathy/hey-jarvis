@@ -12,6 +12,29 @@
  * volume are eased toward their latest reading every frame. Everything here is a
  * plain function, and the per-frame ones are worklets, so the same code runs on
  * the UI thread in the app and under `bun test`.
+ *
+ * Easing alone is not enough for the film's Jarvis, though. He does not brighten
+ * or swell as he gets louder; he shows speech as activity — the sphere grows
+ * agitated while he talks, and chips break off its rim as a syllable starts and
+ * in the gap after one. Onsets and gaps are changes over time, which no single
+ * frame can see, so a small tracker remembers the recent past from frame to
+ * frame: see {@link advanceVoiceActivity}.
+ *
+ * **Keeping that state in the view.** {@link advanceVoiceActivity} writes into
+ * the state object it is given, so the view has to hand it one that lives on from
+ * frame to frame — and a shared value assigned from the JS runtime is not that
+ * object. Reanimated gives the UI runtime's copy a getter and a warning-only
+ * setter for every property, so in a development build each write would be
+ * dropped in silence: agitation would stay at 0 and no burst would ever fire,
+ * while release builds worked. Advance it the way the eased bands are advanced,
+ * inside `modify`, which hands the worklet the object the UI runtime owns:
+ *
+ * ```ts
+ * activity.modify((state) => {
+ *   'worklet';
+ *   return advanceVoiceActivity(state, targetLevel.value, deltaSeconds);
+ * });
+ * ```
  */
 
 /** How many bands the hologram is given. */
@@ -92,7 +115,7 @@ export function perceivedLevel(volume: number): number {
 
 /** How quickly the drawn value catches up with a louder reading, in seconds. */
 export const ATTACK_SECONDS = 0.045;
-/** How quickly it falls back when the reading drops. Slower, so syllables read as pulses rather than flicker. */
+/** How quickly it falls back when the reading drops. Slower, so a syllable's shape survives the gap after it rather than flickering. */
 export const RELEASE_SECONDS = 0.28;
 
 /**
@@ -101,7 +124,7 @@ export const RELEASE_SECONDS = 0.28;
  *
  * Exponential, so the result does not depend on frame rate: two 8 ms steps land
  * where one 16 ms step does. That matters because the UI thread's frame interval
- * varies, and a hologram that pulsed harder on a 120 Hz screen would be wrong.
+ * varies, and bands that moved further on a 120 Hz screen would be wrong.
  */
 export function easeLevel(current: number, target: number, deltaSeconds: number): number {
   'worklet';
@@ -119,4 +142,326 @@ export function easeBands(current: number[], target: number[], deltaSeconds: num
     current[band] = easeLevel(current[band] ?? 0, target[band] ?? 0, deltaSeconds);
   }
   return current;
+}
+
+/**
+ * The level, as {@link perceivedLevel} gives it, from which the voice counts as
+ * speech. Below it is silence, the tail of a word, or a quiet room's hiss
+ * through the microphone in sample mode — none of which should stir the sphere.
+ */
+export const SPEECH_LEVEL = 0.15;
+
+/**
+ * How long agitation takes to build once speech is present. The film's sphere
+ * loosens within a few frames of Jarvis starting to talk.
+ */
+export const AGITATION_RISE_SECONDS = 0.15;
+/**
+ * How long it takes to settle once speech is gone. Slower than the rise, so the
+ * short silences between words leave the sphere stirred rather than calming it
+ * a dozen times a sentence.
+ */
+export const AGITATION_RELEASE_SECONDS = 0.4;
+
+/**
+ * How far back an onset or a gap may reach. A syllable starts or stops within a
+ * reading or two; a change spread over longer than this is a swell or a fade,
+ * and throws no chips.
+ */
+export const CHANGE_WINDOW_SECONDS = 0.1;
+/**
+ * How much the level must rise within {@link CHANGE_WINDOW_SECONDS} to be an
+ * onset. From an ordinary spoken level of about 0.3 this is roughly a 10 dB
+ * jump, the same size of change a gap needs.
+ */
+export const ONSET_RISE = 0.25;
+/** How far the voice must fall within {@link CHANGE_WINDOW_SECONDS}, straight after speech, to be a gap. */
+export const GAP_DROP_DECIBELS = 10;
+/**
+ * The shortest time between two bursts. The film's two bursts in "Doctor." are
+ * about a quarter of a second apart, and a chip takes about a fifth of a second
+ * to fade, so closer bursts would pile up into a continuous spray.
+ */
+export const MINIMUM_BURST_SPACING_SECONDS = 0.25;
+/**
+ * How many bursts come in quick succession before the rim rests. The film throws
+ * its two chip bursts a quarter of a second apart and then none at all for the
+ * rest of the scene — "no continuous particle stream" — so bursts come in pairs,
+ * not in a stream at the spacing floor.
+ */
+export const BURSTS_PER_FLURRY = 2;
+/**
+ * How long the rim rests after a flurry. It is a ceiling rather than a cadence:
+ * on the check's recorded line, onsets sharp enough to throw a burst come about
+ * a third of a second apart of speech — far under the ceiling — so chips are on
+ * screen for roughly a tenth of the time he talks. The film's "Doctor." is denser
+ * (10 of its 37 frames) because a single word starts and stops sharply.
+ */
+export const BURST_REST_SECONDS = 1.2;
+/** A rise or fall this large, in level, throws a full-strength burst; smaller ones throw weaker bursts in proportion. */
+export const FULL_BURST_CHANGE = 0.6;
+/** The burst age reported before the first burst: long enough ago that any burst would have finished. */
+export const NO_BURST_AGE_SECONDS = 10;
+
+/**
+ * The level is the square root of the RMS amplitude, and an amplitude in
+ * decibels is 20·log10 of it, so falling by D decibels multiplies the level by
+ * 10^(−D/40): about 0.56 for a 10 dB gap.
+ */
+const GAP_LEVEL_RATIO = 10 ** (-GAP_DROP_DECIBELS / 40);
+
+/**
+ * The change window is kept as four slices, each holding only the quietest and
+ * loudest level seen in it; remembering every reading instead would take a
+ * buffer whose length depends on the frame rate. The slice being filled and the
+ * three before it reach back between three quarters of the window and all of
+ * it. At least 75 ms always takes in the reading before last at 30 Hz or faster
+ * — a reading lasts 40 ms, and a change is seen at most a frame late — so a
+ * syllable that rises over two readings is caught wherever the slice boundaries
+ * happen to fall.
+ */
+const CHANGE_WINDOW_SLICES = 4;
+const SLICE_SECONDS = CHANGE_WINDOW_SECONDS / CHANGE_WINDOW_SLICES;
+
+/**
+ * Slack for comparing summed frame steps with a duration. Sixtieths of a second
+ * rarely add up to exactly a quarter, and without a little slack the same
+ * spacing would end a frame later at some frame rates than at others.
+ */
+const TIME_SLACK_SECONDS = 1e-6;
+
+/**
+ * What the hologram remembers about the voice from one frame to the next.
+ *
+ * Plain numbers only, so it can live in a Reanimated shared value and cross
+ * between the JS and UI runtimes; {@link advanceVoiceActivity} updates it in
+ * place, so a frame allocates nothing.
+ */
+export interface VoiceActivityState {
+  /** 0–1: how agitated the sphere is. Ramps up while speech is present and back down once it is gone. */
+  agitation: number;
+  /** Seconds since the latest chip burst began; {@link NO_BURST_AGE_SECONDS} or more before the first. */
+  burstAge: number;
+  /** 0–1: how strong the latest burst was. Kept as the burst ages; the drawing fades chips by age. */
+  burstStrength: number;
+  /** How many bursts there have been, so each can throw its chips from a different, repeatable place. */
+  burstCount: number;
+  /** How many bursts the flurry in progress has thrown. Resets when the rim rests, and when speech stops. */
+  burstsInFlurry: number;
+  /** The level the previous frame saw, which has held from then until now. */
+  heldLevel: number;
+  /** The quietest level in the slice of the change window being filled now. */
+  quietestInThisSlice: number;
+  /** The loudest level in the slice being filled now. */
+  loudestInThisSlice: number;
+  /** The quietest level in the slice before it. */
+  quietestOneSliceAgo: number;
+  /** The loudest level in the slice before it. */
+  loudestOneSliceAgo: number;
+  /** The quietest level in the slice before that. */
+  quietestTwoSlicesAgo: number;
+  /** The loudest level in the slice before that. */
+  loudestTwoSlicesAgo: number;
+  /** The quietest level in the oldest slice still in the window. */
+  quietestThreeSlicesAgo: number;
+  /** The loudest level in the oldest slice still in the window. */
+  loudestThreeSlicesAgo: number;
+  /** How long the slice being filled has been filling, in seconds. */
+  thisSliceSeconds: number;
+}
+
+/** A calm sphere that has heard nothing yet: no agitation, no burst, and silence throughout the change window. */
+export function createVoiceActivityState(): VoiceActivityState {
+  return {
+    agitation: 0,
+    burstAge: NO_BURST_AGE_SECONDS,
+    burstStrength: 0,
+    burstCount: 0,
+    burstsInFlurry: 0,
+    heldLevel: 0,
+    quietestInThisSlice: 0,
+    loudestInThisSlice: 0,
+    quietestOneSliceAgo: 0,
+    loudestOneSliceAgo: 0,
+    quietestTwoSlicesAgo: 0,
+    loudestTwoSlicesAgo: 0,
+    quietestThreeSlicesAgo: 0,
+    loudestThreeSlicesAgo: 0,
+    thisSliceSeconds: 0,
+  };
+}
+
+// The helpers below come before advanceVoiceActivity on purpose: the worklets
+// plugin captures the functions a worklet calls at the moment it is defined.
+
+/**
+ * Agitation after `deltaSeconds` in which `heldLevel` held: up a linear ramp if
+ * that was speech, down one if it was not.
+ */
+function rampAgitation(agitation: number, heldLevel: number, deltaSeconds: number): number {
+  'worklet';
+  return heldLevel >= SPEECH_LEVEL
+    ? Math.min(1, agitation + deltaSeconds / AGITATION_RISE_SECONDS)
+    : Math.max(0, agitation - deltaSeconds / AGITATION_RELEASE_SECONDS);
+}
+
+/**
+ * Slides the change window on by `deltaSeconds`. The held level filled the rest
+ * of the slice being filled and every slice that began before now; `level`
+ * starts in the newest.
+ */
+function slideChangeWindow(state: VoiceActivityState, heldLevel: number, level: number, deltaSeconds: number): void {
+  'worklet';
+  state.quietestInThisSlice = Math.min(state.quietestInThisSlice, heldLevel);
+  state.loudestInThisSlice = Math.max(state.loudestInThisSlice, heldLevel);
+  const filledSeconds = state.thisSliceSeconds + deltaSeconds;
+  const slicesEnded = Math.floor((filledSeconds + TIME_SLACK_SECONDS) / SLICE_SECONDS);
+  for (let slice = 0; slice < Math.min(slicesEnded, CHANGE_WINDOW_SLICES); slice++) {
+    state.quietestThreeSlicesAgo = state.quietestTwoSlicesAgo;
+    state.loudestThreeSlicesAgo = state.loudestTwoSlicesAgo;
+    state.quietestTwoSlicesAgo = state.quietestOneSliceAgo;
+    state.loudestTwoSlicesAgo = state.loudestOneSliceAgo;
+    state.quietestOneSliceAgo = state.quietestInThisSlice;
+    state.loudestOneSliceAgo = state.loudestInThisSlice;
+    state.quietestInThisSlice = heldLevel;
+    state.loudestInThisSlice = heldLevel;
+  }
+  state.thisSliceSeconds = Math.max(0, filledSeconds - slicesEnded * SLICE_SECONDS);
+  if (slicesEnded > 0 && state.thisSliceSeconds <= TIME_SLACK_SECONDS) {
+    // The newest slice begins this very moment, so the held level never reached it.
+    state.quietestInThisSlice = level;
+    state.loudestInThisSlice = level;
+  }
+  state.quietestInThisSlice = Math.min(state.quietestInThisSlice, level);
+  state.loudestInThisSlice = Math.max(state.loudestInThisSlice, level);
+}
+
+/** Forgets the quiet a rise came from, throughout the window, so that rise cannot count again. */
+function forgetQuietest(state: VoiceActivityState, level: number): void {
+  'worklet';
+  state.quietestInThisSlice = level;
+  state.quietestOneSliceAgo = level;
+  state.quietestTwoSlicesAgo = level;
+  state.quietestThreeSlicesAgo = level;
+}
+
+/**
+ * How long the rim must wait before the next burst: the spacing while a flurry is still filling,
+ * the longer rest once it is full.
+ */
+function burstSpacing(state: VoiceActivityState): number {
+  'worklet';
+  return state.burstsInFlurry >= BURSTS_PER_FLURRY ? BURST_REST_SECONDS : MINIMUM_BURST_SPACING_SECONDS;
+}
+
+/**
+ * Throws a burst now, as strong as the change that caused it, and counts it into the flurry —
+ * beginning a new one if the rim had already rested through a full flurry.
+ */
+function beginBurst(state: VoiceActivityState, change: number): void {
+  'worklet';
+  state.burstAge = 0;
+  state.burstStrength = Math.min(1, change / FULL_BURST_CHANGE);
+  state.burstCount += 1;
+  state.burstsInFlurry = state.burstsInFlurry >= BURSTS_PER_FLURRY ? 1 : state.burstsInFlurry + 1;
+}
+
+/** Forgets the loud a fall came from, throughout the window, so that fall cannot count again. */
+function forgetLoudest(state: VoiceActivityState, level: number): void {
+  'worklet';
+  state.loudestInThisSlice = level;
+  state.loudestOneSliceAgo = level;
+  state.loudestTwoSlicesAgo = level;
+  state.loudestThreeSlicesAgo = level;
+}
+
+/**
+ * Moves the voice activity on by one frame, in place, and returns the same state.
+ *
+ * `rawLevel` is the latest reading through {@link perceivedLevel}, before any
+ * easing: easing is exactly what smears an onset or a gap into a slope.
+ *
+ * - **Agitation** climbs to 1 over {@link AGITATION_RISE_SECONDS} while the level
+ *   is speech and falls to 0 over {@link AGITATION_RELEASE_SECONDS} while it is
+ *   not. It is the same for a whisper as for a shout: the film shows speech as a
+ *   change of state, not as a loudness meter.
+ * - **A burst** begins on an onset — the level has risen by {@link ONSET_RISE}
+ *   from the quietest point in the change window — or on a gap — it has fallen by
+ *   more than {@link GAP_DROP_DECIBELS} from the loudest point, and that point was
+ *   speech. Its strength is the size of the change.
+ * - **Each rise and each fall counts once.** Once seen, the quiet it rose from or
+ *   the loud it fell from is forgotten, so the same change cannot throw another
+ *   burst on the frames after, while it is still in the window.
+ * - **Bursts are at least {@link MINIMUM_BURST_SPACING_SECONDS} apart.** A change
+ *   that comes sooner is let go rather than saved for later, so a burst always
+ *   marks a moment the voice actually changed, never merely the moment the
+ *   spacing ran out.
+ * - **Bursts come in flurries, not in a stream.** After
+ *   {@link BURSTS_PER_FLURRY} of them the rim rests for
+ *   {@link BURST_REST_SECONDS} before another can fly, and speech falling silent
+ *   ends the flurry. Left at the spacing floor, dense speech would throw three a
+ *   second and chips would be on screen more often than not; the film throws two
+ *   and then none.
+ *
+ * A frame cannot know when, since the one before, a new reading arrived, so it
+ * takes the level the previous frame saw to have held until now and the new one
+ * to start now. A change therefore counts from the frame that first sees it —
+ * at most a frame after it happened — for agitation and bursts alike, and with
+ * linear ramps and a window measured in seconds, that frame is the only way the
+ * frame rate shows: a change that lands on a frame gives the same result at
+ * 30 Hz as at 120 Hz. In dense speech a frame of lateness can decide whether a
+ * change falls just inside the spacing or just outside it, so which syllables
+ * throw bursts can differ between frame rates, but how often they come and how
+ * strong they are does not.
+ *
+ * A step that is not a positive, finite number of seconds changes nothing, and a
+ * level that is not a finite number, or is below zero, counts as silence.
+ */
+export function advanceVoiceActivity(
+  state: VoiceActivityState,
+  rawLevel: number,
+  deltaSeconds: number,
+): VoiceActivityState {
+  'worklet';
+  if (!(deltaSeconds > 0) || !Number.isFinite(deltaSeconds)) {
+    return state;
+  }
+  const level = rawLevel > 0 && Number.isFinite(rawLevel) ? Math.min(1, rawLevel) : 0;
+  state.agitation = rampAgitation(state.agitation, state.heldLevel, deltaSeconds);
+  slideChangeWindow(state, state.heldLevel, level, deltaSeconds);
+  state.heldLevel = level;
+
+  const quietest = Math.min(
+    state.quietestInThisSlice,
+    state.quietestOneSliceAgo,
+    state.quietestTwoSlicesAgo,
+    state.quietestThreeSlicesAgo,
+  );
+  const loudest = Math.max(
+    state.loudestInThisSlice,
+    state.loudestOneSliceAgo,
+    state.loudestTwoSlicesAgo,
+    state.loudestThreeSlicesAgo,
+  );
+  const rise = level - quietest;
+  const drop = loudest - level;
+  const isOnset = rise >= ONSET_RISE;
+  const isGap = loudest >= SPEECH_LEVEL && level < loudest * GAP_LEVEL_RATIO;
+
+  state.burstAge += deltaSeconds;
+  if (state.agitation <= 0) {
+    // silence ends the flurry, so the next word starts a fresh one
+    state.burstsInFlurry = 0;
+  }
+  if ((isOnset || isGap) && state.burstAge + TIME_SLACK_SECONDS >= burstSpacing(state)) {
+    beginBurst(state, Math.max(isOnset ? rise : 0, isGap ? drop : 0));
+  }
+
+  if (isOnset) {
+    forgetQuietest(state, level);
+  }
+  if (isGap) {
+    forgetLoudest(state, level);
+  }
+  return state;
 }
