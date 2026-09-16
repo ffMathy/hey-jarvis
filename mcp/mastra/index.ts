@@ -32,6 +32,7 @@ import { getNotificationAgent, notificationTools } from './verticals/notificatio
 import { phoneTools } from './verticals/phone/index.js';
 import { presenceShortcuts } from './verticals/presence/index.js';
 import { getRoutingSupervisorAgent } from './verticals/routing/agents.js';
+import { registerRoutingGraphSpike } from './verticals/routing/dynamic-workflow-spike.js';
 import { getNextInstructionsWorkflow, routePromptWorkflow } from './verticals/routing/workflows.js';
 import { getShoppingListAgent, getShoppingListSummaryAgent, shoppingTools } from './verticals/shopping/index.js';
 import { getStateChangeReactorAgent, synapseTools } from './verticals/synapse/index.js';
@@ -183,6 +184,10 @@ app.use('*', cors(getCorsOptions()));
 app.use('*', stripTransferEncodingHeader);
 
 export const mastra = await getMastra();
+
+// A spike, not a feature: registers one runtime-built workflow so Studio can be looked at.
+// See ./verticals/routing/dynamic-workflow-spike.ts -- it goes once the question is answered.
+await registerRoutingGraphSpike(mastra);
 
 // 2. Initialize the Mastra Server Adapter
 // This class wraps our Hono app and injects the Mastra capabilities.
