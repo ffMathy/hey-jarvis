@@ -16,6 +16,12 @@ workflows:
         - 'actions/upload-artifact@v7.0.1'
         - 'jlumbroso/free-disk-space@v1.3.1'
         - 'oven-sh/setup-bun@v2.2.0'
+    '.github/workflows/mobile-web.yml':
+        - 'actions/checkout@v6.1.0'
+        - 'actions/configure-pages@v5.0.0'
+        - 'actions/deploy-pages@v4.0.5'
+        - 'actions/upload-pages-artifact@v4.0.0'
+        - 'oven-sh/setup-bun@v2.2.0'
     '.github/workflows/release.yml':
         - 'actions/checkout@v6.1.0'
         - 'devcontainers/ci@v0.3.1900000450'
