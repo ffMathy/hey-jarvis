@@ -73,6 +73,15 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      # `setup-skia-web` copies canvaskit.wasm into mobile/public/, which the export
+      # publishes as-is. The file is gitignored — it comes from the Skia package
+      # rather than the repository — so without this the site goes up without it,
+      # the browser's fetch for it returns the 404 page, instantiating that throws,
+      # and the hologram's error boundary holds its space empty. Which is exactly
+      # how the first published page looked: everything but Jarvis.
+      - name: Fetch CanvasKit
+        run: bunx turbo initialize --filter=mobile
+
       - name: Configure Pages
         id: pages
         uses: actions/configure-pages@v6.0.0
