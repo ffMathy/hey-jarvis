@@ -78,8 +78,16 @@ VOICE_SLOWDOWN=8
 # to hold on to — the reference is then nearly a constant, and even a perfect
 # hologram could not correlate with it above about 0.3. Alternating halves make
 # the comparison meaningful without touching a single threshold.
-SPEECH_CHUNK_SECONDS=6
-SILENCE_CHUNK_SECONDS=6
+# How long he talks, and how long he pauses, in turn — cycled, and deliberately uneven.
+#
+# These were 6 and 6. The activity measurement's control is the same agitation envelope played
+# backwards — the same statistics with the wrong timing, so that a match cannot be luck — and a
+# regular six-on six-off loop played backwards is very nearly itself. The control was scoring
+# almost as well as the real thing (a margin of 0.035 where 0.2 is required), which says nothing
+# about the hologram and everything about the stimulus. Uneven turns that do not repeat within a
+# pass give the control a genuinely different timing to find, and sound more like someone talking.
+SPEECH_CHUNKS='3 8 5 2 9 4 6'
+SILENCE_CHUNKS='7 2 5 9 3 6 4'
 # A little over one and a half loops of silence plus the slowed line, which is as
 # long as screenrecord records.
 RECORD_SECONDS=180
@@ -137,21 +145,27 @@ trap cleanup EXIT
 # Rewrites `$1` as speech in chunks of `$2` seconds separated by silences of `$3`
 # seconds, into `$4`.
 pace_voice() {
-  local input="$1" speech="$2" gap="$3" output="$4"
-  local directory="$OUTPUT_DIR/paced" list piece start=0 index=0 duration
+  local input="$1" divisor="$2" output="$3"
+  local directory="$OUTPUT_DIR/paced" list piece gapFile start=0 index=0 duration speech gap
+  local speechList gapList
+  read -r -a speechList <<<"$SPEECH_CHUNKS"
+  read -r -a gapList <<<"$SILENCE_CHUNKS"
   duration="$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$input")"
   rm -rf "$directory"
   mkdir -p "$directory"
-  ffmpeg -nostdin -loglevel error -y -f lavfi -i "anullsrc=r=16000:cl=mono:d=$gap" \
-    -c:a pcm_s16le "$directory/gap.wav"
   list="$directory/pieces.txt"
   : >"$list"
   while awk -v start="$start" -v duration="$duration" 'BEGIN { exit !(start < duration) }'; do
+    speech="$(awk -v s="${speechList[index % ${#speechList[@]}]}" -v d="$divisor" 'BEGIN { print s / d }')"
+    gap="$(awk -v s="${gapList[index % ${#gapList[@]}]}" -v d="$divisor" 'BEGIN { print s / d }')"
     piece="$(printf 'piece-%02d.wav' "$index")"
+    gapFile="$(printf 'gap-%02d.wav' "$index")"
     ffmpeg -nostdin -loglevel error -y -ss "$start" -t "$speech" -i "$input" -c:a pcm_s16le "$directory/$piece"
+    ffmpeg -nostdin -loglevel error -y -f lavfi -i "anullsrc=r=16000:cl=mono:d=$gap" \
+      -c:a pcm_s16le "$directory/$gapFile"
     # Names alone: the concat demuxer resolves what it reads against the list's own
     # directory, so a path relative to anywhere else lands somewhere that is not there.
-    printf "file '%s'\nfile 'gap.wav'\n" "$piece" >>"$list"
+    printf "file '%s'\nfile '%s'\n" "$piece" "$gapFile" >>"$list"
     start="$(awk -v start="$start" -v speech="$speech" 'BEGIN { print start + speech }')"
     index=$((index + 1))
   done
@@ -170,18 +184,14 @@ ffmpeg -loglevel error -y -i "$OUTPUT_DIR/voice-raw.wav" -ac 1 -ar 16000 -c:a pc
 if [ "$VOICE_SOURCE" = replay ]; then
   # Paced before slowing, so that each reading being held eight times longer turns
   # the chunks into the documented seconds, and the readings are taken from that.
-  pace_voice "$OUTPUT_DIR/voice.wav" \
-    "$(awk -v s="$SPEECH_CHUNK_SECONDS" -v d="$VOICE_SLOWDOWN" 'BEGIN { print s / d }')" \
-    "$(awk -v s="$SILENCE_CHUNK_SECONDS" -v d="$VOICE_SLOWDOWN" 'BEGIN { print s / d }')" \
-    "$OUTPUT_DIR/voice-paced.wav"
+  pace_voice "$OUTPUT_DIR/voice.wav" "$VOICE_SLOWDOWN" "$OUTPUT_DIR/voice-paced.wav"
   bun "$PREVIEW_DIR/analyse-voice.ts" "$OUTPUT_DIR/voice-paced.wav" "$RECORDING" "$VOICE_SLOWDOWN"
 else
   # The audio itself slowed, pitch kept (atempo halves at most once per pass), then
   # paced, and the readings taken from that — which is what the app will be hearing.
   ffmpeg -loglevel error -y -i "$OUTPUT_DIR/voice.wav" \
     -af 'atempo=0.5,atempo=0.5,atempo=0.5' -ar 16000 -c:a pcm_s16le "$OUTPUT_DIR/voice-slowed.wav"
-  pace_voice "$OUTPUT_DIR/voice-slowed.wav" "$SPEECH_CHUNK_SECONDS" "$SILENCE_CHUNK_SECONDS" \
-    "$OUTPUT_DIR/voice-paced.wav"
+  pace_voice "$OUTPUT_DIR/voice-slowed.wav" 1 "$OUTPUT_DIR/voice-paced.wav"
   bun "$PREVIEW_DIR/analyse-voice.ts" "$OUTPUT_DIR/voice-paced.wav" "$RECORDING"
   # What is played into the microphone, over and over: the silence, then the paced line.
   ffmpeg -loglevel error -y \
