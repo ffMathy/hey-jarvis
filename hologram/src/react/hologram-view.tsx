@@ -18,6 +18,7 @@ import {
 } from '../index';
 import type { JarvisVoice } from '../voice-contract';
 import { useIsForeground } from './is-foreground';
+import { LEAVING_SECONDS } from './leaving';
 
 export interface JarvisHologramProps {
   /** Width and height of the square it is drawn in, in points. */
@@ -50,28 +51,27 @@ export interface JarvisHologramProps {
   leaving?: boolean;
 }
 
-/** How long Jarvis takes to go. Shorter than he takes to arrive: leaving should not be a ceremony. */
-export const LEAVING_SECONDS = 0.45;
-
 /** How long it takes to fall into a thought, and to come out of one. */
 const THOUGHT_FADE_SECONDS = 0.45;
 
 /**
  * What share of the screen's own resolution the sphere is drawn at, before being scaled back up.
  *
- * **This is the frame rate, and nothing else here comes close.** Split apart, a frame at 384 px is
- * 1.2 ms of building the picture and 49 ms of painting it: the drawing is fill-bound, not
- * JavaScript-bound, and fill is pixels. Measured at three sizes with the same picture — 384 px
+ * **This is the frame rate, and nothing else here comes close.** Split apart, a frame is 1.2 ms of
+ * building the picture and forty-odd of painting it: the drawing is fill-bound, not
+ * JavaScript-bound, and fill is pixels. Measured with the same picture at three sizes — 384 px
  * costs 49 ms, 269 px costs 28 ms, 230 px costs 22 ms — while the building stays at 1.2 ms
  * throughout, which is the proof that resolution is the whole of it.
  *
- * So the canvas is laid out at seven tenths and scaled up, which halves the pixels. What it costs
- * is sharpness, and this drawing has less to lose there than most: it is soft glowing strokes over
- * a soft shadow, and on a phone at three device pixels to the point it is still drawn at more than
- * two. It was raised from a half to seven tenths as a compromise between the two, and it is one
- * number to change if the trade wants moving either way.
+ * So the canvas is laid out at this share and scaled up. It went in at 0.7, which halved the
+ * pixels; the user asked for "a lot" more, and this is a fifth of what a full-resolution canvas
+ * would cost. What it buys is worth the sharpness because of what this drawing is: soft glowing
+ * strokes over a soft shadow, with no text and no hard edges anywhere in it. On a phone at three
+ * device pixels to the point it is still drawn at better than one and a half.
+ *
+ * One number, and the only one worth touching for speed.
  */
-const DRAWN_RESOLUTION = 0.7;
+const DRAWN_RESOLUTION = 0.45;
 
 /**
  * How often the voice is read. The SDK's native processors refresh every 40 ms,
@@ -256,11 +256,19 @@ function JarvisHologramView({ size, voice, quietestSpeech, thinking = false, lea
   // Laid out small and scaled up: see DRAWN_RESOLUTION. The scale is about the canvas's own
   // centre, which is the container's centre too, so the sphere lands exactly where a full-sized
   // canvas would have put it.
+  //
+  // The scale is on a plain `View` wrapped round the canvas rather than on the canvas itself,
+  // which looks like a needless layer and is not: Skia's web canvas does not pass an arbitrary
+  // style through to the element, so put there the transform is silently dropped — the sphere is
+  // drawn at 45% of its size in a browser and full size on a phone. Found by measuring the element
+  // in a real page, because nothing about it fails.
   return (
     <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-      <Canvas style={{ width: drawnSize, height: drawnSize, transform: [{ scale: 1 / DRAWN_RESOLUTION }] }}>
-        <Picture picture={picture} />
-      </Canvas>
+      <View style={{ width: drawnSize, height: drawnSize, transform: [{ scale: 1 / DRAWN_RESOLUTION }] }}>
+        <Canvas style={{ width: drawnSize, height: drawnSize }}>
+          <Picture picture={picture} />
+        </Canvas>
+      </View>
     </View>
   );
 }

@@ -1,4 +1,4 @@
-import { useIsForeground } from 'hologram/react';
+import { useIsForeground } from 'hologram/react/lifecycle';
 import { useEffect, useMemo, useState } from 'react';
 import { jarvisAudio } from '../modules/jarvis-audio';
 import { requestMicrophoneAccess } from './microphone-permission';

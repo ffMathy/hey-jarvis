@@ -28,6 +28,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./react": "./src/react/index.ts",
+    "./react/lifecycle": "./src/react/lifecycle.ts",
     "./react/hologram-view": "./src/react/hologram-view.tsx"
   },
   "//exports": "Two entries, and the split matters: '.' is the design and the voice tracking, with nothing but type imports in it, so it runs headless in the tests and under CanvasKit in a browser. './react' is the view, which needs React, Reanimated and Skia for real. The third is for the browser build's lazy import() only \u2014 CanvasKit has to finish loading before anything Skia-backed is even imported."

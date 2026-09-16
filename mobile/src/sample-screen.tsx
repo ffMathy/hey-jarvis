@@ -1,6 +1,6 @@
-import { LEAVING_SECONDS, useIsForeground } from 'hologram/react';
+import { LEAVING_SECONDS, useIsForeground } from 'hologram/react/lifecycle';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { BackHandler, Pressable, StyleSheet } from 'react-native';
+import { BackHandler, Platform, Pressable, StyleSheet } from 'react-native';
 import { dismissAssistantWindow } from '../modules/jarvis-assistant';
 import { useWholeScreenHologramSize } from './hologram-size';
 import { JarvisHologram } from './jarvis-hologram';
@@ -94,7 +94,13 @@ export function SampleScreen({ onLeave }: SampleScreenProps) {
   // The back button leaves the same way a tap does, rather than closing the window from under him.
   // In the assistant's own window this arrives because the session hands the press to React Native
   // before taking it itself; see `JarvisVoiceInteractionSession.onBackPressed`.
+  //
+  // Android only, and checked rather than left to the shim: react-native-web's `BackHandler` logs
+  // an error to the console for even asking, and a browser has no back button to catch anyway.
   useEffect(() => {
+    if (Platform.OS !== 'android') {
+      return;
+    }
     const press = BackHandler.addEventListener('hardwareBackPress', () => {
       leave();
       return true;
@@ -109,7 +115,15 @@ export function SampleScreen({ onLeave }: SampleScreenProps) {
         accessible
         accessibilityRole="button"
         accessibilityLabel={MODE_LABELS[mode]}
-        style={{ width: hologramSize, height: hologramSize }}
+        style={[
+          styles.jarvis,
+          {
+            width: hologramSize,
+            height: hologramSize,
+            marginLeft: -hologramSize / 2,
+            marginTop: -hologramSize / 2,
+          },
+        ]}
         onPress={() => !leaving && setMode(nextSampleMode(mode))}
         testID="hologram"
       >
@@ -141,5 +155,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'transparent',
+    // The square Jarvis is drawn in is wider than the screen, deliberately — see `CHIP_HEADROOM`.
+    // This is what keeps that from being anybody else's problem: what falls outside the screen is
+    // cut off here, which on a phone is invisible and in a browser is the difference between a
+    // page and a page with a scroll bar and a white margin down the side of it.
+    overflow: 'hidden',
+  },
+  /**
+   * Centred without taking part in the layout.
+   *
+   * Laid out in flow, a square wider than the screen pushes the page around instead of
+   * overflowing it: in a browser it blew the whole document out and left the app in the top-left
+   * corner of a white page. Absolutely placed at the middle and pulled back by half its own size,
+   * it is centred at any size at all and nothing else moves.
+   */
+  jarvis: {
+    position: 'absolute',
+    left: '50%',
+    top: '50%',
   },
 });

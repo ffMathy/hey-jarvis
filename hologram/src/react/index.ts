@@ -6,7 +6,12 @@
  * this one needs React, Reanimated and Skia for real. Importing `hologram` gets you the design
  * and the voice tracking with no framework attached; importing `hologram/react` gets you
  * something you can render.
+ *
+ * **In a browser, importing this at startup is a bug.** Everything here reaches
+ * `@shopify/react-native-skia`, which cannot be touched before CanvasKit's WebAssembly has loaded;
+ * `hologram/react/lifecycle` is the entry for the pieces a screen needs before then.
  */
 export type { JarvisHologramProps } from './hologram-view';
-export { JarvisHologram, LEAVING_SECONDS } from './hologram-view';
+export { JarvisHologram } from './hologram-view';
 export { useIsForeground } from './is-foreground';
+export { LEAVING_SECONDS } from './leaving';
