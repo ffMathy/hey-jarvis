@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StatusBar as NativeStatusBar, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useHologramSize } from './hologram-size';
 import { JarvisHologram } from './jarvis-hologram';
 import type { JarvisVoice } from './platform-contracts';
@@ -125,6 +125,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: theme.spacing.large,
+    // The card is tall enough to reach the top of the screen, and the window is
+    // edge to edge, so without this the title sits under the clock.
+    paddingTop: theme.spacing.large + (NativeStatusBar.currentHeight ?? 0),
     backgroundColor: 'rgba(3, 5, 11, 0.55)',
   },
   card: {

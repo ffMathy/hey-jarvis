@@ -2265,7 +2265,7 @@ function drawBody(canvas: HologramCanvas, resources: Resources, scene: Scene, st
     // as the mid tier's because it is the most numerous and the most spread out, so it is the
     // one that lights the bare fill between the clumps; it is the faintest for the same reason.
     const dimPath = builders[group * 3].detach();
-    drawParticleHalo(canvas, resources, dimPath, 0.115, 0.30, state.glowGain);
+    drawParticleHalo(canvas, resources, dimPath, 0.115, 0.3, state.glowGain);
     resources.bodyDimStroke.setStrokeWidth(0.014);
     resources.bodyDimStroke.setAlphaf(0.62);
     canvas.drawPath(dimPath, resources.bodyDimStroke);
