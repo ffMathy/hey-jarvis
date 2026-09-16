@@ -535,19 +535,28 @@ function pickBrightness(random: Random) {
 }
 
 /**
- * How often a fragment's clock cycles. Calm fragments (pool 0) stay lit 0.18-0.4 s — the
- * shorter half of the film's measured 0.2-0.6 s, which with {@link FRAGMENT_DUTY} renews
- * about a tenth of the body per film frame, as the film study measures; agitated ones
- * (pool 1) a third of it, so swapping calm for agitated fragments nearly doubles the churn.
- * A third and not a half, because the whole point of the fast pool is to be seen changing:
- * the film's frames are 1/24 s apart, and a fragment that goes out and comes back inside one
- * of those has changed nothing that anybody can see.
+ * How often a fragment's clock cycles. Calm fragments (pool 0) stay lit 0.6-1.3 s; agitated
+ * ones (pool 1) about a third of that, so swapping calm for agitated fragments roughly triples
+ * the churn. A third and not a tenth, because a fragment that goes out and comes back inside
+ * a couple of frames reads as noise rather than as motion — and noise is the one thing Jarvis
+ * should never look like.
  *
- * The longer lit times it had before renewed only about a twentieth per frame, which is
- * half the film's turnover and is most of why the idle ball read as a still picture.
+ * DELIBERATELY SLOWER THAN THE FILM, and slower than the two rounds before it. The film
+ * measures 0.2-0.6 s and renews about a tenth of the body per film frame, which this drawing
+ * matched at 0.34-0.72 s calm and 0.05-0.12 s while speaking. On a phone that read as a sizzle
+ * — the user's word — in both states: a surface boiling rather than a machine thinking. What
+ * is wanted here is "overwhelming calm and compute power", so the calm pool is about twice as
+ * slow as the film's and the fast pool between three and four times slower than it was.
+ *
+ * Measured over five moments at 256 px: the speaking churn halves, from 3.22 per pixel per
+ * frame to 1.65, which is where the sizzle was. Idle falls by a fifth, 0.77 to 0.62, and no
+ * further however slow this pool gets — what is left there is the ball turning, not fragments
+ * changing, and the turn is still at the film's rate. Speech continues to change the ball
+ * nearly three times as fast as silence, which is what `hologram-drawing.spec.ts` requires and
+ * what keeps him plainly alive while he talks.
  */
 function pickFragmentRate(random: Random, pool: number) {
-  const litSeconds = pool === 0 ? 0.34 + random() * 0.38 : 0.05 + random() * 0.07;
+  const litSeconds = pool === 0 ? 0.6 + random() * 0.7 : 0.2 + random() * 0.18;
   return FRAGMENT_DUTY / litSeconds;
 }
 
