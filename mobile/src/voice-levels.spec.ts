@@ -18,6 +18,7 @@ import {
   ONSET_RISE,
   perceivedLevel,
   QUIETEST_LOUD_VOICE,
+  QUIETEST_SPEECH,
   RELEASE_SECONDS,
   SPEECH_LEVEL,
   VOICE_BAND_COUNT,
@@ -323,11 +324,13 @@ describe('advanceVoiceActivity', () => {
     it('is not stirred by a quiet room flickering below speech level', () => {
       // Sample mode listens through the microphone, and a room is never silent:
       // a hiss that jumps to a new, scattered level every reading, but stays
-      // under SPEECH_LEVEL.
+      // under QUIETEST_SPEECH — the floor below which nothing counts as a voice
+      // however quiet the voice it is being compared with. It used to be pinned
+      // under SPEECH_LEVEL, which a quiet microphone's speech now sits below.
       const hiss = (time: number) => {
         const reading = Math.floor(time / READING_SECONDS);
         const scatter = Math.abs(Math.sin(reading * 12.9898) * 43758.5453) % 1;
-        return 0.02 + (SPEECH_LEVEL - 0.03) * scatter;
+        return 0.005 + (QUIETEST_SPEECH - 0.01) * scatter;
       };
       const frames = play(hiss, 10);
 
@@ -451,10 +454,15 @@ describe('advanceVoiceActivity', () => {
       expect(bursts[0]?.burstStrength).toBe(1);
     });
 
-    it('need speech before them: a murmur that stops throws nothing', () => {
-      const murmur = SPEECH_LEVEL - 0.01;
+    it('need speech before them: a sound too quiet to be a voice, stopping, throws nothing', () => {
+      // Below QUIETEST_SPEECH rather than below SPEECH_LEVEL. What counts as speech is judged
+      // against how loud this voice gets, since the user's microphone hands over an ordinary
+      // speaking voice at 0.08 — so a steady 0.14 is no longer "a murmur", it is the loudest
+      // thing in the room and therefore whoever is talking. What stays true at any input level
+      // is that something under the floor is the room, not a person.
+      const tooQuiet = QUIETEST_SPEECH - 0.01;
 
-      expect(burstsIn(play((time) => (time < 2 ? murmur : 0), 3))).toHaveLength(0);
+      expect(burstsIn(play((time) => (time < 2 ? tooQuiet : 0), 3))).toHaveLength(0);
     });
 
     it('are not thrown by a slow fade to silence', () => {

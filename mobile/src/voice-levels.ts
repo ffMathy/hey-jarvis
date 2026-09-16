@@ -164,11 +164,16 @@ export const QUIETEST_SPEECH = 0.04;
  * And how much of this voice's own loudest it has to reach.
  *
  * What separates talking from a room is not a fixed loudness — that is what broke — but how a
- * moment compares with how loud this voice gets. A voice that peaks at 0.08 is talking at 0.05;
+ * moment compares with how loud this voice gets. A voice that peaks at 0.08 is talking at 0.03;
  * one that peaks at 0.8 is not. Above {@link QUIETEST_SPEECH}, which keeps a hiss from talking
  * its way in by being the loudest hiss in the room.
+ *
+ * A quarter, not the 0.4 this started at. Speech is not level within a sentence — a quiet
+ * syllable sits well under half of the loudest one — and at 0.4 the tail of the spoken line the
+ * frame-rate checks replay stopped counting as speech at all, which swallowed the gap burst at
+ * its end. A room's hiss sits far below a quarter of a voice, so the separation survives it.
  */
-export const SPEAKING_SHARE = 0.4;
+export const SPEAKING_SHARE = 0.25;
 
 /** The level at which this voice counts as talking, given how loud it has been getting. */
 export function speakingThreshold(loudest: number): number {
