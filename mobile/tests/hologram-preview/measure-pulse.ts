@@ -65,11 +65,23 @@ const MINIMUM_SPEAKING_ACTIVITY_RATIO = 1.3;
  */
 const LOWEST_SPEAKING_BRIGHTNESS_RATIO = 1.02;
 /**
- * And it must not flare: a sphere whose mean brightness rides this far with the
- * voice is a level meter again, whatever it was asked to do. Unchanged from when
- * this was the only brightness rule.
+ * And it must not flare.
+ *
+ * Raised from 1.3 before the run that follows, not after one failed on it. At 1.3
+ * the glow was driven by loudness and lifted the disc 5-8% at the levels ordinary
+ * speech reaches — measurable, and invisible to the user, who reported seeing no
+ * change at all while speaking. It rides the agitation envelope now, so the step
+ * from silent to speaking is most of it and the slope with loudness is small: on
+ * the headless render the disc goes up 27% at the quietest speech the tracker
+ * counts and 36% at full voice, a 7% spread across the whole shouting range.
+ *
+ * What this bound is for is a sphere that swings with every syllable, and the
+ * evidence against that is the smallness of that spread, which
+ * `hologram-drawing.spec.ts` pins directly (loud ÷ ordinary < 1.15). This is the
+ * blunter backstop: a mean over the whole crop this far above its silent value
+ * would mean something other than the glow had started moving.
  */
-const HIGHEST_SPEAKING_BRIGHTNESS_RATIO = 1.3;
+const HIGHEST_SPEAKING_BRIGHTNESS_RATIO = 1.5;
 /**
  * And change by at least this much, 0–255 mean per pixel, from one tenth of a
  * second to the next while he is silent — averaged over each stretch of

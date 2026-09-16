@@ -271,7 +271,7 @@ export type HologramSkia = Pick<
 /** The canvas calls the hologram makes, for the same reason. */
 export type HologramCanvas = Pick<
   SkCanvas,
-  'drawCircle' | 'drawPath' | 'restore' | 'rotate' | 'save' | 'scale' | 'translate'
+  'drawCircle' | 'drawPath' | 'restore' | 'rotate' | 'save' | 'saveLayer' | 'scale' | 'translate'
 >;
 
 type SkiaApiType = HologramSkia;
@@ -318,14 +318,33 @@ export function bodyTurnRadians(time: number) {
   return time * BODY_RADIANS_PER_SECOND;
 }
 /**
- * How much brighter the halos and the volume go at full voice.
+ * How much brighter the halos and the volume go while he talks.
  *
- * Also not the film's: it holds its brightness to ±3% while Jarvis speaks and shows speech as
+ * Not the film's: it holds its brightness to ±3% while Jarvis speaks and shows speech as
  * activity instead, which is what `hologram-drawing.spec.ts` used to pin. The user asked for
  * the first hologram's glow back, on top of the chips and the churn rather than instead of
  * them, so both now say he is talking.
+ *
+ * Most of it rides the agitation envelope rather than the loudness, because loudness alone was
+ * not visible. Ordinary speech sits around a level of 0.25-0.5, not 1, and scaling the glow by
+ * that lifted the disc by 5-8% — which the user could not see at all. The envelope is up at any
+ * speech from 0.15 (see SPEECH_LEVEL), so it answers "is he talking" cleanly; the rest follows
+ * loudness so a sentence still breathes rather than switching on and staying flat.
  */
-export const GLOW_WITH_VOICE = 0.3;
+export const GLOW_WITH_VOICE = 0.8;
+/** How much of the glow answers "is he talking at all" rather than "how loudly". */
+const GLOW_FROM_ENVELOPE = 0.65;
+/**
+ * How much bigger the whole sphere grows at full voice.
+ *
+ * The film's holds its radius to within 1%, and the drawing used to as well — a sphere that
+ * swells with the voice was exactly the "level meter" the film study warned against. This is
+ * the user's call, after the glow alone still read as too quiet a signal on a phone: it
+ * pulsates now, and 8% is enough to see without the silhouette lurching.
+ */
+const SWELL_WITH_VOICE = 0.08;
+/** How small the sphere starts before it grows into place. */
+const ARRIVAL_SMALLEST = 0.55;
 const DEGREES_TO_RADIANS = 0.017453292519943295;
 /** The core sits a hair up and left of centre, well inside the film's 0.08R. */
 const CORE_X = -0.02;
@@ -347,7 +366,6 @@ const LIMB_STREAK_STRIDE = 5;
 const RING_TICK_STRIDE = 2;
 const EPOCH_STRIDE = 10;
 const COMET_STRIDE = 5;
-const INTRO_SPARK_STRIDE = 5;
 /** How many points a fill patch's outline is drawn through; see buildFillBlobs. */
 const FILL_PATCH_POINTS = 16;
 const FILL_BLOB_STRIDE = 3 + FILL_PATCH_POINTS * 2;
@@ -477,9 +495,6 @@ const FRAGMENT_WANDER = 0.06;
  */
 const SPECK_FAST_RATE = 2.8;
 const SPECK_FAST_SHARE = 0.8;
-/** The materialisation's equatorial ring: its major axis rises 28° to the right. */
-const EQUATOR_TILT_COS = 0.882947592858927;
-const EQUATOR_TILT_SIN = -0.4694715627858908;
 
 /** The rim element that dominates takes this long to hand over to the next. */
 const HANDOVER_SECONDS = 1.2;
@@ -1574,6 +1589,8 @@ export function createHologramResources(Skia: SkiaApiType, scene: Scene) {
     crescentMediumStroke: makeStroke('#f09430', StrokeCap.Butt),
     crescentWideStroke: makeStroke('#fba838', StrokeCap.Butt),
     crescentCoreStroke: makeStroke('#ffc244', StrokeCap.Butt),
+    /** Carries nothing but an alpha: the layer the sphere fades in through while it arrives. */
+    arrivalFade: Skia.Paint(),
     frayStroke: makeStroke('#f0943a', StrokeCap.Butt),
     chipGlowStroke: makeStroke('#f08a28', StrokeCap.Round),
     chipFill: makeFill('#f59430'),
@@ -1755,27 +1772,31 @@ function analyseFrame(frame: HologramFrame, size: number, scene: Scene) {
   // Loudness, not the agitation envelope: the glow follows his voice moment to moment, as the
   // first hologram's did, while the chips and the churn follow the envelope.
   const voice = clamp01(frame.level) ** 0.8;
-  // the glow spreads from patch to patch a little behind the fragments (film f47-f70)
-  const fillSpread = smooth01((intro - 0.55) / 0.26);
+  const arrival = smooth01(intro);
+  // How much bigger he is this frame than at rest. Mostly loudness, so the sphere breathes with
+  // the sentence rather than stepping up and sitting there; the envelope keeps it from dropping
+  // back to nothing between syllables.
+  const swell = SWELL_WITH_VOICE * (0.7 * voice + 0.3 * agitation);
   return {
     time,
-    radius: size * SPHERE_FRACTION,
+    // The sphere grows into place and, with `arrival` fading the whole of it, fades in.
+    //
+    // It used to assemble instead: the fill spreading patch by patch, the fragments arriving in
+    // the film's reveal order behind the dial's band, the limb ragged until late, each layer on
+    // its own ramp. The user asked for the ceremony to go, so every layer now comes up together
+    // and the growth does the work the staggering used to.
+    radius: size * SPHERE_FRACTION * (ARRIVAL_SMALLEST + (1 - ARRIVAL_SMALLEST) * arrival) * (1 + swell),
     intro,
-    // The fill comes up with the spread as well as with its own ramp, so a patch that is still
-    // on its own is a thickening of the haze rather than a lit shape: the film's glow is never
-    // brighter in one place than the whole volume becomes.
-    fillAlpha: FILL_STRENGTH * smooth01((intro - 0.5) / 0.16) * (0.68 + 0.32 * fillSpread),
-    fillSpread,
-    // The haze the patches ride on leads them, so the fill thickens out of a wash rather than
-    // arriving as lit shapes on black; FILL_WASH_SHARE says how much of the light it carries.
-    fillWash: smooth01((intro - 0.5) / 0.24),
-    bodyShare: smooth01((intro - 0.45) / 0.24) * script.density,
-    // the dense fill runs hot (film shot a f58-f80): most mid fragments burn bright, then settle
-    introHeat: 0.3 * smooth01((intro - 0.55) / 0.1) * (1 - smooth01((intro - 0.86) / 0.14)),
-    ragged: 1 - smooth01((intro - 0.78) / 0.22),
-    innerAlpha: smooth01((intro - 0.62) / 0.3),
-    coreAlpha: smooth01((intro - 0.72) / 0.14),
-    rimAlpha: smooth01((intro - 0.84) / 0.16),
+    arrival,
+    fillAlpha: FILL_STRENGTH,
+    fillSpread: 1,
+    fillWash: 1,
+    bodyShare: script.density,
+    introHeat: 0,
+    ragged: 0,
+    innerAlpha: 1,
+    coreAlpha: 1,
+    rimAlpha: 1,
     crescentGrowth: smooth01((intro - 1) / 0.3333),
     agitation,
     // Half the calm fragments hand over to fast ones at full agitation, so the turnover rises
@@ -1805,7 +1826,7 @@ function analyseFrame(frame: HologramFrame, size: number, scene: Scene) {
     bodyCos: Math.cos(bodyYaw),
     bodySin: Math.sin(bodyYaw),
     /** What the halos and the volume multiply their alpha by: 1 in silence, up to 1 + GLOW_WITH_VOICE. */
-    glowGain: 1 + GLOW_WITH_VOICE * voice,
+    glowGain: 1 + GLOW_WITH_VOICE * (GLOW_FROM_ENVELOPE * agitation + (1 - GLOW_FROM_ENVELOPE) * voice),
     roll: fraction((time * ROLL_DEGREES_PER_SECOND) / 360) * 360,
     shellTurn: fraction((time * SHELL_DEGREES_PER_SECOND) / 360) * 360,
     streamCos: Math.cos(yaw),
@@ -2029,11 +2050,8 @@ function fragmentShown(revealOrder: number, state: FrameState) {
  * pixels it covers, and with the fragment clocks running half again as fast as before, a
  * quarter of the window had come down to three frames and each arrival showed as a step.
  */
-function fragmentStrength(time: number, rate: number, phase: number, id: number, pool: number, state: FrameState) {
+function fragmentStrength(life: number, id: number, pool: number, state: FrameState) {
   'worklet';
-  const cycles = time * rate + phase;
-  const life = cycles - Math.floor(cycles);
-  if (life >= FRAGMENT_DUTY) return 0;
   const progress = life / FRAGMENT_DUTY;
   const envelope = Math.min(1, progress * 3, (1 - progress) * 3);
   const poolShare = pool === 0 ? clamp01((id - state.mix) * 12 + 1) : clamp01((2 * state.mix - id) * 12);
@@ -2099,6 +2117,17 @@ function appendBody(builders: PathBuilder[], body: number[], state: FrameState) 
   const ragged = state.ragged;
   const placed = state.scratch;
   for (let offset = 0; offset < body.length; offset += BODY_STRIDE) {
+    // Is it lit at all? Two in five are not, on any given frame, and this is the cheapest
+    // question to ask of them: everything below — unpacking its class, where it sits in the
+    // reveal, where the turn has carried it — is work those two would only throw away.
+    const id = body[offset + 6];
+    const phase = fraction(id * FRAGMENT_PHASE_FROM_ID);
+    const cycles = time * body[offset + 5] + phase;
+    const cycle = Math.floor(cycles);
+    const life = cycles - cycle;
+    if (life >= FRAGMENT_DUTY) continue;
+    const shown = fragmentShown(body[offset + 8], state);
+    if (shown <= 0) continue;
     const packed = body[offset + 7];
     const glyph = Math.floor(packed / FRAGMENT_CODE_GLYPH_STEP);
     const code = packed - glyph * FRAGMENT_CODE_GLYPH_STEP;
@@ -2106,14 +2135,8 @@ function appendBody(builders: PathBuilder[], body: number[], state: FrameState) 
     // fast pool, plus 6 if it rides the counter-turning shell — so division takes them apart.
     const turning = 3 * Math.floor(code / 6);
     const pool = Math.floor((code - turning * 2) / 3);
-    const id = body[offset + 6];
-    const phase = fraction(id * FRAGMENT_PHASE_FROM_ID);
-    const shown = fragmentShown(body[offset + 8], state);
-    if (shown <= 0) continue;
-    const rate = body[offset + 5];
-    const strength = shown * fragmentStrength(time, rate, phase, id, pool, state);
+    const strength = shown * fragmentStrength(life, id, pool, state);
     if (strength < FRAGMENT_FAINTEST) continue;
-    const cycle = Math.floor(time * rate + phase);
     const unitX = body[offset + 2];
     const unitY = body[offset + 3];
     const length = body[offset + 4];
@@ -2159,7 +2182,10 @@ function appendStream(builders: PathBuilder[], stream: number[], state: FrameSta
     const id = stream[offset + 7];
     const shown = fragmentShown(stream[offset + 10], state);
     if (shown <= 0) continue;
-    const strength = shown * fragmentStrength(time, stream[offset + 5], stream[offset + 6], id, pool, state);
+    const cycles = time * stream[offset + 5] + stream[offset + 6];
+    const life = cycles - Math.floor(cycles);
+    if (life >= FRAGMENT_DUTY) continue;
+    const strength = shown * fragmentStrength(life, id, pool, state);
     if (strength < FRAGMENT_FAINTEST) continue;
     const restX = stream[offset];
     const restZ = stream[offset + 2];
@@ -3036,74 +3062,6 @@ function drawAccents(canvas: HologramCanvas, resources: Resources, state: FrameS
 
 // ---- the materialisation ------------------------------------------------------------------
 
-/** The point of light, then single-pixel sparks: a row across the future top, a trail falling down the right, specks. */
-function drawIntroSparks(canvas: HologramCanvas, resources: Resources, scene: Scene, intro: number, time: number) {
-  'worklet';
-  const pointAlpha = smooth01(intro / 0.01) * (1 - smooth01((intro - 0.12) / 0.2));
-  if (pointAlpha > 0) {
-    canvas.save();
-    canvas.translate(0.68, -1.2);
-    canvas.scale(0.07, 0.07);
-    resources.introPointFill.setAlphaf(pointAlpha);
-    canvas.drawCircle(0, 0, 1, resources.introPointFill);
-    canvas.restore();
-  }
-  const builder = resources.pathBuilders.introSparks;
-  const sparks = scene.introSparks;
-  const filmFrame = Math.floor(time * 24);
-  let shown = 0;
-  for (let offset = 0; offset < sparks.length; offset += INTRO_SPARK_STRIDE) {
-    const since = intro - sparks[offset + 2];
-    if (since < 0 || since > 0.4) continue;
-    if (hashInteger(filmFrame * 7 + offset) < 0.3) continue;
-    const x = sparks[offset];
-    // the trail's sparks fall down the right side
-    const y = sparks[offset + 3] === 1 ? -1 + (sparks[offset + 2] - 0.1) * 16 + since * 1.5 : sparks[offset + 1];
-    builder.moveTo(x, y);
-    builder.lineTo(x + 0.002, y);
-    shown++;
-  }
-  const path = builder.detach();
-  if (shown === 0) return;
-  resources.introSparkStroke.setStrokeWidth(0.013);
-  resources.introSparkStroke.setAlphaf(0.9);
-  canvas.drawPath(path, resources.introSparkStroke);
-}
-
-/** A band piece: `strands` parallel lines along a polyline of points (x, y pairs), with cross-ticks. */
-function appendBandPiece(builder: PathBuilder, points: number[], strands: number) {
-  'worklet';
-  for (let strand = 0; strand < strands; strand++) {
-    const across = (strand - (strands - 1) / 2) * 0.025;
-    for (let index = 0; index + 3 < points.length; index += 2) {
-      const alongX = points[index + 2] - points[index];
-      const alongY = points[index + 3] - points[index + 1];
-      const length = Math.max(1e-4, Math.hypot(alongX, alongY));
-      const normalX = (-alongY / length) * across;
-      const normalY = (alongX / length) * across;
-      builder.moveTo(points[index] + normalX, points[index + 1] + normalY);
-      builder.lineTo(points[index + 2] + normalX, points[index + 3] + normalY);
-      if (strand === 0) {
-        for (let tick = 1; tick < 4; tick++) {
-          const x = points[index] + (alongX * tick) / 4;
-          const y = points[index + 1] + (alongY * tick) / 4;
-          builder.moveTo(x - normalX * 2, y - normalY * 2);
-          builder.lineTo(x + normalX * 2, y + normalY * 2);
-        }
-      }
-    }
-  }
-}
-
-/** Band pieces appearing in place: a bent ladder chevron at the lower left, a hooked "7" at the top, chips on the right. */
-function appendBandPieces(builder: PathBuilder, intro: number) {
-  'worklet';
-  if (intro >= 0.19) appendBandPiece(builder, [-1.05, 0.5, -0.82, 0.86, -0.42, 0.7], 3);
-  if (intro >= 0.21) appendBandPiece(builder, [-0.05, -1.04, 0.36, -1.02, 0.3, -0.82], 2);
-  if (intro >= 0.23) appendBandPiece(builder, [0.84, 0.28, 1.0, 0.3], 3);
-  if (intro >= 0.25) appendBandPiece(builder, [0.8, 0.9, 0.98, 0.84], 2);
-}
-
 /**
  * The spoked dial that snaps on at keyframe 0.26: a thick C band from 12 o'clock round the left
  * to about 5 o'clock at 0.9-1.05R, in pieces of uneven length, running on into a smaller
@@ -3174,115 +3132,40 @@ function appendDial(band: PathBuilder, inner: PathBuilder, spokes: PathBuilder, 
   }
 }
 
-/** A point on the tilted equatorial ellipse (1.2R × 0.7R about (+0.14R, -0.1R), major axis rising 28°), shrunk by `inset`. */
-function equatorialPoint(angle: number, inset: number, out: number[]) {
-  'worklet';
-  const along = Math.cos(angle) * (1.2 - inset);
-  const across = Math.sin(angle) * (0.7 - inset);
-  out[0] = 0.14 + along * EQUATOR_TILT_COS - across * EQUATOR_TILT_SIN;
-  out[1] = -0.1 + along * EQUATOR_TILT_SIN + across * EQUATOR_TILT_COS;
-}
-
-/**
- * The tilted equatorial ladder ring: two thin glowing rails 0.07R apart with cross-ticks every
- * three degrees and loose fragments alongside (`rails` takes the rails, ticks and fragments,
- * `body` the line down the middle that carries the glow), sweeping in from the lower left along
- * the front of the sphere and up its right side — the film's ring is never drawn behind — and
- * then dropping out piece by piece, the far end first (f58-f78).
- */
-function appendEquatorialRing(rails: PathBuilder, body: PathBuilder, intro: number) {
-  'worklet';
-  const reach = smooth01((intro - 0.62) / 0.15);
-  const fadeOut = smooth01((intro - 0.84) / 0.12);
-  const steps = Math.floor(64 * reach);
-  const point = [0, 0];
-  for (let step = 0; step < steps; step++) {
-    if (hashInteger(step * 29 + 5) * 0.75 + (step / 64) * 0.25 < fadeOut) continue;
-    const angle = (165 - step * 3) * DEGREES_TO_RADIANS;
-    const end = angle - 2.6 * DEGREES_TO_RADIANS;
-    for (let rail = 0; rail < 2; rail++) {
-      equatorialPoint(angle, rail * 0.07, point);
-      rails.moveTo(point[0], point[1]);
-      equatorialPoint(end, rail * 0.07, point);
-      rails.lineTo(point[0], point[1]);
-    }
-    // a cross-tick between the rails, and now and then a loose fragment outside them
-    equatorialPoint(angle, 0, point);
-    rails.moveTo(point[0], point[1]);
-    equatorialPoint(angle, 0.07, point);
-    rails.lineTo(point[0], point[1]);
-    const loose = hashInteger(step * 53 + 17);
-    if (loose < 0.22) {
-      equatorialPoint(angle, -0.035 - 0.07 * loose, point);
-      rails.moveTo(point[0], point[1]);
-      equatorialPoint(end - 2 * DEGREES_TO_RADIANS, -0.035 - 0.07 * loose, point);
-      rails.lineTo(point[0], point[1]);
-    }
-    // the band itself, down the middle between the rails
-    equatorialPoint(angle, 0.035, point);
-    body.moveTo(point[0], point[1]);
-    equatorialPoint(end, 0.035, point);
-    body.lineTo(point[0], point[1]);
-  }
-}
-
 /** Everything that only exists while the hologram materialises (keyframe time below 1). */
-function drawIntro(canvas: HologramCanvas, resources: Resources, scene: Scene, state: FrameState) {
+function drawIntro(canvas: HologramCanvas, resources: Resources, state: FrameState) {
   'worklet';
   const intro = state.intro;
   if (intro >= 1) return;
-  drawIntroSparks(canvas, resources, scene, intro, state.time);
+  // The spoked dial, and nothing else.
+  //
+  // The film's materialisation opens on a point of light, throws sparks, assembles a band out
+  // of flying pieces and sweeps a tilted equatorial ring round the ball before it is done. All
+  // of that is gone at the user's request: on a phone it was a lot of ceremony to sit through
+  // every time Jarvis is summoned, and the one part worth keeping is this — the disc of spokes
+  // that swirls while the sphere arrives behind it.
+  const dialAlpha = smooth01(intro / 0.12) * (1 - smooth01((intro - 0.72) / 0.28));
+  if (dialAlpha <= 0) return;
   const builders = resources.pathBuilders;
-  const piecesAlpha = smooth01((intro - 0.19) / 0.02) * (1 - smooth01((intro - 0.3) / 0.15));
-  if (piecesAlpha > 0) appendBandPieces(builders.introBand, intro);
-  const bandPath = builders.introBand.detach();
-  if (piecesAlpha > 0) {
-    resources.introBandStroke.setStrokeWidth(0.01);
-    resources.introBandStroke.setAlphaf(0.9 * piecesAlpha);
-    canvas.drawPath(bandPath, resources.introBandStroke);
-  }
-  // the dial snaps on within two film frames and stays lit until its chips are gone
-  const dialAlpha = smooth01((intro - 0.26) / 0.03);
-  if (dialAlpha > 0 && intro < 0.91) {
-    appendDial(builders.introBand, builders.introInner, builders.introSpokes, intro, state.time);
-    const brighten = 0.65 + 0.35 * smooth01((intro - 0.27) / 0.22);
-    const dialPath = builders.introBand.detach();
-    const dialInnerPath = builders.introInner.detach();
-    resources.introGlowStroke.setStrokeWidth(0.13);
-    resources.introGlowStroke.setAlphaf(0.2 * dialAlpha * brighten);
-    canvas.drawPath(dialPath, resources.introGlowStroke);
-    canvas.drawPath(dialInnerPath, resources.introGlowStroke);
-    resources.introBandStroke.setStrokeWidth(0.05);
-    resources.introBandStroke.setAlphaf(0.75 * dialAlpha * brighten);
-    canvas.drawPath(dialPath, resources.introBandStroke);
-    canvas.drawPath(dialInnerPath, resources.introBandStroke);
-    resources.introBandCoreStroke.setStrokeWidth(0.02);
-    resources.introBandCoreStroke.setAlphaf(0.8 * dialAlpha * brighten);
-    canvas.drawPath(dialPath, resources.introBandCoreStroke);
-    canvas.drawPath(dialInnerPath, resources.introBandCoreStroke);
-    resources.introSpokeStroke.setStrokeWidth(0.007);
-    resources.introSpokeStroke.setAlphaf(0.75 * dialAlpha);
-    canvas.drawPath(builders.introSpokes.detach(), resources.introSpokeStroke);
-  }
-  if (intro >= 0.62 && intro < 0.97) {
-    // rails and fine ticks over a glowing band, as the film's is
-    appendEquatorialRing(builders.introBand, builders.introSpokes, intro);
-    const ringAlpha = smooth01((intro - 0.62) / 0.02);
-    const railPath = builders.introBand.detach();
-    const bandBodyPath = builders.introSpokes.detach();
-    resources.introGlowStroke.setStrokeWidth(0.14);
-    resources.introGlowStroke.setAlphaf(0.3 * ringAlpha);
-    canvas.drawPath(bandBodyPath, resources.introGlowStroke);
-    resources.introBandStroke.setStrokeWidth(0.066);
-    resources.introBandStroke.setAlphaf(0.42 * ringAlpha);
-    canvas.drawPath(bandBodyPath, resources.introBandStroke);
-    resources.introBandStroke.setStrokeWidth(0.01);
-    resources.introBandStroke.setAlphaf(0.95 * ringAlpha);
-    canvas.drawPath(railPath, resources.introBandStroke);
-    resources.introBandCoreStroke.setStrokeWidth(0.005);
-    resources.introBandCoreStroke.setAlphaf(0.6 * ringAlpha);
-    canvas.drawPath(railPath, resources.introBandCoreStroke);
-  }
+  appendDial(builders.introBand, builders.introInner, builders.introSpokes, intro, state.time);
+  const brighten = 0.65 + 0.35 * smooth01(intro / 0.3);
+  const dialPath = builders.introBand.detach();
+  const dialInnerPath = builders.introInner.detach();
+  resources.introGlowStroke.setStrokeWidth(0.13);
+  resources.introGlowStroke.setAlphaf(0.2 * dialAlpha * brighten);
+  canvas.drawPath(dialPath, resources.introGlowStroke);
+  canvas.drawPath(dialInnerPath, resources.introGlowStroke);
+  resources.introBandStroke.setStrokeWidth(0.05);
+  resources.introBandStroke.setAlphaf(0.75 * dialAlpha * brighten);
+  canvas.drawPath(dialPath, resources.introBandStroke);
+  canvas.drawPath(dialInnerPath, resources.introBandStroke);
+  resources.introBandCoreStroke.setStrokeWidth(0.02);
+  resources.introBandCoreStroke.setAlphaf(0.8 * dialAlpha * brighten);
+  canvas.drawPath(dialPath, resources.introBandCoreStroke);
+  canvas.drawPath(dialInnerPath, resources.introBandCoreStroke);
+  resources.introSpokeStroke.setStrokeWidth(0.007);
+  resources.introSpokeStroke.setAlphaf(0.75 * dialAlpha);
+  canvas.drawPath(builders.introSpokes.detach(), resources.introSpokeStroke);
 }
 
 /** Draws one frame of the hologram into a size×size square. */
@@ -3302,6 +3185,15 @@ export function drawHologram(
   canvas.save();
   canvas.translate(size / 2, size / 2);
   canvas.scale(state.radius, state.radius);
+  // While it arrives, the whole sphere is drawn into a layer and that layer is faded in — one
+  // alpha over everything, rather than every layer carrying its own ramp. The dial below is
+  // outside it and stays at full strength, since it is what the sphere fades in behind. The
+  // layer costs an offscreen buffer for the few seconds this lasts and nothing afterwards.
+  const arriving = state.arrival < 1;
+  if (arriving) {
+    resources.arrivalFade.setAlphaf(state.arrival);
+    canvas.saveLayer(resources.arrivalFade);
+  }
   drawVolumeFill(canvas, resources, scene, state);
   drawInnerShells(canvas, resources, state);
   drawBody(canvas, resources, scene, state);
@@ -3314,6 +3206,7 @@ export function drawHologram(
   drawFray(canvas, resources, scene, state);
   drawChips(canvas, resources, state);
   drawAccents(canvas, resources, state);
-  drawIntro(canvas, resources, scene, state);
+  if (arriving) canvas.restore();
+  drawIntro(canvas, resources, state);
   canvas.restore();
 }

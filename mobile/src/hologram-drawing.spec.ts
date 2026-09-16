@@ -7,7 +7,6 @@ import {
   createHologramResources,
   createHologramScene,
   drawHologram,
-  GLOW_WITH_VOICE,
   type HologramFrame,
   MATERIALISE_SECONDS,
 } from './hologram-drawing';
@@ -323,25 +322,29 @@ describe('the hologram', () => {
     expect(JSON.stringify(createHologramScene(SEED))).toBe(JSON.stringify(createHologramScene(SEED)));
   });
 
-  it('glows while Jarvis speaks, more loudly the louder he is, without ever flaring', () => {
+  it('glows plainly the moment he speaks, without becoming a level meter', () => {
     // NOT the film, deliberately. The film's disc holds to ±3% through "Doctor." and shows
-    // speech as activity alone, which this test used to pin. On a phone that read as too
-    // subtle to tell whether he was talking, so the user asked for the first hologram's glow
-    // back — alongside the chips and the churn, not instead of them. GLOW_WITH_VOICE says how
-    // far the halos and the volume may lift; the ceiling here is what stops a redesign turning
-    // that into a strobe.
+    // speech as activity alone, which this test used to pin. The user asked for the first
+    // hologram's glow back — alongside the chips and the churn, not instead of them.
+    //
+    // The thing that matters is the *step* between silent and speaking, not the slope with
+    // loudness. Driving the glow by loudness alone lifted the disc 5-8% at the levels ordinary
+    // speech reaches, and the user reported seeing no change at all; it rides the agitation
+    // envelope now, so any speech lights it. What must not come back is a sphere whose
+    // brightness swings with every syllable, so the two bounds below are: an ordinary speaking
+    // voice is clearly brighter than silence, and shouting is barely brighter than murmuring.
     for (const time of [6, 13.4, 22.8]) {
       const silent = discBrightness(render(silence(time)));
-      const soft = discBrightness(render(speech(time, 0.35, new Array(VOICE_BAND_COUNT).fill(0.32))));
+      const ordinary = discBrightness(render(speech(time, 0.3, new Array(VOICE_BAND_COUNT).fill(0.27))));
       const loud = discBrightness(render(speech(time, 1, new Array(VOICE_BAND_COUNT).fill(0.9))));
 
-      // He is visibly brighter talking than silent...
-      expect(loud / silent).toBeGreaterThan(1.05);
-      // ...louder is brighter than softer...
-      expect(loud).toBeGreaterThan(soft);
-      expect(soft).toBeGreaterThan(silent);
-      // ...and no louder than the gain allows, with room for the chips a burst throws.
-      expect(loud / silent).toBeLessThan(1 + GLOW_WITH_VOICE);
+      // An ordinary speaking voice is plainly brighter than silence...
+      expect(ordinary / silent).toBeGreaterThan(1.15);
+      // ...and even shouting stays this side of a flare...
+      expect(loud / silent).toBeLessThan(1.5);
+      // ...with loudness itself barely moving it, which is what keeps it from being a meter.
+      expect(loud / ordinary).toBeLessThan(1.15);
+      expect(loud).toBeGreaterThan(ordinary);
     }
   });
 
