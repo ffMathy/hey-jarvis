@@ -18,9 +18,9 @@ workflows:
         - 'oven-sh/setup-bun@v2.2.0'
     '.github/workflows/mobile-web.yml':
         - 'actions/checkout@v6.1.0'
-        - 'actions/configure-pages@v5.0.0'
-        - 'actions/deploy-pages@v4.0.5'
-        - 'actions/upload-pages-artifact@v4.0.0'
+        - 'actions/configure-pages@v6.0.0'
+        - 'actions/deploy-pages@v5.0.1'
+        - 'actions/upload-pages-artifact@v5.0.0'
         - 'oven-sh/setup-bun@v2.2.0'
     '.github/workflows/release.yml':
         - 'actions/checkout@v6.1.0'
