@@ -38,6 +38,7 @@ import { getStateChangeReactorAgent, synapseTools } from './verticals/synapse/in
 import { getTodoListAgent, todoListTools } from './verticals/todo-list/index.js';
 import { getWeatherAgent, weatherTools } from './verticals/weather/index.js';
 import { getWebResearchAgent } from './verticals/web-research/index.js';
+import { retireUnrestartableRuns } from './workflow-run-recovery.js';
 
 // Set up the Google AI SDK environment variable immediately.
 // No fallback to a general "Google" key: HEY_JARVIS_GOOGLE_MAPS_API_KEY is scoped to
@@ -183,6 +184,10 @@ app.use('*', cors(getCorsOptions()));
 app.use('*', stripTransferEncodingHeader);
 
 export const mastra = await getMastra();
+
+// Before the boot restart walks into a run whose workflow has moved on under it.
+// See ./workflow-run-recovery.ts.
+await retireUnrestartableRuns(mastra);
 
 // 2. Initialize the Mastra Server Adapter
 // This class wraps our Hono app and injects the Mastra capabilities.
