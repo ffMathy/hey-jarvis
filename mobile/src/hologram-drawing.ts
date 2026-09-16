@@ -328,13 +328,18 @@ export function bodyTurnRadians(time: number) {
  * the first hologram's glow back, on top of the chips and the churn rather than instead of
  * them, so both now say he is talking.
  *
+ * Down from 2.4 once the microphone bug was fixed: with the voice finally arriving at a proper
+ * level, the particles were brighter while he talked than the user wanted. A tenth or so off
+ * what they saw, and the step from silence is wider than it was anyway, because the halo lost
+ * two of its rings and the silent ball with it.
+ *
  * Most of it rides the agitation envelope rather than the loudness, because loudness alone was
  * not visible. Ordinary speech sits around a level of 0.25-0.5, not 1, and scaling the glow by
  * that lifted the disc by 5-8% — which the user could not see at all. The envelope is up at any
  * speech from 0.15 (see SPEECH_LEVEL), so it answers "is he talking" cleanly; the rest follows
  * loudness so a sentence still breathes rather than switching on and staying flat.
  */
-export const GLOW_WITH_VOICE = 2.4;
+export const GLOW_WITH_VOICE = 1.6;
 /** How much of the glow answers "is he talking at all" rather than "how loudly". */
 const GLOW_FROM_ENVELOPE = 0.65;
 /**
@@ -2199,15 +2204,25 @@ type DetachedPath = ReturnType<PathBuilder['detach']>;
  * Two rings made a two-step ramp, and with the halo widened the outer step became a visible
  * rim: every particle sat in a disc of flat colour that ended at a hard, and — with
  * antialiasing off — jagged, edge. The user saw exactly that, glow circles round the sparks.
- * Five rings put the steps below what the eye picks out, so the light falls away from the
- * stroke instead of stopping.
+ * Three rings put the steps below what the eye picks out, so the light falls away from the
+ * stroke instead of stopping, and the share is chosen so they come to what the two did at the
+ * centre: with Screen blending that is 1 - (1 - share)^3 against the old
+ * 1 - (1 - 0.52s)(1 - 0.61s), within a couple of percent across the strengths the tiers ask for.
  *
- * The share is chosen so the five together come to what the two did at the centre: with Screen
- * blending that is 1 - (1 - share)^5 against the old 1 - (1 - 0.52s)(1 - 0.61s), which lands
- * within a couple of percent across the range of strengths the tiers ask for.
+ * Five rings were smoother still and cost too much. Every ring paints the middle of every
+ * particle again, so the fill grows with the ring count and the halo's width both, and a halo
+ * this wide over a thousand particles is most of what the phone's GPU does: five rings doubled
+ * that against two, and the user felt it as a dropped frame rate. Three keeps the ramp and hands
+ * back most of the cost.
+ *
+ * A sprite with the ramp already in it, drawn once per particle, would paint the middle once
+ * rather than three times — and it is 4.5x *slower* than five rings, because `drawAtlas` wants a
+ * transform object per particle and marshalling a thousand of those across into Skia costs more
+ * than the drawing it saves. Measured, not assumed; the same reason `drawPoints` lost to plain
+ * paths earlier.
  */
-const HALO_RINGS = 5;
-const HALO_RING_SHARE = 0.24;
+const HALO_RINGS = 3;
+const HALO_RING_SHARE = 0.39;
 
 function drawParticleHalo(
   canvas: HologramCanvas,
