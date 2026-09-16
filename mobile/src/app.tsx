@@ -67,7 +67,7 @@ export function App() {
   return (
     <ConversationProvider>
       <StatusBar style="light" />
-      <View style={styles.root}>
+      <View style={[styles.root, screen === 'sample' ? styles.seeThrough : styles.opaque]}>
         {screen === 'loading' ? <ActivityIndicator color={theme.colors.accent} /> : null}
         {screen === 'sample' ? <SampleScreen onLeave={() => setIsSampling(false)} /> : null}
         {screen === 'settings' ? (
@@ -89,7 +89,17 @@ export function App() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: theme.colors.background,
     justifyContent: 'center',
+  },
+  /**
+   * The app's window is see-through — see `withTransparentWindow` in `app.config.ts` — so
+   * whatever paints a background has to be here. Everything but sample mode wants one.
+   */
+  opaque: {
+    backgroundColor: theme.colors.background,
+  },
+  /** Sample mode floats over the home screen, and paints its own scrim instead. */
+  seeThrough: {
+    backgroundColor: 'transparent',
   },
 });

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { StatusBar as NativeStatusBar, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useHologramSize } from './hologram-size';
 import { JarvisHologram } from './jarvis-hologram';
 import type { JarvisVoice } from './platform-contracts';
@@ -69,55 +69,73 @@ function HeardLevel({ voice }: { voice: JarvisVoice }) {
  * Offered before the app is set up, so there is something to see — and a way to
  * check the hologram really follows a voice — without an ElevenLabs account.
  * Nothing leaves the device: no conversation is started and no audio is kept.
+ *
+ * Drawn as a sheet over whatever is behind the app rather than as a screen of its
+ * own. The app's window is see-through (`withTransparentWindow` in
+ * `app.config.ts`) and the root leaves sample mode unpainted, so what shows
+ * through the scrim is the home screen. Tapping the scrim leaves, as it does in
+ * any dialog; the card itself does not, so a stray tap on the hologram is not an
+ * exit.
  */
 export function SampleScreen({ onLeave }: SampleScreenProps) {
   const { voice, problem } = useSampleVoice();
   const hologramSize = useHologramSize();
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>J.A.R.V.I.S.</Text>
-      <Text style={styles.status} testID="sample-status">
-        {describeListening(voice.listening, problem)}
-      </Text>
-      <HeardLevel voice={voice} />
-
-      <View
-        accessible
-        accessibilityLabel="Jarvis hologram, following your voice"
-        style={{ width: hologramSize, height: hologramSize }}
-        testID="hologram"
-      >
-        <JarvisHologram size={hologramSize} voice={voice} />
-      </View>
-
-      {problem ? (
-        <Text style={styles.problem} testID="sample-problem">
-          {problem}
+    <Pressable accessibilityRole="button" accessibilityLabel="Close" style={styles.scrim} onPress={onLeave}>
+      <Pressable style={styles.card} onPress={() => {}} testID="sample-card">
+        <Text style={styles.title}>J.A.R.V.I.S.</Text>
+        <Text style={styles.status} testID="sample-status">
+          {describeListening(voice.listening, problem)}
         </Text>
-      ) : (
-        <Text style={styles.explanation}>
-          Sample mode. The hologram stirs with your voice the way it will with Jarvis's. Nothing is recorded or sent
-          anywhere.
-        </Text>
-      )}
+        <HeardLevel voice={voice} />
 
-      <Pressable accessibilityRole="button" style={styles.secondaryButton} onPress={onLeave} testID="leave-sample">
-        <Text style={styles.secondaryButtonLabel}>Back to setup</Text>
+        <View
+          accessible
+          accessibilityLabel="Jarvis hologram, following your voice"
+          style={{ width: hologramSize, height: hologramSize }}
+          testID="hologram"
+        >
+          <JarvisHologram size={hologramSize} voice={voice} />
+        </View>
+
+        {problem ? (
+          <Text style={styles.problem} testID="sample-problem">
+            {problem}
+          </Text>
+        ) : (
+          <Text style={styles.explanation}>
+            Sample mode. The hologram stirs with your voice the way it will with Jarvis's. Nothing is recorded or sent
+            anywhere.
+          </Text>
+        )}
+
+        <Pressable accessibilityRole="button" style={styles.secondaryButton} onPress={onLeave} testID="leave-sample">
+          <Text style={styles.secondaryButtonLabel}>Back to setup</Text>
+        </Pressable>
       </Pressable>
-    </ScrollView>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flexGrow: 1,
+  /** Dim enough to read the card against, clear enough to see the home screen through. */
+  scrim: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     padding: theme.spacing.large,
-    // Edge to edge, as on the conversation screen: without this the title would
-    // sit under the status bar when scrolled to the top.
-    paddingTop: theme.spacing.large + (NativeStatusBar.currentHeight ?? 0),
+    backgroundColor: 'rgba(3, 5, 11, 0.55)',
+  },
+  card: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'stretch',
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: 'rgba(240, 168, 76, 0.22)',
+    backgroundColor: 'rgba(5, 7, 13, 0.92)',
+    padding: theme.spacing.large,
     gap: theme.spacing.large,
   },
   title: {
