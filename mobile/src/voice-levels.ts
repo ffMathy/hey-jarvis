@@ -150,6 +150,31 @@ export function easeBands(current: number[], target: number[], deltaSeconds: num
  * through the microphone in sample mode — none of which should stir the sphere.
  */
 export const SPEECH_LEVEL = 0.15;
+/**
+ * The quietest a reading can be and still count as speech, however quiet the voice is.
+ *
+ * Below this is a room, not a person. It is low because a phone microphone can be much quieter
+ * than a phone microphone: the user's hands over an ordinary speaking voice at a perceived level
+ * of 0.08, about -54 dBFS, through two different recording paths — WebRTC's and a plain
+ * `AudioRecord` — so it is the device, not the code that reads it. Against {@link SPEECH_LEVEL}
+ * their speech never counted as speech at all and the sphere never stirred.
+ */
+export const QUIETEST_SPEECH = 0.04;
+/**
+ * And how much of this voice's own loudest it has to reach.
+ *
+ * What separates talking from a room is not a fixed loudness — that is what broke — but how a
+ * moment compares with how loud this voice gets. A voice that peaks at 0.08 is talking at 0.05;
+ * one that peaks at 0.8 is not. Above {@link QUIETEST_SPEECH}, which keeps a hiss from talking
+ * its way in by being the loudest hiss in the room.
+ */
+export const SPEAKING_SHARE = 0.4;
+
+/** The level at which this voice counts as talking, given how loud it has been getting. */
+export function speakingThreshold(loudest: number): number {
+  'worklet';
+  return Math.max(QUIETEST_SPEECH, loudest * SPEAKING_SHARE);
+}
 /** How long the memory of a voice's loudest moment takes to fade. */
 export const LOUDEST_MEMORY_SECONDS = 12;
 /**
@@ -363,12 +388,16 @@ function rememberLoudest(loudest: number, level: number, deltaSeconds: number): 
   if (level > loudest) {
     return level;
   }
-  return loudest + (level - loudest) * Math.min(1, deltaSeconds / LOUDEST_MEMORY_SECONDS);
+  // Exponential, like easeLevel, so the same stretch of quiet forgets the same amount however
+  // the frames are sliced. A plain fraction of the step is frame-rate dependent, and since the
+  // speech gate is judged against this, that made the whole tracker answer differently at 30 Hz
+  // and at 120 — which is what the frame-rate checks are there to catch, and did.
+  return loudest + (level - loudest) * (1 - Math.exp(-deltaSeconds / LOUDEST_MEMORY_SECONDS));
 }
 
-function rampAgitation(agitation: number, heldLevel: number, deltaSeconds: number): number {
+function rampAgitation(agitation: number, heldLevel: number, loudest: number, deltaSeconds: number): number {
   'worklet';
-  return heldLevel >= SPEECH_LEVEL
+  return heldLevel >= speakingThreshold(loudest)
     ? Math.min(1, agitation + deltaSeconds / AGITATION_RISE_SECONDS)
     : Math.max(0, agitation - deltaSeconds / AGITATION_RELEASE_SECONDS);
 }
@@ -393,6 +422,7 @@ function slideChangeWindow(state: VoiceActivityState, heldLevel: number, level: 
     state.loudestOneSliceAgo = state.loudestInThisSlice;
     state.quietestInThisSlice = heldLevel;
     state.loudestInThisSlice = heldLevel;
+    state.loudest = rememberLoudest(state.loudest, state.loudestOneSliceAgo, SLICE_SECONDS);
   }
   state.thisSliceSeconds = Math.max(0, filledSeconds - slicesEnded * SLICE_SECONDS);
   if (slicesEnded > 0 && state.thisSliceSeconds <= TIME_SLACK_SECONDS) {
@@ -495,8 +525,12 @@ export function advanceVoiceActivity(
     return state;
   }
   const level = rawLevel > 0 && Number.isFinite(rawLevel) ? Math.min(1, rawLevel) : 0;
-  state.loudest = rememberLoudest(state.loudest, level, deltaSeconds);
-  state.agitation = rampAgitation(state.agitation, state.heldLevel, deltaSeconds);
+  // Read before the window slides, so the gate this frame is judged against the memory as it
+  // stood at the last slice boundary rather than one that moves under it. A threshold that
+  // creeps between frames is crossed at a different moment at 30 Hz than at 120, and the whole
+  // tracker then answers differently at different frame rates — which is what the frame-rate
+  // checks exist to catch, and did.
+  state.agitation = rampAgitation(state.agitation, state.heldLevel, state.loudest, deltaSeconds);
   slideChangeWindow(state, state.heldLevel, level, deltaSeconds);
   state.heldLevel = level;
 
@@ -515,7 +549,7 @@ export function advanceVoiceActivity(
   const rise = level - quietest;
   const drop = loudest - level;
   const isOnset = rise >= ONSET_RISE;
-  const isGap = loudest >= SPEECH_LEVEL && level < loudest * GAP_LEVEL_RATIO;
+  const isGap = loudest >= speakingThreshold(state.loudest) && level < loudest * GAP_LEVEL_RATIO;
 
   state.burstAge += deltaSeconds;
   if (state.agitation <= 0) {

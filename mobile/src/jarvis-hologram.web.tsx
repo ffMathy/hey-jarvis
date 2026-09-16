@@ -40,14 +40,22 @@ class HologramUnavailable extends Component<HologramUnavailableProps, { failed: 
  * Skia's web build is WebAssembly, and nothing Skia-backed may even be imported
  * before it has loaded — so the view is fetched lazily, and the space it will
  * occupy is held empty until then rather than letting the screen jump. The wasm
- * is served from the site root: `turbo initialize` copies it into `public/`,
+ * is served from the site itself: `turbo initialize` copies it into `public/`,
  * which the web export publishes as-is, so a browser never reaches for a CDN.
+ *
+ * From the site, not from the domain root. Published to GitHub Pages the app
+ * lives under /<repo>/, and asking for /canvaskit.wasm there fetches a 404 page,
+ * which fails to instantiate — so the boundary above caught it and held the
+ * hologram's space empty, which is precisely how it looked: everything but
+ * Jarvis. `EXPO_BASE_URL` is what `experiments.baseUrl` sets, and is empty when
+ * the app is served from a root.
  */
+const BASE_URL = process.env.EXPO_BASE_URL ?? '';
 export function JarvisHologram(props: JarvisHologramProps) {
   return (
     <HologramUnavailable size={props.size}>
       <WithSkiaWeb
-        opts={{ locateFile: (file: string) => `/${file}` }}
+        opts={{ locateFile: (file: string) => `${BASE_URL}/${file}` }}
         getComponent={() => import('./jarvis-hologram-view')}
         fallback={<View style={{ width: props.size, height: props.size }} />}
         componentProps={props}
