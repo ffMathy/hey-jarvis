@@ -24,12 +24,11 @@ import {
  */
 
 const inputSchema = z.object({
-  userQuery: z
-    .string()
-    .describe("The user's routing query")
-    .default(
-      "I'd like to check the weather for my current location, and check my calendar for today. If I have any calendars regarding my workplace, I'd like to infer when I typically go to work, and check the traffic conditions for that time. Additionally, I am planning on making a lasagna, so please fetch the recipes for that and add a reminder to my to-do list with the ingredients, for when I get home from work.",
-    ),
+  // No default. This carried a worked example of a request -- weather, calendar, commute and
+  // a lasagna recipe -- which meant a caller that forgot the field did not get an error but a
+  // stranger's errand, planned and run in full. The field is what the tool is for, so it is
+  // required.
+  userQuery: z.string().describe("The user's routing query"),
   async: z
     .boolean()
     .optional()

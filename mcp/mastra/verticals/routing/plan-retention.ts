@@ -5,8 +5,8 @@ import { logger } from '../../utils/logger.js';
  * Keeping the number of routing plans in Studio bounded.
  *
  * A plan is a workflow built for one request, so every request adds entries to the workflow
- * list -- a root plus one branch workflow per agent it delegates to. Left alone that grows
- * without limit, and a list of five hundred plans is no more use than no list at all.
+ * list -- a root plus one workflow per chain it runs. Left alone that grows without limit,
+ * and a list of five hundred plans is no more use than no list at all.
  *
  * Two facts shape what a sweep has to do. `removeWorkflow` clears only the live in-process
  * registration, so on its own it hides a plan until the next boot and no longer; the
@@ -23,7 +23,7 @@ import { logger } from '../../utils/logger.js';
  *
  * Small on purpose. The list is for looking at what just happened, and a plan from two
  * hundred requests ago is not that -- the traces are where older history is read. Counted in
- * plans rather than workflows, because one plan is a root plus a branch per delegation and a
+ * plans rather than workflows, because one plan is a root plus a workflow per chain and a
  * bound on entries would swing with how many agents a request happened to need.
  */
 export const PLANS_KEPT = 5;
@@ -53,7 +53,7 @@ function planIdOf(metadata: Record<string, unknown> | undefined): string | undef
  * Unregisters and archives every routing plan but the newest {@link PLANS_KEPT}.
  *
  * Ordered by the newest row in each plan, because a plan's members are written together and
- * any of them dates it. A plan is swept whole: leaving a branch behind would leave the list
+ * any of them dates it. A plan is swept whole: leaving a chain behind would leave the list
  * holding workflows whose root is gone.
  *
  * Failure is logged rather than thrown. A sweep that cannot run leaves a longer list than

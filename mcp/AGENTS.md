@@ -516,23 +516,23 @@ Only stops when 100% certain about:
 - "What are the expected inputs and outputs?"
 - "Are there any existing patterns to follow?"
 
-### Routing Supervisor Agent
-Fulfils a voice request by delegating each part of it to the specialized agents:
-- **The ten public agents are its subagents**, so Mastra generates one delegation tool per agent
-- **No tools of its own**: every tool it has is a delegation
-- **No memory**: the request is the supervisor's to hold, not to remember across calls
+### Routing Planner Agent
+Turns a voice request into a **plan** for the specialized agents to run:
+- **The ten public agents are its catalogue**, baked into its instructions at boot
+- **No tools of its own**: it writes a plan, it never runs one and never sees a result
+- **No memory**: planning one request has nothing to recall from the last
 
-Ordering, parallelism and dependency passing are the model's job inside its own delegation loop.
-That replaced a planner that emitted a task DAG for a separate wave scheduler to execute —
-around a thousand lines of planner, sanitizer, wave loop, completion registry and report
-bookkeeping. What was lost with it is a Studio *graph* of the machinery; what a given request
-actually did is in the Observability tab, per delegation, which is the more useful of the two.
+A plan is a set of **chains**. Chains run at the same time as each other; the delegations inside
+one chain run in order, and every delegation after the first is handed the previous answer along
+with its own prompt. So ordering and dependency passing are structural rather than implied —
+independent work goes in separate chains, and work that needs another part's answer goes in the
+same chain after it.
 
-Its subagents are handed a memory with semantic recall and working memory both off. Delegation
-runs a subagent memory-backed, which the DAG executor never did — it called `agent.generate()`
-with no memory option, so the agents' own `Memory` was inert. A subagent is asked one
-self-contained question and answers it, so there is nothing across calls to recall, and the
-hosted embedder would only buy latency on the one path that cannot afford it.
+Routing has been three things. A task DAG with a wave scheduler this vertical owned; then a
+supervisor agent delegating inside its own tool-call loop; now a plan. The middle one is why:
+its loop was opaque, so a request could not be looked at, and it could not say what was
+outstanding because a delegation existed only once it had been called. A plan is a workflow, so
+Studio draws it and the run is persisted — and the work is written down before any of it runs.
 
 *Note: Additional agents will be added as the project evolves.*
 
@@ -547,26 +547,35 @@ small, fast surface, and everything else happens behind them.
 - **`getNextInstructionsWorkflow`**: reports whatever has landed since the last call
 
 **How a request runs:**
-1. `routePromptWorkflow` hands the query to the supervisor's session and returns immediately —
-   it does not wait for the supervisor, let alone for the agents it delegates to.
-2. The supervisor works out which agents cover which parts, and delegates. Every delegation is
-   dispatched as a **background task**, so its own turn ends as soon as it has asked.
-3. `getNextInstructionsWorkflow` reads the task records for the session and reports the ones
-   that have settled since the last poll. A result is handed over exactly once.
-4. When the supervisor's turn has ended *and* no task is still running, the request is done and
-   the closing report recaps everything.
+1. `routePromptWorkflow` starts the request and returns immediately — it does not wait for the
+   planner, let alone for the agents the plan names.
+2. The planner writes a plan. Mastra validates and registers it as a **dynamic workflow** built
+   for this one request: one workflow per chain, and a root running the chains in parallel.
+3. Every delegation in the plan is marked outstanding *before a single step runs*, so the first
+   poll already names the whole of the work.
+4. `getNextInstructionsWorkflow` reports the delegations that have finished since the last poll,
+   folded from the run's own step-result stream. A result is handed over exactly once.
+5. When the run ends, the request is done and the closing report recaps everything — including
+   anything the run never got to, so a delegation that never answered is reported rather than
+   dropped.
 
-**Why background tasks:**
-A delegation is a durable row — status, result, error — scoped to the session's `resourceId`,
-not a promise held in this process. So a result survives a restart between the call that
-started it and the call that asks for it; `taskIdsInProgress` can name what is outstanding
-instead of asserting there is nothing; concurrency, retries and timeouts are the framework's;
-and a failure arrives with the underlying error on the record rather than a wrapper that has
-lost it.
+**Why a workflow per request:**
+Which agents a request needs is known only once it arrives, so a request that is a workflow has
+to be built per request. What that buys: Studio graphs it, so what a request did — the root, its
+chains, every agent step, what each was asked and what it answered — can be looked at rather
+than read back from logs; the run is persisted; and the work is written down before it starts,
+so `taskIdsInProgress` names what is outstanding instead of inferring it from whatever happened
+to start.
 
-The supervisor's turn ending is **not** the request ending. It dispatches work that outlives
-it, which is the whole point, so a poll that treated `agent_end` as completion would close the
-loop on answers that had not arrived.
+`workflow-finish` is deliberately **not** read off the run stream. A chain is a nested workflow
+sharing the root's pubsub, so its own finish event reaches the same stream — taking the first
+one for the request's would close the request the moment the fastest chain was done. The end of
+the request is the end of the stream, which only the root run has.
+
+**Retention:**
+A plan is a workflow per request, so the list would grow without limit. The five newest plans
+stay visible and runnable; older ones are unregistered and their definitions archived, which
+stops them rehydrating at boot without throwing away what they recorded.
 
 **Polling contract:**
 A poll blocks up to `POLL_DEADLINE_MS` (5s) waiting for something to report, then says so and
@@ -586,9 +595,13 @@ the run and asking, and an answer needs a tool to come back through — a third 
 constraint above rules out. A gate the caller cannot answer is worse than no gate: the run
 parks, every poll repeats the same question, and the request never finishes.
 
-Mastra names a delegation tool `agent-<id>`, not `<id>`, and records it under that name on the
-task row, so the prefix comes off before the name is read as an agent id — otherwise a report
-names `agent-weather` where it means `weather`.
+**Authoring rules a generated plan has to respect:**
+`createStepFromAgent` fixes every agent step's input to `{ prompt }` and its output to
+`{ text }`; a `mapping` entry has to be a top-level workflow entry, so one inside a `parallel`
+is rejected — which is why each chain is its own workflow; and `mapConfig` is a JSON *string*,
+not an object. `plan.spec.ts` pins all of these against `validateDynamicWorkflow`, the same
+check registration runs, so "would this register?" is answerable in milliseconds rather than by
+restarting a server.
 
 **Concurrent callers:**
 `createSession({ resourceId })` is get-or-create and isolated, and the task records are scoped

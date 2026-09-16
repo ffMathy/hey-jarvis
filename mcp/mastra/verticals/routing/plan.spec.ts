@@ -6,10 +6,10 @@
  * this register?" is answerable here in milliseconds rather than by restarting a server and
  * reading a log, which is how the first two attempts at this shape were found to be wrong.
  *
- * It matters more now than when this was a spike: a plan is built from whatever the planner
- * wrote, per request, and a graph that fails validation fails the user's request. The
- * rejections are pinned alongside the acceptance, because they are the authoring rules a
- * generated plan has to respect and there is nothing else that states them.
+ * A plan is built from whatever the planner wrote, per request, so a graph that fails
+ * validation fails the user's request. The rejections are pinned alongside the acceptance,
+ * because they are the authoring rules a generated plan has to respect and there is nothing
+ * else that states them.
  */
 
 import { describe, expect, it } from 'bun:test';
