@@ -172,27 +172,30 @@ export const AGITATION_RELEASE_SECONDS = 0.4;
  * syllable rarely jumps {@link ONSET_RISE} between two 40 ms readings, so the
  * shorter window found an onset only about every second and a half of talking and
  * the rim was still for most of a sentence; reaching back five readings finds the
- * same rise spread over three or four of them. On the check's recorded line that
- * lifts bursts from 0.67 to 0.81 a second of speech and chips from 8.3% to 12.0%
- * of speaking frames. It is as far back as the window can reach and still ignore a
+ * same rise spread over three or four of them. On the check's recorded line, a
+ * window of one reading throws 0.68 bursts a second of speech against the 1.33
+ * this one throws. It is as far back as the window can reach and still ignore a
  * fade: a voice falling from 0.6 to silence over two seconds — the slowest thing
  * that still must not burst — loses 10 dB across a window of 0.22 s or wider.
  */
 export const CHANGE_WINDOW_SECONDS = 0.2;
 /**
  * How much the level must rise within {@link CHANGE_WINDOW_SECONDS} to be an
- * onset. From an ordinary spoken level of about 0.3 this is roughly a 10 dB
- * jump, the same size of change a gap needs.
+ * onset. From an ordinary spoken level of about 0.3 this is close to an 8 dB jump.
  *
  * This is what decides how often the rim throws chips, far more than the spacing
- * rules below: on the recorded line, a threshold low enough to take every reading
- * as an onset throws 1.50 bursts a second of speech through the same flurry gate,
- * against 0.81 here — so the gate has plenty of headroom and the threshold is the
- * limit. It cannot fall below 0.24 without changing what an onset means: two
- * steps of 0.2 and 0.24, each too small alone, must stay too small alone once the
- * window has forgotten the silence they started from.
+ * rules below: on the recorded line it throws 1.33 bursts a second of speech, which
+ * puts chips on screen for about a third of the frames he speaks in — the density
+ * of the film's "Doctor.", where they show in 10 of its 37 frames. A threshold low
+ * enough to take every reading as an onset would throw 3.2 a second through the
+ * same flurry gate, so the gate still has headroom and this is the limit.
+ *
+ * It cannot fall much further. At this value a swell must climb faster than about
+ * 0.93 a second before it counts as an onset, and the swell the tests hold it to
+ * climbs to 0.9 in a second — a 3% margin. A swell is exactly what must never
+ * throw chips, so the room below is already thin.
  */
-export const ONSET_RISE = 0.25;
+export const ONSET_RISE = 0.17;
 /** How far the voice must fall within {@link CHANGE_WINDOW_SECONDS}, straight after speech, to be a gap. */
 export const GAP_DROP_DECIBELS = 10;
 /**
@@ -203,22 +206,21 @@ export const GAP_DROP_DECIBELS = 10;
 export const MINIMUM_BURST_SPACING_SECONDS = 0.25;
 /**
  * How many bursts come in quick succession before the rim rests. The film throws
- * its two chip bursts a quarter of a second apart and then none at all for the
- * rest of the scene — "no continuous particle stream" — so bursts come in pairs,
- * not in a stream at the spacing floor.
+ * its chips in flurries and then leaves the rim alone for the rest of the scene —
+ * "no continuous particle stream" — so this caps a flurry rather than setting a
+ * cadence. On the recorded line it binds only in the densest passages: the gate
+ * would pass 3.2 bursts a second and the onsets ask for 1.33.
  */
-export const BURSTS_PER_FLURRY = 2;
+export const BURSTS_PER_FLURRY = 4;
 /**
  * How long the rim rests after a flurry. It is a ceiling rather than a cadence:
  * on the check's recorded line, onsets sharp enough to throw a burst come about
- * one and a quarter seconds apart of speech — under the ceiling more often than
- * not — so chips are on screen for about an eighth of the time he talks. Shorter
- * rests barely move that (1.06 s throws two more bursts in three and a half
- * minutes), which is how we know {@link ONSET_RISE} and not this is the limit.
- * The film's "Doctor." is denser (10 of its 37 frames) because a single word
- * starts and stops sharply, where connected speech runs its syllables together.
+ * three quarters of a second apart of speech, so the rest is only reached where
+ * he runs syllables together. With the flurry size above it would allow 3.2 bursts
+ * a second; that the line settles at 1.33 is how we know {@link ONSET_RISE} and
+ * not this is the limit.
  */
-export const BURST_REST_SECONDS = 1.2;
+export const BURST_REST_SECONDS = 0.6;
 /** A rise or fall this large, in level, throws a full-strength burst; smaller ones throw weaker bursts in proportion. */
 export const FULL_BURST_CHANGE = 0.6;
 /** The burst age reported before the first burst: long enough ago that any burst would have finished. */

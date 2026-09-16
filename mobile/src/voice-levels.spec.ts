@@ -381,10 +381,12 @@ describe('advanceVoiceActivity', () => {
     });
 
     it('forget a quiet moment once it is older than CHANGE_WINDOW_SECONDS', () => {
-      // 0 → 0.2 → 0.44 in two steps too small alone. Held for one reading, the
-      // silence is still in view when the second step comes; held for longer than
-      // the window and a frame, it is not.
-      const twoSteps = (holdSeconds: number) => (time: number) => (time < 1 ? 0 : time < 1 + holdSeconds ? 0.2 : 0.44);
+      // A climb in two steps, neither an onset on its own, together well past one.
+      // Held for one reading, the silence is still in view when the second step
+      // comes; held for longer than the window and a frame, it is not.
+      const step = ONSET_RISE * 0.6;
+      const twoSteps = (holdSeconds: number) => (time: number) =>
+        time < 1 ? 0 : time < 1 + holdSeconds ? step : step * 2;
       for (const clock of [evenClock(30), evenClock(60, 0.5), evenClock(120)]) {
         expect(burstsIn(play(twoSteps(READING_SECONDS), 2, clock))).toHaveLength(1);
         expect(burstsIn(play(twoSteps(CHANGE_WINDOW_SECONDS + 1 / 30), 2, clock))).toHaveLength(0);
@@ -477,20 +479,20 @@ describe('advanceVoiceActivity', () => {
       const bursts = burstsIn(frames);
       const spacings = spacingsOf(bursts);
 
-      // The first syllable bursts, the second fills the flurry, and each 1.2 s
-      // rest then swallows four syllables: two flurries in the ten, and the line
-      // ends before the third is due.
-      expect(bursts).toHaveLength(4);
+      // Four syllables fill a flurry, and the 0.6 s rest that follows swallows the
+      // next two: syllables one to four burst, five and six are lost to the rest,
+      // seven to ten burst, and the line ends inside the second rest.
+      expect(bursts).toHaveLength(BURSTS_PER_FLURRY * 2);
       expect(bursts.every((burst) => burst.burstStrength === 1)).toBe(true);
-      // Every burst but the first lands on a syllable, and pairs alternate with rests.
+      // Every burst but the first lands on a syllable, and flurries alternate with rests.
       bursts.slice(1).forEach((burst) => {
         expect(burst.time / 0.3).toBeCloseTo(Math.round(burst.time / 0.3), 9);
       });
       spacings.forEach((spacing, index) => {
-        if (index % 2 === 0) {
-          expect(spacing).toBeLessThan(BURST_REST_SECONDS);
-        } else {
+        if (index % BURSTS_PER_FLURRY === BURSTS_PER_FLURRY - 1) {
           expect(spacing).toBeGreaterThanOrEqual(BURST_REST_SECONDS - 1e-9);
+        } else {
+          expect(spacing).toBeLessThan(BURST_REST_SECONDS);
         }
       });
     });
@@ -570,11 +572,12 @@ describe('advanceVoiceActivity', () => {
       const at120 = play(level, 3.5, evenClock(120));
 
       const bursts = burstsIn(at30);
-      // A flurry at 0.2 and 0.5, a rest, then the next flurry at the first changes
-      // after 1.7; the changes at 0.8, 1.4, 2.5, 2.6 and 2.8 fall inside a rest.
-      expect(bursts.map((burst) => Number(burst.time.toFixed(6)))).toEqual([0.2, 0.5, 1.7, 2.1]);
+      // A flurry at 0.2, 0.5, 0.8 and 1.4, whose rest runs to 2.0 and swallows the
+      // changes at 1.7 and 1.8; then a second flurry at 2.1, 2.5 and 2.8, which the
+      // line ends before filling. The changes at 1.0, 2.2 and 2.6 come too soon.
+      expect(bursts.map((burst) => Number(burst.time.toFixed(6)))).toEqual([0.2, 0.5, 0.8, 1.4, 2.1, 2.5, 2.8]);
       expect(bursts.map((burst) => Number(burst.burstStrength.toFixed(6)))).toEqual(
-        [0.6, 0.4, 0.35, 0.35].map((change) => Number((change / FULL_BURST_CHANGE).toFixed(6))),
+        [0.6, 0.4, 0.5, 0.5, 0.35, 0.6, 0.3].map((change) => Number((change / FULL_BURST_CHANGE).toFixed(6))),
       );
       at30.forEach((frame, index) => {
         for (const other of [at60[2 * index + 1], at120[4 * index + 3]]) {

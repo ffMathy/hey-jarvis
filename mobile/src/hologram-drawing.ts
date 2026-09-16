@@ -160,13 +160,13 @@
 //               one five. All of them fall 8-22° counter-clockwise toward 8 o'clock. Fully lit
 //               for 0.13 s, then each thins, shortens and snaps in two until it is gone at
 //               0.2 s. For 0.18 s the crescent loses pieces within 16° of the launch point.
-//               Bursts come in flurries of two a quarter of a second apart and then rest for
-//               1.2 s (the tracker's rule). On the check's recorded line that works out at
-//               0.81 bursts a second of speech, so chips are on screen for about an eighth of
-//               the time he talks; connected speech simply offers fewer onsets sharp enough to
-//               throw one than the film's single word does, and how many it offers is set by
-//               the tracker's ONSET_RISE, which cannot fall further without changing what an
-//               onset means. Only the latest burst is ever still in flight.
+//               Bursts come in flurries of four a quarter of a second apart and then rest for
+//               0.6 s (the tracker's rule). On the check's recorded line that works out at
+//               1.33 bursts a second of speech, so chips are on screen for about a third of
+//               the frames he speaks in — the density of the film's "Doctor.", which shows
+//               them in 10 of its 37 frames. How many onsets the line offers is set by the
+//               tracker's ONSET_RISE, which cannot fall much further without a swell counting
+//               as an onset. Only the latest burst is ever still in flight.
 //   appearance  keyframe time k = appearance / 0.75: the film's section 5 keyframes run
 //               over k 0-1 (2.7 s of MATERIALISE_SECONDS = 3.6 s) and the crescent grows
 //               back in over k 1-1.33. Point of light k 0-0.32; sparks from 0.06 (a row
