@@ -116,17 +116,36 @@ export function SampleScreen({ onLeave }: SampleScreenProps) {
   );
 }
 
+/**
+ * What keeps pale text readable now that nothing dims the wallpaper behind it.
+ *
+ * A soft dark halo around each glyph, which costs the picture a few pixels per letter instead of
+ * the 55% wash the whole screen used to carry.
+ */
+const legible = {
+  textShadowColor: 'rgba(3, 5, 11, 0.9)',
+  textShadowOffset: { width: 0, height: 1 },
+  textShadowRadius: 6,
+} as const;
+
 const styles = StyleSheet.create({
-  /** Dim enough to read the card against, clear enough to see the home screen through. */
+  /**
+   * Nothing at all between the hologram and what is behind the app.
+   *
+   * It used to be a 55% dark wash, to read the text against. That works, and it also announces
+   * itself: the wallpaper came through visibly dimmed, which is not what an assistant hovering
+   * over your home screen should look like. The text keeps its legibility from a shadow of its
+   * own instead — that darkens the few pixels under each letter rather than the whole screen.
+   */
   scrim: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     padding: theme.spacing.large,
-    // The card is tall enough to reach the top of the screen, and the window is
-    // edge to edge, so without this the title sits under the clock.
+    // The content is tall enough to reach the top of the screen, and the window is
+    // edge to edge, so without this the status line sits under the clock.
     paddingTop: theme.spacing.large + (NativeStatusBar.currentHeight ?? 0),
-    backgroundColor: 'rgba(3, 5, 11, 0.55)',
+    backgroundColor: 'transparent',
   },
   /** No card behind it: the hologram and its two lines sit straight on the scrim. */
   content: {
@@ -135,15 +154,18 @@ const styles = StyleSheet.create({
     gap: theme.spacing.large,
   },
   status: {
+    ...legible,
     color: theme.colors.mutedText,
     fontSize: 16,
   },
   heard: {
+    ...legible,
     color: theme.colors.mutedText,
     fontSize: 13,
     opacity: 0.75,
   },
   problem: {
+    ...legible,
     color: theme.colors.danger,
     textAlign: 'center',
   },
@@ -151,6 +173,7 @@ const styles = StyleSheet.create({
     paddingVertical: theme.spacing.small,
   },
   secondaryButtonLabel: {
+    ...legible,
     color: theme.colors.mutedText,
     textDecorationLine: 'underline',
   },
