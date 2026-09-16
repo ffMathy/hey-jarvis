@@ -37,10 +37,6 @@ permissions: {}
 
 jobs:
   apk:
-    concurrency:
-      group: mobile-apk-${{ github.head_ref || github.ref }}
-      cancel-in-progress: true
-
     runs-on: ubuntu-latest
     timeout-minutes: 60
     # Checkout is the only thing that needs the token. Uploading an artifact goes

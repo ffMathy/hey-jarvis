@@ -29,10 +29,6 @@ permissions: {}
 
 jobs:
   apk:
-    concurrency:
-      group: wear-apk-${{ github.head_ref || github.ref }}
-      cancel-in-progress: true
-
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Checkout is the only thing that needs the token. Uploading an artifact goes
