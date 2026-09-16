@@ -2,6 +2,7 @@ import { Canvas, Picture, Skia } from '@shopify/react-native-skia';
 import { memo, useEffect, useMemo } from 'react';
 import { useDerivedValue, useFrameCallback, useSharedValue } from 'react-native-reanimated';
 import { createHologramResources, createHologramScene, drawHologram, MATERIALISE_SECONDS } from './hologram-drawing';
+import { useIsForeground } from './is-foreground';
 import type { JarvisVoice } from './platform-contracts';
 import {
   advanceVoiceActivity,
@@ -47,6 +48,7 @@ const SCENE_SEED = 1337;
  */
 function JarvisHologramView({ size, voice }: JarvisHologramProps) {
   const { listening, speaking, getVolume, getSpectrum } = voice;
+  const isForeground = useIsForeground();
   const scene = useMemo(() => createHologramScene(SCENE_SEED), []);
   const resources = useMemo(() => createHologramResources(Skia, scene), [scene]);
 
@@ -112,7 +114,7 @@ function JarvisHologramView({ size, voice }: JarvisHologramProps) {
   // the UI runtime owns. Assigning a state from the JS runtime would leave every
   // write silently dropped in a development build. The rest of the frame is
   // advanced in the same call, so the picture is asked for once.
-  useFrameCallback((info) => {
+  const clock = useFrameCallback((info) => {
     const deltaSeconds = (info.timeSincePreviousFrame ?? DEFAULT_FRAME_MS) / 1000;
     frame.modify((current) => {
       'worklet';
@@ -124,6 +126,15 @@ function JarvisHologramView({ size, voice }: JarvisHologramProps) {
       return current;
     });
   });
+
+  // Nothing to draw for, so nothing is drawn.
+  //
+  // The frame callback is what moves the clock, and the picture below is rebuilt whenever it
+  // does. Left running behind a backgrounded app that is a phone building a hologram nobody can
+  // see, on every frame, for as long as the app stays in memory.
+  useEffect(() => {
+    clock.setActive(isForeground);
+  }, [clock, isForeground]);
 
   const picture = useDerivedValue(() => {
     // Read once: this is a copy out of the UI runtime, and the drawing wants nine

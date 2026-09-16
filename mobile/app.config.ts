@@ -56,16 +56,25 @@ const withTransparentWindow: ConfigPlugin = (config) => {
       name: 'android:windowShowWallpaper',
       value: 'true',
     });
-    // And AppTheme's own background goes, because Expo's MainActivity sets that theme again in
-    // `onCreate` — the window is created translucent from the manifest, and then an opaque
-    // #05070d is painted straight over it. Every screen paints its own background (see
-    // `app.tsx`), so the window does not need to.
-    styled.modResults = AndroidConfig.Styles.assignStylesValue(styled.modResults, {
-      add: true,
-      parent: { name: 'AppTheme', parent: 'Theme.AppCompat.DayNight.NoActionBar' },
-      name: 'android:windowBackground',
-      value: '@android:color/transparent',
-    });
+    // The same two on AppTheme, which is the theme in force when it matters.
+    //
+    // Expo's MainActivity calls `setTheme(R.style.AppTheme)` in `onCreate`, and Android reads
+    // these two when the content view is installed — after that call. Only translucency is read
+    // earlier, from the manifest theme, when the activity launches. So the window came up
+    // genuinely translucent (dumpsys: `fmt=TRANSPARENT`) with an opaque #05070d painted over it
+    // and no SHOW_WALLPAPER flag on it at all, which is why it was simply black: the launcher
+    // behind it sits at alpha 0, so with no wallpaper to show there is nothing there to see.
+    for (const [name, value] of [
+      ['android:windowBackground', '@android:color/transparent'],
+      ['android:windowShowWallpaper', 'true'],
+    ]) {
+      styled.modResults = AndroidConfig.Styles.assignStylesValue(styled.modResults, {
+        add: true,
+        parent: { name: 'AppTheme', parent: 'Theme.AppCompat.DayNight.NoActionBar' },
+        name,
+        value,
+      });
+    }
     return styled;
   });
 

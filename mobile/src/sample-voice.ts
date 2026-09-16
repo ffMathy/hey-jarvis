@@ -1,21 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AppState } from 'react-native';
 import { jarvisAudio } from '../modules/jarvis-audio';
+import { useIsForeground } from './is-foreground';
 import { requestMicrophoneAccess } from './microphone-permission';
 import type { UseSampleVoice } from './platform-contracts';
 import { createTappedVoiceReaders, type VoiceReaders } from './tapped-voice';
 
 const SILENT_READERS: VoiceReaders = { getVolume: () => 0, getSpectrum: () => new Uint8Array(0) };
-
-/** Whether the app is in front, as state that re-renders when it changes. */
-function useIsForeground(): boolean {
-  const [isForeground, setIsForeground] = useState(AppState.currentState === 'active');
-  useEffect(() => {
-    const subscription = AppState.addEventListener('change', (state) => setIsForeground(state === 'active'));
-    return () => subscription.remove();
-  }, []);
-  return isForeground;
-}
 
 /**
  * The user's own voice on Android, for sample mode.
