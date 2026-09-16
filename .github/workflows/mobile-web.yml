@@ -27,6 +27,8 @@ on:
       - 'package.json'
       - 'turbo.json'
       - '.github/workflows/mobile-web.yml'
+      # The lockfile pins the actions this workflow runs, so it changes what runs.
+      - '.github/workflows/actions.lock'
   workflow_dispatch:
 
 # Least privilege by default: the job below opts into exactly what it needs.
