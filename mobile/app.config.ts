@@ -43,6 +43,29 @@ const withTransparentWindow: ConfigPlugin = (config) => {
         value: '@android:color/transparent',
       });
     }
+    // Show the wallpaper behind, for when there is nothing else to show.
+    //
+    // A translucent window reveals whatever is under it, and what that is depends on how the app
+    // was opened. Summoned as the assistant it is the app you were using, which is the point.
+    // Opened from the launcher it is a different task, and Android does not keep that drawn — so
+    // without this there is nothing behind and the window is simply black, which is what the
+    // user saw.
+    styled.modResults = AndroidConfig.Styles.assignStylesValue(styled.modResults, {
+      add: true,
+      parent: { name: TRANSPARENT_THEME, parent: 'Theme.AppCompat.DayNight.NoActionBar' },
+      name: 'android:windowShowWallpaper',
+      value: 'true',
+    });
+    // And AppTheme's own background goes, because Expo's MainActivity sets that theme again in
+    // `onCreate` — the window is created translucent from the manifest, and then an opaque
+    // #05070d is painted straight over it. Every screen paints its own background (see
+    // `app.tsx`), so the window does not need to.
+    styled.modResults = AndroidConfig.Styles.assignStylesValue(styled.modResults, {
+      add: true,
+      parent: { name: 'AppTheme', parent: 'Theme.AppCompat.DayNight.NoActionBar' },
+      name: 'android:windowBackground',
+      value: '@android:color/transparent',
+    });
     return styled;
   });
 
