@@ -29,7 +29,7 @@
 //                       the edge-on ellipse — all of it turning the other way; and data streaks
 //   drawBody            the fragment body's dim and mid strokes: 1680 fragments inside 0.94R
 //                       (four in five plain dashes, the rest L, bracket, T, Z glyphs, rings and
-//                       cell outlines mostly near the core; median 0.036R, clumped into the mass
+//                       cell outlines mostly near the core; median 0.083R, clumped into the mass
 //                       with bare fill between the clumps, heavier on the left) and a
 //                       336-fragment turning shell in the lower hemisphere. Half of those between
 //                       0.3R and 0.62R ride the counter-turning inner layer; the rest are pinned.
@@ -500,10 +500,21 @@ function pickFragmentAngle(random: Random, x: number, y: number) {
   return random() * Math.PI;
 }
 
-/** A fragment's length: median 0.036R, 90th percentile 0.077R, and a few long streaks up to 0.32R. */
+/**
+ * A fragment's length: median 0.083R, 90th percentile 0.17R, and a few long streaks up to 0.38R.
+ *
+ * Longer than the film's, at the user's asking, and the reason is the stroke width rather than
+ * the film. A body stroke is 0.014-0.0165R wide, so at the median length this used to have —
+ * 0.036R, which is what the study measures — a fragment was barely twice as long as it was wide,
+ * and a capsule that stubby reads as a bead, not as a spark. At this median it is five times its
+ * own width, which is the point at which the eye calls it a line.
+ *
+ * Nothing else about them changed: the same count, the same places, the same glyph mix. They are
+ * only drawn out.
+ */
 function pickFragmentLength(random: Random) {
-  if (random() < 0.03) return 0.14 + random() * 0.18;
-  return 0.015 + 0.075 * random() ** 1.8;
+  if (random() < 0.03) return 0.18 + random() * 0.2;
+  return 0.03 + 0.15 * random() ** 1.5;
 }
 
 /**
