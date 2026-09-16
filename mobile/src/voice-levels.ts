@@ -506,6 +506,22 @@ function forgetLoudest(state: VoiceActivityState, level: number): void {
 }
 
 /**
+ * Counts how long the voice has been gone, and ends the flurry once it has been gone long enough,
+ * so the next word starts a fresh one.
+ *
+ * The comparison carries the same slack the burst spacing does: sixtieths and
+ * hundred-and-twentieths of a second do not add up to four tenths identically, and without it the
+ * flurry ends a frame apart at different frame rates and every burst after it diverges.
+ */
+function endFlurryAfterSilence(state: VoiceActivityState, level: number, deltaSeconds: number): void {
+  'worklet';
+  state.quietSeconds = level >= speakingThreshold(state.loudest) ? 0 : state.quietSeconds + deltaSeconds;
+  if (state.quietSeconds + TIME_SLACK_SECONDS >= FLURRY_ENDS_AFTER_SECONDS) {
+    state.burstsInFlurry = 0;
+  }
+}
+
+/**
  * Moves the voice activity on by one frame, in place, and returns the same state.
  *
  * `rawLevel` is the latest reading through {@link perceivedLevel}, before any
@@ -584,14 +600,7 @@ export function advanceVoiceActivity(
   const isGap = loudest >= speakingThreshold(state.loudest) && level < loudest * GAP_LEVEL_RATIO;
 
   state.burstAge += deltaSeconds;
-  state.quietSeconds = level >= speakingThreshold(state.loudest) ? 0 : state.quietSeconds + deltaSeconds;
-  // Slack for the same reason the spacing comparison has it: sixtieths and hundred-and-twentieths
-  // of a second do not add up to four tenths identically, and without it the flurry ends a frame
-  // apart at different frame rates and the bursts after it diverge.
-  if (state.quietSeconds + TIME_SLACK_SECONDS >= FLURRY_ENDS_AFTER_SECONDS) {
-    // silence ends the flurry, so the next word starts a fresh one
-    state.burstsInFlurry = 0;
-  }
+  endFlurryAfterSilence(state, level, deltaSeconds);
   if ((isOnset || isGap) && state.burstAge + TIME_SLACK_SECONDS >= burstSpacing(state)) {
     beginBurst(state, Math.max(isOnset ? rise : 0, isGap ? drop : 0));
   }
