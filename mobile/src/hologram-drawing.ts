@@ -7,9 +7,9 @@
 // and never dark inside — a see-through cloud of small lights rather than a painted surface,
 // the warm volume behind them only a haze — textured with short bright "circuit" strokes,
 // bounded by one dominant rim element at a time (a bright crescent on the left limb, a
-// segmented ladder ring, or a thin ring), with at most two large, slow protrusions and a
-// small hooked ring at the core. Everything is warm orange to amber: no blue, no white, no
-// halo past 1.1R. Measurements and requirements come from the film study
+// segmented ladder ring, or a thin ring) and a small hooked ring at the core. The film's
+// large slow protrusions are deliberately not drawn: see the script below. Everything is
+// warm orange to amber: no blue, no white, no halo past 1.1R. Measurements and requirements come from the film study
 // (jarvis-reference.md), cited below by section.
 //
 // LAYERS, drawn back to front (unit space, R = 1, y down; clock angles in degrees
@@ -66,10 +66,6 @@
 //                       as a band round the limb rather than as a disc — see LIMB_BLOOM_BAND)
 //   drawFray            while he talks: strands fraying off the upper-left limb, streak arcs
 //                       at 1.2-1.27R, and horizontal streaks slipping out of the right limb
-//   drawProtrusions     the script's protrusions: two truss booms — box frames standing off the
-//                       limb in depth, a near face of rails, rungs and diagonal braces, a
-//                       foreshortened, dimmer far face behind and above it, the depth edges that
-//                       tie them together and one filled side panel — the long one out of the
 //                       equator at 9 o'clock and a shorter, finer one at the upper left; then the
 //                       ribbon loop, hook tendril, streak bundle and pole fan (glowing rails,
 //                       never quite regular)
@@ -103,12 +99,15 @@
 //   over 5-9 s each.
 // - A script (a loop of 12 epochs, 3-8 s each, about 59 s in all, plus a second track
 //   on a 41 s period) decides which rim element dominates — the other two stay faintly
-//   present, handing over within 1.2 s — which protrusion is out, whether spokes, a swoosh
-//   or a lightning filament show, how dense the fragments are (0.9-1.02), and when the
-//   red segment flashes. A protrusion grows over 0.5-1.5 s (eased out), holds 1-3 s and
-//   dissolves in 0.5 s: its solid body goes first, leaving a hollow outline whose rails
-//   bead, shrink to dots and fall away as sparks. The two tracks never put more than two
-//   protrusions out at once.
+//   present, handing over within 1.2 s — whether spokes, a swoosh or a lightning filament
+//   show, how dense the fragments are (0.9-1.02), and when the red segment flashes.
+//
+//   It used to bring out a protrusion per epoch as well, on two tracks: truss booms, ribbon
+//   loops, hook tendrils, streak bundles and pole fans standing off the limb, each growing
+//   over 0.5-1.5 s, holding 1-3 s and dissolving through a hollow outline into sparks. They
+//   are the film's, and they are gone at the user's request: on a phone, where the sphere is
+//   small and the loop comes round every minute, they read as an arm swinging out of the ball
+//   in the same pattern rather than as the scenery of Tony's lab.
 //
 // HOW THE FRAME DRIVES IT (see analyseFrame). The film's sphere does not brighten or
 // swell with his voice, so neither does this one: disc brightness while talking stays
@@ -180,7 +179,7 @@
 //               patches, behind the band on the left first (revealKey), over 0.45-0.69, and the
 //               fill follows them patch by patch over 0.55-0.81; both run hot over 0.55-1, with
 //               a ragged left limb until 0.78-1; inner shells from 0.62, the core from 0.72,
-//               the rim layer from 0.84, protrusions at 0.95-1, and agitation and chips only
+//               the rim layer from 0.84, and agitation and chips only
 //               from 0.8. At appearance 1 nothing of the intro is left.
 //
 // PERFORMANCE AND WORKLET RULES
@@ -289,7 +288,7 @@ export const MATERIALISE_SECONDS = 3.6;
 /** The appearance at which the film's materialisation keyframes reach "formed": 2.7 s of 3.6. */
 const FORMED_APPEARANCE = 0.75;
 
-/** Sphere radius as a fraction of the square: leaves room for chips thrown to 1.5R and protrusions to 1.45R. */
+/** Sphere radius as a fraction of the square: leaves room for chips thrown to 1.5R. */
 const SPHERE_FRACTION = 0.31;
 /** The outer rim layer rolls clockwise in the screen plane: one turn in about 33 s, as the film's ladder ring. */
 const ROLL_DEGREES_PER_SECOND = 11;
@@ -321,7 +320,6 @@ const STREAK_ARC_STRIDE = 6;
 const LIMB_STREAK_STRIDE = 5;
 const RING_TICK_STRIDE = 2;
 const EPOCH_STRIDE = 10;
-const SECOND_TRACK_STRIDE = 5;
 const COMET_STRIDE = 5;
 const INTRO_SPARK_STRIDE = 5;
 /** How many points a fill patch's outline is drawn through; see buildFillBlobs. */
@@ -456,24 +454,9 @@ const SPECK_FAST_SHARE = 0.8;
 /** The materialisation's equatorial ring: its major axis rises 28° to the right. */
 const EQUATOR_TILT_COS = 0.882947592858927;
 const EQUATOR_TILT_SIN = -0.4694715627858908;
-// The truss booms (protrusion kinds 1 and 5): a box frame standing off the limb in depth.
-/** Where a boom leaves the ball, in R. Inside the limb, so it grows out of the body rather than off it. */
-const TRUSS_BOOM_ROOT = 0.84;
-/** How many bays it is built of: rungs at the boundaries, one diagonal brace across each. */
-const TRUSS_BOOM_BAYS = 4;
-/** How much narrower the frame is at the tip than at the root: the foreshortening of its length. */
-const TRUSS_BOOM_TAPER = 0.42;
-/** How far behind the near face the far one sits at the root, as a share of the boom's half-width. */
-const TRUSS_BOOM_DEPTH = 1.15;
-/** How far a boom must have grown before it is at its full section, in R. */
-const TRUSS_BOOM_OPENING = 0.18;
-/** How much smaller the far face is drawn than the near one, being that much further from the eye. */
-const TRUSS_BOOM_FAR_SCALE = 0.72;
 
 /** The rim element that dominates takes this long to hand over to the next. */
 const HANDOVER_SECONDS = 1.2;
-/** How long a protrusion takes to dissolve: hollow outline, beaded rails, dots, sparks, gone. */
-const DISSOLVE_SECONDS = 0.5;
 
 // ---- scene: random geometry, built once on the JS thread ---------------------------------
 
@@ -821,36 +804,25 @@ function buildRingTicks(random: Random) {
 
 /**
  * The slow script: a loop of epochs 3-8 s long, each handing the rim to one dominant
- * element and bringing out at most one protrusion. Stride 10: start, duration,
- * dominant (0 crescent, 1 truss, 2 thin ring), protrusion type, protrusion start
- * (seconds into the epoch), grow seconds, hold seconds, line kind (0 none, 1 radial
- * spokes, 2 swoosh fan, 3 lightning filament), fragment density, red flash time
- * (seconds into the epoch, or -1).
+ * element. Stride 6: start, duration, dominant (0 crescent, 1 truss, 2 thin ring),
+ * line kind (0 none, 1 radial spokes, 2 swoosh fan, 3 lightning filament), fragment
+ * density, red flash time (seconds into the epoch, or -1).
+ *
+ * It used to schedule a protrusion per epoch as well — a boom, ribbon, tendril or fan
+ * standing off the limb. They were the film's, but on a phone they read as an arm
+ * swinging out of the ball on a loop, and they are gone.
  */
 function buildScript(random: Random) {
   const epochs: number[] = [];
   const dominants = [0, 1, 0, 2, 1, 0, 1, 2, 0, 1, 2, 1];
-  // protrusions: 0 none, 1 the long truss boom off the equator, 2 ribbon loop, 3 hook tendril,
-  // 4 streak bundle, 5 the short truss boom at the upper left, 6 pole fan;
-  // the first epoch shows the formed ball plain, as the film does once it has formed
-  const protrusions = [0, 1, 3, 0, 2, 4, 0, 1, 5, 3, 6, 2];
   const lineKinds = [0, 0, 1, 0, 2, 0, 3, 1, 0, 2, 3, 0];
   let start = 0;
   dominants.forEach((dominant, index) => {
     const duration = index === 0 ? 7 : 3 + random() * 5;
-    const protrusion = protrusions[index];
-    const grow = 0.5 + random();
-    const dissolveStart = Math.max(0.3, duration - 0.3 - DISSOLVE_SECONDS);
-    const hold = Math.min(1 + random() * 2, Math.max(0.6, dissolveStart - grow - 0.3));
-    const protrusionStart = 0.3 + random() * Math.max(0, dissolveStart - grow - hold - 0.3);
     epochs.push(
       start,
       duration,
       dominant,
-      protrusion,
-      protrusionStart,
-      grow,
-      hold,
       lineKinds[index],
       0.9 + random() * 0.12,
       index === 4 || index === 9 ? 0.5 + random() * (duration - 1) : -1,
@@ -858,26 +830,6 @@ function buildScript(random: Random) {
     start += duration;
   });
   return { epochs, period: start };
-}
-
-/**
- * A second, sparser protrusion track on its own period, so a second protrusion is
- * occasionally out beside the first — never more than two. Stride 5: start, type
- * (4 bundle, 5 the short truss boom, 6 pole fan), grow, hold, a 0..1 hash.
- */
-function buildSecondTrack(random: Random) {
-  const events: number[] = [];
-  let start = 9 + random() * 4;
-  const period = 41;
-  while (start < 38) {
-    const type = 4 + Math.floor(random() * 3);
-    const grow = 0.6 + random() * 0.8;
-    // an event near the end of the period is held for less, so it has gone before the loop wraps
-    const hold = Math.min(1 + random() * 1.5, period - 0.2 - start - grow - DISSOLVE_SECONDS);
-    events.push(start, type, grow, hold, random());
-    start += 11 + random() * 6;
-  }
-  return { events, period };
 }
 
 /** Comet arcs curling from the core to the lower right. Stride 5: period, phase, base angle (radians), radius, sweep. */
@@ -967,7 +919,6 @@ function roundToFiveDecimals(value: number) {
 export function createHologramScene(seed: number) {
   const random = createRandom(seed);
   const script = buildScript(random);
-  const secondTrack = buildSecondTrack(random);
   return {
     body: buildBody(random).map(roundToFiveDecimals),
     stream: buildStream(random).map(roundToFiveDecimals),
@@ -980,8 +931,6 @@ export function createHologramScene(seed: number) {
     ringTicks: buildRingTicks(random).map(roundToFiveDecimals),
     epochs: script.epochs.map(roundToFiveDecimals),
     scriptPeriod: roundToFiveDecimals(script.period),
-    secondTrack: secondTrack.events.map(roundToFiveDecimals),
-    secondTrackPeriod: secondTrack.period,
     comets: buildComets(random).map(roundToFiveDecimals),
     introSparks: buildIntroSparks(random).map(roundToFiveDecimals),
     fillBlobs: buildFillBlobs(random).map(roundToFiveDecimals),
@@ -1526,10 +1475,6 @@ export function createHologramResources(Skia: SkiaApiType, scene: Scene) {
     ringTicks: makeBuilder(),
     crescent: [makeBuilder(), makeBuilder(), makeBuilder(), makeBuilder()], // thin, medium, wide, core
     fray: makeBuilder(),
-    protrusionFace: makeBuilder(),
-    protrusionRails: makeBuilder(),
-    protrusionFarRails: makeBuilder(),
-    protrusionSparks: makeBuilder(),
     chips: makeBuilder(),
     chipCores: makeBuilder(),
     lightning: makeBuilder(),
@@ -1555,10 +1500,6 @@ export function createHologramResources(Skia: SkiaApiType, scene: Scene) {
     pathBuilders.ringTicks,
     ...pathBuilders.crescent,
     pathBuilders.fray,
-    pathBuilders.protrusionFace,
-    pathBuilders.protrusionRails,
-    pathBuilders.protrusionFarRails,
-    pathBuilders.protrusionSparks,
     pathBuilders.chips,
     pathBuilders.chipCores,
     pathBuilders.lightning,
@@ -1707,7 +1648,7 @@ function bandAverage(bands: number[], firstBand: number, endBand: number) {
   return count ? sum / count : 0;
 }
 
-// ---- the script: which rim element dominates, and which protrusions are out --------------
+// ---- the script: which rim element dominates -------------------------------------------
 
 /** Offset of the epoch playing at `localTime` seconds into the script's loop. */
 function findEpoch(epochs: number[], localTime: number) {
@@ -1726,25 +1667,8 @@ function rimTarget(element: number, dominant: number) {
 }
 
 /**
- * A protrusion's growth (0..1) and dissolve (0..1) `elapsed` seconds after it began,
- * written into out[offset], out[offset + 1]; growth is -1 before it starts or once gone.
- */
-function protrusionPhase(elapsed: number, grow: number, hold: number, out: number[], offset: number) {
-  'worklet';
-  const dissolve = (elapsed - grow - hold) / DISSOLVE_SECONDS;
-  if (elapsed < 0 || dissolve >= 1) {
-    out[offset] = -1;
-    out[offset + 1] = 0;
-    return;
-  }
-  const growth = clamp01(elapsed / grow);
-  out[offset] = 1 - (1 - growth) * (1 - growth);
-  out[offset + 1] = clamp01(dissolve);
-}
-
-/**
- * Reads the script at `time`: rim weights (crescent, truss, ring), fragment density,
- * both protrusion tracks, the epoch's line kind and its envelope, and the red flash.
+ * Reads the script at `time`: rim weights (crescent, truss, ring), fragment density, the
+ * epoch's line kind and its envelope, and the red flash.
  * Everything is a function of time alone, so it never jumps.
  */
 function readScript(scene: Scene, time: number) {
@@ -1767,29 +1691,14 @@ function readScript(scene: Scene, time: number) {
     const from = rimTarget(element, previousDominant);
     weights[element] = from + (rimTarget(element, dominant) - from) * handover;
   }
-  // [type, growth, dissolve] for the epoch's protrusion, then the same for the second track and its hash
-  const protrusions = [epochs[offset + 3], -1, 0, 0, -1, 0, 0];
-  if (protrusions[0] !== 0) {
-    protrusionPhase(intoEpoch - epochs[offset + 4], epochs[offset + 5], epochs[offset + 6], protrusions, 1);
-  }
-  const track = scene.secondTrack;
-  const trackTime = time - Math.floor(time / scene.secondTrackPeriod) * scene.secondTrackPeriod;
-  for (let event = 0; event < track.length; event += SECOND_TRACK_STRIDE) {
-    const elapsed = trackTime - track[event];
-    if (elapsed < 0 || elapsed > track[event + 2] + track[event + 3] + DISSOLVE_SECONDS) continue;
-    protrusions[3] = track[event + 1];
-    protrusionPhase(elapsed, track[event + 2], track[event + 3], protrusions, 4);
-    protrusions[6] = track[event + 4];
-  }
-  const redAt = epochs[offset + 9];
-  const density = epochs[previous + 8] + (epochs[offset + 8] - epochs[previous + 8]) * handover;
+  const redAt = epochs[offset + 5];
+  const density = epochs[previous + 4] + (epochs[offset + 4] - epochs[previous + 4]) * handover;
   return {
     crescentWeight: weights[0],
     trussWeight: weights[1],
     ringWeight: weights[2],
     density,
-    protrusions,
-    lineKind: epochs[offset + 7],
+    lineKind: epochs[offset + 3],
     lineEnvelope: smooth01(intoEpoch / 1.0) * smooth01((duration - intoEpoch) / 1.0),
     lineSeconds: intoEpoch,
     lineSeed: repeat * 31 + offset,
@@ -1833,7 +1742,6 @@ function analyseFrame(frame: HologramFrame, size: number, scene: Scene) {
     coreAlpha: smooth01((intro - 0.72) / 0.14),
     rimAlpha: smooth01((intro - 0.84) / 0.16),
     crescentGrowth: smooth01((intro - 1) / 0.3333),
-    protrusionAlpha: smooth01((intro - 0.95) / 0.05),
     agitation,
     // Half the calm fragments hand over to fast ones at full agitation, so the turnover rises
     // by about half (the film's churn on "Doctor." rises from 8 to 13 per frame). Half and no
@@ -2876,357 +2784,6 @@ function drawFray(canvas: HologramCanvas, resources: Resources, scene: Scene, st
   canvas.drawPath(builder.detach(), resources.frayStroke);
 }
 
-// ---- protrusions --------------------------------------------------------------------------
-
-/**
- * Appends a rail from (fromX, fromY) to (toX, toY) as `beads` beads. Solid while
- * `dissolve` is 0; as it rises the beads shrink to dots, and past 0.6 they fall as sparks.
- */
-function appendRail(
-  rails: PathBuilder,
-  sparks: PathBuilder,
-  fromX: number,
-  fromY: number,
-  toX: number,
-  toY: number,
-  beads: number,
-  dissolve: number,
-) {
-  'worklet';
-  const stepX = (toX - fromX) / beads;
-  const stepY = (toY - fromY) / beads;
-  if (dissolve > 0.6) {
-    const fall = (dissolve - 0.6) * 0.3;
-    for (let bead = 0; bead < beads; bead += 2) {
-      const x = fromX + stepX * (bead + 0.5);
-      const y = fromY + stepY * (bead + 0.5) + fall * (1 + (bead % 3) * 0.5);
-      sparks.moveTo(x, y);
-      sparks.lineTo(x + 0.002, y);
-    }
-    return;
-  }
-  const share = 1 - 0.85 * smooth01(dissolve / 0.55);
-  if (share > 0.97) {
-    rails.moveTo(fromX, fromY);
-    rails.lineTo(toX, toY);
-    return;
-  }
-  for (let bead = 0; bead < beads; bead++) {
-    const x = fromX + stepX * bead;
-    const y = fromY + stepY * bead;
-    rails.moveTo(x, y);
-    rails.lineTo(x + stepX * share, y + stepY * share);
-  }
-}
-
-/**
- * The four corners of one bay boundary of a truss boom, `along` of the way out, written into
- * `out` as near top, near bottom, far top, far bottom (x, y each).
- *
- * The boom is a square-section box standing off the limb, seen from a little above and to one
- * side. Two things give it its depth. Both faces narrow as they go out, as anything pointing
- * away from the eye does; and the far face is drawn smaller than the near one and offset
- * across and back, by an amount that itself shrinks toward the tip — so the two faces
- * converge, which is the whole of the perspective and costs four multiplications.
- *
- * The half-width wobbles a little from station to station: a truss built by hand is never
- * quite ruled, and a perfectly regular one reads as a diagram.
- */
-function trussBoomCorners(
-  outX: number,
-  outY: number,
-  root: number,
-  length: number,
-  width: number,
-  along: number,
-  seed: number,
-  out: number[],
-) {
-  'worklet';
-  const distance = root + length * along;
-  // across the boom on screen; the far face lies this way and a little back toward the ball
-  const sideX = -outY;
-  const sideY = outX;
-  const half = width * (1 - TRUSS_BOOM_TAPER * along) * (0.94 + 0.12 * hashInteger(seed * 31 + Math.round(along * 8)));
-  const depth = width * TRUSS_BOOM_DEPTH * (1 - 0.45 * along);
-  const farX = outX * distance + sideX * depth * 0.62 - outX * depth * 0.25;
-  const farY = outY * distance + sideY * depth * 0.62 - outY * depth * 0.25;
-  const farHalf = half * TRUSS_BOOM_FAR_SCALE;
-  out[0] = outX * distance + sideX * half;
-  out[1] = outY * distance + sideY * half;
-  out[2] = outX * distance - sideX * half;
-  out[3] = outY * distance - sideY * half;
-  out[4] = farX + sideX * farHalf;
-  out[5] = farY + sideY * farHalf;
-  out[6] = farX - sideX * farHalf;
-  out[7] = farY - sideY * farHalf;
-}
-
-/**
- * A truss boom: the protrusion as a structure standing off the sphere in depth rather than as
- * a flat outline on the glass.
- *
- * It is a box frame. The near face is two rails with a rung at every bay boundary and a
- * diagonal brace across each bay, which is what makes a truss a truss. The far face is the
- * same frame again, foreshortened, dimmer and thinner because it is further away — it goes to
- * its own builder, which {@link drawProtrusions} draws at about half the near face's weight.
- * The two are tied together by the short depth edges at the root, the middle and the tip, and
- * the top side panel between them is filled, so the box has a surface that catches the light
- * instead of being a wireframe you can see straight through.
- *
- * It grows out of the limb, holds and dissolves on the script's clock like every other
- * protrusion: every member goes through appendRail, so the dissolve beads it, shrinks it to
- * dots and drops it as sparks; the filled panel goes first, leaving the frame hollow.
- */
-function appendTrussBoom(
-  builders: Resources['pathBuilders'],
-  growth: number,
-  dissolve: number,
-  clockDegrees: number,
-  reach: number,
-  width: number,
-  seed: number,
-) {
-  'worklet';
-  const angle = clockRadians(clockDegrees);
-  const outX = Math.cos(angle);
-  const outY = Math.sin(angle);
-  const length = reach * growth;
-  // below this there is nothing to see but a knot of overlapping rungs at the limb
-  if (length < 0.006) return;
-  // The box opens out as it extends, rather than arriving at full section: a frame this dense
-  // would otherwise light every one of its members in the frame it first clears the guard above,
-  // which is exactly the kind of step the script is meant never to take.
-  const section = width * Math.min(1, length / TRUSS_BOOM_OPENING);
-  const rails = builders.protrusionRails;
-  const far = builders.protrusionFarRails;
-  const sparks = builders.protrusionSparks;
-  const here = [0, 0, 0, 0, 0, 0, 0, 0];
-  const next = [0, 0, 0, 0, 0, 0, 0, 0];
-  trussBoomCorners(outX, outY, TRUSS_BOOM_ROOT, length, section, 0, seed, here);
-  // the near face's first rung, and the depth edges at the root
-  appendRail(rails, sparks, here[0], here[1], here[2], here[3], 2, dissolve);
-  appendRail(rails, sparks, here[0], here[1], here[4], here[5], 1, dissolve);
-  appendRail(rails, sparks, here[2], here[3], here[6], here[7], 1, dissolve);
-  for (let bay = 0; bay < TRUSS_BOOM_BAYS; bay++) {
-    const along = (bay + 1) / TRUSS_BOOM_BAYS;
-    trussBoomCorners(outX, outY, TRUSS_BOOM_ROOT, length, section, along, seed, next);
-    // the near face: its two rails, its rung, and a brace across the bay that alternates
-    appendRail(rails, sparks, here[0], here[1], next[0], next[1], 3, dissolve);
-    appendRail(rails, sparks, here[2], here[3], next[2], next[3], 3, dissolve);
-    appendRail(rails, sparks, next[0], next[1], next[2], next[3], 2, dissolve);
-    const braceFrom = bay % 2 === 0 ? 2 : 0;
-    appendRail(
-      rails,
-      sparks,
-      here[braceFrom],
-      here[braceFrom + 1],
-      next[2 - braceFrom],
-      next[3 - braceFrom],
-      3,
-      dissolve,
-    );
-    // the far face, at its own weight: rails all the way, rungs every other bay
-    appendRail(far, sparks, here[4], here[5], next[4], next[5], 3, dissolve);
-    appendRail(far, sparks, here[6], here[7], next[6], next[7], 3, dissolve);
-    if (bay % 2 === 1) appendRail(far, sparks, next[4], next[5], next[6], next[7], 2, dissolve);
-    // the depth edges halfway out and at the tip, which is where the box shows its thickness
-    if (bay === TRUSS_BOOM_BAYS / 2 - 1 || bay === TRUSS_BOOM_BAYS - 1) {
-      appendRail(rails, sparks, next[0], next[1], next[4], next[5], 1, dissolve);
-      appendRail(rails, sparks, next[2], next[3], next[6], next[7], 1, dissolve);
-    }
-    for (let corner = 0; corner < 8; corner++) here[corner] = next[corner];
-  }
-  // The top side panel, between the near and far top rails: the box's one solid surface.
-  // It is the protrusion's body, so it goes as soon as the dissolve begins.
-  if (dissolve >= 0.3) return;
-  const face = builders.protrusionFace;
-  trussBoomCorners(outX, outY, TRUSS_BOOM_ROOT, length, section, 0, seed, next);
-  face.moveTo(next[0], next[1]);
-  face.lineTo(here[0], here[1]);
-  face.lineTo(here[4], here[5]);
-  face.lineTo(next[4], next[5]);
-  face.close();
-}
-
-/** A polyline of `samples` points along a protrusion's curve (kind 2 ribbon loop, 3 hook), offset across by `across`. */
-function curvePoint(kind: number, along: number, across: number, out: number[]) {
-  'worklet';
-  if (kind === 2) {
-    // the ribbon loop: out of the left limb below 9 o'clock, to a tip at 1.27R, and back in above
-    const angle = along * Math.PI;
-    const reach = Math.sin(angle) ** 0.7;
-    out[0] = -0.9 - 0.37 * reach - across * reach;
-    out[1] = 0.3 * Math.cos(angle) + across * Math.cos(angle) * 0.4;
-    return;
-  }
-  // the hook tendril: horizontal 0.58R above centre, from inside out to 1.2R, its tip curling down
-  const straight = along < 0.8 ? along / 0.8 : 1;
-  const curl = along < 0.8 ? 0 : (along - 0.8) / 0.2;
-  const curlAngle = curl * Math.PI * 0.6;
-  out[0] = -0.4 - 0.72 * straight - Math.sin(curlAngle) * (0.12 + across);
-  out[1] = -0.58 + across + (1 - Math.cos(curlAngle)) * (0.12 + across);
-}
-
-/**
- * The ribbon loop (6 parallel strands) or the hook tendril (3 strands), grown along their
- * curve. The strands are not ruled lines: their spacing varies, each wanders a little and
- * grows a little ahead of or behind the others.
- */
-function appendCurveProtrusion(builders: Resources['pathBuilders'], kind: number, growth: number, dissolve: number) {
-  'worklet';
-  const strands = kind === 2 ? 6 : 3;
-  const samples = 12;
-  const point = [0, 0];
-  for (let strand = 0; strand < strands; strand++) {
-    const across = (strand - (strands - 1) / 2) * 0.022 * (1 + 0.35 * Math.sin(strand * 1.7 + kind));
-    const reach = growth * (0.88 + 0.12 * hashInteger(strand * 7 + kind));
-    curvePoint(kind, 0, across, point);
-    let previousX = point[0];
-    let previousY = point[1];
-    for (let sample = 1; sample <= samples; sample++) {
-      const along = (sample / samples) * reach;
-      curvePoint(kind, along, across, point);
-      const wander = 0.012 * Math.sin(along * 9 + strand * 2.3);
-      point[0] += wander;
-      point[1] += wander * 0.6;
-      appendRail(
-        builders.protrusionRails,
-        builders.protrusionSparks,
-        previousX,
-        previousY,
-        point[0],
-        point[1],
-        1,
-        dissolve,
-      );
-      previousX = point[0];
-      previousY = point[1];
-    }
-  }
-}
-
-/** Horizontal streaks leaving the lower-left limb at 7-8 o'clock, bright heads out front. */
-function appendStreakBundle(builders: Resources['pathBuilders'], growth: number, dissolve: number, seed: number) {
-  'worklet';
-  for (let streak = 0; streak < 5; streak++) {
-    const y = 0.46 + streak * 0.045;
-    const limbX = -Math.sqrt(1 - y * y);
-    // it slides out of the limb and lengthens as it grows, so at growth 0 there is nothing to see
-    const out = (0.03 + 0.11 * hashInteger(seed * 97 + streak * 5)) * growth;
-    const length = (0.1 + 0.3 * hashInteger(seed * 89 + streak)) * growth;
-    if (length < 0.01) continue;
-    appendRail(
-      builders.protrusionRails,
-      builders.protrusionSparks,
-      limbX - out,
-      y,
-      limbX - out + length,
-      y,
-      4,
-      dissolve,
-    );
-    if (dissolve > 0.6) continue;
-    builders.protrusionSparks.moveTo(limbX - out, y);
-    builders.protrusionSparks.lineTo(limbX - out + 0.03 * growth, y);
-  }
-}
-
-/**
- * The pole fan: strands bowing out of the right limb and converging just outside 3 o'clock,
- * each reaching a little further or shorter.
- */
-function appendPoleFan(builders: Resources['pathBuilders'], growth: number, dissolve: number) {
-  'worklet';
-  for (let strand = 0; strand < 6; strand++) {
-    const angle = clockRadians(52 + strand * 15);
-    const fromX = Math.cos(angle) * 0.95;
-    const fromY = Math.sin(angle) * 0.95;
-    const reach = growth * (0.8 + 0.2 * hashInteger(strand * 13 + 5));
-    // a quadratic bow: out past the limb, then round to the meeting point at (1.18R, 0)
-    const bowX = Math.cos(angle) * 1.22;
-    const bowY = Math.sin(angle) * 1.0;
-    let previousX = fromX;
-    let previousY = fromY;
-    for (let step = 1; step <= 6; step++) {
-      const along = (step / 6) * reach;
-      const x = (1 - along) * (1 - along) * fromX + 2 * along * (1 - along) * bowX + along * along * 1.18;
-      const y = (1 - along) * (1 - along) * fromY + 2 * along * (1 - along) * bowY;
-      appendRail(builders.protrusionRails, builders.protrusionSparks, previousX, previousY, x, y, 1, dissolve);
-      previousX = x;
-      previousY = y;
-    }
-  }
-}
-
-/** One protrusion of `kind` at its growth and dissolve. */
-function appendProtrusion(
-  builders: Resources['pathBuilders'],
-  kind: number,
-  growth: number,
-  dissolve: number,
-  seed: number,
-) {
-  'worklet';
-  // The two truss booms: the long one out of the equator at 9 o'clock, where the solid rod
-  // used to be, and a shorter, finer one off the upper-left limb, where the ear ring was.
-  if (kind === 1) appendTrussBoom(builders, growth, dissolve, 270, 0.55, 0.085, seed);
-  else if (kind === 2 || kind === 3) appendCurveProtrusion(builders, kind, growth, dissolve);
-  else if (kind === 4) appendStreakBundle(builders, growth, dissolve, seed);
-  else if (kind === 5) appendTrussBoom(builders, growth, dissolve, 312, 0.4, 0.062, seed + 5);
-  else if (kind === 6) appendPoleFan(builders, growth, dissolve);
-}
-
-/** The script's protrusions: at most one per track, two at once. */
-function drawProtrusions(canvas: HologramCanvas, resources: Resources, state: FrameState) {
-  'worklet';
-  const alpha = state.protrusionAlpha;
-  const protrusions = state.script.protrusions;
-  if (alpha <= 0 || (protrusions[1] < 0 && protrusions[4] < 0)) return;
-  const builders = resources.pathBuilders;
-  // a truss boom's side panel is solid only while its protrusion has barely begun to dissolve
-  let faceSolid = 0;
-  if (protrusions[1] >= 0) {
-    appendProtrusion(builders, protrusions[0], protrusions[1], protrusions[2], 3);
-    faceSolid = Math.max(faceSolid, 1 - smooth01(protrusions[2] / 0.3));
-  }
-  if (protrusions[4] >= 0) {
-    appendProtrusion(builders, protrusions[3], protrusions[4], protrusions[5], Math.floor(protrusions[6] * 1000));
-    faceSolid = Math.max(faceSolid, 1 - smooth01(protrusions[5] / 0.3));
-  }
-  const facePath = builders.protrusionFace.detach();
-  const faceAlpha = alpha * faceSolid;
-  if (faceAlpha > 0) {
-    // the box's one solid surface, lit like the amber the frame is made of and no brighter,
-    // so it reads as a face turned away from the eye rather than as a patch of light
-    resources.trussFaceFill.setAlphaf(0.72 * faceAlpha);
-    canvas.drawPath(facePath, resources.trussFaceFill);
-  }
-  // The far face, at about half the near one's weight: distance is the only thing that says
-  // which of two identical frames is behind the other.
-  const farPath = builders.protrusionFarRails.detach();
-  resources.rodGlowStroke.setStrokeWidth(0.026);
-  resources.rodGlowStroke.setAlphaf(0.14 * alpha);
-  canvas.drawPath(farPath, resources.rodGlowStroke);
-  resources.railStroke.setStrokeWidth(0.008);
-  resources.railStroke.setAlphaf(0.42 * alpha);
-  canvas.drawPath(farPath, resources.railStroke);
-  // near rails glow: a soft halo, the golden line, a hot thread down the middle
-  const railPath = builders.protrusionRails.detach();
-  resources.rodGlowStroke.setStrokeWidth(0.045);
-  resources.rodGlowStroke.setAlphaf(0.24 * alpha);
-  canvas.drawPath(railPath, resources.rodGlowStroke);
-  resources.railStroke.setStrokeWidth(0.013);
-  resources.railStroke.setAlphaf(0.85 * alpha);
-  canvas.drawPath(railPath, resources.railStroke);
-  resources.rodCoreStroke.setStrokeWidth(0.005);
-  resources.rodCoreStroke.setAlphaf(0.55 * alpha);
-  canvas.drawPath(railPath, resources.rodCoreStroke);
-  resources.sparkStroke.setStrokeWidth(0.014);
-  resources.sparkStroke.setAlphaf(0.8 * alpha);
-  canvas.drawPath(builders.protrusionSparks.detach(), resources.sparkStroke);
-}
-
 // ---- chip bursts --------------------------------------------------------------------------
 
 /** Appends a slab from its centre, unit tangent and half sizes. */
@@ -3674,7 +3231,6 @@ export function drawHologram(
   drawTruss(canvas, resources, scene, state);
   drawCrescent(canvas, resources, scene, state);
   drawFray(canvas, resources, scene, state);
-  drawProtrusions(canvas, resources, state);
   drawChips(canvas, resources, state);
   drawAccents(canvas, resources, state);
   drawIntro(canvas, resources, scene, state);

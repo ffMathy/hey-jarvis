@@ -255,19 +255,12 @@ function changedPerTile(first: Float32Array, second: Float32Array): number[] {
 }
 
 /**
- * The moments the slow script changes something: every epoch start, every epoch's
- * protrusion start and every second-track start. Epochs are 10 numbers each in the scene
- * (start, duration, dominant, protrusion type, protrusion start, ...), second-track events 5
- * (start, ...).
+ * The moments the slow script changes something: every epoch start. Epochs are 6 numbers
+ * each in the scene (start, duration, dominant, line kind, density, red flash).
  */
 function scriptBoundaries(scene: Hologram['scene']): number[] {
   const boundaries: number[] = [];
-  for (let offset = 0; offset < scene.epochs.length; offset += 10) {
-    const start = scene.epochs[offset] ?? 0;
-    boundaries.push(start);
-    if (scene.epochs[offset + 3] !== 0) boundaries.push(start + (scene.epochs[offset + 4] ?? 0));
-  }
-  for (let offset = 0; offset < scene.secondTrack.length; offset += 5) boundaries.push(scene.secondTrack[offset] ?? 0);
+  for (let offset = 0; offset < scene.epochs.length; offset += 6) boundaries.push(scene.epochs[offset] ?? 0);
   return boundaries;
 }
 
@@ -382,9 +375,9 @@ describe('the hologram', () => {
 
   it('turns its rim clockwise while its body stays put and nothing inside turns with it', () => {
     // The film's rim layer rolls at 10-12°/s, so 5-6° in half a second, whichever element
-    // leads: the crescent at 3 s, the thin ring at 19 s, the ladder ring at 33.5 s. (A strut
-    // standing across the rim, as at 9.5 s, is fixed on the equator and would mask it.)
-    for (const time of [3, 19, 33.5]) {
+    // leads: on the script this seed builds, the crescent leads at 3 s, the thin ring at
+    // 19 s and the ladder ring at 36 s, each well clear of its handover.
+    for (const time of [3, 19, 36]) {
       const earlier = render(silence(time));
       const later = render(silence(time + 0.5));
 
