@@ -50,8 +50,7 @@
 //   drawBodyHighlights  the bright fragments with a wide glow that steps down to nothing over
 //                       its outer half, and a narrow hot core
 //                       (the film's #ffd26c, pulled toward orange so stacked strokes stay
-//                       amber); 220 specks, warm and blinking peach, each a small light with
-//                       a halo round it
+//                       amber)
 //   drawThinRing        a hairline circle at 1R, brightest from 1 to 4 o'clock, over a lumpy ridge
 //                       of light just inside the limb that rolls with the rim layer, painted as
 //                       a band rather than a disc (see LIMB_RIDGE_BAND)
@@ -129,9 +128,7 @@
 //                 still half again as much, and the drawing this replaced degraded the same way.)
 //                 Each
 //                 fragment also re-lights up to a fifth of a radius from where it was, less so
-//                 the nearer the limb it is — the silhouette must not move with his voice — and
-//                 the specks hand over to a second, fixed, faster clock the same way, so that
-//                 layer twinkles more than twice as fast without any speck's phase moving
+//                 the nearer the limb it is — the silhouette must not move with his voice
 //               - hotShare = 1 − 0.35·agitation: the share of bright fragments still drawn
 //                 bright. Their hot cores all but go (−95%), which is what takes the film's
 //                 luma-200 highlights out on "Doctor." while the strokes stay bright
@@ -169,9 +166,8 @@
 //   appearance  keyframe time k = appearance / 0.75: the film's section 5 keyframes run
 //               over k 0-1 (2.7 s of MATERIALISE_SECONDS = 3.6 s) and the crescent grows
 //               back in over k 1-1.33. Point of light k 0-0.32; sparks from 0.06 (a row
-//               across the future top, a trail down the right, specks), each for 0.4;
-//               band pieces from 0.19; the spoked dial snaps on at 0.26 within 0.03, in pieces of
-//               uneven length, brightens to 0.49, loses its spokes by 0.64 and its right arc by
+//               the spoked dial snaps on within 0.12, in pieces of
+//               uneven length, brightens to 0.3, loses its spokes by 0.64 and its right arc by
 //               0.69, and stays solid and hot until it breaks up over 0.7-0.9, each piece thinning
 //               to its outer rail, shortening from one end and drifting off the band; the tilted
 //               equatorial ring of rails and fine ticks (front and right side only) sweeps in over
@@ -356,7 +352,6 @@ const CHIP_GONE_SECONDS = 0.2;
 // Strides of the flat scene tables (the builders describe the fields).
 const BODY_STRIDE = 10;
 const STREAM_STRIDE = 11;
-const SPECK_STRIDE = 5;
 const CRESCENT_PIECE_STRIDE = 3;
 const CRESCENT_PIECES_PER_STRAND = 14;
 const TRUSS_PIECE_STRIDE = 6;
@@ -485,16 +480,6 @@ const FRAGMENT_FAINTEST = 0.1;
  * counts — and near enough that the mass, the clumping and the crowded left half stay put.
  */
 const FRAGMENT_WANDER = 0.06;
-/**
- * The specks' two clocks. Agitation moves the share of them on the fast clock, never a rate:
- * a rate that moved would multiply `time` as well, so every change in agitation would shift
- * every speck's blink phase at once — noise across the whole layer at each word boundary,
- * growing with how long the sphere has been mounted. At full agitation four specks in five
- * are on the fast clock, so the layer twinkles well over twice as fast on average, and a
- * handover still costs one dot at a time.
- */
-const SPECK_FAST_RATE = 2.8;
-const SPECK_FAST_SHARE = 0.8;
 
 /** The rim element that dominates takes this long to hand over to the next. */
 const HANDOVER_SECONDS = 1.2;
@@ -640,7 +625,7 @@ function pickGlyphAndLength(random: Random, x: number, y: number, radius: number
 function buildBody(random: Random) {
   const body: number[] = [];
   const shape = [0, 0];
-  const fragmentCount = 840;
+  const fragmentCount = 1000;
   while (body.length < fragmentCount * BODY_STRIDE) {
     // the body stops just inside the rim layer, which rolls over it
     const radius = Math.sqrt(random()) * 0.94;
@@ -722,26 +707,6 @@ function buildStream(random: Random) {
     );
   }
   return stream;
-}
-
-/**
- * Specks: warm points that wink on and off slowly (1-2.8 Hz), and pale peach ones that
- * blink faster. Twice as many as before, each with a glow of its own, so the layer is a
- * field of small lights rather than a sprinkling over a lit ball.
- * Stride 5: x, y, rate, phase, kind (0 warm, 1 peach).
- */
-function buildSpecks(random: Random) {
-  const specks: number[] = [];
-  while (specks.length < 220 * SPECK_STRIDE) {
-    const radius = Math.sqrt(random()) * 1.02;
-    const angle = random() * Math.PI * 2;
-    const x = Math.cos(angle) * radius;
-    const y = Math.sin(angle) * radius;
-    if (random() > massWeight(x, y)) continue;
-    const peach = random() < 0.2;
-    specks.push(x, y, peach ? 3.4 + random() * 2.4 : 1 + random() * 1.8, random(), peach ? 1 : 0);
-  }
-  return specks;
 }
 
 /**
@@ -968,7 +933,6 @@ export function createHologramScene(seed: number) {
   return {
     body: buildBody(random).map(roundToFiveDecimals),
     stream: buildStream(random).map(roundToFiveDecimals),
-    specks: buildSpecks(random).map(roundToFiveDecimals),
     crescentPieces: buildCrescentPieces(random).map(roundToFiveDecimals),
     truss: buildTruss(random).map(roundToFiveDecimals),
     fray: buildFray(random).map(roundToFiveDecimals),
@@ -1505,11 +1469,12 @@ export function createHologramResources(Skia: SkiaApiType, scene: Scene) {
   particleHaloInner.setAntiAlias(HALO_ANTIALIASED);
 
   const makeBuilder = () => Skia.PathBuilder.Make();
+  /** Stands in until the first frame builds the real thing; drawing it is a no-op. */
+  const emptyPath = makeBuilder().detach();
   const pathBuilders = {
     // dim, mid and bright, pinned and then the same three for the turning shell
     body: [makeBuilder(), makeBuilder(), makeBuilder(), makeBuilder(), makeBuilder(), makeBuilder()],
     fillBlobs: makeBuilder(),
-    specks: [makeBuilder(), makeBuilder()], // warm, peach
     lines: makeBuilder(),
     swoosh: makeBuilder(),
     coreKnot: makeBuilder(),
@@ -1534,7 +1499,6 @@ export function createHologramResources(Skia: SkiaApiType, scene: Scene) {
   const allPathBuilders = [
     ...pathBuilders.body,
     pathBuilders.fillBlobs,
-    ...pathBuilders.specks,
     pathBuilders.lines,
     pathBuilders.swoosh,
     pathBuilders.coreKnot,
@@ -1575,8 +1539,6 @@ export function createHologramResources(Skia: SkiaApiType, scene: Scene) {
     bodyGlowStroke: makeStroke('#dc6820', StrokeCap.Round),
     particleHaloStroke: particleHalo,
     particleHaloInnerStroke: particleHaloInner,
-    speckWarmStroke: makeStroke('#ff944c', StrokeCap.Round),
-    speckPeachStroke: makeStroke('#ffc2a2', StrokeCap.Round),
     lineStroke: makeStroke('#ec9440', StrokeCap.Butt),
     coreRingStroke: makeStroke('#ffa440', StrokeCap.Round),
     coreGlowStroke: makeStroke('#ec8c2c', StrokeCap.Round),
@@ -1591,6 +1553,19 @@ export function createHologramResources(Skia: SkiaApiType, scene: Scene) {
     crescentCoreStroke: makeStroke('#ffc244', StrokeCap.Butt),
     /** Carries nothing but an alpha: the layer the sphere fades in through while it arrives. */
     arrivalFade: Skia.Paint(),
+    /**
+     * The ladder ring's five paths, and the weight they were built for. A weight of -1 is a
+     * weight no frame asks for, so the first frame always builds.
+     */
+    trussCache: {
+      weight: -1,
+      shown: 0,
+      outer: emptyPath,
+      inner: emptyPath,
+      haze: emptyPath,
+      rungs: emptyPath,
+      detail: emptyPath,
+    },
     frayStroke: makeStroke('#f0943a', StrokeCap.Butt),
     chipGlowStroke: makeStroke('#f08a28', StrokeCap.Round),
     chipFill: makeFill('#f59430'),
@@ -2252,10 +2227,10 @@ type HologramPaint = Resources['particleHaloStroke'];
  * in device pixels rather than its ink, so it gets worse on a phone, where a stroke's cost
  * hardly moves.
  *
- * `innerRingStroke` is why the cap is only usually butt: a tier whose particles are points
- * rather than strokes — the specks — has to pass the round-capped paint here, because a butt cap
- * on a point of no length is a thin bar across it instead of a disc, which is plainly visible
- * under magnification. That tier is small enough that the round caps measure free.
+ * `innerRingStroke` is why the cap is only usually butt: a tier of particles with no length to
+ * them would need the round-capped paint here, since a butt cap on a point is a thin bar across
+ * it rather than a disc. Nothing passes points any more — the specks did, and they are gone —
+ * but the distinction is kept because it is the sort of thing that is expensive to rediscover.
  *
  * `reach` is the halo's full width and `strength` the alpha it comes to against the stroke.
  */
@@ -2303,12 +2278,12 @@ function drawBody(canvas: HologramCanvas, resources: Resources, scene: Scene, st
     // as the mid tier's because it is the most numerous and the most spread out, so it is the
     // one that lights the bare fill between the clumps; it is the faintest for the same reason.
     const dimPath = builders[group * 3].detach();
-    drawParticleHalo(canvas, resources, dimPath, 0.115, 0.24, resources.particleHaloInnerStroke, state.glowGain);
+    drawParticleHalo(canvas, resources, dimPath, 0.132, 0.28, resources.particleHaloInnerStroke, state.glowGain);
     resources.bodyDimStroke.setStrokeWidth(0.014);
     resources.bodyDimStroke.setAlphaf(0.62);
     canvas.drawPath(dimPath, resources.bodyDimStroke);
     const midPath = builders[group * 3 + 1].detach();
-    drawParticleHalo(canvas, resources, midPath, 0.12, 0.3, resources.particleHaloInnerStroke, state.glowGain);
+    drawParticleHalo(canvas, resources, midPath, 0.134, 0.34, resources.particleHaloInnerStroke, state.glowGain);
     resources.bodyMidStroke.setStrokeWidth(0.0155);
     resources.bodyMidStroke.setAlphaf(0.85);
     canvas.drawPath(midPath, resources.bodyMidStroke);
@@ -2316,49 +2291,8 @@ function drawBody(canvas: HologramCanvas, resources: Resources, scene: Scene, st
   }
 }
 
-/**
- * The warm points that wink on and off, and the pale peach ones that blink: while he talks a
- * growing share of them hand over from their calm clock to their fast one, so the layer twinkles
- * about half again as fast without any speck's phase moving (see SPECK_FAST_RATE).
- */
-function drawSpecks(canvas: HologramCanvas, resources: Resources, scene: Scene, state: FrameState) {
-  'worklet';
-  const specks = scene.specks;
-  const builders = resources.pathBuilders.specks;
-  const time = state.time;
-  const fastShare = SPECK_FAST_SHARE * state.agitation;
-  let counts = 0;
-  for (let offset = 0; offset < specks.length; offset += SPECK_STRIDE) {
-    if (fraction(specks[offset + 4] * 0.37 + specks[offset] * 5.1 + 0.5) > state.bodyShare) continue;
-    const phase = specks[offset + 3];
-    const onFastClock = fraction(phase * 31.7 + specks[offset + 1] * 3.1) < fastShare;
-    if (fraction(time * specks[offset + 2] * (onFastClock ? SPECK_FAST_RATE : 1) + phase) >= 0.5) continue;
-    const x = specks[offset];
-    const y = specks[offset + 1];
-    builders[specks[offset + 4]].moveTo(x, y);
-    builders[specks[offset + 4]].lineTo(x + 0.002, y);
-    counts++;
-  }
-  const warmPath = builders[0].detach();
-  const peachPath = builders[1].detach();
-  if (counts === 0) return;
-  // Each speck is a small light with a halo round it, not a bare dot on a lit ball. A speck is a
-  // point rather than a stroke, so its halo takes the round-capped paint for its inner ring as
-  // well: see drawParticleHalo for what a butt cap does to a particle of no length.
-  drawParticleHalo(canvas, resources, warmPath, 0.095, 0.36, resources.particleHaloStroke, state.glowGain);
-  resources.speckWarmStroke.setStrokeWidth(0.016);
-  resources.speckWarmStroke.setAlphaf(0.85);
-  canvas.drawPath(warmPath, resources.speckWarmStroke);
-  resources.speckPeachStroke.setStrokeWidth(0.021);
-  resources.speckPeachStroke.setAlphaf(0.32);
-  canvas.drawPath(peachPath, resources.speckPeachStroke);
-  resources.speckPeachStroke.setStrokeWidth(0.013);
-  resources.speckPeachStroke.setAlphaf(0.7);
-  canvas.drawPath(peachPath, resources.speckPeachStroke);
-}
-
-/** The bright fragments with the widest of the amber halos, and the specks. */
-function drawBodyHighlights(canvas: HologramCanvas, resources: Resources, scene: Scene, state: FrameState) {
+/** The bright fragments, with the widest of the amber halos. */
+function drawBodyHighlights(canvas: HologramCanvas, resources: Resources, state: FrameState) {
   'worklet';
   const brightPath = resources.pathBuilders.body[2].detach();
   const turningBrightPath = resources.pathBuilders.body[5].detach();
@@ -2380,7 +2314,6 @@ function drawBodyHighlights(canvas: HologramCanvas, resources: Resources, scene:
       if (group === 1) canvas.restore();
     }
   }
-  drawSpecks(canvas, resources, scene, state);
 }
 
 // ---- lines: comets, spokes, the swoosh --------------------------------------------------
@@ -2599,12 +2532,33 @@ function drawTruss(canvas: HologramCanvas, resources: Resources, scene: Scene, s
   const builders = resources.pathBuilders;
   canvas.save();
   canvas.rotate(state.roll, 0, 0);
-  const shown = appendTruss(builders, scene.truss, weight);
-  const outerPath = builders.truss.detach();
-  const innerPath = builders.trussInner.detach();
-  const hazePath = builders.trussHaze.detach();
-  const rungPath = builders.trussRungs.detach();
-  const detailPath = builders.trussDetail.detach();
+  // Built once per weight, not once per frame.
+  //
+  // The ring is built in the rolling frame — the canvas above is already turned — so its shape
+  // depends on `weight` alone, and `weight` is exactly constant except while one rim element
+  // hands over to another, which takes HANDOVER_SECONDS out of an epoch lasting several times
+  // that. Every other frame re-made the same five paths and threw them away: 13% of a frame,
+  // measured, for an answer that had not changed.
+  //
+  // Keyed on the input rather than on what happened last frame, so this is memoisation and not
+  // state: the same frame still draws the same picture whatever came before it, which is what
+  // `draws a frame the same way after other frames` exists to hold us to.
+  const cache = resources.trussCache;
+  if (cache.weight !== weight) {
+    cache.shown = appendTruss(builders, scene.truss, weight);
+    cache.outer = builders.truss.detach();
+    cache.inner = builders.trussInner.detach();
+    cache.haze = builders.trussHaze.detach();
+    cache.rungs = builders.trussRungs.detach();
+    cache.detail = builders.trussDetail.detach();
+    cache.weight = weight;
+  }
+  const shown = cache.shown;
+  const outerPath = cache.outer;
+  const innerPath = cache.inner;
+  const hazePath = cache.haze;
+  const rungPath = cache.rungs;
+  const detailPath = cache.detail;
   if (state.rimAlpha > 0) {
     // the thin ring's ticks roll with the rest of the rim layer, but only show through the
     // ring's bright stretch from 1 to 5 o'clock: the film has no graduated dial round the limb
@@ -3199,7 +3153,7 @@ export function drawHologram(
   drawBody(canvas, resources, scene, state);
   drawLines(canvas, resources, scene, state);
   drawCore(canvas, resources, state);
-  drawBodyHighlights(canvas, resources, scene, state);
+  drawBodyHighlights(canvas, resources, state);
   drawThinRing(canvas, resources, state);
   drawTruss(canvas, resources, scene, state);
   drawCrescent(canvas, resources, scene, state);
