@@ -9,6 +9,7 @@ import {
   drawHologram,
   type HologramFrame,
   MATERIALISE_SECONDS,
+  SPHERE_FRACTION,
 } from './hologram-drawing';
 import { VOICE_BAND_COUNT } from './voice-levels';
 
@@ -26,8 +27,8 @@ import { VOICE_BAND_COUNT } from './voice-levels';
 
 const SIZE = 256;
 const SEED = 1337;
-/** The sphere's radius in pixels: the drawing makes it 0.31 of the square. */
-const RADIUS = SIZE * 0.31;
+/** The sphere's radius in pixels, at rest. Taken from the drawing so the two cannot drift apart. */
+const RADIUS = SIZE * SPHERE_FRACTION;
 
 let Skia: ReturnType<typeof JsiSkApi>;
 
@@ -338,10 +339,12 @@ describe('the hologram', () => {
       const ordinary = discBrightness(render(speech(time, 0.3, new Array(VOICE_BAND_COUNT).fill(0.27))));
       const loud = discBrightness(render(speech(time, 1, new Array(VOICE_BAND_COUNT).fill(0.9))));
 
-      // An ordinary speaking voice is plainly brighter than silence...
-      expect(ordinary / silent).toBeGreaterThan(1.15);
-      // ...and even shouting stays this side of a flare...
-      expect(loud / silent).toBeLessThan(1.5);
+      // An ordinary speaking voice is far brighter than silence — the user could not see a
+      // 30% lift on a phone, so this floor is where it is now rather than where it started.
+      expect(ordinary / silent).toBeGreaterThan(1.4);
+      // ...and even shouting stays this side of a flare. Raised from 1.5 with the glow it
+      // bounds, on the user's asking for a far louder answer than a third brighter.
+      expect(loud / silent).toBeLessThan(2.1);
       // ...with loudness itself barely moving it, which is what keeps it from being a meter.
       expect(loud / ordinary).toBeLessThan(1.15);
       expect(loud).toBeGreaterThan(ordinary);

@@ -280,12 +280,19 @@ type SkiaApiType = HologramSkia;
  * reach a formed ball at 2.7 s (see FORMED_APPEARANCE); the last 0.9 s grows the
  * bright left crescent back in, as the film's does once the ball has formed.
  */
-export const MATERIALISE_SECONDS = 3.6;
+export const MATERIALISE_SECONDS = 1.4;
 /** The appearance at which the film's materialisation keyframes reach "formed": 2.7 s of 3.6. */
 const FORMED_APPEARANCE = 0.75;
 
-/** Sphere radius as a fraction of the square: leaves room for chips thrown to 1.5R. */
-const SPHERE_FRACTION = 0.31;
+/**
+ * Sphere radius as a fraction of the square, at rest.
+ *
+ * Down from 0.31: the sphere swells by SWELL_WITH_VOICE while he talks and the halos reach
+ * further than they did, and at 0.31 the chips thrown to 1.5R were landing outside the canvas
+ * and being cut off — which the containment check caught. Smaller at rest also widens the gap
+ * the swell opens: talking, it is now a little larger than it used to be standing still.
+ */
+export const SPHERE_FRACTION = 0.27;
 /** The outer rim layer rolls clockwise in the screen plane: one turn in about 33 s, as the film's ladder ring. */
 const ROLL_DEGREES_PER_SECOND = 11;
 /**
@@ -327,7 +334,7 @@ export function bodyTurnRadians(time: number) {
  * speech from 0.15 (see SPEECH_LEVEL), so it answers "is he talking" cleanly; the rest follows
  * loudness so a sentence still breathes rather than switching on and staying flat.
  */
-export const GLOW_WITH_VOICE = 0.8;
+export const GLOW_WITH_VOICE = 2.4;
 /** How much of the glow answers "is he talking at all" rather than "how loudly". */
 const GLOW_FROM_ENVELOPE = 0.65;
 /**
@@ -338,7 +345,7 @@ const GLOW_FROM_ENVELOPE = 0.65;
  * the user's call, after the glow alone still read as too quiet a signal on a phone: it
  * pulsates now, and 8% is enough to see without the silhouette lurching.
  */
-const SWELL_WITH_VOICE = 0.08;
+const SWELL_WITH_VOICE = 0.18;
 /** How small the sphere starts before it grows into place. */
 const ARRIVAL_SMALLEST = 0.55;
 const DEGREES_TO_RADIANS = 0.017453292519943295;
@@ -579,7 +586,7 @@ function pickBrightness(random: Random) {
  * half the film's turnover and is most of why the idle ball read as a still picture.
  */
 function pickFragmentRate(random: Random, pool: number) {
-  const litSeconds = pool === 0 ? 0.18 + random() * 0.22 : 0.06 + random() * 0.08;
+  const litSeconds = pool === 0 ? 0.34 + random() * 0.38 : 0.05 + random() * 0.07;
   return FRAGMENT_DUTY / litSeconds;
 }
 
@@ -2124,7 +2131,7 @@ function appendBody(builders: PathBuilder[], body: number[], state: FrameState) 
     // take it with it. Compared as squares, so this costs no square root.
     const fromCentre = body[offset] * body[offset] + body[offset + 1] * body[offset + 1];
     const inward = clamp01((0.76 - fromCentre) * 3.2);
-    const across = (fraction(hop * 23.17) - 0.5) * (FRAGMENT_WANDER + 0.34 * state.agitation * inward);
+    const across = (fraction(hop * 23.17) - 0.5) * (FRAGMENT_WANDER + 1.3 * state.agitation * inward);
     placeFragment(body, offset, along, across, state, placed);
     const lit = strength * placed[3];
     if (lit < FRAGMENT_FAINTEST) continue;
@@ -2278,12 +2285,12 @@ function drawBody(canvas: HologramCanvas, resources: Resources, scene: Scene, st
     // as the mid tier's because it is the most numerous and the most spread out, so it is the
     // one that lights the bare fill between the clumps; it is the faintest for the same reason.
     const dimPath = builders[group * 3].detach();
-    drawParticleHalo(canvas, resources, dimPath, 0.132, 0.28, resources.particleHaloInnerStroke, state.glowGain);
+    drawParticleHalo(canvas, resources, dimPath, 0.185, 0.36, resources.particleHaloInnerStroke, state.glowGain);
     resources.bodyDimStroke.setStrokeWidth(0.014);
     resources.bodyDimStroke.setAlphaf(0.62);
     canvas.drawPath(dimPath, resources.bodyDimStroke);
     const midPath = builders[group * 3 + 1].detach();
-    drawParticleHalo(canvas, resources, midPath, 0.134, 0.34, resources.particleHaloInnerStroke, state.glowGain);
+    drawParticleHalo(canvas, resources, midPath, 0.19, 0.42, resources.particleHaloInnerStroke, state.glowGain);
     resources.bodyMidStroke.setStrokeWidth(0.0155);
     resources.bodyMidStroke.setAlphaf(0.85);
     canvas.drawPath(midPath, resources.bodyMidStroke);
@@ -2303,7 +2310,7 @@ function drawBodyHighlights(canvas: HologramCanvas, resources: Resources, state:
         canvas.save();
         canvas.rotate(state.shellTurn, CORE_X, CORE_Y);
       }
-      drawParticleHalo(canvas, resources, path, 0.125, 0.38, resources.particleHaloInnerStroke, state.glowGain);
+      drawParticleHalo(canvas, resources, path, 0.18, 0.48, resources.particleHaloInnerStroke, state.glowGain);
       resources.bodyBrightStroke.setStrokeWidth(0.0165);
       resources.bodyBrightStroke.setAlphaf(1 - 0.25 * state.agitation);
       canvas.drawPath(path, resources.bodyBrightStroke);
@@ -2579,11 +2586,11 @@ function drawTruss(canvas: HologramCanvas, resources: Resources, scene: Scene, s
   if (shown > 0) {
     // leading, the ladder ring is a bold gold band (shot d, shot b's box-frame ribbon);
     // faint, its dashes are fine
-    resources.trussHazeStroke.setStrokeWidth(0.1);
-    resources.trussHazeStroke.setAlphaf(0.42 * weight);
+    resources.trussHazeStroke.setStrokeWidth(0.18);
+    resources.trussHazeStroke.setAlphaf(0.58 * weight * state.glowGain);
     canvas.drawPath(hazePath, resources.trussHazeStroke);
-    resources.trussGlowStroke.setStrokeWidth(0.05 + 0.03 * weight);
-    resources.trussGlowStroke.setAlphaf(0.3 * (0.3 + 0.7 * weight));
+    resources.trussGlowStroke.setStrokeWidth(0.1 + 0.05 * weight);
+    resources.trussGlowStroke.setAlphaf(0.5 * (0.3 + 0.7 * weight) * state.glowGain);
     canvas.drawPath(outerPath, resources.trussGlowStroke);
     resources.trussStroke.setStrokeWidth(0.011 + 0.006 * weight);
     resources.trussStroke.setAlphaf(0.35 + 0.4 * weight);

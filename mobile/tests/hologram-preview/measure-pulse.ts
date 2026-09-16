@@ -80,8 +80,14 @@ const LOWEST_SPEAKING_BRIGHTNESS_RATIO = 1.02;
  * `hologram-drawing.spec.ts` pins directly (loud ÷ ordinary < 1.15). This is the
  * blunter backstop: a mean over the whole crop this far above its silent value
  * would mean something other than the glow had started moving.
+ *
+ * Raised again, 1.5 to 2.1, before the run rather than after one failed on it: the
+ * user found even the 1.3x step hard to see on a phone and asked for a far louder
+ * answer, so the drawing now lifts the disc about 1.8x and the crop follows. The
+ * bound that actually guards against a level meter is the spread one above, and it
+ * has not moved.
  */
-const HIGHEST_SPEAKING_BRIGHTNESS_RATIO = 1.5;
+const HIGHEST_SPEAKING_BRIGHTNESS_RATIO = 2.1;
 /**
  * And change by at least this much, 0–255 mean per pixel, from one tenth of a
  * second to the next while he is silent — averaged over each stretch of
