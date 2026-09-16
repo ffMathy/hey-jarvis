@@ -1,5 +1,5 @@
-import { JarvisHologram } from 'hologram/react';
 import { StatusBar } from 'expo-status-bar';
+import { JarvisHologram } from 'hologram/react';
 import { StyleSheet, View } from 'react-native';
 import { silentVoice } from './silent-voice';
 import { useWatchHologramSize } from './watch-screen';
@@ -20,12 +20,7 @@ export function App() {
   return (
     <View style={styles.screen}>
       <StatusBar hidden />
-      <View
-        accessible
-        accessibilityLabel="Jarvis"
-        style={{ width: size, height: size }}
-        testID="hologram"
-      >
+      <View accessible accessibilityLabel="Jarvis" style={{ width: size, height: size }} testID="hologram">
         <JarvisHologram size={size} voice={silentVoice} />
       </View>
     </View>

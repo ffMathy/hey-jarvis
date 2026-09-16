@@ -25,7 +25,10 @@ const withWatchAssistant: ConfigPlugin = (config) =>
 
     const features = manifest['uses-feature'] ?? [];
     if (!features.some((feature) => feature.$['android:name'] === 'android.hardware.type.watch')) {
-      features.push({ $: { 'android:name': 'android.hardware.type.watch' } });
+      // `required` is what makes this a watch app rather than an app that merely likes
+      // watches: a device without the feature refuses to install it, which is how the phone
+      // app and this one share a package name without colliding.
+      features.push({ $: { 'android:name': 'android.hardware.type.watch', 'android:required': 'true' } });
     }
     manifest['uses-feature'] = features;
 

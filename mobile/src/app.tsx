@@ -10,7 +10,7 @@ import { ConversationProvider } from '@elevenlabs/react-native';
 import * as Linking from 'expo-linking';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
 import { isAssistLaunch } from './assist-link';
 import { ConversationScreen } from './conversation-screen';
 import type { ElevenLabsSettings } from './elevenlabs-settings';
@@ -116,8 +116,14 @@ const styles = StyleSheet.create({
   opaque: {
     backgroundColor: theme.colors.background,
   },
-  /** Sample mode floats over the home screen, and paints its own scrim instead. */
+  /**
+   * Sample mode floats over the home screen, and paints its own scrim instead.
+   *
+   * On Android only. A browser has nothing behind the page to float over, so leaving the root
+   * unpainted there shows the document's own white — which is what the published site looked
+   * like: Jarvis on a white page. On web it keeps the same dark the rest of the app uses.
+   */
   seeThrough: {
-    backgroundColor: 'transparent',
+    backgroundColor: Platform.OS === 'android' ? 'transparent' : theme.colors.background,
   },
 });
