@@ -1,6 +1,6 @@
+import { useIsForeground } from 'hologram/react';
 import { useEffect, useMemo, useState } from 'react';
 import { jarvisAudio } from '../modules/jarvis-audio';
-import { useIsForeground } from './is-foreground';
 import { requestMicrophoneAccess } from './microphone-permission';
 import type { UseSampleVoice } from './platform-contracts';
 import { createTappedVoiceReaders, type VoiceReaders } from './tapped-voice';

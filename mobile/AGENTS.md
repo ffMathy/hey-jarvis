@@ -57,10 +57,14 @@ The agent on the other end is the same one `elevenlabs/` deploys, with the same 
 ## File Structure
 
 ```
-../hologram/                      # the sphere and the voice tracker, shared with the watch — see its AGENTS.md
+../hologram/src/                  # the sphere itself, shared with the watch — see ../hologram/AGENTS.md
 ├── hologram-drawing.ts           # what one frame of the hologram looks like (worklets)
 ├── voice-analysis.ts             # the FFT and RMS, the same for live audio and the emulator replay
-└── voice-levels.ts               # spectrum folding, easing, and the agitation/burst tracker
+├── voice-levels.ts               # spectrum folding, easing, and the agitation/burst tracker
+├── voice-contract.ts             # JarvisVoice: the two questions the sphere asks a voice
+└── react/                        # `hologram/react`, the half that needs a framework
+    ├── hologram-view.tsx         # Skia canvas, Reanimated clocks, reading the voice every frame
+    └── is-foreground.ts          # stops the clock and the microphone when nobody is looking
 
 mobile/
 ├── app.config.ts                 # Expo config: package name, scheme, permissions, plugins
@@ -77,7 +81,7 @@ mobile/
     ├── sample-screen.tsx         # sample mode: the hologram following the user's own voice
     ├── jarvis-hologram.tsx       # the hologram on Android …
     ├── jarvis-hologram.web.tsx   # … and in a browser, once CanvasKit has loaded
-    ├── jarvis-hologram-view.tsx  # Skia canvas, Reanimated clocks, reading the voice
+    │                              #   (both are two lines over `hologram/react`)
     ├── hologram-size.ts          # how big it is drawn on this screen
     ├── jarvis-voice.ts           # Jarvis's voice on Android: his track, tapped and analysed …
     ├── jarvis-voice.web.ts       # … and in a browser, as the SDK measures it
@@ -111,7 +115,7 @@ Browser, in a conversation     @elevenlabs/react-native getOutputVolume / getOut
 Browser, in sample mode        getUserMedia ─ AnalyserNode
   └─ a JarvisVoice (platform-contracts.ts), read every 40 ms on the JS thread
        └─ hologram/src/voice-levels.ts perceivedLevel + foldSpectrum → 24 log-spaced bands (targets)
-            └─ jarvis-hologram-view.tsx   UI thread, every frame: easeLevel/easeBands toward the
+            └─ hologram/src/react/hologram-view.tsx  UI thread, every frame: easeLevel/easeBands toward the
                  targets, and advanceVoiceActivity on the *raw* reading → agitation and chip bursts
                  └─ hologram/src/hologram-drawing.ts   drawHologram(canvas, size, frame, scene, resources) → Skia Picture
 ```

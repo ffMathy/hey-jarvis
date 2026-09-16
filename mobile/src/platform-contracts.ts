@@ -12,6 +12,15 @@
  * argument the native one does not take, because nothing else imports both.
  */
 
+/**
+ * The voice contract itself lives in the `hologram` package, because the sphere is what reads
+ * it and the sphere is shared with the watch. Re-exported here so the rest of the app carries on
+ * asking this file what a voice looks like.
+ */
+import type { JarvisVoice } from 'hologram';
+
+export type { JarvisVoice };
+
 export type ReadStoredValue = (key: string) => Promise<string | undefined>;
 
 export type WriteStoredValue = (key: string, value: string) => Promise<void>;
@@ -24,24 +33,6 @@ export type WriteStoredValue = (key: string, value: string) => Promise<void>;
  * question it actually was.
  */
 export type RequestMicrophoneAccess = () => Promise<boolean>;
-
-/**
- * A voice, as far as anything drawn from it needs to know: whether to listen,
- * and how to read it. The hologram polls the two readers about every 40 ms.
- */
-export interface JarvisVoice {
-  /** Whether there is anything to listen to. Nothing is read from the voice otherwise. */
-  listening: boolean;
-  /** Whether the voice is talking right now, rather than merely there to be listened to. */
-  speaking: boolean;
-  /**
-   * Volume, 0–1. On Android the RMS of the last 40 ms; in a browser, as the
-   * ElevenLabs web SDK reports it, the mean of the voice-range spectrum.
-   */
-  getVolume: () => number;
-  /** Byte spectrum, 0–255 per value across 100–8000 Hz. Empty when there is nothing to report. */
-  getSpectrum: () => ArrayLike<number>;
-}
 
 /** Jarvis's voice in the open conversation, if there is one. Must be used inside the ElevenLabs `ConversationProvider`. */
 export type UseJarvisVoice = () => JarvisVoice;

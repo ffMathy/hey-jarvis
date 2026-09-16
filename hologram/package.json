@@ -10,12 +10,25 @@
     "format": "cd .. && bunx biome format --write hologram",
     "test": "cd .. && bash hologram/.scripts/test.sh"
   },
-  "//peer": "Only types are imported from Skia — nothing here calls into it — so whichever app draws the hologram brings its own copy. Both of them already depend on it directly.",
+  "//peer": "Whichever app draws the hologram brings its own copy of these; both of them already depend on all four directly. Skia is only a type import in the main entry, but the react entry calls into it.",
   "peerDependencies": {
-    "@shopify/react-native-skia": "*"
+    "@shopify/react-native-skia": "*",
+    "react": "*",
+    "react-native": "*",
+    "react-native-reanimated": "*"
   },
   "devDependencies": {
     "@shopify/react-native-skia": "2.6.2",
-    "bun-types": "1.3.14"
-  }
+    "@types/react": "19.2.18",
+    "bun-types": "1.3.14",
+    "react": "19.2.3",
+    "react-native": "0.86.3",
+    "react-native-reanimated": "4.5.1"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./react": "./src/react/index.ts",
+    "./react/hologram-view": "./src/react/hologram-view.tsx"
+  },
+  "//exports": "Two entries, and the split matters: '.' is the design and the voice tracking, with nothing but type imports in it, so it runs headless in the tests and under CanvasKit in a browser. './react' is the view, which needs React, Reanimated and Skia for real. The third is for the browser build's lazy import() only \u2014 CanvasKit has to finish loading before anything Skia-backed is even imported."
 }

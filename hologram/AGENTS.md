@@ -3,11 +3,24 @@
 Jarvis's sphere, and the voice tracking that drives it. Shared by every app that
 draws him — today `mobile/` and `wear/`.
 
+## Two entry points
+
+```
+hologram          the design and the voice tracking — no framework in it
+hologram/react    the same sphere as a React Native view you can render
+```
+
+The split is the whole architecture of this package, and the rule below is why
+it exists. Reach for `hologram` when you want to know what Jarvis looks like or
+how loud someone is; reach for `hologram/react` when you want him on a screen.
+
 ## The rule that makes this package work
 
-**Nothing here imports a value.** The only imports in the whole package are
-`import type`, and there are two of them, both from `@shopify/react-native-skia`.
-That is not tidiness; it is the reason the same drawing runs in three places:
+**Nothing in the main entry imports a value.** The only imports across
+`hologram-drawing.ts`, `voice-levels.ts`, `voice-analysis.ts` and
+`voice-contract.ts` are `import type`, and there are two of them, both from
+`@shopify/react-native-skia`. That is not tidiness; it is the reason the same
+drawing runs in three places:
 
 - native Skia, on a phone or a watch;
 - CanvasKit, in the browser build published to GitHub Pages;
@@ -18,8 +31,14 @@ as `HologramSkia` and `HologramCanvas` — `Pick<>`s of the real types naming on
 the calls it makes. Adding a call means widening those picks, which is the point:
 the type says exactly how much of Skia the hologram needs.
 
-If you find yourself wanting to import React, a hook, `react-native`, or anything
-that reads a clock or a microphone, it belongs in the app, not here.
+`src/react/` is where React, Reanimated and Skia are called for real, and it is
+deliberately thin: a Skia canvas, a frame callback, the voice read every 40 ms,
+and the tracker stepped on the UI thread. It takes a `JarvisVoice` and asks it
+two questions — nothing in it knows where the audio came from, so the phone can
+hand it a WebRTC track and the watch its own microphone.
+
+If you find yourself wanting a microphone, a permission prompt, a navigation
+decision or a screen layout in either place, it belongs in the app, not here.
 
 ## Worklets
 

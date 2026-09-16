@@ -2,6 +2,7 @@
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
     "rootDir": ".",
+    "jsx": "react-jsx",
     // Nothing emits from here: the apps' bundlers compile these sources along
     // with their own, so declarations would be output nobody reads. The same
     // reasoning as in `mobile/tsconfig.json`, and it is why `composite` is off.
@@ -14,6 +15,6 @@
     "declarationMap": false,
     "incremental": false
   },
-  "include": ["src/**/*.ts"],
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
   "exclude": ["**/node_modules", "**/dist"]
 }

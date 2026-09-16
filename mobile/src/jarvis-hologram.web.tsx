@@ -1,7 +1,7 @@
 import { WithSkiaWeb } from '@shopify/react-native-skia/lib/module/web';
+import type { JarvisHologramProps } from 'hologram/react';
 import { Component, type ReactNode } from 'react';
 import { View } from 'react-native';
-import type { JarvisHologramProps } from './jarvis-hologram-view';
 
 export type { JarvisHologramProps };
 
@@ -56,7 +56,7 @@ export function JarvisHologram(props: JarvisHologramProps) {
     <HologramUnavailable size={props.size}>
       <WithSkiaWeb
         opts={{ locateFile: (file: string) => `${BASE_URL}/${file}` }}
-        getComponent={() => import('./jarvis-hologram-view')}
+        getComponent={() => import('hologram/react/hologram-view')}
         fallback={<View style={{ width: props.size, height: props.size }} />}
         componentProps={props}
       />

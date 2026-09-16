@@ -13,4 +13,5 @@
  */
 export * from './hologram-drawing';
 export * from './voice-analysis';
+export * from './voice-contract';
 export * from './voice-levels';

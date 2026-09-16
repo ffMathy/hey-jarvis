@@ -1,4 +1,6 @@
 import { Canvas, Picture, Skia } from '@shopify/react-native-skia';
+import { memo, useEffect, useMemo } from 'react';
+import { useDerivedValue, useFrameCallback, useSharedValue } from 'react-native-reanimated';
 import {
   advanceVoiceActivity,
   createHologramResources,
@@ -12,11 +14,9 @@ import {
   perceivedLevel,
   VOICE_BAND_COUNT,
   voiceDrive,
-} from 'hologram';
-import { memo, useEffect, useMemo } from 'react';
-import { useDerivedValue, useFrameCallback, useSharedValue } from 'react-native-reanimated';
+} from '../index';
+import type { JarvisVoice } from '../voice-contract';
 import { useIsForeground } from './is-foreground';
-import type { JarvisVoice } from './platform-contracts';
 
 export interface JarvisHologramProps {
   /** Width and height of the square it is drawn in, in points. */
@@ -186,4 +186,8 @@ function JarvisHologramView({ size, voice }: JarvisHologramProps) {
  * unrelated reason therefore cost frames, which is exactly what a live readout of the microphone
  * level did. The props are a number and a memoised object, so this holds.
  */
-export default memo(JarvisHologramView);
+export const JarvisHologram = memo(JarvisHologramView);
+
+// Also as the default, because the browser build reaches this module through a lazy
+// `import()` — `WithSkiaWeb` renders whatever the imported module's default is.
+export default JarvisHologram;

@@ -5,13 +5,17 @@ name: Wear APK
 # Builds the Wear OS app and uploads the APK as a workflow artifact, unzipped,
 # so it can be installed on a watch over wireless debugging — see wear/AGENTS.md.
 #
-# Only changes that can alter the watch app start it. It is a plain Gradle build
-# with no JavaScript, so unlike the phone app it needs no Node.
+# Only changes that can alter the watch app start it — including `hologram/`,
+# which is where the sphere the watch draws actually lives.
 on:
   push:
     branches: [ main ]
     paths:
       - 'wear/**'
+      # The sphere itself lives in its own package, shared with the phone.
+      - 'hologram/**'
+      - 'bun.lock'
+      - 'bunfig.toml'
       - 'package.json'
       - 'turbo.json'
       - '.github/workflows/wear-apk.yml'
@@ -19,6 +23,10 @@ on:
     branches: [ main ]
     paths:
       - 'wear/**'
+      # The sphere itself lives in its own package, shared with the phone.
+      - 'hologram/**'
+      - 'bun.lock'
+      - 'bunfig.toml'
       - 'package.json'
       - 'turbo.json'
       - '.github/workflows/wear-apk.yml'
@@ -30,7 +38,7 @@ permissions: {}
 jobs:
   apk:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     # Checkout is the only thing that needs the token. Uploading an artifact goes
     # through the Actions runtime's own credential, not GITHUB_TOKEN.
     permissions:
@@ -44,11 +52,32 @@ jobs:
           # GitHub token behind in .git/config for it to pick up.
           persist-credentials: false
 
-      # Only to run the build through Turborepo, like every other task here.
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          # The runner's Android SDK is what this job builds with.
+          android: false
+          dotnet: true
+          haskell: true
+          large-packages: false
+          docker-images: false
+          swap-storage: false
+
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2.2.0
         with:
+          # `packageManager` in package.json, so this cannot drift from the pin.
           bun-version-file: package.json
+
+      # React Native's Gradle plugin bundles the JavaScript by running `node`
+      # itself, and 0.86 refuses anything older than 20.19.4 — so the version is
+      # pinned rather than left to whatever the runner image ships.
+      - name: Set up Node
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 22
+          # There is no npm/yarn/pnpm cache to restore; dependencies come from bun.
+          package-manager-cache: false
 
       - name: Set up JDK
         uses: actions/setup-java@v6.0.0
@@ -62,7 +91,7 @@ jobs:
           path: |
             ~/.gradle/wrapper
             ~/.gradle/caches/modules-2
-          key: gradle-wear-${{ runner.os }}-${{ hashFiles('wear/**/*.gradle.kts', 'wear/gradle/wrapper/gradle-wrapper.properties') }}
+          key: gradle-wear-${{ runner.os }}-${{ hashFiles('bun.lock', 'wear/app.config.ts') }}
           restore-keys: |
             gradle-wear-${{ runner.os }}-
 
