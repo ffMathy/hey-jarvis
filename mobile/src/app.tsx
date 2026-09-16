@@ -7,9 +7,11 @@
 // attempt to talk fails at runtime with "No voice session setup strategy
 // registered".
 import { ConversationProvider } from '@elevenlabs/react-native';
+import * as Linking from 'expo-linking';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { isAssistLaunch } from './assist-link';
 import { ConversationScreen } from './conversation-screen';
 import type { ElevenLabsSettings } from './elevenlabs-settings';
 import { SampleScreen } from './sample-screen';
@@ -41,7 +43,8 @@ function chooseScreen(state: {
  * No router. Two screens, one of which only exists until the other one can work,
  * is a `useState` — and an assistant that has to load a navigation tree before it
  * can answer is an assistant that answers late. The third, sample mode, is a
- * side trip from setup and back.
+ * side trip from setup and back — and where a summoning lands when there is
+ * nothing set up yet.
  */
 export function App() {
   const [settings, setSettings] = useState<ElevenLabsSettings | undefined>(undefined);
@@ -49,12 +52,27 @@ export function App() {
   const [isEditingSettings, setIsEditingSettings] = useState(false);
   const [isSampling, setIsSampling] = useState(false);
 
+  const launchUrl = Linking.useURL();
+  const wasSummoned = isAssistLaunch(launchUrl);
+
   useEffect(() => {
     void (async () => {
       setSettings(await loadElevenLabsSettings());
       setIsLoaded(true);
     })();
   }, []);
+
+  // Summoned before there is anything to summon: show the hologram rather than a
+  // form. Someone who pressed the assistant button asked for Jarvis, and a
+  // settings screen is the least Jarvis-like answer available — sample mode at
+  // least listens to them. `Back to setup` still leads where it says, and this
+  // does not fire again once they have gone there, because nothing it depends on
+  // has changed.
+  useEffect(() => {
+    if (wasSummoned && isLoaded && settings === undefined) {
+      setIsSampling(true);
+    }
+  }, [wasSummoned, isLoaded, settings]);
 
   const save = (saved: ElevenLabsSettings) => {
     setSettings(saved);
