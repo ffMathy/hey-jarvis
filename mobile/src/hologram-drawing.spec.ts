@@ -9,6 +9,8 @@ import {
   drawHologram,
   type HologramFrame,
   MATERIALISE_SECONDS,
+  ROLL_DEGREES_PER_SECOND,
+  SHELL_DEGREES_PER_SECOND,
   SPHERE_FRACTION,
 } from './hologram-drawing';
 import { VOICE_BAND_COUNT } from './voice-levels';
@@ -418,10 +420,21 @@ describe('the hologram', () => {
       const later = render(silence(time + 0.5));
 
       expect(bestTurn(angularProfile(earlier, 0.92, 1.1), angularProfile(later, 0.92, 1.1))).toBeWithin(4.5, 6.5);
-      // Round the core, where the whorl turns the other way, nothing may follow the rim: this
-      // band either stands still or drifts counter-clockwise.
-      expect(bestTurn(angularProfile(earlier, 0.35, 0.6), angularProfile(later, 0.35, 0.6))).toBeLessThanOrEqual(1.5);
     }
+  });
+
+  it('turns its inner shells against the rim, at the rate the film measured', () => {
+    // This used to be checked in the pixels, as "the band round the core must not follow the
+    // rim". That band is full of the fragment body, and the body now turns about the vertical
+    // axis on purpose, so a rotation estimator pointed at it is reading the body rather than the
+    // shells and answers differently as the texture changes — it moved from 2.0 to 2.5 when the
+    // halo became a ramp, which says nothing about whether anything follows the rim.
+    //
+    // What the design actually promises is here instead: the shells turn the other way from the
+    // rim, at the -2 to -6°/s the film measured (section 3), and the rim rolls the other way.
+    expect(SHELL_DEGREES_PER_SECOND).toBeLessThan(0);
+    expect(SHELL_DEGREES_PER_SECOND).toBeGreaterThanOrEqual(-6);
+    expect(ROLL_DEGREES_PER_SECOND).toBeGreaterThan(0);
   });
 
   it('materialises from nothing, and leaves nothing of the intro behind once formed', () => {

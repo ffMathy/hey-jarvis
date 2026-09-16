@@ -294,13 +294,13 @@ const FORMED_APPEARANCE = 0.75;
  */
 export const SPHERE_FRACTION = 0.27;
 /** The outer rim layer rolls clockwise in the screen plane: one turn in about 33 s, as the film's ladder ring. */
-const ROLL_DEGREES_PER_SECOND = 11;
+export const ROLL_DEGREES_PER_SECOND = 11;
 /**
  * The inner layer turns the other way (shot d: -1.6 to -5.4°/s): the whorl, the loop, and half
  * of the shell's fragments between 0.3R and 0.62R — the band the whorl itself turns in, and the
  * only band the rim-roll check lets drift.
  */
-const SHELL_DEGREES_PER_SECOND = -5;
+export const SHELL_DEGREES_PER_SECOND = -5;
 /** The lower hemisphere's equatorial shell turns about the vertical axis, which reads as a sideways stream. */
 const STREAM_RADIANS_PER_SECOND = 0.21;
 /**
@@ -454,6 +454,11 @@ const FILL_STRENGTH = 0.45;
  * replace (by 56 to 303 ms over several runs), and halve that step at the same time. What it
  * costs is one jagged pixel on an eighteen-luma boundary: invisible at 1:1 and only findable at
  * four times magnification.
+ *
+ * Still false with the halo now built of {@link HALO_RINGS} rings rather than two. The outermost
+ * carries a fifth of the alpha two rings gave it, so its edge is a step of about four luma —
+ * turning antialiasing on for it costs a fifth of the whole frame's rasterising and, side by
+ * side at six times magnification, is barely tellable from this.
  */
 const HALO_ANTIALIASED = false;
 
@@ -2188,62 +2193,21 @@ function appendStream(builders: PathBuilder[], stream: number[], state: FrameSta
 /** A path handed out by a builder, which is what every draw call takes. */
 type DetachedPath = ReturnType<PathBuilder['detach']>;
 
-/** One of the drawing's prebuilt paints. */
-type HologramPaint = Resources['particleHaloStroke'];
-
 /**
- * The halo around a tier of particles: two nested strokes of the same amber on the same path, the
- * inner one narrower and a little stronger than the one outside it.
+ * How many nested rings the halo is built from, and what each contributes.
  *
- * ONE wide stroke is not a glow. A round-capped stroke of a flat colour covers its whole width
- * at a single alpha, so it lands as a hard-edged lozenge of uniform mid-brown about as wide as
- * the fragment is long, and with this many fragments those lozenges touch and fuse into lumps:
- * when each halo was one wide pass, 97% of its lit pixels sat at one luma and its outer edge
- * stepped up by fifty. Two rings stack under Screen blending into a ramp instead. The width and
- * shares below are chosen so the two steps come out equal — half of the way up at the outer
- * reach, all the way at the inner ring. Measured straight out from the centre line of one
- * mid-tier fragment of the median length, drawn alone on black at 768 px, the three recipes read
- *   one flat pass  131 115 | 35 35 35 35 35 35 35 35 35 35 35 35 | 9 | 0
- *   three rings    132 117 | 37 37 37 | 24 24 24 24 | 11 11 11 11 11 | 0
- *   two rings      132 117 | 37 37 37 37 37 | 18 18 18 18 18 18 18 | 0
- * so the step that meets the black between the clumps falls from thirty-five (fifty on the
- * bright tier) to eighteen, and the halo reaches 13 px rather than 8.
+ * Two rings made a two-step ramp, and with the halo widened the outer step became a visible
+ * rim: every particle sat in a disc of flat colour that ended at a hard, and — with
+ * antialiasing off — jagged, edge. The user saw exactly that, glow circles round the sparks.
+ * Five rings put the steps below what the eye picks out, so the light falls away from the
+ * stroke instead of stopping.
  *
- * WHY TWO RINGS AND NOT THREE. Three rings cut that step further, to eleven, and were what this
- * drawing shipped first. But every pass re-strokes the whole tier's path and is charged per
- * particle, and with the particle count doubled the halos alone are 30% of the frame (1096 ms of
- * 3651 over the 242 renders the spec's materialisation test makes). A third ring is another 240
- * to 400 ms of that test's 5 s budget, which it does not have: with three rings the test ran at
- * 4.53 s, over the sparser drawing it replaced by 15%; with two it runs at 3.86 s against that
- * drawing's 3.84, measured as fourteen interleaved pairs. Two rings also light the gaps *better*
- * than three, because the outer ring then carries half the halo's alpha rather than a third:
- * over five silent moments at 768 px the fifth-percentile luma inside 0.85R went from 37.2 to
- * 39.1 and the share under luma 40 from 6.4% to 5.5%. What the third ring buys is smoothness
- * alone, and the cheaper place to spend on that is {@link HALO_ANTIALIASED}.
- *
- * WHY THE INNER RING IS USUALLY BUTT-CAPPED. A fragment is much shorter than its halo is wide —
- * the median is 0.036R against a reach of 0.12R — so a round-capped pass over it is very nearly
- * a disc, and most of the cost of the halo is the two cap arcs. Butt caps on the inner ring (a
- * plain rectangle along the fragment, no arcs) are worth about 200 ms and cannot change the
- * halo's silhouette, because the inner ring is 0.47 of the outer one's width, so its corners fall
- * inside the outer ring's round boundary. What it does cost is the ramp past a fragment's tips,
- * where the inner ring stops and the outer one carries on alone. Square caps on the *outer* ring
- * were measured too and are cheaper still, but they turn every halo into a box and the whole
- * field goes visibly rectangular. A Gaussian mask filter would be smoother than any staircase,
- * but it measured 600 ms dearer than three rings, and its price follows the path's bounding box
- * in device pixels rather than its ink, so it gets worse on a phone, where a stroke's cost
- * hardly moves.
- *
- * `innerRingStroke` is why the cap is only usually butt: a tier of particles with no length to
- * them would need the round-capped paint here, since a butt cap on a point is a thin bar across
- * it rather than a disc. Nothing passes points any more — the specks did, and they are gone —
- * but the distinction is kept because it is the sort of thing that is expensive to rediscover.
- *
- * `reach` is the halo's full width and `strength` the alpha it comes to against the stroke.
+ * The share is chosen so the five together come to what the two did at the centre: with Screen
+ * blending that is 1 - (1 - share)^5 against the old 1 - (1 - 0.52s)(1 - 0.61s), which lands
+ * within a couple of percent across the range of strengths the tiers ask for.
  */
-const HALO_INNER_WIDTH = 0.47;
-const HALO_OUTER_SHARE = 0.52;
-const HALO_INNER_SHARE = 0.61;
+const HALO_RINGS = 5;
+const HALO_RING_SHARE = 0.24;
 
 function drawParticleHalo(
   canvas: HologramCanvas,
@@ -2251,19 +2215,20 @@ function drawParticleHalo(
   path: DetachedPath,
   reach: number,
   baseStrength: number,
-  innerRingStroke: HologramPaint,
   glowGain: number,
 ) {
   'worklet';
   // The halo is the light between the strokes, so lifting it is what reads as the ball glowing
   // rather than as its texture changing colour.
   const strength = baseStrength * glowGain;
-  resources.particleHaloStroke.setStrokeWidth(reach);
-  resources.particleHaloStroke.setAlphaf(strength * HALO_OUTER_SHARE);
-  canvas.drawPath(path, resources.particleHaloStroke);
-  innerRingStroke.setStrokeWidth(reach * HALO_INNER_WIDTH);
-  innerRingStroke.setAlphaf(strength * HALO_INNER_SHARE);
-  canvas.drawPath(path, innerRingStroke);
+  const paint = resources.particleHaloStroke;
+  paint.setAlphaf(strength * HALO_RING_SHARE);
+  // Widest first, each ring narrower by the same step, so what they add up to falls away from
+  // the stroke rather than ending at a rim.
+  for (let ring = 0; ring < HALO_RINGS; ring++) {
+    paint.setStrokeWidth((reach * (HALO_RINGS - ring)) / HALO_RINGS);
+    canvas.drawPath(path, paint);
+  }
 }
 
 /** The body's dim and mid strokes, pinned and turning (the bright ones are drawn later, over the core). */
@@ -2285,12 +2250,12 @@ function drawBody(canvas: HologramCanvas, resources: Resources, scene: Scene, st
     // as the mid tier's because it is the most numerous and the most spread out, so it is the
     // one that lights the bare fill between the clumps; it is the faintest for the same reason.
     const dimPath = builders[group * 3].detach();
-    drawParticleHalo(canvas, resources, dimPath, 0.185, 0.36, resources.particleHaloInnerStroke, state.glowGain);
+    drawParticleHalo(canvas, resources, dimPath, 0.185, 0.36, state.glowGain);
     resources.bodyDimStroke.setStrokeWidth(0.014);
     resources.bodyDimStroke.setAlphaf(0.62);
     canvas.drawPath(dimPath, resources.bodyDimStroke);
     const midPath = builders[group * 3 + 1].detach();
-    drawParticleHalo(canvas, resources, midPath, 0.19, 0.42, resources.particleHaloInnerStroke, state.glowGain);
+    drawParticleHalo(canvas, resources, midPath, 0.19, 0.42, state.glowGain);
     resources.bodyMidStroke.setStrokeWidth(0.0155);
     resources.bodyMidStroke.setAlphaf(0.85);
     canvas.drawPath(midPath, resources.bodyMidStroke);
@@ -2310,7 +2275,7 @@ function drawBodyHighlights(canvas: HologramCanvas, resources: Resources, state:
         canvas.save();
         canvas.rotate(state.shellTurn, CORE_X, CORE_Y);
       }
-      drawParticleHalo(canvas, resources, path, 0.18, 0.48, resources.particleHaloInnerStroke, state.glowGain);
+      drawParticleHalo(canvas, resources, path, 0.18, 0.48, state.glowGain);
       resources.bodyBrightStroke.setStrokeWidth(0.0165);
       resources.bodyBrightStroke.setAlphaf(1 - 0.25 * state.agitation);
       canvas.drawPath(path, resources.bodyBrightStroke);
