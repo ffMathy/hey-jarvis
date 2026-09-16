@@ -43,5 +43,12 @@ export interface SampleVoice {
   problem: string | undefined;
 }
 
-/** Opens the microphone while the calling component is mounted, and closes it when it unmounts. */
-export type UseSampleVoice = () => SampleVoice;
+/**
+ * Opens the microphone while the calling component is mounted and `listening` is true, and closes
+ * it the moment either stops being so.
+ *
+ * `listening` is not an optimisation. Sample mode can show Jarvis speaking, thinking or idle
+ * without hearing anything, and holding the microphone open through those would leave a browser's
+ * recording light on — and a phone's — while nothing is being listened to.
+ */
+export type UseSampleVoice = (listening: boolean) => SampleVoice;

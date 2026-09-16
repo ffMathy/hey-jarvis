@@ -222,6 +222,13 @@ test('offers sample mode before setup, listening to the microphone, and comes ba
   await expect.poll(() => page.evaluate(() => window.loudestSpectrumValue ?? 0), { timeout: 10000 }).toBeGreaterThan(0);
   await expectHologramToKeepMoving(page);
 
+  // Tapping Jarvis himself walks through what he does — hearing you, speaking, working, at rest —
+  // because there is no text on this screen to hang buttons off. The one that matters to check is
+  // that the next mood still draws: it comes from the clock rather than the microphone, and a
+  // mood that renders nothing would look exactly like a hologram that had stopped.
+  await page.getByTestId('hologram').click();
+  await expectHologramToKeepMoving(page);
+
   // Beside him, not on him: a tap on the hologram itself must not be a way out.
   await page.mouse.click(20, 20);
   await expect(page.getByTestId('api-key')).toBeVisible();

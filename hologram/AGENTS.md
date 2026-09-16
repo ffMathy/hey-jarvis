@@ -40,6 +40,11 @@ hand it a WebRTC track and the watch its own microphone.
 If you find yourself wanting a microphone, a permission prompt, a navigation
 decision or a screen layout in either place, it belongs in the app, not here.
 
+`simulated-voice.ts` is the one place with no `'worklet'` on anything, and that is deliberate: it
+is read where a voice is read — the JS thread, every 40 ms — and never on the UI thread. It makes
+up the two voices sample mode can show without a microphone, Jarvis speaking and Jarvis working,
+as spectra, so they go through every step a real voice does and nothing downstream can tell.
+
 ## Worklets
 
 The drawing and the tracker both run on the UI thread under Reanimated, so every

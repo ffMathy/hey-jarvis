@@ -19,7 +19,7 @@ const SILENT_READERS: VoiceReaders = { getVolume: () => 0, getSpectrum: () => ne
  * front. Leaving either closes it at once, and synchronously, so it has let go
  * before whatever comes next asks for it.
  */
-export const useSampleVoice: UseSampleVoice = () => {
+export const useSampleVoice: UseSampleVoice = (shouldListen) => {
   const isForeground = useIsForeground();
   const [access, setAccess] = useState<'asking' | 'granted' | 'denied'>('asking');
   const [listening, setListening] = useState(false);
@@ -31,6 +31,9 @@ export const useSampleVoice: UseSampleVoice = () => {
   // again at once — and two refusals make Android's refusal permanent, for the
   // conversation later as well as for this.
   useEffect(() => {
+    if (!shouldListen) {
+      return;
+    }
     let isMounted = true;
     void requestMicrophoneAccess().then((granted) => {
       if (isMounted) {
@@ -40,7 +43,7 @@ export const useSampleVoice: UseSampleVoice = () => {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [shouldListen]);
 
   useEffect(() => {
     const audio = jarvisAudio;
@@ -52,7 +55,7 @@ export const useSampleVoice: UseSampleVoice = () => {
       setProblem('The hologram needs the microphone to hear you.');
       return;
     }
-    if (access !== 'granted' || !isForeground) {
+    if (access !== 'granted' || !isForeground || !shouldListen) {
       return;
     }
 
@@ -69,7 +72,7 @@ export const useSampleVoice: UseSampleVoice = () => {
       audio.stopMicrophone();
       setListening(false);
     };
-  }, [access, isForeground]);
+  }, [access, isForeground, shouldListen]);
 
   const readers = useMemo(() => (jarvisAudio ? createTappedVoiceReaders(jarvisAudio) : SILENT_READERS), []);
   const voice = useMemo(() => ({ listening, speaking: listening, ...readers }), [listening, readers]);

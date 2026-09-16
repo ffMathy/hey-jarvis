@@ -97,11 +97,14 @@ function voiceOf(analyser: AnalyserNode): JarvisVoice {
  * The user's own voice in a browser, for sample mode: the microphone through Web
  * Audio's `AnalyserNode`, read into the same two numbers as everywhere else.
  */
-export const useSampleVoice: UseSampleVoice = () => {
+export const useSampleVoice: UseSampleVoice = (listening) => {
   const [analyser, setAnalyser] = useState<AnalyserNode | undefined>(undefined);
   const [problem, setProblem] = useState<string | undefined>(undefined);
 
   useEffect(() => {
+    if (!listening) {
+      return;
+    }
     let isCurrent = true;
     let close: (() => void) | undefined;
 
@@ -125,7 +128,7 @@ export const useSampleVoice: UseSampleVoice = () => {
       close?.();
       setAnalyser(undefined);
     };
-  }, []);
+  }, [listening]);
 
   const voice = useMemo(() => (analyser ? voiceOf(analyser) : NOT_LISTENING), [analyser]);
 

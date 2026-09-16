@@ -12,6 +12,7 @@
  * microphone, a view tree or a clock — those live in the app that has one.
  */
 export * from './hologram-drawing';
+export * from './simulated-voice';
 export * from './voice-analysis';
 export * from './voice-contract';
 export * from './voice-levels';

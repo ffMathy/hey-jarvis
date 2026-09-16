@@ -78,7 +78,9 @@ mobile/
 └── src/
     ├── app.tsx                   # root component: settings, conversation, and sample mode
     ├── conversation-screen.tsx   # the hologram, the Talk button and the assistant card
-    ├── sample-screen.tsx         # sample mode: the hologram following the user's own voice
+    ├── sample-screen.tsx         # sample mode: Jarvis alone, tapped to walk through his moods
+    ├── sample-mode.ts            # the four moods, and the order a tap walks them in
+    ├── simulated-voice.ts        # speaking and thinking as a JarvisVoice, made from the clock
     ├── jarvis-hologram.tsx       # the hologram on Android …
     ├── jarvis-hologram.web.tsx   # … and in a browser, once CanvasKit has loaded
     │                              #   (both are two lines over `hologram/react`)
