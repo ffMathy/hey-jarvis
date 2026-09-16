@@ -12,23 +12,51 @@
 
 import { describe, expect, it } from 'bun:test';
 import { validateDynamicWorkflow } from '@mastra/core/workflows';
-import { SPIKE_BUNDLE } from './dynamic-workflow-spike.js';
+import { buildRoutingPlan } from './dynamic-workflow-spike.js';
+
+/** A plan of the shape the spike registers, built fresh so the ids are stable to assert on. */
+const PLAN = buildRoutingPlan('routing-plan-test', [
+  { agentId: 'weather', prompt: 'What is the weather?' },
+  { agentId: 'calendar', prompt: 'What is on my calendar?' },
+]);
 
 /** What the validator is told exists. Reference checks only run for the kinds listed. */
 const REGISTRY = {
   agents: { weather: {}, calendar: {} },
-  workflows: Object.fromEntries(SPIKE_BUNDLE.map((workflow) => [workflow.id, {}])),
+  workflows: Object.fromEntries(PLAN.map((workflow) => [workflow.id, {}])),
 };
 
 function issuesFor(graph: unknown): string[] {
   return validateDynamicWorkflow(graph as never, REGISTRY as never).map((issue) => `${issue.code} ${issue.path}`);
 }
 
-describe('the spike bundle', () => {
+describe('a routing plan', () => {
   it('is accepted, so registering it can only fail for reasons other than its shape', () => {
-    for (const workflow of SPIKE_BUNDLE) {
+    for (const workflow of PLAN) {
       expect({ id: workflow.id, issues: issuesFor(workflow) }).toEqual({ id: workflow.id, issues: [] });
     }
+  });
+
+  it('tags every member with its plan, so a sweep can take a plan whole', () => {
+    // A branch left behind when its root goes would leave the list holding a workflow that
+    // nothing runs.
+    expect(PLAN.map((workflow) => workflow.metadata)).toEqual(
+      PLAN.map(() => ({ kind: 'routing-plan', planId: 'routing-plan-test' })),
+    );
+  });
+
+  it('runs its delegations in parallel, which is the shape worth drawing', () => {
+    const root = PLAN[PLAN.length - 1];
+
+    expect(root?.graph).toEqual([
+      {
+        type: 'parallel',
+        steps: [
+          { type: 'workflow', id: 'branch-0', workflowId: 'routing-plan-test-0-weather' },
+          { type: 'workflow', id: 'branch-1', workflowId: 'routing-plan-test-1-calendar' },
+        ],
+      },
+    ]);
   });
 });
 
