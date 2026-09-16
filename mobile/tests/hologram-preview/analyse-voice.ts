@@ -13,7 +13,7 @@
  * Usage: bun analyse-voice.ts <16 kHz mono PCM WAV> <output JSON> [slowdown]
  */
 import { readFileSync, writeFileSync } from 'node:fs';
-import { createVoiceAnalyser } from '../../src/voice-analysis';
+import { createVoiceAnalyser } from 'hologram';
 
 const INTERVAL_MS = 40;
 

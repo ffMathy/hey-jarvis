@@ -35,7 +35,7 @@
  * Usage: bun measure-pulse.ts <recording JSON> <brightness YAVG file> <silence ms> <output JSON> <sphere motion YAVG file> <wide motion YAVG file>
  */
 import { readFileSync, writeFileSync } from 'node:fs';
-import { advanceVoiceActivity, createVoiceActivityState, perceivedLevel, SPEECH_LEVEL } from '../../src/voice-levels';
+import { advanceVoiceActivity, createVoiceActivityState, perceivedLevel, SPEECH_LEVEL } from 'hologram';
 
 /** Activity must follow agitation at least this closely. */
 const MINIMUM_CORRELATION = 0.5;

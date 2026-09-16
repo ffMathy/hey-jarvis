@@ -1,3 +1,4 @@
+import { perceivedLevel, speakingThreshold } from 'hologram';
 import { useEffect, useState } from 'react';
 import { StatusBar as NativeStatusBar, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useHologramSize } from './hologram-size';
@@ -5,7 +6,6 @@ import { JarvisHologram } from './jarvis-hologram';
 import type { JarvisVoice } from './platform-contracts';
 import { useSampleVoice } from './sample-voice';
 import { theme } from './theme';
-import { perceivedLevel, speakingThreshold } from './voice-levels';
 
 interface SampleScreenProps {
   onLeave: () => void;

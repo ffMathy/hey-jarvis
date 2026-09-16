@@ -3,8 +3,12 @@
 #
 # Everything here is offline by design. The suite covers the pure TypeScript the
 # app is built out of — the assist deep link, the ElevenLabs settings, the token
-# client, the voice levels and the hologram, drawn headlessly — and none of it needs a device, an emulator or a credential, so it
-# runs on every push alongside the rest of the mocked suite.
+# client — and none of it needs a device, an emulator or a credential, so it runs
+# on every push alongside the rest of the mocked suite.
+#
+# The sphere and the voice tracker are not here: they moved to the `hologram`
+# package when the watch became a second thing that draws them, and they are
+# tested there (`bunx turbo test --filter=hologram`).
 #
 # Usage:
 #   ./mobile/.scripts/test.sh                              # all mobile tests

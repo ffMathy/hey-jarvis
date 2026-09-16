@@ -22,6 +22,8 @@ on:
     branches: [ main, 'claude/**' ]
     paths:
       - 'mobile/**'
+      # The sphere itself lives in its own package now, shared with the watch.
+      - 'hologram/**'
       - 'bun.lock'
       - 'bunfig.toml'
       - 'package.json'

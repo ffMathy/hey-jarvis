@@ -1,4 +1,4 @@
-import { createVoiceAnalyser, type VoiceAnalyser, type VoiceReading } from './voice-analysis';
+import { createVoiceAnalyser, type VoiceAnalyser, type VoiceReading } from 'hologram';
 
 /** The part of the native audio module (`modules/jarvis-audio`) a tapped voice reads from. */
 export interface AudioTapSource {

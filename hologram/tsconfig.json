@@ -1,0 +1,19 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    // Nothing emits from here: the apps' bundlers compile these sources along
+    // with their own, so declarations would be output nobody reads. The same
+    // reasoning as in `mobile/tsconfig.json`, and it is why `composite` is off.
+    "outDir": "../dist/hologram-tsc",
+    "lib": ["esnext", "dom"],
+    "types": ["bun-types"],
+    "esModuleInterop": true,
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "incremental": false
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["**/node_modules", "**/dist"]
+}

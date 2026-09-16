@@ -1,19 +1,22 @@
 import { Canvas, Picture, Skia } from '@shopify/react-native-skia';
-import { memo, useEffect, useMemo } from 'react';
-import { useDerivedValue, useFrameCallback, useSharedValue } from 'react-native-reanimated';
-import { createHologramResources, createHologramScene, drawHologram, MATERIALISE_SECONDS } from './hologram-drawing';
-import { useIsForeground } from './is-foreground';
-import type { JarvisVoice } from './platform-contracts';
 import {
   advanceVoiceActivity,
+  createHologramResources,
+  createHologramScene,
   createVoiceActivityState,
+  drawHologram,
   easeBands,
   easeLevel,
   foldSpectrum,
+  MATERIALISE_SECONDS,
   perceivedLevel,
   VOICE_BAND_COUNT,
   voiceDrive,
-} from './voice-levels';
+} from 'hologram';
+import { memo, useEffect, useMemo } from 'react';
+import { useDerivedValue, useFrameCallback, useSharedValue } from 'react-native-reanimated';
+import { useIsForeground } from './is-foreground';
+import type { JarvisVoice } from './platform-contracts';
 
 export interface JarvisHologramProps {
   /** Width and height of the square it is drawn in, in points. */

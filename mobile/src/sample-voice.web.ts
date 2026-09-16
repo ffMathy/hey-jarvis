@@ -1,6 +1,6 @@
+import { SPECTRUM_BIN_COUNT, voiceRangeBins } from 'hologram';
 import { useEffect, useMemo, useState } from 'react';
 import type { JarvisVoice, UseSampleVoice } from './platform-contracts';
-import { SPECTRUM_BIN_COUNT, voiceRangeBins } from './voice-analysis';
 
 /**
  * The analyser the ElevenLabs web SDK reads Jarvis's voice with — an `fftSize` of

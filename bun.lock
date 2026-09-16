@@ -76,6 +76,17 @@
         "bun-types": "1.3.14",
       },
     },
+    "hologram": {
+      "name": "hologram",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@shopify/react-native-skia": "2.6.2",
+        "bun-types": "1.3.14",
+      },
+      "peerDependencies": {
+        "@shopify/react-native-skia": "*",
+      },
+    },
     "home-assistant-voice-firmware": {
       "name": "home-assistant-voice-firmware",
       "version": "1.0.0",
@@ -102,6 +113,7 @@
         "expo-linking": "57.0.9",
         "expo-secure-store": "57.0.3",
         "expo-status-bar": "57.0.1",
+        "hologram": "workspace:*",
         "livekit-client": "2.22.2",
         "react": "19.2.3",
         "react-dom": "19.2.3",
@@ -1690,6 +1702,8 @@
     "hermes-estree": ["hermes-estree@0.36.1", "", {}, "sha512-guv1nQ6IJ7S83NRFPWc3SA7IBZrdNC9kapwOq6uXvF4wP+sDCgjzQbKPCoyYmoyZRzztF/n/c36l/rccCZSiCw=="],
 
     "hermes-parser": ["hermes-parser@0.36.1", "", { "dependencies": { "hermes-estree": "0.36.1" } }, "sha512-GApNk4zLHi2UWoWZZkx7LNCOSzLSc5lB55pZ/PhK7ycFeg7u5LcF88p/WbpIi1XUDtE0MpHE3uRR3u3KB7TjSQ=="],
+
+    "hologram": ["hologram@workspace:hologram"],
 
     "home-assistant-voice-firmware": ["home-assistant-voice-firmware@workspace:home-assistant-voice-firmware"],
 

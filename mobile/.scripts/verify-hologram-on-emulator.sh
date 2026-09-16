@@ -1,7 +1,7 @@
 #!/bin/bash
 # Look at the Jarvis hologram on an emulator, and measure that it stirs with a voice without flashing.
 #
-# The hologram's drawing is covered offline (`src/hologram-drawing.spec.ts`
+# The hologram's drawing is covered offline (`hologram/src/hologram-drawing.spec.ts`
 # renders it headlessly), but whether it animates in the app, on the UI thread,
 # through Reanimated and native Skia, is something only a running Android shows.
 # An emulator has no ElevenLabs session to listen to, so the voice comes from one
@@ -11,7 +11,7 @@
 #     played into the emulator's microphone over its gRPC controller (see
 #     `tests/hologram-preview/inject-microphone.ts`). This goes through
 #     everything a phone does: WebRTC's recorder, `modules/jarvis-audio`, the
-#     analysis in `src/voice-analysis.ts`, the hologram. Before looking at the
+#     analysis in `hologram/src/voice-analysis.ts`, the hologram. Before looking at the
 #     hologram it plays a tone and checks the app heard it exactly as loud as
 #     Android's own audio HAL measured it — which a sample read with its bytes
 #     swapped would not be.
