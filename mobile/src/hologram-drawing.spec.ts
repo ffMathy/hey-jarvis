@@ -2,9 +2,12 @@ import { beforeAll, describe, expect, it } from 'bun:test';
 import { JsiSkApi } from '@shopify/react-native-skia/lib/module/skia/web';
 import { LoadSkiaWeb } from '@shopify/react-native-skia/lib/module/web/LoadSkiaWeb';
 import {
+  BODY_TURN_SECONDS,
+  bodyTurnRadians,
   createHologramResources,
   createHologramScene,
   drawHologram,
+  GLOW_WITH_VOICE,
   type HologramFrame,
   MATERIALISE_SECONDS,
 } from './hologram-drawing';
@@ -320,15 +323,25 @@ describe('the hologram', () => {
     expect(JSON.stringify(createHologramScene(SEED))).toBe(JSON.stringify(createHologramScene(SEED)));
   });
 
-  it('keeps its brightness while Jarvis speaks, soft or loud, as the film sphere does', () => {
-    // The film's disc stays within ±3% through "Doctor."; the drawing is allowed ±8%.
+  it('glows while Jarvis speaks, more loudly the louder he is, without ever flaring', () => {
+    // NOT the film, deliberately. The film's disc holds to ±3% through "Doctor." and shows
+    // speech as activity alone, which this test used to pin. On a phone that read as too
+    // subtle to tell whether he was talking, so the user asked for the first hologram's glow
+    // back — alongside the chips and the churn, not instead of them. GLOW_WITH_VOICE says how
+    // far the halos and the volume may lift; the ceiling here is what stops a redesign turning
+    // that into a strobe.
     for (const time of [6, 13.4, 22.8]) {
       const silent = discBrightness(render(silence(time)));
-      for (const level of [0.35, 1]) {
-        const talking = discBrightness(render(speech(time, level, new Array(VOICE_BAND_COUNT).fill(level * 0.9))));
+      const soft = discBrightness(render(speech(time, 0.35, new Array(VOICE_BAND_COUNT).fill(0.32))));
+      const loud = discBrightness(render(speech(time, 1, new Array(VOICE_BAND_COUNT).fill(0.9))));
 
-        expect(Math.abs(talking / silent - 1)).toBeLessThanOrEqual(0.08);
-      }
+      // He is visibly brighter talking than silent...
+      expect(loud / silent).toBeGreaterThan(1.05);
+      // ...louder is brighter than softer...
+      expect(loud).toBeGreaterThan(soft);
+      expect(soft).toBeGreaterThan(silent);
+      // ...and no louder than the gain allows, with room for the chips a burst throws.
+      expect(loud / silent).toBeLessThan(1 + GLOW_WITH_VOICE);
     }
   });
 
@@ -373,7 +386,24 @@ describe('the hologram', () => {
     expect(difference(low, high)).toBeGreaterThan(0.5);
   });
 
-  it('turns its rim clockwise while its body stays put and nothing inside turns with it', () => {
+  it('turns its body about the vertical axis, once every BODY_TURN_SECONDS', () => {
+    // The ball itself turning is what says it is alive, so the rate is pinned rather than left
+    // to a constant nobody would notice going to zero. It is a globe spin, not a roll in the
+    // screen plane, so it leaves no single angle for the rim check below to find — which is why
+    // that check no longer looks at the body at all.
+    expect(bodyTurnRadians(0)).toBe(0);
+    expect(bodyTurnRadians(BODY_TURN_SECONDS)).toBeCloseTo(2 * Math.PI, 6);
+    expect(bodyTurnRadians(BODY_TURN_SECONDS / 4)).toBeCloseTo(Math.PI / 2, 6);
+    // and it never stalls or runs backwards
+    let previous = -1;
+    for (let time = 0; time <= 30; time += 0.25) {
+      const turn = bodyTurnRadians(time);
+      expect(turn).toBeGreaterThan(previous);
+      previous = turn;
+    }
+  });
+
+  it('turns its rim clockwise at the film rate', () => {
     // The film's rim layer rolls at 10-12°/s, so 5-6° in half a second, whichever element
     // leads: on the script this seed builds, the crescent leads at 3 s, the thin ring at
     // 19 s and the ladder ring at 36 s, each well clear of its handover.
@@ -382,12 +412,8 @@ describe('the hologram', () => {
       const later = render(silence(time + 0.5));
 
       expect(bestTurn(angularProfile(earlier, 0.92, 1.1), angularProfile(later, 0.92, 1.1))).toBeWithin(4.5, 6.5);
-      // The pinned fragment body — everything between the whorl and the rim layer — stays put.
-      expect(Math.abs(bestTurn(angularProfile(earlier, 0.62, 0.88), angularProfile(later, 0.62, 0.88)))).toBeLessThan(
-        1.5,
-      );
-      // Round the core, where the whorl and the shell fragments turn the other way, nothing may
-      // follow the rim: this band either stands still or drifts counter-clockwise.
+      // Round the core, where the whorl turns the other way, nothing may follow the rim: this
+      // band either stands still or drifts counter-clockwise.
       expect(bestTurn(angularProfile(earlier, 0.35, 0.6), angularProfile(later, 0.35, 0.6))).toBeLessThanOrEqual(1.5);
     }
   });

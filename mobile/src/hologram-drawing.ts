@@ -300,6 +300,32 @@ const ROLL_DEGREES_PER_SECOND = 11;
 const SHELL_DEGREES_PER_SECOND = -5;
 /** The lower hemisphere's equatorial shell turns about the vertical axis, which reads as a sideways stream. */
 const STREAM_RADIANS_PER_SECOND = 0.21;
+/**
+ * The body turns about the vertical axis, like a globe.
+ *
+ * The film's does not — its interior is measured at under 1-3°/s, and the drawing held it
+ * pinned for that reason. On a phone it read as inert: the rim rolling round a still ball is
+ * a much weaker cue than the ball itself turning, so the user asked for the constant rotation
+ * the first hologram had back. This is that one's rate, 0.26 rad/s, a turn every 24 s.
+ */
+const BODY_RADIANS_PER_SECOND = 0.26;
+/** How long one turn of the body takes. */
+export const BODY_TURN_SECONDS = (2 * Math.PI) / BODY_RADIANS_PER_SECOND;
+
+/** How far the body has turned, in radians, at `time`. */
+export function bodyTurnRadians(time: number) {
+  'worklet';
+  return time * BODY_RADIANS_PER_SECOND;
+}
+/**
+ * How much brighter the halos and the volume go at full voice.
+ *
+ * Also not the film's: it holds its brightness to ±3% while Jarvis speaks and shows speech as
+ * activity instead, which is what `hologram-drawing.spec.ts` used to pin. The user asked for
+ * the first hologram's glow back, on top of the chips and the churn rather than instead of
+ * them, so both now say he is talking.
+ */
+export const GLOW_WITH_VOICE = 0.3;
 const DEGREES_TO_RADIANS = 0.017453292519943295;
 /** The core sits a hair up and left of centre, well inside the film's 0.08R. */
 const CORE_X = -0.02;
@@ -309,7 +335,7 @@ const CHIP_HOLD_SECONDS = 0.13;
 const CHIP_GONE_SECONDS = 0.2;
 
 // Strides of the flat scene tables (the builders describe the fields).
-const BODY_STRIDE = 9;
+const BODY_STRIDE = 10;
 const STREAM_STRIDE = 11;
 const SPECK_STRIDE = 5;
 const CRESCENT_PIECE_STRIDE = 3;
@@ -599,7 +625,7 @@ function pickGlyphAndLength(random: Random, x: number, y: number, radius: number
 function buildBody(random: Random) {
   const body: number[] = [];
   const shape = [0, 0];
-  const fragmentCount = 1680;
+  const fragmentCount = 840;
   while (body.length < fragmentCount * BODY_STRIDE) {
     // the body stops just inside the rim layer, which rolls over it
     const radius = Math.sqrt(random()) * 0.94;
@@ -623,6 +649,10 @@ function buildBody(random: Random) {
     const rate = pickFragmentRate(random, pool);
     const id = random();
     const onInnerShell = radius > 0.3 && radius < 0.62 && random() < 0.55 ? 6 : 0;
+    // How far behind or in front of the middle it sits, so the body can turn about the
+    // vertical axis. Anywhere through the ball at this distance from the axis, which keeps
+    // the cloud as thick front to back as it is across.
+    const depth = (random() * 2 - 1) * Math.sqrt(Math.max(0, 0.94 * 0.94 - x * x - y * y));
     body.push(
       x,
       y,
@@ -633,6 +663,7 @@ function buildBody(random: Random) {
       id,
       brightness + 3 * pool + onInnerShell + FRAGMENT_CODE_GLYPH_STEP * shape[0],
       revealOrder(x, y, id),
+      depth,
     );
   }
   return body;
@@ -647,7 +678,7 @@ function buildBody(random: Random) {
  */
 function buildStream(random: Random) {
   const stream: number[] = [];
-  for (let i = 0; i < 336; i++) {
+  for (let i = 0; i < 168; i++) {
     const shell = 0.42 + random() * 0.5;
     const latitude = Math.asin(0.1 + random() * 0.72);
     const longitude = random() * Math.PI * 2;
@@ -1720,6 +1751,10 @@ function analyseFrame(frame: HologramFrame, size: number, scene: Scene) {
   const burstAge = frame.burstAge >= 0 ? frame.burstAge : 10;
   const script = readScript(scene, time);
   const yaw = time * STREAM_RADIANS_PER_SECOND;
+  const bodyYaw = bodyTurnRadians(time);
+  // Loudness, not the agitation envelope: the glow follows his voice moment to moment, as the
+  // first hologram's did, while the chips and the churn follow the envelope.
+  const voice = clamp01(frame.level) ** 0.8;
   // the glow spreads from patch to patch a little behind the fragments (film f47-f70)
   const fillSpread = smooth01((intro - 0.55) / 0.26);
   return {
@@ -1765,6 +1800,12 @@ function analyseFrame(frame: HologramFrame, size: number, scene: Scene) {
     burstCount: Math.floor(frame.burstCount),
     // wrapped to one turn: the canvas takes float32 angles, which would lose the per-frame
     // step of a sphere left mounted for hours
+    /** Somewhere for placeFragment to put its four numbers: made once a frame, not once a fragment. */
+    scratch: [0, 0, 0, 0],
+    bodyCos: Math.cos(bodyYaw),
+    bodySin: Math.sin(bodyYaw),
+    /** What the halos and the volume multiply their alpha by: 1 in silence, up to 1 + GLOW_WITH_VOICE. */
+    glowGain: 1 + GLOW_WITH_VOICE * voice,
     roll: fraction((time * ROLL_DEGREES_PER_SECOND) / 360) * 360,
     shellTurn: fraction((time * SHELL_DEGREES_PER_SECOND) / 360) * 360,
     streamCos: Math.cos(yaw),
@@ -1833,13 +1874,13 @@ function drawVolumeFill(canvas: HologramCanvas, resources: Resources, scene: Sce
   canvas.scale(1 / half, 1 / half);
   if (spread >= 1) {
     // a little past the limb, so the texture's ragged edge is not cut round
-    resources.volumeFill.setAlphaf(alpha);
+    resources.volumeFill.setAlphaf(alpha * state.glowGain);
     canvas.drawCircle(half, half, half * 1.06, resources.volumeFill);
   } else {
     const washShare = FILL_WASH_SHARE * state.fillWash;
     const closing = smooth01((spread - 0.78) / 0.22);
     const wash = alpha * (washShare + (1 - washShare) * closing);
-    resources.volumeFill.setAlphaf(wash);
+    resources.volumeFill.setAlphaf(wash * state.glowGain);
     canvas.drawCircle(half, half, half * 1.06, resources.volumeFill);
     const patchAlpha = (alpha - wash) / (1 - wash);
     if (patchAlpha < 0.004) {
@@ -2020,17 +2061,51 @@ function fragmentTier(brightness: number, strength: number, id: number, hotShare
   return 0;
 }
 
-/** The pinned fragment body, sorted into the dim, mid and bright builders. */
+/**
+ * Where a fragment lands on screen this frame, and how much of it survives the limb.
+ *
+ * Writes `x`, `y`, `depth` and `edge` into `out` rather than returning them, because a frame
+ * places a couple of thousand fragments and an object apiece would be a frame's worth of
+ * rubbish to collect.
+ */
+function placeFragment(
+  body: number[],
+  offset: number,
+  along: number,
+  across: number,
+  state: FrameState,
+  out: number[],
+) {
+  'worklet';
+  const unitX = body[offset + 2];
+  const unitY = body[offset + 3];
+  // Turned about the vertical axis before anything else: the fragment wanders around where it
+  // sits on the turning ball, not around a fixed place on the screen.
+  const rest = body[offset];
+  const depthAtRest = body[offset + 9];
+  const turnedX = rest * state.bodyCos + depthAtRest * state.bodySin;
+  const y = body[offset + 1] + unitY * along + unitX * across;
+  out[0] = turnedX + unitX * along - unitY * across;
+  out[1] = y;
+  out[2] = depthAtRest * state.bodyCos - rest * state.bodySin;
+  // Nothing pops at the limb as it turns out of sight.
+  out[3] = clamp01((0.94 * 0.94 - turnedX * turnedX - y * y) * 8);
+}
+
+/** The fragment body, turning about the vertical axis, sorted into the dim, mid and bright builders. */
 function appendBody(builders: PathBuilder[], body: number[], state: FrameState) {
   'worklet';
   const time = state.time;
   const ragged = state.ragged;
+  const placed = state.scratch;
   for (let offset = 0; offset < body.length; offset += BODY_STRIDE) {
     const packed = body[offset + 7];
     const glyph = Math.floor(packed / FRAGMENT_CODE_GLYPH_STEP);
     const code = packed - glyph * FRAGMENT_CODE_GLYPH_STEP;
-    const turning = code >= 6 ? 3 : 0;
-    const pool = code - turning * 2 >= 3 ? 1 : 0;
+    // The code packs three things by addition — brightness 0-2, plus 3 if it belongs to the
+    // fast pool, plus 6 if it rides the counter-turning shell — so division takes them apart.
+    const turning = 3 * Math.floor(code / 6);
+    const pool = Math.floor((code - turning * 2) / 3);
     const id = body[offset + 6];
     const phase = fraction(id * FRAGMENT_PHASE_FROM_ID);
     const shown = fragmentShown(body[offset + 8], state);
@@ -2052,21 +2127,23 @@ function appendBody(builders: PathBuilder[], body: number[], state: FrameState) 
     const fromCentre = body[offset] * body[offset] + body[offset + 1] * body[offset + 1];
     const inward = clamp01((0.76 - fromCentre) * 3.2);
     const across = (fraction(hop * 23.17) - 0.5) * (FRAGMENT_WANDER + 0.34 * state.agitation * inward);
-    let x = body[offset] + unitX * along - unitY * across;
-    let y = body[offset + 1] + unitY * along + unitX * across;
-    if (ragged > 0 && x < 0 && x * x + y * y > 0.5) {
-      // while forming, the left limb is ragged: fragments stray outward
-      const push = 1 + ragged * 0.16 * fraction(id * 3.7);
-      x *= push;
-      y *= push;
-    }
-    const tier = fragmentTier(code - 3 * pool - 2 * turning, strength, id, state.hotShare, state.introHeat);
+    placeFragment(body, offset, along, across, state, placed);
+    const lit = strength * placed[3];
+    if (lit < FRAGMENT_FAINTEST) continue;
+    // while forming, the left limb is ragged: fragments stray outward
+    const ragging = ragged > 0 && placed[0] < 0 && placed[0] * placed[0] + placed[1] * placed[1] > 0.5;
+    const push = ragging ? 1 + ragged * 0.16 * fraction(id * 3.7) : 1;
+    const x = placed[0] * push;
+    const y = placed[1] * push;
+    // the far side of the ball is dimmer, as the turning shell below the core already is
+    const tier =
+      placed[2] < 0 ? 0 : fragmentTier(code - 3 * pool - 2 * turning, lit, id, state.hotShare, state.introHeat);
     // Its length is its whole fade: a fragment grows out of nothing and shrinks back into it,
     // because a paint is set once for a whole tier and so cannot fade with one stroke in it.
     // Arriving at a third of its length, as it used to, meant arriving at full brightness over
     // a dozen pixels at once — with twice as many fragments that is a visible speckle at every
     // frame, and it is what the spec's script-boundary check counts.
-    appendGlyph(builders[tier + turning], glyph, x, y, unitX, unitY, length * 0.5 * strength);
+    appendGlyph(builders[tier + turning], glyph, x, y, unitX, unitY, length * 0.5 * lit);
   }
 }
 
@@ -2165,10 +2242,14 @@ function drawParticleHalo(
   resources: Resources,
   path: DetachedPath,
   reach: number,
-  strength: number,
+  baseStrength: number,
   innerRingStroke: HologramPaint,
+  glowGain: number,
 ) {
   'worklet';
+  // The halo is the light between the strokes, so lifting it is what reads as the ball glowing
+  // rather than as its texture changing colour.
+  const strength = baseStrength * glowGain;
   resources.particleHaloStroke.setStrokeWidth(reach);
   resources.particleHaloStroke.setAlphaf(strength * HALO_OUTER_SHARE);
   canvas.drawPath(path, resources.particleHaloStroke);
@@ -2196,12 +2277,12 @@ function drawBody(canvas: HologramCanvas, resources: Resources, scene: Scene, st
     // as the mid tier's because it is the most numerous and the most spread out, so it is the
     // one that lights the bare fill between the clumps; it is the faintest for the same reason.
     const dimPath = builders[group * 3].detach();
-    drawParticleHalo(canvas, resources, dimPath, 0.115, 0.24, resources.particleHaloInnerStroke);
+    drawParticleHalo(canvas, resources, dimPath, 0.115, 0.24, resources.particleHaloInnerStroke, state.glowGain);
     resources.bodyDimStroke.setStrokeWidth(0.014);
     resources.bodyDimStroke.setAlphaf(0.62);
     canvas.drawPath(dimPath, resources.bodyDimStroke);
     const midPath = builders[group * 3 + 1].detach();
-    drawParticleHalo(canvas, resources, midPath, 0.12, 0.3, resources.particleHaloInnerStroke);
+    drawParticleHalo(canvas, resources, midPath, 0.12, 0.3, resources.particleHaloInnerStroke, state.glowGain);
     resources.bodyMidStroke.setStrokeWidth(0.0155);
     resources.bodyMidStroke.setAlphaf(0.85);
     canvas.drawPath(midPath, resources.bodyMidStroke);
@@ -2238,7 +2319,7 @@ function drawSpecks(canvas: HologramCanvas, resources: Resources, scene: Scene, 
   // Each speck is a small light with a halo round it, not a bare dot on a lit ball. A speck is a
   // point rather than a stroke, so its halo takes the round-capped paint for its inner ring as
   // well: see drawParticleHalo for what a butt cap does to a particle of no length.
-  drawParticleHalo(canvas, resources, warmPath, 0.095, 0.36, resources.particleHaloStroke);
+  drawParticleHalo(canvas, resources, warmPath, 0.095, 0.36, resources.particleHaloStroke, state.glowGain);
   resources.speckWarmStroke.setStrokeWidth(0.016);
   resources.speckWarmStroke.setAlphaf(0.85);
   canvas.drawPath(warmPath, resources.speckWarmStroke);
@@ -2262,7 +2343,7 @@ function drawBodyHighlights(canvas: HologramCanvas, resources: Resources, scene:
         canvas.save();
         canvas.rotate(state.shellTurn, CORE_X, CORE_Y);
       }
-      drawParticleHalo(canvas, resources, path, 0.125, 0.38, resources.particleHaloInnerStroke);
+      drawParticleHalo(canvas, resources, path, 0.125, 0.38, resources.particleHaloInnerStroke, state.glowGain);
       resources.bodyBrightStroke.setStrokeWidth(0.0165);
       resources.bodyBrightStroke.setAlphaf(1 - 0.25 * state.agitation);
       canvas.drawPath(path, resources.bodyBrightStroke);

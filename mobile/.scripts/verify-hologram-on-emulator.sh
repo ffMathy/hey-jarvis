@@ -25,10 +25,11 @@
 #   2. it grows busier while the voice speaks — how much it changes from one tenth
 #      of a second to the next, against the agitation envelope the app's own
 #      tracker makes from the same voice, by correlation with a reversed-agitation
-#      control — while its brightness does *not* ride the voice. The film's Jarvis
-#      shows speech as activity, not as a pulse, so a brightness pulse is a
-#      failure here rather than the thing being looked for. Thresholds live in
-#      `tests/hologram-preview/measure-pulse.ts`.
+#      control — and it glows while he speaks, within a ceiling that stops the
+#      sphere becoming a level meter. The film shows speech as activity alone, and
+#      this check used to fail any brightening at all; the glow is here because the
+#      user asked for it back, on top of the activity rather than instead of it.
+#      Thresholds live in `tests/hologram-preview/measure-pulse.ts`.
 #
 # Screenshots, the screen recording and the measurements are left in
 # mobile/tests/hologram-preview/evidence/ — not under dist/, which every web

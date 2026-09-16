@@ -49,10 +49,25 @@ const MINIMUM_MARGIN_OVER_REVERSED = 0.2;
 /** And the hologram must be at least this much busier, on average, while he speaks than while he is silent. */
 const MINIMUM_SPEAKING_ACTIVITY_RATIO = 1.3;
 /**
- * And it must *not* flash with him: the film's sphere holds its brightness to
- * within a few percent while it talks. A little headroom above that is allowed
- * for the chips and the fraying, which are light outside the disc, but a hologram
- * whose mean brightness rides the voice this far has gone back to being a meter.
+ * And it must glow while he speaks, by at least this much.
+ *
+ * This rule used to run the other way: the film's sphere holds its brightness to
+ * within a few percent while it talks, so a hologram whose brightness rode the
+ * voice had gone back to being a meter. The user has since asked for the first
+ * hologram's glow back — on a phone, activity alone read as too quiet a signal to
+ * tell whether Jarvis was talking — so brightening is now the requirement rather
+ * than the failure. The activity rules above are unchanged and still have to pass:
+ * the glow was added on top of the chips and the churn, not in place of them.
+ *
+ * The floor is low because this is a mean over the whole crop, most of which is
+ * the black around the sphere; `hologram-drawing.spec.ts` pins the stronger form
+ * on the disc itself. Registered before the first run under the new design.
+ */
+const LOWEST_SPEAKING_BRIGHTNESS_RATIO = 1.02;
+/**
+ * And it must not flare: a sphere whose mean brightness rides this far with the
+ * voice is a level meter again, whatever it was asked to do. Unchanged from when
+ * this was the only brightness rule.
  */
 const HIGHEST_SPEAKING_BRIGHTNESS_RATIO = 1.3;
 /**
@@ -279,7 +294,7 @@ const result = {
   speakingBrightnessRatio: Number(brightnessRatio.toFixed(3)),
   silentMotionWindowsJudged: judgedWindows.length,
   meanMotionInStillestSilentWindow: Number(stillestWindow.toFixed(2)),
-  /** Reported so it can be watched, never required: the film's sphere holds still in brightness while it talks. */
+  /** Reported so it can be watched, never required: how closely the glow tracks the agitation envelope. */
   brightnessCorrelationReportedOnly: Number(
     bestAlignment(loop.agitation, brightness.slice(0, measured)).correlation.toFixed(3),
   ),
@@ -287,6 +302,7 @@ const result = {
     activityCorrelation: MINIMUM_CORRELATION,
     marginOverReversedAgitation: MINIMUM_MARGIN_OVER_REVERSED,
     speakingActivityRatio: MINIMUM_SPEAKING_ACTIVITY_RATIO,
+    lowestSpeakingBrightnessRatio: LOWEST_SPEAKING_BRIGHTNESS_RATIO,
     highestSpeakingBrightnessRatio: HIGHEST_SPEAKING_BRIGHTNESS_RATIO,
     silentMotionInEveryWindow: MINIMUM_SILENT_MOTION,
     motionWindowSeconds: MOTION_WINDOW_SECONDS,
@@ -296,6 +312,7 @@ const result = {
     best.correlation >= MINIMUM_CORRELATION &&
     best.correlation - reversed.correlation >= MINIMUM_MARGIN_OVER_REVERSED &&
     activityRatio >= MINIMUM_SPEAKING_ACTIVITY_RATIO &&
+    brightnessRatio >= LOWEST_SPEAKING_BRIGHTNESS_RATIO &&
     brightnessRatio <= HIGHEST_SPEAKING_BRIGHTNESS_RATIO &&
     judgedWindows.length > 0 &&
     stillestWindow >= MINIMUM_SILENT_MOTION,
