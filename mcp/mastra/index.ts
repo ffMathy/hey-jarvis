@@ -31,8 +31,7 @@ import { getInternetOfThingsAgent, internetOfThingsTools } from './verticals/int
 import { getNotificationAgent, notificationTools } from './verticals/notification/index.js';
 import { phoneTools } from './verticals/phone/index.js';
 import { presenceShortcuts } from './verticals/presence/index.js';
-import { getRoutingSupervisorAgent } from './verticals/routing/agents.js';
-import { registerRoutingGraphSpike } from './verticals/routing/dynamic-workflow-spike.js';
+import { getRoutingPlannerAgent } from './verticals/routing/planner.js';
 import { getNextInstructionsWorkflow, routePromptWorkflow } from './verticals/routing/workflows.js';
 import { getShoppingListAgent, getShoppingListSummaryAgent, shoppingTools } from './verticals/shopping/index.js';
 import { getStateChangeReactorAgent, synapseTools } from './verticals/synapse/index.js';
@@ -113,7 +112,7 @@ export async function getMastra(): Promise<Mastra> {
       await getInternetOfThingsAgent(),
       await getNotificationAgent(),
       await getRequirementsInterviewerAgent(),
-      await getRoutingSupervisorAgent(),
+      await getRoutingPlannerAgent(),
       await getShoppingListAgent(),
       await getShoppingListSummaryAgent(),
       await getStateChangeReactorAgent(),
@@ -189,10 +188,6 @@ export const mastra = await getMastra();
 // Before the boot restart walks into a run whose workflow has moved on under it.
 // See ./workflow-run-recovery.ts.
 await retireUnrestartableRuns(mastra);
-
-// A spike, not a feature: registers one runtime-built workflow so Studio can be looked at.
-// See ./verticals/routing/dynamic-workflow-spike.ts -- it goes once the question is answered.
-await registerRoutingGraphSpike(mastra);
 
 // 2. Initialize the Mastra Server Adapter
 // This class wraps our Hono app and injects the Mastra capabilities.
