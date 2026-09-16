@@ -4,6 +4,7 @@
   "private": true,
   "main": "index.ts",
   "scripts": {
+    "initialize": "cd .. && bash wear/.scripts/initialize.sh",
     "typecheck": "tsgo --noEmit --project tsconfig.json",
     "lint": "cd .. && bunx biome check --write wear",
     "format": "cd .. && bunx biome format --write wear",
