@@ -64,6 +64,7 @@ function silence(time: number): HologramFrame {
     burstStrength: 0,
     burstCount: 0,
     appearance: 1,
+    thinking: 0,
   };
 }
 
@@ -79,6 +80,7 @@ function speech(time: number, level: number, bands: number[], burstAge = 10, bur
     burstStrength: burstAge < 10 ? 1 : 0,
     burstCount,
     appearance: 1,
+    thinking: 0,
   };
 }
 
@@ -128,6 +130,20 @@ function luminance(pixels: Uint8Array, index: number): number {
 /** Distance of a pixel's centre from the sphere's centre, in sphere radii. */
 function radiusOf(x: number, y: number): number {
   return Math.hypot(x + 0.5 - SIZE / 2, y + 0.5 - SIZE / 2) / RADIUS;
+}
+
+/** Where the light sits up and down the square, 0 at the top and 1 at the bottom. */
+function lightHeight(pixels: Uint8Array): number {
+  let weighted = 0;
+  let total = 0;
+  for (let y = 0; y < SIZE; y++) {
+    for (let x = 0; x < SIZE; x++) {
+      const here = luminance(pixels, (y * SIZE + x) * 4);
+      weighted += here * y;
+      total += here;
+    }
+  }
+  return total === 0 ? 0.5 : weighted / total / SIZE;
 }
 
 /** Mean luminance over the whole square, 0–255. */
@@ -536,6 +552,40 @@ describe('the hologram', () => {
     // shadow could quietly stop doing its job.
     expect(outside / outsideCount).toBeLessThan(background * 0.75);
     expect(border / borderCount).toBeCloseTo(background, 0);
+  });
+
+  it('thinks by sweeping a plane up through itself, which is like nothing else it does', () => {
+    // The state the user asked to be "completely different". Everything else the sphere does is
+    // some mixture of turning, churning and glowing; this is a plane travelling from the bottom of
+    // the ball to the top, lighting only what it passes, with the whorl and the rim receded behind
+    // it. What is pinned is the travel: where the light sits has to climb through a pass.
+    const hologram = mount();
+    const thought = (time: number) => render({ ...silence(time), thinking: 1 }, hologram);
+    // Three moments inside *one* pass — SCAN_SECONDS is 2.6, so this one runs from 5.2 to 7.8.
+    // Straddling the boundary measures the plane starting again at the bottom, which is the one
+    // thing here that is not a climb.
+    const low = lightHeight(thought(5.4));
+    const middle = lightHeight(thought(6.3));
+    const high = lightHeight(thought(7.2));
+
+    expect(low).toBeGreaterThan(middle);
+    expect(middle).toBeGreaterThan(high);
+    // A real move, not a wobble. It measures 0.055 of the square, which is less than the plane
+    // itself travels because the core, the rim and the shadow stay where they are and hold the
+    // centre of the light toward the middle. Bounded below that with room, not against it.
+    expect(low - high).toBeGreaterThan(0.04);
+  });
+
+  it('thinks without glowing, so a thought is never mistaken for a word', () => {
+    // Speech brightens the ball by 40% and more, deliberately. A thought must not, or the two
+    // states say the same thing to anyone glancing at the screen.
+    const hologram = mount();
+    for (const time of [5.4, 6.3, 7.2]) {
+      const calm = discBrightness(render(silence(time), hologram));
+      const thought = discBrightness(render({ ...silence(time), thinking: 1 }, hologram));
+
+      expect(thought).toBeLessThan(calm);
+    }
   });
 
   it('keeps the sphere itself inside its square at full volume, chips aside', () => {

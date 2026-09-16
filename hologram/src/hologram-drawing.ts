@@ -248,6 +248,14 @@ export interface HologramFrame {
   burstCount: number;
   /** 0–1 materialisation progress, 1 = formed: the view passes min(1, time / MATERIALISE_SECONDS). */
   appearance: number;
+  /**
+   * 0–1: how much of Jarvis's attention is on a thought rather than on you.
+   *
+   * Not a voice, and deliberately nothing like one. See {@link SCAN_SECONDS}: at 1 the swarm goes
+   * quiet and a plane sweeps up through him, lighting only what it passes. The view eases this in
+   * and out so entering and leaving a thought is a fade rather than a switch.
+   */
+  thinking: number;
 }
 
 /**
@@ -429,6 +437,34 @@ const SPARKLE_TEXEL_SIZE = 0.018;
  * nothing measurable. Ninety-six texels across four radii is a change of about one alpha level per
  * two output pixels at any size a phone or a watch draws, so there is nothing to band.
  */
+/**
+ * What Jarvis does while he is working rather than talking: a plane sweeps up through him.
+ *
+ * The user asked for a thinking state that does "something completely different", and everything
+ * else the sphere does is some mixture of turning, churning and glowing. This is none of those. A
+ * horizontal plane travels from the bottom of the ball to the top, and only the fragments it is
+ * passing stay lit — the rest fall to {@link SCAN_FLOOR} of their strength, so the swarm goes
+ * quiet and a single bright band crosses it. Whatever the band touches is promoted to the bright
+ * tier, so the pass reads as a line of attention moving through him rather than as a shadow.
+ *
+ * It is reading himself, a slice at a time. When the plane reaches the top a ring blooms out from
+ * the core to the limb — see {@link PULSE_SECONDS} — and the next pass begins. That bloom is the
+ * step finishing, and it is why thinking needs no chip bursts: bursts are what speech does, and a
+ * thought that looked like speech would be the one thing this must not be.
+ *
+ * A pass is slow on purpose. Fast, it reads as a scanner in a film; at this rate it reads as
+ * deliberate, which is the half of Jarvis this is for.
+ */
+const SCAN_SECONDS = 2.6;
+/** How wide the lit band is, in sphere radii: a quarter of him at a time. */
+const SCAN_HALF_WIDTH = 0.38;
+/** What is left of a fragment the plane is nowhere near. Not zero: he is thinking, not gone. */
+const SCAN_FLOOR = 0.12;
+/** How near the middle of the band a fragment has to be to be lit to the bright tier. */
+const SCAN_BRIGHT_NEARNESS = 0.55;
+/** How long the ring takes to bloom from the core to past the limb, at the end of each pass. */
+const PULSE_SECONDS = 0.55;
+
 const BACKDROP_TEXELS = 96;
 /**
  * The backdrop's darkness, as distance from its middle — 0 to 1 across its reach — paired with
@@ -1636,20 +1672,32 @@ function analyseFrame(frame: HologramFrame, size: number, scene: Scene) {
   // ramp. The user asked for the ceremony to go, so every layer now comes up together and the
   // growth does the work the staggering used to.
   const radius = size * SPHERE_FRACTION * (ARRIVAL_SMALLEST + (1 - ARRIVAL_SMALLEST) * arrival) * (1 + swell);
+  const intoScan = time - Math.floor(time / SCAN_SECONDS) * SCAN_SECONDS;
+  const thinking = clamp01(frame.thinking);
   return {
     time,
     radius,
     // Half the square, in sphere radii: how far the backdrop reaches, so its circle is the one
     // the square inscribes. See BACKDROP_RAMP — it has to end at zero exactly there.
     backdropReach: size / 2 / radius,
+    thinking,
+    // Where the plane is, sweeping upward — y runs down the screen, so it starts positive. From
+    // the clock alone, like everything else here, so it needs nothing remembered between frames.
+    scan: 1.15 - (2.3 * intoScan) / SCAN_SECONDS,
+    // And how far the ring has bloomed, in the last stretch of each pass.
+    pulse: intoScan > SCAN_SECONDS - PULSE_SECONDS ? (intoScan - (SCAN_SECONDS - PULSE_SECONDS)) / PULSE_SECONDS : 0,
     intro,
     arrival,
     bodyShare: script.density,
     introHeat: 0,
     ragged: 0,
-    innerAlpha: 1,
+    // Everything but the core recedes while he thinks, so that the plane sweeping through him is
+    // what the eye is left with. Without this the whorl, the rim and the ladder go on doing what
+    // they always do and the sweep is one more thing happening among several — which is how the
+    // first version of thinking looked, and why it did not read as a different state at all.
+    innerAlpha: 1 - 0.8 * thinking,
     coreAlpha: 1,
-    rimAlpha: 1,
+    rimAlpha: 1 - 0.65 * thinking,
     crescentGrowth: smooth01((intro - 1) / 0.3333),
     agitation,
     // Half the calm fragments hand over to fast ones at full agitation, so the turnover rises
@@ -1918,15 +1966,23 @@ function appendBody(builders: PathBuilder[], body: number[], state: FrameState) 
     const push = ragging ? 1 + ragged * 0.16 * fraction(id * 3.7) : 1;
     const x = placed[0] * push;
     const y = placed[1] * push;
+    // While he thinks, only what the plane is passing stays lit; see SCAN_SECONDS.
+    const nearness = state.thinking > 0 ? clamp01(1 - Math.abs(y - state.scan) / SCAN_HALF_WIDTH) : 0;
+    const scanned = state.thinking > 0 ? 1 - state.thinking * (1 - SCAN_FLOOR) * (1 - nearness * nearness) : 1;
+    const litHere = lit * scanned;
+    if (litHere < FRAGMENT_FAINTEST) continue;
     // the far side of the ball is dimmer, as the turning shell below the core already is
-    const tier =
-      placed[2] < 0 ? 0 : fragmentTier(code - 3 * pool - 2 * turning, lit, id, state.hotShare, state.introHeat);
+    const plain =
+      placed[2] < 0 ? 0 : fragmentTier(code - 3 * pool - 2 * turning, litHere, id, state.hotShare, state.introHeat);
+    // ...and what the plane is in the middle of is lit to the brightest tier whatever it is, which
+    // is what makes the pass a line of attention rather than a moving shadow.
+    const tier = nearness > SCAN_BRIGHT_NEARNESS && state.thinking > 0.5 && placed[2] >= 0 ? 2 : plain;
     // Its length is its whole fade: a fragment grows out of nothing and shrinks back into it,
     // because a paint is set once for a whole tier and so cannot fade with one stroke in it.
     // Arriving at a third of its length, as it used to, meant arriving at full brightness over
     // a dozen pixels at once — with twice as many fragments that is a visible speckle at every
     // frame, and it is what the spec's script-boundary check counts.
-    appendGlyph(builders[tier + turning], glyph, x, y, unitX, unitY, length * 0.5 * lit);
+    appendGlyph(builders[tier + turning], glyph, x, y, unitX, unitY, length * 0.5 * litHere);
   }
 }
 
@@ -2879,6 +2935,22 @@ function drawIntro(canvas: HologramCanvas, resources: Resources, state: FrameSta
 
 /** Draws one frame of the hologram into a size×size square. */
 /**
+ * The ring that blooms out of the core as a pass finishes: one step of the thought, done.
+ *
+ * Reuses the thin ring's paint, drawn at a growing radius and fading as it goes, so it leaves the
+ * sphere rather than sitting on it. Nothing at all when he is not thinking, which is most of the
+ * time — the whole function is two comparisons then.
+ */
+function drawThinkingPulse(canvas: HologramCanvas, resources: Resources, state: FrameState) {
+  'worklet';
+  const strength = state.thinking * state.pulse;
+  if (strength <= 0) return;
+  const paint = resources.thinRingStroke;
+  paint.setAlphaf(state.thinking * (1 - state.pulse) * 0.9);
+  canvas.drawCircle(0, 0, 0.15 + 1.05 * state.pulse, paint);
+}
+
+/**
  * The shadow the sphere sits on: black under Jarvis, gone by the edge of his square.
  *
  * First thing inside the arrival layer, so everything else is drawn over it and it fades in with
@@ -2939,6 +3011,7 @@ export function drawHologram(
   drawFray(canvas, resources, scene, state);
   drawChips(canvas, resources, state);
   drawAccents(canvas, resources, state);
+  drawThinkingPulse(canvas, resources, state);
   if (arriving) canvas.restore();
   drawIntro(canvas, resources, state);
   canvas.restore();

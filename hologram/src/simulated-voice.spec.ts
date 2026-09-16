@@ -31,16 +31,6 @@ function readings(mood: 'speaking' | 'thinking', seconds: number): number[] {
   return levels;
 }
 
-/** Which bin holds the most energy, which is where the eye sees the bands light up. */
-function loudestBin(mood: 'speaking' | 'thinking', seconds: number): number {
-  const spectrum = fillSimulatedSpectrum(mood, seconds, createSimulatedSpectrum());
-  let best = 0;
-  for (let index = 0; index < spectrum.length; index++) {
-    if ((spectrum[index] ?? 0) > (spectrum[best] ?? 0)) best = index;
-  }
-  return best;
-}
-
 describe('the voices sample mode makes up', () => {
   it('gives the same second the same spectrum, however long the page has been open', () => {
     const once = Array.from(fillSimulatedSpectrum('speaking', 3.28, createSimulatedSpectrum()));
@@ -86,29 +76,13 @@ describe('the voices sample mode makes up', () => {
     expect(quiet / levels.length).toBeGreaterThan(0.85);
   });
 
-  it('ticks once a pass, loudly enough for the sphere to answer with a burst', () => {
-    const levels = readings('thinking', 12);
-    let ticks = 0;
-    for (let index = 1; index < levels.length; index++) {
-      if ((levels[index] ?? 0) > BROWSER_SPEECH_FLOOR && (levels[index - 1] ?? 0) <= BROWSER_SPEECH_FLOOR) {
-        ticks++;
-      }
-    }
+  it('never reaches the level anything counts as speech, so the sphere answers with no bursts', () => {
+    // Thinking used to tick loudly once a pass, to make the tracker throw a chip burst. It does
+    // not any more: bursts are what *speech* does, and the sphere has a thinking state of its own
+    // now — the plane sweeping through it, and the ring that blooms when a pass finishes. Left
+    // here, the ticks would have Jarvis throwing sparks while he reads a file.
+    const levels = readings('thinking', 20);
 
-    // Twelve seconds of 1.6-second passes: seven or eight of them.
-    expect(ticks).toBeGreaterThanOrEqual(6);
-    expect(ticks).toBeLessThanOrEqual(9);
-  });
-
-  it('walks its energy up the spectrum while it thinks, and starts again at the bottom', () => {
-    // This is the part you can see: the lit band travels round the sphere, over and over.
-    const early = loudestBin('thinking', 0.2);
-    const middle = loudestBin('thinking', 0.7);
-    const late = loudestBin('thinking', 1.3);
-
-    expect(middle).toBeGreaterThan(early);
-    expect(late).toBeGreaterThan(middle);
-    // ...and the next pass is back where the last one began.
-    expect(loudestBin('thinking', 1.6 + 0.2)).toBe(early);
+    expect(Math.max(...levels)).toBeLessThan(QUIETEST_SPEECH);
   });
 });

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Pressable, StyleSheet } from 'react-native';
 import { useWholeScreenHologramSize } from './hologram-size';
 import { JarvisHologram } from './jarvis-hologram';
+import { ModeToast } from './mode-toast';
 import { moodOf, nextSampleMode, type SampleMode } from './sample-mode';
 import { useSampleVoice } from './sample-voice';
 import { useSimulatedVoice } from './simulated-voice';
@@ -64,8 +65,10 @@ export function SampleScreen({ onLeave }: SampleScreenProps) {
           size={hologramSize}
           voice={mode === 'microphone' ? heard : imagined}
           quietestSpeech={QUIETEST_SPEECH_HERE}
+          thinking={mode === 'thinking'}
         />
       </Pressable>
+      <ModeToast mode={mode} />
     </Pressable>
   );
 }

@@ -31,7 +31,18 @@ export interface JarvisHologramProps {
    * handing over.
    */
   quietestSpeech?: number;
+  /**
+   * Whether Jarvis is working on something rather than listening or talking — a tool call, say.
+   *
+   * Not a voice. It is a separate thing he can be doing, and it looks like nothing else he does:
+   * see `SCAN_SECONDS` in the drawing. Eased in and out over {@link THOUGHT_FADE_SECONDS} here, so
+   * that starting and finishing a thought is a fade rather than a switch.
+   */
+  thinking?: boolean;
 }
+
+/** How long it takes to fall into a thought, and to come out of one. */
+const THOUGHT_FADE_SECONDS = 0.45;
 
 /**
  * How often the voice is read. The SDK's native processors refresh every 40 ms,
@@ -57,7 +68,7 @@ const SCENE_SEED = 1337;
  * neither a busy JS thread nor a slow reading can make the animation stutter —
  * at worst the sphere reacts a frame late.
  */
-function JarvisHologramView({ size, voice, quietestSpeech }: JarvisHologramProps) {
+function JarvisHologramView({ size, voice, quietestSpeech, thinking = false }: JarvisHologramProps) {
   const { listening, speaking, getVolume, getSpectrum } = voice;
   const isForeground = useIsForeground();
   const scene = useMemo(() => createHologramScene(SCENE_SEED), []);
@@ -66,6 +77,7 @@ function JarvisHologramView({ size, voice, quietestSpeech }: JarvisHologramProps
   const targetLevel = useSharedValue(0);
   const targetBands = useSharedValue<number[]>(new Array(VOICE_BAND_COUNT).fill(0));
   const speakingNow = useSharedValue(speaking);
+  const thinkingNow = useSharedValue(thinking);
   // Everything the drawing reads, in one value, advanced once a frame.
   //
   // These were six shared values — the clock, the level, the bands, and the
@@ -81,12 +93,17 @@ function JarvisHologramView({ size, voice, quietestSpeech }: JarvisHologramProps
     level: 0,
     bands: new Array(VOICE_BAND_COUNT).fill(0) as number[],
     speaking,
+    thinking: 0,
     activity: createVoiceActivityState(quietestSpeech),
   });
 
   useEffect(() => {
     speakingNow.value = speaking;
   }, [speaking, speakingNow]);
+
+  useEffect(() => {
+    thinkingNow.value = thinking;
+  }, [thinking, thinkingNow]);
 
   useEffect(() => {
     if (!listening) {
@@ -133,6 +150,9 @@ function JarvisHologramView({ size, voice, quietestSpeech }: JarvisHologramProps
       current.level = easeLevel(current.level, targetLevel.value, deltaSeconds);
       current.bands = easeBands(current.bands, targetBands.value, deltaSeconds);
       current.speaking = speakingNow.value;
+      // Toward whichever end the app is asking for, at a fixed rate: see THOUGHT_FADE_SECONDS.
+      const towardThought = (thinkingNow.value ? 1 : -1) * (deltaSeconds / THOUGHT_FADE_SECONDS);
+      current.thinking = Math.min(1, Math.max(0, current.thinking + towardThought));
       advanceVoiceActivity(current.activity, targetLevel.value, deltaSeconds);
       return current;
     });
@@ -171,6 +191,7 @@ function JarvisHologramView({ size, voice, quietestSpeech }: JarvisHologramProps
         burstCount: activity.burstCount,
         // The materialisation plays once, from the moment this canvas mounted.
         appearance: Math.min(1, current.time / MATERIALISE_SECONDS),
+        thinking: current.thinking,
       },
       scene,
       resources,

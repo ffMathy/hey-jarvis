@@ -3,8 +3,8 @@
  *
  * Sample mode can show the sphere answering a real microphone, which is the point of it — but a
  * microphone only ever shows one of the things he does, and only if you talk. These are the
- * others, generated from the clock alone: a voice speaking, and a mind working. Both are written
- * as *spectra*, the same 1024 bytes across 100–8000 Hz that a microphone or the ElevenLabs SDK
+ * others, generated from the clock alone: a voice speaking, and the hum of a mind working. Both are
+ * written as *spectra*, the same 1024 bytes across 100–8000 Hz that a microphone or the ElevenLabs SDK
  * hands over, so they go through every step a real voice does — the fold into bands, the easing,
  * the agitation envelope, the bursts — and nothing downstream knows the difference.
  *
@@ -28,23 +28,19 @@ const SYLLABLE_SECONDS = 0.26;
 const SYLLABLES_PER_PHRASE = 11;
 const BREATH_SECONDS = 0.75;
 
-/** How long one of thinking's sweeps takes to cross the spectrum, and how long its tick lasts. */
-const SWEEP_SECONDS = 1.6;
-const TICK_SECONDS = 0.12;
-
 /**
  * How loud thinking hums between ticks, and how loud a tick is — as means of the spectrum.
  *
- * These look absurdly small, and that is because of the curve between here and the tracker.
- * `perceivedLevel` takes the square root and multiplies by 1.8, so a mean of 0.0022 arrives as
- * 0.08 and one of 0.09 arrives as 0.54. The gates are 0.1 on a phone and 0.2 in a browser: the hum
- * is under both, the tick is over both, and it is the curve rather than the numbers that makes the
- * gap look so wide. Anything set by eye in raw terms here lands in the wrong place — the first
- * version of the hum was 0.075, which arrives as 0.49 and left the sphere fully agitated the whole
- * time it was supposed to be quietly thinking.
+ * How loud thinking hums, as a mean of the spectrum.
+ *
+ * It looks absurdly small, and that is the curve between here and the tracker: `perceivedLevel`
+ * takes the square root and multiplies by 1.8, so a mean of 0.0022 arrives as 0.08. The gates are
+ * 0.1 on a phone and 0.2 in a browser, so it is under both and the sphere stays calm. Anything set
+ * by eye in raw terms here lands in the wrong place — the first version was 0.075, which arrives
+ * as 0.49 and left the sphere fully agitated the whole time it was supposed to be quietly
+ * thinking.
  */
 const THINKING_HUM = 0.0022;
-const THINKING_TICK = 0.09;
 
 /**
  * The loudest a syllable gets, again as a mean of the spectrum: 0.25, which arrives as 0.9.
@@ -111,7 +107,7 @@ function syllableAt(seconds: number): { loudness: number; slot: number } {
  */
 export function fillSimulatedSpectrum(mood: SimulatedMood, seconds: number, spectrum: Uint8Array): Uint8Array {
   const last = spectrum.length - 1;
-  const shape = mood === 'speaking' ? speakingShape(seconds) : thinkingShape(seconds);
+  const shape = mood === 'speaking' ? speakingShape(seconds) : thinkingShape();
 
   // Twice over the bins, because the loudness that matters is the *mean* of the spectrum — that is
   // what a browser reports as a volume, and what every gate in the tracker is calibrated against —
@@ -158,28 +154,24 @@ function speakingShape(seconds: number): Shape {
 }
 
 /**
- * A mind working: a quiet even hum with a narrow band of energy walking up the spectrum, over and
- * over, and a tick as each pass reaches the top.
+ * A mind working, as far as a *voice* is concerned: almost nothing.
  *
- * Deliberately not speech. The hum sits under every gate that decides what counts as a voice —
- * {@link THINKING_HUM} against 0.1 on a phone and 0.2 in a browser — so the sphere does not glow or
- * grow: what moves is *which* bands are lit, sweeping round it, which reads as searching rather
- * than talking. Then each pass ends in a tick loud enough to clear those gates for a tenth of a
- * second, and the tracker answers with a single chip burst. So Jarvis looks like he is working
- * through something and finishing one step at a time, which is what a tool call is.
+ * Thinking is not a voice, and since the sphere gained a thinking state of its own — the plane
+ * sweeping up through it, see `SCAN_SECONDS` — it does not need to pretend to be one. What is left
+ * here is a hum well under every gate that decides what counts as speech, so the sphere neither
+ * glows nor swells nor throws chips.
+ *
+ * It does not try to make the bands do anything either. At this loudness a byte spectrum has one
+ * or two levels of resolution to play with, so any pattern put in it is quantisation noise dressed
+ * up as a signal — and there is no need: what thinking looks like is drawn, not heard.
+ *
+ * It used to tick once a pass, loudly enough to make the tracker throw a chip burst. That was a
+ * voice imitating a thought, and the user was right that it was not enough: bursts are what speech
+ * does. The ring blooming out of the core at the end of each pass replaces it, and that is drawn
+ * rather than heard.
  */
-function thinkingShape(seconds: number): Shape {
-  const into = seconds - Math.floor(seconds / SWEEP_SECONDS) * SWEEP_SECONDS;
-  const sweep = into / SWEEP_SECONDS;
-  const sinceTickStarted = into - (SWEEP_SECONDS - TICK_SECONDS);
-  const ticking = sinceTickStarted > 0;
-  return {
-    loudness: ticking ? THINKING_TICK * (1 - sinceTickStarted / TICK_SECONDS) : THINKING_HUM,
-    // The tick is the whole spectrum at once — every band answering together, where the hum is one
-    // band at a time. It is the difference between a step finishing and a step being worked on.
-    at: (position) =>
-      ticking ? 0.8 + 0.2 * Math.exp(-position) : 0.3 * Math.exp(-position * 1.6) + hump(position, sweep, 0.07),
-  };
+function thinkingShape(): Shape {
+  return { loudness: THINKING_HUM, at: (position) => Math.exp(-position * 1.4) };
 }
 
 /**
