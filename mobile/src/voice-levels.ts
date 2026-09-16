@@ -164,15 +164,33 @@ export const AGITATION_RISE_SECONDS = 0.15;
 export const AGITATION_RELEASE_SECONDS = 0.4;
 
 /**
- * How far back an onset or a gap may reach. A syllable starts or stops within a
- * reading or two; a change spread over longer than this is a swell or a fade,
- * and throws no chips.
+ * How far back an onset or a gap may reach. A syllable lasts about a quarter of a
+ * second and its rise develops over the first few readings of it; a change spread
+ * over longer than this window is a swell or a fade, and throws no chips.
+ *
+ * Half a syllable, rather than the reading or two it was. In connected speech a
+ * syllable rarely jumps {@link ONSET_RISE} between two 40 ms readings, so the
+ * shorter window found an onset only about every second and a half of talking and
+ * the rim was still for most of a sentence; reaching back five readings finds the
+ * same rise spread over three or four of them. On the check's recorded line that
+ * lifts bursts from 0.67 to 0.81 a second of speech and chips from 8.3% to 12.0%
+ * of speaking frames. It is as far back as the window can reach and still ignore a
+ * fade: a voice falling from 0.6 to silence over two seconds — the slowest thing
+ * that still must not burst — loses 10 dB across a window of 0.22 s or wider.
  */
-export const CHANGE_WINDOW_SECONDS = 0.1;
+export const CHANGE_WINDOW_SECONDS = 0.2;
 /**
  * How much the level must rise within {@link CHANGE_WINDOW_SECONDS} to be an
  * onset. From an ordinary spoken level of about 0.3 this is roughly a 10 dB
  * jump, the same size of change a gap needs.
+ *
+ * This is what decides how often the rim throws chips, far more than the spacing
+ * rules below: on the recorded line, a threshold low enough to take every reading
+ * as an onset throws 1.50 bursts a second of speech through the same flurry gate,
+ * against 0.81 here — so the gate has plenty of headroom and the threshold is the
+ * limit. It cannot fall below 0.24 without changing what an onset means: two
+ * steps of 0.2 and 0.24, each too small alone, must stay too small alone once the
+ * window has forgotten the silence they started from.
  */
 export const ONSET_RISE = 0.25;
 /** How far the voice must fall within {@link CHANGE_WINDOW_SECONDS}, straight after speech, to be a gap. */
@@ -193,9 +211,12 @@ export const BURSTS_PER_FLURRY = 2;
 /**
  * How long the rim rests after a flurry. It is a ceiling rather than a cadence:
  * on the check's recorded line, onsets sharp enough to throw a burst come about
- * a third of a second apart of speech — far under the ceiling — so chips are on
- * screen for roughly a tenth of the time he talks. The film's "Doctor." is denser
- * (10 of its 37 frames) because a single word starts and stops sharply.
+ * one and a quarter seconds apart of speech — under the ceiling more often than
+ * not — so chips are on screen for about an eighth of the time he talks. Shorter
+ * rests barely move that (1.06 s throws two more bursts in three and a half
+ * minutes), which is how we know {@link ONSET_RISE} and not this is the limit.
+ * The film's "Doctor." is denser (10 of its 37 frames) because a single word
+ * starts and stops sharply, where connected speech runs its syllables together.
  */
 export const BURST_REST_SECONDS = 1.2;
 /** A rise or fall this large, in level, throws a full-strength burst; smaller ones throw weaker bursts in proportion. */
@@ -215,10 +236,10 @@ const GAP_LEVEL_RATIO = 10 ** (-GAP_DROP_DECIBELS / 40);
  * loudest level seen in it; remembering every reading instead would take a
  * buffer whose length depends on the frame rate. The slice being filled and the
  * three before it reach back between three quarters of the window and all of
- * it. At least 75 ms always takes in the reading before last at 30 Hz or faster
+ * it. At least 150 ms always takes in the fourth reading back at 30 Hz or faster
  * — a reading lasts 40 ms, and a change is seen at most a frame late — so a
- * syllable that rises over two readings is caught wherever the slice boundaries
- * happen to fall.
+ * syllable that rises over three or four readings is caught wherever the slice
+ * boundaries happen to fall.
  */
 const CHANGE_WINDOW_SLICES = 4;
 const SLICE_SECONDS = CHANGE_WINDOW_SECONDS / CHANGE_WINDOW_SLICES;

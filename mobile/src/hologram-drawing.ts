@@ -3,11 +3,12 @@
 // Native Skia's imperative canvas API from a Reanimated worklet.
 //
 // WHAT IT DEPICTS
-// The film's J.A.R.V.I.S.: a round, glowing, translucent amber ball, brightest at its
-// core and never dark inside, textured with short bright "circuit" strokes, bounded by
-// one dominant rim element at a time (a bright crescent on the left limb, a segmented
-// ladder ring, or a thin ring), with at most two large, slow protrusions and a small
-// hooked ring at the core. Everything is warm orange to amber: no blue, no white, no
+// The film's J.A.R.V.I.S.: a round, glowing, translucent amber ball, brightest at its core
+// and never dark inside — a see-through cloud of small lights rather than a painted surface,
+// the warm volume behind them only a haze — textured with short bright "circuit" strokes,
+// bounded by one dominant rim element at a time (a bright crescent on the left limb, a
+// segmented ladder ring, or a thin ring), with at most two large, slow protrusions and a
+// small hooked ring at the core. Everything is warm orange to amber: no blue, no white, no
 // halo past 1.1R. Measurements and requirements come from the film study
 // (jarvis-reference.md), cited below by section.
 //
@@ -18,31 +19,42 @@
 //                       sideways-stretched clouds with deep red-brown pockets between them
 //                       (the pockets fall to about half the median), brightest where the fragment
 //                       body crowds, see-through toward the lower-right limb and ragged at its
-//                       edge. While the ball forms it arrives as a thickening haze with brighter
-//                       ragged patches where the fragments have already landed
+//                       edge. Drawn at FILL_STRENGTH of what the texture holds, so on its own it
+//                       carries half of the disc median light it used to and the particles in
+//                       front of it now carry more than it does. While the ball forms it
+//                       arrives as a thickening haze with brighter ragged patches where the
+//                       fragments have already landed
 //   drawInnerShells     the whorl: two wide spiral arms winding out of the core to 0.76R,
 //                       furry with short fragments across them, plus the long loop rising 37°
 //                       past the core, the saturated ")" arc at 0.57R and the faint near half of
 //                       the edge-on ellipse — all of it turning the other way; and data streaks
-//   drawBody            the fragment body's dim and mid strokes: 840 fragments inside 0.94R
-//                       (dashes and L, bracket, T, Z glyphs, rings and cell outlines mostly near
-//                       the core; median 0.036R, clumped into the mass with bare fill between the
-//                       clumps, heavier on the left) and a 336-fragment turning shell in the lower
-//                       hemisphere. A quarter of those between 0.3R and 0.85R ride the
-//                       counter-turning inner layer; the rest are pinned. Mid and bright strokes
-//                       vary in brightness along their length (a tiled sparkle texture). Fewer
-//                       strokes, each wider than the film's hairlines would be, so the texture
-//                       reads as ribbons rather than as line art (film run widths 0.022-0.031R)
+//   drawBody            the fragment body's dim and mid strokes: 1680 fragments inside 0.94R
+//                       (four in five plain dashes, the rest L, bracket, T, Z glyphs, rings and
+//                       cell outlines mostly near the core; median 0.036R, clumped into the mass
+//                       with bare fill between the clumps, heavier on the left) and a
+//                       336-fragment turning shell in the lower hemisphere. Half of those between
+//                       0.3R and 0.62R ride the counter-turning inner layer; the rest are pinned.
+//                       Every tier carries a halo of its own — two nested rings that step up from
+//                       nothing at the outer reach to the stroke — so the light between the
+//                       strokes comes from the strokes rather than from the wash behind them, and
+//                       goes out and comes back on each fragment's own clock. Mid and
+//                       bright strokes vary in brightness along their length (a tiled sparkle
+//                       texture). Fewer strokes than the film's, each wider than its hairlines
+//                       would be, so the texture reads as ribbons rather than as line art (film
+//                       run widths 0.022-0.031R)
 //   drawLines           comet arcs curling from the core to the lower right; radial spokes
 //                       or a swoosh fan of hairlines when the script calls for them
 //   drawCore            elongated bloom with a darker middle, the hooked 0.1R ring softened by
 //                       its glow, the bar, and a furry knot of spikes on the ring's upper left,
 //                       re-drawn 6 times a second
-//   drawBodyHighlights  the bright fragments with a tight glow and a narrow hot core (the film's
-//                       #ffd26c, pulled toward orange so stacked strokes stay amber); warm specks
-//                       and blinking peach ones
+//   drawBodyHighlights  the bright fragments with a wide glow that steps down to nothing over
+//                       its outer half, and a narrow hot core
+//                       (the film's #ffd26c, pulled toward orange so stacked strokes stay
+//                       amber); 220 specks, warm and blinking peach, each a small light with
+//                       a halo round it
 //   drawThinRing        a hairline circle at 1R, brightest from 1 to 4 o'clock, over a lumpy ridge
-//                       of light just inside the limb that rolls with the rim layer
+//                       of light just inside the limb that rolls with the rim layer, painted as
+//                       a band rather than a disc (see LIMB_RIDGE_BAND)
 //   drawTruss           the rolling rim layer: the ladder truss (a hot outer rail at 1.035R, a
 //                       finer inner rail at 0.935R, amber haze between them, fine rungs about
 //                       every 9°, circuit traces, paired hanging struts, 190° of arc in three
@@ -50,12 +62,17 @@
 //                       of strands on the right
 //   drawCrescent        the bright left crescent from 11 o'clock round to 7: four strands in
 //                       width tiers (glow, thin #dca131, medium, wide, #ffda53 core) and a
-//                       tight limb bloom (a radial ring profile times a sweep mask)
+//                       tight limb bloom (a radial ring profile times a sweep mask, painted
+//                       as a band round the limb rather than as a disc — see LIMB_BLOOM_BAND)
 //   drawFray            while he talks: strands fraying off the upper-left limb, streak arcs
 //                       at 1.2-1.27R, and horizontal streaks slipping out of the right limb
-//   drawProtrusions     the script's protrusions: equator strut (a glowing rod with a hot core),
-//                       ribbon loop, hook tendril, streak bundle, ear ring, pole fan (glowing
-//                       rails, never quite regular)
+//   drawProtrusions     the script's protrusions: two truss booms — box frames standing off the
+//                       limb in depth, a near face of rails, rungs and diagonal braces, a
+//                       foreshortened, dimmer far face behind and above it, the depth edges that
+//                       tie them together and one filled side panel — the long one out of the
+//                       equator at 9 o'clock and a shorter, finer one at the upper left; then the
+//                       ribbon loop, hook tendril, streak bundle and pole fan (glowing rails,
+//                       never quite regular)
 //   drawChips           the latest burst's rim chips: solid amber slabs that break up rather
 //                       than fade
 //   drawAccents         the jagged lightning filament and the very rare two-frame red segment
@@ -67,12 +84,19 @@
 // - The outer rim layer rolls clockwise in the screen plane at 11°/s: the truss, the thin
 //   ring's ticks, and the breaks in the crescent's strands (the crescent's brightness
 //   itself stays on the left, where the film shows it).
-// - The inner layer — the whorl, the loop, the ")" arc and a quarter of the fragments between
-//   0.3R and 0.85R — turns counter-clockwise at 5°/s about the core;
+// - The inner layer — the whorl, the loop, the ")" arc and half of the fragments between
+//   0.3R and 0.62R — turns counter-clockwise at 5°/s about the core;
 //   the strand fan turns counter-clockwise at 3.5°/s and fades in and out on a 14 s cycle.
+//   Nothing outside 0.62R turns either way: that band is where the film's body stands still,
+//   and it is the pinned fragments in it that have to hold the picture there.
 // - The rest of the fragment body does not turn. Each fragment lives on its own clock, lit for
-//   0.3-0.65 s and fading in and out over a quarter of that, and re-lights a little along
-//   or across from where it was — about 10% renewed per film frame, as measured. Below
+//   0.18-0.4 s, growing out of nothing and shrinking back into it over a third of that, and
+//   re-lighting up to FRAGMENT_WANDER along or across from where it was — about a tenth renewed
+//   per film frame, as measured, which with twice as many fragments is what makes the idle ball
+//   read as alive rather than as a still picture: 4.2 luma of change per 1/24 s over the 256 px
+//   square, against 1.6 before, where the film shows 5-10. (That figure hardly moves with the
+//   window it is measured over — 4.18, 4.21, 4.21, 4.15 at 6, 8, 10 and 16 s — because in
+//   silence every clock here runs at a fixed rate.) Below
 //   the core, a shell turns about the vertical axis at 0.21 rad/s, so its front drifts
 //   right at 0.1-0.2 R/s and its dimmer back drifts left: the film's counter-streams.
 // - The core's brightness drifts ±3% over about 12 s; comet arcs grow, slide and fade
@@ -95,12 +119,20 @@
 //   speaking    unused too: agitation already says whether he is talking, and a flag that
 //               flips within one frame would make the sphere jump.
 //   agitation   gated by the intro (below), then:
-//               - mix = 0.65·agitation: calm fragments whose ids fall below mix fade out
-//                 and fast fragments (lit 0.13-0.28 s) whose ids fall below 2·mix fade in,
-//                 so the count lit, and the brightness, hold while churn rises by half; each
-//                 fragment also re-lights further from where it was, and the specks hand over
-//                 to a second, fixed, faster clock the same way, so the layer twinkles about
-//                 half again as fast without any speck's phase moving
+//               - mix = 0.5·agitation: calm fragments whose ids fall below mix fade out and
+//                 fast fragments (lit 0.06-0.14 s) whose ids fall below 2·mix fade in. Half
+//                 and no more, because the two make up for each other exactly at that share
+//                 and not past it; so the count lit, and the brightness, hold while the churn
+//                 nearly doubles: over the check's recorded line, 4.18 luma per 1/24 s silent
+//                 against 7.77 while he talks, both measured over the first six seconds of it.
+//                 (Unlike the silent figure the speaking one does depend on that window, because
+//                 the recording falls quiet: over sixteen seconds it reads 6.07 against 4.15,
+//                 still half again as much, and the drawing this replaced degraded the same way.)
+//                 Each
+//                 fragment also re-lights up to a fifth of a radius from where it was, less so
+//                 the nearer the limb it is — the silhouette must not move with his voice — and
+//                 the specks hand over to a second, fixed, faster clock the same way, so that
+//                 layer twinkles more than twice as fast without any speck's phase moving
 //               - hotShare = 1 − 0.35·agitation: the share of bright fragments still drawn
 //                 bright. Their hot cores all but go (−95%), which is what takes the film's
 //                 luma-200 highlights out on "Doctor." while the strokes stay bright
@@ -130,10 +162,11 @@
 //               0.2 s. For 0.18 s the crescent loses pieces within 16° of the launch point.
 //               Bursts come in flurries of two a quarter of a second apart and then rest for
 //               1.2 s (the tracker's rule). On the check's recorded line that works out at
-//               about a third of a burst a second, so chips are on screen for roughly a
-//               tenth of the time he talks; connected speech simply offers fewer onsets
-//               sharp enough to throw one than the film's single word does. Only the latest
-//               burst is ever still in flight.
+//               0.81 bursts a second of speech, so chips are on screen for about an eighth of
+//               the time he talks; connected speech simply offers fewer onsets sharp enough to
+//               throw one than the film's single word does, and how many it offers is set by
+//               the tracker's ONSET_RISE, which cannot fall further without changing what an
+//               onset means. Only the latest burst is ever still in flight.
 //   appearance  keyframe time k = appearance / 0.75: the film's section 5 keyframes run
 //               over k 0-1 (2.7 s of MATERIALISE_SECONDS = 3.6 s) and the crescent grows
 //               back in over k 1-1.33. Point of light k 0-0.32; sparks from 0.06 (a row
@@ -155,9 +188,11 @@
 //   only their arguments and module-level number constants: no module-level mutable state,
 //   no closures over outer values, no Math.random while drawing. Randomness comes from the
 //   seeded scene, and per-cycle variation from an integer hash.
-// - The scene is flat number arrays (about 16,500 numbers), cloned into the worklet runtime
-//   once. The fill and sparkle textures and the whorl are built straight into Skia images and
-//   paths from a seed in the resources, so they are never copied. The textures are small
+// - The scene is flat number arrays (about 20,000 numbers), cloned into the worklet runtime
+//   once. Doubling the fragment body would have put it half as far over that again, so the
+//   body's rows lost two numbers each instead (see buildBody). The fill and sparkle
+//   textures and the whorl are built straight into Skia images and paths from a seed in
+//   the resources, so they are never copied. The textures are small
 //   (128² and 64²) and built with table lookups and separable noise, because this runs on the
 //   JS thread at every mount, on a phone, under an interpreter with no JIT.
 // - Build the scene and the resources ONCE per mounted canvas (a stable useMemo with no
@@ -167,8 +202,17 @@
 //   frame (so an exception mid-frame cannot leak contours into the next one) and reused:
 //   detach() hands out the path and resets the builder.
 // - Every paint uses Screen blending, so faint overlapping strokes add up like light: glow
-//   comes from wide faint strokes, gradients and the prebuilt textures, with no blur
-//   filters. It is drawn over black.
+//   comes from nested strokes, gradients and the prebuilt textures, with no blur filters —
+//   a Gaussian mask filter was measured and costs more than the ring it would replace,
+//   because its price follows a path's bounding box rather than its ink. It is drawn over
+//   black.
+// - Three rules keep the widest paints affordable. A shader that is transparent over most of
+//   the disc is painted as a band, not a disc (LIMB_BLOOM_BAND); the particle halos — the
+//   widest strokes here, seven paths a frame at two rings each — are the one thing drawn
+//   without antialiasing (HALO_ANTIALIASED); and the inner of those two rings is butt-capped,
+//   where a fragment's halo is otherwise almost all cap (see drawParticleHalo). About a quarter
+//   of the frame between them, which is what lets this drawing render faster than the sparser
+//   one it replaced while carrying twice as many particles.
 // - Geometry lives in unit space under canvas.translate(centre)·scale(R), so gradient
 //   shaders are built once, and the rolling layers are drawn under canvas.rotate. Beyond
 //   paints, gradients and path builders, the textures use Data.fromBytes, Image.MakeImage
@@ -249,7 +293,11 @@ const FORMED_APPEARANCE = 0.75;
 const SPHERE_FRACTION = 0.31;
 /** The outer rim layer rolls clockwise in the screen plane: one turn in about 33 s, as the film's ladder ring. */
 const ROLL_DEGREES_PER_SECOND = 11;
-/** The inner layer — the whorl, the loop and a quarter of the shell's fragments — turns the other way (shot d: -1.6 to -5.4°/s). */
+/**
+ * The inner layer turns the other way (shot d: -1.6 to -5.4°/s): the whorl, the loop, and half
+ * of the shell's fragments between 0.3R and 0.62R — the band the whorl itself turns in, and the
+ * only band the rim-roll check lets drift.
+ */
 const SHELL_DEGREES_PER_SECOND = -5;
 /** The lower hemisphere's equatorial shell turns about the vertical axis, which reads as a sideways stream. */
 const STREAM_RADIANS_PER_SECOND = 0.21;
@@ -262,7 +310,7 @@ const CHIP_HOLD_SECONDS = 0.13;
 const CHIP_GONE_SECONDS = 0.2;
 
 // Strides of the flat scene tables (the builders describe the fields).
-const BODY_STRIDE = 10;
+const BODY_STRIDE = 8;
 const STREAM_STRIDE = 10;
 const SPECK_STRIDE = 5;
 const CRESCENT_PIECE_STRIDE = 3;
@@ -293,26 +341,135 @@ const FILL_WASH_SHARE = 0.6;
  * Hermes), where 256 texels a side froze the JS thread for about 0.3 s at every mount.
  */
 const FILL_TEXTURE_TEXELS = 128;
+/**
+ * How many texels the fill texture fades to nothing over at its square border, so that a shader
+ * clamping past the edge repeats transparency rather than the last lit texel. Three, because two
+ * left a step of about a third of a luma level at the limb where the circle runs past the square.
+ */
+const FILL_TEXTURE_BORDER_TEXELS = 3;
 /** Side of the tiled sparkle texture in texels, and how wide a texel is on the sphere: a stroke spans about two. */
 const SPARKLE_TEXTURE_TEXELS = 64;
 const SPARKLE_TEXEL_SIZE = 0.018;
 /** How far the fill's clouds swing its brightness: pockets fall to about half the median, clouds rise past 1.5×. */
 const FILL_CONTRAST = 4.6;
 
-/** A fragment is lit for this share of its clock's cycle, fading in and out over a quarter of that at each end. */
+/**
+ * The limb bloom and the limb ridge are rings of light round the edge of the ball, and their
+ * shaders are transparent over everything inside about 0.89R. Painting them as filled discs
+ * still shades every pixel of the disc and blends a transparent result over it, which on these
+ * two — the widest layers in the drawing — was a twelfth of the whole frame for nothing. They
+ * are painted as bands instead: a stroked circle of these widths, centred so the band covers
+ * everything the shader is not transparent over, with the inner edge well inside the transparent
+ * part so its antialiasing multiplies by zero and the pixels come out identical. Measured over
+ * a script's worth of frames — the intro, silence, three speaking levels and five burst ages,
+ * at 384 px — not one channel of one pixel differs, and the frame is 8% cheaper.
+ */
+const LIMB_BLOOM_RADIUS = 0.995;
+const LIMB_BLOOM_BAND = 0.25;
+const LIMB_RIDGE_RADIUS = 0.955;
+const LIMB_RIDGE_BAND = 0.17;
+
+/**
+ * How much of the fill texture's own light the formed ball keeps.
+ *
+ * The texture is pinned and never changes, so every luma level in it is light that cannot
+ * churn; screened underneath, it also flattens what the strokes over it can add. At full
+ * strength it carried about four fifths of the disc's median light (78 of 99 at 256 px) and
+ * the ball read as a solid painted surface rather than a see-through cloud. At this share it
+ * carries half of that (38 of the 78 luma it used to hold, rendered on its own at 256 px) —
+ * still plainly present, still amber, never black — and the particle field over it now carries
+ * more light than it does, so most of what you see is light that goes out and comes back
+ * rather than light that is simply always on.
+ *
+ * It is not lower than this because the wash is also the only thing lighting the places where
+ * no fragment lands, and it is what keeps those from going black: at 0.45 the darkest twentieth
+ * of the disc sits at luma 39, and every tenth off this value costs about four of that. Half
+ * a fifth higher and the wash would be back over the half of its old light that the brief
+ * allows it.
+ *
+ * THIS IS DELIBERATELY PAST THE FILM GUIDE'S DARK-SHARE LINE, and a later round should not read
+ * that as a regression. The guide (section 6.4) wants under 5% of the disc inside 0.8R below
+ * luma 40, and asks for it of a sphere whose warm volume is opaque; a see-through one cannot
+ * hold that and be see-through. This drawing measures 5.3% at 256 px and 4.3-6.8% at 384 px
+ * across silent moments, against 0.6-1.3% when the wash was at full strength. Nothing inside
+ * the disc is anywhere near black — the first percentile sits at luma 25 and nothing at all
+ * falls under 8 — and the particle halos, not the wash, are the dial that moves this now.
+ */
+const FILL_STRENGTH = 0.45;
+
+/**
+ * The particle halos are the one thing in the drawing painted without antialiasing, and that is
+ * what pays for their second ring.
+ *
+ * Analytic antialiasing of a wide stroke is expensive out of all proportion to what it buys
+ * here: on this drawing, switching it on for the halo paints alone takes the frame loop from
+ * 3651 ms to 4430 ms — a fifth of the whole frame — because the halos are the widest strokes in
+ * the scene and there are seven paths of them a frame. What it buys is a smooth edge, and a halo
+ * ring's edge is a step of eighteen luma against the amber behind it. So the saving pays for the
+ * second ring and more: two aliased rings come in *under* the single antialiased pass they
+ * replace (by 56 to 303 ms over several runs), and halve that step at the same time. What it
+ * costs is one jagged pixel on an eighteen-luma boundary: invisible at 1:1 and only findable at
+ * four times magnification.
+ */
+const HALO_ANTIALIASED = false;
+
+/** A fragment is lit for this share of its clock's cycle, fading in and out over a third of that at each end. */
 const FRAGMENT_DUTY = 0.6;
+/**
+ * A body fragment's code holds its class — brightness (0-2) + 3 × pool + 6 × rides the turning
+ * shell, so 0 to 11 — and its glyph above that, at this step. See {@link buildBody} for why the
+ * two share a number.
+ */
+const FRAGMENT_CODE_GLYPH_STEP = 12;
+/**
+ * The multiplier that turns a fragment's id into its blink phase. Any multiplier with a long
+ * fractional part scatters a uniform id into a uniform phase; this one is far from every other
+ * multiplier the id is hashed by, so no two of its uses line up.
+ */
+const FRAGMENT_PHASE_FROM_ID = 37.9;
+/**
+ * How lit a fragment must be to be drawn at all. Below this it is a tenth of its length under a
+ * paint that does not fade with it, so it costs a path verb and shows a dot. It is also how
+ * abruptly a fragment arrives — the paint is set once for the whole tier, so a fragment cut off
+ * at this strength appears at full colour, however short — and with twice as many fragments,
+ * both of those matter: much higher and every arrival is a step rather than a fade; much lower
+ * and a twentieth of the frame's verbs go on strokes too short to see.
+ */
+const FRAGMENT_FAINTEST = 0.1;
+/**
+ * How far from its place a fragment may re-light, in R, on top of the half-length it already
+ * slides along itself. Getting on for two median fragment lengths: far enough that the stroke that goes
+ * out and the one that comes on light different pixels — which is what the film's turnover
+ * counts — and near enough that the mass, the clumping and the crowded left half stay put.
+ */
+const FRAGMENT_WANDER = 0.06;
 /**
  * The specks' two clocks. Agitation moves the share of them on the fast clock, never a rate:
  * a rate that moved would multiply `time` as well, so every change in agitation would shift
  * every speck's blink phase at once — noise across the whole layer at each word boundary,
- * growing with how long the sphere has been mounted. At full agitation they twinkle about
- * half again as fast on average, and a handover costs one dot at a time.
+ * growing with how long the sphere has been mounted. At full agitation four specks in five
+ * are on the fast clock, so the layer twinkles well over twice as fast on average, and a
+ * handover still costs one dot at a time.
  */
-const SPECK_FAST_RATE = 2.2;
-const SPECK_FAST_SHARE = 0.55;
+const SPECK_FAST_RATE = 2.8;
+const SPECK_FAST_SHARE = 0.8;
 /** The materialisation's equatorial ring: its major axis rises 28° to the right. */
 const EQUATOR_TILT_COS = 0.882947592858927;
 const EQUATOR_TILT_SIN = -0.4694715627858908;
+// The truss booms (protrusion kinds 1 and 5): a box frame standing off the limb in depth.
+/** Where a boom leaves the ball, in R. Inside the limb, so it grows out of the body rather than off it. */
+const TRUSS_BOOM_ROOT = 0.84;
+/** How many bays it is built of: rungs at the boundaries, one diagonal brace across each. */
+const TRUSS_BOOM_BAYS = 4;
+/** How much narrower the frame is at the tip than at the root: the foreshortening of its length. */
+const TRUSS_BOOM_TAPER = 0.42;
+/** How far behind the near face the far one sits at the root, as a share of the boom's half-width. */
+const TRUSS_BOOM_DEPTH = 1.15;
+/** How far a boom must have grown before it is at its full section, in R. */
+const TRUSS_BOOM_OPENING = 0.18;
+/** How much smaller the far face is drawn than the near one, being that much further from the eye. */
+const TRUSS_BOOM_FAR_SCALE = 0.72;
+
 /** The rim element that dominates takes this long to hand over to the next. */
 const HANDOVER_SECONDS = 1.2;
 /** How long a protrusion takes to dissolve: hollow outline, beaded rails, dots, sparks, gone. */
@@ -372,15 +529,24 @@ function pickFragmentLength(random: Random) {
   return 0.015 + 0.075 * random() ** 1.8;
 }
 
-/** A fragment's shape: 0 dash, 1 L, 2 bracket, 3 T, 4 Z, 5 tiny ring, 6 cell outline. */
+/**
+ * A fragment's shape: 0 dash, 1 L, 2 bracket, 3 T, 4 Z, 5 tiny ring, 6 cell outline.
+ *
+ * Four fragments in five are plain dashes. With twice as many fragments in the body as
+ * before, the mix leans further toward the two-verb dash than the film's own count would
+ * (it shows rather more corners and brackets): a path verb costs the same whatever it
+ * draws, so this is what pays for the second thousand strokes. The glyphs that read as
+ * circuitry are still there, and they are still where the eye goes — round the core, where
+ * pickGlyphAndLength keeps them.
+ */
 function pickGlyph(random: Random) {
   const roll = random();
-  if (roll < 0.68) return 0;
-  if (roll < 0.78) return 1;
-  if (roll < 0.84) return 2;
-  if (roll < 0.9) return 3;
-  if (roll < 0.95) return 4;
-  if (roll < 0.98) return 5;
+  if (roll < 0.84) return 0;
+  if (roll < 0.9) return 1;
+  if (roll < 0.93) return 2;
+  if (roll < 0.96) return 3;
+  if (roll < 0.98) return 4;
+  if (roll < 0.995) return 5;
   return 6;
 }
 
@@ -392,12 +558,19 @@ function pickBrightness(random: Random) {
 }
 
 /**
- * How often a fragment's clock cycles. Calm fragments (pool 0) stay lit 0.3-0.65 s,
- * the film's idle churn of about 10% renewed per film frame; agitated ones (pool 1)
- * half that, so swapping calm for agitated fragments raises the churn by half.
+ * How often a fragment's clock cycles. Calm fragments (pool 0) stay lit 0.18-0.4 s — the
+ * shorter half of the film's measured 0.2-0.6 s, which with {@link FRAGMENT_DUTY} renews
+ * about a tenth of the body per film frame, as the film study measures; agitated ones
+ * (pool 1) a third of it, so swapping calm for agitated fragments nearly doubles the churn.
+ * A third and not a half, because the whole point of the fast pool is to be seen changing:
+ * the film's frames are 1/24 s apart, and a fragment that goes out and comes back inside one
+ * of those has changed nothing that anybody can see.
+ *
+ * The longer lit times it had before renewed only about a twentieth per frame, which is
+ * half the film's turnover and is most of why the idle ball read as a still picture.
  */
 function pickFragmentRate(random: Random, pool: number) {
-  const litSeconds = pool === 0 ? 0.3 + random() * 0.35 : 0.13 + random() * 0.15;
+  const litSeconds = pool === 0 ? 0.18 + random() * 0.22 : 0.06 + random() * 0.08;
   return FRAGMENT_DUTY / litSeconds;
 }
 
@@ -419,9 +592,17 @@ function pickGlyphAndLength(random: Random, x: number, y: number, radius: number
 
 /**
  * The fragment body: the film's "circuit" texture of short bright strokes, nearly all of them
- * pinned in screen space (the film's body does not spin). Stride 10: x, y, unit direction x, y,
- * length, glyph, rate (cycles per second), phase, id (0..1), and a code holding brightness
- * (0-2) + 3 × pool + 6 × belongs to the turning shell.
+ * pinned in screen space (the film's body does not spin). Stride {@link BODY_STRIDE}: x, y,
+ * unit direction x, y, length, rate (cycles per second), id (0..1), and a code packing the
+ * glyph and the fragment's class (see {@link FRAGMENT_CODE_GLYPH_STEP}).
+ *
+ * Twice as many fragments as before, so that the light comes from the particles rather than
+ * from the wash behind them. Twice the rows would have put the scene over the size a phone
+ * should clone into the worklet runtime at every mount, so each row lost two numbers instead:
+ * the glyph rides in the class code, and the blink phase is a hash of the id rather than a
+ * random of its own — a hash of a uniform number is as uniform and as uncorrelated as a
+ * second draw would have been, and the id is already the fragment's handle for everything
+ * else that has to vary independently.
  *
  * Two pools share the same places. Pool 0 is the calm set; pool 1, half its size,
  * cycles twice as fast and only shows while he talks, standing in for calm fragments
@@ -434,7 +615,7 @@ function pickGlyphAndLength(random: Random, x: number, y: number, radius: number
 function buildBody(random: Random) {
   const body: number[] = [];
   const shape = [0, 0];
-  const fragmentCount = 840;
+  const fragmentCount = 1680;
   while (body.length < fragmentCount * BODY_STRIDE) {
     // the body stops just inside the rim layer, which rolls over it
     const radius = Math.sqrt(random()) * 0.94;
@@ -459,11 +640,12 @@ function buildBody(random: Random) {
       Math.cos(direction),
       Math.sin(direction),
       shape[1],
-      shape[0],
       pickFragmentRate(random, pool),
       random(),
-      random(),
-      brightness + 3 * pool + (radius > 0.3 && radius < 0.85 && random() < 0.3 ? 6 : 0),
+      brightness +
+        3 * pool +
+        (radius > 0.3 && radius < 0.62 && random() < 0.55 ? 6 : 0) +
+        FRAGMENT_CODE_GLYPH_STEP * shape[0],
     );
   }
   return body;
@@ -501,19 +683,21 @@ function buildStream(random: Random) {
 }
 
 /**
- * Specks: warm points that wink on and off slowly (0.6-2 Hz), and pale peach ones that
- * blink faster. Stride 5: x, y, rate, phase, kind (0 warm, 1 peach).
+ * Specks: warm points that wink on and off slowly (1-2.8 Hz), and pale peach ones that
+ * blink faster. Twice as many as before, each with a glow of its own, so the layer is a
+ * field of small lights rather than a sprinkling over a lit ball.
+ * Stride 5: x, y, rate, phase, kind (0 warm, 1 peach).
  */
 function buildSpecks(random: Random) {
   const specks: number[] = [];
-  while (specks.length < 110 * SPECK_STRIDE) {
+  while (specks.length < 220 * SPECK_STRIDE) {
     const radius = Math.sqrt(random()) * 1.02;
     const angle = random() * Math.PI * 2;
     const x = Math.cos(angle) * radius;
     const y = Math.sin(angle) * radius;
     if (random() > massWeight(x, y)) continue;
     const peach = random() < 0.2;
-    specks.push(x, y, peach ? 3 + random() * 2 : 0.6 + random() * 1.4, random(), peach ? 1 : 0);
+    specks.push(x, y, peach ? 3.4 + random() * 2.4 : 1 + random() * 1.8, random(), peach ? 1 : 0);
   }
   return specks;
 }
@@ -633,7 +817,8 @@ function buildRingTicks(random: Random) {
 function buildScript(random: Random) {
   const epochs: number[] = [];
   const dominants = [0, 1, 0, 2, 1, 0, 1, 2, 0, 1, 2, 1];
-  // protrusions: 0 none, 1 equator strut, 2 ribbon loop, 3 hook tendril, 4 streak bundle, 5 ear ring, 6 pole fan;
+  // protrusions: 0 none, 1 the long truss boom off the equator, 2 ribbon loop, 3 hook tendril,
+  // 4 streak bundle, 5 the short truss boom at the upper left, 6 pole fan;
   // the first epoch shows the formed ball plain, as the film does once it has formed
   const protrusions = [0, 1, 3, 0, 2, 4, 0, 1, 5, 3, 6, 2];
   const lineKinds = [0, 0, 1, 0, 2, 0, 3, 1, 0, 2, 3, 0];
@@ -665,7 +850,7 @@ function buildScript(random: Random) {
 /**
  * A second, sparser protrusion track on its own period, so a second protrusion is
  * occasionally out beside the first — never more than two. Stride 5: start, type
- * (4 bundle, 5 ear ring, 6 pole fan), grow, hold, a 0..1 hash.
+ * (4 bundle, 5 the short truss boom, 6 pole fan), grow, hold, a 0..1 hash.
  */
 function buildSecondTrack(random: Random) {
   const events: number[] = [];
@@ -952,14 +1137,24 @@ function buildFillTexture(random: Random) {
   const pixels = new Uint8Array(count * 4);
   for (let row = 0; row < texels; row++) {
     const y = ((row + 0.5) / texels) * 2 - 1;
+    // The texture fades to nothing over its outermost texels, so the shader can clamp rather
+    // than decal: the circle the fill is drawn on reaches a little past the texture's square,
+    // and clamping a transparent border out to it gives what decal gives, for a sixth less of
+    // the frame — decal costs a bounds test at every sample, and this is the one layer that
+    // shades the whole disc. The fade only touches a sliver of the ragged edge that the square
+    // was cutting off at the axes anyway, and it is a fade rather than a cut so that sliver
+    // does not end in a step.
+    const rowBorder = Math.min(1, Math.min(row, texels - 1 - row) / FILL_TEXTURE_BORDER_TEXELS);
     for (let column = 0; column < texels; column++) {
+      const border = Math.min(rowBorder, Math.min(column, texels - 1 - column) / FILL_TEXTURE_BORDER_TEXELS);
+      if (border <= 0) continue;
       const x = ((column + 0.5) / texels) * 2 - 1;
       const radius = Math.sqrt(x * x + y * y);
       if (radius >= 1.06) continue;
       const texel = row * texels + column;
       // the ragged edge: the glow reaches 0.9R in one sweep of the limb and 1.02R in the next
       const edgeShare = Math.min(1, Math.max(0, (radius - 0.93 - 0.16 * (edgeField[texel] - 0.5)) / 0.1));
-      const edge = 1 - edgeShare * edgeShare * (3 - 2 * edgeShare);
+      const edge = (1 - edgeShare * edgeShare * (3 - 2 * edgeShare)) * border;
       if (edge <= 0) continue;
       // Fine wisps give way to the broad clouds toward the limb: light pinned there must not carry
       // detail as fine as the rim layer's rungs, or it hides them as they roll past.
@@ -1192,11 +1387,13 @@ export function createHologramResources(Skia: SkiaApiType, scene: Scene) {
   );
   if (!fillImage) throw new Error('The hologram could not make its fill texture');
   const volumeFill = makeFill('#ffffff');
-  volumeFill.setShader(fillImage.makeShaderOptions(TileMode.Decal, TileMode.Decal, FilterMode.Linear, MipmapMode.None));
+  volumeFill.setShader(fillImage.makeShaderOptions(TileMode.Clamp, TileMode.Clamp, FilterMode.Linear, MipmapMode.None));
 
   // The limb bloom: a tight ring profile around 1R, multiplied by a mask peaked at
   // 8-9 o'clock (a sweep gradient starts at 3 o'clock and runs clockwise). No halo.
-  const limbBloomFill = makeFill('#ffffff');
+  // Painted as a band rather than a disc — see LIMB_BLOOM_BAND.
+  const limbBloomFill = makeStroke('#ffffff', StrokeCap.Butt);
+  limbBloomFill.setStrokeWidth(LIMB_BLOOM_BAND);
   limbBloomFill.setShader(
     Skia.Shader.MakeBlend(
       BlendMode.Modulate,
@@ -1227,7 +1424,8 @@ export function createHologramResources(Skia: SkiaApiType, scene: Scene) {
     ridgeColours.push(lit ?? amberHex(0xd0 * strength, 0x7c * strength, 0x30 * strength));
     ridgeStops.push(stop / 29);
   }
-  const limbRidgeFill = makeFill('#ffffff');
+  const limbRidgeFill = makeStroke('#ffffff', StrokeCap.Butt);
+  limbRidgeFill.setStrokeWidth(LIMB_RIDGE_BAND);
   limbRidgeFill.setShader(
     Skia.Shader.MakeBlend(
       BlendMode.Modulate,
@@ -1289,6 +1487,15 @@ export function createHologramResources(Skia: SkiaApiType, scene: Scene) {
     return paint;
   };
 
+  // The particle halos, on their own paints because they are the one thing here drawn without
+  // antialiasing — see HALO_ANTIALIASED. The outer ring is round-capped, which is what makes a
+  // halo round; the inner one is butt-capped, which is what makes it affordable — see
+  // {@link drawParticleHalo}.
+  const particleHalo = makeStroke('#dc5c20', StrokeCap.Round);
+  particleHalo.setAntiAlias(HALO_ANTIALIASED);
+  const particleHaloInner = makeStroke('#dc5c20', StrokeCap.Butt);
+  particleHaloInner.setAntiAlias(HALO_ANTIALIASED);
+
   const makeBuilder = () => Skia.PathBuilder.Make();
   const pathBuilders = {
     // dim, mid and bright, pinned and then the same three for the turning shell
@@ -1306,8 +1513,9 @@ export function createHologramResources(Skia: SkiaApiType, scene: Scene) {
     ringTicks: makeBuilder(),
     crescent: [makeBuilder(), makeBuilder(), makeBuilder(), makeBuilder()], // thin, medium, wide, core
     fray: makeBuilder(),
-    protrusionRod: makeBuilder(),
+    protrusionFace: makeBuilder(),
     protrusionRails: makeBuilder(),
+    protrusionFarRails: makeBuilder(),
     protrusionSparks: makeBuilder(),
     chips: makeBuilder(),
     chipCores: makeBuilder(),
@@ -1334,8 +1542,9 @@ export function createHologramResources(Skia: SkiaApiType, scene: Scene) {
     pathBuilders.ringTicks,
     ...pathBuilders.crescent,
     pathBuilders.fray,
-    pathBuilders.protrusionRod,
+    pathBuilders.protrusionFace,
     pathBuilders.protrusionRails,
+    pathBuilders.protrusionFarRails,
     pathBuilders.protrusionSparks,
     pathBuilders.chips,
     pathBuilders.chipCores,
@@ -1354,17 +1563,19 @@ export function createHologramResources(Skia: SkiaApiType, scene: Scene) {
     thinRingStroke,
     coreBloomFill,
     introPointFill,
-    whorlGlowStroke: makeStroke('#d8701e', StrokeCap.Round),
-    whorlStroke: makeSparkleStroke('#f47e26', StrokeCap.Round),
-    whorlCoreStroke: makeSparkleStroke('#ff9c38', StrokeCap.Round),
+    whorlGlowStroke: makeStroke('#d8651e', StrokeCap.Round),
+    whorlStroke: makeSparkleStroke('#f47126', StrokeCap.Round),
+    whorlCoreStroke: makeSparkleStroke('#ff8c38', StrokeCap.Round),
     bracketStroke: makeStroke('#e68727', StrokeCap.Round),
     loopStroke: makeStroke('#e6862f', StrokeCap.Butt),
-    bodyDimStroke: makeStroke('#cc7a2c', StrokeCap.Butt),
-    bodyMidStroke: makeSparkleStroke('#f87c26', StrokeCap.Butt),
-    bodyBrightStroke: makeSparkleStroke('#ff8c28', StrokeCap.Butt),
-    bodyHotStroke: makeSparkleStroke('#ff9e3c', StrokeCap.Round),
-    bodyGlowStroke: makeStroke('#dc7420', StrokeCap.Round),
-    speckWarmStroke: makeStroke('#ffa44c', StrokeCap.Round),
+    bodyDimStroke: makeStroke('#cc6e2c', StrokeCap.Butt),
+    bodyMidStroke: makeSparkleStroke('#f87026', StrokeCap.Butt),
+    bodyBrightStroke: makeSparkleStroke('#ff7e28', StrokeCap.Butt),
+    bodyHotStroke: makeSparkleStroke('#ff8e3c', StrokeCap.Round),
+    bodyGlowStroke: makeStroke('#dc6820', StrokeCap.Round),
+    particleHaloStroke: particleHalo,
+    particleHaloInnerStroke: particleHaloInner,
+    speckWarmStroke: makeStroke('#ff944c', StrokeCap.Round),
     speckPeachStroke: makeStroke('#ffc2a2', StrokeCap.Round),
     lineStroke: makeStroke('#ec9440', StrokeCap.Butt),
     coreRingStroke: makeStroke('#ffa440', StrokeCap.Round),
@@ -1383,7 +1594,7 @@ export function createHologramResources(Skia: SkiaApiType, scene: Scene) {
     chipFill: makeFill('#f59430'),
     chipCoreFill: makeFill('#ffa840'),
     rodGlowStroke: makeStroke('#dc8424', StrokeCap.Butt),
-    rodBodyStroke: makeStroke('#ea9838', StrokeCap.Butt),
+    trussFaceFill: makeFill('#b4661c'),
     rodCoreStroke: makeStroke('#ffb04a', StrokeCap.Butt),
     railStroke: makeStroke('#f09c3c', StrokeCap.Butt),
     sparkStroke: makeStroke('#ffae4e', StrokeCap.Round),
@@ -1583,7 +1794,7 @@ function analyseFrame(frame: HologramFrame, size: number, scene: Scene) {
     // The fill comes up with the spread as well as with its own ramp, so a patch that is still
     // on its own is a thickening of the haze rather than a lit shape: the film's glow is never
     // brighter in one place than the whole volume becomes.
-    fillAlpha: smooth01((intro - 0.5) / 0.16) * (0.68 + 0.32 * fillSpread),
+    fillAlpha: FILL_STRENGTH * smooth01((intro - 0.5) / 0.16) * (0.68 + 0.32 * fillSpread),
     fillSpread,
     // The haze the patches ride on leads them, so the fill thickens out of a wash rather than
     // arriving as lit shapes on black; FILL_WASH_SHARE says how much of the light it carries.
@@ -1598,9 +1809,14 @@ function analyseFrame(frame: HologramFrame, size: number, scene: Scene) {
     crescentGrowth: smooth01((intro - 1) / 0.3333),
     protrusionAlpha: smooth01((intro - 0.95) / 0.05),
     agitation,
-    // three in five of the calm fragments hand over to fast ones at full agitation, so the
-    // turnover rises by about half (the film's churn on "Doctor." rises from 8 to 13 per frame)
-    mix: 0.65 * agitation,
+    // Half the calm fragments hand over to fast ones at full agitation, so the turnover rises
+    // by about half (the film's churn on "Doctor." rises from 8 to 13 per frame). Half and no
+    // more, because pool 1 lights the ids below 2·mix: at this share, and only at this share,
+    // the fragments pool 1 lights make up for the ones pool 0 puts out at every agitation.
+    // Past it pool 1 runs out of ids to light and the body thins while he talks — which dims
+    // the ball, and, with fewer strokes going out and coming back, makes it churn less rather
+    // than more, which is the opposite of what speech is supposed to look like.
+    mix: 0.5 * agitation,
     // A third of the bright fragments step down while he talks, and the hot cores that make the
     // film's luma-200 highlights go almost entirely (section 4.2: they drop by about 70%). The
     // strokes themselves stay bright: it is the hot pixels that leave, not the texture.
@@ -1832,6 +2048,12 @@ function fragmentShown(x: number, y: number, id: number, state: FrameState) {
  * How lit a fragment is this frame, 0..1 (0 = dark): its clock's fade envelope times its pool's
  * share. Pool 0 (calm) gives up the lowest ids as `mix` rises; pool 1 (fast) lights ids below
  * 2·mix. Whether a fragment is there at all is fragmentShown.
+ *
+ * The envelope fades over a third of the lit window at each end rather than the quarter it
+ * was. A fragment's paint does not fade with it — only its length does, since a paint is set
+ * once for the whole tier's path — so the fade is how quickly a lit stroke arrives in the
+ * pixels it covers, and with the fragment clocks running half again as fast as before, a
+ * quarter of the window had come down to three frames and each arrival showed as a step.
  */
 function fragmentStrength(time: number, rate: number, phase: number, id: number, pool: number, state: FrameState) {
   'worklet';
@@ -1839,7 +2061,7 @@ function fragmentStrength(time: number, rate: number, phase: number, id: number,
   const life = cycles - Math.floor(cycles);
   if (life >= FRAGMENT_DUTY) return 0;
   const progress = life / FRAGMENT_DUTY;
-  const envelope = Math.min(1, progress * 4, (1 - progress) * 4);
+  const envelope = Math.min(1, progress * 3, (1 - progress) * 3);
   const poolShare = pool === 0 ? clamp01((id - state.mix) * 12 + 1) : clamp01((2 * state.mix - id) * 12);
   return envelope * poolShare;
 }
@@ -1871,23 +2093,32 @@ function appendBody(builders: PathBuilder[], body: number[], state: FrameState) 
   const time = state.time;
   const ragged = state.ragged;
   for (let offset = 0; offset < body.length; offset += BODY_STRIDE) {
-    const code = body[offset + 9];
+    const packed = body[offset + 7];
+    const glyph = Math.floor(packed / FRAGMENT_CODE_GLYPH_STEP);
+    const code = packed - glyph * FRAGMENT_CODE_GLYPH_STEP;
     const turning = code >= 6 ? 3 : 0;
     const pool = code - turning * 2 >= 3 ? 1 : 0;
-    const id = body[offset + 8];
+    const id = body[offset + 6];
+    const phase = fraction(id * FRAGMENT_PHASE_FROM_ID);
     const shown = fragmentShown(body[offset], body[offset + 1], id, state);
     if (shown <= 0) continue;
-    const strength = shown * fragmentStrength(time, body[offset + 6], body[offset + 7], id, pool, state);
-    if (strength < 0.08) continue;
-    const cycle = Math.floor(time * body[offset + 6] + body[offset + 7]);
+    const rate = body[offset + 5];
+    const strength = shown * fragmentStrength(time, rate, phase, id, pool, state);
+    if (strength < FRAGMENT_FAINTEST) continue;
+    const cycle = Math.floor(time * rate + phase);
     const unitX = body[offset + 2];
     const unitY = body[offset + 3];
     const length = body[offset + 4];
     // each time it re-lights, it does so a little along or across from where it was
     const hop = fraction(cycle * 0.618034 + id * 9.7);
-    const along = (hop - 0.5) * 1.2 * length;
-    // while he talks the body loosens: a fragment re-lights further from where it was
-    const across = (fraction(hop * 23.17) - 0.5) * (0.03 + 0.05 * state.agitation);
+    const along = (hop - 0.5) * 1.4 * length;
+    // while he talks the body loosens: a fragment re-lights further still from where it was
+    // The loosening while he talks fades out toward the limb: the silhouette must not move
+    // with his voice, and a fragment at 0.9R that strayed a tenth of a radius outward would
+    // take it with it. Compared as squares, so this costs no square root.
+    const fromCentre = body[offset] * body[offset] + body[offset + 1] * body[offset + 1];
+    const inward = clamp01((0.76 - fromCentre) * 3.2);
+    const across = (fraction(hop * 23.17) - 0.5) * (FRAGMENT_WANDER + 0.34 * state.agitation * inward);
     let x = body[offset] + unitX * along - unitY * across;
     let y = body[offset + 1] + unitY * along + unitX * across;
     if (ragged > 0 && x < 0 && x * x + y * y > 0.5) {
@@ -1897,15 +2128,12 @@ function appendBody(builders: PathBuilder[], body: number[], state: FrameState) 
       y *= push;
     }
     const tier = fragmentTier(code - 3 * pool - 2 * turning, strength, id, state.hotShare, state.introHeat);
-    appendGlyph(
-      builders[tier + turning],
-      body[offset + 5],
-      x,
-      y,
-      unitX,
-      unitY,
-      length * 0.5 * (0.35 + 0.65 * strength),
-    );
+    // Its length is its whole fade: a fragment grows out of nothing and shrinks back into it,
+    // because a paint is set once for a whole tier and so cannot fade with one stroke in it.
+    // Arriving at a third of its length, as it used to, meant arriving at full brightness over
+    // a dozen pixels at once — with twice as many fragments that is a visible speckle at every
+    // frame, and it is what the spec's script-boundary check counts.
+    appendGlyph(builders[tier + turning], glyph, x, y, unitX, unitY, length * 0.5 * strength);
   }
 }
 
@@ -1922,7 +2150,7 @@ function appendStream(builders: PathBuilder[], stream: number[], state: FrameSta
     const shown = fragmentShown(stream[offset], stream[offset + 1], id, state);
     if (shown <= 0) continue;
     const strength = shown * fragmentStrength(time, stream[offset + 5], stream[offset + 6], id, pool, state);
-    if (strength < 0.08) continue;
+    if (strength < FRAGMENT_FAINTEST) continue;
     const restX = stream[offset];
     const restZ = stream[offset + 2];
     const x = restX * cosYaw + restZ * sinYaw;
@@ -1930,13 +2158,90 @@ function appendStream(builders: PathBuilder[], stream: number[], state: FrameSta
     const y = stream[offset + 1];
     // fade out before the limb, so nothing pops where the shell turns out of view
     const edge = clamp01((0.86 - x * x - y * y) * 8);
-    if (edge * strength < 0.08) continue;
+    if (edge * strength < FRAGMENT_FAINTEST) continue;
     // a latitude runs horizontally on screen, foreshortened as it turns toward the limb
     const halfX = stream[offset + 3] * cosYaw + stream[offset + 4] * sinYaw;
     const tier = depth < 0 ? 0 : fragmentTier(code - 3 * pool, strength * edge, id, state.hotShare, state.introHeat);
-    const half = Math.abs(halfX) * (0.35 + 0.65 * strength * edge);
+    const half = Math.abs(halfX) * strength * edge;
     appendGlyph(builders[tier], stream[offset + 9], x, y, 1, 0, half);
   }
+}
+
+/** A path handed out by a builder, which is what every draw call takes. */
+type DetachedPath = ReturnType<PathBuilder['detach']>;
+
+/** One of the drawing's prebuilt paints. */
+type HologramPaint = Resources['particleHaloStroke'];
+
+/**
+ * The halo around a tier of particles: two nested strokes of the same amber on the same path, the
+ * inner one narrower and a little stronger than the one outside it.
+ *
+ * ONE wide stroke is not a glow. A round-capped stroke of a flat colour covers its whole width
+ * at a single alpha, so it lands as a hard-edged lozenge of uniform mid-brown about as wide as
+ * the fragment is long, and with this many fragments those lozenges touch and fuse into lumps:
+ * when each halo was one wide pass, 97% of its lit pixels sat at one luma and its outer edge
+ * stepped up by fifty. Two rings stack under Screen blending into a ramp instead. The width and
+ * shares below are chosen so the two steps come out equal — half of the way up at the outer
+ * reach, all the way at the inner ring. Measured straight out from the centre line of one
+ * mid-tier fragment of the median length, drawn alone on black at 768 px, the three recipes read
+ *   one flat pass  131 115 | 35 35 35 35 35 35 35 35 35 35 35 35 | 9 | 0
+ *   three rings    132 117 | 37 37 37 | 24 24 24 24 | 11 11 11 11 11 | 0
+ *   two rings      132 117 | 37 37 37 37 37 | 18 18 18 18 18 18 18 | 0
+ * so the step that meets the black between the clumps falls from thirty-five (fifty on the
+ * bright tier) to eighteen, and the halo reaches 13 px rather than 8.
+ *
+ * WHY TWO RINGS AND NOT THREE. Three rings cut that step further, to eleven, and were what this
+ * drawing shipped first. But every pass re-strokes the whole tier's path and is charged per
+ * particle, and with the particle count doubled the halos alone are 30% of the frame (1096 ms of
+ * 3651 over the 242 renders the spec's materialisation test makes). A third ring is another 240
+ * to 400 ms of that test's 5 s budget, which it does not have: with three rings the test ran at
+ * 4.53 s, over the sparser drawing it replaced by 15%; with two it runs at 3.86 s against that
+ * drawing's 3.84, measured as fourteen interleaved pairs. Two rings also light the gaps *better*
+ * than three, because the outer ring then carries half the halo's alpha rather than a third:
+ * over five silent moments at 768 px the fifth-percentile luma inside 0.85R went from 37.2 to
+ * 39.1 and the share under luma 40 from 6.4% to 5.5%. What the third ring buys is smoothness
+ * alone, and the cheaper place to spend on that is {@link HALO_ANTIALIASED}.
+ *
+ * WHY THE INNER RING IS USUALLY BUTT-CAPPED. A fragment is much shorter than its halo is wide —
+ * the median is 0.036R against a reach of 0.12R — so a round-capped pass over it is very nearly
+ * a disc, and most of the cost of the halo is the two cap arcs. Butt caps on the inner ring (a
+ * plain rectangle along the fragment, no arcs) are worth about 200 ms and cannot change the
+ * halo's silhouette, because the inner ring is 0.47 of the outer one's width, so its corners fall
+ * inside the outer ring's round boundary. What it does cost is the ramp past a fragment's tips,
+ * where the inner ring stops and the outer one carries on alone. Square caps on the *outer* ring
+ * were measured too and are cheaper still, but they turn every halo into a box and the whole
+ * field goes visibly rectangular. A Gaussian mask filter would be smoother than any staircase,
+ * but it measured 600 ms dearer than three rings, and its price follows the path's bounding box
+ * in device pixels rather than its ink, so it gets worse on a phone, where a stroke's cost
+ * hardly moves.
+ *
+ * `innerRingStroke` is why the cap is only usually butt: a tier whose particles are points
+ * rather than strokes — the specks — has to pass the round-capped paint here, because a butt cap
+ * on a point of no length is a thin bar across it instead of a disc, which is plainly visible
+ * under magnification. That tier is small enough that the round caps measure free.
+ *
+ * `reach` is the halo's full width and `strength` the alpha it comes to against the stroke.
+ */
+const HALO_INNER_WIDTH = 0.47;
+const HALO_OUTER_SHARE = 0.52;
+const HALO_INNER_SHARE = 0.61;
+
+function drawParticleHalo(
+  canvas: HologramCanvas,
+  resources: Resources,
+  path: DetachedPath,
+  reach: number,
+  strength: number,
+  innerRingStroke: HologramPaint,
+) {
+  'worklet';
+  resources.particleHaloStroke.setStrokeWidth(reach);
+  resources.particleHaloStroke.setAlphaf(strength * HALO_OUTER_SHARE);
+  canvas.drawPath(path, resources.particleHaloStroke);
+  innerRingStroke.setStrokeWidth(reach * HALO_INNER_WIDTH);
+  innerRingStroke.setAlphaf(strength * HALO_INNER_SHARE);
+  canvas.drawPath(path, innerRingStroke);
 }
 
 /** The body's dim and mid strokes, pinned and turning (the bright ones are drawn later, over the core). */
@@ -1951,13 +2256,19 @@ function drawBody(canvas: HologramCanvas, resources: Resources, scene: Scene, st
       canvas.save();
       canvas.rotate(state.shellTurn, CORE_X, CORE_Y);
     }
-    resources.bodyDimStroke.setStrokeWidth(0.0125);
-    resources.bodyDimStroke.setAlphaf(0.6);
-    canvas.drawPath(builders[group * 3].detach(), resources.bodyDimStroke);
+    // Every tier carries a halo of its own, the dim one included, where the drawing used to
+    // put one faint pass on the mid and bright tiers only. With the wash behind them down to
+    // half, these are what light the space between the strokes — and unlike the wash, they go
+    // out and come back on each fragment's own clock. The dim tier's halo reaches nearly as far
+    // as the mid tier's because it is the most numerous and the most spread out, so it is the
+    // one that lights the bare fill between the clumps; it is the faintest for the same reason.
+    const dimPath = builders[group * 3].detach();
+    drawParticleHalo(canvas, resources, dimPath, 0.115, 0.24, resources.particleHaloInnerStroke);
+    resources.bodyDimStroke.setStrokeWidth(0.014);
+    resources.bodyDimStroke.setAlphaf(0.62);
+    canvas.drawPath(dimPath, resources.bodyDimStroke);
     const midPath = builders[group * 3 + 1].detach();
-    resources.bodyGlowStroke.setStrokeWidth(0.034);
-    resources.bodyGlowStroke.setAlphaf(0.11);
-    canvas.drawPath(midPath, resources.bodyGlowStroke);
+    drawParticleHalo(canvas, resources, midPath, 0.12, 0.3, resources.particleHaloInnerStroke);
     resources.bodyMidStroke.setStrokeWidth(0.0155);
     resources.bodyMidStroke.setAlphaf(0.85);
     canvas.drawPath(midPath, resources.bodyMidStroke);
@@ -1991,15 +2302,22 @@ function drawSpecks(canvas: HologramCanvas, resources: Resources, scene: Scene, 
   const warmPath = builders[0].detach();
   const peachPath = builders[1].detach();
   if (counts === 0) return;
+  // Each speck is a small light with a halo round it, not a bare dot on a lit ball. A speck is a
+  // point rather than a stroke, so its halo takes the round-capped paint for its inner ring as
+  // well: see drawParticleHalo for what a butt cap does to a particle of no length.
+  drawParticleHalo(canvas, resources, warmPath, 0.095, 0.36, resources.particleHaloStroke);
   resources.speckWarmStroke.setStrokeWidth(0.016);
   resources.speckWarmStroke.setAlphaf(0.85);
   canvas.drawPath(warmPath, resources.speckWarmStroke);
+  resources.speckPeachStroke.setStrokeWidth(0.021);
+  resources.speckPeachStroke.setAlphaf(0.32);
+  canvas.drawPath(peachPath, resources.speckPeachStroke);
   resources.speckPeachStroke.setStrokeWidth(0.013);
   resources.speckPeachStroke.setAlphaf(0.7);
   canvas.drawPath(peachPath, resources.speckPeachStroke);
 }
 
-/** The bright fragments with a tight amber glow, and the specks. */
+/** The bright fragments with the widest of the amber halos, and the specks. */
 function drawBodyHighlights(canvas: HologramCanvas, resources: Resources, scene: Scene, state: FrameState) {
   'worklet';
   const brightPath = resources.pathBuilders.body[2].detach();
@@ -2011,9 +2329,7 @@ function drawBodyHighlights(canvas: HologramCanvas, resources: Resources, scene:
         canvas.save();
         canvas.rotate(state.shellTurn, CORE_X, CORE_Y);
       }
-      resources.bodyGlowStroke.setStrokeWidth(0.036);
-      resources.bodyGlowStroke.setAlphaf(0.2);
-      canvas.drawPath(path, resources.bodyGlowStroke);
+      drawParticleHalo(canvas, resources, path, 0.125, 0.38, resources.particleHaloInnerStroke);
       resources.bodyBrightStroke.setStrokeWidth(0.0165);
       resources.bodyBrightStroke.setAlphaf(1 - 0.25 * state.agitation);
       canvas.drawPath(path, resources.bodyBrightStroke);
@@ -2446,7 +2762,7 @@ function drawCrescent(canvas: HologramCanvas, resources: Resources, scene: Scene
   // width goes up, if anything. What leaves on "Doctor." is the hot core inside the crescent,
   // and that is taken out below.
   resources.limbBloomFill.setAlphaf(clamp01(0.42 * weight * growth));
-  canvas.drawCircle(0, 0, 1.12, resources.limbBloomFill);
+  canvas.drawCircle(0, 0, LIMB_BLOOM_RADIUS, resources.limbBloomFill);
   resources.crescentGlowStroke.setStrokeWidth(0.1 * (1 - 0.5 * spread));
   resources.crescentGlowStroke.setAlphaf(0.26 * weight);
   canvas.drawPath(wide, resources.crescentGlowStroke);
@@ -2478,7 +2794,7 @@ function drawThinRing(canvas: HologramCanvas, resources: Resources, state: Frame
     canvas.save();
     canvas.rotate(state.roll, 0, 0);
     resources.limbRidgeFill.setAlphaf(clamp01(ridge));
-    canvas.drawCircle(0, 0, 1.06, resources.limbRidgeFill);
+    canvas.drawCircle(0, 0, LIMB_RIDGE_RADIUS, resources.limbRidgeFill);
     canvas.restore();
   }
   const weight = script.ringWeight * state.rimAlpha;
@@ -2578,18 +2894,134 @@ function appendRail(
   }
 }
 
-/** The equator strut: a solid golden rod at 9 o'clock from inside the sphere to a tip at 1.29R, 0.07R thick. */
-function appendStrut(builders: Resources['pathBuilders'], growth: number, dissolve: number) {
+/**
+ * The four corners of one bay boundary of a truss boom, `along` of the way out, written into
+ * `out` as near top, near bottom, far top, far bottom (x, y each).
+ *
+ * The boom is a square-section box standing off the limb, seen from a little above and to one
+ * side. Two things give it its depth. Both faces narrow as they go out, as anything pointing
+ * away from the eye does; and the far face is drawn smaller than the near one and offset
+ * across and back, by an amount that itself shrinks toward the tip — so the two faces
+ * converge, which is the whole of the perspective and costs four multiplications.
+ *
+ * The half-width wobbles a little from station to station: a truss built by hand is never
+ * quite ruled, and a perfectly regular one reads as a diagram.
+ */
+function trussBoomCorners(
+  outX: number,
+  outY: number,
+  root: number,
+  length: number,
+  width: number,
+  along: number,
+  seed: number,
+  out: number[],
+) {
   'worklet';
-  const tipX = -0.62 - 0.67 * growth;
-  if (dissolve < 0.3) {
-    builders.protrusionRod.moveTo(-0.62, 0);
-    builders.protrusionRod.lineTo(tipX, 0);
+  const distance = root + length * along;
+  // across the boom on screen; the far face lies this way and a little back toward the ball
+  const sideX = -outY;
+  const sideY = outX;
+  const half = width * (1 - TRUSS_BOOM_TAPER * along) * (0.94 + 0.12 * hashInteger(seed * 31 + Math.round(along * 8)));
+  const depth = width * TRUSS_BOOM_DEPTH * (1 - 0.45 * along);
+  const farX = outX * distance + sideX * depth * 0.62 - outX * depth * 0.25;
+  const farY = outY * distance + sideY * depth * 0.62 - outY * depth * 0.25;
+  const farHalf = half * TRUSS_BOOM_FAR_SCALE;
+  out[0] = outX * distance + sideX * half;
+  out[1] = outY * distance + sideY * half;
+  out[2] = outX * distance - sideX * half;
+  out[3] = outY * distance - sideY * half;
+  out[4] = farX + sideX * farHalf;
+  out[5] = farY + sideY * farHalf;
+  out[6] = farX - sideX * farHalf;
+  out[7] = farY - sideY * farHalf;
+}
+
+/**
+ * A truss boom: the protrusion as a structure standing off the sphere in depth rather than as
+ * a flat outline on the glass.
+ *
+ * It is a box frame. The near face is two rails with a rung at every bay boundary and a
+ * diagonal brace across each bay, which is what makes a truss a truss. The far face is the
+ * same frame again, foreshortened, dimmer and thinner because it is further away — it goes to
+ * its own builder, which {@link drawProtrusions} draws at about half the near face's weight.
+ * The two are tied together by the short depth edges at the root, the middle and the tip, and
+ * the top side panel between them is filled, so the box has a surface that catches the light
+ * instead of being a wireframe you can see straight through.
+ *
+ * It grows out of the limb, holds and dissolves on the script's clock like every other
+ * protrusion: every member goes through appendRail, so the dissolve beads it, shrinks it to
+ * dots and drops it as sparks; the filled panel goes first, leaving the frame hollow.
+ */
+function appendTrussBoom(
+  builders: Resources['pathBuilders'],
+  growth: number,
+  dissolve: number,
+  clockDegrees: number,
+  reach: number,
+  width: number,
+  seed: number,
+) {
+  'worklet';
+  const angle = clockRadians(clockDegrees);
+  const outX = Math.cos(angle);
+  const outY = Math.sin(angle);
+  const length = reach * growth;
+  // below this there is nothing to see but a knot of overlapping rungs at the limb
+  if (length < 0.006) return;
+  // The box opens out as it extends, rather than arriving at full section: a frame this dense
+  // would otherwise light every one of its members in the frame it first clears the guard above,
+  // which is exactly the kind of step the script is meant never to take.
+  const section = width * Math.min(1, length / TRUSS_BOOM_OPENING);
+  const rails = builders.protrusionRails;
+  const far = builders.protrusionFarRails;
+  const sparks = builders.protrusionSparks;
+  const here = [0, 0, 0, 0, 0, 0, 0, 0];
+  const next = [0, 0, 0, 0, 0, 0, 0, 0];
+  trussBoomCorners(outX, outY, TRUSS_BOOM_ROOT, length, section, 0, seed, here);
+  // the near face's first rung, and the depth edges at the root
+  appendRail(rails, sparks, here[0], here[1], here[2], here[3], 2, dissolve);
+  appendRail(rails, sparks, here[0], here[1], here[4], here[5], 1, dissolve);
+  appendRail(rails, sparks, here[2], here[3], here[6], here[7], 1, dissolve);
+  for (let bay = 0; bay < TRUSS_BOOM_BAYS; bay++) {
+    const along = (bay + 1) / TRUSS_BOOM_BAYS;
+    trussBoomCorners(outX, outY, TRUSS_BOOM_ROOT, length, section, along, seed, next);
+    // the near face: its two rails, its rung, and a brace across the bay that alternates
+    appendRail(rails, sparks, here[0], here[1], next[0], next[1], 3, dissolve);
+    appendRail(rails, sparks, here[2], here[3], next[2], next[3], 3, dissolve);
+    appendRail(rails, sparks, next[0], next[1], next[2], next[3], 2, dissolve);
+    const braceFrom = bay % 2 === 0 ? 2 : 0;
+    appendRail(
+      rails,
+      sparks,
+      here[braceFrom],
+      here[braceFrom + 1],
+      next[2 - braceFrom],
+      next[3 - braceFrom],
+      3,
+      dissolve,
+    );
+    // the far face, at its own weight: rails all the way, rungs every other bay
+    appendRail(far, sparks, here[4], here[5], next[4], next[5], 3, dissolve);
+    appendRail(far, sparks, here[6], here[7], next[6], next[7], 3, dissolve);
+    if (bay % 2 === 1) appendRail(far, sparks, next[4], next[5], next[6], next[7], 2, dissolve);
+    // the depth edges halfway out and at the tip, which is where the box shows its thickness
+    if (bay === TRUSS_BOOM_BAYS / 2 - 1 || bay === TRUSS_BOOM_BAYS - 1) {
+      appendRail(rails, sparks, next[0], next[1], next[4], next[5], 1, dissolve);
+      appendRail(rails, sparks, next[2], next[3], next[6], next[7], 1, dissolve);
+    }
+    for (let corner = 0; corner < 8; corner++) here[corner] = next[corner];
   }
-  if (dissolve > 0) {
-    appendRail(builders.protrusionRails, builders.protrusionSparks, -0.62, -0.035, tipX, -0.035, 10, dissolve);
-    appendRail(builders.protrusionRails, builders.protrusionSparks, -0.62, 0.035, tipX, 0.035, 10, dissolve);
-  }
+  // The top side panel, between the near and far top rails: the box's one solid surface.
+  // It is the protrusion's body, so it goes as soon as the dissolve begins.
+  if (dissolve >= 0.3) return;
+  const face = builders.protrusionFace;
+  trussBoomCorners(outX, outY, TRUSS_BOOM_ROOT, length, section, 0, seed, next);
+  face.moveTo(next[0], next[1]);
+  face.lineTo(here[0], here[1]);
+  face.lineTo(here[4], here[5]);
+  face.lineTo(next[4], next[5]);
+  face.close();
 }
 
 /** A polyline of `samples` points along a protrusion's curve (kind 2 ribbon loop, 3 hook), offset across by `across`. */
@@ -2676,35 +3108,11 @@ function appendStreakBundle(builders: Resources['pathBuilders'], growth: number,
 }
 
 /**
- * The small closed "ear" ring reaching 1.4R at the top left — two lumpy loops, not quite
- * concentric, with breaks — or the pole fan: strands bowing out of the right limb and
- * converging just outside 3 o'clock, each reaching a little further or shorter.
+ * The pole fan: strands bowing out of the right limb and converging just outside 3 o'clock,
+ * each reaching a little further or shorter.
  */
-function appendRingOrFan(builders: Resources['pathBuilders'], kind: number, growth: number, dissolve: number) {
+function appendPoleFan(builders: Resources['pathBuilders'], growth: number, dissolve: number) {
   'worklet';
-  if (kind === 5) {
-    for (let loop = 0; loop < 2; loop++) {
-      const centreX = -0.85 + loop * 0.025;
-      const centreY = -0.85 - loop * 0.02;
-      const radius = 0.2 - loop * 0.04;
-      const steps = Math.floor(28 * growth * (1 - 0.15 * loop));
-      let previousX = 0;
-      let previousY = 0;
-      for (let step = 0; step <= steps; step++) {
-        const angle = 2.3 + loop * 0.4 + (step / 28) * Math.PI * 2;
-        const lumpy = radius * (1 + 0.05 * Math.sin(3 * angle + loop) + 0.025 * Math.sin(5 * angle + 2));
-        const x = centreX + Math.cos(angle) * lumpy;
-        const y = centreY + Math.sin(angle) * lumpy;
-        // a couple of breaks in each loop
-        if (step > 0 && (step + loop * 5) % 11 !== 0) {
-          appendRail(builders.protrusionRails, builders.protrusionSparks, previousX, previousY, x, y, 1, dissolve);
-        }
-        previousX = x;
-        previousY = y;
-      }
-    }
-    return;
-  }
   for (let strand = 0; strand < 6; strand++) {
     const angle = clockRadians(52 + strand * 15);
     const fromX = Math.cos(angle) * 0.95;
@@ -2735,10 +3143,13 @@ function appendProtrusion(
   seed: number,
 ) {
   'worklet';
-  if (kind === 1) appendStrut(builders, growth, dissolve);
+  // The two truss booms: the long one out of the equator at 9 o'clock, where the solid rod
+  // used to be, and a shorter, finer one off the upper-left limb, where the ear ring was.
+  if (kind === 1) appendTrussBoom(builders, growth, dissolve, 270, 0.55, 0.085, seed);
   else if (kind === 2 || kind === 3) appendCurveProtrusion(builders, kind, growth, dissolve);
   else if (kind === 4) appendStreakBundle(builders, growth, dissolve, seed);
-  else if (kind === 5 || kind === 6) appendRingOrFan(builders, kind, growth, dissolve);
+  else if (kind === 5) appendTrussBoom(builders, growth, dissolve, 312, 0.4, 0.062, seed + 5);
+  else if (kind === 6) appendPoleFan(builders, growth, dissolve);
 }
 
 /** The script's protrusions: at most one per track, two at once. */
@@ -2748,34 +3159,34 @@ function drawProtrusions(canvas: HologramCanvas, resources: Resources, state: Fr
   const protrusions = state.script.protrusions;
   if (alpha <= 0 || (protrusions[1] < 0 && protrusions[4] < 0)) return;
   const builders = resources.pathBuilders;
-  // the rod is solid only while a protrusion has barely begun to dissolve
-  let rodSolid = 0;
+  // a truss boom's side panel is solid only while its protrusion has barely begun to dissolve
+  let faceSolid = 0;
   if (protrusions[1] >= 0) {
     appendProtrusion(builders, protrusions[0], protrusions[1], protrusions[2], 3);
-    rodSolid = Math.max(rodSolid, 1 - smooth01(protrusions[2] / 0.3));
+    faceSolid = Math.max(faceSolid, 1 - smooth01(protrusions[2] / 0.3));
   }
   if (protrusions[4] >= 0) {
     appendProtrusion(builders, protrusions[3], protrusions[4], protrusions[5], Math.floor(protrusions[6] * 1000));
-    rodSolid = Math.max(rodSolid, 1 - smooth01(protrusions[5] / 0.3));
+    faceSolid = Math.max(faceSolid, 1 - smooth01(protrusions[5] / 0.3));
   }
-  const rodPath = builders.protrusionRod.detach();
-  const rodAlpha = alpha * rodSolid;
-  if (rodAlpha > 0) {
-    // a glowing rod, not a flat bar: a soft halo, the golden body and a hot core peaking past 200
-    resources.rodGlowStroke.setStrokeWidth(0.17);
-    resources.rodGlowStroke.setAlphaf(0.26 * rodAlpha);
-    canvas.drawPath(rodPath, resources.rodGlowStroke);
-    resources.rodGlowStroke.setStrokeWidth(0.1);
-    resources.rodGlowStroke.setAlphaf(0.34 * rodAlpha);
-    canvas.drawPath(rodPath, resources.rodGlowStroke);
-    resources.rodBodyStroke.setStrokeWidth(0.064);
-    resources.rodBodyStroke.setAlphaf(0.66 * rodAlpha);
-    canvas.drawPath(rodPath, resources.rodBodyStroke);
-    resources.rodCoreStroke.setStrokeWidth(0.026);
-    resources.rodCoreStroke.setAlphaf(0.85 * rodAlpha);
-    canvas.drawPath(rodPath, resources.rodCoreStroke);
+  const facePath = builders.protrusionFace.detach();
+  const faceAlpha = alpha * faceSolid;
+  if (faceAlpha > 0) {
+    // the box's one solid surface, lit like the amber the frame is made of and no brighter,
+    // so it reads as a face turned away from the eye rather than as a patch of light
+    resources.trussFaceFill.setAlphaf(0.72 * faceAlpha);
+    canvas.drawPath(facePath, resources.trussFaceFill);
   }
-  // rails glow like the rod: a soft halo, the golden line, a hot thread down the middle
+  // The far face, at about half the near one's weight: distance is the only thing that says
+  // which of two identical frames is behind the other.
+  const farPath = builders.protrusionFarRails.detach();
+  resources.rodGlowStroke.setStrokeWidth(0.026);
+  resources.rodGlowStroke.setAlphaf(0.14 * alpha);
+  canvas.drawPath(farPath, resources.rodGlowStroke);
+  resources.railStroke.setStrokeWidth(0.008);
+  resources.railStroke.setAlphaf(0.42 * alpha);
+  canvas.drawPath(farPath, resources.railStroke);
+  // near rails glow: a soft halo, the golden line, a hot thread down the middle
   const railPath = builders.protrusionRails.detach();
   resources.rodGlowStroke.setStrokeWidth(0.045);
   resources.rodGlowStroke.setAlphaf(0.24 * alpha);
