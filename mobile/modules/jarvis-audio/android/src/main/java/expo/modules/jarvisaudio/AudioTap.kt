@@ -90,6 +90,22 @@ class AudioTap : AudioTrackSink {
     }
   }
 
+  /**
+   * Adds `count` mono 16-bit samples read straight from a recorder, rather than
+   * handed over by WebRTC. Same ring, same reader on the JavaScript side.
+   */
+  fun writeSamples(samples: ShortArray, count: Int, sampleRate: Int) {
+    synchronized(ring) {
+      for (index in 0 until count) {
+        ring[writeIndex] = samples[index]
+        writeIndex = (writeIndex + 1) % CAPACITY_SAMPLES
+      }
+      filled = minOf(CAPACITY_SAMPLES, filled + count)
+      this.sampleRate = sampleRate
+      framesSeen += count
+    }
+  }
+
   /** Forgets everything, so a new source never starts with the last one's tail. */
   fun clear() {
     synchronized(ring) {

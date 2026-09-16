@@ -5,14 +5,12 @@ import android.content.pm.PackageManager
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.facebook.react.bridge.ReactContext
-import com.livekit.reactnative.LiveKitReactNative
 import com.oney.WebRTCModule.WebRTCModule
 import expo.modules.kotlin.exception.CodedException
 import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import org.webrtc.AudioTrack
-import org.webrtc.audio.JavaAudioDeviceModule
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.Locale
@@ -29,10 +27,9 @@ private const val LOG_EVERY_SECONDS = 0.5
  * Two sources, one at a time, both feeding the same [AudioTap]:
  *
  * - **The microphone**, for sample mode, when there is no conversation to listen
- *   to. It starts WebRTC's own recorder — the one a conversation uses — with
- *   `requestStartRecording`, which needs no connection and works offline. If a
- *   conversation starts while it runs, the recorder is shared rather than fought
- *   over: it stays open until both have let it go.
+ *   to. It records for itself through [MicrophoneRecorder] rather than borrowing
+ *   WebRTC's recorder as it used to — see that class for the 25x of signal the
+ *   borrowing was quietly costing.
  * - **A remote track**, Jarvis's voice in a live conversation, found by its peer
  *   connection and track ids the way LiveKit finds tracks for its own processors.
  *
@@ -41,7 +38,8 @@ private const val LOG_EVERY_SECONDS = 0.5
  */
 class JarvisAudioModule : Module() {
   private val tap = AudioTap()
-  private var recordingModule: JavaAudioDeviceModule? = null
+  private val microphone = MicrophoneRecorder(tap)
+  private var isRecording = false
   private var tappedTrack: AudioTrack? = null
   private var framesLogged = 0L
 
@@ -89,39 +87,27 @@ class JarvisAudioModule : Module() {
       // an `Error`, not an exception JavaScript would be told about.
       throw CodedException("ERR_MICROPHONE_PERMISSION", "The microphone permission has not been granted.", null)
     }
-    if (recordingModule != null) {
+    if (isRecording) {
       return
-    }
-
-    val audioDeviceModule = try {
-      LiveKitReactNative.audioDeviceModule
-    } catch (error: IllegalStateException) {
-      throw CodedException("ERR_MICROPHONE_UNAVAILABLE", "WebRTC's audio is not set up in this build.", error)
     }
 
     stopListeningToTrack()
     tap.clear()
-    LiveKitReactNative.audioRecordSamplesDispatcher.registerSink(tap)
     try {
-      audioDeviceModule.requestStartRecording()
+      microphone.start()
     } catch (error: Throwable) {
-      LiveKitReactNative.audioRecordSamplesDispatcher.unregisterSink(tap)
-      runCatching { audioDeviceModule.requestStopRecording() }
       throw CodedException("ERR_MICROPHONE_START", "The microphone could not be started.", error)
     }
-    // Kept, rather than read again when stopping: a JavaScript reload replaces
-    // LiveKit's audio module, and only the one that was started can be stopped.
-    recordingModule = audioDeviceModule
-    Log.i(TAG, "microphone started")
+    isRecording = true
   }
 
   private fun stopMicrophone() {
-    val audioDeviceModule = recordingModule ?: return
-    recordingModule = null
-    runCatching { LiveKitReactNative.audioRecordSamplesDispatcher.unregisterSink(tap) }
-    runCatching { audioDeviceModule.requestStopRecording() }
+    if (!isRecording) {
+      return
+    }
+    isRecording = false
+    runCatching { microphone.stop() }
     tap.clear()
-    Log.i(TAG, "microphone stopped")
   }
 
   private fun listenToTrack(peerConnectionId: Int, trackId: String) {
