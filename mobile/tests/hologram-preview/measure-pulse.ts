@@ -49,45 +49,28 @@ const MINIMUM_MARGIN_OVER_REVERSED = 0.2;
 /** And the hologram must be at least this much busier, on average, while he speaks than while he is silent. */
 const MINIMUM_SPEAKING_ACTIVITY_RATIO = 1.3;
 /**
- * And it must glow while he speaks, by at least this much.
+ * And its brightness must hold while he speaks, within this band.
  *
- * This rule used to run the other way: the film's sphere holds its brightness to
- * within a few percent while it talks, so a hologram whose brightness rode the
- * voice had gone back to being a meter. The user has since asked for the first
- * hologram's glow back — on a phone, activity alone read as too quiet a signal to
- * tell whether Jarvis was talking — so brightening is now the requirement rather
- * than the failure. The activity rules above are unchanged and still have to pass:
- * the glow was added on top of the chips and the churn, not in place of them.
+ * **This rule has been turned over twice, and both times because the design changed rather than
+ * because a measurement missed.** It began as the film's: the sphere holds its brightness to a few
+ * percent while it talks, so a hologram whose brightness rode the voice had become a meter. It was
+ * then inverted — the user could not tell on a phone whether Jarvis was talking, so brightening
+ * became the requirement, at ratios up to 2.1. On 2026-09-17 they asked for the brightening gone
+ * again: "the glow of the sparks shouldn't increase. Just their positions outwards as it is
+ * today." `GLOW_WITH_VOICE` is 0, and the rule is the film's once more.
  *
- * The floor is low because this is a mean over the whole crop, most of which is
- * the black around the sphere; `hologram-drawing.spec.ts` pins the stronger form
- * on the disc itself. Registered before the first run under the new design.
+ * Registered here before the first run under the new design, as every threshold in this file is.
+ * What it must not become is a band drawn round whatever the next recording happens to produce:
+ * the headless render measures the disc at 1.01-1.03 for an ordinary voice and 1.05-1.09 for a
+ * shout, this is a mean over a crop that is mostly the black around the sphere, and the band is
+ * set wide enough to hold both with room on either side.
+ *
+ * The floor matters as much as the ceiling now. A sphere that *dims* while he talks would read as
+ * flinching, and nothing else here would catch it.
  */
-const LOWEST_SPEAKING_BRIGHTNESS_RATIO = 1.02;
-/**
- * And it must not flare.
- *
- * Raised from 1.3 before the run that follows, not after one failed on it. At 1.3
- * the glow was driven by loudness and lifted the disc 5-8% at the levels ordinary
- * speech reaches — measurable, and invisible to the user, who reported seeing no
- * change at all while speaking. It rides the agitation envelope now, so the step
- * from silent to speaking is most of it and the slope with loudness is small: on
- * the headless render the disc goes up 27% at the quietest speech the tracker
- * counts and 36% at full voice, a 7% spread across the whole shouting range.
- *
- * What this bound is for is a sphere that swings with every syllable, and the
- * evidence against that is the smallness of that spread, which
- * `hologram-drawing.spec.ts` pins directly (loud ÷ ordinary < 1.15). This is the
- * blunter backstop: a mean over the whole crop this far above its silent value
- * would mean something other than the glow had started moving.
- *
- * Raised again, 1.5 to 2.1, before the run rather than after one failed on it: the
- * user found even the 1.3x step hard to see on a phone and asked for a far louder
- * answer, so the drawing now lifts the disc about 1.8x and the crop follows. The
- * bound that actually guards against a level meter is the spread one above, and it
- * has not moved.
- */
-const HIGHEST_SPEAKING_BRIGHTNESS_RATIO = 2.1;
+const LOWEST_SPEAKING_BRIGHTNESS_RATIO = 0.95;
+/** And it must not flare: the whole point of the rule above is that speech is movement, not light. */
+const HIGHEST_SPEAKING_BRIGHTNESS_RATIO = 1.15;
 /**
  * And change by at least this much, 0–255 mean per pixel, from one tenth of a
  * second to the next while he is silent — averaged over each stretch of

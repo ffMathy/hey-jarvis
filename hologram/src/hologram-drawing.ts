@@ -334,30 +334,26 @@ export function bodyTurnRadians(time: number) {
   return time * BODY_RADIANS_PER_SECOND;
 }
 /**
- * How much brighter the halos and the volume go while he talks.
+ * How much brighter the whole drawing gets while Jarvis speaks. **Zero, at the user's asking.**
  *
- * Not the film's: it holds its brightness to ±3% while Jarvis speaks and shows speech as
- * activity instead, which is what `hologram-drawing.spec.ts` used to pin. The user asked for
- * the first hologram's glow back, on top of the chips and the churn rather than instead of
- * them, so both now say he is talking.
+ * Back to the film, after a long way round. The film's sphere holds its brightness to within about
+ * 3% through "Doctor." and shows speech as *behaviour*: fragments turning over faster, the
+ * crescent splitting, the limb fraying, slabs of light breaking off on syllable onsets. This
+ * drawing pinned that, then departed from it — the user could not tell on a phone whether he was
+ * talking, so a glow went in at 0.3, and then 0.8, 2.4, 1.6, 1.1 and 1.35 as each version was seen
+ * on a real screen. With the sphere now most of the screen wide and the sparks drawn out into
+ * lines, the movement reads on its own, and the user has asked for the brightening gone: "the glow
+ * of the sparks shouldn't increase. Just their positions outwards as it is today."
  *
- * Down from 2.4 once the microphone bug was fixed: with the voice finally arriving at a proper
- * level, the particles were brighter while he talked than the user wanted. A tenth or so off
- * what they saw, and the step from silence is wider than it was anyway, because the halo lost
- * two of its rings and the silent ball with it.
+ * So `glowGain` is 1 always, and what is left is exactly what the film does — the swell, the
+ * spread, the fray, the chips and the churn, none of which this touches. Measured, ordinary speech
+ * now lifts the disc 1-3% and a shout 5-9%, which is the film's own figure and comes from there
+ * being more lit pixels rather than brighter ones.
  *
- * Back up from 1.1 when the warm volume was removed. That wash was one of the things the glow
- * multiplied, so taking it out took part of the step from silence with it: an ordinary voice
- * lifted the disc 36% where the test requires 40. This is where the step lands back inside its
- * bounds — plainly brighter than silence, and shouting still barely brighter than murmuring.
- *
- * Most of it rides the agitation envelope rather than the loudness, because loudness alone was
- * not visible. Ordinary speech sits around a level of 0.25-0.5, not 1, and scaling the glow by
- * that lifted the disc by 5-8% — which the user could not see at all. The envelope is up at any
- * speech from 0.15 (see SPEECH_LEVEL), so it answers "is he talking" cleanly; the rest follows
- * loudness so a sentence still breathes rather than switching on and staying flat.
+ * It is a number rather than a deleted mechanism precisely because it has been asked for in both
+ * directions six times. Raising it is one edit.
  */
-export const GLOW_WITH_VOICE = 1.35;
+export const GLOW_WITH_VOICE = 0;
 /** How much of the glow answers "is he talking at all" rather than "how loudly". */
 const GLOW_FROM_ENVELOPE = 0.65;
 /**
