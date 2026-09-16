@@ -568,10 +568,12 @@ describe('the hologram', () => {
 
     expect(low).toBeGreaterThan(middle);
     expect(middle).toBeGreaterThan(high);
-    // A real move, not a wobble. It measures 0.055 of the square, which is less than the plane
-    // itself travels because the core, the rim and the shadow stay where they are and hold the
-    // centre of the light toward the middle. Bounded below that with room, not against it.
-    expect(low - high).toBeGreaterThan(0.04);
+    // A real move, not a wobble — and measured in sphere radii rather than in fractions of the
+    // square, because the square is set by how far the chips fly and has nothing to do with this.
+    // It comes to about a sixth of a radius, which is less than the plane itself travels because
+    // the core, the rim and the shadow stay where they are and hold the centre of the light toward
+    // the middle. Bounded below that with room, not against it.
+    expect(((low - high) * SIZE) / RADIUS).toBeGreaterThan(0.12);
   });
 
   it('thinks without glowing, so a thought is never mistaken for a word', () => {
@@ -607,25 +609,24 @@ describe('the hologram', () => {
     }
   });
 
-  it('keeps the sphere itself inside its square at full volume, chips aside', () => {
-    // It used to require the edge band to be black outright, and at SPHERE_FRACTION 0.27 it was.
-    // The user then asked for Jarvis as wide as the screen: at 0.35 the sphere and its rim still
-    // fit — that is what sets the fraction — but the chips thrown to about 1.6R on a syllable do
-    // not, and are cut off. Since the square is now the screen bar twenty points, that edge is
-    // ten points from the bezel, so a clipped chip is a stub nobody can see.
+  it('stays inside its square even at full volume, chips and all', () => {
+    // Strict again, and the round trip is worth recording. It began this way and held at
+    // SPHERE_FRACTION 0.27. The user then asked for Jarvis as wide as the screen, and at 0.35 the
+    // chips thrown to about 1.6R on a syllable were cut off in mid-air — so the rule was loosened
+    // to let a few pixels of the band light up, telling a clipped chip from a clipped rim by how
+    // much of the band was lit.
     //
-    // What must never happen is the *sphere* reaching the edge, which would crop the rim and read
-    // as broken. The two are told apart by how much of the band is lit rather than how brightly:
-    // an arc of rim lights a long stretch of it, a chip lights a handful of pixels.
+    // Then the user saw the clipping and said so, and the answer turned out not to be a looser
+    // rule but a wider square: the square is bigger than the *screen* now, so the only thing that
+    // cuts a chip is the screen itself, where an edge cannot be seen. Nothing reaches the canvas
+    // edge at all any more, at any moment of any burst at full voice — so this asks for that.
     const band = Math.round(SIZE * 0.02);
     for (const time of [8, 23.4, 31.2, 47.9, 55.1]) {
       for (const burstAge of [0, 0.06, 0.12, 0.2]) {
         const loudest = render(speech(time, 1, new Array(VOICE_BAND_COUNT).fill(1), burstAge, Math.round(time * 10)));
 
-        // A chip's worth, not a rim's. Measured: at worst 6.3% of the band lit at this fraction,
-        // against 55.7% at 0.45, where the sphere itself runs off the canvas. The bound sits
-        // between the two with room either side rather than against today's number.
-        expect(edgeLitShare(loudest, band)).toBeLessThan(0.15);
+        // Ten pixels of five thousand would pass. It measures none.
+        expect(edgeLitShare(loudest, band)).toBeLessThan(0.002);
       }
     }
   });

@@ -150,6 +150,8 @@ Before the app is set up there is nothing for the hologram to follow, so the set
 
 The two costliest single layers, measured by taking each out: the shadow (15 ms of the 49) and the particle halos (13 ms).
 
+**The square is bigger than the screen, and that is nearly free.** Chips are thrown to about 1.6R on a syllable and the drawing clips at the edge of its square, so a square the size of the screen cut them in mid-air. `useWholeScreenHologramSize` makes it half again wider and `SPHERE_FRACTION` is set against that, so the sphere is the same size on screen and the only thing that cuts a chip is the screen itself — where an edge cannot be seen. Measured, that cost 0.6 ms a frame, because Skia rasterises only what is drawn and everything drawn is sized from the sphere, the shadow included (`BACKDROP_REACH` is in sphere radii).
+
 What each layer is, what the voice does to it, and which finding of the film study each number came from is written at the top of `hologram/src/hologram-drawing.ts`. These are the things worth knowing before changing it:
 
 - **Layers, back to front.** A warm volume fill (one textured circle: the ball is lit through, never a dark disc with light drawn on it); the inner shells — a two-armed whorl winding out of the core, a long loop, a saturated arc, data streaks; the fragment body, 1,000 short strokes and glyphs inside 0.94R, turning about the vertical axis, plus a turning shell below the core; comet arcs and spokes; the core's bloom, hooked ring and knot; the bright fragments and their hot cores; a hairline ring at the limb; the rolling ladder truss; the bright left crescent; the fraying and streak arcs; the latest burst's chips; rare accents; and, only while it forms, the intro.

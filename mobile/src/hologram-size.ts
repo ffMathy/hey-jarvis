@@ -13,6 +13,20 @@ const SCREEN_MARGIN = 20;
 const MAXIMUM_HOLOGRAM_SIZE = 380;
 
 /**
+ * How much wider than the screen the square is, so that what leaves the sphere is not cut off.
+ *
+ * The square is bigger than the screen on purpose. Chips are thrown to about 1.6R on a syllable
+ * and the drawing clips at the edge of its square, so with the square *at* the screen they were
+ * cut in mid-air a few points inside the bezel — which is what the user saw. Beyond the screen,
+ * the only thing cutting them is the screen itself, and an edge there is invisible because there
+ * is nothing past it to compare against.
+ *
+ * `SPHERE_FRACTION` is set against this, so the sphere is the same size on screen as it would be
+ * without it. See its note for why the extra square costs almost nothing.
+ */
+const CHIP_HEADROOM = 1.35;
+
+/**
  * How big the square is when the hologram shares the screen — the conversation, which has a title,
  * a status line and the Talk button to leave room for.
  */
@@ -32,5 +46,5 @@ export function useHologramSize(): number {
  */
 export function useWholeScreenHologramSize(): number {
   const { width, height } = useWindowDimensions();
-  return Math.min(width, height) - SCREEN_MARGIN;
+  return (Math.min(width, height) - SCREEN_MARGIN) * CHIP_HEADROOM;
 }

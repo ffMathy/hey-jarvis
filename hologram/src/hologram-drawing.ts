@@ -303,18 +303,22 @@ const FORMED_APPEARANCE = 0.75;
 /**
  * Sphere radius as a fraction of the square, at rest.
  *
- * Up from 0.27, which the user asked for: they wanted Jarvis as wide as the screen. He is not
- * quite that — at this fraction the sphere is 72% of the square, and the square is the screen less
- * twenty points — and the reason is what lives outside the limb. The sphere swells by
- * SWELL_WITH_VOICE while he talks, its rim and halos reach about 1.15R, and this is the largest
- * fraction at which all of that still fits: 0.36 × 1.18 × 1.15 is just under a half.
+ * Small, and it does not mean what it looks like it means. The square is not the screen: the view
+ * makes it half again wider (see `useWholeScreenHologramSize`), so this fraction times that is a
+ * sphere about 0.6 of the screen across — which is what you actually see.
  *
- * What does *not* fit any more is the chips, which are thrown to about 1.6R on a syllable. They
- * are cut off by the edge of the square at full burst now, and that is the deliberate trade for a
- * sphere this size — see the containment test, which was rewritten to say so rather than deleted.
- * Going further crops the rim itself, which reads as broken rather than as big.
+ * The room is for what leaves him. Chips are thrown to about 1.6R on a syllable and the sphere is
+ * swollen by up to SWELL_WITH_VOICE while that happens, so the drawing needs something near 1.9R
+ * of square around the middle or they are cut off in mid-air. It had 1.56R, and the user saw
+ * exactly that: "some of the particles that flow outwards are clipped ... its particles should be
+ * able to extend further out without being clipped." It has 2.1R now.
+ *
+ * Paying for that in canvas rather than in sphere is deliberate, and it is nearly free: Skia only
+ * rasterises what is drawn, the drawn things are all sized from the sphere, and the shadow is
+ * capped in sphere radii too (BACKDROP_REACH). What the extra square costs is the surface it is
+ * cleared on, not the picture painted into it.
  */
-export const SPHERE_FRACTION = 0.32;
+export const SPHERE_FRACTION = 0.235;
 /** The outer rim layer rolls clockwise in the screen plane: one turn in about 33 s, as the film's ladder ring. */
 export const ROLL_DEGREES_PER_SECOND = 11;
 /**
@@ -485,7 +489,16 @@ const BACKDROP_TEXELS = 96;
  * lighter version left him sitting in a haze rather than on something. Under him it is now all but
  * black, which is what a hologram is supposed to be seen against.
  */
-const BACKDROP_RAMP = [0, 0xf4, 0.55, 0xe2, 0.72, 0x9a, 0.88, 0x38, 1, 0];
+const BACKDROP_RAMP = [0, 0xf4, 0.66, 0xe2, 0.8, 0x9a, 0.92, 0x38, 1, 0];
+/**
+ * How far the shadow reaches, in sphere radii.
+ *
+ * Far enough to be a shadow around him rather than a disc behind him, and no further: past this it
+ * is paying for pixels out where the chips fly, which nobody reads as shadow. The ramp above is in
+ * fractions of *this*, and 0.66 of it is 1.05R — so the flat part covers the sphere and stops just
+ * past the limb, which is the edge Jarvis actually has to read against.
+ */
+const BACKDROP_REACH = 1.6;
 const LIMB_BLOOM_RADIUS = 0.995;
 const LIMB_BLOOM_BAND = 0.25;
 const LIMB_RIDGE_RADIUS = 0.955;
@@ -1690,18 +1703,14 @@ function analyseFrame(frame: HologramFrame, size: number, scene: Scene) {
     radius,
     // Half the square, in sphere radii: how far the backdrop reaches, so its circle is the one
     // the square inscribes. See BACKDROP_RAMP — it has to end at zero exactly there.
-    // Half the square, so the shadow is the circle the square inscribes. See BACKDROP_RAMP — it
-    // has to end at zero exactly there.
+    // Measured in the sphere's own radii, and capped by the square so it can never be clipped.
     //
-    // It is the single most expensive thing drawn — 15 ms of a 49 ms frame at 384 px, measured by
-    // taking it out — because it blends over everything inside its circle and its cost is its
-    // area. Pulling it in to a quarter of a radius past the limb was tried and gave back 3 ms of
-    // that, and it is not in: the ramp is written in fractions of the reach, so a shorter reach
-    // drags the flat part inside the sphere and leaves the limb — the edge Jarvis actually has to
-    // read against — at a sixth of the dark rather than at full. Seven percent of a frame is not
-    // worth the thing the shadow is for. Resolution is where that saving came from instead; see
-    // DRAWN_RESOLUTION in the view.
-    backdropReach: size / 2 / radius,
+    // It used to be half the square outright, which was right when the square was barely bigger
+    // than the sphere. The square is now half again wider than the screen — the room the chips
+    // need, see SPHERE_FRACTION — so half of it is far out into space nobody can see, and the
+    // shadow's cost is its area: it is the most expensive single thing drawn, 15 ms of a 49 ms
+    // frame at 384 px, measured by taking it out.
+    backdropReach: Math.min(size / 2 / radius, BACKDROP_REACH),
     thinking,
     // Where the plane is, sweeping upward — y runs down the screen, so it starts positive. From
     // the clock alone, like everything else here, so it needs nothing remembered between frames.
