@@ -23,6 +23,14 @@ export interface JarvisHologramProps {
   size: number;
   /** The voice it follows — Jarvis's, or the user's in sample mode: whether to listen, and how to read it. */
   voice: JarvisVoice;
+  /**
+   * The quietest a reading can be and still count as speech, on this voice's scale.
+   *
+   * Left out, the tracker's own default applies. It is a prop because a volume is not the same
+   * quantity in a browser as on a phone — see `QUIETEST_SPEECH` — and the app knows which it is
+   * handing over.
+   */
+  quietestSpeech?: number;
 }
 
 /**
@@ -49,7 +57,7 @@ const SCENE_SEED = 1337;
  * neither a busy JS thread nor a slow reading can make the animation stutter —
  * at worst the sphere reacts a frame late.
  */
-function JarvisHologramView({ size, voice }: JarvisHologramProps) {
+function JarvisHologramView({ size, voice, quietestSpeech }: JarvisHologramProps) {
   const { listening, speaking, getVolume, getSpectrum } = voice;
   const isForeground = useIsForeground();
   const scene = useMemo(() => createHologramScene(SCENE_SEED), []);
@@ -73,7 +81,7 @@ function JarvisHologramView({ size, voice }: JarvisHologramProps) {
     level: 0,
     bands: new Array(VOICE_BAND_COUNT).fill(0) as number[],
     speaking,
-    activity: createVoiceActivityState(),
+    activity: createVoiceActivityState(quietestSpeech),
   });
 
   useEffect(() => {

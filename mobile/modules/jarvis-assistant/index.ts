@@ -14,6 +14,7 @@ interface JarvisAssistantNativeModule {
   isVoiceInteractionServiceActive(): boolean;
   canReachAssistantSettings(): boolean;
   openAssistantSettings(): AssistantSettingsScreen;
+  dismissAssistantWindow(): boolean;
 }
 
 /**
@@ -69,4 +70,16 @@ export function openAssistantSettings(): AssistantSettingsScreen {
   }
 
   return nativeModule.openAssistantSettings();
+}
+
+/**
+ * Closes the window the assistant gesture opened, if that is where this is running.
+ *
+ * Summoned, the app is drawn into the session's own window rather than its own — so leaving is
+ * not a matter of changing screens, it is retracting the window, and only the system can do that.
+ * Returns false when there is no such window, which is every other way the app can be open; the
+ * caller then leaves by changing screens as usual.
+ */
+export function dismissAssistantWindow(): boolean {
+  return nativeModule?.dismissAssistantWindow() ?? false;
 }

@@ -19,6 +19,7 @@ import { useHologramSize } from './hologram-size';
 import { JarvisHologram } from './jarvis-hologram';
 import { useJarvisVoice } from './jarvis-voice';
 import { requestMicrophoneAccess } from './microphone-permission';
+import { QUIETEST_SPEECH_HERE } from './speech-floor';
 import { theme } from './theme';
 import { useAssistantRegistration } from './use-assistant-registration';
 
@@ -116,7 +117,7 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
         style={{ width: hologramSize, height: hologramSize }}
         testID="hologram"
       >
-        <JarvisHologram size={hologramSize} voice={voice} />
+        <JarvisHologram size={hologramSize} voice={voice} quietestSpeech={QUIETEST_SPEECH_HERE} />
       </View>
 
       <Pressable

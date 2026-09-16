@@ -166,6 +166,12 @@ export const SPEECH_LEVEL = 0.15;
  * alike, so it is the device rather than the code reading it — and their quiet room sits around
  * 0.04. A floor here keeps the room out; the share above it is what lets a voice this quiet still
  * count once it speaks.
+ *
+ * The default, not the only value. A volume is not the same quantity on every platform — in a
+ * browser it is the mean of the voice-range spectrum as Web Audio reports it, on Android the RMS
+ * of the last 40 ms — so the level a room reaches is not the same number in both. Each app passes
+ * the floor its own scale wants to {@link createVoiceActivityState}; see `speech-floor.ts` and the
+ * `.web.ts` beside it, where the browser's is twice this.
  */
 export const QUIETEST_SPEECH = 0.1;
 /**
@@ -183,10 +189,15 @@ export const QUIETEST_SPEECH = 0.1;
  */
 export const SPEAKING_SHARE = 0.25;
 
-/** The level at which this voice counts as talking, given how loud it has been getting. */
-export function speakingThreshold(loudest: number): number {
+/**
+ * The level at which this voice counts as talking, given how loud it has been getting.
+ *
+ * `quietest` is the floor for the scale the readings are on — {@link QUIETEST_SPEECH} unless the
+ * caller knows better, which a browser does.
+ */
+export function speakingThreshold(loudest: number, quietest: number): number {
   'worklet';
-  return Math.max(QUIETEST_SPEECH, loudest * SPEAKING_SHARE);
+  return Math.max(quietest, loudest * SPEAKING_SHARE);
 }
 /** How long the memory of a voice's loudest moment takes to fade. */
 export const LOUDEST_MEMORY_SECONDS = 12;
@@ -384,11 +395,26 @@ export interface VoiceActivityState {
   loudestThreeSlicesAgo: number;
   /** How long the slice being filled has been filling, in seconds. */
   thisSliceSeconds: number;
+  /**
+   * The quietest a reading on this voice's scale can be and still count as speech.
+   *
+   * Carried on the state rather than read from a constant because the tracker runs on the UI
+   * thread as a worklet, so everything it needs has to arrive in its arguments — and because the
+   * answer differs by platform. See {@link QUIETEST_SPEECH}.
+   */
+  quietestSpeech: number;
 }
 
-/** A calm sphere that has heard nothing yet: no agitation, no burst, and silence throughout the change window. */
-export function createVoiceActivityState(): VoiceActivityState {
+/**
+ * A calm sphere that has heard nothing yet: no agitation, no burst, and silence throughout the
+ * change window.
+ *
+ * `quietestSpeech` is the floor for the scale this voice's readings are on; see
+ * {@link QUIETEST_SPEECH} for why it is not the same everywhere.
+ */
+export function createVoiceActivityState(quietestSpeech: number = QUIETEST_SPEECH): VoiceActivityState {
   return {
+    quietestSpeech,
     agitation: 0,
     burstAge: NO_BURST_AGE_SECONDS,
     burstStrength: 0,
@@ -429,9 +455,15 @@ function rememberLoudest(loudest: number, level: number, deltaSeconds: number): 
   return loudest + (level - loudest) * (1 - Math.exp(-deltaSeconds / LOUDEST_MEMORY_SECONDS));
 }
 
-function rampAgitation(agitation: number, heldLevel: number, loudest: number, deltaSeconds: number): number {
+function rampAgitation(
+  agitation: number,
+  heldLevel: number,
+  loudest: number,
+  quietest: number,
+  deltaSeconds: number,
+): number {
   'worklet';
-  return heldLevel >= speakingThreshold(loudest)
+  return heldLevel >= speakingThreshold(loudest, quietest)
     ? Math.min(1, agitation + deltaSeconds / AGITATION_RISE_SECONDS)
     : Math.max(0, agitation - deltaSeconds / AGITATION_RELEASE_SECONDS);
 }
@@ -517,7 +549,8 @@ function forgetLoudest(state: VoiceActivityState, level: number): void {
  */
 function endFlurryAfterSilence(state: VoiceActivityState, level: number, deltaSeconds: number): void {
   'worklet';
-  state.quietSeconds = level >= speakingThreshold(state.loudest) ? 0 : state.quietSeconds + deltaSeconds;
+  state.quietSeconds =
+    level >= speakingThreshold(state.loudest, state.quietestSpeech) ? 0 : state.quietSeconds + deltaSeconds;
   if (state.quietSeconds + TIME_SLACK_SECONDS >= FLURRY_ENDS_AFTER_SECONDS) {
     state.burstsInFlurry = 0;
   }
@@ -580,7 +613,7 @@ export function advanceVoiceActivity(
   // creeps between frames is crossed at a different moment at 30 Hz than at 120, and the whole
   // tracker then answers differently at different frame rates — which is what the frame-rate
   // checks exist to catch, and did.
-  state.agitation = rampAgitation(state.agitation, state.heldLevel, state.loudest, deltaSeconds);
+  state.agitation = rampAgitation(state.agitation, state.heldLevel, state.loudest, state.quietestSpeech, deltaSeconds);
   slideChangeWindow(state, state.heldLevel, level, deltaSeconds);
   state.heldLevel = level;
 
@@ -599,7 +632,7 @@ export function advanceVoiceActivity(
   const rise = level - quietest;
   const drop = loudest - level;
   const isOnset = rise >= ONSET_RISE;
-  const isGap = loudest >= speakingThreshold(state.loudest) && level < loudest * GAP_LEVEL_RATIO;
+  const isGap = loudest >= speakingThreshold(state.loudest, state.quietestSpeech) && level < loudest * GAP_LEVEL_RATIO;
 
   state.burstAge += deltaSeconds;
   endFlurryAfterSilence(state, level, deltaSeconds);

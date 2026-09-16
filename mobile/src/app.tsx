@@ -11,6 +11,7 @@ import * as Linking from 'expo-linking';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
+import { dismissAssistantWindow } from '../modules/jarvis-assistant';
 import { isAssistLaunch } from './assist-link';
 import { ConversationScreen } from './conversation-screen';
 import type { ElevenLabsSettings } from './elevenlabs-settings';
@@ -37,6 +38,18 @@ function chooseScreen(state: {
   return state.isEditingSettings ? 'settings' : 'conversation';
 }
 
+export interface AppProps {
+  /**
+   * Set when the app is being drawn into the assistant's own window rather than its own.
+   *
+   * An initial prop from the native side — `JarvisVoiceInteractionSession` puts it there when it
+   * renders this component into the window the system draws over whatever was on screen. There is
+   * no launch URL in that case, because nothing was launched, so this is how a summoning announces
+   * itself there.
+   */
+  summoned?: boolean;
+}
+
 /**
  * The whole app: a conversation, and the settings it needs in order to happen.
  *
@@ -46,14 +59,17 @@ function chooseScreen(state: {
  * side trip from setup and back — and where a summoning lands when there is
  * nothing set up yet.
  */
-export function App() {
+export function App({ summoned = false }: AppProps) {
   const [settings, setSettings] = useState<ElevenLabsSettings | undefined>(undefined);
   const [isLoaded, setIsLoaded] = useState(false);
   const [isEditingSettings, setIsEditingSettings] = useState(false);
   const [isSampling, setIsSampling] = useState(false);
 
   const launchUrl = Linking.useURL();
-  const wasSummoned = isAssistLaunch(launchUrl);
+  // Two ways in, and they are genuinely different: the assistant's own window renders this
+  // component directly, with nothing launched and so no URL to read, while a plain ASSIST intent
+  // opens the app's own window with one.
+  const wasSummoned = summoned || isAssistLaunch(launchUrl);
 
   useEffect(() => {
     void (async () => {
@@ -74,6 +90,21 @@ export function App() {
     }
   }, [wasSummoned, isLoaded, settings]);
 
+  /**
+   * Leaving sample mode, which is not the same thing in both places it can happen.
+   *
+   * Opened as an app, there is a settings screen behind it to go back to. Summoned, the app is
+   * the assistant's window and there is nothing behind it but whatever the user was already
+   * doing — so leaving means retracting that window, and changing screens under it would only
+   * show them a form they did not ask for.
+   */
+  const leaveSample = () => {
+    if (dismissAssistantWindow()) {
+      return;
+    }
+    setIsSampling(false);
+  };
+
   const save = (saved: ElevenLabsSettings) => {
     setSettings(saved);
     setIsEditingSettings(false);
@@ -87,7 +118,7 @@ export function App() {
       <StatusBar style="light" />
       <View style={[styles.root, screen === 'sample' ? styles.seeThrough : styles.opaque]}>
         {screen === 'loading' ? <ActivityIndicator color={theme.colors.accent} /> : null}
-        {screen === 'sample' ? <SampleScreen onLeave={() => setIsSampling(false)} /> : null}
+        {screen === 'sample' ? <SampleScreen onLeave={leaveSample} /> : null}
         {screen === 'settings' ? (
           <SettingsScreen
             settings={settings}

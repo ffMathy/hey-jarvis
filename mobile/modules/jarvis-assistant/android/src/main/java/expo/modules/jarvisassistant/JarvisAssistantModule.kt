@@ -55,6 +55,10 @@ class JarvisAssistantModule : Module() {
     Function("openAssistantSettings") {
       openAssistantSettings(activity())
     }
+
+    Function("dismissAssistantWindow") {
+      JarvisVoiceInteractionSession.dismissCurrent()
+    }
   }
 
   private fun context(): Context = appContext.reactContext ?: throw Exceptions.ReactContextLost()
