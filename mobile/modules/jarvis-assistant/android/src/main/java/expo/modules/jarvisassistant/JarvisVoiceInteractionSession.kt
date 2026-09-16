@@ -93,6 +93,7 @@ class JarvisVoiceInteractionSession(context: Context) : VoiceInteractionSession(
 
     if (surface != null) {
       makeWindowSeeThrough()
+      reactHost()?.let { resumeReactNative(it) }
       return
     }
 
@@ -102,12 +103,31 @@ class JarvisVoiceInteractionSession(context: Context) : VoiceInteractionSession(
     hide()
   }
 
+  /**
+   * Put away, not torn down.
+   *
+   * The system keeps a session alive between summonings — it hides it and shows it again — and
+   * `onCreateContentView` is called once, for the window, not once per showing. Stopping the
+   * surface here therefore worked exactly once: the second summoning found a session whose
+   * surface was gone, decided it had nothing to draw, and fell back to launching the app. Which
+   * is what the user saw, and it looked like the transparency had broken.
+   *
+   * So the surface stays, and only React Native's lifecycle is put back where it was found —
+   * which is enough to stop the drawing, because the hologram watches `AppState` and stops its
+   * clock when nothing is in front. Tearing down happens in {@link onDestroy}, where the system
+   * has actually finished with the session.
+   */
   override fun onHide() {
-    release()
+    pauseReactNative()
     if (current?.get() === this) {
       current = null
     }
     super.onHide()
+  }
+
+  override fun onDestroy() {
+    release()
+    super.onDestroy()
   }
 
   /**
@@ -145,7 +165,13 @@ class JarvisVoiceInteractionSession(context: Context) : VoiceInteractionSession(
     resumedHost = host
   }
 
-  /** Stops drawing, and leaves React Native as this session found it. */
+  /** Leaves React Native as this session found it, without touching the surface. */
+  private fun pauseReactNative() {
+    resumedHost?.onHostPause()
+    resumedHost = null
+  }
+
+  /** Stops drawing for good. Only for {@link onDestroy}: see {@link onHide} for why. */
   private fun release() {
     surface?.let { running ->
       try {
@@ -157,8 +183,7 @@ class JarvisVoiceInteractionSession(context: Context) : VoiceInteractionSession(
     }
     surface = null
 
-    resumedHost?.onHostPause()
-    resumedHost = null
+    pauseReactNative()
   }
 
   /** The process's React Native, or null in a build that has none linked in. */

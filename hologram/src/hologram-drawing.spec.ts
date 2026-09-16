@@ -103,14 +103,14 @@ function mount(): Hologram {
 }
 
 /** Renders one frame and returns its RGBA pixels; with no hologram given, on a freshly mounted one. */
-function render(frame: HologramFrame, hologram: Hologram = mount()): Uint8Array {
+function render(frame: HologramFrame, hologram: Hologram = mount(), background = '#000000'): Uint8Array {
   const surface = Skia.Surface.MakeOffscreen(SIZE, SIZE) ?? Skia.Surface.Make(SIZE, SIZE);
   if (!surface) {
     throw new Error('Could not create a surface to draw on');
   }
 
   const canvas = surface.getCanvas();
-  canvas.clear(Skia.Color('#000000'));
+  canvas.clear(Skia.Color(background));
   drawHologram(canvas, SIZE, frame, hologram.scene, hologram.resources);
   surface.flush();
 
@@ -484,6 +484,46 @@ describe('the hologram', () => {
     }
 
     expect(worst).toBeLessThan(0.1);
+  });
+
+  it('carries its own shadow, so it reads against a bright screen it was summoned over', () => {
+    // Invisible to every other test here, all of which draw on black — black over black changes
+    // nothing. It matters where the sphere actually gets used: summoned, it is drawn over whatever
+    // was on screen, and over a pale home screen the warm strokes washed out into it.
+    const pale = '#8fb3ae';
+    const background = luminance(render(silence(6), mount(), pale), 0);
+    const pixels = render(silence(6), mount(), pale);
+
+    // Just outside the limb, where the shadow is still nearly at full strength: clearly darker
+    // than the screen it is drawn over.
+    let outside = 0;
+    let outsideCount = 0;
+    let corner = 0;
+    let cornerCount = 0;
+    for (let y = 0; y < SIZE; y++) {
+      for (let x = 0; x < SIZE; x++) {
+        const radius = radiusOf(x, y);
+        const here = luminance(pixels, (y * SIZE + x) * 4);
+        if (radius > 1.25 && radius < 1.5) {
+          outside += here;
+          outsideCount++;
+        }
+        // The far corners are past the shadow's reach, and must be left exactly as they were:
+        // a backdrop that tinted the whole square would be a grey box around the hologram.
+        if (radius > 2.4) {
+          corner += here;
+          cornerCount++;
+        }
+      }
+    }
+
+    expect(outsideCount).toBeGreaterThan(0);
+    expect(cornerCount).toBeGreaterThan(0);
+    // A quarter darker at least. It measures 38% darker; the bound is where it is so that a
+    // future round can soften the shadow a little without this failing, but not so far that the
+    // shadow could quietly stop doing its job.
+    expect(outside / outsideCount).toBeLessThan(background * 0.75);
+    expect(corner / cornerCount).toBeCloseTo(background, 0);
   });
 
   it('stays inside its square even at full volume, rather than being clipped at the edges', () => {

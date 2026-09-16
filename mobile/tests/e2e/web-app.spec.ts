@@ -210,10 +210,11 @@ test('offers sample mode before setup, listening to the microphone, and comes ba
   await page.goto('/');
   await page.getByTestId('try-sample').click();
 
-  // The browser here has a fake microphone, granted up front (see
-  // playwright.config.ts), so the page gets as far as listening.
-  await expect(page.getByTestId('sample-status')).toHaveText('Listening to you — say something.');
-  await expect(page.getByTestId('sample-problem')).toHaveCount(0);
+  // Sample mode is Jarvis and nothing else — no title, no status line, no way out but tapping
+  // beside him — so what says the microphone opened is the readings reaching the hologram rather
+  // than a line of text. The browser here has a fake microphone, granted up front (see
+  // playwright.config.ts).
+  await expect(page.getByTestId('hologram')).toBeVisible();
 
   // Chromium's fake microphone beeps. The beep has to reach the readings the
   // hologram is drawn from — a hologram that merely turns proves nothing, since
@@ -221,7 +222,8 @@ test('offers sample mode before setup, listening to the microphone, and comes ba
   await expect.poll(() => page.evaluate(() => window.loudestSpectrumValue ?? 0), { timeout: 10000 }).toBeGreaterThan(0);
   await expectHologramToKeepMoving(page);
 
-  await page.getByTestId('leave-sample').click();
+  // Beside him, not on him: a tap on the hologram itself must not be a way out.
+  await page.mouse.click(20, 20);
   await expect(page.getByTestId('api-key')).toBeVisible();
 
   // And leaving hands the microphone back.

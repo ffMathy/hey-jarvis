@@ -81,7 +81,7 @@ export function App({ summoned = false }: AppProps) {
   // Summoned before there is anything to summon: show the hologram rather than a
   // form. Someone who pressed the assistant button asked for Jarvis, and a
   // settings screen is the least Jarvis-like answer available — sample mode at
-  // least listens to them. `Back to setup` still leads where it says, and this
+  // least listens to them. Tapping beside him still leaves for setup, and this
   // does not fire again once they have gone there, because nothing it depends on
   // has changed.
   useEffect(() => {
