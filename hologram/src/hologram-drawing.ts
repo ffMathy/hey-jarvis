@@ -249,6 +249,15 @@ export interface HologramFrame {
   /** 0–1 materialisation progress, 1 = formed: the view passes min(1, time / MATERIALISE_SECONDS). */
   appearance: number;
   /**
+   * 0–1: how much of him is here at all. 1 unless he is leaving.
+   *
+   * Not the same thing as {@link appearance}, and that is the point: appearance runs the
+   * materialisation, and running *that* backwards would bring the intro's swirling dial back on
+   * the way out. This fades and shrinks the formed sphere instead, which is the arrival's own
+   * gesture without its ceremony.
+   */
+  presence: number;
+  /**
    * 0–1: how much of Jarvis's attention is on a thought rather than on you.
    *
    * Not a voice, and deliberately nothing like one. See {@link SCAN_SECONDS}: at 1 the swarm goes
@@ -305,7 +314,7 @@ const FORMED_APPEARANCE = 0.75;
  * sphere this size — see the containment test, which was rewritten to say so rather than deleted.
  * Going further crops the rim itself, which reads as broken rather than as big.
  */
-export const SPHERE_FRACTION = 0.35;
+export const SPHERE_FRACTION = 0.32;
 /** The outer rim layer rolls clockwise in the screen plane: one turn in about 33 s, as the film's ladder ring. */
 export const ROLL_DEGREES_PER_SECOND = 11;
 /**
@@ -334,7 +343,7 @@ export function bodyTurnRadians(time: number) {
   return time * BODY_RADIANS_PER_SECOND;
 }
 /**
- * How much brighter the whole drawing gets while Jarvis speaks. **Zero, at the user's asking.**
+ * How much brighter the whole drawing gets while Jarvis speaks. **A tenth, at the user's asking.**
  *
  * Back to the film, after a long way round. The film's sphere holds its brightness to within about
  * 3% through "Doctor." and shows speech as *behaviour*: fragments turning over faster, the
@@ -345,15 +354,15 @@ export function bodyTurnRadians(time: number) {
  * lines, the movement reads on its own, and the user has asked for the brightening gone: "the glow
  * of the sparks shouldn't increase. Just their positions outwards as it is today."
  *
- * So `glowGain` is 1 always, and what is left is exactly what the film does — the swell, the
- * spread, the fray, the chips and the churn, none of which this touches. Measured, ordinary speech
- * now lifts the disc 1-3% and a shout 5-9%, which is the film's own figure and comes from there
- * being more lit pixels rather than brighter ones.
+ * It was set to 0 first, which is the film exactly, and the user then asked for a tenth back — so
+ * what is here is a hint rather than a signal, under the few percent the film itself varies by.
+ * The rest of what speech does is untouched by it: the swell, the spread, the fray, the chips and
+ * the churn are all movement, and movement is what says he is talking.
  *
  * It is a number rather than a deleted mechanism precisely because it has been asked for in both
  * directions six times. Raising it is one edit.
  */
-export const GLOW_WITH_VOICE = 0;
+export const GLOW_WITH_VOICE = 0.1;
 /** How much of the glow answers "is he talking at all" rather than "how loudly". */
 const GLOW_FROM_ENVELOPE = 0.65;
 /**
@@ -471,8 +480,12 @@ const BACKDROP_TEXELS = 96;
  * falling at the middle left the limb half as dark as the core, and the sphere read as sitting in
  * a dip rather than on a shadow. The last stop is zero, which is what lets the circle end exactly
  * at the square's edge with nothing to see there.
+ *
+ * Raised from 0xcc to 0xf4 at the middle, at the user's asking: over a bright home screen the
+ * lighter version left him sitting in a haze rather than on something. Under him it is now all but
+ * black, which is what a hologram is supposed to be seen against.
  */
-const BACKDROP_RAMP = [0, 0xcc, 0.55, 0xb4, 0.72, 0x70, 0.88, 0x28, 1, 0];
+const BACKDROP_RAMP = [0, 0xf4, 0.55, 0xe2, 0.72, 0x9a, 0.88, 0x38, 1, 0];
 const LIMB_BLOOM_RADIUS = 0.995;
 const LIMB_BLOOM_BAND = 0.25;
 const LIMB_RIDGE_RADIUS = 0.955;
@@ -1656,7 +1669,9 @@ function analyseFrame(frame: HologramFrame, size: number, scene: Scene) {
   // Loudness, not the agitation envelope: the glow follows his voice moment to moment, as the
   // first hologram's did, while the chips and the churn follow the envelope.
   const voice = clamp01(frame.level) ** 0.8;
-  const arrival = smooth01(intro);
+  // Folded together on purpose: coming and going are the same gesture, and every layer that
+  // already fades and grows with the arrival therefore fades and shrinks on the way out.
+  const arrival = smooth01(intro) * clamp01(frame.presence);
   // How much bigger he is this frame than at rest. Mostly loudness, so the sphere breathes with
   // the sentence rather than stepping up and sitting there; the envelope keeps it from dropping
   // back to nothing between syllables.

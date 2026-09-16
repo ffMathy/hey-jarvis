@@ -147,6 +147,22 @@ class JarvisVoiceInteractionSession(context: Context) : VoiceInteractionSession(
   }
 
   /**
+   * Offers the back press to the app before taking it.
+   *
+   * The system's own answer is to retract the window at once, which cuts Jarvis off mid-turn. The
+   * app would rather fade him out first — see `sample-screen.tsx`, which answers this through
+   * React Native's `BackHandler` and calls back through `dismissAssistantWindow` when he has gone.
+   * `onBackPressed` on the host returns whether anything in JavaScript took it, so the immediate
+   * retraction is still there for the case where nothing did.
+   */
+  override fun onBackPressed() {
+    if (surface != null && reactHost()?.onBackPressed() == true) {
+      return
+    }
+    super.onBackPressed()
+  }
+
+  /**
    * Lets the window show what is behind it, which is the entire point of drawing here.
    *
    * Three separate things would otherwise paint over the screen: the dialog's own background, the

@@ -11,7 +11,6 @@ import * as Linking from 'expo-linking';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
-import { dismissAssistantWindow } from '../modules/jarvis-assistant';
 import { isAssistLaunch } from './assist-link';
 import { ConversationScreen } from './conversation-screen';
 import type { ElevenLabsSettings } from './elevenlabs-settings';
@@ -90,21 +89,6 @@ export function App({ summoned = false }: AppProps) {
     }
   }, [wasSummoned, isLoaded, settings]);
 
-  /**
-   * Leaving sample mode, which is not the same thing in both places it can happen.
-   *
-   * Opened as an app, there is a settings screen behind it to go back to. Summoned, the app is
-   * the assistant's window and there is nothing behind it but whatever the user was already
-   * doing — so leaving means retracting that window, and changing screens under it would only
-   * show them a form they did not ask for.
-   */
-  const leaveSample = () => {
-    if (dismissAssistantWindow()) {
-      return;
-    }
-    setIsSampling(false);
-  };
-
   const save = (saved: ElevenLabsSettings) => {
     setSettings(saved);
     setIsEditingSettings(false);
@@ -118,7 +102,7 @@ export function App({ summoned = false }: AppProps) {
       <StatusBar style="light" />
       <View style={[styles.root, screen === 'sample' ? styles.seeThrough : styles.opaque]}>
         {screen === 'loading' ? <ActivityIndicator color={theme.colors.accent} /> : null}
-        {screen === 'sample' ? <SampleScreen onLeave={leaveSample} /> : null}
+        {screen === 'sample' ? <SampleScreen onLeave={() => setIsSampling(false)} /> : null}
         {screen === 'settings' ? (
           <SettingsScreen
             settings={settings}

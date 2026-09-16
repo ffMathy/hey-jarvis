@@ -40,7 +40,18 @@ export interface JarvisHologramProps {
    * that starting and finishing a thought is a fade rather than a switch.
    */
   thinking?: boolean;
+  /**
+   * Whether Jarvis is on his way out — the screen closing, the back button pressed.
+   *
+   * He does not vanish: he shrinks and fades over {@link LEAVING_SECONDS}, which is the arrival
+   * run backwards without its ceremony. Whoever sets this is responsible for waiting that long
+   * before actually closing anything; see `sample-screen.tsx`.
+   */
+  leaving?: boolean;
 }
+
+/** How long Jarvis takes to go. Shorter than he takes to arrive: leaving should not be a ceremony. */
+export const LEAVING_SECONDS = 0.45;
 
 /** How long it takes to fall into a thought, and to come out of one. */
 const THOUGHT_FADE_SECONDS = 0.45;
@@ -86,7 +97,7 @@ const SCENE_SEED = 1337;
  * neither a busy JS thread nor a slow reading can make the animation stutter —
  * at worst the sphere reacts a frame late.
  */
-function JarvisHologramView({ size, voice, quietestSpeech, thinking = false }: JarvisHologramProps) {
+function JarvisHologramView({ size, voice, quietestSpeech, thinking = false, leaving = false }: JarvisHologramProps) {
   const { listening, speaking, getVolume, getSpectrum } = voice;
   const isForeground = useIsForeground();
   const drawnSize = Math.round(size * DRAWN_RESOLUTION);
@@ -97,6 +108,7 @@ function JarvisHologramView({ size, voice, quietestSpeech, thinking = false }: J
   const targetBands = useSharedValue<number[]>(new Array(VOICE_BAND_COUNT).fill(0));
   const speakingNow = useSharedValue(speaking);
   const thinkingNow = useSharedValue(thinking);
+  const leavingNow = useSharedValue(leaving);
   // Everything the drawing reads, in one value, advanced once a frame.
   //
   // These were six shared values — the clock, the level, the bands, and the
@@ -113,6 +125,7 @@ function JarvisHologramView({ size, voice, quietestSpeech, thinking = false }: J
     bands: new Array(VOICE_BAND_COUNT).fill(0) as number[],
     speaking,
     thinking: 0,
+    presence: 1,
     activity: createVoiceActivityState(quietestSpeech),
   });
 
@@ -123,6 +136,10 @@ function JarvisHologramView({ size, voice, quietestSpeech, thinking = false }: J
   useEffect(() => {
     thinkingNow.value = thinking;
   }, [thinking, thinkingNow]);
+
+  useEffect(() => {
+    leavingNow.value = leaving;
+  }, [leaving, leavingNow]);
 
   useEffect(() => {
     if (!listening) {
@@ -172,6 +189,8 @@ function JarvisHologramView({ size, voice, quietestSpeech, thinking = false }: J
       // Toward whichever end the app is asking for, at a fixed rate: see THOUGHT_FADE_SECONDS.
       const towardThought = (thinkingNow.value ? 1 : -1) * (deltaSeconds / THOUGHT_FADE_SECONDS);
       current.thinking = Math.min(1, Math.max(0, current.thinking + towardThought));
+      const towardGone = (leavingNow.value ? -1 : 1) * (deltaSeconds / LEAVING_SECONDS);
+      current.presence = Math.min(1, Math.max(0, current.presence + towardGone));
       advanceVoiceActivity(current.activity, targetLevel.value, deltaSeconds);
       return current;
     });
@@ -183,8 +202,23 @@ function JarvisHologramView({ size, voice, quietestSpeech, thinking = false }: J
   // does. Left running behind a backgrounded app that is a phone building a hologram nobody can
   // see, on every frame, for as long as the app stays in memory.
   useEffect(() => {
+    // Back in front after being away: he materialises again rather than picking up mid-turn.
+    //
+    // The clock is what the whole materialisation is derived from, so winding it back to zero is
+    // the whole of it. This matters most where it is least obvious: the assistant's window keeps
+    // its React surface between summonings — it has to, or the second summoning has nothing to
+    // draw — so without this the second time you press the button Jarvis is simply *there*, mid
+    // rotation, with no arrival at all. Which is exactly what the user saw.
+    if (isForeground) {
+      frame.modify((current) => {
+        'worklet';
+        current.time = 0;
+        current.presence = 1;
+        return current;
+      });
+    }
     clock.setActive(isForeground);
-  }, [clock, isForeground]);
+  }, [clock, isForeground, frame]);
 
   const picture = useDerivedValue(() => {
     // Read once: this is a copy out of the UI runtime, and the drawing wants nine
@@ -211,6 +245,7 @@ function JarvisHologramView({ size, voice, quietestSpeech, thinking = false }: J
         // The materialisation plays once, from the moment this canvas mounted.
         appearance: Math.min(1, current.time / MATERIALISE_SECONDS),
         thinking: current.thinking,
+        presence: current.presence,
       },
       scene,
       resources,

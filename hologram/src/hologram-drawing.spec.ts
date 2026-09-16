@@ -65,6 +65,7 @@ function silence(time: number): HologramFrame {
     burstCount: 0,
     appearance: 1,
     thinking: 0,
+    presence: 1,
   };
 }
 
@@ -81,6 +82,7 @@ function speech(time: number, level: number, bands: number[], burstAge = 10, bur
     burstCount,
     appearance: 1,
     thinking: 0,
+    presence: 1,
   };
 }
 
@@ -581,6 +583,27 @@ describe('the hologram', () => {
       const thought = discBrightness(render({ ...silence(time), thinking: 1 }, hologram));
 
       expect(thought).toBeLessThan(calm);
+    }
+  });
+
+  it('leaves by shrinking and fading, and takes his shadow with him', () => {
+    // The way out is the way in, run backwards and quicker: the whole sphere fades and draws back
+    // toward the middle rather than being cut off where it stands. Gone means gone — including the
+    // shadow, which is inside the same fade, or a dark circle would be left on the home screen for
+    // a moment after Jarvis was no longer on it.
+    const hologram = mount();
+    // On black for the fade itself, because on a bright screen a *weakening shadow* makes the mean
+    // go up as he leaves, and that would be measuring the shadow rather than him.
+    const here = brightness(render({ ...silence(6), presence: 1 }, hologram));
+    const halfway = brightness(render({ ...silence(6), presence: 0.5 }, hologram));
+    // ...and over a bright screen for the ending, where what matters is that nothing is left on it.
+    const gone = render({ ...silence(6), presence: 0 }, hologram, '#8fb3ae');
+    const background = luminance(gone, 0);
+
+    expect(halfway).toBeLessThan(here * 0.75);
+    // Nothing of him, and nothing of his shadow: every pixel back to the screen behind.
+    for (let index = 0; index < gone.length; index += 4) {
+      expect(luminance(gone, index)).toBeCloseTo(background, 0);
     }
   });
 

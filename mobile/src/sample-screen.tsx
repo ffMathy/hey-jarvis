@@ -1,5 +1,7 @@
-import { useState } from 'react';
-import { Pressable, StyleSheet } from 'react-native';
+import { LEAVING_SECONDS, useIsForeground } from 'hologram/react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { BackHandler, Pressable, StyleSheet } from 'react-native';
+import { dismissAssistantWindow } from '../modules/jarvis-assistant';
 import { useWholeScreenHologramSize } from './hologram-size';
 import { JarvisHologram } from './jarvis-hologram';
 import { ModeToast } from './mode-toast';
@@ -46,19 +48,69 @@ const MODE_LABELS: Record<SampleMode, string> = {
 
 export function SampleScreen({ onLeave }: SampleScreenProps) {
   const [mode, setMode] = useState<SampleMode>('microphone');
-  const { voice: heard } = useSampleVoice(mode === 'microphone');
+  const [leaving, setLeaving] = useState(false);
+  const { voice: heard } = useSampleVoice(mode === 'microphone' && !leaving);
   const imagined = useSimulatedVoice(moodOf(mode));
   const hologramSize = useWholeScreenHologramSize();
+  const going = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const isForeground = useIsForeground();
+
+  /**
+   * Starts the way out, and finishes it once Jarvis has gone.
+   *
+   * He shrinks and fades over `LEAVING_SECONDS` rather than being cut off mid-turn — see the
+   * `leaving` prop — so the screen it is on has to stay there for exactly that long.
+   *
+   * Then the two ways out differ. Summoned, the app *is* the assistant's window and there is
+   * nothing behind it but whatever the user was already doing, so finishing means retracting that
+   * window; opened as an app, there is a settings screen behind it to go back to. Idempotent,
+   * because the scrim, the back button and a second tap can all ask at once.
+   */
+  const leave = useCallback(() => {
+    if (going.current) {
+      return;
+    }
+    setLeaving(true);
+    going.current = setTimeout(() => {
+      if (!dismissAssistantWindow()) {
+        onLeave();
+      }
+    }, LEAVING_SECONDS * 1000);
+  }, [onLeave]);
+
+  useEffect(() => () => clearTimeout(going.current), []);
+
+  // Summoned again after leaving, this screen is the one that was already here: retracting the
+  // assistant's window does not unmount it, so without this it would come back still on its way
+  // out, faded to nothing and unable to leave a second time.
+  useEffect(() => {
+    if (isForeground) {
+      clearTimeout(going.current);
+      going.current = undefined;
+      setLeaving(false);
+    }
+  }, [isForeground]);
+
+  // The back button leaves the same way a tap does, rather than closing the window from under him.
+  // In the assistant's own window this arrives because the session hands the press to React Native
+  // before taking it itself; see `JarvisVoiceInteractionSession.onBackPressed`.
+  useEffect(() => {
+    const press = BackHandler.addEventListener('hardwareBackPress', () => {
+      leave();
+      return true;
+    });
+    return () => press.remove();
+  }, [leave]);
 
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel="Close" style={styles.scrim} onPress={onLeave}>
+    <Pressable accessibilityRole="button" accessibilityLabel="Close" style={styles.scrim} onPress={leave}>
       {/* Jarvis is the control. Tapping him walks the moods; tapping beside him leaves. */}
       <Pressable
         accessible
         accessibilityRole="button"
         accessibilityLabel={MODE_LABELS[mode]}
         style={{ width: hologramSize, height: hologramSize }}
-        onPress={() => setMode(nextSampleMode(mode))}
+        onPress={() => !leaving && setMode(nextSampleMode(mode))}
         testID="hologram"
       >
         <JarvisHologram
@@ -66,6 +118,7 @@ export function SampleScreen({ onLeave }: SampleScreenProps) {
           voice={mode === 'microphone' ? heard : imagined}
           quietestSpeech={QUIETEST_SPEECH_HERE}
           thinking={mode === 'thinking'}
+          leaving={leaving}
         />
       </Pressable>
       <ModeToast mode={mode} />

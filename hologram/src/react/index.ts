@@ -8,5 +8,5 @@
  * something you can render.
  */
 export type { JarvisHologramProps } from './hologram-view';
-export { JarvisHologram } from './hologram-view';
+export { JarvisHologram, LEAVING_SECONDS } from './hologram-view';
 export { useIsForeground } from './is-foreground';
