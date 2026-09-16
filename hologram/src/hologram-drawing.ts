@@ -1679,6 +1679,17 @@ function analyseFrame(frame: HologramFrame, size: number, scene: Scene) {
     radius,
     // Half the square, in sphere radii: how far the backdrop reaches, so its circle is the one
     // the square inscribes. See BACKDROP_RAMP — it has to end at zero exactly there.
+    // Half the square, so the shadow is the circle the square inscribes. See BACKDROP_RAMP — it
+    // has to end at zero exactly there.
+    //
+    // It is the single most expensive thing drawn — 15 ms of a 49 ms frame at 384 px, measured by
+    // taking it out — because it blends over everything inside its circle and its cost is its
+    // area. Pulling it in to a quarter of a radius past the limb was tried and gave back 3 ms of
+    // that, and it is not in: the ramp is written in fractions of the reach, so a shorter reach
+    // drags the flat part inside the sphere and leaves the limb — the edge Jarvis actually has to
+    // read against — at a sixth of the dark rather than at full. Seven percent of a frame is not
+    // worth the thing the shadow is for. Resolution is where that saving came from instead; see
+    // DRAWN_RESOLUTION in the view.
     backdropReach: size / 2 / radius,
     thinking,
     // Where the plane is, sweeping upward — y runs down the screen, so it starts positive. From

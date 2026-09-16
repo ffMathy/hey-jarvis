@@ -146,6 +146,10 @@ Before the app is set up there is nothing for the hologram to follow, so the set
 - **A conversation still listens to Jarvis through WebRTC**, which is right: that audio is already inside WebRTC and never touches this path.
 - **In a browser it is `getUserMedia` into an `AnalyserNode`** with the ElevenLabs web SDK's settings (`fftSize` 2048, smoothing 0.8), not connected to the speakers.
 
+**The frame is painting, not JavaScript.** Split apart headlessly, one frame at 384 px is 1.2 ms of building the picture and 49 ms of painting it, and the building does not change with size while the painting scales with area — 384 px costs 49 ms, 269 px costs 28 ms, 230 px costs 22 ms. So the lever that moves the frame rate is pixels: `DRAWN_RESOLUTION` in `hologram/src/react/hologram-view.tsx`, which lays the canvas out at seven tenths and scales it up, and `SPHERE_FRACTION`, since a bigger sphere fills more of them. Fewer fragments, cheaper glyphs and shorter paths are all optimising the 1.2 ms. Measure the two apart before changing anything for speed.
+
+The two costliest single layers, measured by taking each out: the shadow (15 ms of the 49) and the particle halos (13 ms).
+
 What each layer is, what the voice does to it, and which finding of the film study each number came from is written at the top of `hologram/src/hologram-drawing.ts`. These are the things worth knowing before changing it:
 
 - **Layers, back to front.** A warm volume fill (one textured circle: the ball is lit through, never a dark disc with light drawn on it); the inner shells — a two-armed whorl winding out of the core, a long loop, a saturated arc, data streaks; the fragment body, 1,000 short strokes and glyphs inside 0.94R, turning about the vertical axis, plus a turning shell below the core; comet arcs and spokes; the core's bloom, hooked ring and knot; the bright fragments and their hot cores; a hairline ring at the limb; the rolling ladder truss; the bright left crescent; the fraying and streak arcs; the latest burst's chips; rare accents; and, only while it forms, the intro.
