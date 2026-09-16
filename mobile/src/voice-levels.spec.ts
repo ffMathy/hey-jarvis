@@ -609,12 +609,12 @@ describe('advanceVoiceActivity', () => {
       const at120 = play(level, 3.5, evenClock(120));
 
       const bursts = burstsIn(at30);
-      // A flurry at 0.2, 0.5, 0.8 and 1.4, whose rest runs to 2.0 and swallows the
-      // changes at 1.7 and 1.8; then a second flurry at 2.1, 2.5 and 2.8, which the
-      // line ends before filling. The changes at 1.0, 2.2 and 2.6 come too soon.
-      expect(bursts.map((burst) => Number(burst.time.toFixed(6)))).toEqual([0.2, 0.5, 0.8, 1.4, 2.1, 2.5, 2.8]);
+      // A flurry at 0.2, 0.5, 0.8 and 1.4; the silence from 1.0 to 1.4 is four tenths long, which
+      // ends that flurry, so 1.7 opens a new one rather than being swallowed by a rest. Then
+      // 2.1, 2.5 and 2.8. The changes at 1.0, 2.2 and 2.6 come too soon after the one before.
+      expect(bursts.map((burst) => Number(burst.time.toFixed(6)))).toEqual([0.2, 0.5, 0.8, 1.4, 1.7, 2.1, 2.5, 2.8]);
       expect(bursts.map((burst) => Number(burst.burstStrength.toFixed(6)))).toEqual(
-        [0.6, 0.4, 0.5, 0.5, 0.35, 0.6, 0.3].map((change) => Number((change / FULL_BURST_CHANGE).toFixed(6))),
+        [0.6, 0.4, 0.5, 0.5, 0.35, 0.35, 0.6, 0.3].map((change) => Number((change / FULL_BURST_CHANGE).toFixed(6))),
       );
       at30.forEach((frame, index) => {
         for (const other of [at60[2 * index + 1], at120[4 * index + 3]]) {

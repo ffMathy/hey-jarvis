@@ -115,8 +115,14 @@ export function perceivedLevel(volume: number): number {
 
 /** How quickly the drawn value catches up with a louder reading, in seconds. */
 export const ATTACK_SECONDS = 0.045;
-/** How quickly it falls back when the reading drops. Slower, so a syllable's shape survives the gap after it rather than flickering. */
-export const RELEASE_SECONDS = 0.28;
+/**
+ * How quickly it falls back when the reading drops.
+ *
+ * Still slower than the attack, so a syllable keeps its shape rather than flickering, but down
+ * from 0.28: the glow rides this, and at 0.28 it smoothed the gaps between words away and left
+ * the sphere lit evenly through a sentence instead of moving with it.
+ */
+export const RELEASE_SECONDS = 0.12;
 
 /**
  * Moves `current` toward `target` over `deltaSeconds`, attacking fast and
@@ -211,11 +217,29 @@ export function voiceDrive(level: number, loudest: number): number {
  */
 export const AGITATION_RISE_SECONDS = 0.15;
 /**
- * How long it takes to settle once speech is gone. Slower than the rise, so the
- * short silences between words leave the sphere stirred rather than calming it
- * a dozen times a sentence.
+ * How long it takes to settle once speech is gone.
+ *
+ * Down from 0.4, which was chosen to ride over the short silences between words so the sphere
+ * would not calm a dozen times a sentence. Calming a dozen times a sentence turns out to be the
+ * point: held up across the gaps the sphere sat at a plateau while anyone spoke, which read as
+ * one long state rather than as an answer to a voice. Dropping inside a syllable's gap is what
+ * makes it pulse with the talking.
+ *
+ * The ramp is linear, so this is the whole way down: a fifth of a second from full to calm, and
+ * less from wherever a gap catches it.
  */
-export const AGITATION_RELEASE_SECONDS = 0.4;
+export const AGITATION_RELEASE_SECONDS = 0.15;
+/**
+ * How long the voice has to be gone before a flurry is over and the next word starts a new one.
+ *
+ * This used to be "agitation has reached zero", which was the same thing while agitation took
+ * 0.4 s to fall. Now that it falls in 0.15 s — so the sphere pulses with the talking rather than
+ * sitting at a plateau — that would make every gap between syllables a fresh flurry and the rest
+ * between them would never be waited out. The film's rim throws chips in flurries and then leaves
+ * off; a stream of them is the one thing it never does. So the two are separate now, and this is
+ * what the old release time was really measuring.
+ */
+export const FLURRY_ENDS_AFTER_SECONDS = 0.4;
 
 /**
  * How far back an onset or a gap may reach. A syllable lasts about a quarter of a
@@ -323,6 +347,8 @@ export interface VoiceActivityState {
   burstStrength: number;
   /** How many bursts there have been, so each can throw its chips from a different, repeatable place. */
   burstCount: number;
+  /** How long there has been no speech, in seconds: what ends a flurry. */
+  quietSeconds: number;
   /**
    * The loudest this voice has been lately, which is what its own loudness is judged against.
    *
@@ -366,6 +392,7 @@ export function createVoiceActivityState(): VoiceActivityState {
     burstStrength: 0,
     burstCount: 0,
     loudest: 0,
+    quietSeconds: 0,
     burstsInFlurry: 0,
     heldLevel: 0,
     quietestInThisSlice: 0,
@@ -557,7 +584,11 @@ export function advanceVoiceActivity(
   const isGap = loudest >= speakingThreshold(state.loudest) && level < loudest * GAP_LEVEL_RATIO;
 
   state.burstAge += deltaSeconds;
-  if (state.agitation <= 0) {
+  state.quietSeconds = level >= speakingThreshold(state.loudest) ? 0 : state.quietSeconds + deltaSeconds;
+  // Slack for the same reason the spacing comparison has it: sixtieths and hundred-and-twentieths
+  // of a second do not add up to four tenths identically, and without it the flurry ends a frame
+  // apart at different frame rates and the bursts after it diverge.
+  if (state.quietSeconds + TIME_SLACK_SECONDS >= FLURRY_ENDS_AFTER_SECONDS) {
     // silence ends the flurry, so the next word starts a fresh one
     state.burstsInFlurry = 0;
   }
