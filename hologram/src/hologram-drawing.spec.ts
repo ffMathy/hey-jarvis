@@ -163,17 +163,24 @@ function difference(first: Uint8Array, second: Uint8Array): number {
 }
 
 /** Mean luminance of the outermost `band` pixels on every side. */
-function edgeBrightness(pixels: Uint8Array, band: number): number {
-  let total = 0;
+/**
+ * What share of the square's edge band is lit at all, 0-1.
+ *
+ * This is what tells the two ways of reaching the edge apart. The sphere's own rim running off the canvas would light a long arc of this band; a
+ * chip thrown past the limb on a syllable lights a few pixels of it. A mean cannot separate those,
+ * and since the sphere was made nearly as wide as the screen the second happens on purpose.
+ */
+function edgeLitShare(pixels: Uint8Array, band: number): number {
+  let lit = 0;
   let count = 0;
   for (let y = 0; y < SIZE; y++) {
     for (let x = 0; x < SIZE; x++) {
       if (x >= band && x < SIZE - band && y >= band && y < SIZE - band) continue;
-      total += luminance(pixels, (y * SIZE + x) * 4);
+      if (luminance(pixels, (y * SIZE + x) * 4) > 8) lit++;
       count++;
     }
   }
-  return total / count;
+  return lit / count;
 }
 
 /**
@@ -484,7 +491,9 @@ describe('the hologram', () => {
     }
 
     expect(worst).toBeLessThan(0.1);
-  });
+    // Two renders a frame for a hundred and ten frames, of a sphere that now fills nearly the
+    // whole square: the slowest test here by an order, and it runs past the default five seconds.
+  }, 60_000);
 
   it('carries its own shadow, so it reads against a bright screen it was summoned over', () => {
     // Invisible to every other test here, all of which draw on black — black over black changes
@@ -494,8 +503,9 @@ describe('the hologram', () => {
     const background = luminance(render(silence(6), mount(), pale), 0);
     const pixels = render(silence(6), mount(), pale);
 
-    // Just outside the limb, where the shadow is still nearly at full strength: clearly darker
-    // than the screen it is drawn over.
+    // Just outside the limb, where the shadow is still near full strength. Inside its reach, too,
+    // which is half the square — 1.43R at this SPHERE_FRACTION — so a band further out than this
+    // would be measuring the fade rather than the shadow.
     let outside = 0;
     let outsideCount = 0;
     let border = 0;
@@ -504,7 +514,7 @@ describe('the hologram', () => {
       for (let x = 0; x < SIZE; x++) {
         const radius = radiusOf(x, y);
         const here = luminance(pixels, (y * SIZE + x) * 4);
-        if (radius > 1.25 && radius < 1.5) {
+        if (radius > 1.05 && radius < 1.25) {
           outside += here;
           outsideCount++;
         }
@@ -528,13 +538,25 @@ describe('the hologram', () => {
     expect(border / borderCount).toBeCloseTo(background, 0);
   });
 
-  it('stays inside its square even at full volume, rather than being clipped at the edges', () => {
+  it('keeps the sphere itself inside its square at full volume, chips aside', () => {
+    // It used to require the edge band to be black outright, and at SPHERE_FRACTION 0.27 it was.
+    // The user then asked for Jarvis as wide as the screen: at 0.35 the sphere and its rim still
+    // fit — that is what sets the fraction — but the chips thrown to about 1.6R on a syllable do
+    // not, and are cut off. Since the square is now the screen bar twenty points, that edge is
+    // ten points from the bezel, so a clipped chip is a stub nobody can see.
+    //
+    // What must never happen is the *sphere* reaching the edge, which would crop the rim and read
+    // as broken. The two are told apart by how much of the band is lit rather than how brightly:
+    // an arc of rim lights a long stretch of it, a chip lights a handful of pixels.
     const band = Math.round(SIZE * 0.02);
     for (const time of [8, 23.4, 31.2, 47.9, 55.1]) {
       for (const burstAge of [0, 0.06, 0.12, 0.2]) {
         const loudest = render(speech(time, 1, new Array(VOICE_BAND_COUNT).fill(1), burstAge, Math.round(time * 10)));
 
-        expect(edgeBrightness(loudest, band)).toBeLessThan(2);
+        // A chip's worth, not a rim's. Measured: at worst 6.3% of the band lit at this fraction,
+        // against 55.7% at 0.45, where the sphere itself runs off the canvas. The bound sits
+        // between the two with room either side rather than against today's number.
+        expect(edgeLitShare(loudest, band)).toBeLessThan(0.15);
       }
     }
   });

@@ -286,12 +286,18 @@ const FORMED_APPEARANCE = 0.75;
 /**
  * Sphere radius as a fraction of the square, at rest.
  *
- * Down from 0.31: the sphere swells by SWELL_WITH_VOICE while he talks and the halos reach
- * further than they did, and at 0.31 the chips thrown to 1.5R were landing outside the canvas
- * and being cut off — which the containment check caught. Smaller at rest also widens the gap
- * the swell opens: talking, it is now a little larger than it used to be standing still.
+ * Up from 0.27, which the user asked for: they wanted Jarvis as wide as the screen. He is not
+ * quite that — at this fraction the sphere is 72% of the square, and the square is the screen less
+ * twenty points — and the reason is what lives outside the limb. The sphere swells by
+ * SWELL_WITH_VOICE while he talks, its rim and halos reach about 1.15R, and this is the largest
+ * fraction at which all of that still fits: 0.36 × 1.18 × 1.15 is just under a half.
+ *
+ * What does *not* fit any more is the chips, which are thrown to about 1.6R on a syllable. They
+ * are cut off by the edge of the square at full burst now, and that is the deliberate trade for a
+ * sphere this size — see the containment test, which was rewritten to say so rather than deleted.
+ * Going further crops the rim itself, which reads as broken rather than as big.
  */
-export const SPHERE_FRACTION = 0.27;
+export const SPHERE_FRACTION = 0.35;
 /** The outer rim layer rolls clockwise in the screen plane: one turn in about 33 s, as the film's ladder ring. */
 export const ROLL_DEGREES_PER_SECOND = 11;
 /**

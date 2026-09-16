@@ -1,5 +1,5 @@
 import { Pressable, StyleSheet, View } from 'react-native';
-import { useHologramSize } from './hologram-size';
+import { useWholeScreenHologramSize } from './hologram-size';
 import { JarvisHologram } from './jarvis-hologram';
 import { useSampleVoice } from './sample-voice';
 import { QUIETEST_SPEECH_HERE } from './speech-floor';
@@ -28,7 +28,7 @@ interface SampleScreenProps {
  */
 export function SampleScreen({ onLeave }: SampleScreenProps) {
   const { voice } = useSampleVoice();
-  const hologramSize = useHologramSize();
+  const hologramSize = useWholeScreenHologramSize();
 
   return (
     <Pressable accessibilityRole="button" accessibilityLabel="Close" style={styles.scrim} onPress={onLeave}>

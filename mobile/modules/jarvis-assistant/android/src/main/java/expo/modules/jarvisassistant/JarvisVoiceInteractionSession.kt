@@ -48,6 +48,22 @@ class JarvisVoiceInteractionSession(context: Context) : VoiceInteractionSession(
   private var resumedHost: ReactHost? = null
 
   /**
+   * Asks for a hardware-accelerated window, before there is anything in it.
+   *
+   * **This is the difference between a hologram and a slideshow here.** A window put up by a
+   * service is not hardware-accelerated by default — only an activity's is — so without this flag
+   * Skia rasterises every frame of the sphere on the CPU, a thousand strokes and their halos and a
+   * full-canvas shadow, sixty times a second. The same drawing that a phone's GPU does not notice.
+   *
+   * It has to be here rather than in {@link onShow}: hardware acceleration is decided when the
+   * window is attached, and a flag added afterwards is simply ignored.
+   */
+  override fun onCreate() {
+    super.onCreate()
+    window?.window?.addFlags(WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED)
+  }
+
+  /**
    * Builds the window's contents: the app, drawn into this session.
    *
    * Called by the system before {@link onShow}, which is what lets that method know whether there
