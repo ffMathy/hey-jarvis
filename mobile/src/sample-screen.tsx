@@ -5,7 +5,7 @@ import { JarvisHologram } from './jarvis-hologram';
 import type { JarvisVoice } from './platform-contracts';
 import { useSampleVoice } from './sample-voice';
 import { theme } from './theme';
-import { perceivedLevel, SPEECH_LEVEL } from './voice-levels';
+import { perceivedLevel, speakingThreshold } from './voice-levels';
 
 interface SampleScreenProps {
   onLeave: () => void;
@@ -55,7 +55,10 @@ function HeardLevel({ voice }: { voice: JarvisVoice }) {
     return () => clearInterval(timer);
   }, [voice]);
 
-  const speech = heard.loudest >= SPEECH_LEVEL ? 'loud enough' : 'too quiet to count as speech';
+  // Against the gate actually in force, which is relative to this voice — it said "too quiet"
+  // while the sphere was reacting, because it was still comparing with the fixed level the gate
+  // stopped using.
+  const speech = heard.loudest >= speakingThreshold(heard.loudest) ? 'loud enough' : 'too quiet to count as speech';
   return (
     <Text style={styles.heard} testID="sample-heard">
       {`level ${heard.level.toFixed(2)} · loudest ${heard.loudest.toFixed(2)} · ${speech}`}

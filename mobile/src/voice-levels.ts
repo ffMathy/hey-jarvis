@@ -159,13 +159,15 @@ export const SPEECH_LEVEL = 0.15;
 /**
  * The quietest a reading can be and still count as speech, however quiet the voice is.
  *
- * Below this is a room, not a person. It is low because a phone microphone can be much quieter
- * than a phone microphone: the user's hands over an ordinary speaking voice at a perceived level
- * of 0.08, about -54 dBFS, through two different recording paths — WebRTC's and a plain
- * `AudioRecord` — so it is the device, not the code that reads it. Against {@link SPEECH_LEVEL}
- * their speech never counted as speech at all and the sphere never stirred.
+ * Below this is a room, not a person, whatever the room's hiss is doing relative to the voice.
+ *
+ * Set where the user asked for it. Their microphone is a quiet one — an ordinary speaking voice
+ * arrives at 0.08 to 0.11, about -54 dBFS, through WebRTC's recorder and a plain `AudioRecord`
+ * alike, so it is the device rather than the code reading it — and their quiet room sits around
+ * 0.04. A floor here keeps the room out; the share above it is what lets a voice this quiet still
+ * count once it speaks.
  */
-export const QUIETEST_SPEECH = 0.04;
+export const QUIETEST_SPEECH = 0.1;
 /**
  * And how much of this voice's own loudest it has to reach.
  *
