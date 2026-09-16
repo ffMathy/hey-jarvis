@@ -122,11 +122,10 @@ class JarvisVoiceInteractionSession(context: Context) : VoiceInteractionSession(
     val window = window?.window ?: return
     window.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
     window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+    // Edge to edge, which also settles the system bars: with no limits on the layout the window
+    // draws under them, so there are no bar backgrounds of this window's to paint. Setting their
+    // colours instead is deprecated from API 35 and does nothing there.
     window.addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-      window.statusBarColor = Color.TRANSPARENT
-      window.navigationBarColor = Color.TRANSPARENT
-    }
   }
 
   /**

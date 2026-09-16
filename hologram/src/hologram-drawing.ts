@@ -14,16 +14,15 @@
 //
 // LAYERS, drawn back to front (unit space, R = 1, y down; clock angles in degrees
 // clockwise from 12 o'clock)
-//   drawVolumeFill      the warm volume (P0.1): one circle with a prebuilt texture — level
-//                       from 0.35R out to the limb, heavier on the upper left, broken into
-//                       sideways-stretched clouds with deep red-brown pockets between them
-//                       (the pockets fall to about half the median), brightest where the fragment
-//                       body crowds, see-through toward the lower-right limb and ragged at its
-//                       edge. Drawn at FILL_STRENGTH of what the texture holds, so on its own it
-//                       carries half of the disc median light it used to and the particles in
-//                       front of it now carry more than it does. While the ball forms it
-//                       arrives as a thickening haze with brighter ragged patches where the
-//                       fragments have already landed
+//   (no warm volume)    The film's ball is a lit cloud, and this drawing used to paint one: a
+//                       textured circle of amber haze under everything, arriving patch by patch
+//                       while the ball formed. It is gone, at the user's asking — "I just want
+//                       the particles to speak for themselves". Nothing lights the places where
+//                       no fragment lands now, so the ball is see-through to the background
+//                       between its strokes and reads as a swarm rather than as a surface. That
+//                       is a deliberate departure from the film study's section 6.4, which wants
+//                       an opaque volume and under 5% of the disc dark; do not read the dark
+//                       between the particles as a regression and paint it back in.
 //   drawInnerShells     the whorl: two wide spiral arms winding out of the core to 0.76R,
 //                       furry with short fragments across them, plus the long loop rising 37°
 //                       past the core, the saturated ")" arc at 0.57R and the faint near half of
@@ -333,13 +332,18 @@ export function bodyTurnRadians(time: number) {
  * what they saw, and the step from silence is wider than it was anyway, because the halo lost
  * two of its rings and the silent ball with it.
  *
+ * Back up from 1.1 when the warm volume was removed. That wash was one of the things the glow
+ * multiplied, so taking it out took part of the step from silence with it: an ordinary voice
+ * lifted the disc 36% where the test requires 40. This is where the step lands back inside its
+ * bounds — plainly brighter than silence, and shouting still barely brighter than murmuring.
+ *
  * Most of it rides the agitation envelope rather than the loudness, because loudness alone was
  * not visible. Ordinary speech sits around a level of 0.25-0.5, not 1, and scaling the glow by
  * that lifted the disc by 5-8% — which the user could not see at all. The envelope is up at any
  * speech from 0.15 (see SPEECH_LEVEL), so it answers "is he talking" cleanly; the rest follows
  * loudness so a sentence still breathes rather than switching on and staying flat.
  */
-export const GLOW_WITH_VOICE = 1.1;
+export const GLOW_WITH_VOICE = 1.35;
 /** How much of the glow answers "is he talking at all" rather than "how loudly". */
 const GLOW_FROM_ENVELOPE = 0.65;
 /**
@@ -373,34 +377,9 @@ const LIMB_STREAK_STRIDE = 5;
 const RING_TICK_STRIDE = 2;
 const EPOCH_STRIDE = 10;
 const COMET_STRIDE = 5;
-/** How many points a fill patch's outline is drawn through; see buildFillBlobs. */
-const FILL_PATCH_POINTS = 16;
-const FILL_BLOB_STRIDE = 3 + FILL_PATCH_POINTS * 2;
-/**
- * How much of the arriving glow is the wash that lies over the whole ball rather than the
- * patches around the fragments. The film's glow comes in as a diffuse haze with brighter
- * places in it (a f58-f70), so the patches must ride on something, not sit on black.
- */
-const FILL_WASH_SHARE = 0.6;
-
-/**
- * Side of the prebuilt fill texture in texels. It spans the sphere's 2R, so a texel is about
- * 0.016R: the clouds are soft and linear filtering hides the texels, and at this size the
- * texture builds in a few tens of milliseconds even on an interpreter without a JIT (the phone's
- * Hermes), where 256 texels a side froze the JS thread for about 0.3 s at every mount.
- */
-const FILL_TEXTURE_TEXELS = 128;
-/**
- * How many texels the fill texture fades to nothing over at its square border, so that a shader
- * clamping past the edge repeats transparency rather than the last lit texel. Three, because two
- * left a step of about a third of a luma level at the limb where the circle runs past the square.
- */
-const FILL_TEXTURE_BORDER_TEXELS = 3;
 /** Side of the tiled sparkle texture in texels, and how wide a texel is on the sphere: a stroke spans about two. */
 const SPARKLE_TEXTURE_TEXELS = 64;
 const SPARKLE_TEXEL_SIZE = 0.018;
-/** How far the fill's clouds swing its brightness: pockets fall to about half the median, clouds rise past 1.5×. */
-const FILL_CONTRAST = 4.6;
 
 /**
  * The limb bloom and the limb ridge are rings of light round the edge of the ball, and their
@@ -417,34 +396,6 @@ const LIMB_BLOOM_RADIUS = 0.995;
 const LIMB_BLOOM_BAND = 0.25;
 const LIMB_RIDGE_RADIUS = 0.955;
 const LIMB_RIDGE_BAND = 0.17;
-
-/**
- * How much of the fill texture's own light the formed ball keeps.
- *
- * The texture is pinned and never changes, so every luma level in it is light that cannot
- * churn; screened underneath, it also flattens what the strokes over it can add. At full
- * strength it carried about four fifths of the disc's median light (78 of 99 at 256 px) and
- * the ball read as a solid painted surface rather than a see-through cloud. At this share it
- * carries half of that (38 of the 78 luma it used to hold, rendered on its own at 256 px) —
- * still plainly present, still amber, never black — and the particle field over it now carries
- * more light than it does, so most of what you see is light that goes out and comes back
- * rather than light that is simply always on.
- *
- * It is not lower than this because the wash is also the only thing lighting the places where
- * no fragment lands, and it is what keeps those from going black: at 0.45 the darkest twentieth
- * of the disc sits at luma 39, and every tenth off this value costs about four of that. Half
- * a fifth higher and the wash would be back over the half of its old light that the brief
- * allows it.
- *
- * THIS IS DELIBERATELY PAST THE FILM GUIDE'S DARK-SHARE LINE, and a later round should not read
- * that as a regression. The guide (section 6.4) wants under 5% of the disc inside 0.8R below
- * luma 40, and asks for it of a sphere whose warm volume is opaque; a see-through one cannot
- * hold that and be see-through. This drawing measures 5.3% at 256 px and 4.3-6.8% at 384 px
- * across silent moments, against 0.6-1.3% when the wash was at full strength. Nothing inside
- * the disc is anywhere near black — the first percentile sits at luma 25 and nothing at all
- * falls under 8 — and the particle halos, not the wash, are the dial that moves this now.
- */
-const FILL_STRENGTH = 0.45;
 
 /**
  * The particle halos are the one thing in the drawing painted without antialiasing, and that is
@@ -892,52 +843,6 @@ function buildIntroSparks(random: Random) {
   return sparks;
 }
 
-/**
- * The patches the warm fill arrives in while the ball materialises: blobs whose union covers the
- * disc, each appearing when the fragments around it do (see revealKey), so the glow follows the
- * fragments rather than fading in as a disc with an edge of its own (film f47-f70).
- *
- * Each patch's outline is stored as points rather than as a radius, because a circle is the one
- * shape the film never shows: its glow arrives as a wash with a ragged boundary, never as flat
- * round discs. Every outline is a wobbled ring — three harmonics of a couple of tenths of its
- * radius — so the union's edge is broken at the scale of the patches and again within each one.
- * Storing the points also keeps trigonometry out of the frame: the drawing only scales them.
- * Stride: x, y, the reveal key it waits for, then FILL_PATCH_POINTS pairs of point offsets.
- */
-function buildFillBlobs(random: Random) {
-  const blobs: number[] = [];
-  const rings = [
-    [1, 0, 0.44],
-    [7, 0.42, 0.33],
-    [13, 0.73, 0.3],
-    [11, 0.96, 0.24],
-  ];
-  for (const [count, ring, size] of rings) {
-    for (let index = 0; index < count; index++) {
-      const angle = ((index + 0.45 * random()) / count) * Math.PI * 2;
-      const x = Math.cos(angle) * ring * (0.92 + 0.16 * random());
-      const y = Math.sin(angle) * ring * (0.92 + 0.16 * random());
-      // The glow follows the fragments a little behind them, along a straighter front than
-      // theirs: a patch that lit on its own, away from the swarm, would read as a lit shape
-      // rather than as the glow of the fragments under it.
-      blobs.push(x, y, clamp01(0.74 * revealKey(x, y) + 0.26 * (0.5 + 0.5 * x) + 0.04));
-      const radius = size * (0.86 + 0.28 * random());
-      const phases = [random() * Math.PI * 2, random() * Math.PI * 2, random() * Math.PI * 2];
-      for (let point = 0; point < FILL_PATCH_POINTS; point++) {
-        const around = (point / FILL_PATCH_POINTS) * Math.PI * 2;
-        const wobble =
-          1 +
-          0.26 * Math.sin(2 * around + phases[0]) +
-          0.17 * Math.sin(3 * around + phases[1]) +
-          0.11 * Math.sin(5 * around + phases[2]) +
-          0.07 * Math.sin(7 * around + phases[0] + phases[1]);
-        blobs.push(Math.cos(around) * radius * wobble, Math.sin(around) * radius * wobble);
-      }
-    }
-  }
-  return blobs;
-}
-
 /** Keeps the worklet copy of the scene small. */
 function roundToFiveDecimals(value: number) {
   return Math.round(value * 1e5) / 1e5;
@@ -960,7 +865,6 @@ export function createHologramScene(seed: number) {
     scriptPeriod: roundToFiveDecimals(script.period),
     comets: buildComets(random).map(roundToFiveDecimals),
     introSparks: buildIntroSparks(random).map(roundToFiveDecimals),
-    fillBlobs: buildFillBlobs(random).map(roundToFiveDecimals),
     // only a seed: the static textures are built straight into paths, never copied to the worklet runtime
     textureSeed: Math.floor(random() * 4294967296),
   };
@@ -1021,153 +925,6 @@ function appendEllipse(
     if (step === 0) builder.moveTo(pointX, pointY);
     else builder.lineTo(pointX, pointY);
   }
-}
-
-/**
- * Adds one octave of value noise, `across` cells wide and `down` cells tall over the whole
- * texture, into `field` at `weight`. The lattice is interpolated along its rows first and then
- * down the texture: the same smooth noise as sampling it texel by texel, for a fraction of the work.
- */
-function addNoiseOctave(field: Float32Array, random: Random, across: number, down: number, weight: number) {
-  const texels = FILL_TEXTURE_TEXELS;
-  const width = across + 1;
-  const lattice = new Float32Array(width * (down + 1));
-  for (let index = 0; index < lattice.length; index++) lattice[index] = random();
-  const rows = new Float32Array((down + 1) * texels);
-  for (let column = 0; column < texels; column++) {
-    const x = ((column + 0.5) / texels) * across;
-    const cell = Math.min(across - 1, Math.floor(x));
-    const share = x - cell;
-    const blend = share * share * (3 - 2 * share);
-    for (let latticeRow = 0; latticeRow <= down; latticeRow++) {
-      const left = lattice[latticeRow * width + cell];
-      rows[latticeRow * texels + column] = left + (lattice[latticeRow * width + cell + 1] - left) * blend;
-    }
-  }
-  for (let row = 0; row < texels; row++) {
-    const y = ((row + 0.5) / texels) * down;
-    const cell = Math.min(down - 1, Math.floor(y));
-    const share = y - cell;
-    const blend = share * share * (3 - 2 * share) * weight;
-    const upper = cell * texels;
-    const lower = upper + texels;
-    const offset = row * texels;
-    for (let column = 0; column < texels; column++) {
-      const top = rows[upper + column];
-      field[offset + column] += top * weight + (rows[lower + column] - top) * blend;
-    }
-  }
-}
-
-/**
- * The fill's brightness on black (luma, 0-255) before its clouds: hot at the core, level from
- * about 0.35R, and at the limb as bright as the body inside it where the mass is (`limbMass` 1,
- * section 2.2: the 0.8-0.92R band is as bright as 0.6-0.8R or brighter) but thinning to a
- * see-through edge where it is not (film a: 84 at 0.92-1.02R away from the crescent).
- */
-function fillProfile(radius: number, limbMass: number) {
-  if (radius <= 0.7) {
-    const stops = [0, 112, 0.12, 99, 0.3, 84, 0.5, 78, 0.7, 77];
-    let index = 2;
-    while (radius > stops[index]) index += 2;
-    const share = (radius - stops[index - 2]) / (stops[index] - stops[index - 2]);
-    return stops[index - 1] + (stops[index + 1] - stops[index - 1]) * share;
-  }
-  const share = Math.min(1, (radius - 0.7) / 0.2);
-  return 77 + (55 + 70 * limbMass - 77) * share * share * (3 - 2 * share);
-}
-
-/**
- * The fill's colour at each brightness 0-255: deep red-brown in the pockets, amber through the
- * middle, gold only at the hottest (the film's #562a10 pockets, #a35e26 body, #f0aa52 core), kept
- * orange enough that strokes screened over it do not push it toward yellow. Three bytes a level,
- * so a texel looks its colour up rather than interpolating it.
- */
-function buildFillColourTable() {
-  // luma, red, green, blue
-  const stops = [
-    0, 0, 0, 0, 23.5, 44, 19, 7, 49.5, 86, 40, 15, 75, 126, 60, 22, 102, 164, 80, 30, 130, 200, 100, 40, 162, 238, 124,
-    50, 192, 255, 150, 64, 205, 255, 158, 68,
-  ];
-  const table = new Uint8Array(256 * 3);
-  let stop = 4;
-  for (let level = 0; level < 256; level++) {
-    while (stop < stops.length - 4 && level > stops[stop]) stop += 4;
-    const share = Math.min(1, Math.max(0, (level - stops[stop - 4]) / (stops[stop] - stops[stop - 4])));
-    for (let channel = 0; channel < 3; channel++) {
-      const low = stops[stop - 3 + channel];
-      table[level * 3 + channel] = Math.round(low + (stops[stop + 1 + channel] - low) * share);
-    }
-  }
-  return table;
-}
-
-/**
- * The warm translucent volume as a texture, built once from the seed: the radial profile,
- * weighted toward the upper left, broken into clouds — broad blotches, streaky mid-size clouds
- * and fine wisps, stretched sideways as the film's are — with deep pockets between them, and
- * brightest where the fragment body crowds. Premultiplied RGBA, row by row, over the square
- * [-1, 1]². Its edge is ragged: where the broad clouds thin, the glow stops short of the limb.
- */
-function buildFillTexture(random: Random) {
-  const texels = FILL_TEXTURE_TEXELS;
-  const count = texels * texels;
-  const broad = new Float32Array(count);
-  addNoiseOctave(broad, random, 4, 5, 0.46);
-  addNoiseOctave(broad, random, 9, 14, 0.54);
-  const wisps = new Float32Array(count);
-  addNoiseOctave(wisps, random, 18, 28, 0.65);
-  addNoiseOctave(wisps, random, 36, 56, 0.35);
-  // The edge is ragged on the broadest scale only — sweeps of about 60° of limb, not fine teeth:
-  // pinned detail as fine as the rim layer's rungs would hide them as they roll past.
-  const edgeField = new Float32Array(count);
-  addNoiseOctave(edgeField, random, 3, 4, 1);
-  const colours = buildFillColourTable();
-  const pixels = new Uint8Array(count * 4);
-  for (let row = 0; row < texels; row++) {
-    const y = ((row + 0.5) / texels) * 2 - 1;
-    // The texture fades to nothing over its outermost texels, so the shader can clamp rather
-    // than decal: the circle the fill is drawn on reaches a little past the texture's square,
-    // and clamping a transparent border out to it gives what decal gives, for a sixth less of
-    // the frame — decal costs a bounds test at every sample, and this is the one layer that
-    // shades the whole disc. The fade only touches a sliver of the ragged edge that the square
-    // was cutting off at the axes anyway, and it is a fade rather than a cut so that sliver
-    // does not end in a step.
-    const rowBorder = Math.min(1, Math.min(row, texels - 1 - row) / FILL_TEXTURE_BORDER_TEXELS);
-    for (let column = 0; column < texels; column++) {
-      const border = Math.min(rowBorder, Math.min(column, texels - 1 - column) / FILL_TEXTURE_BORDER_TEXELS);
-      if (border <= 0) continue;
-      const x = ((column + 0.5) / texels) * 2 - 1;
-      const radius = Math.sqrt(x * x + y * y);
-      if (radius >= 1.06) continue;
-      const texel = row * texels + column;
-      // the ragged edge: the glow reaches 0.9R in one sweep of the limb and 1.02R in the next
-      const edgeShare = Math.min(1, Math.max(0, (radius - 0.93 - 0.16 * (edgeField[texel] - 0.5)) / 0.1));
-      const edge = (1 - edgeShare * edgeShare * (3 - 2 * edgeShare)) * border;
-      if (edge <= 0) continue;
-      // Fine wisps give way to the broad clouds toward the limb: light pinned there must not carry
-      // detail as fine as the rim layer's rungs, or it hides them as they roll past.
-      const wispShare = 0.38 * (1 - Math.min(1, Math.max(0, (radius - 0.72) / 0.2)));
-      const noise = (1 - wispShare) * broad[texel] + wispShare * wisps[texel];
-      // the fill is brightest where the body crowds, but its troughs are shallower than the
-      // body's: bare fill is what shows between the clumps of strokes
-      const field = 0.62 * noise + 0.38 * (0.3 + 0.4 * (0.35 + 0.65 * clusterWeight(x, y)));
-      // the pockets open out from the core, which glows evenly
-      const contrast = FILL_CONTRAST * Math.min(1, Math.max(0, (radius - 0.06) / 0.3));
-      // how far along the diagonal from the heavy upper left (0) to the thin lower right (1)
-      const diagonal = Math.min(1, Math.max(0, (x + y) / 2.6 + 0.5));
-      const lean = Math.min(1, Math.max(0, (x + y) / (2 * Math.max(radius, 0.01)) + 0.45));
-      const limbMass = 1 - 0.62 * lean * lean * (3 - 2 * lean);
-      const intensity = fillProfile(radius, limbMass) * (1.08 - 0.3 * diagonal) * Math.exp(contrast * (field - 0.5));
-      const level = Math.min(255, Math.round(intensity)) * 3;
-      const offset = texel * 4;
-      pixels[offset] = Math.round(colours[level] * edge);
-      pixels[offset + 1] = Math.round(colours[level + 1] * edge);
-      pixels[offset + 2] = Math.round(colours[level + 2] * edge);
-      pixels[offset + 3] = Math.round(255 * edge);
-    }
-  }
-  return pixels;
 }
 
 /**
@@ -1367,17 +1124,6 @@ export function createHologramResources(Skia: SkiaApiType, scene: Scene) {
   const radialGradient = (radius: number, list: string[], positions: number[]) =>
     Skia.Shader.MakeRadialGradient({ x: 0, y: 0 }, radius, colors(list), positions, TileMode.Clamp);
 
-  // The warm translucent volume: a textured circle, drawn in texel space (see drawVolumeFill).
-  const texels = FILL_TEXTURE_TEXELS;
-  const fillImage = Skia.Image.MakeImage(
-    { width: texels, height: texels, alphaType: AlphaType.Premul, colorType: ColorType.RGBA_8888 },
-    Skia.Data.fromBytes(buildFillTexture(createRandom(scene.textureSeed))),
-    texels * 4,
-  );
-  if (!fillImage) throw new Error('The hologram could not make its fill texture');
-  const volumeFill = makeFill('#ffffff');
-  volumeFill.setShader(fillImage.makeShaderOptions(TileMode.Clamp, TileMode.Clamp, FilterMode.Linear, MipmapMode.None));
-
   // The limb bloom: a tight ring profile around 1R, multiplied by a mask peaked at
   // 8-9 o'clock (a sweep gradient starts at 3 o'clock and runs clockwise). No halo.
   // Painted as a band rather than a disc — see LIMB_BLOOM_BAND.
@@ -1491,7 +1237,6 @@ export function createHologramResources(Skia: SkiaApiType, scene: Scene) {
   const pathBuilders = {
     // dim, mid and bright, pinned and then the same three for the turning shell
     body: [makeBuilder(), makeBuilder(), makeBuilder(), makeBuilder(), makeBuilder(), makeBuilder()],
-    fillBlobs: makeBuilder(),
     lines: makeBuilder(),
     swoosh: makeBuilder(),
     coreKnot: makeBuilder(),
@@ -1515,7 +1260,6 @@ export function createHologramResources(Skia: SkiaApiType, scene: Scene) {
   // one flat list, so the frame can reset them all first
   const allPathBuilders = [
     ...pathBuilders.body,
-    pathBuilders.fillBlobs,
     pathBuilders.lines,
     pathBuilders.swoosh,
     pathBuilders.coreKnot,
@@ -1538,7 +1282,6 @@ export function createHologramResources(Skia: SkiaApiType, scene: Scene) {
   ];
 
   return {
-    volumeFill,
     limbBloomFill,
     limbRidgeFill,
     thinRingStroke,
@@ -1780,9 +1523,6 @@ function analyseFrame(frame: HologramFrame, size: number, scene: Scene) {
     radius: size * SPHERE_FRACTION * (ARRIVAL_SMALLEST + (1 - ARRIVAL_SMALLEST) * arrival) * (1 + swell),
     intro,
     arrival,
-    fillAlpha: FILL_STRENGTH,
-    fillSpread: 1,
-    fillWash: 1,
     bodyShare: script.density,
     introHeat: 0,
     ragged: 0,
@@ -1832,99 +1572,6 @@ function analyseFrame(frame: HologramFrame, size: number, scene: Scene) {
 type FrameState = ReturnType<typeof analyseFrame>;
 
 // ---- the volume ---------------------------------------------------------------------------
-
-/**
- * One arriving patch of glow: its stored outline points, scaled by how far it has grown, drawn
- * as a smooth closed curve — each point is the control of a quadratic that ends half way to the
- * next, which rounds the corners off a twelve-point ring without a single trigonometric call.
- */
-function appendFillPatch(
-  builder: PathBuilder,
-  centreX: number,
-  centreY: number,
-  scale: number,
-  outline: number[],
-  first: number,
-) {
-  'worklet';
-  let nextX = centreX + outline[first] * scale;
-  let nextY = centreY + outline[first + 1] * scale;
-  let x = centreX + outline[first + 2] * scale;
-  let y = centreY + outline[first + 3] * scale;
-  builder.moveTo((nextX + x) * 0.5, (nextY + y) * 0.5);
-  for (let point = 1; point <= FILL_PATCH_POINTS; point++) {
-    const after = first + ((point + 1) % FILL_PATCH_POINTS) * 2;
-    nextX = centreX + outline[after] * scale;
-    nextY = centreY + outline[after + 1] * scale;
-    builder.quadTo(x, y, (x + nextX) * 0.5, (y + nextY) * 0.5);
-    x = nextX;
-    y = nextY;
-  }
-  builder.close();
-}
-
-/**
- * The warm translucent fill: the prebuilt texture on a circle, drawn in texel space, so the
- * image shader needs no matrix — the square [-1, 1]² maps onto its texels.
- *
- * While the ball forms it arrives the way the film's does (f47-f70): a faint wash over the whole
- * volume that thickens as it spreads, with brighter patches where the fragments have already
- * landed. The patches are one path with a ragged outline, so where they overlap the light does
- * not double, and their alpha is set to come to the frame's fill level once screened over the
- * wash — the patches are a concentration of the glow, never a lit shape on black. As the last
- * of them arrive the wash takes over the whole of the light, so by the time the patches cover
- * the ball they have nothing left to add and the drawing can go back to one circle without a
- * step: their union never quite covers it, and the uncovered slivers would jump.
- */
-function drawVolumeFill(canvas: HologramCanvas, resources: Resources, scene: Scene, state: FrameState) {
-  'worklet';
-  const alpha = state.fillAlpha;
-  if (alpha <= 0) return;
-  const half = FILL_TEXTURE_TEXELS / 2;
-  const spread = state.fillSpread;
-  canvas.save();
-  canvas.translate(-1, -1);
-  canvas.scale(1 / half, 1 / half);
-  if (spread >= 1) {
-    // a little past the limb, so the texture's ragged edge is not cut round
-    resources.volumeFill.setAlphaf(alpha * state.glowGain);
-    canvas.drawCircle(half, half, half * 1.06, resources.volumeFill);
-  } else {
-    const washShare = FILL_WASH_SHARE * state.fillWash;
-    const closing = smooth01((spread - 0.78) / 0.22);
-    const wash = alpha * (washShare + (1 - washShare) * closing);
-    resources.volumeFill.setAlphaf(wash * state.glowGain);
-    canvas.drawCircle(half, half, half * 1.06, resources.volumeFill);
-    const patchAlpha = (alpha - wash) / (1 - wash);
-    if (patchAlpha < 0.004) {
-      canvas.restore();
-      return;
-    }
-    const blobs = scene.fillBlobs;
-    const builder = resources.pathBuilders.fillBlobs;
-    let patches = 0;
-    for (let offset = 0; offset < blobs.length; offset += FILL_BLOB_STRIDE) {
-      const grown = smooth01((spread * 1.35 - blobs[offset + 2]) / 0.34);
-      if (grown < 0.02) continue;
-      appendFillPatch(
-        builder,
-        half * (blobs[offset] + 1),
-        half * (blobs[offset + 1] + 1),
-        half * grown,
-        blobs,
-        offset + 3,
-      );
-      patches++;
-    }
-    const patchPath = builder.detach();
-    if (patches > 0) {
-      // screened over the wash, the two come to `alpha` where a patch has arrived
-      resources.volumeFill.setAlphaf(patchAlpha);
-      canvas.drawPath(patchPath, resources.volumeFill);
-    }
-  }
-  canvas.restore();
-}
 
 /**
  * The inner layer, all of it turning the other way from the rim at a few degrees a second
@@ -3135,7 +2782,6 @@ export function drawHologram(
     resources.arrivalFade.setAlphaf(state.arrival);
     canvas.saveLayer(resources.arrivalFade);
   }
-  drawVolumeFill(canvas, resources, scene, state);
   drawInnerShells(canvas, resources, state);
   drawBody(canvas, resources, scene, state);
   drawLines(canvas, resources, scene, state);

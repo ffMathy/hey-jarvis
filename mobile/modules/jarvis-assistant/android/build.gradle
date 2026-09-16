@@ -16,3 +16,15 @@ android {
     abortOnError false
   }
 }
+
+dependencies {
+  // React Native itself, for the surface this module draws into the assistant's window.
+  //
+  // Expo's module plugin puts enough of React Native on the classpath for an ordinary module —
+  // `ReactApplicationContext` resolves without this — but not `ReactHost`, `ReactSurface` or
+  // `ReactApplication`, which is what rendering into a window of our own needs. `react-native`
+  // rather than `react-android`, and an open version, because that is the coordinate React
+  // Native's own Gradle plugin substitutes for the copy in `node_modules`; it is what every
+  // library in this app's tree asks for.
+  compileOnly 'com.facebook.react:react-native:+'
+}

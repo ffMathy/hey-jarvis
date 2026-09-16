@@ -32,7 +32,9 @@ workflows:
         - 'actions/cache@v5.1.0'
         - 'actions/checkout@v6.1.0'
         - 'actions/setup-java@v6.0.0'
+        - 'actions/setup-node@v7.0.0'
         - 'actions/upload-artifact@v7.0.1'
+        - 'jlumbroso/free-disk-space@v1.3.1'
         - 'oven-sh/setup-bun@v2.2.0'
 dependencies:
     'actions/cache@v5.1.0':

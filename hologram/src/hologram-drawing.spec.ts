@@ -460,19 +460,27 @@ describe('the hologram', () => {
   it('materialises without a flash: no one frame of it turns a tenth of the light on at once', () => {
     const hologram = mount();
     // The materialisation holds the drawing's largest one-frame steps — the dial snapping on and
-    // breaking up, the fill arriving, the rim layer coming in — and the script-boundary test
-    // above never sees them, because it only walks a formed ball. The film's dial "snaps on
-    // within two film frames", about five at 60 Hz, so even the sharpest keyframe here should
-    // spread over several: none of them may move a tenth of the formed ball's light in one.
-    const formed = brightness(render(silence(5), hologram));
-    let previous = brightness(render({ ...silence(0), appearance: 0 }, hologram));
+    // breaking up, the rim layer coming in — and the script-boundary test above never sees them,
+    // because it only walks a formed ball. The film's dial "snaps on within two film frames",
+    // about five at 60 Hz, so even the sharpest keyframe here should spread over several: none
+    // of them may move a tenth of the light on in one.
+    //
+    // Measured as a share of the same moment fully formed, not of the formed ball at rest. The
+    // script has one deliberate step in it — a red flash, two film frames long and off again,
+    // straight out of the film — and it lands about a second in, which is inside this window.
+    // Comparing each frame with itself at appearance 1 divides out everything time drives, the
+    // flash included, and leaves exactly what this test is about: how fast the ball itself
+    // arrives. It is the stricter measure of the two, since the denominator is no longer a ball
+    // brighter than the one being walked past.
+    let previous = 0;
     let worst = 0;
     for (let frame = 1; frame <= Math.round(60 * (MATERIALISE_SECONDS + 0.4)); frame++) {
       const time = frame / 60;
       const appearance = Math.min(1, time / MATERIALISE_SECONDS);
-      const now = brightness(render({ ...silence(time), appearance }, hologram));
-      worst = Math.max(worst, Math.abs(now - previous) / formed);
-      previous = now;
+      const formedNow = brightness(render(silence(time), hologram));
+      const share = brightness(render({ ...silence(time), appearance }, hologram)) / formedNow;
+      worst = Math.max(worst, Math.abs(share - previous));
+      previous = share;
     }
 
     expect(worst).toBeLessThan(0.1);
