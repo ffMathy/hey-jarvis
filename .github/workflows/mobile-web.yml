@@ -15,7 +15,11 @@ name: Mobile Web
 # without merging it first. Pages keeps one live site, so the last run wins.
 on:
   push:
-    branches: [ main ]
+    # Working branches as well as main: the point of the page is to look at the
+    # hologram while it is being changed, and a workflow can only be started by
+    # hand if it is on the default branch — which a branch's version never is.
+    # Pages keeps one live site, so whichever pushed last is what is up.
+    branches: [ main, 'claude/**' ]
     paths:
       - 'mobile/**'
       - 'bun.lock'
