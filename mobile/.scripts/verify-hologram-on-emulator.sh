@@ -433,11 +433,19 @@ if [ "$VOICE_SOURCE" = microphone ]; then
   # last two, from the three seconds after it — the loudest of them, so a tap that
   # kept the tone's tail cannot hide behind a silent reading taken before it.
   silence="$({ head -1 "$OUTPUT_DIR/microphone-tone-rms.txt"; tail -2 "$OUTPUT_DIR/microphone-tone-rms.txt"; } | sort -g | tail -1)"
-  # The loudest signal power, in dBFS, in the HAL's history of the stream WebRTC
-  # records from (source 7, voice communication) — not an output stream's.
+  # The loudest signal power, in dBFS, that the HAL saw on any input stream — never
+  # an output's, which would be the tone on its way to the speaker rather than the
+  # microphone's reading of it.
+  #
+  # It used to look for audio source 7, voice communication, because that is what
+  # WebRTC's recorder opens and sample mode borrowed it. Sample mode records for
+  # itself now, with source 6, voice recognition, and this quietly matched nothing:
+  # it found an input thread with an empty history and reported that the HAL had
+  # heard no signal at all, while the app was hearing the tone perfectly. Any input
+  # stream, so that changing which source the app opens cannot blind the check again.
   hal_power="$(awk '
-      /^-? *(Input|Output) thread/ { voice = 0; history = 0 }
-      /Audio source: 7 / { voice = 1 }
+      /^-? *Output thread/ { voice = 0; history = 0 }
+      /^-? *Input thread/ { voice = 1; history = 0 }
       voice && /Signal power history/ { history = 1; next }
       history && /^ *[0-9]+-[0-9]+ / {
         for (field = 3; field <= NF; field++) {

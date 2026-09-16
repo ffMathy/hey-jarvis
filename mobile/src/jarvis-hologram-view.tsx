@@ -1,5 +1,5 @@
 import { Canvas, Picture, Skia } from '@shopify/react-native-skia';
-import { useEffect, useMemo } from 'react';
+import { memo, useEffect, useMemo } from 'react';
 import { useDerivedValue, useFrameCallback, useSharedValue } from 'react-native-reanimated';
 import { createHologramResources, createHologramScene, drawHologram, MATERIALISE_SECONDS } from './hologram-drawing';
 import type { JarvisVoice } from './platform-contracts';
@@ -45,7 +45,7 @@ const SCENE_SEED = 1337;
  * neither a busy JS thread nor a slow reading can make the animation stutter —
  * at worst the sphere reacts a frame late.
  */
-export default function JarvisHologramView({ size, voice }: JarvisHologramProps) {
+function JarvisHologramView({ size, voice }: JarvisHologramProps) {
   const { listening, speaking, getVolume, getSpectrum } = voice;
   const scene = useMemo(() => createHologramScene(SCENE_SEED), []);
   const resources = useMemo(() => createHologramResources(Skia, scene), [scene]);
@@ -162,3 +162,14 @@ export default function JarvisHologramView({ size, voice }: JarvisHologramProps)
     </Canvas>
   );
 }
+
+/**
+ * Held still against its parent re-rendering.
+ *
+ * Every render of this component builds a new worklet for the picture below, and Reanimated
+ * serialises what a worklet captures when it is created — here that includes the scene, which is
+ * the largest thing the app owns. A screen that re-rendered a few times a second for some
+ * unrelated reason therefore cost frames, which is exactly what a live readout of the microphone
+ * level did. The props are a number and a memoised object, so this holds.
+ */
+export default memo(JarvisHologramView);

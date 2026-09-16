@@ -19,8 +19,17 @@ function describeListening(listening: boolean, problem: string | undefined): str
   return listening ? 'Listening to you — say something.' : 'Opening the microphone…';
 }
 
+/** How often the line below re-reads the microphone. */
+const READOUT_INTERVAL_MS = 250;
+
 /**
- * What the microphone is actually giving the hologram, sampled for the line below it.
+ * What the microphone is actually giving the hologram, as a line under the status.
+ *
+ * A component of its own, and not a hook on the screen, because the reading changes several
+ * times a second and whatever holds it re-renders that often. Held by the screen, that re-made
+ * the hologram's drawing worklet ten times a second — Reanimated re-serialises a worklet's
+ * captured values when it is created, and this one captures the whole scene — and the frame
+ * rate fell off a cliff. Held here, the re-render stops at this line of text.
  *
  * Here because three rounds of making the sphere answer more loudly to speech did not change
  * what the user saw, which points at the reading rather than at the drawing: a sphere told
@@ -29,7 +38,7 @@ function describeListening(listening: boolean, problem: string | undefined): str
  * has to clear — enough to tell "the microphone is quiet" from "the drawing is too subtle"
  * without a cable and a laptop.
  */
-function useHeardLevel(voice: JarvisVoice) {
+function HeardLevel({ voice }: { voice: JarvisVoice }) {
   const [heard, setHeard] = useState({ level: 0, loudest: 0 });
 
   useEffect(() => {
@@ -42,17 +51,16 @@ function useHeardLevel(voice: JarvisVoice) {
         const level = perceivedLevel(voice.getVolume());
         return { level, loudest: Math.max(previous.loudest, level) };
       });
-    const timer = setInterval(read, 100);
+    const timer = setInterval(read, READOUT_INTERVAL_MS);
     return () => clearInterval(timer);
   }, [voice]);
 
-  return heard;
-}
-
-/** The reading, and whether it is enough to stir the sphere. */
-function describeHeard({ level, loudest }: { level: number; loudest: number }): string {
-  const speech = loudest >= SPEECH_LEVEL ? 'loud enough' : 'too quiet to count as speech';
-  return `level ${level.toFixed(2)} · loudest ${loudest.toFixed(2)} · ${speech}`;
+  const speech = heard.loudest >= SPEECH_LEVEL ? 'loud enough' : 'too quiet to count as speech';
+  return (
+    <Text style={styles.heard} testID="sample-heard">
+      {`level ${heard.level.toFixed(2)} · loudest ${heard.loudest.toFixed(2)} · ${speech}`}
+    </Text>
+  );
 }
 
 /**
@@ -65,7 +73,6 @@ function describeHeard({ level, loudest }: { level: number; loudest: number }): 
 export function SampleScreen({ onLeave }: SampleScreenProps) {
   const { voice, problem } = useSampleVoice();
   const hologramSize = useHologramSize();
-  const heard = useHeardLevel(voice);
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -73,9 +80,7 @@ export function SampleScreen({ onLeave }: SampleScreenProps) {
       <Text style={styles.status} testID="sample-status">
         {describeListening(voice.listening, problem)}
       </Text>
-      <Text style={styles.heard} testID="sample-heard">
-        {describeHeard(heard)}
-      </Text>
+      <HeardLevel voice={voice} />
 
       <View
         accessible
