@@ -339,7 +339,7 @@ export function bodyTurnRadians(time: number) {
  * speech from 0.15 (see SPEECH_LEVEL), so it answers "is he talking" cleanly; the rest follows
  * loudness so a sentence still breathes rather than switching on and staying flat.
  */
-export const GLOW_WITH_VOICE = 1.6;
+export const GLOW_WITH_VOICE = 1.1;
 /** How much of the glow answers "is he talking at all" rather than "how loudly". */
 const GLOW_FROM_ENVELOPE = 0.65;
 /**
@@ -2221,8 +2221,8 @@ type DetachedPath = ReturnType<PathBuilder['detach']>;
  * than the drawing it saves. Measured, not assumed; the same reason `drawPoints` lost to plain
  * paths earlier.
  */
-const HALO_RINGS = 3;
-const HALO_RING_SHARE = 0.39;
+const HALO_RINGS = 2;
+const HALO_RING_SHARE = 0.52;
 
 function drawParticleHalo(
   canvas: HologramCanvas,
@@ -2265,12 +2265,12 @@ function drawBody(canvas: HologramCanvas, resources: Resources, scene: Scene, st
     // as the mid tier's because it is the most numerous and the most spread out, so it is the
     // one that lights the bare fill between the clumps; it is the faintest for the same reason.
     const dimPath = builders[group * 3].detach();
-    drawParticleHalo(canvas, resources, dimPath, 0.185, 0.36, state.glowGain);
+    drawParticleHalo(canvas, resources, dimPath, 0.115, 0.30, state.glowGain);
     resources.bodyDimStroke.setStrokeWidth(0.014);
     resources.bodyDimStroke.setAlphaf(0.62);
     canvas.drawPath(dimPath, resources.bodyDimStroke);
     const midPath = builders[group * 3 + 1].detach();
-    drawParticleHalo(canvas, resources, midPath, 0.19, 0.42, state.glowGain);
+    drawParticleHalo(canvas, resources, midPath, 0.12, 0.34, state.glowGain);
     resources.bodyMidStroke.setStrokeWidth(0.0155);
     resources.bodyMidStroke.setAlphaf(0.85);
     canvas.drawPath(midPath, resources.bodyMidStroke);
@@ -2290,7 +2290,7 @@ function drawBodyHighlights(canvas: HologramCanvas, resources: Resources, state:
         canvas.save();
         canvas.rotate(state.shellTurn, CORE_X, CORE_Y);
       }
-      drawParticleHalo(canvas, resources, path, 0.18, 0.48, state.glowGain);
+      drawParticleHalo(canvas, resources, path, 0.115, 0.38, state.glowGain);
       resources.bodyBrightStroke.setStrokeWidth(0.0165);
       resources.bodyBrightStroke.setAlphaf(1 - 0.25 * state.agitation);
       canvas.drawPath(path, resources.bodyBrightStroke);
