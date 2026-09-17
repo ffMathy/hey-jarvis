@@ -2,12 +2,15 @@
 
 name: Play internal testing
 
-# Builds the phone *and* watch bundles and uploads both into one internal testing release.
+# Builds the phone *and* watch bundles and publishes them as two releases on two tracks.
 #
-# Two artifacts rather than one, because that is how Play delivers a watch app: the two share a
-# package name and an upload key and differ by a version code and a `uses-feature` — see
-# `docs/play-store.md`. A release with only the phone bundle in it puts Jarvis on the phone and
-# nothing on the watch, which is the whole reason any of this exists.
+# Two artifacts, because the two apps share a package name and an upload key and differ by a version
+# code and a `uses-feature` — see `docs/play-store.md`. Publishing only the phone puts Jarvis on the
+# phone and nothing on the watch, which is the whole reason any of this exists.
+#
+# Two *releases*, because Play stopped accepting a watch artifact on a mobile track: Wear OS has had
+# tracks of its own since March 2023. Sharing one release also meant the watch being refused took the
+# phone's release down with it. See the note above the publish steps.
 #
 # Internal testing rather than a public release: it goes to a named list of up to a hundred testers,
 # is available within minutes rather than after a review, and never appears in search. It is also
@@ -44,6 +47,14 @@ on:
         options:
           - internal
           - alpha
+        required: true
+      wearTrack:
+        description: 'Which Wear OS track the watch bundle goes to — Play keeps these separate from the phone'
+        type: choice
+        default: 'wear:qa'
+        options:
+          - 'wear:qa'
+          - 'wear:beta'
         required: true
       status:
         description: 'draft leaves it for you to release by hand; completed sends it to testers'
@@ -170,18 +181,43 @@ jobs:
           bash ./.scripts/run-with-env.sh mobile/op.publish.env \
             bash -c 'printf "%s" "$HEY_JARVIS_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON" > play-publisher.json'
 
-      - name: Publish to Play
-        id: publish
+      # **The phone goes first, and on its own.** These used to be one upload of two bundles into one
+      # release, which is how Play delivered a watch app for years. It is not how Play does it now:
+      # since March 2023 Wear OS has tracks of its own, and the mobile track refuses a watch artifact
+      # outright — "requires the Wear OS system feature android.hardware.type.watch. To publish this
+      # release on the current track, remove this artifact."
+      #
+      # Sharing a release also meant sharing a fate. Both bundles uploaded, the commit was refused
+      # over the watch, and the phone did not publish either — so a watch that Play would not take
+      # blocked the phone app entirely. Two releases on two tracks cannot do that to each other.
+      - name: Publish the phone to Play
+        id: publish-phone
         uses: r0adkll/upload-google-play@v1.1.3
         with:
           serviceAccountJson: play-publisher.json
           packageName: com.ffmathy.heyjarvis
-          # Both, comma separated, into one release. Play works out which device gets which from
-          # the `uses-feature android.hardware.type.watch` in the watch bundle's manifest.
-          releaseFiles: dist/mobile-aab/jarvis.aab,dist/watch-aab/jarvis.aab
+          releaseFiles: dist/mobile-aab/jarvis.aab
           # The inputs only exist when this was started by hand. A pull request push takes the
           # defaults, which are the ones worth having automatically: straight to the testers.
           track: ${{ inputs.track || 'internal' }}
+          status: ${{ inputs.status || 'completed' }}
+
+      # And the watch to the Wear OS track of the same name. `wear:qa` is the internal-testing one:
+      # Google computes a form factor's track as `"[prefix]:defaultTrackName"` and gives
+      # `"wear:production"`, `"wear:beta"` and `"wear:qa"` as the Wear OS set.
+      #
+      # **This step fails until the app is opted in to the Wear OS form factor** — Test and release →
+      # Advanced settings → Form factors → Add form factor → Wear OS. That is a Console setting no
+      # workflow can perform, and the track does not exist until it is done. The phone above has
+      # already published by then, which is the point of the split.
+      - name: Publish the watch to Play
+        id: publish-watch
+        uses: r0adkll/upload-google-play@v1.1.3
+        with:
+          serviceAccountJson: play-publisher.json
+          packageName: com.ffmathy.heyjarvis
+          releaseFiles: dist/watch-aab/jarvis.aab
+          track: ${{ inputs.wearTrack || 'wear:qa' }}
           status: ${{ inputs.status || 'completed' }}
 
       # Both bundles upload and then the commit is refused, which Play reports either as the Wear OS
@@ -189,12 +225,15 @@ jobs:
       # add nothing, because that is the entire message Google sends it. So say here what it has
       # always been, rather than leaving the next person to work it out from the run history again.
       - name: Explain a failed publish
-        if: failure() && steps.publish.outcome == 'failure'
+        if: failure() && (steps.publish-phone.outcome == 'failure' || steps.publish-watch.outcome == 'failure')
         run: |
           echo "::notice title=Publishing failed::Both bundles are kept as the jarvis-${{ github.run_number }} artifact, so nothing needs rebuilding."
-          echo "If the error names 'android.hardware.type.watch', or is the bare 'Internal error encountered',"
-          echo "Play refused the WATCH artifact — and both bundles go up as ONE release, so that fails the phone's release too."
-          echo "The fix is a Play Console setting, not a code change:"
+          if [ "${{ steps.publish-phone.outcome }}" = 'success' ]; then
+            echo "The PHONE published. Only the watch failed, and it cannot affect the phone's release."
+          fi
+          echo "If the watch step failed with 'Track not found', or names 'android.hardware.type.watch',"
+          echo "the app is not opted in to the Wear OS form factor yet. That is a Play Console setting,"
+          echo "not a code change, and the wear track does not exist until it is done:"
           echo "  Test and release -> Advanced settings -> Form factors -> Add form factor -> Wear OS"
           echo "then agree to the Wear OS review policies. See docs/play-store.md section 3 and section 8."
 
