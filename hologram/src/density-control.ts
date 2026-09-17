@@ -33,11 +33,11 @@ export const TARGET_FRAMES_PER_SECOND = 38;
  *
  * A share, and it therefore has to move whenever `PARTICLE_COUNT` does. What matters is the count
  * it works out to — about 240 fragments, which is where the swarm stops reading as a swarm — and
- * not the fraction. It was a fifth of a thousand; the ceiling is now three thousand, and a fifth of
- * that would be a floor of six hundred, three times higher than any phone was ever held to. A phone
+ * not the fraction. It was a fifth of a thousand; the ceiling is five thousand now, and a fifth of
+ * that would be a floor of a thousand, five times higher than any phone was ever held to. A phone
  * that could manage three hundred would be pinned above what it can draw and stutter for ever.
  */
-export const FEWEST_PARTICLES = 0.08;
+export const FEWEST_PARTICLES = 0.05;
 
 /**
  * How wide a band around the target counts as arrived, as a share of it.
@@ -63,10 +63,15 @@ const INTEGRAL_GAIN = 0.35;
  *
  * The rising rate is what the climb actually runs at — see `steerDensity`, where the proportional
  * term is deliberately not used on that side — so this is also how long the entrance takes: from
- * a fifth of the particles to all of them in under three seconds.
+ * {@link FEWEST_PARTICLES} to nearly all of them in about three seconds.
+ *
+ * **It has to move when the floor does**, which is not obvious and cost a failing test to notice.
+ * The climb covers a distance measured in shares, so starting from a twentieth rather than a fifth
+ * is a longer way to go at the same speed, and the entrance — the one part of this anybody watches
+ * — got slower every time the ceiling went up. Raised from 0.3 to keep it where it was.
  */
 const FALLING_PER_SECOND = 0.9;
-const RISING_PER_SECOND = 0.3;
+const RISING_PER_SECOND = 0.35;
 
 /** How much accumulated error the integral may carry, so a long slow patch cannot wind it up. */
 const CARRIED_LIMIT = 0.5;

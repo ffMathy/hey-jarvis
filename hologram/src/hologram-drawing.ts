@@ -503,9 +503,13 @@ const FRAGMENT_CODE_GLYPH_STEP = 12;
  * did, drawing 988 of the thousand while pinned at the cap, which was sixty at the time. The cap is
  * forty now, so there is more room again rather than less.
  *
+ * What it costs on every phone, fast or slow, is the scene: this many fragments times
+ * {@link BODY_STRIDE} numbers, built once and serialised once into the worklet runtime when the
+ * view mounts. That is the only part of raising it that nobody can opt out of.
+ *
  * {@link FEWEST_PARTICLES} in `density-control.ts` is a share of this, so it moves when this does.
  */
-export const PARTICLE_COUNT = 3000;
+export const PARTICLE_COUNT = 5000;
 
 /**
  * Turns a fragment's id into where it sits in the thinning, 0-1.
