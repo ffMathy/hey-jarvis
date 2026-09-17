@@ -16,21 +16,35 @@ const READ_INTERVAL_MS = 500;
  * the re-render stops at this line, which is how the microphone readout had to be arranged for the
  * same reason and why the lesson is worth repeating in the file rather than in a commit message.
  *
- * It says what is achieved, not what is asked for. The drawing is capped at thirty
- * (`MINIMUM_FRAME_SECONDS`), so thirty means the phone is keeping up and anything less is what it
- * managed.
+ * It says what is achieved, not what is asked for: the cap is sixty (`MINIMUM_FRAME_SECONDS`), so
+ * sixty means the phone is keeping up and anything less is what it managed.
+ *
+ * Beside it is how long *building* one picture takes, which is the half of a frame that is
+ * JavaScript. Subtract it from the frame's own budget and the rest is Skia painting. That split is
+ * the whole reason this is on screen: the same drawing runs at 58 frames a second in this phone's
+ * browser and 11 in the app, and no measurement that can be taken on a desktop explains the
+ * difference — so the phone has to be the instrument.
  */
-export function FrameRate({ frameRate }: { frameRate: SharedValue<number> }) {
-  const [shown, setShown] = useState(0);
+export function FrameRate({
+  frameRate,
+  buildMilliseconds,
+}: {
+  frameRate: SharedValue<number>;
+  buildMilliseconds: SharedValue<number>;
+}) {
+  const [shown, setShown] = useState({ rate: 0, build: 0 });
 
   useEffect(() => {
-    const timer = setInterval(() => setShown(frameRate.value), READ_INTERVAL_MS);
+    const timer = setInterval(
+      () => setShown({ rate: frameRate.value, build: buildMilliseconds.value }),
+      READ_INTERVAL_MS,
+    );
     return () => clearInterval(timer);
-  }, [frameRate]);
+  }, [frameRate, buildMilliseconds]);
 
   return (
     <Text accessibilityElementsHidden pointerEvents="none" style={styles.readout} testID="frame-rate">
-      {`${Math.round(shown)} fps`}
+      {`${Math.round(shown.rate)} fps · build ${shown.build.toFixed(1)} ms`}
     </Text>
   );
 }

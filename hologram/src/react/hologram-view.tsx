@@ -58,6 +58,17 @@ export interface JarvisHologramProps {
    * frame callback fires with the screen, so a device that cannot keep up reports what it managed.
    */
   frameRate?: SharedValue<number>;
+  /**
+   * Somewhere to put how long *building* one picture takes, in milliseconds, if anyone is watching.
+   *
+   * The companion to {@link frameRate}, and together they say where a slow frame goes. A frame has
+   * two halves: this one, which is JavaScript on the UI thread, and painting the picture, which is
+   * Skia. Headlessly they are 3.7 ms and 17 ms — but headlessly is a desktop with a JIT and a
+   * software rasteriser, and the phone is neither. On a phone the same drawing runs at 58 frames a
+   * second in Chrome and 11 in the app, so something in the native path costs far more than
+   * anything that can be measured here, and this is the only instrument that can say which half.
+   */
+  buildMilliseconds?: SharedValue<number>;
 }
 
 /** How long it takes to fall into a thought, and to come out of one. */
@@ -139,6 +150,7 @@ function JarvisHologramView({
   thinking = false,
   leaving = false,
   frameRate,
+  buildMilliseconds,
 }: JarvisHologramProps) {
   const { listening, speaking, getVolume, getSpectrum } = voice;
   const isForeground = useIsForeground();
@@ -285,7 +297,10 @@ function JarvisHologramView({
     clock.setActive(isForeground);
   }, [clock, isForeground, frame]);
 
+  // Building the picture, timed on the thread that does it. `performance.now` exists in the UI
+  // runtime; the cost of asking it twice is nothing against what it is measuring.
   const picture = useDerivedValue(() => {
+    const startedAt = buildMilliseconds === undefined ? 0 : performance.now();
     // Read once: this is a copy out of the UI runtime, and the drawing wants nine
     // fields of it.
     const current = frame.value;
@@ -315,7 +330,12 @@ function JarvisHologramView({
       scene,
       resources,
     );
-    return recorder.finishRecordingAsPicture();
+    const built = recorder.finishRecordingAsPicture();
+    if (buildMilliseconds !== undefined) {
+      // Eased, because one frame's figure jumps about and what is wanted is the shape of it.
+      buildMilliseconds.value = buildMilliseconds.value * 0.9 + (performance.now() - startedAt) * 0.1;
+    }
+    return built;
   });
 
   // Laid out small and scaled up: see DRAWN_RESOLUTION. The scale is about the canvas's own

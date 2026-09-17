@@ -58,6 +58,7 @@ export function SampleScreen({ onLeave }: SampleScreenProps) {
   const isForeground = useIsForeground();
   // Filled in on the UI thread by the hologram, read twice a second by the readout in the corner.
   const frameRate = useSharedValue(0);
+  const buildMilliseconds = useSharedValue(0);
 
   /**
    * Starts the way out, and finishes it once Jarvis has gone.
@@ -138,10 +139,11 @@ export function SampleScreen({ onLeave }: SampleScreenProps) {
           thinking={mode === 'thinking'}
           leaving={leaving}
           frameRate={frameRate}
+          buildMilliseconds={buildMilliseconds}
         />
       </Pressable>
       <ModeToast mode={mode} />
-      <FrameRate frameRate={frameRate} />
+      <FrameRate frameRate={frameRate} buildMilliseconds={buildMilliseconds} />
     </Pressable>
   );
 }
