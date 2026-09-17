@@ -83,22 +83,27 @@ const THOUGHT_FADE_SECONDS = 0.45;
 const DRAWN_RESOLUTION = 0.45;
 
 /**
- * The shortest gap between two drawn frames. Thirty a second, not sixty.
+ * The shortest gap between two drawn frames: sixty a second at most.
  *
- * Both halves of a frame — building the picture and painting it — are paid once per *drawn* frame,
- * so drawing every other one halves the lot. Nothing else here is worth as much for as little.
+ * A sixty-fourth rather than a sixtieth so the arithmetic lands on the right side of a real
+ * screen's timing. At 60 Hz frames arrive every 16.7 ms, which clears 15.6 and draws every one; at
+ * 120 Hz they arrive every 8.3 ms, two of which clear it and draw every other one. Either way it
+ * is sixty, and a 120 Hz phone does not quietly pay double.
  *
- * It suits what Jarvis became. The fragments now stay lit for 0.6 to 1.3 seconds, the sphere turns
- * once every twenty-four, and the user asked for all of that: "calmer, but still show activity,
- * reflecting Jarvis' overwhelming calm and compute power". There is nothing in the drawing that
- * moves fast enough for sixty to tell apart from thirty — and a steady thirty reads better than a
- * fifty that keeps missing.
+ * It was a thirty-second — thirty a second — for a day, and that was the single cheapest thing
+ * ever done to this drawing, because both halves of a frame are paid once per *drawn* frame. The
+ * user asked for sixty back, so sixty it is, and the honest note is that this doubles the work
+ * against that version.
  *
- * The clock is not slowed with it. Time keeps adding up every frame the system offers and the
- * whole of it is handed over when a picture is finally built, so the motion is the same motion,
- * sampled half as often.
+ * There is a second reason it is worth having it here rather than at thirty: capped at thirty, the
+ * readout in the corner cannot tell "comfortably fast" from "only just managing". At sixty it
+ * reports what the phone can actually do, which is what makes it a measurement.
+ *
+ * The clock is not tied to it either way. Time keeps adding up every frame the screen offers and
+ * the whole of it is handed over when a picture is built, so lowering this changes how often
+ * Jarvis is drawn and never how fast he moves.
  */
-const MINIMUM_FRAME_SECONDS = 1 / 32;
+const MINIMUM_FRAME_SECONDS = 1 / 64;
 
 /** How long the frame rate is averaged over before it is reported. Long enough not to flicker. */
 const FRAME_RATE_OVER_SECONDS = 0.5;
