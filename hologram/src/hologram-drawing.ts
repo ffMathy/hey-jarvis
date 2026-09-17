@@ -717,7 +717,10 @@ function pickGlyphAndLength(random: Random, x: number, y: number, radius: number
 function buildBody(random: Random) {
   const body: number[] = [];
   const shape = [0, 0];
-  const fragmentCount = 1000;
+  // DELIBERATELY A QUARTER, AS A MEASUREMENT. See the note on HALO_RINGS: this build exists to
+  // find out whether the phone's cost is geometry rather than pixels, and the fastest way to ask
+  // is to take most of the geometry away. It goes back to 1000 either way.
+  const fragmentCount = 250;
   while (body.length < fragmentCount * BODY_STRIDE) {
     // the body stops just inside the rim layer, which rolls over it
     const radius = Math.sqrt(random()) * 0.94;
@@ -770,7 +773,7 @@ function buildBody(random: Random) {
  */
 function buildStream(random: Random) {
   const stream: number[] = [];
-  for (let i = 0; i < 168; i++) {
+  for (let i = 0; i < 42; i++) {
     const shell = 0.42 + random() * 0.5;
     const latitude = Math.asin(0.1 + random() * 0.72);
     const longitude = random() * Math.PI * 2;
@@ -2204,7 +2207,25 @@ type DetachedPath = ReturnType<typeof pathOf>;
  * than the drawing it saves. Measured, not assumed; the same reason `drawPoints` lost to plain
  * paths earlier.
  */
-const HALO_RINGS = 2;
+/**
+ * ONE RING, AND IT IS A MEASUREMENT RATHER THAN A DESIGN.
+ *
+ * The phone draws this at 8 frames a second and the same picture runs at 58 in its own browser.
+ * The build step is 2.6 ms of the 120, so it is not JavaScript. And it does not change with the
+ * size of the canvas — the conversation screen's much smaller sphere is exactly as slow — which
+ * rules out fill rate, the thing five rounds of benchmarks measured, because every one of those
+ * benchmarks was a CPU scanline rasteriser where cost *is* pixels.
+ *
+ * What is left is geometry. A GPU pays per path segment, and this drawing hands it about 1300
+ * stroked sub-paths that are different every frame, then strokes every one of them again for each
+ * halo ring. Two rings means three passes over the same 1300.
+ *
+ * So this build has a quarter of the fragments and one ring — a fraction of the geometry, the same
+ * pixels. If that is fast, the cost is geometry and the density comes back through something that
+ * does not tessellate per frame. If it is still 8, geometry is not it either and the search moves
+ * to how React Native Skia gets a picture onto the screen.
+ */
+const HALO_RINGS = 1;
 const HALO_RING_SHARE = 0.52;
 
 function drawParticleHalo(
