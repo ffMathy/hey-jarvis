@@ -44,11 +44,19 @@ puts the app on a paired watch.
 
 ### Signing up again, in the browser
 
-1. **Sign out, and sign in as a Google account that has never held a developer account.** This is
-   the one step that cannot be undone: the closed account cannot be re-registered, and Google's
-   answer is a new account under a different email address. Pay the fee on the wrong account and it
-   is gone. A fresh account made for the purpose is tidier than reusing a personal one, and costs
-   nothing extra.
+1. **Probably sign in as a different Google account — but check first, because it is free to.**
+   Google's own page on
+   [closure of inactive accounts](https://support.google.com/googleplay/android-developer/answer/11605267)
+   says to create a new account and says nothing at all about which Google account to create it on.
+   Third-party guides say a new email is required; they are not Google. What *is* visible is that
+   the old account still opens a Play Console — the one showing "Account closed" — so there is
+   already a developer account attached to it, and the sign-up flow has nowhere to put a second one.
+
+   **The US$25 is charged at the end of sign-up, not the start**, so walking the flow while signed
+   in as the old account costs nothing and settles it: either it offers to register, or it puts you
+   back in the closed console. Do that before deciding. If it refuses, use a Google account that has
+   never held a developer account — a fresh one made for the purpose is tidier than a personal one
+   anyway, and the account that owns the app does not have to be the account on your phone.
 2. Go to **<https://play.google.com/console/signup>**.
 3. Choose **Personal**, not Organization. An organization account now needs a nine-digit
    [D-U-N-S number](https://support.google.com/googleplay/android-developer/answer/10841920) from
