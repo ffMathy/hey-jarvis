@@ -199,10 +199,20 @@ Form factors → Add form factor → Wear OS**, then agree to the Wear OS review
 the step that puts the watch app through its own review, which is separate from the phone's.
 
 Do not read this as a watch-only concern. Both bundles go up in **one release**, so Play refusing the
-watch artifact fails the whole commit — the phone app does not publish either, and the only thing
-said about it is `Internal error encountered` after both files have uploaded successfully. If the
-publish workflow started failing at exactly the point the watch joined it, this is the first thing
-to check.
+watch artifact fails the whole commit — the phone app does not publish either. Until the opt-in is
+done the workflow fails at *Committing the Edit*, after both files have uploaded successfully, with:
+
+```
+The APK or bundle with version code <odd number> requires the Wear OS system feature
+android.hardware.type.watch. To publish this release on the current track, remove this artifact.
+```
+
+The odd version code is the watch's — see §7. "Remove this artifact" is Play suggesting you publish
+the phone alone; adding the form factor is the other way of satisfying it, and the one worth doing.
+
+Play sometimes says `Internal error encountered` instead, which is the same refusal with none of the
+detail. If the publish workflow started failing at exactly the point the watch joined it, this is the
+first thing to check either way.
 
 Finally, on **Testing → Internal testing**, create a tester list and add the addresses that should
 get it — including the Google account on the phone that is paired to the watch.
@@ -363,6 +373,7 @@ Worth knowing, because it is the part that looks like magic:
 | `You uploaded an APK or Android App Bundle signed with a key that is also used to sign APKs delivered to users` | the debug key got in, which means the Gradle property was missing and the build silently fell back |
 | `keystore did not open` from the build script | the base64 was wrapped. Re-run it with `-w 0` |
 | The bundle's certificate says `CN=Android Debug` | the four Gradle properties never arrived, so the build fell back to the debug key. Check the four variables are set in the shell that runs it |
-| `Internal error encountered` from **Publish to Play**, after both bundles say they uploaded | the commit was refused, and the release fails as a whole. Almost always the Wear OS form factor has not been added in the Console — see §3. The bundles themselves are fine and are kept as a build artifact, so nothing has to be rebuilt |
+| `requires the Wear OS system feature android.hardware.type.watch. To publish this release on the current track, remove this artifact` | the Wear OS form factor has not been added in the Console — see §3. Both bundles go up as one release, so this fails the phone's release too. The bundles are fine and are kept as a build artifact, so nothing has to be rebuilt |
+| `Internal error encountered` from **Publish to Play**, after both bundles say they uploaded | the same refusal as the row above, with none of the detail. Play gives one or the other. Check the form factor first |
 | The watch app does not appear on the watch | the Wear OS form factor was never added under Test and release → Advanced settings, or the phone's Google account is not on the tester list |
 | `Version code N has already been used` on the *watch* bundle | both apps derive their version code from the same run number — the phone takes twice it, the watch one more — so this means one was uploaded outside the workflow |

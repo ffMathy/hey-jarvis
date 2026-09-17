@@ -184,18 +184,19 @@ jobs:
           track: ${{ inputs.track || 'internal' }}
           status: ${{ inputs.status || 'completed' }}
 
-      # Play's commit failures are famously uninformative — both bundles upload, and then the whole
-      # edit dies with nothing but "Internal error encountered". The action has no more to tell,
-      # because that is the entire message Google sends. So say here what it has almost always been,
-      # rather than leaving the next person to work it out from the run history a second time.
+      # Both bundles upload and then the commit is refused, which Play reports either as the Wear OS
+      # message below or — with no detail at all — as "Internal error encountered". The action can
+      # add nothing, because that is the entire message Google sends it. So say here what it has
+      # always been, rather than leaving the next person to work it out from the run history again.
       - name: Explain a failed publish
         if: failure() && steps.publish.outcome == 'failure'
         run: |
           echo "::notice title=Publishing failed::Both bundles are kept as the jarvis-${{ github.run_number }} artifact, so nothing needs rebuilding."
-          echo "'Internal error encountered' after a successful upload means Play refused to commit the release."
-          echo "Both bundles go up as ONE release, so the watch artifact being refused fails the phone's release too."
-          echo "First thing to check: Play Console -> Test and release -> Advanced settings -> Form factors -> Add form factor -> Wear OS."
-          echo "See docs/play-store.md section 3 and section 8."
+          echo "If the error names 'android.hardware.type.watch', or is the bare 'Internal error encountered',"
+          echo "Play refused the WATCH artifact — and both bundles go up as ONE release, so that fails the phone's release too."
+          echo "The fix is a Play Console setting, not a code change:"
+          echo "  Test and release -> Advanced settings -> Form factors -> Add form factor -> Wear OS"
+          echo "then agree to the Wear OS review policies. See docs/play-store.md section 3 and section 8."
 
       # However the upload went, and even if the job was cancelled part way through it.
       - name: Shred the publisher account
