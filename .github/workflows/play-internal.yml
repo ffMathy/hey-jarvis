@@ -51,9 +51,9 @@ on:
       wearTrack:
         description: 'Which Wear OS track the watch bundle goes to — Play keeps these separate from the phone'
         type: choice
-        default: 'wear:qa'
+        default: 'wear:internal'
         options:
-          - 'wear:qa'
+          - 'wear:internal'
           - 'wear:beta'
         required: true
       status:
@@ -202,14 +202,19 @@ jobs:
           track: ${{ inputs.track || 'internal' }}
           status: ${{ inputs.status || 'completed' }}
 
-      # And the watch to the Wear OS track of the same name. `wear:qa` is the internal-testing one:
-      # Google computes a form factor's track as `"[prefix]:defaultTrackName"` and gives
-      # `"wear:production"`, `"wear:beta"` and `"wear:qa"` as the Wear OS set.
+      # And the watch to the Wear OS track of the same name.
       #
-      # **This step fails until the app is opted in to the Wear OS form factor** — Test and release →
-      # Advanced settings → Form factors → Add form factor → Wear OS. That is a Console setting no
-      # workflow can perform, and the track does not exist until it is done. The phone above has
-      # already published by then, which is the point of the split.
+      # `wear:internal` is not a guess, and it is not what Google documents. The tracks page says a
+      # form factor's track is `"[prefix]:defaultTrackName"` and gives `"wear:production"`,
+      # `"wear:beta"` and **`"wear:qa"`** as the Wear OS set — and `wear:qa` does not exist. The API
+      # itself is the authority, and when handed a name it does not know it lists the ones it does:
+      #
+      #   Track "wear:qa" could not be found. Available tracks are:
+      #   production,beta,alpha,internal,wear:beta,wear:internal,wear:production
+      #
+      # Which is also how we know the Wear OS form factor is already switched on for this app: the
+      # `wear:` tracks would not be there otherwise. If this step ever fails with "could not be
+      # found" again, read the list in the error rather than the documentation.
       - name: Publish the watch to Play
         id: publish-watch
         uses: r0adkll/upload-google-play@v1.1.3
@@ -217,7 +222,7 @@ jobs:
           serviceAccountJson: play-publisher.json
           packageName: com.ffmathy.heyjarvis
           releaseFiles: dist/watch-aab/jarvis.aab
-          track: ${{ inputs.wearTrack || 'wear:qa' }}
+          track: ${{ inputs.wearTrack || 'wear:internal' }}
           status: ${{ inputs.status || 'completed' }}
 
       # Both bundles upload and then the commit is refused, which Play reports either as the Wear OS

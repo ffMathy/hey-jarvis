@@ -193,10 +193,12 @@ limit and fails rather than hand you one the Console would refuse.
 release, so upload `dist/mobile-aab/jarvis.aab` *and* `dist/watch-aab/jarvis.aab` through the
 Console once. Every upload after that can be the workflow.
 
-**And the watch has to be switched on — this one blocks publishing entirely.** Play does not accept
-a watch artifact until the app opts in to the form factor: **Test and release → Advanced settings →
-Form factors → Add form factor → Wear OS**, then agree to the Wear OS review policies. This is also
-the step that puts the watch app through its own review, which is separate from the phone's.
+**And the watch has to be switched on.** Play does not accept a watch artifact until the app opts in
+to the form factor: **Test and release → Advanced settings → Form factors → Add form factor →
+Wear OS**, then agree to the Wear OS review policies. This is also the step that puts the watch app
+through its own review, which is separate from the phone's. It is what makes the `wear:` tracks
+appear, so the quickest way to check whether it has been done is to look at the track list — see
+below.
 
 **The watch is published separately from the phone, and has to be.** Play gave Wear OS tracks of its
 own in March 2023, and a mobile track now refuses a watch artifact outright:
@@ -209,17 +211,27 @@ android.hardware.type.watch. To publish this release on the current track, remov
 (The odd version code is the watch's — see §7. Play sometimes says `Internal error encountered`
 instead, which is the same refusal with none of the detail.)
 
-So the workflow publishes twice: the phone bundle to `internal`, and the watch bundle to `wear:qa`.
-Google computes a form factor's track as `"[prefix]:defaultTrackName"`, which for Wear OS gives
-`wear:production`, `wear:beta` and `wear:qa` — `wear:qa` being the internal-testing one.
+So the workflow publishes twice: the phone bundle to `internal`, and the watch bundle to
+`wear:internal`.
+
+**Do not take that track name from Google's documentation, which is wrong.** The
+[tracks page](https://developers.google.com/android-publisher/tracks) says a form factor's track is
+`"[prefix]:defaultTrackName"` and offers `"wear:production"`, `"wear:beta"` and `"wear:qa"` as the
+Wear OS set — and `wear:qa` does not exist. The API is the authority, and it answers the question
+itself when given a name it does not know:
+
+```
+Track "wear:qa" could not be found. Available tracks are:
+production,beta,alpha,internal,wear:beta,wear:internal,wear:production
+```
+
+That list is also how you can tell the Wear OS form factor is switched on: the `wear:` tracks are not
+there otherwise.
 
 That split is worth more than correctness. It used to be one release holding both bundles, which
 meant one fate: the watch being refused failed the commit, and **the phone did not publish either**.
 Now a watch Play will not take cannot stop the phone app shipping. The phone step runs first for the
 same reason.
-
-Until the form factor is added, expect the *watch* step to fail and the phone step to succeed. That
-is the workflow behaving correctly, not a regression.
 
 Finally, on **Testing → Internal testing**, create a tester list and add the addresses that should
 get it — including the Google account on the phone that is paired to the watch.
@@ -333,7 +345,7 @@ CI builds both. They build **bundles**, not APKs, because Play has not accepted 
 since 2021 — an `.aab` carries every ABI and density and Play builds the APK each device downloads.
 It is also why these take longer than `build:apk`, which only ever builds `arm64-v8a`.
 
-The two go to **different tracks** — the phone to `internal`, the watch to `wear:qa` — and Play works
+The two go to **different tracks** — the phone to `internal`, the watch to `wear:internal` — and Play works
 out which device gets which. What makes them one app rather than two is that they share a package
 name (`com.ffmathy.heyjarvis`) and an upload key; what keeps them apart is the
 `uses-feature android.hardware.type.watch` the watch declares, and a version code that must be
@@ -381,8 +393,8 @@ Worth knowing, because it is the part that looks like magic:
 | `You uploaded an APK or Android App Bundle signed with a key that is also used to sign APKs delivered to users` | the debug key got in, which means the Gradle property was missing and the build silently fell back |
 | `keystore did not open` from the build script | the base64 was wrapped. Re-run it with `-w 0` |
 | The bundle's certificate says `CN=Android Debug` | the four Gradle properties never arrived, so the build fell back to the debug key. Check the four variables are set in the shell that runs it |
-| `requires the Wear OS system feature android.hardware.type.watch. To publish this release on the current track, remove this artifact` | a watch bundle was sent to a *mobile* track. Play has not allowed that since March 2023 — the watch goes to `wear:qa`. See §3 |
+| `requires the Wear OS system feature android.hardware.type.watch. To publish this release on the current track, remove this artifact` | a watch bundle was sent to a *mobile* track. Play has not allowed that since March 2023 — the watch goes to `wear:internal`. See §3 |
 | `Internal error encountered` after a bundle says it uploaded | the same refusal as the row above, with none of the detail. Play gives one or the other |
-| `Track not found` on **Publish the watch to Play** | the Wear OS form factor has not been added in the Console, so the wear tracks do not exist yet — see §3. The phone will have published regardless, which is why the two are separate steps |
+| `Track "…" could not be found. Available tracks are: …` on **Publish the watch to Play** | read the list in the error rather than Google's documentation, which names a `wear:qa` track that does not exist. If no `wear:` track is listed at all, the Wear OS form factor has not been added — see §3. The phone will have published regardless, which is why the two are separate steps |
 | The watch app does not appear on the watch | the Wear OS form factor was never added under Test and release → Advanced settings, or the phone's Google account is not on the tester list |
 | `Version code N has already been used` on the *watch* bundle | both apps derive their version code from the same run number — the phone takes twice it, the watch one more — so this means one was uploaded outside the workflow |
