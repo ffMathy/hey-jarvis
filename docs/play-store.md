@@ -42,6 +42,33 @@ before it can apply for *production* access —
 Internal testing works immediately, and internal testing is all this repository wants: it is what
 puts the app on a paired watch.
 
+### Signing up again, in the browser
+
+1. **Sign out, and sign in as a Google account that has never held a developer account.** This is
+   the one step that cannot be undone: the closed account cannot be re-registered, and Google's
+   answer is a new account under a different email address. Pay the fee on the wrong account and it
+   is gone. A fresh account made for the purpose is tidier than reusing a personal one, and costs
+   nothing extra.
+2. Go to **<https://play.google.com/console/signup>**.
+3. Choose **Personal**, not Organization. An organization account now needs a nine-digit
+   [D-U-N-S number](https://support.google.com/googleplay/android-developer/answer/10841920) from
+   Dun & Bradstreet and possibly company paperwork on top, which is a great deal of friction for
+   something that is going to have one tester.
+4. Accept the Developer Distribution Agreement and pay the **US$25** one-time fee. The card has to
+   be in your own legal name — it is part of how the identity check works, not just a payment.
+5. Complete identity verification: expect a **government ID and a card under the same legal name**,
+   through a Google payments profile. This is the part that takes days.
+6. **Verify a device.** Since 2024 a new account also has to prove access to an Android device
+   through the Play Console app, so install that on the Pixel and sign in as the new developer
+   account when asked.
+7. The moment the console opens, go to **Account details** and verify the contact email and phone.
+   See below for why that is not optional.
+
+> **The developer account does not have to be the account on your phone.** Whichever Google account
+> you register with owns the app and invites the service account; the account on the phone paired to
+> the watch just needs to be on the internal testing tester list (§3). They can be the same account
+> or not, and there is no advantage to their being the same.
+
 ### Then do not let it happen again
 
 [The closure criteria](https://support.google.com/googleplay/android-developer/answer/11605267) are
