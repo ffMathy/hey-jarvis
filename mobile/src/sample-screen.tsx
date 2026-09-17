@@ -1,16 +1,17 @@
 import { LEAVING_SECONDS, useIsForeground } from 'hologram/react/lifecycle';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { BackHandler, Platform, Pressable, StyleSheet } from 'react-native';
+import { BackHandler, Platform, Pressable, useWindowDimensions } from 'react-native';
 import { useSharedValue } from 'react-native-reanimated';
 import { dismissAssistantWindow } from '../modules/jarvis-assistant';
 import { FrameRate } from './frame-rate';
-import { useWholeScreenHologramSize } from './hologram-size';
 import { JarvisHologram } from './jarvis-hologram';
 import { ModeToast } from './mode-toast';
 import { moodOf, nextSampleMode, type SampleMode } from './sample-mode';
+import { SampleSheet, SHEET_SHARE } from './sample-sheet';
 import { useSampleVoice } from './sample-voice';
 import { useSimulatedVoice } from './simulated-voice';
 import { QUIETEST_SPEECH_HERE } from './speech-floor';
+import { theme } from './theme';
 
 interface SampleScreenProps {
   onLeave: () => void;
@@ -23,10 +24,12 @@ interface SampleScreenProps {
  * really follows a voice — without an ElevenLabs account. Nothing leaves the device: no
  * conversation is started and no audio is kept.
  *
- * Drawn as a sheet over whatever is behind the app rather than as a screen of its own. Summoned by
- * the assistant gesture, that is the live screen underneath, drawn by the system into the
- * assistant's own window; opened as an app, it is the app's see-through window
- * (`withTransparentWindow` in `app.config.ts`) over the wallpaper.
+ * Drawn in a solid sheet that slides up from the bottom, over whatever is behind the app —
+ * summoned by the assistant gesture, that is the live screen underneath.
+ *
+ * **Jarvis is not drawn until the sheet has stopped moving**, which is a performance decision
+ * before it is a flourish: see `sample-sheet.tsx`. It happens to be the right flourish too. The
+ * sheet arrives, and then he forms inside it, which is what his materialisation was always for.
  *
  * **Jarvis and nothing else.** There is no title, no status line, no microphone readout and no way
  * out but tapping beside him — the user asked for every word gone, and an assistant that hovers
@@ -51,9 +54,16 @@ const MODE_LABELS: Record<SampleMode, string> = {
 export function SampleScreen({ onLeave }: SampleScreenProps) {
   const [mode, setMode] = useState<SampleMode>('microphone');
   const [leaving, setLeaving] = useState(false);
-  const { voice: heard } = useSampleVoice(mode === 'microphone' && !leaving);
-  const imagined = useSimulatedVoice(moodOf(mode));
-  const hologramSize = useWholeScreenHologramSize();
+  // Nothing is drawn until the sheet has stopped moving; see `sample-sheet.tsx` for why.
+  const [settled, setSettled] = useState(false);
+  const { voice: heard } = useSampleVoice(mode === 'microphone' && settled && !leaving);
+  const imagined = useSimulatedVoice(settled ? moodOf(mode) : undefined);
+  const { height } = useWindowDimensions();
+  // The square fits inside the sheet, with room to spare. It cannot overflow it the way it
+  // overflows the screen: the sheet is solid, so a chip cut off at its edge would be a straight
+  // line across something you can see, where at the screen's edge there is nothing to compare it
+  // against.
+  const hologramSize = Math.round(height * SHEET_SHARE) - theme.spacing.large * 2;
   const going = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const isForeground = useIsForeground();
   // Filled in on the UI thread by the hologram, read twice a second by the readout in the corner.
@@ -76,11 +86,22 @@ export function SampleScreen({ onLeave }: SampleScreenProps) {
       return;
     }
     setLeaving(true);
-    going.current = setTimeout(() => {
-      if (!dismissAssistantWindow()) {
-        onLeave();
-      }
-    }, LEAVING_SECONDS * 1000);
+    // Jarvis fades first and the sheet follows him down, so the two together take longer than
+    // either; `onGone` below is what says the whole of it is over.
+    going.current = setTimeout(() => undefined, LEAVING_SECONDS * 1000);
+  }, []);
+
+  /**
+   * Everything has gone: the sheet is off the bottom of the screen and there is nothing to see.
+   *
+   * Summoned, the app *is* the assistant's window and there is nothing behind it but whatever the
+   * user was already doing, so finishing means retracting that window; opened as an app, there is
+   * a settings screen behind it to go back to.
+   */
+  const finish = useCallback(() => {
+    if (!dismissAssistantWindow()) {
+      onLeave();
+    }
   }, [onLeave]);
 
   useEffect(() => () => clearTimeout(going.current), []);
@@ -93,6 +114,7 @@ export function SampleScreen({ onLeave }: SampleScreenProps) {
       clearTimeout(going.current);
       going.current = undefined;
       setLeaving(false);
+      setSettled(false);
     }
   }, [isForeground]);
 
@@ -114,72 +136,31 @@ export function SampleScreen({ onLeave }: SampleScreenProps) {
   }, [leave]);
 
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel="Close" style={styles.scrim} onPress={leave}>
+    <SampleSheet leaving={leaving} onSettled={() => setSettled(true)} onGone={finish} onTapBeside={leave}>
       {/* Jarvis is the control. Tapping him walks the moods; tapping beside him leaves. */}
       <Pressable
         accessible
         accessibilityRole="button"
         accessibilityLabel={MODE_LABELS[mode]}
-        style={[
-          styles.jarvis,
-          {
-            width: hologramSize,
-            height: hologramSize,
-            marginLeft: -hologramSize / 2,
-            marginTop: -hologramSize / 2,
-          },
-        ]}
+        style={{ width: hologramSize, height: hologramSize }}
         onPress={() => !leaving && setMode(nextSampleMode(mode))}
         testID="hologram"
       >
-        <JarvisHologram
-          size={hologramSize}
-          voice={mode === 'microphone' ? heard : imagined}
-          quietestSpeech={QUIETEST_SPEECH_HERE}
-          thinking={mode === 'thinking'}
-          leaving={leaving}
-          frameRate={frameRate}
-          buildMilliseconds={buildMilliseconds}
-        />
+        {settled ? (
+          <JarvisHologram
+            size={hologramSize}
+            voice={mode === 'microphone' ? heard : imagined}
+            quietestSpeech={QUIETEST_SPEECH_HERE}
+            thinking={mode === 'thinking'}
+            leaving={leaving}
+            frameRate={frameRate}
+            buildMilliseconds={buildMilliseconds}
+            opaque
+          />
+        ) : null}
       </Pressable>
       <ModeToast mode={mode} />
       <FrameRate frameRate={frameRate} buildMilliseconds={buildMilliseconds} />
-    </Pressable>
+    </SampleSheet>
   );
 }
-
-const styles = StyleSheet.create({
-  /**
-   * Nothing at all between the hologram and what is behind the app.
-   *
-   * It used to be a 55% dark wash, to read the text against. That works, and it also announces
-   * itself: what was behind came through visibly dimmed, which is not what an assistant hovering
-   * over your screen should look like. Nothing needs reading against it now, and what makes the
-   * sphere carry against a bright background is its own backdrop — a radial shadow inside the
-   * drawing, so the watch and the browser get it too. See `drawBackdrop` in `hologram-drawing.ts`.
-   */
-  scrim: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'transparent',
-    // The square Jarvis is drawn in is wider than the screen, deliberately — see `CHIP_HEADROOM`.
-    // This is what keeps that from being anybody else's problem: what falls outside the screen is
-    // cut off here, which on a phone is invisible and in a browser is the difference between a
-    // page and a page with a scroll bar and a white margin down the side of it.
-    overflow: 'hidden',
-  },
-  /**
-   * Centred without taking part in the layout.
-   *
-   * Laid out in flow, a square wider than the screen pushes the page around instead of
-   * overflowing it: in a browser it blew the whole document out and left the app in the top-left
-   * corner of a white page. Absolutely placed at the middle and pulled back by half its own size,
-   * it is centred at any size at all and nothing else moves.
-   */
-  jarvis: {
-    position: 'absolute',
-    left: '50%',
-    top: '50%',
-  },
-});

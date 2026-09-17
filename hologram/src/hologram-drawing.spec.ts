@@ -509,49 +509,6 @@ describe('the hologram', () => {
     // whole square: the slowest test here by an order, and it runs past the default five seconds.
   }, 60_000);
 
-  it('carries its own shadow, so it reads against a bright screen it was summoned over', () => {
-    // Invisible to every other test here, all of which draw on black — black over black changes
-    // nothing. It matters where the sphere actually gets used: summoned, it is drawn over whatever
-    // was on screen, and over a pale home screen the warm strokes washed out into it.
-    const pale = '#8fb3ae';
-    const background = luminance(render(silence(6), mount(), pale), 0);
-    const pixels = render(silence(6), mount(), pale);
-
-    // Just outside the limb, where the shadow is still near full strength. Inside its reach, too,
-    // which is half the square — 1.43R at this SPHERE_FRACTION — so a band further out than this
-    // would be measuring the fade rather than the shadow.
-    let outside = 0;
-    let outsideCount = 0;
-    let border = 0;
-    let borderCount = 0;
-    for (let y = 0; y < SIZE; y++) {
-      for (let x = 0; x < SIZE; x++) {
-        const radius = radiusOf(x, y);
-        const here = luminance(pixels, (y * SIZE + x) * 4);
-        if (radius > 1.05 && radius < 1.25) {
-          outside += here;
-          outsideCount++;
-        }
-        // Every pixel along the square's own edge, which is where the shadow has to have reached
-        // nothing. It is not enough to check the corners: the first version of this reached wider
-        // than the square, so it was cut off in four straight lines through the middles of the
-        // sides — a visible box around Jarvis on the home screen, which is what the user saw.
-        if (x < 2 || y < 2 || x >= SIZE - 2 || y >= SIZE - 2) {
-          border += here;
-          borderCount++;
-        }
-      }
-    }
-
-    expect(outsideCount).toBeGreaterThan(0);
-    expect(borderCount).toBeGreaterThan(0);
-    // A quarter darker at least. It measures 38% darker; the bound is where it is so that a
-    // future round can soften the shadow a little without this failing, but not so far that the
-    // shadow could quietly stop doing its job.
-    expect(outside / outsideCount).toBeLessThan(background * 0.75);
-    expect(border / borderCount).toBeCloseTo(background, 0);
-  });
-
   it('thinks by sweeping a plane up through itself, which is like nothing else it does', () => {
     // The state the user asked to be "completely different". Everything else the sphere does is
     // some mixture of turning, churning and glowing; this is a plane travelling from the bottom of
@@ -586,34 +543,6 @@ describe('the hologram', () => {
 
       expect(thought).toBeLessThan(calm);
     }
-  });
-
-  it('keeps its shadow the same size however loud he gets', () => {
-    // The sphere swells with the voice; the shadow under it must not, or the whole screen breathes
-    // in and out with every syllable. Measured as how far the darkening reaches from the middle,
-    // which is the thing that would move.
-    const hologram = mount();
-    const pale = '#8fb3ae';
-    const background = luminance(render(silence(6), hologram, pale), 0);
-    const reachOf = (pixels: Uint8Array) => {
-      let furthest = 0;
-      for (let y = 0; y < SIZE; y++) {
-        for (let x = 0; x < SIZE; x++) {
-          if (luminance(pixels, (y * SIZE + x) * 4) < background * 0.9) {
-            furthest = Math.max(furthest, radiusOf(x, y));
-          }
-        }
-      }
-      return furthest;
-    };
-
-    const still = reachOf(render(silence(6), hologram, pale));
-    const shouting = reachOf(render(speech(6, 1, new Array(VOICE_BAND_COUNT).fill(0.9)), hologram, pale));
-
-    expect(still).toBeGreaterThan(1);
-    // Within a fiftieth of a radius. It is not exactly equal because the sphere's own light spills
-    // into the measurement, and that does grow with his voice.
-    expect(Math.abs(shouting - still)).toBeLessThan(0.02);
   });
 
   it('leaves by shrinking and fading, and takes his shadow with him', () => {

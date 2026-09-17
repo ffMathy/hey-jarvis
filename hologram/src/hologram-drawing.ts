@@ -413,37 +413,6 @@ const SPARKLE_TEXEL_SIZE = 0.018;
  * at 384 px — not one channel of one pixel differs, and the frame is 8% cheaper.
  */
 /**
- * The backdrop's shadow: black under the sphere, gone by the edge of the square it is drawn in.
- *
- * Jarvis is drawn over whatever the user was already looking at — a home screen, another app —
- * and on a pale one he washed out: warm amber strokes over a bright photograph read as a smudge
- * rather than as a hologram. This is a soft shadow under him, so the sphere always has something
- * dark to sit against wherever it is summoned. Asked for by the user, and their phrasing is the
- * design: "black in the center and transparent towards the edges, to help emphasize it and pop it
- * out more".
- *
- * **Its reach is not a constant, and that is the whole point.** It was 2.1 sphere radii, which at
- * this SPHERE_FRACTION is wider than the square the hologram is given — so the circle was cut off
- * by the canvas and the shadow ended in four straight edges, a visible box around Jarvis on the
- * home screen. The reach is worked out per frame instead, as exactly half the square, so the
- * shadow is the square's inscribed circle: it reaches zero precisely where it would otherwise be
- * clipped, and the corners past it are left untouched. It holds whatever the voice does to the
- * sphere's size, which is what made the old fixed reach wrong in two different ways at once.
- *
- * It is inside the arrival fade, so it comes up with him rather than appearing first as a dark
- * disc on an empty screen.
- */
-/**
- * Side of the backdrop's prebuilt ramp, in texels.
- *
- * Drawn from a texture rather than from a gradient shader, and the difference is not small: a
- * radial gradient evaluated over a circle this wide — several times the sphere's own area
- * — cost 11 ms a frame at 384 px, a 42% rise on the whole drawing, which on a phone the user had
- * already called laggy is not a trade worth making for a shadow. Sampling a small image costs
- * nothing measurable. Ninety-six texels across four radii is a change of about one alpha level per
- * two output pixels at any size a phone or a watch draws, so there is nothing to band.
- */
-/**
  * What Jarvis does while he is working rather than talking: a plane sweeps up through him.
  *
  * The user asked for a thinking state that does "something completely different", and everything
@@ -471,31 +440,6 @@ const SCAN_BRIGHT_NEARNESS = 0.55;
 /** How long the ring takes to bloom from the core to past the limb, at the end of each pass. */
 const PULSE_SECONDS = 0.55;
 
-const BACKDROP_TEXELS = 96;
-/**
- * The backdrop's darkness, as distance from its middle — 0 to 1 across its reach — paired with
- * alpha.
- *
- * It holds nearly flat out to 0.55, which covers the sphere and a little past its limb, so the
- * whole of Jarvis sits on the same dark and only what is beyond him fades. A ramp that started
- * falling at the middle left the limb half as dark as the core, and the sphere read as sitting in
- * a dip rather than on a shadow. The last stop is zero, which is what lets the circle end exactly
- * at the square's edge with nothing to see there.
- *
- * Raised from 0xcc to 0xf4 at the middle, at the user's asking: over a bright home screen the
- * lighter version left him sitting in a haze rather than on something. Under him it is now all but
- * black, which is what a hologram is supposed to be seen against.
- */
-const BACKDROP_RAMP = [0, 0xf4, 0.66, 0xe2, 0.8, 0x9a, 0.92, 0x38, 1, 0];
-/**
- * How far the shadow reaches, in sphere radii.
- *
- * Far enough to be a shadow around him rather than a disc behind him, and no further: past this it
- * is paying for pixels out where the chips fly, which nobody reads as shadow. The ramp above is in
- * fractions of *this*, and 0.66 of it is 1.05R — so the flat part covers the sphere and stops just
- * past the limb, which is the edge Jarvis actually has to read against.
- */
-const BACKDROP_REACH = 1.6;
 const LIMB_BLOOM_RADIUS = 0.995;
 const LIMB_BLOOM_BAND = 0.25;
 const LIMB_RIDGE_RADIUS = 0.955;
@@ -1357,34 +1301,6 @@ function amberHex(red: number, green: number, blue: number) {
 }
 
 /** Paints, gradient shaders, prebuilt paths and the reusable path builders. */
-/** The backdrop's alpha at `distance` from its middle, 0 at the middle to 1 at its reach. */
-function backdropAlpha(distance: number) {
-  for (let stop = 2; stop < BACKDROP_RAMP.length; stop += 2) {
-    const to = BACKDROP_RAMP[stop] ?? 1;
-    if (distance > to) continue;
-    const from = BACKDROP_RAMP[stop - 2] ?? 0;
-    const share = to === from ? 0 : (distance - from) / (to - from);
-    return (BACKDROP_RAMP[stop - 1] ?? 0) + ((BACKDROP_RAMP[stop + 1] ?? 0) - (BACKDROP_RAMP[stop - 1] ?? 0)) * share;
-  }
-  return 0;
-}
-
-/** Black everywhere, and only the alpha varies: see BACKDROP_TEXELS. */
-function buildBackdropTexture() {
-  const texels = BACKDROP_TEXELS;
-  const half = texels / 2;
-  const bytes = new Uint8Array(texels * texels * 4);
-  for (let row = 0; row < texels; row++) {
-    for (let column = 0; column < texels; column++) {
-      const x = (column + 0.5 - half) / half;
-      const y = (row + 0.5 - half) / half;
-      const distance = Math.sqrt(x * x + y * y);
-      bytes[(row * texels + column) * 4 + 3] = Math.round(backdropAlpha(distance));
-    }
-  }
-  return bytes;
-}
-
 export function createHologramResources(Skia: SkiaApiType, scene: Scene) {
   const makePaint = (color: string, style: PaintStyle, strokeCap: StrokeCap) => {
     const paint = Skia.Paint();
@@ -1463,25 +1379,6 @@ export function createHologramResources(Skia: SkiaApiType, scene: Scene) {
 
   // The core: a bloom elongated along the lower-left to upper-right diagonal, with a
   // darker orange interior inside the hot ring, never white.
-  // The shadow Jarvis sits on; see BACKDROP_RAMP. Alpha only — it darkens what is behind
-  // without tinting it, so a blue wallpaper stays blue underneath.
-  //
-  // The one paint in the drawing that is not screened. Everything else here is light being added
-  // to light, which is why the sphere glows; black screened over anything is a no-op, so the first
-  // version of this drew precisely nothing. This one is laid over what is behind in the ordinary
-  // way, and every screened layer then goes on top of it.
-  const backdropFill = makeFill('#ffffff');
-  backdropFill.setBlendMode(BlendMode.SrcOver);
-  const backdropImage = Skia.Image.MakeImage(
-    { width: BACKDROP_TEXELS, height: BACKDROP_TEXELS, colorType: ColorType.RGBA_8888, alphaType: AlphaType.Unpremul },
-    Skia.Data.fromBytes(buildBackdropTexture()),
-    BACKDROP_TEXELS * 4,
-  );
-  if (!backdropImage) throw new Error('The hologram could not make its backdrop');
-  backdropFill.setShader(
-    backdropImage.makeShaderOptions(TileMode.Clamp, TileMode.Clamp, FilterMode.Linear, MipmapMode.None),
-  );
-
   const coreBloomFill = makeFill('#ffffff');
   coreBloomFill.setShader(
     radialGradient(
@@ -1581,7 +1478,6 @@ export function createHologramResources(Skia: SkiaApiType, scene: Scene) {
     limbBloomFill,
     limbRidgeFill,
     thinRingStroke,
-    backdropFill,
     coreBloomFill,
     introPointFill,
     whorlGlowStroke: makeStroke('#d8651e', StrokeCap.Round),
@@ -1825,26 +1721,6 @@ function analyseFrame(frame: HologramFrame, size: number, scene: Scene) {
   return {
     time,
     radius,
-    // Half the square, in sphere radii: how far the backdrop reaches, so its circle is the one
-    // the square inscribes. See BACKDROP_RAMP — it has to end at zero exactly there.
-    // Measured in the sphere's own radii, and capped by the square so it can never be clipped.
-    //
-    // It used to be half the square outright, which was right when the square was barely bigger
-    // than the sphere. The square is now half again wider than the screen — the room the chips
-    // need, see SPHERE_FRACTION — so half of it is far out into space nobody can see, and the
-    // shadow's cost is its area: it is the most expensive single thing drawn, 15 ms of a 49 ms
-    // frame at 384 px, measured by taking it out.
-    // Divided by the swell, which is what keeps the shadow still.
-    //
-    // Everything here is drawn in sphere radii, and the sphere grows with the voice — so a reach
-    // of a fixed number of radii is a shadow that breathes in and out with him. The user asked for
-    // it to hold: "the radial dark gradient below should not pulsate with the speech". Dividing it
-    // by the same factor the radius was multiplied by leaves reach × radius constant, so the
-    // shadow keeps the size it has at rest however loud he gets.
-    //
-    // Only the swell is divided out. The arrival is not, so he still brings his shadow with him
-    // when he materialises and takes it with him when he goes.
-    backdropReach: Math.min(size / 2 / radius, BACKDROP_REACH / (1 + swell)),
     thinking,
     // Where the plane is, sweeping upward — y runs down the screen, so it starts positive. From
     // the clock alone, like everything else here, so it needs nothing remembered between frames.
@@ -3139,30 +3015,6 @@ function drawThinkingPulse(canvas: HologramCanvas, resources: Resources, state: 
   canvas.drawCircle(0, 0, 0.15 + 1.05 * state.pulse, paint);
 }
 
-/**
- * The shadow the sphere sits on: black under Jarvis, gone by the edge of his square.
- *
- * First thing inside the arrival layer, so everything else is drawn over it and it fades in with
- * the rest of him. It does not take `glowGain`: it is the dark he is seen against, and brightening
- * the dark with his voice would work against the glow rather than with it.
- *
- * `state.backdropReach` is half the square measured in sphere radii, so this circle is the
- * square's inscribed circle however big the voice has made the sphere. See the note on
- * {@link BACKDROP_RAMP} for why it must end at zero exactly there.
- */
-function drawBackdrop(canvas: HologramCanvas, resources: Resources, state: FrameState) {
-  'worklet';
-  // Drawn in the texture's own space, so its middle lands on the sphere's: the same trick the
-  // warm volume used before it was removed.
-  const half = BACKDROP_TEXELS / 2;
-  const reach = state.backdropReach;
-  canvas.save();
-  canvas.translate(-reach, -reach);
-  canvas.scale(reach / half, reach / half);
-  canvas.drawCircle(half, half, half, resources.backdropFill);
-  canvas.restore();
-}
-
 export function drawHologram(
   canvas: HologramCanvas,
   size: number,
@@ -3188,7 +3040,6 @@ export function drawHologram(
     resources.arrivalFade.setAlphaf(state.arrival);
     canvas.saveLayer(resources.arrivalFade);
   }
-  drawBackdrop(canvas, resources, state);
   drawInnerShells(canvas, resources, state);
   drawBody(canvas, resources, scene, state);
   drawLines(canvas, resources, scene, state);

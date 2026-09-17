@@ -69,6 +69,20 @@ export interface JarvisHologramProps {
    * anything that can be measured here, and this is the only instrument that can say which half.
    */
   buildMilliseconds?: SharedValue<number>;
+  /**
+   * Whether there is anything behind the canvas worth seeing through it.
+   *
+   * It is not a look, it is which Android view Skia draws into. Left alone, `<Canvas>` uses a
+   * `TextureView`: an extra copy of every frame into a texture, and a sync with the UI thread to
+   * composite it. Told it is opaque, it uses a `SurfaceView`, which SurfaceFlinger puts on the
+   * screen directly.
+   *
+   * So pass it wherever the hologram sits on something solid — the sheet, the conversation screen
+   * — and leave it alone where the point is to see through to what is behind. And do not pass it
+   * on anything that slides: a SurfaceView is its own layer and does not move with the view tree,
+   * which is why the sheet finishes arriving before Jarvis appears in it.
+   */
+  opaque?: boolean;
 }
 
 /** How long it takes to fall into a thought, and to come out of one. */
@@ -151,6 +165,7 @@ function JarvisHologramView({
   leaving = false,
   frameRate,
   buildMilliseconds,
+  opaque = false,
 }: JarvisHologramProps) {
   const { listening, speaking, getVolume, getSpectrum } = voice;
   const isForeground = useIsForeground();
@@ -350,7 +365,7 @@ function JarvisHologramView({
   return (
     <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
       <View style={{ width: drawnSize, height: drawnSize, transform: [{ scale: 1 / DRAWN_RESOLUTION }] }}>
-        <Canvas style={{ width: drawnSize, height: drawnSize }}>
+        <Canvas opaque={opaque} style={{ width: drawnSize, height: drawnSize }}>
           <Picture picture={picture} />
         </Canvas>
       </View>
