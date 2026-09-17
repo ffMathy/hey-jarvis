@@ -6,9 +6,12 @@
  * eased by `easeLevel`/`easeBands`, with `advanceVoiceActivity` tracking the raw reading. So what
  * the clip shows is what the app does, rather than an impression of it drawn separately.
  *
- * The device around it is drawn here too, in Skia: a rounded phone with a hole-punch camera and
- * side keys, a round watch with a crown. Nothing is downloaded and nothing is traced, which is why
- * they are shapes and proportions rather than renderings of anyone's product photography.
+ * The devices around him are real frames rather than shapes drawn here. The phone is Google's own
+ * Pixel 10 Pro device art, the one Android Studio wraps a screenshot in; the watch is a Pixel Watch
+ * 3 vector, because Google publishes device art for every Pixel phone and none for its watch; and
+ * what is behind the assistant's sheet is the Blue Marble. They live in `device-art/`, fetched by
+ * `prepare-device-art.sh`, and `device-art/NOTICE.md` says where each came from and under what
+ * licence — including that the watch clips inherit CC BY-SA 4.0 from the frame in them.
  *
  * Two things are deliberately *not* the app. The particle count is {@link PARTICLES} rather than
  * the thousand a phone is asked for, because nothing here has to hold sixty frames a second — it
@@ -23,10 +26,10 @@
  * that is removed afterwards.
  */
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ClipOp, PaintStyle, TileMode } from '@shopify/react-native-skia/lib/module/skia/types';
+import { ClipOp, FilterMode, MipmapMode, PaintStyle } from '@shopify/react-native-skia/lib/module/skia/types';
 import { JsiSkApi } from '@shopify/react-native-skia/lib/module/skia/web';
 import { LoadSkiaWeb } from '@shopify/react-native-skia/lib/module/web/LoadSkiaWeb';
 import {
@@ -74,10 +77,19 @@ const GIF_FRAMES_PER_SECOND = 30;
  * How many colours the GIF's palette may hold, out of the 256 the format allows.
  *
  * Fewer than it could have, because a palette entry costs size in every frame that dithers against
- * it, and this clip is two colours: amber, and a very dark blue. Ninety-six of them spent almost
- * entirely on the sphere is a better picture than 256 spread over a backdrop nobody is looking at.
+ * it, and this clip is mostly two things: amber, and a handful of flat blues. It was 96 while the
+ * backdrop was a flat colour, and had to go up once there was a wallpaper — a photographic one
+ * needed well over this and still went grey, which is one of the reasons there is not one.
  */
-const GIF_COLOURS = 96;
+const GIF_COLOURS = 160;
+
+/**
+ * How hard the WebP is compressed, 0 to 100, higher being better.
+ *
+ * Seventy holds the sphere's faint outer sparks, which are the first thing to go: they are small,
+ * dim and different every frame, which is the exact shape of what a video codec throws away.
+ */
+const WEBP_QUALITY = 70;
 
 /** How long each of the three things he does is held for, at the user's asking. */
 const IDLE_SECONDS = 3;
@@ -102,24 +114,41 @@ const SHEET_INSET = 14;
 const SHEET_RADIUS = 28;
 
 /**
- * The phone, in pixels. Even numbers throughout, because VP9 wants an even frame.
+ * Where each device's screen sits inside its frame, as fractions of the frame's own size.
  *
- * Proportioned as a Pixel: a tall screen, a bezel of the same width all the way round, a hole
- * punch centred at the top, and the power and volume keys on the right where that phone has them.
+ * Fractions rather than pixels so that nothing here has to know what resolution the art happens to
+ * be committed at. They are measured from the artwork itself — the phone's from the `layout` file
+ * that AOSP ships beside the frame, the watch's by finding the light circle — and
+ * `prepare-device-art.sh` prints both every time it runs, so checking them is one command.
  */
-const PHONE = { width: 420, height: 900, bezel: 12, radius: 54, camera: 5 };
+const SCREEN = {
+  /** A hole through the frame: x, y and size of the rounded rectangle, radius as a share of width. */
+  phone: { x: 0.041844, y: 0.020216, width: 0.907801, height: 0.962264, radius: 0.070213 },
+  /** A circle drawn on top of the case, so this is what to paint over rather than to show through. */
+  watch: { centreX: 0.477754, centreY: 0.500909, radius: 0.382203 },
+};
 
 /**
- * The watch, in pixels: round, with the crown at three o'clock and a button just above it.
+ * How wide each clip is rendered, in pixels. The height follows from the frame's aspect.
  *
- * The case does not fill the frame, and both margins are load-bearing. There has to be room beside
- * it for the crown to stick out of — drawn inside the case it is simply painted over, which is
- * what the first render did — and room above and below for enough strap that the thing reads as
- * something worn rather than as a circle. `middleX` is pulled left of the frame's centre by half
- * the crown's room so that case-plus-crown sits centred, which is what the eye measures.
+ * Both end up with a sphere of about the same size, which is what makes them sit together in a
+ * README: the phone's square is inset in a sheet covering 40% of a tall screen, and the watch's is
+ * the whole of a small round one.
  */
-const WATCH = { size: 420, caseRadius: 176, crownRoom: 22, bezel: 13, strapWidth: 152 };
-const WATCH_MIDDLE = { x: WATCH.size / 2 - WATCH.crownRoom / 2, y: WATCH.size / 2 };
+const PHONE_WIDTH = 420;
+const WATCH_WIDTH = 420;
+
+/**
+ * How much of the palette the GIF may use, and how it is chosen.
+ *
+ * Both went up when the wallpaper did. `stats_mode=diff` weights the palette toward what changes
+ * between frames, which here is the sphere and nothing else — so the wallpaper, being perfectly
+ * still, was given almost no colours at all and came out grey. `full` weighs the whole frame.
+ */
+const GIF_PALETTE_STATS = 'full';
+
+/** Where the fetched artwork lives. See `device-art/NOTICE.md`. */
+const DEVICE_ART = join(import.meta.dir, 'device-art');
 
 type SkiaApi = ReturnType<typeof JsiSkApi>;
 type SkiaSurface = NonNullable<ReturnType<SkiaApi['Surface']['MakeOffscreen']>>;
@@ -136,6 +165,11 @@ function hasCanvasKit(scope: object): scope is CanvasKitGlobal {
 
 function clamp(value: number, lowest: number, highest: number): number {
   return value < lowest ? lowest : value > highest ? highest : value;
+}
+
+/** Rounded to an even number of pixels, which is what VP9's `yuv420p` requires of a frame. */
+function even(value: number): number {
+  return Math.round(value / 2) * 2;
 }
 
 /** Smooth 0-1, so nothing in the clip starts or stops abruptly. */
@@ -233,171 +267,49 @@ function createPerformance() {
 }
 
 /**
- * The wallpaper the assistant is summoned over, so the sheet has something to arrive on top of.
+ * Loads one of the prepared frames as a Skia image.
  *
- * **Deliberately almost flat, and that is a GIF decision as much as a design one.** It began as a
- * proper wallpaper — a wide gradient with a bright bloom in one corner — and in the GIF that came
- * out in visible concentric rings. A palette has at most 256 entries for the whole clip, a broad
- * smooth gradient wants most of them, and what it takes it takes from the sphere. Holding the whole
- * backdrop inside a handful of very dark values leaves the palette to the amber, which is the only
- * thing in the frame anybody is looking at, and leaves almost nothing for the banding to band on.
- *
- * It also reads better. The assistant is summoned over a screen that has dimmed behind it.
+ * The art is committed as PNG and JPEG rather than as the WebP and SVG it arrived as, because both
+ * of those would make the renderer depend on a codec or an SVG library that it otherwise does not
+ * need. See `prepare-device-art.sh`.
  */
-function paintWallpaper(skia: SkiaApi, canvas: SkiaCanvas, width: number, height: number) {
-  const sky = skia.Paint();
-  sky.setShader(
-    skia.Shader.MakeLinearGradient(
-      { x: 0, y: 0 },
-      { x: 0, y: height },
-      [skia.Color('#121b25'), skia.Color('#0c131b')],
-      [0, 1],
-      TileMode.Clamp,
-    ),
-  );
-  canvas.drawRect(skia.XYWHRect(0, 0, width, height), sky);
-
-  // A vignette into the corners, which is the one gradient cheap enough to keep: it is darkening
-  // an already dark colour, so it spans about four values rather than forty.
-  const vignette = skia.Paint();
-  vignette.setShader(
-    skia.Shader.MakeRadialGradient(
-      { x: width / 2, y: height * 0.38 },
-      height * 0.62,
-      [skia.Color('#00000000'), skia.Color('#000000a0')],
-      [0.45, 1],
-      TileMode.Clamp,
-    ),
-  );
-  canvas.drawRect(skia.XYWHRect(0, 0, width, height), vignette);
+function loadArt(skia: SkiaApi, file: string) {
+  const image = skia.Image.MakeImageFromEncoded(skia.Data.fromBytes(readFileSync(join(DEVICE_ART, file))));
+  if (!image) {
+    throw new Error(`Could not decode ${file} — run ./hologram/.scripts/prepare-device-art.sh`);
+  }
+  return image;
 }
 
-/** The phone's body, drawn round whatever is on its screen. */
-function paintPhoneShell(skia: SkiaApi, canvas: SkiaCanvas) {
-  const body = skia.Paint();
-  body.setAntiAlias(true);
-  body.setColor(skia.Color('#0e1013'));
-  body.setStyle(PaintStyle.Stroke);
-  body.setStrokeWidth(PHONE.bezel * 2);
-  const outline = skia.RRectXY(skia.XYWHRect(0, 0, PHONE.width, PHONE.height), PHONE.radius, PHONE.radius);
-  canvas.drawRRect(outline, body);
-
-  // The side keys, which are most of what makes a rounded rectangle read as a particular phone.
-  const key = skia.Paint();
-  key.setAntiAlias(true);
-  key.setColor(skia.Color('#2b3038'));
-  canvas.drawRRect(skia.RRectXY(skia.XYWHRect(PHONE.width - 3, PHONE.height * 0.24, 5, 54), 2.5, 2.5), key);
-  canvas.drawRRect(skia.RRectXY(skia.XYWHRect(PHONE.width - 3, PHONE.height * 0.34, 5, 92), 2.5, 2.5), key);
-
-  // A hairline where the metal meets the air, and another where it meets the glass. Without them
-  // the phone is a black shape on a black page and has no edge at all.
-  const rim = skia.Paint();
-  rim.setAntiAlias(true);
-  rim.setColor(skia.Color('#464e59'));
-  rim.setStyle(PaintStyle.Stroke);
-  rim.setStrokeWidth(1.5);
-  canvas.drawRRect(
-    skia.RRectXY(skia.XYWHRect(0.75, 0.75, PHONE.width - 1.5, PHONE.height - 1.5), PHONE.radius, PHONE.radius),
-    rim,
-  );
-  rim.setColor(skia.Color('#22262c'));
-  rim.setStrokeWidth(1);
-  const glass = PHONE.radius - PHONE.bezel;
-  canvas.drawRRect(
-    skia.RRectXY(
-      skia.XYWHRect(PHONE.bezel, PHONE.bezel, PHONE.width - PHONE.bezel * 2, PHONE.height - PHONE.bezel * 2),
-      glass,
-      glass,
-    ),
-    rim,
-  );
-
-  // The hole punch, centred, as a Pixel has it.
-  const lens = skia.Paint();
-  lens.setAntiAlias(true);
-  lens.setColor(skia.Color('#05070a'));
-  canvas.drawCircle(PHONE.width / 2, PHONE.bezel + PHONE.camera + 10, PHONE.camera, lens);
-}
+type SkiaImage = ReturnType<typeof loadArt>;
 
 /**
- * The watch: strap, then case, then the crown and button sticking out of its right-hand side.
+ * Draws an image to fill a rectangle exactly, whatever size it was committed at.
  *
- * In that order, because each is drawn over where the last meets it. The crown has to come *after*
- * the case and reach outside it — drawn first, as it was, the case's own ring paints straight over
- * it and the watch has no crown at all.
+ * `drawImageRectOptions` rather than `drawImageRect`, and that is the whole reason this is a
+ * function rather than one line at each call: the plain call samples with no filter at all, so
+ * shrinking the art to the size of the clip throws away three pixels in four and leaves a jagged
+ * edge wherever the artwork has a curve. Linear sampling with mipmaps is what a picture being
+ * scaled down wants. The art is also committed at only twice the size it is drawn at — see
+ * `ART_WIDTH` in `prepare-device-art.sh` — so there is little left for it to do.
  */
-function paintWatchShell(skia: SkiaApi, canvas: SkiaCanvas) {
-  const { x: middleX, y: middleY } = WATCH_MIDDLE;
-  const left = middleX - WATCH.strapWidth / 2;
-
-  // The strap, running off the top and bottom of the frame: a hint of it is what makes the circle
-  // read as something worn rather than as a dial.
-  const strap = skia.Paint();
-  strap.setAntiAlias(true);
-  strap.setShader(
-    skia.Shader.MakeLinearGradient(
-      { x: left, y: 0 },
-      { x: left + WATCH.strapWidth, y: 0 },
-      [skia.Color('#171a1f'), skia.Color('#2a2f37'), skia.Color('#14171b')],
-      [0, 0.45, 1],
-      TileMode.Clamp,
-    ),
+function drawArt(
+  skia: SkiaApi,
+  canvas: SkiaCanvas,
+  image: SkiaImage,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+) {
+  canvas.drawImageRectOptions(
+    image,
+    skia.XYWHRect(0, 0, image.width(), image.height()),
+    skia.XYWHRect(x, y, width, height),
+    FilterMode.Linear,
+    MipmapMode.Linear,
+    skia.Paint(),
   );
-  const strapReach = middleY - WATCH.caseRadius + 46;
-  canvas.drawRRect(skia.RRectXY(skia.XYWHRect(left, -24, WATCH.strapWidth, strapReach + 24), 16, 16), strap);
-  canvas.drawRRect(
-    skia.RRectXY(skia.XYWHRect(left, WATCH.size - strapReach, WATCH.strapWidth, strapReach + 24), 16, 16),
-    strap,
-  );
-
-  // The case: a thin dark ring, so the glass runs nearly to the edge as a Pixel Watch's dome does.
-  const body = skia.Paint();
-  body.setAntiAlias(true);
-  body.setColor(skia.Color('#0e1013'));
-  body.setStyle(PaintStyle.Stroke);
-  body.setStrokeWidth(WATCH.bezel * 2);
-  canvas.drawCircle(middleX, middleY, WATCH.caseRadius - WATCH.bezel, body);
-
-  const steel = skia.Paint();
-  steel.setAntiAlias(true);
-  steel.setShader(
-    skia.Shader.MakeLinearGradient(
-      { x: 0, y: middleY - 20 },
-      { x: 0, y: middleY + 20 },
-      [skia.Color('#9aa1ab'), skia.Color('#3f444c')],
-      [0, 1],
-      TileMode.Clamp,
-    ),
-  );
-  // The crown, at three o'clock, overlapping the case by a few pixels so it grows out of it.
-  canvas.drawRRect(
-    skia.RRectXY(skia.XYWHRect(middleX + WATCH.caseRadius - 5, middleY - 17, WATCH.crownRoom + 5, 34), 6, 6),
-    steel,
-  );
-  // And the button, up and to the right of it, where that watch puts it.
-  const button = skia.Paint();
-  button.setAntiAlias(true);
-  button.setColor(skia.Color('#42474f'));
-  canvas.save();
-  canvas.rotate(-34, middleX, middleY);
-  canvas.drawRRect(skia.RRectXY(skia.XYWHRect(middleX + WATCH.caseRadius - 6, middleY - 11, 15, 22), 5, 5), button);
-  canvas.restore();
-
-  // The hairline round the outside: without it the case is black on a black page and has no edge.
-  const rim = skia.Paint();
-  rim.setAntiAlias(true);
-  rim.setStyle(PaintStyle.Stroke);
-  rim.setStrokeWidth(1.5);
-  rim.setShader(
-    skia.Shader.MakeLinearGradient(
-      { x: 0, y: middleY - WATCH.caseRadius },
-      { x: 0, y: middleY + WATCH.caseRadius },
-      [skia.Color('#79818c'), skia.Color('#2b3037')],
-      [0, 1],
-      TileMode.Clamp,
-    ),
-  );
-  canvas.drawCircle(middleX, middleY, WATCH.caseRadius - 0.75, rim);
 }
 
 /**
@@ -442,21 +354,26 @@ function renderClip(
 }
 
 /**
- * Stitches a directory of numbered PNGs into a WebM and a GIF.
+ * Stitches a directory of numbered PNGs into a WebM, an animated WebP and a GIF.
  *
- * Both, because they are for different readers. The WebM is the real thing: VP9 at a true sixty
- * frames a second, full size, which is what was rendered. The GIF is what goes in the README,
- * because that is the one format every renderer of Markdown will animate.
+ * Three formats, and the reason is that **a README cannot show a video.** GitHub does not render a
+ * `<video>` element from a file in a repository, and it will not serve one from `raw` for a page to
+ * play either — so a WebM in `docs/` is something to download, never something anybody sees on the
+ * project's front page. Which leaves `<img>`, and what an `<img>` will animate.
  *
- * **A GIF cannot be sixty frames a second.** Its frame delay is a whole number of hundredths of a
- * second, so the rates it can express are 100, 50, 33⅓, 25 and down from there; there is no delay
- * that means a sixtieth. It also has no interframe compression worth the name and no more than 256
- * colours in the whole clip, so a full-size one of this length runs to tens of megabytes. What is
- * here — {@link GIF_FRAMES_PER_SECOND}, scaled down, on a {@link GIF_COLOURS}-entry palette — is
- * the compromise that keeps a README under a couple of megabytes a clip. `fps=` drops frames
- * rather than slowing anything down, so the GIF still runs in real time beside the WebM.
+ * - **WebP** is what the README actually shows. It is a real video codec in an `<img>`: sixty
+ *   frames a second, full colour, and smaller than the GIF below at half its frame rate.
+ * - **GIF** is behind it in a `<picture>`, for anything that will not animate a WebP. It cannot be
+ *   sixty frames a second whatever it is asked — a GIF's frame delay is a whole number of
+ *   hundredths of a second, so the rates it can express are 100, 50, 33⅓, 25 and down — and it has
+ *   no interframe compression worth the name and no more than 256 colours in the whole clip. Hence
+ *   {@link GIF_FRAMES_PER_SECOND} and {@link GIF_COLOURS}, which is what keeps it near a megabyte.
+ * - **WebM** is the archive copy: VP9, full size, nothing scaled or thinned.
+ *
+ * Both of the scaled ones drop frames rather than slowing anything down, so all three run in real
+ * time and end together.
  */
-function stitch(frames: string, output: string, gifWidth: number) {
+function stitch(frames: string, output: string, shownWidth: number) {
   const input = join(frames, '%05d.png');
   execFileSync(
     'ffmpeg',
@@ -483,7 +400,34 @@ function stitch(frames: string, output: string, gifWidth: number) {
     { stdio: 'ignore' },
   );
 
-  const scaled = `fps=${GIF_FRAMES_PER_SECOND},scale=${gifWidth}:-2:flags=lanczos`;
+  // The one the README shows. No `fps` filter: it keeps every frame that was rendered.
+  execFileSync(
+    'ffmpeg',
+    [
+      '-y',
+      '-framerate',
+      String(FRAMES_PER_SECOND),
+      '-i',
+      input,
+      '-vf',
+      `scale=${shownWidth}:-2:flags=lanczos`,
+      '-c:v',
+      'libwebp_anim',
+      '-lossless',
+      '0',
+      '-q:v',
+      String(WEBP_QUALITY),
+      '-compression_level',
+      '6',
+      '-loop',
+      '0',
+      '-an',
+      `${output}.webp`,
+    ],
+    { stdio: 'ignore' },
+  );
+
+  const scaled = `fps=${GIF_FRAMES_PER_SECOND},scale=${shownWidth}:-2:flags=lanczos`;
   const palette = join(frames, 'palette.png');
   // One palette for the whole clip rather than per frame: `stats_mode=diff` weights it toward what
   // actually changes, which here is the sphere rather than the phone around it.
@@ -496,7 +440,7 @@ function stitch(frames: string, output: string, gifWidth: number) {
       '-i',
       input,
       '-vf',
-      `${scaled},palettegen=stats_mode=diff:max_colors=${GIF_COLOURS}`,
+      `${scaled},palettegen=stats_mode=${GIF_PALETTE_STATS}:max_colors=${GIF_COLOURS}`,
       palette,
     ],
     {
@@ -545,12 +489,17 @@ async function main() {
   mkdirSync(output, { recursive: true });
 
   // ---- the phone: a sheet summoned up over whatever you were doing ---------------------------
+  // The frame decides the clip's shape rather than the other way round, so the device keeps the
+  // proportions Google drew it with.
+  const phoneArt = loadArt(skia, 'pixel-10-pro.png');
+  const wallpaper = loadArt(skia, 'wallpaper.jpg');
+  const phoneSize = { width: PHONE_WIDTH, height: even((PHONE_WIDTH * phoneArt.height()) / phoneArt.width()) };
   const screen = {
-    x: PHONE.bezel,
-    y: PHONE.bezel,
-    width: PHONE.width - PHONE.bezel * 2,
-    height: PHONE.height - PHONE.bezel * 2,
-    radius: PHONE.radius - PHONE.bezel,
+    x: SCREEN.phone.x * phoneSize.width,
+    y: SCREEN.phone.y * phoneSize.height,
+    width: SCREEN.phone.width * phoneSize.width,
+    height: SCREEN.phone.height * phoneSize.height,
+    radius: SCREEN.phone.radius * phoneSize.width,
   };
   const sheetHeight = Math.round(screen.height * SHEET_SHARE);
   // The square fits inside the sheet, inset as `sample-screen.tsx` insets it.
@@ -559,11 +508,14 @@ async function main() {
   const phoneFrames = join(working, 'phone');
   mkdirSync(phoneFrames);
   const phoneCount = renderClip(skia, phoneFrames, {
-    width: PHONE.width,
-    height: PHONE.height,
+    ...phoneSize,
     opensOver: SHEET_ARRIVES_SECONDS,
     closesOver: SHEET_LEAVES_SECONDS,
     paint: (canvas, moment, frame) => {
+      // The screen first and the device over the top of it. The frame is a real hole with the
+      // hole-punch camera drawn *inside* the hole, so painting the screen last would cover the
+      // camera up; this way the bezel and the camera land on top of the screen, as they do on a
+      // phone. The clip is belt and braces for the rounded corners, whose radius the art declares.
       canvas.save();
       canvas.clipRRect(
         skia.RRectXY(skia.XYWHRect(screen.x, screen.y, screen.width, screen.height), screen.radius, screen.radius),
@@ -571,7 +523,7 @@ async function main() {
         true,
       );
       canvas.translate(screen.x, screen.y);
-      paintWallpaper(skia, canvas, screen.width, screen.height);
+      drawArt(skia, canvas, wallpaper, 0, 0, screen.width, screen.height);
 
       const top = screen.height - sheetHeight * moment.opened;
       // Drawn past the bottom of the screen by its own radius, so only the top corners are round —
@@ -599,54 +551,71 @@ async function main() {
         canvas.restore();
       }
       canvas.restore();
-      paintPhoneShell(skia, canvas);
+      drawArt(skia, canvas, phoneArt, 0, 0, phoneSize.width, phoneSize.height);
     },
   });
-  console.log(`phone: ${phoneCount} frames`);
+  console.log(`phone: ${phoneCount} frames at ${phoneSize.width}x${phoneSize.height}`);
 
   // ---- the watch: black to the edges, and nothing else -----------------------------------------
-  const watchScreen = (WATCH.caseRadius - WATCH.bezel) * 2;
-  const watchGlass = { x: WATCH_MIDDLE.x - watchScreen / 2, y: WATCH_MIDDLE.y - watchScreen / 2 };
+  const watchArt = loadArt(skia, 'pixel-watch-3.png');
+  const watchSize = { width: WATCH_WIDTH, height: even((WATCH_WIDTH * watchArt.height()) / watchArt.width()) };
+  const watchRadius = SCREEN.watch.radius * watchSize.width;
+  const watchMiddle = { x: SCREEN.watch.centreX * watchSize.width, y: SCREEN.watch.centreY * watchSize.height };
   const watchFrames = join(working, 'watch');
   mkdirSync(watchFrames);
   const watchCount = renderClip(skia, watchFrames, {
-    width: WATCH.size,
-    height: WATCH.size,
+    ...watchSize,
     opensOver: WATCH_HOLD_SECONDS,
     closesOver: WATCH_HOLD_SECONDS,
     paint: (canvas, moment, frame) => {
+      // The other way round from the phone, because this frame is not a frame with a hole in it:
+      // the vector draws the screen as a filled circle on top of the case, so there is nothing to
+      // show through and the screen has to be painted over it.
+      drawArt(skia, canvas, watchArt, 0, 0, watchSize.width, watchSize.height);
+      canvas.save();
+      canvas.clipRRect(
+        skia.RRectXY(
+          skia.XYWHRect(watchMiddle.x - watchRadius, watchMiddle.y - watchRadius, watchRadius * 2, watchRadius * 2),
+          watchRadius,
+          watchRadius,
+        ),
+        ClipOp.Intersect,
+        true,
+      );
+      // Nothing is painted to turn the screen off first: the artwork's screen is already black,
+      // blacked out when it was prepared. See `prepare-device-art.sh`, and the pale ring it is
+      // there to stop.
       if (moment.showing) {
-        canvas.save();
-        canvas.clipRRect(
-          skia.RRectXY(
-            skia.XYWHRect(watchGlass.x, watchGlass.y, watchScreen, watchScreen),
-            watchScreen / 2,
-            watchScreen / 2,
-          ),
-          ClipOp.Intersect,
-          true,
-        );
         // The square is the whole screen, as `useWatchHologramSize` makes it: the drawing keeps its
         // own distance from the edge, so a square the width of a round screen still sits inside it.
-        canvas.translate(watchGlass.x, watchGlass.y);
-        drawHologram(canvas, watchScreen, frame, scene, resources);
-        canvas.restore();
+        canvas.translate(watchMiddle.x - watchRadius, watchMiddle.y - watchRadius);
+        drawHologram(canvas, watchRadius * 2, frame, scene, resources);
       }
-      paintWatchShell(skia, canvas);
+      canvas.restore();
     },
   });
-  console.log(`watch: ${watchCount} frames`);
+  console.log(`watch: ${watchCount} frames at ${watchSize.width}x${watchSize.height}`);
 
   const phone = join(output, 'jarvis-on-a-phone');
   const watch = join(output, 'jarvis-on-a-watch');
-  // The watch's GIF is the narrower of the two although its frame is the squarer, because on a
-  // watch the sphere *is* the screen: nearly every pixel changes every frame, and a GIF pays for
-  // each of them. Side by side in a README the two come out about the same height anyway.
-  stitch(phoneFrames, phone, 260);
-  stitch(watchFrames, watch, 240);
+  // Sized so the two sit level beside each other in a README — the watch frame is much less tall
+  // than the phone, so matching their widths would leave the watch looking like a coin next to it —
+  // and so that neither GIF runs away. The watch costs far more per pixel than the phone: on a
+  // watch the sphere *is* the screen, so nearly every pixel changes every frame, where on the phone
+  // three fifths of the picture is a wallpaper that never moves. Two hundred and sixty is the most
+  // it can have and still come in under three megabytes.
+  stitch(phoneFrames, phone, 240);
+  stitch(watchFrames, watch, 260);
   rmSync(working, { recursive: true, force: true });
 
-  for (const path of [`${phone}.webm`, `${phone}.gif`, `${watch}.webm`, `${watch}.gif`]) {
+  for (const path of [
+    `${phone}.webp`,
+    `${phone}.gif`,
+    `${phone}.webm`,
+    `${watch}.webp`,
+    `${watch}.gif`,
+    `${watch}.webm`,
+  ]) {
     console.log(`${path} — ${megabytes(path)}`);
   }
 }

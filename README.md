@@ -9,16 +9,26 @@ An intelligent voice assistant for home automation, powered by AI agents and cus
 Hold the power button on the phone and Jarvis comes up over whatever you were doing; on the watch he is the whole screen. Here he is at rest, then speaking, then working through something, and then gone.
 
 <p align="center">
-  <img width="260" alt="Jarvis summoned on a phone" src="./docs/jarvis-on-a-phone.gif" />
+  <picture>
+    <source srcset="./docs/jarvis-on-a-phone.webp" type="image/webp" />
+    <img width="240" alt="Jarvis summoned on a phone" src="./docs/jarvis-on-a-phone.gif" />
+  </picture>
   &nbsp;&nbsp;
-  <img width="240" alt="Jarvis summoned on a watch" src="./docs/jarvis-on-a-watch.gif" />
+  <picture>
+    <source srcset="./docs/jarvis-on-a-watch.webp" type="image/webp" />
+    <img width="260" alt="Jarvis summoned on a watch" src="./docs/jarvis-on-a-watch.gif" />
+  </picture>
 </p>
 
-One sphere, drawn once. Both devices bundle the same [`hologram`](./hologram) package, which is why there is no version of him that is only on the phone. These clips are that same drawing rendered frame by frame at 1300 particles — more than any phone is asked for, since nothing offline has to hold sixty frames a second — by [`hologram/.scripts/render-showcase.ts`](./hologram/.scripts/render-showcase.ts). The GIFs above are cut to 30 fps so a README does not weigh ten megabytes; the full 60 fps versions are here as WebM: [phone](./docs/jarvis-on-a-phone.webm), [watch](./docs/jarvis-on-a-watch.webm).
+One sphere, drawn once. Both devices bundle the same [`hologram`](./hologram) package, which is why there is no version of him that is only on the phone. These clips are that same drawing rendered frame by frame at 1300 particles — more than any phone is asked for, since nothing offline has to hold sixty frames a second — by [`hologram/.scripts/render-showcase.ts`](./hologram/.scripts/render-showcase.ts):
 
 ```bash
 bun hologram/.scripts/render-showcase.ts
 ```
+
+Those are animated WebP at a true 60 fps, with a 30 fps GIF behind them for anything that will not animate one — **a README cannot show a video**, because GitHub renders neither a `<video>` element from a file in a repository nor a video served from `raw`. The full-size VP9 copies are here to download: [phone](./docs/jarvis-on-a-phone.webm), [watch](./docs/jarvis-on-a-watch.webm).
+
+The devices are real frames rather than drawings: Google's own Pixel 10 Pro device art, and a community vector of a Pixel Watch 3 — Google publishes art for every Pixel phone and none for its watch. [`hologram/.scripts/device-art/NOTICE.md`](./hologram/.scripts/device-art/NOTICE.md) says where each came from and under what licence, **including that the two watch clips are themselves CC BY-SA 4.0** because the frame in them is.
 
 ## Architecture
 
