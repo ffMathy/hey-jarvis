@@ -23,11 +23,12 @@ import {
  * A phone that can draw `affordable` of the particles at the target rate, and slows down in
  * proportion as it is given more.
  *
- * Frame rate is capped as the view caps it, which is the thing that makes the target sit under the
- * cap in the first place. Derived from the target rather than written down again, so the two cannot
- * drift apart when the cap moves — as it has, from sixty to forty.
+ * Capped as the view caps it — at a hundred and twenty, far above the target, which is the whole
+ * point. A cap near the target makes the loop blind: a measurement can never come back above its
+ * own cap, so "exactly fast enough" and "could draw three times as much" are the same reading. With
+ * the cap up here the loop sees real error on both sides and can climb.
  */
-const CAPPED_AT = 40;
+const CAPPED_AT = 120;
 
 function phone(affordable: number) {
   return (density: number) => Math.min(CAPPED_AT, (TARGET_FRAMES_PER_SECOND * affordable) / Math.max(density, 0.01));
@@ -159,6 +160,37 @@ describe('deciding how many particles this phone can afford', () => {
     expect(startFromRemembered(0)).toBe(FEWEST_PARTICLES);
     // And never under the floor, however little it managed.
     expect(startFromRemembered(0.05)).toBe(FEWEST_PARTICLES);
+  });
+
+  it('climbs from the floor when the phone is making the target, rather than sitting there', () => {
+    // The shape of a real bug, and the reason the view's cap is far above the target rather than at
+    // it. With the cap *at* the target, a 60 Hz screen could only ever report 30 — a gate produces
+    // the refresh divided by a whole number — and the loop read its own cap as the phone struggling
+    // and stripped the sphere to the floor. Two hundred and fifty particles of five thousand, on a
+    // machine that could draw thousands.
+    //
+    // What has to happen instead: a phone with room climbs into it.
+    const control = createDensityControl();
+    expect(control.density).toBe(FEWEST_PARTICLES);
+
+    const path = settle(control, phone(0.8), 30);
+
+    expect(control.density).toBeGreaterThan(0.6);
+    expect(control.density).toBeLessThan(1);
+    // And it got there by going up, not by drifting.
+    expect(path[path.length - 1]).toBeGreaterThan(path[0] ?? 0);
+  });
+
+  it('never reads a fast phone as a slow one', () => {
+    // Anything at or above the target is headroom, whatever the screen's refresh happens to be —
+    // 60, 90 or 120. None of them may look like a phone that cannot keep up.
+    for (const measured of [40, 60, 90, 120]) {
+      const control = createDensityControl(0.5);
+      steerDensity(control, measured, 0.5);
+      steerDensity(control, measured, 0.5);
+
+      expect(control.density).toBeGreaterThanOrEqual(0.5);
+    }
   });
 
   it('does not hunt across the target once it has arrived', () => {

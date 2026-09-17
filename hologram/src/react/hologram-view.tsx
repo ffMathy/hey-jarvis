@@ -168,30 +168,30 @@ const GIVE_UP_COVERING_MS = 900;
 const DRAWN_RESOLUTION = 0.45;
 
 /**
- * The shortest gap between two drawn frames: forty a second at most.
+ * The shortest gap between two drawn frames: a hundred and twenty a second at most.
  *
- * **A forty-eighth rather than a fortieth, and the arithmetic is the whole reason.** A frame
- * callback fires with the screen, so the only rates a gate like this can produce are the screen's
- * refresh divided by a whole number. At 120 Hz frames arrive every 8.3 ms, and 20.8 is cleared by
- * the third of them — every third frame, which is forty exactly. Setting it to a fortieth (25 ms)
- * would land on the same third frame, but with nothing to spare against a screen whose timing is
- * never quite nominal; a forty-eighth sits clear of the second frame at 16.7 ms and clear of the
- * third at 25.
+ * **This is a safety rail, not the frame rate.** What Jarvis actually runs at is decided by
+ * `density-control.ts`, which adds particles until the frame rate falls to the rate it is aiming
+ * for — see `TARGET_FRAMES_PER_SECOND`. This only stops a very fast phone with very few particles
+ * from redrawing faster than any screen can show.
  *
- * **On a 60 Hz screen this is thirty, not forty**, and there is no arrangement of a frame gate that
- * makes it forty. Two frames in three is 40 Hz only if the screen offers 120 of them; at 60 the
- * choices are 60, 30, 20, 15, and asking for forty gets the nearest one below it. Anything else
- * means drawing on an alternating 17/33 ms rhythm, which is judder rather than a frame rate.
+ * **It was a forty-eighth for an hour, and that was a real mistake**: capping at the rate the loop
+ * was aiming for made the loop blind, because a measurement can never come back above its own cap,
+ * so "exactly fast enough" and "could draw three times as much" read identically. On a 60 Hz screen
+ * it was worse than blind. A gate can only produce the refresh divided by a whole number, so a
+ * forty-eighth yields thirty there — and the loop, told to hold forty, read thirty as the phone
+ * struggling and stripped the particles to the floor. Two hundred and fifty of five thousand, at a
+ * rate the cap itself had imposed.
  *
- * It has been a sixty-fourth — sixty a second — and a thirty-second before that. Lowering it is the
- * single cheapest thing that can be done to this drawing, because both halves of a frame, building
- * the picture and painting it, are paid once per *drawn* frame.
+ * A hundred-and-twenty-eighth rather than a hundred-and-twentieth so the arithmetic lands on the
+ * right side of a real screen's timing: at 120 Hz frames arrive every 8.3 ms, which clears 7.8 and
+ * draws every one.
  *
  * The clock is not tied to it either way. Time keeps adding up every frame the screen offers and
  * the whole of it is handed over when a picture is built, so this changes how often Jarvis is drawn
  * and never how fast he moves.
  */
-const MINIMUM_FRAME_SECONDS = 1 / 48;
+const MINIMUM_FRAME_SECONDS = 1 / 128;
 
 /** How long the frame rate is averaged over before it is reported. Long enough not to flicker. */
 const FRAME_RATE_OVER_SECONDS = 0.5;

@@ -330,6 +330,7 @@ Worth knowing, because it is the part that looks like magic:
 | --- | --- |
 | `Package not found: com.ffmathy.heyjarvis` | the first release was never uploaded by hand, or the service account was invited but has not propagated yet |
 | `Google Play Android Developer API has not been used in project …` | step 2 of §2 — the API is not enabled on the service account's Cloud project |
+| `Could not close incremental caches` / `Daemon compilation failed` during the build | the phone and watch Gradle builds ran at the same time and fought over one shared copy of `@react-native/gradle-plugin`. The workflow passes `--concurrency=1` to stop that; a local `turbo build:aab` across both filters needs it too |
 | Nothing in the Play Console works at all | the developer account is closed — see §0 |
 | `1Password CLI is not authenticated` in CI | `OP_SERVICE_ACCOUNT_TOKEN` is not reaching the job, or the `op` install step was removed |
 | `Version code N has already been used` | `JARVIS_ANDROID_VERSION_CODE` repeated. In CI it is `github.run_number`, which only rises; locally it is 1, so a locally built bundle can be uploaded once and never again |

@@ -132,6 +132,13 @@ jobs:
 
       # No secrets listed: `build:aab` goes through `run-with-env.sh mobile/op.env`, which resolves
       # the four signing values from 1Password with the token above. The same command a laptop runs.
+      #
+      # **`--concurrency=1`, and it is not an optimisation to remove.** Turbo runs filtered tasks in
+      # parallel by default, and these two are Gradle builds that compile the *same*
+      # `@react-native/gradle-plugin` out of the one shared `node_modules/.bun/...` directory. Run
+      # together they write the same Kotlin incremental caches at the same time and both die with
+      # "Could not close incremental caches" and a dead Kotlin daemon, which is exactly how the
+      # first run of this workflow failed. One after the other is slower and builds.
       - name: Build the signed bundles
         env:
           # Play orders uploads by this and refuses a repeat, so it has to rise every time. The run
@@ -139,7 +146,7 @@ jobs:
           # twice it and the watch one more, because a version code has to be unique across every
           # form factor in a listing — see `.scripts/expo-release-signing.js`.
           JARVIS_ANDROID_VERSION_CODE: ${{ github.run_number }}
-        run: bunx turbo build:aab --filter=mobile --filter=watch
+        run: bunx turbo build:aab --filter=mobile --filter=watch --concurrency=1
 
       # Kept whatever happens to the upload. A bundle that Play rejected is still the bundle that
       # was built, and the only copy of it: the next run gets a different versionCode and cannot

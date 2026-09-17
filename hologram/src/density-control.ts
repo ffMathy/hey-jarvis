@@ -16,17 +16,18 @@
  */
 
 /**
- * The frame rate it steers toward.
+ * The frame rate it steers toward, and the rate Jarvis actually runs at.
  *
- * Under the forty the view caps at, on purpose. At forty exactly the measurement saturates — the
- * cap holds it there — so the controller would have no way to tell "just fast enough" from "could
- * draw twice as much", and would sit wherever it happened to land. Aiming a little under keeps a
- * real error on both sides of the target.
+ * Exactly forty, not a little under it. It used to sit under the view's cap because a measurement
+ * saturates at the cap — at the cap exactly, "fast enough" and "could draw far more" read the same,
+ * and the loop would settle wherever it happened to land. That is no longer a worry: the cap in
+ * `hologram-view.tsx` is now a hundred and twenty, far above this, so there is real error on both
+ * sides of forty and the loop can see it.
  *
- * It tracks `MINIMUM_FRAME_SECONDS` in `hologram-view.tsx`, which is what the cap actually is, and
- * has to move whenever that does. The pair were 57 and sixty.
+ * Which means this number does the work. The loop *adds* particles until the frame rate falls to
+ * here, so lowering it buys a denser sphere and raising it a smoother one.
  */
-export const TARGET_FRAMES_PER_SECOND = 38;
+export const TARGET_FRAMES_PER_SECOND = 40;
 
 /**
  * Never fewer than this share of the particles: past it he stops looking like himself.
@@ -79,8 +80,19 @@ const CARRIED_LIMIT = 0.5;
 /** What share of the remaining room to the ceiling a single climb may take: halving, so it lands. */
 const APPROACH_SHARE = 0.5;
 
-/** A frame rate this high means the cap is holding it, so there is room nobody can measure. */
-const HEADROOM_FRAMES_PER_SECOND = 39;
+/**
+ * A frame rate at least this high means the count that produced it is sustainable.
+ *
+ * It was a number just under the view's cap, on the reasoning that being pinned at the cap meant
+ * there was room nobody could measure. That only worked while the cap was close to the target. With
+ * the cap at a hundred and twenty it would never be reached on a 60 Hz screen at all, and the
+ * remembered count — which is only written down when this is met — would have stayed empty for
+ * ever on half the phones in the world.
+ *
+ * Making the target is the honest signal now: a density that holds the rate being asked for is a
+ * density this phone can manage, which is exactly what is worth remembering.
+ */
+const SUSTAINED_FRAMES_PER_SECOND = TARGET_FRAMES_PER_SECOND;
 
 /** How fast the remembered ceiling itself lifts, once the phone is plainly not working for it. */
 const CEILING_CREEP_PER_SECOND = 0.1;
@@ -224,9 +236,9 @@ export function steerDensity(control: DensityControl, framesPerSecond: number, d
   const sustained = Math.min(error, control.lastError);
   control.lastError = error;
 
-  if (framesPerSecond >= HEADROOM_FRAMES_PER_SECOND && control.density > control.proven) {
-    // Drawing this many at the cap is the phone saying it can. Only ever upward: this is the one
-    // number worth keeping, and a busy minute should not talk it down.
+  if (framesPerSecond >= SUSTAINED_FRAMES_PER_SECOND && control.density > control.proven) {
+    // Holding the target at this many is the phone saying it can. Only ever upward: this is the
+    // one number worth keeping, and a busy minute should not talk it down.
     control.proven = control.density;
   }
 
@@ -240,10 +252,11 @@ export function steerDensity(control: DensityControl, framesPerSecond: number, d
   if (error < 0) {
     // **Faster than it needs to be: climb, but toward what this phone has been shown to manage.**
     //
-    // The proportional term is no use on this side, because the measurement saturates — the view
-    // caps at sixty, so however much room there is the error never exceeds a twentieth, and
-    // answering that in proportion is a crawl. What paces the climb instead is the room left to
-    // the ceiling, halved each time, so it lands rather than steps over.
+    // The proportional term is deliberately not used on this side. It would make the climb's speed
+    // depend on how far above the target the phone happens to be, which is a number that changes
+    // wildly between a screen that refreshes 60 times a second and one that does 120. What paces
+    // the climb instead is the room left to the ceiling, halved each time, so it lands rather than
+    // steps over — and that is the same on every phone.
     control.carried -= control.carried * deltaSeconds;
     const room = Math.max(0, control.ceiling - control.density);
     // Halving the remaining room lands *near* the ceiling and never quite on it, so the last
@@ -252,7 +265,7 @@ export function steerDensity(control: DensityControl, framesPerSecond: number, d
     control.density = clamp(control.density + step, FEWEST_PARTICLES, 1);
     // And if it is up against the ceiling while the cap is *still* holding the frame rate down,
     // the ceiling itself was pessimistic — something else was busy at the time — so it lifts.
-    if (room < RAISE_CEILING_WITHIN && framesPerSecond >= HEADROOM_FRAMES_PER_SECOND) {
+    if (room < RAISE_CEILING_WITHIN && framesPerSecond >= SUSTAINED_FRAMES_PER_SECOND) {
       control.ceiling = Math.min(1, control.ceiling + CEILING_CREEP_PER_SECOND * deltaSeconds);
     }
     return;
