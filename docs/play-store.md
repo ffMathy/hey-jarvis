@@ -172,11 +172,16 @@ way round it.
 release, so upload `dist/mobile-aab/jarvis.aab` *and* `dist/watch-aab/jarvis.aab` through the
 Console once. Every upload after that can be the workflow.
 
-**And the watch has to be switched on.** Play does not deliver a watch artifact until the app opts
-in to the form factor: **Test and release → Advanced settings → Form factors → Add form factor →
-Wear OS**, then agree to the Wear OS review policies. Without it the watch bundle is accepted,
-sits in the release, and reaches nothing. This is also the step that puts the watch app through its
-own review, which is separate from the phone's.
+**And the watch has to be switched on — this one blocks publishing entirely.** Play does not accept
+a watch artifact until the app opts in to the form factor: **Test and release → Advanced settings →
+Form factors → Add form factor → Wear OS**, then agree to the Wear OS review policies. This is also
+the step that puts the watch app through its own review, which is separate from the phone's.
+
+Do not read this as a watch-only concern. Both bundles go up in **one release**, so Play refusing the
+watch artifact fails the whole commit — the phone app does not publish either, and the only thing
+said about it is `Internal error encountered` after both files have uploaded successfully. If the
+publish workflow started failing at exactly the point the watch joined it, this is the first thing
+to check.
 
 Finally, on **Testing → Internal testing**, create a tester list and add the addresses that should
 get it — including the Google account on the phone that is paired to the watch.
@@ -337,5 +342,6 @@ Worth knowing, because it is the part that looks like magic:
 | `You uploaded an APK or Android App Bundle signed with a key that is also used to sign APKs delivered to users` | the debug key got in, which means the Gradle property was missing and the build silently fell back |
 | `keystore did not open` from the build script | the base64 was wrapped. Re-run it with `-w 0` |
 | The bundle's certificate says `CN=Android Debug` | the four Gradle properties never arrived, so the build fell back to the debug key. Check the four variables are set in the shell that runs it |
+| `Internal error encountered` from **Publish to Play**, after both bundles say they uploaded | the commit was refused, and the release fails as a whole. Almost always the Wear OS form factor has not been added in the Console — see §3. The bundles themselves are fine and are kept as a build artifact, so nothing has to be rebuilt |
 | The watch app does not appear on the watch | the Wear OS form factor was never added under Test and release → Advanced settings, or the phone's Google account is not on the tester list |
 | `Version code N has already been used` on the *watch* bundle | both apps derive their version code from the same run number — the phone takes twice it, the watch one more — so this means one was uploaded outside the workflow |

@@ -171,6 +171,7 @@ jobs:
             bash -c 'printf "%s" "$HEY_JARVIS_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON" > play-publisher.json'
 
       - name: Publish to Play
+        id: publish
         uses: r0adkll/upload-google-play@v1.1.3
         with:
           serviceAccountJson: play-publisher.json
@@ -182,6 +183,19 @@ jobs:
           # defaults, which are the ones worth having automatically: straight to the testers.
           track: ${{ inputs.track || 'internal' }}
           status: ${{ inputs.status || 'completed' }}
+
+      # Play's commit failures are famously uninformative — both bundles upload, and then the whole
+      # edit dies with nothing but "Internal error encountered". The action has no more to tell,
+      # because that is the entire message Google sends. So say here what it has almost always been,
+      # rather than leaving the next person to work it out from the run history a second time.
+      - name: Explain a failed publish
+        if: failure() && steps.publish.outcome == 'failure'
+        run: |
+          echo "::notice title=Publishing failed::Both bundles are kept as the jarvis-${{ github.run_number }} artifact, so nothing needs rebuilding."
+          echo "'Internal error encountered' after a successful upload means Play refused to commit the release."
+          echo "Both bundles go up as ONE release, so the watch artifact being refused fails the phone's release too."
+          echo "First thing to check: Play Console -> Test and release -> Advanced settings -> Form factors -> Add form factor -> Wear OS."
+          echo "See docs/play-store.md section 3 and section 8."
 
       # However the upload went, and even if the job was cancelled part way through it.
       - name: Shred the publisher account
