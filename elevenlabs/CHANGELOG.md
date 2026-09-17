@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.16.0...elevenlabs-v0.17.0) (2026-09-17)
+
+
+### Features
+
+* **mobile:** add a jarvis app for android and the web ([#720](https://github.com/ffMathy/hey-jarvis/issues/720)) ([7d88c8b](https://github.com/ffMathy/hey-jarvis/commit/7d88c8b382947c8930f44324e46aa9be1e49cab1))
+
 ## [0.16.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.15.1...elevenlabs-v0.16.0) (2026-09-16)
 
 
