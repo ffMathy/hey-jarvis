@@ -25,8 +25,16 @@
  */
 export const TARGET_FRAMES_PER_SECOND = 57;
 
-/** Never fewer than this share of the particles: past it he stops looking like himself. */
-export const FEWEST_PARTICLES = 0.2;
+/**
+ * Never fewer than this share of the particles: past it he stops looking like himself.
+ *
+ * A share, and it therefore has to move whenever `PARTICLE_COUNT` does. What matters is the count
+ * it works out to — about 240 fragments, which is where the swarm stops reading as a swarm — and
+ * not the fraction. It was a fifth of a thousand; the ceiling is now three thousand, and a fifth of
+ * that would be a floor of six hundred, three times higher than any phone was ever held to. A phone
+ * that could manage three hundred would be pinned above what it can draw and stutter for ever.
+ */
+export const FEWEST_PARTICLES = 0.08;
 
 /**
  * How wide a band around the target counts as arrived, as a share of it.

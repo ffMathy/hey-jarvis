@@ -60,6 +60,11 @@
       "cache": false,
       "outputs": []
     },
+    "build:aab": {
+      "dependsOn": ["initialize"],
+      "cache": false,
+      "outputs": []
+    },
     "mobile#e2e": {
       "dependsOn": ["lint", "typecheck", "initialize"],
       "outputs": ["playwright-report/**", "test-results/**", "dist/**"]

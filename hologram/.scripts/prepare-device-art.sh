@@ -38,6 +38,17 @@ curl -sS "$aosp/pixel_10_pro/layout?format=TEXT" | base64 -d > "$work/pixel-10-p
 echo "Fetching the Pixel Watch 3 vector from Wikimedia Commons..."
 curl -sSL -A "$agent" "$commons/6/61/Google_Pixel_Watch_3-45_%28Matte_Black_%2B_Obsidian%29.svg" > "$art/pixel-watch-3.svg"
 
+echo "Fetching Roboto Light from Google Fonts..."
+# Asked for by stylesheet rather than by a direct link, because the direct links are versioned and
+# hashed and go stale. A plain curl user agent is what makes Google answer with a TrueType file
+# instead of the WOFF2 a browser would get, and TrueType is what Skia can load.
+roboto=$(curl -sS "https://fonts.googleapis.com/css2?family=Roboto:wght@300" -H "User-Agent: curl/7.0" | grep -oE 'https://[^)]+\.ttf' | head -1)
+if [ -z "$roboto" ]; then
+  echo "Google Fonts did not answer with a TrueType URL." >&2
+  exit 1
+fi
+curl -sSL -A "$agent" "$roboto" > "$art/roboto-light.ttf"
+
 echo "Converting..."
 # One change to the vector, and it is why the SVG is committed beside the PNG rather than only the
 # PNG: the screen is a light-grey filled circle drawn on top of the case, and the showcase paints

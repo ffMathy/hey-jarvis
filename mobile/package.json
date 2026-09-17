@@ -10,12 +10,14 @@
     "format": "cd .. && bunx biome format --write mobile",
     "build": "cd .. && bash mobile/.scripts/build.sh",
     "build:apk": "cd .. && bash mobile/.scripts/build-apk.sh",
+    "build:aab": "cd .. && bash ./.scripts/run-with-env.sh mobile/op.env mobile/.scripts/build-aab.sh",
     "test": "cd .. && bash mobile/.scripts/test.sh",
     "e2e": "bunx playwright test --config playwright.config.ts",
     "start": "bunx expo start --dev-client",
     "android": "bash .scripts/initialize.sh && bunx expo run:android",
     "eas-build-post-install": "bash .scripts/initialize.sh",
-    "native:prebuild": "bunx expo prebuild --platform android"
+    "native:prebuild": "bunx expo prebuild --platform android",
+    "env:local": "cd .. && bash ./.scripts/generate-env-local.sh mobile/op.env"
   },
   "dependencies": {
     "@elevenlabs/react-native": "1.2.26",

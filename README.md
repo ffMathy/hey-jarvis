@@ -2,7 +2,7 @@
 
 An intelligent voice assistant for home automation, powered by AI agents and custom voice hardware.
 
-<img width="1536" height="1024" alt="Hey Jarvis" src="https://github.com/user-attachments/assets/f565c210-42df-4600-a1ab-5abb437bfcc9" />
+<img width="1280" height="640" alt="Jarvis" src="./docs/jarvis.png" />
 
 ## Jarvis, summoned
 
@@ -28,6 +28,10 @@ bun hologram/.scripts/render-showcase.ts
 
 Those are animated WebP at a true 60 fps, with a 30 fps GIF behind them for anything that will not animate one — **a README cannot show a video**, because GitHub renders neither a `<video>` element from a file in a repository nor a video served from `raw`. The full-size VP9 copies are here to download: [phone](./docs/jarvis-on-a-phone.webm), [watch](./docs/jarvis-on-a-watch.webm).
 
+All three are transparent outside the device, so they sit on a light page as happily as a dark one.
+
+The picture at the top is the same drawing again: one still, mid-sentence, at the full 3000 particles — the most a phone is ever *allowed*, and more than one has ever been measured drawing. It is 1280×640, which is what GitHub wants for a repository's social preview, so the same file serves as both.
+
 The devices are real frames rather than drawings: Google's own Pixel 10 Pro device art, and a community vector of a Pixel Watch 3 — Google publishes art for every Pixel phone and none for its watch. [`hologram/.scripts/device-art/NOTICE.md`](./hologram/.scripts/device-art/NOTICE.md) says where each came from and under what licence, **including that the two watch clips are themselves CC BY-SA 4.0** because the frame in them is.
 
 ## Architecture
@@ -46,6 +50,8 @@ ESP32 Voice Hardware  ←→  Home Assistant  ←→  MCP Server (Mastra AI)  �
 | [**mobile**](./mobile) | Expo app that registers as the phone's default assistant, so the power button summons Jarvis |
 | [**wear**](./wear) | The same thing on a Wear OS watch |
 | [**hologram**](./hologram) | The sphere itself, and the voice tracking behind it — platform-free, and bundled by both apps |
+
+Getting the app onto a phone and a paired watch goes through Play internal testing: [**docs/play-store.md**](./docs/play-store.md) covers the upload key, the publisher account and the secrets each needs.
 
 ## Quick Start
 

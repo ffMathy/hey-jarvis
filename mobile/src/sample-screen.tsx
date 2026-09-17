@@ -8,7 +8,7 @@ import { FrameRate } from './frame-rate';
 import { JarvisHologram } from './jarvis-hologram';
 import { ModeToast } from './mode-toast';
 import { moodOf, nextSampleMode, type SampleMode } from './sample-mode';
-import { SampleSheet, SHEET_INK, SHEET_INSET, SHEET_SHARE } from './sample-sheet';
+import { SAMPLE_CANVAS, SampleSheet, sampleHologramSize } from './sample-sheet';
 import { useSampleVoice } from './sample-voice';
 import { useSimulatedVoice } from './simulated-voice';
 import { readProvenSparks, rememberProvenSparks } from './spark-memory';
@@ -64,18 +64,12 @@ export function SampleScreen({ onLeave }: SampleScreenProps) {
   const { voice: heard } = useSampleVoice(mode === 'microphone' && settled && !leaving);
   const imagined = useSimulatedVoice(settled ? moodOf(mode) : undefined);
   const { width, height } = useWindowDimensions();
-  // The square fits *inside* the sheet, and it has to.
-  //
-  // It was twice the sheet across for a moment, so that the sphere itself would fill the sheet's
-  // shorter side. That cannot work here: an opaque canvas is a `SurfaceView`, which is its own
-  // hardware layer and is **not** clipped by a parent's rounded corners or `overflow: hidden`. The
-  // oversized square simply spilled out over the sheet, taking its dark with it, and the sheet's
-  // border drew across the middle of it.
-  //
-  // So it is inset instead, far enough that the hairline edge is never underneath it. The sphere
-  // is `SPHERE_FRACTION` of this, which is about half the sheet's shorter side.
-  const across = Math.min(width, Math.round(height * SHEET_SHARE));
-  const hologramSize = across - SHEET_INSET * 2;
+  // How big the square is, and whether there is a sheet around it at all, are the same decision —
+  // so both live in `sample-sheet.tsx` rather than being worked out again here. On a phone it is
+  // the sheet's shorter side inset from its edge, which an opaque canvas has to be because a
+  // `SurfaceView` is its own hardware layer that no parent can clip. On the web there is no sheet
+  // and no `SurfaceView`, and he simply fills the middle of the window.
+  const hologramSize = sampleHologramSize(width, height);
   const going = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const isForeground = useIsForeground();
   // Filled in on the UI thread by the hologram, read twice a second by the readout in the corner.
@@ -153,7 +147,19 @@ export function SampleScreen({ onLeave }: SampleScreenProps) {
   // Summoned again after leaving, this screen is the one that was already here: retracting the
   // assistant's window does not unmount it, so without this it would come back still on its way
   // out, faded to nothing and unable to leave a second time.
+  //
+  // **Not on the first run, which is the mount**, and there is nothing to reset then. That looked
+  // harmless for as long as the sheet was the only thing announcing `onSettled`, because it does so
+  // a quarter of a second later, long after any mount effect. On the web there is no sheet and
+  // nothing to wait for, so it announces during its own mount effect — and a child's effects run
+  // before its parent's, so this one fired straight afterwards and set `settled` back to false for
+  // good. Jarvis never drew and the microphone never opened.
+  const summonedBefore = useRef(false);
   useEffect(() => {
+    if (!summonedBefore.current) {
+      summonedBefore.current = true;
+      return;
+    }
     if (isForeground) {
       clearTimeout(going.current);
       going.current = undefined;
@@ -202,8 +208,8 @@ export function SampleScreen({ onLeave }: SampleScreenProps) {
             particleShare={particleShare}
             provenShare={provenShare}
             startingShare={startingShare}
-            opaque
-            background={SHEET_INK}
+            opaque={SAMPLE_CANVAS.opaque}
+            background={SAMPLE_CANVAS.background}
           />
         ) : null}
       </Pressable>

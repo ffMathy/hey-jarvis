@@ -369,9 +369,17 @@ describe('the hologram', () => {
       const ordinary = discBrightness(render(speech(time, 0.3, new Array(VOICE_BAND_COUNT).fill(0.27))));
       const loud = discBrightness(render(speech(time, 1, new Array(VOICE_BAND_COUNT).fill(0.9))));
 
-      // Measured: 1.01-1.03 for an ordinary voice, 1.05-1.09 for a shout.
-      expect(ordinary / silent).toBeLessThan(1.08);
-      expect(loud / silent).toBeLessThan(1.15);
+      // Measured at PARTICLE_COUNT: 1.06-1.10 for an ordinary voice, 1.11-1.15 for a shout.
+      //
+      // **These numbers rise with the ceiling, and that is not a leak.** They were 1.03-1.06 and
+      // 1.10-1.13 when the cap was a thousand fragments rather than three. Nothing about how a
+      // fragment is lit changed; there are three times as many of them, so the chips thrown past the
+      // limb, the frayed limb and the swell are all three times the extra area — and area is what
+      // this measures. The check that the *strokes* are not turned up is the ratio staying far below
+      // what a glow would do to it: speech at full volume brightens a thought-free sphere by 40% and
+      // more when the glow is what is driving it, which is the next test but one.
+      expect(ordinary / silent).toBeLessThan(1.12);
+      expect(loud / silent).toBeLessThan(1.18);
       // And it does not *darken* while he talks either, which would read as him flinching.
       expect(ordinary / silent).toBeGreaterThan(0.95);
     }
@@ -519,21 +527,28 @@ describe('the hologram', () => {
     // it. What is pinned is the travel: where the light sits has to climb through a pass.
     const hologram = mount();
     const thought = (time: number) => render({ ...silence(time), thinking: 1 }, hologram);
-    // Three moments inside *one* pass — SCAN_SECONDS is 2.6, so this one runs from 5.2 to 7.8.
-    // Straddling the boundary measures the plane starting again at the bottom, which is the one
-    // thing here that is not a climb.
-    const low = lightHeight(thought(5.4));
-    const middle = lightHeight(thought(6.3));
-    const high = lightHeight(thought(7.2));
+    // Sampled right across *one* pass — SCAN_SECONDS is 2.6, so this one runs from 5.2 to 7.8 —
+    // and the trend across it is what is asserted, rather than three instants being strictly
+    // ordered. They are not, and expecting them to be was the test's mistake rather than the
+    // drawing's: the plane lights whatever it passes, and what it passes is a lumpy swarm, so the
+    // centre of the light steps sideways whenever it crosses a dense band. Between 5.4 s and 6.3 s
+    // it moves by under a fiftieth of the square, in whichever direction that band happens to fall.
+    // Over the pass as a whole it moves twenty times that, every time.
+    const across = [5.4, 5.8, 6.2, 6.6, 7.0, 7.4].map((time) => lightHeight(thought(time)));
+    const early = across.slice(0, 3);
+    const late = across.slice(3);
+    const mean = (of: number[]) => of.reduce((all, one) => all + one, 0) / of.length;
 
-    expect(low).toBeGreaterThan(middle);
-    expect(middle).toBeGreaterThan(high);
+    expect(mean(early)).toBeGreaterThan(mean(late));
+    // Every sample in the second half is above every sample in the first: a climb rather than a
+    // drift, without requiring any two neighbours to be in order.
+    expect(Math.max(...late)).toBeLessThan(Math.min(...early));
     // A real move, not a wobble — and measured in sphere radii rather than in fractions of the
     // square, because the square is set by how far the chips fly and has nothing to do with this.
     // It comes to about a sixth of a radius, which is less than the plane itself travels because
     // the core, the rim and the shadow stay where they are and hold the centre of the light toward
     // the middle. Bounded below that with room, not against it.
-    expect(((low - high) * SIZE) / RADIUS).toBeGreaterThan(0.12);
+    expect(((mean(early) - mean(late)) * SIZE) / RADIUS).toBeGreaterThan(0.12);
   });
 
   it('thinks without glowing, so a thought is never mistaken for a word', () => {

@@ -29,7 +29,15 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ClipOp, FilterMode, MipmapMode, PaintStyle } from '@shopify/react-native-skia/lib/module/skia/types';
+import {
+  BlendMode,
+  BlurStyle,
+  ClipOp,
+  FilterMode,
+  MipmapMode,
+  PaintStyle,
+  TileMode,
+} from '@shopify/react-native-skia/lib/module/skia/types';
 import { JsiSkApi } from '@shopify/react-native-skia/lib/module/skia/web';
 import { LoadSkiaWeb } from '@shopify/react-native-skia/lib/module/web/LoadSkiaWeb';
 import {
@@ -44,6 +52,7 @@ import {
   fillSimulatedSpectrum,
   foldSpectrum,
   MATERIALISE_SECONDS,
+  PARTICLE_COUNT,
   perceivedLevel,
   type SimulatedMood,
   simulatedVolume,
@@ -90,6 +99,16 @@ const GIF_COLOURS = 160;
  * dim and different every frame, which is the exact shape of what a video codec throws away.
  */
 const WEBP_QUALITY = 70;
+
+/**
+ * How opaque a pixel must be to survive into the GIF, out of 255.
+ *
+ * A GIF's transparency is one bit: a pixel is either there or it is not, and there is no such thing
+ * as half. Everything softer than this — the outer pixels of the phone's rounded corners, the whole
+ * antialiased rim of the watch — is dropped. Low, because dropping them is what leaves a ragged
+ * edge, and keeping a faint pixel at full strength is much the less visible mistake of the two.
+ */
+const GIF_ALPHA_THRESHOLD = 64;
 
 /** How long each of the three things he does is held for, at the user's asking. */
 const IDLE_SECONDS = 3;
@@ -149,6 +168,55 @@ const GIF_PALETTE_STATS = 'full';
 
 /** Where the fetched artwork lives. See `device-art/NOTICE.md`. */
 const DEVICE_ART = join(import.meta.dir, 'device-art');
+
+/**
+ * The cover: one still of Jarvis mid-sentence with his name written round him.
+ *
+ * Square, and large. Nothing about it is scaled down afterwards and nothing is thinned, so this is
+ * the one place he is drawn at the size he was designed at.
+ *
+ * `COVER_SPHERE` is the square the drawing is given, not the ball: the ball is `SPHERE_FRACTION` of
+ * it, and the rest is the room his chips are thrown into, which is about 2.1 sphere radii. The name
+ * goes on a ring outside all of that, and its radius is measured back from the edge of the picture
+ * rather than outward from the sphere — see {@link coverNameRadius} — so it cannot be pushed off
+ * the top, which is exactly what happened when it was a multiple of the sphere's radius.
+ */
+const COVER_SIZE = 1400;
+const COVER_SPHERE = 1020;
+const COVER_NAME = 'JARVIS';
+const COVER_NAME_SIZE = 92;
+/** Space between letters, as a share of their size. Wide: it is a name on a ring, not a sentence. */
+const COVER_NAME_TRACKING = 0.62;
+/** The same amber the sphere is made of, and the same glow under it. */
+const COVER_NAME_INK = '#ffd18a';
+const COVER_NAME_GLOW = '#e8902a';
+const COVER_NAME_GLOW_BLUR = 14;
+/** How long to look through for the loudest instant of speech. Three phrases' worth. */
+const COVER_LISTEN_SECONDS = 9;
+/** How much clear space to leave round the emblem once it has been cropped to what it drew. */
+const COVER_MARGIN = 28;
+/** Alpha below which a pixel does not count as drawn, out of 255, when working out that crop. */
+const COVER_FAINTEST = 10;
+
+/**
+ * The finished cover, and why it is this shape and not square.
+ *
+ * 1280×640 is what GitHub asks for a repository's social preview — the picture that shows when the
+ * repository is linked anywhere — so the same file serves as the image at the top of the README and
+ * as the one set under **Settings → Social preview**. GitHub takes anything from 640×320 up and
+ * crops to 2:1; giving it exactly 2:1 at the size it prefers means nothing is cropped and nothing is
+ * upscaled.
+ *
+ * Opaque, unlike everything else rendered here. A social preview is composited onto whatever
+ * background the site linking to it uses, and a transparent one lands on white about as often as on
+ * dark — so this brings its own.
+ */
+const COVER_WIDE = 1280;
+const COVER_TALL = 640;
+/** How much dark to leave above and below the emblem, in pixels. */
+const COVER_INSET = 26;
+/** What the cover sits on: the app's own near-black, lifted a little toward the middle. */
+const COVER_BACKDROP = ['#0a0e16', '#141c2b', '#070a10'];
 
 type SkiaApi = ReturnType<typeof JsiSkApi>;
 type SkiaSurface = NonNullable<ReturnType<SkiaApi['Surface']['MakeOffscreen']>>;
@@ -218,6 +286,25 @@ function writeScript(opensOver: number, closesOver: number) {
 type Moment = ReturnType<ReturnType<typeof writeScript>['at']>;
 
 /**
+ * A moment for the cover: formed, present, speaking, and nothing else going on.
+ *
+ * The same shape {@link writeScript} produces, so that {@link createPerformance} can advance it
+ * without knowing it is being used for a still rather than for a clip.
+ */
+function coverMoment(seconds: number): Moment {
+  return {
+    mood: 'speaking',
+    moodSeconds: seconds,
+    opened: 1,
+    showing: true,
+    // Long past materialising, so `appearance` is 1 and he is simply there.
+    hologramSeconds: MATERIALISE_SECONDS + seconds,
+    thinkingWanted: false,
+    leaving: false,
+  };
+}
+
+/**
  * Everything the drawing reads that is carried from one frame to the next.
  *
  * The same five things `hologram-view.tsx` keeps in its `frame` shared value, advanced the same
@@ -282,6 +369,244 @@ function loadArt(skia: SkiaApi, file: string) {
 }
 
 type SkiaImage = ReturnType<typeof loadArt>;
+type SkiaFont = ReturnType<SkiaApi['Font']>;
+type HologramScene = ReturnType<typeof createHologramScene>;
+type HologramResources = ReturnType<typeof createHologramResources>;
+
+/**
+ * The repository's cover: Jarvis mid-sentence, with his name written round him.
+ *
+ * A still, so it can be a great deal more than the clips are — every particle, no thinning, and no
+ * scaling down afterwards. Transparent outside the ring, so it sits on a light README as happily as
+ * on a dark one.
+ *
+ * The moment is chosen rather than picked: {@link findLoudestMoment} runs the simulated voice
+ * forward and reports when it was loudest, and the drawing is then run from the beginning to
+ * exactly there. Speaking is when he has most to look at — the swarm swells, the rim throws chips —
+ * and the loudest instant of it is when that is furthest along.
+ */
+function paintCover(
+  skia: SkiaApi,
+  canvas: SkiaCanvas,
+  wordmark: SkiaFont,
+  frame: ReturnType<ReturnType<typeof createPerformance>>,
+  scene: HologramScene,
+  resources: HologramResources,
+) {
+  const middle = COVER_SIZE / 2;
+  canvas.save();
+  canvas.translate(middle - COVER_SPHERE / 2, middle - COVER_SPHERE / 2);
+  drawHologram(canvas, COVER_SPHERE, frame, scene, resources);
+  canvas.restore();
+
+  drawAroundCircle(skia, canvas, wordmark, COVER_NAME, middle, middle, coverNameRadius());
+}
+
+/**
+ * The ring the letters stand on, measured in from the edge of the picture.
+ *
+ * A letter is drawn from its baseline upward, so the ring plus the tallest capital is the furthest
+ * anything reaches — and a full font size is more than any capital's height, which makes this the
+ * largest ring that certainly fits. Doing it the other way round, as a multiple of the sphere's
+ * radius, put the name half off the top of the image.
+ *
+ * What keeps it clear of Jarvis rather than clear of the edge is {@link COVER_SPHERE}: his chips go
+ * out to about 2.1 sphere radii, which at that size is comfortably inside this.
+ */
+function coverNameRadius(): number {
+  // The glow is subtracted as well as the letters. A blurred paint reaches about three sigma past
+  // the shape it is blurring, and without that room the name's halo is sliced off square by the top
+  // of the picture — which is not obvious in a thumbnail and very obvious once anybody looks.
+  return COVER_SIZE / 2 - COVER_NAME_SIZE - COVER_NAME_GLOW_BLUR * 3;
+}
+
+/**
+ * Puts the emblem on the wide, opaque cover GitHub wants, and encodes it.
+ *
+ * Scaled to the height rather than the width, because the emblem is taller than it is wide and a 2:1
+ * frame has height to spare nowhere and width to spare everywhere. What is left either side is
+ * backdrop, which is the point of a cover rather than a failure of one.
+ */
+function layOutCover(skia: SkiaApi, emblem: { image: SkiaImage; width: number; height: number }) {
+  const surface = skia.Surface.MakeOffscreen(COVER_WIDE, COVER_TALL) ?? skia.Surface.Make(COVER_WIDE, COVER_TALL);
+  if (!surface) {
+    throw new Error('Could not make a surface to lay the cover out on');
+  }
+  const canvas = surface.getCanvas();
+  canvas.clear(skia.Color(COVER_BACKDROP[0] ?? '#000000'));
+
+  // A wash from the middle outward, so the emblem sits in a little light rather than on a flat
+  // rectangle. Very dark throughout: it is a backdrop, and the sphere is the only thing lit.
+  const backdrop = skia.Paint();
+  backdrop.setShader(
+    skia.Shader.MakeRadialGradient(
+      { x: COVER_WIDE / 2, y: COVER_TALL / 2 },
+      COVER_WIDE * 0.62,
+      COVER_BACKDROP.map((colour) => skia.Color(colour)),
+      [0, 0.45, 1],
+      TileMode.Clamp,
+    ),
+  );
+  canvas.drawRect(skia.XYWHRect(0, 0, COVER_WIDE, COVER_TALL), backdrop);
+
+  const scale = (COVER_TALL - COVER_INSET * 2) / emblem.height;
+  const width = emblem.width * scale;
+  const height = emblem.height * scale;
+  drawArt(skia, canvas, emblem.image, (COVER_WIDE - width) / 2, (COVER_TALL - height) / 2, width, height);
+  surface.flush();
+
+  const bytes = surface.makeImageSnapshot().encodeToBytes();
+  if (!bytes) {
+    throw new Error('Could not encode the cover');
+  }
+  return bytes;
+}
+
+/** The box the drawn pixels fall in, ignoring anything under {@link COVER_FAINTEST}. */
+/**
+ * Trims a rendered emblem to what it actually drew, plus a margin.
+ *
+ * The square it is composed in is generous on purpose — it has to hold whatever the sphere throws —
+ * and what comes out uses about half of it, with the name across the top and nothing at all below.
+ * Cropping is free on a transparent image and is the difference between a picture and a picture with
+ * a lot of space under it.
+ *
+ * The bounds are measured rather than worked out. Where the outermost spark lands depends on the
+ * seed, the moment, and how loudly he happens to be speaking.
+ */
+function drawnBounds(pixels: Uint8Array, width: number, height: number) {
+  let left = width;
+  let right = 0;
+  let top = height;
+  let bottom = 0;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      // Anything fainter than this is a spark nobody can see, and cropping to it would keep the
+      // whole square.
+      if ((pixels[(y * width + x) * 4 + 3] ?? 0) <= COVER_FAINTEST) {
+        continue;
+      }
+      // `Math.min`/`Math.max` rather than four `if`s, which is the same arithmetic and reads as one
+      // idea instead of four branches.
+      left = Math.min(left, x);
+      right = Math.max(right, x);
+      top = Math.min(top, y);
+      bottom = Math.max(bottom, y);
+    }
+  }
+  if (right < left || bottom < top) {
+    throw new Error('The cover came out empty');
+  }
+  return { left, right, top, bottom };
+}
+
+function cropToContent(skia: SkiaApi, image: SkiaImage, margin: number) {
+  const width = image.width();
+  const height = image.height();
+  const pixels = image.readPixels();
+  if (!(pixels instanceof Uint8Array)) {
+    throw new Error('Could not read the cover back to crop it');
+  }
+  const { left, right, top, bottom } = drawnBounds(pixels, width, height);
+  const box = {
+    x: Math.max(0, left - margin),
+    y: Math.max(0, top - margin),
+  };
+  const cropped = {
+    width: even(Math.min(width, right + margin + 1) - box.x),
+    height: even(Math.min(height, bottom + margin + 1) - box.y),
+  };
+  const surface =
+    skia.Surface.MakeOffscreen(cropped.width, cropped.height) ?? skia.Surface.Make(cropped.width, cropped.height);
+  if (!surface) {
+    throw new Error('Could not make a surface to crop the cover onto');
+  }
+  const canvas = surface.getCanvas();
+  canvas.clear(skia.Color('#00000000'));
+  canvas.drawImage(image, -box.x, -box.y);
+  surface.flush();
+  return { image: surface.makeImageSnapshot(), ...cropped };
+}
+
+/**
+ * Writes a word around a circle, centred on twelve o'clock, reading left to right across the top.
+ *
+ * Glyph by glyph, because that is the only way to do it here: Skia can lay text along a path, but
+ * the binding this runs under does not expose it. Each letter is rotated to its own angle and drawn
+ * upright on the ring, which is what a wordmark round a badge does anyway.
+ *
+ * Twice over, as everything else in this drawing is: a wide blurred pass underneath for the glow and
+ * a sharp one on top, both under `BlendMode.Screen`, so the name is made of the same light the
+ * sphere is rather than printed over it.
+ */
+function drawAroundCircle(
+  skia: SkiaApi,
+  canvas: SkiaCanvas,
+  font: SkiaFont,
+  word: string,
+  centreX: number,
+  centreY: number,
+  radius: number,
+) {
+  const letters = [...word];
+  // Angles, not widths: a letter's share of the ring is its width over the circumference, and the
+  // tracking between them is the same thing for a space that is not there.
+  const widths = letters.map((letter) => font.getTextWidth(letter));
+  const tracking = COVER_NAME_TRACKING * font.getSize();
+  const spans = widths.map((width) => width / radius);
+  const total = spans.reduce((all, span) => all + span, 0) + ((letters.length - 1) * tracking) / radius;
+
+  const glow = skia.Paint();
+  glow.setAntiAlias(true);
+  glow.setColor(skia.Color(COVER_NAME_GLOW));
+  glow.setBlendMode(BlendMode.Screen);
+  glow.setMaskFilter(skia.MaskFilter.MakeBlur(BlurStyle.Normal, COVER_NAME_GLOW_BLUR, true));
+  const ink = skia.Paint();
+  ink.setAntiAlias(true);
+  ink.setColor(skia.Color(COVER_NAME_INK));
+  ink.setBlendMode(BlendMode.Screen);
+
+  let turned = -total / 2;
+  for (let index = 0; index < letters.length; index++) {
+    const letter = letters[index] ?? '';
+    const span = spans[index] ?? 0;
+    canvas.save();
+    canvas.translate(centreX, centreY);
+    // Degrees, and about the centre: the letter's own middle is what lands on its angle.
+    canvas.rotate(((turned + span / 2) * 180) / Math.PI, 0, 0);
+    canvas.translate(-(widths[index] ?? 0) / 2, -radius);
+    canvas.drawText(letter, 0, 0, glow, font);
+    canvas.drawText(letter, 0, 0, ink, font);
+    canvas.restore();
+    turned += span + tracking / radius;
+  }
+}
+
+/**
+ * Runs the simulated voice forward and says when, in seconds, it was loudest.
+ *
+ * Deterministic, so the caller can start again from nothing and walk to exactly that moment. There
+ * is no way to snapshot the state instead: the tracker, the easing and the clock all carry from one
+ * frame to the next, and half of what makes a loud moment look loud is what came before it.
+ */
+function findLoudestMoment(over: number): number {
+  const spectrum = createSimulatedSpectrum();
+  let level = 0;
+  let loudest = 0;
+  let at = 0;
+  for (let seconds = 0; seconds < over; seconds += FRAME_SECONDS) {
+    level = easeLevel(
+      level,
+      perceivedLevel(simulatedVolume(fillSimulatedSpectrum('speaking', seconds, spectrum))),
+      FRAME_SECONDS,
+    );
+    if (level > loudest) {
+      loudest = level;
+      at = seconds;
+    }
+  }
+  return at;
+}
 
 /**
  * Draws an image to fill a rectangle exactly, whatever size it was committed at.
@@ -340,7 +665,10 @@ function renderClip(
   let frames = 0;
   for (let seconds = 0; seconds <= script.endsAt; seconds += FRAME_SECONDS) {
     const moment = script.at(seconds);
-    canvas.clear(skia.Color('#000000'));
+    // Cleared to nothing rather than to black, so that everything outside the device is see
+    // through and the clip sits on whatever page it is put on. All three formats carry it: WebP and
+    // VP9 have a real alpha channel, and the GIF gets the one transparent palette entry it allows.
+    canvas.clear(skia.Color('#00000000'));
     clip.paint(canvas, moment, perform(moment));
     surface.flush();
     const bytes = surface.makeImageSnapshot().encodeToBytes();
@@ -386,8 +714,10 @@ function stitch(frames: string, output: string, shownWidth: number) {
       input,
       '-c:v',
       'libvpx-vp9',
+      // `yuva420p` rather than `yuv420p`: VP9 carries alpha in a second, hidden stream, and
+      // without this the transparent surround is flattened to black on the way in.
       '-pix_fmt',
-      'yuv420p',
+      'yuva420p',
       '-b:v',
       '0',
       '-crf',
@@ -411,6 +741,8 @@ function stitch(frames: string, output: string, shownWidth: number) {
       input,
       '-vf',
       `scale=${shownWidth}:-2:flags=lanczos`,
+      '-pix_fmt',
+      'yuva420p',
       '-c:v',
       'libwebp_anim',
       '-lossless',
@@ -440,7 +772,9 @@ function stitch(frames: string, output: string, shownWidth: number) {
       '-i',
       input,
       '-vf',
-      `${scaled},palettegen=stats_mode=${GIF_PALETTE_STATS}:max_colors=${GIF_COLOURS}`,
+      // `reserve_transparent` keeps one palette entry for the see-through surround, which is the
+      // only transparency a GIF has: one colour, fully clear, with no partial alpha anywhere.
+      `${scaled},palettegen=stats_mode=${GIF_PALETTE_STATS}:max_colors=${GIF_COLOURS}:reserve_transparent=1`,
       palette,
     ],
     {
@@ -460,7 +794,10 @@ function stitch(frames: string, output: string, shownWidth: number) {
       '-lavfi',
       // `diff_mode=rectangle` leaves the parts of the frame that did not change untouched, which
       // is most of it — the device around the sphere never moves — and is most of why this fits.
-      `${scaled} [x]; [x][1:v] paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle`,
+      // `alpha_threshold` is where a pixel stops counting as opaque. It has to exist because a
+      // GIF cannot fade out — the device frames' antialiased edges are part-transparent, and every
+      // one of those pixels has to be rounded to either fully there or fully gone.
+      `${scaled} [x]; [x][1:v] paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle:alpha_threshold=${GIF_ALPHA_THRESHOLD}`,
       '-loop',
       '0',
       `${output}.gif`,
@@ -608,7 +945,48 @@ async function main() {
   stitch(watchFrames, watch, 260);
   rmSync(working, { recursive: true, force: true });
 
+  // ---- the cover: one still, at full size, with his name round it ------------------------------
+  // Its own scene, at the ceiling a fast phone is now allowed rather than the count the clips use.
+  // A still has no frame rate to hold, so there is no reason for it to be the lesser picture.
+  const coverScene = createHologramScene(1337, PARTICLE_COUNT);
+  const coverResources = createHologramResources(skia, coverScene);
+  const typeface = skia.Typeface.MakeFreeTypeFaceFromData(
+    skia.Data.fromBytes(readFileSync(join(DEVICE_ART, 'roboto-light.ttf'))),
+  );
+  if (!typeface) {
+    throw new Error('Could not load Roboto — run ./hologram/.scripts/prepare-device-art.sh');
+  }
+  const wordmark = skia.Font(typeface, COVER_NAME_SIZE);
+
+  const coverSurface = skia.Surface.MakeOffscreen(COVER_SIZE, COVER_SIZE) ?? skia.Surface.Make(COVER_SIZE, COVER_SIZE);
+  if (!coverSurface) {
+    throw new Error('Could not make a surface to draw the cover on');
+  }
+  const coverCanvas = coverSurface.getCanvas();
+  coverCanvas.clear(skia.Color('#00000000'));
+  // Walked to the loudest instant of speech rather than dropped into it: everything the drawing
+  // does is carried from the frame before, so the only way to be at a moment is to have got there.
+  const loudest = findLoudestMoment(COVER_LISTEN_SECONDS);
+  const speaking = createPerformance();
+  let mid = speaking(coverMoment(0));
+  for (let seconds = FRAME_SECONDS; seconds <= loudest; seconds += FRAME_SECONDS) {
+    mid = speaking(coverMoment(seconds));
+  }
+  paintCover(skia, coverCanvas, wordmark, mid, coverScene, coverResources);
+  coverSurface.flush();
+  // Drawn square and then laid onto the wide cover, rather than composed wide from the start. The
+  // emblem is round with a name arched over it and has a natural shape of its own; what the cover
+  // needs is that shape, centred, on enough dark to fill a 2:1 frame.
+  const emblem = cropToContent(skia, coverSurface.makeImageSnapshot(), COVER_MARGIN);
+  const coverBytes = layOutCover(skia, emblem);
+  const cover = join(output, 'jarvis.png');
+  writeFileSync(cover, coverBytes);
+  console.log(
+    `cover: ${COVER_WIDE}x${COVER_TALL} from a ${emblem.width}x${emblem.height} emblem, loudest at ${loudest.toFixed(2)} s`,
+  );
+
   for (const path of [
+    cover,
     `${phone}.webp`,
     `${phone}.gif`,
     `${phone}.webm`,

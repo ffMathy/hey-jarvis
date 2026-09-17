@@ -489,8 +489,22 @@ const FRAGMENT_CODE_GLYPH_STEP = 12;
  * fractional part scatters a uniform id into a uniform phase; this one is far from every other
  * multiplier the id is hashed by, so no two of its uses line up.
  */
-/** How many fragments the body has when the phone can afford all of them. */
-export const PARTICLE_COUNT = 1000;
+/**
+ * How many fragments the body has when the phone can afford all of them.
+ *
+ * A ceiling rather than a count: what is actually drawn is whatever share of these the phone can
+ * hold sixty frames a second with, worked out while it draws them — see `density-control.ts`. So
+ * this is not "how many particles Jarvis has", it is "how many he is allowed on a phone fast
+ * enough", and raising it costs nothing on a phone that was already at its limit.
+ *
+ * It was 1000, which was the answer to a different question: back when the count was fixed, it had
+ * to be one a mid-range phone could manage. Since the loop finds each phone's own number, the only
+ * thing a low ceiling does is stop a fast phone from looking as good as it could — and the user's
+ * does, at 60 fps with 988 of the thousand drawn, which is the cap holding it rather than the phone.
+ *
+ * {@link FEWEST_PARTICLES} in `density-control.ts` is a share of this, so it moves when this does.
+ */
+export const PARTICLE_COUNT = 3000;
 
 /**
  * Turns a fragment's id into where it sits in the thinning, 0-1.
