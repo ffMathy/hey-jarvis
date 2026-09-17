@@ -3,9 +3,9 @@
  *
  * The drawing's cost is its geometry: a GPU turns every stroked path into triangles, and this one
  * hands it more than a thousand that are different every frame. How many a given phone can manage
- * at sixty frames a second is not a thing anyone can know in advance — it was 8 frames a second on
- * one phone and 58 in that same phone's browser — so instead of choosing a number, the drawing
- * measures what it is getting and moves the number until the number is right.
+ * at the frame rate it is asked for is not a thing anyone can know in advance — it was 8 frames a
+ * second on one phone and 58 in that same phone's browser — so instead of choosing a number, the
+ * drawing measures what it is getting and moves the number until the number is right.
  *
  * It is a PI controller. The user asked for PID, and the D is deliberately absent: the measurement
  * is a frame rate averaged over half a second, which is noisy, and differentiating noise mostly
@@ -18,12 +18,15 @@
 /**
  * The frame rate it steers toward.
  *
- * Under the sixty the view caps at, on purpose. At sixty exactly the measurement saturates — the
+ * Under the forty the view caps at, on purpose. At forty exactly the measurement saturates — the
  * cap holds it there — so the controller would have no way to tell "just fast enough" from "could
  * draw twice as much", and would sit wherever it happened to land. Aiming a little under keeps a
  * real error on both sides of the target.
+ *
+ * It tracks `MINIMUM_FRAME_SECONDS` in `hologram-view.tsx`, which is what the cap actually is, and
+ * has to move whenever that does. The pair were 57 and sixty.
  */
-export const TARGET_FRAMES_PER_SECOND = 57;
+export const TARGET_FRAMES_PER_SECOND = 38;
 
 /**
  * Never fewer than this share of the particles: past it he stops looking like himself.
@@ -72,7 +75,7 @@ const CARRIED_LIMIT = 0.5;
 const APPROACH_SHARE = 0.5;
 
 /** A frame rate this high means the cap is holding it, so there is room nobody can measure. */
-const HEADROOM_FRAMES_PER_SECOND = 59;
+const HEADROOM_FRAMES_PER_SECOND = 39;
 
 /** How fast the remembered ceiling itself lifts, once the phone is plainly not working for it. */
 const CEILING_CREEP_PER_SECOND = 0.1;

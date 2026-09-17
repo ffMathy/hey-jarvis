@@ -22,11 +22,14 @@ import {
  * A phone that can draw `affordable` of the particles at the target rate, and slows down in
  * proportion as it is given more.
  *
- * Frame rate is capped at sixty as the view caps it, which is the thing that makes the target sit
- * under sixty in the first place.
+ * Frame rate is capped as the view caps it, which is the thing that makes the target sit under the
+ * cap in the first place. Derived from the target rather than written down again, so the two cannot
+ * drift apart when the cap moves — as it has, from sixty to forty.
  */
+const CAPPED_AT = 40;
+
 function phone(affordable: number) {
-  return (density: number) => Math.min(60, (TARGET_FRAMES_PER_SECOND * affordable) / Math.max(density, 0.01));
+  return (density: number) => Math.min(CAPPED_AT, (TARGET_FRAMES_PER_SECOND * affordable) / Math.max(density, 0.01));
 }
 
 /** Runs the loop for `seconds` against a phone, half a second at a time as the view measures. */

@@ -71,7 +71,7 @@ export interface JarvisHologramProps {
    * Somewhere to put the share of the particles being drawn, if anyone is watching.
    *
    * It is not set from outside: the hologram decides it, by measuring what the phone manages and
-   * moving it until that is sixty frames a second. See `density-control.ts`. This is only so the
+   * moving it until that is the target frame rate. See `density-control.ts`. This is only so the
    * readout can say what it settled on.
    */
   particleShare?: SharedValue<number>;
@@ -167,27 +167,30 @@ const GIVE_UP_COVERING_MS = 900;
 const DRAWN_RESOLUTION = 0.45;
 
 /**
- * The shortest gap between two drawn frames: sixty a second at most.
+ * The shortest gap between two drawn frames: forty a second at most.
  *
- * A sixty-fourth rather than a sixtieth so the arithmetic lands on the right side of a real
- * screen's timing. At 60 Hz frames arrive every 16.7 ms, which clears 15.6 and draws every one; at
- * 120 Hz they arrive every 8.3 ms, two of which clear it and draw every other one. Either way it
- * is sixty, and a 120 Hz phone does not quietly pay double.
+ * **A forty-eighth rather than a fortieth, and the arithmetic is the whole reason.** A frame
+ * callback fires with the screen, so the only rates a gate like this can produce are the screen's
+ * refresh divided by a whole number. At 120 Hz frames arrive every 8.3 ms, and 20.8 is cleared by
+ * the third of them — every third frame, which is forty exactly. Setting it to a fortieth (25 ms)
+ * would land on the same third frame, but with nothing to spare against a screen whose timing is
+ * never quite nominal; a forty-eighth sits clear of the second frame at 16.7 ms and clear of the
+ * third at 25.
  *
- * It was a thirty-second — thirty a second — for a day, and that was the single cheapest thing
- * ever done to this drawing, because both halves of a frame are paid once per *drawn* frame. The
- * user asked for sixty back, so sixty it is, and the honest note is that this doubles the work
- * against that version.
+ * **On a 60 Hz screen this is thirty, not forty**, and there is no arrangement of a frame gate that
+ * makes it forty. Two frames in three is 40 Hz only if the screen offers 120 of them; at 60 the
+ * choices are 60, 30, 20, 15, and asking for forty gets the nearest one below it. Anything else
+ * means drawing on an alternating 17/33 ms rhythm, which is judder rather than a frame rate.
  *
- * There is a second reason it is worth having it here rather than at thirty: capped at thirty, the
- * readout in the corner cannot tell "comfortably fast" from "only just managing". At sixty it
- * reports what the phone can actually do, which is what makes it a measurement.
+ * It has been a sixty-fourth — sixty a second — and a thirty-second before that. Lowering it is the
+ * single cheapest thing that can be done to this drawing, because both halves of a frame, building
+ * the picture and painting it, are paid once per *drawn* frame.
  *
  * The clock is not tied to it either way. Time keeps adding up every frame the screen offers and
- * the whole of it is handed over when a picture is built, so lowering this changes how often
- * Jarvis is drawn and never how fast he moves.
+ * the whole of it is handed over when a picture is built, so this changes how often Jarvis is drawn
+ * and never how fast he moves.
  */
-const MINIMUM_FRAME_SECONDS = 1 / 64;
+const MINIMUM_FRAME_SECONDS = 1 / 48;
 
 /** How long the frame rate is averaged over before it is reported. Long enough not to flicker. */
 const FRAME_RATE_OVER_SECONDS = 0.5;

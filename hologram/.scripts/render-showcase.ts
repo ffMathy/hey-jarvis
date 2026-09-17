@@ -14,7 +14,7 @@
  * licence — including that the watch clips inherit CC BY-SA 4.0 from the frame in them.
  *
  * Two things are deliberately *not* the app. The particle count is {@link PARTICLES} rather than
- * the thousand a phone is asked for, because nothing here has to hold sixty frames a second — it
+ * the thousand a phone is asked for, because nothing here has to hold a frame rate at all — it
  * has all the time it likes per frame — and the user asked to see him at full density. And there
  * is no readout in the corner: the sphere and nothing else.
  *
@@ -65,7 +65,7 @@ import { LEAVING_SECONDS } from '../src/react/leaving';
  * Far more particles than any phone is asked to draw.
  *
  * A thousand is what `PARTICLE_COUNT` gives the apps, and even that is thinned to whatever the
- * phone can afford at sixty frames a second — see `density-control.ts`. None of that applies to a
+ * phone can afford at its target frame rate — see `density-control.ts`. None of that applies to a
  * renderer with no deadline, so this is what Jarvis looks like with the brakes off.
  */
 const PARTICLES = 1300;

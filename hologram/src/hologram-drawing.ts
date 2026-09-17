@@ -252,7 +252,7 @@ export interface HologramFrame {
    * 0–1: what share of the particles to draw at all.
    *
    * Not a look: it is what the phone can afford. The cost of a frame is the geometry in it, and
-   * how much geometry a given phone manages at sixty frames a second is not knowable in advance —
+   * how much geometry a given phone manages at the target frame rate is not knowable in advance —
    * so the view measures what it is getting and moves this until it is right. See
    * `density-control.ts`. Which particles are in is decided by a hash of each one's id, so the
    * ones already drawn stay drawn as it rises and the swarm thickens rather than rearranging.
@@ -493,14 +493,15 @@ const FRAGMENT_CODE_GLYPH_STEP = 12;
  * How many fragments the body has when the phone can afford all of them.
  *
  * A ceiling rather than a count: what is actually drawn is whatever share of these the phone can
- * hold sixty frames a second with, worked out while it draws them — see `density-control.ts`. So
+ * hold the target frame rate with, worked out while it draws them — see `density-control.ts`. So
  * this is not "how many particles Jarvis has", it is "how many he is allowed on a phone fast
  * enough", and raising it costs nothing on a phone that was already at its limit.
  *
  * It was 1000, which was the answer to a different question: back when the count was fixed, it had
  * to be one a mid-range phone could manage. Since the loop finds each phone's own number, the only
  * thing a low ceiling does is stop a fast phone from looking as good as it could — and the user's
- * does, at 60 fps with 988 of the thousand drawn, which is the cap holding it rather than the phone.
+ * did, drawing 988 of the thousand while pinned at the cap, which was sixty at the time. The cap is
+ * forty now, so there is more room again rather than less.
  *
  * {@link FEWEST_PARTICLES} in `density-control.ts` is a share of this, so it moves when this does.
  */

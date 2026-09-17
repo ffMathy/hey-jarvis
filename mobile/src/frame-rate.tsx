@@ -16,8 +16,10 @@ const READ_INTERVAL_MS = 500;
  * the re-render stops at this line, which is how the microphone readout had to be arranged for the
  * same reason and why the lesson is worth repeating in the file rather than in a commit message.
  *
- * It says what is achieved, not what is asked for: the cap is sixty (`MINIMUM_FRAME_SECONDS`), so
- * sixty means the phone is keeping up and anything less is what it managed.
+ * It says what is achieved, not what is asked for: the cap is forty (`MINIMUM_FRAME_SECONDS`), so
+ * forty means the phone is keeping up and anything less is what it managed. On a 60 Hz screen the
+ * most it can read is thirty, which is not the phone struggling — a frame gate can only produce the
+ * refresh rate divided by a whole number, and 60 Hz has no forty in it.
  *
  * Beside it is how long *building* one picture takes, which is the half of a frame that is
  * JavaScript, and how many particles are being drawn. The phone is the instrument here: the same
