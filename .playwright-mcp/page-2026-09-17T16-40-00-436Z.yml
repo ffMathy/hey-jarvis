@@ -1,0 +1,12 @@
+- generic [ref=f2e5]:
+  - generic [ref=f2e6]: ElevenLabs
+  - generic [ref=f2e7]: Jarvis is an ElevenLabs agent, and this app talks to it directly. Use an API key made for this app alone, so that a lost phone means revoking one key.
+  - generic [ref=f2e8]: "In a browser the API key is kept in local storage, which is not a keystore: anything running on this page can read it. On Android it goes in the keystore instead."
+  - generic [ref=f2e9]:
+    - generic [ref=f2e10]: API key
+    - textbox "sk_…" [ref=f2e11]
+  - generic [ref=f2e12]:
+    - generic [ref=f2e13]: Agent ID
+    - textbox "agent_…" [ref=f2e14]
+  - button "Save" [ref=f2e15] [cursor=pointer]
+  - button "No key yet? Try the hologram with your own voice" [ref=f2e17] [cursor=pointer]

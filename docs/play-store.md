@@ -168,9 +168,15 @@ Then, before any upload is accepted, Play requires the app's declarations to be 
 rating, data safety, target audience, privacy policy, ads. That is the slow part, and there is no
 way round it.
 
-**The first bundle has to be uploaded by hand.** The Play API will not create an app's first
-release, so upload `dist/mobile-aab/jarvis.aab` through the Console once. Every upload after that
-can be the workflow.
+**The first bundles have to be uploaded by hand.** The Play API will not create an app's first
+release, so upload `dist/mobile-aab/jarvis.aab` *and* `dist/watch-aab/jarvis.aab` through the
+Console once. Every upload after that can be the workflow.
+
+**And the watch has to be switched on.** Play does not deliver a watch artifact until the app opts
+in to the form factor: **Test and release → Advanced settings → Form factors → Add form factor →
+Wear OS**, then agree to the Wear OS review policies. Without it the watch bundle is accepted,
+sits in the release, and reaches nothing. This is also the step that puts the watch app through its
+own review, which is separate from the phone's.
 
 Finally, on **Testing → Internal testing**, create a tester list and add the addresses that should
 get it — including the Google account on the phone that is paired to the watch.
@@ -279,10 +285,15 @@ Locally, once 1Password has the items above and `op` is signed in:
 bunx turbo build:aab --filter=mobile
 ```
 
-That writes `dist/mobile-aab/jarvis.aab`. It builds a **bundle**, not an APK, because Play has not
-accepted APKs for new apps since 2021 — an `.aab` carries every ABI and density and Play builds the
-APK each phone downloads. It is also why this one takes longer than `build:apk`, which only ever
-builds `arm64-v8a`.
+That writes `dist/mobile-aab/jarvis.aab`, and `--filter=watch` writes `dist/watch-aab/jarvis.aab`.
+CI builds both. They build **bundles**, not APKs, because Play has not accepted APKs for new apps
+since 2021 — an `.aab` carries every ABI and density and Play builds the APK each device downloads.
+It is also why these take longer than `build:apk`, which only ever builds `arm64-v8a`.
+
+The two go into one release and Play works out which device gets which. What makes that legal is
+that they share a package name (`com.ffmathy.heyjarvis`) and an upload key, and differ by a version
+code — the phone takes twice the run number, the watch one more — and by the
+`uses-feature android.hardware.type.watch` the watch declares.
 
 In CI, nothing needs running. Pushing to a pull request that touches `mobile/`, `hologram/` or the
 dependency lock builds a bundle and sends it to the internal track, numbered by the workflow's run
@@ -325,4 +336,5 @@ Worth knowing, because it is the part that looks like magic:
 | `You uploaded an APK or Android App Bundle signed with a key that is also used to sign APKs delivered to users` | the debug key got in, which means the Gradle property was missing and the build silently fell back |
 | `keystore did not open` from the build script | the base64 was wrapped. Re-run it with `-w 0` |
 | The bundle's certificate says `CN=Android Debug` | the four Gradle properties never arrived, so the build fell back to the debug key. Check the four variables are set in the shell that runs it |
-| The watch app does not appear on the watch | the watch build has to be in the *same* Play app as the phone build, not a separate listing. It is not wired up yet — see [`watch/`](../watch) |
+| The watch app does not appear on the watch | the Wear OS form factor was never added under Test and release → Advanced settings, or the phone's Google account is not on the tester list |
+| `Version code N has already been used` on the *watch* bundle | both apps derive their version code from the same run number — the phone takes twice it, the watch one more — so this means one was uploaded outside the workflow |

@@ -9,6 +9,7 @@
     "lint": "cd .. && bunx biome check --write watch",
     "format": "cd .. && bunx biome format --write watch",
     "build:apk": "cd .. && bash watch/.scripts/build-apk.sh",
+    "build:aab": "cd .. && bash ./.scripts/run-with-env.sh mobile/op.env watch/.scripts/build-aab.sh",
     "start": "bunx expo start",
     "android": "bunx expo run:android",
     "native:prebuild": "bunx expo prebuild --platform android"

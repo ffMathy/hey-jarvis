@@ -1,7 +1,14 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { AndroidConfig, type ConfigPlugin, withAndroidManifest, withDangerousMod } from '@expo/config-plugins';
+import {
+  AndroidConfig,
+  type ConfigPlugin,
+  withAndroidManifest,
+  withAppBuildGradle,
+  withDangerousMod,
+} from '@expo/config-plugins';
 import type { ExpoConfig } from 'expo/config';
+import { androidVersionCode, createReleaseSigning } from '../.scripts/expo-release-signing';
 
 /**
  * Everything that makes this an app a watch will run, and offer as its assistant.
@@ -104,6 +111,12 @@ const withWatchCapability: ConfigPlugin = (config) =>
  * rather than be typed on it. `uses-feature ... watch` above is what keeps the two APKs from
  * colliding on a phone.
  */
+/** The odd half of the Play listing's version codes; the phone takes the even ones. */
+const WATCH_VERSION_OFFSET = 1;
+
+/** The shared signing plugin, given this app's own copy of the config-plugins module. */
+const withReleaseSigning = createReleaseSigning(withAppBuildGradle);
+
 const config: ExpoConfig = {
   name: 'Jarvis',
   slug: 'hey-jarvis-wear',
@@ -117,6 +130,9 @@ const config: ExpoConfig = {
   platforms: ['android'],
   android: {
     package: 'com.ffmathy.heyjarvis',
+    // Unique across every form factor in the listing, which is what Play requires of a watch
+    // artifact sitting beside a phone one. See `.scripts/expo-release-signing.js`.
+    versionCode: androidVersionCode(WATCH_VERSION_OFFSET),
     permissions: [
       // The conversation, once there is one. The sphere idles without it.
       'android.permission.RECORD_AUDIO',
@@ -128,4 +144,6 @@ const config: ExpoConfig = {
   },
 };
 
-export default withWatchCapability(withWatchAssistant(config));
+// Signed with the phone app's upload key, which is not a nicety: Play will only deliver two
+// artifacts as one app if they share a package name *and* a signing key.
+export default withReleaseSigning(withWatchCapability(withWatchAssistant(config)));

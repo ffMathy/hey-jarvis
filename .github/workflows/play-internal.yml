@@ -2,7 +2,12 @@
 
 name: Play internal testing
 
-# Builds a signed Android App Bundle and uploads it to the app's internal testing track.
+# Builds the phone *and* watch bundles and uploads both into one internal testing release.
+#
+# Two artifacts rather than one, because that is how Play delivers a watch app: the two share a
+# package name and an upload key and differ by a version code and a `uses-feature` — see
+# `docs/play-store.md`. A release with only the phone bundle in it puts Jarvis on the phone and
+# nothing on the watch, which is the whole reason any of this exists.
 #
 # Internal testing rather than a public release: it goes to a named list of up to a hundred testers,
 # is available within minutes rather than after a review, and never appears in search. It is also
@@ -127,21 +132,25 @@ jobs:
 
       # No secrets listed: `build:aab` goes through `run-with-env.sh mobile/op.env`, which resolves
       # the four signing values from 1Password with the token above. The same command a laptop runs.
-      - name: Build signed bundle
+      - name: Build the signed bundles
         env:
           # Play orders uploads by this and refuses a repeat, so it has to rise every time. The run
-          # number does, for the life of the workflow, and never goes backwards.
+          # number does, for the life of the workflow, and never goes backwards. The phone takes
+          # twice it and the watch one more, because a version code has to be unique across every
+          # form factor in a listing — see `.scripts/expo-release-signing.js`.
           JARVIS_ANDROID_VERSION_CODE: ${{ github.run_number }}
-        run: bunx turbo build:aab --filter=mobile
+        run: bunx turbo build:aab --filter=mobile --filter=watch
 
       # Kept whatever happens to the upload. A bundle that Play rejected is still the bundle that
       # was built, and the only copy of it: the next run gets a different versionCode and cannot
       # reproduce this one.
-      - name: Upload bundle as an artifact
+      - name: Keep the bundles as an artifact
         uses: actions/upload-artifact@v7.0.1
         with:
-          name: jarvis-${{ github.run_number }}.aab
-          path: dist/mobile-aab/jarvis.aab
+          name: jarvis-${{ github.run_number }}
+          path: |
+            dist/mobile-aab/jarvis.aab
+            dist/watch-aab/jarvis.aab
           if-no-files-found: error
           retention-days: 30
 
@@ -159,7 +168,9 @@ jobs:
         with:
           serviceAccountJson: play-publisher.json
           packageName: com.ffmathy.heyjarvis
-          releaseFiles: dist/mobile-aab/jarvis.aab
+          # Both, comma separated, into one release. Play works out which device gets which from
+          # the `uses-feature android.hardware.type.watch` in the watch bundle's manifest.
+          releaseFiles: dist/mobile-aab/jarvis.aab,dist/watch-aab/jarvis.aab
           # The inputs only exist when this was started by hand. A pull request push takes the
           # defaults, which are the ones worth having automatically: straight to the testers.
           track: ${{ inputs.track || 'internal' }}
