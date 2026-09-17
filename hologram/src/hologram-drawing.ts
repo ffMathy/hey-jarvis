@@ -682,10 +682,9 @@ function pickGlyphAndLength(random: Random, x: number, y: number, radius: number
  * instead of being pinned: the film's features in those bands drift back at 2-6°/s (section 3)
  * while the body as a whole stays put.
  */
-function buildBody(random: Random) {
+function buildBody(random: Random, fragmentCount: number) {
   const body: number[] = [];
   const shape = [0, 0];
-  const fragmentCount = PARTICLE_COUNT;
   while (body.length < fragmentCount * BODY_STRIDE) {
     // the body stops just inside the rim layer, which rolls over it
     const radius = Math.sqrt(random()) * 0.94;
@@ -940,12 +939,20 @@ function roundToFiveDecimals(value: number) {
   return Math.round(value * 1e5) / 1e5;
 }
 
-/** Builds the hologram's random geometry once. Deterministic for a given seed; plain data only. */
-export function createHologramScene(seed: number) {
+/**
+ * Builds the hologram's random geometry once. Deterministic for a given seed; plain data only.
+ *
+ * `particleCount` is the most the body can ever have, which a phone then draws a share of — see
+ * `density-control.ts` for who decides that share. A parameter rather than the constant because
+ * the showcase renders Jarvis at a count no phone is ever asked for: it has no frame to hit. See
+ * `hologram/.scripts/render-showcase.ts`. Everything downstream is a share of whatever this is,
+ * so nothing else has to know.
+ */
+export function createHologramScene(seed: number, particleCount: number = PARTICLE_COUNT) {
   const random = createRandom(seed);
   const script = buildScript(random);
   return {
-    body: buildBody(random).map(roundToFiveDecimals),
+    body: buildBody(random, particleCount).map(roundToFiveDecimals),
     stream: buildStream(random).map(roundToFiveDecimals),
     crescentPieces: buildCrescentPieces(random).map(roundToFiveDecimals),
     truss: buildTruss(random).map(roundToFiveDecimals),

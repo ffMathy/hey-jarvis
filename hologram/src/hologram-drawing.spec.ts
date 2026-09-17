@@ -9,6 +9,7 @@ import {
   drawHologram,
   type HologramFrame,
   MATERIALISE_SECONDS,
+  PARTICLE_COUNT,
   ROLL_DEGREES_PER_SECOND,
   SHELL_DEGREES_PER_SECOND,
   SPHERE_FRACTION,
@@ -591,6 +592,23 @@ describe('the hologram', () => {
       }
     }
     expect(dimmed / (thin.length / 4)).toBeLessThan(0.002);
+  });
+
+  it('can be built with more particles than any phone is given', () => {
+    // The showcase renders Jarvis at 1300 of them, because a renderer with no frame to hit can
+    // afford what a phone cannot — see `hologram/.scripts/render-showcase.ts`. The parameter is
+    // the *body*, which is nearly all of him; the rim, the stream and the rest are fixed, so this
+    // asks that more were asked for and more arrived, rather than for an exact multiple.
+    const asked = PARTICLE_COUNT * 1.3;
+    const bigger = createHologramScene(SEED, asked);
+
+    expect(bigger.body.length).toBeGreaterThan(createHologramScene(SEED).body.length);
+    // Every fragment is the same number of values wide, so the count is exactly proportional.
+    expect(bigger.body.length).toBe(Math.round(createHologramScene(SEED).body.length * 1.3));
+
+    // And it still draws: the same frame, a denser swarm, nothing thrown outside the square.
+    const dense = render(silence(6), { scene: bigger, resources: createHologramResources(Skia, bigger) });
+    expect(brightness(dense)).toBeGreaterThan(brightness(render(silence(6))));
   });
 
   it('stays inside its square even at full volume, chips and all', () => {
