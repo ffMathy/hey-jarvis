@@ -12,7 +12,6 @@ import { theme } from './theme';
 
 /** What each mood is called, for the one moment its name is on screen. */
 const NAMES: Record<SampleMode, string> = {
-  microphone: 'Microphone',
   speaking: 'Speaking',
   thinking: 'Thinking',
   idle: 'Idle',
@@ -26,7 +25,7 @@ const FADE_OUT_MS = 420;
  * The name of the mood, for a moment, after a tap changes it.
  *
  * Sample mode has no words on it — that was asked for, and it is what makes Jarvis a presence
- * rather than a dialog — but the four moods are only worth walking through if you can tell which
+ * rather than a dialog — but the three moods are only worth walking through if you can tell which
  * one you have landed on. So the name appears on the tap and takes itself away again, the way a
  * toast does, and the screen goes back to being wordless.
  *

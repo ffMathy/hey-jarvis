@@ -15,10 +15,8 @@ const CONVERSATION_TOKEN_URL = 'https://api.elevenlabs.io/v1/convai/conversation
 
 declare global {
   interface Window {
-    /** Every microphone stream the page opened, kept by `watchMicrophone`. */
-    microphoneStreams?: MediaStream[];
-    /** The loudest spectrum value any analyser has handed the page, kept by `watchMicrophone`. */
-    loudestSpectrumValue?: number;
+    /** How many times anything asked for a microphone, counted by `countMicrophones`. */
+    microphonesOpened?: number;
   }
 }
 
@@ -118,32 +116,28 @@ async function expectHologramToKeepMoving(page: Page): Promise<void> {
 }
 
 /**
- * Keeps, in the page, every microphone stream it opens and the loudest spectrum
- * value any analyser gives it — so a test can tell the microphone's audio really
- * reached the readings, and that the stream was closed afterwards.
+ * Counts, in the page, how many times anything asked for a microphone.
+ *
+ * It used to keep the streams themselves and the loudest spectrum value any analyser had seen,
+ * because sample mode listened to you and the test had to prove the readings reached the sphere.
+ * That mood is gone. What is left worth checking is the opposite: that sample mode opens no
+ * microphone at all, which is a thing only the page can answer.
  */
-async function watchMicrophone(page: Page): Promise<void> {
+async function countMicrophones(page: Page): Promise<void> {
   await page.addInitScript(() => {
-    window.microphoneStreams = [];
-    window.loudestSpectrumValue = 0;
+    window.microphonesOpened = 0;
 
     const getUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
     navigator.mediaDevices.getUserMedia = async (constraints) => {
-      const stream = await getUserMedia(constraints);
-      window.microphoneStreams?.push(stream);
-      return stream;
-    };
-
-    const getByteFrequencyData = AnalyserNode.prototype.getByteFrequencyData;
-    AnalyserNode.prototype.getByteFrequencyData = function (array) {
-      getByteFrequencyData.call(this, array);
-      window.loudestSpectrumValue = Math.max(window.loudestSpectrumValue ?? 0, ...array);
+      window.microphonesOpened = (window.microphonesOpened ?? 0) + 1;
+      return getUserMedia(constraints);
     };
   });
 }
 
 test.beforeEach(async ({ page }) => {
   await blockExternalRequests(page);
+  await countMicrophones(page);
 });
 
 test('opens on the settings screen, because nothing is configured yet', async ({ page }) => {
@@ -212,40 +206,35 @@ test('draws the hologram and keeps it moving, from a CanvasKit the site serves i
   expect(pageErrors).toEqual([]);
 });
 
-test('offers sample mode before setup, listening to the microphone, and comes back from it', async ({ page }) => {
-  await watchMicrophone(page);
+test('offers sample mode before setup, walks its moods on a tap, and comes back from it', async ({ page }) => {
   await page.goto('/');
   await page.getByTestId('try-sample').click();
 
   // Sample mode is Jarvis and nothing else — no title, no status line, no way out but tapping
-  // beside him — so what says the microphone opened is the readings reaching the hologram rather
-  // than a line of text. The browser here has a fake microphone, granted up front (see
-  // playwright.config.ts).
+  // beside him — so there is nothing to assert on but the sphere.
   await expect(page.getByTestId('hologram')).toBeVisible();
-
-  // Chromium's fake microphone beeps. The beep has to reach the readings the
-  // hologram is drawn from — a hologram that merely turns proves nothing, since
-  // it turns with no audio at all.
-  await expect.poll(() => page.evaluate(() => window.loudestSpectrumValue ?? 0), { timeout: 10000 }).toBeGreaterThan(0);
   await expectHologramToKeepMoving(page);
 
-  // Tapping Jarvis himself walks through what he does — hearing you, speaking, working, at rest —
-  // because there is no text on this screen to hang buttons off. The one that matters to check is
-  // that the next mood still draws: it comes from the clock rather than the microphone, and a
-  // mood that renders nothing would look exactly like a hologram that had stopped.
+  // Tapping him walks through what he does — speaking, working, at rest — because there is no text
+  // on this screen to hang buttons off, and a tap is now the only thing that changes any of it.
+  // What matters is that each mood still draws: they all come from the clock, and one that rendered
+  // nothing would look exactly like a hologram that had stopped.
+  for (const _mood of ['thinking', 'idle']) {
+    await page.getByTestId('hologram').click();
+    await expectHologramToKeepMoving(page);
+  }
+
+  // And round again, so the last mood leads back to the first rather than to a dead end.
   await page.getByTestId('hologram').click();
   await expectHologramToKeepMoving(page);
+
+  // Nothing here ever opens a microphone. Sample mode used to have a fourth mood that listened to
+  // you; it is gone, and so is the permission prompt and the recording indicator that came with it.
+  expect(await page.evaluate(() => window.microphonesOpened ?? 0)).toBe(0);
 
   // Beside him, not on him: a tap on the hologram itself must not be a way out.
   await page.mouse.click(20, 20);
   await expect(page.getByTestId('api-key')).toBeVisible();
-
-  // And leaving hands the microphone back.
-  const trackStates = await page.evaluate(() =>
-    (window.microphoneStreams ?? []).flatMap((stream) => stream.getTracks().map((track) => track.readyState)),
-  );
-  expect(trackStates.length).toBeGreaterThan(0);
-  expect(trackStates.every((state) => state === 'ended')).toBe(true);
 });
 
 test('keeps the conversation screen working when CanvasKit cannot load', async ({ page }) => {

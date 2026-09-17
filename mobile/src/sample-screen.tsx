@@ -8,10 +8,8 @@ import { JarvisHologram } from './jarvis-hologram';
 import { ModeToast } from './mode-toast';
 import { moodOf, nextSampleMode, type SampleMode } from './sample-mode';
 import { SAMPLE_CANVAS, SampleSheet, sampleHologramSize } from './sample-sheet';
-import { useSampleVoice } from './sample-voice';
 import { useSimulatedVoice } from './simulated-voice';
 import { useSparkDensity } from './spark-density';
-import { QUIETEST_SPEECH_HERE } from './speech-floor';
 
 interface SampleScreenProps {
   onLeave: () => void;
@@ -31,33 +29,29 @@ interface SampleScreenProps {
  * before it is a flourish: see `sample-sheet.tsx`. It happens to be the right flourish too. The
  * sheet arrives, and then he forms inside it, which is what his materialisation was always for.
  *
- * **Jarvis and nothing else.** There is no title, no status line, no microphone readout and no way
- * out but tapping beside him — the user asked for every word gone, and an assistant that hovers
- * over your home screen with a paragraph attached is a dialog rather than a presence. The cost is
- * that a microphone that cannot open now says so nowhere: `useSampleVoice` still reports it, and
- * `sample-voice.ts` logs it, but the screen does not show it.
+ * **Jarvis and nothing else.** There is no title, no status line and no way out but tapping beside
+ * him — the user asked for every word gone, and an assistant that hovers over your home screen
+ * with a paragraph attached is a dialog rather than a presence.
  *
- * **Tapping him walks through what he does** — hearing you, speaking, working, at rest. With no
- * words on the screen there is nowhere to put buttons, so the sphere is its own control, and the
- * four are told apart by how he looks, which is the whole reason for showing them together. Only
- * the first opens the microphone; see `sample-mode.ts` for the order and `simulated-voice.ts` for
- * where the other two come from.
+ * **Tapping him walks through what he does** — speaking, working, at rest. With no words on the
+ * screen there is nowhere to put buttons, so the sphere is its own control, and the three are told
+ * apart by how he looks, which is the whole reason for showing them together. A tap is the only
+ * way any of it changes: nothing here listens to anything, and every mood comes from the clock.
+ * See `sample-mode.ts` for the order and `simulated-voice.ts` for where they come from.
  */
 /** What a screen reader is told Jarvis is doing, since nothing on screen says it. */
 const MODE_LABELS: Record<SampleMode, string> = {
-  microphone: 'Jarvis, listening to your voice. Tap to see him speak.',
   speaking: 'Jarvis, speaking. Tap to see him think.',
   thinking: 'Jarvis, working through something. Tap to see him at rest.',
-  idle: 'Jarvis, at rest. Tap to let him hear you again.',
+  idle: 'Jarvis, at rest. Tap to hear him speak again.',
 };
 
 export function SampleScreen({ onLeave }: SampleScreenProps) {
-  const [mode, setMode] = useState<SampleMode>('microphone');
+  const [mode, setMode] = useState<SampleMode>('speaking');
   const [leaving, setLeaving] = useState(false);
   // Nothing is drawn until the sheet has stopped moving; see `sample-sheet.tsx` for why.
   const [settled, setSettled] = useState(false);
-  const { voice: heard } = useSampleVoice(mode === 'microphone' && settled && !leaving);
-  const imagined = useSimulatedVoice(settled ? moodOf(mode) : undefined);
+  const voice = useSimulatedVoice(settled ? moodOf(mode) : undefined);
   const { width, height } = useWindowDimensions();
   // How big the square is, and whether there is a sheet around it at all, are the same decision —
   // so both live in `sample-sheet.tsx` rather than being worked out again here. On a phone it is
@@ -160,8 +154,7 @@ export function SampleScreen({ onLeave }: SampleScreenProps) {
         {settled ? (
           <JarvisHologram
             size={hologramSize}
-            voice={mode === 'microphone' ? heard : imagined}
-            quietestSpeech={QUIETEST_SPEECH_HERE}
+            voice={voice}
             thinking={mode === 'thinking'}
             leaving={leaving}
             frameRate={frameRate}

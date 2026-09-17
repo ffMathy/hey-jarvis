@@ -87,8 +87,6 @@ mobile/
     ├── hologram-size.ts          # how big it is drawn on this screen
     ├── jarvis-voice.ts           # Jarvis's voice on Android: his track, tapped and analysed …
     ├── jarvis-voice.web.ts       # … and in a browser, as the SDK measures it
-    ├── sample-voice.ts           # the user's voice on Android, from WebRTC's recorder …
-    ├── sample-voice.web.ts       # … and in a browser, through an AnalyserNode
     ├── agent-audio-track.ts      # finding Jarvis's track in the conversation's LiveKit room
     ├── tapped-voice.ts           # raw samples from modules/jarvis-audio → volume and spectrum
     ├── sdk-voice-readers.ts      # the SDK's own readers, made safe to call before a session
@@ -137,12 +135,12 @@ Finding Jarvis's track takes one step outside the SDK's public surface: `useRawC
 
 ## Sample mode
 
-Before the app is set up there is nothing for the hologram to follow, so the settings screen offers **"No key yet? Try the hologram with your own voice"**. It opens `sample-screen.tsx`: the same hologram, listening to the microphone instead of Jarvis. Once settings are saved it is no longer offered.
+Before the app is set up there is nothing for the hologram to follow, so the settings screen offers **"No key yet? Try the hologram"**. It opens `sample-screen.tsx`: the same hologram, in a sheet, walking through what Jarvis does.
 
-- **Nothing leaves the device.** No conversation is started; the native tap keeps the last third of a second of audio and overwrites it.
-- **On Android it records the microphone itself**, through `MicrophoneRecorder`: `AudioRecord` with `VOICE_RECOGNITION`, which is meant for capturing someone talking. The microphone opens only while the screen is mounted and the app is in front, and closes synchronously on either, so it has let go before whatever comes next asks.
-- **It used to borrow WebRTC's recorder**, started with `requestStartRecording()` — already there, no connection needed. That quietly brought a call's audio processing with it: the app configures LiveKit with `audioType: 'communication'`, so Android puts the microphone in call mode with echo cancellation, noise suppression and automatic gain, and WebRTC adds its own. Outside a call none of it has a far end to reference and it drives the input right down. On the user's phone an ordinary speaking voice arrived at about **-54 dBFS** — a perceived level of 0.08 where speech should read 0.3 to 0.6, below `SPEECH_LEVEL`, so it never counted as speech and the sphere never stirred. Three rounds of making the sphere answer more loudly changed nothing they could see, because there was nothing to answer. What found it was a line on the sample screen printing what the microphone was actually giving — worth reaching for early the next time something that measures fine on an emulator looks dead on a phone.
-- **The emulator check covers the level end to end**: it plays a tone into the microphone and requires the app to hear it within 1 dB of what Android's own audio HAL measured, so a regression here fails the check rather than going quietly.
+**It used to listen to you, and it does not any more.** There was a fourth mood, `microphone`, that opened the phone's microphone and drove the sphere from your own voice — with a recorder of its own on Android (`MicrophoneRecorder`, `AudioRecord` with `VOICE_RECOGNITION`), a browser path through an `AnalyserNode`, a permission prompt, a recording indicator, and an end-to-end emulator check that played a tone in and compared what the app heard against Android's own audio HAL. All of it is gone, along with `sample-voice.ts`, `sample-voice.web.ts`, `UseSampleVoice`, and the emulator harness's `microphone` run.
+
+What it bought was proof that the hologram follows a real voice, which is worth having — but sample mode is a thing to look at before there is an account, and the simulated voices in `hologram/src/simulated-voice.ts` show the same moods from the clock. Every mood is now a tap, and nothing on that screen opens a microphone.
+
 - **A conversation still listens to Jarvis through WebRTC**, which is right: that audio is already inside WebRTC and never touches this path.
 - **In a browser it is `getUserMedia` into an `AnalyserNode`** with the ElevenLabs web SDK's settings (`fftSize` 2048, smoothing 0.8), not connected to the speakers.
 
@@ -320,10 +318,9 @@ Two things that would otherwise ride on reasoning alone have been checked anothe
 
 `.scripts/verify-hologram-on-emulator.sh` checks what the headless spec cannot: that the hologram animates inside the real app, through Reanimated and native Skia, and stirs with a voice. An emulator has no ElevenLabs session, so the voice comes from one of two places, chosen with `JARVIS_VOICE`:
 
-- **`microphone`, the default:** the release app as it ships, in sample mode. An espeak-ng line is played into the emulator's microphone through its gRPC controller (`tests/hologram-preview/inject-microphone.ts`, HTTP/2 and two hand-encoded protobuf messages, no gRPC tooling), so the voice goes through everything a phone uses: WebRTC's recorder, `modules/jarvis-audio`, `hologram/src/voice-analysis.ts`, the hologram. First it plays a tone and checks the app heard it within 1 dB of the loudness Android's own audio HAL logged for the same stream (`dumpsys media.audio_flinger`), and heard the silence around it as silence.
-- **`replay`:** the app built with `JARVIS_VOICE_REPLAY=1`, which makes Metro swap `jarvis-voice.ts` for `tests/hologram-preview/jarvis-voice.replay.ts`, replaying readings made offline from the line. Nothing native about the audio is exercised; it isolates the drawing.
+- **The app built with `JARVIS_VOICE_REPLAY=1`**, which makes Metro swap `jarvis-voice.ts` for `tests/hologram-preview/jarvis-voice.replay.ts`, replaying readings made offline from the line. Nothing native about the audio is exercised; it isolates the drawing.
 
-Both loop six seconds of silence and then the line, record the screen for 180 s, and have `measure-pulse.ts` judge the recording. Because the film's Jarvis shows speech as activity rather than as a pulse, what it compares is **how much the hologram changes** — the mean frame difference from one tenth of a second to the next, smoothed over half a second — against the **agitation envelope** the app's own `advanceVoiceActivity` makes from the same recorded readings. Activity is measured over a crop widened by a quarter of the sphere's width on each side — half its radius — so the chips thrown out past the rim are inside the measured area rather than cut off by it. The silence rule keeps the old, sphere-sized crop, because its threshold counts change per pixel and the wider crop's black margin would dilute it.
+It loops six seconds of silence and then the line, record the screen for 180 s, and have `measure-pulse.ts` judge the recording. Because the film's Jarvis shows speech as activity rather than as a pulse, what it compares is **how much the hologram changes** — the mean frame difference from one tenth of a second to the next, smoothed over half a second — against the **agitation envelope** the app's own `advanceVoiceActivity` makes from the same recorded readings. Activity is measured over a crop widened by a quarter of the sphere's width on each side — half its radius — so the chips thrown out past the rim are inside the measured area rather than cut off by it. The silence rule keeps the old, sphere-sized crop, because its threshold counts change per pixel and the wider crop's black margin would dilute it.
 
 The thresholds are fixed in the file, before anything is measured:
 
@@ -337,6 +334,11 @@ Brightness against agitation is reported in `pulse.json` as a number to look at,
 The script boots its own AVD, `jarvis-hologram-check`, and prints how to create it when it is missing; a device that is already attached is used instead, and the script says so.
 
 **Both passed — on the previous design.** The run below measured the hologram as it was before the film redesign, when brightness was meant to follow loudness and `measure-pulse.ts` asked it to; its correlation and brightness-ratio rows answer a question the check no longer asks, and the brightness ratio of 1.68–1.69 would now fail the film guard by design. **The check has to be re-run on this design**, and this table replaced with what it reports, before the device behaviour can be called verified again. The tone, frame-count and emulator rows below still describe the machine and the audio path, which have not changed.
+
+> **The `microphone` column is a record of something that can no longer be run.** That mode drove
+> sample mode's own microphone, which the app no longer has — see "Sample mode" above. The numbers
+> are left because what they proved about the native audio path is still true and was expensive to
+> establish; they are simply not reproducible with this script any more.
 
 Run on 2026-09-15 on the same WSL2 machine, against AVD `jarvis-hologram-check`: the same android-34 `google_apis` x86_64 image at 540×960 and 240 dpi, 4 cores, 2 GB, `-gpu swiftshader_indirect`.
 
