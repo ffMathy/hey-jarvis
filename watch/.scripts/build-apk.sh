@@ -20,7 +20,7 @@ cd "$(dirname "$0")/.."
 # piece, so only the one the watch runs is built.
 architectures='arm64-v8a'
 
-output_dir='../dist/wear-apk'
+output_dir='../dist/watch-apk'
 
 # `android/` is generated rather than committed; `--no-install` because the
 # workspace install has already happened, and a second one would be npm's.
@@ -30,5 +30,5 @@ bunx expo prebuild --platform android --no-install
 (cd android && ./gradlew app:assembleRelease --no-daemon -PreactNativeArchitectures="$architectures")
 
 mkdir -p "$output_dir"
-cp android/app/build/outputs/apk/release/app-release.apk "$output_dir/jarvis-wear.apk"
-echo "APK written to dist/wear-apk/jarvis-wear.apk"
+cp android/app/build/outputs/apk/release/app-release.apk "$output_dir/jarvis-watch.apk"
+echo "APK written to dist/watch-apk/jarvis-watch.apk"

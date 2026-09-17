@@ -48,7 +48,7 @@ ESP32 Voice Hardware  ←→  Home Assistant  ←→  MCP Server (Mastra AI)  �
 | [**elevenlabs**](./elevenlabs) | CLI for deploying and testing the ElevenLabs voice agent |
 | [**home-assistant-voice-firmware**](./home-assistant-voice-firmware) | ESPHome firmware for ESP32 voice devices with ElevenLabs streaming |
 | [**mobile**](./mobile) | Expo app that registers as the phone's default assistant, so the power button summons Jarvis |
-| [**wear**](./wear) | The same thing on a Wear OS watch |
+| [**watch**](./watch) | The same thing on a Wear OS watch |
 | [**hologram**](./hologram) | The sphere itself, and the voice tracking behind it — platform-free, and bundled by both apps |
 
 Getting the app onto a phone and a paired watch goes through Play internal testing: [**docs/play-store.md**](./docs/play-store.md) covers the upload key, the publisher account and the secrets each needs. The signing and the workflow are in place; what is not is an open Play developer account, which is where that document starts.

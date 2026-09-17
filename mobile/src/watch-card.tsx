@@ -59,7 +59,7 @@ function usePairedWatch(): PairedWatch {
  * embedded in the phone app, died with Wear OS 1.
  *
  * It therefore needs a Play listing to land on, which Jarvis does not have yet. Until then the
- * watch is side-loaded with `adb` — see `wear/AGENTS.md` — and the button says so rather than
+ * watch is side-loaded with `adb` — see `watch/AGENTS.md` — and the button says so rather than
  * sending the user to a page that will tell them the item was not found.
  */
 export function WatchCard() {

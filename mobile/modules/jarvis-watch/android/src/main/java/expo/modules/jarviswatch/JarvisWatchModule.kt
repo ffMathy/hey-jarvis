@@ -18,7 +18,7 @@ import java.util.concurrent.Executor
  *
  * A phone cannot ask a watch what packages it has. It can ask the Data Layer which nearby nodes
  * advertise a named capability, and the watch app advertises this one — see
- * `withWatchCapability` in `wear/app.config.ts`, which writes the resource that declares it.
+ * `withWatchCapability` in `watch/app.config.ts`, which writes the resource that declares it.
  * The two spellings have to agree, and `watch-link.contract.spec.ts` checks that they do.
  */
 private const val JARVIS_ON_THE_WATCH = "jarvis_on_the_watch"

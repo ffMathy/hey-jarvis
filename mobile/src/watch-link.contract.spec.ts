@@ -36,7 +36,7 @@ function readKotlinCapability(): string {
 
 /** The capability the watch advertises, out of the resource its config plugin writes. */
 function readWatchCapability(): string {
-  const match = /<item>([^<]+)<\/item>/.exec(readSource('wear/app.config.ts'));
+  const match = /<item>([^<]+)<\/item>/.exec(readSource('watch/app.config.ts'));
 
   expect(match, "wear/app.config.ts should write a capability into wear.xml's item").not.toBeNull();
   return match?.[1] ?? '';
@@ -60,7 +60,7 @@ describe('the capability the phone finds the watch app by', () => {
   });
 
   it('is written into the file Play Services actually reads', () => {
-    const source = readSource('wear/app.config.ts');
+    const source = readSource('watch/app.config.ts');
 
     // The name and the shape are both conventions of Google Play Services rather than anything
     // Expo or Android checks, so a typo in either is silent.

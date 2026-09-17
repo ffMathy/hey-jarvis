@@ -10,7 +10,7 @@
     "hologram",
     "home-assistant-voice-firmware",
     "mobile",
-    "wear"
+    "watch"
   ],
   "scripts": {
     "build": "turbo build",

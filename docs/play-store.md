@@ -325,4 +325,4 @@ Worth knowing, because it is the part that looks like magic:
 | `You uploaded an APK or Android App Bundle signed with a key that is also used to sign APKs delivered to users` | the debug key got in, which means the Gradle property was missing and the build silently fell back |
 | `keystore did not open` from the build script | the base64 was wrapped. Re-run it with `-w 0` |
 | The bundle's certificate says `CN=Android Debug` | the four Gradle properties never arrived, so the build fell back to the debug key. Check the four variables are set in the shell that runs it |
-| The watch app does not appear on the watch | the watch build has to be in the *same* Play app as the phone build, not a separate listing. It is not wired up yet — see [`wear/`](../wear) |
+| The watch app does not appear on the watch | the watch build has to be in the *same* Play app as the phone build, not a separate listing. It is not wired up yet — see [`watch/`](../watch) |

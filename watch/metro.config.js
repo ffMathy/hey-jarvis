@@ -1,7 +1,7 @@
 // Metro has to be told about the monorepo twice: once so it watches sibling
 // packages for changes, and once so it looks for modules in the workspace root
 // as well as here. Bun installs this app's own dependencies into
-// `wear/node_modules` and the shared ones into the root, so a bundler that
+// `watch/node_modules` and the shared ones into the root, so a bundler that
 // knows about only one of the two resolves half the tree.
 //
 // The sibling that matters most is `hologram/`, which holds the sphere and is

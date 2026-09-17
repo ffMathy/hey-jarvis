@@ -1,14 +1,14 @@
 {
-  "name": "wear",
+  "name": "watch",
   "version": "0.1.0",
   "private": true,
   "main": "index.ts",
   "scripts": {
-    "initialize": "cd .. && bash wear/.scripts/initialize.sh",
+    "initialize": "cd .. && bash watch/.scripts/initialize.sh",
     "typecheck": "tsgo --noEmit --project tsconfig.json",
-    "lint": "cd .. && bunx biome check --write wear",
-    "format": "cd .. && bunx biome format --write wear",
-    "build:apk": "cd .. && bash wear/.scripts/build-apk.sh",
+    "lint": "cd .. && bunx biome check --write watch",
+    "format": "cd .. && bunx biome format --write watch",
+    "build:apk": "cd .. && bash watch/.scripts/build-apk.sh",
     "start": "bunx expo start",
     "android": "bunx expo run:android",
     "native:prebuild": "bunx expo prebuild --platform android"

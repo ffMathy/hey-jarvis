@@ -3,7 +3,7 @@
 name: Wear APK
 
 # Builds the Wear OS app and uploads the APK as a workflow artifact, unzipped,
-# so it can be installed on a watch over wireless debugging — see wear/AGENTS.md.
+# so it can be installed on a watch over wireless debugging — see watch/AGENTS.md.
 #
 # Only changes that can alter the watch app start it — including `hologram/`,
 # which is where the sphere the watch draws actually lives.
@@ -11,25 +11,25 @@ on:
   push:
     branches: [ main ]
     paths:
-      - 'wear/**'
+      - 'watch/**'
       # The sphere itself lives in its own package, shared with the phone.
       - 'hologram/**'
       - 'bun.lock'
       - 'bunfig.toml'
       - 'package.json'
       - 'turbo.json'
-      - '.github/workflows/wear-apk.yml'
+      - '.github/workflows/watch-apk.yml'
   pull_request:
     branches: [ main ]
     paths:
-      - 'wear/**'
+      - 'watch/**'
       # The sphere itself lives in its own package, shared with the phone.
       - 'hologram/**'
       - 'bun.lock'
       - 'bunfig.toml'
       - 'package.json'
       - 'turbo.json'
-      - '.github/workflows/wear-apk.yml'
+      - '.github/workflows/watch-apk.yml'
   workflow_dispatch:
 
 # Least privilege by default: the job below opts into exactly what it needs.
@@ -91,28 +91,28 @@ jobs:
           path: |
             ~/.gradle/wrapper
             ~/.gradle/caches/modules-2
-          key: gradle-wear-${{ runner.os }}-${{ hashFiles('bun.lock', 'wear/app.config.ts') }}
+          key: gradle-watch-${{ runner.os }}-${{ hashFiles('bun.lock', 'watch/app.config.ts') }}
           restore-keys: |
-            gradle-wear-${{ runner.os }}-
+            gradle-watch-${{ runner.os }}-
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
       # The runner image's Android SDK, with its licences already accepted.
       - name: Build APK
-        run: bunx turbo build:apk --filter=wear
+        run: bunx turbo build:apk --filter=watch
 
       # The artifact is named after the file. On a pull request GITHUB_SHA is
       # GitHub's temporary merge commit, so the branch head is used there instead.
       - name: Name APK after the commit
         env:
           COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: mv dist/wear-apk/jarvis-wear.apk "dist/wear-apk/jarvis-wear-${COMMIT_SHA::7}.apk"
+        run: mv dist/watch-apk/jarvis-watch.apk "dist/watch-apk/jarvis-watch-${COMMIT_SHA::7}.apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v7.0.1
         with:
-          path: dist/wear-apk/jarvis-wear-*.apk
+          path: dist/watch-apk/jarvis-watch-*.apk
           # Uploaded as the file itself rather than zipped, so it can go straight
           # to `adb install`.
           archive: false

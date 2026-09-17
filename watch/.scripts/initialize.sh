@@ -8,7 +8,7 @@
 # the build dies in CMake three minutes in with "Skia prebuilt binaries not
 # found", which is exactly how the watch app's first CI build failed.
 #
-# Run from `wear/` rather than the workspace root on purpose. Bun's isolated
+# Run from `watch/` rather than the workspace root on purpose. Bun's isolated
 # linker keys its store by a package's whole dependency closure, so this app and
 # the phone app resolve *different copies* of `@shopify/react-native-skia` — and
 # each copy needs its own libraries put in place. `bunx` here picks this one.

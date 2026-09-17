@@ -1,7 +1,7 @@
 # Hologram
 
 Jarvis's sphere, and the voice tracking that drives it. Shared by every app that
-draws him — today `mobile/` and `wear/`.
+draws him — today `mobile/` and `watch/`.
 
 ## Two entry points
 
