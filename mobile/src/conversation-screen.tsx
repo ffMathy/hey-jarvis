@@ -15,6 +15,7 @@ import { usePreferredHeadset } from './preferred-microphone';
 import { useSparkDensity } from './spark-density';
 import { QUIETEST_SPEECH_HERE } from './speech-floor';
 import { theme } from './theme';
+import { useToolActivity } from './tool-activity';
 
 interface ConversationScreenProps {
   settings: ElevenLabsSettings;
@@ -66,6 +67,8 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
   // Onto the AirPods, if there are any. Only once the call is up, because the list of routes is
   // empty until LiveKit has started the audio session. See `preferred-microphone.ts`.
   usePreferredHeadset(status === 'connected');
+  // What he is doing between hearing you and answering. See `tool-activity.ts`.
+  const { thinking, toolHandlers, forgetToolCalls } = useToolActivity();
 
   const [problem, setProblem] = useState<string | undefined>(undefined);
   const [isStarting, setIsStarting] = useState(false);
@@ -91,13 +94,14 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
         conversationToken: token,
         connectionType: 'webrtc',
         onError: (message) => setProblem(message),
+        ...toolHandlers,
       });
     } catch (error: unknown) {
       setProblem(error instanceof Error ? error.message : 'Jarvis could not be reached.');
     } finally {
       setIsStarting(false);
     }
-  }, [settings, startSession]);
+  }, [settings, startSession, toolHandlers]);
 
   /**
    * Opens the conversation as soon as there is a screen to open it on.
@@ -112,6 +116,15 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
    * them and useless to the user, who can press and hold to fix the only one of those that is
    * fixable here.
    */
+  // A call still running when the conversation drops never gets its answer, so the sphere would be
+  // left mid-thought — and the next conversation would open with him already thinking about
+  // something that stopped happening.
+  useEffect(() => {
+    if (!isLive(status)) {
+      forgetToolCalls();
+    }
+  }, [status, forgetToolCalls]);
+
   const tried = useRef(false);
   useEffect(() => {
     if (tried.current || isLive(status) || isStarting) {
@@ -152,6 +165,7 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
           size={hologramSize}
           voice={voice}
           quietestSpeech={QUIETEST_SPEECH_HERE}
+          thinking={thinking}
           frameRate={frameRate}
           buildMilliseconds={buildMilliseconds}
           particleShare={particleShare}
