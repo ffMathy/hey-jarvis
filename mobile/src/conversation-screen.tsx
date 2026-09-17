@@ -16,6 +16,7 @@ import { useSparkDensity } from './spark-density';
 import { QUIETEST_SPEECH_HERE } from './speech-floor';
 import { theme } from './theme';
 import { useToolActivity } from './tool-activity';
+import { TypedMessageField } from './typed-message-field';
 
 interface ConversationScreenProps {
   settings: ElevenLabsSettings;
@@ -47,6 +48,10 @@ function isLive(status: string): boolean {
  * line saying so, because an assistant that has silently failed to connect looks exactly like one
  * that is listening, and there would otherwise be no way to tell.
  *
+ * The one thing that does put something on the screen is a browser with no microphone, which gets a
+ * field to type into instead — see `typed-message-field.tsx` and the note in `start`. It is the
+ * exception that keeps the rule: there is still nothing to read, only somewhere to write.
+ *
  * Settings are still reachable, and how depends on where this is running. On a phone it is a long
  * press anywhere, because this screen is the assistant and an assistant with a link on it is not
  * one. In a browser it is a plain link, because a browser is not an assistant — it is where this is
@@ -59,7 +64,7 @@ function isLive(status: string): boolean {
  * fewer than it could manage and on a slow one more.
  */
 export function ConversationScreen({ settings, onEditSettings }: ConversationScreenProps) {
-  const { startSession } = useConversationControls();
+  const { startSession, sendUserMessage } = useConversationControls();
   const { status } = useConversationStatus();
   const voice = useJarvisVoice();
   const hologramSize = useWholeScreenHologramSize();
@@ -72,6 +77,9 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
 
   const [problem, setProblem] = useState<string | undefined>(undefined);
   const [isStarting, setIsStarting] = useState(false);
+  // Set when the conversation opened without a microphone, which is the only thing that puts a
+  // text field on this screen. See `start` below.
+  const [typingInstead, setTypingInstead] = useState(false);
 
   const launchUrl = Linking.useURL();
 
@@ -80,7 +88,14 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
     setIsStarting(true);
 
     try {
-      if (!(await requestMicrophoneAccess())) {
+      const canHear = await requestMicrophoneAccess();
+
+      // On a phone a refusal is the end of it: the assistant gesture exists to be talked to, there
+      // is no keyboard in front of you when you make it, and a text field would be answering a
+      // question nobody asked. In a browser it is the opposite — this is where Jarvis is developed
+      // and demonstrated, the keyboard is right there, and refusing the microphone is a thing you
+      // do on purpose when you are in a call, in an open office, or want the same input twice.
+      if (!canHear && ON_A_PHONE) {
         setProblem('Jarvis needs the microphone in order to listen.');
         return;
       }
@@ -93,9 +108,17 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
       startSession({
         conversationToken: token,
         connectionType: 'webrtc',
+        // **This is what makes a conversation possible with no microphone at all.** ElevenLabs runs
+        // the session as text on both sides: nothing is captured, and the reply comes back written
+        // rather than spoken. That second half is the cost — with no speech to track, the sphere
+        // idles rather than answering — so it is only ever asked for when there is no alternative.
+        // He still visibly thinks, because a tool call is reported over the same channel and
+        // `useToolActivity` does not care how the conversation is being held.
+        textOnly: !canHear,
         onError: (message) => setProblem(message),
         ...toolHandlers,
       });
+      setTypingInstead(!canHear);
     } catch (error: unknown) {
       setProblem(error instanceof Error ? error.message : 'Jarvis could not be reached.');
     } finally {
@@ -179,6 +202,12 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
           {problem}
         </Text>
       ) : null}
+
+      {/*
+        The way in when there is no microphone. Only ever rendered in a browser, because `start`
+        only ever opens a text conversation there — a phone says so and stops instead.
+      */}
+      {typingInstead ? <TypedMessageField onSend={sendUserMessage} enabled={status === 'connected'} /> : null}
 
       {/*
         The instrument, left running in a browser and nowhere else.

@@ -135,6 +135,21 @@ async function countMicrophones(page: Page): Promise<void> {
   });
 }
 
+/**
+ * Refuses the microphone, the way a browser does when the permission is denied.
+ *
+ * `getUserMedia` rejecting with `NotAllowedError` is the whole of that answer — there is no
+ * permission API the app consults, so this is exactly what a real refusal looks like to it. Added
+ * after `countMicrophones`, and so replacing its wrapper: a refused microphone is never opened, and
+ * counting the asking is not what these tests are about.
+ */
+async function refuseMicrophone(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    navigator.mediaDevices.getUserMedia = () =>
+      Promise.reject(new DOMException('Permission denied', 'NotAllowedError'));
+  });
+}
+
 test.beforeEach(async ({ page }) => {
   await blockExternalRequests(page);
   await countMicrophones(page);
@@ -333,4 +348,40 @@ test('lets the settings be reopened and corrected, and uses the correction', asy
   // is what sent the user back to correct it. Then the corrected one. A single request here would
   // mean the screen had gone back to waiting to be asked.
   await expect.poll(() => agentIds).toEqual([AGENT_ID, 'agent_corrected']);
+});
+
+test('offers a field to type into when the browser refuses the microphone', async ({ page }) => {
+  await refuseMicrophone(page);
+  await page.route(CONVERSATION_TOKEN_URL, async (route: Route) => {
+    await answerTokenRequest(route, 200, { token: 'a-webrtc-token', conversation_id: 'conv_1' });
+  });
+
+  await page.goto('/');
+  await configureElevenLabs(page);
+
+  // The conversation still opens — ElevenLabs runs it as text on both sides — so this is a fallback
+  // rather than the failure a phone reports.
+  await expect(page.getByTestId('typed-message')).toBeVisible();
+
+  // It gets no further than opening, because this suite closes every socket to ElevenLabs, so there
+  // *is* a connection error on screen and there is supposed to be. What matters is which error: a
+  // refused microphone must no longer be one of them in a browser, or the fallback never happened.
+  await expect(page.getByTestId('conversation-problem')).not.toContainText('microphone');
+
+  // The sphere is still the screen. A field appearing under it must not cost the drawing.
+  await expect(page.getByTestId('hologram')).toBeVisible();
+});
+
+test('keeps the screen bare when the microphone is there to be used', async ({ page }) => {
+  await page.route(CONVERSATION_TOKEN_URL, async (route: Route) => {
+    await answerTokenRequest(route, 200, { token: 'a-webrtc-token', conversation_id: 'conv_1' });
+  });
+
+  await page.goto('/');
+  await configureElevenLabs(page);
+
+  // Typing is what you get instead of talking, never as well as it: the whole argument of this
+  // screen is that there is nothing on it, and a field nobody needs is something on it.
+  await expect(page.getByTestId('hologram')).toBeVisible();
+  await expect(page.getByTestId('typed-message')).toHaveCount(0);
 });
