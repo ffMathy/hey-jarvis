@@ -168,6 +168,27 @@ Then, before any upload is accepted, Play requires the app's declarations to be 
 rating, data safety, target audience, privacy policy, ads. That is the slow part, and there is no
 way round it.
 
+**The store listing's pictures are generated, not drawn.** The form has four slots it will not save
+without, and every one of them is in `docs/play-assets/`, rendered by
+
+```bash
+bun hologram/.scripts/render-play-assets.ts
+```
+
+| Slot in the Console | What to upload |
+| --- | --- |
+| **Appikon** (512×512) | `icon-512.png` |
+| **Fremhævet grafik** / Feature graphic (1024×500) | `feature-graphic-1024x500.png` |
+| **Screenshots fra telefonversion** (2-8, 9:16) | the four `phone-*.png`, in name order |
+| **Screenshots for Wear OS** (up to 8, 1:1) | the four `watch-*.png`, in name order |
+
+Four phone screenshots rather than the two Play demands, because four with a shortest side of at
+least 1080 px is what makes the listing eligible for promotion — the Console says so in a note under
+that slot. All ten are drawn by the app's own `drawHologram`, so they are the product rather than a
+picture of it, and all ten are written with no alpha channel at all, because the Wear OS slot
+rejects anything carrying transparency. The script measures each finished file against Play's size
+limit and fails rather than hand you one the Console would refuse.
+
 **The first bundles have to be uploaded by hand.** The Play API will not create an app's first
 release, so upload `dist/mobile-aab/jarvis.aab` *and* `dist/watch-aab/jarvis.aab` through the
 Console once. Every upload after that can be the workflow.

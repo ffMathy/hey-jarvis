@@ -2,9 +2,9 @@
  * Renders the two clips in the README: Jarvis summoned on a phone, and on a watch.
  *
  * Frame by frame, headlessly, through the same drawing both apps use and the same voice pipeline
- * the view runs every frame — `fillSimulatedSpectrum` into `perceivedLevel` and `foldSpectrum`,
- * eased by `easeLevel`/`easeBands`, with `advanceVoiceActivity` tracking the raw reading. So what
- * the clip shows is what the app does, rather than an impression of it drawn separately.
+ * the view runs every frame — see `simulated-performance.ts`, which is where that pipeline lives
+ * and which the Play Store assets are rendered from too. So what the clip shows is what the app
+ * does, rather than an impression of it drawn separately.
  *
  * The devices around him are real frames rather than shapes drawn here. The phone is Google's own
  * Pixel 10 Pro device art, the one Android Studio wraps a screenshot in; the watch is a Pixel Watch
@@ -41,25 +41,15 @@ import {
 import { JsiSkApi } from '@shopify/react-native-skia/lib/module/skia/web';
 import { LoadSkiaWeb } from '@shopify/react-native-skia/lib/module/web/LoadSkiaWeb';
 import {
-  advanceVoiceActivity,
   createHologramResources,
   createHologramScene,
-  createSimulatedSpectrum,
-  createVoiceActivityState,
   drawHologram,
-  easeBands,
-  easeLevel,
-  fillSimulatedSpectrum,
-  foldSpectrum,
   MATERIALISE_SECONDS,
   PARTICLE_COUNT,
-  perceivedLevel,
   type SimulatedMood,
-  simulatedVolume,
-  VOICE_BAND_COUNT,
-  voiceDrive,
 } from '../src/index';
 import { LEAVING_SECONDS } from '../src/react/leaving';
+import { createPerformance, findLoudestMoment, stillMoment } from './simulated-performance';
 
 /**
  * Far more particles than any phone is asked to draw.
@@ -284,74 +274,6 @@ function writeScript(opensOver: number, closesOver: number) {
 }
 
 type Moment = ReturnType<ReturnType<typeof writeScript>['at']>;
-
-/**
- * A moment for the cover: formed, present, speaking, and nothing else going on.
- *
- * The same shape {@link writeScript} produces, so that {@link createPerformance} can advance it
- * without knowing it is being used for a still rather than for a clip.
- */
-function coverMoment(seconds: number): Moment {
-  return {
-    mood: 'speaking',
-    moodSeconds: seconds,
-    opened: 1,
-    showing: true,
-    // Long past materialising, so `appearance` is 1 and he is simply there.
-    hologramSeconds: MATERIALISE_SECONDS + seconds,
-    thinkingWanted: false,
-    leaving: false,
-  };
-}
-
-/**
- * Everything the drawing reads that is carried from one frame to the next.
- *
- * The same five things `hologram-view.tsx` keeps in its `frame` shared value, advanced the same
- * way, so the sphere behaves here exactly as it does in the app.
- */
-function createPerformance() {
-  const spectrum = createSimulatedSpectrum();
-  const activity = createVoiceActivityState();
-  let level = 0;
-  let bands: number[] = new Array(VOICE_BAND_COUNT).fill(0);
-  let thinking = 0;
-  let presence = 1;
-
-  return (moment: Moment) => {
-    // What the app reads off the voice every 40 ms, read here every frame: same two questions.
-    const heard =
-      moment.mood === undefined
-        ? 0
-        : perceivedLevel(simulatedVolume(fillSimulatedSpectrum(moment.mood, moment.moodSeconds, spectrum)));
-    const heardBands = moment.mood === undefined ? new Array<number>(VOICE_BAND_COUNT).fill(0) : foldSpectrum(spectrum);
-
-    level = easeLevel(level, heard, FRAME_SECONDS);
-    bands = easeBands(bands, heardBands, FRAME_SECONDS);
-    advanceVoiceActivity(activity, heard, FRAME_SECONDS);
-    thinking = clamp(thinking + ((moment.thinkingWanted ? 1 : -1) * FRAME_SECONDS) / THOUGHT_FADE_SECONDS, 0, 1);
-    presence = clamp(presence + ((moment.leaving ? -1 : 1) * FRAME_SECONDS) / LEAVING_SECONDS, 0, 1);
-
-    return {
-      time: moment.hologramSeconds,
-      // Judged against how loud this voice actually gets, as the view does.
-      level: voiceDrive(level, activity.loudest),
-      bands,
-      // True for both moods: a simulated voice is always "on", and it is `thinking` that tells
-      // them apart. See `useSimulatedVoice`, which does exactly this.
-      speaking: moment.mood !== undefined,
-      agitation: activity.agitation,
-      burstAge: activity.burstAge,
-      burstStrength: activity.burstStrength,
-      burstCount: activity.burstCount,
-      appearance: Math.min(1, moment.hologramSeconds / MATERIALISE_SECONDS),
-      thinking,
-      presence,
-      // All of them. Nothing here is racing a screen.
-      density: 1,
-    };
-  };
-}
 
 /**
  * Loads one of the prepared frames as a Skia image.
@@ -583,32 +505,6 @@ function drawAroundCircle(
 }
 
 /**
- * Runs the simulated voice forward and says when, in seconds, it was loudest.
- *
- * Deterministic, so the caller can start again from nothing and walk to exactly that moment. There
- * is no way to snapshot the state instead: the tracker, the easing and the clock all carry from one
- * frame to the next, and half of what makes a loud moment look loud is what came before it.
- */
-function findLoudestMoment(over: number): number {
-  const spectrum = createSimulatedSpectrum();
-  let level = 0;
-  let loudest = 0;
-  let at = 0;
-  for (let seconds = 0; seconds < over; seconds += FRAME_SECONDS) {
-    level = easeLevel(
-      level,
-      perceivedLevel(simulatedVolume(fillSimulatedSpectrum('speaking', seconds, spectrum))),
-      FRAME_SECONDS,
-    );
-    if (level > loudest) {
-      loudest = level;
-      at = seconds;
-    }
-  }
-  return at;
-}
-
-/**
  * Draws an image to fill a rectangle exactly, whatever size it was committed at.
  *
  * `drawImageRectOptions` rather than `drawImageRect`, and that is the whole reason this is a
@@ -660,7 +556,7 @@ function renderClip(
   }
   const canvas = surface.getCanvas();
   const script = writeScript(clip.opensOver, clip.closesOver);
-  const perform = createPerformance();
+  const perform = createPerformance(FRAME_SECONDS, THOUGHT_FADE_SECONDS);
 
   let frames = 0;
   for (let seconds = 0; seconds <= script.endsAt; seconds += FRAME_SECONDS) {
@@ -966,11 +862,11 @@ async function main() {
   coverCanvas.clear(skia.Color('#00000000'));
   // Walked to the loudest instant of speech rather than dropped into it: everything the drawing
   // does is carried from the frame before, so the only way to be at a moment is to have got there.
-  const loudest = findLoudestMoment(COVER_LISTEN_SECONDS);
-  const speaking = createPerformance();
-  let mid = speaking(coverMoment(0));
+  const loudest = findLoudestMoment(COVER_LISTEN_SECONDS, FRAME_SECONDS);
+  const speaking = createPerformance(FRAME_SECONDS, THOUGHT_FADE_SECONDS);
+  let mid = speaking(stillMoment(0));
   for (let seconds = FRAME_SECONDS; seconds <= loudest; seconds += FRAME_SECONDS) {
-    mid = speaking(coverMoment(seconds));
+    mid = speaking(stillMoment(seconds));
   }
   paintCover(skia, coverCanvas, wordmark, mid, coverScene, coverResources);
   coverSurface.flush();
