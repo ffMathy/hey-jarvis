@@ -89,12 +89,10 @@ get it — including the Google account on the phone that is paired to the watch
 
 ## 4. The secrets
 
-Five of them, and the same five in both places. 1Password is where they live; GitHub Actions gets a
-copy because a workflow cannot reach 1Password.
-
-### In 1Password
-
-The vault is `Jarvis`, matching the other `op.env` files in this repository. Create two items:
+**All of them live in 1Password and nowhere else.** CI already holds one
+`OP_SERVICE_ACCOUNT_TOKEN`, and every `HEY_JARVIS_*` value in this repository is resolved from the
+`Jarvis` vault at run time by `.scripts/run-with-env.sh` — so **there is nothing to add to GitHub**.
+Put these in the vault and the workflow can already reach them.
 
 **Item: `Jarvis Android upload key`** (a Secure Note is fine)
 
@@ -112,30 +110,20 @@ is what you will want the day you need to sign something by hand.
 
 | Field | What goes in it |
 | --- | --- |
-| `service account json` | the whole JSON file, pasted as text |
+| `service account json` | the whole JSON file from §2, pasted as text |
 
-The first item's field names are not free-form — they are the right-hand side of
-[`mobile/op.env`](../mobile/op.env), which is how `run-with-env.sh` finds them. Rename a field and
-you rename it there too.
+The field names are not free-form — they are the right-hand side of
+[`mobile/op.env`](../mobile/op.env) and [`mobile/op.publish.env`](../mobile/op.publish.env), which is
+how `run-with-env.sh` finds them. Rename a field and you rename it there too.
 
-The publisher JSON is deliberately **not** in `op.env`. Nothing you can run locally uploads to Play,
-so no local script ever wants it — and listing it there would mean every local bundle build stopped
-to ask 1Password for a secret it was not going to use. It is in 1Password so there is a copy of it
-somewhere other than a GitHub secret box; the only thing that reads it is the workflow.
+Two files rather than one, and the split is deliberate: nothing you can run on a laptop uploads to
+Play, so the publisher account is kept out of the file the bundle build reads. Otherwise every local
+build would stop to fetch a secret it was not going to use.
 
-### In GitHub
-
-**Settings → Environments → New environment → `google-play`**, then add these five secrets to it.
-An environment rather than plain repository secrets, because an environment can carry a required
-reviewer — worth turning on, since these are the credentials that can publish under your name.
-
-| Secret | Source |
-| --- | --- |
-| `HEY_JARVIS_ANDROID_KEYSTORE_BASE64` | `jarvis-upload.jks.base64` |
-| `HEY_JARVIS_ANDROID_KEYSTORE_PASSWORD` | the keystore password |
-| `HEY_JARVIS_ANDROID_KEY_ALIAS` | `jarvis-upload` |
-| `HEY_JARVIS_ANDROID_KEY_PASSWORD` | the key password |
-| `HEY_JARVIS_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` | the whole service account JSON |
+> **The service account token has to be able to see the vault.** These are new items, so if the
+> 1Password service account is scoped to particular vaults rather than to `Jarvis` as a whole,
+> nothing will read them. A build that stops with `❌ Missing:` and a list of names, on a machine
+> where `op` is signed in, is usually this.
 
 ## 5. Testing it, in the order that fails fastest
 
@@ -173,7 +161,10 @@ keytool -list -v -keystore jarvis-upload.jks -alias jarvis-upload | grep SHA256
 
 Open a new shell so none of the exports above survive, sign in to `op`, and run the same build. If
 it gets as far as Gradle, the item and field names match `mobile/op.env`. If it stops with
-`❌ Missing:` and a list, a field name is wrong.
+`❌ Missing:` and a list, a field name is wrong — or the service account cannot see the vault.
+
+This is the step that proves CI will work, because CI takes exactly this path: the same script, the
+same file, the same vault, with a service account token in place of your signed-in session.
 
 ### c. Does Play accept it? (the slow one)
 
@@ -210,10 +201,9 @@ dependency lock builds a bundle and sends it to the internal track, numbered by 
 number. The **Play internal testing** workflow can also be started by hand from the Actions tab,
 which is the only way to pick a different track or to leave the build as a draft.
 
-> **Do not add a required reviewer to the `google-play` environment** unless you want to approve
-> every push. An environment that asks for approval holds the job until somebody answers, which
-> defeats the automatic trigger. The environment is still worth having — it is what keeps these
-> secrets out of reach of every other workflow in the repository.
+The workflow runs straight on the runner rather than in the dev container — the runner image carries
+the Android SDK with its licences accepted, which the container does not — so it installs the `op`
+CLI itself before anything asks 1Password for a secret.
 
 ## 7. How the signing actually works
 
@@ -240,6 +230,7 @@ Worth knowing, because it is the part that looks like magic:
 | What you see | What it is |
 | --- | --- |
 | `Package not found: com.ffmathy.heyjarvis` | the first release was never uploaded by hand, or the service account was invited but has not propagated yet |
+| `1Password CLI is not authenticated` in CI | `OP_SERVICE_ACCOUNT_TOKEN` is not reaching the job, or the `op` install step was removed |
 | `Version code N has already been used` | `JARVIS_ANDROID_VERSION_CODE` repeated. In CI it is `github.run_number`, which only rises; locally it is 1, so a locally built bundle can be uploaded once and never again |
 | `You uploaded an APK or Android App Bundle signed with a key that is also used to sign APKs delivered to users` | the debug key got in, which means the Gradle property was missing and the build silently fell back |
 | `keystore did not open` from the build script | the base64 was wrapped. Re-run it with `-w 0` |
