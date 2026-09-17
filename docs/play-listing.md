@@ -84,9 +84,9 @@ https://github.com/ffMathy/hey-jarvis
 
 ## App access ("Oplysninger om login")
 
-The Console asks whether any part of the app is restricted. **Answer yes.** Jarvis shows a settings
-screen until an ElevenLabs API key and agent ID are entered, so a reviewer who is given nothing sees
-a form and no assistant, and "we could not access the app" is a rejection.
+The Console asks whether any part of the app is restricted. **Answer yes.** Jarvis cannot hold a
+conversation until an ElevenLabs API key and agent ID are entered, so a reviewer who is given
+nothing sees a setup tour and no assistant, and "we could not access the app" is a rejection.
 
 Add one instruction set with no username or password — there is no sign-in to perform — and put
 everything in the instructions field:
@@ -96,19 +96,25 @@ Jarvis is a client for a conversational agent hosted by ElevenLabs (elevenlabs.i
 no accounts and no sign-in of its own, but it needs one API key and one agent ID before it
 can hold a conversation. Both are entered once, in the app:
 
-1. Open the app. It starts on its settings screen.
-2. Paste this API key into "ElevenLabs API key":
+1. Open the app. It starts on a short setup tour, on a step explaining what an ElevenLabs
+   agent is. Press "Next".
+2. Paste this API key into "API key":
 
    <paste a review-only ElevenLabs API key here>
 
-3. Paste this agent ID into "ElevenLabs agent ID":
+3. Paste this agent ID into "Agent ID":
 
    <paste the agent ID here>
 
-4. Press Save. The assistant screen opens and connects on its own, and you can speak to it.
-   Allow the microphone permission when asked.
+4. Press "Continue". The last step of the tour offers to make Jarvis the device's digital
+   assistant; that is optional, and pressing "Done" skips it.
 
-To reach the settings again afterwards, press and hold anywhere on the assistant screen.
+5. The assistant screen opens and connects on its own, and you can speak to it. Allow the
+   microphone permission when asked.
+
+To reach the settings again afterwards, press and hold anywhere on the assistant screen. Every step
+of the tour also has a "Skip all this and just look at him" link, which shows the app's hologram
+with no account needed.
 
 The app can also be summoned as the device's digital assistant: set it under
 Settings > Apps > Default apps > Digital assistant app, then hold the power button.

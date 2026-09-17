@@ -176,9 +176,30 @@ What each layer is, what the voice does to it, and which finding of the film stu
 - **Loudness is eased on the UI thread, not the JS thread.** The SDK refreshes about 25 times a second; easing toward each reading every frame is what keeps the bands smooth, and `easeLevel` is exponential so the result is the same on a 60 Hz and a 120 Hz screen. The tracker is frame-rate independent for the same reason, and tested at 30, 60, 90 and 144 Hz.
 - **It was designed by looking, and is tested by looking.** `hologram/src/hologram-drawing.spec.ts` renders it headlessly through CanvasKit — the same Skia API calls — and asserts on pixels: it moves when silent, it holds its brightness whether he speaks softly or loudly, speech shows as chips beyond the limb and more change than when calm, which bands are sounding changes the picture, the rim turns while the body stays put, it materialises and leaves nothing behind, nothing pops at a script boundary, no frame of the materialisation turns a tenth of the light on at once, and it stays inside its square. The device check is `.scripts/verify-hologram-on-emulator.sh`, below.
 
+## First run
+
+A new install opens on a three-step tour (`src/onboarding-screen.tsx`), not on the two fields it used to. The fields were an unanswerable question: nothing on that screen said what an ElevenLabs agent is, that Jarvis is one, or that the agent — not this app — is where the connections to everything else are made. Somebody who already had a key and an agent ID was the only person the old first screen worked for.
+
+| Step | What it does |
+| --- | --- |
+| `agent` | What an agent is, that its tools are what make it an assistant, and links to sign up, build one, and read about webhooks and MCP servers |
+| `credentials` | The API key and the agent ID, with a link to where each is found |
+| `assistant` | The recommendation to hand Jarvis the assistant role, and the button that opens the picker — plus the watch card, when there is a watch |
+
+Four things about it are decisions rather than details:
+
+- **The steps, their order and every link live in `src/onboarding.ts`, which imports nothing.** `bun test` cannot parse React Native's Flow types, so anything a test needs an opinion about has to be outside the components — the same reason the contract specs read Kotlin as text. `onboarding.spec.ts` covers the order, the two-step shape in a browser, resuming, the count, and that every link is an `https://elevenlabs.io` address.
+- **A browser gets two steps.** There is no assistant role in a browser and no picker to send anyone to, so the last step would be a recommendation nobody could act on. `onboardingSteps` leaves it out, and the count says "Step 2 of 2" rather than promising a third.
+- **The credentials are saved the moment they parse, not at the end.** The next step sends the user out to Android's Settings, and the app is not guaranteed to come back alive; a pasted API key held in component state across that is a key lost. Which is why a tour that is resumed with credentials already stored picks up *after* them rather than asking again.
+- **Whether the tour has been walked is remembered separately** (`src/onboarding-storage.ts`), and cannot be inferred from the credentials being there — because the last step comes after they are saved. A read of that flag that *fails* answers "walked": showing the tour to somebody who has a working Jarvis is the worse of the two mistakes, and a first-timer who misses it still lands on the settings screen, which is where this app used to open.
+
+Skipping straight to sample mode is offered on every step, because the question somebody has just after installing this is whether it is worth signing up for anything at all, and the honest answer to that is the sphere rather than another paragraph. It is a side trip and not an exit: the tour is not marked walked on the way out, so tapping beside Jarvis comes back to the tour rather than past it. To the first step left to walk, not the one it left from — the screen is unmounted while sample mode is up, and keeping a wizard's position across that is not worth a prop, since by the time the last step is on screen the credentials are saved and it *is* the first one left.
+
+Nothing in the tour is shown to a **summoned** app. Somebody who has just made the assistant gesture asked for Jarvis, and the answer to that is him — sample mode, when there is nothing set up — rather than a guided tour. See `app.tsx`.
+
 ## Configuration
 
-The app ships with no credential. It talks to ElevenLabs directly, and both settings are typed into the settings screen on first run and kept in the Android keystore — or, on web, in `localStorage`:
+The app ships with no credential. It talks to ElevenLabs directly, and both settings are typed into the tour's credentials step on first run — or into the settings screen afterwards — and kept in the Android keystore, or on web in `localStorage`:
 
 | Setting | What it is |
 | --- | --- |
@@ -211,7 +232,7 @@ What has to be true, or the app silently never appears in the picker:
 
 Two things Android does **not** allow, both of which look like they work in code:
 
-- `RoleManager.createRequestRoleIntent(ROLE_ASSISTANT)` shows no dialog. The role is declared not requestable, so the activity finishes immediately. The app sends the user to `Settings.ACTION_VOICE_INPUT_SETTINGS` instead, and re-reads the role when it comes back to the foreground.
+- `RoleManager.createRequestRoleIntent(ROLE_ASSISTANT)` shows no dialog. The role is declared not requestable, so the activity finishes immediately. The app sends the user to `Settings.ACTION_VOICE_INPUT_SETTINGS` instead, and re-reads the role when it comes back to the foreground. The last step of the first-run tour is where that is offered, and it says what to tap once it lands — which screen it manages to reach differs by device, so the directions change with it.
 - Calling `hide()` before `startAssistantActivity()` makes the start illegal: what it checks is that the session is currently shown, and `hide()` retracts it. Start the activity first, hide second. Suppressing the session's own window with `setUiEnabled(false)` in `onPrepareShow` is fine and is what AOSP recommends for a session that only launches an activity — it is a client-side flag and does not make the session un-shown — but nothing may ask for a content view afterwards.
 
 To debug a device where Jarvis does not appear in the picker:
@@ -271,7 +292,9 @@ Tests must not import React Native or any Expo native module — there is no run
 
 `turbo e2e --filter=mobile` exports the production web build and drives it in Chromium — the real bundle, served over HTTP, clicked through. It runs in CI alongside the rest.
 
-The boundary is the ElevenLabs session, which needs a real API key and real quota. Everything up to it is exercised for real: settings validation, persistence across a reload, the assistant card's web state, the hologram drawing and moving with CanvasKit loaded from the export's own `canvaskit.wasm`, and the token request to ElevenLabs — its `xi-api-key` header, agent ID and participant name, and that the key never appears in the URL — along with how a rejected key and an unknown agent are explained. The token URL is intercepted with `page.route`; every other non-localhost request is aborted, and non-local WebSockets are closed, so a test can never dial out. Playwright answers CORS preflights for routed requests itself, so whether ElevenLabs' real CORS policy admits the web build is **not** covered — the test checks instead that the request carries no header besides `xi-api-key`, which is all a preflight would have to allow.
+The boundary is the ElevenLabs session, which needs a real API key and real quota. Everything up to it is exercised for real: the first-run tour (its two steps in a browser, its links, Back, and the side trip to sample mode and back), settings validation, persistence across a reload, the hologram drawing and moving with CanvasKit loaded from the export's own `canvaskit.wasm`, and the token request to ElevenLabs — its `xi-api-key` header, agent ID and participant name, and that the key never appears in the URL — along with how a rejected key and an unknown agent are explained. The token URL is intercepted with `page.route`; every other non-localhost request is aborted, and non-local WebSockets are closed, so a test can never dial out. Playwright answers CORS preflights for routed requests itself, so whether ElevenLabs' real CORS policy admits the web build is **not** covered — the test checks instead that the request carries no header besides `xi-api-key`, which is all a preflight would have to allow.
+
+Every test that needs a configured app walks the tour first, through the `walkToCredentials` helper: the app no longer opens on a form, so a spec that types into one without pressing Next is a spec that fails on a missing field rather than on what it was checking.
 
 Set `CHROMIUM_EXECUTABLE_PATH` to run against a Chromium that Playwright did not install itself — useful in a sandbox that ships a browser of a different build than the pinned `@playwright/test` expects. Leave it unset everywhere else.
 

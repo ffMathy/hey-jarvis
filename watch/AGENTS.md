@@ -38,6 +38,24 @@ The same plugin declares `uses-feature android.hardware.type.watch`, which is wh
 
 Like the phone app, the watch app will talk to ElevenLabs directly with an ElevenLabs API key and the Jarvis agent ID — no server in between — and will keep the key in the **watch's own Android Keystore**, never in its APK or in plain preferences. The key should reach the watch from the phone over the Data Layer rather than be typed on it: a key is long, and a watch keyboard is not where anyone should enter one. Once it arrives, the watch stores it and no longer needs the phone to be nearby to start a conversation. None of this exists yet; the prototype holds no credential at all.
 
+### Can the watch read the phone's settings?
+
+Not directly — an app cannot read another device's storage, and these two are separate installs with separate keystores even though they share a package name. But the phone can *send* them, and that is the supported answer rather than a workaround: the Wearable Data Layer exists for exactly this, and both of its preconditions are already met here. Play Services only connects a phone app and a watch app that share an `applicationId` *and* a signing key, and this app deliberately shares both with `mobile/` — see the notes on the package name and on signing.
+
+So the phone's first-run tour is the only place the ElevenLabs credentials ever need to be typed, and **the watch does not need a tour like the phone's**. What it needs is a way to say "ask the phone", and something to show while it is asking.
+
+Two Data Layer APIs could carry them, and the choice is a security one rather than a matter of taste:
+
+- **`MessageClient`** sends one payload to one node, is not persisted by Play Services, and requires both apps to be running at the time. That is the right one for an API key.
+- **`DataClient`** would be more convenient — a `DataItem` is replicated automatically and arrives whenever the watch next comes into range, with no need for the phone app to be open — but it is replicated *by being stored*, in Play Services' own store on both devices, which is a live credential at rest in a place neither app controls. Not for this.
+
+What exists today and what does not:
+
+- The phone already talks to the Data Layer: `mobile/modules/jarvis-watch` asks `NodeClient` whether a watch is connected and `CapabilityClient` whether Jarvis is on it, and `watch-card.tsx` shows the answer. Neither of them *sends* anything.
+- The watch has no receiver, no key-value store and no ElevenLabs dependency at all. It also has nothing that could use a credential yet: `silentVoice` is the whole of its voice, so a key delivered today would sit unused.
+
+One case does still need something on the watch itself, and it is not a typed key: the app declares `com.google.android.wearable.standalone`, so it can be installed on a watch whose phone has never had Jarvis. There is no phone to ask there. The honest screen for that is "open Jarvis on your phone" — with the phone app's watch card being where the other half of that conversation already lives — and not a form.
+
 ## What has been verified
 
 Everything below was verified against the Kotlin prototype this app replaced. The registration it tested is the same registration `app.config.ts` now writes — the same two actions on the app's one activity — but it has **not** been re-run against the Expo build, and the activity's name changed with it (`.MainActivity`, not `.wear.AssistActivity`). Treat the first list as strong evidence rather than as a current pass.
