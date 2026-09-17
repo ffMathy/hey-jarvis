@@ -144,6 +144,9 @@ const THOUGHT_FADE_SECONDS = 0.45;
  */
 const UNCOVER_MS = 160;
 
+/** How long to wait for a first frame before taking the cover off regardless. See its use. */
+const GIVE_UP_COVERING_MS = 900;
+
 /**
  * What share of the screen's own resolution the sphere is drawn at, before being scaled back up.
  *
@@ -326,6 +329,22 @@ function JarvisHologramView({
   // a hologram built again — which is what a second summoning does — covers itself again.
   const covering = useSharedValue(1);
   const covered = useAnimatedStyle(() => ({ opacity: covering.value }));
+
+  // And a way out of it that does not depend on anything else working.
+  //
+  // The cover is removed by the frame callback below, because the honest signal is a frame having
+  // been asked for. But a cover that is only ever lifted by something else running is a cover that
+  // hides Jarvis completely if that something else does not — an opaque square exactly where he
+  // should be, which is a far worse failure than the flash it exists to hide. So it also comes off
+  // on a timer, whatever happened. Whichever fires first wins; the second finds it already going.
+  useEffect(() => {
+    const anyway = setTimeout(() => {
+      if (covering.value === 1) {
+        covering.value = withTiming(0, { duration: UNCOVER_MS });
+      }
+    }, GIVE_UP_COVERING_MS);
+    return () => clearTimeout(anyway);
+  }, [covering]);
 
   const clock = useFrameCallback((info) => {
     waiting.value += (info.timeSincePreviousFrame ?? DEFAULT_FRAME_MS) / 1000;

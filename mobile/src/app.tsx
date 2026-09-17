@@ -19,6 +19,15 @@ import { SettingsScreen } from './settings-screen';
 import { loadElevenLabsSettings, saveElevenLabsSettings } from './settings-storage';
 import { theme } from './theme';
 
+/**
+ * How hard to try to read the settings before giving up and asking for them again.
+ *
+ * Only a read that *failed* is retried — settings that are simply not there are answered the first
+ * time. See the effect that uses this.
+ */
+const READ_SETTINGS_ATTEMPTS = 4;
+const READ_SETTINGS_AGAIN_MS = 200;
+
 /** Which screen is showing. */
 type Screen = 'loading' | 'sample' | 'settings' | 'conversation';
 
@@ -70,11 +79,39 @@ export function App({ summoned = false }: AppProps) {
   // opens the app's own window with one.
   const wasSummoned = summoned || isAssistLaunch(launchUrl);
 
+  /**
+   * Reads the settings, and tries again if the *reading* failed rather than the settings being
+   * absent.
+   *
+   * The two are not the same thing and used to be answered the same way. A read that throws in the
+   * assistant's own window — a surface the system has only just created, where a native module can
+   * still be coming up — would land here as "nothing configured", and a summoned Jarvis would open
+   * sample mode with credentials sitting in the keystore the whole time. That is what the blank
+   * sheet was. A handful of attempts a fifth of a second apart costs nothing and covers it; if they
+   * all fail the settings screen opens, which is the right answer for a keystore that genuinely
+   * cannot be read any more.
+   */
   useEffect(() => {
+    let wanted = true;
     void (async () => {
-      setSettings(await loadElevenLabsSettings());
-      setIsLoaded(true);
+      for (let attempt = 0; attempt < READ_SETTINGS_ATTEMPTS && wanted; attempt++) {
+        const stored = await loadElevenLabsSettings();
+        if (stored.kind === 'settings') {
+          setSettings(stored.settings);
+          break;
+        }
+        if (stored.kind === 'nothing') {
+          break;
+        }
+        await new Promise((wait) => setTimeout(wait, READ_SETTINGS_AGAIN_MS));
+      }
+      if (wanted) {
+        setIsLoaded(true);
+      }
     })();
+    return () => {
+      wanted = false;
+    };
   }, []);
 
   // Summoned before there is anything to summon: show the hologram rather than a

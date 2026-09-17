@@ -1,8 +1,7 @@
-import { PARTICLE_COUNT, startFromRemembered } from 'hologram';
+import { PARTICLE_COUNT } from 'hologram';
 import { LEAVING_SECONDS, useIsForeground } from 'hologram/react/lifecycle';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { BackHandler, Platform, Pressable, useWindowDimensions } from 'react-native';
-import { useSharedValue } from 'react-native-reanimated';
 import { dismissAssistantWindow } from '../modules/jarvis-assistant';
 import { FrameRate } from './frame-rate';
 import { JarvisHologram } from './jarvis-hologram';
@@ -11,7 +10,7 @@ import { moodOf, nextSampleMode, type SampleMode } from './sample-mode';
 import { SAMPLE_CANVAS, SampleSheet, sampleHologramSize } from './sample-sheet';
 import { useSampleVoice } from './sample-voice';
 import { useSimulatedVoice } from './simulated-voice';
-import { readProvenSparks, rememberProvenSparks } from './spark-memory';
+import { useSparkDensity } from './spark-density';
 import { QUIETEST_SPEECH_HERE } from './speech-floor';
 
 interface SampleScreenProps {
@@ -44,10 +43,6 @@ interface SampleScreenProps {
  * the first opens the microphone; see `sample-mode.ts` for the order and `simulated-voice.ts` for
  * where the other two come from.
  */
-/** How often the remembered count is looked at, and how much better it has to be to be written. */
-const REMEMBER_EVERY_MS = 4000;
-const REMEMBER_WHEN_BETTER_BY = 0.03;
-
 /** What a screen reader is told Jarvis is doing, since nothing on screen says it. */
 const MODE_LABELS: Record<SampleMode, string> = {
   microphone: 'Jarvis, listening to your voice. Tap to see him speak.',
@@ -72,14 +67,7 @@ export function SampleScreen({ onLeave }: SampleScreenProps) {
   const hologramSize = sampleHologramSize(width, height);
   const going = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const isForeground = useIsForeground();
-  // Filled in on the UI thread by the hologram, read twice a second by the readout in the corner.
-  const frameRate = useSharedValue(0);
-  const buildMilliseconds = useSharedValue(0);
-  // Nought means "nothing measured yet", which is what lets the hologram tell a first mount from a
-  // rebuilt one and carry the count across the second.
-  const particleShare = useSharedValue(0);
-  const provenShare = useSharedValue(0);
-  const [startingShare, setStartingShare] = useState<number | undefined>(undefined);
+  const { frameRate, buildMilliseconds, particleShare, provenShare, startingShare } = useSparkDensity();
 
   /**
    * Starts the way out, and finishes it once Jarvis has gone.
@@ -117,54 +105,27 @@ export function SampleScreen({ onLeave }: SampleScreenProps) {
 
   useEffect(() => () => clearTimeout(going.current), []);
 
-  // What this phone managed last time, so the climb does not have to happen in front of anyone.
-  useEffect(() => {
-    let wanted = true;
-    void readProvenSparks().then((proven) => {
-      if (wanted && proven > 0) {
-        setStartingShare(startFromRemembered(proven));
-      }
-    });
-    return () => {
-      wanted = false;
-    };
-  }, []);
-
-  // And writing it back. Rarely, and only when it has actually gone up: this is a keystore write,
-  // not a counter, and the value only ever rises anyway.
-  useEffect(() => {
-    let written = 0;
-    const timer = setInterval(() => {
-      const proven = provenShare.value;
-      if (proven > written + REMEMBER_WHEN_BETTER_BY) {
-        written = proven;
-        void rememberProvenSparks(proven);
-      }
-    }, REMEMBER_EVERY_MS);
-    return () => clearInterval(timer);
-  }, [provenShare]);
-
   // Summoned again after leaving, this screen is the one that was already here: retracting the
   // assistant's window does not unmount it, so without this it would come back still on its way
   // out, faded to nothing and unable to leave a second time.
   //
-  // **Not on the first run, which is the mount**, and there is nothing to reset then. That looked
-  // harmless for as long as the sheet was the only thing announcing `onSettled`, because it does so
-  // a quarter of a second later, long after any mount effect. On the web there is no sheet and
-  // nothing to wait for, so it announces during its own mount effect — and a child's effects run
-  // before its parent's, so this one fired straight afterwards and set `settled` back to false for
-  // good. Jarvis never drew and the microphone never opened.
-  const summonedBefore = useRef(false);
+  // **It does not touch `settled`, and that is the fix for a screen that came back blank.** It used
+  // to set it false so that the arrival played again, which only worked by accident: the sheet is
+  // what sets it true, and it only does so when its animation runs, and its animation only runs
+  // when `leaving` changes. Summoned again after actually leaving, `leaving` goes true to false and
+  // everything lines up. Summoned again after the window was merely retracted, `leaving` was
+  // already false, nothing changed, the sheet never re-announced — and `settled` stayed false for
+  // good, so the hologram unmounted and never came back. What was left was a sheet with nothing in
+  // it and a frame-rate readout frozen on the last numbers the hologram wrote before it went.
+  //
+  // Nothing is lost by leaving it alone. The canvas is still there and still mounted; the view
+  // winds its own clock back to zero when it returns to the foreground, so the materialisation
+  // plays again regardless. See `hologram-view.tsx`.
   useEffect(() => {
-    if (!summonedBefore.current) {
-      summonedBefore.current = true;
-      return;
-    }
     if (isForeground) {
       clearTimeout(going.current);
       going.current = undefined;
       setLeaving(false);
-      setSettled(false);
     }
   }, [isForeground]);
 

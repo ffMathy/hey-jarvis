@@ -87,12 +87,19 @@ function isBrowserHeader(name: string): boolean {
   );
 }
 
-/** Fills in the settings screen and saves, leaving the app on the conversation screen. */
+/**
+ * Fills in the settings screen and saves, leaving the app on the conversation screen.
+ *
+ * What says it arrived is the hologram, because that is all the conversation screen is now: no
+ * title, no status line, no button. It opens the conversation by itself, so there is nothing to
+ * press and nothing to read — see `conversation-screen.tsx`.
+ */
 async function configureElevenLabs(page: Page): Promise<void> {
   await page.getByTestId('api-key').fill(API_KEY);
   await page.getByTestId('agent-id').fill(AGENT_ID);
   await page.getByTestId('save-settings').click();
-  await expect(page.getByTestId('talk')).toBeVisible();
+  await expect(page.getByTestId('hologram')).toBeVisible();
+  await expect(page.getByTestId('api-key')).toHaveCount(0);
 }
 
 /**
@@ -158,24 +165,18 @@ test('refuses to save without an agent ID', async ({ page }) => {
 
   await expect(page.getByTestId('settings-problem')).toContainText('agent');
   // Still on the settings screen: a refused save must not fall through.
-  await expect(page.getByTestId('talk')).toHaveCount(0);
+  await expect(page.getByTestId('hologram')).toHaveCount(0);
 });
 
 test('saves valid settings, shows the conversation, and remembers across a reload', async ({ page }) => {
   await page.goto('/');
   await configureElevenLabs(page);
 
-  await expect(page.getByTestId('conversation-status')).toHaveText('Standing by.');
-
-  // The assistant role is Android's. On web the app says so instead of offering
-  // a setup step that cannot lead anywhere.
-  await expect(page.getByTestId('assistant-card-heading')).toHaveText('Talking to Jarvis in a browser');
-
   await page.reload();
 
   // Straight back to the conversation, which is only possible if the settings
   // survived in localStorage — the native keystore path throws on web.
-  await expect(page.getByTestId('talk')).toBeVisible();
+  await expect(page.getByTestId('hologram')).toBeVisible();
   await expect(page.getByTestId('api-key')).toHaveCount(0);
 });
 
@@ -254,8 +255,9 @@ test('keeps the conversation screen working when CanvasKit cannot load', async (
   // Jarvis — is checked after it, not before it had the chance to break.
   await expect(page.getByTestId('hologram-unavailable')).toBeVisible();
   await expect(page.getByTestId('hologram').locator('canvas')).toHaveCount(0);
-  await expect(page.getByTestId('talk')).toBeEnabled();
-  await expect(page.getByTestId('conversation-status')).toHaveText('Standing by.');
+  // And the screen is still the conversation rather than having fallen back to setup: the drawing
+  // failing must not take the thing it decorates with it.
+  await expect(page.getByTestId('api-key')).toHaveCount(0);
 });
 
 test('asks ElevenLabs for a conversation token for the agent, with the API key', async ({ page }) => {
@@ -273,7 +275,6 @@ test('asks ElevenLabs for a conversation token for the agent, with the API key',
 
   await page.goto('/');
   await configureElevenLabs(page);
-  await page.getByTestId('talk').click();
 
   await expect.poll(() => tokenRequests.length).toBe(1);
   const [request] = tokenRequests;
@@ -294,7 +295,6 @@ test('explains a rejected API key in terms of the setting to fix', async ({ page
 
   await page.goto('/');
   await configureElevenLabs(page);
-  await page.getByTestId('talk').click();
 
   await expect(page.getByTestId('conversation-problem')).toContainText('rejected the API key');
 });
@@ -306,7 +306,6 @@ test('explains an agent ID the account does not have', async ({ page }) => {
 
   await page.goto('/');
   await configureElevenLabs(page);
-  await page.getByTestId('talk').click();
 
   await expect(page.getByTestId('conversation-problem')).toContainText('no agent with that ID');
 });
@@ -321,6 +320,8 @@ test('lets the settings be reopened and corrected, and uses the correction', asy
   await page.goto('/');
   await configureElevenLabs(page);
 
+  // A link, because this is a browser. On a phone the same screen has nothing on it and settings
+  // are a long press; see `conversation-screen.tsx` for why the two differ.
   await page.getByTestId('open-settings').click();
   // Sample mode is for before there is a Jarvis to talk to, not after.
   await expect(page.getByTestId('try-sample')).toHaveCount(0);
@@ -330,8 +331,11 @@ test('lets the settings be reopened and corrected, and uses the correction', asy
 
   await page.getByTestId('agent-id').fill('agent_corrected');
   await page.getByTestId('save-settings').click();
-  await expect(page.getByTestId('talk')).toBeVisible();
-  await page.getByTestId('talk').click();
+  await expect(page.getByTestId('hologram')).toBeVisible();
 
-  await expect.poll(() => agentIds).toEqual(['agent_corrected']);
+  // Two requests, and the first one is the point of the screen: it opens the conversation itself,
+  // so the original agent ID was tried the moment the settings were saved, failed with a 404, and
+  // is what sent the user back to correct it. Then the corrected one. A single request here would
+  // mean the screen had gone back to waiting to be asked.
+  await expect.poll(() => agentIds).toEqual([AGENT_ID, 'agent_corrected']);
 });

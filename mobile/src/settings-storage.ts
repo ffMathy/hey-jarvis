@@ -32,23 +32,43 @@ function readSettings(stored: string): ElevenLabsSettings | undefined {
 }
 
 /**
- * Reads the stored settings, or nothing at all.
+ * What came back: the settings, nothing stored at all, or a read that failed.
  *
- * A first run and a corrupted entry are the same answer here — there is nothing
- * usable, so the app asks for it — and treating them alike means a bad write can
- * never wedge the app on a screen it cannot leave.
+ * **The third used to be folded into the second**, on the reasoning that a first run and a
+ * corrupted entry both mean "there is nothing usable, so ask for it". That is right for the app's
+ * own window, where asking is a settings screen the user can fill in. It is wrong everywhere else,
+ * and it hid a real bug: summoned as the assistant with credentials saved, a failed read looked
+ * exactly like a phone that had never been set up, so the assistant opened sample mode — the
+ * hologram with nobody on the other end of it — and there was no way to tell which had happened.
  */
-export async function loadElevenLabsSettings(): Promise<ElevenLabsSettings | undefined> {
+export type StoredSettings =
+  | { kind: 'settings'; settings: ElevenLabsSettings }
+  | { kind: 'nothing' }
+  | { kind: 'unreadable'; why: string };
+
+/**
+ * Reads the stored settings, saying which of the three things happened.
+ *
+ * Reading can throw as well as parsing: the keystore key protecting the entry can be invalidated by
+ * an OS update or a restore, and a surface that is still starting up can fail to reach the native
+ * module at all. Neither is "not set up".
+ */
+export async function loadElevenLabsSettings(): Promise<StoredSettings> {
+  let stored: string | undefined;
   try {
-    const stored = await readStoredValue(STORAGE_KEY);
-    return stored ? readSettings(stored) : undefined;
-  } catch {
-    // Reading can throw as well as parsing: the keystore key protecting the entry
-    // can be invalidated by an OS update or a restore. Answering "nothing stored"
-    // opens the settings screen, where a new key can be saved over it — instead
-    // of a spinner the user could never get past.
-    return undefined;
+    stored = await readStoredValue(STORAGE_KEY);
+  } catch (error: unknown) {
+    return { kind: 'unreadable', why: error instanceof Error ? error.message : 'the keystore could not be read' };
   }
+
+  if (!stored) {
+    return { kind: 'nothing' };
+  }
+
+  // A corrupted entry *is* "nothing usable": it can never become readable, and answering anything
+  // else would wedge the app on a screen it cannot leave. Only the throw above is worth retrying.
+  const settings = readSettings(stored);
+  return settings ? { kind: 'settings', settings } : { kind: 'nothing' };
 }
 
 export async function saveElevenLabsSettings(settings: ElevenLabsSettings): Promise<void> {

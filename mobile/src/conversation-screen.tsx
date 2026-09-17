@@ -1,28 +1,18 @@
-import { useConversationControls, useConversationMode, useConversationStatus } from '@elevenlabs/react-native';
+import { useConversationControls, useConversationStatus } from '@elevenlabs/react-native';
 import * as Linking from 'expo-linking';
-import { useCallback, useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  StatusBar as NativeStatusBar,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
-import { type AssistantRegistration, openAssistantSettings } from '../modules/jarvis-assistant';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { createAssistLaunchClaim } from './assist-link';
 import { requestConversationToken } from './conversation-token';
 import type { ElevenLabsSettings } from './elevenlabs-settings';
-import { useHologramSize } from './hologram-size';
+import { useWholeScreenHologramSize } from './hologram-size';
 import { JarvisHologram } from './jarvis-hologram';
 import { useJarvisVoice } from './jarvis-voice';
 import { requestMicrophoneAccess } from './microphone-permission';
+import { usePreferredHeadset } from './preferred-microphone';
+import { useSparkDensity } from './spark-density';
 import { QUIETEST_SPEECH_HERE } from './speech-floor';
 import { theme } from './theme';
-import { useAssistantRegistration } from './use-assistant-registration';
-import { WatchCard } from './watch-card';
 
 interface ConversationScreenProps {
   settings: ElevenLabsSettings;
@@ -32,26 +22,48 @@ interface ConversationScreenProps {
 /** Summonings already acted on in this process. */
 const claimAssistLaunch = createAssistLaunchClaim();
 
+/** Where the screen has to be bare, and where it does not. See the note on the component. */
+const ON_A_PHONE = Platform.OS !== 'web';
+
 /** Whether a conversation is open, or on its way to being open. */
 function isLive(status: string): boolean {
   return status === 'connected' || status === 'connecting';
 }
 
 /**
- * The screen Jarvis answers from.
+ * The screen Jarvis answers from: him, and nothing else.
  *
- * One button, because a summoned assistant should need no reading. Everything
- * else on it is there to explain the two states the user cannot fix by pressing
- * that button: not being the phone's assistant, and not being able to reach
- * ElevenLabs.
+ * **There is no button and no text on it.** There used to be a title, a status line, a Talk button
+ * and three cards, and every one of them was there to explain something — which is the wrong shape
+ * for an assistant. You do not press a button to talk to someone who is already listening, and you
+ * do not read a paragraph about the microphone while they wait. So the conversation opens by
+ * itself the moment the screen does, and what tells you which of the two of you is talking is what
+ * the sphere is doing, which is the whole reason it was drawn.
+ *
+ * What is left when everything goes right is nothing to read. What is left when it does not is one
+ * line saying so, because an assistant that has silently failed to connect looks exactly like one
+ * that is listening, and there would otherwise be no way to tell.
+ *
+ * Settings are still reachable, and how depends on where this is running. On a phone it is a long
+ * press anywhere, because this screen is the assistant and an assistant with a link on it is not
+ * one. In a browser it is a plain link, because a browser is not an assistant — it is where this is
+ * developed and demonstrated, it already differs in bigger ways (sample mode has no sheet there),
+ * and react-native-web does not raise `onLongPress` for a held mouse at all, so the gesture would
+ * be a door that only looks like one.
+ *
+ * The particle count is the phone's own, as sample mode's has been for a while and this screen's
+ * never was: see `spark-density.ts`. It drew a fixed number on every phone, which on a fast one was
+ * fewer than it could manage and on a slow one more.
  */
 export function ConversationScreen({ settings, onEditSettings }: ConversationScreenProps) {
-  const { startSession, endSession } = useConversationControls();
+  const { startSession } = useConversationControls();
   const { status } = useConversationStatus();
-  const { mode } = useConversationMode();
-  const registration = useAssistantRegistration();
   const voice = useJarvisVoice();
-  const hologramSize = useHologramSize();
+  const hologramSize = useWholeScreenHologramSize();
+  const { frameRate, buildMilliseconds, particleShare, provenShare, startingShare } = useSparkDensity();
+  // Onto the AirPods, if there are any. Only once the call is up, because the list of routes is
+  // empty until LiveKit has started the audio session. See `preferred-microphone.ts`.
+  usePreferredHeadset(status === 'connected');
 
   const [problem, setProblem] = useState<string | undefined>(undefined);
   const [isStarting, setIsStarting] = useState(false);
@@ -70,7 +82,7 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
 
       // Minted here rather than at launch, and never kept: a conversation token
       // is short-lived, and one fetched when the app opened may already be dead
-      // by the time the user presses the button.
+      // by the time it is used.
       const { token } = await requestConversationToken(settings);
 
       startSession({
@@ -85,56 +97,66 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
     }
   }, [settings, startSession]);
 
-  // Opened by the assistant gesture rather than from the launcher: the user has
-  // already said what amounts to "hey Jarvis", so making them press a button
-  // afterwards would be asking twice. Each summoning is claimed once, for the
-  // life of the process — see `createAssistLaunchClaim` for why neither a
-  // per-render nor a per-mount guard is enough. A summoning that arrives while a
-  // conversation is open or starting is claimed and left alone, since starting
-  // again would tear down the one already under way.
+  /**
+   * Opens the conversation as soon as there is a screen to open it on.
+   *
+   * Once, and only once, however this screen was reached — from the launcher, from the assistant
+   * gesture, or by coming back from settings. `tried` is a ref rather than state because it must
+   * not cause a render and must not reset when one happens: two starts in flight at the same time
+   * is two WebRTC sessions, and the second tears down the first.
+   *
+   * Nothing retries. A conversation that failed to open failed for a reason — no microphone, no
+   * network, a rejected key — and hammering ElevenLabs until one of those changes would be rude to
+   * them and useless to the user, who can press and hold to fix the only one of those that is
+   * fixable here.
+   */
+  const tried = useRef(false);
+  useEffect(() => {
+    if (tried.current || isLive(status) || isStarting) {
+      return;
+    }
+    tried.current = true;
+    void start();
+  }, [start, status, isStarting]);
+
+  // A summoning that arrives while this screen is already open: claimed so it is acted on once,
+  // and then left alone if a conversation is already under way, since starting again would tear
+  // down the one that is.
   useEffect(() => {
     if (!claimAssistLaunch(launchUrl)) {
       return;
     }
-
     if (!isLive(status) && !isStarting) {
       void start();
     }
   }, [launchUrl, start, status, isStarting]);
 
-  const live = isLive(status);
-  const busy = isStarting || status === 'connecting';
-
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>J.A.R.V.I.S.</Text>
-      <Text style={styles.status} testID="conversation-status">
-        {describeState(status, mode)}
-      </Text>
-
-      <View
-        accessible
-        accessibilityLabel="Jarvis hologram"
-        style={{ width: hologramSize, height: hologramSize }}
-        testID="hologram"
-      >
-        <JarvisHologram size={hologramSize} voice={voice} quietestSpeech={QUIETEST_SPEECH_HERE} />
+    // The whole screen is the way into settings, not just the sphere. A long press has to land
+    // somewhere, and on a screen with one round thing on it and nothing else, "somewhere" should
+    // not mean "on the round thing" — most of what you would press is the dark around him. It is
+    // also the only part a test can press: the drawing puts a `<canvas>` over the middle, and that
+    // takes the pointer events for itself.
+    <Pressable
+      accessible
+      accessibilityRole="button"
+      accessibilityLabel="Jarvis. Press and hold for ElevenLabs settings."
+      style={styles.screen}
+      onLongPress={ON_A_PHONE ? onEditSettings : undefined}
+      testID="conversation"
+    >
+      <View style={{ width: hologramSize, height: hologramSize }} testID="hologram">
+        <JarvisHologram
+          size={hologramSize}
+          voice={voice}
+          quietestSpeech={QUIETEST_SPEECH_HERE}
+          frameRate={frameRate}
+          buildMilliseconds={buildMilliseconds}
+          particleShare={particleShare}
+          provenShare={provenShare}
+          startingShare={startingShare}
+        />
       </View>
-
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={live ? 'End the conversation' : 'Talk to Jarvis'}
-        style={[styles.talkButton, live && styles.talkButtonLive]}
-        testID="talk"
-        disabled={busy}
-        onPress={() => (live ? endSession() : void start())}
-      >
-        {busy ? (
-          <ActivityIndicator color={theme.colors.accentText} />
-        ) : (
-          <Text style={styles.talkButtonLabel}>{live ? 'End' : 'Talk'}</Text>
-        )}
-      </Pressable>
 
       {problem ? (
         <Text style={styles.problem} testID="conversation-problem">
@@ -142,193 +164,50 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
         </Text>
       ) : null}
 
-      <AssistantCard registration={registration} />
-      <WatchCard />
-
-      <Pressable
-        accessibilityRole="button"
-        onPress={onEditSettings}
-        style={styles.secondaryButton}
-        testID="open-settings"
-      >
-        <Text style={styles.secondaryButtonLabel}>ElevenLabs settings</Text>
-      </Pressable>
-    </ScrollView>
-  );
-}
-
-/** Turns the two independent pieces of session state into one line of English. */
-function describeState(status: string, mode: string): string {
-  if (status === 'connecting') {
-    return 'Connecting…';
-  }
-
-  if (status === 'error') {
-    return 'Something went wrong.';
-  }
-
-  if (status !== 'connected') {
-    return 'Standing by.';
-  }
-
-  return mode === 'speaking' ? 'Speaking…' : 'Listening…';
-}
-
-/**
- * Says whether the phone will actually summon Jarvis, and offers the only fix
- * there is.
- */
-function AssistantCard({ registration }: { registration: AssistantRegistration }) {
-  const [problem, setProblem] = useState<string | undefined>(undefined);
-
-  // On web every signal below reads false, and it would read false forever: the
-  // assistant role is Android's, and no amount of tapping changes that. Saying so
-  // is better than showing a setup step that leads nowhere.
-  if (Platform.OS === 'web') {
-    return (
-      <View style={styles.card}>
-        <Text style={styles.cardHeading} testID="assistant-card-heading">
-          Talking to Jarvis in a browser
-        </Text>
-        <Text style={styles.cardBody}>
-          The conversation works here. Taking over the assist gesture — holding home or power — is something only the
-          Android app can do.
-        </Text>
-      </View>
-    );
-  }
-
-  if (registration.roleHeld && registration.voiceInteractionActive) {
-    return (
-      <View style={styles.card}>
-        <Text style={styles.cardHeading}>Jarvis is your assistant</Text>
-        <Text style={styles.cardBody}>Hold the home button or the power button, and he answers.</Text>
-      </View>
-    );
-  }
-
-  if (!registration.settingsReachable) {
-    return (
-      <View style={styles.card}>
-        <Text style={styles.cardHeading}>This phone has no assistant picker</Text>
-        <Text style={styles.cardBody}>
-          The manufacturer has removed the setting, so Jarvis cannot take over the assistant gesture here. The button
-          above still works.
-        </Text>
-      </View>
-    );
-  }
-
-  const heading = registration.roleHeld ? 'Jarvis answers, but only partly' : 'Jarvis is not your assistant yet';
-  const body = registration.roleHeld
-    ? 'This phone sends Jarvis the short form of the assist gesture, so he opens in front of what you were doing rather than over it.'
-    : 'Open Assist & voice input, choose Digital assistant app, and pick Jarvis.';
-
-  return (
-    <View style={styles.card}>
-      <Text style={styles.cardHeading}>{heading}</Text>
-      <Text style={styles.cardBody}>{body}</Text>
-
-      {registration.roleHeld ? null : (
+      {ON_A_PHONE ? null : (
         <Pressable
           accessibilityRole="button"
-          style={styles.cardButton}
-          onPress={() => {
-            try {
-              openAssistantSettings();
-              setProblem(undefined);
-            } catch (error: unknown) {
-              setProblem(error instanceof Error ? error.message : 'Settings could not be opened.');
-            }
-          }}
+          onPress={onEditSettings}
+          style={styles.settingsLink}
+          testID="open-settings"
         >
-          <Text style={styles.cardButtonLabel}>Open assistant settings</Text>
+          <Text style={styles.settingsLinkLabel}>ElevenLabs settings</Text>
         </Pressable>
       )}
-
-      {problem ? <Text style={styles.problem}>{problem}</Text> : null}
-    </View>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flexGrow: 1,
+  /**
+   * Him in the middle, and nothing else in the layout to push him off it.
+   *
+   * The square is wider than the screen — see `useWholeScreenHologramSize` — so `overflow: hidden`
+   * is what keeps what hangs off the sides from being something the screen can scroll to.
+   */
+  screen: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: theme.spacing.large,
-    // The app draws edge to edge, and with the hologram the screen is taller than
-    // a small phone: scrolled to the top, the title would sit under the status bar.
-    paddingTop: theme.spacing.large + (NativeStatusBar.currentHeight ?? 0),
-    gap: theme.spacing.large,
+    overflow: 'hidden',
   },
-  title: {
-    color: theme.colors.text,
-    fontSize: 28,
-    letterSpacing: 6,
-    fontWeight: '600',
+  /** The browser's way back to setup, which a phone does with a long press instead. */
+  settingsLink: {
+    position: 'absolute',
+    bottom: theme.spacing.large,
+    padding: theme.spacing.small,
   },
-  status: {
-    color: theme.colors.mutedText,
-    fontSize: 16,
-  },
-  // A pill rather than the large disc it used to be: the hologram above it is
-  // what the eye should land on, and the button only has to be easy to hit.
-  talkButton: {
-    minWidth: 168,
-    height: 56,
-    borderRadius: 28,
-    paddingHorizontal: theme.spacing.large,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: theme.colors.accent,
-  },
-  talkButtonLive: {
-    backgroundColor: theme.colors.danger,
-  },
-  talkButtonLabel: {
-    color: theme.colors.accentText,
-    fontSize: 22,
-    fontWeight: '700',
-  },
-  problem: {
-    color: theme.colors.danger,
-    textAlign: 'center',
-  },
-  card: {
-    alignSelf: 'stretch',
-    backgroundColor: theme.colors.surface,
-    borderColor: theme.colors.border,
-    borderWidth: 1,
-    borderRadius: theme.radius.card,
-    padding: theme.spacing.medium,
-    gap: theme.spacing.small,
-  },
-  cardHeading: {
-    color: theme.colors.text,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  cardBody: {
-    color: theme.colors.mutedText,
-    lineHeight: 20,
-  },
-  cardButton: {
-    marginTop: theme.spacing.small,
-    backgroundColor: theme.colors.accent,
-    borderRadius: theme.radius.button,
-    paddingVertical: theme.spacing.small,
-    alignItems: 'center',
-  },
-  cardButtonLabel: {
-    color: theme.colors.accentText,
-    fontWeight: '600',
-  },
-  secondaryButton: {
-    paddingVertical: theme.spacing.small,
-  },
-  secondaryButtonLabel: {
+  settingsLinkLabel: {
     color: theme.colors.mutedText,
     textDecorationLine: 'underline',
+  },
+  /** Only ever on screen when something is wrong, and then it is the only thing on screen. */
+  problem: {
+    position: 'absolute',
+    left: theme.spacing.large,
+    right: theme.spacing.large,
+    bottom: theme.spacing.large * 2,
+    color: theme.colors.danger,
+    textAlign: 'center',
   },
 });

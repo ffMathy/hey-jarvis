@@ -52,3 +52,12 @@ export interface SampleVoice {
  * recording light on — and a phone's — while nothing is being listened to.
  */
 export type UseSampleVoice = (listening: boolean) => SampleVoice;
+
+/**
+ * Moves the conversation onto a headset, if one is connected, for as long as `inCall` is true.
+ *
+ * Both halves of it: on Android the call's output and its *input* are one route, so sending the
+ * audio to a pair of AirPods is also what makes Jarvis listen through their microphone rather than
+ * through the phone's. Which is the whole point — a phone in your pocket hears your pocket.
+ */
+export type UsePreferredHeadset = (inCall: boolean) => void;
