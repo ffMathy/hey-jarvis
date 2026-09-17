@@ -66,6 +66,7 @@ function silence(time: number): HologramFrame {
     appearance: 1,
     thinking: 0,
     presence: 1,
+    density: 1,
   };
 }
 
@@ -83,6 +84,7 @@ function speech(time: number, level: number, bands: number[], burstAge = 10, bur
     appearance: 1,
     thinking: 0,
     presence: 1,
+    density: 1,
   };
 }
 
@@ -564,6 +566,31 @@ describe('the hologram', () => {
     for (let index = 0; index < gone.length; index += 4) {
       expect(luminance(gone, index)).toBeCloseTo(background, 0);
     }
+  });
+
+  it('thins to a share of its particles without rearranging the ones that stay', () => {
+    // The phone decides how many it can afford while it draws them (`density-control.ts`), so the
+    // share moves while you are looking at it. Which particles are in has to be decided by each
+    // one's own id rather than by where it falls in the list: as the share rises the swarm must
+    // thicken, not reshuffle, or every adjustment would be a visible jolt.
+    const hologram = mount();
+    const thin = render({ ...silence(6), density: 0.4 }, hologram);
+    const thick = render({ ...silence(6), density: 0.8 }, hologram);
+    const whole = render(silence(6), hologram);
+
+    // Fewer particles is less light, in order.
+    expect(brightness(thin)).toBeLessThan(brightness(thick));
+    expect(brightness(thick)).toBeLessThan(brightness(whole));
+
+    // And every pixel the thin one lights, the thick one lights at least as much: nothing that was
+    // there has moved or gone out. Allowing for antialiasing where a new neighbour darkens an edge.
+    let dimmed = 0;
+    for (let index = 0; index < thin.length; index += 4) {
+      if (luminance(thin, index) > luminance(thick, index) + 12) {
+        dimmed++;
+      }
+    }
+    expect(dimmed / (thin.length / 4)).toBeLessThan(0.002);
   });
 
   it('stays inside its square even at full volume, chips and all', () => {

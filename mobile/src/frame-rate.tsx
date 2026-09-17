@@ -20,31 +20,38 @@ const READ_INTERVAL_MS = 500;
  * sixty means the phone is keeping up and anything less is what it managed.
  *
  * Beside it is how long *building* one picture takes, which is the half of a frame that is
- * JavaScript. Subtract it from the frame's own budget and the rest is Skia painting. That split is
- * the whole reason this is on screen: the same drawing runs at 58 frames a second in this phone's
- * browser and 11 in the app, and no measurement that can be taken on a desktop explains the
- * difference — so the phone has to be the instrument.
+ * JavaScript, and how many particles are being drawn. The phone is the instrument here: the same
+ * drawing ran at 58 frames a second in this phone's browser and 11 in the app, and no measurement
+ * that can be taken on a desktop explained the difference.
+ *
+ * The spark count is not a setting. The hologram steers it to hold the frame rate — see
+ * `density-control.ts` — so watching it settle is watching the phone being measured.
  */
 export function FrameRate({
   frameRate,
   buildMilliseconds,
+  particleShare,
+  particles,
 }: {
   frameRate: SharedValue<number>;
   buildMilliseconds: SharedValue<number>;
+  particleShare: SharedValue<number>;
+  /** How many there are when none are held back, so the share can be said as a count. */
+  particles: number;
 }) {
-  const [shown, setShown] = useState({ rate: 0, build: 0 });
+  const [shown, setShown] = useState({ rate: 0, build: 0, share: 1 });
 
   useEffect(() => {
     const timer = setInterval(
-      () => setShown({ rate: frameRate.value, build: buildMilliseconds.value }),
+      () => setShown({ rate: frameRate.value, build: buildMilliseconds.value, share: particleShare.value }),
       READ_INTERVAL_MS,
     );
     return () => clearInterval(timer);
-  }, [frameRate, buildMilliseconds]);
+  }, [frameRate, buildMilliseconds, particleShare]);
 
   return (
     <Text accessibilityElementsHidden pointerEvents="none" style={styles.readout} testID="frame-rate">
-      {`${Math.round(shown.rate)} fps · build ${shown.build.toFixed(1)} ms`}
+      {`${Math.round(shown.rate)} fps · build ${shown.build.toFixed(1)} ms · ${Math.round(shown.share * particles)} sparks`}
     </Text>
   );
 }

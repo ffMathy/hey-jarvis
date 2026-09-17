@@ -4,7 +4,18 @@ import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming
 import { theme } from './theme';
 
 /** How much of the screen's height the sheet takes. The screen it covers is still the user's. */
-export const SHEET_SHARE = 0.34;
+export const SHEET_SHARE = 0.4;
+
+/**
+ * What the sheet is made of: very dark, and not quite the near-black everything else sits on.
+ *
+ * The canvas paints this too — see the `background` prop on the hologram — so that the two meet
+ * with no seam where the drawing's square ends.
+ */
+export const SHEET_INK = '#0b1220';
+
+/** The hairline that gives it an edge against a dark wallpaper. */
+const SHEET_EDGE = '#243043';
 
 /** How long it takes to arrive, and to go. */
 const ARRIVE_MS = 260;
@@ -102,11 +113,24 @@ const styles = StyleSheet.create({
   /**
    * Solid, and rounded only at the top, so it reads as having come up from the edge of the screen
    * rather than as a card floating on it.
+   *
+   * `SHEET_INK` rather than the app's own background: very dark, but not the near-black the rest
+   * of the app sits on, so that it reads as a surface with Jarvis on it rather than as a hole cut
+   * in the screen. The hairline along the top and sides is what gives it an edge against a dark
+   * wallpaper, where otherwise the sheet and the screen behind it run into each other.
+   *
+   * `overflow: hidden` is load-bearing. The square Jarvis is drawn in is more than twice the sheet
+   * across — that is what it takes for the sphere itself to fill it, see `sample-screen.tsx` — so
+   * the sheet is what crops it, along this rounded edge.
    */
   sheet: {
-    backgroundColor: theme.colors.background,
+    backgroundColor: SHEET_INK,
     borderTopLeftRadius: theme.radius.card * 1.75,
     borderTopRightRadius: theme.radius.card * 1.75,
+    borderTopWidth: StyleSheet.hairlineWidth * 2,
+    borderLeftWidth: StyleSheet.hairlineWidth * 2,
+    borderRightWidth: StyleSheet.hairlineWidth * 2,
+    borderColor: SHEET_EDGE,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',

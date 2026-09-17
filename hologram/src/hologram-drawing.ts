@@ -249,6 +249,16 @@ export interface HologramFrame {
   /** 0–1 materialisation progress, 1 = formed: the view passes min(1, time / MATERIALISE_SECONDS). */
   appearance: number;
   /**
+   * 0–1: what share of the particles to draw at all.
+   *
+   * Not a look: it is what the phone can afford. The cost of a frame is the geometry in it, and
+   * how much geometry a given phone manages at sixty frames a second is not knowable in advance —
+   * so the view measures what it is getting and moves this until it is right. See
+   * `density-control.ts`. Which particles are in is decided by a hash of each one's id, so the
+   * ones already drawn stay drawn as it rises and the swarm thickens rather than rearranging.
+   */
+  density: number;
+  /**
    * 0–1: how much of him is here at all. 1 unless he is leaving.
    *
    * Not the same thing as {@link appearance}, and that is the point: appearance runs the
@@ -479,6 +489,20 @@ const FRAGMENT_CODE_GLYPH_STEP = 12;
  * fractional part scatters a uniform id into a uniform phase; this one is far from every other
  * multiplier the id is hashed by, so no two of its uses line up.
  */
+/** How many fragments the body has when the phone can afford all of them. */
+export const PARTICLE_COUNT = 1000;
+
+/**
+ * Turns a fragment's id into where it sits in the thinning, 0-1.
+ *
+ * Large, because an id is *already* a fraction — `buildBody` takes one straight from the random
+ * source — so a multiplier under 1 leaves the product under 1 too, and the whole of it below the
+ * share for every share above that multiplier. Which means no thinning at all until the share
+ * falls past it, and the drawing looks untouched the whole way down. It is its own irrational
+ * rather than the phase's, so which fragments are drawn does not correlate with when they light.
+ */
+const DENSITY_FROM_ID = 733.1357;
+
 const FRAGMENT_PHASE_FROM_ID = 37.9;
 /**
  * How lit a fragment must be to be drawn at all. Below this it is a tenth of its length under a
@@ -661,7 +685,7 @@ function pickGlyphAndLength(random: Random, x: number, y: number, radius: number
 function buildBody(random: Random) {
   const body: number[] = [];
   const shape = [0, 0];
-  const fragmentCount = 1000;
+  const fragmentCount = PARTICLE_COUNT;
   while (body.length < fragmentCount * BODY_STRIDE) {
     // the body stops just inside the rim layer, which rolls over it
     const radius = Math.sqrt(random()) * 0.94;
@@ -1721,6 +1745,7 @@ function analyseFrame(frame: HologramFrame, size: number, scene: Scene) {
   return {
     time,
     radius,
+    density: clamp01(frame.density),
     thinking,
     // Where the plane is, sweeping upward — y runs down the screen, so it starts positive. From
     // the clock alone, like everything else here, so it needs nothing remembered between frames.
@@ -1974,6 +1999,8 @@ function appendBody(builders: PathBuilder[], body: number[], state: FrameState) 
     // question to ask of them: everything below — unpacking its class, where it sits in the
     // reveal, where the turn has carried it — is work those two would only throw away.
     const id = body[offset + 6];
+    // Thinned to what this phone can afford, before anything else is asked of it.
+    if (state.density < 1 && fraction(id * DENSITY_FROM_ID) >= state.density) continue;
     const phase = fraction(id * FRAGMENT_PHASE_FROM_ID);
     const cycles = time * body[offset + 5] + phase;
     const cycle = Math.floor(cycles);
@@ -2041,6 +2068,7 @@ function appendStream(builders: PathBuilder[], stream: number[], state: FrameSta
     const code = stream[offset + 8];
     const pool = code >= 3 ? 1 : 0;
     const id = stream[offset + 7];
+    if (state.density < 1 && fraction(id * DENSITY_FROM_ID) >= state.density) continue;
     const shown = fragmentShown(stream[offset + 10], state);
     if (shown <= 0) continue;
     const cycles = time * stream[offset + 5] + stream[offset + 6];

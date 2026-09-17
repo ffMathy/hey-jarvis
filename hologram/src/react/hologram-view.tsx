@@ -4,6 +4,7 @@ import { View } from 'react-native';
 import { type SharedValue, useDerivedValue, useFrameCallback, useSharedValue } from 'react-native-reanimated';
 import {
   advanceVoiceActivity,
+  createDensityControl,
   createHologramResources,
   createHologramScene,
   createVoiceActivityState,
@@ -13,6 +14,7 @@ import {
   foldSpectrum,
   MATERIALISE_SECONDS,
   perceivedLevel,
+  steerDensity,
   VOICE_BAND_COUNT,
   voiceDrive,
 } from '../index';
@@ -59,6 +61,14 @@ export interface JarvisHologramProps {
    */
   frameRate?: SharedValue<number>;
   /**
+   * Somewhere to put the share of the particles being drawn, if anyone is watching.
+   *
+   * It is not set from outside: the hologram decides it, by measuring what the phone manages and
+   * moving it until that is sixty frames a second. See `density-control.ts`. This is only so the
+   * readout can say what it settled on.
+   */
+  particleShare?: SharedValue<number>;
+  /**
    * Somewhere to put how long *building* one picture takes, in milliseconds, if anyone is watching.
    *
    * The companion to {@link frameRate}, and together they say where a slow frame goes. A frame has
@@ -83,6 +93,15 @@ export interface JarvisHologramProps {
    * which is why the sheet finishes arriving before Jarvis appears in it.
    */
   opaque?: boolean;
+  /**
+   * What colour to paint the canvas before drawing on it.
+   *
+   * Needed because of {@link opaque}. A `SurfaceView` is its own hardware layer with nothing behind
+   * it, so an opaque canvas that paints no background is a black rectangle sitting on whatever it
+   * was placed on — which is exactly how it looked in the sheet. Given a colour it paints that, and
+   * the canvas can fill the sheet with no seam between them.
+   */
+  background?: string;
 }
 
 /** How long it takes to fall into a thought, and to come out of one. */
@@ -164,8 +183,10 @@ function JarvisHologramView({
   thinking = false,
   leaving = false,
   frameRate,
+  particleShare,
   buildMilliseconds,
   opaque = false,
+  background,
 }: JarvisHologramProps) {
   const { listening, speaking, getVolume, getSpectrum } = voice;
   const isForeground = useIsForeground();
@@ -253,6 +274,8 @@ function JarvisHologramView({
   // Frames drawn since the rate was last worked out, and how long that has taken.
   const drawn = useSharedValue(0);
   const measuring = useSharedValue(0);
+  // How many of the particles this phone can afford, worked out while it draws them.
+  const density = useSharedValue(createDensityControl());
 
   const clock = useFrameCallback((info) => {
     waiting.value += (info.timeSincePreviousFrame ?? DEFAULT_FRAME_MS) / 1000;
@@ -282,7 +305,19 @@ function JarvisHologramView({
     drawn.value += 1;
     measuring.value += deltaSeconds;
     if (measuring.value >= FRAME_RATE_OVER_SECONDS) {
-      frameRate.value = drawn.value / measuring.value;
+      const measured = drawn.value / measuring.value;
+      frameRate.value = measured;
+      // Steered once per measurement rather than once a frame, because a rate averaged over half a
+      // second is the only honest thing to steer by — and the controller's rate limits are written
+      // in shares per second, so it does not care how often it is asked.
+      density.modify((control) => {
+        'worklet';
+        steerDensity(control, measured, measuring.value);
+        return control;
+      });
+      if (particleShare !== undefined) {
+        particleShare.value = density.value.density;
+      }
       drawn.value = 0;
       measuring.value = 0;
     }
@@ -322,6 +357,9 @@ function JarvisHologramView({
     const activity = current.activity;
     const recorder = Skia.PictureRecorder();
     const canvas = recorder.beginRecording(Skia.XYWHRect(0, 0, drawnSize, drawnSize));
+    if (background !== undefined) {
+      canvas.drawColor(Skia.Color(background));
+    }
     drawHologram(
       canvas,
       drawnSize,
@@ -341,6 +379,7 @@ function JarvisHologramView({
         appearance: Math.min(1, current.time / MATERIALISE_SECONDS),
         thinking: current.thinking,
         presence: current.presence,
+        density: density.value.density,
       },
       scene,
       resources,

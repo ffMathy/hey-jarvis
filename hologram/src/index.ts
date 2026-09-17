@@ -11,6 +11,7 @@
  * What belongs here is anything with no platform in it. What does not is anything that touches a
  * microphone, a view tree or a clock — those live in the app that has one.
  */
+export * from './density-control';
 export * from './hologram-drawing';
 export * from './simulated-voice';
 export * from './voice-analysis';

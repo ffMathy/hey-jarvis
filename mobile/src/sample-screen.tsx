@@ -1,3 +1,4 @@
+import { PARTICLE_COUNT, SPHERE_FRACTION } from 'hologram';
 import { LEAVING_SECONDS, useIsForeground } from 'hologram/react/lifecycle';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { BackHandler, Platform, Pressable, useWindowDimensions } from 'react-native';
@@ -7,11 +8,10 @@ import { FrameRate } from './frame-rate';
 import { JarvisHologram } from './jarvis-hologram';
 import { ModeToast } from './mode-toast';
 import { moodOf, nextSampleMode, type SampleMode } from './sample-mode';
-import { SampleSheet, SHEET_SHARE } from './sample-sheet';
+import { SampleSheet, SHEET_INK, SHEET_SHARE } from './sample-sheet';
 import { useSampleVoice } from './sample-voice';
 import { useSimulatedVoice } from './simulated-voice';
 import { QUIETEST_SPEECH_HERE } from './speech-floor';
-import { theme } from './theme';
 
 interface SampleScreenProps {
   onLeave: () => void;
@@ -58,17 +58,19 @@ export function SampleScreen({ onLeave }: SampleScreenProps) {
   const [settled, setSettled] = useState(false);
   const { voice: heard } = useSampleVoice(mode === 'microphone' && settled && !leaving);
   const imagined = useSimulatedVoice(settled ? moodOf(mode) : undefined);
-  const { height } = useWindowDimensions();
-  // The square fits inside the sheet, with room to spare. It cannot overflow it the way it
-  // overflows the screen: the sheet is solid, so a chip cut off at its edge would be a straight
-  // line across something you can see, where at the screen's edge there is nothing to compare it
-  // against.
-  const hologramSize = Math.round(height * SHEET_SHARE) - theme.spacing.large * 2;
+  const { width, height } = useWindowDimensions();
+  // Big enough that the *sphere* fills the sheet's shorter side, which is what the user asked for:
+  // the sphere is `SPHERE_FRACTION` of its square, so the square has to be a bit over twice the
+  // sheet. It therefore overflows the sheet on every side and the sheet crops it — which is why
+  // the sheet is opaque and the canvas paints the sheet's own colour, so there is no seam to see.
+  const across = Math.min(width, Math.round(height * SHEET_SHARE));
+  const hologramSize = Math.round(across / (2 * SPHERE_FRACTION));
   const going = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const isForeground = useIsForeground();
   // Filled in on the UI thread by the hologram, read twice a second by the readout in the corner.
   const frameRate = useSharedValue(0);
   const buildMilliseconds = useSharedValue(0);
+  const particleShare = useSharedValue(1);
 
   /**
    * Starts the way out, and finishes it once Jarvis has gone.
@@ -155,12 +157,19 @@ export function SampleScreen({ onLeave }: SampleScreenProps) {
             leaving={leaving}
             frameRate={frameRate}
             buildMilliseconds={buildMilliseconds}
+            particleShare={particleShare}
             opaque
+            background={SHEET_INK}
           />
         ) : null}
       </Pressable>
       <ModeToast mode={mode} />
-      <FrameRate frameRate={frameRate} buildMilliseconds={buildMilliseconds} />
+      <FrameRate
+        frameRate={frameRate}
+        buildMilliseconds={buildMilliseconds}
+        particleShare={particleShare}
+        particles={PARTICLE_COUNT}
+      />
     </SampleSheet>
   );
 }
