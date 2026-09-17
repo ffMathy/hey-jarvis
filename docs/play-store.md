@@ -166,7 +166,18 @@ In the Play Console, create the app with the package name **`com.ffmathy.heyjarv
 match [`mobile/app.config.ts`](../mobile/app.config.ts) exactly and cannot be changed afterwards.
 Then, before any upload is accepted, Play requires the app's declarations to be filled in: content
 rating, data safety, target audience, privacy policy, ads. That is the slow part, and there is no
-way round it.
+way round it. Two of them are already written:
+
+- **Privacy policy** — [`docs/privacy-policy.md`](./privacy-policy.md). Give Play the URL
+  `https://github.com/ffMathy/hey-jarvis/blob/main/docs/privacy-policy.md`, which works once the file
+  is on `main`. Add a contact address to §10 before you do; it is the one field left blank.
+- **Data safety** — declare **no data collected and no data shared**, which is what the app does and
+  what the policy says. Audio goes to ElevenLabs under your own key and never to us; there is no
+  analytics, telemetry or crash-reporting library in the app at all.
+
+**The store listing's text** — the short description, the full description and the app-access answer
+— is in [`docs/play-listing.md`](./play-listing.md), written to Play's character limits and ready to
+paste.
 
 **The store listing's pictures are generated, not drawn.** The form has four slots it will not save
 without, and every one of them is in `docs/play-assets/`, rendered by
