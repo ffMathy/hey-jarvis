@@ -170,6 +170,11 @@ export function startFromRemembered(proven: number): number {
   return proven <= 0 ? FEWEST_PARTICLES : clamp(proven * REMEMBERED_MARGIN, FEWEST_PARTICLES, 1);
 }
 
+function clamp(value: number, lowest: number, highest: number): number {
+  'worklet';
+  return value < lowest ? lowest : value > highest ? highest : value;
+}
+
 /**
  * Starts a control at a remembered share, if it has not measured anything yet.
  *
@@ -182,6 +187,14 @@ export function startFromRemembered(proven: number): number {
  * Only before anything has been measured, and only upward. Once a real frame rate has been seen,
  * what the loop has worked out here and now beats anything remembered from last time; and a
  * remembered share below where the climb has already reached would be a step backwards.
+ *
+ * **Below `clamp`, and it has to be.** A worklet captures what it closes over in an object built
+ * where the function is *defined*, and Reanimated's plugin rewrites a worklet from a hoisted
+ * `function` declaration into a `const` that is not hoisted. Written above `clamp`, this captured
+ * it before it existed, and the whole web bundle died on load with "Cannot access 'o' before
+ * initialization" — a blank white page, from a source file where the ordering looked irrelevant
+ * because function declarations hoist. The non-worklet functions above may still call `clamp`
+ * freely: they are not transformed, and they run long after the module has finished loading.
  */
 export function seedFromRemembered(control: DensityControl, share: number): void {
   'worklet';
@@ -191,11 +204,6 @@ export function seedFromRemembered(control: DensityControl, share: number): void
     return;
   }
   control.density = clamp(share, FEWEST_PARTICLES, 1);
-}
-
-function clamp(value: number, lowest: number, highest: number): number {
-  'worklet';
-  return value < lowest ? lowest : value > highest ? highest : value;
 }
 
 /**
