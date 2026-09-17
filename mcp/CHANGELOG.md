@@ -1,5 +1,33 @@
 # Changelog
 
+## [2.0.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.13.0...mcp-v2.0.0) (2026-09-16)
+
+
+### ⚠ BREAKING CHANGES
+
+* **mcp:** route requests through workflows built per request ([#721](https://github.com/ffMathy/hey-jarvis/issues/721))
+* **agents:** route through a supervisor instead of a task DAG ([#718](https://github.com/ffMathy/hey-jarvis/issues/718))
+
+### Features
+
+* **elevenlabs:** run the conversation on claude-sonnet-5 ([#707](https://github.com/ffMathy/hey-jarvis/issues/707)) ([b7100fb](https://github.com/ffMathy/hey-jarvis/commit/b7100fb3bf17b5ee9c34e51d9b5030c516e1460b))
+* **mcp:** route requests through workflows built per request ([#721](https://github.com/ffMathy/hey-jarvis/issues/721)) ([c6c5e91](https://github.com/ffMathy/hey-jarvis/commit/c6c5e91aeb86d1cce5f69678dfa259a90747eb08))
+
+
+### Bug Fixes
+
+* **cooking:** stop sending every recipe into the meal plan prompt ([#719](https://github.com/ffMathy/hey-jarvis/issues/719)) ([4df4f6d](https://github.com/ffMathy/hey-jarvis/commit/4df4f6d349f6c438f1340219ac27ab17eb95e0f4))
+* **mcp:** give mastra durable storage and answer feedback reads ([#716](https://github.com/ffMathy/hey-jarvis/issues/716)) ([6dcb0db](https://github.com/ffMathy/hey-jarvis/commit/6dcb0db34acc979dbbe8965db896c3d002328198))
+* **mcp:** retire workflow runs the boot restart cannot resume ([#722](https://github.com/ffMathy/hey-jarvis/issues/722)) ([ca642b8](https://github.com/ffMathy/hey-jarvis/commit/ca642b83376fbdb8275a41b2f64bd8d2801f2883))
+* **mcp:** stop losing the error behind a failed scheduled workflow ([#714](https://github.com/ffMathy/hey-jarvis/issues/714)) ([7605871](https://github.com/ffMathy/hey-jarvis/commit/760587141359582f8b295a0c45a0dbab5e9e6110))
+* **tools:** send filter_entity_id on home assistant history queries ([#713](https://github.com/ffMathy/hey-jarvis/issues/713)) ([54d569f](https://github.com/ffMathy/hey-jarvis/commit/54d569fc615a354bb681887b96f7da02cc5c078d))
+
+
+### Code Refactoring
+
+* **agents:** route through a supervisor instead of a task DAG ([#718](https://github.com/ffMathy/hey-jarvis/issues/718)) ([e9e0a51](https://github.com/ffMathy/hey-jarvis/commit/e9e0a515db6cc98e55cbbc458ee65c01c339fdef))
+* **mcp:** move scheduling and synapse batching onto Mastra's harness primitives ([#708](https://github.com/ffMathy/hey-jarvis/issues/708)) ([60df6bf](https://github.com/ffMathy/hey-jarvis/commit/60df6bfef951f72facaf25b316cb1f58e5b5087a))
+
 ## [1.13.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v1.12.1...mcp-v1.13.0) (2026-08-25)
 
 

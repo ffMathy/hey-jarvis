@@ -517,161 +517,185 @@ Only stops when 100% certain about:
 - "Are there any existing patterns to follow?"
 
 ### Routing Planner Agent
-Plans the task DAG that fulfils a voice request, and nothing else:
-- **No tools, no sub-agents**: it emits the graph; `routingWorkflow` executes it
-- **Structured output**: returns `{ tasks: [{ id, agent, prompt, dependsOn }] }`
-- **Agent catalog as input**: receives every public agent's ID, description and tool names
-- **Dependencies model data flow**: a task lists the IDs of the tasks whose results it needs
+Turns a voice request into a **plan** for the specialized agents to run:
+- **The ten public agents are its catalogue**, baked into its instructions at boot
+- **No tools of its own**: it writes a plan, it never runs one and never sees a result
+- **No memory**: planning one request has nothing to recall from the last
 
-Separating planning from execution is what makes the routing graph inspectable. The plan is a
-value the workflow owns, so every task shows up as a step in Mastra Studio instead of being
-buried inside one agent's tool-call loop.
+A plan is a set of **chains**. Chains run at the same time as each other; the delegations inside
+one chain run in order, and every delegation after the first is handed the previous answer along
+with its own prompt. So ordering and dependency passing are structural rather than implied —
+independent work goes in separate chains, and work that needs another part's answer goes in the
+same chain after it.
 
-The plan is sanitized before it runs: tasks assigned to unknown agents are dropped, duplicate
-IDs are collapsed, and dependencies on non-existent tasks (as well as any edge that would close
-a cycle) are removed, so a hallucinated graph can never deadlock the executor.
+Routing has been three things. A task DAG with a wave scheduler this vertical owned; then a
+supervisor agent delegating inside its own tool-call loop; now a plan. The middle one is why:
+its loop was opaque, so a request could not be looked at, and it could not say what was
+outstanding because a delegation existed only once it had been called. A plan is a workflow, so
+Studio draws it and the run is persisted — and the work is written down before any of it runs.
 
 *Note: Additional agents will be added as the project evolves.*
 
 ## Available Workflows
 
-### Routing Workflow (DAG)
-The entry point for every voice request. It is a plain Mastra workflow that plans a DAG and then
-executes it wave by wave, suspending whenever it has something to report.
+### Routing
+The entry point for every voice request. Two MCP tools, deliberately: the voice model gets a
+small, fast surface, and everything else happens behind them.
 
 **Workflows:**
-- **`routingWorkflow`**: the DAG engine — plan, hand off, execute, report, repeat
-- **`routePromptWorkflow`**: MCP tool that starts a `routingWorkflow` run for a user query
-- **`getNextInstructionsWorkflow`**: MCP tool that resumes that run and returns what finished since the last call
-- **`getCurrentDagWorkflow`**: inspects the planned graph and each task's status
+- **`routePromptWorkflow`**: starts a request and returns at once, with the session to poll
+- **`getNextInstructionsWorkflow`**: reports whatever has landed since the last call
 
-**Workflow Steps:**
-1. **`plan-tasks`**: Routing Planner Agent turns the query into a task DAG, stored as workflow state
-2. **`hand-off-to-caller`**: suspends immediately, so `routePromptWorkflow` can return the pending task IDs
-3. **`routingWaveWorkflow`** (looped with `.dountil()` until every task has finished):
-   - **`select-ready-tasks`**: picks the tasks whose dependencies have all finished
-   - **`execute-task`** (`.foreach()`, concurrency 5): calls the assigned agent, with its dependencies' results appended to the prompt
-   - **`record-task-results`**: writes the results back into workflow state
-   - **`report-progress`**: suspends with the newly finished results
-4. **`finalize-routing`**: returns the final batch of results as the workflow output
+**How a request runs:**
+1. `routePromptWorkflow` starts the request and returns immediately — it does not wait for the
+   planner, let alone for the agents the plan names.
+2. The planner writes a plan. Mastra validates and registers it as a **dynamic workflow** built
+   for this one request: one workflow per chain, and a root running the chains in parallel.
+3. Every delegation in the plan is marked outstanding *before a single step runs*, so the first
+   poll already names the whole of the work.
+4. `getNextInstructionsWorkflow` reports the delegations that have finished since the last poll,
+   folded from the run's own step-result stream. A result is handed over exactly once.
+5. When the run ends, the request is done and the closing report recaps everything — including
+   anything the run never got to, so a delegation that never answered is reported rather than
+   dropped.
 
-**Suspend/Resume Contract:**
-Each suspension is one poll from Jarvis. `routePromptWorkflow` starts the run and reads the
-hand-off suspension; every `getNextInstructionsWorkflow` call resumes it, which runs the next
-wave and suspends again. Leaf tasks (nothing depends on them) carry the answers the user asked
-for, so their results are handed over with an instruction to summarize; intermediate tasks only
-get a brief acknowledgement. When `async: true`, nobody is going to poll, so the workflow is
-driven to completion in the background instead.
+**Why a workflow per request:**
+Which agents a request needs is known only once it arrives, so a request that is a workflow has
+to be built per request. What that buys: Studio graphs it, so what a request did — the root, its
+chains, every agent step, what each was asked and what it answered — can be looked at rather
+than read back from logs; the run is persisted; and the work is written down before it starts,
+so `taskIdsInProgress` names what is outstanding instead of inferring it from whatever happened
+to start.
 
-**Failure Handling:**
-An agent that throws fails only its own task — the rest of the wave still completes. If a wave
-selects no tasks while work is outstanding, the remaining tasks are failed rather than looped on.
+`workflow-finish` is deliberately **not** read off the run stream. A chain is a nested workflow
+sharing the root's pubsub, so its own finish event reaches the same stream — taking the first
+one for the request's would close the request the moment the fastest chain was done. The end of
+the request is the end of the stream, which only the root run has.
 
-**Testing in Studio:**
-`routingWorkflow` is registered on the Mastra instance, so it can be run straight from Studio:
-fill in a `userQuery`, watch the planner produce the graph, follow each task's agent call, and
-resume the suspensions by hand.
+**Retention:**
+A plan is a workflow per request, so the list would grow without limit. The five newest plans
+stay visible and runnable; older ones are unregistered and their definitions archived, which
+stops them rehydrating at boot without throwing away what they recorded.
+
+**Polling contract:**
+A poll blocks up to `POLL_DEADLINE_MS` (5s) waiting for something to report, then says so and
+asks to be called again. That deadline has to fit inside ElevenLabs' `cascadeTimeoutSeconds`
+(8s): a poll that times out at the ElevenLabs boundary is a *lost* answer, not a delayed one.
+The closing report recaps every result, including ones earlier polls already relayed, so a
+response dropped on the way cannot lose an answer for good.
+
+**Two tools, deliberately:**
+The voice model gets `routePromptWorkflow` and `getNextInstructionsWorkflow` and nothing else.
+That is a hard constraint, not an accident of the current design: the model on the call is
+chosen for speed, and every extra tool is surface it has to reason about on a latency budget
+that has no room for it.
+
+It is also the reason there is no approval gate on this path. Gating a delegation means parking
+the run and asking, and an answer needs a tool to come back through — a third tool, which the
+constraint above rules out. A gate the caller cannot answer is worse than no gate: the run
+parks, every poll repeats the same question, and the request never finishes.
+
+**Authoring rules a generated plan has to respect:**
+`createStepFromAgent` fixes every agent step's input to `{ prompt }` and its output to
+`{ text }`; a `mapping` entry has to be a top-level workflow entry, so one inside a `parallel`
+is rejected — which is why each chain is its own workflow; and `mapConfig` is a JSON *string*,
+not an object. `plan.spec.ts` pins all of these against `validateDynamicWorkflow`, the same
+check registration runs, so "would this register?" is answerable in milliseconds rather than by
+restarting a server.
+
+**Concurrent callers:**
+`createSession({ resourceId })` is get-or-create and isolated, and the task records are scoped
+by the same `resourceId`. Two callers get two sessions and neither can see the other's
+delegations.
+
+**Inspecting a request:**
+Traces, in Studio's Observability tab — model calls, each delegation, timings and errors for
+one request. Workflows are the only thing Studio draws as a graph, and the graph of this
+machinery would be the same picture every time; what varies is which agents were asked and what
+they said, which is what a trace shows.
 
 ### 📅 Workflow Scheduling
 
-Workflows can be executed on recurring cron schedules using the built-in `WorkflowScheduler`. The scheduler automatically starts when the MCP server launches and manages all scheduled workflows.
+Scheduled workflows run through Mastra's built-in `mastra.schedules`, which persists each
+schedule as a storage row rather than holding it in memory.
 
 **Key Features:**
-- **Cron-based scheduling**: Uses standard cron expressions for flexible timing
-- **Automatic execution**: Workflows run in the background without manual intervention
-- **Run on startup**: Optionally execute workflows immediately when the scheduler starts
-- **No overlapping runs**: A tick is skipped while the previous run of the same workflow is still in flight, so a workflow that outlives its interval (`emailCheckingWorkflow` runs every minute) never has two runs going at once
-- **Error handling**: A run that throws — or that comes back with `status: 'failed'` — is reported through the scheduler's `onError` handler with the error intact
-- **Timezone support**: Configurable timezone (defaults to Europe/Copenhagen)
-- **Pre-defined patterns**: Common schedules available via `CronPatterns`
+- **Durable**: a schedule survives a restart or redeploy, and can be paused, resumed, retimed or
+  fired once through `mastra.schedules` (and over `/api/schedules`) with no deploy
+- **Reconciled on boot**: `mastra/schedule-reconciler.ts` is the source of truth; the stored rows
+  are brought in line with it every time the server starts
+- **Timezone support**: every cadence is stored with `Europe/Copenhagen`
+- **Run on startup**: a declaration can also fire once at boot, for workflows that catch up on
+  what happened while the process was down
+- **Pre-defined patterns**: cadences named in `utils/workflows/cron-patterns.ts`
+- **Error handling**: a scheduled run that throws is reported through the instance's
+  `scheduler.onError`, which logs it with the schedule id and the error intact. Without that
+  handler the rejection is swallowed with nothing to say which schedule it came from.
 
 **How to Schedule a Workflow:**
 
-Edit `mcp/mastra/scheduler.ts` to add new scheduled workflows:
+Add a declaration to `SCHEDULED_WORKFLOWS` in `mcp/mastra/schedule-reconciler.ts`:
 
 ```typescript
-import { WorkflowScheduler, CronPatterns } from './utils/workflow-scheduler.js';
-
-export function initializeScheduler(): WorkflowScheduler {
-  const scheduler = new WorkflowScheduler(mastra, {
-    timezone: 'Europe/Copenhagen',
-  });
-
-  // Add your scheduled workflow
-  scheduler.schedule({
-    workflow: myWorkflow,
-    schedule: CronPatterns.EVERY_HOUR, // or custom: '0 * * * *'
-    inputData: {},
-  });
-
-  // Add workflow that also runs immediately on startup
-  scheduler.schedule({
-    workflow: myStartupWorkflow,
-    schedule: CronPatterns.EVERY_30_MINUTES,
-    inputData: {},
-    runOnStartup: true, // Execute immediately when scheduler starts
-  });
-
-  return scheduler;
-}
+export const SCHEDULED_WORKFLOWS: ScheduledWorkflowDeclaration[] = [
+  {
+    workflowId: myWorkflow.id,
+    cron: CronPatterns.EVERY_3_HOURS,
+  },
+  {
+    workflowId: myStartupWorkflow.id,
+    cron: CronPatterns.EVERY_MINUTE,
+    runOnStartup: true,
+  },
+];
 ```
 
-**Available Cron Patterns:**
+The workflow must also be registered in the `workflows` map in `mastra/index.ts` — the boot path
+refuses to start otherwise, because a schedule whose target cannot be resolved is deleted by the
+scheduler about thirty seconds later, silently.
+
+**Reconciliation rules:**
+- Rows are matched to declarations by workflow id
+- Removing a declaration deletes its row; a durable row outlives the code that created it
+- The sweep only touches rows tagged `managedBy: hey-jarvis-scheduler`, so a schedule created at
+  runtime or by another feature survives a deploy
+- A runtime pause is not permanent: reconciliation restates `status: active`, because the
+  declarations are what say whether a schedule should be running
+
+**Available Cron Patterns** (`utils/workflows/cron-patterns.ts`):
 - `EVERY_MINUTE`: `* * * * *`
-- `EVERY_5_MINUTES`: `*/5 * * * *`
-- `EVERY_15_MINUTES`: `*/15 * * * *`
-- `EVERY_30_MINUTES`: `*/30 * * * *`
-- `EVERY_HOUR`: `0 * * * *`
-- `EVERY_2_HOURS`: `0 */2 * * *`
-- `EVERY_6_HOURS`: `0 */6 * * *`
-- `EVERY_12_HOURS`: `0 */12 * * *`
+- `EVERY_3_HOURS`: `0 */3 * * *`
 - `DAILY_AT_MIDNIGHT`: `0 0 * * *`
-- `DAILY_AT_NOON`: `0 12 * * *`
-- `DAILY_AT_8AM`: `0 8 * * *`
 - `WEEKLY_SUNDAY_8AM`: `0 8 * * 0`
-- `WEEKLY_MONDAY_9AM`: `0 9 * * 1`
-- `MONTHLY_FIRST_DAY`: `0 0 1 * *`
 
-**Custom Cron Expressions:**
-```
-* * * * *
-│ │ │ │ │
-│ │ │ │ └─ Day of week (0-6, Sunday = 0)
-│ │ │ └─── Month (1-12)
-│ │ └───── Day of month (1-31)
-│ └─────── Hour (0-23)
-└───────── Minute (0-59)
-```
+Mastra validates the expression when the row is created, so a new cadence can be added verbatim
+in standard 5-field form; croner nicknames (`@hourly`, `@daily`) work too.
 
-**Currently Scheduled Workflows** (see `mastra/scheduler.ts`):
+**Currently Scheduled Workflows** (see `mastra/schedule-reconciler.ts`):
 1. **Weather Monitoring** - Runs every 3 hours
    - Workflow: `weatherMonitoringWorkflow`
-   - Schedule: `0 */3 * * *`
    - Purpose: Updates weather information and notifies other agents of changes
 
 2. **Weekly Meal Planning** - Runs every Sunday at 8:00 AM
    - Workflow: `weeklyMealPlanningWorkflow`
-   - Schedule: `0 8 * * 0`
    - Purpose: Generates weekly meal plan with Danish recipes
 
 3. **Email Checking** - Runs every minute + on startup
    - Workflow: `emailCheckingWorkflow`
-   - Schedule: `* * * * *`
-   - Run on startup: **Yes**
    - Purpose: Tracks which emails have arrived; does not trigger the state reactor
 
 4. **Form Replies Detection** - Runs every 3 hours + on startup
    - Workflow: `formRepliesDetectionWorkflow`
-   - Schedule: `0 */3 * * *`
-   - Run on startup: **Yes**
    - Purpose: Resumes the suspended runs that inbound form replies answer, and registers the
      emails as a state change
 
 5. **IoT Device Monitoring** - Runs every 3 hours + on startup
    - Workflow: `iotMonitoringWorkflow`
-   - Schedule: `0 */3 * * *`
-   - Run on startup: **Yes**
    - Purpose: Monitors Home Assistant devices and registers state changes
+
+6. **Storage Retention** - Runs nightly at midnight
+   - Workflow: `storageRetentionWorkflow`
+   - Purpose: Trims token usage rows past their retention window
 
 **Monitoring Scheduled Workflows:**
 
@@ -885,6 +909,7 @@ await mastra.workflows.implementFeatureWorkflow.execute({
 The workflow uses Mastra's suspend/resume pattern in the Requirements Interviewer step, allowing the agent to ask questions and wait for user responses before proceeding.
 
 ### Human-in-the-Loop Demo Workflow
+
 Demonstrates email-based workflow suspension and resumption with a 3-step approval process:
 - **`humanInTheLoopDemoWorkflow`**: Multi-step approval workflow with email-based human input
 - **Step 1 - Budget Approval**: Requests approval for project budget (Yes/No + comments)
@@ -1157,7 +1182,8 @@ const getCurrentWeatherStep = createToolStep({
 #### **Weekly Meal Planning Workflow**  
 - **Before**: Complex custom steps calling multiple agents
 - **After**: Tool-as-step for recipe fetching + agent-as-step for meal planning
-- **Improvement**: Tool-as-step for `getAllRecipes`, agent-as-step for `mealPlanGenerator`
+- **Improvement**: Tool-as-step for `getRecipeCatalog`, agent-as-step for `mealPlanRecipeSelector` and `mealPlanGenerator`
+- **Token budget**: Recipes are chosen from the compact catalogue and only the chosen ones are fetched in full with `getRecipeById`, so no prompt ever carries every recipe
 
 #### **Shopping List Workflow**
 - **Before**: 5 complex custom steps with inline agent creation

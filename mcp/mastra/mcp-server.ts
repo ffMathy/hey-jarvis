@@ -146,9 +146,8 @@ export async function startMcpServer() {
   // Log token usage summary on startup
   await logTokenUsageSummary();
 
-  // Initialize and start workflow scheduler
-  const scheduler = await initializeScheduler();
-  scheduler.start();
+  // Reconcile the persisted workflow schedules and start the workers that fire them
+  await initializeScheduler();
 
   // Start the Express server
   return new Promise<void>((resolve) => {

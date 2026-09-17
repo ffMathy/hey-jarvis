@@ -31,18 +31,14 @@ import { getInternetOfThingsAgent, internetOfThingsTools } from './verticals/int
 import { getNotificationAgent, notificationTools } from './verticals/notification/index.js';
 import { phoneTools } from './verticals/phone/index.js';
 import { presenceShortcuts } from './verticals/presence/index.js';
-import { getRoutingPlannerAgent } from './verticals/routing/agents.js';
-import {
-  getCurrentDagWorkflow,
-  getNextInstructionsWorkflow,
-  routePromptWorkflow,
-  routingWorkflow,
-} from './verticals/routing/workflows.js';
+import { getRoutingPlannerAgent } from './verticals/routing/planner.js';
+import { getNextInstructionsWorkflow, routePromptWorkflow } from './verticals/routing/workflows.js';
 import { getShoppingListAgent, getShoppingListSummaryAgent, shoppingTools } from './verticals/shopping/index.js';
 import { getStateChangeReactorAgent, synapseTools } from './verticals/synapse/index.js';
 import { getTodoListAgent, todoListTools } from './verticals/todo-list/index.js';
 import { getWeatherAgent, weatherTools } from './verticals/weather/index.js';
 import { getWebResearchAgent } from './verticals/web-research/index.js';
+import { retireUnrestartableRuns } from './workflow-run-recovery.js';
 
 // Set up the Google AI SDK environment variable immediately.
 // No fallback to a general "Google" key: HEY_JARVIS_GOOGLE_MAPS_API_KEY is scoped to
@@ -57,16 +53,31 @@ function toAgentMap(agents: Agent[]): Record<string, Agent> {
   }, {});
 }
 
+/**
+ * The instance logger, held so the scheduler's error handler can report through the same
+ * one rather than going around it to the console.
+ */
+const mastraLogger = createLogger('Mastra');
+
 export async function getMastra(): Promise<Mastra> {
   return new Mastra({
-    // Without this Mastra keeps workflow runs, schedules and traces in RAM and loses
-    // them on restart. See getMastraStorageProvider for why observability is composed.
+    // Without this Mastra keeps workflow runs, schedules, background tasks and traces in
+    // RAM and loses them on restart. See getMastraStorageProvider for why observability is
+    // composed.
     storage: await getMastraStorageProvider(),
     // Mastra reports its own failures — a workflow run that could not be restarted at
     // boot, a scheduler tick that threw — by handing the error to this logger as a plain
     // field. `createLogger` is what makes those fields readable; a bare PinoLogger prints
     // them as `error: {}`.
-    logger: createLogger('Mastra'),
+    logger: mastraLogger,
+    // Where `mastra.schedules` reports a scheduled run that threw, and the only place it
+    // does: without a handler the rejection is swallowed, with no schedule id attached to
+    // say which one it was.
+    scheduler: {
+      onError: (error, { scheduleId }) => {
+        mastraLogger.error('Scheduled workflow failed', { scheduleId, error });
+      },
+    },
     observability: new Observability({
       configs: {
         default: {
@@ -89,9 +100,7 @@ export async function getMastra(): Promise<Mastra> {
       formRepliesDetectionWorkflow,
       iotMonitoringWorkflow,
       routePromptWorkflow,
-      getCurrentDagWorkflow,
       getNextInstructionsWorkflow,
-      routingWorkflow,
     },
     agents: toAgentMap([
       await getCalendarAgent(),
@@ -175,6 +184,10 @@ app.use('*', cors(getCorsOptions()));
 app.use('*', stripTransferEncodingHeader);
 
 export const mastra = await getMastra();
+
+// Before the boot restart walks into a run whose workflow has moved on under it.
+// See ./workflow-run-recovery.ts.
+await retireUnrestartableRuns(mastra);
 
 // 2. Initialize the Mastra Server Adapter
 // This class wraps our Hono app and injects the Mastra capabilities.
