@@ -215,10 +215,23 @@ class ElevenLabsAgentManager {
     const config = await this.loadConfig();
     const prompt = await this.loadPrompt();
 
-    // Inject prompt into config
+    // Put the prompt text back, and *only* the prompt text.
+    //
+    // This used to assign `{ prompt }` outright, which replaced the whole object and
+    // silently dropped every sibling key `agent-config.json` carries under it — `llm`,
+    // `builtInTools`, `toolIds`, `temperature`, `maxTokens`, `cascadeTimeoutSeconds`,
+    // `timezone`, `backupLlmConfig`. Nineteen keys, none of them sent.
+    //
+    // That is the exact inverse of `fetchAgentConfig`, which saves that object with only
+    // `prompt.prompt` deleted precisely so the round trip can put the one text field back
+    // and hand the rest straight on. Because the API call is a PATCH, an omitted key is
+    // not cleared but *kept as it already was* — so the damage was invisible: the agent
+    // went on working, and every edit to those fields quietly did nothing. `llm` was set
+    // to `claude-sonnet-5` in the config and the agent never heard about it.
     if (config.conversationConfig?.agent) {
       config.conversationConfig.agent.prompt = {
-        prompt: prompt,
+        ...config.conversationConfig.agent.prompt,
+        prompt,
       };
     }
 
