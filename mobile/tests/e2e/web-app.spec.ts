@@ -172,6 +172,12 @@ test('saves valid settings, shows the conversation, and remembers across a reloa
   await page.goto('/');
   await configureElevenLabs(page);
 
+  // The instrument in the corner, which the browser gets and a phone does not. It is deliberately
+  // almost the colour of the background, so what is checked is that it is there and counting —
+  // being hard to read is the point and not something a test can have an opinion about.
+  await expect(page.getByTestId('frame-rate')).toBeVisible();
+  await expect(page.getByTestId('frame-rate')).toContainText('fps');
+
   await page.reload();
 
   // Straight back to the conversation, which is only possible if the settings

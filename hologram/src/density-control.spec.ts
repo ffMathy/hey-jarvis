@@ -3,6 +3,7 @@ import {
   createDensityControl,
   type DensityControl,
   FEWEST_PARTICLES,
+  seedFromRemembered,
   startFromRemembered,
   steerDensity,
   TARGET_FRAMES_PER_SECOND,
@@ -177,5 +178,43 @@ describe('deciding how many particles this phone can afford', () => {
     }
 
     expect(turns).toBeLessThan(3);
+  });
+});
+
+describe('starting from what this phone managed last time', () => {
+  it('takes the remembered share when nothing has been measured yet', () => {
+    // The case this is all for: the control is built before the read comes back, so it starts at
+    // the floor, and the remembered number has to be applied afterwards rather than at birth.
+    const control = createDensityControl();
+    seedFromRemembered(control, 0.72);
+
+    expect(control.density).toBe(0.72);
+  });
+
+  it('ignores it once a real frame rate has been seen', () => {
+    // What the loop has worked out on this phone, now, beats anything from last time — and a
+    // storage read that lands a second late must not undo a second of measuring.
+    const control = createDensityControl();
+    steerDensity(control, 12, 0.5);
+    steerDensity(control, 12, 0.5);
+    const measured = control.density;
+
+    seedFromRemembered(control, 0.9);
+
+    expect(control.density).toBe(measured);
+  });
+
+  it('never steps backwards', () => {
+    const control = createDensityControl(0.6);
+    seedFromRemembered(control, 0.3);
+
+    expect(control.density).toBe(0.6);
+  });
+
+  it('will not seed below the floor', () => {
+    const control = createDensityControl();
+    seedFromRemembered(control, 0.001);
+
+    expect(control.density).toBe(FEWEST_PARTICLES);
   });
 });

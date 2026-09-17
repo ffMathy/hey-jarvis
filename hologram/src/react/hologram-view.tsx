@@ -21,6 +21,7 @@ import {
   foldSpectrum,
   MATERIALISE_SECONDS,
   perceivedLevel,
+  seedFromRemembered,
   steerDensity,
   VOICE_BAND_COUNT,
   voiceDrive,
@@ -327,6 +328,20 @@ function JarvisHologramView({
   // the readout is written to means the answer survives that, and the user is not made to watch
   // the same measurement being taken twice.
   const density = useSharedValue(createDensityControl(particleShare?.value || startingShare));
+
+  // And again when it arrives, because it does not arrive in time to be the initial value above.
+  // Reading it back is a promise and `useSharedValue` only ever uses its argument once, so without
+  // this the count written down last time is read and then thrown away. See `seedFromRemembered`.
+  useEffect(() => {
+    if (startingShare === undefined) {
+      return;
+    }
+    density.modify((control) => {
+      'worklet';
+      seedFromRemembered(control, startingShare);
+      return control;
+    });
+  }, [startingShare, density]);
 
   // Whether the black of a fresh `SurfaceView` is still showing; see UNCOVER_MS. One per mount, so
   // a hologram built again — which is what a second summoning does — covers itself again.

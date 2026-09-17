@@ -1,10 +1,12 @@
 import { useConversationControls, useConversationStatus } from '@elevenlabs/react-native';
 import * as Linking from 'expo-linking';
+import { PARTICLE_COUNT } from 'hologram';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { createAssistLaunchClaim } from './assist-link';
 import { requestConversationToken } from './conversation-token';
 import type { ElevenLabsSettings } from './elevenlabs-settings';
+import { FrameRate } from './frame-rate';
 import { useWholeScreenHologramSize } from './hologram-size';
 import { JarvisHologram } from './jarvis-hologram';
 import { useJarvisVoice } from './jarvis-voice';
@@ -163,6 +165,23 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
           {problem}
         </Text>
       ) : null}
+
+      {/*
+        The instrument, left running in a browser and nowhere else.
+
+        On a phone this screen is the assistant and has nothing on it at all; in a browser it is
+        where the drawing is developed, and knowing what it is managing is worth a line of text so
+        dark you have to look for it. `faint` is what makes it that.
+      */}
+      {ON_A_PHONE ? null : (
+        <FrameRate
+          frameRate={frameRate}
+          buildMilliseconds={buildMilliseconds}
+          particleShare={particleShare}
+          particles={PARTICLE_COUNT}
+          faint
+        />
+      )}
 
       {ON_A_PHONE ? null : (
         <Pressable

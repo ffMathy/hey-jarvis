@@ -170,6 +170,29 @@ export function startFromRemembered(proven: number): number {
   return proven <= 0 ? FEWEST_PARTICLES : clamp(proven * REMEMBERED_MARGIN, FEWEST_PARTICLES, 1);
 }
 
+/**
+ * Starts a control at a remembered share, if it has not measured anything yet.
+ *
+ * **This exists because the remembered number arrives late.** Reading it back is a promise — a
+ * keystore read on a phone, `localStorage` in a browser — so it is not there on the first render,
+ * and the control is built on the first render. Handing it to `createDensityControl` therefore
+ * handed it `undefined` every time: the number was written down faithfully, read back faithfully,
+ * and then ignored, and the user watched the climb happen from scratch on every launch.
+ *
+ * Only before anything has been measured, and only upward. Once a real frame rate has been seen,
+ * what the loop has worked out here and now beats anything remembered from last time; and a
+ * remembered share below where the climb has already reached would be a step backwards.
+ */
+export function seedFromRemembered(control: DensityControl, share: number): void {
+  'worklet';
+  // `lastError` is set by every steer with a real reading, and `proven` by every one at the cap, so
+  // the two being untouched is what "nothing has been measured" looks like.
+  if (control.lastError !== 0 || control.proven !== 0 || share <= control.density) {
+    return;
+  }
+  control.density = clamp(share, FEWEST_PARTICLES, 1);
+}
+
 function clamp(value: number, lowest: number, highest: number): number {
   'worklet';
   return value < lowest ? lowest : value > highest ? highest : value;

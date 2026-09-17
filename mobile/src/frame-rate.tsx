@@ -34,12 +34,22 @@ export function FrameRate({
   buildMilliseconds,
   particleShare,
   particles,
+  faint = false,
 }: {
   frameRate: SharedValue<number>;
   buildMilliseconds: SharedValue<number>;
   particleShare: SharedValue<number>;
   /** How many there are when none are held back, so the share can be said as a count. */
   particles: number;
+  /**
+   * Put it in the top corner and make it almost invisible.
+   *
+   * For the conversation screen in a browser, where the readout is an instrument left running
+   * rather than something to look at: on a screen whose whole point is that there is nothing on it
+   * but Jarvis, a legible line of text in the corner would be the only thing anybody read. Barely
+   * readable is the requirement, not a compromise — it is there when you go looking for it.
+   */
+  faint?: boolean;
 }) {
   const [shown, setShown] = useState({ rate: 0, build: 0, share: 1 });
 
@@ -52,24 +62,43 @@ export function FrameRate({
   }, [frameRate, buildMilliseconds, particleShare]);
 
   return (
-    <Text accessibilityElementsHidden pointerEvents="none" style={styles.readout} testID="frame-rate">
+    <Text
+      accessibilityElementsHidden
+      pointerEvents="none"
+      style={[styles.readout, faint ? styles.faint : styles.plain]}
+      testID="frame-rate"
+    >
       {`${Math.round(shown.rate)} fps · build ${shown.build.toFixed(1)} ms · ${Math.round(shown.share * particles)} sparks`}
     </Text>
   );
 }
 
 const styles = StyleSheet.create({
-  /** Out of the way, and shadowed rather than boxed: this is drawn over whatever was on screen. */
   readout: {
     position: 'absolute',
+    fontSize: 12,
+    letterSpacing: 1,
+  },
+  /** Out of the way, and shadowed rather than boxed: this is drawn over whatever was on screen. */
+  plain: {
     left: theme.spacing.large,
     bottom: theme.spacing.large,
     color: theme.colors.mutedText,
-    fontSize: 12,
-    letterSpacing: 1,
     opacity: 0.7,
     textShadowColor: 'rgba(3, 5, 11, 0.95)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 6,
+  },
+  /**
+   * Barely there: a dark grey on a near-black background, with no shadow to lift it off.
+   *
+   * Deliberately close enough to the background to be missed at a glance. There is no shadow
+   * because a shadow is what makes text readable over anything, and readable is the thing this is
+   * not meant to be.
+   */
+  faint: {
+    right: theme.spacing.large,
+    top: theme.spacing.large,
+    color: '#20262f',
   },
 });
