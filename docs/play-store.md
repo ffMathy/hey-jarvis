@@ -11,9 +11,50 @@ ever fail.
 Internal testing is not a public release. It goes to a list of up to a hundred email addresses you
 name, it is live within minutes instead of after a week of review, and it never appears in search.
 
-Everything below is done once. Afterwards it is automatic: **every push to a pull request that
+Everything below is done once — **after** §0, which is the part that is currently blocking.
+Afterwards it is automatic: **every push to a pull request that
 touches the app publishes a build to internal testing**, so what is on your phone and your watch is
 the branch you are working on. There is a manual trigger too, for when you want a different track.
+
+---
+
+## 0. You need a developer account that is open
+
+The `ffMathy` account was **closed on 13 February 2024 for inactivity**, after a warning on
+12 December 2023 and a deadline of 9 February 2024. Nothing below can be done until there is an open
+account, and the pipeline in this repository cannot publish anything without one.
+
+[Google's documented remedy](https://support.google.com/googleplay/android-developer/answer/11605267)
+is to create a new account. There is a "request help" path from the Play Console Help page and it is
+worth one attempt, but closure for inactivity is not framed as an appealable enforcement action the
+way a policy strike is. Assume a new account:
+
+- **The £/$25 registration fee is not refundable and does not transfer.** A new account is a new fee.
+- **Identity verification is required** and takes days rather than minutes, so start it before you
+  need it.
+- The package name `com.ffmathy.heyjarvis` is not taken by the closed account in any way that
+  matters — nothing was ever published under it.
+
+**Internal testing is not blocked by the new-account rules**, which is the part that matters here.
+A personal account created today has to run a closed test with twelve testers for fourteen days
+before it can apply for *production* access —
+[that requirement is production-only](https://support.google.com/googleplay/android-developer/answer/14151465).
+Internal testing works immediately, and internal testing is all this repository wants: it is what
+puts the app on a paired watch.
+
+### Then do not let it happen again
+
+[The closure criteria](https://support.google.com/googleplay/android-developer/answer/11605267) are
+worth reading once, because a hobby project walks into both of them:
+
+- an account created more than a year ago that has **never submitted an app for review**; or
+- every published app under a thousand lifetime installs, **and** no verified phone number and
+  contact email, **and** no Play Console sign-in for 180 days.
+
+So: verify the email and phone on the Account details page as soon as the account exists — that is
+one of the two documented ways out of the second case — and get one build submitted rather than
+leaving the account empty. The workflow here helps with the rest by itself: it uploads on every push
+to a pull request, so the account does not sit untouched for six months.
 
 ---
 
@@ -230,6 +271,7 @@ Worth knowing, because it is the part that looks like magic:
 | What you see | What it is |
 | --- | --- |
 | `Package not found: com.ffmathy.heyjarvis` | the first release was never uploaded by hand, or the service account was invited but has not propagated yet |
+| Nothing in the Play Console works at all | the developer account is closed — see §0 |
 | `1Password CLI is not authenticated` in CI | `OP_SERVICE_ACCOUNT_TOKEN` is not reaching the job, or the `op` install step was removed |
 | `Version code N has already been used` | `JARVIS_ANDROID_VERSION_CODE` repeated. In CI it is `github.run_number`, which only rises; locally it is 1, so a locally built bundle can be uploaded once and never again |
 | `You uploaded an APK or Android App Bundle signed with a key that is also used to sign APKs delivered to users` | the debug key got in, which means the Gradle property was missing and the build silently fell back |
