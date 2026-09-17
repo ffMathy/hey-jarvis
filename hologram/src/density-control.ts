@@ -90,12 +90,28 @@ export interface DensityControl {
    * settles just under it. It only rises again when the phone shows real headroom.
    */
   ceiling: number;
+  /**
+   * The error the previous measurement showed, so that one bad window cannot dump the lot.
+   *
+   * Changing anything about the screen — walking to the next mood, say — re-renders it, and a
+   * re-render rebuilds the drawing worklet, which Reanimated re-serialises the scene for. That is
+   * one hitch, over in a frame or two, and it lands in a window half a second wide: the loop used
+   * to read it as the phone collapsing and shed everything. Shedding on the *gentler* of the last
+   * two windows costs half a second of reaction to a real slowdown and ignores a lone spike
+   * entirely.
+   */
+  lastError: number;
 }
 
 /**
- * Where it starts: a fifth of them, climbing.
+ * Where it starts: a fifth of them, climbing — unless it is being handed what it had before.
  *
- * It began at everything, on the reasoning that a phone which can manage it never has to find out.
+ * `startingDensity` is for the case where the hologram is built again over a screen that already
+ * knew the answer. Nothing about the phone changed while a view was being remade, so beginning at
+ * a fifth again would be throwing away a measurement and making the user watch it be taken twice.
+ *
+ * Otherwise it begins sparse. It began at *everything*, on the reasoning that a phone which can
+ * manage it never has to find out.
  * What that looks like is the first second being the worst second — Jarvis arrives stuttering and
  * then recovers, which is the one moment anybody is looking at him. Starting under what any phone
  * can draw and climbing means the arrival is smooth and the swarm fills in behind it, which is
@@ -104,8 +120,9 @@ export interface DensityControl {
  * `RISING_PER_SECOND` is what makes that climb quick rather than a crawl: from here to everything
  * is under three seconds on a phone that can take it.
  */
-export function createDensityControl(): DensityControl {
-  return { density: FEWEST_PARTICLES, carried: 0, ceiling: 1 };
+export function createDensityControl(startingDensity: number = FEWEST_PARTICLES): DensityControl {
+  const density = startingDensity <= 0 ? FEWEST_PARTICLES : startingDensity;
+  return { density, carried: 0, ceiling: 1, lastError: 0 };
 }
 
 function clamp(value: number, lowest: number, highest: number): number {
@@ -127,6 +144,9 @@ export function steerDensity(control: DensityControl, framesPerSecond: number, d
 
   // Positive when the phone is too slow, which is when particles have to go.
   const error = (TARGET_FRAMES_PER_SECOND - framesPerSecond) / TARGET_FRAMES_PER_SECOND;
+  // Shedding answers the gentler of this window and the last, so a single hitch is not a verdict.
+  const sustained = Math.min(error, control.lastError);
+  control.lastError = error;
 
   if (error > -SETTLED_WITHIN && error < SETTLED_WITHIN) {
     // Arrived. Let what it has been carrying drain away, so that coming back to the target twice
@@ -156,11 +176,16 @@ export function steerDensity(control: DensityControl, framesPerSecond: number, d
     return;
   }
 
+  if (sustained <= 0) {
+    // One slow window after a fast one. Wait to see whether it is the phone or a hiccup.
+    return;
+  }
+
   // Too slow, and here the proportional term earns its place: how far behind it is says how much
   // has to go, and going most of the way at once is what keeps a bad moment short.
-  control.carried = clamp(control.carried + error * deltaSeconds, -CARRIED_LIMIT, CARRIED_LIMIT);
+  control.carried = clamp(control.carried + sustained * deltaSeconds, -CARRIED_LIMIT, CARRIED_LIMIT);
 
-  const push = PROPORTIONAL_GAIN * error + INTEGRAL_GAIN * control.carried;
+  const push = PROPORTIONAL_GAIN * sustained + INTEGRAL_GAIN * control.carried;
   const step = clamp(-push * deltaSeconds, -FALLING_PER_SECOND * deltaSeconds, 0);
 
   control.density = clamp(control.density + step, FEWEST_PARTICLES, 1);

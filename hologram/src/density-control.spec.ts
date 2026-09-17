@@ -108,6 +108,32 @@ describe('deciding how many particles this phone can afford', () => {
     expect(control.density).toBe(1);
   });
 
+  it('ignores one bad window, because changing the screen costs a hitch', () => {
+    // Walking to the next mood re-renders the screen, which rebuilds the drawing worklet — one
+    // stall, over in a frame or two, landing in a window half a second wide. The loop used to read
+    // it as the phone collapsing and shed the lot, so the spark count fell back to where it
+    // started every time the user tapped.
+    const control = createDensityControl();
+    settle(control, phone(1.4), 8);
+    const before = control.density;
+    expect(before).toBe(1);
+
+    steerDensity(control, 6, 0.5);
+
+    expect(control.density).toBe(before);
+  });
+
+  it('still sheds when the phone is genuinely slow, one window later', () => {
+    const control = createDensityControl();
+    settle(control, phone(1.4), 8);
+
+    // Two in a row is not a hiccup.
+    steerDensity(control, 20, 0.5);
+    steerDensity(control, 20, 0.5);
+
+    expect(control.density).toBeLessThan(0.8);
+  });
+
   it('does not hunt across the target once it has arrived', () => {
     // The failure this is here to catch is visible on screen rather than in a number: a loop that
     // overshoots in both directions is a swarm breathing in and out for as long as you watch it.

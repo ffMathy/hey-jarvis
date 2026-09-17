@@ -275,7 +275,13 @@ function JarvisHologramView({
   const drawn = useSharedValue(0);
   const measuring = useSharedValue(0);
   // How many of the particles this phone can afford, worked out while it draws them.
-  const density = useSharedValue(createDensityControl());
+  // Started from whatever the screen last saw, if it saw anything.
+  //
+  // The control lives in this view, so a view built again starts a new one — and nothing about the
+  // phone changed while React was remaking a component. Reading the share back out of the value
+  // the readout is written to means the answer survives that, and the user is not made to watch
+  // the same measurement being taken twice.
+  const density = useSharedValue(createDensityControl(particleShare?.value));
 
   const clock = useFrameCallback((info) => {
     waiting.value += (info.timeSincePreviousFrame ?? DEFAULT_FRAME_MS) / 1000;
