@@ -588,6 +588,34 @@ describe('the hologram', () => {
     }
   });
 
+  it('keeps its shadow the same size however loud he gets', () => {
+    // The sphere swells with the voice; the shadow under it must not, or the whole screen breathes
+    // in and out with every syllable. Measured as how far the darkening reaches from the middle,
+    // which is the thing that would move.
+    const hologram = mount();
+    const pale = '#8fb3ae';
+    const background = luminance(render(silence(6), hologram, pale), 0);
+    const reachOf = (pixels: Uint8Array) => {
+      let furthest = 0;
+      for (let y = 0; y < SIZE; y++) {
+        for (let x = 0; x < SIZE; x++) {
+          if (luminance(pixels, (y * SIZE + x) * 4) < background * 0.9) {
+            furthest = Math.max(furthest, radiusOf(x, y));
+          }
+        }
+      }
+      return furthest;
+    };
+
+    const still = reachOf(render(silence(6), hologram, pale));
+    const shouting = reachOf(render(speech(6, 1, new Array(VOICE_BAND_COUNT).fill(0.9)), hologram, pale));
+
+    expect(still).toBeGreaterThan(1);
+    // Within a fiftieth of a radius. It is not exactly equal because the sphere's own light spills
+    // into the measurement, and that does grow with his voice.
+    expect(Math.abs(shouting - still)).toBeLessThan(0.02);
+  });
+
   it('leaves by shrinking and fading, and takes his shadow with him', () => {
     // The way out is the way in, run backwards and quicker: the whole sphere fades and draws back
     // toward the middle rather than being cut off where it stands. Gone means gone — including the

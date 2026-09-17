@@ -717,10 +717,7 @@ function pickGlyphAndLength(random: Random, x: number, y: number, radius: number
 function buildBody(random: Random) {
   const body: number[] = [];
   const shape = [0, 0];
-  // DELIBERATELY A QUARTER, AS A MEASUREMENT. See the note on HALO_RINGS: this build exists to
-  // find out whether the phone's cost is geometry rather than pixels, and the fastest way to ask
-  // is to take most of the geometry away. It goes back to 1000 either way.
-  const fragmentCount = 250;
+  const fragmentCount = 1000;
   while (body.length < fragmentCount * BODY_STRIDE) {
     // the body stops just inside the rim layer, which rolls over it
     const radius = Math.sqrt(random()) * 0.94;
@@ -773,7 +770,7 @@ function buildBody(random: Random) {
  */
 function buildStream(random: Random) {
   const stream: number[] = [];
-  for (let i = 0; i < 42; i++) {
+  for (let i = 0; i < 168; i++) {
     const shell = 0.42 + random() * 0.5;
     const latitude = Math.asin(0.1 + random() * 0.72);
     const longitude = random() * Math.PI * 2;
@@ -1837,7 +1834,17 @@ function analyseFrame(frame: HologramFrame, size: number, scene: Scene) {
     // need, see SPHERE_FRACTION — so half of it is far out into space nobody can see, and the
     // shadow's cost is its area: it is the most expensive single thing drawn, 15 ms of a 49 ms
     // frame at 384 px, measured by taking it out.
-    backdropReach: Math.min(size / 2 / radius, BACKDROP_REACH),
+    // Divided by the swell, which is what keeps the shadow still.
+    //
+    // Everything here is drawn in sphere radii, and the sphere grows with the voice — so a reach
+    // of a fixed number of radii is a shadow that breathes in and out with him. The user asked for
+    // it to hold: "the radial dark gradient below should not pulsate with the speech". Dividing it
+    // by the same factor the radius was multiplied by leaves reach × radius constant, so the
+    // shadow keeps the size it has at rest however loud he gets.
+    //
+    // Only the swell is divided out. The arrival is not, so he still brings his shadow with him
+    // when he materialises and takes it with him when he goes.
+    backdropReach: Math.min(size / 2 / radius, BACKDROP_REACH / (1 + swell)),
     thinking,
     // Where the plane is, sweeping upward — y runs down the screen, so it starts positive. From
     // the clock alone, like everything else here, so it needs nothing remembered between frames.
@@ -2208,22 +2215,23 @@ type DetachedPath = ReturnType<typeof pathOf>;
  * paths earlier.
  */
 /**
- * ONE RING, AND IT IS A MEASUREMENT RATHER THAN A DESIGN.
+ * ONE RING, AND WE ARE MEASURING WHICH HALF OF THE GEOMETRY COSTS THE FRAME.
  *
- * The phone draws this at 8 frames a second and the same picture runs at 58 in its own browser.
- * The build step is 2.6 ms of the 120, so it is not JavaScript. And it does not change with the
- * size of the canvas — the conversation screen's much smaller sphere is exactly as slow — which
- * rules out fill rate, the thing five rounds of benchmarks measured, because every one of those
- * benchmarks was a CPU scanline rasteriser where cost *is* pixels.
+ * The phone drew this at 8 frames a second and the same picture at 58 in its own browser. Build
+ * was 2.6 ms of a 120 ms frame, so it is not JavaScript; and it did not change with the size of
+ * the canvas, which rules out fill rate — the thing five rounds of benchmarks measured, every one
+ * of them on a CPU scanline rasteriser where cost *is* pixels. A GPU pays per path segment.
  *
- * What is left is geometry. A GPU pays per path segment, and this drawing hands it about 1300
- * stroked sub-paths that are different every frame, then strokes every one of them again for each
- * halo ring. Two rings means three passes over the same 1300.
+ * A build with a quarter of the fragments, a quarter of the shell and one ring ran at 57. So it is
+ * geometry. This build changes exactly one thing against that one: the fragments and the shell are
+ * back at full strength, and the halo stays at one ring.
  *
- * So this build has a quarter of the fragments and one ring — a fraction of the geometry, the same
- * pixels. If that is fast, the cost is geometry and the density comes back through something that
- * does not tessellate per frame. If it is still 8, geometry is not it either and the search moves
- * to how React Native Skia gets a picture onto the screen.
+ * The halo is the suspect worth eliminating first, because it strokes *every* path a second time
+ * and does it at ten times the width — and a wide stroke is far more geometry than a thin one. If
+ * this is still fast, the thousand particles were never the problem and only the halo has to
+ * change. If it collapses back to 8, the particles are the cost, and the way to keep them is to
+ * stop tessellating them: sprites through `drawAtlas`, which was dismissed earlier on a CPU
+ * benchmark we now know was the wrong instrument.
  */
 const HALO_RINGS = 1;
 const HALO_RING_SHARE = 0.52;
