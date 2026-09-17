@@ -14,6 +14,16 @@ export const SHEET_SHARE = 0.4;
  */
 export const SHEET_INK = '#0b1220';
 
+/**
+ * How far the canvas is held back from the sheet's edge.
+ *
+ * Not decoration. An opaque canvas is a `SurfaceView`, a hardware layer of its own that a parent
+ * cannot clip — not with `overflow: hidden`, not with a corner radius. Anything it draws outside
+ * the sheet stays outside the sheet, and the border ends up drawn across the middle of it. Holding
+ * it back by more than the radius is what keeps the edge clean.
+ */
+export const SHEET_INSET = 14;
+
 /** The hairline that gives it an edge against a dark wallpaper. */
 const SHEET_EDGE = '#243043';
 
@@ -119,9 +129,8 @@ const styles = StyleSheet.create({
    * in the screen. The hairline along the top and sides is what gives it an edge against a dark
    * wallpaper, where otherwise the sheet and the screen behind it run into each other.
    *
-   * `overflow: hidden` is load-bearing. The square Jarvis is drawn in is more than twice the sheet
-   * across — that is what it takes for the sphere itself to fill it, see `sample-screen.tsx` — so
-   * the sheet is what crops it, along this rounded edge.
+   * `overflow: hidden` does *not* hold the canvas in, whatever it says: an opaque canvas is a
+   * `SurfaceView` and no parent can clip one. `SHEET_INSET` is what keeps it inside.
    */
   sheet: {
     backgroundColor: SHEET_INK,

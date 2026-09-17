@@ -46,26 +46,66 @@ const INTEGRAL_GAIN = 0.35;
  *
  * **Asymmetric, and that is the design.** Dropping particles when the phone is struggling should
  * happen fast enough to be over before anyone reads it as stuttering; adding them back should be
- * slow enough that nobody catches it happening. Equal rates give the textbook result and the wrong
- * behaviour: the loop finds the edge of what the phone can do and then oscillates across it,
- * which on screen is the swarm breathing in and out.
+ * steady and unhurried. Equal rates give the textbook result and the wrong behaviour: the loop
+ * finds the edge of what the phone can do and then oscillates across it, which on screen is the
+ * swarm breathing in and out.
+ *
+ * The rising rate is what the climb actually runs at — see `steerDensity`, where the proportional
+ * term is deliberately not used on that side — so this is also how long the entrance takes: from
+ * a fifth of the particles to all of them in under three seconds.
  */
 const FALLING_PER_SECOND = 0.9;
-const RISING_PER_SECOND = 0.12;
+const RISING_PER_SECOND = 0.3;
 
 /** How much accumulated error the integral may carry, so a long slow patch cannot wind it up. */
 const CARRIED_LIMIT = 0.5;
+
+/** What share of the remaining room to the ceiling a single climb may take: halving, so it lands. */
+const APPROACH_SHARE = 0.5;
+
+/** A frame rate this high means the cap is holding it, so there is room nobody can measure. */
+const HEADROOM_FRAMES_PER_SECOND = 59;
+
+/** How fast the remembered ceiling itself lifts, once the phone is plainly not working for it. */
+const CEILING_CREEP_PER_SECOND = 0.1;
+
+/** How near the ceiling counts as up against it. */
+const RAISE_CEILING_WITHIN = 0.02;
 
 export interface DensityControl {
   /** 0–1: the share of the particles being drawn. */
   density: number;
   /** The integral term: how long it has been wrong, and by how much. */
   carried: number;
+  /**
+   * The most this phone has been shown to manage — everything, until it proves otherwise.
+   *
+   * **This is what stops the loop hunting, and a plain PI cannot.** The frame rate saturates at the
+   * cap, so there is a whole range of densities that all measure sixty and then a cliff: on a phone
+   * that affords four tenths, three tenths reads sixty and five tenths reads forty. Nothing in the
+   * error tells the loop it is one step from the cliff, so it steps off, sheds, climbs, and steps
+   * off again — for as long as you watch it.
+   *
+   * Remembering where it landed turns that into an approach: the climb slows as it nears this and
+   * settles just under it. It only rises again when the phone shows real headroom.
+   */
+  ceiling: number;
 }
 
-/** Everything on, and nothing learned yet. A phone that can manage it never has to find out. */
+/**
+ * Where it starts: a fifth of them, climbing.
+ *
+ * It began at everything, on the reasoning that a phone which can manage it never has to find out.
+ * What that looks like is the first second being the worst second — Jarvis arrives stuttering and
+ * then recovers, which is the one moment anybody is looking at him. Starting under what any phone
+ * can draw and climbing means the arrival is smooth and the swarm fills in behind it, which is
+ * also just a better entrance.
+ *
+ * `RISING_PER_SECOND` is what makes that climb quick rather than a crawl: from here to everything
+ * is under three seconds on a phone that can take it.
+ */
 export function createDensityControl(): DensityControl {
-  return { density: 1, carried: 0 };
+  return { density: FEWEST_PARTICLES, carried: 0, ceiling: 1 };
 }
 
 function clamp(value: number, lowest: number, highest: number): number {
@@ -95,11 +135,35 @@ export function steerDensity(control: DensityControl, framesPerSecond: number, d
     return;
   }
 
+  if (error < 0) {
+    // **Faster than it needs to be: climb, but toward what this phone has been shown to manage.**
+    //
+    // The proportional term is no use on this side, because the measurement saturates — the view
+    // caps at sixty, so however much room there is the error never exceeds a twentieth, and
+    // answering that in proportion is a crawl. What paces the climb instead is the room left to
+    // the ceiling, halved each time, so it lands rather than steps over.
+    control.carried -= control.carried * deltaSeconds;
+    const room = Math.max(0, control.ceiling - control.density);
+    // Halving the remaining room lands *near* the ceiling and never quite on it, so the last
+    // sliver is taken whole. Otherwise "all of them" is asymptotic and never actually all of them.
+    const step = room < RAISE_CEILING_WITHIN ? room : Math.min(RISING_PER_SECOND * deltaSeconds, room * APPROACH_SHARE);
+    control.density = clamp(control.density + step, FEWEST_PARTICLES, 1);
+    // And if it is up against the ceiling while the cap is *still* holding the frame rate down,
+    // the ceiling itself was pessimistic — something else was busy at the time — so it lifts.
+    if (room < RAISE_CEILING_WITHIN && framesPerSecond >= HEADROOM_FRAMES_PER_SECOND) {
+      control.ceiling = Math.min(1, control.ceiling + CEILING_CREEP_PER_SECOND * deltaSeconds);
+    }
+    return;
+  }
+
+  // Too slow, and here the proportional term earns its place: how far behind it is says how much
+  // has to go, and going most of the way at once is what keeps a bad moment short.
   control.carried = clamp(control.carried + error * deltaSeconds, -CARRIED_LIMIT, CARRIED_LIMIT);
 
   const push = PROPORTIONAL_GAIN * error + INTEGRAL_GAIN * control.carried;
-  const limit = (push > 0 ? FALLING_PER_SECOND : RISING_PER_SECOND) * deltaSeconds;
-  const step = clamp(-push * deltaSeconds, -limit, limit);
+  const step = clamp(-push * deltaSeconds, -FALLING_PER_SECOND * deltaSeconds, 0);
 
   control.density = clamp(control.density + step, FEWEST_PARTICLES, 1);
+  // Where it landed is now the most this phone is known to manage; the climb aims here.
+  control.ceiling = control.density;
 }

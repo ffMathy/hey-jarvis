@@ -67,11 +67,14 @@ describe('deciding how many particles this phone can afford', () => {
     const falling = settle(control, phone(0.33), 4);
     expect(falling[falling.length - 1]).toBeLessThan(0.6);
 
-    // ...and when it lets go again, they come back — but not all at once, because a swarm that
-    // doubles in a heartbeat is more noticeable than one that was never there.
+    // ...and when it lets go again, they come back — steadily, at RISING_PER_SECOND, which is
+    // three times slower than they went. A swarm that doubles in a heartbeat is more noticeable
+    // than one that was never there.
     const oneStep = control.density;
     settle(control, phone(1.4), 0.5);
-    expect(control.density - oneStep).toBeLessThan(0.1);
+    const returned = control.density - oneStep;
+    expect(returned).toBeGreaterThan(0);
+    expect(returned).toBeLessThan(0.2);
   });
 
   it('never strips him back past what still looks like Jarvis', () => {
@@ -84,10 +87,25 @@ describe('deciding how many particles this phone can afford', () => {
 
   it('does nothing until something has actually been measured', () => {
     const control = createDensityControl();
+    const before = control.density;
     steerDensity(control, 0, 0.5);
 
-    expect(control.density).toBe(1);
+    expect(control.density).toBe(before);
     expect(control.carried).toBe(0);
+  });
+
+  it('starts sparse and fills in quickly, so the arrival is not the worst second', () => {
+    const control = createDensityControl();
+    expect(control.density).toBe(FEWEST_PARTICLES);
+
+    // Most of the way in three seconds, which is the part anybody sees...
+    settle(control, phone(1.4), 3);
+    expect(control.density).toBeGreaterThan(0.9);
+
+    // ...and all the way shortly after. The tail is slow because the climb halves the room left to
+    // the ceiling each time, which is exactly what keeps it from stepping over one.
+    settle(control, phone(1.4), 3);
+    expect(control.density).toBe(1);
   });
 
   it('does not hunt across the target once it has arrived', () => {

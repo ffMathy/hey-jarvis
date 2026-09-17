@@ -1,4 +1,4 @@
-import { PARTICLE_COUNT, SPHERE_FRACTION } from 'hologram';
+import { PARTICLE_COUNT } from 'hologram';
 import { LEAVING_SECONDS, useIsForeground } from 'hologram/react/lifecycle';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { BackHandler, Platform, Pressable, useWindowDimensions } from 'react-native';
@@ -8,7 +8,7 @@ import { FrameRate } from './frame-rate';
 import { JarvisHologram } from './jarvis-hologram';
 import { ModeToast } from './mode-toast';
 import { moodOf, nextSampleMode, type SampleMode } from './sample-mode';
-import { SampleSheet, SHEET_INK, SHEET_SHARE } from './sample-sheet';
+import { SampleSheet, SHEET_INK, SHEET_INSET, SHEET_SHARE } from './sample-sheet';
 import { useSampleVoice } from './sample-voice';
 import { useSimulatedVoice } from './simulated-voice';
 import { QUIETEST_SPEECH_HERE } from './speech-floor';
@@ -59,12 +59,18 @@ export function SampleScreen({ onLeave }: SampleScreenProps) {
   const { voice: heard } = useSampleVoice(mode === 'microphone' && settled && !leaving);
   const imagined = useSimulatedVoice(settled ? moodOf(mode) : undefined);
   const { width, height } = useWindowDimensions();
-  // Big enough that the *sphere* fills the sheet's shorter side, which is what the user asked for:
-  // the sphere is `SPHERE_FRACTION` of its square, so the square has to be a bit over twice the
-  // sheet. It therefore overflows the sheet on every side and the sheet crops it — which is why
-  // the sheet is opaque and the canvas paints the sheet's own colour, so there is no seam to see.
+  // The square fits *inside* the sheet, and it has to.
+  //
+  // It was twice the sheet across for a moment, so that the sphere itself would fill the sheet's
+  // shorter side. That cannot work here: an opaque canvas is a `SurfaceView`, which is its own
+  // hardware layer and is **not** clipped by a parent's rounded corners or `overflow: hidden`. The
+  // oversized square simply spilled out over the sheet, taking its dark with it, and the sheet's
+  // border drew across the middle of it.
+  //
+  // So it is inset instead, far enough that the hairline edge is never underneath it. The sphere
+  // is `SPHERE_FRACTION` of this, which is about half the sheet's shorter side.
   const across = Math.min(width, Math.round(height * SHEET_SHARE));
-  const hologramSize = Math.round(across / (2 * SPHERE_FRACTION));
+  const hologramSize = across - SHEET_INSET * 2;
   const going = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const isForeground = useIsForeground();
   // Filled in on the UI thread by the hologram, read twice a second by the readout in the corner.
