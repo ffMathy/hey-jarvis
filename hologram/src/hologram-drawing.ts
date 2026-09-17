@@ -1811,6 +1811,10 @@ function analyseFrame(frame: HologramFrame, size: number, scene: Scene) {
     // step of a sphere left mounted for hours
     /** Somewhere for placeFragment to put its four numbers: made once a frame, not once a fragment. */
     scratch: [0, 0, 0, 0],
+    /** The same for whether a fragment is lit at all, and what it is; see {@link readFragment}. */
+    reading: [0, 0, 0, 0, 0],
+    /** And for whether the thinking plane is in the middle of one; see {@link scanned}. */
+    scanBright: [0],
     bodyCos: Math.cos(bodyYaw),
     bodySin: Math.sin(bodyYaw),
     /** What the halos and the volume multiply their alpha by: 1 in silence, up to 1 + GLOW_WITH_VOICE. */
@@ -2009,45 +2013,94 @@ function placeFragment(
   out[3] = clamp01((0.94 * 0.94 - turnedX * turnedX - y * y) * 8);
 }
 
+/**
+ * Whether a body fragment is lit this frame at all, and if so what it is.
+ *
+ * Its own function because it is its own question — everything here is asked of a fragment before
+ * anything is known about where it will be drawn — and because the answers are cheapest in the
+ * order they come: two fragments in five fail one of these on any given frame, and the ones that
+ * fail first are the ones that cost least to ask.
+ *
+ * Returns the strength, or 0 for a fragment that is not drawn, and writes what the caller needs
+ * into `into`: strength, glyph, which pair of builders it belongs to, which blink it is on, and its
+ * brightness tier. An array rather than an object because this runs three thousand times a frame,
+ * and it is the array {@link FrameState.reading} keeps for exactly that reason.
+ */
+function readFragment(body: number[], offset: number, state: FrameState, into: number[]): number {
+  'worklet';
+  // Is it lit at all? This is the cheapest question to ask of them: everything below — unpacking
+  // its class, where it sits in the reveal — is work the ones that fail would only throw away.
+  const id = body[offset + 6];
+  // Thinned to what this phone can afford, before anything else is asked of it.
+  if (state.density < 1 && fraction(id * DENSITY_FROM_ID) >= state.density) return 0;
+  const cycles = state.time * body[offset + 5] + fraction(id * FRAGMENT_PHASE_FROM_ID);
+  const cycle = Math.floor(cycles);
+  const life = cycles - cycle;
+  if (life >= FRAGMENT_DUTY) return 0;
+  const shown = fragmentShown(body[offset + 8], state);
+  if (shown <= 0) return 0;
+
+  const packed = body[offset + 7];
+  const glyph = Math.floor(packed / FRAGMENT_CODE_GLYPH_STEP);
+  const code = packed - glyph * FRAGMENT_CODE_GLYPH_STEP;
+  // The code packs three things by addition — brightness 0-2, plus 3 if it belongs to the
+  // fast pool, plus 6 if it rides the counter-turning shell — so division takes them apart.
+  const turning = 3 * Math.floor(code / 6);
+  const pool = Math.floor((code - turning * 2) / 3);
+  const strength = shown * fragmentStrength(life, id, pool, state);
+  if (strength < FRAGMENT_FAINTEST) return 0;
+
+  into[0] = strength;
+  into[1] = glyph;
+  into[2] = turning;
+  into[3] = cycle;
+  into[4] = code - 3 * pool - 2 * turning;
+  return strength;
+}
+
+/**
+ * How much of a fragment survives the thinking plane, given where it sits up the ball.
+ *
+ * At rest this is 1 and costs one comparison. While he thinks, only what the plane is passing stays
+ * lit — see {@link SCAN_SECONDS} — and what it is in the *middle* of is lit to the brightest tier
+ * whatever it was, which is what makes the pass a line of attention rather than a moving shadow.
+ *
+ * Returns the share to multiply by, and leaves in `state.scanBright` whether this one is near
+ * enough the middle of the plane to be promoted. Two answers from one measurement of `nearness`,
+ * which is why the second comes back in a scratch rather than being worked out again by the caller.
+ * Nothing is promoted when he is not thinking.
+ */
+function scanned(y: number, state: FrameState): number {
+  'worklet';
+  if (state.thinking <= 0) {
+    state.scanBright[0] = 0;
+    return 1;
+  }
+  const nearness = clamp01(1 - Math.abs(y - state.scan) / SCAN_HALF_WIDTH);
+  state.scanBright[0] = nearness > SCAN_BRIGHT_NEARNESS && state.thinking > 0.5 ? 1 : 0;
+  return 1 - state.thinking * (1 - SCAN_FLOOR) * (1 - nearness * nearness);
+}
+
 /** The fragment body, turning about the vertical axis, sorted into the dim, mid and bright builders. */
 function appendBody(builders: PathBuilder[], body: number[], state: FrameState) {
   'worklet';
-  const time = state.time;
   const ragged = state.ragged;
   const placed = state.scratch;
+  const reading = state.reading;
   for (let offset = 0; offset < body.length; offset += BODY_STRIDE) {
-    // Is it lit at all? Two in five are not, on any given frame, and this is the cheapest
-    // question to ask of them: everything below — unpacking its class, where it sits in the
-    // reveal, where the turn has carried it — is work those two would only throw away.
+    const strength = readFragment(body, offset, state, reading);
+    if (strength <= 0) continue;
     const id = body[offset + 6];
-    // Thinned to what this phone can afford, before anything else is asked of it.
-    if (state.density < 1 && fraction(id * DENSITY_FROM_ID) >= state.density) continue;
-    const phase = fraction(id * FRAGMENT_PHASE_FROM_ID);
-    const cycles = time * body[offset + 5] + phase;
-    const cycle = Math.floor(cycles);
-    const life = cycles - cycle;
-    if (life >= FRAGMENT_DUTY) continue;
-    const shown = fragmentShown(body[offset + 8], state);
-    if (shown <= 0) continue;
-    const packed = body[offset + 7];
-    const glyph = Math.floor(packed / FRAGMENT_CODE_GLYPH_STEP);
-    const code = packed - glyph * FRAGMENT_CODE_GLYPH_STEP;
-    // The code packs three things by addition — brightness 0-2, plus 3 if it belongs to the
-    // fast pool, plus 6 if it rides the counter-turning shell — so division takes them apart.
-    const turning = 3 * Math.floor(code / 6);
-    const pool = Math.floor((code - turning * 2) / 3);
-    const strength = shown * fragmentStrength(life, id, pool, state);
-    if (strength < FRAGMENT_FAINTEST) continue;
     const unitX = body[offset + 2];
     const unitY = body[offset + 3];
     const length = body[offset + 4];
     // each time it re-lights, it does so a little along or across from where it was
-    const hop = fraction(cycle * 0.618034 + id * 9.7);
+    const hop = fraction(reading[3] * 0.618034 + id * 9.7);
     const along = (hop - 0.5) * 1.4 * length;
-    // while he talks the body loosens: a fragment re-lights further still from where it was
-    // The loosening while he talks fades out toward the limb: the silhouette must not move
-    // with his voice, and a fragment at 0.9R that strayed a tenth of a radius outward would
-    // take it with it. Compared as squares, so this costs no square root.
+    // while he talks the body loosens: a fragment re-lights further still from where it was.
+    // The loosening fades out toward the limb: the silhouette must not move with his voice, and a
+    // fragment at 0.9R that strayed a tenth of a radius outward would take it with it. Compared as
+    // squares, so this costs no square root.
     const fromCentre = body[offset] * body[offset] + body[offset + 1] * body[offset + 1];
     const inward = clamp01((0.76 - fromCentre) * 3.2);
     const across = (fraction(hop * 23.17) - 0.5) * (FRAGMENT_WANDER + 1.3 * state.agitation * inward);
@@ -2060,43 +2113,54 @@ function appendBody(builders: PathBuilder[], body: number[], state: FrameState) 
     const x = placed[0] * push;
     const y = placed[1] * push;
     // While he thinks, only what the plane is passing stays lit; see SCAN_SECONDS.
-    const nearness = state.thinking > 0 ? clamp01(1 - Math.abs(y - state.scan) / SCAN_HALF_WIDTH) : 0;
-    const scanned = state.thinking > 0 ? 1 - state.thinking * (1 - SCAN_FLOOR) * (1 - nearness * nearness) : 1;
-    const litHere = lit * scanned;
+    const litHere = lit * scanned(y, state);
     if (litHere < FRAGMENT_FAINTEST) continue;
+    const facing = placed[2] >= 0;
     // the far side of the ball is dimmer, as the turning shell below the core already is
-    const plain =
-      placed[2] < 0 ? 0 : fragmentTier(code - 3 * pool - 2 * turning, litHere, id, state.hotShare, state.introHeat);
+    const plain = facing ? fragmentTier(reading[4], litHere, id, state.hotShare, state.introHeat) : 0;
     // ...and what the plane is in the middle of is lit to the brightest tier whatever it is, which
     // is what makes the pass a line of attention rather than a moving shadow.
-    const tier = nearness > SCAN_BRIGHT_NEARNESS && state.thinking > 0.5 && placed[2] >= 0 ? 2 : plain;
+    const tier = state.scanBright[0] > 0 && facing ? 2 : plain;
     // Its length is its whole fade: a fragment grows out of nothing and shrinks back into it,
     // because a paint is set once for a whole tier and so cannot fade with one stroke in it.
     // Arriving at a third of its length, as it used to, meant arriving at full brightness over
     // a dozen pixels at once — with twice as many fragments that is a visible speckle at every
     // frame, and it is what the spec's script-boundary check counts.
-    appendGlyph(builders[tier + turning], glyph, x, y, unitX, unitY, length * 0.5 * litHere);
+    appendGlyph(builders[tier + reading[2]], reading[1], x, y, unitX, unitY, length * 0.5 * litHere);
   }
+}
+
+/**
+ * Whether a shell fragment is lit this frame at all, and how strongly.
+ *
+ * The same question {@link readFragment} asks of a body fragment and in the same order, against a
+ * different layout: the shell's fragments carry their code and blink phase in their own slots and
+ * have no glyph packing to take apart. Returns the strength, or 0 for one that is not drawn, and
+ * leaves its pool in `state.reading[0]` — which is all the caller needs of it afterwards.
+ */
+function readShellFragment(stream: number[], offset: number, state: FrameState): number {
+  'worklet';
+  const id = stream[offset + 7];
+  if (state.density < 1 && fraction(id * DENSITY_FROM_ID) >= state.density) return 0;
+  const cycles = state.time * stream[offset + 5] + stream[offset + 6];
+  const life = cycles - Math.floor(cycles);
+  if (life >= FRAGMENT_DUTY) return 0;
+  const shown = fragmentShown(stream[offset + 10], state);
+  if (shown <= 0) return 0;
+  const pool = stream[offset + 8] >= 3 ? 1 : 0;
+  state.reading[0] = pool;
+  const strength = shown * fragmentStrength(life, id, pool, state);
+  return strength < FRAGMENT_FAINTEST ? 0 : strength;
 }
 
 /** The lower hemisphere's turning shell: its front drifts right, its back (dim) drifts left. */
 function appendStream(builders: PathBuilder[], stream: number[], state: FrameState) {
   'worklet';
-  const time = state.time;
   const cosYaw = state.streamCos;
   const sinYaw = state.streamSin;
   for (let offset = 0; offset < stream.length; offset += STREAM_STRIDE) {
-    const code = stream[offset + 8];
-    const pool = code >= 3 ? 1 : 0;
-    const id = stream[offset + 7];
-    if (state.density < 1 && fraction(id * DENSITY_FROM_ID) >= state.density) continue;
-    const shown = fragmentShown(stream[offset + 10], state);
-    if (shown <= 0) continue;
-    const cycles = time * stream[offset + 5] + stream[offset + 6];
-    const life = cycles - Math.floor(cycles);
-    if (life >= FRAGMENT_DUTY) continue;
-    const strength = shown * fragmentStrength(life, id, pool, state);
-    if (strength < FRAGMENT_FAINTEST) continue;
+    const strength = readShellFragment(stream, offset, state);
+    if (strength <= 0) continue;
     const restX = stream[offset];
     const restZ = stream[offset + 2];
     const x = restX * cosYaw + restZ * sinYaw;
@@ -2104,12 +2168,13 @@ function appendStream(builders: PathBuilder[], stream: number[], state: FrameSta
     const y = stream[offset + 1];
     // fade out before the limb, so nothing pops where the shell turns out of view
     const edge = clamp01((0.86 - x * x - y * y) * 8);
-    if (edge * strength < FRAGMENT_FAINTEST) continue;
+    const lit = strength * edge;
+    if (lit < FRAGMENT_FAINTEST) continue;
     // a latitude runs horizontally on screen, foreshortened as it turns toward the limb
     const halfX = stream[offset + 3] * cosYaw + stream[offset + 4] * sinYaw;
-    const tier = depth < 0 ? 0 : fragmentTier(code - 3 * pool, strength * edge, id, state.hotShare, state.introHeat);
-    const half = Math.abs(halfX) * strength * edge;
-    appendGlyph(builders[tier], stream[offset + 9], x, y, 1, 0, half);
+    const plain = stream[offset + 8] - 3 * state.reading[0];
+    const tier = depth < 0 ? 0 : fragmentTier(plain, lit, stream[offset + 7], state.hotShare, state.introHeat);
+    appendGlyph(builders[tier], stream[offset + 9], x, y, 1, 0, Math.abs(halfX) * lit);
   }
 }
 

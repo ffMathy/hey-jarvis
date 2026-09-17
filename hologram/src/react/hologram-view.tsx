@@ -1,7 +1,14 @@
 import { Canvas, Picture, Skia } from '@shopify/react-native-skia';
 import { memo, useEffect, useMemo } from 'react';
-import { View } from 'react-native';
-import { type SharedValue, useDerivedValue, useFrameCallback, useSharedValue } from 'react-native-reanimated';
+import { StyleSheet, View } from 'react-native';
+import Animated, {
+  type SharedValue,
+  useAnimatedStyle,
+  useDerivedValue,
+  useFrameCallback,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import {
   advanceVoiceActivity,
   createDensityControl,
@@ -120,6 +127,22 @@ export interface JarvisHologramProps {
 
 /** How long it takes to fall into a thought, and to come out of one. */
 const THOUGHT_FADE_SECONDS = 0.45;
+
+/**
+ * How long the canvas is covered for when it first appears, in milliseconds.
+ *
+ * **An opaque canvas is a `SurfaceView`, and a `SurfaceView` starts black.** It is a hardware layer
+ * of its own: the window is punched through where it sits, and until the first frame has been
+ * drawn into it what shows is an empty buffer — a black square, for as long as it takes Skia to
+ * build a picture and hand it over. Against a dark sheet that is a flash of something squarer and
+ * blacker than everything round it, arriving exactly when the sheet has finished sliding up and the
+ * eye is already there.
+ *
+ * So a plain view of the background colour is laid over the canvas and faded off once there is
+ * something underneath it. Nothing is hidden by that: it is over in a sixth of a second and the
+ * sphere spends its first {@link MATERIALISE_SECONDS} coming out of nothing anyway.
+ */
+const UNCOVER_MS = 160;
 
 /**
  * What share of the screen's own resolution the sphere is drawn at, before being scaled back up.
@@ -299,6 +322,11 @@ function JarvisHologramView({
   // the same measurement being taken twice.
   const density = useSharedValue(createDensityControl(particleShare?.value || startingShare));
 
+  // Whether the black of a fresh `SurfaceView` is still showing; see UNCOVER_MS. One per mount, so
+  // a hologram built again — which is what a second summoning does — covers itself again.
+  const covering = useSharedValue(1);
+  const covered = useAnimatedStyle(() => ({ opacity: covering.value }));
+
   const clock = useFrameCallback((info) => {
     waiting.value += (info.timeSincePreviousFrame ?? DEFAULT_FRAME_MS) / 1000;
     if (waiting.value < MINIMUM_FRAME_SECONDS) {
@@ -306,6 +334,11 @@ function JarvisHologramView({
     }
     const deltaSeconds = waiting.value;
     waiting.value = 0;
+    // A frame has been asked for, so a picture is about to exist. Exactly 1 only before the fade
+    // has started, so this runs once.
+    if (covering.value === 1) {
+      covering.value = withTiming(0, { duration: UNCOVER_MS });
+    }
     frame.modify((current) => {
       'worklet';
       current.time += deltaSeconds;
@@ -433,6 +466,20 @@ function JarvisHologramView({
           <Picture picture={picture} />
         </Canvas>
       </View>
+      {/*
+        Over the canvas rather than under it, and after it in the tree so that it is: a `SurfaceView`
+        composites below the window, and anything drawn into the window after the hole was punched
+        lands on top of it. Only where there is a colour to cover it *with* — on the web there is no
+        `SurfaceView`, nothing starts black, and a square of anything would be the only bug here.
+
+        The scaled canvas above comes back to exactly `size` across, so this covers it exactly.
+      */}
+      {background === undefined ? null : (
+        <Animated.View
+          pointerEvents="none"
+          style={[StyleSheet.absoluteFill, { backgroundColor: background }, covered]}
+        />
+      )}
     </View>
   );
 }

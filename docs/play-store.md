@@ -114,9 +114,14 @@ is what you will want the day you need to sign something by hand.
 | --- | --- |
 | `service account json` | the whole JSON file, pasted as text |
 
-These field names are not free-form — they are the right-hand side of
+The first item's field names are not free-form — they are the right-hand side of
 [`mobile/op.env`](../mobile/op.env), which is how `run-with-env.sh` finds them. Rename a field and
 you rename it there too.
+
+The publisher JSON is deliberately **not** in `op.env`. Nothing you can run locally uploads to Play,
+so no local script ever wants it — and listing it there would mean every local bundle build stopped
+to ask 1Password for a secret it was not going to use. It is in 1Password so there is a copy of it
+somewhere other than a GitHub secret box; the only thing that reads it is the workflow.
 
 ### In GitHub
 
@@ -132,7 +137,62 @@ reviewer — worth turning on, since these are the credentials that can publish 
 | `HEY_JARVIS_ANDROID_KEY_PASSWORD` | the key password |
 | `HEY_JARVIS_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` | the whole service account JSON |
 
-## 5. Building it
+## 5. Testing it, in the order that fails fastest
+
+Each step proves one thing. Stop at the first one that does not work — the later steps cannot
+succeed if an earlier one did not.
+
+### a. Does the key sign anything? (2 minutes, no Play, no 1Password, no CI)
+
+Set the four values in your shell and build:
+
+```bash
+export HEY_JARVIS_ANDROID_KEYSTORE_BASE64="$(base64 -w 0 jarvis-upload.jks)"
+export HEY_JARVIS_ANDROID_KEYSTORE_PASSWORD='the password you chose'
+export HEY_JARVIS_ANDROID_KEY_ALIAS='jarvis-upload'
+export HEY_JARVIS_ANDROID_KEY_PASSWORD='the password you chose'
+bunx turbo build:aab --filter=mobile
+```
+
+`run-with-env.sh` finds all four already set and never calls 1Password, so this works before any of
+it is in a vault. Then check what actually signed it:
+
+```bash
+keytool -printcert -jarfile dist/mobile-aab/jarvis.aab
+```
+
+Look at the owner. **`CN=Android Debug` means the upload key did not engage** and the bundle is
+worthless to Play — the Gradle properties did not reach it. Your own name means it worked; compare
+the SHA-256 fingerprint against the key itself if you want to be sure:
+
+```bash
+keytool -list -v -keystore jarvis-upload.jks -alias jarvis-upload | grep SHA256
+```
+
+### b. Does 1Password have it right? (1 minute)
+
+Open a new shell so none of the exports above survive, sign in to `op`, and run the same build. If
+it gets as far as Gradle, the item and field names match `mobile/op.env`. If it stops with
+`❌ Missing:` and a list, a field name is wrong.
+
+### c. Does Play accept it? (the slow one)
+
+Upload `dist/mobile-aab/jarvis.aab` through the Console by hand, as §3 says you must for the first
+release. This is where the app's declarations get demanded. Nothing automatic can work until one
+bundle has gone up this way.
+
+### d. Does the workflow work?
+
+Push anything to a pull request that touches `mobile/`, or run **Play internal testing** from the
+Actions tab. Watch the **Publish to Play** step. The build before it takes about fifteen minutes, so
+if the run fails in seconds it is the secrets, not the build.
+
+### e. Did it reach the watch?
+
+On the phone, open Play → Manage apps & device → the watch's tab. The app appears there once the
+phone's Google account is on the tester list and the app is installed on the phone.
+
+## 6. Building it
 
 Locally, once 1Password has the items above and `op` is signed in:
 
@@ -155,7 +215,7 @@ which is the only way to pick a different track or to leave the build as a draft
 > defeats the automatic trigger. The environment is still worth having — it is what keeps these
 > secrets out of reach of every other workflow in the repository.
 
-## 6. How the signing actually works
+## 7. How the signing actually works
 
 Worth knowing, because it is the part that looks like magic:
 
@@ -175,7 +235,7 @@ Worth knowing, because it is the part that looks like magic:
 - Because the plugin only acts when the property is there, `bunx expo run:android` and
   `build:apk` are untouched and still need no keystore at all.
 
-## 7. Things that will go wrong
+## 8. Things that will go wrong
 
 | What you see | What it is |
 | --- | --- |
@@ -183,4 +243,5 @@ Worth knowing, because it is the part that looks like magic:
 | `Version code N has already been used` | `JARVIS_ANDROID_VERSION_CODE` repeated. In CI it is `github.run_number`, which only rises; locally it is 1, so a locally built bundle can be uploaded once and never again |
 | `You uploaded an APK or Android App Bundle signed with a key that is also used to sign APKs delivered to users` | the debug key got in, which means the Gradle property was missing and the build silently fell back |
 | `keystore did not open` from the build script | the base64 was wrapped. Re-run it with `-w 0` |
+| The bundle's certificate says `CN=Android Debug` | the four Gradle properties never arrived, so the build fell back to the debug key. Check the four variables are set in the shell that runs it |
 | The watch app does not appear on the watch | the watch build has to be in the *same* Play app as the phone build, not a separate listing. It is not wired up yet — see [`wear/`](../wear) |
