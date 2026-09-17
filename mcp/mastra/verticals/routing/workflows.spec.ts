@@ -442,6 +442,46 @@ describe('Routing Workflows', () => {
 
       expect(commute.prompts[0]).toContain('How long to work?');
       expect(commute.prompts[0]).toContain('Aarhus, Denmark');
+      // A dependency that worked is not warned about, or every task would be told
+      // something had gone wrong.
+      expect(commute.prompts[0]).not.toContain('DID NOT SUCCEED');
+      expect(commute.prompts[0]).not.toContain('Do not invent');
+    });
+
+    // A dependent task runs whether its dependencies succeeded or not, which is on
+    // purpose — one of two may have worked. What it was never told was *which*. A
+    // failed dependency arrived under the same "Result of" heading as a good one, so
+    // a task asked for the ingredients of a recipe that was never fetched read the
+    // error, decided a lasagna needs pasta and cheese, and wrote that to the list.
+    it('tells a task that a dependency failed, rather than passing the failure off as a result', async () => {
+      const cooking = createMockAgent('cooking', {
+        respond: () => {
+          throw new Error('no lasagna recipes found');
+        },
+      });
+      const todo = createMockAgent('todo');
+      useAgents(cooking, todo);
+      usePlan(
+        { id: 'find-recipe', agent: 'cooking', prompt: 'Find a lasagna recipe', dependsOn: [] },
+        {
+          id: 'add-reminder',
+          agent: 'todo',
+          prompt: 'Add the ingredients to my to-do list',
+          dependsOn: ['find-recipe'],
+        },
+      );
+
+      await route('Find a lasagna recipe and put the ingredients on my list');
+      await pollUntilComplete();
+
+      const prompt = todo.prompts[0] ?? '';
+      expect(prompt).toContain('Add the ingredients to my to-do list');
+      // Named as a failure rather than filed as an ordinary result.
+      expect(prompt).toContain('"find-recipe" DID NOT SUCCEED');
+      expect(prompt).not.toContain('## Result of "find-recipe"');
+      // And told not to fill the gap itself, which is the whole point: this task
+      // writes to a list, and a plausible substitute there outlives the mistake.
+      expect(prompt).toContain('Do not invent');
     });
 
     it('runs independent tasks in the same wave', async () => {

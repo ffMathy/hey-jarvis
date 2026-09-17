@@ -103,6 +103,30 @@ const instructionsOutputSchema = z.object({
 });
 
 /**
+ * The one thing the loop must not swallow: a request to hang up.
+ *
+ * "Send anything further through routePromptWorkflow, however small it sounds" is
+ * true of every request except the one that is about the call rather than about the
+ * world. Asked to end the call while the loop still had the floor, Jarvis did as the
+ * loop said and routed it — the router answered "none of the specialized agents can
+ * handle this request", and he told sir he was "unable to directly end the call from
+ * this interface" on a line that stayed open. No agent here can hang up a call; only
+ * his own `end_call` can, and the prompt has always said so. The loop's instruction
+ * simply arrives fresher than the prompt, so the exception has to be stated where the
+ * rule is.
+ *
+ * Deliberately narrow. `agent-prompt.integration.spec.ts` asserts, two tests apart,
+ * that a follow-up about the blinds and lights *is* routed and that a request to end
+ * the call is *not* — same conversational position, opposite expectations — so this
+ * names the call itself and nothing else.
+ */
+const CONVERSATION_CONTROL_EXCEPTION =
+  'One kind of request is never routed, because it is about this call rather than about the world: ' +
+  'if he says goodbye, says that will be all, or asks you to hang up or end the call, use your own ' +
+  'end_call tool and do not send it through routePromptWorkflow. Nothing on the other side of that ' +
+  'tool can hang up a phone call, so routing it wastes his time and leaves him on an open line.';
+
+/**
  * Instruction strings handed back to Jarvis. They are part of the outward
  * contract — `elevenlabs/src/assets/agent-prompt.md` points the agent at this
  * field — so treat them as API surface rather than log messages.
@@ -127,7 +151,9 @@ const INSTRUCTIONS = {
   // polling starts, so it is where the shape of the rest of the loop belongs:
   // keep calling, keep following each response, and treat a failed call as
   // something to retry rather than as the end of the request.
-  poll: 'The request is now being processed in the background. Say a short line in your own voice telling the user you are on it — under six words, spoken now, because he is otherwise left sitting in silence while this runs. This is the only such line he should hear, so give it here and nowhere else. Then call getNextInstructionsWorkflow to check on the status and receive the next instructions, and keep doing exactly what each response tells you until one of them says every task has completed. If a call hands you an error instead of instructions, call it again straight away and say nothing about it — those failures are transient, and only when several attempts in a row have failed should you tell the user plainly what you could not find out. An error is never the end of the request.',
+  poll:
+    'The request is now being processed in the background. Say a short line in your own voice telling the user you are on it — under six words, spoken now, because he is otherwise left sitting in silence while this runs. This is the only such line he should hear, so give it here and nowhere else. Then call getNextInstructionsWorkflow to check on the status and receive the next instructions, and keep doing exactly what each response tells you until one of them says every task has completed. If a call hands you an error instead of instructions, call it again straight away and say nothing about it — those failures are transient, and only when several attempts in a row have failed should you tell the user plainly what you could not find out. An error is never the end of the request. ' +
+    CONVERSATION_CONTROL_EXCEPTION,
   stillProcessing:
     'Still processing your request. Call getNextInstructionsWorkflow again to wait a bit longer for it to complete. Say nothing to the user in the meantime — he has already been told you are on it, and has no use for a running commentary on the waiting.',
   summarize:
@@ -149,7 +175,8 @@ const ALL_TASKS_COMPLETED_INSTRUCTIONS =
   'That finishes this request, but not the conversation: if the user asks for anything further, ' +
   'send it through routePromptWorkflow exactly as you did this one, however small it sounds and ' +
   'however many times you have already done it. Answering a later request from ' +
-  'memory, or promising to look and then calling nothing, leaves him with nothing at all.';
+  'memory, or promising to look and then calling nothing, leaves him with nothing at all. ' +
+  CONVERSATION_CONTROL_EXCEPTION;
 
 /**
  * How long a single poll may block before we tell Jarvis to call again.
@@ -331,6 +358,31 @@ function isFinished(task: Dag['tasks'][number]): boolean {
   return task.status === 'completed' || task.status === 'failed';
 }
 
+/**
+ * What a task is told when something it depends on did not succeed.
+ *
+ * "Finished" here includes "failed" — a dependent task runs either way, which is
+ * deliberate: a task may depend on two things, and one of them failing is no reason
+ * to abandon the half that worked. What was missing is any way for it to *tell*.
+ * A failed dependency was rendered under the same "Result of" heading as a
+ * successful one, so a task asked to add the ingredients of a recipe that was never
+ * fetched read an error, decided a lasagna needs pasta and cheese, and wrote a
+ * plausible list to the user's to-do list. `routing-orchestration.integration.spec.ts`
+ * scored that zero, and rightly: the eval asks that the reminder hold the ingredients
+ * of the recipe that was *actually* fetched.
+ *
+ * Inventing is the specific failure to prevent, because these tasks have side
+ * effects. A wrong answer spoken aloud is corrected in the next sentence; a wrong
+ * answer written to a to-do list is still there next week.
+ */
+const FAILED_DEPENDENCY_INSTRUCTION =
+  'IMPORTANT: at least one task this one depends on did not succeed, and what it should have produced ' +
+  'is missing rather than empty. Do not invent, guess, recall or substitute it — not even something ' +
+  'reasonable, and not even in part. If you cannot do your part without it, do nothing and say plainly ' +
+  'what you could not do and why. Anything you record or act on here is real: a plausible substitute ' +
+  'written to a list or sent somewhere is worse than an honest failure, because nothing later will ' +
+  'question it.';
+
 function isLeaf(task: Dag['tasks'][number], tasks: Dag['tasks']): boolean {
   return !tasks.some((other) => other.dependsOn.includes(task.id));
 }
@@ -475,18 +527,27 @@ const selectReadyTasksStep = createStep({
       tasks: state.tasks.map((task) => (readyIds.has(task.id) ? { ...task, status: 'running' as const } : task)),
     });
 
-    const resultsById = new Map(state.tasks.filter(isFinished).map((task) => [task.id, task.result]));
+    const finishedById = new Map(state.tasks.filter(isFinished).map((task) => [task.id, task]));
 
     return ready.map((task) => {
-      const dependencyContext = task.dependsOn
-        .map((id) => `## Result of "${id}"\n${formatResult(resultsById.get(id))}`)
+      const dependencies = task.dependsOn.map((id) => ({ id, dependency: finishedById.get(id) }));
+      const anyFailed = dependencies.some(({ dependency }) => dependency?.status === 'failed');
+
+      const dependencyContext = dependencies
+        .map(({ id, dependency }) =>
+          dependency?.status === 'failed'
+            ? `## "${id}" DID NOT SUCCEED — it produced no usable result\n${formatResult(dependency.result)}`
+            : `## Result of "${id}"\n${formatResult(dependency?.result)}`,
+        )
         .join('\n\n');
 
       return {
         taskId: task.id,
         agent: task.agent,
         prompt: dependencyContext
-          ? `${task.prompt}\n\n# Results of the tasks this depends on\n${dependencyContext}`
+          ? `${task.prompt}\n\n# Results of the tasks this depends on\n${dependencyContext}${
+              anyFailed ? `\n\n${FAILED_DEPENDENCY_INSTRUCTION}` : ''
+            }`
           : task.prompt,
       };
     });
