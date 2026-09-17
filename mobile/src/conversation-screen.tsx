@@ -22,6 +22,7 @@ import { requestMicrophoneAccess } from './microphone-permission';
 import { QUIETEST_SPEECH_HERE } from './speech-floor';
 import { theme } from './theme';
 import { useAssistantRegistration } from './use-assistant-registration';
+import { WatchCard } from './watch-card';
 
 interface ConversationScreenProps {
   settings: ElevenLabsSettings;
@@ -142,6 +143,7 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
       ) : null}
 
       <AssistantCard registration={registration} />
+      <WatchCard />
 
       <Pressable
         accessibilityRole="button"

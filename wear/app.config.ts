@@ -1,4 +1,6 @@
-import { AndroidConfig, type ConfigPlugin, withAndroidManifest } from '@expo/config-plugins';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { AndroidConfig, type ConfigPlugin, withAndroidManifest, withDangerousMod } from '@expo/config-plugins';
 import type { ExpoConfig } from 'expo/config';
 
 /**
@@ -55,6 +57,41 @@ const withWatchAssistant: ConfigPlugin = (config) =>
   });
 
 /**
+ * Tells the phone app that Jarvis is on this watch.
+ *
+ * A phone cannot ask a watch what it has installed. What it can do is ask the Wearable Data Layer
+ * which nearby devices advertise a named capability, and this is where that name is advertised —
+ * the file has to be `res/values/wear.xml` with an `android_wear_capabilities` array, which is a
+ * shape Google Play Services looks for by convention rather than anything Expo knows about.
+ *
+ * Without it the phone's settings screen would say Jarvis is not on the watch however many times
+ * it had been installed, because there would be nothing to see.
+ *
+ * Written straight to disk because `android/` is generated, and because a string *array* is not
+ * something the strings.xml helpers model. The name must match `JARVIS_ON_THE_WATCH` in
+ * `mobile/modules/jarvis-watch`; `watch-link.contract.spec.ts` reads both and fails if they drift.
+ */
+const withWatchCapability: ConfigPlugin = (config) =>
+  withDangerousMod(config, [
+    'android',
+    (generated) => {
+      const values = join(generated.modRequest.platformProjectRoot, 'app/src/main/res/values');
+      mkdirSync(values, { recursive: true });
+      writeFileSync(
+        join(values, 'wear.xml'),
+        `<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string-array name="android_wear_capabilities">
+    <item>jarvis_on_the_watch</item>
+  </string-array>
+</resources>
+`,
+      );
+      return generated;
+    },
+  ]);
+
+/**
  * Jarvis on the wrist.
  *
  * The same sphere as the phone app, from the same files: `hologram/` holds the drawing and the
@@ -91,4 +128,4 @@ const config: ExpoConfig = {
   },
 };
 
-export default withWatchAssistant(config);
+export default withWatchCapability(withWatchAssistant(config));

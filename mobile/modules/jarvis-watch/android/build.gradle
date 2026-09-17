@@ -1,0 +1,27 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'expo.modules.jarviswatch'
+version = '0.1.0'
+
+android {
+  namespace 'expo.modules.jarviswatch'
+  defaultConfig {
+    versionCode 1
+    versionName '0.1.0'
+  }
+  lint {
+    abortOnError false
+  }
+}
+
+dependencies {
+  // Asking a paired watch what it is and what it has installed. This is the Data Layer: the
+  // only supported way for a phone app to learn anything about the watch beside it.
+  implementation 'com.google.android.gms:play-services-wearable:19.0.0'
+  // And opening something on that watch from here — see JarvisWatchModule.kt, and note that this
+  // can only ever open a *link*, which is why installing means opening the watch's Play Store.
+  implementation 'androidx.wear:wear-remote-interactions:1.1.0'
+}
