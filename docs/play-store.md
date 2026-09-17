@@ -130,20 +130,32 @@ and what comes out the other end is not a keystore. On macOS the flag is `-b 0`.
 
 ## 2. The Play publisher account
 
-This is the identity the workflow uploads as. It is a Google Cloud service account that the Play
-Console has been told about — two consoles, and both halves are needed.
+This is the identity the workflow uploads as: a Google Cloud service account that the Play Console
+has been told about. It is made entirely in the Cloud console and then *invited* into Play — there
+is no linking step and no "API access" page.
 
-1. **Play Console → Setup → API access.** Link a Google Cloud project if you have not (any project
-   will do; it exists only to own the service account).
-2. In that Cloud project: **IAM & Admin → Service Accounts → Create**. Name it something like
-   `jarvis-play-publisher`. It needs no project-level role at all — its permissions come from Play,
-   not from Cloud.
-3. On the new account: **Keys → Add key → Create new key → JSON**. That downloads a file once and
-   only once.
-4. Back in **Play Console → Users and permissions → Invite new user**, invite the service account's
-   email (it ends `@<project>.iam.gserviceaccount.com`). Give it access to the Jarvis app only, with
-   **Release to testing tracks** and **View app information**. It does not need production release
-   rights, and a publisher that cannot publish to production cannot be made to by a bad workflow.
+> **If you are following an older guide, it will tell you to go to Play Console → Setup → API
+> access and link a Google Cloud project.** That page has been removed and the link is no longer
+> required — a service account reaches the Play API without the developer account and the Cloud
+> project knowing about each other. Everything to do with API access now happens under **Users and
+> permissions**, which is in the left-hand menu at the account level.
+
+1. In the [Google Cloud console](https://console.cloud.google.com/), pick a project or make one. It
+   does not matter which — it exists only to own the service account, and nothing connects it to
+   the Play account.
+2. Enable the **Google Play Android Developer API** on that project (APIs & Services → Library).
+   The service account's calls are billed and authorised against the project it belongs to, so the
+   API has to be on there even though nothing else links the two.
+3. **IAM & Admin → Service Accounts → Create service account.** Name it something like
+   `jarvis-play-publisher`. Give it **no project role at all** — its permissions come from Play, and
+   a publisher that can do nothing in Cloud is one less thing to worry about.
+4. On the new account: **Keys → Add key → Create new key → JSON**. That downloads a file once and
+   only once. It is the whole of what goes into 1Password in §4.
+5. Back in **Play Console → Users and permissions → Invite new user**, paste the service account's
+   email — it ends `@<project>.iam.gserviceaccount.com` — and give it access to the Jarvis app only,
+   with **Release to testing tracks** and **View app information**. It does not need production
+   release rights, and a publisher that cannot publish to production cannot be made to by a bad
+   workflow.
 
 The service account can take a few minutes to become visible to the Play API after inviting it. A
 first upload that fails with "application not found" is usually this.
@@ -306,6 +318,7 @@ Worth knowing, because it is the part that looks like magic:
 | What you see | What it is |
 | --- | --- |
 | `Package not found: com.ffmathy.heyjarvis` | the first release was never uploaded by hand, or the service account was invited but has not propagated yet |
+| `Google Play Android Developer API has not been used in project …` | step 2 of §2 — the API is not enabled on the service account's Cloud project |
 | Nothing in the Play Console works at all | the developer account is closed — see §0 |
 | `1Password CLI is not authenticated` in CI | `OP_SERVICE_ACCOUNT_TOKEN` is not reaching the job, or the `op` install step was removed |
 | `Version code N has already been used` | `JARVIS_ANDROID_VERSION_CODE` repeated. In CI it is `github.run_number`, which only rises; locally it is 1, so a locally built bundle can be uploaded once and never again |
