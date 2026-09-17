@@ -74,6 +74,24 @@ const THOUGHT_FADE_SECONDS = 0.45;
 const DRAWN_RESOLUTION = 0.45;
 
 /**
+ * The shortest gap between two drawn frames. Thirty a second, not sixty.
+ *
+ * Both halves of a frame — building the picture and painting it — are paid once per *drawn* frame,
+ * so drawing every other one halves the lot. Nothing else here is worth as much for as little.
+ *
+ * It suits what Jarvis became. The fragments now stay lit for 0.6 to 1.3 seconds, the sphere turns
+ * once every twenty-four, and the user asked for all of that: "calmer, but still show activity,
+ * reflecting Jarvis' overwhelming calm and compute power". There is nothing in the drawing that
+ * moves fast enough for sixty to tell apart from thirty — and a steady thirty reads better than a
+ * fifty that keeps missing.
+ *
+ * The clock is not slowed with it. Time keeps adding up every frame the system offers and the
+ * whole of it is handed over when a picture is finally built, so the motion is the same motion,
+ * sampled half as often.
+ */
+const MINIMUM_FRAME_SECONDS = 1 / 32;
+
+/**
  * How often the voice is read. The SDK's native processors refresh every 40 ms,
  * so reading faster only re-reads the same value; the UI thread eases between
  * readings every frame, which is where the smoothness comes from.
@@ -178,8 +196,17 @@ function JarvisHologramView({ size, voice, quietestSpeech, thinking = false, lea
   // the UI runtime owns. Assigning a state from the JS runtime would leave every
   // write silently dropped in a development build. The rest of the frame is
   // advanced in the same call, so the picture is asked for once.
+  // Time the screen has offered since the last picture was built. Held outside the frame value on
+  // purpose: writing it there would be the very thing this is trying not to do.
+  const waiting = useSharedValue(0);
+
   const clock = useFrameCallback((info) => {
-    const deltaSeconds = (info.timeSincePreviousFrame ?? DEFAULT_FRAME_MS) / 1000;
+    waiting.value += (info.timeSincePreviousFrame ?? DEFAULT_FRAME_MS) / 1000;
+    if (waiting.value < MINIMUM_FRAME_SECONDS) {
+      return;
+    }
+    const deltaSeconds = waiting.value;
+    waiting.value = 0;
     frame.modify((current) => {
       'worklet';
       current.time += deltaSeconds;

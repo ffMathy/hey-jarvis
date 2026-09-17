@@ -275,10 +275,7 @@ export interface HologramFrame {
  * whose declarations TypeScript treats as a separate copy. The members used here
  * are identical in both, so asking only for those lets both pass without a cast.
  */
-export type HologramSkia = Pick<
-  typeof Skia,
-  'Color' | 'Data' | 'Image' | 'Matrix' | 'Paint' | 'PathBuilder' | 'Shader'
->;
+export type HologramSkia = Pick<typeof Skia, 'Color' | 'Data' | 'Image' | 'Matrix' | 'Paint' | 'Path' | 'Shader'>;
 
 /** The canvas calls the hologram makes, for the same reason. */
 export type HologramCanvas = Pick<
@@ -1001,7 +998,89 @@ type Scene = ReturnType<typeof createHologramScene>;
 
 // ---- resources: Skia objects built once per mounted canvas --------------------------------
 
-type PathBuilder = ReturnType<SkiaApiType['PathBuilder']['Make']>;
+/**
+ * A path under construction, kept in JavaScript until it is finished.
+ *
+ * **This is the frame rate on a phone.** Skia's own builder sends every `moveTo` and `lineTo`
+ * across into native code as it is called, and a frame of this drawing is a few thousand of them.
+ * Measured with the JIT switched off — which is what Hermes is on a phone — a thousand two-verb
+ * dashes cost 4.41 ms built that way against 0.91 ms handed over as one array of commands, while
+ * the arithmetic behind them costs 0.08 ms. Nearly the whole cost of building a frame is the
+ * crossings, and this removes them: the verbs go into a plain array and the path is made in one
+ * call when it is detached.
+ *
+ * Verb numbers are Skia's own, as `PathVerb` gives them, written out rather than imported because
+ * this runs in a worklet and an imported enum is one more object to carry across.
+ */
+interface PathBuilder {
+  commands: number[][];
+}
+
+const MOVE_VERB = 0;
+const LINE_VERB = 1;
+const CONIC_VERB = 3;
+const CLOSE_VERB = 5;
+
+/** The conic weight that makes a quarter circle. */
+const QUARTER_CIRCLE_WEIGHT = Math.SQRT1_2;
+
+function makePathBuilder(): PathBuilder {
+  return { commands: [] };
+}
+
+function pathMoveTo(builder: PathBuilder, x: number, y: number) {
+  'worklet';
+  builder.commands.push([MOVE_VERB, x, y]);
+}
+
+function pathLineTo(builder: PathBuilder, x: number, y: number) {
+  'worklet';
+  builder.commands.push([LINE_VERB, x, y]);
+}
+
+function pathConicTo(builder: PathBuilder, x1: number, y1: number, x2: number, y2: number, weight: number) {
+  'worklet';
+  builder.commands.push([CONIC_VERB, x1, y1, x2, y2, weight]);
+}
+
+function pathClose(builder: PathBuilder) {
+  'worklet';
+  builder.commands.push([CLOSE_VERB]);
+}
+
+/**
+ * A circle, as the four conics Skia's own `addCircle` would have used.
+ *
+ * Clockwise from the rightmost point, which is where Skia starts one, so it is the same shape
+ * wound the same way — it has to be, because the drawing strokes these.
+ */
+function pathAddCircle(builder: PathBuilder, x: number, y: number, radius: number) {
+  'worklet';
+  pathMoveTo(builder, x + radius, y);
+  pathConicTo(builder, x + radius, y + radius, x, y + radius, QUARTER_CIRCLE_WEIGHT);
+  pathConicTo(builder, x - radius, y + radius, x - radius, y, QUARTER_CIRCLE_WEIGHT);
+  pathConicTo(builder, x - radius, y - radius, x, y - radius, QUARTER_CIRCLE_WEIGHT);
+  pathConicTo(builder, x + radius, y - radius, x + radius, y, QUARTER_CIRCLE_WEIGHT);
+  pathClose(builder);
+}
+
+function pathReset(builder: PathBuilder) {
+  'worklet';
+  builder.commands.length = 0;
+}
+
+/** The finished path, in one crossing. `keep` is for the handful built once at mount. */
+function pathOf(Skia: SkiaApiType, builder: PathBuilder, keep = false) {
+  'worklet';
+  const path = Skia.Path.MakeFromCmds(builder.commands);
+  if (!keep) {
+    builder.commands.length = 0;
+  }
+  if (!path) {
+    throw new Error('The hologram could not build one of its paths');
+  }
+  return path;
+}
 
 /** A circle arc (centre, radius, start angle, signed sweep) appended as conics of at most 0.8 rad. */
 function appendArc(
@@ -1017,10 +1096,11 @@ function appendArc(
   const step = sweep / pieces;
   const halfStep = step * 0.5;
   const weight = Math.cos(halfStep);
-  builder.moveTo(centreX + Math.cos(startAngle) * radius, centreY + Math.sin(startAngle) * radius);
+  pathMoveTo(builder, centreX + Math.cos(startAngle) * radius, centreY + Math.sin(startAngle) * radius);
   for (let piece = 0; piece < pieces; piece++) {
     const pieceStart = startAngle + step * piece;
-    builder.conicTo(
+    pathConicTo(
+      builder,
       centreX + (Math.cos(pieceStart + halfStep) * radius) / weight,
       centreY + (Math.sin(pieceStart + halfStep) * radius) / weight,
       centreX + Math.cos(pieceStart + step) * radius,
@@ -1049,8 +1129,8 @@ function appendEllipse(
     const y = Math.sin(angle) * radiusY;
     const pointX = centreX + x * cosTilt - y * sinTilt;
     const pointY = centreY + x * sinTilt + y * cosTilt;
-    if (step === 0) builder.moveTo(pointX, pointY);
-    else builder.lineTo(pointX, pointY);
+    if (step === 0) pathMoveTo(builder, pointX, pointY);
+    else pathLineTo(builder, pointX, pointY);
   }
 }
 
@@ -1108,14 +1188,14 @@ function appendWhorlStretch(
     // an arm is bold round the core and thinner as it opens out past 0.46R; the two halves are
     // drawn apart, so each is picked up where the other left it
     const arm = radius < 0.46 ? inner : outer;
-    if (arm === previousArm) arm.lineTo(x, y);
-    else arm.moveTo(x, y);
+    if (arm === previousArm) pathLineTo(arm, x, y);
+    else pathMoveTo(arm, x, y);
     previousArm = arm;
     // the arms are furry with short fragments across them, as the film's are
     if (random() < 0.3) {
       const across = (0.014 + 0.035 * random()) * (random() < 0.5 ? -1 : 1);
-      ticks.moveTo(x, y);
-      ticks.lineTo(x + Math.cos(angle) * across, y + Math.sin(angle) * across);
+      pathMoveTo(ticks, x, y);
+      pathLineTo(ticks, x + Math.cos(angle) * across, y + Math.sin(angle) * across);
     }
   }
 }
@@ -1149,14 +1229,18 @@ function appendWhorlArm(
  * star chart of hairlines of equal weight.
  */
 function buildWhorl(Skia: SkiaApiType, random: Random) {
-  const whorl = Skia.PathBuilder.Make();
-  const outer = Skia.PathBuilder.Make();
-  const ticks = Skia.PathBuilder.Make();
+  const whorl = makePathBuilder();
+  const outer = makePathBuilder();
+  const ticks = makePathBuilder();
   appendWhorlArm(whorl, outer, ticks, random, 0.16, 3.5, 10.5);
   appendWhorlArm(whorl, outer, ticks, random, 0.33, 1.1, 6.5);
   appendArc(outer, CORE_X, CORE_Y, 0.7, 0.3, 0.8);
   appendArc(outer, CORE_X, CORE_Y, 0.66, 1.35, 0.55);
-  return { whorlPath: whorl.build(), whorlOuterPath: outer.build(), whorlTickPath: ticks.build() };
+  return {
+    whorlPath: pathOf(Skia, whorl, true),
+    whorlOuterPath: pathOf(Skia, outer, true),
+    whorlTickPath: pathOf(Skia, ticks, true),
+  };
 }
 
 /**
@@ -1164,44 +1248,44 @@ function buildWhorl(Skia: SkiaApiType, random: Random) {
  * near half of the tall edge-on ellipse beside it, and two data streaks through the core.
  */
 function buildInnerStructure(Skia: SkiaApiType) {
-  const loop = Skia.PathBuilder.Make();
+  const loop = makePathBuilder();
   appendEllipse(loop, 0.04, 0.03, 0.74, 0.2, -37 * DEGREES_TO_RADIANS, 56);
   // the edge-on ellipse's near half only, faint
-  const edgeOn = Skia.PathBuilder.Make();
+  const edgeOn = makePathBuilder();
   appendEllipse(edgeOn, 0.27, 0.02, 0.1, 0.44, 4 * DEGREES_TO_RADIANS, 20, 0.5);
   // the ")" arc wrapping the core's right side at 0.57R: -60° to +40°, measured up from 3 o'clock
-  const bracket = Skia.PathBuilder.Make();
+  const bracket = makePathBuilder();
   appendArc(bracket, CORE_X, CORE_Y, 0.575, 60 * DEGREES_TO_RADIANS, -100 * DEGREES_TO_RADIANS);
-  const streaks = Skia.PathBuilder.Make();
+  const streaks = makePathBuilder();
   const streakRows = [
     [-0.72, 0.6, 0.05],
     [-0.5, 0.2, -0.065],
   ];
   for (const [from, to, y] of streakRows) {
-    streaks.moveTo(CORE_X + from, CORE_Y + y);
-    streaks.lineTo(CORE_X + to, CORE_Y + y);
+    pathMoveTo(streaks, CORE_X + from, CORE_Y + y);
+    pathLineTo(streaks, CORE_X + to, CORE_Y + y);
   }
   return {
-    loopPath: loop.build(),
-    edgeOnPath: edgeOn.build(),
-    bracketPath: bracket.build(),
-    dataStreakPath: streaks.build(),
+    loopPath: pathOf(Skia, loop, true),
+    edgeOnPath: pathOf(Skia, edgeOn, true),
+    bracketPath: pathOf(Skia, bracket, true),
+    dataStreakPath: pathOf(Skia, streaks, true),
   };
 }
 
 /** The core glyph: a hooked ring of radius 0.1R with a stem curling in, and the bar. The whorl's first turn is the film's second ring at 0.3R. */
 function buildCoreGlyph(Skia: SkiaApiType) {
-  const ring = Skia.PathBuilder.Make();
+  const ring = makePathBuilder();
   appendArc(ring, 0, 0, 0.1, -35 * DEGREES_TO_RADIANS, 305 * DEGREES_TO_RADIANS);
   // the hook: from the ring's open end a short stem curls in toward the middle
   const endAngle = 270 * DEGREES_TO_RADIANS;
-  ring.moveTo(Math.cos(endAngle) * 0.1, Math.sin(endAngle) * 0.1);
-  ring.lineTo(0.012, -0.055);
-  ring.lineTo(0.03, -0.02);
-  const bar = Skia.PathBuilder.Make();
-  bar.moveTo(-0.3, 0.012);
-  bar.lineTo(0.3, 0.012);
-  return { coreRingPath: ring.build(), coreBarPath: bar.build() };
+  pathMoveTo(ring, Math.cos(endAngle) * 0.1, Math.sin(endAngle) * 0.1);
+  pathLineTo(ring, 0.012, -0.055);
+  pathLineTo(ring, 0.03, -0.02);
+  const bar = makePathBuilder();
+  pathMoveTo(bar, -0.3, 0.012);
+  pathLineTo(bar, 0.3, 0.012);
+  return { coreRingPath: pathOf(Skia, ring, true), coreBarPath: pathOf(Skia, bar, true) };
 }
 
 /**
@@ -1209,7 +1293,7 @@ function buildCoreGlyph(Skia: SkiaApiType) {
  * clockwise ends peel out to 1.08R (shot d).
  */
 function buildStrandFan(Skia: SkiaApiType) {
-  const fan = Skia.PathBuilder.Make();
+  const fan = makePathBuilder();
   const radii = [0.9, 0.95, 1.0, 1.03];
   radii.forEach((radius, strand) => {
     const from = 30 + strand * 6;
@@ -1218,11 +1302,11 @@ function buildStrandFan(Skia: SkiaApiType) {
       const peel = Math.max(0, (degrees - (to - 30)) / 30);
       const pointRadius = radius + peel * peel * (1.08 - radius);
       const angle = (degrees - 90) * DEGREES_TO_RADIANS;
-      if (degrees === from) fan.moveTo(Math.cos(angle) * pointRadius, Math.sin(angle) * pointRadius);
-      else fan.lineTo(Math.cos(angle) * pointRadius, Math.sin(angle) * pointRadius);
+      if (degrees === from) pathMoveTo(fan, Math.cos(angle) * pointRadius, Math.sin(angle) * pointRadius);
+      else pathLineTo(fan, Math.cos(angle) * pointRadius, Math.sin(angle) * pointRadius);
     }
   });
-  return fan.build();
+  return pathOf(Skia, fan, true);
 }
 
 /** A colour from 0-255 channels, as the hex string Skia.Color takes. */
@@ -1405,9 +1489,9 @@ export function createHologramResources(Skia: SkiaApiType, scene: Scene) {
   const particleHaloInner = makeStroke('#dc5c20', StrokeCap.Butt);
   particleHaloInner.setAntiAlias(HALO_ANTIALIASED);
 
-  const makeBuilder = () => Skia.PathBuilder.Make();
+  const makeBuilder = () => makePathBuilder();
   /** Stands in until the first frame builds the real thing; drawing it is a no-op. */
-  const emptyPath = makeBuilder().detach();
+  const emptyPath = pathOf(Skia, makeBuilder());
   const pathBuilders = {
     // dim, mid and bright, pinned and then the same three for the turning shell
     body: [makeBuilder(), makeBuilder(), makeBuilder(), makeBuilder(), makeBuilder(), makeBuilder()],
@@ -1521,6 +1605,8 @@ export function createHologramResources(Skia: SkiaApiType, scene: Scene) {
     strandFanPath: buildStrandFan(Skia),
     ...buildInnerStructure(Skia),
     ...buildCoreGlyph(Skia),
+    // Carried so that a draw function can hand a finished path over; see pathOf.
+    skia: Skia,
     pathBuilders,
     allPathBuilders,
   };
@@ -1838,33 +1924,37 @@ function appendGlyph(
   const alongX = unitX * half;
   const alongY = unitY * half;
   if (glyph === 5) {
-    builder.addCircle(x, y, half * 0.45);
+    pathAddCircle(builder, x, y, half * 0.45);
     return;
   }
   // the normal, shorter than the length: ticks and cell heights
   const normalX = -alongY * 0.55;
   const normalY = alongX * 0.55;
   if (glyph === 6) {
-    builder.moveTo(x - alongX - normalX, y - alongY - normalY);
-    builder.lineTo(x + alongX - normalX, y + alongY - normalY);
-    builder.lineTo(x + alongX + normalX, y + alongY + normalY);
-    builder.lineTo(x - alongX + normalX, y - alongY + normalY);
-    builder.close();
+    pathMoveTo(builder, x - alongX - normalX, y - alongY - normalY);
+    pathLineTo(builder, x + alongX - normalX, y + alongY - normalY);
+    pathLineTo(builder, x + alongX + normalX, y + alongY + normalY);
+    pathLineTo(builder, x - alongX + normalX, y - alongY + normalY);
+    pathClose(builder);
     return;
   }
   if (glyph === 2 || glyph === 4) {
-    builder.moveTo(x - alongX + normalX, y - alongY + normalY);
-    builder.lineTo(x - alongX, y - alongY);
-    builder.lineTo(x + alongX, y + alongY);
-    builder.lineTo(x + alongX + (glyph === 2 ? normalX : -normalX), y + alongY + (glyph === 2 ? normalY : -normalY));
+    pathMoveTo(builder, x - alongX + normalX, y - alongY + normalY);
+    pathLineTo(builder, x - alongX, y - alongY);
+    pathLineTo(builder, x + alongX, y + alongY);
+    pathLineTo(
+      builder,
+      x + alongX + (glyph === 2 ? normalX : -normalX),
+      y + alongY + (glyph === 2 ? normalY : -normalY),
+    );
     return;
   }
-  builder.moveTo(x - alongX, y - alongY);
-  builder.lineTo(x + alongX, y + alongY);
-  if (glyph === 1) builder.lineTo(x + alongX + normalX, y + alongY + normalY);
+  pathMoveTo(builder, x - alongX, y - alongY);
+  pathLineTo(builder, x + alongX, y + alongY);
+  if (glyph === 1) pathLineTo(builder, x + alongX + normalX, y + alongY + normalY);
   else if (glyph === 3) {
-    builder.moveTo(x, y);
-    builder.lineTo(x + normalX * 1.4, y + normalY * 1.4);
+    pathMoveTo(builder, x, y);
+    pathLineTo(builder, x + normalX * 1.4, y + normalY * 1.4);
   }
 }
 
@@ -2051,7 +2141,7 @@ function appendStream(builders: PathBuilder[], stream: number[], state: FrameSta
 }
 
 /** A path handed out by a builder, which is what every draw call takes. */
-type DetachedPath = ReturnType<PathBuilder['detach']>;
+type DetachedPath = ReturnType<typeof pathOf>;
 
 /**
  * How many nested rings the halo is built from, and what each contributes.
@@ -2119,12 +2209,12 @@ function drawBody(canvas: HologramCanvas, resources: Resources, scene: Scene, st
     // out and come back on each fragment's own clock. The dim tier's halo reaches nearly as far
     // as the mid tier's because it is the most numerous and the most spread out, so it is the
     // one that lights the bare fill between the clumps; it is the faintest for the same reason.
-    const dimPath = builders[group * 3].detach();
+    const dimPath = pathOf(resources.skia, builders[group * 3]);
     drawParticleHalo(canvas, resources, dimPath, 0.115, 0.3, state.glowGain);
     resources.bodyDimStroke.setStrokeWidth(0.014);
     resources.bodyDimStroke.setAlphaf(0.62);
     canvas.drawPath(dimPath, resources.bodyDimStroke);
-    const midPath = builders[group * 3 + 1].detach();
+    const midPath = pathOf(resources.skia, builders[group * 3 + 1]);
     drawParticleHalo(canvas, resources, midPath, 0.12, 0.34, state.glowGain);
     resources.bodyMidStroke.setStrokeWidth(0.0155);
     resources.bodyMidStroke.setAlphaf(0.85);
@@ -2136,8 +2226,8 @@ function drawBody(canvas: HologramCanvas, resources: Resources, scene: Scene, st
 /** The bright fragments, with the widest of the amber halos. */
 function drawBodyHighlights(canvas: HologramCanvas, resources: Resources, state: FrameState) {
   'worklet';
-  const brightPath = resources.pathBuilders.body[2].detach();
-  const turningBrightPath = resources.pathBuilders.body[5].detach();
+  const brightPath = pathOf(resources.skia, resources.pathBuilders.body[2]);
+  const turningBrightPath = pathOf(resources.skia, resources.pathBuilders.body[5]);
   if (state.bodyShare > 0) {
     for (let group = 0; group < 2; group++) {
       const path = group === 0 ? brightPath : turningBrightPath;
@@ -2196,8 +2286,8 @@ function appendSpokes(builder: PathBuilder, seed: number, envelope: number) {
     // each spoke grows outward from the core's rim and shrinks back into it, so nothing pops
     const reach = (0.31 + 0.4 * hashInteger(seed * 13 + spoke)) * envelope;
     if (reach < 0.01) continue;
-    builder.moveTo(CORE_X + Math.cos(angle) * 0.14, CORE_Y + Math.sin(angle) * 0.14);
-    builder.lineTo(CORE_X + Math.cos(angle) * (0.14 + reach), CORE_Y + Math.sin(angle) * (0.14 + reach));
+    pathMoveTo(builder, CORE_X + Math.cos(angle) * 0.14, CORE_Y + Math.sin(angle) * 0.14);
+    pathLineTo(builder, CORE_X + Math.cos(angle) * (0.14 + reach), CORE_Y + Math.sin(angle) * (0.14 + reach));
   }
 }
 
@@ -2233,7 +2323,7 @@ function drawLines(canvas: HologramCanvas, resources: Resources, scene: Scene, s
   appendComets(builders.lines, scene.comets, state.time);
   const script = state.script;
   if (script.lineKind === 1) appendSpokes(builders.lines, script.lineSeed, script.lineEnvelope);
-  const linePath = builders.lines.detach();
+  const linePath = pathOf(resources.skia, builders.lines);
   resources.bodyGlowStroke.setStrokeWidth(0.034);
   resources.bodyGlowStroke.setAlphaf(0.12 * alpha);
   canvas.drawPath(linePath, resources.bodyGlowStroke);
@@ -2244,7 +2334,7 @@ function drawLines(canvas: HologramCanvas, resources: Resources, scene: Scene, s
     appendSwoosh(builders.swoosh, script.lineSeconds);
     resources.lineStroke.setStrokeWidth(0.006);
     resources.lineStroke.setAlphaf(0.42 * alpha * script.lineEnvelope);
-    canvas.drawPath(builders.swoosh.detach(), resources.lineStroke);
+    canvas.drawPath(pathOf(resources.skia, builders.swoosh), resources.lineStroke);
   }
 }
 
@@ -2271,10 +2361,10 @@ function drawCore(canvas: HologramCanvas, resources: Resources, state: FrameStat
   for (let spike = 0; spike < 11; spike++) {
     const angle = (spike / 11) * Math.PI * 2 + hashInteger(step * 11 + spike) * 0.6;
     const length = 0.03 + 0.05 * hashInteger(step * 17 + spike);
-    knot.moveTo(-0.075, -0.07);
-    knot.lineTo(-0.075 + Math.cos(angle) * length, -0.07 + Math.sin(angle) * length);
+    pathMoveTo(knot, -0.075, -0.07);
+    pathLineTo(knot, -0.075 + Math.cos(angle) * length, -0.07 + Math.sin(angle) * length);
   }
-  const knotPath = knot.detach();
+  const knotPath = pathOf(resources.skia, knot);
   resources.coreGlowStroke.setStrokeWidth(0.075);
   resources.coreGlowStroke.setAlphaf(0.2 * brightness);
   canvas.drawPath(resources.coreRingPath, resources.coreGlowStroke);
@@ -2307,29 +2397,29 @@ function appendTrussDetail(detail: PathBuilder, start: number, trace: number, st
   const cosLate = Math.cos(late);
   const sinLate = Math.sin(late);
   if (trace === 1) {
-    detail.moveTo(cosEarly * 0.955, sinEarly * 0.955);
-    detail.lineTo(cosEarly * 1.005, sinEarly * 1.005);
-    detail.lineTo(cosLate * 1.005, sinLate * 1.005);
+    pathMoveTo(detail, cosEarly * 0.955, sinEarly * 0.955);
+    pathLineTo(detail, cosEarly * 1.005, sinEarly * 1.005);
+    pathLineTo(detail, cosLate * 1.005, sinLate * 1.005);
   } else if (trace === 2) {
-    detail.moveTo(cosEarly * 0.95, sinEarly * 0.95);
-    detail.lineTo(cosEarly * 0.99, sinEarly * 0.99);
-    detail.lineTo(cosLate * 0.99, sinLate * 0.99);
-    detail.lineTo(cosLate * 1.03, sinLate * 1.03);
+    pathMoveTo(detail, cosEarly * 0.95, sinEarly * 0.95);
+    pathLineTo(detail, cosEarly * 0.99, sinEarly * 0.99);
+    pathLineTo(detail, cosLate * 0.99, sinLate * 0.99);
+    pathLineTo(detail, cosLate * 1.03, sinLate * 1.03);
   } else if (trace === 3) {
-    detail.moveTo(cosEarly * 1.02, sinEarly * 1.02);
-    detail.lineTo(cosLate * 1.02, sinLate * 1.02);
-    detail.moveTo((cosEarly + cosLate) * 0.4725, (sinEarly + sinLate) * 0.4725);
-    detail.lineTo((cosEarly + cosLate) * 0.5, (sinEarly + sinLate) * 0.5);
+    pathMoveTo(detail, cosEarly * 1.02, sinEarly * 1.02);
+    pathLineTo(detail, cosLate * 1.02, sinLate * 1.02);
+    pathMoveTo(detail, (cosEarly + cosLate) * 0.4725, (sinEarly + sinLate) * 0.4725);
+    pathLineTo(detail, (cosEarly + cosLate) * 0.5, (sinEarly + sinLate) * 0.5);
   }
   if (strut > 0) {
     // a pair of struts 0.02R apart hanging from the inner rail toward the centre
     const tangentX = -sinEarly * 0.02;
     const tangentY = cosEarly * 0.02;
     const inner = 0.935 - strut;
-    detail.moveTo(cosEarly * 0.935, sinEarly * 0.935);
-    detail.lineTo(cosEarly * inner, sinEarly * inner);
-    detail.moveTo(cosEarly * 0.935 + tangentX, sinEarly * 0.935 + tangentY);
-    detail.lineTo(cosEarly * inner + tangentX, sinEarly * inner + tangentY);
+    pathMoveTo(detail, cosEarly * 0.935, sinEarly * 0.935);
+    pathLineTo(detail, cosEarly * inner, sinEarly * inner);
+    pathMoveTo(detail, cosEarly * 0.935 + tangentX, sinEarly * 0.935 + tangentY);
+    pathLineTo(detail, cosEarly * inner + tangentX, sinEarly * inner + tangentY);
   }
 }
 
@@ -2355,8 +2445,8 @@ function appendTruss(builders: Resources['pathBuilders'], truss: number[], weigh
     appendArc(builders.trussHaze, 0, 0, 0.985, start, sweep);
     const cosStart = Math.cos(start);
     const sinStart = Math.sin(start);
-    builders.trussRungs.moveTo(cosStart * 0.935, sinStart * 0.935);
-    builders.trussRungs.lineTo(cosStart * 1.035, sinStart * 1.035);
+    pathMoveTo(builders.trussRungs, cosStart * 0.935, sinStart * 0.935);
+    pathLineTo(builders.trussRungs, cosStart * 1.035, sinStart * 1.035);
     if (visible < 0.9) continue;
     appendTrussDetail(builders.trussDetail, start, truss[offset + 2], truss[offset + 3]);
   }
@@ -2388,11 +2478,11 @@ function drawTruss(canvas: HologramCanvas, resources: Resources, scene: Scene, s
   const cache = resources.trussCache;
   if (cache.weight !== weight) {
     cache.shown = appendTruss(builders, scene.truss, weight);
-    cache.outer = builders.truss.detach();
-    cache.inner = builders.trussInner.detach();
-    cache.haze = builders.trussHaze.detach();
-    cache.rungs = builders.trussRungs.detach();
-    cache.detail = builders.trussDetail.detach();
+    cache.outer = pathOf(resources.skia, builders.truss);
+    cache.inner = pathOf(resources.skia, builders.trussInner);
+    cache.haze = pathOf(resources.skia, builders.trussHaze);
+    cache.rungs = pathOf(resources.skia, builders.trussRungs);
+    cache.detail = pathOf(resources.skia, builders.trussDetail);
     cache.weight = weight;
   }
   const shown = cache.shown;
@@ -2411,12 +2501,12 @@ function drawTruss(canvas: HologramCanvas, resources: Resources, scene: Scene, s
       const angle = clockRadians(ticks[offset]);
       const half = ticks[offset + 1] * 0.5 * smooth01((onScreen - 30) / 20) * smooth01((150 - onScreen) / 20);
       if (half < 0.004) continue;
-      builders.ringTicks.moveTo(Math.cos(angle) * (1 - half), Math.sin(angle) * (1 - half));
-      builders.ringTicks.lineTo(Math.cos(angle) * (1 + half), Math.sin(angle) * (1 + half));
+      pathMoveTo(builders.ringTicks, Math.cos(angle) * (1 - half), Math.sin(angle) * (1 - half));
+      pathLineTo(builders.ringTicks, Math.cos(angle) * (1 + half), Math.sin(angle) * (1 + half));
     }
     resources.trussStroke.setStrokeWidth(0.009);
     resources.trussStroke.setAlphaf((0.15 + 0.6 * script.ringWeight) * state.rimAlpha);
-    canvas.drawPath(builders.ringTicks.detach(), resources.trussStroke);
+    canvas.drawPath(pathOf(resources.skia, builders.ringTicks), resources.trussStroke);
   }
   if (shown > 0) {
     // leading, the ladder ring is a bold gold band (shot d, shot b's box-frame ribbon);
@@ -2589,10 +2679,10 @@ function drawCrescent(canvas: HologramCanvas, resources: Resources, scene: Scene
   const builders = resources.pathBuilders.crescent;
   const spread = state.spread;
   appendCrescent(builders, scene.crescentPieces, state, growth);
-  const thin = builders[0].detach();
-  const medium = builders[1].detach();
-  const wide = builders[2].detach();
-  const core = builders[3].detach();
+  const thin = pathOf(resources.skia, builders[0]);
+  const medium = pathOf(resources.skia, builders[1]);
+  const wide = pathOf(resources.skia, builders[2]);
+  const core = pathOf(resources.skia, builders[3]);
   // The bloom holds while the crescent splits. It lights more than half the limb, so dimming it
   // would pull the measured silhouette in, and the film's does not shrink while he speaks — its
   // width goes up, if anything. What leaves on "Doctor." is the hot core inside the crescent,
@@ -2679,12 +2769,12 @@ function drawFray(canvas: HologramCanvas, resources: Resources, scene: Scene, st
     const y = streaks[offset];
     // leaving the limb at about 0.3 R/s, bright head first
     const head = Math.sqrt(1 - y * y) * 0.96 + 0.3 * life;
-    builder.moveTo(head - streaks[offset + 1] * visible, y);
-    builder.lineTo(head, y);
+    pathMoveTo(builder, head - streaks[offset + 1] * visible, y);
+    pathLineTo(builder, head, y);
   }
   resources.frayStroke.setStrokeWidth(0.011);
   resources.frayStroke.setAlphaf(0.8);
-  canvas.drawPath(builder.detach(), resources.frayStroke);
+  canvas.drawPath(pathOf(resources.skia, builder), resources.frayStroke);
 }
 
 // ---- chip bursts --------------------------------------------------------------------------
@@ -2704,11 +2794,11 @@ function appendSlab(
   const alongY = tangentY * halfTangential;
   const outX = tangentY * halfRadial;
   const outY = -tangentX * halfRadial;
-  builder.moveTo(centreX - alongX - outX, centreY - alongY - outY);
-  builder.lineTo(centreX + alongX - outX, centreY + alongY - outY);
-  builder.lineTo(centreX + alongX + outX, centreY + alongY + outY);
-  builder.lineTo(centreX - alongX + outX, centreY - alongY + outY);
-  builder.close();
+  pathMoveTo(builder, centreX - alongX - outX, centreY - alongY - outY);
+  pathLineTo(builder, centreX + alongX - outX, centreY + alongY - outY);
+  pathLineTo(builder, centreX + alongX + outX, centreY + alongY + outY);
+  pathLineTo(builder, centreX - alongX + outX, centreY - alongY + outY);
+  pathClose(builder);
 }
 
 /**
@@ -2805,8 +2895,8 @@ function drawChips(canvas: HologramCanvas, resources: Resources, state: FrameSta
   for (let chip = 0; chip < chips; chip++) {
     appendBurstChip(bodies, cores, count * 211 + chip * 17, chip, base, split, age, flight, breakUp, size);
   }
-  const bodyPath = bodies.detach();
-  const corePath = cores.detach();
+  const bodyPath = pathOf(resources.skia, bodies);
+  const corePath = pathOf(resources.skia, cores);
   // a soft edge: a faint wide outline, then the solid slab, then its hot middle
   resources.chipGlowStroke.setStrokeWidth(0.028);
   resources.chipGlowStroke.setAlphaf(0.5);
@@ -2833,26 +2923,27 @@ function drawAccents(canvas: HologramCanvas, resources: Resources, state: FrameS
     const startX = Math.cos(anchor) * 0.42;
     const startY = Math.sin(anchor) * 0.42;
     const length = 0.35 + 0.3 * hashInteger(script.lineSeed * 5);
-    builders.lightning.moveTo(startX, startY);
+    pathMoveTo(builders.lightning, startX, startY);
     for (let joint = 1; joint <= 8; joint++) {
       const along = (joint / 8) * length;
       const jag = (hashInteger(filmFrame * 29 + joint) - 0.5) * 0.07;
-      builders.lightning.lineTo(
+      pathLineTo(
+        builders.lightning,
         startX + Math.cos(anchor) * along - Math.sin(anchor) * jag,
         startY + Math.sin(anchor) * along + Math.cos(anchor) * jag,
       );
     }
     resources.lightningStroke.setStrokeWidth(0.008);
     resources.lightningStroke.setAlphaf(0.85 * alpha * script.lineEnvelope);
-    canvas.drawPath(builders.lightning.detach(), resources.lightningStroke);
+    canvas.drawPath(pathOf(resources.skia, builders.lightning), resources.lightningStroke);
   }
   if (script.redVisible) {
     const angle = clockRadians(360 * hashInteger(script.lineSeed * 7));
-    builders.red.moveTo(Math.cos(angle) * 0.9, Math.sin(angle) * 0.9);
-    builders.red.lineTo(Math.cos(angle + 0.12) * 0.9, Math.sin(angle + 0.12) * 0.9);
+    pathMoveTo(builders.red, Math.cos(angle) * 0.9, Math.sin(angle) * 0.9);
+    pathLineTo(builders.red, Math.cos(angle + 0.12) * 0.9, Math.sin(angle + 0.12) * 0.9);
     resources.redStroke.setStrokeWidth(0.016);
     resources.redStroke.setAlphaf(0.9 * alpha);
-    canvas.drawPath(builders.red.detach(), resources.redStroke);
+    canvas.drawPath(pathOf(resources.skia, builders.red), resources.redStroke);
   }
 }
 
@@ -2905,8 +2996,8 @@ function appendDial(band: PathBuilder, inner: PathBuilder, spokes: PathBuilder, 
     for (let step = 0; step < 14 * arcShare; step++) {
       const angleFrom = (100 - step * 10.5) * DEGREES_TO_RADIANS;
       const angleTo = (100 - (step + 1) * 10.5) * DEGREES_TO_RADIANS;
-      band.moveTo(0.45 + Math.cos(angleFrom) * 0.55, 0.05 + Math.sin(angleFrom) * 0.92);
-      band.lineTo(0.45 + Math.cos(angleTo) * 0.55, 0.05 + Math.sin(angleTo) * 0.92);
+      pathMoveTo(band, 0.45 + Math.cos(angleFrom) * 0.55, 0.05 + Math.sin(angleFrom) * 0.92);
+      pathLineTo(band, 0.45 + Math.cos(angleTo) * 0.55, 0.05 + Math.sin(angleTo) * 0.92);
     }
   }
   const spokeShare = 1 - smooth01((intro - 0.5) / 0.14);
@@ -2923,8 +3014,8 @@ function appendDial(band: PathBuilder, inner: PathBuilder, spokes: PathBuilder, 
     const startY = Math.sin(angle) * start;
     // a third of them run the whole way in; the rest stop between half way and the hub
     const reach = hashInteger(spoke * 19 + 11) < 0.34 ? 1 : 0.42 + 0.46 * hashInteger(spoke * 23 + 5);
-    spokes.moveTo(startX, startY);
-    spokes.lineTo(startX + (0.4 - startX) * reach, startY - startY * reach);
+    pathMoveTo(spokes, startX, startY);
+    pathLineTo(spokes, startX + (0.4 - startX) * reach, startY - startY * reach);
   }
 }
 
@@ -2945,8 +3036,8 @@ function drawIntro(canvas: HologramCanvas, resources: Resources, state: FrameSta
   const builders = resources.pathBuilders;
   appendDial(builders.introBand, builders.introInner, builders.introSpokes, intro, state.time);
   const brighten = 0.65 + 0.35 * smooth01(intro / 0.3);
-  const dialPath = builders.introBand.detach();
-  const dialInnerPath = builders.introInner.detach();
+  const dialPath = pathOf(resources.skia, builders.introBand);
+  const dialInnerPath = pathOf(resources.skia, builders.introInner);
   resources.introGlowStroke.setStrokeWidth(0.13);
   resources.introGlowStroke.setAlphaf(0.2 * dialAlpha * brighten);
   canvas.drawPath(dialPath, resources.introGlowStroke);
@@ -2961,7 +3052,7 @@ function drawIntro(canvas: HologramCanvas, resources: Resources, state: FrameSta
   canvas.drawPath(dialInnerPath, resources.introBandCoreStroke);
   resources.introSpokeStroke.setStrokeWidth(0.007);
   resources.introSpokeStroke.setAlphaf(0.75 * dialAlpha);
-  canvas.drawPath(builders.introSpokes.detach(), resources.introSpokeStroke);
+  canvas.drawPath(pathOf(resources.skia, builders.introSpokes), resources.introSpokeStroke);
 }
 
 /** Draws one frame of the hologram into a size×size square. */
@@ -3015,7 +3106,7 @@ export function drawHologram(
   'worklet';
   // start clean: a previous frame that threw mid-way must not leak half-built contours
   const allPathBuilders = resources.allPathBuilders;
-  for (let i = 0; i < allPathBuilders.length; i++) allPathBuilders[i].reset();
+  for (let i = 0; i < allPathBuilders.length; i++) pathReset(allPathBuilders[i]);
 
   const state = analyseFrame(frame, size, scene);
   canvas.save();
