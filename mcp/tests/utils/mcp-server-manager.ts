@@ -109,8 +109,15 @@ export async function startMcpServerForTestingPurposes(): Promise<void> {
     stderr: 'inherit',
   });
 
-  // Suppress process exit errors during cleanup - server is intentionally killed
-  mcpServerProcess.unref();
+  // **Deliberately not unref'd**, which it was, under a comment saying it suppressed exit errors
+  // during cleanup. That is not what `unref` does. It tells Bun to stop counting this child as a
+  // reason to stay alive — and Bun then reaps what it is no longer counting, announcing it as
+  // "killed N dangling process". In CI that line appeared between "MCP server is ready!" and the
+  // first test, and every connection after it failed: the server had been started, checked,
+  // confirmed to be serving tools, and then killed by the runner before a single test ran.
+  //
+  // Nothing is leaked by holding the reference. `stopMcpServer` runs in `afterAll` and kills it
+  // twice over — by port and by handle — and Bun kills its remaining children when it exits.
 
   // Wait for server to be ready with exponential backoff
   // Server needs time to initialize: load environment, start Express, initialize scheduler

@@ -1,0 +1,248 @@
+# This workflow is managed by gh actions-lock.
+
+name: Play internal testing
+
+# Builds the phone *and* watch bundles and publishes them as two releases on two tracks.
+#
+# Two artifacts, because the two apps share a package name and an upload key and differ by a version
+# code and a `uses-feature` — see `docs/play-store.md`. Publishing only the phone puts Jarvis on the
+# phone and nothing on the watch, which is the whole reason any of this exists.
+#
+# Two *releases*, because Play stopped accepting a watch artifact on a mobile track: Wear OS has had
+# tracks of its own since March 2023. Sharing one release also meant the watch being refused took the
+# phone's release down with it. See the note above the publish steps.
+#
+# Internal testing rather than a public release: it goes to a named list of up to a hundred testers,
+# is available within minutes rather than after a review, and never appears in search. It is also
+# the only track that can get the app onto a paired Wear OS watch without a public listing, which is
+# what `JARVIS_IS_ON_PLAY` in `mobile/src/watch-card.tsx` is waiting for.
+#
+# Every push to a pull request publishes, so the build on your phone and your watch is the branch
+# you are working on without anybody having to go and press anything. Only pushes that could change
+# the app: the same paths the APK workflow watches, because a README edit has no way into a bundle.
+#
+# Each one costs a `versionCode`, which can never be reused — there are two billion of them and the
+# run number is what spends them, so this is not a real constraint, but it is why nothing here
+# retries and why the bundle is kept as an artifact even when the upload fails.
+#
+# What it needs, and where each one comes from, is in `docs/play-store.md`.
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'mobile/**'
+      # The sphere itself lives in its own package now, shared with the watch.
+      - 'hologram/**'
+      - 'bun.lock'
+      - 'bunfig.toml'
+      - 'package.json'
+      - 'turbo.json'
+      - '.github/workflows/play-internal.yml'
+  workflow_dispatch:
+    inputs:
+      track:
+        description: 'Which Play track to upload to'
+        type: choice
+        default: internal
+        options:
+          - internal
+          - alpha
+        required: true
+      wearTrack:
+        description: 'Which Wear OS track the watch bundle goes to — Play keeps these separate from the phone'
+        type: choice
+        default: 'wear:internal'
+        options:
+          - 'wear:internal'
+          - 'wear:beta'
+        required: true
+      status:
+        description: 'draft leaves it for you to release by hand; completed sends it to testers'
+        type: choice
+        default: completed
+        options:
+          - completed
+          - draft
+        required: true
+
+# Least privilege by default: the job below opts into exactly what it needs.
+permissions: {}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+
+    env:
+      # The only secret this workflow knows about. Every HEY_JARVIS_* value it needs — the upload
+      # keystore, its passwords, the Play publisher account — is resolved at run time from the
+      # `Jarvis` 1Password vault by `.scripts/run-with-env.sh`, exactly as `build.yml` does. Nothing
+      # here is mirrored into GitHub Actions secrets, so adding a value is a 1Password change and
+      # not a repository one.
+      OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+
+    steps:
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          # The runner's Android SDK is what this job builds with.
+          android: false
+          dotnet: true
+          haskell: true
+          large-packages: false
+          docker-images: false
+          swap-storage: false
+
+      - name: Checkout
+        uses: actions/checkout@v6.1.0
+        with:
+          persist-credentials: false
+
+      # Straight on the runner rather than in the dev container used by CI: the runner image already
+      # carries the Android SDK with its licences accepted, which the container does not.
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2.2.0
+        with:
+          # `packageManager` in package.json, so this cannot drift from the pin.
+          bun-version-file: package.json
+
+      # React Native's Gradle plugin bundles the JavaScript by running `node` itself, and 0.86
+      # refuses anything older than 20.19.4.
+      - name: Set up Node
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 22
+          package-manager-cache: false
+
+      - name: Set up JDK
+        uses: actions/setup-java@v6.0.0
+        with:
+          distribution: temurin
+          java-version: 17
+
+      # This job runs straight on the runner rather than in the dev container, which is where the
+      # `op` CLI normally comes from — so it has to be installed. `run-with-env.sh` shells out to
+      # `op run`, and without this it would fail with "1Password CLI is not authenticated".
+      - name: Set up the 1Password CLI
+        uses: 1password/install-cli-action@v4.1.0
+
+      - name: Restore Gradle dependency cache
+        uses: actions/cache@v5.1.0
+        with:
+          path: |
+            ~/.gradle/wrapper
+            ~/.gradle/caches/modules-2
+          key: gradle-${{ runner.os }}-${{ hashFiles('bun.lock', 'mobile/app.config.ts', 'mobile/modules/*/android/build.gradle') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # No secrets listed: `build:aab` goes through `run-with-env.sh mobile/op.env`, which resolves
+      # the four signing values from 1Password with the token above. The same command a laptop runs.
+      #
+      # **`--concurrency=1`, and it is not an optimisation to remove.** Turbo runs filtered tasks in
+      # parallel by default, and these two are Gradle builds that compile the *same*
+      # `@react-native/gradle-plugin` out of the one shared `node_modules/.bun/...` directory. Run
+      # together they write the same Kotlin incremental caches at the same time and both die with
+      # "Could not close incremental caches" and a dead Kotlin daemon, which is exactly how the
+      # first run of this workflow failed. One after the other is slower and builds.
+      - name: Build the signed bundles
+        env:
+          # Play orders uploads by this and refuses a repeat, so it has to rise every time. The run
+          # number does, for the life of the workflow, and never goes backwards. The phone takes
+          # twice it and the watch one more, because a version code has to be unique across every
+          # form factor in a listing — see `.scripts/expo-release-signing.js`.
+          JARVIS_ANDROID_VERSION_CODE: ${{ github.run_number }}
+        run: bunx turbo build:aab --filter=mobile --filter=watch --concurrency=1
+
+      # Kept whatever happens to the upload. A bundle that Play rejected is still the bundle that
+      # was built, and the only copy of it: the next run gets a different versionCode and cannot
+      # reproduce this one.
+      - name: Keep the bundles as an artifact
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: jarvis-${{ github.run_number }}
+          path: |
+            dist/mobile-aab/jarvis.aab
+            dist/watch-aab/jarvis.aab
+          if-no-files-found: error
+          retention-days: 30
+
+      # Straight from 1Password into a file, because the action takes a path and because a value
+      # that never enters the environment cannot be printed by anything downstream. Its own env file
+      # rather than `mobile/op.env`: nothing runnable on a laptop uploads to Play, so listing it
+      # there would make every local bundle build stop to fetch a secret it was not going to use.
+      - name: Fetch the Play publisher account
+        run: |
+          bash ./.scripts/run-with-env.sh mobile/op.publish.env \
+            bash -c 'printf "%s" "$HEY_JARVIS_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON" > play-publisher.json'
+
+      # **The phone goes first, and on its own.** These used to be one upload of two bundles into one
+      # release, which is how Play delivered a watch app for years. It is not how Play does it now:
+      # since March 2023 Wear OS has tracks of its own, and the mobile track refuses a watch artifact
+      # outright — "requires the Wear OS system feature android.hardware.type.watch. To publish this
+      # release on the current track, remove this artifact."
+      #
+      # Sharing a release also meant sharing a fate. Both bundles uploaded, the commit was refused
+      # over the watch, and the phone did not publish either — so a watch that Play would not take
+      # blocked the phone app entirely. Two releases on two tracks cannot do that to each other.
+      - name: Publish the phone to Play
+        id: publish-phone
+        uses: r0adkll/upload-google-play@v1.1.3
+        with:
+          serviceAccountJson: play-publisher.json
+          packageName: com.ffmathy.heyjarvis
+          releaseFiles: dist/mobile-aab/jarvis.aab
+          # The inputs only exist when this was started by hand. A pull request push takes the
+          # defaults, which are the ones worth having automatically: straight to the testers.
+          track: ${{ inputs.track || 'internal' }}
+          status: ${{ inputs.status || 'completed' }}
+
+      # And the watch to the Wear OS track of the same name.
+      #
+      # `wear:internal` is not a guess, and it is not what Google documents. The tracks page says a
+      # form factor's track is `"[prefix]:defaultTrackName"` and gives `"wear:production"`,
+      # `"wear:beta"` and **`"wear:qa"`** as the Wear OS set — and `wear:qa` does not exist. The API
+      # itself is the authority, and when handed a name it does not know it lists the ones it does:
+      #
+      #   Track "wear:qa" could not be found. Available tracks are:
+      #   production,beta,alpha,internal,wear:beta,wear:internal,wear:production
+      #
+      # Which is also how we know the Wear OS form factor is already switched on for this app: the
+      # `wear:` tracks would not be there otherwise. If this step ever fails with "could not be
+      # found" again, read the list in the error rather than the documentation.
+      - name: Publish the watch to Play
+        id: publish-watch
+        uses: r0adkll/upload-google-play@v1.1.3
+        with:
+          serviceAccountJson: play-publisher.json
+          packageName: com.ffmathy.heyjarvis
+          releaseFiles: dist/watch-aab/jarvis.aab
+          track: ${{ inputs.wearTrack || 'wear:internal' }}
+          status: ${{ inputs.status || 'completed' }}
+
+      # Both bundles upload and then the commit is refused, which Play reports either as the Wear OS
+      # message below or — with no detail at all — as "Internal error encountered". The action can
+      # add nothing, because that is the entire message Google sends it. So say here what it has
+      # always been, rather than leaving the next person to work it out from the run history again.
+      - name: Explain a failed publish
+        if: failure() && (steps.publish-phone.outcome == 'failure' || steps.publish-watch.outcome == 'failure')
+        run: |
+          echo "::notice title=Publishing failed::Both bundles are kept as the jarvis-${{ github.run_number }} artifact, so nothing needs rebuilding."
+          if [ "${{ steps.publish-phone.outcome }}" = 'success' ]; then
+            echo "The PHONE published. Only the watch failed, and it cannot affect the phone's release."
+          fi
+          echo "If the watch step failed with 'Track not found', or names 'android.hardware.type.watch',"
+          echo "the app is not opted in to the Wear OS form factor yet. That is a Play Console setting,"
+          echo "not a code change, and the wear track does not exist until it is done:"
+          echo "  Test and release -> Advanced settings -> Form factors -> Add form factor -> Wear OS"
+          echo "then agree to the Wear OS review policies. See docs/play-store.md section 3 and section 8."
+
+      # However the upload went, and even if the job was cancelled part way through it.
+      - name: Shred the publisher account
+        if: always()
+        run: rm -f play-publisher.json

@@ -1,0 +1,107 @@
+# This workflow is managed by gh actions-lock.
+
+name: Mobile Web
+
+# Publishes the app's web build to GitHub Pages, so the hologram can be watched
+# in a browser without installing anything.
+#
+# What is on the page is the real app: the same conversation screen, the same
+# hologram, drawn by CanvasKit instead of native Skia. Taking over the assist
+# gesture is Android's alone and the app says so when it is on web, so the page
+# is for looking at Jarvis and talking to him, not for replacing your assistant.
+#
+# Runs on main, and by hand from any branch — which is the useful one while the
+# hologram is being worked on, since a branch's build can be put up and looked at
+# without merging it first. Pages keeps one live site, so the last run wins.
+on:
+  push:
+    # Working branches as well as main: the point of the page is to look at the
+    # hologram while it is being changed, and a workflow can only be started by
+    # hand if it is on the default branch — which a branch's version never is.
+    # Pages keeps one live site, so whichever pushed last is what is up.
+    branches: [ main, 'claude/**' ]
+    paths:
+      - 'mobile/**'
+      # The sphere itself lives in its own package now, shared with the watch.
+      - 'hologram/**'
+      - 'bun.lock'
+      - 'bunfig.toml'
+      - 'package.json'
+      - 'turbo.json'
+      - '.github/workflows/mobile-web.yml'
+      # The lockfile pins the actions this workflow runs, so it changes what runs.
+      - '.github/workflows/actions.lock'
+  workflow_dispatch:
+
+# Least privilege by default: the job below opts into exactly what it needs.
+permissions: {}
+
+# Two deployments cannot be in flight at once — Pages has one live site — but a
+# run already under way is left to finish rather than cancelled, so a push while
+# one is deploying does not leave the site half-written.
+concurrency:
+  group: mobile-web-pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    permissions:
+      # Checking the code out.
+      contents: read
+      # Uploading the built site and pointing Pages at it.
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.1.0
+        with:
+          # Nothing here needs to push; never leave a usable token in .git/config.
+          persist-credentials: false
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2.2.0
+        with:
+          # `packageManager` in package.json, so this cannot drift from the pin.
+          bun-version-file: package.json
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # `setup-skia-web` copies canvaskit.wasm into mobile/public/, which the export
+      # publishes as-is. The file is gitignored — it comes from the Skia package
+      # rather than the repository — so without this the site goes up without it,
+      # the browser's fetch for it returns the 404 page, instantiating that throws,
+      # and the hologram's error boundary holds its space empty. Which is exactly
+      # how the first published page looked: everything but Jarvis.
+      - name: Fetch CanvasKit
+        run: bunx turbo initialize --filter=mobile
+
+      - name: Configure Pages
+        id: pages
+        uses: actions/configure-pages@v6.0.0
+
+      # A project site lives under /<repo>/, so the build is told its own prefix —
+      # see `experiments.baseUrl` in app.config.ts. Without it every asset the page
+      # asks for is looked for at the domain root and comes back 404.
+      - name: Export the web build
+        env:
+          PAGES_BASE_URL: ${{ steps.pages.outputs.base_path }}
+        run: bunx expo export --platform web --output-dir dist --clear
+        working-directory: mobile
+
+      - name: Upload the site
+        uses: actions/upload-pages-artifact@v5.0.0
+        with:
+          path: mobile/dist
+
+      - name: Deploy to Pages
+        id: deploy
+        uses: actions/deploy-pages@v5.0.1

@@ -1,0 +1,22 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "jsx": "react-jsx",
+    // Nothing emits from here: the apps' bundlers compile these sources along
+    // with their own, so declarations would be output nobody reads. The same
+    // reasoning as in `mobile/tsconfig.json`, and it is why `composite` is off.
+    "outDir": "../dist/hologram-tsc",
+    "lib": ["esnext", "dom"],
+    "types": ["bun-types"],
+    "esModuleInterop": true,
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "incremental": false
+  },
+  // `.scripts` is in here too: the showcase renderer is the only thing in the repository that
+  // drives the drawing outside a test, and it is exactly the kind of code that rots silently.
+  "include": ["src/**/*.ts", "src/**/*.tsx", ".scripts/**/*.ts"],
+  "exclude": ["**/node_modules", "**/dist"]
+}

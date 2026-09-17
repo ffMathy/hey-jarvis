@@ -7,7 +7,10 @@
   "workspaces": [
     "mcp",
     "elevenlabs",
-    "home-assistant-voice-firmware"
+    "hologram",
+    "home-assistant-voice-firmware",
+    "mobile",
+    "watch"
   ],
   "scripts": {
     "build": "turbo build",

@@ -133,6 +133,12 @@ describe('routePromptWorkflow', () => {
     // travel with the loop rather than living in the agent prompt.
     expect(outcome.instructions).toContain('call it again straight away');
     expect(outcome.instructions).toContain('never the end of the request');
+
+    // And the one request the loop must not claim: asked to hang up while the plan still had
+    // the floor, Jarvis routed it, was told no agent could handle it, and said he was unable
+    // to end the call — on a line that stayed open. Only his own end_call can hang up.
+    expect(outcome.instructions).toContain('end_call');
+    expect(outcome.instructions).toContain('never routed');
   });
 
   it('tells Jarvis to end the call when the request is fire-and-forget', async () => {
@@ -207,6 +213,9 @@ describe('getNextInstructionsWorkflow', () => {
     const closing = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
 
     expect(closing.instructions).toContain('All tasks have completed');
+    // The closing instruction sends anything further back through routing, so it carries the
+    // hang-up exception too — a request to end the call arriving here must reach end_call.
+    expect(closing.instructions).toContain('end_call');
     expect(closing.taskIdsInProgress).toEqual([]);
     // The unanswered one is reported rather than dropped: the caller should hear that the
     // calendar was asked and did not answer, not simply never hear of it.

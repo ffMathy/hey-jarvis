@@ -1,0 +1,20 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    // Nothing emits from here — Metro compiles the sources for the watch — but an
+    // emit with no `outDir` would land beside them, and this project is referenced
+    // from the workspace root. The same note as in `mobile/tsconfig.json`.
+    "outDir": "../dist/watch-tsc",
+    "jsx": "react-jsx",
+    "lib": ["esnext", "dom"],
+    "types": ["bun-types"],
+    "esModuleInterop": true,
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "incremental": false
+  },
+  "include": ["index.ts", "app.config.ts", "src/**/*.ts", "src/**/*.tsx"],
+  "exclude": ["**/node_modules", "**/.expo", "**/android", "**/dist"]
+}

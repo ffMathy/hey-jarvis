@@ -66,6 +66,30 @@ const instructionsOutputSchema = z.object({
 export { inputSchema, instructionsOutputSchema };
 
 /**
+ * The one thing the loop must not swallow: a request to hang up.
+ *
+ * "Send anything further through routePromptWorkflow, however small it sounds" is true of
+ * every request except the one that is about the call rather than about the world. Asked to
+ * end the call while the loop still had the floor, Jarvis did as the loop said and routed it
+ * — the router answered "none of the specialized agents can handle this request", and he told
+ * sir he was "unable to directly end the call from this interface" on a line that stayed
+ * open. Nothing on the other side of that tool can hang up a call; only his own `end_call`
+ * can, and `agent-prompt.md` has always said so. The loop's instruction simply arrives
+ * fresher than the prompt, so the exception has to be stated where the rule is — in the poll
+ * instruction too, because the request can land while the plan is still running.
+ *
+ * Deliberately narrow. `agent-prompt.integration.spec.ts` asserts, two tests apart, that a
+ * follow-up about the blinds and lights *is* routed and that a request to end the call is
+ * *not* — same conversational position, opposite expectations — so this names the call itself
+ * and nothing else.
+ */
+const CONVERSATION_CONTROL_EXCEPTION =
+  'One kind of request is never routed, because it is about this call rather than about the world: ' +
+  'if he says goodbye, says that will be all, or asks you to hang up or end the call, use your own ' +
+  'end_call tool and do not send it through routePromptWorkflow. Nothing on the other side of that ' +
+  'tool can hang up a phone call, so routing it wastes his time and leaves him on an open line.';
+
+/**
  * Instruction strings handed back to Jarvis. They are part of the outward contract —
  * `elevenlabs/src/assets/agent-prompt.md` points the agent at this field — so treat them as
  * API surface rather than log messages.
@@ -88,7 +112,9 @@ const INSTRUCTIONS = {
   // so it is where the shape of the rest of the loop belongs: keep calling, keep following
   // each response, and treat a failed call as something to retry rather than as the end of
   // the request.
-  poll: 'The request is now being processed in the background. Say a short line in your own voice telling the user you are on it — under six words, spoken now, because he is otherwise left sitting in silence while this runs. This is the only such line he should hear, so give it here and nowhere else. Then call getNextInstructionsWorkflow to check on the status and receive the next instructions, and keep doing exactly what each response tells you until one of them says every task has completed. If a call hands you an error instead of instructions, call it again straight away and say nothing about it — those failures are transient, and only when several attempts in a row have failed should you tell the user plainly what you could not find out. An error is never the end of the request.',
+  poll:
+    'The request is now being processed in the background. Say a short line in your own voice telling the user you are on it — under six words, spoken now, because he is otherwise left sitting in silence while this runs. This is the only such line he should hear, so give it here and nowhere else. Then call getNextInstructionsWorkflow to check on the status and receive the next instructions, and keep doing exactly what each response tells you until one of them says every task has completed. If a call hands you an error instead of instructions, call it again straight away and say nothing about it — those failures are transient, and only when several attempts in a row have failed should you tell the user plainly what you could not find out. An error is never the end of the request. ' +
+    CONVERSATION_CONTROL_EXCEPTION,
   stillProcessing:
     'Still processing your request. Call getNextInstructionsWorkflow again to wait a bit longer for it to complete. Say nothing to the user in the meantime — he has already been told you are on it, and has no use for a running commentary on the waiting.',
   summarize:
@@ -108,7 +134,8 @@ const ALL_TASKS_COMPLETED_INSTRUCTIONS =
   'That finishes this request, but not the conversation: if the user asks for anything further, ' +
   'send it through routePromptWorkflow exactly as you did this one, however small it sounds and ' +
   'however many times you have already done it. Answering a later request from ' +
-  'memory, or promising to look and then calling nothing, leaves him with nothing at all.';
+  'memory, or promising to look and then calling nothing, leaves him with nothing at all. ' +
+  CONVERSATION_CONTROL_EXCEPTION;
 
 function moreToComeInstructions(): string {
   return (

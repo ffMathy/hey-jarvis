@@ -171,6 +171,9 @@ home-assistant-voice-firmware/dist/
 # Playwright test artifacts
 playwright-report/
 test-results/
+# Where the Playwright MCP server drops page snapshots and console logs while something is being
+# debugged in a browser. Three of them were committed once, by a `git add` that took the whole tree.
+.playwright-mcp/
 cloudflared.deb
 
 # TypeScript build output for specs
