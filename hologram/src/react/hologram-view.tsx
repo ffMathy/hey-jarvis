@@ -69,6 +69,20 @@ export interface JarvisHologramProps {
    */
   particleShare?: SharedValue<number>;
   /**
+   * Somewhere to put the most this phone has been seen drawing at the cap, for keeping.
+   *
+   * Different from {@link particleShare}, which is what is being drawn now and falls whenever
+   * something else on the phone gets busy. This only rises, and it is the one worth writing down.
+   */
+  provenShare?: SharedValue<number>;
+  /**
+   * What share to begin at, from whatever was written down last time.
+   *
+   * Left out, the loop starts sparse and climbs, which takes a couple of seconds — and those are
+   * the seconds somebody is looking at him.
+   */
+  startingShare?: number;
+  /**
    * Somewhere to put how long *building* one picture takes, in milliseconds, if anyone is watching.
    *
    * The companion to {@link frameRate}, and together they say where a slow frame goes. A frame has
@@ -184,6 +198,8 @@ function JarvisHologramView({
   leaving = false,
   frameRate,
   particleShare,
+  provenShare,
+  startingShare,
   buildMilliseconds,
   opaque = false,
   background,
@@ -281,7 +297,7 @@ function JarvisHologramView({
   // phone changed while React was remaking a component. Reading the share back out of the value
   // the readout is written to means the answer survives that, and the user is not made to watch
   // the same measurement being taken twice.
-  const density = useSharedValue(createDensityControl(particleShare?.value));
+  const density = useSharedValue(createDensityControl(particleShare?.value || startingShare));
 
   const clock = useFrameCallback((info) => {
     waiting.value += (info.timeSincePreviousFrame ?? DEFAULT_FRAME_MS) / 1000;
@@ -323,6 +339,9 @@ function JarvisHologramView({
       });
       if (particleShare !== undefined) {
         particleShare.value = density.value.density;
+      }
+      if (provenShare !== undefined) {
+        provenShare.value = density.value.proven;
       }
       drawn.value = 0;
       measuring.value = 0;

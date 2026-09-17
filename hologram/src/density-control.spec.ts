@@ -3,6 +3,7 @@ import {
   createDensityControl,
   type DensityControl,
   FEWEST_PARTICLES,
+  startFromRemembered,
   steerDensity,
   TARGET_FRAMES_PER_SECOND,
 } from './density-control';
@@ -132,6 +133,28 @@ describe('deciding how many particles this phone can afford', () => {
     steerDensity(control, 20, 0.5);
 
     expect(control.density).toBeLessThan(0.8);
+  });
+
+  it('remembers the most it was ever seen drawing at the cap, and only upward', () => {
+    const control = createDensityControl();
+    settle(control, phone(1.4), 8);
+    expect(control.proven).toBe(1);
+
+    // Something else gets busy and it has to shed. What it *managed* is still what it managed.
+    settle(control, phone(0.3), 6);
+    expect(control.density).toBeLessThan(0.6);
+    expect(control.proven).toBe(1);
+  });
+
+  it('starts next time a little under what it managed last time', () => {
+    // Exactly at the old number and the first thing that happens is a shed; just under it and the
+    // first thing that happens is the climb finishing.
+    expect(startFromRemembered(0.8)).toBeCloseTo(0.72, 5);
+    expect(startFromRemembered(1)).toBeCloseTo(0.9, 5);
+    // Nothing remembered, and nothing to go on: begin where a phone that has never been asked does.
+    expect(startFromRemembered(0)).toBe(FEWEST_PARTICLES);
+    // And never under the floor, however little it managed.
+    expect(startFromRemembered(0.05)).toBe(FEWEST_PARTICLES);
   });
 
   it('does not hunt across the target once it has arrived', () => {

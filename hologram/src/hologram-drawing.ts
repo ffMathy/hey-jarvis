@@ -325,7 +325,7 @@ const FORMED_APPEARANCE = 0.75;
  * capped in sphere radii too (BACKDROP_REACH). What the extra square costs is the surface it is
  * cleared on, not the picture painted into it.
  */
-export const SPHERE_FRACTION = 0.235;
+export const SPHERE_FRACTION = 0.27;
 /** The outer rim layer rolls clockwise in the screen plane: one turn in about 33 s, as the film's ladder ring. */
 export const ROLL_DEGREES_PER_SECOND = 11;
 /**

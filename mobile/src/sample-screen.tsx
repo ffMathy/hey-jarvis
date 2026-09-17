@@ -1,4 +1,4 @@
-import { PARTICLE_COUNT } from 'hologram';
+import { PARTICLE_COUNT, startFromRemembered } from 'hologram';
 import { LEAVING_SECONDS, useIsForeground } from 'hologram/react/lifecycle';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { BackHandler, Platform, Pressable, useWindowDimensions } from 'react-native';
@@ -11,6 +11,7 @@ import { moodOf, nextSampleMode, type SampleMode } from './sample-mode';
 import { SampleSheet, SHEET_INK, SHEET_INSET, SHEET_SHARE } from './sample-sheet';
 import { useSampleVoice } from './sample-voice';
 import { useSimulatedVoice } from './simulated-voice';
+import { readProvenSparks, rememberProvenSparks } from './spark-memory';
 import { QUIETEST_SPEECH_HERE } from './speech-floor';
 
 interface SampleScreenProps {
@@ -43,6 +44,10 @@ interface SampleScreenProps {
  * the first opens the microphone; see `sample-mode.ts` for the order and `simulated-voice.ts` for
  * where the other two come from.
  */
+/** How often the remembered count is looked at, and how much better it has to be to be written. */
+const REMEMBER_EVERY_MS = 4000;
+const REMEMBER_WHEN_BETTER_BY = 0.03;
+
 /** What a screen reader is told Jarvis is doing, since nothing on screen says it. */
 const MODE_LABELS: Record<SampleMode, string> = {
   microphone: 'Jarvis, listening to your voice. Tap to see him speak.',
@@ -76,7 +81,11 @@ export function SampleScreen({ onLeave }: SampleScreenProps) {
   // Filled in on the UI thread by the hologram, read twice a second by the readout in the corner.
   const frameRate = useSharedValue(0);
   const buildMilliseconds = useSharedValue(0);
-  const particleShare = useSharedValue(1);
+  // Nought means "nothing measured yet", which is what lets the hologram tell a first mount from a
+  // rebuilt one and carry the count across the second.
+  const particleShare = useSharedValue(0);
+  const provenShare = useSharedValue(0);
+  const [startingShare, setStartingShare] = useState<number | undefined>(undefined);
 
   /**
    * Starts the way out, and finishes it once Jarvis has gone.
@@ -113,6 +122,33 @@ export function SampleScreen({ onLeave }: SampleScreenProps) {
   }, [onLeave]);
 
   useEffect(() => () => clearTimeout(going.current), []);
+
+  // What this phone managed last time, so the climb does not have to happen in front of anyone.
+  useEffect(() => {
+    let wanted = true;
+    void readProvenSparks().then((proven) => {
+      if (wanted && proven > 0) {
+        setStartingShare(startFromRemembered(proven));
+      }
+    });
+    return () => {
+      wanted = false;
+    };
+  }, []);
+
+  // And writing it back. Rarely, and only when it has actually gone up: this is a keystore write,
+  // not a counter, and the value only ever rises anyway.
+  useEffect(() => {
+    let written = 0;
+    const timer = setInterval(() => {
+      const proven = provenShare.value;
+      if (proven > written + REMEMBER_WHEN_BETTER_BY) {
+        written = proven;
+        void rememberProvenSparks(proven);
+      }
+    }, REMEMBER_EVERY_MS);
+    return () => clearInterval(timer);
+  }, [provenShare]);
 
   // Summoned again after leaving, this screen is the one that was already here: retracting the
   // assistant's window does not unmount it, so without this it would come back still on its way
@@ -164,6 +200,8 @@ export function SampleScreen({ onLeave }: SampleScreenProps) {
             frameRate={frameRate}
             buildMilliseconds={buildMilliseconds}
             particleShare={particleShare}
+            provenShare={provenShare}
+            startingShare={startingShare}
             opaque
             background={SHEET_INK}
           />

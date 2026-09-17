@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { StyleSheet, useWindowDimensions, View } from 'react-native';
 import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { theme } from './theme';
@@ -68,31 +68,48 @@ export function SampleSheet({
   const sheetHeight = Math.round(height * SHEET_SHARE);
   const below = useSharedValue(sheetHeight);
 
+  /**
+   * The two callbacks, held where their identity cannot start an animation.
+   *
+   * They arrive as fresh closures on every render of the screen above, and the effect below has to
+   * depend on *something* to call them. Depending on the closures meant the effect re-ran on every
+   * render — so the moment `leaving` became true and the screen re-rendered, the arrival animation
+   * started again and drove the sheet back up underneath the departure. Jarvis faded out and the
+   * sheet stayed exactly where it was, for ever.
+   */
+  const announce = useRef({ settled: onSettled, gone: onGone });
   useEffect(() => {
+    announce.current = { settled: onSettled, gone: onGone };
+  }, [onSettled, onGone]);
+
+  const tellSettled = useCallback(() => announce.current.settled(), []);
+  const tellGone = useCallback(() => announce.current.gone(), []);
+
+  /**
+   * One effect for both directions, so they cannot fight.
+   *
+   * It also has to handle arriving *again*: retracting the assistant's window does not unmount
+   * this screen, so a second summoning finds a sheet that is already off the bottom of the screen
+   * and a `leaving` that has just gone back to false. Driven from `leaving` rather than from
+   * mounting, that is simply the other branch.
+   */
+  useEffect(() => {
+    if (leaving) {
+      below.value = withTiming(sheetHeight, { duration: LEAVE_MS, easing: Easing.in(Easing.cubic) }, (finished) => {
+        'worklet';
+        if (finished) {
+          runOnJS(tellGone)();
+        }
+      });
+      return;
+    }
     below.value = withTiming(0, { duration: ARRIVE_MS, easing: Easing.out(Easing.cubic) }, (finished) => {
       'worklet';
       if (finished) {
-        runOnJS(onSettled)();
+        runOnJS(tellSettled)();
       }
     });
-    // Once, on the way in. The height is read at mount and a phone does not turn while an
-    // assistant is being summoned into it.
-  }, [below, onSettled]);
-
-  const slideAway = useCallback(() => {
-    below.value = withTiming(sheetHeight, { duration: LEAVE_MS, easing: Easing.in(Easing.cubic) }, (finished) => {
-      'worklet';
-      if (finished) {
-        runOnJS(onGone)();
-      }
-    });
-  }, [below, sheetHeight, onGone]);
-
-  useEffect(() => {
-    if (leaving) {
-      slideAway();
-    }
-  }, [leaving, slideAway]);
+  }, [leaving, below, sheetHeight, tellGone, tellSettled]);
 
   const sliding = useAnimatedStyle(() => ({ transform: [{ translateY: below.value }] }));
 

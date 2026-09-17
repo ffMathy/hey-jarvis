@@ -72,6 +72,16 @@ const CEILING_CREEP_PER_SECOND = 0.1;
 /** How near the ceiling counts as up against it. */
 const RAISE_CEILING_WITHIN = 0.02;
 
+/**
+ * How much of a remembered count to begin with, next time.
+ *
+ * A tenth under what the phone managed before, at the user's asking, and the reason is that a
+ * phone is not the same phone twice: what it had spare last time is not what it has spare now, and
+ * beginning exactly at the old number means the first thing that happens is a shed. Starting just
+ * under it means the first thing that happens is the climb finishing, which nobody notices.
+ */
+const REMEMBERED_MARGIN = 0.9;
+
 export interface DensityControl {
   /** 0–1: the share of the particles being drawn. */
   density: number;
@@ -101,6 +111,15 @@ export interface DensityControl {
    * entirely.
    */
   lastError: number;
+  /**
+   * The most particles this phone has ever been seen drawing at the cap, 0 until it has.
+   *
+   * The difference from {@link ceiling} is what each is for. The ceiling is where the loop is
+   * heading *now*, and it drops the moment something else on the phone gets busy. This only ever
+   * goes up, and it is what is worth writing down and starting from next time: not a guess about
+   * the hardware, but a thing this phone actually did.
+   */
+  proven: number;
 }
 
 /**
@@ -121,8 +140,18 @@ export interface DensityControl {
  * is under three seconds on a phone that can take it.
  */
 export function createDensityControl(startingDensity: number = FEWEST_PARTICLES): DensityControl {
-  const density = startingDensity <= 0 ? FEWEST_PARTICLES : startingDensity;
-  return { density, carried: 0, ceiling: 1, lastError: 0 };
+  const density = startingDensity <= 0 ? FEWEST_PARTICLES : clamp(startingDensity, FEWEST_PARTICLES, 1);
+  return { density, carried: 0, ceiling: 1, lastError: 0, proven: 0 };
+}
+
+/**
+ * Where to begin, given what this phone managed last time.
+ *
+ * Kept here rather than wherever the number is stored, because it is a decision about the loop
+ * rather than about storage: see {@link REMEMBERED_MARGIN} for why it is not simply the old value.
+ */
+export function startFromRemembered(proven: number): number {
+  return proven <= 0 ? FEWEST_PARTICLES : clamp(proven * REMEMBERED_MARGIN, FEWEST_PARTICLES, 1);
 }
 
 function clamp(value: number, lowest: number, highest: number): number {
@@ -147,6 +176,12 @@ export function steerDensity(control: DensityControl, framesPerSecond: number, d
   // Shedding answers the gentler of this window and the last, so a single hitch is not a verdict.
   const sustained = Math.min(error, control.lastError);
   control.lastError = error;
+
+  if (framesPerSecond >= HEADROOM_FRAMES_PER_SECOND && control.density > control.proven) {
+    // Drawing this many at the cap is the phone saying it can. Only ever upward: this is the one
+    // number worth keeping, and a busy minute should not talk it down.
+    control.proven = control.density;
+  }
 
   if (error > -SETTLED_WITHIN && error < SETTLED_WITHIN) {
     // Arrived. Let what it has been carrying drain away, so that coming back to the target twice
