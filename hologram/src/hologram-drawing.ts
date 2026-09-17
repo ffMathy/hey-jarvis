@@ -1013,7 +1013,9 @@ type Scene = ReturnType<typeof createHologramScene>;
  * this runs in a worklet and an imported enum is one more object to carry across.
  */
 interface PathBuilder {
+  /** The commands, and beyond `count` the ones last frame used — kept to be written over. */
   commands: number[][];
+  count: number;
 }
 
 const MOVE_VERB = 0;
@@ -1025,27 +1027,62 @@ const CLOSE_VERB = 5;
 const QUARTER_CIRCLE_WEIGHT = Math.SQRT1_2;
 
 function makePathBuilder(): PathBuilder {
-  return { commands: [] };
+  return { commands: [], count: 0 };
+}
+
+/**
+ * The next command's array, reused from last frame wherever it fits.
+ *
+ * A frame of the body is a couple of thousand commands, and a fresh `[verb, x, y]` for each is a
+ * couple of thousand short-lived objects sixty — now thirty — times a second. On a phone that is
+ * paid twice, once to allocate and again when the collector takes them back. The drawing puts very
+ * nearly the same shapes in the same order every frame, so the arrays from the last one are
+ * already the right size and are simply written over.
+ */
+function nextCommand(builder: PathBuilder, size: number): number[] {
+  'worklet';
+  const existing = builder.commands[builder.count];
+  if (existing !== undefined && existing.length === size) {
+    builder.count++;
+    return existing;
+  }
+  const made = new Array<number>(size);
+  builder.commands[builder.count] = made;
+  builder.count++;
+  return made;
 }
 
 function pathMoveTo(builder: PathBuilder, x: number, y: number) {
   'worklet';
-  builder.commands.push([MOVE_VERB, x, y]);
+  const command = nextCommand(builder, 3);
+  command[0] = MOVE_VERB;
+  command[1] = x;
+  command[2] = y;
 }
 
 function pathLineTo(builder: PathBuilder, x: number, y: number) {
   'worklet';
-  builder.commands.push([LINE_VERB, x, y]);
+  const command = nextCommand(builder, 3);
+  command[0] = LINE_VERB;
+  command[1] = x;
+  command[2] = y;
 }
 
 function pathConicTo(builder: PathBuilder, x1: number, y1: number, x2: number, y2: number, weight: number) {
   'worklet';
-  builder.commands.push([CONIC_VERB, x1, y1, x2, y2, weight]);
+  const command = nextCommand(builder, 6);
+  command[0] = CONIC_VERB;
+  command[1] = x1;
+  command[2] = y1;
+  command[3] = x2;
+  command[4] = y2;
+  command[5] = weight;
 }
 
 function pathClose(builder: PathBuilder) {
   'worklet';
-  builder.commands.push([CLOSE_VERB]);
+  const command = nextCommand(builder, 1);
+  command[0] = CLOSE_VERB;
 }
 
 /**
@@ -1066,15 +1103,16 @@ function pathAddCircle(builder: PathBuilder, x: number, y: number, radius: numbe
 
 function pathReset(builder: PathBuilder) {
   'worklet';
-  builder.commands.length = 0;
+  builder.count = 0;
 }
 
 /** The finished path, in one crossing. `keep` is for the handful built once at mount. */
 function pathOf(Skia: SkiaApiType, builder: PathBuilder, keep = false) {
   'worklet';
-  const path = Skia.Path.MakeFromCmds(builder.commands);
+  // One array of references, where the commands themselves are last frame's; see nextCommand.
+  const path = Skia.Path.MakeFromCmds(builder.commands.slice(0, builder.count));
   if (!keep) {
-    builder.commands.length = 0;
+    builder.count = 0;
   }
   if (!path) {
     throw new Error('The hologram could not build one of its paths');

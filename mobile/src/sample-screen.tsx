@@ -1,7 +1,9 @@
 import { LEAVING_SECONDS, useIsForeground } from 'hologram/react/lifecycle';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { BackHandler, Platform, Pressable, StyleSheet } from 'react-native';
+import { useSharedValue } from 'react-native-reanimated';
 import { dismissAssistantWindow } from '../modules/jarvis-assistant';
+import { FrameRate } from './frame-rate';
 import { useWholeScreenHologramSize } from './hologram-size';
 import { JarvisHologram } from './jarvis-hologram';
 import { ModeToast } from './mode-toast';
@@ -54,6 +56,8 @@ export function SampleScreen({ onLeave }: SampleScreenProps) {
   const hologramSize = useWholeScreenHologramSize();
   const going = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const isForeground = useIsForeground();
+  // Filled in on the UI thread by the hologram, read twice a second by the readout in the corner.
+  const frameRate = useSharedValue(0);
 
   /**
    * Starts the way out, and finishes it once Jarvis has gone.
@@ -133,9 +137,11 @@ export function SampleScreen({ onLeave }: SampleScreenProps) {
           quietestSpeech={QUIETEST_SPEECH_HERE}
           thinking={mode === 'thinking'}
           leaving={leaving}
+          frameRate={frameRate}
         />
       </Pressable>
       <ModeToast mode={mode} />
+      <FrameRate frameRate={frameRate} />
     </Pressable>
   );
 }

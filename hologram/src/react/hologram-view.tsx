@@ -1,7 +1,7 @@
 import { Canvas, Picture, Skia } from '@shopify/react-native-skia';
 import { memo, useEffect, useMemo } from 'react';
 import { View } from 'react-native';
-import { useDerivedValue, useFrameCallback, useSharedValue } from 'react-native-reanimated';
+import { type SharedValue, useDerivedValue, useFrameCallback, useSharedValue } from 'react-native-reanimated';
 import {
   advanceVoiceActivity,
   createHologramResources,
@@ -49,6 +49,15 @@ export interface JarvisHologramProps {
    * before actually closing anything; see `sample-screen.tsx`.
    */
   leaving?: boolean;
+  /**
+   * Somewhere to put how many frames a second are actually being drawn, if anyone is watching.
+   *
+   * A shared value rather than a callback, because this is written on the UI thread every time a
+   * picture is built and calling back into React from there — thirty times a second — would cost
+   * more than the number is worth. It measures what is achieved rather than what is asked for: the
+   * frame callback fires with the screen, so a device that cannot keep up reports what it managed.
+   */
+  frameRate?: SharedValue<number>;
 }
 
 /** How long it takes to fall into a thought, and to come out of one. */
@@ -91,6 +100,9 @@ const DRAWN_RESOLUTION = 0.45;
  */
 const MINIMUM_FRAME_SECONDS = 1 / 32;
 
+/** How long the frame rate is averaged over before it is reported. Long enough not to flicker. */
+const FRAME_RATE_OVER_SECONDS = 0.5;
+
 /**
  * How often the voice is read. The SDK's native processors refresh every 40 ms,
  * so reading faster only re-reads the same value; the UI thread eases between
@@ -115,7 +127,14 @@ const SCENE_SEED = 1337;
  * neither a busy JS thread nor a slow reading can make the animation stutter —
  * at worst the sphere reacts a frame late.
  */
-function JarvisHologramView({ size, voice, quietestSpeech, thinking = false, leaving = false }: JarvisHologramProps) {
+function JarvisHologramView({
+  size,
+  voice,
+  quietestSpeech,
+  thinking = false,
+  leaving = false,
+  frameRate,
+}: JarvisHologramProps) {
   const { listening, speaking, getVolume, getSpectrum } = voice;
   const isForeground = useIsForeground();
   const drawnSize = Math.round(size * DRAWN_RESOLUTION);
@@ -199,6 +218,9 @@ function JarvisHologramView({ size, voice, quietestSpeech, thinking = false, lea
   // Time the screen has offered since the last picture was built. Held outside the frame value on
   // purpose: writing it there would be the very thing this is trying not to do.
   const waiting = useSharedValue(0);
+  // Frames drawn since the rate was last worked out, and how long that has taken.
+  const drawn = useSharedValue(0);
+  const measuring = useSharedValue(0);
 
   const clock = useFrameCallback((info) => {
     waiting.value += (info.timeSincePreviousFrame ?? DEFAULT_FRAME_MS) / 1000;
@@ -221,6 +243,17 @@ function JarvisHologramView({ size, voice, quietestSpeech, thinking = false, lea
       advanceVoiceActivity(current.activity, targetLevel.value, deltaSeconds);
       return current;
     });
+
+    if (frameRate === undefined) {
+      return;
+    }
+    drawn.value += 1;
+    measuring.value += deltaSeconds;
+    if (measuring.value >= FRAME_RATE_OVER_SECONDS) {
+      frameRate.value = drawn.value / measuring.value;
+      drawn.value = 0;
+      measuring.value = 0;
+    }
   });
 
   // Nothing to draw for, so nothing is drawn.
