@@ -19,9 +19,9 @@ interface OpenedAudio {
  * instead (`agent-audio-track.ts`). Asked before the track has been subscribed, this finds nothing.
  */
 function findPlayableTrack(room: AgentTrackRoom): MediaStreamTrack | undefined {
-  for (const track of agentAudioTracks(room)) {
-    if (track instanceof MediaStreamTrack) {
-      return track;
+  for (const { mediaStreamTrack } of agentAudioTracks(room)) {
+    if (mediaStreamTrack instanceof MediaStreamTrack) {
+      return mediaStreamTrack;
     }
   }
   return undefined;

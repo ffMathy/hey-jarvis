@@ -17,6 +17,7 @@ import { JarvisHologram } from './jarvis-hologram';
 import { useJarvisVoice } from './jarvis-voice';
 import { requestMicrophoneAccess } from './microphone-permission';
 import { usePreferredHeadset } from './preferred-microphone';
+import { useQueuedAudio } from './queued-audio';
 import { useSparkDensity } from './spark-density';
 import { QUIETEST_SPEECH_HERE } from './speech-floor';
 import { theme } from './theme';
@@ -94,6 +95,8 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
   usePreferredHeadset(status === 'connected');
   // What he is doing between hearing you and answering. See `tool-activity.ts`.
   const { thinking, toolHandlers, forgetToolCalls } = useToolActivity();
+  // And what happens to the sentence he was cut off in. See `queued-audio.ts`.
+  const { playbackHandlers } = useQueuedAudio();
 
   const [problem, setProblem] = useState<string | undefined>(undefined);
   const [isStarting, setIsStarting] = useState(false);
@@ -151,6 +154,7 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
           connectionType: 'webrtc',
           onError: reportProblem,
           ...toolHandlers,
+          ...playbackHandlers,
         });
       } else {
         // **This is what makes a conversation possible with no microphone at all.** ElevenLabs runs
@@ -179,7 +183,7 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
     } finally {
       setIsStarting(false);
     }
-  }, [settings, startSession, toolHandlers, reportProblem]);
+  }, [settings, startSession, toolHandlers, playbackHandlers, reportProblem]);
 
   /**
    * Gives up on a conversation that is taking too long to open, and says so.

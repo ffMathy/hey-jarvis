@@ -112,6 +112,7 @@ mobile/
     ├── agent-audio-track.ts      # finding Jarvis's track in the conversation's LiveKit room
     ├── tapped-voice.ts           # raw samples from modules/jarvis-audio → volume and spectrum
     ├── played-voice.ts           # the same, from the samples a browser is playing
+    ├── queued-audio.ts           # dropping what a browser still has queued when he is cut off
     ├── typed-message-field.tsx   # the way in when a browser refuses the microphone
     ├── theme.ts                  # the one place colours and spacing are defined
     ├── platform-contracts.ts     # the shapes the .web.ts pairs below must keep
@@ -150,6 +151,25 @@ Every source hands the hologram the same two readings — a volume, and 1024 byt
 Both did once, and on both it was the wrong quantity — for different reasons, which is why each has its own way of getting at the samples.
 
 **In a browser the SDK's volume is not a loudness at all.** `getOutputVolume` is the mean of an `AnalyserNode`'s *byte* spectrum, and a byte of that spectrum is a decibel reading between −100 dB and −30 dB. So the quietest thing the scale can express is −100 dB, and everything above it reads as something: the hiss under a recording, the comfort noise a codec sends between words, the room the voice was recorded in. Read as a level that says Jarvis is talking for as long as a conversation is open, and the gaps between his words never reach the tracker's speech threshold — the sphere stayed agitated through his pauses and the rim threw chips into his silences. `played-voice.ts` reads the time-domain samples off an `AnalyserNode` of its own instead and puts them through the same analysis the phone uses, where silence is zero. It used to be covered up by doubling the browser's speech floor; a floor that means something different on every surface cannot be reasoned about, and covering it was all that did.
+
+### What happens to a sentence he is cut off in
+
+Nothing, unless somebody does it — and in a browser that showed. Jarvis is interrupted, the server
+stops sending, and whatever his `<audio>` element had already taken in stays in it, so the tail of
+the sentence he was cut off in came out at the head of his next one: the same take, clipped.
+
+There is no queue to clear in this app or in the SDK. Over WebRTC the SDK's `interrupt()` is a
+documented no-op, because audio is a live LiveKit track rather than chunks the client buffers, and
+audio arriving on the data channel is deliberately not re-played. (The `audioConcatProcessor` queue
+that *does* have this shape is the WebSocket transport's, which here carries no audio at all.) The
+only queue left is the media element's own, so `queued-audio.ts` empties it: clearing `srcObject`
+tears the element's renderer down and takes the queued audio with it, and putting the same live
+stream back builds a new one at the live edge. It hangs off the SDK's `onInterruption` — which the
+agent sends because `interruption` is in its `clientEvents` — and an interruption is exactly the
+moment there is nothing left worth playing.
+
+On a phone this costs one empty loop. `attachedElements` is LiveKit's, and it only ever fills in a
+browser: Android plays the agent's track natively, with no element and no queue of its own.
 
 ### Why Android analyses the audio itself
 

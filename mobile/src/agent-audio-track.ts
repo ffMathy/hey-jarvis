@@ -16,13 +16,25 @@ const TRACK_EVENTS = [
 
 type TrackEvent = (typeof TRACK_EVENTS)[number];
 
+/**
+ * One of Jarvis's published audio tracks, as little of it as this app needs to name.
+ *
+ * `mediaStreamTrack` is deliberately the only field: what it *is* differs by platform, and each
+ * caller narrows it for itself. Everything else a caller wants of the track — LiveKit's
+ * `attachedElements`, say — it reads off the same object structurally, because `RemoteAudioTrack`
+ * carries far more than is worth restating here.
+ */
+export interface AgentTrack {
+  mediaStreamTrack: unknown;
+}
+
 /** The parts of a LiveKit room the agent's track is looked for in. `Room` has them all. */
 export interface AgentTrackRoom {
   remoteParticipants: ReadonlyMap<
     string,
     {
       identity: string;
-      audioTrackPublications: ReadonlyMap<string, { track?: { mediaStreamTrack: unknown } | undefined }>;
+      audioTrackPublications: ReadonlyMap<string, { track?: AgentTrack | undefined }>;
     }
   >;
   on(event: TrackEvent, listener: () => void): unknown;
@@ -59,23 +71,23 @@ export function isAgentIdentity(identity: string): boolean {
 }
 
 /**
- * Every audio track Jarvis has published in `room`, as whatever the platform below calls one.
+ * Every audio track Jarvis has published in `room`.
  *
  * Deliberately not narrowed here. On Android a track is a handle onto something only native code
  * can read, and `nativeTrackIds` turns it into the pair of numbers that finds it; in a browser the
  * track *is* the audio, and `jarvis-voice.web.ts` checks it is the browser's own object before
- * pointing Web Audio at it. The two answers have nothing in common but where they come from, which
- * is this.
+ * pointing Web Audio at it, while `queued-audio.ts` reads the elements it is playing through. The
+ * answers have nothing in common but where they come from, which is this.
  */
-export function agentAudioTracks(room: AgentTrackRoom): unknown[] {
-  const tracks: unknown[] = [];
+export function agentAudioTracks(room: AgentTrackRoom): AgentTrack[] {
+  const tracks: AgentTrack[] = [];
   for (const participant of room.remoteParticipants.values()) {
     if (!isAgentIdentity(participant.identity)) {
       continue;
     }
     for (const publication of participant.audioTrackPublications.values()) {
       if (publication.track) {
-        tracks.push(publication.track.mediaStreamTrack);
+        tracks.push(publication.track);
       }
     }
   }
@@ -85,7 +97,7 @@ export function agentAudioTracks(room: AgentTrackRoom): unknown[] {
 /** Jarvis's audio track in `room` right now, if he has one. */
 export function findAgentAudioTrack(room: AgentTrackRoom): NativeTrackIds | undefined {
   for (const track of agentAudioTracks(room)) {
-    const ids = nativeTrackIds(track);
+    const ids = nativeTrackIds(track.mediaStreamTrack);
     if (ids) {
       return ids;
     }

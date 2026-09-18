@@ -79,9 +79,9 @@ describe('findAgentAudioTrack', () => {
 });
 
 describe('agentAudioTracks', () => {
-  // What a browser reads instead of a pair of native ids: the track object itself, which
-  // `jarvis-voice.web.ts` points Web Audio at. Left unnarrowed here on purpose — see the note
-  // there and on the function.
+  // The track objects themselves, narrowed by nobody: `jarvis-voice.web.ts` wants the browser's
+  // `MediaStreamTrack` off them and `queued-audio.ts` wants the elements they are playing
+  // through. See the note on the function.
   it("hands over the agent's tracks as they are, and nobody else's", () => {
     const jarvis = receivedTrack(1, 'jarvis');
     const alsoJarvis = receivedTrack(1, 'jarvis-again');
@@ -90,7 +90,7 @@ describe('agentAudioTracks', () => {
       participant('agent_jarvis', [jarvis, alsoJarvis]),
     ]);
 
-    expect(agentAudioTracks(room)).toEqual([jarvis.mediaStreamTrack, alsoJarvis.mediaStreamTrack]);
+    expect(agentAudioTracks(room)).toEqual([jarvis, alsoJarvis]);
   });
 
   it('hands over nothing before the agent has a track', () => {
