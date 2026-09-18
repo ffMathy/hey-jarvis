@@ -3,6 +3,14 @@ import type { ElevenLabsSettings } from './elevenlabs-settings';
 /** The ElevenLabs endpoint that mints a WebRTC token for one conversation with an agent. */
 export const CONVERSATION_TOKEN_URL = 'https://api.elevenlabs.io/v1/convai/conversation/token';
 
+/**
+ * The endpoint that signs a WebSocket URL for one conversation with an agent instead.
+ *
+ * The second transport, for the one conversation that cannot be held over the first. See
+ * {@link requestSignedConversationUrl}.
+ */
+export const SIGNED_CONVERSATION_URL = 'https://api.elevenlabs.io/v1/convai/conversation/get-signed-url';
+
 /** What `@elevenlabs/react-native` needs in order to open a WebRTC session. */
 export interface ConversationToken {
   token: string;
@@ -26,6 +34,21 @@ export interface ConversationRequest {
   settings: ElevenLabsSettings;
   /** Which device this is — one of the two names above. Required, so neither app can borrow the other's. */
   participantName: string;
+}
+
+/**
+ * Narrows the signed-URL response the same way, and refuses anything that is not a `wss://` URL.
+ *
+ * Checked rather than trusted, because this string is handed straight to a `WebSocket`: anything
+ * else there is either a downgrade to plaintext or a scheme nobody meant to open.
+ */
+function readSignedUrl(payload: unknown): string | undefined {
+  if (typeof payload !== 'object' || payload === null || !('signed_url' in payload)) {
+    return undefined;
+  }
+
+  const { signed_url: signedUrl } = payload;
+  return typeof signedUrl === 'string' && signedUrl.startsWith('wss://') ? signedUrl : undefined;
 }
 
 /** Narrows ElevenLabs' response without trusting its shape. */
@@ -130,8 +153,11 @@ async function failureReason(response: Response): Promise<string | undefined> {
 /**
  * Asks ElevenLabs for a token for one conversation with the Jarvis agent.
  *
- * WebRTC, because that is the only transport `@elevenlabs/react-native`
- * supports: it throws outright on a signed WebSocket URL.
+ * WebRTC, because that is the only transport `@elevenlabs/react-native` supports on a device: it
+ * throws outright on a signed WebSocket URL. It is also the only one that carries audio, so this
+ * is what every spoken conversation asks for, everywhere. The exception is a browser with no
+ * microphone, which has no audio to carry and cannot use WebRTC at all — see
+ * {@link requestSignedConversationUrl}.
  *
  * @param request - Whose agent to ask for, and which device is asking.
  * @param fetchImplementation - Injectable so the tests can exercise every failure
@@ -158,4 +184,49 @@ export async function requestConversationToken(
   }
 
   return token;
+}
+
+/**
+ * Asks ElevenLabs to sign a WebSocket URL for one conversation with the Jarvis agent.
+ *
+ * **This is how a conversation is held with no microphone**, and the only reason a second
+ * transport exists here. A text-only conversation publishes no audio, and ElevenLabs' WebRTC room
+ * waits for the client to publish some before it finishes coming up — so a typed conversation
+ * dialled over WebRTC neither connects nor fails: it sits in `connecting` for ever, which is
+ * exactly what a browser with the microphone switched off showed. The SDK infers the same
+ * transport when it is left to choose, and it cannot be left to choose here, because a
+ * conversation token can only be spent on WebRTC.
+ *
+ * So the transport follows the conversation: a spoken one gets a token and WebRTC, a typed one
+ * gets this and a socket. Only a browser ever needs it — a phone with no microphone says so and
+ * stops, and `@elevenlabs/react-native` refuses a signed URL outright on a device.
+ *
+ * No participant name, because this endpoint takes only the agent: a typed conversation is the
+ * one that does not name itself in the history, and that is the whole of what it costs.
+ *
+ * @param settings - The API key to ask with, and the agent to ask for.
+ * @param fetchImplementation - Injectable so the tests can exercise every failure path without an
+ *   ElevenLabs account.
+ */
+export async function requestSignedConversationUrl(
+  settings: ElevenLabsSettings,
+  fetchImplementation: typeof fetch = fetch,
+): Promise<string> {
+  const query = new URLSearchParams({ agent_id: settings.agentId });
+
+  const response = await fetchImplementation(`${SIGNED_CONVERSATION_URL}?${query}`, {
+    method: 'GET',
+    headers: { 'xi-api-key': settings.apiKey },
+  });
+
+  if (!response.ok) {
+    throw new Error(describeFailure(response.status, await failureReason(response)));
+  }
+
+  const signedUrl = readSignedUrl(await response.json());
+  if (!signedUrl) {
+    throw new Error('ElevenLabs answered without a conversation URL.');
+  }
+
+  return signedUrl;
 }

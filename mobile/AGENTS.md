@@ -108,9 +108,12 @@ mobile/
     ├── spark-memory.ts           # … and remembering what it managed last time
     ├── frame-rate.tsx            # the instrument, left running in a browser only
     ├── jarvis-voice.ts           # Jarvis's voice on Android: his track, tapped and analysed …
-    ├── jarvis-voice.web.ts       # … and in a browser, over `hologram/conversation`
+    ├── jarvis-voice.web.ts       # … and in a browser, the same track through Web Audio
     ├── agent-audio-track.ts      # finding Jarvis's track in the conversation's LiveKit room
     ├── tapped-voice.ts           # raw samples from modules/jarvis-audio → volume and spectrum
+    ├── played-voice.ts           # the same, from the samples a browser is playing
+    ├── queued-audio.ts           # dropping what a browser still has queued when he is cut off
+    ├── conversation-life.ts      # whether a conversation is open, and whether one has ended
     ├── typed-message-field.tsx   # the way in when a browser refuses the microphone
     ├── theme.ts                  # the one place colours and spacing are defined
     ├── platform-contracts.ts     # the shapes the .web.ts pairs below must keep
@@ -121,7 +124,7 @@ mobile/
     ├── preferred-microphone.ts       # onto the headset, on Android …
     ├── preferred-microphone.web.ts   # … which a browser does for itself
     ├── speech-floor.ts               # the quietest a phone reading counts as speech …
-    └── speech-floor.web.ts           # … which is a different number in a browser
+    └── speech-floor.web.ts           # … and, now both measure an RMS, the same in a browser
 ```
 
 ## The hologram
@@ -133,7 +136,7 @@ None of those numbers are a guess. The proportions, the colours, the rotation sp
 ```
 Android, in a conversation     Jarvis's WebRTC track ─ modules/jarvis-audio (AudioTap) ─ tapped-voice.ts ─ hologram/src/voice-analysis.ts
 Android, in sample mode        WebRTC's recorder ────── modules/jarvis-audio (AudioTap) ─ tapped-voice.ts ─ hologram/src/voice-analysis.ts
-Browser, in a conversation     @elevenlabs/react-native getOutputVolume / getOutputByteFrequencyData (AnalyserNode)
+Browser, in a conversation     Jarvis's WebRTC track ─ AnalyserNode (time domain) ─ played-voice.ts ─ hologram/src/voice-analysis.ts
 Browser, in sample mode        getUserMedia ─ AnalyserNode
   └─ a JarvisVoice (platform-contracts.ts), read every 40 ms on the JS thread
        └─ hologram/src/voice-levels.ts perceivedLevel + foldSpectrum → 24 log-spaced bands (targets)
@@ -142,7 +145,46 @@ Browser, in sample mode        getUserMedia ─ AnalyserNode
                  └─ hologram/src/hologram-drawing.ts   drawHologram(canvas, size, frame, scene, resources) → Skia Picture
 ```
 
-Every source hands the hologram the same two readings — a volume, and 1024 bytes of spectrum across 100–8000 Hz on Web Audio's decibel scale — so the drawing never knows which it is listening to. The volume is not quite the same quantity everywhere: on Android it is the RMS of the last 40 ms; in a browser it is what the ElevenLabs web SDK reports, the mean of that spectrum, and sample mode in a browser takes it the same way so the user's voice and Jarvis's are on one scale there. The two scales differ, so the threshold at which the sphere counts a voice as speech sits in a slightly different place in a browser than on a phone.
+Every source hands the hologram the same two readings — a volume, and 1024 bytes of spectrum across 100–8000 Hz on Web Audio's decibel scale — so the drawing never knows which it is listening to. **Every source also computes them the same way**, with `hologram/src/voice-analysis.ts`: the volume is the RMS of the last 40 ms on both platforms, so `QUIETEST_SPEECH` means one thing everywhere and `speech-floor.web.ts` is the phone's number.
+
+### Why neither platform asks the SDK for the volume
+
+Both did once, and on both it was the wrong quantity — for different reasons, which is why each has its own way of getting at the samples.
+
+**In a browser the SDK's volume is not a loudness at all.** `getOutputVolume` is the mean of an `AnalyserNode`'s *byte* spectrum, and a byte of that spectrum is a decibel reading between −100 dB and −30 dB. So the quietest thing the scale can express is −100 dB, and everything above it reads as something: the hiss under a recording, the comfort noise a codec sends between words, the room the voice was recorded in. Read as a level that says Jarvis is talking for as long as a conversation is open, and the gaps between his words never reach the tracker's speech threshold — the sphere stayed agitated through his pauses and the rim threw chips into his silences. `played-voice.ts` reads the time-domain samples off an `AnalyserNode` of its own instead and puts them through the same analysis the phone uses, where silence is zero. It used to be covered up by doubling the browser's speech floor; a floor that means something different on every surface cannot be reasoned about, and covering it was all that did.
+
+### What happens when the conversation ends
+
+He goes. The agent hangs up, the session drops, and the sphere used to go on turning exactly as it
+does while he listens — which is the same complaint the problem line answers, the other way round:
+an assistant who has finished looks identical to one who is waiting for you. So the end of a
+conversation fades him over `LEAVING_SECONDS`, unmounts the drawing (a frame loop drawing a sphere
+that has faded to nothing is a phone kept awake for no one), takes the browser's frame-rate readout
+with it, and — summoned — retracts the assistant's window, which is how sample mode leaves too.
+
+**Ending is not the same as never starting**, and both read `disconnected`. A conversation that
+never opened has failed, and the answer to that is the line saying why *under a sphere that is
+still there*. So `conversation-life.ts` folds the statuses rather than looking at the current one,
+and only a conversation that was open can end.
+
+### What happens to a sentence he is cut off in
+
+Nothing, unless somebody does it — and in a browser that showed. Jarvis is interrupted, the server
+stops sending, and whatever his `<audio>` element had already taken in stays in it, so the tail of
+the sentence he was cut off in came out at the head of his next one: the same take, clipped.
+
+There is no queue to clear in this app or in the SDK. Over WebRTC the SDK's `interrupt()` is a
+documented no-op, because audio is a live LiveKit track rather than chunks the client buffers, and
+audio arriving on the data channel is deliberately not re-played. (The `audioConcatProcessor` queue
+that *does* have this shape is the WebSocket transport's, which here carries no audio at all.) The
+only queue left is the media element's own, so `queued-audio.ts` empties it: clearing `srcObject`
+tears the element's renderer down and takes the queued audio with it, and putting the same live
+stream back builds a new one at the live edge. It hangs off the SDK's `onInterruption` — which the
+agent sends because `interruption` is in its `clientEvents` — and an interruption is exactly the
+moment there is nothing left worth playing.
+
+On a phone this costs one empty loop. `attachedElements` is LiveKit's, and it only ever fills in a
+browser: Android plays the agent's track natively, with no element and no queue of its own.
 
 ### Why Android analyses the audio itself
 
@@ -153,7 +195,7 @@ On Android the SDK's two readers come from LiveKit's native processors (`@liveki
 
 So `modules/jarvis-audio` hangs its own `AudioTap` off the same audio — Jarvis's remote track in a conversation, or WebRTC's recorder in sample mode — reading the bytes little-endian into a ring of the last third of a second, and JavaScript pulls from it and analyses it with `hologram/src/voice-analysis.ts`. That is the same code that turns the emulator check's recorded voice into its replayed readings, so what the replay shows is what a phone computes.
 
-Finding Jarvis's track takes one step outside the SDK's public surface: `useRawConversation()` is public, but the LiveKit room is on the conversation's protected `connection`. `agent-audio-track.ts` reaches it with `Reflect.get`, checks it is a real `livekit-client` `Room`, and follows the participant whose identity contains "agent" — as the SDK's own code does. `agent-audio-track.contract.spec.ts` reads the installed SDK and fails if any of that moves. If the track cannot be found anyway, the hologram falls back to the SDK's readers described above: it still draws and nothing fails, but a volume that reads near full scale for any sound at all makes the sphere treat every noise from Jarvis as full-blown speech — agitation snapping on and off with the reading rather than following his syllables — and two of its bands stay dark.
+Finding Jarvis's track takes one step outside the SDK's public surface, and **both platforms take the same step**: `useRawConversation()` is public, but the LiveKit room is on the conversation's protected `connection`. `agent-audio-track.ts` reaches it with `Reflect.get`, checks it is a real `livekit-client` `Room`, and follows the participant whose identity contains "agent" — as the SDK's own code does. What each platform then does with the publication differs, so that is where they part: Android turns it into the pair of native ids its `AudioTap` needs, and `jarvis-voice.web.ts` checks it is the browser's own `MediaStreamTrack` and points Web Audio at it. `agent-audio-track.contract.spec.ts` reads the installed SDK and fails if any of that moves. If the track cannot be found anyway, the hologram falls back to the SDK's readers described above: it still draws and nothing fails, but the sphere answers a reading that is barely a voice — on Android a volume that reads near full scale for any sound at all, in a browser one that never reads silence — and on Android two of its bands stay dark.
 
 ## Sample mode
 
@@ -230,7 +272,13 @@ The app ships with no credential. It talks to ElevenLabs directly, and both sett
 
 Both values are also what the **watch** needs, and it is given them from here rather than asked for them: see [Handing the credentials to the watch](#handing-the-credentials-to-the-watch). `conversation-token.ts` and `elevenlabs-settings.ts` live in `hologram/` for the same reason — both devices use them, so neither owns them.
 
-For each conversation the app asks `GET https://api.elevenlabs.io/v1/convai/conversation/token` for a WebRTC token for that agent, and the session runs on the token; the key itself is used for nothing else. `conversation-token.ts` turns each failure into what to fix — a rejected key, a key without permission to start conversations (which ElevenLabs can also answer with 401), an agent ID the account does not have or a malformed one (400), an account out of credits (402), rate limiting (429) — by reading only ElevenLabs' fixed `detail.status` / `detail.code` identifiers. It never repeats anything else from a response, since a message can echo the request that carried the key.
+For each conversation the app asks `GET https://api.elevenlabs.io/v1/convai/conversation/token` for a WebRTC token for that agent, and the session runs on the token; the key itself is used for nothing else.
+
+**Except for a typed conversation, which asks `GET /v1/convai/conversation/get-signed-url` instead and runs on a WebSocket.** That is the one case where the transport cannot be WebRTC: a text-only session publishes no audio, ElevenLabs' room waits for the client to publish some before it finishes coming up, and a conversation token can only be spent on a room. Dialled over WebRTC a typed conversation therefore never connected *and never failed* — the screen sat on "Connecting…" indefinitely, which is what a browser with the microphone switched off used to show. Only a browser ever takes this branch: a phone with no microphone says so and stops, and `@elevenlabs/react-native` refuses a signed URL on a device outright.
+
+**It also needs the agent's permission.** A typed conversation is asked for by sending the `text_only` override, and overrides are an allow-list: send one the agent does not permit and the server closes the conversation rather than ignoring it. So the session connects, drops immediately, and — because the SDK reports a server-side close through `onDisconnect` and *not* through `onError` — used to say nothing at all: Jarvis faded out because a conversation really had ended, and no line explained why. The screen listens for the ending now, and `platformSettings.overrides.conversationConfigOverride.conversation.textOnly` is on in `elevenlabs/src/assets/agent-config.json`, which reaches the agent only once that project is deployed.
+
+`conversation-token.ts` turns each failure into what to fix — a rejected key, a key without permission to start conversations (which ElevenLabs can also answer with 401), an agent ID the account does not have or a malformed one (400), an account out of credits (402), rate limiting (429) — by reading only ElevenLabs' fixed `detail.status` / `detail.code` identifiers. It never repeats anything else from a response, since a message can echo the request that carried the key.
 
 This used to go through the MCP server, which held the key and handed the phone tokens behind a shared secret. It was changed so the app needs nothing but ElevenLabs: no server address, no second secret, no tunnel to reach. The price is a real credential on the phone, so give the app **its own key**, restricted to what a conversation needs where the account allows it — then a lost phone is one revoked key, not every integration on the account.
 
@@ -331,7 +379,7 @@ Tests must not import React Native or any Expo native module — there is no run
 
 `turbo e2e --filter=mobile` exports the production web build and drives it in Chromium — the real bundle, served over HTTP, clicked through. It runs in CI alongside the rest.
 
-The boundary is the ElevenLabs session, which needs a real API key and real quota. Everything up to it is exercised for real: the first-run tour (its two steps in a browser, its links, Back, and the side trip to sample mode and back), settings validation, persistence across a reload, the hologram drawing and moving with CanvasKit loaded from the export's own `canvaskit.wasm`, and the token request to ElevenLabs — its `xi-api-key` header, agent ID and participant name, and that the key never appears in the URL — along with how a rejected key and an unknown agent are explained. The token URL is intercepted with `page.route`; every other non-localhost request is aborted, and non-local WebSockets are closed, so a test can never dial out. Playwright answers CORS preflights for routed requests itself, so whether ElevenLabs' real CORS policy admits the web build is **not** covered — the test checks instead that the request carries no header besides `xi-api-key`, which is all a preflight would have to allow.
+The boundary is the ElevenLabs session, which needs a real API key and real quota. Everything up to it is exercised for real: the first-run tour (its two steps in a browser, its links, Back, and the side trip to sample mode and back), settings validation, persistence across a reload, the hologram drawing and moving with CanvasKit loaded from the export's own `canvaskit.wasm`, and the token request to ElevenLabs — its `xi-api-key` header, agent ID and participant name, and that the key never appears in the URL — along with how a rejected key and an unknown agent are explained. A refused microphone is covered too: that the typed field appears, that the conversation is dialled by asking for a **signed URL** rather than a token, and that the field stops saying "Connecting…" once nothing is. Both URLs are intercepted with `page.route`; every other non-localhost request is aborted, and non-local WebSockets are closed, so a test can never dial out. Playwright answers CORS preflights for routed requests itself, so whether ElevenLabs' real CORS policy admits the web build is **not** covered — the test checks instead that the request carries no header besides `xi-api-key`, which is all a preflight would have to allow.
 
 Every test that needs a configured app walks the tour first, through the `walkToCredentials` helper: the app no longer opens on a form, so a spec that types into one without pressing Next is a spec that fails on a missing field rather than on what it was checking.
 
