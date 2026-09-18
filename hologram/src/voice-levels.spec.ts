@@ -210,8 +210,13 @@ interface ActivityFrame {
 }
 
 /** Plays the raw level `levelAt` through a fresh tracker for `seconds`, and keeps every frame. */
-function play(levelAt: (time: number) => number, seconds: number, clock: Clock = evenClock(60)): ActivityFrame[] {
-  const state = createVoiceActivityState();
+function play(
+  levelAt: (time: number) => number,
+  seconds: number,
+  clock: Clock = evenClock(60),
+  quietestSpeech?: number,
+): ActivityFrame[] {
+  const state = createVoiceActivityState(quietestSpeech);
   const frames: ActivityFrame[] = [];
   let previousTime = 0;
   for (let frame = 1; clock(frame) <= seconds + 1e-9; frame++) {
@@ -427,6 +432,27 @@ describe('advanceVoiceActivity', () => {
 
     it('are not thrown by a slow swell, however far it climbs', () => {
       expect(burstsIn(play(swellTo(0.9), 3))).toHaveLength(0);
+    });
+
+    it('need to arrive at speech, not merely to be large: a rise below the floor throws nothing', () => {
+      // A step of exactly ONSET_RISE out of silence, with a floor above where it lands. This is
+      // the browser, where the audio between Jarvis's words is not silence but the hiss and
+      // comfort noise under it, rising and falling as sharply as a syllable does and never being
+      // one. Judged as a rise alone it threw chips all through his pauses.
+      const step = (time: number) => (time < 1 ? 0 : ONSET_RISE);
+
+      expect(burstsIn(play(step, 2, evenClock(60), ONSET_RISE + 0.02))).toHaveLength(0);
+      expect(burstsIn(play(step, 2, evenClock(60), ONSET_RISE - 0.02))).toHaveLength(1);
+    });
+
+    it('need to arrive at speech for this voice, not only above the floor', () => {
+      // What counts as speech is mostly relative — a quarter of how loud this voice gets — so a
+      // rise well clear of the floor is still not a voice if the voice it belongs to is ten times
+      // louder. A second of quiet first, so neither the fall from 0.9 nor the burst spacing is
+      // what suppresses it.
+      const afterALoudVoice = (time: number) => (time < 2 ? swellTo(0.9)(time) : time < 3 ? 0 : 0.2);
+
+      expect(burstsIn(play(afterALoudVoice, 4)).map((burst) => burst.time)).toEqual([2]);
     });
   });
 

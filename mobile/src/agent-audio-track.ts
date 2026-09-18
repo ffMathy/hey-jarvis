@@ -58,35 +58,59 @@ export function isAgentIdentity(identity: string): boolean {
   return identity.includes('agent');
 }
 
-/** Jarvis's audio track in `room` right now, if he has one. */
-export function findAgentAudioTrack(room: AgentTrackRoom): NativeTrackIds | undefined {
+/**
+ * Every audio track Jarvis has published in `room`, as whatever the platform below calls one.
+ *
+ * Deliberately not narrowed here. On Android a track is a handle onto something only native code
+ * can read, and `nativeTrackIds` turns it into the pair of numbers that finds it; in a browser the
+ * track *is* the audio, and `jarvis-voice.web.ts` checks it is the browser's own object before
+ * pointing Web Audio at it. The two answers have nothing in common but where they come from, which
+ * is this.
+ */
+export function agentAudioTracks(room: AgentTrackRoom): unknown[] {
+  const tracks: unknown[] = [];
   for (const participant of room.remoteParticipants.values()) {
     if (!isAgentIdentity(participant.identity)) {
       continue;
     }
     for (const publication of participant.audioTrackPublications.values()) {
-      const ids = publication.track ? nativeTrackIds(publication.track.mediaStreamTrack) : undefined;
-      if (ids) {
-        return ids;
+      if (publication.track) {
+        tracks.push(publication.track.mediaStreamTrack);
       }
+    }
+  }
+  return tracks;
+}
+
+/** Jarvis's audio track in `room` right now, if he has one. */
+export function findAgentAudioTrack(room: AgentTrackRoom): NativeTrackIds | undefined {
+  for (const track of agentAudioTracks(room)) {
+    const ids = nativeTrackIds(track);
+    if (ids) {
+      return ids;
     }
   }
   return undefined;
 }
 
 /**
- * Tells `onChange` which track is Jarvis's, now and whenever that changes, until
- * the returned function is called — which reports the track gone, if there was
- * one.
+ * Tells `onChange` what `read` finds in `room`, now and whenever the tracks change, until the
+ * returned function is called — which reports it gone, if there was anything.
+ *
+ * `isSame` is what decides whether anything changed, because the two platforms read the same
+ * publication as different things: Android as a pair of native ids, a browser as the track object
+ * itself.
  */
-export function followAgentAudioTrack(
+export function followAgentTrack<Found>(
   room: AgentTrackRoom,
-  onChange: (track: NativeTrackIds | undefined) => void,
+  read: (room: AgentTrackRoom) => Found | undefined,
+  isSame: (one: Found | undefined, other: Found | undefined) => boolean,
+  onChange: (found: Found | undefined) => void,
 ): () => void {
-  let current: NativeTrackIds | undefined;
+  let current: Found | undefined;
   const update = () => {
-    const next = findAgentAudioTrack(room);
-    if (next?.peerConnectionId === current?.peerConnectionId && next?.trackId === current?.trackId) {
+    const next = read(room);
+    if (isSame(next, current)) {
       return;
     }
     current = next;
@@ -107,6 +131,23 @@ export function followAgentAudioTrack(
       onChange(undefined);
     }
   };
+}
+
+/**
+ * Tells `onChange` which track is Jarvis's, now and whenever that changes, until
+ * the returned function is called — which reports the track gone, if there was
+ * one.
+ */
+export function followAgentAudioTrack(
+  room: AgentTrackRoom,
+  onChange: (track: NativeTrackIds | undefined) => void,
+): () => void {
+  return followAgentTrack(
+    room,
+    findAgentAudioTrack,
+    (one, other) => one?.peerConnectionId === other?.peerConnectionId && one?.trackId === other?.trackId,
+    onChange,
+  );
 }
 
 /**

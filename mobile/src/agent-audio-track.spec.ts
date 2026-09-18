@@ -2,8 +2,10 @@ import { describe, expect, it } from 'bun:test';
 import { Room } from 'livekit-client';
 import {
   type AgentTrackRoom,
+  agentAudioTracks,
   findAgentAudioTrack,
   followAgentAudioTrack,
+  followAgentTrack,
   type NativeTrackIds,
   nativeTrackIds,
   roomOfConversation,
@@ -73,6 +75,52 @@ describe('findAgentAudioTrack', () => {
   it('finds nothing before the agent has a track', () => {
     expect(findAgentAudioTrack(fakeRoom([participant('agent_jarvis', [])]))).toBeUndefined();
     expect(findAgentAudioTrack(fakeRoom())).toBeUndefined();
+  });
+});
+
+describe('agentAudioTracks', () => {
+  // What a browser reads instead of a pair of native ids: the track object itself, which
+  // `jarvis-voice.web.ts` points Web Audio at. Left unnarrowed here on purpose — see the note
+  // there and on the function.
+  it("hands over the agent's tracks as they are, and nobody else's", () => {
+    const jarvis = receivedTrack(1, 'jarvis');
+    const alsoJarvis = receivedTrack(1, 'jarvis-again');
+    const room = fakeRoom([
+      participant('user_42', [receivedTrack(1, 'someone-else')]),
+      participant('agent_jarvis', [jarvis, alsoJarvis]),
+    ]);
+
+    expect(agentAudioTracks(room)).toEqual([jarvis.mediaStreamTrack, alsoJarvis.mediaStreamTrack]);
+  });
+
+  it('hands over nothing before the agent has a track', () => {
+    expect(agentAudioTracks(fakeRoom([participant('agent_jarvis', [])]))).toEqual([]);
+    expect(agentAudioTracks(fakeRoom())).toEqual([]);
+  });
+});
+
+describe('followAgentTrack', () => {
+  /** The trackless thing a browser reads: whatever `read` says, followed by identity. */
+  const followIdentities = (room: AgentTrackRoom, onChange: (found: string | undefined) => void) =>
+    followAgentTrack(
+      room,
+      (current) => findAgentAudioTrack(current)?.trackId,
+      (one, other) => one === other,
+      onChange,
+    );
+
+  it('follows whatever it is told to read, not only the native ids', () => {
+    const room = fakeRoom();
+    const reports: (string | undefined)[] = [];
+
+    const stop = followIdentities(room, (track) => reports.push(track));
+    room.remoteParticipants.set('agent_jarvis', participant('agent_jarvis', [receivedTrack(2, 'jarvis')]));
+    room.emit('trackSubscribed');
+    room.emit('trackSubscribed');
+    stop();
+
+    expect(reports).toEqual(['jarvis', undefined]);
+    expect(room.listenerCount()).toBe(0);
   });
 });
 

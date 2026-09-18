@@ -567,9 +567,12 @@ function endFlurryAfterSilence(state: VoiceActivityState, level: number, deltaSe
  *   not. It is the same for a whisper as for a shout: the film shows speech as a
  *   change of state, not as a loudness meter.
  * - **A burst** begins on an onset — the level has risen by {@link ONSET_RISE}
- *   from the quietest point in the change window — or on a gap — it has fallen by
- *   more than {@link GAP_DROP_DECIBELS} from the loudest point, and that point was
- *   speech. Its strength is the size of the change.
+ *   from the quietest point in the change window, *to* a level that is speech —
+ *   or on a gap — it has fallen by more than {@link GAP_DROP_DECIBELS} from the
+ *   loudest point, and that point was speech. Its strength is the size of the
+ *   change. Both ends are gated on speech, so a change that happens entirely
+ *   below the voice — a hiss, a codec's comfort noise, a stream fading up out of
+ *   nothing — throws nothing, however sharp it is.
  * - **Each rise and each fall counts once.** Once seen, the quiet it rose from or
  *   the loud it fell from is forgotten, so the same change cannot throw another
  *   burst on the frames after, while it is still in the window.
@@ -631,8 +634,14 @@ export function advanceVoiceActivity(
   );
   const rise = level - quietest;
   const drop = loudest - level;
-  const isOnset = rise >= ONSET_RISE;
-  const isGap = loudest >= speakingThreshold(state.loudest, state.quietestSpeech) && level < loudest * GAP_LEVEL_RATIO;
+  const speaks = speakingThreshold(state.loudest, state.quietestSpeech);
+  // The rise has to arrive somewhere that is speech, not merely be large. A rise is a difference,
+  // and a difference says nothing about what it is a difference *between*: the quiet hiss under a
+  // recording, the comfort noise a codec sends between words, a stream fading up after a pause —
+  // all of them rise as far as a syllable does and none of them is a voice. Without this the rim
+  // threw chips at silence, which is what the whole flurry is supposed to mean the opposite of.
+  const isOnset = rise >= ONSET_RISE && level >= speaks;
+  const isGap = loudest >= speaks && level < loudest * GAP_LEVEL_RATIO;
 
   state.burstAge += deltaSeconds;
   endFlurryAfterSilence(state, level, deltaSeconds);
