@@ -1,5 +1,5 @@
-import type { ElevenLabsSettings } from 'conversation';
 import { requireOptionalNativeModule } from 'expo';
+import type { ElevenLabsSettings } from 'hologram';
 
 /** What the phone can see of the watch beside it. */
 export interface PairedWatch {

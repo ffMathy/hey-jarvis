@@ -1,6 +1,6 @@
 import { useConversationControls } from '@elevenlabs/react-native';
-import type { JarvisVoiceReaders } from 'hologram';
 import { useMemo } from 'react';
+import type { JarvisVoiceReaders } from '../voice-contract';
 
 const SILENCE = new Uint8Array(0);
 

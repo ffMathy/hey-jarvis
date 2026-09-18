@@ -1,5 +1,5 @@
 import { useConversationMode, useConversationStatus } from '@elevenlabs/react-native';
-import type { JarvisVoice } from 'hologram';
+import type { JarvisVoice } from '../voice-contract';
 import { useSdkVoiceReaders } from './sdk-voice-readers';
 
 /**

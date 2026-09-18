@@ -1,4 +1,4 @@
-import { type ElevenLabsSettings, parseElevenLabsSettings } from 'conversation';
+import { type ElevenLabsSettings, parseElevenLabsSettings } from 'hologram';
 import { useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { theme } from './theme';

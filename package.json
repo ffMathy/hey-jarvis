@@ -6,7 +6,6 @@
   "main": "index.js",
   "workspaces": [
     "mcp",
-    "conversation",
     "elevenlabs",
     "hologram",
     "home-assistant-voice-firmware",

@@ -1,6 +1,6 @@
 import { useConversationControls, useConversationStatus } from '@elevenlabs/react-native';
-import { type ElevenLabsSettings, requestConversationToken, WATCH_PARTICIPANT_NAME } from 'conversation';
-import { useAgentVoice, useToolActivity } from 'conversation/react';
+import { type ElevenLabsSettings, requestConversationToken, WATCH_PARTICIPANT_NAME } from 'hologram';
+import { useAgentVoice, useToolActivity } from 'hologram/conversation';
 import { JarvisHologram } from 'hologram/react';
 import { useIsForeground } from 'hologram/react/lifecycle';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -31,7 +31,7 @@ function isLive(status: string): boolean {
  * that has silently failed to connect looks exactly like one that is listening.
  *
  * **His voice comes from the SDK's own analysers** rather than from a tap on the WebRTC track, and
- * that is a deliberate difference from the phone. See `useAgentVoice` in `conversation/react`:
+ * that is a deliberate difference from the phone. See `useAgentVoice` in `hologram/conversation`:
  * tapping the track means a native module, a peer-connection id and a ring buffer, and on a watch
  * the readings the SDK gives are good enough for a sphere this size.
  *

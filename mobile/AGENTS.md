@@ -57,22 +57,20 @@ The agent on the other end is the same one `elevenlabs/` deploys, with the same 
 ## File Structure
 
 ```
-../conversation/src/              # the ElevenLabs conversation, shared with the watch — see ../conversation/AGENTS.md
+../hologram/src/                  # Jarvis himself, shared with the watch — see ../hologram/AGENTS.md
 ├── elevenlabs-settings.ts        # the two credentials, and what is wrong with them
 ├── conversation-token.ts         # minting a token, and every ElevenLabs failure explained
-└── react/                        # `conversation/react`, the half that needs the SDK
-    ├── agent-voice.ts            # his voice as the SDK hears it — the whole voice on web and watch
-    ├── sdk-voice-readers.ts      # the SDK's analysers, safe to call before a session exists
-    └── tool-activity.ts          # which tool calls are in flight, for the thinking state
-
-../hologram/src/                  # the sphere itself, shared with the watch — see ../hologram/AGENTS.md
 ├── hologram-drawing.ts           # what one frame of the hologram looks like (worklets)
 ├── voice-analysis.ts             # the FFT and RMS, the same for live audio and the emulator replay
 ├── voice-levels.ts               # spectrum folding, easing, and the agitation/burst tracker
 ├── voice-contract.ts             # JarvisVoice: the two questions the sphere asks a voice
-└── react/                        # `hologram/react`, the half that needs a framework
-    ├── hologram-view.tsx         # Skia canvas, Reanimated clocks, reading the voice every frame
-    └── is-foreground.ts          # stops the clock and the microphone when nobody is looking
+├── react/                        # `hologram/react`, the half that needs a framework
+│   ├── hologram-view.tsx         # Skia canvas, Reanimated clocks, reading the voice every frame
+│   └── is-foreground.ts          # stops the clock and the microphone when nobody is looking
+└── conversation/                 # `hologram/conversation`, the half that needs the ElevenLabs SDK
+    ├── agent-voice.ts            # his voice as the SDK hears it — the whole voice on web and watch
+    ├── sdk-voice-readers.ts      # the SDK's analysers, safe to call before a session exists
+    └── tool-activity.ts          # which tool calls are in flight, for the thinking state
 
 mobile/
 ├── app.config.ts                 # Expo config: package name, scheme, permissions, plugins
@@ -84,30 +82,46 @@ mobile/
 │   └── android/src/main/         # Kotlin, the merged manifest, and res/xml
 ├── modules/jarvis-audio/         # raw audio for the hologram: the microphone, or Jarvis's WebRTC track
 └── src/
-    ├── app.tsx                   # root component: settings, conversation, and sample mode
-    ├── conversation-screen.tsx   # the hologram, the Talk button and the assistant card
+    ├── app.tsx                   # root component: the tour, settings, the conversation, sample mode
+    ├── onboarding-screen.tsx     # the first-run tour: agents, credentials, assistant role
+    ├── onboarding.ts             # its steps, which of them this device has, and every link
+    ├── onboarding-storage.ts     # whether the tour has been walked
+    ├── conversation-screen.tsx   # the hologram, and nothing else on the screen
+    ├── settings-screen.tsx       # the two fields with no tour around them, for coming back to
+    ├── elevenlabs-fields.tsx     # the two fields themselves, shared with the tour
+    ├── settings-storage.ts       # platform-agnostic half of persistence
+    ├── watch-card.tsx            # whether Jarvis is on the paired watch, and the key handover
+    ├── answer-the-watch.ts       # sends the credentials across whenever the watch asks
+    ├── use-assistant-registration.ts  # whether Jarvis still holds the assistant role
+    ├── assist-link.ts            # what "opened by the assistant" looks like
+    ├── assistant-window.ts       # the window the assistant gesture opens, and retracting it
     ├── sample-screen.tsx         # sample mode: Jarvis alone, tapped to walk through his moods
-    ├── sample-mode.ts            # the four moods, and the order a tap walks them in
+    ├── sample-sheet.tsx          # the sheet he arrives in, and why he waits for it to settle
+    ├── sample-mode.ts            # the three moods, and the order a tap walks them in
     ├── simulated-voice.ts        # speaking and thinking as a JarvisVoice, made from the clock
+    ├── mode-toast.tsx            # the one word sample mode says about which mood is showing
     ├── jarvis-hologram.tsx       # the hologram on Android …
     ├── jarvis-hologram.web.tsx   # … and in a browser, once CanvasKit has loaded
     │                              #   (both are two lines over `hologram/react`)
     ├── hologram-size.ts          # how big it is drawn on this screen
+    ├── spark-density.ts          # how many particles this phone can manage …
+    ├── spark-memory.ts           # … and remembering what it managed last time
+    ├── frame-rate.tsx            # the instrument, left running in a browser only
     ├── jarvis-voice.ts           # Jarvis's voice on Android: his track, tapped and analysed …
-    ├── jarvis-voice.web.ts       # … and in a browser, as the SDK measures it
+    ├── jarvis-voice.web.ts       # … and in a browser, over `hologram/conversation`
     ├── agent-audio-track.ts      # finding Jarvis's track in the conversation's LiveKit room
     ├── tapped-voice.ts           # raw samples from modules/jarvis-audio → volume and spectrum
-    ├── sdk-voice-readers.ts      # the SDK's own readers, made safe to call before a session
-    ├── settings-screen.tsx
-    ├── assist-link.ts            # what "opened by the assistant" looks like
-    ├── conversation-token.ts     # minting a conversation token from ElevenLabs
-    ├── elevenlabs-settings.ts    # validation of what the user typed
-    ├── settings-storage.ts       # platform-agnostic half of persistence
+    ├── typed-message-field.tsx   # the way in when a browser refuses the microphone
+    ├── theme.ts                  # the one place colours and spacing are defined
     ├── platform-contracts.ts     # the shapes the .web.ts pairs below must keep
     ├── key-value-store.ts        # keystore on Android …
     ├── key-value-store.web.ts    # … localStorage in a browser
     ├── microphone-permission.ts      # PermissionsAndroid …
-    └── microphone-permission.web.ts  # … getUserMedia
+    ├── microphone-permission.web.ts  # … getUserMedia
+    ├── preferred-microphone.ts       # onto the headset, on Android …
+    ├── preferred-microphone.web.ts   # … which a browser does for itself
+    ├── speech-floor.ts               # the quietest a phone reading counts as speech …
+    └── speech-floor.web.ts           # … which is a different number in a browser
 ```
 
 ## The hologram
@@ -214,7 +228,7 @@ The app ships with no credential. It talks to ElevenLabs directly, and both sett
 | API key | An ElevenLabs API key, sent as `xi-api-key` to ElevenLabs and nowhere else |
 | Agent ID | The Jarvis agent — the value of `HEY_JARVIS_ELEVENLABS_AGENT_ID` |
 
-Both values are also what the **watch** needs, and it is given them from here rather than asked for them: see [Handing the credentials to the watch](#handing-the-credentials-to-the-watch).
+Both values are also what the **watch** needs, and it is given them from here rather than asked for them: see [Handing the credentials to the watch](#handing-the-credentials-to-the-watch). `conversation-token.ts` and `elevenlabs-settings.ts` live in `hologram/` for the same reason — both devices use them, so neither owns them.
 
 For each conversation the app asks `GET https://api.elevenlabs.io/v1/convai/conversation/token` for a WebRTC token for that agent, and the session runs on the token; the key itself is used for nothing else. `conversation-token.ts` turns each failure into what to fix — a rejected key, a key without permission to start conversations (which ElevenLabs can also answer with 401), an agent ID the account does not have or a malformed one (400), an account out of credits (402), rate limiting (429) — by reading only ElevenLabs' fixed `detail.status` / `detail.code` identifiers. It never repeats anything else from a response, since a message can echo the request that carried the key.
 

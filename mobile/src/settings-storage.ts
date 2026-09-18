@@ -1,4 +1,4 @@
-import type { ElevenLabsSettings } from 'conversation';
+import type { ElevenLabsSettings } from 'hologram';
 import { readStoredValue, writeStoredValue } from './key-value-store';
 
 /**

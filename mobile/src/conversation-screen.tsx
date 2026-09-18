@@ -1,8 +1,7 @@
 import { useConversationControls, useConversationStatus } from '@elevenlabs/react-native';
-import { type ElevenLabsSettings, PHONE_PARTICIPANT_NAME, requestConversationToken } from 'conversation';
-import { useToolActivity } from 'conversation/react';
 import * as Linking from 'expo-linking';
-import { PARTICLE_COUNT } from 'hologram';
+import { type ElevenLabsSettings, PARTICLE_COUNT, PHONE_PARTICIPANT_NAME, requestConversationToken } from 'hologram';
+import { useToolActivity } from 'hologram/conversation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { createAssistLaunchClaim } from './assist-link';

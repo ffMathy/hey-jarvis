@@ -1,4 +1,4 @@
-import type { ElevenLabsSettings } from 'conversation';
+import type { ElevenLabsSettings } from 'hologram';
 import { useEffect } from 'react';
 import { sendSettingsToTheWatch, whenTheWatchAsksForCredentials } from '../modules/jarvis-watch';
 

@@ -7,9 +7,9 @@
 // attempt to talk fails at runtime with "No voice session setup strategy
 // registered".
 import { ConversationProvider } from '@elevenlabs/react-native';
-import type { ElevenLabsSettings } from 'conversation';
 import * as Linking from 'expo-linking';
 import { StatusBar } from 'expo-status-bar';
+import type { ElevenLabsSettings } from 'hologram';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
 import { useAnswerTheWatch } from './answer-the-watch';

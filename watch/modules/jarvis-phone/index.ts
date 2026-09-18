@@ -1,6 +1,6 @@
-import type { ElevenLabsSettings } from 'conversation';
-import { parseElevenLabsSettings } from 'conversation';
 import { requireOptionalNativeModule } from 'expo';
+import type { ElevenLabsSettings } from 'hologram';
+import { parseElevenLabsSettings } from 'hologram';
 
 /** What the native side stores, which is the JSON the phone sent with nothing added. */
 interface StoredSettings {

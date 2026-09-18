@@ -1,5 +1,5 @@
-import type { ElevenLabsSettings } from 'conversation';
 import * as Linking from 'expo-linking';
+import type { ElevenLabsSettings } from 'hologram';
 import { useCallback, useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { type AssistantSettingsScreen, openAssistantSettings } from '../modules/jarvis-assistant';

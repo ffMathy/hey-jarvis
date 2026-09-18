@@ -1,5 +1,5 @@
 import { useConversationMode, useConversationStatus, useRawConversation } from '@elevenlabs/react-native';
-import { useSdkVoiceReaders } from 'conversation/react';
+import { useSdkVoiceReaders } from 'hologram/conversation';
 import { useEffect, useMemo, useState } from 'react';
 import { jarvisAudio } from '../modules/jarvis-audio';
 import { followAgentAudioTrack, type NativeTrackIds, roomOfConversation } from './agent-audio-track';

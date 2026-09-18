@@ -1,4 +1,4 @@
-import type { ElevenLabsSettings } from 'conversation';
+import type { ElevenLabsSettings } from 'hologram';
 import { useIsForeground } from 'hologram/react/lifecycle';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';

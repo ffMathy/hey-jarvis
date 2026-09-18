@@ -26,7 +26,6 @@
     "@livekit/react-native-expo-plugin": "1.0.2",
     "@livekit/react-native-webrtc": "144.1.2",
     "@shopify/react-native-skia": "2.6.2",
-    "conversation": "workspace:*",
     "expo": "57.0.20",
     "expo-dev-client": "57.0.18",
     "expo-linking": "57.0.9",
