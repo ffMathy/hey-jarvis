@@ -430,7 +430,7 @@
           "pronunciationDictionaryLocators": false
         },
         "conversation": {
-          "textOnly": false,
+          "textOnly": true,
           "maxDurationSeconds": false
         },
         "agent": {

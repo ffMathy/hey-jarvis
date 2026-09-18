@@ -12,6 +12,8 @@ import { expect, type Page, type Route, test } from '@playwright/test';
  */
 
 const CONVERSATION_TOKEN_URL = 'https://api.elevenlabs.io/v1/convai/conversation/token**';
+/** What a typed conversation asks for instead: a socket, not a room. See `conversation-token.ts`. */
+const SIGNED_URL_URL = 'https://api.elevenlabs.io/v1/convai/conversation/get-signed-url**';
 
 declare global {
   interface Window {
@@ -397,9 +399,17 @@ test('lets the settings be reopened and corrected, and uses the correction', asy
 });
 
 test('offers a field to type into when the browser refuses the microphone', async ({ page }) => {
+  const asked: string[] = [];
   await refuseMicrophone(page);
   await page.route(CONVERSATION_TOKEN_URL, async (route: Route) => {
+    asked.push('token');
     await answerTokenRequest(route, 200, { token: 'a-webrtc-token', conversation_id: 'conv_1' });
+  });
+  await page.route(SIGNED_URL_URL, async (route: Route) => {
+    asked.push('signed-url');
+    await answerTokenRequest(route, 200, {
+      signed_url: 'wss://api.elevenlabs.io/v1/convai/conversation?agent_id=x&conversation_signature=y',
+    });
   });
 
   await page.goto('/');
@@ -409,10 +419,20 @@ test('offers a field to type into when the browser refuses the microphone', asyn
   // rather than the failure a phone reports.
   await expect(page.getByTestId('typed-message')).toBeVisible();
 
+  // And it is dialled over a socket rather than over WebRTC, which is the whole of the fix for a
+  // browser that sat on "Connecting…" for ever: a WebRTC room nobody publishes audio into never
+  // finishes coming up, and a conversation token can only be spent on one. So a typed conversation
+  // asks to have a URL signed and never asks for a token at all.
+  await expect.poll(() => asked).toEqual(['signed-url']);
+
   // It gets no further than opening, because this suite closes every socket to ElevenLabs, so there
   // *is* a connection error on screen and there is supposed to be. What matters is which error: a
   // refused microphone must no longer be one of them in a browser, or the fallback never happened.
   await expect(page.getByTestId('conversation-problem')).not.toContainText('microphone');
+
+  // And once there is no conversation coming, the field says so rather than going on promising one.
+  // "Connecting…" that never stops is what the user was actually shown.
+  await expect(page.getByTestId('typed-message')).toHaveAttribute('placeholder', 'Not connected');
 
   // The sphere is still the screen. A field appearing under it must not cost the drawing.
   await expect(page.getByTestId('hologram')).toBeVisible();

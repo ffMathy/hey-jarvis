@@ -4,10 +4,10 @@ Two things come out of this, from one pipeline:
 
 - **Every push to a pull request publishes to internal testing**, which is the only way to get the
   app onto a paired Wear OS watch.
-- **Every release cut on `main` publishes to production**, live to everyone. Release Please tags
-  the release and `release.yml` hands the tagged commit to the same workflow with the `production`
-  and `wear:production` tracks named instead. See §9, which is the part that needs a Console
-  setting rather than a code change.
+- **Every release cut on `main` publishes to the closed test.** Release Please tags the release and
+  `release.yml` hands the tagged commit to the same workflow with the closed track named instead.
+  Production is not where a release goes, and §9 explains why: it is not open to this account yet,
+  and the closed test is how it becomes open.
 
 What internal testing buys you, and why it is worth the hour: **it is the only way to get the app
 onto a paired Wear OS watch.** A watch cannot side-load — there is no file manager, no browser and
@@ -20,19 +20,27 @@ ever fail.
 Internal testing is not a public release. It goes to a list of up to a hundred email addresses you
 name, it is live within minutes instead of after a week of review, and it never appears in search.
 
-Everything below is done once — **after** §0, which is the part that is currently blocking.
-Afterwards it is automatic: every push to a pull request that touches the app publishes a build to
-internal testing, so what is on your phone and your watch is the branch you are working on, and
-every release on `main` publishes the same build to production. There is a manual trigger too, for
-when you want a different track.
+Everything below is done once, and by release 2.2.0 all of it had been: the account is open, the app
+exists, and Play accepts uploads signed with our key. §0 is kept as the history of how it was
+unblocked rather than as a thing still to do. After that it is automatic — every push to a pull
+request that touches the app publishes a build to internal testing, so what is on your phone and
+your watch is the branch you are working on, and every release on `main` publishes the same build to
+the closed test. There is a manual trigger too, for when you want a different track.
 
 ---
 
 ## 0. You need a developer account that is open
 
+**This is done — it is here for the history and for the day it matters again.** The evidence that it
+is done is in a real run: release 2.2.0's upload got `Validating track 'production'`, then
+`Successfully uploaded 1 artifacts`, and Play handed back a sharing URL for
+`com.ffmathy.heyjarvis`. None of that is possible without an open account with the app set up on it.
+
 The `ffMathy` account was **closed on 13 February 2024 for inactivity**, after a warning on
-12 December 2023 and a deadline of 9 February 2024. Nothing below can be done until there is an open
-account, and the pipeline in this repository cannot publish anything without one.
+12 December 2023 and a deadline of 9 February 2024. Nothing below could be done until there was an
+open account, and the pipeline in this repository could not publish anything without one — so if an
+upload ever starts failing at authentication rather than at a track or a precondition, come back
+here and read on. The closure criteria are further down, and a hobby project walks into them.
 
 [Google's documented remedy](https://support.google.com/googleplay/android-developer/answer/11605267)
 is to create a new account. There is a "request help" path from the Play Console Help page and it is
@@ -52,8 +60,8 @@ fourteen days before it can apply for *production* access —
 Internal testing works immediately, and internal testing is what puts the app on a paired watch.
 
 Production is the same pipeline with a different track name, so nothing in this repository has to
-change when that access is granted — but until it is, the publish step of a release will fail
-against the production track while internal testing keeps working. §9 is about exactly that.
+change when that access is granted — and until it is, a release publishes to the closed test
+instead, which is also what the fourteen days are counted on. §9 is about exactly that.
 
 ### Signing up again, in the browser
 
@@ -240,9 +248,12 @@ android.hardware.type.watch. To publish this release on the current track, remov
 (The odd version code is the watch's — see §7. Play sometimes says `Internal error encountered`
 instead, which is the same refusal with none of the detail.)
 
-So the workflow publishes twice: the phone bundle to one track and the watch bundle to the Wear OS
-track of the same name — `internal` and `wear:internal` from a pull request, `production` and
-`wear:production` from a release on `main`.
+So the workflow publishes twice: the phone bundle to one track and the watch bundle to a Wear OS
+track. From a pull request that is `internal` and `wear:internal`. From a release on `main` it is
+`alpha` — which is what the API calls the Console's "Closed testing" — and `wear:internal` again,
+because **there is no Wear OS closed track to pair with it.** The list below is every track this
+app has, and `wear:alpha` is not in it; of the `wear:` tracks that do exist, `wear:internal` is the
+only one that is not public.
 
 **Do not take that track name from Google's documentation, which is wrong.** The
 [tracks page](https://developers.google.com/android-publisher/tracks) says a form factor's track is
@@ -384,15 +395,15 @@ one more.
 
 In CI, nothing needs running. Pushing to a pull request that touches `mobile/`, `hologram/` or the
 dependency lock builds both bundles and sends them to the internal tracks; a release cut on `main`
-builds them again from the tagged commit and sends them to the production tracks. Both are the
+builds them again from the tagged commit and sends the phone to the closed test. Both are the
 **Play** workflow — `release.yml` calls it through `workflow_call` rather than owning a pipeline of
 its own, so production is never a path that has gone untested. It can also be started by hand from
 the Actions tab, which is how you pick a track that neither of those two names, or leave the upload
 as a draft for the Console.
 
-**The two numbers on a bundle come from different places.** The version *name* — `2.1.0`, what the
+**The two numbers on a bundle come from different places.** The version *name* — `2.2.0`, what the
 listing shows — is the monorepo's own version out of the root `package.json`, which Release Please
-bumps when it cuts a release, so a production upload is stamped with the release that published it.
+bumps when it cuts a release, so an upload is stamped with the release that published it.
 The version *code* is seconds since 2025-01-01, which is the one clock both entry points share: a
 run number counts the runs of one workflow, and two workflows counting separately would sooner or
 later hand Play a code it had already seen. See `.scripts/expo-release-signing.js`.
@@ -436,50 +447,123 @@ Worth knowing, because it is the part that looks like magic:
 | The bundle's certificate says `CN=Android Debug` | the four Gradle properties never arrived, so the build fell back to the debug key. Check the four variables are set in the shell that runs it |
 | `requires the Wear OS system feature android.hardware.type.watch. To publish this release on the current track, remove this artifact` | a watch bundle was sent to a *mobile* track. Play has not allowed that since March 2023 — the watch goes to `wear:internal`. See §3 |
 | `Internal error encountered` after a bundle says it uploaded | the same refusal as the row above, with none of the detail. Play gives one or the other |
+| `This edit has expired, please create a new Edit.` part way through the **watch** upload | the two uploads race: Play's reply to the phone's commit comes back before Play has finished with it, and the watch's edit is created into an app still settling and invalidated underneath its own upload. The workflow waits a minute and goes again with a fresh edit, which is what the message asks for; the failed attempt commits nothing, so the version code is not spent. If it happens on *both* attempts, lengthen the wait |
 | `Track "…" could not be found. Available tracks are: …` on **Publish the watch to Play** | read the list in the error rather than Google's documentation, which names a `wear:qa` track that does not exist. If no `wear:` track is listed at all, the Wear OS form factor has not been added — see §3. The phone will have published regardless, which is why the two are separate steps |
 | The watch app does not appear on the watch | the Wear OS form factor was never added under Test and release → Advanced settings, or the phone's Google account is not on the tester list |
 | `Version code N has already been used` on the *watch* bundle | both apps derive their version code from the same clock — the phone takes twice it, the watch one more — so this means one was uploaded outside the workflow |
 | `The caller does not have permission` or `403` on a *production* track | the publisher service account has **Release to testing tracks** but not **Release to production…** — see §2 step 5. The internal track will keep working, so only releases on `main` fail |
+| `Precondition check failed.` **after** `Successfully uploaded 1 artifacts` on a production track | the upload and the service account are fine and Play is refusing to *commit* the release. Google sends no detail at all — this bare sentence is the whole message. This is what release 2.2.0 hit, and it is why a release goes to the closed test instead: see §9 |
+| `Track "wear:alpha" could not be found` | there is no Wear OS closed track. Read the list the error prints; of the `wear:` tracks that exist, only `wear:internal` is not public, which is where the watch goes from a release — see §9 |
 | `Your app cannot be released to production` / the production track is missing from the error's track list | the developer account has not been granted production access yet. It is a closed test with twelve testers for fourteen days and then an application — see §9 |
 | A release on `main` published nothing at all | Release Please cut no release, so there was nothing to publish. A batch of only `chore`, `ci`, `build` and `test` commits does that by design — the run says `No user facing commits found since <sha> - skipping` |
 
 ---
 
-## 9. Going live: production
+## 9. What a release publishes, and why it is not production
 
-**Nothing in this repository needs changing to publish to production.** It already happens: when a
-release is cut on `main`, `release.yml` waits for Release Please to tag it and then calls the
-**Play** workflow with the tagged commit and the `production` and `wear:production` tracks. The
-bundles are built the same way, signed with the same key and uploaded by the same action as the
-ones that have been going to internal testing on every pull request — the track names are the only
-difference, which is the point of it being one workflow.
+When a release is cut on `main`, `release.yml` waits for Release Please to tag it and then calls the
+**Play** workflow with the tagged commit. The bundles are built the same way, signed with the same
+key and uploaded by the same action as the ones going to internal testing on every pull request —
+the track names are the only difference, which is the point of it being one workflow.
 
-What it publishes is a **completed** release, not a draft: it goes out rather than sitting in the
-Console waiting for a button. To hold a release back, hold the commits back — the same rule as the
-rest of the release pipeline. `chore`, `ci`, `build` and `test` commits cut no release at all, so
-they publish nothing.
+| | Phone | Watch |
+| --- | --- | --- |
+| Push to a pull request | `internal` | `wear:internal` |
+| Release cut on `main` | `alpha` — the Console's **Closed testing** | `wear:internal` |
 
-Two things are gates, and both are in the Play Console rather than here:
+**`alpha` is closed testing.** The Console names the track "Closed testing" and the API names it
+`alpha`; they are one track, and there is no track called `closed`.
+
+**The watch goes to `wear:internal` from a release, and that is not an oversight.** There is no Wear
+OS closed track. The API lists every track the app has when handed a name it does not know, and the
+list is `production,beta,alpha,internal,wear:beta,wear:internal,wear:production` — no `wear:alpha`.
+Of the three that exist, `wear:beta` is *open* testing and `wear:production` is public, so
+`wear:internal` is the only one that keeps the watch build private. It is also the track that
+reaches a paired watch, which is the reason the watch pipeline exists at all. If a Wear OS closed
+track ever shows up in that list, `wearTrack` in `release.yml` is the one line to change.
+
+What it publishes is a **completed** release, not a draft: it goes out to the testers rather than
+sitting in the Console waiting for a button. To hold a release back, hold the commits back — the
+same rule as the rest of the release pipeline. `chore`, `ci`, `build` and `test` commits cut no
+release at all, so they publish nothing.
+
+### Production, when the account can have it
+
+Production was where a release went first, and 2.2.0 proved it cannot be yet — see the next
+subsection for exactly how it failed. Two things gate it, and both are in the Console rather than
+here:
 
 1. **The developer account needs production access.** A personal account created since November
    2023 has to run a closed test with **twelve testers for fourteen continuous days** and then
-   apply, which Google reviews. Until that is granted there is no production track to publish to.
+   apply, which Google reviews.
    [Google's page on it](https://support.google.com/googleplay/android-developer/answer/14151465)
-   is the authority; the requirement does not apply to internal testing, which is why everything up
-   to here works without it.
-2. **The publisher service account needs production release rights** — §2 step 5. Without them the
-   upload fails with a permission error while internal testing carries on working.
+   is the authority; the requirement does not apply to internal or closed testing, which is why
+   everything up to here works without it.
 
-Because the second one is a Console permission, it is also the off switch. Revoking **Release to
-production…** from the service account stops releases going live within seconds and without a
-commit, and leaves the internal testing path untouched.
+   So the closed test a release now publishes to is not a consolation prize: **it is the thing that
+   satisfies this requirement.** Fourteen days of it with twelve testers is what makes the
+   application possible.
+2. **The publisher service account needs production release rights** — §2 step 5. It does not need
+   them for the closed track, so leaving them off costs nothing until the day production opens.
+
+Moving to production afterwards is two words in `release.yml`: `track: production` and
+`wearTrack: wear:production`. Nothing else changes, which is the whole point of the track being an
+input rather than a pipeline.
+
+### `Precondition check failed.`
+
+This is what the first production release actually did, on 2.2.0, and it is worth keeping because
+almost everything about it looks like success — and because it is the evidence for publishing to a
+closed test instead:
+
+```
+Validating track 'production'
+Uploading dist/mobile-aab/jarvis.aab
+Successfully uploaded 1 artifacts
+##[error]Precondition check failed.
+```
+
+So the bundle built, the key signed it, the service account authenticated, the `production` track
+was found, and Play **took the artifact**. What it then refused was the *commit* — the step that
+turns an uploaded artifact into a release. That narrows things usefully:
+
+- It is **not** the service account's permissions. A publisher limited to testing tracks does not
+  get past `Validating track 'production'`, let alone an upload.
+- It is **not** the version code, the signing, the manifest or anything else in this repository.
+  All of that is in the artifact Play accepted.
+
+`Precondition check failed.` is the entire message Google sends; the action has nothing more to
+relay, and the API does not say which precondition. Three things cause it, and **the Console is the
+only way to tell them apart**:
+
+1. **Production access has not been granted** — gate 1 above. The track exists and accepts uploads
+   before the grant; it will not commit a release.
+2. **The app has never been released to production**, so the declarations and store listing that
+   production demands are incomplete. §3 says the *first* release has to go through the Console by
+   hand because the API will not create one; that applies per track, so production needs its own
+   first release by hand even though internal testing has had many.
+3. **Play cannot send the changes for review automatically**, which the API expects you to
+   acknowledge with `changesNotSentForReview: true` on the upload step. That one *is* a code change
+   — but it is the wrong one unless the Console says so, because it publishes a release that then
+   sits unreviewed until somebody sends it by hand, which looks like a successful run that shipped
+   nothing.
+
+For this app it is cause 1: the account has no production access, because the closed test that
+earns it has not been run for fourteen days. Which is what a release now does, so the fix and the
+prerequisite are the same act.
+
+If you ever see this on a track that *should* work, look at **Test and release → Production** in the
+Console. If it will not let you create a release there by hand either, it is cause 1 or 2 and no
+change here will help. If it complains specifically about review, it is cause 3 — and that is the
+one that wants `changesNotSentForReview: true`, which is deliberately not set, because a release
+that uploads and then waits unsent looks like a green run that shipped nothing.
 
 ### What a user sees
 
-The version on the listing is the monorepo's version — `2.1.0` and so on — because both app configs
-read it from the root `package.json`, which Release Please bumps. So a production release is
-identifiable in the Console by the release that produced it, rather than by the frozen `0.1.0` both
-apps used to report.
+The version on the listing is the monorepo's version — `2.2.0` and so on — because both app configs
+read it from the root `package.json`, which Release Please bumps. So a release is identifiable in
+the Console by the release that produced it, rather than by the frozen `0.1.0` both apps used to
+report.
 
 Every release publishes both artifacts, whether or not the app itself changed in it. An upload with
 no app changes in it is a new version code and a download, and that is the deliberate trade: a

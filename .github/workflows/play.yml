@@ -19,22 +19,28 @@ name: Play
 #   Only pushes that could change the app: the same paths the APK workflow watches, because a
 #   README edit has no way into a bundle. Internal testing goes to a named list of up to a hundred
 #   testers, is available within minutes rather than after a review, and never appears in search.
-# - Every release cut on `main` publishes to *production*, live to everyone. `release.yml` calls
-#   this workflow through `workflow_call` once Release Please has tagged the release, handing it
-#   the tagged commit and the `production` and `wear:production` tracks. That is the only caller,
-#   and it is why this is one workflow with two entry points rather than two workflows that would
-#   drift apart — the build, the signing and the two-releases-on-two-tracks dance are identical and
-#   only the track names change.
+# - Every release cut on `main` publishes to the *closed test*. `release.yml` calls this workflow
+#   through `workflow_call` once Release Please has tagged the release, handing it the tagged commit
+#   and the tracks to use. That is the only caller, and it is why this is one workflow with two
+#   entry points rather than two workflows that would drift apart — the build, the signing and the
+#   two-releases-on-two-tracks dance are identical and only the track names change.
+#
+#   It aimed at `production` once, on 2.2.0, and Play took the bundle and then refused to commit the
+#   release. A personal developer account has to run a closed test with twelve testers for fourteen
+#   days before production is open to it at all, so the closed track is both where a release can go
+#   today and how that requirement gets served. `docs/play-store.md` section 9 has the whole story.
 #
 # A third way in, `workflow_dispatch`, exists for picking a track by hand.
 #
 # Each publish costs a `versionCode`, which can never be reused — see "Work out the version code"
-# below for where it comes from and why it is no longer the run number. Nothing here retries, and
-# the bundles are kept as an artifact even when the upload fails.
+# below for where it comes from and why it is no longer the run number. The only thing that retries
+# is the watch upload, once, because it races the phone's commit and loses; see the step that does
+# it. The bundles are kept as an artifact even when an upload fails.
 #
-# What it needs, and where each one comes from, is in `docs/play-store.md`. Production needs one
-# thing internal testing does not: a service account allowed to release to production, and a
-# developer account that has been granted production access. Both are Console settings, not code.
+# What it needs, and where each one comes from, is in `docs/play-store.md`. Going public one day
+# needs two things no track below production does — a service account allowed to release to
+# production, and a developer account granted production access — and both are Console settings
+# rather than anything here. Section 9 is where that is written down.
 on:
   pull_request:
     branches: [ main ]
@@ -253,9 +259,17 @@ jobs:
       #
       # Sharing a release also meant sharing a fate. Both bundles uploaded, the commit was refused
       # over the watch, and the phone did not publish either — so a watch that Play would not take
-      # blocked the phone app entirely. Two releases on two tracks cannot do that to each other.
+      # blocked the phone app entirely. Two releases on two tracks cannot do that to each other,
+      # and neither can the two *steps*, now that neither one halts the job.
+      #
+      # **`continue-on-error`, so that "cannot do that to each other" is actually true.** Running
+      # first only protects the phone from the watch; without this, a phone Play refuses halts the
+      # job and the watch step never runs at all — which is exactly what happened on the first
+      # production release, where the phone's commit was refused and the watch was never offered.
+      # The failure is not swallowed: the step's outcome is read below and the job still fails.
       - name: Publish the phone to Play
         id: publish-phone
+        continue-on-error: true
         uses: r0adkll/upload-google-play@v1.1.3
         with:
           serviceAccountJson: play-publisher.json
@@ -279,8 +293,12 @@ jobs:
       # Which is also how we know the Wear OS form factor is already switched on for this app: the
       # `wear:` tracks would not be there otherwise. If this step ever fails with "could not be
       # found" again, read the list in the error rather than the documentation.
+      #
+      # `continue-on-error` for the same reason as the phone, so the step below can report on both
+      # rather than the job stopping here.
       - name: Publish the watch to Play
         id: publish-watch
+        continue-on-error: true
         uses: r0adkll/upload-google-play@v1.1.3
         with:
           serviceAccountJson: play-publisher.json
@@ -289,25 +307,87 @@ jobs:
           track: ${{ inputs.wearTrack || 'wear:internal' }}
           status: ${{ inputs.status || 'completed' }}
 
-      # Both bundles upload and then the commit is refused, which Play reports either as the Wear OS
-      # message below or — with no detail at all — as "Internal error encountered". The action can
-      # add nothing, because that is the entire message Google sends it. So say here what it has
-      # always been, rather than leaving the next person to work it out from the run history again.
-      - name: Explain a failed publish
-        if: failure() && (steps.publish-phone.outcome == 'failure' || steps.publish-watch.outcome == 'failure')
+      # **The second upload into one app races the first one's commit, so it gets one more go.**
+      #
+      # Every invocation of the action creates a Play "edit", uploads into it and commits it. The
+      # phone's commit returns as soon as Play has accepted it, not as soon as Play has finished with
+      # it — and an edit created while the app is still settling is invalidated underneath the upload
+      # that is using it:
+      #
+      #   Validating track 'wear:internal'
+      #   Uploading dist/watch-aab/jarvis.aab
+      #   ##[error]This edit has expired, please create a new Edit.
+      #
+      # Fifty-seven seconds into an upload, on an edit created a tenth of a second after the phone's
+      # commit came back. The message says what to do about it, and a fresh invocation is a fresh
+      # edit, so waiting and going again is the fix rather than a way of hiding one. Nothing is
+      # spent by the failed attempt: an edit that never committed leaves its `versionCode` unused, so
+      # the same bundle goes up again unchanged. (Which is also the tell if this is ever the *wrong*
+      # diagnosis — a second attempt against a commit that did land fails with "Version code has
+      # already been used" instead.)
+      #
+      # Only the watch, because only the watch goes second. If the order is ever swapped, this moves.
+      - name: Let Play settle before trying the watch again
+        if: steps.publish-watch.outcome == 'failure'
+        run: sleep 60
+
+      - name: Publish the watch to Play, second attempt
+        id: publish-watch-retry
+        if: steps.publish-watch.outcome == 'failure'
+        continue-on-error: true
+        uses: r0adkll/upload-google-play@v1.1.3
+        with:
+          serviceAccountJson: play-publisher.json
+          packageName: com.ffmathy.heyjarvis
+          releaseFiles: dist/watch-aab/jarvis.aab
+          track: ${{ inputs.wearTrack || 'wear:internal' }}
+          status: ${{ inputs.status || 'completed' }}
+
+      # Both bundles upload and then the commit is refused, which Play reports as the Wear OS
+      # message below, or as "Internal error encountered", or — on production — as a bare
+      # "Precondition check failed." The action can add nothing, because that is the entire message
+      # Google sends it. So say here what it has always been, rather than leaving the next person to
+      # work it out from the run history again.
+      #
+      # **This step is also the job's verdict.** Both publishes are `continue-on-error`, so nothing
+      # else would fail the run: the `exit 1` at the end is what makes a refused upload a red run.
+      - name: Report how the publish went
+        if: always() && steps.publish-phone.outcome != 'skipped'
         run: |
-          echo "::notice title=Publishing failed::Both bundles are kept as the jarvis-${{ steps.version.outputs.code }} artifact, so nothing needs rebuilding."
-          if [ "${{ steps.publish-phone.outcome }}" = 'success' ]; then
-            echo "The PHONE published. Only the watch failed, and it cannot affect the phone's release."
+          phone='${{ steps.publish-phone.outcome }}'
+          watch='${{ steps.publish-watch.outcome }}'
+          retry='${{ steps.publish-watch-retry.outcome }}'
+
+          # `skipped` when the first attempt worked and there was nothing to retry.
+          if [ "$retry" = 'success' ]; then
+            echo "The watch failed its first attempt and published on the second."
+            watch='success'
           fi
-          echo "If the watch step failed with 'Track not found', or names 'android.hardware.type.watch',"
+
+          echo "Phone: $phone. Watch: $watch."
+
+          if [ "$phone" = 'success' ] && [ "$watch" = 'success' ]; then
+            exit 0
+          fi
+
+          echo "::notice title=Publishing failed::Both bundles are kept as the jarvis-${{ steps.version.outputs.code }} artifact, so nothing needs rebuilding."
+          if [ "$phone" = 'success' ]; then
+            echo "The PHONE published; only the watch failed. They are separate releases on separate tracks."
+          elif [ "$watch" = 'success' ]; then
+            echo "The WATCH published; only the phone failed. They are separate releases on separate tracks."
+          fi
+          echo "If a step failed with 'Track not found', or names 'android.hardware.type.watch',"
           echo "the app is not opted in to the Wear OS form factor yet. That is a Play Console setting,"
           echo "not a code change, and the wear track does not exist until it is done:"
           echo "  Test and release -> Advanced settings -> Form factors -> Add form factor -> Wear OS"
           echo "then agree to the Wear OS review policies. See docs/play-store.md section 3 and section 8."
-          echo "If it failed on a *production* track with a permission error, the Play publisher service"
-          echo "account is still limited to testing tracks, or the developer account has not been granted"
-          echo "production access yet. See docs/play-store.md section 9."
+          echo "If a step failed with 'This edit has expired' twice over, Play is taking longer than a"
+          echo "minute to settle after the phone's commit; lengthen the wait before the second attempt."
+          echo "If a *production* step uploaded the bundle and then failed with a bare"
+          echo "'Precondition check failed', the upload and the track are fine and Play is refusing to"
+          echo "commit the release. Google sends no detail, so the Console is the only way to tell which"
+          echo "of the three causes it is. See docs/play-store.md section 9."
+          exit 1
 
       # However the upload went, and even if the job was cancelled part way through it.
       - name: Shred the publisher account
