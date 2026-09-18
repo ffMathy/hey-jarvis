@@ -522,11 +522,29 @@ Turns a voice request into a **plan** for the specialized agents to run:
 - **No tools of its own**: it writes a plan, it never runs one and never sees a result
 - **No memory**: planning one request has nothing to recall from the last
 
-A plan is a set of **chains**. Chains run at the same time as each other; the delegations inside
-one chain run in order, and every delegation after the first is handed the previous answer along
-with its own prompt. So ordering and dependency passing are structural rather than implied —
-independent work goes in separate chains, and work that needs another part's answer goes in the
-same chain after it.
+The planner writes a flat list of **tasks**. Each names one agent, the prompt it is given, and
+in `needs` the id of the one task whose answer it cannot be carried out without. Tasks run at
+the same time as each other unless `needs` says otherwise.
+
+What actually runs is **chains**, derived from that list in `task-chains.ts`: the delegations
+inside one chain run in order, and every delegation after the first is handed the previous
+answer along with its own prompt. So ordering and dependency passing are structural rather than
+implied.
+
+**The derivation is the point.** The planner used to emit chains itself, which made sequencing a
+structural decision — which bucket does this go in — and that is the decision it got wrong,
+silently and in the direction that costs a wrong answer: it would write five tasks as five
+chains, and a task whose whole job was to use another's answer ran beside it and invented one.
+A live eval caught it filling a to-do reminder with a generic lasagna ingredient list while the
+recipe lookup it depended on was still running. Naming the task you are waiting on is a local
+judgement about a single prompt, and it is the one a planner can actually make; placing it is
+not, so nothing downstream is free to place it wrongly.
+
+A task needed by two others is run once per dependent, because a chain carries only the
+previous answer forward. That is the one thing the derivation trades away, and deliberately:
+repeating a lookup costs time and quota, while dropping one of the edges costs a wrong answer.
+The common shapes — a location before a weather lookup, a recipe before a reminder — are paths
+and pay nothing for it.
 
 Routing has been three things. A task DAG with a wave scheduler this vertical owned; then a
 supervisor agent delegating inside its own tool-call loop; now a plan. The middle one is why:

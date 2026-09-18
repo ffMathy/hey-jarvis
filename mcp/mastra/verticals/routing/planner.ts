@@ -1,9 +1,9 @@
 import type { Agent } from '@mastra/core/agent';
 import { z } from 'zod';
 import { createAgent } from '../../utils/index.js';
-import { logger } from '../../utils/logger.js';
 import { getPublicAgents } from '..';
 import type { PlannedChain } from './plan.js';
+import { chainsFromTasks } from './task-chains.js';
 
 /**
  * The agent that turns a request into a plan.
@@ -24,27 +24,37 @@ export { PLANNER_AGENT_ID };
 /**
  * What the planner emits.
  *
- * Chains rather than a flat list, because order is the only thing a plan has to express that
- * a list cannot: everything in one chain runs in sequence with the previous answer in hand,
- * and the chains run at the same time as each other.
+ * A flat list with a dependency named per task, rather than the chains this used to ask for.
+ * Chains made sequencing a structural decision -- which bucket does this go in -- and that is
+ * the decision the planner got wrong, silently and in the direction that costs a wrong answer:
+ * it would write every task as its own chain and a task that needed another's result would
+ * run beside it and invent one. Naming the task you are waiting on is a local judgement about
+ * a single prompt, and it is the one the planner is actually able to make. The chains are
+ * derived from it in `task-chains.ts`, where nothing can place a dependent in parallel with
+ * what it depends on.
+ *
+ * `needs` is required and empty-when-absent rather than optional, because a field the model
+ * may omit is a field it will omit.
  */
 const planSchema = z.object({
-  chains: z
+  tasks: z
     .array(
       z.object({
-        delegations: z
-          .array(
-            z.object({
-              agentId: z.string().describe('Exactly one of the agent ids listed in the instructions'),
-              prompt: z
-                .string()
-                .describe('A self-contained instruction for that agent; it cannot see the request or the plan'),
-            }),
-          )
-          .min(1),
+        id: z
+          .string()
+          .describe('A short name for this task, unique within the plan, used only so other tasks can refer to it'),
+        agentId: z.string().describe('Exactly one of the agent ids listed in the instructions'),
+        prompt: z
+          .string()
+          .describe('A self-contained instruction for that agent; it cannot see the request or the plan'),
+        needs: z
+          .string()
+          .describe(
+            'The id of the task whose answer this one cannot be carried out without, or an empty string if there is none',
+          ),
       }),
     )
-    .describe('Chains run at the same time as each other; delegations within a chain run in order'),
+    .describe('Tasks run at the same time as each other, except where one names another in `needs`'),
 });
 
 export { planSchema };
@@ -65,23 +75,29 @@ export function plannerInstructions(agents: Agent[]): string {
 You do not answer anything yourself and you never see a result. Everything the user is asking about — the weather, the calendar, the house, the shopping list, recipes, email, the commute — is known only to these agents. A plan that leaves an agent out is a question that never gets asked.
 
 # The plan
-A plan is a set of chains. Chains run at the same time as each other. The delegations inside one chain run in order, and every delegation after the first is handed the previous one's answer along with its own prompt.
+A plan is a list of tasks. Every task names one agent and the prompt it is given. All of them run at the same time, except where one task says it needs another.
+
+\`needs\` is how you say that. Put in it the id of the task whose **answer** this one cannot be carried out without, and this task will wait for it and be handed that answer along with its own prompt. Leave it as an empty string when there is nothing to wait for.
+
+Decide it one task at a time, by asking: **could the agent carry this prompt out knowing only what I wrote in it?** If doing so would mean inventing a value that another task is going off to find — the location, the departure time, the recipe — then it needs that task, and the plan is wrong without it. A task that invents the value instead answers the wrong question, and the user is told something untrue rather than told nothing.
 
 So:
-- Independent parts of the request go in **separate chains**, so they run at once
-- A part that needs a value another part produces goes in the **same chain, after it** — a location before a weather lookup, a recipe before a shopping list
-- Never put independent work in one chain; that only makes the user wait longer
+- Independent parts of the request leave \`needs\` empty, so they run at once
+- A part that cannot be done until another has answered names that other part — the location before the weather lookup, the work calendar before the traffic check, the recipe before the reminder that lists its ingredients
+- Never make independent work wait; that only makes the user wait longer
+- A task may name only one other, and it must be one that is in this plan
 
-# Writing a delegation
+# Writing a task
+- \`id\` must be short, lower-case and unique within the plan — \`recipe\`, \`weather\`, \`commute\`. It is never shown to anyone; it exists so another task can name it
 - \`agentId\` must be exactly one of the ids below. Never invent one, and never delegate work an agent's description does not cover
 - \`prompt\` must be self-contained. The agent cannot see the user's request, this plan, or any other agent's answer, so everything it needs must be in the prompt you write
-- For a delegation that follows another in its chain, write the prompt as if the previous answer is attached — it is. Say what to do with it rather than restating it
+- For a task with \`needs\`, write the prompt as if that answer is already attached — it is. Say what to do with it rather than restating it, and never write out a guess at what it will say
 
 # Critical rules
 - If no agent can handle part of the request, leave it out rather than misassigning it
 - Do not invent work the user did not ask for, and do not look up a value the user already gave you
 - Never ask clarifying questions — make best-guess assumptions and plan anyway
-- If nothing in the request can be handled by any agent, return no chains at all
+- If nothing in the request can be handled by any agent, return no tasks at all
 
 # The agents
 ${agentCatalogue(agents)}`;
@@ -126,28 +142,7 @@ export async function getRoutingPlannerAgent(): Promise<Agent> {
   });
 }
 
-/**
- * Drops anything the plan cannot actually run.
- *
- * A plan is registered as a bundle and validated as one, so a single delegation naming an
- * agent that does not exist takes the whole request down with it. A model that invents an id
- * is a thing that happens; losing the rest of the plan over it need not be.
- */
-export function keepRunnableDelegations(chains: PlannedChain[], knownAgentIds: ReadonlySet<string>): PlannedChain[] {
-  return chains
-    .map((chain) => ({
-      delegations: chain.delegations.filter((delegation) => {
-        if (knownAgentIds.has(delegation.agentId)) {
-          return true;
-        }
-        logger.warn('Routing plan named an agent that does not exist', { agentId: delegation.agentId });
-        return false;
-      }),
-    }))
-    .filter((chain) => chain.delegations.length > 0);
-}
-
-/** Asks the planner for a plan, and returns only the parts of it that can be run. */
+/** Asks the planner for a plan, and returns the chains it runs as. */
 export async function planDelegations(planner: Agent, userQuery: string): Promise<PlannedChain[]> {
   const response = await planner.generate(userQuery, {
     structuredOutput: { schema: planSchema },
@@ -159,5 +154,5 @@ export async function planDelegations(planner: Agent, userQuery: string): Promis
     throw new Error('The routing planner did not return a plan');
   }
 
-  return keepRunnableDelegations(plan.chains, await getRoutableAgentIds());
+  return chainsFromTasks(plan.tasks, await getRoutableAgentIds());
 }

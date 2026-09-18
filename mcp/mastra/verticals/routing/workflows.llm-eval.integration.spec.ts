@@ -6,7 +6,8 @@ import { z } from 'zod';
 import { createAgent } from '../../utils/index.js';
 import { isOllamaAvailable } from '../../utils/providers/ollama-provider.js';
 import type { PlannedChain } from './plan.js';
-import { keepRunnableDelegations, plannerInstructions, planSchema } from './planner.js';
+import { plannerInstructions, planSchema } from './planner.js';
+import { chainsFromTasks } from './task-chains.js';
 
 /**
  * LLM-evaluated routing decisions.
@@ -17,8 +18,12 @@ import { keepRunnableDelegations, plannerInstructions, planSchema } from './plan
  * They used to judge a task DAG, and then the delegations a supervisor made inside its own
  * loop. What is judged now is the plan itself, which is the same routing decision expressed
  * a third way — and the most directly readable of the three, because ordering and dependency
- * are structural rather than implied. Independent work is separate chains; a dependency is a
- * second delegation in the *same* chain, which is what hands it the first one's answer.
+ * are structural rather than implied.
+ *
+ * The planner writes a flat list of tasks and names each one's dependency; what is judged
+ * here is the chains that list runs as, derived by `chainsFromTasks`. That is deliberately
+ * the far side of the derivation rather than the near side: a declared edge is only worth
+ * anything if it ends up sequencing the work, and the chains are where that shows.
  */
 
 interface EvaluationResult {
@@ -155,7 +160,7 @@ async function plan(userQuery: string, agents: Agent[]): Promise<PlannedChain[]>
     throw new Error('The planner did not return a plan');
   }
 
-  return keepRunnableDelegations(response.object.chains, new Set(agents.map((agent) => agent.id)));
+  return chainsFromTasks(response.object.tasks, new Set(agents.map((agent) => agent.id)));
 }
 
 const WEATHER_DESCRIPTION = `# Purpose
