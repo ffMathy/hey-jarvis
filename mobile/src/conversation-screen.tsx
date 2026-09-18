@@ -129,6 +129,28 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
     setProblem(message);
   }, []);
 
+  /**
+   * Says why a conversation ended, when it ended for a reason worth saying.
+   *
+   * **The SDK does not route this through `onError`**, and that is the whole reason this exists.
+   * A server that closes the socket — a rejected override, an agent that is not reachable, a
+   * connection dropped mid-sentence — reaches `onDisconnect` carrying `reason: "error"` and a
+   * message, and reaches `onError` not at all. So the screen went dark and said nothing: Jarvis
+   * faded out, because a conversation really had ended, and there was no line to explain it.
+   *
+   * A conversation that simply finished is not a failure and gets no line. The agent hanging up
+   * after saying goodbye is `reason: "agent"`, and being told so in red would be the screen
+   * arguing with him.
+   */
+  const reportEnding = useCallback(
+    (details: { reason: string; message?: string }) => {
+      if (details.reason === 'error') {
+        reportProblem(details.message || 'The conversation with Jarvis ended unexpectedly.');
+      }
+    },
+    [reportProblem],
+  );
+
   const start = useCallback(async () => {
     setProblem(undefined);
     setIsStarting(true);
@@ -156,6 +178,7 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
           conversationToken: token,
           connectionType: 'webrtc',
           onError: reportProblem,
+          onDisconnect: reportEnding,
           ...toolHandlers,
           ...playbackHandlers,
         });
@@ -177,6 +200,7 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
           connectionType: 'websocket',
           textOnly: true,
           onError: reportProblem,
+          onDisconnect: reportEnding,
           ...toolHandlers,
         });
       }
@@ -186,7 +210,7 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
     } finally {
       setIsStarting(false);
     }
-  }, [settings, startSession, toolHandlers, playbackHandlers, reportProblem]);
+  }, [settings, startSession, toolHandlers, playbackHandlers, reportProblem, reportEnding]);
 
   /**
    * Gives up on a conversation that is taking too long to open, and says so.
@@ -347,8 +371,12 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
       {/*
         The way in when there is no microphone. Only ever rendered in a browser, because `start`
         only ever opens a text conversation there — a phone says so and stops instead.
+
+        It leaves with him rather than before him, so the screen empties in one movement. A field
+        left behind on a conversation that has ended is somewhere to type that nothing is listening
+        to, which is worse than no field at all.
       */}
-      {typingInstead ? (
+      {typingInstead && !gone ? (
         <TypedMessageField
           onSend={sendUserMessage}
           enabled={status === 'connected'}

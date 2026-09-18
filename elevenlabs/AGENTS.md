@@ -113,6 +113,24 @@ Keep it short. The prompt is carried on every turn, so anything the agent does
 not need in order to decide its *next* utterance does not belong in it — that is
 a latency and cost argument, and it holds no matter how capable the model is.
 
+## What a client is allowed to override
+
+`platformSettings.overrides.conversationConfigOverride` in `src/assets/agent-config.json` is an
+allow-list, and a client that sends an override the agent does not permit does not get it ignored
+— **the server closes the conversation**. That failure is close to silent from the app's side: the
+session connects, the socket shuts, and the SDK reports it through `onDisconnect` rather than
+`onError`, so nothing surfaces unless the app is listening for it (`mobile/` now is).
+
+`conversation.textOnly` is on that list because the phone app needs it. A browser with the
+microphone refused holds the conversation as text on both sides, which is done by sending exactly
+that override — see "What a typed conversation asks for" in `mobile/AGENTS.md`. It is also the
+least sensitive thing on the list: it changes whether Jarvis writes or speaks, not what he is or
+what he can reach.
+
+Anything changed here reaches the agent only through `bunx turbo deploy --filter=elevenlabs`, which
+needs the 1Password credentials. Until that runs, the committed config and the live agent disagree,
+and it is the live one the app talks to.
+
 ## The conversational model
 
 `conversationConfig.agent.prompt.llm` in `src/assets/agent-config.json` names the
