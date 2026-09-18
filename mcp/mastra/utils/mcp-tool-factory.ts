@@ -58,27 +58,52 @@ function readInstructions(workflowName: string, result: unknown): string {
 }
 
 /**
- * A workflow published as prose rather than as a JSON object, for when the instruction *is*
- * the answer.
+ * What an instruction-answering tool returns: the instruction, and the two MCP channels it is
+ * published through.
  *
- * Mastra fills `structuredContent` for every tool that declares an `outputSchema`, and the MCP
- * spec then has the same payload repeated as JSON text in `content`. So an instruction written
- * to be read by a voice model arrived twice over, escaped inside
- * `{"instructions":"…","sessionId":"jarvis-voice"}` both times: two copies of a paragraph,
- * wrapped in field names the agent has no use for. The session is the one it is already in — a
- * caller that names none shares the default — and the rest is scaffolding around the one
- * sentence saying what to speak and which tool to call next.
- *
- * Declaring no output schema takes both away. Mastra passes a string straight through as the
- * single text part, so the response is the instruction and nothing else.
+ * The shape is dictated by where the schema is enforced. Mastra's tool wrapper validates the
+ * *whole* returned value, so `instructions` has to sit at the top level — a value carrying only
+ * the channels is rejected outright, with the error going to the agent in place of the
+ * instruction. And the schema has to be loose, because a strict object would quietly strip the
+ * two channel keys as unknown before `MCPServer` ever got to read them.
  */
-export function createInstructionsOnlyWorkflowTool(workflow: AnyWorkflow) {
+const instructionsResultSchema = z.looseObject({
+  instructions: z.string().describe('Instructions for Jarvis to follow'),
+});
+
+/**
+ * A workflow published with a response written for the agent reading it, for when the
+ * instruction *is* the answer.
+ *
+ * Mastra fills `structuredContent` for every tool that declares an `outputSchema`, and then
+ * fills `content` with that same payload serialized — so an instruction written to be read by a
+ * voice model arrived twice over, the second time escaped inside
+ * `{"instructions":"…","sessionId":"jarvis-voice"}`. The session is the one the caller is
+ * already in (a caller that names none shares the default), and the escaping is scaffolding
+ * around the one sentence saying what to speak and which tool to call next.
+ *
+ * `MCPServer` only writes `content` itself when the tool supplied none, so supplying it is what
+ * keeps the second copy from being the whole payload spelled out again. The instruction stays a
+ * property of an object in `structuredContent`, which is the channel a client reads
+ * structurally; `content` carries the same sentence as prose for the one that reads text. One
+ * copy each, and nothing either of them has no use for.
+ */
+export function createInstructionsWorkflowTool(workflow: AnyWorkflow) {
   const workflowName = workflow.name ?? workflow.id;
   return createTool({
     id: workflowName,
     description: workflow.description ?? '',
     inputSchema: workflow.inputSchema ?? z.object({}),
-    // No `outputSchema`, deliberately — see above.
-    execute: async (context) => readInstructions(workflowName, await runWorkflowForTool(workflow, context)),
+    outputSchema: instructionsResultSchema,
+    execute: async (context) => {
+      const instructions = readInstructions(workflowName, await runWorkflowForTool(workflow, context));
+      const payload = { instructions };
+
+      return {
+        ...payload,
+        structuredContent: payload,
+        content: [{ type: 'text', text: instructions }],
+      };
+    },
   });
 }

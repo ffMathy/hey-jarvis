@@ -139,9 +139,8 @@ whether it hangs up when it says it is hanging up.
 ### What belongs in the routing instructions instead
 
 Every response from `routePromptWorkflow` and `getNextInstructionsWorkflow`
-carries instructions — `routePromptWorkflow` answers with nothing but them, the
-polls put them in an `instructions` field beside the results — and the prompt's
-only rule about the loop is to follow them literally. So the run-time mechanics — how long to keep
+carries an `instructions` field, and the prompt's only rule about the loop is
+to follow that field literally. So the run-time mechanics — how long to keep
 polling, what to say between reports, what to do with a failed call, that a
 finished request does not finish the conversation — live in `INSTRUCTIONS` and
 `ALL_TASKS_COMPLETED_INSTRUCTIONS` in

@@ -5,13 +5,13 @@
  * envelope around it is not cosmetic. Mastra repeats the payload of any tool that declares an
  * output schema — once as `structuredContent`, once as escaped JSON in `content` — which had a
  * paragraph written for a voice model arriving twice over, wrapped in field names it has no use
- * for. These cover the two shapes on offer, and the absent output schema is the whole mechanism
+ * for. These cover the two shapes on offer, and the supplied `content` is the whole mechanism
  * behind the quiet one.
  */
 
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
-import { createInstructionsOnlyWorkflowTool, createSimplifiedWorkflowTool } from './mcp-tool-factory.js';
+import { createInstructionsWorkflowTool, createSimplifiedWorkflowTool } from './mcp-tool-factory.js';
 import { executeTool } from './tool-factory.js';
 import { createStep, createWorkflow } from './workflows/workflow-factory.js';
 
@@ -45,21 +45,47 @@ function createAcknowledgingWorkflow() {
     .commit();
 }
 
-describe('createInstructionsOnlyWorkflowTool', () => {
-  it('answers with the instruction alone, so nothing has to be unwrapped to find it', async () => {
-    const tool = createInstructionsOnlyWorkflowTool(createAcknowledgingWorkflow());
+describe('createInstructionsWorkflowTool', () => {
+  it('keeps the instruction a property of an object, for the client that reads structurally', async () => {
+    const tool = createInstructionsWorkflowTool(createAcknowledgingWorkflow());
 
     const result = await executeTool(tool, { sessionId: 'jarvis-voice' });
 
-    expect(result).toBe('Say a short line, then call getNextInstructionsWorkflow.');
+    expect(result.structuredContent).toEqual({
+      instructions: 'Say a short line, then call getNextInstructionsWorkflow.',
+    });
   });
 
-  it('declares no output schema, which is what stops the answer being sent twice', async () => {
-    // Mastra fills `structuredContent` for a tool that has one and the MCP spec then repeats
-    // that payload as JSON text beside it. No schema, no second copy.
-    const tool = createInstructionsOnlyWorkflowTool(createAcknowledgingWorkflow());
+  it('writes the text channel itself, so the payload is not spelled out a second time', async () => {
+    // MCPServer serializes the whole payload into `content` when a tool supplies none, which
+    // is how one instruction became two copies. Supplying it is the whole mechanism.
+    const tool = createInstructionsWorkflowTool(createAcknowledgingWorkflow());
 
-    expect(tool.outputSchema).toBeUndefined();
+    const result = await executeTool(tool, { sessionId: 'jarvis-voice' });
+
+    expect(result.content).toEqual([
+      { type: 'text', text: 'Say a short line, then call getNextInstructionsWorkflow.' },
+    ]);
+  });
+
+  it('leaves the session out, since the caller is already in it', async () => {
+    const tool = createInstructionsWorkflowTool(createAcknowledgingWorkflow());
+
+    const result = await executeTool(tool, { sessionId: 'jarvis-voice' });
+
+    expect(result.structuredContent).not.toHaveProperty('sessionId');
+  });
+
+  it('repeats the instruction at the top level, where Mastra validates it', async () => {
+    // Mastra checks the *whole* returned value against the output schema before MCP ever sees
+    // it, so a value carrying only the two channels is rejected — the first attempt at this
+    // tool died exactly there, handing the agent a validation error in place of instructions.
+    // `executeTool` throws on that error, so getting an answer back at all is half the proof.
+    const tool = createInstructionsWorkflowTool(createAcknowledgingWorkflow());
+
+    const result = await executeTool(tool, { sessionId: 'jarvis-voice' });
+
+    expect(result.instructions).toBe('Say a short line, then call getNextInstructionsWorkflow.');
   });
 
   it('fails loudly when a workflow answers with no instruction to pass on', async () => {
@@ -74,7 +100,7 @@ describe('createInstructionsOnlyWorkflowTool', () => {
     });
     const workflow = createWorkflow({ id: 'answeringWorkflow', inputSchema, outputSchema }).then(step).commit();
 
-    expect(executeTool(createInstructionsOnlyWorkflowTool(workflow), {})).rejects.toThrow('returned no instructions');
+    expect(executeTool(createInstructionsWorkflowTool(workflow), {})).rejects.toThrow('returned no instructions');
   });
 });
 

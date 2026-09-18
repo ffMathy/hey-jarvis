@@ -4,7 +4,7 @@ import { MCPServer } from '@mastra/mcp';
 import express from 'express';
 import { logTokenUsageSummary } from './index.js';
 import { initializeScheduler } from './scheduler.js';
-import { createInstructionsOnlyWorkflowTool, createSimplifiedWorkflowTool } from './utils/mcp-tool-factory.js';
+import { createInstructionsWorkflowTool, createSimplifiedWorkflowTool } from './utils/mcp-tool-factory.js';
 import { getPublicAgents, registerApiRoutes, registerShoppingTriggers } from './verticals/index.js';
 import { getNextInstructionsWorkflow, routePromptWorkflow } from './verticals/routing/workflows.js';
 
@@ -18,7 +18,7 @@ export async function startMcpServer() {
     version: '1.0.0',
     agents: {},
     tools: {
-      routePromptWorkflow: createInstructionsOnlyWorkflowTool(routePromptWorkflow),
+      routePromptWorkflow: createInstructionsWorkflowTool(routePromptWorkflow),
       getNextInstructionsWorkflow: createSimplifiedWorkflowTool(getNextInstructionsWorkflow),
     },
   });

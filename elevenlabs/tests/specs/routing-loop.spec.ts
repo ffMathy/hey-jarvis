@@ -39,8 +39,8 @@ function called(
 }
 
 /**
- * The routing call as it answers now: an instruction in a text part, with no JSON around it.
- * See `createInstructionsOnlyWorkflowTool` in `mcp/mastra/utils/mcp-tool-factory.ts`.
+ * The routing call's text channel, which carries the instruction as prose. See
+ * `createInstructionsWorkflowTool` in `mcp/mastra/utils/mcp-tool-factory.ts`.
  */
 const acknowledged = (instructions: string): ServerMessage => {
   nextCallId += 1;
@@ -216,9 +216,9 @@ describe('readRoutingLoop', () => {
   });
 
   it('reads a routing acknowledgement that came back as prose rather than JSON', () => {
-    // routePromptWorkflow is published without an output schema, so its answer is the
-    // instruction and nothing else. Read as a report, it keeps the route call from looking
-    // like a call that carried nothing.
+    // routePromptWorkflow writes MCP's text channel itself, so its prose instruction is what
+    // arrives when ElevenLabs reports that channel. Read as a report, it keeps the route call
+    // from looking like a call that carried nothing.
     const loop = readRoutingLoop([
       acknowledged('Say a short line, then call getNextInstructionsWorkflow.'),
       recapped(['a']),

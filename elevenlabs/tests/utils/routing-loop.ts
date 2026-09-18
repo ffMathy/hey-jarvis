@@ -118,12 +118,12 @@ function readTextPart(result: unknown): string | undefined {
 /**
  * The acknowledgement a routing call answers with, which is prose rather than JSON.
  *
- * `routePromptWorkflow` is published without an output schema on purpose — see
- * `createInstructionsOnlyWorkflowTool` in `mcp/mastra/mcp-server.ts` — so the instruction
- * telling Jarvis what to say and which tool to call next arrives as the whole response,
- * instead of once inside `structuredContent` and again as escaped JSON beside it. Read here
- * so the loop still records what the routing call carried rather than filing it as a call
- * that carried nothing.
+ * `routePromptWorkflow` writes MCP's text channel itself — see
+ * `createInstructionsWorkflowTool` in `mcp/mastra/utils/mcp-tool-factory.ts` — so the
+ * instruction telling Jarvis what to say and which tool to call next arrives there as prose,
+ * rather than as the whole payload spelled out in JSON beside `structuredContent`. Which of
+ * the two channels reaches this detector depends on what ElevenLabs reports, so read the
+ * prose one too and the loop records what the routing call carried either way.
  *
  * Only ever tried on a routing call that succeeded. A failed call's payload is the error
  * ElevenLabs handed back, which is evidence of why the loop died and must not be dressed up

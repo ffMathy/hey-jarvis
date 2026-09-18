@@ -15,11 +15,11 @@ import {
  * `routePromptWorkflow`, then poll `getNextInstructionsWorkflow` until one of the responses
  * says everything has finished.
  *
- * What the ElevenLabs Jarvis agent sees is narrower. `routePromptWorkflow` is published
- * without an output schema (see `createInstructionsOnlyWorkflowTool` in `../../mcp-server.ts`),
- * so its acknowledgement reaches the agent as the instruction text alone rather than as a JSON
- * object repeated across `content` and `structuredContent`. The fields below still travel
- * anywhere the workflow is run directly.
+ * What the ElevenLabs Jarvis agent sees is narrower. `routePromptWorkflow` is published through
+ * `createInstructionsWorkflowTool` (see `../../utils/mcp-tool-factory.ts`), which writes both
+ * MCP channels itself: the instruction stays a property of an object in `structuredContent`,
+ * and `content` carries the same sentence as prose instead of the whole payload spelled out a
+ * second time. The fields below still travel anywhere the workflow is run directly.
  *
  * What changed is underneath. A request used to be planned into a task DAG run by a wave
  * scheduler this file owned, and then a supervisor agent delegating inside one tool-call
@@ -100,16 +100,15 @@ const CONVERSATION_CONTROL_EXCEPTION =
 
 /**
  * Instruction strings handed back to Jarvis. They are part of the outward contract —
- * `elevenlabs/src/assets/agent-prompt.md` tells the agent to do what a tool response says,
- * and for `routePromptWorkflow` this string *is* the response — so treat them as API surface
- * rather than log messages.
+ * `elevenlabs/src/assets/agent-prompt.md` points the agent at this field — so treat them as
+ * API surface rather than log messages.
  *
  * They also carry the loop itself. The agent prompt used to spell out how to poll, what to
  * say between reports and what to do with a failed call: every rule kept there is context
  * the voice model pays for on every turn, whether or not a routing request is in flight,
  * and every rule stated in both places is a rule it can obey twice. So the prompt says only
- * "do what the tool response says", and the specifics live here, where they arrive exactly
- * when they apply.
+ * "do what the instructions field says", and the specifics live here, where they arrive
+ * exactly when they apply.
  */
 const INSTRUCTIONS = {
   async: 'The request is being processed in the background and will complete on its own. End the call now.',
