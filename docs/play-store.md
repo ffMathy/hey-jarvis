@@ -440,6 +440,7 @@ Worth knowing, because it is the part that looks like magic:
 | The watch app does not appear on the watch | the Wear OS form factor was never added under Test and release → Advanced settings, or the phone's Google account is not on the tester list |
 | `Version code N has already been used` on the *watch* bundle | both apps derive their version code from the same clock — the phone takes twice it, the watch one more — so this means one was uploaded outside the workflow |
 | `The caller does not have permission` or `403` on a *production* track | the publisher service account has **Release to testing tracks** but not **Release to production…** — see §2 step 5. The internal track will keep working, so only releases on `main` fail |
+| `Precondition check failed.` **after** `Successfully uploaded 1 artifacts` on a production track | the upload and the service account are fine and Play is refusing to *commit* the release. Google sends no detail at all — this bare sentence is the whole message. Three things cause it, and only the Console can tell them apart: see §9 |
 | `Your app cannot be released to production` / the production track is missing from the error's track list | the developer account has not been granted production access yet. It is a closed test with twelve testers for fourteen days and then an application — see §9 |
 | A release on `main` published nothing at all | Release Please cut no release, so there was nothing to publish. A batch of only `chore`, `ci`, `build` and `test` commits does that by design — the run says `No user facing commits found since <sha> - skipping` |
 
@@ -463,7 +464,7 @@ Two things are gates, and both are in the Play Console rather than here:
 
 1. **The developer account needs production access.** A personal account created since November
    2023 has to run a closed test with **twelve testers for fourteen continuous days** and then
-   apply, which Google reviews. Until that is granted there is no production track to publish to.
+   apply, which Google reviews.
    [Google's page on it](https://support.google.com/googleplay/android-developer/answer/14151465)
    is the authority; the requirement does not apply to internal testing, which is why everything up
    to here works without it.
@@ -473,6 +474,47 @@ Two things are gates, and both are in the Play Console rather than here:
 Because the second one is a Console permission, it is also the off switch. Revoking **Release to
 production…** from the service account stops releases going live within seconds and without a
 commit, and leaves the internal testing path untouched.
+
+### `Precondition check failed.`
+
+This is what the first production release actually did, on 2.2.0, and it is worth knowing in detail
+because almost everything about it looks like success:
+
+```
+Validating track 'production'
+Uploading dist/mobile-aab/jarvis.aab
+Successfully uploaded 1 artifacts
+##[error]Precondition check failed.
+```
+
+So the bundle built, the key signed it, the service account authenticated, the `production` track
+was found, and Play **took the artifact**. What it then refused was the *commit* — the step that
+turns an uploaded artifact into a release. That narrows things usefully:
+
+- It is **not** the service account's permissions. A publisher limited to testing tracks does not
+  get past `Validating track 'production'`, let alone an upload.
+- It is **not** the version code, the signing, the manifest or anything else in this repository.
+  All of that is in the artifact Play accepted.
+
+`Precondition check failed.` is the entire message Google sends; the action has nothing more to
+relay, and the API does not say which precondition. Three things cause it, in rough order of
+likelihood, and **the Console is the only way to tell them apart**:
+
+1. **Production access has not been granted** — gate 1 above. The track exists and accepts uploads
+   before the grant; it will not commit a release.
+2. **The app has never been released to production**, so the declarations and store listing that
+   production demands are incomplete. §3 says the *first* release has to go through the Console by
+   hand because the API will not create one; that applies per track, so production needs its own
+   first release by hand even though internal testing has had many.
+3. **Play cannot send the changes for review automatically**, which the API expects you to
+   acknowledge with `changesNotSentForReview: true` on the upload step. That one *is* a code change
+   — but it is the wrong one unless the Console says so, because it publishes a release that then
+   sits unreviewed until somebody sends it by hand, which looks like a successful run that shipped
+   nothing.
+
+Look at **Test and release → Production** in the Console. If it will not let you create a release
+there by hand either, it is cause 1 or 2 and no change here will help. If it complains specifically
+about review, it is cause 3.
 
 ### What a user sees
 

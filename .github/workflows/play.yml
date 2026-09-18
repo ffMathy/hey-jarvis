@@ -253,9 +253,17 @@ jobs:
       #
       # Sharing a release also meant sharing a fate. Both bundles uploaded, the commit was refused
       # over the watch, and the phone did not publish either — so a watch that Play would not take
-      # blocked the phone app entirely. Two releases on two tracks cannot do that to each other.
+      # blocked the phone app entirely. Two releases on two tracks cannot do that to each other,
+      # and neither can the two *steps*, now that neither one halts the job.
+      #
+      # **`continue-on-error`, so that "cannot do that to each other" is actually true.** Running
+      # first only protects the phone from the watch; without this, a phone Play refuses halts the
+      # job and the watch step never runs at all — which is exactly what happened on the first
+      # production release, where the phone's commit was refused and the watch was never offered.
+      # The failure is not swallowed: the step's outcome is read below and the job still fails.
       - name: Publish the phone to Play
         id: publish-phone
+        continue-on-error: true
         uses: r0adkll/upload-google-play@v1.1.3
         with:
           serviceAccountJson: play-publisher.json
@@ -279,8 +287,12 @@ jobs:
       # Which is also how we know the Wear OS form factor is already switched on for this app: the
       # `wear:` tracks would not be there otherwise. If this step ever fails with "could not be
       # found" again, read the list in the error rather than the documentation.
+      #
+      # `continue-on-error` for the same reason as the phone, so the step below can report on both
+      # rather than the job stopping here.
       - name: Publish the watch to Play
         id: publish-watch
+        continue-on-error: true
         uses: r0adkll/upload-google-play@v1.1.3
         with:
           serviceAccountJson: play-publisher.json
@@ -289,25 +301,41 @@ jobs:
           track: ${{ inputs.wearTrack || 'wear:internal' }}
           status: ${{ inputs.status || 'completed' }}
 
-      # Both bundles upload and then the commit is refused, which Play reports either as the Wear OS
-      # message below or — with no detail at all — as "Internal error encountered". The action can
-      # add nothing, because that is the entire message Google sends it. So say here what it has
-      # always been, rather than leaving the next person to work it out from the run history again.
-      - name: Explain a failed publish
-        if: failure() && (steps.publish-phone.outcome == 'failure' || steps.publish-watch.outcome == 'failure')
+      # Both bundles upload and then the commit is refused, which Play reports as the Wear OS
+      # message below, or as "Internal error encountered", or — on production — as a bare
+      # "Precondition check failed." The action can add nothing, because that is the entire message
+      # Google sends it. So say here what it has always been, rather than leaving the next person to
+      # work it out from the run history again.
+      #
+      # **This step is also the job's verdict.** Both publishes are `continue-on-error`, so nothing
+      # else would fail the run: the `exit 1` at the end is what makes a refused upload a red run.
+      - name: Report how the publish went
+        if: always() && steps.publish-phone.outcome != 'skipped'
         run: |
-          echo "::notice title=Publishing failed::Both bundles are kept as the jarvis-${{ steps.version.outputs.code }} artifact, so nothing needs rebuilding."
-          if [ "${{ steps.publish-phone.outcome }}" = 'success' ]; then
-            echo "The PHONE published. Only the watch failed, and it cannot affect the phone's release."
+          phone='${{ steps.publish-phone.outcome }}'
+          watch='${{ steps.publish-watch.outcome }}'
+          echo "Phone: $phone. Watch: $watch."
+
+          if [ "$phone" = 'success' ] && [ "$watch" = 'success' ]; then
+            exit 0
           fi
-          echo "If the watch step failed with 'Track not found', or names 'android.hardware.type.watch',"
+
+          echo "::notice title=Publishing failed::Both bundles are kept as the jarvis-${{ steps.version.outputs.code }} artifact, so nothing needs rebuilding."
+          if [ "$phone" = 'success' ]; then
+            echo "The PHONE published; only the watch failed. They are separate releases on separate tracks."
+          elif [ "$watch" = 'success' ]; then
+            echo "The WATCH published; only the phone failed. They are separate releases on separate tracks."
+          fi
+          echo "If a step failed with 'Track not found', or names 'android.hardware.type.watch',"
           echo "the app is not opted in to the Wear OS form factor yet. That is a Play Console setting,"
           echo "not a code change, and the wear track does not exist until it is done:"
           echo "  Test and release -> Advanced settings -> Form factors -> Add form factor -> Wear OS"
           echo "then agree to the Wear OS review policies. See docs/play-store.md section 3 and section 8."
-          echo "If it failed on a *production* track with a permission error, the Play publisher service"
-          echo "account is still limited to testing tracks, or the developer account has not been granted"
-          echo "production access yet. See docs/play-store.md section 9."
+          echo "If a *production* step uploaded the bundle and then failed with a bare"
+          echo "'Precondition check failed', the upload and the track are fine and Play is refusing to"
+          echo "commit the release. Google sends no detail, so the Console is the only way to tell which"
+          echo "of the three causes it is. See docs/play-store.md section 9."
+          exit 1
 
       # However the upload went, and even if the job was cancelled part way through it.
       - name: Shred the publisher account
