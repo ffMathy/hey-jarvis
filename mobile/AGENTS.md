@@ -113,6 +113,7 @@ mobile/
     ├── tapped-voice.ts           # raw samples from modules/jarvis-audio → volume and spectrum
     ├── played-voice.ts           # the same, from the samples a browser is playing
     ├── queued-audio.ts           # dropping what a browser still has queued when he is cut off
+    ├── conversation-life.ts      # whether a conversation is open, and whether one has ended
     ├── typed-message-field.tsx   # the way in when a browser refuses the microphone
     ├── theme.ts                  # the one place colours and spacing are defined
     ├── platform-contracts.ts     # the shapes the .web.ts pairs below must keep
@@ -151,6 +152,20 @@ Every source hands the hologram the same two readings — a volume, and 1024 byt
 Both did once, and on both it was the wrong quantity — for different reasons, which is why each has its own way of getting at the samples.
 
 **In a browser the SDK's volume is not a loudness at all.** `getOutputVolume` is the mean of an `AnalyserNode`'s *byte* spectrum, and a byte of that spectrum is a decibel reading between −100 dB and −30 dB. So the quietest thing the scale can express is −100 dB, and everything above it reads as something: the hiss under a recording, the comfort noise a codec sends between words, the room the voice was recorded in. Read as a level that says Jarvis is talking for as long as a conversation is open, and the gaps between his words never reach the tracker's speech threshold — the sphere stayed agitated through his pauses and the rim threw chips into his silences. `played-voice.ts` reads the time-domain samples off an `AnalyserNode` of its own instead and puts them through the same analysis the phone uses, where silence is zero. It used to be covered up by doubling the browser's speech floor; a floor that means something different on every surface cannot be reasoned about, and covering it was all that did.
+
+### What happens when the conversation ends
+
+He goes. The agent hangs up, the session drops, and the sphere used to go on turning exactly as it
+does while he listens — which is the same complaint the problem line answers, the other way round:
+an assistant who has finished looks identical to one who is waiting for you. So the end of a
+conversation fades him over `LEAVING_SECONDS`, unmounts the drawing (a frame loop drawing a sphere
+that has faded to nothing is a phone kept awake for no one), takes the browser's frame-rate readout
+with it, and — summoned — retracts the assistant's window, which is how sample mode leaves too.
+
+**Ending is not the same as never starting**, and both read `disconnected`. A conversation that
+never opened has failed, and the answer to that is the line saying why *under a sphere that is
+still there*. So `conversation-life.ts` folds the statuses rather than looking at the current one,
+and only a conversation that was open can end.
 
 ### What happens to a sentence he is cut off in
 

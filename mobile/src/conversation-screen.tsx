@@ -8,9 +8,12 @@ import {
   requestSignedConversationUrl,
 } from 'hologram';
 import { useToolActivity } from 'hologram/conversation';
+import { LEAVING_SECONDS } from 'hologram/react/lifecycle';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { dismissAssistantWindow } from '../modules/jarvis-assistant';
 import { createAssistLaunchClaim } from './assist-link';
+import { afterStatus, isLive, NOT_YET_OPEN } from './conversation-life';
 import { FrameRate } from './frame-rate';
 import { useWholeScreenHologramSize } from './hologram-size';
 import { JarvisHologram } from './jarvis-hologram';
@@ -33,11 +36,6 @@ const claimAssistLaunch = createAssistLaunchClaim();
 
 /** Where the screen has to be bare, and where it does not. See the note on the component. */
 const ON_A_PHONE = Platform.OS !== 'web';
-
-/** Whether a conversation is open, or on its way to being open. */
-function isLive(status: string): boolean {
-  return status === 'connected' || status === 'connecting';
-}
 
 /**
  * How long the screen waits for a conversation to open before saying it has not.
@@ -68,6 +66,11 @@ const GIVE_UP_CONNECTING_AFTER_MS = 20_000;
  * What is left when everything goes right is nothing to read. What is left when it does not is one
  * line saying so, because an assistant that has silently failed to connect looks exactly like one
  * that is listening, and there would otherwise be no way to tell.
+ *
+ * **And when the conversation ends, so does he.** The same argument once more: a sphere that goes
+ * on turning after the agent has hung up is an assistant who has finished looking exactly like one
+ * who is waiting for you. He fades, the drawing stops, and on a phone the assistant's window goes
+ * with him — see the effects below `start`.
  *
  * The one thing that does put something on the screen is a browser with no microphone, which gets a
  * field to type into instead — see `typed-message-field.tsx` and the note in `start`. It is the
@@ -242,6 +245,56 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
     void start();
   }, [start, status, isStarting]);
 
+  /**
+   * A conversation that was open and is not any more: Jarvis goes.
+   *
+   * **He used to stay.** The agent would say goodbye and hang up, the session would drop, and the
+   * sphere went on turning exactly as it does while he listens — which is the same complaint the
+   * problem line answers, in the other direction: an assistant who has finished looks identical to
+   * one who is waiting for you. So the end of a conversation is the end of him being on screen.
+   *
+   * *Was* open is the whole of the condition, and it is why this is a fold over the statuses
+   * rather than a look at the current one: a conversation that never opened is a different state
+   * with a different answer — the line saying why, under a sphere that is still there — and both
+   * of them read `disconnected`. See `conversation-life.ts`.
+   */
+  const [life, setLife] = useState(NOT_YET_OPEN);
+  useEffect(() => {
+    setLife((seen) => afterStatus(seen, status));
+  }, [status]);
+  const ended = life.ended;
+
+  /**
+   * And once he has gone, the drawing stops.
+   *
+   * `leaving` is a fade, not an unmount — see the prop — so the screen has to keep him for exactly
+   * {@link LEAVING_SECONDS} and then let go. Letting go is the point: a frame loop drawing a sphere
+   * that has faded to nothing is a phone kept awake for no one.
+   */
+  const [gone, setGone] = useState(false);
+  useEffect(() => {
+    if (!ended) {
+      // Which today only ever means "not yet", since nothing retries — but a conversation that
+      // became open again would have to bring him back with it rather than leave the screen dark.
+      setGone(false);
+      return;
+    }
+    const fading = setTimeout(() => setGone(true), LEAVING_SECONDS * 1000);
+    return () => clearTimeout(fading);
+  }, [ended]);
+
+  /**
+   * Summoned, there is a window to retract as well, and nothing behind it but what the user was
+   * doing before — so the end of the conversation is the end of the window. Opened as an app or in
+   * a browser there is none, `dismissAssistantWindow` says so, and the screen simply stays, dark
+   * and still reachable by a long press. The same two ways out sample mode has; see its `finish`.
+   */
+  useEffect(() => {
+    if (gone) {
+      dismissAssistantWindow();
+    }
+  }, [gone]);
+
   // A summoning that arrives while this screen is already open: claimed so it is acted on once,
   // and then left alone if a conversation is already under way, since starting again would tear
   // down the one that is.
@@ -268,19 +321,22 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
       onLongPress={ON_A_PHONE ? onEditSettings : undefined}
       testID="conversation"
     >
-      <View style={{ width: hologramSize, height: hologramSize }} testID="hologram">
-        <JarvisHologram
-          size={hologramSize}
-          voice={voice}
-          quietestSpeech={QUIETEST_SPEECH_HERE}
-          thinking={thinking}
-          frameRate={frameRate}
-          buildMilliseconds={buildMilliseconds}
-          particleShare={particleShare}
-          provenShare={provenShare}
-          startingShare={startingShare}
-        />
-      </View>
+      {gone ? null : (
+        <View style={{ width: hologramSize, height: hologramSize }} testID="hologram">
+          <JarvisHologram
+            size={hologramSize}
+            voice={voice}
+            quietestSpeech={QUIETEST_SPEECH_HERE}
+            thinking={thinking}
+            leaving={ended}
+            frameRate={frameRate}
+            buildMilliseconds={buildMilliseconds}
+            particleShare={particleShare}
+            provenShare={provenShare}
+            startingShare={startingShare}
+          />
+        </View>
+      )}
 
       {problem ? (
         <Text style={styles.problem} testID="conversation-problem">
@@ -306,8 +362,11 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
         On a phone this screen is the assistant and has nothing on it at all; in a browser it is
         where the drawing is developed, and knowing what it is managing is worth a line of text so
         dark you have to look for it. `faint` is what makes it that.
+
+        It goes with him. An instrument reporting on a drawing that is no longer being drawn
+        reports the last numbers it ever wrote, for ever, which is worse than reporting nothing.
       */}
-      {ON_A_PHONE ? null : (
+      {ON_A_PHONE || gone ? null : (
         <FrameRate
           frameRate={frameRate}
           buildMilliseconds={buildMilliseconds}
