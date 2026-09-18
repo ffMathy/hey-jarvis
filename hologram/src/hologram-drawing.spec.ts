@@ -609,6 +609,19 @@ describe('the hologram', () => {
     expect(dimmed / (thin.length / 4)).toBeLessThan(0.002);
   });
 
+  it('can be built with far fewer particles, which is the only way a watch gets cheaper', () => {
+    // The density share thins the swarm by skipping fragments *inside* the draw loop, so however
+    // low it goes the loop still visits every fragment the scene holds — and the scene is
+    // serialised into the worklet runtime at mount besides. Neither cost can be steered away from,
+    // which is why `watch/src/watch-density.ts` asks for a smaller scene rather than a lower share.
+    const watchSized = createHologramScene(SEED, 1200);
+
+    expect(watchSized.body.length).toBeLessThan(createHologramScene(SEED).body.length);
+    // And it is still him: the rim, the stream and the rest do not thin with the body.
+    expect(watchSized.stream.length).toBe(createHologramScene(SEED).stream.length);
+    expect(watchSized.body.length).toBeGreaterThan(0);
+  });
+
   it('can be built with more particles than any phone is given', () => {
     // The showcase renders Jarvis at 1300 of them, because a renderer with no frame to hit can
     // afford what a phone cannot — see `hologram/.scripts/render-showcase.ts`. The parameter is
