@@ -52,11 +52,16 @@ import { LEAVING_SECONDS } from '../src/react/leaving';
 import { createPerformance, findLoudestMoment, stillMoment } from './simulated-performance';
 
 /**
- * Far more particles than any phone is asked to draw.
+ * How many particles the showcase frames are built from.
  *
- * A thousand is what `PARTICLE_COUNT` gives the apps, and even that is thinned to whatever the
- * phone can afford at its target frame rate — see `density-control.ts`. None of that applies to a
- * renderer with no deadline, so this is what Jarvis looks like with the brakes off.
+ * It began as "far more than any phone is asked to draw", back when `PARTICLE_COUNT` gave the apps
+ * a thousand and even that was thinned to whatever the phone could afford at its target frame rate
+ * — see `density-control.ts`. The apps' ceiling has been raised twice since, to five thousand and
+ * then to ten, so this is now the sparser of the two pictures rather than the denser one.
+ *
+ * Left where it is deliberately: every frame this script renders was framed and reviewed at this
+ * density, and the one place the brakes-off reading still matters is the cover, which asks for
+ * `PARTICLE_COUNT` outright — see `coverScene` below.
  */
 const PARTICLES = 1300;
 

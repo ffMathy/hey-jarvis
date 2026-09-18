@@ -183,13 +183,13 @@ function difference(first: Uint8Array, second: Uint8Array): number {
   return total / first.length;
 }
 
-/** Mean luminance of the outermost `band` pixels on every side. */
 /**
  * What share of the square's edge band is lit at all, 0-1.
  *
- * This is what tells the two ways of reaching the edge apart. The sphere's own rim running off the canvas would light a long arc of this band; a
- * chip thrown past the limb on a syllable lights a few pixels of it. A mean cannot separate those,
- * and since the sphere was made nearly as wide as the screen the second happens on purpose.
+ * This is what tells the two ways of reaching the edge apart. The sphere's own rim running off the
+ * canvas would light a long arc of this band; what the spread and the chips throw past the limb on
+ * a syllable lights a scatter of pixels across it. A mean cannot separate those, and since the
+ * sphere was made nearly as wide as the screen the second happens on purpose.
  */
 function edgeLitShare(pixels: Uint8Array, band: number): number {
   let lit = 0;
@@ -423,7 +423,18 @@ describe('the hologram', () => {
     const low = render(speech(7, 0.7, spectrum('low', 0.9)));
     const high = render(speech(7, 0.7, spectrum('high', 0.9)));
 
-    expect(difference(low, high)).toBeGreaterThan(0.5);
+    // **The number falls as PARTICLE_COUNT rises, and it is the blending that does it**, not the
+    // spectrum being answered any less. Fragments are Screen-blended, so a fragment's contribution
+    // to a pixel is 1 - (1 - base)(1 - its own): the denser the swarm, the brighter the base under
+    // every fragment, and the less any one of them moves the pixel it lands on. Measured over the
+    // moments this suite renders: 0.71 at a thousand fragments, 0.65 at five thousand, 0.52-0.66 at
+    // ten, 0.47-0.54 at fifteen. Nothing saturates at any of them — compression, not clipping.
+    //
+    // So this is measured rather than reasoned, and it keeps its teeth: the same spectrum rendered
+    // twice differs by exactly 0, which is what ignoring the bands would score. Under the 0.52 the
+    // sparsest moment measures rather than at it, because a threshold a test clears by three
+    // percent is a threshold that fails on the next unrelated thing.
+    expect(difference(low, high)).toBeGreaterThan(0.45);
   });
 
   it('turns its body about the vertical axis, once every BODY_TURN_SECONDS', () => {
@@ -623,10 +634,11 @@ describe('the hologram', () => {
   });
 
   it('can be built with more particles than any phone is given', () => {
-    // The showcase renders Jarvis at 1300 of them, because a renderer with no frame to hit can
-    // afford what a phone cannot — see `hologram/.scripts/render-showcase.ts`. The parameter is
-    // the *body*, which is nearly all of him; the rim, the stream and the rest are fixed, so this
-    // asks that more were asked for and more arrived, rather than for an exact multiple.
+    // Nothing about the scene knows what a phone can hold, so a renderer with no frame to hit can
+    // ask for whatever it likes above the apps' ceiling — see `hologram/.scripts/render-showcase.ts`,
+    // which does exactly that for its cover. The parameter is the *body*, which is nearly all of
+    // him; the rim, the stream and the rest are fixed, so this asks that more were asked for and
+    // more arrived, rather than for an exact multiple.
     const asked = PARTICLE_COUNT * 1.3;
     const bigger = createHologramScene(SEED, asked);
 
@@ -648,14 +660,28 @@ describe('the hologram', () => {
     //
     // Then the user saw the clipping and said so, and the answer turned out not to be a looser
     // rule but a wider square: the square is bigger than the *screen* now, so the only thing that
-    // cuts a chip is the screen itself, where an edge cannot be seen. Nothing reaches the canvas
-    // edge at all any more, at any moment of any burst at full voice — so this asks for that.
+    // cuts a chip is the screen itself, where an edge cannot be seen.
+    //
+    // **The ten-pixel allowance is doing real work now, and it is worth knowing how much.** It
+    // measured none of the band at five thousand fragments. At ten thousand the worst moment of the
+    // worst burst lights seven pixels of 5020 — inside the allowance, but only just — and at
+    // fifteen thousand it lit ninety and this failed. More fragments are more draws from the same
+    // distribution, so the tail reaches further: 1.81R here against 1.79R at five thousand.
+    //
+    // What reaches out there is the speech-driven spread, not the chips: removing the burst
+    // entirely changes nothing. And the square's own edge is 1.85R while *the screen ends at
+    // 1.24R*, so all of it is half again further out than anything the user can see. That is why
+    // seven pixels is a note rather than a bug — but the allowance is the thing to re-measure,
+    // rather than widen, the next time this trips.
+    //
+    // It keeps its teeth either way. Shrink the square to the 1.61R that clipped visibly and the
+    // band lights 0.0998 of itself — 501 pixels, seventy times this — and at 1.37R, 0.251. A rim
+    // running off the canvas is an arc, not a spray.
     const band = Math.round(SIZE * 0.02);
     for (const time of [8, 23.4, 31.2, 47.9, 55.1]) {
       for (const burstAge of [0, 0.06, 0.12, 0.2]) {
         const loudest = render(speech(time, 1, new Array(VOICE_BAND_COUNT).fill(1), burstAge, Math.round(time * 10)));
 
-        // Ten pixels of five thousand would pass. It measures none.
         expect(edgeLitShare(loudest, band)).toBeLessThan(0.002);
       }
     }

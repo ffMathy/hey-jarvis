@@ -26,8 +26,8 @@ export const WATCH_PARTICLE_COUNT = 1200;
  * chosen by nobody, on the one device least able to afford being wrong about it.
  *
  * Wiring it up is all it takes for the behaviour the watch wanted anyway, because the controller
- * already works this way: it opens at `FEWEST_PARTICLES` — a twentieth of the scene, which here is
- * sixty fragments — and adds more only while the measured rate is at or above
+ * already works this way: it opens at `FEWEST_PARTICLES` — a fortieth of the scene, which here is
+ * thirty fragments — and adds more only while the measured rate is at or above
  * `TARGET_FRAMES_PER_SECOND`, dropping them quickly when it is not. Start at nearly nothing, climb
  * only if the frame rate is held.
  *

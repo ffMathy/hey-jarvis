@@ -193,8 +193,8 @@ const DRAWN_RESOLUTION = 0.45;
  * so "exactly fast enough" and "could draw three times as much" read identically. On a 60 Hz screen
  * it was worse than blind. A gate can only produce the refresh divided by a whole number, so a
  * forty-eighth yields thirty there — and the loop, told to hold forty, read thirty as the phone
- * struggling and stripped the particles to the floor. Two hundred and fifty of five thousand, at a
- * rate the cap itself had imposed.
+ * struggling and stripped the particles to the floor. Two hundred and fifty of the five thousand
+ * there were then, at a rate the cap itself had imposed.
  *
  * A hundred-and-twenty-eighth rather than a hundred-and-twentieth so the arithmetic lands on the
  * right side of a real screen's timing: at 120 Hz frames arrive every 8.3 ms, which clears 7.8 and
