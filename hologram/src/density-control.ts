@@ -33,12 +33,19 @@ export const TARGET_FRAMES_PER_SECOND = 40;
  * Never fewer than this share of the particles: past it he stops looking like himself.
  *
  * A share, and it therefore has to move whenever `PARTICLE_COUNT` does. What matters is the count
- * it works out to — about 240 fragments, which is where the swarm stops reading as a swarm — and
- * not the fraction. It was a fifth of a thousand; the ceiling is five thousand now, and a fifth of
- * that would be a floor of a thousand, five times higher than any phone was ever held to. A phone
- * that could manage three hundred would be pinned above what it can draw and stutter for ever.
+ * it works out to — about 250 fragments, which is where the swarm stops reading as a swarm — and
+ * not the fraction. It was a fifth of a thousand, then a twentieth of five thousand, and it is a
+ * sixtieth of fifteen thousand, each time for the same reason: left alone while the ceiling rises,
+ * the floor rises with it, and a phone that could manage three hundred would be pinned above what
+ * it can draw and stutter for ever.
+ *
+ * A watch is the one place this lands somewhere else, knowingly. `watch-density.ts` builds a scene
+ * of 1200, so a sixtieth of it is twenty fragments rather than 250, and nothing here can tell the
+ * difference: this module imports nothing and never sees a count, only a share. It is the right
+ * trade there anyway — on a watch the floor is a last resort rather than a resting place, and a
+ * watch that cannot hold the target at twenty fragments was never going to hold it at sixty.
  */
-export const FEWEST_PARTICLES = 0.05;
+export const FEWEST_PARTICLES = 0.0167;
 
 /**
  * How wide a band around the target counts as arrived, as a share of it.
@@ -67,12 +74,13 @@ const INTEGRAL_GAIN = 0.35;
  * {@link FEWEST_PARTICLES} to nearly all of them in about three seconds.
  *
  * **It has to move when the floor does**, which is not obvious and cost a failing test to notice.
- * The climb covers a distance measured in shares, so starting from a twentieth rather than a fifth
+ * The climb covers a distance measured in shares, so starting from a sixtieth rather than a fifth
  * is a longer way to go at the same speed, and the entrance — the one part of this anybody watches
- * — got slower every time the ceiling went up. Raised from 0.3 to keep it where it was.
+ * — got slower every time the ceiling went up. Raised from 0.3 to 0.35 when the floor became a
+ * twentieth, and to 0.36 when it became a sixtieth, both times to keep the entrance where it was.
  */
 const FALLING_PER_SECOND = 0.9;
-const RISING_PER_SECOND = 0.35;
+const RISING_PER_SECOND = 0.36;
 
 /** How much accumulated error the integral may carry, so a long slow patch cannot wind it up. */
 const CARRIED_LIMIT = 0.5;

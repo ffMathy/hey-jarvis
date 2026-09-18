@@ -158,16 +158,18 @@ describe('deciding how many particles this phone can afford', () => {
     expect(startFromRemembered(1)).toBeCloseTo(0.9, 5);
     // Nothing remembered, and nothing to go on: begin where a phone that has never been asked does.
     expect(startFromRemembered(0)).toBe(FEWEST_PARTICLES);
-    // And never under the floor, however little it managed.
-    expect(startFromRemembered(0.05)).toBe(FEWEST_PARTICLES);
+    // And never under the floor, however little it managed. Below it rather than at it: the input
+    // used to be 0.05, which *was* the floor, and stopped meaning anything the moment the floor
+    // moved under it.
+    expect(startFromRemembered(0.01)).toBe(FEWEST_PARTICLES);
   });
 
   it('climbs from the floor when the phone is making the target, rather than sitting there', () => {
     // The shape of a real bug, and the reason the view's cap is far above the target rather than at
     // it. With the cap *at* the target, a 60 Hz screen could only ever report 30 — a gate produces
     // the refresh divided by a whole number — and the loop read its own cap as the phone struggling
-    // and stripped the sphere to the floor. Two hundred and fifty particles of five thousand, on a
-    // machine that could draw thousands.
+    // and stripped the sphere to the floor. Two hundred and fifty particles of the five thousand
+    // there were then, on a machine that could draw thousands.
     //
     // What has to happen instead: a phone with room climbs into it.
     const control = createDensityControl();

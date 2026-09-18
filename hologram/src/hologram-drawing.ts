@@ -503,13 +503,23 @@ const FRAGMENT_CODE_GLYPH_STEP = 12;
  * did, drawing 988 of the thousand while pinned at the cap, which was sixty at the time. The cap is
  * forty now, so there is more room again rather than less.
  *
+ * Raised to five thousand on that reasoning, and to fifteen thousand on the same reasoning again:
+ * a phone that settles just under the ceiling is a phone the ceiling is answering for, and the
+ * only way to find out what it could actually hold is to stop answering. A phone that cannot is
+ * unaffected — it settles at its own number, wherever that is, and pays only the scene cost below.
+ *
  * What it costs on every phone, fast or slow, is the scene: this many fragments times
  * {@link BODY_STRIDE} numbers, built once and serialised once into the worklet runtime when the
- * view mounts. That is the only part of raising it that nobody can opt out of.
+ * view mounts. That is the only part of raising it that nobody can opt out of, and it is worth
+ * knowing the size of it: 150,000 numbers, which `createHologramScene` spends 21-29 ms building on
+ * a desktop CPU against 8-10 ms at five thousand. A phone is some multiple of that, and then
+ * Reanimated copies the lot across. It lands as a hitch when the view mounts rather than as a
+ * frame rate, so the controller below cannot thin it away — this is the number to look at first if
+ * the arrival ever starts feeling late.
  *
  * {@link FEWEST_PARTICLES} in `density-control.ts` is a share of this, so it moves when this does.
  */
-export const PARTICLE_COUNT = 5000;
+export const PARTICLE_COUNT = 15000;
 
 /**
  * Turns a fragment's id into where it sits in the thinning, 0-1.
