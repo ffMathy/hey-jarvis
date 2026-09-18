@@ -193,17 +193,25 @@ To hold a release back, hold the commits back: anything that lands on `main`
 ships on the next run.
 
 A release ships the phone and the watch too. Once the release is tagged, the
-`play` job hands the tagged commit to the `Play` workflow with the `production`
-and `wear:production` tracks named, and that is the same workflow — the same
-build, the same upload key, the same two-releases-on-two-tracks — that every
-pull request publishes to internal testing. Production is therefore never a path
-that has gone unexercised, and the only difference between the two is which
-track each bundle is uploaded to. Both numbers on a bundle come from outside the
-app configs: the version name is the root `package.json` version Release Please
-bumps, and the version code is seconds since 2025-01-01, which is the one clock
-both entry points can share without eventually colliding. Whether a release
-actually goes live is a Play Console permission rather than anything here — see
-`docs/play-store.md` §9.
+`play` job hands the tagged commit to the `Play` workflow, and that is the same
+workflow — the same build, the same upload key, the same
+two-releases-on-two-tracks — that every pull request publishes to internal
+testing. The only difference is the track each bundle goes to, so a release is
+never a path that has gone unexercised.
+
+It publishes to the **closed test** (`alpha`), not production. Production is not
+open to a personal developer account until it has run a closed test with twelve
+testers for fourteen days, and 2.2.0 proved it: Play took the bundle and refused
+to commit the release with a bare `Precondition check failed.` So the closed
+track is both where a release can go today and how production eventually gets
+earned. The watch stays on `wear:internal`, because no Wear OS closed track
+exists — the API's own track list has no `wear:alpha`.
+
+Both numbers on a bundle come from outside the app configs: the version name is
+the root `package.json` version Release Please bumps, and the version code is
+seconds since 2025-01-01, which is the one clock both entry points can share
+without eventually colliding. `docs/play-store.md` §9 has the tracks, the gates
+and the failure.
 
 What counts as releasable is `changelog-sections` in
 `.github/release-please-config.json`: `feat`, `fix`, `perf`, `refactor` and
