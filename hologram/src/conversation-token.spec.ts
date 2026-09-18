@@ -4,6 +4,8 @@ import {
   type ConversationRequest,
   PHONE_PARTICIPANT_NAME,
   requestConversationToken,
+  requestSignedConversationUrl,
+  SIGNED_CONVERSATION_URL,
   WATCH_PARTICIPANT_NAME,
 } from './conversation-token';
 import type { ElevenLabsSettings } from './elevenlabs-settings';
@@ -182,5 +184,66 @@ describe('requestConversationToken', () => {
     const fetchStub = createFetchStub(jsonResponse({ token: '', conversation_id: 'conv_1' }));
 
     await expect(requestConversationToken(FROM_THE_PHONE, fetchStub)).rejects.toThrow(/without a conversation token/);
+  });
+});
+
+const SIGNED_URL = 'wss://api.elevenlabs.io/v1/convai/conversation?agent_id=agent_01jz0123456789&token=abc';
+
+describe('requestSignedConversationUrl', () => {
+  it('asks ElevenLabs to sign a URL for the configured agent and returns it', async () => {
+    const fetchStub = createFetchStub(jsonResponse({ signed_url: SIGNED_URL }));
+
+    const signedUrl = await requestSignedConversationUrl(SETTINGS, fetchStub);
+
+    expect(signedUrl).toBe(SIGNED_URL);
+    const url = new URL(fetchStub.calls[0]?.url ?? '');
+    expect(`${url.origin}${url.pathname}`).toBe(SIGNED_CONVERSATION_URL);
+    expect(url.searchParams.get('agent_id')).toBe('agent_01jz0123456789');
+    expect(fetchStub.calls[0]?.init?.method).toBe('GET');
+  });
+
+  it('authenticates with the API key as xi-api-key, and never puts it in the URL', async () => {
+    const fetchStub = createFetchStub(jsonResponse({ signed_url: SIGNED_URL }));
+
+    await requestSignedConversationUrl(SETTINGS, fetchStub);
+
+    expect(fetchStub.calls[0]?.init?.headers).toEqual({ 'xi-api-key': 'sk_a-secret-key' });
+    expect(fetchStub.calls[0]?.url).not.toContain('sk_a-secret-key');
+  });
+
+  it('explains a failure the same way a token request does, so the fix is the same either way', async () => {
+    const fetchStub = createFetchStub(jsonResponse({ detail: { status: 'invalid_api_key' } }, 401));
+
+    await expect(requestSignedConversationUrl(SETTINGS, fetchStub)).rejects.toThrow(/rejected the API key/);
+  });
+
+  it('never repeats anything from the response in an error, since it can echo the key', async () => {
+    const echo = { detail: { status: 'sk_a-secret-key', code: 'sk_a-secret-key', message: 'bad key sk_a-secret-key' } };
+    const responses = [400, 401, 403, 404, 429, 500].map((status) => jsonResponse(echo, status));
+    responses.push(jsonResponse({ ...echo, signed_url: 'http://elsewhere.example/sk_a-secret-key' }));
+
+    for (const response of responses) {
+      const error = await requestSignedConversationUrl(SETTINGS, createFetchStub(response)).catch(
+        (caught: unknown) => caught,
+      );
+      expect(error).toBeInstanceOf(Error);
+      expect(String(error)).not.toContain('sk_a-secret-key');
+    }
+  });
+
+  it('refuses a successful response that carries no URL, rather than passing undefined on', async () => {
+    const fetchStub = createFetchStub(jsonResponse({}));
+
+    await expect(requestSignedConversationUrl(SETTINGS, fetchStub)).rejects.toThrow(/without a conversation URL/);
+  });
+
+  it('refuses a URL that is not a secure socket, whatever else it is', async () => {
+    // It is handed straight to a `WebSocket`, so a plain `ws://` here is the session in clear text
+    // and an `https://` is a scheme nobody meant to open.
+    for (const signedUrl of ['', 'ws://api.elevenlabs.io/v1/convai/conversation', 'https://elsewhere.example']) {
+      const fetchStub = createFetchStub(jsonResponse({ signed_url: signedUrl }));
+
+      await expect(requestSignedConversationUrl(SETTINGS, fetchStub)).rejects.toThrow(/without a conversation URL/);
+    }
   });
 });

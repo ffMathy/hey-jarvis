@@ -1,6 +1,12 @@
 import { useConversationControls, useConversationStatus } from '@elevenlabs/react-native';
 import * as Linking from 'expo-linking';
-import { type ElevenLabsSettings, PARTICLE_COUNT, PHONE_PARTICIPANT_NAME, requestConversationToken } from 'hologram';
+import {
+  type ElevenLabsSettings,
+  PARTICLE_COUNT,
+  PHONE_PARTICIPANT_NAME,
+  requestConversationToken,
+  requestSignedConversationUrl,
+} from 'hologram';
 import { useToolActivity } from 'hologram/conversation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -31,6 +37,22 @@ const ON_A_PHONE = Platform.OS !== 'web';
 function isLive(status: string): boolean {
   return status === 'connected' || status === 'connecting';
 }
+
+/**
+ * How long the screen waits for a conversation to open before saying it has not.
+ *
+ * **Nothing below this screen has a deadline.** The ElevenLabs SDK reports `connecting`, then
+ * either `connected` or an error — except when it reports neither, which is what a session that
+ * cannot finish coming up does: it waits on a room event that never arrives, with no timeout of
+ * its own, for ever. A screen whose only signal is the SDK eventually saying something therefore
+ * has a state in which it says nothing at all, which is precisely how this looked with the
+ * microphone switched off: "Connecting…" and no more, indefinitely.
+ *
+ * So the wait is bounded here. Twenty seconds is far longer than a session takes — a token, a
+ * socket and a handshake are a second or two on a bad connection — and long enough that a slow
+ * network is never mistaken for a failure.
+ */
+const GIVE_UP_CONNECTING_AFTER_MS = 20_000;
 
 /**
  * The screen Jarvis answers from: him, and nothing else.
@@ -78,12 +100,33 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
   // Set when the conversation opened without a microphone, which is the only thing that puts a
   // text field on this screen. See `start` below.
   const [typingInstead, setTypingInstead] = useState(false);
+  /**
+   * When to stop waiting for the conversation to open, or `undefined` once nothing is waited for.
+   *
+   * A moment rather than a countdown, so that anything which re-arms the wait — the status moving
+   * from `disconnected` to `connecting`, say — re-arms it with the time that is actually left
+   * rather than starting the twenty seconds again.
+   */
+  const [connectingUntil, setConnectingUntil] = useState<number | undefined>(undefined);
 
   const launchUrl = Linking.useURL();
+
+  /**
+   * Says what went wrong, and stops waiting for the conversation that is not coming.
+   *
+   * Every failure goes through here rather than setting the message directly, because a problem
+   * and a wait are the same fact seen twice: leaving the deadline armed would let the generic
+   * "took too long" replace a message that said exactly which key was rejected.
+   */
+  const reportProblem = useCallback((message: string) => {
+    setConnectingUntil(undefined);
+    setProblem(message);
+  }, []);
 
   const start = useCallback(async () => {
     setProblem(undefined);
     setIsStarting(true);
+    setConnectingUntil(Date.now() + GIVE_UP_CONNECTING_AFTER_MS);
 
     try {
       const canHear = await requestMicrophoneAccess();
@@ -94,35 +137,75 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
       // and demonstrated, the keyboard is right there, and refusing the microphone is a thing you
       // do on purpose when you are in a call, in an open office, or want the same input twice.
       if (!canHear && ON_A_PHONE) {
-        setProblem('Jarvis needs the microphone in order to listen.');
+        reportProblem('Jarvis needs the microphone in order to listen.');
         return;
       }
 
-      // Minted here rather than at launch, and never kept: a conversation token
-      // is short-lived, and one fetched when the app opened may already be dead
-      // by the time it is used.
-      const { token } = await requestConversationToken({ settings, participantName: PHONE_PARTICIPANT_NAME });
-
-      startSession({
-        conversationToken: token,
-        connectionType: 'webrtc',
+      // Both halves are minted here rather than at launch, and neither is kept: a conversation
+      // token and a signed URL are short-lived, and one fetched when the app opened may already be
+      // dead by the time it is used.
+      if (canHear) {
+        const { token } = await requestConversationToken({ settings, participantName: PHONE_PARTICIPANT_NAME });
+        startSession({
+          conversationToken: token,
+          connectionType: 'webrtc',
+          onError: reportProblem,
+          ...toolHandlers,
+        });
+      } else {
         // **This is what makes a conversation possible with no microphone at all.** ElevenLabs runs
         // the session as text on both sides: nothing is captured, and the reply comes back written
         // rather than spoken. That second half is the cost — with no speech to track, the sphere
         // idles rather than answering — so it is only ever asked for when there is no alternative.
         // He still visibly thinks, because a tool call is reported over the same channel and
         // `useToolActivity` does not care how the conversation is being held.
-        textOnly: !canHear,
-        onError: (message) => setProblem(message),
-        ...toolHandlers,
-      });
+        //
+        // And it is held over a socket rather than over WebRTC, which is the whole reason this is
+        // a branch rather than one flag on the call above: a room nobody publishes audio into
+        // never finishes coming up, so a typed conversation dialled over WebRTC sat on
+        // "Connecting…" for ever. See `requestSignedConversationUrl`.
+        const signedUrl = await requestSignedConversationUrl(settings);
+        startSession({
+          signedUrl,
+          connectionType: 'websocket',
+          textOnly: true,
+          onError: reportProblem,
+          ...toolHandlers,
+        });
+      }
       setTypingInstead(!canHear);
     } catch (error: unknown) {
-      setProblem(error instanceof Error ? error.message : 'Jarvis could not be reached.');
+      reportProblem(error instanceof Error ? error.message : 'Jarvis could not be reached.');
     } finally {
       setIsStarting(false);
     }
-  }, [settings, startSession, toolHandlers]);
+  }, [settings, startSession, toolHandlers, reportProblem]);
+
+  /**
+   * Gives up on a conversation that is taking too long to open, and says so.
+   *
+   * The one thing on this screen that does not wait to be told. See
+   * {@link GIVE_UP_CONNECTING_AFTER_MS} for why a screen that only ever reacts to the SDK has a
+   * state it can never leave.
+   */
+  useEffect(() => {
+    if (connectingUntil === undefined) {
+      return;
+    }
+    if (status === 'connected') {
+      setConnectingUntil(undefined);
+      return;
+    }
+
+    const givingUp = setTimeout(
+      () => {
+        setConnectingUntil(undefined);
+        setProblem('Jarvis did not answer. ElevenLabs may be unreachable, or the settings may be wrong.');
+      },
+      Math.max(0, connectingUntil - Date.now()),
+    );
+    return () => clearTimeout(givingUp);
+  }, [connectingUntil, status]);
 
   /**
    * Opens the conversation as soon as there is a screen to open it on.
@@ -205,7 +288,13 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
         The way in when there is no microphone. Only ever rendered in a browser, because `start`
         only ever opens a text conversation there — a phone says so and stops instead.
       */}
-      {typingInstead ? <TypedMessageField onSend={sendUserMessage} enabled={status === 'connected'} /> : null}
+      {typingInstead ? (
+        <TypedMessageField
+          onSend={sendUserMessage}
+          enabled={status === 'connected'}
+          opening={connectingUntil !== undefined}
+        />
+      ) : null}
 
       {/*
         The instrument, left running in a browser and nowhere else.

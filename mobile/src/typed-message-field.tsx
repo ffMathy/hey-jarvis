@@ -7,6 +7,15 @@ interface TypedMessageFieldProps {
   onSend: (message: string) => void;
   /** Whether there is a conversation to send into yet. */
   enabled: boolean;
+  /**
+   * Whether one is still on its way, as opposed to there being none at all.
+   *
+   * The two used to be the same word. A field that says "Connecting…" whenever it cannot send is a
+   * field that says "Connecting…" for ever once the connecting has stopped — which is how a
+   * session that failed to open looked, and what the screen was actually reporting when the
+   * microphone was switched off.
+   */
+  opening: boolean;
 }
 
 /**
@@ -26,7 +35,7 @@ interface TypedMessageFieldProps {
  * always want next is to type again, and a field that blurs after every line turns a conversation
  * into a series of clicks.
  */
-export function TypedMessageField({ onSend, enabled }: TypedMessageFieldProps) {
+export function TypedMessageField({ onSend, enabled, opening }: TypedMessageFieldProps) {
   const [draft, setDraft] = useState('');
 
   const send = useCallback(() => {
@@ -49,7 +58,7 @@ export function TypedMessageField({ onSend, enabled }: TypedMessageFieldProps) {
       onSubmitEditing={send}
       submitBehavior="submit"
       editable={enabled}
-      placeholder={enabled ? 'Type to Jarvis' : 'Connecting…'}
+      placeholder={enabled ? 'Type to Jarvis' : opening ? 'Connecting…' : 'Not connected'}
       placeholderTextColor={theme.colors.mutedText}
       autoCapitalize="none"
       autoCorrect={false}
