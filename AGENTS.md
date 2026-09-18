@@ -32,7 +32,7 @@ This is an Turborepo monorepo containing intelligent voice assistant components:
 | --------------------------------- | ------------------------------------------------- |
 | **mcp**                           | Mastra AI-powered Model Context Protocol server   |
 | **elevenlabs**                    | ElevenLabs voice interface integration            |
-| **hologram**                      | Jarvis's sphere and voice tracker, phone and watch |
+| **hologram**                      | Jarvis's sphere, voice tracker and conversation, phone and watch |
 | **mobile**                        | Expo app that is the phone's default assistant    |
 | **watch**                         | Expo app that is the watch's assistant            |
 | **home-assistant-voice-firmware** | ESPHome firmware for voice hardware               |

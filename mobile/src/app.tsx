@@ -9,11 +9,15 @@
 import { ConversationProvider } from '@elevenlabs/react-native';
 import * as Linking from 'expo-linking';
 import { StatusBar } from 'expo-status-bar';
+import type { ElevenLabsSettings } from 'hologram';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
+import { useAnswerTheWatch } from './answer-the-watch';
 import { isAssistLaunch } from './assist-link';
 import { ConversationScreen } from './conversation-screen';
-import type { ElevenLabsSettings } from './elevenlabs-settings';
+import { firstOnboardingStep } from './onboarding';
+import { OnboardingScreen } from './onboarding-screen';
+import { hasWalkedOnboarding, rememberOnboardingWalked } from './onboarding-storage';
 import { SampleScreen } from './sample-screen';
 import { SettingsScreen } from './settings-screen';
 import { loadElevenLabsSettings, saveElevenLabsSettings } from './settings-storage';
@@ -29,19 +33,35 @@ const READ_SETTINGS_ATTEMPTS = 4;
 const READ_SETTINGS_AGAIN_MS = 200;
 
 /** Which screen is showing. */
-type Screen = 'loading' | 'sample' | 'settings' | 'conversation';
+type Screen = 'loading' | 'sample' | 'onboarding' | 'settings' | 'conversation';
 
+/**
+ * Which one, given everything that has a say in it.
+ *
+ * The order is the argument. Sample mode comes first because it is a side trip taken *from*
+ * somewhere and returned to — including from the tour, where it is offered on every step. The tour
+ * comes next because a first run has nothing else worth showing. The bare settings screen is what
+ * is left for an install that has been through the tour and has no credentials any more, which is
+ * where this app opened before there was a tour at all.
+ */
 function chooseScreen(state: {
   isLoaded: boolean;
   hasSettings: boolean;
   isEditingSettings: boolean;
   isSampling: boolean;
+  isTouring: boolean;
 }): Screen {
   if (!state.isLoaded) {
     return 'loading';
   }
+  if (state.isSampling) {
+    return 'sample';
+  }
+  if (state.isTouring) {
+    return 'onboarding';
+  }
   if (!state.hasSettings) {
-    return state.isSampling ? 'sample' : 'settings';
+    return 'settings';
   }
   return state.isEditingSettings ? 'settings' : 'conversation';
 }
@@ -69,9 +89,21 @@ export interface AppProps {
  */
 export function App({ summoned = false }: AppProps) {
   const [settings, setSettings] = useState<ElevenLabsSettings | undefined>(undefined);
+  /**
+   * Whether the first-run tour is already behind this install.
+   *
+   * True until told otherwise, so that nothing shows a tour in the frame before the answer
+   * arrives — and so that a store that cannot be read shows none either. See
+   * `onboarding-storage.ts`.
+   */
+  const [hasWalkedTour, setHasWalkedTour] = useState(true);
   const [isLoaded, setIsLoaded] = useState(false);
   const [isEditingSettings, setIsEditingSettings] = useState(false);
   const [isSampling, setIsSampling] = useState(false);
+
+  // Hands the credentials to the watch whenever it asks, for as long as this app is open. See
+  // `answer-the-watch.ts`; the watch only ever asks when it has none of its own.
+  useAnswerTheWatch(settings);
 
   const launchUrl = Linking.useURL();
   // Two ways in, and they are genuinely different: the assistant's own window renders this
@@ -94,6 +126,10 @@ export function App({ summoned = false }: AppProps) {
   useEffect(() => {
     let wanted = true;
     void (async () => {
+      // Started here and awaited below: the tour flag is one read that never throws, and making
+      // it wait its turn behind the retries above would hold the whole app on a spinner.
+      const walking = hasWalkedOnboarding();
+
       for (let attempt = 0; attempt < READ_SETTINGS_ATTEMPTS && wanted; attempt++) {
         const stored = await loadElevenLabsSettings();
         if (stored.kind === 'settings') {
@@ -105,7 +141,10 @@ export function App({ summoned = false }: AppProps) {
         }
         await new Promise((wait) => setTimeout(wait, READ_SETTINGS_AGAIN_MS));
       }
+
+      const walked = await walking;
       if (wanted) {
+        setHasWalkedTour(walked);
         setIsLoaded(true);
       }
     })();
@@ -132,7 +171,34 @@ export function App({ summoned = false }: AppProps) {
     void saveElevenLabsSettings(saved);
   };
 
-  const screen = chooseScreen({ isLoaded, hasSettings: settings !== undefined, isEditingSettings, isSampling });
+  /**
+   * The tour is over, and is not to be offered again.
+   *
+   * Remembered rather than inferred from the credentials being there, because the last step comes
+   * *after* they are saved: see `onboarding-storage.ts`.
+   */
+  const finishTour = () => {
+    setHasWalkedTour(true);
+    void rememberOnboardingWalked();
+  };
+
+  // Nothing left to walk is the same as having walked it — a browser whose credentials were saved
+  // before the tour finished has no step remaining, since the assistant step does not exist there.
+  const tourHasSteps =
+    firstOnboardingStep({
+      canBeTheAssistant: Platform.OS === 'android',
+      hasSettings: settings !== undefined,
+    }) !== undefined;
+
+  const screen = chooseScreen({
+    isLoaded,
+    hasSettings: settings !== undefined,
+    isEditingSettings,
+    isSampling,
+    // Never to somebody who just made the assistant gesture. They asked for Jarvis, and the answer
+    // to that is him — sample mode, if there is nothing set up — rather than a guided tour.
+    isTouring: !hasWalkedTour && !wasSummoned && tourHasSteps,
+  });
 
   return (
     <ConversationProvider>
@@ -140,6 +206,14 @@ export function App({ summoned = false }: AppProps) {
       <View style={[styles.root, screen === 'sample' ? styles.seeThrough : styles.opaque]}>
         {screen === 'loading' ? <ActivityIndicator color={theme.colors.accent} /> : null}
         {screen === 'sample' ? <SampleScreen onLeave={() => setIsSampling(false)} /> : null}
+        {screen === 'onboarding' ? (
+          <OnboardingScreen
+            settings={settings}
+            onSaveSettings={save}
+            onFinished={finishTour}
+            onSkipToSample={() => setIsSampling(true)}
+          />
+        ) : null}
         {screen === 'settings' ? (
           <SettingsScreen
             settings={settings}

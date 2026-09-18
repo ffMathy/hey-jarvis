@@ -48,7 +48,7 @@ let nextDelegationId = 0;
 function startDelegation(sessionId: string, agentId: string): string {
   nextDelegationId += 1;
   const delegationId = `plan-chain-0-${nextDelegationId}-${agentId}`;
-  progressFor(sessionId).handle({ type: 'delegation_start', delegationId, agentId });
+  progressFor(sessionId).handle({ type: 'delegation_start', delegationId, taskId: agentId, agentId });
   return delegationId;
 }
 

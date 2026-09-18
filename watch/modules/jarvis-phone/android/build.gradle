@@ -1,0 +1,32 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'expo.modules.jarvisphone'
+version = '0.1.0'
+
+android {
+  namespace 'expo.modules.jarvisphone'
+  defaultConfig {
+    versionCode 1
+    versionName '0.1.0'
+  }
+  lint {
+    abortOnError false
+  }
+}
+
+dependencies {
+  // Hearing the phone. The Data Layer is the only supported way for two apps on two devices to
+  // speak to each other, and the `MESSAGE_RECEIVED` service below is how a watch hears one while
+  // its app is not running.
+  implementation 'com.google.android.gms:play-services-wearable:19.0.0'
+  // Where the ElevenLabs API key is kept once it arrives: SharedPreferences encrypted with a key
+  // held in the watch's own Android Keystore.
+  //
+  // `1.0.0` rather than the 1.1.0 alphas that have been alpha since 2021. The stable release has
+  // no `MasterKey.Builder`, so `MasterKeys.getOrCreate` is the API here — deprecated only in the
+  // line this does not use.
+  implementation 'androidx.security:security-crypto:1.0.0'
+}

@@ -5,6 +5,8 @@ import android.content.Intent
 import android.net.Uri
 import androidx.wear.remote.interactions.RemoteActivityHelper
 import com.google.android.gms.wearable.CapabilityClient
+import com.google.android.gms.wearable.MessageClient
+import com.google.android.gms.wearable.MessageEvent
 import com.google.android.gms.wearable.Node
 import com.google.android.gms.wearable.Wearable
 import expo.modules.kotlin.Promise
@@ -12,6 +14,7 @@ import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import java.util.concurrent.Executor
+import org.json.JSONObject
 
 /**
  * The capability the watch app declares, and the only way to know it is installed.
@@ -22,6 +25,30 @@ import java.util.concurrent.Executor
  * The two spellings have to agree, and `watch-link.contract.spec.ts` checks that they do.
  */
 private const val JARVIS_ON_THE_WATCH = "jarvis_on_the_watch"
+
+/**
+ * The two message paths the phone and the watch speak over, and the whole of their protocol.
+ *
+ * `SETTINGS_PATH` carries the credentials one way, phone to watch, as a JSON object with an
+ * `apiKey` and an `agentId` in it. `ASK_PATH` carries nothing at all in the other direction: it is
+ * the watch saying it has none and would like some.
+ *
+ * **A message and not a data item, and that is a security decision rather than a convenience
+ * one.** `DataClient` would be easier — a `DataItem` replicates on its own and arrives whenever
+ * the watch next comes into range, with no need for this app to be open — but it replicates *by
+ * being stored*, in Play Services' own store on both devices, which is a live API key at rest in a
+ * place neither app controls. A message is handed straight to the receiving app and kept nowhere.
+ *
+ * All four spellings — here, in TypeScript beside it, and the same pair on the watch — have to
+ * agree, with no compiler between them. `watch-link.contract.spec.ts` reads all four and fails if
+ * they drift.
+ */
+private const val SETTINGS_PATH = "/jarvis/elevenlabs-settings"
+private const val ASK_PATH = "/jarvis/ask-for-credentials"
+
+/** What the watch is sent. Read back by `PhoneSettingsStore` on the other side. */
+private fun settingsMessage(apiKey: String, agentId: String): ByteArray =
+  JSONObject().put("apiKey", apiKey).put("agentId", agentId).toString().toByteArray()
 
 /**
  * What the phone can learn about, and do to, the watch beside it.
@@ -48,9 +75,75 @@ class JarvisWatchModule : Module() {
     AsyncFunction("openJarvisOnTheWatch") { promise: Promise ->
       openJarvisOnTheWatch(context(), promise)
     }
+
+    AsyncFunction("sendSettingsToTheWatch") { apiKey: String, agentId: String, promise: Promise ->
+      sendSettingsToTheWatch(context(), apiKey, agentId, promise)
+    }
+
+    Events(WATCH_ASKED)
+
+    // Listening only while the JavaScript side is, which is the whole of the phone's half of the
+    // handover: the watch can ask at any time, but only an app that is running can answer, because
+    // the credentials are behind the keystore in JavaScript's hands and not in this module's.
+    OnStartObserving {
+      listenForAsking(context())
+    }
+
+    OnStopObserving {
+      stopListeningForAsking(context())
+    }
+  }
+
+  /** Forwards the watch's request up to JavaScript, which has the credentials this module does not. */
+  private val asking = MessageClient.OnMessageReceivedListener { event: MessageEvent ->
+    if (event.path == ASK_PATH) {
+      sendEvent(WATCH_ASKED)
+    }
+  }
+
+  private fun listenForAsking(context: Context) {
+    Wearable.getMessageClient(context).addListener(asking)
+  }
+
+  private fun stopListeningForAsking(context: Context) {
+    Wearable.getMessageClient(context).removeListener(asking)
   }
 
   private fun context(): Context = appContext.reactContext ?: throw Exceptions.ReactContextLost()
+
+  private companion object {
+    /** The event JavaScript subscribes to in order to answer the watch. */
+    const val WATCH_ASKED = "onWatchAskedForCredentials"
+  }
+}
+
+/**
+ * Hands the credentials to the watch, if there is a watch with Jarvis on it to hand them to.
+ *
+ * The **capability** rather than the connected nodes, unlike `findWatch`'s first question: a watch
+ * without the app installed has nothing listening on the path, and a message sent into that is
+ * accepted by Play Services and then dropped, which would look to the user exactly like a
+ * successful handover.
+ */
+private fun sendSettingsToTheWatch(context: Context, apiKey: String, agentId: String, promise: Promise) {
+  Wearable.getCapabilityClient(context)
+    .getCapability(JARVIS_ON_THE_WATCH, CapabilityClient.FILTER_REACHABLE)
+    .addOnSuccessListener { capability ->
+      val watch = capability.nodes.firstOrNull()
+      if (watch == null) {
+        promise.reject("NO_WATCH", "No watch with Jarvis on it is in range.", null)
+        return@addOnSuccessListener
+      }
+      Wearable.getMessageClient(context)
+        .sendMessage(watch.id, SETTINGS_PATH, settingsMessage(apiKey, agentId))
+        .addOnSuccessListener { promise.resolve(true) }
+        .addOnFailureListener { error ->
+          promise.reject("COULD_NOT_SEND", error.message ?: "The watch would not take the credentials.", error)
+        }
+    }
+    .addOnFailureListener { error ->
+      promise.reject("WATCH_UNREACHABLE", error.message ?: "Could not reach the Wearable service.", error)
+    }
 }
 
 /** Runs the callback on whichever thread finished the work, which is all these need. */

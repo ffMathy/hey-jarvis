@@ -1,15 +1,9 @@
-import { createVoiceAnalyser, type VoiceAnalyser, type VoiceReading } from 'hologram';
+import { createVoiceAnalyser, type JarvisVoiceReaders, type VoiceAnalyser, type VoiceReading } from 'hologram';
 
 /** The part of the native audio module (`modules/jarvis-audio`) a tapped voice reads from. */
 export interface AudioTapSource {
   sampleRate(): number;
   readLatest(sampleCount: number): Uint8Array;
-}
-
-/** How a voice is read, as the hologram asks for it. */
-export interface VoiceReaders {
-  getVolume: () => number;
-  getSpectrum: () => ArrayLike<number>;
 }
 
 const SILENCE = new Uint8Array(0);
@@ -47,7 +41,7 @@ export function decodeSamples(bytes: Uint8Array, into: Float32Array): number {
 export function createTappedVoiceReaders(
   source: AudioTapSource,
   now: () => number = () => performance.now(),
-): VoiceReaders {
+): JarvisVoiceReaders {
   let analyser: VoiceAnalyser | undefined;
   let samples = new Float32Array(0);
   let reading: VoiceReading | undefined;

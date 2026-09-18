@@ -86,13 +86,27 @@ function isBrowserHeader(name: string): boolean {
 }
 
 /**
- * Fills in the settings screen and saves, leaving the app on the conversation screen.
+ * Walks the first-run tour as far as the step that asks for the two values.
+ *
+ * A new install no longer opens on a form. It opens on what an ElevenLabs agent is, because the
+ * form is unanswerable until you know — see `onboarding.ts`. In a browser that tour is two steps
+ * rather than three: there is no assistant role here to hand Jarvis.
+ */
+async function walkToCredentials(page: Page): Promise<void> {
+  await expect(page.getByTestId('onboarding-agent')).toBeVisible();
+  await page.getByTestId('onboarding-next').click();
+  await expect(page.getByTestId('api-key')).toBeVisible();
+}
+
+/**
+ * Walks the tour, fills in the two values and saves, leaving the app on the conversation screen.
  *
  * What says it arrived is the hologram, because that is all the conversation screen is now: no
  * title, no status line, no button. It opens the conversation by itself, so there is nothing to
  * press and nothing to read — see `conversation-screen.tsx`.
  */
 async function configureElevenLabs(page: Page): Promise<void> {
+  await walkToCredentials(page);
   await page.getByTestId('api-key').fill(API_KEY);
   await page.getByTestId('agent-id').fill(AGENT_ID);
   await page.getByTestId('save-settings').click();
@@ -155,25 +169,52 @@ test.beforeEach(async ({ page }) => {
   await countMicrophones(page);
 });
 
-test('opens on the settings screen, because nothing is configured yet', async ({ page }) => {
+test('opens on the tour, which explains what an agent is before asking for one', async ({ page }) => {
   await page.goto('/');
 
+  // The first screen of a new install used to be two empty fields, which is a fair question to
+  // ask somebody who already has an API key and an unanswerable one for everybody else.
+  await expect(page.getByTestId('onboarding-agent')).toBeVisible();
+  await expect(page.getByTestId('api-key')).toHaveCount(0);
+  // Including the link that is the point of the step: an agent is worth having because it can be
+  // wired to your own services, and that wiring is done on their site rather than in this app.
+  await expect(page.getByTestId('link-sign-up')).toBeVisible();
+  await expect(page.getByTestId('link-agent-tools')).toBeVisible();
+  // Nowhere to go back to from the first step, so nothing offers it.
+  await expect(page.getByTestId('onboarding-back')).toHaveCount(0);
+
+  await page.getByTestId('onboarding-next').click();
+
+  const credentials = page.getByTestId('onboarding-credentials');
+  await expect(credentials).toBeVisible();
   await expect(page.getByTestId('api-key')).toBeVisible();
   await expect(page.getByTestId('agent-id')).toBeVisible();
+  // Two steps in a browser, not three. A count promising a step nobody here can reach would be
+  // worse than no count at all.
+  await expect(credentials).toContainText('Step 2 of 2');
+  // Both links to where the two values are found, since neither is somewhere this app can look.
+  await expect(page.getByTestId('link-agent-id')).toBeVisible();
+  await expect(page.getByTestId('link-api-key')).toBeVisible();
 
   // The web build keeps the key somewhere materially less safe than the phone
   // does, and the screen has to say so rather than imply a keystore.
   await expect(page.getByTestId('storage-note')).toContainText('local storage');
+
+  // And back out again, without losing the tour.
+  await page.getByTestId('onboarding-back').click();
+  await expect(page.getByTestId('onboarding-agent')).toBeVisible();
 });
 
 test('refuses to save without an agent ID', async ({ page }) => {
   await page.goto('/');
+  await walkToCredentials(page);
 
   await page.getByTestId('api-key').fill(API_KEY);
   await page.getByTestId('save-settings').click();
 
   await expect(page.getByTestId('settings-problem')).toContainText('agent');
-  // Still on the settings screen: a refused save must not fall through.
+  // Still on the same step: a refused save must not fall through, and must not move the tour on.
+  await expect(page.getByTestId('onboarding-credentials')).toBeVisible();
   await expect(page.getByTestId('hologram')).toHaveCount(0);
 });
 
@@ -221,8 +262,11 @@ test('draws the hologram and keeps it moving, from a CanvasKit the site serves i
   expect(pageErrors).toEqual([]);
 });
 
-test('offers sample mode before setup, walks its moods on a tap, and comes back from it', async ({ page }) => {
+test('offers sample mode from the tour, walks its moods on a tap, and comes back from it', async ({ page }) => {
   await page.goto('/');
+  // Offered on every step of the tour: somebody who has just installed this wants to know whether
+  // it is worth signing up for anything, and the honest answer to that is the sphere rather than
+  // another paragraph.
   await page.getByTestId('try-sample').click();
 
   // Sample mode is Jarvis and nothing else — no title, no status line, no way out but tapping
@@ -249,7 +293,9 @@ test('offers sample mode before setup, walks its moods on a tap, and comes back 
 
   // Beside him, not on him: a tap on the hologram itself must not be a way out.
   await page.mouse.click(20, 20);
-  await expect(page.getByTestId('api-key')).toBeVisible();
+  // And back to the tour rather than past it. Sample mode is a side trip taken from setup and
+  // returned to, which is why the tour is not marked as walked on the way out to it.
+  await expect(page.getByTestId('onboarding-agent')).toBeVisible();
 });
 
 test('keeps the conversation screen working when CanvasKit cannot load', async ({ page }) => {

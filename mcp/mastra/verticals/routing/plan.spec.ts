@@ -18,11 +18,11 @@ import { buildRoutingPlan, type PlannedChain } from './plan.js';
 
 /** Two independent questions and one that needs the answer to another. */
 const CHAINS: PlannedChain[] = [
-  { delegations: [{ agentId: 'calendar', prompt: 'What is on my calendar?' }] },
+  { delegations: [{ taskId: 'diary', agentId: 'calendar', prompt: 'What is on my calendar?' }] },
   {
     delegations: [
-      { agentId: 'internetOfThings', prompt: 'Where is the user right now?' },
-      { agentId: 'weather', prompt: 'What is the weather there?' },
+      { taskId: 'location', agentId: 'internetOfThings', prompt: 'Where is the user right now?' },
+      { taskId: 'forecast', agentId: 'weather', prompt: 'What is the weather there?' },
     ],
   },
 ];
@@ -108,8 +108,8 @@ describe('a routing plan', () => {
     const plan = buildRoutingPlan('routing-plan-dollar', [
       {
         delegations: [
-          { agentId: 'calendar', prompt: 'first' },
-          { agentId: 'weather', prompt: `echo ${OPEN_PLACEHOLDER}HOME} please` },
+          { taskId: 'diary', agentId: 'calendar', prompt: 'first' },
+          { taskId: 'forecast', agentId: 'weather', prompt: `echo ${OPEN_PLACEHOLDER}HOME} please` },
         ],
       },
     ]);

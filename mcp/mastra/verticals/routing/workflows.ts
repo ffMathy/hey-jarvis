@@ -206,7 +206,7 @@ function buildClosingReport(snapshot: RoutingSnapshot): z.infer<typeof instructi
     return {
       instructions: `The request could not be completed: ${snapshot.error}. ${INSTRUCTIONS.summarize}`,
       ...(answered.length > 0 && {
-        completedTaskResults: answered.map((outcome) => ({ id: outcome.agentId, result: outcome.result })),
+        completedTaskResults: answered.map((outcome) => ({ id: outcome.taskId, result: outcome.result })),
       }),
       taskIdsInProgress: [],
     };
@@ -214,7 +214,7 @@ function buildClosingReport(snapshot: RoutingSnapshot): z.infer<typeof instructi
 
   return {
     instructions: ALL_TASKS_COMPLETED_INSTRUCTIONS,
-    completedTaskResults: snapshot.all.map((outcome) => ({ id: outcome.agentId, result: outcome.result })),
+    completedTaskResults: snapshot.all.map((outcome) => ({ id: outcome.taskId, result: outcome.result })),
     taskIdsInProgress: [],
   };
 }
@@ -227,7 +227,7 @@ function buildProgressReport(snapshot: RoutingSnapshot): z.infer<typeof instruct
 
   return {
     instructions: moreToComeInstructions(),
-    completedTaskResults: snapshot.landed.map((outcome) => ({ id: outcome.agentId, result: outcome.result })),
+    completedTaskResults: snapshot.landed.map((outcome) => ({ id: outcome.taskId, result: outcome.result })),
     // Answerable because the plan is written down before anything runs: what is still
     // outstanding is known, not inferred from whatever happened to start.
     taskIdsInProgress: snapshot.inProgress,

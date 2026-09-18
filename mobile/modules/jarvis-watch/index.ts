@@ -1,4 +1,5 @@
 import { requireOptionalNativeModule } from 'expo';
+import type { ElevenLabsSettings } from 'hologram';
 
 /** What the phone can see of the watch beside it. */
 export interface PairedWatch {
@@ -13,6 +14,8 @@ export interface PairedWatch {
 interface JarvisWatchNativeModule {
   findWatch(): Promise<PairedWatch>;
   openJarvisOnTheWatch(): Promise<boolean>;
+  sendSettingsToTheWatch(apiKey: string, agentId: string): Promise<boolean>;
+  addListener(event: 'onWatchAskedForCredentials', listener: () => void): { remove: () => void };
 }
 
 /**
@@ -64,3 +67,46 @@ export async function openJarvisOnTheWatch(): Promise<boolean> {
 
 /** The capability the watch app advertises, which is how {@link findWatch} knows it is there. */
 export const JARVIS_ON_THE_WATCH = 'jarvis_on_the_watch';
+
+/**
+ * Hands the ElevenLabs credentials to the watch, so they are typed once and on the right keyboard.
+ *
+ * This is the whole answer to "does the watch need its own setup?". It does not: the two apps
+ * share a package name and a signing key on purpose — see `watch/AGENTS.md` — which is exactly
+ * what Play Services requires before the Data Layer will connect them, and this is what that
+ * connection is for. A long API key is not something anybody should enter on a watch.
+ *
+ * Sent as a **message**, which is handed to the receiving app and stored nowhere in between. The
+ * easier route, a replicated `DataItem`, would leave a live API key sitting in Play Services' own
+ * store on both devices; see `JarvisWatchModule.kt`.
+ *
+ * Returns false rather than throwing when there is no watch in range, no Jarvis on it, or no Data
+ * Layer at all — the caller shows that as a line of text, because "your watch is not here right
+ * now" is not an error anybody needs a stack trace for.
+ */
+export async function sendSettingsToTheWatch(settings: ElevenLabsSettings): Promise<boolean> {
+  if (!nativeModule) {
+    return false;
+  }
+  try {
+    return await nativeModule.sendSettingsToTheWatch(settings.apiKey, settings.agentId);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Calls back whenever the watch asks to be given the credentials, for as long as the return value
+ * is not called.
+ *
+ * The watch asks when it starts with none, and only an app that is *running* can answer, because
+ * the credentials are in the keystore behind JavaScript rather than anywhere this module can read.
+ * That is the one asymmetry in the handover, and it is why the watch's own screen says to open
+ * Jarvis on the phone rather than waiting silently.
+ *
+ * A no-op where the module is absent, which is web and every test.
+ */
+export function whenTheWatchAsksForCredentials(answer: () => void): () => void {
+  const subscription = nativeModule?.addListener('onWatchAskedForCredentials', answer);
+  return () => subscription?.remove();
+}

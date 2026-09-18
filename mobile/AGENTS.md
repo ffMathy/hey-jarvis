@@ -57,14 +57,20 @@ The agent on the other end is the same one `elevenlabs/` deploys, with the same 
 ## File Structure
 
 ```
-../hologram/src/                  # the sphere itself, shared with the watch — see ../hologram/AGENTS.md
+../hologram/src/                  # Jarvis himself, shared with the watch — see ../hologram/AGENTS.md
+├── elevenlabs-settings.ts        # the two credentials, and what is wrong with them
+├── conversation-token.ts         # minting a token, and every ElevenLabs failure explained
 ├── hologram-drawing.ts           # what one frame of the hologram looks like (worklets)
 ├── voice-analysis.ts             # the FFT and RMS, the same for live audio and the emulator replay
 ├── voice-levels.ts               # spectrum folding, easing, and the agitation/burst tracker
 ├── voice-contract.ts             # JarvisVoice: the two questions the sphere asks a voice
-└── react/                        # `hologram/react`, the half that needs a framework
-    ├── hologram-view.tsx         # Skia canvas, Reanimated clocks, reading the voice every frame
-    └── is-foreground.ts          # stops the clock and the microphone when nobody is looking
+├── react/                        # `hologram/react`, the half that needs a framework
+│   ├── hologram-view.tsx         # Skia canvas, Reanimated clocks, reading the voice every frame
+│   └── is-foreground.ts          # stops the clock and the microphone when nobody is looking
+└── conversation/                 # `hologram/conversation`, the half that needs the ElevenLabs SDK
+    ├── agent-voice.ts            # his voice as the SDK hears it — the whole voice on web and watch
+    ├── sdk-voice-readers.ts      # the SDK's analysers, safe to call before a session exists
+    └── tool-activity.ts          # which tool calls are in flight, for the thinking state
 
 mobile/
 ├── app.config.ts                 # Expo config: package name, scheme, permissions, plugins
@@ -76,30 +82,46 @@ mobile/
 │   └── android/src/main/         # Kotlin, the merged manifest, and res/xml
 ├── modules/jarvis-audio/         # raw audio for the hologram: the microphone, or Jarvis's WebRTC track
 └── src/
-    ├── app.tsx                   # root component: settings, conversation, and sample mode
-    ├── conversation-screen.tsx   # the hologram, the Talk button and the assistant card
+    ├── app.tsx                   # root component: the tour, settings, the conversation, sample mode
+    ├── onboarding-screen.tsx     # the first-run tour: agents, credentials, assistant role
+    ├── onboarding.ts             # its steps, which of them this device has, and every link
+    ├── onboarding-storage.ts     # whether the tour has been walked
+    ├── conversation-screen.tsx   # the hologram, and nothing else on the screen
+    ├── settings-screen.tsx       # the two fields with no tour around them, for coming back to
+    ├── elevenlabs-fields.tsx     # the two fields themselves, shared with the tour
+    ├── settings-storage.ts       # platform-agnostic half of persistence
+    ├── watch-card.tsx            # whether Jarvis is on the paired watch, and the key handover
+    ├── answer-the-watch.ts       # sends the credentials across whenever the watch asks
+    ├── use-assistant-registration.ts  # whether Jarvis still holds the assistant role
+    ├── assist-link.ts            # what "opened by the assistant" looks like
+    ├── assistant-window.ts       # the window the assistant gesture opens, and retracting it
     ├── sample-screen.tsx         # sample mode: Jarvis alone, tapped to walk through his moods
-    ├── sample-mode.ts            # the four moods, and the order a tap walks them in
+    ├── sample-sheet.tsx          # the sheet he arrives in, and why he waits for it to settle
+    ├── sample-mode.ts            # the three moods, and the order a tap walks them in
     ├── simulated-voice.ts        # speaking and thinking as a JarvisVoice, made from the clock
+    ├── mode-toast.tsx            # the one word sample mode says about which mood is showing
     ├── jarvis-hologram.tsx       # the hologram on Android …
     ├── jarvis-hologram.web.tsx   # … and in a browser, once CanvasKit has loaded
     │                              #   (both are two lines over `hologram/react`)
     ├── hologram-size.ts          # how big it is drawn on this screen
+    ├── spark-density.ts          # how many particles this phone can manage …
+    ├── spark-memory.ts           # … and remembering what it managed last time
+    ├── frame-rate.tsx            # the instrument, left running in a browser only
     ├── jarvis-voice.ts           # Jarvis's voice on Android: his track, tapped and analysed …
-    ├── jarvis-voice.web.ts       # … and in a browser, as the SDK measures it
+    ├── jarvis-voice.web.ts       # … and in a browser, over `hologram/conversation`
     ├── agent-audio-track.ts      # finding Jarvis's track in the conversation's LiveKit room
     ├── tapped-voice.ts           # raw samples from modules/jarvis-audio → volume and spectrum
-    ├── sdk-voice-readers.ts      # the SDK's own readers, made safe to call before a session
-    ├── settings-screen.tsx
-    ├── assist-link.ts            # what "opened by the assistant" looks like
-    ├── conversation-token.ts     # minting a conversation token from ElevenLabs
-    ├── elevenlabs-settings.ts    # validation of what the user typed
-    ├── settings-storage.ts       # platform-agnostic half of persistence
+    ├── typed-message-field.tsx   # the way in when a browser refuses the microphone
+    ├── theme.ts                  # the one place colours and spacing are defined
     ├── platform-contracts.ts     # the shapes the .web.ts pairs below must keep
     ├── key-value-store.ts        # keystore on Android …
     ├── key-value-store.web.ts    # … localStorage in a browser
     ├── microphone-permission.ts      # PermissionsAndroid …
-    └── microphone-permission.web.ts  # … getUserMedia
+    ├── microphone-permission.web.ts  # … getUserMedia
+    ├── preferred-microphone.ts       # onto the headset, on Android …
+    ├── preferred-microphone.web.ts   # … which a browser does for itself
+    ├── speech-floor.ts               # the quietest a phone reading counts as speech …
+    └── speech-floor.web.ts           # … which is a different number in a browser
 ```
 
 ## The hologram
@@ -176,14 +198,37 @@ What each layer is, what the voice does to it, and which finding of the film stu
 - **Loudness is eased on the UI thread, not the JS thread.** The SDK refreshes about 25 times a second; easing toward each reading every frame is what keeps the bands smooth, and `easeLevel` is exponential so the result is the same on a 60 Hz and a 120 Hz screen. The tracker is frame-rate independent for the same reason, and tested at 30, 60, 90 and 144 Hz.
 - **It was designed by looking, and is tested by looking.** `hologram/src/hologram-drawing.spec.ts` renders it headlessly through CanvasKit — the same Skia API calls — and asserts on pixels: it moves when silent, it holds its brightness whether he speaks softly or loudly, speech shows as chips beyond the limb and more change than when calm, which bands are sounding changes the picture, the rim turns while the body stays put, it materialises and leaves nothing behind, nothing pops at a script boundary, no frame of the materialisation turns a tenth of the light on at once, and it stays inside its square. The device check is `.scripts/verify-hologram-on-emulator.sh`, below.
 
+## First run
+
+A new install opens on a three-step tour (`src/onboarding-screen.tsx`), not on the two fields it used to. The fields were an unanswerable question: nothing on that screen said what an ElevenLabs agent is, that Jarvis is one, or that the agent — not this app — is where the connections to everything else are made. Somebody who already had a key and an agent ID was the only person the old first screen worked for.
+
+| Step | What it does |
+| --- | --- |
+| `agent` | What an agent is, that its tools are what make it an assistant, and links to sign up, build one, and read about webhooks and MCP servers |
+| `credentials` | The API key and the agent ID, with a link to where each is found |
+| `assistant` | The recommendation to hand Jarvis the assistant role, and the button that opens the picker — plus the watch card, when there is a watch, which is where the credentials are handed across to it |
+
+Four things about it are decisions rather than details:
+
+- **The steps, their order and every link live in `src/onboarding.ts`, which imports nothing.** `bun test` cannot parse React Native's Flow types, so anything a test needs an opinion about has to be outside the components — the same reason the contract specs read Kotlin as text. `onboarding.spec.ts` covers the order, the two-step shape in a browser, resuming, the count, and that every link is an `https://elevenlabs.io` address.
+- **A browser gets two steps.** There is no assistant role in a browser and no picker to send anyone to, so the last step would be a recommendation nobody could act on. `onboardingSteps` leaves it out, and the count says "Step 2 of 2" rather than promising a third.
+- **The credentials are saved the moment they parse, not at the end.** The next step sends the user out to Android's Settings, and the app is not guaranteed to come back alive; a pasted API key held in component state across that is a key lost. Which is why a tour that is resumed with credentials already stored picks up *after* them rather than asking again.
+- **Whether the tour has been walked is remembered separately** (`src/onboarding-storage.ts`), and cannot be inferred from the credentials being there — because the last step comes after they are saved. A read of that flag that *fails* answers "walked": showing the tour to somebody who has a working Jarvis is the worse of the two mistakes, and a first-timer who misses it still lands on the settings screen, which is where this app used to open.
+
+Skipping straight to sample mode is offered on every step, because the question somebody has just after installing this is whether it is worth signing up for anything at all, and the honest answer to that is the sphere rather than another paragraph. It is a side trip and not an exit: the tour is not marked walked on the way out, so tapping beside Jarvis comes back to the tour rather than past it. To the first step left to walk, not the one it left from — the screen is unmounted while sample mode is up, and keeping a wizard's position across that is not worth a prop, since by the time the last step is on screen the credentials are saved and it *is* the first one left.
+
+Nothing in the tour is shown to a **summoned** app. Somebody who has just made the assistant gesture asked for Jarvis, and the answer to that is him — sample mode, when there is nothing set up — rather than a guided tour. See `app.tsx`.
+
 ## Configuration
 
-The app ships with no credential. It talks to ElevenLabs directly, and both settings are typed into the settings screen on first run and kept in the Android keystore — or, on web, in `localStorage`:
+The app ships with no credential. It talks to ElevenLabs directly, and both settings are typed into the tour's credentials step on first run — or into the settings screen afterwards — and kept in the Android keystore, or on web in `localStorage`:
 
 | Setting | What it is |
 | --- | --- |
 | API key | An ElevenLabs API key, sent as `xi-api-key` to ElevenLabs and nowhere else |
 | Agent ID | The Jarvis agent — the value of `HEY_JARVIS_ELEVENLABS_AGENT_ID` |
+
+Both values are also what the **watch** needs, and it is given them from here rather than asked for them: see [Handing the credentials to the watch](#handing-the-credentials-to-the-watch). `conversation-token.ts` and `elevenlabs-settings.ts` live in `hologram/` for the same reason — both devices use them, so neither owns them.
 
 For each conversation the app asks `GET https://api.elevenlabs.io/v1/convai/conversation/token` for a WebRTC token for that agent, and the session runs on the token; the key itself is used for nothing else. `conversation-token.ts` turns each failure into what to fix — a rejected key, a key without permission to start conversations (which ElevenLabs can also answer with 401), an agent ID the account does not have or a malformed one (400), an account out of credits (402), rate limiting (429) — by reading only ElevenLabs' fixed `detail.status` / `detail.code` identifiers. It never repeats anything else from a response, since a message can echo the request that carried the key.
 
@@ -198,6 +243,21 @@ What the keystore does and does not do for that key:
 
 Reading the key can also fail outright — a keystore key invalidated by an OS update, say — and that reads as "nothing stored": the app opens on the settings screen rather than hanging on its loading spinner.
 
+## Handing the credentials to the watch
+
+The watch app talks to ElevenLabs directly, exactly as this one does, and it needs the same two values. It never asks for them: an API key is fifty characters beginning `sk_`, and a watch is not where anybody should type one. This app sends them over the Wearable Data Layer instead.
+
+Both halves of the plumbing are in `modules/jarvis-watch`, beside the capability lookup that was already there:
+
+- **`sendSettingsToTheWatch`** puts them on `/jarvis/elevenlabs-settings` as a JSON message, addressed to a node advertising the `jarvis_on_the_watch` capability — the capability rather than the connected nodes, because a message to a watch without the app is accepted by Play Services and then dropped, which would look exactly like a successful handover.
+- **`whenTheWatchAsksForCredentials`** hears `/jarvis/ask-for-credentials`, which the watch sends whenever it starts with none. `src/answer-the-watch.ts` mounts that for the life of the app and answers it without a prompt; the note on that file argues why no prompt is the right default, and it is worth reading before changing it.
+
+Only a *running* phone app can answer an ask, because the credentials are behind the keystore in JavaScript's hands rather than in the native module that hears the question. That asymmetry is the whole reason the watch's own screen says "open Jarvis on your phone" rather than waiting silently, and the reason the watch card also has a button: a watch that is not running when the button is pressed still receives, because on that side a `WearableListenerService` takes the message. See [`watch/AGENTS.md`](../watch/AGENTS.md).
+
+**A message rather than a `DataItem`** is a security decision. See the note in `JarvisWatchModule.kt`: a data item replicates by being stored, in Play Services' own store on both devices, which is a live API key at rest somewhere neither app controls.
+
+Four strings hold this together — two paths, each spelled in Kotlin and in TypeScript, on each of two devices — with no compiler between any of them. `src/watch-link.contract.spec.ts` reads all of them out of their sources, along with the manifest entry that wakes the watch, and fails if they drift.
+
 ## Becoming the assistant
 
 Registration is entirely declarative, and every piece of it is load-bearing. `modules/jarvis-assistant/android/src/main/AndroidManifest.xml` is a *library* manifest that the Android build merges into the app's own, which is why there is no config plugin for any of this.
@@ -211,7 +271,7 @@ What has to be true, or the app silently never appears in the picker:
 
 Two things Android does **not** allow, both of which look like they work in code:
 
-- `RoleManager.createRequestRoleIntent(ROLE_ASSISTANT)` shows no dialog. The role is declared not requestable, so the activity finishes immediately. The app sends the user to `Settings.ACTION_VOICE_INPUT_SETTINGS` instead, and re-reads the role when it comes back to the foreground.
+- `RoleManager.createRequestRoleIntent(ROLE_ASSISTANT)` shows no dialog. The role is declared not requestable, so the activity finishes immediately. The app sends the user to `Settings.ACTION_VOICE_INPUT_SETTINGS` instead, and re-reads the role when it comes back to the foreground. The last step of the first-run tour is where that is offered, and it says what to tap once it lands — which screen it manages to reach differs by device, so the directions change with it.
 - Calling `hide()` before `startAssistantActivity()` makes the start illegal: what it checks is that the session is currently shown, and `hide()` retracts it. Start the activity first, hide second. Suppressing the session's own window with `setUiEnabled(false)` in `onPrepareShow` is fine and is what AOSP recommends for a session that only launches an activity — it is a client-side flag and does not make the session un-shown — but nothing may ask for a content view afterwards.
 
 To debug a device where Jarvis does not appear in the picker:
@@ -271,7 +331,9 @@ Tests must not import React Native or any Expo native module — there is no run
 
 `turbo e2e --filter=mobile` exports the production web build and drives it in Chromium — the real bundle, served over HTTP, clicked through. It runs in CI alongside the rest.
 
-The boundary is the ElevenLabs session, which needs a real API key and real quota. Everything up to it is exercised for real: settings validation, persistence across a reload, the assistant card's web state, the hologram drawing and moving with CanvasKit loaded from the export's own `canvaskit.wasm`, and the token request to ElevenLabs — its `xi-api-key` header, agent ID and participant name, and that the key never appears in the URL — along with how a rejected key and an unknown agent are explained. The token URL is intercepted with `page.route`; every other non-localhost request is aborted, and non-local WebSockets are closed, so a test can never dial out. Playwright answers CORS preflights for routed requests itself, so whether ElevenLabs' real CORS policy admits the web build is **not** covered — the test checks instead that the request carries no header besides `xi-api-key`, which is all a preflight would have to allow.
+The boundary is the ElevenLabs session, which needs a real API key and real quota. Everything up to it is exercised for real: the first-run tour (its two steps in a browser, its links, Back, and the side trip to sample mode and back), settings validation, persistence across a reload, the hologram drawing and moving with CanvasKit loaded from the export's own `canvaskit.wasm`, and the token request to ElevenLabs — its `xi-api-key` header, agent ID and participant name, and that the key never appears in the URL — along with how a rejected key and an unknown agent are explained. The token URL is intercepted with `page.route`; every other non-localhost request is aborted, and non-local WebSockets are closed, so a test can never dial out. Playwright answers CORS preflights for routed requests itself, so whether ElevenLabs' real CORS policy admits the web build is **not** covered — the test checks instead that the request carries no header besides `xi-api-key`, which is all a preflight would have to allow.
+
+Every test that needs a configured app walks the tour first, through the `walkToCredentials` helper: the app no longer opens on a form, so a spec that types into one without pressing Next is a spec that fails on a missing field rather than on what it was checking.
 
 Set `CHROMIUM_EXECUTABLE_PATH` to run against a Chromium that Playwright did not install itself — useful in a sandbox that ships a browser of a different build than the pinned `@playwright/test` expects. Leave it unset everywhere else.
 

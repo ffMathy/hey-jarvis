@@ -15,6 +15,6 @@
     "declarationMap": false,
     "incremental": false
   },
-  "include": ["index.ts", "app.config.ts", "src/**/*.ts", "src/**/*.tsx"],
+  "include": ["index.ts", "app.config.ts", "src/**/*.ts", "src/**/*.tsx", "modules/**/*.ts"],
   "exclude": ["**/node_modules", "**/.expo", "**/android", "**/dist"]
 }

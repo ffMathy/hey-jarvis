@@ -9,15 +9,15 @@
  */
 
 import { describe, expect, it } from 'bun:test';
-import { asRoutingEvent, buildSnapshot, RoutingProgress } from './controller.js';
+import { asRoutingEvents, buildSnapshot, RoutingProgress } from './controller.js';
 import { buildRoutingPlan } from './plan.js';
 
 const PLAN = buildRoutingPlan('plan-under-test', [
-  { delegations: [{ agentId: 'calendar', prompt: 'What is on my calendar?' }] },
+  { delegations: [{ taskId: 'diary', agentId: 'calendar', prompt: 'What is on my calendar?' }] },
   {
     delegations: [
-      { agentId: 'internetOfThings', prompt: 'Where is the user?' },
-      { agentId: 'weather', prompt: 'What is the weather there?' },
+      { taskId: 'location', agentId: 'internetOfThings', prompt: 'Where is the user?' },
+      { taskId: 'forecast', agentId: 'weather', prompt: 'What is the weather there?' },
     ],
   },
 ]);
@@ -35,47 +35,69 @@ function stepResult(id: string, output: unknown, status = 'success') {
 function startedPlan(): RoutingProgress {
   const progress = new RoutingProgress();
   for (const [delegationId, agentId] of PLAN.agentByStepId) {
-    progress.handle({ type: 'delegation_start', delegationId, agentId });
+    const taskId = PLAN.taskIdByStepId.get(delegationId) ?? agentId;
+    progress.handle({ type: 'delegation_start', delegationId, taskId, agentId });
   }
   return progress;
 }
 
 describe('reading a chunk off a plan run', () => {
   it('closes the delegation an agent step is', () => {
-    expect(asRoutingEvent(stepResult(CALENDAR_STEP, { text: 'Dentist at four.' }), PLAN)).toEqual({
-      type: 'delegation_end',
-      delegationId: CALENDAR_STEP,
-      result: { text: 'Dentist at four.' },
-      isError: false,
-    });
+    expect(asRoutingEvents(stepResult(CALENDAR_STEP, { text: 'Dentist at four.' }), PLAN)).toEqual([
+      {
+        type: 'delegation_end',
+        delegationId: CALENDAR_STEP,
+        result: { text: 'Dentist at four.' },
+        isError: false,
+      },
+    ]);
   });
 
   it('marks a step that did not succeed as a failed delegation', () => {
-    const event = asRoutingEvent(stepResult(CALENDAR_STEP, { error: 'no' }, 'failed'), PLAN);
+    const events = asRoutingEvents(stepResult(CALENDAR_STEP, { error: 'no' }, 'failed'), PLAN);
 
-    expect(event).toMatchObject({ type: 'delegation_end', isError: true });
+    expect(events).toMatchObject([{ type: 'delegation_end', isError: true }]);
   });
 
   it('attributes a chain’s own result to the delegation that produced it', () => {
     // A chain's output is its last agent step's text, and it arrives whether or not the
     // chain's inner steps reach the parent stream.
-    expect(asRoutingEvent(stepResult('chain-1', { text: 'It is 8 degrees.' }), PLAN)).toMatchObject({
-      type: 'delegation_end',
-      delegationId: WEATHER_STEP,
-    });
+    expect(asRoutingEvents(stepResult('chain-1', { text: 'It is 8 degrees.' }), PLAN)).toMatchObject([
+      { delegationId: LOCATION_STEP },
+      { type: 'delegation_end', delegationId: WEATHER_STEP, result: { text: 'It is 8 degrees.' } },
+    ]);
+  });
+
+  /**
+   * The regression that made a chain of two report as half a failure: only the chain's own
+   * result reaches this stream, so the steps before the last were left outstanding and the
+   * end of the run called them unanswered -- while the answer they produced was already in
+   * the result the chain reported.
+   */
+  it('closes the earlier steps of a chain that succeeded', () => {
+    const events = asRoutingEvents(stepResult('chain-1', { text: 'It is 8 degrees.' }), PLAN);
+
+    expect(events).toHaveLength(2);
+    expect(events[0]).toMatchObject({ delegationId: LOCATION_STEP, isError: false });
+  });
+
+  it('leaves the earlier steps of a failed chain alone, since it cannot say which one failed', () => {
+    const events = asRoutingEvents(stepResult('chain-1', { error: 'no' }, 'failed'), PLAN);
+
+    expect(events).toMatchObject([{ delegationId: WEATHER_STEP, isError: true }]);
   });
 
   it('ignores the plumbing steps, which are not delegations', () => {
-    expect(asRoutingEvent(stepResult(`${CALENDAR_STEP}-prompt`, { prompt: 'hi' }), PLAN)).toBeUndefined();
+    expect(asRoutingEvents(stepResult(`${CALENDAR_STEP}-prompt`, { prompt: 'hi' }), PLAN)).toEqual([]);
   });
 
   it('ignores anything that is not a step result', () => {
     // `workflow-finish` in particular: a chain is a nested workflow sharing the root's
     // pubsub, so taking its finish for the request's would close the request the moment the
     // fastest chain was done.
-    expect(asRoutingEvent({ type: 'workflow-finish', payload: { workflowStatus: 'success' } }, PLAN)).toBeUndefined();
-    expect(asRoutingEvent({ type: 'workflow-start', payload: { workflowId: 'chain-0' } }, PLAN)).toBeUndefined();
-    expect(asRoutingEvent('not a chunk at all', PLAN)).toBeUndefined();
+    expect(asRoutingEvents({ type: 'workflow-finish', payload: { workflowStatus: 'success' } }, PLAN)).toEqual([]);
+    expect(asRoutingEvents({ type: 'workflow-start', payload: { workflowId: 'chain-0' } }, PLAN)).toEqual([]);
+    expect(asRoutingEvents('not a chunk at all', PLAN)).toEqual([]);
   });
 });
 
@@ -83,7 +105,7 @@ describe('a plan run, folded', () => {
   it('names every delegation as outstanding before a single step has run', () => {
     const snapshot = buildSnapshot(startedPlan());
 
-    expect(snapshot.inProgress).toEqual(['calendar', 'internetOfThings', 'weather']);
+    expect(snapshot.inProgress).toEqual(['diary', 'location', 'forecast']);
     expect(snapshot.landed).toEqual([]);
     expect(snapshot.finished).toBe(false);
   });
@@ -96,20 +118,23 @@ describe('a plan run, folded', () => {
       stepResult(WEATHER_STEP, { text: 'It is 8 degrees.' }),
       stepResult('chain-1', { text: 'It is 8 degrees.' }),
     ]) {
-      const event = asRoutingEvent(chunk, PLAN);
-      if (event) {
+      for (const event of asRoutingEvents(chunk, PLAN)) {
         progress.handle(event);
       }
     }
 
-    expect(buildSnapshot(progress).landed).toEqual([{ agentId: 'weather', result: 'It is 8 degrees.', failed: false }]);
+    expect(buildSnapshot(progress).landed).toContainEqual({
+      taskId: 'forecast',
+      agentId: 'weather',
+      result: 'It is 8 degrees.',
+      failed: false,
+    });
   });
 
   it('closes out what the run never got to, rather than leaving the request unfinishable', () => {
     const progress = startedPlan();
-    const answered = asRoutingEvent(stepResult(CALENDAR_STEP, { text: 'Dentist at four.' }), PLAN);
-    if (answered) {
-      progress.handle(answered);
+    for (const event of asRoutingEvents(stepResult(CALENDAR_STEP, { text: 'Dentist at four.' }), PLAN)) {
+      progress.handle(event);
     }
 
     progress.handle({ type: 'finished' });
@@ -117,10 +142,10 @@ describe('a plan run, folded', () => {
     const snapshot = buildSnapshot(progress);
     expect(snapshot.finished).toBe(true);
     expect(snapshot.inProgress).toEqual([]);
-    expect(snapshot.all.map((outcome) => `${outcome.agentId}:${outcome.failed}`)).toEqual([
-      'calendar:false',
-      'internetOfThings:true',
-      'weather:true',
+    expect(snapshot.all.map((outcome) => `${outcome.taskId}:${outcome.failed}`)).toEqual([
+      'diary:false',
+      'location:true',
+      'forecast:true',
     ]);
   });
 
@@ -135,8 +160,7 @@ describe('a plan run, folded', () => {
       stepResult(LOCATION_STEP, { text: 'Aarhus.' }),
       stepResult(WEATHER_STEP, { text: 'It is 8 degrees.' }),
     ]) {
-      const event = asRoutingEvent(chunk, PLAN);
-      if (event) {
+      for (const event of asRoutingEvents(chunk, PLAN)) {
         progress.handle(event);
       }
     }
