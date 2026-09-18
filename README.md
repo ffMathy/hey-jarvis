@@ -51,7 +51,7 @@ ESP32 Voice Hardware  ←→  Home Assistant  ←→  MCP Server (Mastra AI)  �
 | [**watch**](./watch) | The same thing on a Wear OS watch |
 | [**hologram**](./hologram) | The sphere itself, and the voice tracking behind it — platform-free, and bundled by both apps |
 
-Getting the app onto a phone and a paired watch goes through Play internal testing: [**docs/play-store.md**](./docs/play-store.md) covers the upload key, the publisher account and the secrets each needs. The signing and the workflow are in place; what is not is an open Play developer account, which is where that document starts.
+Getting the app onto a phone and a paired watch goes through Google Play — internal testing on every pull request, production on every release cut from `main`: [**docs/play-store.md**](./docs/play-store.md) covers the upload key, the publisher account and the secrets each needs. The signing and the workflow are in place; what is not is an open Play developer account, which is where that document starts.
 
 ## Quick Start
 

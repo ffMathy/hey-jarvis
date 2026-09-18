@@ -13,3 +13,9 @@ export declare function createReleaseSigning(mod: typeof withAppBuildGradle): Co
  * a Play listing and so may not share a version code: 0 for the phone, 1 for the watch.
  */
 export declare function androidVersionCode(offset: number): number;
+
+/**
+ * The version a human reads, taken from the monorepo's own released version — the one Release
+ * Please bumps on `main`. Shared by both apps, because they are one Play listing.
+ */
+export declare function androidVersionName(): string;

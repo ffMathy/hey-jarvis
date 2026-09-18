@@ -9,7 +9,7 @@ import {
   withGradleProperties,
 } from '@expo/config-plugins';
 import type { ExpoConfig } from 'expo/config';
-import { androidVersionCode, createReleaseSigning } from '../.scripts/expo-release-signing';
+import { androidVersionCode, androidVersionName, createReleaseSigning } from '../.scripts/expo-release-signing';
 
 /**
  * Everything that makes this an app a watch will run, and offer as its assistant.
@@ -150,7 +150,10 @@ const withReleaseSigning = createReleaseSigning(withAppBuildGradle);
 const config: ExpoConfig = {
   name: 'Jarvis',
   slug: 'hey-jarvis-wear',
-  version: '0.1.0',
+  // The monorepo's released version, which Release Please bumps on `main`, rather than a
+  // number frozen here. Both apps are one Play listing and must agree on it; see
+  // `.scripts/expo-release-signing.js`.
+  version: androidVersionName(),
   orientation: 'portrait',
   userInterfaceStyle: 'dark',
   // A watch screen is OLED and mostly off. Black is not a colour choice here: it is the part of
