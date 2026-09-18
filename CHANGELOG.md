@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.2.0](https://github.com/ffMathy/hey-jarvis/compare/root-v2.1.0...root-v2.2.0) (2026-09-18)
+
+
+### Features
+
+* guide a new install through setup, and let the watch talk ([#724](https://github.com/ffMathy/hey-jarvis/issues/724)) ([953b529](https://github.com/ffMathy/hey-jarvis/commit/953b529113b7f04b4cb85491c8fdd7e597e75a9f))
+
+
+### Performance Improvements
+
+* **watch:** let the watch draw a sphere it can afford ([#726](https://github.com/ffMathy/hey-jarvis/issues/726)) ([4cc663a](https://github.com/ffMathy/hey-jarvis/commit/4cc663aed27035a62e59abcbf32ad999234c66b0))
+
 ## [2.1.0](https://github.com/ffMathy/hey-jarvis/compare/root-v2.0.0...root-v2.1.0) (2026-09-17)
 
 
