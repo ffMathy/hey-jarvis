@@ -90,6 +90,42 @@ describe('chains derived from a plan of tasks', () => {
     });
   });
 
+  describe('when a dependency does not name a task id exactly', () => {
+    it('matches an id whose case differs', () => {
+      const chains = chainsFromTasks([task('recipe', 'cooking'), task('todo', 'todo', 'Recipe')], KNOWN_AGENTS);
+
+      expect(shapeOf(chains)).toEqual([['cooking', 'todo']]);
+    });
+
+    /**
+     * The id and the agent id sit side by side in every task the planner writes, so naming
+     * the agent when it meant the task is the obvious confusion for it to make.
+     */
+    it('matches the agent of the only task that uses it', () => {
+      const chains = chainsFromTasks([task('recipe', 'cooking'), task('todo', 'todo', 'cooking')], KNOWN_AGENTS);
+
+      expect(shapeOf(chains)).toEqual([['cooking', 'todo']]);
+    });
+
+    it('leaves a dependency unchained when an agent name could mean either of two tasks', () => {
+      const chains = chainsFromTasks(
+        [task('starter', 'cooking'), task('main', 'cooking'), task('todo', 'todo', 'cooking')],
+        KNOWN_AGENTS,
+      );
+
+      expect(shapeOf(chains)).toEqual([['cooking'], ['cooking'], ['todo']]);
+    });
+
+    it('prefers an exact id match over an agent of the same name', () => {
+      const chains = chainsFromTasks(
+        [task('cooking', 'calendar'), task('recipe', 'cooking'), task('todo', 'todo', 'cooking')],
+        KNOWN_AGENTS,
+      );
+
+      expect(shapeOf(chains)).toEqual([['calendar', 'todo'], ['cooking']]);
+    });
+  });
+
   describe('when the planner writes something that does not hold together', () => {
     it('drops a task whose agent does not exist, and keeps the rest', () => {
       const chains = chainsFromTasks(

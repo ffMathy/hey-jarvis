@@ -94,29 +94,62 @@ function withUsableIds(tasks: PlannedTask[]): PlannedTask[] {
 }
 
 /**
+ * What a `needs` refers to, allowing for the ways a model names a thing it means.
+ *
+ * An edge is the expensive thing to lose -- losing one is the whole bug this file exists for
+ * -- so a reference is read generously before it is given up on. Exact id first; then id
+ * ignoring case, because a model that was told ids are lower-case will still write `Recipe`;
+ * then the agent id, because the two names sit side by side in every task it writes and
+ * naming the agent when it meant the task is the obvious confusion to make. The agent id
+ * counts only when exactly one task uses that agent, since with two there is no way to tell
+ * which was meant and a guess would be worse than no edge at all.
+ */
+function referencedTaskId(needs: string, tasks: PlannedTask[]): string | undefined {
+  const exact = tasks.find((task) => task.id === needs);
+  if (exact) {
+    return exact.id;
+  }
+
+  const wanted = needs.toLowerCase();
+
+  const sameId = tasks.filter((task) => task.id.toLowerCase() === wanted);
+  if (sameId.length === 1) {
+    return sameId[0].id;
+  }
+
+  const sameAgent = tasks.filter((task) => task.agentId.toLowerCase() === wanted);
+  if (sameAgent.length === 1) {
+    return sameAgent[0].id;
+  }
+
+  return undefined;
+}
+
+/**
  * The task this one is waiting on, once the reference is known to point somewhere.
  *
  * A `needs` naming a task that was dropped, or never existed, or is the task itself, is
  * treated as no dependency rather than as a reason to fail: the work still has to happen, and
  * running it unchained is what would have happened anyway before any of this existed.
  */
-function declaredParentId(task: PlannedTask, taskIds: ReadonlySet<string>): string | undefined {
+function declaredParentId(task: PlannedTask, tasks: PlannedTask[]): string | undefined {
   const needs = task.needs.trim();
   if (needs.length === 0) {
     return undefined;
   }
 
-  if (needs === task.id) {
-    logger.warn('Routing plan made a task depend on itself', { taskId: task.id });
-    return undefined;
-  }
-
-  if (!taskIds.has(needs)) {
+  const parentId = referencedTaskId(needs, tasks);
+  if (parentId === undefined) {
     logger.warn('Routing plan made a task depend on one that is not in the plan', { taskId: task.id, needs });
     return undefined;
   }
 
-  return needs;
+  if (parentId === task.id) {
+    logger.warn('Routing plan made a task depend on itself', { taskId: task.id });
+    return undefined;
+  }
+
+  return parentId;
 }
 
 /**
@@ -176,11 +209,10 @@ function pathsThrough(task: ResolvedTask): ResolvedTask[][] {
  */
 export function chainsFromTasks(tasks: PlannedTask[], knownAgentIds: ReadonlySet<string>): PlannedChain[] {
   const usable = withUsableIds(withKnownAgents(tasks, knownAgentIds));
-  const taskIds = new Set(usable.map((task) => task.id));
 
   const declaredParentIds = new Map<string, string>();
   for (const task of usable) {
-    const parentId = declaredParentId(task, taskIds);
+    const parentId = declaredParentId(task, usable);
     if (parentId !== undefined) {
       declaredParentIds.set(task.id, parentId);
     }
@@ -209,9 +241,20 @@ export function chainsFromTasks(tasks: PlannedTask[], knownAgentIds: ReadonlySet
     }
   }
 
-  return roots
+  const chains = roots
     .flatMap((root) => pathsThrough(root))
     .map((path) => ({
       delegations: path.map((task) => ({ agentId: task.agentId, prompt: task.prompt })),
     }));
+
+  // The shape, never the prompts: a prompt is written from the user's request and would put
+  // what they asked about into the log. Ids and agent ids are enough to answer the only
+  // question this log exists for -- did the planner declare the edges, and did they survive --
+  // which otherwise can only be guessed at from the order results happen to come back in.
+  logger.info('Derived the chains a routing plan runs as', {
+    declared: usable.map((task) => ({ id: task.id, agentId: task.agentId, needs: task.needs.trim() })),
+    chains: chains.map((chain) => chain.delegations.map((delegation) => delegation.agentId)),
+  });
+
+  return chains;
 }
