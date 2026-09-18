@@ -93,8 +93,25 @@ function withoutTemplatePlaceholders(prompt: string): string {
  *
  * An agent cannot see the request, the plan, or what any other agent said, so the previous
  * answer has to arrive in the prompt or not at all.
+ *
+ * **Including when there isn't one.** A step ahead of this one can finish having said nothing — cut
+ * off mid-tool-loop, or abandoned because the plan settled before it reported, both of which this
+ * run did — and what lands here is then an empty string under a heading calling it a result to use.
+ * A model handed that does the helpful thing and fills the gap: asked to put the ingredients of a
+ * recipe on a to-do list when no recipe ever arrived, it wrote a perfectly plausible lasagna. The
+ * eval caught it, and it is worth catching, because these steps have side effects. A wrong answer
+ * spoken aloud is corrected in the next sentence; a wrong answer written to a to-do list is still
+ * there next week.
+ *
+ * The warning is unconditional because it has to be: the prompt is templated when the plan is
+ * built, which is before any step has run, so there is no moment at which this could be written
+ * only for the runs that need it.
  */
-const PREVIOUS_ANSWER_HEADING = 'Here is the result of the previous step, which you should use to answer:';
+const PREVIOUS_ANSWER_HEADING =
+  'Here is the result of the previous step, which you should use to answer. If it is empty, or says ' +
+  'it did not answer or could not be completed, then that information does not exist: do not invent, ' +
+  'guess or substitute it, not even something reasonable. Say plainly what you could not do and why, ' +
+  'and record nothing.';
 
 /**
  * One chain: give an agent its prompt, run it, and repeat with the answer in hand.
