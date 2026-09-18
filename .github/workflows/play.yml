@@ -33,8 +33,9 @@ name: Play
 # A third way in, `workflow_dispatch`, exists for picking a track by hand.
 #
 # Each publish costs a `versionCode`, which can never be reused — see "Work out the version code"
-# below for where it comes from and why it is no longer the run number. Nothing here retries, and
-# the bundles are kept as an artifact even when the upload fails.
+# below for where it comes from and why it is no longer the run number. The only thing that retries
+# is the watch upload, once, because it races the phone's commit and loses; see the step that does
+# it. The bundles are kept as an artifact even when an upload fails.
 #
 # What it needs, and where each one comes from, is in `docs/play-store.md`. Going public one day
 # needs two things no track below production does — a service account allowed to release to
