@@ -20,19 +20,27 @@ ever fail.
 Internal testing is not a public release. It goes to a list of up to a hundred email addresses you
 name, it is live within minutes instead of after a week of review, and it never appears in search.
 
-Everything below is done once — **after** §0, which is the part that is currently blocking.
-Afterwards it is automatic: every push to a pull request that touches the app publishes a build to
-internal testing, so what is on your phone and your watch is the branch you are working on, and
-every release on `main` publishes the same build to the closed test. There is a manual trigger too,
-for when you want a different track.
+Everything below is done once, and by release 2.2.0 all of it had been: the account is open, the app
+exists, and Play accepts uploads signed with our key. §0 is kept as the history of how it was
+unblocked rather than as a thing still to do. After that it is automatic — every push to a pull
+request that touches the app publishes a build to internal testing, so what is on your phone and
+your watch is the branch you are working on, and every release on `main` publishes the same build to
+the closed test. There is a manual trigger too, for when you want a different track.
 
 ---
 
 ## 0. You need a developer account that is open
 
+**This is done — it is here for the history and for the day it matters again.** The evidence that it
+is done is in a real run: release 2.2.0's upload got `Validating track 'production'`, then
+`Successfully uploaded 1 artifacts`, and Play handed back a sharing URL for
+`com.ffmathy.heyjarvis`. None of that is possible without an open account with the app set up on it.
+
 The `ffMathy` account was **closed on 13 February 2024 for inactivity**, after a warning on
-12 December 2023 and a deadline of 9 February 2024. Nothing below can be done until there is an open
-account, and the pipeline in this repository cannot publish anything without one.
+12 December 2023 and a deadline of 9 February 2024. Nothing below could be done until there was an
+open account, and the pipeline in this repository could not publish anything without one — so if an
+upload ever starts failing at authentication rather than at a track or a precondition, come back
+here and read on. The closure criteria are further down, and a hobby project walks into them.
 
 [Google's documented remedy](https://support.google.com/googleplay/android-developer/answer/11605267)
 is to create a new account. There is a "request help" path from the Play Console Help page and it is
