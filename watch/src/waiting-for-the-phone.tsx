@@ -1,6 +1,7 @@
 import { JarvisHologram } from 'hologram/react';
 import { StyleSheet, Text, View } from 'react-native';
 import { silentVoice } from './silent-voice';
+import { useWatchDensity, WATCH_PARTICLE_COUNT } from './watch-density';
 import { useWatchHologramSize } from './watch-screen';
 
 interface WaitingForThePhoneProps {
@@ -23,6 +24,9 @@ interface WaitingForThePhoneProps {
  */
 export function WaitingForThePhone({ isPhoneInRange }: WaitingForThePhoneProps) {
   const size = useWatchHologramSize();
+  // Handing these over is what turns the density loop on at all — the drawing skips it
+  // entirely when there is nowhere to write the frame rate. See `watch-density.ts`.
+  const { frameRate, buildMilliseconds, particleShare, provenShare } = useWatchDensity();
 
   return (
     <View style={styles.screen}>
@@ -32,7 +36,17 @@ export function WaitingForThePhone({ isPhoneInRange }: WaitingForThePhoneProps) 
         style={{ width: size, height: size }}
         testID="hologram"
       >
-        <JarvisHologram size={size} voice={silentVoice} opaque background="#000000" />
+        <JarvisHologram
+          size={size}
+          voice={silentVoice}
+          particleCount={WATCH_PARTICLE_COUNT}
+          frameRate={frameRate}
+          buildMilliseconds={buildMilliseconds}
+          particleShare={particleShare}
+          provenShare={provenShare}
+          opaque
+          background="#000000"
+        />
       </View>
 
       <Text style={styles.waiting} testID="waiting-for-the-phone">

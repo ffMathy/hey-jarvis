@@ -6,6 +6,7 @@ import { useIsForeground } from 'hologram/react/lifecycle';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { requestMicrophoneAccess } from './microphone-permission';
+import { useWatchDensity, WATCH_PARTICLE_COUNT } from './watch-density';
 import { useWatchHologramSize } from './watch-screen';
 
 interface ConversationScreenProps {
@@ -50,6 +51,9 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
   const isForeground = useIsForeground();
   const voice = useAgentVoice();
   const size = useWatchHologramSize();
+  // Handing these over is what turns the density loop on at all — the drawing skips it
+  // entirely when there is nowhere to write the frame rate. See `watch-density.ts`.
+  const { frameRate, buildMilliseconds, particleShare, provenShare } = useWatchDensity();
   // What he is doing between hearing you and answering; the drawing has a whole state for it.
   const { thinking, toolHandlers, forgetToolCalls } = useToolActivity();
   const [problem, setProblem] = useState<string | undefined>(undefined);
@@ -119,7 +123,18 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
   return (
     <View style={styles.screen}>
       <View accessible accessibilityLabel="Jarvis" style={{ width: size, height: size }} testID="hologram">
-        <JarvisHologram size={size} voice={voice} thinking={thinking} opaque background="#000000" />
+        <JarvisHologram
+          size={size}
+          voice={voice}
+          thinking={thinking}
+          particleCount={WATCH_PARTICLE_COUNT}
+          frameRate={frameRate}
+          buildMilliseconds={buildMilliseconds}
+          particleShare={particleShare}
+          provenShare={provenShare}
+          opaque
+          background="#000000"
+        />
       </View>
 
       {problem ? (
