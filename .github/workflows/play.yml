@@ -19,12 +19,16 @@ name: Play
 #   Only pushes that could change the app: the same paths the APK workflow watches, because a
 #   README edit has no way into a bundle. Internal testing goes to a named list of up to a hundred
 #   testers, is available within minutes rather than after a review, and never appears in search.
-# - Every release cut on `main` publishes to *production*, live to everyone. `release.yml` calls
-#   this workflow through `workflow_call` once Release Please has tagged the release, handing it
-#   the tagged commit and the `production` and `wear:production` tracks. That is the only caller,
-#   and it is why this is one workflow with two entry points rather than two workflows that would
-#   drift apart — the build, the signing and the two-releases-on-two-tracks dance are identical and
-#   only the track names change.
+# - Every release cut on `main` publishes to the *closed test*. `release.yml` calls this workflow
+#   through `workflow_call` once Release Please has tagged the release, handing it the tagged commit
+#   and the tracks to use. That is the only caller, and it is why this is one workflow with two
+#   entry points rather than two workflows that would drift apart — the build, the signing and the
+#   two-releases-on-two-tracks dance are identical and only the track names change.
+#
+#   It aimed at `production` once, on 2.2.0, and Play took the bundle and then refused to commit the
+#   release. A personal developer account has to run a closed test with twelve testers for fourteen
+#   days before production is open to it at all, so the closed track is both where a release can go
+#   today and how that requirement gets served. `docs/play-store.md` section 9 has the whole story.
 #
 # A third way in, `workflow_dispatch`, exists for picking a track by hand.
 #
@@ -32,9 +36,10 @@ name: Play
 # below for where it comes from and why it is no longer the run number. Nothing here retries, and
 # the bundles are kept as an artifact even when the upload fails.
 #
-# What it needs, and where each one comes from, is in `docs/play-store.md`. Production needs one
-# thing internal testing does not: a service account allowed to release to production, and a
-# developer account that has been granted production access. Both are Console settings, not code.
+# What it needs, and where each one comes from, is in `docs/play-store.md`. Going public one day
+# needs two things no track below production does — a service account allowed to release to
+# production, and a developer account granted production access — and both are Console settings
+# rather than anything here. Section 9 is where that is written down.
 on:
   pull_request:
     branches: [ main ]

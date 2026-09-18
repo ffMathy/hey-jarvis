@@ -88,21 +88,23 @@ jobs:
           manifest-file: .github/.release-please-manifest.json
           target-branch: main
 
-  # The phone and the watch, live on Google Play, for everyone who has the app.
+  # The phone and the watch on Google Play, to the closed test.
   #
   # The same build a pull request publishes to internal testing — `play.yml` is one workflow with
-  # two entry points precisely so that the thing going to production is the thing that has been
+  # two entry points precisely so that the thing a release publishes is the thing that has been
   # going to testers all along, rather than a second pipeline nobody exercises until the day it
-  # matters. All that changes is the track: `production` for the phone, `wear:production` for the
-  # watch, which Play insists on keeping separate.
+  # matters. All that changes is the track.
+  #
+  # **Closed testing rather than production, and not only because the app is not ready to be
+  # public.** Release 2.2.0 went at `production` and Play took the bundle and then refused to commit
+  # the release — `Precondition check failed.`, with no detail whatsoever. A personal developer
+  # account cannot publish to production until it has run a closed test with twelve testers for
+  # fourteen continuous days and been granted access, so the closed track is both where this can go
+  # today *and* how that requirement gets satisfied. See section 9 of `docs/play-store.md`.
   #
   # `completed` rather than `draft`, because a release that lands on `main` is a release: it goes
-  # out rather than waiting in the Console for somebody to press a button. To hold one back, hold
-  # the commits back — the same rule as everything else here.
-  #
-  # Two things have to be true in the Play Console before this can work, and neither is code: the
-  # publisher service account needs production release rights, and the developer account needs
-  # production access. See section 9 of `docs/play-store.md`.
+  # out to the testers rather than waiting in the Console for somebody to press a button. To hold
+  # one back, hold the commits back — the same rule as everything else here.
   play:
     if: ${{ needs.release.outputs.release_created }}
     needs:
@@ -115,8 +117,18 @@ jobs:
       # merged inside this run, so only that commit carries the bumped version the bundles are
       # stamped with.
       ref: ${{ needs.release.outputs.sha }}
-      track: production
-      wearTrack: wear:production
+      # `alpha` *is* closed testing. The Console calls the track "Closed testing" and the API calls
+      # it `alpha`; they are the same track, and there is no track named `closed`.
+      track: alpha
+      # **And the watch goes to `wear:internal`, which is not a typo for a closed track.** There
+      # isn't one. The API lists every track it has when handed a name it does not know, and that
+      # list is `production,beta,alpha,internal,wear:beta,wear:internal,wear:production` — a
+      # `wear:alpha` is simply not among them, so the phone's closed track has no Wear OS twin to
+      # pair with. Of what does exist, `wear:internal` is the only one that is not public:
+      # `wear:beta` is *open* testing. The watch therefore stays where pull requests already put it,
+      # which is also the track that reaches a paired watch. If a Wear OS closed track ever appears
+      # in that list, this is the one line to change.
+      wearTrack: wear:internal
       status: completed
     # Named one by one rather than `inherit`, which would hand the called workflow every secret
     # this repository has. It needs exactly this: the 1Password service account token, which is how
