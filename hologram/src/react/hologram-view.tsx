@@ -20,6 +20,7 @@ import {
   easeLevel,
   foldSpectrum,
   MATERIALISE_SECONDS,
+  PARTICLE_COUNT,
   perceivedLevel,
   seedFromRemembered,
   steerDensity,
@@ -90,6 +91,18 @@ export interface JarvisHologramProps {
    * the seconds somebody is looking at him.
    */
   startingShare?: number;
+  /**
+   * How many fragments the scene is built from at all — the ceiling the density share is a share
+   * *of*, rather than how many are drawn right now.
+   *
+   * Left alone it is {@link PARTICLE_COUNT}, which is what a phone gets. A watch should ask for far
+   * fewer, and this is the only way to give it them: the share in `density-control.ts` thins the
+   * scene by skipping fragments *inside* the loop, so however low it goes the loop still visits
+   * every one. Building the scene is not free either — that many fragments times `BODY_STRIDE`
+   * numbers, serialised into the worklet runtime when the view mounts. Neither cost can be steered
+   * away from, on any device, which is why it is a parameter and not a measurement.
+   */
+  particleCount?: number;
   /**
    * Somewhere to put how long *building* one picture takes, in milliseconds, if anyone is watching.
    *
@@ -230,6 +243,7 @@ function JarvisHologramView({
   particleShare,
   provenShare,
   startingShare,
+  particleCount = PARTICLE_COUNT,
   buildMilliseconds,
   opaque = false,
   background,
@@ -237,7 +251,7 @@ function JarvisHologramView({
   const { listening, speaking, getVolume, getSpectrum } = voice;
   const isForeground = useIsForeground();
   const drawnSize = Math.round(size * DRAWN_RESOLUTION);
-  const scene = useMemo(() => createHologramScene(SCENE_SEED), []);
+  const scene = useMemo(() => createHologramScene(SCENE_SEED, particleCount), [particleCount]);
   const resources = useMemo(() => createHologramResources(Skia, scene), [scene]);
 
   const targetLevel = useSharedValue(0);
