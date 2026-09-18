@@ -38,6 +38,23 @@ function called(
   } as unknown as ServerMessage;
 }
 
+/**
+ * The routing call as it answers now: an instruction in a text part, with no JSON around it.
+ * See `createInstructionsOnlyWorkflowTool` in `mcp/mastra/utils/mcp-tool-factory.ts`.
+ */
+const acknowledged = (instructions: string): ServerMessage => {
+  nextCallId += 1;
+  return {
+    type: 'mcp_tool_call',
+    mcp_tool_call: {
+      tool_name: 'routePromptWorkflow',
+      tool_call_id: `call-${nextCallId}`,
+      state: 'success',
+      result: [{ type: 'text', text: instructions }],
+    },
+  } as unknown as ServerMessage;
+};
+
 const routed = (...taskIds: string[]): ServerMessage =>
   called('routePromptWorkflow', {
     instructions: 'The request is now being processed in the background.',
@@ -196,6 +213,22 @@ describe('readRoutingLoop', () => {
     expect(loop.steps).toHaveLength(1);
     expect(loop.steps[0].state).toBe('success');
     expect(loop.steps[0].inProgress).toEqual(['a']);
+  });
+
+  it('reads a routing acknowledgement that came back as prose rather than JSON', () => {
+    // routePromptWorkflow is published without an output schema, so its answer is the
+    // instruction and nothing else. Read as a report, it keeps the route call from looking
+    // like a call that carried nothing.
+    const loop = readRoutingLoop([
+      acknowledged('Say a short line, then call getNextInstructionsWorkflow.'),
+      recapped(['a']),
+    ]);
+
+    expect(loop.routeCalls).toHaveLength(1);
+    expect(loop.routeCalls[0].report?.instructions).toBe('Say a short line, then call getNextInstructionsWorkflow.');
+    expect(loop.routeCalls[0].inProgress).toBeUndefined();
+    expect(findRoutingLoopViolations(loop)).toEqual([]);
+    expect(describeRoutingLoop(loop)).not.toContain('no report in the result');
   });
 
   it('matches the tool names ElevenLabs actually reports, prefix and all', () => {

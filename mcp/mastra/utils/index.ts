@@ -1,5 +1,7 @@
 // Utils exports - Core factories
 export { createAgent } from './agent-factory.js';
+// MCP-facing tool exports
+export { createInstructionsOnlyWorkflowTool, createSimplifiedWorkflowTool } from './mcp-tool-factory.js';
 // Provider exports
 export { getModel, google } from './providers/google-provider.js';
 export {

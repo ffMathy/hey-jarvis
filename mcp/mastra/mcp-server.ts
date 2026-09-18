@@ -2,43 +2,14 @@
 
 import { MCPServer } from '@mastra/mcp';
 import express from 'express';
-import { z } from 'zod';
 import { logTokenUsageSummary } from './index.js';
 import { initializeScheduler } from './scheduler.js';
-import { createTool } from './utils/tool-factory.js';
-import type { AnyWorkflow } from './utils/workflows/workflow-factory.js';
+import { createInstructionsOnlyWorkflowTool, createSimplifiedWorkflowTool } from './utils/mcp-tool-factory.js';
 import { getPublicAgents, registerApiRoutes, registerShoppingTriggers } from './verticals/index.js';
 import { getNextInstructionsWorkflow, routePromptWorkflow } from './verticals/routing/workflows.js';
 
 // Re-export for cross-project imports
 export { getPublicAgents };
-
-function createSimplifiedWorkflowTool(workflow: AnyWorkflow) {
-  const workflowName = workflow.name ?? workflow.id;
-  return createTool({
-    id: workflowName,
-    description: workflow.description ?? '',
-    inputSchema: workflow.inputSchema ?? z.object({}),
-    outputSchema: workflow.outputSchema ?? z.unknown(),
-    execute: async (context) => {
-      console.log(`Executing workflow tool: ${workflowName}`);
-
-      const run = await workflow.createRun();
-      const result = await run.start({
-        inputData: context,
-      });
-      if (result.status !== 'success') {
-        const errorMessage =
-          'error' in result && result.error instanceof Error
-            ? result.error.message
-            : `Workflow failed with status ${result.status}`;
-        throw new Error(`Workflow ${workflowName} failed: ${errorMessage}`);
-      }
-
-      return result.result;
-    },
-  });
-}
 
 export async function startMcpServer() {
   const mcpServer = new MCPServer({
@@ -47,7 +18,7 @@ export async function startMcpServer() {
     version: '1.0.0',
     agents: {},
     tools: {
-      routePromptWorkflow: createSimplifiedWorkflowTool(routePromptWorkflow),
+      routePromptWorkflow: createInstructionsOnlyWorkflowTool(routePromptWorkflow),
       getNextInstructionsWorkflow: createSimplifiedWorkflowTool(getNextInstructionsWorkflow),
     },
   });

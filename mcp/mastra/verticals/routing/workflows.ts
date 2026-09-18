@@ -11,10 +11,15 @@ import {
 /* Public contract                                                            */
 /* -------------------------------------------------------------------------- */
 /*
- * These schemas are what the MCP server (and therefore the ElevenLabs Jarvis agent) sees.
- * The shape is unchanged: hand a request to `routePromptWorkflow`, then poll
- * `getNextInstructionsWorkflow` until one of the responses says everything has finished.
- * `elevenlabs/src/assets/agent-prompt.md` needs no change.
+ * These schemas are what the MCP server sees. The shape is unchanged: hand a request to
+ * `routePromptWorkflow`, then poll `getNextInstructionsWorkflow` until one of the responses
+ * says everything has finished.
+ *
+ * What the ElevenLabs Jarvis agent sees is narrower. `routePromptWorkflow` is published
+ * without an output schema (see `createInstructionsOnlyWorkflowTool` in `../../mcp-server.ts`),
+ * so its acknowledgement reaches the agent as the instruction text alone rather than as a JSON
+ * object repeated across `content` and `structuredContent`. The fields below still travel
+ * anywhere the workflow is run directly.
  *
  * What changed is underneath. A request used to be planned into a task DAG run by a wave
  * scheduler this file owned, and then a supervisor agent delegating inside one tool-call
@@ -46,6 +51,10 @@ const inputSchema = z.object({
 
 const routeAcknowledgementSchema = z.object({
   instructions: z.string().describe('Instructions for Jarvis to follow'),
+  // Only reaches a caller that runs the workflow directly, not one going through MCP: the
+  // voice agent names no session and so polls the default, and a caller that does name one
+  // already knows what it sent. Echoing it to everyone bought nothing and cost the
+  // instruction its clarity.
   sessionId: z.string().describe('The session this request is running in; pass it back when polling'),
 });
 
@@ -91,15 +100,16 @@ const CONVERSATION_CONTROL_EXCEPTION =
 
 /**
  * Instruction strings handed back to Jarvis. They are part of the outward contract —
- * `elevenlabs/src/assets/agent-prompt.md` points the agent at this field — so treat them as
- * API surface rather than log messages.
+ * `elevenlabs/src/assets/agent-prompt.md` tells the agent to do what a tool response says,
+ * and for `routePromptWorkflow` this string *is* the response — so treat them as API surface
+ * rather than log messages.
  *
  * They also carry the loop itself. The agent prompt used to spell out how to poll, what to
  * say between reports and what to do with a failed call: every rule kept there is context
  * the voice model pays for on every turn, whether or not a routing request is in flight,
  * and every rule stated in both places is a rule it can obey twice. So the prompt says only
- * "do what the instructions field says", and the specifics live here, where they arrive
- * exactly when they apply.
+ * "do what the tool response says", and the specifics live here, where they arrive exactly
+ * when they apply.
  */
 const INSTRUCTIONS = {
   async: 'The request is being processed in the background and will complete on its own. End the call now.',
