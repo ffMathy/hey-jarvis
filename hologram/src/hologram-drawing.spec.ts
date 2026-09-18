@@ -427,12 +427,14 @@ describe('the hologram', () => {
     // spectrum being answered any less. Fragments are Screen-blended, so a fragment's contribution
     // to a pixel is 1 - (1 - base)(1 - its own): the denser the swarm, the brighter the base under
     // every fragment, and the less any one of them moves the pixel it lands on. Measured over the
-    // moments this suite renders: 0.71 at a thousand fragments, 0.65 at five thousand, 0.47-0.54 at
-    // fifteen. Nothing saturates at any of them — it is compression, not clipping.
+    // moments this suite renders: 0.71 at a thousand fragments, 0.65 at five thousand, 0.52-0.66 at
+    // ten, 0.47-0.54 at fifteen. Nothing saturates at any of them — compression, not clipping.
     //
     // So this is measured rather than reasoned, and it keeps its teeth: the same spectrum rendered
-    // twice differs by exactly 0, which is what ignoring the bands would score.
-    expect(difference(low, high)).toBeGreaterThan(0.4);
+    // twice differs by exactly 0, which is what ignoring the bands would score. Under the 0.52 the
+    // sparsest moment measures rather than at it, because a threshold a test clears by three
+    // percent is a threshold that fails on the next unrelated thing.
+    expect(difference(low, high)).toBeGreaterThan(0.45);
   });
 
   it('turns its body about the vertical axis, once every BODY_TURN_SECONDS', () => {
@@ -660,24 +662,27 @@ describe('the hologram', () => {
     // rule but a wider square: the square is bigger than the *screen* now, so the only thing that
     // cuts a chip is the screen itself, where an edge cannot be seen.
     //
-    // **It asked for a bare ten pixels of the band, and measured none, until PARTICLE_COUNT went to
-    // fifteen thousand.** Tripling the fragments triples the draws from the same distribution, so
-    // its tail reaches further: ninety pixels of the band light now. They are not chips — removing
-    // the burst entirely changes nothing — but the speech-driven spread at full voice, and they sit
-    // at 1.79-1.86R, while the square's own edge is at 1.85R and *the screen ends at 1.24R*. So
-    // every one of them is half again further out than anything the user can see.
+    // **The ten-pixel allowance is doing real work now, and it is worth knowing how much.** It
+    // measured none of the band at five thousand fragments. At ten thousand the worst moment of the
+    // worst burst lights seven pixels of 5020 — inside the allowance, but only just — and at
+    // fifteen thousand it lit ninety and this failed. More fragments are more draws from the same
+    // distribution, so the tail reaches further: 1.81R here against 1.79R at five thousand.
     //
-    // Which is why the number below is measured against the failure rather than against zero. At
-    // the square it has, the worst moment of the worst burst lights 0.018 of the band. Shrink the
-    // square to the 1.61R that clipped visibly and it lights 0.125; to 1.37R and 0.32. A rim
-    // running off the canvas is an arc, not a spray, and it is an order of magnitude away from
-    // here.
+    // What reaches out there is the speech-driven spread, not the chips: removing the burst
+    // entirely changes nothing. And the square's own edge is 1.85R while *the screen ends at
+    // 1.24R*, so all of it is half again further out than anything the user can see. That is why
+    // seven pixels is a note rather than a bug — but the allowance is the thing to re-measure,
+    // rather than widen, the next time this trips.
+    //
+    // It keeps its teeth either way. Shrink the square to the 1.61R that clipped visibly and the
+    // band lights 0.0998 of itself — 501 pixels, seventy times this — and at 1.37R, 0.251. A rim
+    // running off the canvas is an arc, not a spray.
     const band = Math.round(SIZE * 0.02);
     for (const time of [8, 23.4, 31.2, 47.9, 55.1]) {
       for (const burstAge of [0, 0.06, 0.12, 0.2]) {
         const loudest = render(speech(time, 1, new Array(VOICE_BAND_COUNT).fill(1), burstAge, Math.round(time * 10)));
 
-        expect(edgeLitShare(loudest, band)).toBeLessThan(0.04);
+        expect(edgeLitShare(loudest, band)).toBeLessThan(0.002);
       }
     }
   });

@@ -503,23 +503,28 @@ const FRAGMENT_CODE_GLYPH_STEP = 12;
  * did, drawing 988 of the thousand while pinned at the cap, which was sixty at the time. The cap is
  * forty now, so there is more room again rather than less.
  *
- * Raised to five thousand on that reasoning, and to fifteen thousand on the same reasoning again:
- * a phone that settles just under the ceiling is a phone the ceiling is answering for, and the
- * only way to find out what it could actually hold is to stop answering. A phone that cannot is
+ * Raised to five thousand on that reasoning, and to ten thousand on the same reasoning again: a
+ * phone that settles just under the ceiling is a phone the ceiling is answering for, and the only
+ * way to find out what it could actually hold is to stop answering. A phone that cannot is
  * unaffected — it settles at its own number, wherever that is, and pays only the scene cost below.
+ *
+ * **Fifteen thousand was tried first and the user said it was too much**, which is the answer this
+ * number exists to take: the loop can find what a phone affords, but not what looks right, and at
+ * fifteen the swarm reads as a mass rather than as particles. Ten is the ceiling the picture wants
+ * rather than the one the hardware allows, and those are different questions.
  *
  * What it costs on every phone, fast or slow, is the scene: this many fragments times
  * {@link BODY_STRIDE} numbers, built once and serialised once into the worklet runtime when the
  * view mounts. That is the only part of raising it that nobody can opt out of, and it is worth
- * knowing the size of it: 150,000 numbers, which `createHologramScene` spends 21-29 ms building on
- * a desktop CPU against 8-10 ms at five thousand. A phone is some multiple of that, and then
+ * knowing the size of it: 100,000 numbers, which `createHologramScene` spends 15-20 ms building on
+ * a desktop CPU against 8-12 ms at five thousand. A phone is some multiple of that, and then
  * Reanimated copies the lot across. It lands as a hitch when the view mounts rather than as a
  * frame rate, so the controller below cannot thin it away — this is the number to look at first if
  * the arrival ever starts feeling late.
  *
  * {@link FEWEST_PARTICLES} in `density-control.ts` is a share of this, so it moves when this does.
  */
-export const PARTICLE_COUNT = 15000;
+export const PARTICLE_COUNT = 10000;
 
 /**
  * Turns a fragment's id into where it sits in the thinning, 0-1.
