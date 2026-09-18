@@ -10,11 +10,23 @@ export interface ConversationToken {
 }
 
 /**
- * The name this phone appears under in the ElevenLabs conversation history, so a
- * conversation held here is distinguishable from one held through the house
- * speakers or over the phone line.
+ * What each device calls itself in the ElevenLabs conversation history.
+ *
+ * Both names live here rather than in the app that uses them, because the point of them is to be
+ * told apart: a conversation held on the wrist should be distinguishable in the history from one
+ * held on the phone, from one held through the house speakers, and from one held over the phone
+ * line. Two apps each naming themselves would drift into two names for the same thing.
  */
-export const MOBILE_PARTICIPANT_NAME = 'jarvis-android';
+export const PHONE_PARTICIPANT_NAME = 'jarvis-android';
+export const WATCH_PARTICIPANT_NAME = 'jarvis-wear';
+
+/** Everything one conversation needs before it can be asked for: whose agent, and who is asking. */
+export interface ConversationRequest {
+  /** The API key to ask with, and the agent to ask for. */
+  settings: ElevenLabsSettings;
+  /** Which device this is — one of the two names above. Required, so neither app can borrow the other's. */
+  participantName: string;
+}
 
 /** Narrows ElevenLabs' response without trusting its shape. */
 function readToken(payload: unknown): ConversationToken | undefined {
@@ -121,15 +133,15 @@ async function failureReason(response: Response): Promise<string | undefined> {
  * WebRTC, because that is the only transport `@elevenlabs/react-native`
  * supports: it throws outright on a signed WebSocket URL.
  *
- * @param settings - The API key to ask with, and the agent to ask for.
+ * @param request - Whose agent to ask for, and which device is asking.
  * @param fetchImplementation - Injectable so the tests can exercise every failure
  *   path without an ElevenLabs account.
  */
 export async function requestConversationToken(
-  settings: ElevenLabsSettings,
+  { settings, participantName }: ConversationRequest,
   fetchImplementation: typeof fetch = fetch,
 ): Promise<ConversationToken> {
-  const query = new URLSearchParams({ agent_id: settings.agentId, participant_name: MOBILE_PARTICIPANT_NAME });
+  const query = new URLSearchParams({ agent_id: settings.agentId, participant_name: participantName });
 
   const response = await fetchImplementation(`${CONVERSATION_TOKEN_URL}?${query}`, {
     method: 'GET',

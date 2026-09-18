@@ -1,4 +1,4 @@
-import type { ElevenLabsSettings } from './elevenlabs-settings';
+import type { ElevenLabsSettings } from 'conversation';
 import { readStoredValue, writeStoredValue } from './key-value-store';
 
 /**

@@ -1,11 +1,11 @@
 import { useConversationControls, useConversationStatus } from '@elevenlabs/react-native';
+import { type ElevenLabsSettings, PHONE_PARTICIPANT_NAME, requestConversationToken } from 'conversation';
+import { useToolActivity } from 'conversation/react';
 import * as Linking from 'expo-linking';
 import { PARTICLE_COUNT } from 'hologram';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { createAssistLaunchClaim } from './assist-link';
-import { requestConversationToken } from './conversation-token';
-import type { ElevenLabsSettings } from './elevenlabs-settings';
 import { FrameRate } from './frame-rate';
 import { useWholeScreenHologramSize } from './hologram-size';
 import { JarvisHologram } from './jarvis-hologram';
@@ -15,7 +15,6 @@ import { usePreferredHeadset } from './preferred-microphone';
 import { useSparkDensity } from './spark-density';
 import { QUIETEST_SPEECH_HERE } from './speech-floor';
 import { theme } from './theme';
-import { useToolActivity } from './tool-activity';
 import { TypedMessageField } from './typed-message-field';
 
 interface ConversationScreenProps {
@@ -103,7 +102,7 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
       // Minted here rather than at launch, and never kept: a conversation token
       // is short-lived, and one fetched when the app opened may already be dead
       // by the time it is used.
-      const { token } = await requestConversationToken(settings);
+      const { token } = await requestConversationToken({ settings, participantName: PHONE_PARTICIPANT_NAME });
 
       startSession({
         conversationToken: token,

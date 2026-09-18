@@ -1,0 +1,21 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "jsx": "react-jsx",
+    // Nothing emits from here: the apps' bundlers compile these sources along
+    // with their own, so declarations would be output nobody reads. The same
+    // reasoning as in `mobile/tsconfig.json`, and it is why `composite` is off.
+    "outDir": "../dist/conversation-tsc",
+    "lib": ["esnext", "dom"],
+    "types": ["bun-types"],
+    "esModuleInterop": true,
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "incremental": false
+  },
+  // Nothing here drives a device, so there is no `.scripts` to typecheck.
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "exclude": ["**/node_modules", "**/dist"]
+}

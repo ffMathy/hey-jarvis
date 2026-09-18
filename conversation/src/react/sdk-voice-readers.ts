@@ -1,6 +1,6 @@
 import { useConversationControls } from '@elevenlabs/react-native';
+import type { JarvisVoiceReaders } from 'hologram';
 import { useMemo } from 'react';
-import type { VoiceReaders } from './tapped-voice';
 
 const SILENCE = new Uint8Array(0);
 
@@ -17,7 +17,7 @@ const SILENCE = new Uint8Array(0);
  * polling, and the restart would show as a dip at the very moment he starts to
  * talk.
  */
-export function useSdkVoiceReaders(): VoiceReaders {
+export function useSdkVoiceReaders(): JarvisVoiceReaders {
   const { getOutputVolume, getOutputByteFrequencyData } = useConversationControls();
 
   return useMemo(

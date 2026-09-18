@@ -1,6 +1,6 @@
+import { type ElevenLabsSettings, parseElevenLabsSettings } from 'conversation';
 import { useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { type ElevenLabsSettings, parseElevenLabsSettings } from './elevenlabs-settings';
 import { theme } from './theme';
 
 interface ElevenLabsFieldsProps {

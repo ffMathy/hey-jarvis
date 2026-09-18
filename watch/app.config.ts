@@ -164,14 +164,27 @@ const config: ExpoConfig = {
     // artifact sitting beside a phone one. See `.scripts/expo-release-signing.js`.
     versionCode: androidVersionCode(WATCH_VERSION_OFFSET),
     permissions: [
-      // The conversation, once there is one. The sphere idles without it.
+      // The conversation. The sphere idles without it.
       'android.permission.RECORD_AUDIO',
       'android.permission.MODIFY_AUDIO_SETTINGS',
       'android.permission.INTERNET',
       'android.permission.ACCESS_NETWORK_STATE',
       'android.permission.WAKE_LOCK',
+      // Watches are routinely paired to earbuds, and the call's audio has to follow them.
+      'android.permission.BLUETOOTH_CONNECT',
     ],
+    // `@livekit/react-native` declares CAMERA in its own manifest because the same module also
+    // does video calls. A watch app that could open a camera is a watch app nobody should install,
+    // so it is merged straight back out again — the same line as in `mobile/app.config.ts`.
+    blockedPermissions: ['android.permission.CAMERA'],
   },
+  plugins: [
+    // Writes the meta-data LiveKit's own lifecycle listener reads at startup to pick an audio
+    // mode. Without it the native audio session is set up for media playback rather than a call:
+    // the microphone routes to the speaker, and Jarvis hears his own voice back. On a watch, where
+    // the speaker and the microphone are centimetres apart, that is not a subtle problem.
+    ['@livekit/react-native-expo-plugin', { android: { audioType: 'communication' } }],
+  ],
 };
 
 // Signed with the phone app's upload key, which is not a nicety: Play will only deliver two

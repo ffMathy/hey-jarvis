@@ -57,6 +57,14 @@ The agent on the other end is the same one `elevenlabs/` deploys, with the same 
 ## File Structure
 
 ```
+../conversation/src/              # the ElevenLabs conversation, shared with the watch — see ../conversation/AGENTS.md
+├── elevenlabs-settings.ts        # the two credentials, and what is wrong with them
+├── conversation-token.ts         # minting a token, and every ElevenLabs failure explained
+└── react/                        # `conversation/react`, the half that needs the SDK
+    ├── agent-voice.ts            # his voice as the SDK hears it — the whole voice on web and watch
+    ├── sdk-voice-readers.ts      # the SDK's analysers, safe to call before a session exists
+    └── tool-activity.ts          # which tool calls are in flight, for the thinking state
+
 ../hologram/src/                  # the sphere itself, shared with the watch — see ../hologram/AGENTS.md
 ├── hologram-drawing.ts           # what one frame of the hologram looks like (worklets)
 ├── voice-analysis.ts             # the FFT and RMS, the same for live audio and the emulator replay
@@ -184,7 +192,7 @@ A new install opens on a three-step tour (`src/onboarding-screen.tsx`), not on t
 | --- | --- |
 | `agent` | What an agent is, that its tools are what make it an assistant, and links to sign up, build one, and read about webhooks and MCP servers |
 | `credentials` | The API key and the agent ID, with a link to where each is found |
-| `assistant` | The recommendation to hand Jarvis the assistant role, and the button that opens the picker — plus the watch card, when there is a watch |
+| `assistant` | The recommendation to hand Jarvis the assistant role, and the button that opens the picker — plus the watch card, when there is a watch, which is where the credentials are handed across to it |
 
 Four things about it are decisions rather than details:
 
@@ -206,6 +214,8 @@ The app ships with no credential. It talks to ElevenLabs directly, and both sett
 | API key | An ElevenLabs API key, sent as `xi-api-key` to ElevenLabs and nowhere else |
 | Agent ID | The Jarvis agent — the value of `HEY_JARVIS_ELEVENLABS_AGENT_ID` |
 
+Both values are also what the **watch** needs, and it is given them from here rather than asked for them: see [Handing the credentials to the watch](#handing-the-credentials-to-the-watch).
+
 For each conversation the app asks `GET https://api.elevenlabs.io/v1/convai/conversation/token` for a WebRTC token for that agent, and the session runs on the token; the key itself is used for nothing else. `conversation-token.ts` turns each failure into what to fix — a rejected key, a key without permission to start conversations (which ElevenLabs can also answer with 401), an agent ID the account does not have or a malformed one (400), an account out of credits (402), rate limiting (429) — by reading only ElevenLabs' fixed `detail.status` / `detail.code` identifiers. It never repeats anything else from a response, since a message can echo the request that carried the key.
 
 This used to go through the MCP server, which held the key and handed the phone tokens behind a shared secret. It was changed so the app needs nothing but ElevenLabs: no server address, no second secret, no tunnel to reach. The price is a real credential on the phone, so give the app **its own key**, restricted to what a conversation needs where the account allows it — then a lost phone is one revoked key, not every integration on the account.
@@ -218,6 +228,21 @@ What the keystore does and does not do for that key:
 - **It is not autofill's.** Both settings fields opt out of autofill and password managers, so saving them does not copy the key into a synced vault.
 
 Reading the key can also fail outright — a keystore key invalidated by an OS update, say — and that reads as "nothing stored": the app opens on the settings screen rather than hanging on its loading spinner.
+
+## Handing the credentials to the watch
+
+The watch app talks to ElevenLabs directly, exactly as this one does, and it needs the same two values. It never asks for them: an API key is fifty characters beginning `sk_`, and a watch is not where anybody should type one. This app sends them over the Wearable Data Layer instead.
+
+Both halves of the plumbing are in `modules/jarvis-watch`, beside the capability lookup that was already there:
+
+- **`sendSettingsToTheWatch`** puts them on `/jarvis/elevenlabs-settings` as a JSON message, addressed to a node advertising the `jarvis_on_the_watch` capability — the capability rather than the connected nodes, because a message to a watch without the app is accepted by Play Services and then dropped, which would look exactly like a successful handover.
+- **`whenTheWatchAsksForCredentials`** hears `/jarvis/ask-for-credentials`, which the watch sends whenever it starts with none. `src/answer-the-watch.ts` mounts that for the life of the app and answers it without a prompt; the note on that file argues why no prompt is the right default, and it is worth reading before changing it.
+
+Only a *running* phone app can answer an ask, because the credentials are behind the keystore in JavaScript's hands rather than in the native module that hears the question. That asymmetry is the whole reason the watch's own screen says "open Jarvis on your phone" rather than waiting silently, and the reason the watch card also has a button: a watch that is not running when the button is pressed still receives, because on that side a `WearableListenerService` takes the message. See [`watch/AGENTS.md`](../watch/AGENTS.md).
+
+**A message rather than a `DataItem`** is a security decision. See the note in `JarvisWatchModule.kt`: a data item replicates by being stored, in Play Services' own store on both devices, which is a live API key at rest somewhere neither app controls.
+
+Four strings hold this together — two paths, each spelled in Kotlin and in TypeScript, on each of two devices — with no compiler between any of them. `src/watch-link.contract.spec.ts` reads all of them out of their sources, along with the manifest entry that wakes the watch, and fails if they drift.
 
 ## Becoming the assistant
 

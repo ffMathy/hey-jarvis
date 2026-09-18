@@ -7,13 +7,14 @@
 // attempt to talk fails at runtime with "No voice session setup strategy
 // registered".
 import { ConversationProvider } from '@elevenlabs/react-native';
+import type { ElevenLabsSettings } from 'conversation';
 import * as Linking from 'expo-linking';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
+import { useAnswerTheWatch } from './answer-the-watch';
 import { isAssistLaunch } from './assist-link';
 import { ConversationScreen } from './conversation-screen';
-import type { ElevenLabsSettings } from './elevenlabs-settings';
 import { firstOnboardingStep } from './onboarding';
 import { OnboardingScreen } from './onboarding-screen';
 import { hasWalkedOnboarding, rememberOnboardingWalked } from './onboarding-storage';
@@ -99,6 +100,10 @@ export function App({ summoned = false }: AppProps) {
   const [isLoaded, setIsLoaded] = useState(false);
   const [isEditingSettings, setIsEditingSettings] = useState(false);
   const [isSampling, setIsSampling] = useState(false);
+
+  // Hands the credentials to the watch whenever it asks, for as long as this app is open. See
+  // `answer-the-watch.ts`; the watch only ever asks when it has none of its own.
+  useAnswerTheWatch(settings);
 
   const launchUrl = Linking.useURL();
   // Two ways in, and they are genuinely different: the assistant's own window renders this

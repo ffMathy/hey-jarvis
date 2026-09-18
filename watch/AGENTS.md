@@ -4,13 +4,32 @@
 
 ## Overview
 
-Jarvis on the wrist: an Expo app that draws the same sphere the phone does, and registers as the watch's digital assistant.
+Jarvis on the wrist: an Expo app that draws the same sphere the phone does, holds a live conversation with the same ElevenLabs agent, and registers as the watch's digital assistant.
 
-There is no conversation here yet and no microphone — the sphere idles. That is deliberate: it is the shortest path to the one question a watch asks that a phone does not, which is whether the hardware can draw him at a frame rate worth looking at. A voice is the next thing, and adding one changes nothing about the drawing.
+**Nothing is ever typed here.** There is no settings screen and no keyboard on the critical path: the ElevenLabs API key is fifty characters beginning `sk_`, and a watch is not where anybody should enter one. It arrives from the phone over the Wearable Data Layer instead — see [Credentials](#credentials-the-phone-hands-them-over) — and once it has, the watch holds conversations on its own with the phone out of range, asleep or absent.
 
-**The sphere is not a copy.** It comes from [`hologram/`](../hologram/AGENTS.md), the workspace package the phone app bundles from too — the drawing, the voice tracking and the React Native view. Changing how Jarvis looks is one edit in one place, and both apps follow. What lives here is only what a watch does differently: a round screen drawn edge to edge, and an assistant gesture that arrives as an intent.
+**The sphere is not a copy, and neither is the conversation.** The sphere comes from [`hologram/`](../hologram/AGENTS.md) and the conversation from [`conversation/`](../conversation/AGENTS.md) — the two workspace packages the phone app bundles from too. Changing how Jarvis looks, or what ElevenLabs saying no means, is one edit in one place and both apps follow. What lives here is only what a watch does differently: a round screen drawn edge to edge, an assistant gesture that arrives as an intent, and a credential that arrives from a phone.
 
 It was a plain Gradle project in Kotlin until 2026-09-16, on the belief that Expo does not target Wear OS. It does — a Wear OS app is an Android app with `uses-feature android.hardware.type.watch` — and the cost of the other arrangement was a second Jarvis to keep in step with the first.
+
+## What is in here
+
+```
+watch/
+├── app.config.ts                 # Expo config: the watch feature, the assistant filter, the capability
+├── index.ts                      # registerRootComponent
+├── modules/jarvis-phone/         # the local Expo module that hears the phone
+│   ├── index.ts                  # the JS side
+│   └── android/src/main/         # Kotlin, and the library manifest declaring the listener service
+└── src/
+    ├── app.tsx                   # two states: a conversation, or waiting for the phone
+    ├── conversation-screen.tsx   # the sphere, and a live ElevenLabs session behind it
+    ├── waiting-for-the-phone.tsx # the sphere idling, and one line saying what is missing
+    ├── phone-settings.ts         # the credentials, and the asking that gets them
+    ├── microphone-permission.ts  # PermissionsAndroid
+    ├── silent-voice.ts           # a voice that is not there, for the waiting screen
+    └── watch-screen.ts           # how big the sphere is drawn on a round screen
+```
 
 ## TURBO Commands
 
@@ -20,7 +39,9 @@ bunx turbo lint --filter=watch        # biome
 bunx turbo build:apk --filter=watch   # dist/watch-apk/jarvis-watch.apk (needs JDK 17+ and the Android SDK)
 ```
 
-There is no `build` and no `test`, on purpose. CI's `turbo build` runs in a dev container with no Android SDK, so the APK is built by the **Wear APK** workflow (`.github/workflows/watch-apk.yml`) on the runner instead — whenever `watch/**` *or* `hologram/**` changes — and uploaded as `jarvis-watch-<commit>.apk`, unzipped. There are no tests here because there is nothing here to test: everything with behaviour in it lives in `hologram/`, and is tested there.
+There is no `build` and no `test`, on purpose. CI's `turbo build` runs in a dev container with no Android SDK, so the APK is built by the **Wear APK** workflow (`.github/workflows/watch-apk.yml`) on the runner instead — whenever `watch/**` *or* `hologram/**` changes — and uploaded as `jarvis-watch-<commit>.apk`, unzipped.
+
+There are no tests here because everything with behaviour in it lives in a package that has them: the drawing and the voice tracking in `hologram/`, the credentials and the token request in `conversation/`. The one thing that is genuinely this app's and genuinely testable is the **handover protocol** — four spellings of two message paths across two languages and two devices — and that is checked from the phone's side, in `mobile/src/watch-link.contract.spec.ts`, which reads all four out of their sources. It is there rather than here because that is where the other half of the same contract already was.
 
 `android/` is generated by `expo prebuild` and is not committed, exactly as in `mobile/`. Nothing hand-edited there survives.
 
@@ -34,27 +55,47 @@ The same plugin declares `uses-feature android.hardware.type.watch`, which is wh
 
 `applicationId` is the phone app's, `com.ffmathy.heyjarvis`. The Wearable Data Layer only connects a phone app and a watch app that share a package name and a signing key, and the real app will need it.
 
-## Credentials, for the real app
+## Credentials: the phone hands them over
 
-Like the phone app, the watch app will talk to ElevenLabs directly with an ElevenLabs API key and the Jarvis agent ID — no server in between — and will keep the key in the **watch's own Android Keystore**, never in its APK or in plain preferences. The key should reach the watch from the phone over the Data Layer rather than be typed on it: a key is long, and a watch keyboard is not where anyone should enter one. Once it arrives, the watch stores it and no longer needs the phone to be nearby to start a conversation. None of this exists yet; the prototype holds no credential at all.
+The watch talks to ElevenLabs directly with an API key and the Jarvis agent ID, exactly as the phone does — no server in between. What differs is where they come from. **They are never typed on the watch.** The phone's first-run tour asks for them once, on a keyboard, and hands them across the Wearable Data Layer.
 
-### Can the watch read the phone's settings?
+That is the supported answer rather than a workaround, and both of its preconditions were already met here before any of it was built: Play Services only connects a phone app and a watch app that share an `applicationId` *and* a signing key, and this app deliberately shares both with `mobile/` — see the notes on the package name and on [signing](#signing).
 
-Not directly — an app cannot read another device's storage, and these two are separate installs with separate keystores even though they share a package name. But the phone can *send* them, and that is the supported answer rather than a workaround: the Wearable Data Layer exists for exactly this, and both of its preconditions are already met here. Play Services only connects a phone app and a watch app that share an `applicationId` *and* a signing key, and this app deliberately shares both with `mobile/` — see the notes on the package name and on signing.
+### The protocol
 
-So the phone's first-run tour is the only place the ElevenLabs credentials ever need to be typed, and **the watch does not need a tour like the phone's**. What it needs is a way to say "ask the phone", and something to show while it is asking.
+Two message paths, and that is the whole of it:
 
-Two Data Layer APIs could carry them, and the choice is a security one rather than a matter of taste:
+| Path | Direction | Carries |
+| --- | --- | --- |
+| `/jarvis/elevenlabs-settings` | phone → watch | `{"apiKey": …, "agentId": …}` |
+| `/jarvis/ask-for-credentials` | watch → phone | nothing at all |
 
-- **`MessageClient`** sends one payload to one node, is not persisted by Play Services, and requires both apps to be running at the time. That is the right one for an API key.
-- **`DataClient`** would be more convenient — a `DataItem` is replicated automatically and arrives whenever the watch next comes into range, with no need for the phone app to be open — but it is replicated *by being stored*, in Play Services' own store on both devices, which is a live credential at rest in a place neither app controls. Not for this.
+The watch asks on every start it makes with no credentials, and again every few seconds while it is waiting. The phone answers two ways: automatically whenever it hears the request and has credentials (`mobile/src/answer-the-watch.ts`), and on demand from the button on the watch card in its own settings.
 
-What exists today and what does not:
+**A message and not a `DataItem`, and that is a security decision rather than a convenience one.** `DataClient` would be easier — a data item replicates on its own and arrives whenever the watch next comes into range, with no need for either app to be open — but it replicates *by being stored*, in Play Services' own store on both devices, which is a live API key at rest in a place neither app controls. A message is handed to the receiving app and kept nowhere in between.
 
-- The phone already talks to the Data Layer: `mobile/modules/jarvis-watch` asks `NodeClient` whether a watch is connected and `CapabilityClient` whether Jarvis is on it, and `watch-card.tsx` shows the answer. Neither of them *sends* anything.
-- The watch has no receiver, no key-value store and no ElevenLabs dependency at all. It also has nothing that could use a credential yet: `silentVoice` is the whole of its voice, so a key delivered today would sit unused.
+### Where they land
 
-One case does still need something on the watch itself, and it is not a typed key: the app declares `com.google.android.wearable.standalone`, so it can be installed on a watch whose phone has never had Jarvis. There is no phone to ask there. The honest screen for that is "open Jarvis on your phone" — with the phone app's watch card being where the other half of that conversation already lives — and not a form.
+`PhoneSettingsStore.kt`, in `EncryptedSharedPreferences`: AES-GCM under a key held in the **watch's own Android Keystore**, which never leaves it. Not `expo-secure-store`, which is what the phone uses, and the reason is the service beside it — the credentials arrive in a `WearableListenerService` that Play Services starts when a message lands, often with no React Native runtime alive at all, so the store has to be readable and writable from Kotlin.
+
+The same caveats apply as to the phone's copy: the keystore keeps the key from other apps and out of backups, and does **not** protect it from an update of this app — and with a debug-signed side-loaded APK, that is easy. Never install a pull request's APK over an install holding your real key.
+
+### Why the watch does not get a tour of its own
+
+The phone's first-run tour explains what an ElevenLabs agent is, asks for the two values, and recommends the assistant role. None of that belongs on a watch. Signing up for ElevenLabs and building an agent is laptop work; the credentials are the phone's to type; and the assistant role on Wear OS is chosen in the watch's own Settings, which no app can open on the user's behalf. What is left for the watch to say is one line — "open Jarvis on your phone" — which is what `waiting-for-the-phone.tsx` says.
+
+One case has no phone to ask at all: the app declares `com.google.android.wearable.standalone`, so it installs on a watch whose phone has never had Jarvis. That case gets the same screen and the same line, because the answer is the same: install Jarvis on the phone.
+
+## The conversation
+
+The same ElevenLabs agent the phone talks to, over WebRTC, opened the moment the screen is. There is no button, no status line and no title — the argument is the phone conversation screen's, only more so, since a round 45 mm display has nowhere to put any of it. What tells you which of you is talking is what the sphere is doing.
+
+Two things differ from the phone, both deliberate:
+
+- **His voice comes from the SDK's analysers**, not from a tap on the WebRTC track. `useAgentVoice` in `conversation/react` is the shared implementation, and the note there says why: tapping the track means a native module, a peer-connection id and a ring buffer, and on a sphere this size the SDK's readings are good enough. The phone keeps its tap.
+- **A refused microphone is the end of it.** The phone falls back to a text field in a browser, where there is a keyboard in front of you. Here the assistant gesture *is* the request to be talked to.
+
+`@livekit/react-native-expo-plugin` is configured with `audioType: 'communication'`, which is not a nicety: without it the native audio session is set up for media playback, the microphone routes to the speaker, and Jarvis hears himself back. On a watch the speaker and the microphone are centimetres apart, so that is not a subtle failure.
 
 ## What has been verified
 
@@ -72,6 +113,7 @@ Not yet verified, and only a real watch can say:
 
 - **With Gemini installed.** The emulator images ship no assistant, so the picker listed only Jarvis. A Pixel Watch lists Gemini too; choosing Jarvis should replace it, but that has not been seen.
 - **The physical button.** The emulator's long press arrived as two `ASSIST` starts a moment apart, where the key event arrived as one. It may be how the emulator injects a long press; the real app has to treat a repeat as the same summoning either way, as the phone app's `createAssistLaunchClaim` already does.
+- **The handover, and the conversation.** Both are new and neither has run on hardware. They typecheck, the four spellings of the two message paths are checked against each other by a test, and CI compiles the Kotlin on every push — and none of that is the same as two devices in the same room. What a real pair would settle, in order: whether the phone's `CapabilityClient` lookup finds the watch when the watch app has never been opened; whether Play Services starts `JarvisPhoneListenerService` for a message on that path with the app force-stopped; whether `EncryptedSharedPreferences` survives a watch reboot; and whether a Wear OS microphone gives WebRTC enough to hold a conversation with, which is the one question none of the code can answer.
 
 ## Getting it onto a watch
 
@@ -100,7 +142,11 @@ Data Layer requires before these two will speak to each other at all.
 3. Under Wireless debugging, choose **Pair new device** and pair from a computer on the same Wi-Fi: `adb pair <ip>:<pairing port>` with the code shown, then `adb connect <ip>:<port>`.
 4. `adb install jarvis-watch-<commit>.apk`
 5. On the watch: **Settings → Apps → Default apps → Digital assistant app → Default digital assistant app → Jarvis**, and confirm.
-6. Hold the side button. Jarvis should come up and turn.
+6. Hold the side button. Jarvis should come up and turn. With nothing handed over yet he idles, under the line **Open Jarvis on your phone**.
+7. Open Jarvis on the phone — with the phone app installed and set up. The watch asks for the credentials every few seconds while it is waiting, and the phone answers as soon as it hears one, so this should be all it takes. If it is not, the phone's watch card has a **Send the key to <watch>** button; hold the phone's conversation screen to reach the settings it is on.
+8. The watch should stop waiting and open a conversation by itself. Talk to him.
+
+Once handed over, the credentials stay on the watch: step 7 is a one-off, and the watch works from then on with the phone out of range or switched off.
 
 To put things back, choose Gemini again in the same place, and uninstall with `adb uninstall com.ffmathy.heyjarvis` — which, since the package name is shared, is also what removes the phone app if it is the phone that is connected, so check which device `adb devices` lists.
 

@@ -1,9 +1,9 @@
 import { useConversationMode, useConversationStatus, useRawConversation } from '@elevenlabs/react-native';
+import { useSdkVoiceReaders } from 'conversation/react';
 import { useEffect, useMemo, useState } from 'react';
 import { jarvisAudio } from '../modules/jarvis-audio';
 import { followAgentAudioTrack, type NativeTrackIds, roomOfConversation } from './agent-audio-track';
 import type { UseJarvisVoice } from './platform-contracts';
-import { useSdkVoiceReaders } from './sdk-voice-readers';
 import { createTappedVoiceReaders } from './tapped-voice';
 
 /**

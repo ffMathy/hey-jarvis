@@ -23,3 +23,12 @@ export interface JarvisVoice {
   /** Byte spectrum, 0–255 per value across 100–8000 Hz. Empty when there is nothing to report. */
   getSpectrum: () => ArrayLike<number>;
 }
+
+/**
+ * The half of a voice that has to be *read*, as opposed to the two flags saying whether to bother.
+ *
+ * Named here rather than in either app because there are now four things that produce a pair of
+ * these — Jarvis's WebRTC track tapped natively, the ElevenLabs SDK's own analysers, a simulated
+ * mood, and a replay of a recording — and every one of them is handed to the same drawing.
+ */
+export type JarvisVoiceReaders = Pick<JarvisVoice, 'getVolume' | 'getSpectrum'>;

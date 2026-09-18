@@ -1,6 +1,6 @@
+import type { ElevenLabsSettings } from 'conversation';
 import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 import { ElevenLabsFields } from './elevenlabs-fields';
-import type { ElevenLabsSettings } from './elevenlabs-settings';
 import { theme } from './theme';
 
 interface SettingsScreenProps {

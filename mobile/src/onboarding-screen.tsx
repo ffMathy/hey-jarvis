@@ -1,9 +1,9 @@
+import type { ElevenLabsSettings } from 'conversation';
 import * as Linking from 'expo-linking';
 import { useCallback, useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { type AssistantSettingsScreen, openAssistantSettings } from '../modules/jarvis-assistant';
 import { ElevenLabsFields } from './elevenlabs-fields';
-import type { ElevenLabsSettings } from './elevenlabs-settings';
 import {
   AGENT_LINKS,
   CREDENTIAL_LINKS,
@@ -163,7 +163,7 @@ function CredentialsStep({
  * It answers again when the app comes back to the foreground, because that is the only moment the
  * answer can have changed without anything here being called. See `use-assistant-registration.ts`.
  */
-function AssistantStep() {
+function AssistantStep({ settings }: { settings: ElevenLabsSettings | undefined }) {
   const { roleHeld, voiceInteractionActive, settingsReachable } = useAssistantRegistration();
   const [went, setWent] = useState<AssistantSettingsScreen | undefined>(undefined);
   const [problem, setProblem] = useState<string | undefined>(undefined);
@@ -190,7 +190,7 @@ function AssistantStep() {
             Everything else works the same.
           </Text>
         )}
-        <WatchCard />
+        <WatchCard settings={settings} />
       </>
     );
   }
@@ -227,7 +227,7 @@ function AssistantStep() {
         </Text>
       ) : null}
 
-      <WatchCard />
+      <WatchCard settings={settings} />
     </>
   );
 }
@@ -295,7 +295,7 @@ export function OnboardingScreen({ settings, onSaveSettings, onFinished, onSkipT
 
       {step === 'agent' ? <AgentStep /> : null}
       {step === 'credentials' ? <CredentialsStep settings={settings} onSubmit={saveAndGoOn} /> : null}
-      {step === 'assistant' ? <AssistantStep /> : null}
+      {step === 'assistant' ? <AssistantStep settings={settings} /> : null}
 
       {/*
         The credentials step's own button is what moves it on, so it does not get a second one.
