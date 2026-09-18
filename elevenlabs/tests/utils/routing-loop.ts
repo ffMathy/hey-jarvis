@@ -92,48 +92,6 @@ function payloadCandidates(value: unknown, depth = 0): unknown[] {
   return [value, ...Object.values(value).flatMap((nested) => payloadCandidates(nested, depth + 1))];
 }
 
-/** The first text part of an MCP result, which is where a tool's prose answer arrives. */
-function readTextPart(result: unknown): string | undefined {
-  if (typeof result === 'string') {
-    return result.trim() || undefined;
-  }
-  if (Array.isArray(result)) {
-    for (const entry of result) {
-      const text = readTextPart(entry);
-      if (text) {
-        return text;
-      }
-    }
-    return undefined;
-  }
-  if (result === null || typeof result !== 'object') {
-    return undefined;
-  }
-  if ('text' in result) {
-    return readTextPart(result.text);
-  }
-  return 'content' in result ? readTextPart(result.content) : undefined;
-}
-
-/**
- * The acknowledgement a routing call answers with, which is prose rather than JSON.
- *
- * `routePromptWorkflow` writes MCP's text channel itself — see
- * `createInstructionsWorkflowTool` in `mcp/mastra/utils/mcp-tool-factory.ts` — so the
- * instruction telling Jarvis what to say and which tool to call next arrives there as prose,
- * rather than as the whole payload spelled out in JSON beside `structuredContent`. Which of
- * the two channels reaches this detector depends on what ElevenLabs reports, so read the
- * prose one too and the loop records what the routing call carried either way.
- *
- * Only ever tried on a routing call that succeeded. A failed call's payload is the error
- * ElevenLabs handed back, which is evidence of why the loop died and must not be dressed up
- * as an instruction.
- */
-function parseRoutingAcknowledgement(result: unknown): RoutingReport | undefined {
-  const text = readTextPart(result);
-  return text ? { instructions: text } : undefined;
-}
-
 /** The routing report inside an `mcp_tool_call` result, if there is one. */
 export function parseRoutingReport(result: unknown): RoutingReport | undefined {
   for (const candidate of payloadCandidates(result)) {
@@ -249,9 +207,7 @@ function toLoopStep(record: ToolCallRecord): RoutingLoopStep | undefined {
     return undefined;
   }
 
-  const report =
-    parseRoutingReport(record.result) ??
-    (kind === 'route' && record.state === 'success' ? parseRoutingAcknowledgement(record.result) : undefined);
+  const report = parseRoutingReport(record.result);
 
   return {
     position: record.position,

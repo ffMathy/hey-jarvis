@@ -72,6 +72,17 @@ const instructionsResultSchema = z.looseObject({
 });
 
 /**
+ * The emptiest text channel MCP allows, which is how the instruction is left to travel in one
+ * place only.
+ *
+ * `content` cannot be dropped: `MCPServer` writes the key on every response, and serializes the
+ * whole payload into it whenever the tool supplies nothing — an empty array and an absent key
+ * both count as nothing and both produce the copy this is here to avoid. One empty text part is
+ * supplied instead, which is the shortest thing that counts as supplied.
+ */
+const EMPTY_TEXT_CONTENT = [{ type: 'text', text: '' }];
+
+/**
  * A workflow published with a response written for the agent reading it, for when the
  * instruction *is* the answer.
  *
@@ -82,11 +93,10 @@ const instructionsResultSchema = z.looseObject({
  * already in (a caller that names none shares the default), and the escaping is scaffolding
  * around the one sentence saying what to speak and which tool to call next.
  *
- * `MCPServer` only writes `content` itself when the tool supplied none, so supplying it is what
- * keeps the second copy from being the whole payload spelled out again. The instruction stays a
- * property of an object in `structuredContent`, which is the channel a client reads
- * structurally; `content` carries the same sentence as prose for the one that reads text. One
- * copy each, and nothing either of them has no use for.
+ * So the instruction goes in `structuredContent` and nowhere else: a property of an object,
+ * stated once, with the text channel left empty rather than repeating it. A client that reads
+ * only `content` would find nothing to act on — the one that matters here, ElevenLabs, reads
+ * the structured channel, and this is the shape it asked for.
  */
 export function createInstructionsWorkflowTool(workflow: AnyWorkflow) {
   const workflowName = workflow.name ?? workflow.id;
@@ -102,7 +112,7 @@ export function createInstructionsWorkflowTool(workflow: AnyWorkflow) {
       return {
         ...payload,
         structuredContent: payload,
-        content: [{ type: 'text', text: instructions }],
+        content: EMPTY_TEXT_CONTENT,
       };
     },
   });

@@ -5,8 +5,8 @@
  * envelope around it is not cosmetic. Mastra repeats the payload of any tool that declares an
  * output schema — once as `structuredContent`, once as escaped JSON in `content` — which had a
  * paragraph written for a voice model arriving twice over, wrapped in field names it has no use
- * for. These cover the two shapes on offer, and the supplied `content` is the whole mechanism
- * behind the quiet one.
+ * for. These cover the two shapes on offer, and the supplied `content` — empty, but supplied —
+ * is the whole mechanism behind the quiet one.
  */
 
 import { describe, expect, it } from 'bun:test';
@@ -56,16 +56,15 @@ describe('createInstructionsWorkflowTool', () => {
     });
   });
 
-  it('writes the text channel itself, so the payload is not spelled out a second time', async () => {
-    // MCPServer serializes the whole payload into `content` when a tool supplies none, which
-    // is how one instruction became two copies. Supplying it is the whole mechanism.
+  it('leaves the text channel empty, so the instruction travels in one place only', async () => {
+    // MCPServer serializes the whole payload into `content` when a tool supplies none, which is
+    // how one instruction became two copies — and an empty array counts as none, so the empty
+    // text part is not a formality. Shorten it to `[]` and the second copy comes back.
     const tool = createInstructionsWorkflowTool(createAcknowledgingWorkflow());
 
     const result = await executeTool(tool, { sessionId: 'jarvis-voice' });
 
-    expect(result.content).toEqual([
-      { type: 'text', text: 'Say a short line, then call getNextInstructionsWorkflow.' },
-    ]);
+    expect(result.content).toEqual([{ type: 'text', text: '' }]);
   });
 
   it('leaves the session out, since the caller is already in it', async () => {
