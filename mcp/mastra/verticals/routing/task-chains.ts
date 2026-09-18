@@ -244,7 +244,7 @@ export function chainsFromTasks(tasks: PlannedTask[], knownAgentIds: ReadonlySet
   const chains = roots
     .flatMap((root) => pathsThrough(root))
     .map((path) => ({
-      delegations: path.map((task) => ({ agentId: task.agentId, prompt: task.prompt })),
+      delegations: path.map((task) => ({ taskId: task.id, agentId: task.agentId, prompt: task.prompt })),
     }));
 
   // The shape, never the prompts: a prompt is written from the user's request and would put

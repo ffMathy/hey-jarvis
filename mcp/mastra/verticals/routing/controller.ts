@@ -38,7 +38,7 @@ export const DEFAULT_ROUTING_SESSION_ID = 'jarvis-voice';
  */
 export type RoutingEvent =
   /** A delegation the plan contains. Every one is announced when the plan is built. */
-  | { type: 'delegation_start'; delegationId: string; agentId: string }
+  | { type: 'delegation_start'; delegationId: string; taskId: string; agentId: string }
   /** A delegation finished, or failed with `isError`. */
   | { type: 'delegation_end'; delegationId: string; result: unknown; isError: boolean }
   /** The request failed outright. */
@@ -48,6 +48,8 @@ export type RoutingEvent =
 
 /** One delegation that has finished, as the poll loop reports it. */
 export interface DelegationOutcome {
+  /** The planner's name for the work, which is what the caller is told. Unique in a plan. */
+  taskId: string;
   /** The agent that was delegated to. */
   agentId: string;
   /** What it answered, or the failure. */
@@ -71,7 +73,7 @@ export class RoutingProgress {
    * whatever has happened to start. The supervisor this replaced could not say that -- a
    * delegation existed only once it had been called.
    */
-  readonly outstandingByDelegationId = new Map<string, string>();
+  readonly outstandingByDelegationId = new Map<string, { taskId: string; agentId: string }>();
   /** Outcomes not yet handed to the caller. */
   pending: DelegationOutcome[] = [];
   /** Every outcome this request produced, for the closing recap. */
@@ -122,13 +124,13 @@ export class RoutingProgress {
   /** Folds one event from the plan run into the buffer. */
   handle(event: RoutingEvent): void {
     if (event.type === 'delegation_start') {
-      this.outstandingByDelegationId.set(event.delegationId, event.agentId);
+      this.outstandingByDelegationId.set(event.delegationId, { taskId: event.taskId, agentId: event.agentId });
       return;
     }
 
     if (event.type === 'delegation_end') {
-      const agentId = this.outstandingByDelegationId.get(event.delegationId);
-      if (!agentId) {
+      const delegation = this.outstandingByDelegationId.get(event.delegationId);
+      if (!delegation) {
         // Already reported. A chain reports its own result as well as its steps', so the
         // same answer can arrive twice; relaying it twice would have Jarvis say it twice.
         return;
@@ -143,12 +145,13 @@ export class RoutingProgress {
       // that anything went wrong.
       const answeredWithNothing = !event.isError && answer.length === 0;
       const outcome: DelegationOutcome = {
-        agentId,
+        taskId: delegation.taskId,
+        agentId: delegation.agentId,
         result: answeredWithNothing ? 'finished without answering' : answer,
         failed: event.isError || answeredWithNothing,
       };
       if (outcome.failed) {
-        logger.error('Delegation did not complete', { agentId, result: outcome.result });
+        logger.error('Delegation did not complete', { ...delegation, result: outcome.result });
       }
 
       this.pending.push(outcome);
@@ -180,9 +183,9 @@ export class RoutingProgress {
    * them open would leave the request unfinishable.
    */
   private abandonOutstandingDelegations(reason: string): void {
-    for (const agentId of this.outstandingByDelegationId.values()) {
-      logger.warn('Delegation never answered', { agentId, reason });
-      const outcome: DelegationOutcome = { agentId, result: reason, failed: true };
+    for (const delegation of this.outstandingByDelegationId.values()) {
+      logger.warn('Delegation never answered', { ...delegation, reason });
+      const outcome: DelegationOutcome = { ...delegation, result: reason, failed: true };
       this.pending.push(outcome);
       this.all.push(outcome);
     }
@@ -241,7 +244,7 @@ export function buildSnapshot(progress: RoutingProgress): RoutingSnapshot {
   return {
     landed,
     all: progress.all,
-    inProgress: [...new Set(progress.outstandingByDelegationId.values())],
+    inProgress: [...new Set([...progress.outstandingByDelegationId.values()].map((one) => one.taskId))],
     finished: progress.isFinished(),
     error: progress.error,
   };
@@ -336,41 +339,66 @@ function asWorkflowChunk(chunk: unknown): WorkflowChunk | undefined {
  * rest are dropped -- which makes the reporting correct whether or not a nested run's events
  * reach this stream.
  */
-export function asRoutingEvent(chunk: unknown, plan: RoutingPlan): RoutingEvent | undefined {
+export function asRoutingEvents(chunk: unknown, plan: RoutingPlan): RoutingEvent[] {
   const parsed = asWorkflowChunk(chunk);
   if (parsed?.type !== 'workflow-step-result') {
-    return undefined;
+    return [];
   }
 
   const stepId = parsed.payload.id;
   if (typeof stepId !== 'string') {
-    return undefined;
+    return [];
   }
 
-  const delegationId = plan.agentByStepId.has(stepId) ? stepId : lastDelegationOfChain(plan, stepId);
-  if (!delegationId) {
-    return undefined;
+  const isError = parsed.payload.status !== 'success';
+
+  if (plan.agentByStepId.has(stepId)) {
+    return [{ type: 'delegation_end', delegationId: stepId, result: parsed.payload.output, isError }];
   }
 
-  return {
+  const delegationIds = plan.delegationIdsByChainStepId.get(stepId);
+  if (!delegationIds || delegationIds.length === 0) {
+    return [];
+  }
+
+  const lastDelegationId = delegationIds[delegationIds.length - 1];
+  const chainResult: RoutingEvent = {
+    type: 'delegation_end',
+    delegationId: lastDelegationId,
+    result: parsed.payload.output,
+    isError,
+  };
+
+  // A chain that failed says nothing about where it failed, so the steps before the last are
+  // left outstanding and the end of the run reports them as never having answered, which is
+  // the truth as far as anything here knows it.
+  if (isError) {
+    return [chainResult];
+  }
+
+  // A chain that succeeded could not have, had any step in it failed. Those steps' own
+  // results do not reach this stream -- only the chain's does -- so without this they would
+  // sit outstanding until the run ended and then be reported as never having answered. That
+  // was a lie with consequences: it is what told the user a recipe lookup had failed when its
+  // answer was already in the reminder built from it.
+  const earlier: RoutingEvent[] = delegationIds.slice(0, -1).map((delegationId) => ({
     type: 'delegation_end',
     delegationId,
-    result: parsed.payload.output,
-    isError: parsed.payload.status !== 'success',
-  };
+    result: ANSWERED_INTO_THE_NEXT_STEP,
+    isError: false,
+  }));
+
+  return [...earlier, chainResult];
 }
 
 /**
- * The delegation a chain's own result belongs to, if the step id names a chain.
+ * What a chained delegation is reported as when only the chain's own result reaches us.
  *
- * A chain's output is its last agent step's `{ text }`, so that is the one it can answer for.
- * Earlier steps in the chain are closed by their own results when those reach this stream,
- * and by the end of the run when they do not.
+ * Its answer is not lost -- the next step in the chain was handed it, and what that step
+ * produced is reported in full. What is lost is the text, so this says where it went rather
+ * than inventing it.
  */
-function lastDelegationOfChain(plan: RoutingPlan, stepId: string): string | undefined {
-  const stepIds = plan.delegationIdsByChainStepId.get(stepId);
-  return stepIds?.[stepIds.length - 1];
-}
+const ANSWERED_INTO_THE_NEXT_STEP = 'answered, and its answer was given to the next step of its chain';
 
 /**
  * Reads the plan run into the caller's buffer, to the end.
@@ -393,8 +421,7 @@ async function consumeRun(
         break;
       }
 
-      const event = asRoutingEvent(value, plan);
-      if (event) {
+      for (const event of asRoutingEvents(value, plan)) {
         progress.handle(event);
       }
     }
@@ -462,7 +489,12 @@ async function runPlan(mastra: Mastra, sessionId: string, progress: RoutingProgr
   // Every delegation is outstanding from here, before a single step has run, so the first
   // poll can already name the whole of the work.
   for (const [delegationId, agentId] of plan.agentByStepId) {
-    progress.handle({ type: 'delegation_start', delegationId, agentId });
+    progress.handle({
+      type: 'delegation_start',
+      delegationId,
+      taskId: plan.taskIdByStepId.get(delegationId) ?? agentId,
+      agentId,
+    });
   }
 
   const run = await mastra.getWorkflowById(plan.id).createRun();

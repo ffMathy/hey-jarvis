@@ -65,8 +65,8 @@ describe('chains derived from a plan of tasks', () => {
     expect(chains).toEqual([
       {
         delegations: [
-          { agentId: 'cooking', prompt: 'Do the recipe part.' },
-          { agentId: 'todo', prompt: 'Do the todo part.' },
+          { taskId: 'recipe', agentId: 'cooking', prompt: 'Do the recipe part.' },
+          { taskId: 'todo', agentId: 'todo', prompt: 'Do the todo part.' },
         ],
       },
     ]);

@@ -27,6 +27,15 @@ const AGENT_STEP_OUTPUT = { type: 'object', properties: { text: { type: 'string'
 
 /** One thing a plan asks of one agent. */
 export interface PlannedDelegation {
+  /**
+   * The planner's own name for this piece of work.
+   *
+   * Carried through because it is the only identifier a delegation has that is unique within
+   * a plan. The agent id is not: one request can ask the calendar two different questions,
+   * and reporting both as "calendar" makes the poll loop contradict itself -- one of them
+   * finishing while "calendar" is still listed as outstanding for the other.
+   */
+  taskId: string;
   agentId: string;
   prompt: string;
 }
@@ -52,6 +61,8 @@ export interface RoutingPlan {
   graphs: DynamicWorkflowGraph[];
   /** Which agent each agent step runs, so a step result can be reported as a delegation. */
   agentByStepId: ReadonlyMap<string, string>;
+  /** Which task each agent step came from, which is what a delegation is reported as. */
+  taskIdByStepId: ReadonlyMap<string, string>;
   /**
    * The agent steps each chain contains, in order, keyed by the chain's call-site step id.
    *
@@ -105,6 +116,7 @@ function chainWorkflow(
   chainIndex: number,
   chain: PlannedChain,
   agentByStepId: Map<string, string>,
+  taskIdByStepId: Map<string, string>,
   stepIds: string[],
 ): DynamicWorkflowGraph {
   const id = `${planId}-chain-${chainIndex}`;
@@ -119,6 +131,7 @@ function chainWorkflow(
 
     const stepId = `${id}-${index}-${delegation.agentId}`;
     agentByStepId.set(stepId, delegation.agentId);
+    taskIdByStepId.set(stepId, delegation.taskId);
     stepIds.push(stepId);
 
     graph.push({ type: 'mapping', id: `${stepId}-prompt`, mapConfig: JSON.stringify(mapConfig) });
@@ -147,11 +160,12 @@ function chainWorkflow(
  */
 export function buildRoutingPlan(planId: string, chains: PlannedChain[]): RoutingPlan {
   const agentByStepId = new Map<string, string>();
+  const taskIdByStepId = new Map<string, string>();
   const delegationIdsByChainStepId = new Map<string, string[]>();
 
   const stepIdsByChain: string[][] = chains.map(() => []);
   const workflows = chains.map((chain, index) =>
-    chainWorkflow(planId, index, chain, agentByStepId, stepIdsByChain[index]),
+    chainWorkflow(planId, index, chain, agentByStepId, taskIdByStepId, stepIdsByChain[index]),
   );
 
   const root: DynamicWorkflowGraph = {
@@ -176,6 +190,7 @@ export function buildRoutingPlan(planId: string, chains: PlannedChain[]): Routin
     id: planId,
     graphs: [...workflows, root],
     agentByStepId,
+    taskIdByStepId,
     delegationIdsByChainStepId,
     delegationCount: chains.reduce((count, chain) => count + chain.delegations.length, 0),
   };
