@@ -1,6 +1,6 @@
 # This workflow is managed by gh actions-lock.
 
-name: Play internal testing
+name: Play
 
 # Builds the phone *and* watch bundles and publishes them as two releases on two tracks.
 #
@@ -12,20 +12,29 @@ name: Play internal testing
 # tracks of its own since March 2023. Sharing one release also meant the watch being refused took the
 # phone's release down with it. See the note above the publish steps.
 #
-# Internal testing rather than a public release: it goes to a named list of up to a hundred testers,
-# is available within minutes rather than after a review, and never appears in search. It is also
-# the only track that can get the app onto a paired Wear OS watch without a public listing, which is
-# what `JARVIS_IS_ON_PLAY` in `mobile/src/watch-card.tsx` is waiting for.
+# **There are two ways in, and they differ only in which tracks they name.**
 #
-# Every push to a pull request publishes, so the build on your phone and your watch is the branch
-# you are working on without anybody having to go and press anything. Only pushes that could change
-# the app: the same paths the APK workflow watches, because a README edit has no way into a bundle.
+# - Every push to a pull request publishes to *internal testing*, so the build on your phone and
+#   your watch is the branch you are working on without anybody having to go and press anything.
+#   Only pushes that could change the app: the same paths the APK workflow watches, because a
+#   README edit has no way into a bundle. Internal testing goes to a named list of up to a hundred
+#   testers, is available within minutes rather than after a review, and never appears in search.
+# - Every release cut on `main` publishes to *production*, live to everyone. `release.yml` calls
+#   this workflow through `workflow_call` once Release Please has tagged the release, handing it
+#   the tagged commit and the `production` and `wear:production` tracks. That is the only caller,
+#   and it is why this is one workflow with two entry points rather than two workflows that would
+#   drift apart — the build, the signing and the two-releases-on-two-tracks dance are identical and
+#   only the track names change.
 #
-# Each one costs a `versionCode`, which can never be reused — there are two billion of them and the
-# run number is what spends them, so this is not a real constraint, but it is why nothing here
-# retries and why the bundle is kept as an artifact even when the upload fails.
+# A third way in, `workflow_dispatch`, exists for picking a track by hand.
 #
-# What it needs, and where each one comes from, is in `docs/play-store.md`.
+# Each publish costs a `versionCode`, which can never be reused — see "Work out the version code"
+# below for where it comes from and why it is no longer the run number. Nothing here retries, and
+# the bundles are kept as an artifact even when the upload fails.
+#
+# What it needs, and where each one comes from, is in `docs/play-store.md`. Production needs one
+# thing internal testing does not: a service account allowed to release to production, and a
+# developer account that has been granted production access. Both are Console settings, not code.
 on:
   pull_request:
     branches: [ main ]
@@ -37,7 +46,35 @@ on:
       - 'bunfig.toml'
       - 'package.json'
       - 'turbo.json'
-      - '.github/workflows/play-internal.yml'
+      - '.github/workflows/play.yml'
+
+  # How `release.yml` publishes a release to production. Called rather than duplicated, so the
+  # production path is the same build that has already been proven on every pull request.
+  workflow_call:
+    inputs:
+      ref:
+        description: 'The commit to build. Release passes the tagged one, which is not the commit its run started from.'
+        type: string
+        required: false
+        default: ''
+      track:
+        description: 'Which Play track the phone bundle goes to'
+        type: string
+        required: true
+      wearTrack:
+        description: 'Which Wear OS track the watch bundle goes to — Play keeps these separate from the phone'
+        type: string
+        required: true
+      status:
+        description: 'draft leaves it for a human to release; completed sends it to whoever the track reaches'
+        type: string
+        required: false
+        default: completed
+    secrets:
+      OP_SERVICE_ACCOUNT_TOKEN:
+        description: 'The 1Password service account token, which is where every other secret here comes from'
+        required: true
+
   workflow_dispatch:
     inputs:
       track:
@@ -47,6 +84,8 @@ on:
         options:
           - internal
           - alpha
+          - beta
+          - production
         required: true
       wearTrack:
         description: 'Which Wear OS track the watch bundle goes to — Play keeps these separate from the phone'
@@ -55,6 +94,7 @@ on:
         options:
           - 'wear:internal'
           - 'wear:beta'
+          - 'wear:production'
         required: true
       status:
         description: 'draft leaves it for you to release by hand; completed sends it to testers'
@@ -80,7 +120,8 @@ jobs:
       # keystore, its passwords, the Play publisher account — is resolved at run time from the
       # `Jarvis` 1Password vault by `.scripts/run-with-env.sh`, exactly as `build.yml` does. Nothing
       # here is mirrored into GitHub Actions secrets, so adding a value is a 1Password change and
-      # not a repository one.
+      # not a repository one. A pull request run reads it from the repository; `release.yml` names
+      # it explicitly when it calls this workflow, rather than inheriting everything.
       OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
 
     steps:
@@ -98,6 +139,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6.1.0
         with:
+          # Empty for a pull request or a manual run, which is what `actions/checkout` wants in
+          # order to take the commit that started the run. Release passes the *tagged* commit
+          # instead: it merges the release pull request inside its own run, so the commit carrying
+          # the bumped version — the one the bundle is stamped with — is newer than the commit that
+          # run started from. Same reasoning as `deploy` in `release.yml`.
+          ref: ${{ inputs.ref }}
           persist-credentials: false
 
       # Straight on the runner rather than in the dev container used by CI: the runner image already
@@ -141,6 +188,24 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      # Play orders uploads by this and refuses a repeat, so it has to rise every time — and, now
+      # that there are two ways into this workflow, it has to rise across *both of them*.
+      #
+      # **Which is why it is no longer `github.run_number`.** A run number counts the runs of one
+      # workflow, so the pull request path and the release path would each have one of their own,
+      # starting from different places and both going up: the two sequences overlap, and the first
+      # collision is an upload Play refuses outright. Reusable workflows do not help — a called
+      # workflow sees the *caller's* run number, so `release.yml` would be counting its own runs.
+      #
+      # Seconds since 2025-01-01 (1735689600) is one clock that every run of everything shares, never
+      # repeats and never goes backwards. It is comfortably above every run number ever spent here,
+      # so nothing already uploaded is in its way, and even doubled for the phone — the watch takes
+      # one more, see `.scripts/expo-release-signing.js` — it does not reach Android's ceiling of
+      # 2100000000 until 2058.
+      - name: Work out the version code
+        id: version
+        run: echo "code=$(( $(date -u +%s) - 1735689600 ))" >> "$GITHUB_OUTPUT"
+
       # No secrets listed: `build:aab` goes through `run-with-env.sh mobile/op.env`, which resolves
       # the four signing values from 1Password with the token above. The same command a laptop runs.
       #
@@ -152,20 +217,19 @@ jobs:
       # first run of this workflow failed. One after the other is slower and builds.
       - name: Build the signed bundles
         env:
-          # Play orders uploads by this and refuses a repeat, so it has to rise every time. The run
-          # number does, for the life of the workflow, and never goes backwards. The phone takes
-          # twice it and the watch one more, because a version code has to be unique across every
-          # form factor in a listing — see `.scripts/expo-release-signing.js`.
-          JARVIS_ANDROID_VERSION_CODE: ${{ github.run_number }}
+          # The phone takes twice it and the watch one more, because a version code has to be
+          # unique across every form factor in a listing — see `.scripts/expo-release-signing.js`.
+          JARVIS_ANDROID_VERSION_CODE: ${{ steps.version.outputs.code }}
         run: bunx turbo build:aab --filter=mobile --filter=watch --concurrency=1
 
       # Kept whatever happens to the upload. A bundle that Play rejected is still the bundle that
       # was built, and the only copy of it: the next run gets a different versionCode and cannot
-      # reproduce this one.
+      # reproduce this one. Named after the version code rather than the run, because the version
+      # code is what Play and the Console call it.
       - name: Keep the bundles as an artifact
         uses: actions/upload-artifact@v7.0.1
         with:
-          name: jarvis-${{ github.run_number }}
+          name: jarvis-${{ steps.version.outputs.code }}
           path: |
             dist/mobile-aab/jarvis.aab
             dist/watch-aab/jarvis.aab
@@ -197,8 +261,8 @@ jobs:
           serviceAccountJson: play-publisher.json
           packageName: com.ffmathy.heyjarvis
           releaseFiles: dist/mobile-aab/jarvis.aab
-          # The inputs only exist when this was started by hand. A pull request push takes the
-          # defaults, which are the ones worth having automatically: straight to the testers.
+          # `inputs` is empty for a pull request push, which takes the defaults — the ones worth
+          # having automatically: straight to the testers. A release passes `production`.
           track: ${{ inputs.track || 'internal' }}
           status: ${{ inputs.status || 'completed' }}
 
@@ -232,7 +296,7 @@ jobs:
       - name: Explain a failed publish
         if: failure() && (steps.publish-phone.outcome == 'failure' || steps.publish-watch.outcome == 'failure')
         run: |
-          echo "::notice title=Publishing failed::Both bundles are kept as the jarvis-${{ github.run_number }} artifact, so nothing needs rebuilding."
+          echo "::notice title=Publishing failed::Both bundles are kept as the jarvis-${{ steps.version.outputs.code }} artifact, so nothing needs rebuilding."
           if [ "${{ steps.publish-phone.outcome }}" = 'success' ]; then
             echo "The PHONE published. Only the watch failed, and it cannot affect the phone's release."
           fi
@@ -241,6 +305,9 @@ jobs:
           echo "not a code change, and the wear track does not exist until it is done:"
           echo "  Test and release -> Advanced settings -> Form factors -> Add form factor -> Wear OS"
           echo "then agree to the Wear OS review policies. See docs/play-store.md section 3 and section 8."
+          echo "If it failed on a *production* track with a permission error, the Play publisher service"
+          echo "account is still limited to testing tracks, or the developer account has not been granted"
+          echo "production access yet. See docs/play-store.md section 9."
 
       # However the upload went, and even if the job was cancelled part way through it.
       - name: Shred the publisher account

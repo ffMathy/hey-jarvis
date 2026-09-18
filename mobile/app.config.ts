@@ -6,7 +6,7 @@ import {
   withAppBuildGradle,
 } from '@expo/config-plugins';
 import type { ExpoConfig } from 'expo/config';
-import { androidVersionCode, createReleaseSigning } from '../.scripts/expo-release-signing';
+import { androidVersionCode, androidVersionName, createReleaseSigning } from '../.scripts/expo-release-signing';
 
 /**
  * Which half of the Play listing this is, for the version code.
@@ -117,7 +117,10 @@ const withTransparentWindow: ConfigPlugin = (config) => {
 const config: ExpoConfig = {
   name: 'Jarvis',
   slug: 'hey-jarvis',
-  version: '0.1.0',
+  // The monorepo's released version, which Release Please bumps on `main`, rather than a
+  // number frozen here. Both apps are one Play listing and must agree on it; see
+  // `.scripts/expo-release-signing.js`.
+  version: androidVersionName(),
   orientation: 'portrait',
   // How the voice interaction session hands control back to the app. The
   // assistant is summoned from outside the app, so there has to be a URL that

@@ -88,6 +88,42 @@ jobs:
           manifest-file: .github/.release-please-manifest.json
           target-branch: main
 
+  # The phone and the watch, live on Google Play, for everyone who has the app.
+  #
+  # The same build a pull request publishes to internal testing — `play.yml` is one workflow with
+  # two entry points precisely so that the thing going to production is the thing that has been
+  # going to testers all along, rather than a second pipeline nobody exercises until the day it
+  # matters. All that changes is the track: `production` for the phone, `wear:production` for the
+  # watch, which Play insists on keeping separate.
+  #
+  # `completed` rather than `draft`, because a release that lands on `main` is a release: it goes
+  # out rather than waiting in the Console for somebody to press a button. To hold one back, hold
+  # the commits back — the same rule as everything else here.
+  #
+  # Two things have to be true in the Play Console before this can work, and neither is code: the
+  # publisher service account needs production release rights, and the developer account needs
+  # production access. See section 9 of `docs/play-store.md`.
+  play:
+    if: ${{ needs.release.outputs.release_created }}
+    needs:
+      - release
+    permissions:
+      contents: read
+    uses: ./.github/workflows/play.yml
+    with:
+      # The tagged commit, for the same reason `deploy` checks it out: the release pull request
+      # merged inside this run, so only that commit carries the bumped version the bundles are
+      # stamped with.
+      ref: ${{ needs.release.outputs.sha }}
+      track: production
+      wearTrack: wear:production
+      status: completed
+    # Named one by one rather than `inherit`, which would hand the called workflow every secret
+    # this repository has. It needs exactly this: the 1Password service account token, which is how
+    # it reaches the upload keystore and the Play publisher account.
+    secrets:
+      OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+
   deploy:
     runs-on: ubuntu-latest
     if: ${{ needs.release.outputs.release_created }}

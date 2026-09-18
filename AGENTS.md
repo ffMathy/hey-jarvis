@@ -192,6 +192,19 @@ release is tagged by the next run of the workflow, and the run log says so.
 To hold a release back, hold the commits back: anything that lands on `main`
 ships on the next run.
 
+A release ships the phone and the watch too. Once the release is tagged, the
+`play` job hands the tagged commit to the `Play` workflow with the `production`
+and `wear:production` tracks named, and that is the same workflow — the same
+build, the same upload key, the same two-releases-on-two-tracks — that every
+pull request publishes to internal testing. Production is therefore never a path
+that has gone unexercised, and the only difference between the two is which
+track each bundle is uploaded to. Both numbers on a bundle come from outside the
+app configs: the version name is the root `package.json` version Release Please
+bumps, and the version code is seconds since 2025-01-01, which is the one clock
+both entry points can share without eventually colliding. Whether a release
+actually goes live is a Play Console permission rather than anything here — see
+`docs/play-store.md` §9.
+
 What counts as releasable is `changelog-sections` in
 `.github/release-please-config.json`: `feat`, `fix`, `perf`, `refactor` and
 `docs` cut a release, and everything else — `test`, `build`, `ci`, `chore` —

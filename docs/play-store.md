@@ -1,6 +1,15 @@
-# Getting Jarvis onto Play internal testing
+# Getting Jarvis onto Google Play
 
-What this buys you, and why it is worth the hour: **internal testing is the only way to get the app
+Two things come out of this, from one pipeline:
+
+- **Every push to a pull request publishes to internal testing**, which is the only way to get the
+  app onto a paired Wear OS watch.
+- **Every release cut on `main` publishes to production**, live to everyone. Release Please tags
+  the release and `release.yml` hands the tagged commit to the same workflow with the `production`
+  and `wear:production` tracks named instead. See §9, which is the part that needs a Console
+  setting rather than a code change.
+
+What internal testing buys you, and why it is worth the hour: **it is the only way to get the app
 onto a paired Wear OS watch.** A watch cannot side-load — there is no file manager, no browser and
 no "install from unknown sources" that a phone can push through — so the watch app reaches the watch
 by Play noticing that the phone it is paired to has the app and that the app ships a watch variant.
@@ -12,9 +21,10 @@ Internal testing is not a public release. It goes to a list of up to a hundred e
 name, it is live within minutes instead of after a week of review, and it never appears in search.
 
 Everything below is done once — **after** §0, which is the part that is currently blocking.
-Afterwards it is automatic: **every push to a pull request that
-touches the app publishes a build to internal testing**, so what is on your phone and your watch is
-the branch you are working on. There is a manual trigger too, for when you want a different track.
+Afterwards it is automatic: every push to a pull request that touches the app publishes a build to
+internal testing, so what is on your phone and your watch is the branch you are working on, and
+every release on `main` publishes the same build to production. There is a manual trigger too, for
+when you want a different track.
 
 ---
 
@@ -35,12 +45,15 @@ way a policy strike is. Assume a new account:
 - The package name `com.ffmathy.heyjarvis` is not taken by the closed account in any way that
   matters — nothing was ever published under it.
 
-**Internal testing is not blocked by the new-account rules**, which is the part that matters here.
-A personal account created today has to run a closed test with twelve testers for fourteen days
-before it can apply for *production* access —
+**Internal testing is not blocked by the new-account rules**, which is the part that matters for
+getting started. A personal account created today has to run a closed test with twelve testers for
+fourteen days before it can apply for *production* access —
 [that requirement is production-only](https://support.google.com/googleplay/android-developer/answer/14151465).
-Internal testing works immediately, and internal testing is all this repository wants: it is what
-puts the app on a paired watch.
+Internal testing works immediately, and internal testing is what puts the app on a paired watch.
+
+Production is the same pipeline with a different track name, so nothing in this repository has to
+change when that access is granted — but until it is, the publish step of a release will fail
+against the production track while internal testing keeps working. §9 is about exactly that.
 
 ### Signing up again, in the browser
 
@@ -153,9 +166,14 @@ is no linking step and no "API access" page.
    only once. It is the whole of what goes into 1Password in §4.
 5. Back in **Play Console → Users and permissions → Invite new user**, paste the service account's
    email — it ends `@<project>.iam.gserviceaccount.com` — and give it access to the Jarvis app only,
-   with **Release to testing tracks** and **View app information**. It does not need production
-   release rights, and a publisher that cannot publish to production cannot be made to by a bad
-   workflow.
+   with **Release to testing tracks**, **View app information**, and — because a release on `main`
+   publishes to production — **Release to production, exclude devices, and use Play App Signing**.
+
+   > Leave the production permission off until you actually have production access (§0, §9), and
+   > the account can do nothing worse than publish to testers. Grant it and a release on `main`
+   > goes live; that is the whole switch, and it is here rather than in a workflow file on purpose:
+   > a permission is revocable from the Console in seconds, at three in the morning, by somebody
+   > who is not looking at a repository.
 
 The service account can take a few minutes to become visible to the Play API after inviting it. A
 first upload that fails with "application not found" is usually this.
@@ -222,8 +240,9 @@ android.hardware.type.watch. To publish this release on the current track, remov
 (The odd version code is the watch's — see §7. Play sometimes says `Internal error encountered`
 instead, which is the same refusal with none of the detail.)
 
-So the workflow publishes twice: the phone bundle to `internal`, and the watch bundle to
-`wear:internal`.
+So the workflow publishes twice: the phone bundle to one track and the watch bundle to the Wear OS
+track of the same name — `internal` and `wear:internal` from a pull request, `production` and
+`wear:production` from a release on `main`.
 
 **Do not take that track name from Google's documentation, which is wrong.** The
 [tracks page](https://developers.google.com/android-publisher/tracks) says a form factor's track is
@@ -334,9 +353,9 @@ bundle has gone up this way.
 
 ### d. Does the workflow work?
 
-Push anything to a pull request that touches `mobile/`, or run **Play internal testing** from the
-Actions tab. Watch the **Publish to Play** step. The build before it takes about fifteen minutes, so
-if the run fails in seconds it is the secrets, not the build.
+Push anything to a pull request that touches `mobile/`, or run **Play** from the Actions tab. Watch
+the **Publish the phone to Play** step. The build before it takes about fifteen minutes, so if the
+run fails in seconds it is the secrets, not the build.
 
 ### e. Did it reach the watch?
 
@@ -356,16 +375,27 @@ CI builds both. They build **bundles**, not APKs, because Play has not accepted 
 since 2021 — an `.aab` carries every ABI and density and Play builds the APK each device downloads.
 It is also why these take longer than `build:apk`, which only ever builds `arm64-v8a`.
 
-The two go to **different tracks** — the phone to `internal`, the watch to `wear:internal` — and Play works
-out which device gets which. What makes them one app rather than two is that they share a package
-name (`com.ffmathy.heyjarvis`) and an upload key; what keeps them apart is the
-`uses-feature android.hardware.type.watch` the watch declares, and a version code that must be
-unique across every form factor, so the phone takes twice the run number and the watch one more.
+The two go to **different tracks** — `internal` and `wear:internal`, or `production` and
+`wear:production` — and Play works out which device gets which. What makes them one app rather than
+two is that they share a package name (`com.ffmathy.heyjarvis`) and an upload key; what keeps them
+apart is the `uses-feature android.hardware.type.watch` the watch declares, and a version code that
+must be unique across every form factor, so the phone takes twice the shared number and the watch
+one more.
 
 In CI, nothing needs running. Pushing to a pull request that touches `mobile/`, `hologram/` or the
-dependency lock builds a bundle and sends it to the internal track, numbered by the workflow's run
-number. The **Play internal testing** workflow can also be started by hand from the Actions tab,
-which is the only way to pick a different track or to leave the build as a draft.
+dependency lock builds both bundles and sends them to the internal tracks; a release cut on `main`
+builds them again from the tagged commit and sends them to the production tracks. Both are the
+**Play** workflow — `release.yml` calls it through `workflow_call` rather than owning a pipeline of
+its own, so production is never a path that has gone untested. It can also be started by hand from
+the Actions tab, which is how you pick a track that neither of those two names, or leave the upload
+as a draft for the Console.
+
+**The two numbers on a bundle come from different places.** The version *name* — `2.1.0`, what the
+listing shows — is the monorepo's own version out of the root `package.json`, which Release Please
+bumps when it cuts a release, so a production upload is stamped with the release that published it.
+The version *code* is seconds since 2025-01-01, which is the one clock both entry points share: a
+run number counts the runs of one workflow, and two workflows counting separately would sooner or
+later hand Play a code it had already seen. See `.scripts/expo-release-signing.js`.
 
 The workflow runs straight on the runner rather than in the dev container — the runner image carries
 the Android SDK with its licences accepted, which the container does not — so it installs the `op`
@@ -400,7 +430,7 @@ Worth knowing, because it is the part that looks like magic:
 | `Could not close incremental caches` / `Daemon compilation failed` during the build | the phone and watch Gradle builds ran at the same time and fought over one shared copy of `@react-native/gradle-plugin`. The workflow passes `--concurrency=1` to stop that; a local `turbo build:aab` across both filters needs it too |
 | Nothing in the Play Console works at all | the developer account is closed — see §0 |
 | `1Password CLI is not authenticated` in CI | `OP_SERVICE_ACCOUNT_TOKEN` is not reaching the job, or the `op` install step was removed |
-| `Version code N has already been used` | `JARVIS_ANDROID_VERSION_CODE` repeated. In CI it is `github.run_number`, which only rises; locally it is 1, so a locally built bundle can be uploaded once and never again |
+| `Version code N has already been used` | `JARVIS_ANDROID_VERSION_CODE` repeated. In CI it is seconds since 2025-01-01, which only rises and is shared by both ways into the workflow; locally it is 1, so a locally built bundle can be uploaded once and never again |
 | `You uploaded an APK or Android App Bundle signed with a key that is also used to sign APKs delivered to users` | the debug key got in, which means the Gradle property was missing and the build silently fell back |
 | `keystore did not open` from the build script | the base64 was wrapped. Re-run it with `-w 0` |
 | The bundle's certificate says `CN=Android Debug` | the four Gradle properties never arrived, so the build fell back to the debug key. Check the four variables are set in the shell that runs it |
@@ -408,4 +438,51 @@ Worth knowing, because it is the part that looks like magic:
 | `Internal error encountered` after a bundle says it uploaded | the same refusal as the row above, with none of the detail. Play gives one or the other |
 | `Track "…" could not be found. Available tracks are: …` on **Publish the watch to Play** | read the list in the error rather than Google's documentation, which names a `wear:qa` track that does not exist. If no `wear:` track is listed at all, the Wear OS form factor has not been added — see §3. The phone will have published regardless, which is why the two are separate steps |
 | The watch app does not appear on the watch | the Wear OS form factor was never added under Test and release → Advanced settings, or the phone's Google account is not on the tester list |
-| `Version code N has already been used` on the *watch* bundle | both apps derive their version code from the same run number — the phone takes twice it, the watch one more — so this means one was uploaded outside the workflow |
+| `Version code N has already been used` on the *watch* bundle | both apps derive their version code from the same clock — the phone takes twice it, the watch one more — so this means one was uploaded outside the workflow |
+| `The caller does not have permission` or `403` on a *production* track | the publisher service account has **Release to testing tracks** but not **Release to production…** — see §2 step 5. The internal track will keep working, so only releases on `main` fail |
+| `Your app cannot be released to production` / the production track is missing from the error's track list | the developer account has not been granted production access yet. It is a closed test with twelve testers for fourteen days and then an application — see §9 |
+| A release on `main` published nothing at all | Release Please cut no release, so there was nothing to publish. A batch of only `chore`, `ci`, `build` and `test` commits does that by design — the run says `No user facing commits found since <sha> - skipping` |
+
+---
+
+## 9. Going live: production
+
+**Nothing in this repository needs changing to publish to production.** It already happens: when a
+release is cut on `main`, `release.yml` waits for Release Please to tag it and then calls the
+**Play** workflow with the tagged commit and the `production` and `wear:production` tracks. The
+bundles are built the same way, signed with the same key and uploaded by the same action as the
+ones that have been going to internal testing on every pull request — the track names are the only
+difference, which is the point of it being one workflow.
+
+What it publishes is a **completed** release, not a draft: it goes out rather than sitting in the
+Console waiting for a button. To hold a release back, hold the commits back — the same rule as the
+rest of the release pipeline. `chore`, `ci`, `build` and `test` commits cut no release at all, so
+they publish nothing.
+
+Two things are gates, and both are in the Play Console rather than here:
+
+1. **The developer account needs production access.** A personal account created since November
+   2023 has to run a closed test with **twelve testers for fourteen continuous days** and then
+   apply, which Google reviews. Until that is granted there is no production track to publish to.
+   [Google's page on it](https://support.google.com/googleplay/android-developer/answer/14151465)
+   is the authority; the requirement does not apply to internal testing, which is why everything up
+   to here works without it.
+2. **The publisher service account needs production release rights** — §2 step 5. Without them the
+   upload fails with a permission error while internal testing carries on working.
+
+Because the second one is a Console permission, it is also the off switch. Revoking **Release to
+production…** from the service account stops releases going live within seconds and without a
+commit, and leaves the internal testing path untouched.
+
+### What a user sees
+
+The version on the listing is the monorepo's version — `2.1.0` and so on — because both app configs
+read it from the root `package.json`, which Release Please bumps. So a production release is
+identifiable in the Console by the release that produced it, rather than by the frozen `0.1.0` both
+apps used to report.
+
+Every release publishes both artifacts, whether or not the app itself changed in it. An upload with
+no app changes in it is a new version code and a download, and that is the deliberate trade: a
+release on `main` is a release of Jarvis, and the alternative — working out from a diff whether the
+phone or the watch could possibly behave differently — is the kind of guess that eventually ships
+nothing when it mattered.

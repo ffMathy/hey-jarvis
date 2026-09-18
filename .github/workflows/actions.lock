@@ -22,7 +22,7 @@ workflows:
         - 'actions/deploy-pages@v5.0.1'
         - 'actions/upload-pages-artifact@v5.0.0'
         - 'oven-sh/setup-bun@v2.2.0'
-    '.github/workflows/play-internal.yml':
+    '.github/workflows/play.yml':
         - '1password/install-cli-action@v4.1.0'
         - 'actions/cache@v5.1.0'
         - 'actions/checkout@v6.1.0'
