@@ -15,10 +15,33 @@ WORKDIR /workspace
 # Copy the install manifests first so dependency layers cache independently of
 # source changes. bunfig.toml comes along deliberately: it is what disables
 # lifecycle scripts and enforces exact versions inside the image too.
+#
+# **Every workspace in the root `package.json` has to be listed here, including
+# the ones this image never runs.** Bun resolves the whole `workspaces` array
+# before it installs anything, and a name it cannot find on disk is a hard
+# error — `error: Workspace not found "hologram"` — that fails the build at
+# `bun install` rather than at anything to do with the server. `--filter=mcp`
+# does not get around it: Bun still demands every directory, and filtering the
+# install down to the `mcp` workspace resolves 6 packages instead of 2821,
+# because the server's real dependencies are declared in the root manifest.
+#
+# So this list drifts silently. `mobile`, `watch` and `hologram` joined the
+# workspaces in #720 and were not added here, which broke the image from that
+# commit onwards; nothing caught it, because Turbo replays `mcp#build` from
+# cache when its inputs are untouched, and the release `deploy` job was failing
+# earlier for unrelated reasons and never reached the build at all.
+#
+# Their manifests are here only to satisfy that resolution. Installing them is
+# not free — they roughly double the dependency tree, from 1798 packages to
+# 2821 — so if the image needs slimming, trimming `workspaces` to what the
+# image ships is what to reach for, rather than deleting lines from here.
 COPY package.json bun.lock bunfig.toml .npmrc ./
 COPY mcp/package.json ./mcp/
 COPY elevenlabs/package.json ./elevenlabs/
 COPY home-assistant-voice-firmware/package.json ./home-assistant-voice-firmware/
+COPY hologram/package.json ./hologram/
+COPY mobile/package.json ./mobile/
+COPY watch/package.json ./watch/
 
 # --frozen-lockfile installs exactly what bun.lock pins and fails if anything
 # would have to be resolved fresh from the registry.
