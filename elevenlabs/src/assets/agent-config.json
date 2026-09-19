@@ -264,7 +264,7 @@
         "backupLlmConfig": {
           "preference": "default"
         },
-        "cascadeTimeoutSeconds": 8,
+        "cascadeTimeoutSeconds": 15,
         "tools": [
           {
             "type": "system",
