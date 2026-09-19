@@ -72,13 +72,19 @@
     "initialize": {
       "cache": true
     },
-    "mobile#initialize": {
+    "//#install-skia": {
       "cache": false,
       "outputs": []
     },
+    "mobile#initialize": {
+      "cache": false,
+      "outputs": [],
+      "dependsOn": ["//#install-skia"]
+    },
     "watch#initialize": {
       "cache": false,
-      "outputs": []
+      "outputs": [],
+      "dependsOn": ["//#install-skia"]
     }
   }
 }
