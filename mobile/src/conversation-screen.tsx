@@ -72,16 +72,26 @@ const GIVE_UP_CONNECTING_AFTER_MS = 20_000;
  * who is waiting for you. He fades, the drawing stops, and on a phone the assistant's window goes
  * with him — see the effects below `start`.
  *
- * The one thing that does put something on the screen is a browser with no microphone, which gets a
- * field to type into instead — see `typed-message-field.tsx` and the note in `start`. It is the
- * exception that keeps the rule: there is still nothing to read, only somewhere to write.
+ * The one thing that does put something on the screen is a field to type into, under him, wherever
+ * there is a conversation to type into — see `typed-message-field.tsx`. It is the exception that
+ * keeps the rule: there is still nothing to read, only somewhere to write.
+ *
+ * **It used to be a browser's consolation prize for a refused microphone, and Jarvis answered it in
+ * writing.** That is because the only session it ever appeared in was the text-only one, which is
+ * the one mode where ElevenLabs is asked not to speak. Typing into an ordinary voice session is
+ * nothing of the sort: `sendUserMessage` is on the conversation rather than on the text half of it,
+ * so a typed line takes the same turn a spoken one would and comes back *spoken*, with the sphere
+ * following his voice exactly as it does when you talk to him. So the field is on both platforms
+ * now, and the only conversation he still writes back in is the one with no microphone behind it.
  *
  * Settings are still reachable, and how depends on where this is running. On a phone it is a long
- * press anywhere, because this screen is the assistant and an assistant with a link on it is not
- * one. In a browser it is a plain link, because a browser is not an assistant — it is where this is
- * developed and demonstrated, it already differs in bigger ways (sample mode has no sheet there),
- * and react-native-web does not raise `onLongPress` for a held mouse at all, so the gesture would
- * be a door that only looks like one.
+ * press anywhere the field is not: a `TextInput` keeps its own long press for selecting text, which
+ * is worth more there than a second way into settings, and everything around it is still most of
+ * the screen. A long press rather than a link, because this screen is the assistant and an
+ * assistant with a link on it is not one. In a browser it is a plain link, because a browser is not
+ * an assistant — it is where this is developed and demonstrated, it already differs in bigger ways
+ * (sample mode has no sheet there), and react-native-web does not raise `onLongPress` for a held
+ * mouse at all, so the gesture would be a door that only looks like one.
  *
  * The particle count is the phone's own, as sample mode's has been for a while and this screen's
  * never was: see `spark-density.ts`. It drew a fixed number on every phone, which on a fast one was
@@ -103,9 +113,13 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
 
   const [problem, setProblem] = useState<string | undefined>(undefined);
   const [isStarting, setIsStarting] = useState(false);
-  // Set when the conversation opened without a microphone, which is the only thing that puts a
-  // text field on this screen. See `start` below.
-  const [typingInstead, setTypingInstead] = useState(false);
+  // Set once a conversation has actually been opened, which is what puts the text field on this
+  // screen — either kind of conversation, since both take a typed line. It is not the same question
+  // as whether one is *connected*: a session that opened and then dropped still has a field, saying
+  // so, which is how a browser reports an ElevenLabs it could not finish reaching. What has no
+  // field is a `start` that never got as far as a session at all — a phone with the microphone
+  // refused, which says that in one line and is done. See `start` below.
+  const [canType, setCanType] = useState(false);
   /**
    * When to stop waiting for the conversation to open, or `undefined` once nothing is waited for.
    *
@@ -172,6 +186,10 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
       // Both halves are minted here rather than at launch, and neither is kept: a conversation
       // token and a signed URL are short-lived, and one fetched when the app opened may already be
       // dead by the time it is used.
+      // **A typed line into this session is answered out loud.** `sendUserMessage` belongs to the
+      // conversation rather than to the text-only flavour of it, so what the keyboard sends takes
+      // exactly the turn the microphone would have: he speaks the reply, and the sphere follows it,
+      // because nothing downstream of here knows how the turn was started.
       if (canHear) {
         const { token } = await requestConversationToken({ settings, participantName: PHONE_PARTICIPANT_NAME });
         startSession({
@@ -183,10 +201,12 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
           ...playbackHandlers,
         });
       } else {
-        // **This is what makes a conversation possible with no microphone at all.** ElevenLabs runs
-        // the session as text on both sides: nothing is captured, and the reply comes back written
-        // rather than spoken. That second half is the cost — with no speech to track, the sphere
-        // idles rather than answering — so it is only ever asked for when there is no alternative.
+        // **This is what makes a conversation possible with no microphone at all**, and the one
+        // place Jarvis still answers in writing. ElevenLabs runs the session as text on both sides:
+        // nothing is captured, and the reply comes back written rather than spoken. That second
+        // half is the cost — with no speech to track, the sphere idles rather than answering — so
+        // it is only ever asked for when there is no alternative, which since the field appears
+        // beside a live microphone too means exactly one case: a browser that refused one.
         // He still visibly thinks, because a tool call is reported over the same channel and
         // `useToolActivity` does not care how the conversation is being held.
         //
@@ -204,7 +224,7 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
           ...toolHandlers,
         });
       }
-      setTypingInstead(!canHear);
+      setCanType(true);
     } catch (error: unknown) {
       reportProblem(error instanceof Error ? error.message : 'Jarvis could not be reached.');
     } finally {
@@ -369,14 +389,16 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
       ) : null}
 
       {/*
-        The way in when there is no microphone. Only ever rendered in a browser, because `start`
-        only ever opens a text conversation there — a phone says so and stops instead.
+        The other way in, wherever there is a conversation to type into — which is both platforms,
+        and a live microphone as readily as a refused one. Only a `start` that never opened a
+        session at all has none, and on a phone that is the refused microphone, which the line above
+        has already explained.
 
         It leaves with him rather than before him, so the screen empties in one movement. A field
         left behind on a conversation that has ended is somewhere to type that nothing is listening
         to, which is worse than no field at all.
       */}
-      {typingInstead && !gone ? (
+      {canType && !gone ? (
         <TypedMessageField
           onSend={sendUserMessage}
           enabled={status === 'connected'}

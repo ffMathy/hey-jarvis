@@ -19,13 +19,22 @@ interface TypedMessageFieldProps {
 }
 
 /**
- * Typing to Jarvis, for when talking to him is not an option.
+ * Typing to Jarvis, for when talking to him is not what you want.
  *
- * This is what the browser falls back to when the microphone is refused — see the note in
- * `conversation-screen.tsx` on why that is a fallback rather than a failure. It is a debugging
- * affordance first: a conversation you can drive from the keyboard is one you can hold in an open
- * office, in a call, or on a machine whose microphone is busy, and one whose input is repeatable
- * from one run to the next in a way that speaking never is.
+ * **He answers out loud.** A typed line goes through `sendUserMessage`, which belongs to the
+ * conversation and not to the text-only flavour of it, so in an ordinary session it takes exactly
+ * the turn a spoken one would: he speaks the reply and the sphere follows his voice. The one
+ * conversation he still writes back in is the text-only one a browser falls back to when the
+ * microphone is refused, because that session is the one where ElevenLabs was asked not to speak.
+ *
+ * Which is why this is on both platforms rather than only where the microphone failed. A
+ * conversation you can drive from the keyboard is one you can hold in an open office, in a call, or
+ * on a phone whose microphone is busy — and one whose input is repeatable from one run to the next
+ * in a way that speaking never is, which is what makes it a debugging affordance as well.
+ *
+ * The microphone is left listening while it is on screen. Muting it would be a second, invisible
+ * mode on a screen whose whole argument is that it has none: somebody who types a line and then
+ * says the next one out loud would be talking to nothing, with no way to tell.
  *
  * Enter sends, which is the whole interaction. There is deliberately no send button: a button would
  * be a second thing to look at on a screen whose entire argument is that it has nothing on it, and

@@ -438,16 +438,47 @@ test('offers a field to type into when the browser refuses the microphone', asyn
   await expect(page.getByTestId('hologram')).toBeVisible();
 });
 
-test('keeps the screen bare when the microphone is there to be used', async ({ page }) => {
+test('offers the same field beside a microphone that works', async ({ page }) => {
+  const asked: string[] = [];
   await page.route(CONVERSATION_TOKEN_URL, async (route: Route) => {
+    asked.push('token');
     await answerTokenRequest(route, 200, { token: 'a-webrtc-token', conversation_id: 'conv_1' });
+  });
+  await page.route(SIGNED_URL_URL, async (route: Route) => {
+    asked.push('signed-url');
+    await answerTokenRequest(route, 200, { signed_url: 'wss://api.elevenlabs.io/v1/convai/conversation' });
   });
 
   await page.goto('/');
   await configureElevenLabs(page);
 
-  // Typing is what you get instead of talking, never as well as it: the whole argument of this
-  // screen is that there is nothing on it, and a field nobody needs is something on it.
+  // Typing used to be what you got *instead* of talking, and only in a browser that had refused the
+  // microphone — which is the one session ElevenLabs is asked not to speak in, so Jarvis answered
+  // it in writing. He does not have to: `sendUserMessage` takes the same turn a spoken line would
+  // in an ordinary session, and comes back spoken. So the field is here as well as the microphone.
+  await expect(page.getByTestId('typed-message')).toBeVisible();
+
+  // And this is still an ordinary voice conversation, which is the whole point of the field being
+  // here: a token for a WebRTC room, never the signed URL a text-only session runs on. Asking for
+  // the latter would mean the screen had quietly made this a written conversation after all.
+  await expect.poll(() => asked).toEqual(['token']);
+
+  // The sphere is still the screen. A field appearing under it must not cost the drawing.
   await expect(page.getByTestId('hologram')).toBeVisible();
+});
+
+test('says nothing to type into when no conversation was opened at all', async ({ page }) => {
+  await page.route(CONVERSATION_TOKEN_URL, async (route: Route) => {
+    await answerTokenRequest(route, 401, { detail: { status: 'invalid_api_key' } });
+  });
+
+  await page.goto('/');
+  await configureElevenLabs(page);
+
+  // A field is somewhere to write to Jarvis, so it belongs to a conversation rather than to the
+  // screen: a `start` that never got as far as a session has none to offer, and the line saying
+  // why is the whole answer. This is also the phone's refused microphone, which stops in the same
+  // place — a browser is simply the only surface these tests can press it on.
+  await expect(page.getByTestId('conversation-problem')).toBeVisible();
   await expect(page.getByTestId('typed-message')).toHaveCount(0);
 });
