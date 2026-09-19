@@ -18,6 +18,7 @@
     "test": "turbo test",
     "test:integration": "turbo test:integration",
     "deploy": "turbo deploy",
+    "install-skia": "bash ./.scripts/install-skia.sh",
     "lint": "turbo lint",
     "format": "bunx biome format --write .",
     "check": "bunx biome check --write .",

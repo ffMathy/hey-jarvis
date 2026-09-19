@@ -1,19 +1,20 @@
 #!/bin/bash
-# Put React Native Skia's prebuilt pieces where its build expects them.
+# Put the phone app's own copy of `canvaskit.wasm` in place.
 #
-# Skia normally does both of these in a postinstall, and postinstalls never run
-# here (`ignoreScripts = true` in bunfig.toml). Nothing is downloaded: both steps
-# only copy files out of packages `bun install` already fetched and locked.
+# Skia does this in a postinstall, and postinstalls never run here
+# (`ignoreScripts = true` in bunfig.toml). Nothing is downloaded: `setup-skia-web`
+# only copies `canvaskit.wasm` out of a package `bun install` already fetched and
+# locked, into `public/`, which the web export serves from its root. Without it
+# the hologram cannot draw in a browser.
 #
-# - `install-skia` copies the native Skia libraries out of the
-#   `react-native-skia-android` / `-apple-*` packages into Skia's own `libs/`,
-#   which its Gradle build links against. Without it an Android build fails in
-#   CMake, long after it started.
-# - `setup-skia-web` copies `canvaskit.wasm` into `public/`, which the web export
-#   serves from its root. Without it the hologram cannot draw in a browser.
+# The other half of Skia's setup — `install-skia`, which puts the prebuilt native
+# libraries where the Gradle build links against them — is *not* here any more.
+# It writes into the installed package rather than into this app, and the watch
+# resolves the same copy, so the two apps running it at once corrupted it. It is
+# now a single workspace-level task that both apps depend on; see
+# `.scripts/install-skia.sh` for the failure it was extracted to fix.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-bunx install-skia
 bunx setup-skia-web public
