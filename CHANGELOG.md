@@ -1,5 +1,23 @@
 # Changelog
 
+## [2.2.1](https://github.com/ffMathy/hey-jarvis/compare/root-v2.2.0...root-v2.2.1) (2026-09-19)
+
+
+### Bug Fixes
+
+* **ci:** publish a release to the closed test, not production ([#731](https://github.com/ffMathy/hey-jarvis/issues/731)) ([5d6e8d9](https://github.com/ffMathy/hey-jarvis/commit/5d6e8d9cf4eed71155b0996cb38a2a4419cdf2f4))
+* make a typed conversation work, and make the sphere tell the truth ([#730](https://github.com/ffMathy/hey-jarvis/issues/730)) ([39bee0e](https://github.com/ffMathy/hey-jarvis/commit/39bee0e6f052e2fd059c303015bb5e36b96bc7e0))
+
+
+### Performance Improvements
+
+* **hologram:** raise the particle ceiling to ten thousand ([#728](https://github.com/ffMathy/hey-jarvis/issues/728)) ([03b4d89](https://github.com/ffMathy/hey-jarvis/commit/03b4d89337e5741fed50eaa3ac06385d2bf71f59))
+
+
+### Code Refactoring
+
+* **mcp:** send the routing instruction once, in the structured channel ([#732](https://github.com/ffMathy/hey-jarvis/issues/732)) ([3f170d8](https://github.com/ffMathy/hey-jarvis/commit/3f170d8e1fc545b8a97286dc10fdc7b27b842799))
+
 ## [2.2.0](https://github.com/ffMathy/hey-jarvis/compare/root-v2.1.0...root-v2.2.0) (2026-09-18)
 
 

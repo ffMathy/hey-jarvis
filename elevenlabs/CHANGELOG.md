@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.1](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.17.0...elevenlabs-v0.17.1) (2026-09-19)
+
+
+### Bug Fixes
+
+* make a typed conversation work, and make the sphere tell the truth ([#730](https://github.com/ffMathy/hey-jarvis/issues/730)) ([39bee0e](https://github.com/ffMathy/hey-jarvis/commit/39bee0e6f052e2fd059c303015bb5e36b96bc7e0))
+
 ## [0.17.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.16.0...elevenlabs-v0.17.0) (2026-09-17)
 
 
