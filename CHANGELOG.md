@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.2](https://github.com/ffMathy/hey-jarvis/compare/root-v2.2.1...root-v2.2.2) (2026-09-19)
+
+
+### Documentation
+
+* **ci:** record the pull request body that cost a release ([#734](https://github.com/ffMathy/hey-jarvis/issues/734)) ([305d9e5](https://github.com/ffMathy/hey-jarvis/commit/305d9e57f5da2df3b1c83b97e73cb96f6dc741e2))
+
 ## [2.2.1](https://github.com/ffMathy/hey-jarvis/compare/root-v2.2.0...root-v2.2.1) (2026-09-19)
 
 
