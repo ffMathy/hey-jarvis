@@ -150,6 +150,7 @@
       "maxConversationDurationMessage": "",
       "prompt": {
         "llm": "claude-sonnet-5",
+        "reasoningEffort": null,
         "opener": null,
         "enableReasoningSummary": false,
         "temperature": 0,
