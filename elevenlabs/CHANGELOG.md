@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.2](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.17.1...elevenlabs-v0.17.2) (2026-09-19)
+
+
+### Bug Fixes
+
+* **elevenlabs:** clear the reasoning effort claude cannot take ([#739](https://github.com/ffMathy/hey-jarvis/issues/739)) ([5b01fe4](https://github.com/ffMathy/hey-jarvis/commit/5b01fe4431ab9a551c3aec2b7c5aea7fbc5a5b29))
+
 ## [0.17.1](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.17.0...elevenlabs-v0.17.1) (2026-09-19)
 
 

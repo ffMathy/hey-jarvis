@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.4](https://github.com/ffMathy/hey-jarvis/compare/root-v2.2.3...root-v2.2.4) (2026-09-19)
+
+
+### Bug Fixes
+
+* **elevenlabs:** clear the reasoning effort claude cannot take ([#739](https://github.com/ffMathy/hey-jarvis/issues/739)) ([5b01fe4](https://github.com/ffMathy/hey-jarvis/commit/5b01fe4431ab9a551c3aec2b7c5aea7fbc5a5b29))
+
 ## [2.2.3](https://github.com/ffMathy/hey-jarvis/compare/root-v2.2.2...root-v2.2.3) (2026-09-19)
 
 
