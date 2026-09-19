@@ -11,10 +11,15 @@ import {
 /* Public contract                                                            */
 /* -------------------------------------------------------------------------- */
 /*
- * These schemas are what the MCP server (and therefore the ElevenLabs Jarvis agent) sees.
- * The shape is unchanged: hand a request to `routePromptWorkflow`, then poll
- * `getNextInstructionsWorkflow` until one of the responses says everything has finished.
- * `elevenlabs/src/assets/agent-prompt.md` needs no change.
+ * These schemas are what the MCP server sees. The shape is unchanged: hand a request to
+ * `routePromptWorkflow`, then poll `getNextInstructionsWorkflow` until one of the responses
+ * says everything has finished.
+ *
+ * What the ElevenLabs Jarvis agent sees is narrower. `routePromptWorkflow` is published through
+ * `createInstructionsWorkflowTool` (see `../../utils/mcp-tool-factory.ts`), which writes both
+ * MCP channels itself: the instruction stays a property of an object in `structuredContent`,
+ * and `content` carries the same sentence as prose instead of the whole payload spelled out a
+ * second time. The fields below still travel anywhere the workflow is run directly.
  *
  * What changed is underneath. A request used to be planned into a task DAG run by a wave
  * scheduler this file owned, and then a supervisor agent delegating inside one tool-call
@@ -46,6 +51,10 @@ const inputSchema = z.object({
 
 const routeAcknowledgementSchema = z.object({
   instructions: z.string().describe('Instructions for Jarvis to follow'),
+  // Only reaches a caller that runs the workflow directly, not one going through MCP: the
+  // voice agent names no session and so polls the default, and a caller that does name one
+  // already knows what it sent. Echoing it to everyone bought nothing and cost the
+  // instruction its clarity.
   sessionId: z.string().describe('The session this request is running in; pass it back when polling'),
 });
 
