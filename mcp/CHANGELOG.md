@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.1](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.2.0...mcp-v2.2.1) (2026-09-19)
+
+
+### Code Refactoring
+
+* **mcp:** send the routing instruction once, in the structured channel ([#732](https://github.com/ffMathy/hey-jarvis/issues/732)) ([3f170d8](https://github.com/ffMathy/hey-jarvis/commit/3f170d8e1fc545b8a97286dc10fdc7b27b842799))
+
 ## [2.2.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.1.0...mcp-v2.2.0) (2026-09-18)
 
 
