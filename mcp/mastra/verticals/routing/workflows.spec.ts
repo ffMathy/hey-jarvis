@@ -115,13 +115,19 @@ afterEach(() => {
 });
 
 describe('routePromptWorkflow', () => {
-  it('asks Jarvis to speak before polling, so the user is not left in silence', async () => {
+  it('sends Jarvis straight to the poll rather than asking him to speak first', async () => {
     const outcome = resultOf(
       await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false }),
     );
 
-    expect(outcome.instructions).toContain('in your own voice');
     expect(outcome.instructions).toContain('getNextInstructionsWorkflow');
+
+    // The "I'm on it" line is ElevenLabs' now: `routePromptWorkflow` has pre-tool speech set to
+    // Force in its tool settings, so the agent speaks *before* the call rather than after it
+    // returns. Asking for it here as well is how he came to say it twice, and the second one
+    // would now land after the silence it was meant to cover. See the note on `INSTRUCTIONS`.
+    expect(outcome.instructions).not.toContain('in your own voice');
+    expect(outcome.instructions).not.toContain('under six words');
   });
 
   it('carries the loop and its failure handling, so the prompt does not have to', async () => {

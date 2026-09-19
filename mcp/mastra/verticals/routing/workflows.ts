@@ -33,7 +33,19 @@ const inputSchema = z.object({
   // a lasagna recipe -- which meant a caller that forgot the field did not get an error but a
   // stranger's errand, planned and run in full. The field is what the tool is for, so it is
   // required.
-  userQuery: z.string().describe("The user's routing query"),
+  // **Everything the user asked for, in one call.** A request naming two things went out as two
+  // calls, one after the other: the calendar was planned, run, polled and reported, and only then
+  // did the email start — so the second answer arrived a whole round later than it needed to, and
+  // the caller heard the request treated as two errands rather than one. Nothing downstream wanted
+  // that. The planner reads this string and writes a task per part, with the independent ones
+  // running side by side (see `plannerInstructions`), so splitting it here throws that away and
+  // buys nothing. The description is where this has to be said, because it is what the voice model
+  // reads when it decides what to put in the field.
+  userQuery: z
+    .string()
+    .describe(
+      'Everything the user asked for in this turn, in one call. If they asked for two things — their calendar and their email, say — both belong in this one string: the plan splits the work itself and runs the independent parts at the same time, so a request sent in pieces is answered in pieces and later.',
+    ),
   async: z
     .boolean()
     .optional()
@@ -112,17 +124,30 @@ const CONVERSATION_CONTROL_EXCEPTION =
  */
 const INSTRUCTIONS = {
   async: 'The request is being processed in the background and will complete on its own. End the call now.',
-  // Queueing hides the longest silence in the loop. This is the only place the "I'm on it"
-  // line is specified. It was once asked for here *and* in the agent prompt, and Jarvis
-  // duly delivered both — "Let me check your calendar." then "I'm on it, sir." — so the
-  // prompt now stays out of it and this string is unconditional.
+  // **This no longer asks for the "I'm on it" line, and must not start asking again.**
   //
-  // This is also the one instruction guaranteed to reach Jarvis before any polling starts,
-  // so it is where the shape of the rest of the loop belongs: keep calling, keep following
-  // each response, and treat a failed call as something to retry rather than as the end of
-  // the request.
+  // Queueing hides the longest silence in the loop, and something has to cover it. For a long
+  // time that was this string: it asked for a short line in Jarvis's own voice, and it was the
+  // only place that asked, because when the agent prompt asked as well he dutifully delivered
+  // both — "Let me check your calendar." then "I'm on it, sir."
+  //
+  // ElevenLabs covers it now. `routePromptWorkflow` has pre-tool speech set to **Force** in its
+  // tool settings, so the agent speaks before the call is even made rather than after it
+  // returns — which is earlier than any instruction in a response can manage, since a response
+  // only exists once the call is done. Asking for it here too would put the count back to two,
+  // with the second one landing after the silence it was supposed to cover.
+  //
+  // That setting is an override held on the tool in the ElevenLabs dashboard, not in
+  // `agent-config.json` — the MCP tools reach the agent through `mcpServerIds` and carry their
+  // own configuration. So it is invisible from this repository, which is exactly why it is
+  // written down here.
+  //
+  // This is still the one instruction guaranteed to reach Jarvis before any polling starts, so
+  // it is where the shape of the rest of the loop belongs: keep calling, keep following each
+  // response, and treat a failed call as something to retry rather than as the end of the
+  // request.
   poll:
-    'The request is now being processed in the background. Say a short line in your own voice telling the user you are on it — under six words, spoken now, because he is otherwise left sitting in silence while this runs. This is the only such line he should hear, so give it here and nowhere else. Then call getNextInstructionsWorkflow to check on the status and receive the next instructions, and keep doing exactly what each response tells you until one of them says every task has completed. If a call hands you an error instead of instructions, call it again straight away and say nothing about it — those failures are transient, and only when several attempts in a row have failed should you tell the user plainly what you could not find out. An error is never the end of the request. ' +
+    'The request is now being processed in the background. Call getNextInstructionsWorkflow now to check on the status and receive the next instructions, and keep doing exactly what each response tells you until one of them says every task has completed. Say nothing to the user before that call — he has already heard you say you are on it. If a call hands you an error instead of instructions, call it again straight away and say nothing about it — those failures are transient, and only when several attempts in a row have failed should you tell the user plainly what you could not find out. An error is never the end of the request. ' +
     CONVERSATION_CONTROL_EXCEPTION,
   stillProcessing:
     'Still processing your request. Call getNextInstructionsWorkflow again to wait a bit longer for it to complete. Say nothing to the user in the meantime — he has already been told you are on it, and has no use for a running commentary on the waiting.',
@@ -144,6 +169,9 @@ const ALL_TASKS_COMPLETED_INSTRUCTIONS =
   'send it through routePromptWorkflow exactly as you did this one, however small it sounds and ' +
   'however many times you have already done it. Answering a later request from ' +
   'memory, or promising to look and then calling nothing, leaves him with nothing at all. ' +
+  'Anything further means something he says next, not a part of what he already asked that you ' +
+  'left out of this request — if he asked for two things, both should have gone out together, and ' +
+  'routing the second one now is a round trip he should never have had to wait through. ' +
   CONVERSATION_CONTROL_EXCEPTION;
 
 function moreToComeInstructions(): string {
@@ -164,15 +192,24 @@ function moreToComeInstructions(): string {
  * expected instructions, and has been observed to abandon the request outright ("there was
  * a slight hiccup, sir").
  *
- * This was 15s, comfortably past the 8 seconds `cascadeTimeoutSeconds` allows in
+ * This was 15s, comfortably past the 8 seconds `cascadeTimeoutSeconds` then allowed in
  * `elevenlabs/src/assets/agent-config.json`, and end-to-end runs showed exactly the split
  * that implies: every poll that returned inside 4.4s succeeded, and the ones that blocked
  * on toward the deadline — 9.3s, 10.9s, 13.7s — came back failed. Blocking is a
  * convenience anyway, not the mechanism: a poll with nothing to report says so and asks to
  * be called again, so the cost of a short deadline is an extra silent round trip and the
  * cost of a long one is the whole request.
+ *
+ * **It is 10s now, and that only works because `cascadeTimeoutSeconds` went to 15 with it.**
+ * The two are one setting in two files: this is how long a poll may block, that is how long
+ * ElevenLabs will wait for it, and the second must stay comfortably above the first or every
+ * poll that blocks its full deadline is a lost answer rather than a late one. A longer
+ * deadline is worth having — it halves the number of silent round trips a slow plan costs —
+ * but raising it here alone would reproduce the 9.3s/10.9s/13.7s failures above exactly.
+ * Change one and change the other, and remember that the agent side only takes effect once
+ * `bunx turbo deploy --filter=elevenlabs` has run.
  */
-const POLL_DEADLINE_MS = 5_000;
+const POLL_DEADLINE_MS = 10_000;
 
 let pollDeadlineMs: number = POLL_DEADLINE_MS;
 

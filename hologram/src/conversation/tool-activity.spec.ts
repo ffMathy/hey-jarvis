@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'bun:test';
-import { NOTHING_IN_FLIGHT, toolCallFinished, toolCallStarted } from './tool-activity';
+import {
+  KEEP_THINKING_AFTER_LAST_ANSWER_MS,
+  NOTHING_IN_FLIGHT,
+  toolCallFinished,
+  toolCallStarted,
+} from './tool-activity';
 
 /**
  * Which of Jarvis's tool calls are running, which is what the hologram's thinking state is drawn
@@ -37,6 +42,18 @@ describe('keeping track of the tool calls Jarvis has in flight', () => {
     // thought never shown.
     expect(toolCallFinished(NOTHING_IN_FLIGHT, 'never-asked')).toHaveLength(0);
     expect(toolCallFinished(['weather'], 'never-asked')).toEqual(['weather']);
+  });
+
+  it('holds the thought open longer than the gap between two polls', () => {
+    // A routing request is a stream of tool calls, not one: `getNextInstructionsWorkflow` is
+    // called again and again while the plan runs, and the sphere dropped out of thinking and
+    // back into it on every round. The window has to outlast the gap between one poll returning
+    // and the next going out — which is the voice model reading a response and deciding, well
+    // under a second — while still being short enough that one quick lookup visibly ends.
+    //
+    // The window itself lives in a timer inside `useToolActivity`, which `bun test` has no
+    // renderer for. This pins the number; what it does is covered by looking at the sphere.
+    expect(KEEP_THINKING_AFTER_LAST_ANSWER_MS).toBe(2_000);
   });
 
   it('leaves what it was given alone', () => {

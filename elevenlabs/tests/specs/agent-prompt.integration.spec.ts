@@ -475,6 +475,41 @@ describe('Agent Prompt Specifications', () => {
       (CONVERSATION_TIMEOUT_MS + TOOL_CALL_TIMEOUT_MS) * MAX_CONVERSATION_RETRIES,
     );
 
+    it(
+      'should send a two-part request as one routing call rather than two',
+      async () => {
+        await withConversationRetry(
+          () => new TestConversation({ agentId, apiKey, googleApiKey }),
+          async (conversation) => {
+            await conversation.connect();
+            // Verbatim from a real conversation, and the agent split it. It routed the
+            // calendar alone, polled it to completion, reported it, said "Now, your
+            // email." and only then routed the email — so the second answer arrived a
+            // whole round of polling later than it had to. The planner is built for
+            // exactly this: it writes a task per part and runs the independent ones side
+            // by side, so the split threw that away and bought nothing. The prompt's
+            // "every request gets its own call" was the cause, read as being about the
+            // things inside one turn rather than about successive turns.
+            await conversation.sendMessage('And what about my calendar and my email for this week?');
+
+            await settleAfterRouting(conversation, isRoutingToolName);
+
+            await conversation.assertCriteria(
+              'The agent sent both halves of the request in a SINGLE routing call. The evidence must show ' +
+                'exactly one tool call whose name contains "route", and the query it carried must mention both ' +
+                'the calendar and the email. Two separate routing calls fail this, even if both subjects are ' +
+                'eventually covered: the plan runs independent parts at the same time, so splitting them makes ' +
+                'the user wait for the second answer through a whole round of polling for the first. Polling ' +
+                'calls that check on the one request are expected and do not count as routing calls. No tool ' +
+                'names spoken aloud.',
+              0.9,
+            );
+          },
+        );
+      },
+      (CONVERSATION_TIMEOUT_MS + TOOL_CALL_TIMEOUT_MS) * MAX_CONVERSATION_RETRIES,
+    );
+
     // The other half of the rule, and the reason it is easy to get wrong in the
     // other direction: pushing the agent to route more must not make it route
     // the things it is supposed to answer on the spot.

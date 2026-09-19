@@ -613,11 +613,36 @@ stay visible and runnable; older ones are unregistered and their definitions arc
 stops them rehydrating at boot without throwing away what they recorded.
 
 **Polling contract:**
-A poll blocks up to `POLL_DEADLINE_MS` (5s) waiting for something to report, then says so and
+A poll blocks up to `POLL_DEADLINE_MS` (10s) waiting for something to report, then says so and
 asks to be called again. That deadline has to fit inside ElevenLabs' `cascadeTimeoutSeconds`
-(8s): a poll that times out at the ElevenLabs boundary is a *lost* answer, not a delayed one.
+(15s, in `elevenlabs/src/assets/agent-config.json`): a poll that times out at the ElevenLabs
+boundary is a *lost* answer, not a delayed one. **The two move together.** They were 5s and 8s;
+raising the deadline alone would reproduce the measured failures the header comment on
+`POLL_DEADLINE_MS` records — every poll returning inside 4.4s succeeded, and the ones blocking
+toward a 15s deadline against an 8s boundary came back failed at 9.3s, 10.9s and 13.7s. The
+agent half only reaches the live agent once `bunx turbo deploy --filter=elevenlabs` has run, so
+until then the deployed agent still enforces whatever it was last given.
 The closing report recaps every result, including ones earlier polls already relayed, so a
 response dropped on the way cannot lose an answer for good.
+
+**One call per turn, carrying all of it:**
+`userQuery` takes everything the user asked for in that turn, and the planner writes a task per
+part with the independent ones running side by side. A real conversation had the agent split
+"what about my calendar and my email this week?" into two routing calls — calendar planned, run,
+polled and reported, and only then the email — so the second answer arrived a whole round of
+polling late for no gain. The cause was the agent prompt's "every request gets its own call",
+read as being about the things inside one turn rather than about successive turns. The prompt now
+separates the two rules, and the `userQuery` description says it as well, since that description
+is what the voice model reads when it decides what to put in the field.
+
+**Who says "I'm on it":**
+ElevenLabs, not the instructions. `routePromptWorkflow` has pre-tool speech set to **Force** in
+its tool settings, so the agent speaks before the call is made — earlier than any instruction in
+a response can manage, since a response only exists once the call has returned. `INSTRUCTIONS.poll`
+therefore asks for no line at all. It used to, and when the agent prompt asked as well Jarvis
+delivered both. That setting is an override held on the tool in the ElevenLabs dashboard rather
+than in `agent-config.json` — MCP tools reach the agent through `mcpServerIds` and carry their own
+configuration — so it is invisible from this repository and is written down in the code instead.
 
 **Two tools, deliberately:**
 The voice model gets `routePromptWorkflow` and `getNextInstructionsWorkflow` and nothing else.
