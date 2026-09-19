@@ -4,6 +4,22 @@ import { createMemory } from '../memory/index.js';
 import { getModel } from './providers/google-provider.js';
 import { getDefaultScorers } from './scorers-config.js';
 
+/**
+ * How many steps an agent gets before the run is stopped.
+ *
+ * Mastra's own default is five, and a step is one turn of the tool loop — so an agent that
+ * needs a fifth tool call never gets to write its answer. The run does not fail when that
+ * happens: it ends on a tool-calls step, and what comes back is an empty string. Routing
+ * reports that as "finished without answering" (see `verticals/routing/controller.ts`), which
+ * is what the calendar was doing to every request that asked it for a week at a time — enough
+ * calls to enumerate the calendars, none left to answer with.
+ *
+ * Twenty is Mastra's own ceiling for its durable and network agents, and it is about the right
+ * shape here: enough for an agent to walk a household's worth of calendars, emails or devices
+ * and still speak, while remaining a bound on a model that has started looping.
+ */
+const MAX_AGENT_STEPS = 20;
+
 export async function createAgent(
   config: Omit<AgentConfig, 'model' | 'memory' | 'scorers'> & {
     model?: AgentConfig['model'];
@@ -18,9 +34,11 @@ export async function createAgent(
     model: getModel('gemini-flash-latest'),
     // Use default scorers for comprehensive evaluation
     scorers: getDefaultScorers(),
-    // Use temperature 0 for deterministic outputs across all agents
+    // Use temperature 0 for deterministic outputs across all agents, and give the tool loop
+    // room to finish -- see MAX_AGENT_STEPS.
     defaultOptions: {
       modelSettings: { temperature: 0 },
+      maxSteps: MAX_AGENT_STEPS,
     },
     instructions: `${config.instructions}\n\n# Additional context and guidelines\nNever ask questions. Always make best-guess assumptions.\nThe time is currently: \`${new Date().toString()}\`.`,
     inputProcessors: [],

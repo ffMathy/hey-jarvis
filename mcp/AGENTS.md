@@ -75,6 +75,23 @@ mcp/
 - **Multi-provider LLM support** via Vercel AI SDK (OpenAI, Anthropic, Google Gemini, Ollama)
 - **Structured output** generation with Zod validation
 - **Real-time streaming** responses with step-by-step visibility
+- **A twenty-step tool loop**, set by `createAgent` — see below
+
+#### The step budget
+
+A step is one turn of the tool loop, and Mastra's default is five. Running out is not an
+error: the run ends on a tool-calls step and the agent's answer is an empty string, which
+routing reports as "finished without answering". That is what the calendar did to every
+request asking for a week at a time — five steps was enough to list the calendars and read
+them, and left none to answer with.
+
+So `createAgent` sets `maxSteps` to twenty, which is Mastra's own ceiling for its durable and
+network agents: enough for an agent to walk a household's worth of calendars, emails or
+devices and still speak, while remaining a bound on a model that has started looping.
+`mastra/utils/agent-factory.spec.ts` pins it with a model that insists on six tool calls.
+
+An agent that needs more than twenty needs fewer round trips, not a bigger number — a tool
+that answers in one call rather than one per item.
 
 ### 🔧 Tool Ecosystem
 - **Model Context Protocol (MCP)** server integrations
