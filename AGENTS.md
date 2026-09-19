@@ -225,6 +225,31 @@ key, which is worth keeping: the key was previously spelled `changelog-types`,
 which the schema does not define, so the whole block was silently ignored and
 `refactor` and `docs` commits never released.
 
+### A pull request body can cost you the release
+
+A releasable type is not enough on its own. Merges here are squashes, and the
+squash commit's body is the pull request description — so the description is
+part of the commit message that Release Please parses, and it parses the whole
+message, not just the subject. One unparseable line and the commit is dropped
+from every path, silently: the log says `commit could not be parsed`, the run
+reports `Considering: 0 commits`, no release pull request is opened, and both
+`deploy` and `play` skip for want of a release.
+
+The trigger is narrow and easy to hit: a body line that *begins* with an
+identifier and an open parenthesis, with a second parenthesis before the first
+one closes. That is the shape of a conventional-commit header, so the parser
+reads the line as one, looks for a scope, and fails on the nested parenthesis.
+Ordinary code samples land on it. A body line opening with `fs.rmSync(path.join(…`
+is what stopped commit `703c2c2` from cutting a release at all, leaving the
+Skia fix it carried on `main` and out of every changelog.
+
+It is the *start* of the line that matters, so the ways out are all cheap:
+indent the block by one space, put it in a list item, or let any prose precede
+the call. A line that opens with a backtick still counts as opening with the
+call. Nothing catches this for you — `commitlint` runs in the `commit-msg`
+hook, and GitHub builds the squash commit server-side where no hook runs, so a
+body that breaks the parser passes every check and merges clean.
+
 ## 1Password Authentication
 
 This project uses **1Password CLI** for secure environment variable management.
