@@ -438,16 +438,150 @@ test('offers a field to type into when the browser refuses the microphone', asyn
   await expect(page.getByTestId('hologram')).toBeVisible();
 });
 
-test('keeps the screen bare when the microphone is there to be used', async ({ page }) => {
+test('offers the same field beside a microphone that works', async ({ page }) => {
+  const asked: string[] = [];
   await page.route(CONVERSATION_TOKEN_URL, async (route: Route) => {
+    asked.push('token');
     await answerTokenRequest(route, 200, { token: 'a-webrtc-token', conversation_id: 'conv_1' });
+  });
+  await page.route(SIGNED_URL_URL, async (route: Route) => {
+    asked.push('signed-url');
+    await answerTokenRequest(route, 200, { signed_url: 'wss://api.elevenlabs.io/v1/convai/conversation' });
   });
 
   await page.goto('/');
   await configureElevenLabs(page);
 
-  // Typing is what you get instead of talking, never as well as it: the whole argument of this
-  // screen is that there is nothing on it, and a field nobody needs is something on it.
+  // Typing used to be what you got *instead* of talking, and only in a browser that had refused the
+  // microphone — which is the one session ElevenLabs is asked not to speak in, so Jarvis answered
+  // it in writing. He does not have to: `sendUserMessage` takes the same turn a spoken line would
+  // in an ordinary session, and comes back spoken. So the field is here as well as the microphone.
+  await expect(page.getByTestId('typed-message')).toBeVisible();
+
+  // And this is still an ordinary voice conversation, which is the whole point of the field being
+  // here: a token for a WebRTC room, never the signed URL a text-only session runs on. Asking for
+  // the latter would mean the screen had quietly made this a written conversation after all.
+  await expect.poll(() => asked).toEqual(['token']);
+
+  // The sphere is still the screen. A field appearing under it must not cost the drawing.
   await expect(page.getByTestId('hologram')).toBeVisible();
+});
+
+/**
+ * Plays ElevenLabs' side of a text-only conversation, so a reply can be seen arriving.
+ *
+ * **Every other test in this file closes the socket**, which is right for them — they are about
+ * what the app sends, and a real session needs a real key and real quota. It is also why nothing
+ * here ever saw an *answer*, and why the fallback could ship unable to show one: the field was
+ * asserted visible, the conversation was asserted dialled correctly, and the half where Jarvis
+ * says something back had no coverage at all.
+ *
+ * Two frames are the whole protocol needed. The SDK opens the socket, sends its overrides, and
+ * waits for `conversation_initiation_metadata` before it reports `connected`; after that an
+ * `agent_response` is what a written reply looks like on the wire. Registered after
+ * `blockExternalRequests`, so it wins — Playwright tries the most recently added route first.
+ */
+async function answerAsJarvis(page: Page, replies: string[]): Promise<string[]> {
+  const heard: string[] = [];
+
+  await page.routeWebSocket(/convai\/conversation/, (webSocket) => {
+    webSocket.onMessage((frame: string | Buffer) => {
+      const event = JSON.parse(String(frame));
+
+      if (event.type === 'conversation_initiation_client_data') {
+        webSocket.send(
+          JSON.stringify({
+            type: 'conversation_initiation_metadata',
+            conversation_initiation_metadata_event: {
+              conversation_id: 'conv_1',
+              agent_output_audio_format: 'pcm_16000',
+              user_input_audio_format: 'pcm_16000',
+            },
+          }),
+        );
+        return;
+      }
+
+      if (event.type !== 'user_message') {
+        return;
+      }
+
+      // One answer per line, in order, and silence once they run out — which is what lets a test
+      // watch the screen clear on a question Jarvis has not answered yet. An agent that replied to
+      // everything would put the next answer up before the assertion could see it gone.
+      const reply = replies[heard.length];
+      heard.push(event.text);
+      if (reply === undefined) {
+        return;
+      }
+
+      webSocket.send(
+        JSON.stringify({
+          type: 'agent_response',
+          agent_response_event: { agent_response: reply, event_id: heard.length },
+        }),
+      );
+    });
+  });
+
+  return heard;
+}
+
+test('shows what Jarvis writes back when there is no voice to say it in', async ({ page }) => {
+  await refuseMicrophone(page);
+  await page.route(SIGNED_URL_URL, async (route: Route) => {
+    await answerTokenRequest(route, 200, {
+      signed_url: 'wss://api.elevenlabs.io/v1/convai/conversation?agent_id=x&conversation_signature=y',
+    });
+  });
+  // One answer, so the second question below is one he has not answered yet.
+  const heard = await answerAsJarvis(page, ['Good evening.']);
+
+  await page.goto('/');
+  await configureElevenLabs(page);
+
+  // The field only takes input once the session is up, so this is the handshake above having
+  // worked. `toBeEditable` rather than `toBeEnabled`: react-native-web turns `editable={false}`
+  // into `readOnly`, which leaves the element enabled and would make the check vacuous.
+  const field = page.getByTestId('typed-message');
+  await expect(field).toBeEditable();
+
+  await field.fill('Are the lights on?');
+  await field.press('Enter');
+
+  // It really left the app — which no test checked before, and is the half that Enter has to do.
+  await expect.poll(() => heard).toEqual(['Are the lights on?']);
+
+  // **And his answer is on the screen.** Until this existed, the reply arrived over the socket and
+  // nothing rendered it: you could type into this conversation for ever and never see a word back.
+  await expect(page.getByTestId('written-reply')).toContainText('Good evening.');
+
+  // The field keeps focus, so the next line is typed rather than clicked-then-typed. On web that
+  // takes `blurOnSubmit`, since react-native-web 0.21.2 does not know `submitBehavior` at all.
+  await expect(field).toBeFocused();
+  await expect(field).toHaveValue('');
+
+  // Asking again clears the old answer rather than leaving it under the new question, where it
+  // would read as a reply to it. Done when the line is sent rather than when a message comes back,
+  // because a text-only session runs no ASR and may never echo one.
+  await field.fill('And the kitchen?');
+  await field.press('Enter');
+  await expect.poll(() => heard).toEqual(['Are the lights on?', 'And the kitchen?']);
+  await expect(page.getByTestId('written-reply')).toHaveCount(0);
+});
+
+test('says nothing to type into when no conversation was opened at all', async ({ page }) => {
+  await page.route(CONVERSATION_TOKEN_URL, async (route: Route) => {
+    await answerTokenRequest(route, 401, { detail: { status: 'invalid_api_key' } });
+  });
+
+  await page.goto('/');
+  await configureElevenLabs(page);
+
+  // A field is somewhere to write to Jarvis, so it belongs to a conversation rather than to the
+  // screen: a `start` that never got as far as a session has none to offer, and the line saying
+  // why is the whole answer. This is also the phone's refused microphone, which stops in the same
+  // place — a browser is simply the only surface these tests can press it on.
+  await expect(page.getByTestId('conversation-problem')).toBeVisible();
   await expect(page.getByTestId('typed-message')).toHaveCount(0);
 });

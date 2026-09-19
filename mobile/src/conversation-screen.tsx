@@ -21,10 +21,13 @@ import { useJarvisVoice } from './jarvis-voice';
 import { requestMicrophoneAccess } from './microphone-permission';
 import { usePreferredHeadset } from './preferred-microphone';
 import { useQueuedAudio } from './queued-audio';
+import { useSimulatedVoice } from './simulated-voice';
 import { useSparkDensity } from './spark-density';
 import { QUIETEST_SPEECH_HERE } from './speech-floor';
 import { theme } from './theme';
 import { TypedMessageField } from './typed-message-field';
+import { afterMessage, SAYING_NOTHING } from './written-reply';
+import { WrittenReplyLine } from './written-reply-line';
 
 interface ConversationScreenProps {
   settings: ElevenLabsSettings;
@@ -72,16 +75,38 @@ const GIVE_UP_CONNECTING_AFTER_MS = 20_000;
  * who is waiting for you. He fades, the drawing stops, and on a phone the assistant's window goes
  * with him — see the effects below `start`.
  *
- * The one thing that does put something on the screen is a browser with no microphone, which gets a
- * field to type into instead — see `typed-message-field.tsx` and the note in `start`. It is the
- * exception that keeps the rule: there is still nothing to read, only somewhere to write.
+ * The one thing that does put something on the screen is a field to type into, under him, wherever
+ * there is a conversation to type into — see `typed-message-field.tsx`. It is the exception that
+ * keeps the rule: there is still nothing to read, only somewhere to write.
+ *
+ * **It used to be a browser's consolation prize for a refused microphone, and Jarvis answered it in
+ * writing.** That is because the only session it ever appeared in was the text-only one, which is
+ * the one mode where ElevenLabs is asked not to speak. Typing into an ordinary voice session is
+ * nothing of the sort: `sendUserMessage` is on the conversation rather than on the text half of it,
+ * so a typed line takes the same turn a spoken one would and comes back *spoken*, with the sphere
+ * following his voice exactly as it does when you talk to him. So the field is on both platforms
+ * now, and the only conversation he still writes back in is the one with no microphone behind it.
+ *
+ * **That one now shows what he wrote**, which it never did. His reply arrived over the socket and
+ * nothing rendered it, so typing into the fallback sent the line, got an answer and displayed
+ * nothing at all — a conversation you could talk into and never hear back from. `written-reply.ts`
+ * keeps the last thing he said and `WrittenReplyLine` puts it above the field. It is the one screen
+ * where there is something to read, because it is the one where there is nothing to listen to.
+ *
+ * **And he delivers it.** With no audio the sphere had nothing to follow and idled through the
+ * whole exchange, which is an assistant answering you while looking exactly like one who has not
+ * heard you. For as long as an answer is being delivered the drawing is pointed at the simulated
+ * voice sample mode uses — see the voice below. Only ever in this session: where there is a real
+ * voice, overruling it with a clock would be a lie about something the screen can actually see.
  *
  * Settings are still reachable, and how depends on where this is running. On a phone it is a long
- * press anywhere, because this screen is the assistant and an assistant with a link on it is not
- * one. In a browser it is a plain link, because a browser is not an assistant — it is where this is
- * developed and demonstrated, it already differs in bigger ways (sample mode has no sheet there),
- * and react-native-web does not raise `onLongPress` for a held mouse at all, so the gesture would
- * be a door that only looks like one.
+ * press anywhere the field is not: a `TextInput` keeps its own long press for selecting text, which
+ * is worth more there than a second way into settings, and everything around it is still most of
+ * the screen. A long press rather than a link, because this screen is the assistant and an
+ * assistant with a link on it is not one. In a browser it is a plain link, because a browser is not
+ * an assistant — it is where this is developed and demonstrated, it already differs in bigger ways
+ * (sample mode has no sheet there), and react-native-web does not raise `onLongPress` for a held
+ * mouse at all, so the gesture would be a door that only looks like one.
  *
  * The particle count is the phone's own, as sample mode's has been for a while and this screen's
  * never was: see `spark-density.ts`. It drew a fixed number on every phone, which on a fast one was
@@ -90,7 +115,7 @@ const GIVE_UP_CONNECTING_AFTER_MS = 20_000;
 export function ConversationScreen({ settings, onEditSettings }: ConversationScreenProps) {
   const { startSession, sendUserMessage } = useConversationControls();
   const { status } = useConversationStatus();
-  const voice = useJarvisVoice();
+  const liveVoice = useJarvisVoice();
   const hologramSize = useWholeScreenHologramSize();
   const { frameRate, buildMilliseconds, particleShare, provenShare, startingShare } = useSparkDensity();
   // Onto the AirPods, if there are any. Only once the call is up, because the list of routes is
@@ -103,9 +128,42 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
 
   const [problem, setProblem] = useState<string | undefined>(undefined);
   const [isStarting, setIsStarting] = useState(false);
-  // Set when the conversation opened without a microphone, which is the only thing that puts a
-  // text field on this screen. See `start` below.
-  const [typingInstead, setTypingInstead] = useState(false);
+  // Set once a conversation has actually been opened, which is what puts the text field on this
+  // screen — either kind of conversation, since both take a typed line. It is not the same question
+  // as whether one is *connected*: a session that opened and then dropped still has a field, saying
+  // so, which is how a browser reports an ElevenLabs it could not finish reaching. What has no
+  // field is a `start` that never got as far as a session at all — a phone with the microphone
+  // refused, which says that in one line and is done. See `start` below.
+  const [canType, setCanType] = useState(false);
+  /**
+   * The last thing Jarvis said, on the one conversation where he says it in writing.
+   *
+   * Only ever set from the text-only session — see `written-reply.ts`. In a voice conversation his
+   * answer is his voice, and putting it on screen as well would be a transcript under a sphere
+   * drawn precisely so there would not have to be one.
+   */
+  const [writtenReply, setWrittenReply] = useState(SAYING_NOTHING);
+  const rememberWhatHeSaid = useCallback((incoming: { message: string; role: string }) => {
+    setWrittenReply((reply) => afterMessage(reply, incoming, Date.now()));
+  }, []);
+  /**
+   * Sends what was typed, and forgets the answer to the last thing.
+   *
+   * **The clearing is done here rather than left to the message coming back**, because in a
+   * text-only session it does not come back. `onMessage` reports a user line from a
+   * `user_transcript`, which is what ASR produces — and a conversation held as text runs no ASR,
+   * so a line you typed may never be echoed at all. Left to that, a stale answer would sit under
+   * the question you just asked for as long as Jarvis took to answer it, reading as his reply to
+   * it. `afterMessage` still handles a user line for the session that does echo one; this is what
+   * makes the screen right in the session that does not.
+   */
+  const sendTypedMessage = useCallback(
+    (message: string) => {
+      setWrittenReply(SAYING_NOTHING);
+      sendUserMessage(message);
+    },
+    [sendUserMessage],
+  );
   /**
    * When to stop waiting for the conversation to open, or `undefined` once nothing is waited for.
    *
@@ -114,6 +172,47 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
    * rather than starting the twenty seconds again.
    */
   const [connectingUntil, setConnectingUntil] = useState<number | undefined>(undefined);
+
+  /**
+   * Whether Jarvis is still delivering his written answer.
+   *
+   * A boolean derived from the moment rather than the moment itself, because what reads it is a
+   * hook and not the drawing: the sphere is handed one voice or the other, and swapping them is a
+   * render. See `written-reply.ts` for where the moment comes from, and the voice below for what
+   * is done with it.
+   */
+  const [readingAloud, setReadingAloud] = useState(false);
+  useEffect(() => {
+    const leftToSay = writtenReply.readingUntil - Date.now();
+    if (leftToSay <= 0) {
+      setReadingAloud(false);
+      return;
+    }
+    setReadingAloud(true);
+    const finished = setTimeout(() => setReadingAloud(false), leftToSay);
+    return () => clearTimeout(finished);
+  }, [writtenReply]);
+
+  /**
+   * The voice the sphere follows: his own, or one made up when there is none to follow.
+   *
+   * **A text-only conversation carries no audio at all**, so `liveVoice` reads silence throughout
+   * and the sphere idled through the entire exchange — Jarvis answering you while looking exactly
+   * like an assistant who had not heard you. For as long as he is delivering a written answer the
+   * drawing is pointed at the same simulated voice sample mode uses, which is a spectrum built
+   * from the clock and goes through every step a real one does: the fold into bands, the easing,
+   * the agitation envelope, the chip bursts. Nothing downstream knows the difference, which is the
+   * whole reason that voice is written as a spectrum rather than as a flag on the drawing.
+   *
+   * **It is a fiction, and only ever where there is nothing to be honest about.** The words are
+   * really his; only the delivery is invented, and it is invented only in the session ElevenLabs
+   * was asked not to speak in. A conversation with a voice never reaches this: `readingAloud` is
+   * set from `onMessage`, which is wired on the text-only session alone, so the sphere goes on
+   * following his real voice everywhere else — where it would be wrong to overrule it with a
+   * clock.
+   */
+  const simulatedVoice = useSimulatedVoice(readingAloud ? 'speaking' : undefined);
+  const voice = readingAloud ? simulatedVoice : liveVoice;
 
   const launchUrl = Linking.useURL();
 
@@ -172,6 +271,10 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
       // Both halves are minted here rather than at launch, and neither is kept: a conversation
       // token and a signed URL are short-lived, and one fetched when the app opened may already be
       // dead by the time it is used.
+      // **A typed line into this session is answered out loud.** `sendUserMessage` belongs to the
+      // conversation rather than to the text-only flavour of it, so what the keyboard sends takes
+      // exactly the turn the microphone would have: he speaks the reply, and the sphere follows it,
+      // because nothing downstream of here knows how the turn was started.
       if (canHear) {
         const { token } = await requestConversationToken({ settings, participantName: PHONE_PARTICIPANT_NAME });
         startSession({
@@ -183,10 +286,12 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
           ...playbackHandlers,
         });
       } else {
-        // **This is what makes a conversation possible with no microphone at all.** ElevenLabs runs
-        // the session as text on both sides: nothing is captured, and the reply comes back written
-        // rather than spoken. That second half is the cost — with no speech to track, the sphere
-        // idles rather than answering — so it is only ever asked for when there is no alternative.
+        // **This is what makes a conversation possible with no microphone at all**, and the one
+        // place Jarvis still answers in writing. ElevenLabs runs the session as text on both sides:
+        // nothing is captured, and the reply comes back written rather than spoken. That second
+        // half is the cost — with no speech to track, the sphere idles rather than answering — so
+        // it is only ever asked for when there is no alternative, which since the field appears
+        // beside a live microphone too means exactly one case: a browser that refused one.
         // He still visibly thinks, because a tool call is reported over the same channel and
         // `useToolActivity` does not care how the conversation is being held.
         //
@@ -201,16 +306,19 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
           textOnly: true,
           onError: reportProblem,
           onDisconnect: reportEnding,
+          // The only place this is asked for, because it is the only place there is anything to
+          // read: his reply arrives written here and as audio everywhere else.
+          onMessage: rememberWhatHeSaid,
           ...toolHandlers,
         });
       }
-      setTypingInstead(!canHear);
+      setCanType(true);
     } catch (error: unknown) {
       reportProblem(error instanceof Error ? error.message : 'Jarvis could not be reached.');
     } finally {
       setIsStarting(false);
     }
-  }, [settings, startSession, toolHandlers, playbackHandlers, reportProblem, reportEnding]);
+  }, [settings, startSession, toolHandlers, playbackHandlers, reportProblem, reportEnding, rememberWhatHeSaid]);
 
   /**
    * Gives up on a conversation that is taking too long to open, and says so.
@@ -369,16 +477,28 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
       ) : null}
 
       {/*
-        The way in when there is no microphone. Only ever rendered in a browser, because `start`
-        only ever opens a text conversation there — a phone says so and stops instead.
+        The other way in, wherever there is a conversation to type into — which is both platforms,
+        and a live microphone as readily as a refused one. Only a `start` that never opened a
+        session at all has none, and on a phone that is the refused microphone, which the line above
+        has already explained.
 
         It leaves with him rather than before him, so the screen empties in one movement. A field
         left behind on a conversation that has ended is somewhere to type that nothing is listening
         to, which is worse than no field at all.
       */}
-      {typingInstead && !gone ? (
+      {/*
+        What he said, when saying it is not something he can do out loud. Never set outside the
+        text-only session, so this is absent on every conversation that has a voice — which is the
+        screen as designed, and why this is gated on the reply itself rather than on the platform.
+
+        It goes when he goes, for the same reason the field does: an answer left on screen after
+        the conversation carrying it has ended is the last thing he ever said, kept for ever.
+      */}
+      {writtenReply.shown && !gone ? <WrittenReplyLine reply={writtenReply.shown} /> : null}
+
+      {canType && !gone ? (
         <TypedMessageField
-          onSend={sendUserMessage}
+          onSend={sendTypedMessage}
           enabled={status === 'connected'}
           opening={connectingUntil !== undefined}
         />

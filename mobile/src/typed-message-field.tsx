@@ -19,21 +19,37 @@ interface TypedMessageFieldProps {
 }
 
 /**
- * Typing to Jarvis, for when talking to him is not an option.
+ * Typing to Jarvis, for when talking to him is not what you want.
  *
- * This is what the browser falls back to when the microphone is refused — see the note in
- * `conversation-screen.tsx` on why that is a fallback rather than a failure. It is a debugging
- * affordance first: a conversation you can drive from the keyboard is one you can hold in an open
- * office, in a call, or on a machine whose microphone is busy, and one whose input is repeatable
- * from one run to the next in a way that speaking never is.
+ * **He answers out loud.** A typed line goes through `sendUserMessage`, which belongs to the
+ * conversation and not to the text-only flavour of it, so in an ordinary session it takes exactly
+ * the turn a spoken one would: he speaks the reply and the sphere follows his voice. The one
+ * conversation he still writes back in is the text-only one a browser falls back to when the
+ * microphone is refused, because that session is the one where ElevenLabs was asked not to speak.
+ *
+ * Which is why this is on both platforms rather than only where the microphone failed. A
+ * conversation you can drive from the keyboard is one you can hold in an open office, in a call, or
+ * on a phone whose microphone is busy — and one whose input is repeatable from one run to the next
+ * in a way that speaking never is, which is what makes it a debugging affordance as well.
+ *
+ * The microphone is left listening while it is on screen. Muting it would be a second, invisible
+ * mode on a screen whose whole argument is that it has none: somebody who types a line and then
+ * says the next one out loud would be talking to nothing, with no way to tell.
  *
  * Enter sends, which is the whole interaction. There is deliberately no send button: a button would
  * be a second thing to look at on a screen whose entire argument is that it has nothing on it, and
  * anyone typing to an assistant is already holding the key that means "go".
  *
- * The field keeps focus after sending (`submitBehavior="submit"`), because the thing you almost
- * always want next is to type again, and a field that blurs after every line turns a conversation
- * into a series of clicks.
+ * The field keeps focus after sending, because the thing you almost always want next is to type
+ * again, and a field that blurs after every line turns a conversation into a series of clicks.
+ *
+ * **That takes both `submitBehavior` and `blurOnSubmit`, one for each platform.** `submitBehavior`
+ * replaced `blurOnSubmit` in React Native, and react-native-web 0.21.2 has not followed: its
+ * `TextInput` reads only `blurOnSubmit` and ignores `submitBehavior` entirely, so on web the field
+ * blurred after every line despite the prop that exists to stop it. React Native 0.86 prefers
+ * `submitBehavior` when it is set and falls back to `blurOnSubmit` when it is not, so sending both
+ * is not a conflict: each platform reads the one it understands. Enter still submits either way —
+ * web gates that on `blurOnSubmit || !multiline`, and this field is not multiline.
  */
 export function TypedMessageField({ onSend, enabled, opening }: TypedMessageFieldProps) {
   const [draft, setDraft] = useState('');
@@ -57,6 +73,7 @@ export function TypedMessageField({ onSend, enabled, opening }: TypedMessageFiel
       onChangeText={setDraft}
       onSubmitEditing={send}
       submitBehavior="submit"
+      blurOnSubmit={false}
       editable={enabled}
       placeholder={enabled ? 'Type to Jarvis' : opening ? 'Connecting…' : 'Not connected'}
       placeholderTextColor={theme.colors.mutedText}
