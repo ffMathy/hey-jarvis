@@ -625,6 +625,16 @@ until then the deployed agent still enforces whatever it was last given.
 The closing report recaps every result, including ones earlier polls already relayed, so a
 response dropped on the way cannot lose an answer for good.
 
+**One call per turn, carrying all of it:**
+`userQuery` takes everything the user asked for in that turn, and the planner writes a task per
+part with the independent ones running side by side. A real conversation had the agent split
+"what about my calendar and my email this week?" into two routing calls — calendar planned, run,
+polled and reported, and only then the email — so the second answer arrived a whole round of
+polling late for no gain. The cause was the agent prompt's "every request gets its own call",
+read as being about the things inside one turn rather than about successive turns. The prompt now
+separates the two rules, and the `userQuery` description says it as well, since that description
+is what the voice model reads when it decides what to put in the field.
+
 **Who says "I'm on it":**
 ElevenLabs, not the instructions. `routePromptWorkflow` has pre-tool speech set to **Force** in
 its tool settings, so the agent speaks before the call is made — earlier than any instruction in

@@ -33,7 +33,19 @@ const inputSchema = z.object({
   // a lasagna recipe -- which meant a caller that forgot the field did not get an error but a
   // stranger's errand, planned and run in full. The field is what the tool is for, so it is
   // required.
-  userQuery: z.string().describe("The user's routing query"),
+  // **Everything the user asked for, in one call.** A request naming two things went out as two
+  // calls, one after the other: the calendar was planned, run, polled and reported, and only then
+  // did the email start — so the second answer arrived a whole round later than it needed to, and
+  // the caller heard the request treated as two errands rather than one. Nothing downstream wanted
+  // that. The planner reads this string and writes a task per part, with the independent ones
+  // running side by side (see `plannerInstructions`), so splitting it here throws that away and
+  // buys nothing. The description is where this has to be said, because it is what the voice model
+  // reads when it decides what to put in the field.
+  userQuery: z
+    .string()
+    .describe(
+      'Everything the user asked for in this turn, in one call. If they asked for two things — their calendar and their email, say — both belong in this one string: the plan splits the work itself and runs the independent parts at the same time, so a request sent in pieces is answered in pieces and later.',
+    ),
   async: z
     .boolean()
     .optional()
@@ -157,6 +169,9 @@ const ALL_TASKS_COMPLETED_INSTRUCTIONS =
   'send it through routePromptWorkflow exactly as you did this one, however small it sounds and ' +
   'however many times you have already done it. Answering a later request from ' +
   'memory, or promising to look and then calling nothing, leaves him with nothing at all. ' +
+  'Anything further means something he says next, not a part of what he already asked that you ' +
+  'left out of this request — if he asked for two things, both should have gone out together, and ' +
+  'routing the second one now is a round trip he should never have had to wait through. ' +
   CONVERSATION_CONTROL_EXCEPTION;
 
 function moreToComeInstructions(): string {
