@@ -21,11 +21,12 @@ import { useJarvisVoice } from './jarvis-voice';
 import { requestMicrophoneAccess } from './microphone-permission';
 import { usePreferredHeadset } from './preferred-microphone';
 import { useQueuedAudio } from './queued-audio';
+import { useSimulatedVoice } from './simulated-voice';
 import { useSparkDensity } from './spark-density';
 import { QUIETEST_SPEECH_HERE } from './speech-floor';
 import { theme } from './theme';
 import { TypedMessageField } from './typed-message-field';
-import { afterMessage } from './written-reply';
+import { afterMessage, SAYING_NOTHING } from './written-reply';
 import { WrittenReplyLine } from './written-reply-line';
 
 interface ConversationScreenProps {
@@ -92,6 +93,12 @@ const GIVE_UP_CONNECTING_AFTER_MS = 20_000;
  * keeps the last thing he said and `WrittenReplyLine` puts it above the field. It is the one screen
  * where there is something to read, because it is the one where there is nothing to listen to.
  *
+ * **And he delivers it.** With no audio the sphere had nothing to follow and idled through the
+ * whole exchange, which is an assistant answering you while looking exactly like one who has not
+ * heard you. For as long as an answer is being delivered the drawing is pointed at the simulated
+ * voice sample mode uses — see the voice below. Only ever in this session: where there is a real
+ * voice, overruling it with a clock would be a lie about something the screen can actually see.
+ *
  * Settings are still reachable, and how depends on where this is running. On a phone it is a long
  * press anywhere the field is not: a `TextInput` keeps its own long press for selecting text, which
  * is worth more there than a second way into settings, and everything around it is still most of
@@ -108,7 +115,7 @@ const GIVE_UP_CONNECTING_AFTER_MS = 20_000;
 export function ConversationScreen({ settings, onEditSettings }: ConversationScreenProps) {
   const { startSession, sendUserMessage } = useConversationControls();
   const { status } = useConversationStatus();
-  const voice = useJarvisVoice();
+  const liveVoice = useJarvisVoice();
   const hologramSize = useWholeScreenHologramSize();
   const { frameRate, buildMilliseconds, particleShare, provenShare, startingShare } = useSparkDensity();
   // Onto the AirPods, if there are any. Only once the call is up, because the list of routes is
@@ -135,9 +142,9 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
    * answer is his voice, and putting it on screen as well would be a transcript under a sphere
    * drawn precisely so there would not have to be one.
    */
-  const [writtenReply, setWrittenReply] = useState<string | undefined>(undefined);
+  const [writtenReply, setWrittenReply] = useState(SAYING_NOTHING);
   const rememberWhatHeSaid = useCallback((incoming: { message: string; role: string }) => {
-    setWrittenReply((shown) => afterMessage(shown, incoming));
+    setWrittenReply((reply) => afterMessage(reply, incoming, Date.now()));
   }, []);
   /**
    * Sends what was typed, and forgets the answer to the last thing.
@@ -152,7 +159,7 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
    */
   const sendTypedMessage = useCallback(
     (message: string) => {
-      setWrittenReply(undefined);
+      setWrittenReply(SAYING_NOTHING);
       sendUserMessage(message);
     },
     [sendUserMessage],
@@ -165,6 +172,47 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
    * rather than starting the twenty seconds again.
    */
   const [connectingUntil, setConnectingUntil] = useState<number | undefined>(undefined);
+
+  /**
+   * Whether Jarvis is still delivering his written answer.
+   *
+   * A boolean derived from the moment rather than the moment itself, because what reads it is a
+   * hook and not the drawing: the sphere is handed one voice or the other, and swapping them is a
+   * render. See `written-reply.ts` for where the moment comes from, and the voice below for what
+   * is done with it.
+   */
+  const [readingAloud, setReadingAloud] = useState(false);
+  useEffect(() => {
+    const leftToSay = writtenReply.readingUntil - Date.now();
+    if (leftToSay <= 0) {
+      setReadingAloud(false);
+      return;
+    }
+    setReadingAloud(true);
+    const finished = setTimeout(() => setReadingAloud(false), leftToSay);
+    return () => clearTimeout(finished);
+  }, [writtenReply]);
+
+  /**
+   * The voice the sphere follows: his own, or one made up when there is none to follow.
+   *
+   * **A text-only conversation carries no audio at all**, so `liveVoice` reads silence throughout
+   * and the sphere idled through the entire exchange — Jarvis answering you while looking exactly
+   * like an assistant who had not heard you. For as long as he is delivering a written answer the
+   * drawing is pointed at the same simulated voice sample mode uses, which is a spectrum built
+   * from the clock and goes through every step a real one does: the fold into bands, the easing,
+   * the agitation envelope, the chip bursts. Nothing downstream knows the difference, which is the
+   * whole reason that voice is written as a spectrum rather than as a flag on the drawing.
+   *
+   * **It is a fiction, and only ever where there is nothing to be honest about.** The words are
+   * really his; only the delivery is invented, and it is invented only in the session ElevenLabs
+   * was asked not to speak in. A conversation with a voice never reaches this: `readingAloud` is
+   * set from `onMessage`, which is wired on the text-only session alone, so the sphere goes on
+   * following his real voice everywhere else — where it would be wrong to overrule it with a
+   * clock.
+   */
+  const simulatedVoice = useSimulatedVoice(readingAloud ? 'speaking' : undefined);
+  const voice = readingAloud ? simulatedVoice : liveVoice;
 
   const launchUrl = Linking.useURL();
 
@@ -446,7 +494,7 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
         It goes when he goes, for the same reason the field does: an answer left on screen after
         the conversation carrying it has ended is the last thing he ever said, kept for ever.
       */}
-      {writtenReply && !gone ? <WrittenReplyLine reply={writtenReply} /> : null}
+      {writtenReply.shown && !gone ? <WrittenReplyLine reply={writtenReply.shown} /> : null}
 
       {canType && !gone ? (
         <TypedMessageField
