@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.2.3](https://github.com/ffMathy/hey-jarvis/compare/root-v2.2.2...root-v2.2.3) (2026-09-19)
+
+
+### Bug Fixes
+
+* **agents:** give the tool loop room to answer ([#736](https://github.com/ffMathy/hey-jarvis/issues/736)) ([eba0e26](https://github.com/ffMathy/hey-jarvis/commit/eba0e261a2d8f478209af09d642a9973882920f6))
+* **mcp:** copy every workspace manifest into the image ([#737](https://github.com/ffMathy/hey-jarvis/issues/737)) ([6e80411](https://github.com/ffMathy/hey-jarvis/commit/6e80411209f5485f949c88be14d7023d95af7461))
+
 ## [2.2.2](https://github.com/ffMathy/hey-jarvis/compare/root-v2.2.1...root-v2.2.2) (2026-09-19)
 
 
