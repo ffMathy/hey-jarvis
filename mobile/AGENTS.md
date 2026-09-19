@@ -70,7 +70,7 @@ The agent on the other end is the same one `elevenlabs/` deploys, with the same 
 └── conversation/                 # `hologram/conversation`, the half that needs the ElevenLabs SDK
     ├── agent-voice.ts            # his voice as the SDK hears it — the whole voice on web and watch
     ├── sdk-voice-readers.ts      # the SDK's analysers, safe to call before a session exists
-    └── tool-activity.ts          # which tool calls are in flight, for the thinking state
+    └── tool-activity.ts          # which tool calls are in flight, and how long he keeps thinking after
 
 mobile/
 ├── app.config.ts                 # Expo config: package name, scheme, permissions, plugins
