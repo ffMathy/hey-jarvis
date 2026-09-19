@@ -1,6 +1,6 @@
 {
   "name": "elevenlabs",
-  "version": "0.17.2",
+  "version": "0.18.0",
   "type": "module",
   "scripts": {
     "typecheck": "tsgo --noEmit --project tsconfig.json",

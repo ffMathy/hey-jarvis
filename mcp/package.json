@@ -1,6 +1,6 @@
 {
   "name": "mcp",
-  "version": "2.2.2",
+  "version": "2.3.0",
   "type": "module",
   "scripts": {
     "typecheck": "tsgo --noEmit --project tsconfig.json",
