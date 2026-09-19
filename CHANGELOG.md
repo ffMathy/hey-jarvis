@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.4.0](https://github.com/ffMathy/hey-jarvis/compare/root-v2.3.0...root-v2.4.0) (2026-09-19)
+
+
+### Features
+
+* **workflows:** one call per request, longer polls, and a steadier sphere ([#743](https://github.com/ffMathy/hey-jarvis/issues/743)) ([c8a6d91](https://github.com/ffMathy/hey-jarvis/commit/c8a6d9168bebfefa92332a01dad267a5fd6041fb))
+
 ## [2.3.0](https://github.com/ffMathy/hey-jarvis/compare/root-v2.2.4...root-v2.3.0) (2026-09-19)
 
 

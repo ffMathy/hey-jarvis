@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.17.2...elevenlabs-v0.18.0) (2026-09-19)
+
+
+### Features
+
+* **workflows:** one call per request, longer polls, and a steadier sphere ([#743](https://github.com/ffMathy/hey-jarvis/issues/743)) ([c8a6d91](https://github.com/ffMathy/hey-jarvis/commit/c8a6d9168bebfefa92332a01dad267a5fd6041fb))
+
 ## [0.17.2](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.17.1...elevenlabs-v0.17.2) (2026-09-19)
 
 
