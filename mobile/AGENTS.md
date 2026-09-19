@@ -115,6 +115,8 @@ mobile/
     ├── queued-audio.ts           # dropping what a browser still has queued when he is cut off
     ├── conversation-life.ts      # whether a conversation is open, and whether one has ended
     ├── typed-message-field.tsx   # writing to Jarvis instead of talking, and he still answers aloud
+    ├── written-reply.ts          # the last thing he said, when he said it in writing …
+    ├── written-reply-line.tsx    # … and the one thing on this screen there is to read
     ├── theme.ts                  # the one place colours and spacing are defined
     ├── platform-contracts.ts     # the shapes the .web.ts pairs below must keep
     ├── key-value-store.ts        # keystore on Android …
@@ -275,6 +277,8 @@ Both values are also what the **watch** needs, and it is given them from here ra
 For each conversation the app asks `GET https://api.elevenlabs.io/v1/convai/conversation/token` for a WebRTC token for that agent, and the session runs on the token; the key itself is used for nothing else.
 
 **Except for a text-only conversation, which asks `GET /v1/convai/conversation/get-signed-url` instead and runs on a WebSocket.** That is the one case where the transport cannot be WebRTC: a text-only session publishes no audio, ElevenLabs' room waits for the client to publish some before it finishes coming up, and a conversation token can only be spent on a room. Dialled over WebRTC it therefore never connected *and never failed* — the screen sat on "Connecting…" indefinitely, which is what a browser with the microphone switched off used to show. Only a browser ever takes this branch: a phone with no microphone says so and stops, and `@elevenlabs/react-native` refuses a signed URL on a device outright.
+
+**That branch was write-only until it learned to show his answer.** A text-only session returns the reply as an `agent_response` over the socket and never as audio, and nothing in the app rendered it — no transcript, no `onMessage`, nothing. So a browser with the microphone refused could send a line, get an answer, and display absolutely nothing: a silent sphere and an empty screen, indistinguishable from a conversation that had failed. `written-reply.ts` keeps the last thing he said — the last, not a transcript, and cleared the moment you send again so a stale answer never sits under a fresh question — and `written-reply-line.tsx` puts it above the field. It is the only screen in the app with something to read on it, because it is the only one with nothing to listen to.
 
 **Typing to Jarvis is not that branch, and has not been since he started answering typed lines out loud.** The two were the same thing for as long as the field existed only where the microphone had been refused, and the confusion cost the feature its voice: `textOnly` is what makes ElevenLabs write the reply instead of speaking it, and that override was the only session the field ever appeared in. It is not needed to *send* text. `sendUserMessage` is on `BaseConversation` rather than on `TextConversation`, so a typed line into an ordinary WebRTC session takes exactly the turn a spoken one would — Jarvis speaks the reply, and the sphere follows his voice, because `jarvis-voice.ts` reads his audio track and `mode` and neither knows how the turn began. So the field is on both platforms now, beside a working microphone as readily as without one, and the text-only fallback is what is left when there is no microphone to hold a voice conversation with at all.
 

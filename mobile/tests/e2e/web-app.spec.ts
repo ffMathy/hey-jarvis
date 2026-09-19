@@ -467,6 +467,109 @@ test('offers the same field beside a microphone that works', async ({ page }) =>
   await expect(page.getByTestId('hologram')).toBeVisible();
 });
 
+/**
+ * Plays ElevenLabs' side of a text-only conversation, so a reply can be seen arriving.
+ *
+ * **Every other test in this file closes the socket**, which is right for them — they are about
+ * what the app sends, and a real session needs a real key and real quota. It is also why nothing
+ * here ever saw an *answer*, and why the fallback could ship unable to show one: the field was
+ * asserted visible, the conversation was asserted dialled correctly, and the half where Jarvis
+ * says something back had no coverage at all.
+ *
+ * Two frames are the whole protocol needed. The SDK opens the socket, sends its overrides, and
+ * waits for `conversation_initiation_metadata` before it reports `connected`; after that an
+ * `agent_response` is what a written reply looks like on the wire. Registered after
+ * `blockExternalRequests`, so it wins — Playwright tries the most recently added route first.
+ */
+async function answerAsJarvis(page: Page, replies: string[]): Promise<string[]> {
+  const heard: string[] = [];
+
+  await page.routeWebSocket(/convai\/conversation/, (webSocket) => {
+    webSocket.onMessage((frame: string | Buffer) => {
+      const event = JSON.parse(String(frame));
+
+      if (event.type === 'conversation_initiation_client_data') {
+        webSocket.send(
+          JSON.stringify({
+            type: 'conversation_initiation_metadata',
+            conversation_initiation_metadata_event: {
+              conversation_id: 'conv_1',
+              agent_output_audio_format: 'pcm_16000',
+              user_input_audio_format: 'pcm_16000',
+            },
+          }),
+        );
+        return;
+      }
+
+      if (event.type !== 'user_message') {
+        return;
+      }
+
+      // One answer per line, in order, and silence once they run out — which is what lets a test
+      // watch the screen clear on a question Jarvis has not answered yet. An agent that replied to
+      // everything would put the next answer up before the assertion could see it gone.
+      const reply = replies[heard.length];
+      heard.push(event.text);
+      if (reply === undefined) {
+        return;
+      }
+
+      webSocket.send(
+        JSON.stringify({
+          type: 'agent_response',
+          agent_response_event: { agent_response: reply, event_id: heard.length },
+        }),
+      );
+    });
+  });
+
+  return heard;
+}
+
+test('shows what Jarvis writes back when there is no voice to say it in', async ({ page }) => {
+  await refuseMicrophone(page);
+  await page.route(SIGNED_URL_URL, async (route: Route) => {
+    await answerTokenRequest(route, 200, {
+      signed_url: 'wss://api.elevenlabs.io/v1/convai/conversation?agent_id=x&conversation_signature=y',
+    });
+  });
+  // One answer, so the second question below is one he has not answered yet.
+  const heard = await answerAsJarvis(page, ['Good evening.']);
+
+  await page.goto('/');
+  await configureElevenLabs(page);
+
+  // The field only takes input once the session is up, so this is the handshake above having
+  // worked. `toBeEditable` rather than `toBeEnabled`: react-native-web turns `editable={false}`
+  // into `readOnly`, which leaves the element enabled and would make the check vacuous.
+  const field = page.getByTestId('typed-message');
+  await expect(field).toBeEditable();
+
+  await field.fill('Are the lights on?');
+  await field.press('Enter');
+
+  // It really left the app — which no test checked before, and is the half that Enter has to do.
+  await expect.poll(() => heard).toEqual(['Are the lights on?']);
+
+  // **And his answer is on the screen.** Until this existed, the reply arrived over the socket and
+  // nothing rendered it: you could type into this conversation for ever and never see a word back.
+  await expect(page.getByTestId('written-reply')).toContainText('Good evening.');
+
+  // The field keeps focus, so the next line is typed rather than clicked-then-typed. On web that
+  // takes `blurOnSubmit`, since react-native-web 0.21.2 does not know `submitBehavior` at all.
+  await expect(field).toBeFocused();
+  await expect(field).toHaveValue('');
+
+  // Asking again clears the old answer rather than leaving it under the new question, where it
+  // would read as a reply to it. Done when the line is sent rather than when a message comes back,
+  // because a text-only session runs no ASR and may never echo one.
+  await field.fill('And the kitchen?');
+  await field.press('Enter');
+  await expect.poll(() => heard).toEqual(['Are the lights on?', 'And the kitchen?']);
+  await expect(page.getByTestId('written-reply')).toHaveCount(0);
+});
+
 test('says nothing to type into when no conversation was opened at all', async ({ page }) => {
   await page.route(CONVERSATION_TOKEN_URL, async (route: Route) => {
     await answerTokenRequest(route, 401, { detail: { status: 'invalid_api_key' } });

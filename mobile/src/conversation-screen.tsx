@@ -25,6 +25,8 @@ import { useSparkDensity } from './spark-density';
 import { QUIETEST_SPEECH_HERE } from './speech-floor';
 import { theme } from './theme';
 import { TypedMessageField } from './typed-message-field';
+import { afterMessage } from './written-reply';
+import { WrittenReplyLine } from './written-reply-line';
 
 interface ConversationScreenProps {
   settings: ElevenLabsSettings;
@@ -84,6 +86,12 @@ const GIVE_UP_CONNECTING_AFTER_MS = 20_000;
  * following his voice exactly as it does when you talk to him. So the field is on both platforms
  * now, and the only conversation he still writes back in is the one with no microphone behind it.
  *
+ * **That one now shows what he wrote**, which it never did. His reply arrived over the socket and
+ * nothing rendered it, so typing into the fallback sent the line, got an answer and displayed
+ * nothing at all — a conversation you could talk into and never hear back from. `written-reply.ts`
+ * keeps the last thing he said and `WrittenReplyLine` puts it above the field. It is the one screen
+ * where there is something to read, because it is the one where there is nothing to listen to.
+ *
  * Settings are still reachable, and how depends on where this is running. On a phone it is a long
  * press anywhere the field is not: a `TextInput` keeps its own long press for selecting text, which
  * is worth more there than a second way into settings, and everything around it is still most of
@@ -120,6 +128,35 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
   // field is a `start` that never got as far as a session at all — a phone with the microphone
   // refused, which says that in one line and is done. See `start` below.
   const [canType, setCanType] = useState(false);
+  /**
+   * The last thing Jarvis said, on the one conversation where he says it in writing.
+   *
+   * Only ever set from the text-only session — see `written-reply.ts`. In a voice conversation his
+   * answer is his voice, and putting it on screen as well would be a transcript under a sphere
+   * drawn precisely so there would not have to be one.
+   */
+  const [writtenReply, setWrittenReply] = useState<string | undefined>(undefined);
+  const rememberWhatHeSaid = useCallback((incoming: { message: string; role: string }) => {
+    setWrittenReply((shown) => afterMessage(shown, incoming));
+  }, []);
+  /**
+   * Sends what was typed, and forgets the answer to the last thing.
+   *
+   * **The clearing is done here rather than left to the message coming back**, because in a
+   * text-only session it does not come back. `onMessage` reports a user line from a
+   * `user_transcript`, which is what ASR produces — and a conversation held as text runs no ASR,
+   * so a line you typed may never be echoed at all. Left to that, a stale answer would sit under
+   * the question you just asked for as long as Jarvis took to answer it, reading as his reply to
+   * it. `afterMessage` still handles a user line for the session that does echo one; this is what
+   * makes the screen right in the session that does not.
+   */
+  const sendTypedMessage = useCallback(
+    (message: string) => {
+      setWrittenReply(undefined);
+      sendUserMessage(message);
+    },
+    [sendUserMessage],
+  );
   /**
    * When to stop waiting for the conversation to open, or `undefined` once nothing is waited for.
    *
@@ -221,6 +258,9 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
           textOnly: true,
           onError: reportProblem,
           onDisconnect: reportEnding,
+          // The only place this is asked for, because it is the only place there is anything to
+          // read: his reply arrives written here and as audio everywhere else.
+          onMessage: rememberWhatHeSaid,
           ...toolHandlers,
         });
       }
@@ -230,7 +270,7 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
     } finally {
       setIsStarting(false);
     }
-  }, [settings, startSession, toolHandlers, playbackHandlers, reportProblem, reportEnding]);
+  }, [settings, startSession, toolHandlers, playbackHandlers, reportProblem, reportEnding, rememberWhatHeSaid]);
 
   /**
    * Gives up on a conversation that is taking too long to open, and says so.
@@ -398,9 +438,19 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
         left behind on a conversation that has ended is somewhere to type that nothing is listening
         to, which is worse than no field at all.
       */}
+      {/*
+        What he said, when saying it is not something he can do out loud. Never set outside the
+        text-only session, so this is absent on every conversation that has a voice — which is the
+        screen as designed, and why this is gated on the reply itself rather than on the platform.
+
+        It goes when he goes, for the same reason the field does: an answer left on screen after
+        the conversation carrying it has ended is the last thing he ever said, kept for ever.
+      */}
+      {writtenReply && !gone ? <WrittenReplyLine reply={writtenReply} /> : null}
+
       {canType && !gone ? (
         <TypedMessageField
-          onSend={sendUserMessage}
+          onSend={sendTypedMessage}
           enabled={status === 'connected'}
           opening={connectingUntil !== undefined}
         />

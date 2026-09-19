@@ -40,9 +40,16 @@ interface TypedMessageFieldProps {
  * be a second thing to look at on a screen whose entire argument is that it has nothing on it, and
  * anyone typing to an assistant is already holding the key that means "go".
  *
- * The field keeps focus after sending (`submitBehavior="submit"`), because the thing you almost
- * always want next is to type again, and a field that blurs after every line turns a conversation
- * into a series of clicks.
+ * The field keeps focus after sending, because the thing you almost always want next is to type
+ * again, and a field that blurs after every line turns a conversation into a series of clicks.
+ *
+ * **That takes both `submitBehavior` and `blurOnSubmit`, one for each platform.** `submitBehavior`
+ * replaced `blurOnSubmit` in React Native, and react-native-web 0.21.2 has not followed: its
+ * `TextInput` reads only `blurOnSubmit` and ignores `submitBehavior` entirely, so on web the field
+ * blurred after every line despite the prop that exists to stop it. React Native 0.86 prefers
+ * `submitBehavior` when it is set and falls back to `blurOnSubmit` when it is not, so sending both
+ * is not a conflict: each platform reads the one it understands. Enter still submits either way —
+ * web gates that on `blurOnSubmit || !multiline`, and this field is not multiline.
  */
 export function TypedMessageField({ onSend, enabled, opening }: TypedMessageFieldProps) {
   const [draft, setDraft] = useState('');
@@ -66,6 +73,7 @@ export function TypedMessageField({ onSend, enabled, opening }: TypedMessageFiel
       onChangeText={setDraft}
       onSubmitEditing={send}
       submitBehavior="submit"
+      blurOnSubmit={false}
       editable={enabled}
       placeholder={enabled ? 'Type to Jarvis' : opening ? 'Connecting…' : 'Not connected'}
       placeholderTextColor={theme.colors.mutedText}
