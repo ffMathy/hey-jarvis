@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.3.0](https://github.com/ffMathy/hey-jarvis/compare/root-v2.2.4...root-v2.3.0) (2026-09-19)
+
+
+### Features
+
+* **conversation:** let Jarvis answer a typed line out loud ([#741](https://github.com/ffMathy/hey-jarvis/issues/741)) ([efe4f85](https://github.com/ffMathy/hey-jarvis/commit/efe4f858343d90ce84dd377370642923215e9e85))
+
 ## [2.2.4](https://github.com/ffMathy/hey-jarvis/compare/root-v2.2.3...root-v2.2.4) (2026-09-19)
 
 
