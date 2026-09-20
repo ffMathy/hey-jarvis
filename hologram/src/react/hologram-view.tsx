@@ -210,6 +210,28 @@ const MINIMUM_FRAME_SECONDS = 1 / 128;
 const FRAME_RATE_OVER_SECONDS = 0.5;
 
 /**
+ * The most of a single frame that counts as *drawing*, when the rate is being measured.
+ *
+ * A frame rate is frames over the time they took, and a mean is destroyed by one outlier. When a
+ * phone stalls — a re-render rebuilding the drawing worklet, a collection, another app waking up —
+ * one gap can be two seconds long, and a window containing it reports half a frame a second: not
+ * because the drawing is expensive, but because for two of those seconds nothing was drawing at
+ * all. `density-control.ts` then has to defend itself against a reading that was never a
+ * measurement of anything it can change, and no amount of care there can put back information the
+ * measurement threw away.
+ *
+ * So a gap longer than this is counted as this. A fifth of a second is five frames a second, which
+ * is already far past anything the controller distinguishes — it treats everything below half the
+ * target as simply "too slow" — so nothing real is lost, and a freeze stops being reported as
+ * though it were the cost of the particles.
+ *
+ * **Only the measurement is capped.** `deltaSeconds` below is the real time that passed and stays
+ * that way, because that is what Jarvis moves by: shortening the clock would make him stutter
+ * through a gap instead of arriving where the wall clock says he should be.
+ */
+const LONGEST_FRAME_WORTH_MEASURING = 0.2;
+
+/**
  * How often the voice is read. The SDK's native processors refresh every 40 ms,
  * so reading faster only re-reads the same value; the UI thread eases between
  * readings every frame, which is where the smoothness comes from.
@@ -409,7 +431,7 @@ function JarvisHologramView({
       return;
     }
     drawn.value += 1;
-    measuring.value += deltaSeconds;
+    measuring.value += Math.min(deltaSeconds, LONGEST_FRAME_WORTH_MEASURING);
     if (measuring.value >= FRAME_RATE_OVER_SECONDS) {
       const measured = drawn.value / measuring.value;
       frameRate.value = measured;
