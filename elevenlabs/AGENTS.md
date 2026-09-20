@@ -103,8 +103,13 @@ The agent prompt in `src/assets/agent-prompt.md` defines:
 - **No Follow-ups**: Make assumptions rather than asking clarifying questions
 - **Conciseness**: Brief, witty acknowledgements (5-15 words, max 20)
 - **When to reach for a tool**: answer outright or route, and never both
-- **Analysis Mode**: the bare word "analysis" drops the persona for a flat,
-  robot-like step-by-step readout of the conversation and the tool calls in it
+- **Analysis Mode**: any phrase *beginning* with "analysis" drops the persona for
+  a flat, robot-like step-by-step readout. Whatever follows the word is the focus,
+  and it decides where the readout comes from: a focus on this call is answered
+  from the conversation and never routed, while a focus the conversation cannot
+  answer — why something failed elsewhere, whether the scheduled checks are still
+  running — goes through `routePromptWorkflow` to the `reflection` agent, which
+  reads Mastra's own errors and failed runs (see `mcp/AGENTS.md`)
 - **Ending the call**: a closing line in character, then the `end_call` tool — a
   written "[end_call invoked]" is a stage direction, not a call, and leaves the
   line open
