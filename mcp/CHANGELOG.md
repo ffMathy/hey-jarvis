@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.4.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.3.0...mcp-v2.4.0) (2026-09-20)
+
+
+### Features
+
+* **mcp:** read Jarvis's own diagnostics, and focus analysis mode ([#745](https://github.com/ffMathy/hey-jarvis/issues/745)) ([3e949f9](https://github.com/ffMathy/hey-jarvis/commit/3e949f9f2c30b08949c20eef2e04d2ff939735cc))
+
 ## [2.3.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.2.2...mcp-v2.3.0) (2026-09-19)
 
 
