@@ -55,8 +55,13 @@ mcp/
 │   │   │   ├── contacts.ts
 │   │   │   ├── tools.ts
 │   │   │   └── index.ts
-│   │   └── presence/        # Where the user is (shortcuts only)
-│   │       ├── shortcuts.ts
+│   │   ├── presence/        # Where the user is (shortcuts only)
+│   │   │   ├── shortcuts.ts
+│   │   │   └── index.ts
+│   │   └── reflection/      # The assistant's own errors and failed runs
+│   │       ├── agent.ts
+│   │       ├── reports.ts   # Pure readers over Mastra's stored records
+│   │       ├── tools.ts
 │   │       └── index.ts
 │   ├── processors/      # Output processors for post-processing
 │   │   ├── error-reporting.ts
@@ -533,9 +538,58 @@ Only stops when 100% certain about:
 - "What are the expected inputs and outputs?"
 - "Are there any existing patterns to follow?"
 
+### Reflection Agent
+Answers questions about the assistant itself rather than about the world — what failed, when, in
+which agent, and why. It is the only agent whose tools read Mastra's own records, and the only one
+that can explain a request the rest of the system got wrong.
+
+It reads three things, because a failure lands in a different place depending on what kind it was:
+
+- **Traces.** Every agent run, tool call and model call is sampled (`SamplingStrategyType.ALWAYS`)
+  and kept for 14 days, each span carrying its own error. This is where a request that failed lives.
+- **Workflow runs.** Kept for 30 days, each with the snapshot naming the step it stopped at. A
+  scheduled email check that has failed hourly since last night is here and in no trace anyone would
+  think to look for, because nobody asked for it.
+- **The runtime diagnostics ring** (`utils/diagnostics.ts`). Everything Mastra reports about *itself*
+  — a scheduler tick that threw, a run retired at boot, an exception an agent handled and tracked —
+  goes to a logger and, with no telemetry backend attached, nowhere else. None of it is a run, so
+  none of it is in a trace. `createLogger` keeps the last 200 warnings and errors in memory so
+  something inside the system can read them back. It empties on restart, and the tool says so in its
+  own output rather than letting an empty list read as a clean bill of health.
+
+**Available Tools** (`reflection/tools.ts`):
+- **`getSystemHealth`**: how many runs there were in a window, how many failed, and which agents they
+  were in. The starting point for any broad question.
+- **`listRecentFailures`**: the failures themselves, each with a traceId. Filtered on `hasChildError`
+  rather than on the trace's own status — a run fails from the inside, so the tool call that broke
+  carries the error while the agent span above it may well have recovered and finished clean.
+  Matching on the root's status alone misses exactly the failures worth asking about.
+- **`describeTrace`**: one trace span by span, with the failing spans ordered innermost first. That
+  ordering is the answer to "why": the deepest failure is the thing that actually broke, and every
+  span above it is a wrapper reporting that something below it did.
+- **`listWorkflowRuns`**: recent runs with their status and, for the failed ones, which step stopped
+  them. A `foreach` step reports each failing iteration separately, because "the step failed" and
+  "the step failed on two of forty items" are different answers.
+- **`listRuntimeErrors`**: the diagnostics ring, filterable by level.
+
+**Nothing here writes.** A vertical that could clear its own error log would be the last thing worth
+trusting about an error.
+
+The reporting logic lives in `reflection/reports.ts` as pure functions over storage records, so
+which span is named as the cause and what its error reads as are tested without a database, a model
+or a running server (`reports.spec.ts`). `errorSummary` joins an error to its `cause` rather than
+picking one: a routing delegation arrives wrapped in a `MastraError` whose message names only the
+agent — `[Agent:RoutingSupervisor] - Failed agent tool execution for calendar` — with the real
+reason kept underneath it, and either half alone has been the one that was not useful.
+
+**Reached by voice through Analysis Mode.** `elevenlabs/src/assets/agent-prompt.md` sends any phrase
+beginning with "analysis" into a flat, numbered readout, and a focus that the live conversation
+cannot answer — why something failed elsewhere, whether the scheduled checks are running — is routed
+here rather than guessed at.
+
 ### Routing Planner Agent
 Turns a voice request into a **plan** for the specialized agents to run:
-- **The ten public agents are its catalogue**, baked into its instructions at boot
+- **The eleven public agents are its catalogue**, baked into its instructions at boot
 - **No tools of its own**: it writes a plan, it never runs one and never sees a result
 - **No memory**: planning one request has nothing to recall from the last
 
@@ -2304,7 +2358,7 @@ Before considering a vertical complete:
 - [ ] All files use proper naming patterns  
 - [ ] Exports are properly structured
 - [ ] Agent responsibilities are clear and focused
-- [ ] Tools use kebab-case IDs
+- [ ] Tool IDs are camelCase, identical to the variable and the export key
 - [ ] Workflows match business processes
 - [ ] Main index files are updated
 - [ ] Build passes: `bunx turbo build --filter=mcp`
@@ -2395,28 +2449,40 @@ This project follows a strict "lean documentation" approach because:
 **If you feel documentation is needed, ALWAYS update this AGENTS.md file instead of creating new files. DO NOT CREATE ANY .md FILES UNDER ANY CIRCUMSTANCES.**
 
 ### Tool ID Naming Conventions
-**CRITICAL**: All tool IDs must follow kebab-case naming conventions:
+**CRITICAL**: A tool's id, its variable name and its export key must be the same camelCase
+word. See the [`mastra-tools`](../.claude/rules/mastra-tools.md) rule, which is the
+authority on this.
 
 #### ✅ CORRECT Examples:
-- `get-current-weather` ✅
-- `find-product-in-catalog` ✅  
-- `set-product-basket-quantity` ✅
-- `get-current-cart-contents` ✅
-- `clear-cart-contents` ✅
+- `getCurrentWeather` ✅
+- `findProductInCatalog` ✅
+- `setProductBasketQuantity` ✅
+- `getAllDevices` ✅
+- `listRecentFailures` ✅
 
 #### ❌ INCORRECT Examples:
+- `get-current-weather` ❌ (kebab-case)
 - `get_current_weather` ❌ (snake_case)
-- `getCurrentWeather` ❌ (camelCase)
 - `GetCurrentWeather` ❌ (PascalCase)
 - `get current weather` ❌ (spaces)
+- id `getCurrentWeather` exported as `fetchWeather` ❌ (the three must match)
 
 #### 🎯 REASONING:
-- **Consistency**: All tools across the project use the same naming pattern
-- **Readability**: Kebab-case is easier to read in tool IDs and URLs
-- **Standards**: Follows web standards and REST API conventions
-- **Mastra compatibility**: Aligns with Mastra's recommended practices
+- **Mastra publishes the export keys.** `/api/tools` turns the keys of the object you
+  spread into `tools` into the tool names callers see, so an id that disagrees with its
+  key is a tool nobody can invoke by the name it reports.
+- **Consistency**: every vertical follows this, so a tool can be found by grepping its id.
 
-**When creating new tools, ALWAYS use kebab-case for tool IDs.**
+#### ⚠️ This applies to tools, not to workflow steps
+A **step** id stays kebab-case — `store-preferences`, `format-final-output`, and the ~70
+others across the verticals — including a `createToolStep` wrapper, which is a step rather
+than a tool. A **workflow** id is camelCase, matching the key it is registered under in
+`mastra/index.ts`. Only tool ids are covered here.
+
+This document previously said every tool id was kebab-case, which never matched the code:
+only the `api` vertical's four token-usage tools were ever written that way, and every
+other vertical — weather, calendar, coding, commute, cooking, email, IoT, notification,
+phone, shopping, reflection — uses camelCase.
 
 ### Factory Pattern Usage
 **CRITICAL**: All agents, tools, and workflows must be created using the Hey Jarvis factory functions:

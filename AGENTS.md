@@ -393,7 +393,7 @@ All contributions should:
 
 1. Create tool in appropriate vertical's `tools.ts`
 2. Use `createTool()` factory function
-3. Use kebab-case for tool IDs
+3. Use camelCase for tool IDs, identical to the variable name and the export key
 4. Export in the vertical's `index.ts`
 
 ### Running the Development Server

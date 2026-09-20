@@ -1,4 +1,5 @@
 import { PinoLogger } from '@mastra/loggers';
+import { rememberDiagnostic } from './diagnostics.js';
 
 /**
  * How deep {@link unwrapErrors} walks a log object before it stops rewriting and hands the
@@ -120,15 +121,54 @@ function printTrackedExceptions(logger: PinoLogger): PinoLogger {
   return logger;
 }
 
+/**
+ * Keeps a copy of every warning and error the logger is given, so something can read them
+ * back later.
+ *
+ * Printing a failure answers "what went wrong" only for whoever is watching the terminal
+ * at the time. Nothing Mastra reports about itself is a run, so none of it is in a trace,
+ * and with no telemetry backend attached the console is the only copy — see
+ * `utils/diagnostics.ts` for what that cost and what the ring does about it.
+ *
+ * Applied *around* {@link printTrackedExceptions} in {@link createLogger}, which matters
+ * in both directions. Its `trackException` calls `logger.error` on this same object, so a
+ * tracked exception is recorded here too; and its `child` is the one this wraps, so a
+ * child gets both behaviours rather than whichever patch was applied last.
+ *
+ * Recording happens before the underlying log call, so a logger that throws on write still
+ * leaves the record behind.
+ */
+function recordDiagnostics(logger: PinoLogger, bindings?: Record<string, unknown>): PinoLogger {
+  const error = logger.error.bind(logger);
+  const warn = logger.warn.bind(logger);
+  const child = logger.child.bind(logger);
+
+  logger.error = (message: string, args?: Record<string, unknown>) => {
+    rememberDiagnostic('error', message, unwrapErrors(args) as Record<string, unknown> | undefined, bindings);
+    error(message, args);
+  };
+  logger.warn = (message: string, args?: Record<string, unknown>) => {
+    rememberDiagnostic('warn', message, unwrapErrors(args) as Record<string, unknown> | undefined, bindings);
+    warn(message, args);
+  };
+  logger.child = (childBindings: Record<string, unknown>) =>
+    recordDiagnostics(child(childBindings), { ...bindings, ...childBindings });
+
+  return logger;
+}
+
 export function createLogger(name: string): PinoLogger {
-  return printTrackedExceptions(
-    new PinoLogger({
-      name,
-      level: 'info',
-      formatters: {
-        log: (object: Record<string, unknown>) => unwrapErrors(object) as Record<string, unknown>,
-      },
-    }),
+  return recordDiagnostics(
+    printTrackedExceptions(
+      new PinoLogger({
+        name,
+        level: 'info',
+        formatters: {
+          log: (object: Record<string, unknown>) => unwrapErrors(object) as Record<string, unknown>,
+        },
+      }),
+    ),
+    { name },
   );
 }
 
