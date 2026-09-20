@@ -405,10 +405,25 @@ each state change costs tokens once Synapse reasons over the batch. Events are d
 stream that replays history never re-notifies, and a failed hand-off is logged without tearing down the watch.
 
 **Environment Requirements:**
-- `HEY_JARVIS_ANTHROPIC_API_KEY`: Claude API key with access to the Managed Agents beta
-- `HEY_JARVIS_CLAUDE_AGENT_ID`: ID of the agent sessions are created from
-- `HEY_JARVIS_CLAUDE_ENVIRONMENT_ID`: ID of the environment sessions run in
-- `HEY_JARVIS_ANTHROPIC_API_BASE_URL` (optional): Overrides the API base URL for gateways and tests
+
+The Claude session credentials come from the **Anthropic** item in the `Jarvis` vault, and `mcp/op.env`
+maps every variable below:
+
+| Environment variable | 1Password reference | What it is |
+| --- | --- | --- |
+| `HEY_JARVIS_GITHUB_API_TOKEN` | already mapped in `mcp/op.env` | GitHub token with `repo` scope — the tools read repositories and issues, and create and update issues |
+| `HEY_JARVIS_ANTHROPIC_API_KEY` | `op://Jarvis/Anthropic/API key` | Claude API key with access to the Managed Agents beta |
+| `HEY_JARVIS_CLAUDE_AGENT_ID` | `op://Jarvis/Anthropic/Agent ID` | ID of the agent sessions are created from |
+| `HEY_JARVIS_CLAUDE_ENVIRONMENT_ID` | `op://Jarvis/Anthropic/Environment ID` | ID of the environment sessions run in |
+
+Create the agent and the environment in the Claude console first — the IDs are what these variables
+carry. The environment is also where the session's own GitHub access is configured, since the session
+clones the repository and opens the pull request itself; that is console configuration, not a variable
+here.
+
+The vertical imports without any of them — `isClaudeSessionConfigured()` keeps the failure lazy, so
+repository and issue browsing works on the GitHub token alone and only `startCodingSession` and the
+tools that follow a session need the three above.
 
 **Example Use Cases:**
 - "What repositories does ffMathy have?"
