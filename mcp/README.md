@@ -33,6 +33,7 @@ The project is organized by business domain. Each vertical contains its own agen
 | `notification` | Alerts routed to whoever they are for, over whichever channel reaches them (call, voice announcement, push, SMS, email) |
 | `presence` | Where the primary user is: in the car, at home, or out |
 | `phone` | Phone calls and texts (Twilio/ElevenLabs), contacts (Google People) |
+| `reflection` | The assistant's own health: failed runs, failing workflow steps, and the errors Mastra reports about itself |
 | `routing` | DAG-based task routing and orchestration |
 | `shopping` | Bilka grocery shopping (Danish) |
 | `synapse` | IoT state change reactor |
@@ -43,7 +44,7 @@ The project is organized by business domain. Each vertical contains its own agen
 ## Key Patterns
 
 - **Factory functions** for all agents, tools, and workflows (`createAgent`, `createTool`, `createWorkflow`)
-- **Tool IDs** are always `kebab-case` (e.g., `get-current-weather`)
+- **Tool IDs** are always `camelCase`, and the id, the variable and the export key are the same word (e.g. `getCurrentWeather`) — Mastra's `/api/tools` endpoint turns the export keys into the published tool names
 - **Persistent memory** via LibSQL with semantic vector recall
 - **Multi-model**: Gemini Flash (primary), Ollama Qwen3 (local/scheduled tasks)
 - **Storage**: Credentials, device state, email state, noise baselines, token usage — all in LibSQL

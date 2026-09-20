@@ -1,4 +1,5 @@
-import { describe, expect, it, mock } from 'bun:test';
+import { beforeEach, describe, expect, it, mock } from 'bun:test';
+import { clearDiagnostics, recentDiagnostics } from './diagnostics';
 import { createLogger, unwrapErrors } from './logger';
 
 /**
@@ -161,5 +162,60 @@ describe('createLogger', () => {
     const unwrapped = unwrapErrors({ error: wrapper }) as { error: { cause: { message: string } } };
 
     expect(unwrapped.error.cause.message).toBe('Could not load the default credentials');
+  });
+});
+
+/**
+ * Printing a failure answers "what went wrong" only for whoever is watching the terminal at
+ * the time, and nothing Mastra reports about itself is a run, so none of it is in a trace
+ * either. The ring in `diagnostics.ts` is the only copy anything inside the system can
+ * read back — see the reflection vertical's `listRuntimeErrors`.
+ */
+describe('createLogger, recording what it is told', () => {
+  beforeEach(() => {
+    clearDiagnostics();
+  });
+
+  it('keeps an error with the fields it was logged with, errors unwrapped', () => {
+    createLogger('Mastra').error('Scheduled workflow failed', {
+      scheduleId: 'sched_abc',
+      error: new Error('This workflow run was not active'),
+    });
+
+    const [record] = recentDiagnostics();
+    expect(record).toMatchObject({ level: 'error', component: 'Mastra', message: 'Scheduled workflow failed' });
+    // `unwrapErrors` has already run, so the reason survives rather than serializing to `{}`.
+    expect(record.details).toMatchObject({
+      scheduleId: 'sched_abc',
+      error: { message: 'This workflow run was not active' },
+    });
+  });
+
+  it('keeps a warning, which is how a retired workflow run reports itself', () => {
+    createLogger('Mastra').warn('Retired a workflow run the current workflow cannot resume', {
+      workflow: 'emailCheckingWorkflow',
+    });
+
+    expect(recentDiagnostics()[0]).toMatchObject({ level: 'warn', message: expect.stringContaining('Retired') });
+  });
+
+  it('keeps one from a child logger, which is the only kind an agent is given', () => {
+    createLogger('Mastra').child({ component: 'AGENT' }).error('Failed agent tool execution for calendar');
+
+    expect(recentDiagnostics()[0]).toMatchObject({ component: 'AGENT' });
+  });
+
+  it('keeps a tracked exception, which Pino would otherwise forward into the void', () => {
+    createLogger('Mastra').trackException(new Error('Could not load the default credentials'));
+
+    const [record] = recentDiagnostics();
+    expect(record.level).toBe('error');
+    expect(record.details).toMatchObject({ error: { message: 'Could not load the default credentials' } });
+  });
+
+  it('leaves info alone, so the ring holds failures rather than traffic', () => {
+    createLogger('Mastra').info('Server started on port 4111');
+
+    expect(recentDiagnostics()).toEqual([]);
   });
 });

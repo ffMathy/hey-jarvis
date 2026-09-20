@@ -4,6 +4,7 @@ import { getCommuteAgent } from './commute/agent.js';
 import { getCookingAgent } from './cooking/agents.js';
 import { getEmailAgent } from './email/agent.js';
 import { getInternetOfThingsAgent } from './internet-of-things/agent.js';
+import { getReflectionAgent } from './reflection/agent.js';
 import { getShoppingListAgent } from './shopping/agents.js';
 import { getTodoListAgent } from './todo-list/agent.js';
 import { getWeatherAgent } from './weather/agent.js';
@@ -21,6 +22,7 @@ export * from './internet-of-things/index.js';
 export * from './notification/index.js';
 export * from './phone/index.js';
 export * from './presence/index.js';
+export * from './reflection/index.js';
 export * from './shopping/index.js';
 export * from './synapse/index.js';
 export * from './todo-list/index.js';
@@ -40,5 +42,6 @@ export async function getPublicAgents() {
     getInternetOfThingsAgent(),
     getCommuteAgent(),
     getWebResearchAgent(),
+    getReflectionAgent(),
   ]);
 }

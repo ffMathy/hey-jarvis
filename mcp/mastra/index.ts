@@ -31,6 +31,7 @@ import { getInternetOfThingsAgent, internetOfThingsTools } from './verticals/int
 import { getNotificationAgent, notificationTools } from './verticals/notification/index.js';
 import { phoneTools } from './verticals/phone/index.js';
 import { presenceShortcuts } from './verticals/presence/index.js';
+import { getReflectionAgent, reflectionTools } from './verticals/reflection/index.js';
 import { getRoutingPlannerAgent } from './verticals/routing/planner.js';
 import { getNextInstructionsWorkflow, routePromptWorkflow } from './verticals/routing/workflows.js';
 import { getShoppingListAgent, getShoppingListSummaryAgent, shoppingTools } from './verticals/shopping/index.js';
@@ -111,6 +112,7 @@ export async function getMastra(): Promise<Mastra> {
       await getEmailParsingAgent(),
       await getInternetOfThingsAgent(),
       await getNotificationAgent(),
+      await getReflectionAgent(),
       await getRequirementsInterviewerAgent(),
       await getRoutingPlannerAgent(),
       await getShoppingListAgent(),
@@ -132,6 +134,7 @@ export async function getMastra(): Promise<Mastra> {
       ...notificationTools,
       ...phoneTools,
       ...presenceShortcuts,
+      ...reflectionTools,
       ...shoppingTools,
       ...synapseTools,
       ...todoListTools,
