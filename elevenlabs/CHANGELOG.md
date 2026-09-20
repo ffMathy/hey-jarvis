@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.18.0...elevenlabs-v0.19.0) (2026-09-20)
+
+
+### Features
+
+* **mcp:** read Jarvis's own diagnostics, and focus analysis mode ([#745](https://github.com/ffMathy/hey-jarvis/issues/745)) ([3e949f9](https://github.com/ffMathy/hey-jarvis/commit/3e949f9f2c30b08949c20eef2e04d2ff939735cc))
+
 ## [0.18.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.17.2...elevenlabs-v0.18.0) (2026-09-19)
 
 
