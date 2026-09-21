@@ -9,10 +9,11 @@
 
 services:
   mcp:
-    # 1.9.0. Published for linux/amd64 and linux/arm64 — an arm64 (64-bit) OS is
-    # required, there is no 32-bit build and there cannot be one: Bun does not support
-    # 32-bit ARM. Raspberry Pi OS Lite 64-bit is the right image.
-    image: ghcr.io/ffmathy/mcp:1.9.0
+    # 2.4.0 — the newest release published to GHCR. Published for linux/amd64 and
+    # linux/arm64: an arm64 (64-bit) OS is required, there is no 32-bit build and there
+    # cannot be one, since Bun does not support 32-bit ARM. Raspberry Pi OS Lite 64-bit
+    # is the right image.
+    image: ghcr.io/ffmathy/mcp:2.4.0
     container_name: hey-jarvis-mcp
     restart: unless-stopped
     environment:
