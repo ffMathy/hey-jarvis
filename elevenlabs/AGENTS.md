@@ -143,7 +143,7 @@ model that runs the conversation: it decides every line, and it is the thing tha
 either calls `end_call` and `routePromptWorkflow` or merely talks about calling
 them.
 
-It is `gemini-3.8-flash`, and the bar it had to clear is a transcript. On
+It is `gpt-5.6-luna`, and the bar a value here has to clear is a transcript. On
 `qwen35-397b-a17b` Jarvis was asked three times in a row to end the call, said
 "ending the call now" each time, and never called `end_call` — the line stayed
 open until sir gave up. The same conversation had it narrating the wait it had
@@ -155,20 +155,41 @@ cannot fix.
 
 That transcript is why the field sat on `claude-sonnet-5` for as long as it did:
 the hosted open-weight tier was cheap and did not obey, so the answer was a
-frontier model and the per-turn cost that came with it. The flash tier closing
-the gap is what changed. `gemini-3.8-flash` is a reasoning model priced an order
-of magnitude under the frontier Sonnet and Opus ids, and the trade it asks for is
-no longer "cheap or obedient" — which makes the frontier price hard to justify
-for a voice agent whose hardest turn is picking the right tool and calling it.
+frontier model and the per-turn cost that came with it. `gemini-3.8-flash` took
+the field from it on price, and lost it on the fine print — that price was
+introductory, and the rise already scheduled against it undoes the very gap that
+justified leaving the frontier model at all. `gpt-5.6-luna` is cheaper again, and
+cheaper after a cut rather than before a rise, which is the whole of why it holds
+the field now.
 
-Two things follow, and neither is optional. The value must be one of the ids in
-`Llm` from `@elevenlabs/elevenlabs-js/api` — ElevenLabs rejects anything else,
-and that union is versioned with the SDK, so a model newer than the pinned
-`@elevenlabs/elevenlabs-js` is not selectable until the pin moves. And the
-question to ask of any candidate is not how it reads, not what it scores, but
-whether it hangs up when it says it is hanging up. `turbo test:integration
+Be honest about what the swap costs, because the published scores do not flatter
+it: read on one consistent revision of the Artificial Analysis index, luna sits a
+few points *below* `gemini-3.8-flash` rather than above it. The case here is
+price and the durability of price, never capability. It survives only on what the
+rest of this section already argues — that the hardest turn this agent takes is
+picking the right tool and calling it, and that no index measures that.
+
+Three things follow, and none of them is optional. The value must be one of the
+ids in `Llm` from `@elevenlabs/elevenlabs-js/api` — ElevenLabs rejects anything
+else, and that union is versioned with the SDK, so a model newer than the pinned
+`@elevenlabs/elevenlabs-js` is not selectable until the pin moves.
+
+`reasoningEffort` sits directly beneath `llm` in the same object, and it is
+`null`. On an OpenAI id that is the first thing to suspect if Jarvis stops
+calling tools at all: OpenAI's own chat-completions endpoint rejects a
+tools-bearing request that omits `reasoning_effort`, and this agent is never
+without tools — `end_call`, `skip_turn`, `transfer_to_agent`, and the MCP server
+behind `routePromptWorkflow`. Whether ElevenLabs uses that endpoint, and whether
+it forwards `null` as omitted or as `none`, is undocumented. `LlmReasoningEffort`
+in the SDK admits `none` through `max` if it turns out to need setting, but do
+not set it pre-emptively — a reasoning model pinned to `none` on every
+tool-bearing turn is its own regression. Set it when a transcript says to.
+
+And the question to ask of any candidate is not how it reads, not what it scores,
+but whether it hangs up when it says it is hanging up. `turbo test:integration
 --filter=elevenlabs` is what asks it, because those specs hold live conversations
-with the deployed agent; a model swap that has not been through them is a guess.
+with the deployed agent; a model swap that has not been through them is a guess —
+this one included, until they run.
 
 ### What belongs in the routing instructions instead
 
