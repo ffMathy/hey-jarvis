@@ -1,5 +1,16 @@
 # Changelog
 
+## [3.0.0](https://github.com/ffMathy/hey-jarvis/compare/root-v2.5.2...root-v3.0.0) (2026-09-21)
+
+
+### ⚠ BREAKING CHANGES
+
+* **elevenlabs:** run the conversation on gemini-3.8-flash ([#753](https://github.com/ffMathy/hey-jarvis/issues/753))
+
+### Features
+
+* **elevenlabs:** run the conversation on gemini-3.8-flash ([#753](https://github.com/ffMathy/hey-jarvis/issues/753)) ([d28bb05](https://github.com/ffMathy/hey-jarvis/commit/d28bb05f8b0c67ce90ae991864f0761084acd84e))
+
 ## [2.5.2](https://github.com/ffMathy/hey-jarvis/compare/root-v2.5.1...root-v2.5.2) (2026-09-21)
 
 
