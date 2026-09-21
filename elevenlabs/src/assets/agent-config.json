@@ -149,7 +149,7 @@
       "disableFirstMessageInterruptions": true,
       "maxConversationDurationMessage": "",
       "prompt": {
-        "llm": "claude-sonnet-5",
+        "llm": "gemini-3.8-flash",
         "reasoningEffort": null,
         "opener": null,
         "enableReasoningSummary": false,
