@@ -29,7 +29,8 @@ export function useSparkDensity() {
   const provenShare = useSharedValue(0);
   const [startingShare, setStartingShare] = useState<number | undefined>(undefined);
 
-  // What this phone managed last time, so the climb does not have to happen in front of anyone.
+  // Half of what this phone was last seen holding, so the climb starts somewhere it is already
+  // known to be safe rather than at the floor — and, just as importantly, never above it.
   useEffect(() => {
     let wanted = true;
     void readProvenSparks().then((proven) => {
@@ -42,8 +43,19 @@ export function useSparkDensity() {
     };
   }, []);
 
-  // And writing it back. Rarely, and only when it has actually gone up: this is a keystore write,
-  // not a counter, and the value only ever rises anyway.
+  // And writing it back. Rarely, and only once it has risen within this summoning: this is a
+  // keystore write rather than a counter, and the loop's own high-water mark only ever goes up.
+  //
+  // Across summonings it is not a high-water mark, and that is deliberate: `written` begins at
+  // nought every time, so what today's phone settles at replaces what yesterday's managed, down as
+  // well as up. A phone that has picked up a background job it is not going to put down should be
+  // allowed to say so. What makes that safe rather than a slow slide to the floor is that each
+  // summoning climbs and re-proves for itself — see the launch-after-launch tests in
+  // `density-control.spec.ts`.
+  //
+  // What is written is a count the loop *settled* at rather than one it climbed through — see
+  // `proven` in `density-control.ts` — so a number that reaches the keystore is one the phone
+  // held, not one it was given just before it fell over.
   useEffect(() => {
     let written = 0;
     const timer = setInterval(() => {

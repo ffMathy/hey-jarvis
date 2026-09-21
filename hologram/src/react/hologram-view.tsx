@@ -85,10 +85,12 @@ export interface JarvisHologramProps {
    */
   provenShare?: SharedValue<number>;
   /**
-   * What share to begin at, from whatever was written down last time.
+   * What share to begin at, from whatever was written down last time — half of it.
    *
-   * Left out, the loop starts sparse and climbs, which takes a couple of seconds — and those are
-   * the seconds somebody is looking at him.
+   * Left out, the loop starts at the floor and climbs, which is what a phone that has never been
+   * measured does and what every phone does after an update that moves the drawing's cost. Given,
+   * it is `startFromRemembered` of a count this phone was seen holding, which is deliberately only
+   * half: see `REMEMBERED_SHARE`. Either way the first second is spent going up, never down.
    */
   startingShare?: number;
   /**
@@ -357,13 +359,18 @@ function JarvisHologramView({
   const drawn = useSharedValue(0);
   const measuring = useSharedValue(0);
   // How many of the particles this phone can afford, worked out while it draws them.
-  // Started from whatever the screen last saw, if it saw anything.
   //
-  // The control lives in this view, so a view built again starts a new one — and nothing about the
-  // phone changed while React was remaking a component. Reading the share back out of the value
-  // the readout is written to means the answer survives that, and the user is not made to watch
-  // the same measurement being taken twice.
-  const density = useSharedValue(createDensityControl(particleShare?.value || startingShare));
+  // Started from half of what this phone was last seen *holding*, and from the floor when there is
+  // no such number — never from what it happened to be drawing a moment ago. It used to read the
+  // live share back out of `particleShare`, on the reasoning that a view built again is the same
+  // phone and should not have to re-measure. The reasoning is sound and the value is not: a shared
+  // value outlives the view, and the assistant's window keeps its React surface between summonings
+  // precisely so the second summoning has something to draw. So "built again" meant every
+  // summoning after the first, and Jarvis opened at whatever count he had been dismissed at — on a
+  // phone that had spent the time since doing something else entirely. The cost of dropping it is
+  // a second of climbing after a re-render; the cost of keeping it was an entrance at a thousand
+  // particles a phone could no longer afford. See `createDensityControl`.
+  const density = useSharedValue(createDensityControl(startingShare));
 
   // And again when it arrives, because it does not arrive in time to be the initial value above.
   // Reading it back is a promise and `useSharedValue` only ever uses its argument once, so without

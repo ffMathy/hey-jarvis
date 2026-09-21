@@ -215,14 +215,27 @@ const LEAST_TRUST = 0.06;
 const PLAIN_TROUBLE = 0.5;
 
 /**
- * How much of a remembered count to begin with, next time.
+ * How much of a remembered count to begin with, next time: half of it.
  *
- * A tenth under what the phone managed before, at the user's asking, and the reason is that a
- * phone is not the same phone twice: what it had spare last time is not what it has spare now, and
- * beginning exactly at the old number means the first thing that happens is a shed. Starting just
- * under it means the first thing that happens is the climb finishing, which nobody notices.
+ * **Half, and the halving is the whole point rather than a margin on it.** It was nine tenths, on
+ * the reasoning that a phone which managed a number yesterday will manage it today and the climb
+ * is two seconds nobody should have to watch. That reasoning has a hole in it, and the hole is
+ * what the user actually saw: a phone is not the same phone twice. The number was proved on a cool
+ * phone with nothing else running, and it was then handed back verbatim to a hot phone with a
+ * conversation, a microphone and whatever else Android felt like doing — which drew all of them at
+ * a few frames a second, and then died.
+ *
+ * Beginning at half of it means the phone is never asked, cold, for more than it has already been
+ * seen to hold comfortably, and the loop spends its first second finding out what today's phone is
+ * good for rather than recovering from an assumption about yesterday's. Climbing back from a half
+ * costs a bit over a second at {@link RISING_PER_SECOND} — and that second is spent going *up*,
+ * which is the direction nobody notices. The second it replaces was spent shedding, which is the
+ * direction everybody does.
+ *
+ * With nothing remembered at all there is nothing to halve, and the loop starts at
+ * {@link FEWEST_PARTICLES} — see `startFromRemembered`.
  */
-const REMEMBERED_MARGIN = 0.9;
+const REMEMBERED_SHARE = 0.5;
 
 export interface DensityControl {
   /** 0–1: the share of the particles being drawn. This is the controller's integrator. */
@@ -235,6 +248,19 @@ export interface DensityControl {
    * guess about the hardware, but a thing this phone actually did. A busy minute should not be
    * allowed to talk it down — the loop will shed for the busy minute, and `density` is where that
    * shows; this is the high-water mark, and the point of a high-water mark is that it stays.
+   *
+   * **Only counts where the loop has arrived, and that is a correction rather than a refinement.**
+   * It used to be set from any window at all whose frame rate cleared the target, which sounds
+   * like the same thing and is not, because of where the climb spends its time. Below the count a
+   * phone can afford, its frame rate is pinned to the screen's refresh and stays there whatever
+   * the count does — so every rung of a climb that is about to overshoot reads as "comfortably
+   * making the target", right up to the rung that is not. The number written down was therefore
+   * the last one before the cliff: not what the phone could hold, but the most it could be given
+   * before it fell over. Started from on a phone that was hotter or busier than the one that
+   * proved it, that is a sphere too heavy to draw, which is what the user watched crawl and crash.
+   *
+   * So it is recorded where the loop has stopped moving: on the target, or at the ceiling with
+   * room still to spare. Both are the phone *holding* a count rather than passing through it.
    */
   proven: number;
   /** The error, low-passed. See {@link MEASUREMENT_SHARE} — every term works off this one number. */
@@ -262,11 +288,16 @@ export interface DensityControl {
 }
 
 /**
- * Where it starts: at the floor, climbing — unless it is being handed what it had before.
+ * Where it starts: at the floor, climbing — unless it is being handed half of what it proved.
  *
- * `startingDensity` is for the case where the hologram is built again over a screen that already
- * knew the answer. Nothing about the phone changed while a view was being remade, so beginning at
- * the floor again would be throwing away a measurement and making the user watch it be taken twice.
+ * `startingDensity` is only ever `startFromRemembered` of a count this phone was seen *holding*,
+ * which is half of it. There is deliberately no way to start it anywhere else. It used to be
+ * handed the live share off the previous appearance as well, so that a hologram built again did
+ * not have to re-measure — and since the assistant's window keeps its React surface between
+ * summonings, "built again" included every summoning after the first. Jarvis therefore opened at
+ * whatever he happened to be drawing when he was last dismissed, on a phone that had since gone
+ * and done something else. That is the entrance the user reported: far too many particles, a few
+ * frames a second, and eventually no Jarvis at all.
  *
  * Otherwise it begins sparse. It began at *everything*, on the reasoning that a phone which can
  * manage it never has to find out. What that looks like is the first second being the worst second
@@ -274,8 +305,9 @@ export interface DensityControl {
  * Starting under what any phone can draw and climbing means the arrival is smooth and the swarm
  * fills in behind it, which is also just a better entrance.
  *
- * `RISING_PER_SECOND` is what makes that climb quick rather than a crawl: from here to everything
- * is a bit over two seconds on a phone that can take it.
+ * `RISING_PER_SECOND` is what makes that climb quick rather than a crawl: from the floor to
+ * everything is a bit over two seconds on a phone that can take it, and from half of a remembered
+ * count a bit over one.
  */
 export function createDensityControl(startingDensity: number = FEWEST_PARTICLES): DensityControl {
   const density = startingDensity <= 0 ? FEWEST_PARTICLES : clamp(startingDensity, FEWEST_PARTICLES, 1);
@@ -296,10 +328,11 @@ export function createDensityControl(startingDensity: number = FEWEST_PARTICLES)
  * Where to begin, given what this phone managed last time.
  *
  * Kept here rather than wherever the number is stored, because it is a decision about the loop
- * rather than about storage: see {@link REMEMBERED_MARGIN} for why it is not simply the old value.
+ * rather than about storage: see {@link REMEMBERED_SHARE} for why it is half of the old value and
+ * not the old value.
  */
 export function startFromRemembered(proven: number): number {
-  return proven <= 0 ? FEWEST_PARTICLES : clamp(proven * REMEMBERED_MARGIN, FEWEST_PARTICLES, 1);
+  return proven <= 0 ? FEWEST_PARTICLES : clamp(proven * REMEMBERED_SHARE, FEWEST_PARTICLES, 1);
 }
 
 function clamp(value: number, lowest: number, highest: number): number {
@@ -357,11 +390,6 @@ export function steerDensity(control: DensityControl, framesPerSecond: number, d
   // go. Bounded below by -1 whatever the screen does, and clamped above: see WORST_ERROR.
   const reading = clamp(TARGET_FRAMES_PER_SECOND / framesPerSecond - 1, -1, WORST_ERROR);
 
-  if (framesPerSecond >= TARGET_FRAMES_PER_SECOND && control.density > control.proven) {
-    // Holding the target at this many is the phone saying it can, and that is worth writing down.
-    control.proven = control.density;
-  }
-
   if (control.windows === 0) {
     // Nothing to difference against yet. Start the filter *at* the reading rather than at zero, or
     // the first second of every launch is spent watching a filter catch up with a phone.
@@ -383,8 +411,16 @@ export function steerDensity(control: DensityControl, framesPerSecond: number, d
   control.error += (trusted - control.error) * MEASUREMENT_SHARE;
 
   const error = control.error;
-  if (error > -SETTLED_WITHIN && error < SETTLED_WITHIN) {
-    // Arrived, and inside the band nothing moves: see SETTLED_WITHIN.
+  // Arrived: either sitting on the target, or pinned at the ceiling with room to spare, which is
+  // as arrived as a phone that can draw the lot ever gets. See `proven` for why only these count.
+  const onTarget = error > -SETTLED_WITHIN && error < SETTLED_WITHIN;
+  const atCeiling = control.density >= 1 && error <= 0;
+  if ((onTarget || atCeiling) && framesPerSecond >= TARGET_FRAMES_PER_SECOND && control.density > control.proven) {
+    control.proven = control.density;
+  }
+
+  if (onTarget) {
+    // Inside the band nothing moves: see SETTLED_WITHIN.
     return;
   }
 
