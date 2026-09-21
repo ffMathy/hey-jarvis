@@ -143,21 +143,32 @@ model that runs the conversation: it decides every line, and it is the thing tha
 either calls `end_call` and `routePromptWorkflow` or merely talks about calling
 them.
 
-It is `claude-sonnet-5`, and the reason is a transcript. On `qwen35-397b-a17b`
-Jarvis was asked three times in a row to end the call, said "ending the call now"
-each time, and never called `end_call` — the line stayed open until sir gave up.
-The same conversation had it narrating the wait it had just been told to keep
-quiet about, and answering a calendar lookup with wit instead of a result. None
-of that is a prompt gap: every one of those rules is already stated once, plainly,
-in `agent-prompt.md` or in the `instructions` field. They were read and not
-followed, which is the one failure a longer prompt cannot fix.
+It is `gemini-3.8-flash`, and the bar it had to clear is a transcript. On
+`qwen35-397b-a17b` Jarvis was asked three times in a row to end the call, said
+"ending the call now" each time, and never called `end_call` — the line stayed
+open until sir gave up. The same conversation had it narrating the wait it had
+just been told to keep quiet about, and answering a calendar lookup with wit
+instead of a result. None of that is a prompt gap: every one of those rules is
+already stated once, plainly, in `agent-prompt.md` or in the `instructions`
+field. They were read and not followed, which is the one failure a longer prompt
+cannot fix.
 
-So the trade is deliberate. A frontier model costs more per turn and answers a
-little slower than the hosted open-weight tier, and in exchange the instructions
-that are already written get obeyed. If this is ever revisited, the value must be
-one of the ids in `Llm` from `@elevenlabs/elevenlabs-js/api` — ElevenLabs rejects
-anything else — and the question to ask of a candidate is not how it reads, but
-whether it hangs up when it says it is hanging up.
+That transcript is why the field sat on `claude-sonnet-5` for as long as it did:
+the hosted open-weight tier was cheap and did not obey, so the answer was a
+frontier model and the per-turn cost that came with it. The flash tier closing
+the gap is what changed. `gemini-3.8-flash` is a reasoning model priced an order
+of magnitude under the frontier Sonnet and Opus ids, and the trade it asks for is
+no longer "cheap or obedient" — which makes the frontier price hard to justify
+for a voice agent whose hardest turn is picking the right tool and calling it.
+
+Two things follow, and neither is optional. The value must be one of the ids in
+`Llm` from `@elevenlabs/elevenlabs-js/api` — ElevenLabs rejects anything else,
+and that union is versioned with the SDK, so a model newer than the pinned
+`@elevenlabs/elevenlabs-js` is not selectable until the pin moves. And the
+question to ask of any candidate is not how it reads, not what it scores, but
+whether it hangs up when it says it is hanging up. `turbo test:integration
+--filter=elevenlabs` is what asks it, because those specs hold live conversations
+with the deployed agent; a model swap that has not been through them is a guess.
 
 ### What belongs in the routing instructions instead
 
