@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.5.2](https://github.com/ffMathy/hey-jarvis/compare/root-v2.5.1...root-v2.5.2) (2026-09-21)
+
+
+### Bug Fixes
+
+* **hologram:** open Jarvis sparse and remember only counts he held ([#750](https://github.com/ffMathy/hey-jarvis/issues/750)) ([6792919](https://github.com/ffMathy/hey-jarvis/commit/6792919d4a5955626a2602b5205ec9041a4c1ce4))
+* **mcp:** stop a crashed studio staying down for good ([#751](https://github.com/ffMathy/hey-jarvis/issues/751)) ([a948ce7](https://github.com/ffMathy/hey-jarvis/commit/a948ce7fd0b03897fa6ba40653f7ee63451dfbf5))
+
 ## [2.5.1](https://github.com/ffMathy/hey-jarvis/compare/root-v2.5.0...root-v2.5.1) (2026-09-21)
 
 

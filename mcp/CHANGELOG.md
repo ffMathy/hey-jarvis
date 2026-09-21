@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.4.1](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.4.0...mcp-v2.4.1) (2026-09-21)
+
+
+### Bug Fixes
+
+* **mcp:** stop a crashed studio staying down for good ([#751](https://github.com/ffMathy/hey-jarvis/issues/751)) ([a948ce7](https://github.com/ffMathy/hey-jarvis/commit/a948ce7fd0b03897fa6ba40653f7ee63451dfbf5))
+
 ## [2.4.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.3.0...mcp-v2.4.0) (2026-09-20)
 
 
