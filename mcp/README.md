@@ -173,9 +173,37 @@ today. Running it as a plain container, as above, is the supported route.
 | Symptom | Cause |
 | --- | --- |
 | `no matching manifest for linux/arm/v7` | A 32-bit OS. Check with `dpkg --print-architecture` — it must say `arm64`, not `armhf`. Reinstall with the 64-bit image; there is no workaround. |
-| Container restarts every ~40s | The health check is failing. `docker compose logs mcp` — almost always the service account token being wrong or lacking access to the vault. |
+| `docker compose ps` reads `(unhealthy)` | One of the two ports is not answering. `docker compose logs mcp` — almost always the service account token being wrong or lacking access to the vault. **Docker does not restart a container for this**: a health check reports, it does not act, and `restart: unless-stopped` only fires when the container itself exits. Supervisord restarts the individual process, indefinitely; the container stays up either way. |
 | Everything forgotten after a restart | Storage went to `/tmp`. See step 4. |
 | ElevenLabs has no tools | The tunnel is down or its hostname points at 4111. `docker compose logs cloudflared`. |
+| Studio's hostname answers Cloudflare `502` while ElevenLabs still works | `mastra dev` is not listening on 4111, and only it. The tunnel is plainly up — a connector that had gone would give error `1033`, not a 502 naming the host — so the container is running and 4112 is answering. See [When Studio is down but the MCP endpoint is not](#when-studio-is-down-but-the-mcp-endpoint-is-not). |
+
+### When Studio is down but the MCP endpoint is not
+
+The two processes are supervised separately and fail separately, so this is the normal
+shape of a Studio outage: the voice assistant carries on, and only the browser sees it.
+
+```bash
+docker compose exec mcp supervisorctl status             # which program is not RUNNING
+docker compose logs mcp | grep -i mastra-dev             # and why it went
+docker compose exec mcp wget -qO- localhost:4111/health  # Studio — the one in question
+docker compose exec mcp wget -qO- localhost:4112/health  # MCP endpoint — expected to pass
+```
+
+`docker compose exec mcp supervisorctl restart mastra-dev` brings that one program back
+without disturbing 4112. `docker compose restart mcp` restarts both and re-resolves every
+secret, which is the one to reach for when the logs point at 1Password.
+
+Supervisord retries each program indefinitely rather than three times, so a Studio that
+crashed on the way up comes back by itself — the comment at the top of
+[`supervisord.conf`](./supervisord.conf) says why three was enough to lose it for good. A
+crash that repeats every time is a real fault, and the logs above say which; retrying keeps
+it from being silent, it does not make it work.
+
+**On an image built before this change, `supervisorctl` has no socket to talk to** — the
+config shipped no `[unix_http_server]` section, so it answers `no such file` however it is
+invoked. There, `docker compose restart mcp` is the whole toolbox, and `docker compose logs
+mcp` is where the reason is.
 
 ## Reaching Mastra Studio through the Cloudflare tunnel
 
