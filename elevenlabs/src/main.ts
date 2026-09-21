@@ -1,7 +1,12 @@
 #!/usr/bin/env node
 
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
-import { ClientEvent, type GetAgentResponseModel } from '@elevenlabs/elevenlabs-js/api';
+import {
+  ClientEvent,
+  type GetAgentResponseModel,
+  type ProcedureRefResponseModel,
+  type ProcedureVersionRef,
+} from '@elevenlabs/elevenlabs-js/api';
 import { Command } from 'commander';
 import { access, mkdir, readFile, writeFile } from 'fs/promises';
 import * as path from 'path';
@@ -12,6 +17,39 @@ import { cwd } from 'process';
  * running server, kept separate from the one production uses.
  */
 export const TEST_AGENT_MCP_SERVER_ID = 'GMOqF385QS1GsrZKfQk6';
+
+/**
+ * Turns the saved `procedures` map into the one `update` accepts.
+ *
+ * It is the single key the round trip cannot hand straight back. `fetch` saves what
+ * the agent returns — a whole `ProcedureRefResponseModel` each, carrying the name,
+ * type, trigger and every id a procedure references — while `update` takes only the
+ * pair naming which version to publish. The two disagree on exactly one field:
+ * `versionId` is optional coming out and required going in, because a procedure that
+ * has never been versioned has no version to publish.
+ *
+ * That case throws rather than quietly leaving the entry out. The map ElevenLabs
+ * receives *replaces* the procedures on the branch tip, so an omitted procedure is a
+ * detached one — the same shape of silent loss `deployConfig` documents below.
+ */
+export function toProcedureVersionRefs(
+  procedures: Record<string, ProcedureRefResponseModel>,
+): Record<string, ProcedureVersionRef> {
+  const versionRefs: Record<string, ProcedureVersionRef> = {};
+
+  for (const [key, procedure] of Object.entries(procedures)) {
+    if (!procedure.versionId) {
+      throw new Error(
+        `Procedure "${procedure.name ?? procedure.procedureId}" has no versionId, so there is no version to publish. ` +
+          'Publish it in the ElevenLabs dashboard, then re-run `bunx turbo refresh --filter=elevenlabs` before deploying.',
+      );
+    }
+
+    versionRefs[key] = { procedureId: procedure.procedureId, versionId: procedure.versionId };
+  }
+
+  return versionRefs;
+}
 
 class ElevenLabsAgentManager {
   private client: ElevenLabsClient;
@@ -247,7 +285,11 @@ class ElevenLabsAgentManager {
     const agentType = isTestAgent ? 'test agent' : 'agent';
     console.log(`🚀 Deploying configuration to ${agentType} ${agentId}...`);
 
-    const response = await this.client.conversationalAi.agents.update(agentId, config);
+    const { procedures, ...agentConfig } = config;
+    const request =
+      procedures === undefined ? agentConfig : { ...agentConfig, procedures: toProcedureVersionRefs(procedures) };
+
+    const response = await this.client.conversationalAi.agents.update(agentId, request);
 
     console.log('✅ Agent configuration deployed successfully');
     console.log(`📋 Agent Name: ${response.name}`);
