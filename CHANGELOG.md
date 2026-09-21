@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.5.1](https://github.com/ffMathy/hey-jarvis/compare/root-v2.5.0...root-v2.5.1) (2026-09-21)
+
+
+### Bug Fixes
+
+* **hologram:** stop one stalled frame stripping the sphere to the floor ([#748](https://github.com/ffMathy/hey-jarvis/issues/748)) ([6c99046](https://github.com/ffMathy/hey-jarvis/commit/6c99046d36c3bf227c0997fac262242c87378440))
+
 ## [2.5.0](https://github.com/ffMathy/hey-jarvis/compare/root-v2.4.0...root-v2.5.0) (2026-09-20)
 
 
