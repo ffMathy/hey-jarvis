@@ -34,6 +34,18 @@ function phone(affordable: number) {
   return (density: number) => Math.min(CAPPED_AT, (TARGET_FRAMES_PER_SECOND * affordable) / Math.max(density, 0.01));
 }
 
+/**
+ * A phone that can only present whole refreshes, which is every real phone.
+ *
+ * Six milliseconds of everything that is not particles and twenty-four for all of them, on a
+ * sixty hertz screen: one refresh up to about 44% of the particles and two beyond it, with nothing
+ * in between. That edge is where the loop lives and what a remembered count has to land near.
+ */
+function sixtyHertzCliff(density: number): number {
+  const vsync = 1000 / 60;
+  return 1 / Math.max(1 / 120, (Math.max(1, Math.ceil((6 + 24 * density) / vsync)) * vsync) / 1000);
+}
+
 /** Runs the loop for `seconds` against a phone, half a second at a time as the view measures. */
 function settle(control: DensityControl, drawsAt: (density: number) => number, seconds: number): number[] {
   const seen: number[] = [];
@@ -152,17 +164,59 @@ describe('deciding how many particles this phone can afford', () => {
     expect(control.proven).toBe(1);
   });
 
-  it('starts next time a little under what it managed last time', () => {
-    // Exactly at the old number and the first thing that happens is a shed; just under it and the
-    // first thing that happens is the climb finishing.
-    expect(startFromRemembered(0.8)).toBeCloseTo(0.72, 5);
-    expect(startFromRemembered(1)).toBeCloseTo(0.9, 5);
+  it('remembers nothing at all until it has stopped climbing', () => {
+    // The bug behind the crash. Below the count a phone can afford, its frame rate is pinned to
+    // the screen's refresh whatever the count is — so every rung of the climb reads as
+    // "comfortably making the target", including the rung that is about to fall off the cliff.
+    // Written down and started from on a hotter phone the next day, that is a sphere too heavy to
+    // draw. Nothing is worth remembering until the loop has stopped moving.
+    const control = createDensityControl();
+    const mid = settle(control, phone(0.5), 1.5);
+
+    // It is on its way up and nowhere near arrived...
+    expect(mid[mid.length - 1]).toBeGreaterThan(FEWEST_PARTICLES);
+    expect(control.density).toBeLessThan(0.5);
+    // ...and it has claimed nothing.
+    expect(control.proven).toBe(0);
+
+    // Once it has settled, what it settled at is what it claims — and that is a count it held.
+    settle(control, phone(0.5), 40);
+    expect(control.proven).toBeGreaterThan(0.3);
+    expect(control.proven).toBeLessThanOrEqual(control.density + 0.05);
+  });
+
+  it('claims the ceiling on a phone that never has to slow down for it', () => {
+    // A phone with room to spare never enters the settled band at all: its error sits at whatever
+    // the refresh over the target works out to, for ever. Pinned at the ceiling with room left is
+    // the only "arrived" such a phone ever reports, and it has to count or nothing is ever written
+    // down for the phones that need remembering least.
+    const control = createDensityControl();
+    settle(control, phone(1.4), 20);
+
+    expect(control.density).toBe(1);
+    expect(control.proven).toBe(1);
+  });
+
+  it('starts next time at half of what it managed last time', () => {
+    // Half, not nine tenths. The phone that proved the number was cool and idle; the phone being
+    // handed it back is hot and holding a conversation, and asking it for nearly all of yesterday's
+    // count is what the user watched crawl and then crash. See REMEMBERED_SHARE.
+    expect(startFromRemembered(0.8)).toBeCloseTo(0.4, 5);
+    expect(startFromRemembered(1)).toBeCloseTo(0.5, 5);
     // Nothing remembered, and nothing to go on: begin where a phone that has never been asked does.
     expect(startFromRemembered(0)).toBe(FEWEST_PARTICLES);
     // And never under the floor, however little it managed. Below it rather than at it: the input
     // used to be 0.05, which *was* the floor, and stopped meaning anything the moment the floor
     // moved under it.
     expect(startFromRemembered(0.01)).toBe(FEWEST_PARTICLES);
+  });
+
+  it('never begins above what the phone proved, whatever it proved', () => {
+    // The whole safety property in one line: a start is always under a count this phone has been
+    // seen holding, so the first second of a summoning is spent climbing rather than shedding.
+    for (const proven of [0.1, 0.25, 0.5, 0.75, 1]) {
+      expect(startFromRemembered(proven)).toBeLessThanOrEqual(proven);
+    }
   });
 
   it('climbs from the floor when the phone is making the target, rather than sitting there', () => {
@@ -213,6 +267,47 @@ describe('deciding how many particles this phone can afford', () => {
     }
 
     expect(turns).toBeLessThan(3);
+  });
+});
+
+describe('one launch after another, which is what halving has to survive', () => {
+  /**
+   * A phone that can only present whole refreshes, run through eight summonings in a row.
+   *
+   * **The thing to prove is that it does not walk downhill.** Halving what was remembered is only
+   * safe if each launch climbs back and re-proves roughly what the last one did; a policy that
+   * started at half and then settled at half again would take Jarvis to the floor over a week of
+   * use, one summoning at a time, and nobody would ever catch it happening.
+   */
+  function launches(draws: (density: number) => number, count: number, seconds: number): number[] {
+    const proven: number[] = [];
+    let remembered = 0;
+    for (let launch = 0; launch < count; launch++) {
+      const control = createDensityControl(startFromRemembered(remembered));
+      settle(control, draws, seconds);
+      remembered = control.proven;
+      proven.push(remembered);
+    }
+    return proven;
+  }
+
+  it('re-proves roughly the same count every time rather than drifting to the floor', () => {
+    const proven = launches(sixtyHertzCliff, 8, 30);
+
+    // Every launch after the first found something worth drawing...
+    expect(Math.min(...proven.slice(1))).toBeGreaterThan(0.2);
+    // ...and the last is no worse than the first, which is the whole property.
+    expect(proven[proven.length - 1] ?? 0).toBeGreaterThanOrEqual((proven[0] ?? 0) * 0.9);
+  });
+
+  it('leaves a phone that can draw the lot back at the lot, every time', () => {
+    // It still starts at half — the user asked for that and it costs a second of climbing — but a
+    // phone with room to spare must end every single summoning back at the ceiling.
+    const proven = launches(phone(1.4), 5, 20);
+
+    expect(proven.every((share) => share === 1)).toBe(true);
+    // And each of those launches began at half of it rather than at it.
+    expect(startFromRemembered(1)).toBe(0.5);
   });
 });
 
