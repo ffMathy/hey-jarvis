@@ -97,7 +97,7 @@ describe('deciding how many particles this phone can afford', () => {
     steerDensity(control, 0, 0.5);
 
     expect(control.density).toBe(before);
-    expect(control.carried).toBe(0);
+    expect(control.windows).toBe(0);
   });
 
   it('starts sparse and fills in quickly, so the arrival is not the worst second', () => {
@@ -108,8 +108,9 @@ describe('deciding how many particles this phone can afford', () => {
     settle(control, phone(1.4), 3);
     expect(control.density).toBeGreaterThan(0.9);
 
-    // ...and all the way shortly after. The tail is slow because the climb halves the room left to
-    // the ceiling each time, which is exactly what keeps it from stepping over one.
+    // ...and all the way shortly after. The climb is paced by RISING_PER_SECOND rather than by the
+    // error, because below what a phone can afford its frame rate is pinned to the screen's refresh
+    // and the measurement stops saying how much room is left.
     settle(control, phone(1.4), 3);
     expect(control.density).toBe(1);
   });
@@ -140,7 +141,7 @@ describe('deciding how many particles this phone can afford', () => {
     expect(control.density).toBeLessThan(0.8);
   });
 
-  it('remembers the most it was ever seen drawing at the cap, and only upward', () => {
+  it('remembers the most it was ever seen holding the target, and only upward', () => {
     const control = createDensityControl();
     settle(control, phone(1.4), 8);
     expect(control.proven).toBe(1);
@@ -250,5 +251,162 @@ describe('starting from what this phone managed last time', () => {
     seedFromRemembered(control, 0.001);
 
     expect(control.density).toBe(FEWEST_PARTICLES);
+  });
+});
+
+/**
+ * A phone that can only present whole refreshes, which is every real phone.
+ *
+ * The model above is a smooth curve: ask for more particles and the frame rate slides down. No
+ * screen behaves like that. A screen presents at a refresh boundary or not at all, so the rates it
+ * can hold are the refresh over a whole number — sixty, thirty, twenty — and the drawing either
+ * fits in a frame or costs a whole extra one. Between "fits" and "does not" there is nothing.
+ *
+ * That cliff is where the loop lives, because the loop's whole job is to walk up to it. It is also
+ * the thing the previous controller could not cope with: tuned gently enough not to fall off it,
+ * the climb crawled; tuned to climb, it fell off the cliff and back on every few seconds, which on
+ * screen is the swarm breathing in and out.
+ */
+function screen(refresh: number, fixedMilliseconds: number, allParticlesMilliseconds: number) {
+  const vsync = 1000 / refresh;
+  return (density: number, jitter: number) => {
+    const work = (fixedMilliseconds + allParticlesMilliseconds * density) * (1 + jitter);
+    // The app's own cap, as `hologram-view.tsx` sets it.
+    return Math.max(1 / 120, (Math.max(1, Math.ceil(work / vsync)) * vsync) / 1000);
+  };
+}
+
+/** Deterministic wobble, so a swing in these tests is the loop's and never the random seed's. */
+function wobble(seed: number) {
+  let value = seed;
+  return () => {
+    value = (value * 1103515245 + 12345) % 2147483648;
+    return (value / 2147483648 - 0.5) * 0.12;
+  };
+}
+
+/**
+ * Runs the view's loop against such a screen: frames accumulate until half a second has gone by,
+ * and the rate that comes out of it is what steers. `stall` inserts a frame that takes seconds,
+ * which is what a re-render or a collection looks like from in here.
+ */
+function watch(
+  control: DensityControl,
+  draws: (density: number, jitter: number) => number,
+  seconds: number,
+  stall?: { at: number; lasting: number },
+) {
+  const jitter = wobble(99);
+  const seen: { at: number; density: number }[] = [];
+  let now = 0;
+  let drawn = 0;
+  let measuring = 0;
+  while (now < seconds) {
+    const frozen = stall !== undefined && now >= stall.at && now < stall.at + stall.lasting;
+    const took = frozen ? stall.lasting : draws(control.density, jitter());
+    now += took;
+    drawn += 1;
+    // As the view measures it: a gap longer than a fifth of a second is a freeze rather than a
+    // frame, and counts as a fifth. See LONGEST_FRAME_WORTH_MEASURING in `hologram-view.tsx`.
+    measuring += Math.min(took, 0.2);
+    if (measuring >= 0.5) {
+      steerDensity(control, drawn / measuring, measuring);
+      seen.push({ at: now, density: control.density });
+      drawn = 0;
+      measuring = 0;
+    }
+  }
+  return seen;
+}
+
+const SIXTY_HERTZ = screen(60, 6, 18);
+const HUNDRED_AND_TWENTY_HERTZ = screen(120, 4, 30);
+
+describe('the phone stalling, which is not the phone being slow', () => {
+  /**
+   * The bug this controller was rewritten for, as the user described it: "the amount of particles
+   * keeps rising until the fps all of a sudden drops, then particle count goes all the way down to
+   * 250. Then it climbs slowly back up again, and then does the same jump."
+   *
+   * Two hundred and fifty is {@link FEWEST_PARTICLES}, and it took exactly one measurement to get
+   * there. A stalled frame made the window four times its usual length and the rate in it nearly
+   * zero, and the old loop multiplied the two: the step was scaled by the window, and the window
+   * was long *because* the phone had stopped. One slow frame, the whole sphere.
+   */
+  it('does not strip the sphere because one frame took two seconds', () => {
+    const control = createDensityControl();
+    settle(control, phone(0.6), 20);
+    const settled = control.density;
+    expect(settled).toBeGreaterThan(0.4);
+
+    // One frame, two seconds: a rate of half a frame a second over a window four times too long.
+    steerDensity(control, 1 / 2, 2);
+
+    expect(control.density).toBe(settled);
+  });
+
+  it('answers a real freeze without going anywhere near the floor', () => {
+    const control = createDensityControl();
+    settle(control, phone(0.6), 20);
+    const settled = control.density;
+
+    // Three and a half seconds of nothing at all, in two windows. Long enough that the loop is
+    // right to react — but reacting is not the same as giving up.
+    steerDensity(control, 1 / 1.5, 1.5);
+    steerDensity(control, 1 / 2, 2);
+
+    expect(control.density).toBeGreaterThan(FEWEST_PARTICLES * 4);
+    expect(control.density).toBeLessThan(settled);
+  });
+
+  it('is back where it was within a few seconds, not within a minute', () => {
+    // The second half of what the user saw. The old loop pulled its own ceiling down with the
+    // density, so the way back up was governed by a ceiling that crept at a tenth of the range a
+    // second: fifteen seconds of watching the swarm refill, every time.
+    const control = createDensityControl();
+    settle(control, phone(0.6), 20);
+    const settled = control.density;
+
+    steerDensity(control, 1 / 1.5, 1.5);
+    steerDensity(control, 1 / 2, 2);
+    const shed = control.density;
+    expect(shed).toBeLessThan(settled);
+
+    settle(control, phone(0.6), 5);
+
+    expect(control.density).toBeGreaterThan(settled * 0.95);
+  });
+});
+
+describe('on a screen that can only present whole refreshes', () => {
+  it('walks up to the cliff and stays there instead of falling off it', () => {
+    const control = createDensityControl();
+    const path = watch(control, SIXTY_HERTZ, 60);
+    const late = path.filter((sample) => sample.at >= 30).map((sample) => sample.density);
+
+    // It found something worth drawing...
+    expect(Math.min(...late)).toBeGreaterThan(0.3);
+    // ...and it is not breathing. The old loop swung twenty-five points here, for ever.
+    expect(Math.max(...late) - Math.min(...late)).toBeLessThan(0.1);
+  });
+
+  it('settles just as still at a hundred and twenty', () => {
+    // The same gains, the same file, a screen with twice the resolution in time. A controller whose
+    // error is a frame rate cannot do this: the same reading means -0.5 on one screen and -2 on the
+    // other, so gains that hold one tear the other apart.
+    const control = createDensityControl();
+    const path = watch(control, HUNDRED_AND_TWENTY_HERTZ, 60);
+    const late = path.filter((sample) => sample.at >= 30).map((sample) => sample.density);
+
+    expect(Math.min(...late)).toBeGreaterThan(0.3);
+    expect(Math.max(...late) - Math.min(...late)).toBeLessThan(0.1);
+  });
+
+  it('rides out a stall without ever reaching the floor', () => {
+    const control = createDensityControl();
+    const path = watch(control, SIXTY_HERTZ, 60, { at: 20, lasting: 1.5 });
+    const after = path.filter((sample) => sample.at >= 20).map((sample) => sample.density);
+
+    expect(Math.min(...after)).toBeGreaterThan(0.3);
   });
 });
