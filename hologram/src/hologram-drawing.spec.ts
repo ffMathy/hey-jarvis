@@ -24,7 +24,7 @@ import { VOICE_BAND_COUNT } from './voice-levels';
  * pixels rather than at which functions were called. They cannot say whether it
  * is beautiful; they can say it moves, that it answers Jarvis's voice the way the
  * film's sphere does — with activity, never with a brightness pulse — that it
- * materialises from nothing without a flash, that nothing pops in or out as its slow
+ * fades in and grows outward without a flash, that nothing pops in or out as its slow
  * script moves on, and that it stays inside its square.
  */
 
@@ -149,6 +149,20 @@ function lightHeight(pixels: Uint8Array): number {
     }
   }
   return total === 0 ? 0.5 : weighted / total / SIZE;
+}
+
+/** How far out the light sits, in sphere radii at rest: the luminance-weighted mean distance from the middle. */
+function lightReach(pixels: Uint8Array): number {
+  let weighted = 0;
+  let total = 0;
+  for (let y = 0; y < SIZE; y++) {
+    for (let x = 0; x < SIZE; x++) {
+      const here = luminance(pixels, (y * SIZE + x) * 4);
+      weighted += here * radiusOf(x, y);
+      total += here;
+    }
+  }
+  return total === 0 ? 0 : weighted / total;
 }
 
 /** Mean luminance over the whole square, 0–255. */
@@ -480,17 +494,24 @@ describe('the hologram', () => {
     expect(ROLL_DEGREES_PER_SECOND).toBeGreaterThan(0);
   });
 
-  it('materialises from nothing, and leaves nothing of the intro behind once formed', () => {
-    const formed = brightness(render(silence(2.7)));
+  it('arrives by fading in and growing outward, and nothing else', () => {
+    // The whole of the arrival, at the user's asking: no point of light, no sparks, no spoked
+    // dial — Jarvis fades in and grows outward to his full size, every layer at once.
+    const hologram = mount();
+    const at = (appearance: number) => render({ ...silence(3), appearance }, hologram);
+    const formed = at(1);
 
-    expect(brightness(render({ ...silence(0), appearance: 0 }))).toBeLessThan(0.5);
-    // the spoked dial is up a quarter of the way through the keyframes, well short of the ball
-    const dial = brightness(render({ ...silence(0.9), appearance: 0.25 }));
-    expect(dial).toBeGreaterThan(2);
-    expect(dial).toBeLessThan(formed * 0.5);
-    // the ball is dense by 2.7 s, before the crescent has grown back in
-    expect(brightness(render({ ...silence(2.7), appearance: 0.75 }))).toBeGreaterThan(formed * 0.8);
-    expect(difference(render({ ...silence(3.6), appearance: 0.999 }), render(silence(3.6)))).toBeLessThan(0.5);
+    expect(brightness(at(0))).toBeLessThan(0.5);
+    // Part way in he is both dimmer and smaller than he will be, and grows steadily on the way.
+    const reaches = [0.25, 0.5, 0.75, 1].map((appearance) => lightReach(at(appearance)));
+    for (let step = 1; step < reaches.length; step++) {
+      expect(reaches[step]).toBeGreaterThan(reaches[step - 1]);
+    }
+    expect(brightness(at(0.5))).toBeLessThan(brightness(formed) * 0.75);
+    // Nothing is drawn over him while he arrives, so nothing lies outside the sphere he is
+    // growing into: all of it is his, just fainter.
+    expect(lightReach(at(0.25))).toBeLessThan(lightReach(formed) * 0.8);
+    expect(difference(at(0.999), formed)).toBeLessThan(0.5);
   });
 
   it('brings its rim elements and protrusions in and out smoothly, with nothing popping at a script boundary', () => {
@@ -502,11 +523,9 @@ describe('the hologram', () => {
 
   it('materialises without a flash: no one frame of it turns a tenth of the light on at once', () => {
     const hologram = mount();
-    // The materialisation holds the drawing's largest one-frame steps — the dial snapping on and
-    // breaking up, the rim layer coming in — and the script-boundary test above never sees them,
-    // because it only walks a formed ball. The film's dial "snaps on within two film frames",
-    // about five at 60 Hz, so even the sharpest keyframe here should spread over several: none
-    // of them may move a tenth of the light on in one.
+    // The arrival is a fade over MATERIALISE_SECONDS, and the script-boundary test above never
+    // sees it, because it only walks a formed ball. A fade so steep it jumped would read
+    // as a flash: none of its frames may move a tenth of the light on in one.
     //
     // Measured as a share of the same moment fully formed, not of the formed ball at rest. The
     // script has one deliberate step in it — a red flash, two film frames long and off again,
