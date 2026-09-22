@@ -115,7 +115,7 @@
 //   level       deliberately unused: loudness has no counterpart in the film.
 //   speaking    unused too: agitation already says whether he is talking, and a flag that
 //               flips within one frame would make the sphere jump.
-//   agitation   drives:
+//   agitation   held back until the vortex has all but formed him (appearance 0.6-1), then drives:
 //               - mix = 0.5·agitation: calm fragments whose ids fall below mix fade out and
 //                 fast fragments (lit 0.06-0.14 s) whose ids fall below 2·mix fade in. Half
 //                 and no more, because the two make up for each other exactly at that share
@@ -1753,7 +1753,14 @@ function readScript(scene: Scene, time: number) {
 function analyseFrame(frame: HologramFrame, size: number, scene: Scene) {
   'worklet';
   const time = frame.time;
-  const agitation = clamp01(frame.agitation);
+  // How far on the vortex is: 1 once it is over.
+  const swirl = clamp01(frame.appearance);
+  // What speech does to him — chips thrown off the limb, the crescent splitting, the fraying —
+  // waits until the vortex has all but formed him. The greeting plays while he arrives, and
+  // without this it threw full-size slabs off a limb that was not there yet, into empty space
+  // round a sphere still gathered at its core.
+  const formed = smooth01((swirl - 0.6) / 0.4);
+  const agitation = clamp01(frame.agitation) * formed;
   const bands = frame.bands;
   const lowDrive = clamp01((bandAverage(bands, 0, 6) - 0.35) / 0.45);
   const highDrive = clamp01((bandAverage(bands, 14, 24) - 0.2) / 0.45);
@@ -1764,8 +1771,6 @@ function analyseFrame(frame: HologramFrame, size: number, scene: Scene) {
   // Loudness, not the agitation envelope: the glow follows his voice moment to moment, as the
   // first hologram's did, while the chips and the churn follow the envelope.
   const voice = clamp01(frame.level) ** 0.8;
-  // How far on the vortex is: 1 once it is over.
-  const swirl = clamp01(frame.appearance);
   const settle = 1 - smooth01(swirl);
   const presence = clamp01(frame.presence);
   // The whole sphere fades in over the first fifth of the vortex, so the first particles leaving
@@ -1820,7 +1825,7 @@ function analyseFrame(frame: HologramFrame, size: number, scene: Scene) {
     spread: agitation * (0.7 + 0.3 * lowDrive),
     frayDrive: agitation * (0.55 + 0.45 * highDrive),
     burstAge,
-    burstStrength: clamp01(frame.burstStrength),
+    burstStrength: clamp01(frame.burstStrength) * formed,
     // how far the burst throws, and how many chips
     burstReach: clamp01(frame.burstStrength),
     burstCount: Math.floor(frame.burstCount),

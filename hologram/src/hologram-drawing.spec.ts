@@ -513,6 +513,19 @@ describe('the hologram', () => {
     expect(difference(at(0.999), formed)).toBeLessThan(0.5);
   });
 
+  it('says the greeting while it arrives without throwing anything off a limb that is not there yet', () => {
+    // The greeting plays during the vortex. Chips, fraying and the split crescent are what speech
+    // does to a formed ball; early in the vortex there is no limb for them to leave, so a frame
+    // spoken over must look like the same frame in silence.
+    const hologram = mount();
+    const bands = spectrum('low', 0.8);
+    for (const appearance of [0.2, 0.4]) {
+      const silent = render({ ...silence(0.5), appearance }, hologram);
+      const spoken = render({ ...speech(0.5, 0.9, bands, 0.05, 3), appearance }, hologram);
+      expect(brightBeyondLeftLimb(spoken)).toBeLessThanOrEqual(brightBeyondLeftLimb(silent) + 1);
+    }
+  });
+
   it('spirals out only the particles it is drawing, so a thinned swarm arrives thinned', () => {
     // The vortex moves particles; it never adds any. A device drawing a share of the scene sees
     // that share arrive. The core, the whorl and the rim are not particles and are not thinned, so
