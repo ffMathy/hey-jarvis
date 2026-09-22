@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import {
+  BUILD_BUDGET_MS,
   createDensityControl,
   type DensityControl,
   FEWEST_PARTICLES,
@@ -86,7 +87,7 @@ describe('deciding how many particles this phone can afford', () => {
     expect(falling[falling.length - 1]).toBeLessThan(0.6);
 
     // ...and when it lets go again, they come back — steadily, at RISING_PER_SECOND, which is
-    // three times slower than they went. A swarm that doubles in a heartbeat is more noticeable
+    // four times slower than they went. A swarm that doubles in a heartbeat is more noticeable
     // than one that was never there.
     const oneStep = control.density;
     settle(control, phone(1.4), 0.5);
@@ -112,18 +113,20 @@ describe('deciding how many particles this phone can afford', () => {
     expect(control.windows).toBe(0);
   });
 
-  it('starts sparse and fills in quickly, so the arrival is not the worst second', () => {
+  it('starts sparse and fills in steadily, so the arrival is not the worst second', () => {
     const control = createDensityControl();
     expect(control.density).toBe(FEWEST_PARTICLES);
 
-    // Most of the way in three seconds, which is the part anybody sees...
+    // Not in a rush. It used to be most of the way in three seconds, which is faster than a late
+    // reading can catch: the user watched it arrive smooth, lag a second later, and never recover.
     settle(control, phone(1.4), 3);
-    expect(control.density).toBeGreaterThan(0.9);
+    expect(control.density).toBeGreaterThan(0.2);
+    expect(control.density).toBeLessThan(0.5);
 
-    // ...and all the way shortly after. The climb is paced by RISING_PER_SECOND rather than by the
-    // error, because below what a phone can afford its frame rate is pinned to the screen's refresh
-    // and the measurement stops saying how much room is left.
-    settle(control, phone(1.4), 3);
+    // All the way in a few seconds more on a phone that can take it. The climb is paced by
+    // RISING_PER_SECOND rather than by the error, because below what a phone can afford its frame
+    // rate is pinned to the screen's refresh and the measurement stops saying how much room is left.
+    settle(control, phone(1.4), 5);
     expect(control.density).toBe(1);
   });
 
@@ -454,10 +457,14 @@ describe('the phone stalling, which is not the phone being slow', () => {
     expect(control.density).toBeLessThan(settled);
   });
 
-  it('is back where it was within a few seconds, not within a minute', () => {
-    // The second half of what the user saw. The old loop pulled its own ceiling down with the
-    // density, so the way back up was governed by a ceiling that crept at a tenth of the range a
-    // second: fifteen seconds of watching the swarm refill, every time.
+  it('climbs back after a real freeze, but not back into it', () => {
+    // Two windows of a phone that is not drawing is not a hitch, and a phone that went three and a
+    // half seconds without a frame has said something about what it can afford right now. It used
+    // to be back at the count that froze it within five seconds — which is the user's report
+    // exactly: a lag, the particles going *up* again, and a freeze.
+    //
+    // So it climbs back to under where it froze and stays there for the rest of this appearance,
+    // quickly rather than in a crawl. The next appearance finds its own count from scratch.
     const control = createDensityControl();
     settle(control, phone(0.6), 20);
     const settled = control.density;
@@ -469,7 +476,60 @@ describe('the phone stalling, which is not the phone being slow', () => {
 
     settle(control, phone(0.6), 5);
 
-    expect(control.density).toBeGreaterThan(settled * 0.95);
+    expect(control.density).toBeCloseTo(control.ceiling, 5);
+    expect(control.density).toBeLessThan(settled);
+  });
+});
+
+/**
+ * A phone on a sixty hertz screen that gets hotter the more it draws, which is every phone.
+ *
+ * Sixty hertz presents sixty frames a second or thirty, never the forty the loop aims for, and the
+ * per-particle cost climbs with heat, so the edge between the two creeps down the whole time.
+ */
+function heatingPhone() {
+  let heat = 0;
+  return (density: number) => {
+    const vsync = 1000 / 60;
+    const frameMs = 6 + 20 * (1 + heat) * density;
+    heat = Math.max(0, Math.min(2, heat + density * 0.02 - 0.005));
+    return 1000 / (Math.max(1, Math.ceil(frameMs / vsync)) * vsync);
+  };
+}
+
+describe('a phone that heats up, which is what the user watched freeze', () => {
+  it('spends nearly all its time smooth rather than lagging every few seconds', () => {
+    // The loop used to spend half of every minute at thirty frames a second: climb past the edge,
+    // lag, shed, see sixty again, climb straight back past it.
+    const control = createDensityControl();
+    const drawsAt = heatingPhone();
+    let lagging = 0;
+    for (let window = 0; window < 120; window++) {
+      const rate = drawsAt(control.density);
+      if (rate < TARGET_FRAMES_PER_SECOND) {
+        lagging++;
+      }
+      steerDensity(control, rate, 0.5);
+    }
+
+    expect(lagging / 120).toBeLessThan(0.15);
+  });
+
+  it('never climbs back above where the phone first fell behind', () => {
+    const control = createDensityControl();
+    const drawsAt = heatingPhone();
+    let firstCeiling: number | undefined;
+    for (let window = 0; window < 120; window++) {
+      steerDensity(control, drawsAt(control.density), 0.5);
+      if (firstCeiling === undefined && control.ceiling < 1) {
+        firstCeiling = control.ceiling;
+      }
+      if (firstCeiling !== undefined) {
+        expect(control.density).toBeLessThanOrEqual(firstCeiling);
+      }
+    }
+
+    expect(firstCeiling).toBeDefined();
   });
 });
 
@@ -503,5 +563,81 @@ describe('on a screen that can only present whole refreshes', () => {
     const after = path.filter((sample) => sample.at >= 20).map((sample) => sample.density);
 
     expect(Math.min(...after)).toBeGreaterThan(0.3);
+  });
+});
+
+/**
+ * A phone as the view now reports it: a frame rate, and how long each picture took to build.
+ *
+ * Building is a fixed cost plus a cost per particle that grows with heat. Painting is the same
+ * shape, and the frame is presented at whole sixty hertz refreshes, so the frame rate is as
+ * useless as ever below the edge and the build time is the only thing that moves.
+ */
+function timedPhone({ buildPerParticle, paintPerParticle }: { buildPerParticle: number; paintPerParticle: number }) {
+  let heat = 0;
+  return (density: number) => {
+    const build = 1 + buildPerParticle * (1 + heat) * density;
+    const frameMs = build + 2 + paintPerParticle * (1 + heat) * density;
+    heat = Math.max(0, Math.min(1, heat + density * 0.01 - 0.003));
+    const vsync = 1000 / 60;
+    return { build, framesPerSecond: 1000 / (Math.max(1, Math.ceil(frameMs / vsync)) * vsync) };
+  };
+}
+
+function steerFor(control: DensityControl, drawsAt: ReturnType<typeof timedPhone>, windows: number) {
+  const seen: { density: number; framesPerSecond: number; build: number }[] = [];
+  for (let window = 0; window < windows; window++) {
+    const { build, framesPerSecond } = drawsAt(control.density);
+    steerDensity(control, framesPerSecond, 0.5, build);
+    seen.push({ density: control.density, framesPerSecond, build });
+  }
+  return seen;
+}
+
+describe('steering by how long a picture takes to build', () => {
+  it('settles on the build budget and stays there, rather than hunting across a refresh', () => {
+    // A phone whose building is the expensive half: the budget, not the edge, is what stops it.
+    const control = createDensityControl();
+    const seen = steerFor(control, timedPhone({ buildPerParticle: 10, paintPerParticle: 2 }), 80);
+
+    const late = seen.slice(-20);
+    for (const window of late) {
+      expect(window.build).toBeGreaterThan(BUILD_BUDGET_MS * 0.85);
+      expect(window.build).toBeLessThan(BUILD_BUDGET_MS * 1.1);
+      expect(window.framesPerSecond).toBeCloseTo(60, 5);
+    }
+    const densities = late.map((window) => window.density);
+    expect(Math.max(...densities) - Math.min(...densities)).toBeLessThan(0.05);
+  });
+
+  it('follows a phone that heats up down smoothly, without once dropping to thirty', () => {
+    const control = createDensityControl();
+    const seen = steerFor(control, timedPhone({ buildPerParticle: 10, paintPerParticle: 2 }), 240);
+
+    expect(seen.filter((window) => window.framesPerSecond < TARGET_FRAMES_PER_SECOND)).toHaveLength(0);
+    // And it did come down as the phone warmed, rather than sitting where it started.
+    expect(seen[seen.length - 1]?.density).toBeLessThan(Math.max(...seen.map((window) => window.density)));
+  });
+
+  it('is still caught by the frame rate on a phone whose painting runs out first', () => {
+    // Building is cheap here and never gets near its budget, so the build time says "room" all the
+    // way up — which is the case the frame-rate ceiling exists for.
+    const control = createDensityControl();
+    const seen = steerFor(control, timedPhone({ buildPerParticle: 1, paintPerParticle: 20 }), 240);
+
+    expect(control.ceiling).toBeLessThan(1);
+    const lagging = seen.filter((window) => window.framesPerSecond < TARGET_FRAMES_PER_SECOND);
+    expect(lagging.length / seen.length).toBeLessThan(0.15);
+  });
+
+  it('steers by the frame rate until there is a build time to steer by', () => {
+    const byFrameRate = createDensityControl();
+    const byNothingTimed = createDensityControl();
+    settle(byFrameRate, phone(0.4), 20);
+    for (let window = 0; window * 0.5 < 20; window++) {
+      steerDensity(byNothingTimed, phone(0.4)(byNothingTimed.density), 0.5, 0);
+    }
+
+    expect(byNothingTimed.density).toBe(byFrameRate.density);
   });
 });

@@ -94,8 +94,9 @@ phone.save(os.path.join(art, 'pixel-10-pro.png'))
 # rings fixed that and were wrong the other way, too tidy to read as a wallpaper at all. This is the
 # middle: a handful of large soft shapes, off-centre, at angles that line up with nothing.
 #
-# Composed for what is left visible. The assistant's sheet covers the bottom 40%, so everything
-# worth seeing is in the top three fifths and the shapes run off underneath it.
+# Composed for what is left visible. The assistant's sheet is as tall as the screen is wide, which
+# on this shape is the bottom 45%, so everything worth seeing is in the top half and the shapes run
+# off underneath it.
 #
 # It is also, incidentally, the kindest thing that can be handed a GIF's 256-colour palette: six
 # flat tones and one gradient, against a photograph's thousands.

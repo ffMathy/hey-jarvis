@@ -21,6 +21,7 @@ watch/
 ├── modules/jarvis-phone/         # the local Expo module that hears the phone
 │   ├── index.ts                  # the JS side
 │   └── android/src/main/         # Kotlin, and the library manifest declaring the listener service
+├── modules/jarvis-network/       # Wi-Fi or cellular for a conversation, off the phone's Bluetooth
 └── src/
     ├── app.tsx                   # two states: a conversation, or waiting for the phone
     ├── conversation-screen.tsx   # the sphere, and a live ElevenLabs session behind it
@@ -96,6 +97,8 @@ Two things differ from the phone, both deliberate:
 
 - **His voice comes from the SDK's analysers**, not from a tap on the WebRTC track. `useAgentVoice` in `hologram/conversation` is the shared implementation, and the note there says why: tapping the track means a native module, a peer-connection id and a ring buffer, and on a sphere this size the SDK's readings are good enough. The phone keeps its tap.
 - **A refused microphone is the end of it.** The phone falls back to a text field in a browser, where there is a keyboard in front of you. Here the assistant gesture *is* the request to be talked to.
+
+**A conversation is held over Wi-Fi or cellular, never the phone's Bluetooth.** Near its phone a watch is online through a Bluetooth proxy that Wear OS prefers because it is cheap to keep up, and it carries TCP only. WebRTC's audio is UDP, so on that network the token request works and the session can even say it is connected, while no audio gets through either way — which is how the watch first behaved: Jarvis turned and said nothing. Before each conversation `modules/jarvis-network` asks for Wi-Fi or cellular with `requestNetwork` and binds the process to it, which is Google's own advice for anything that streams on a watch, and lets it go when the conversation ends or the wrist drops. If neither comes up within a few seconds the conversation is tried anyway, and when it then fails to open, the line over him says to put the watch on Wi-Fi.
 
 `@livekit/react-native-expo-plugin` is configured with `audioType: 'communication'`, which is not a nicety: without it the native audio session is set up for media playback, the microphone routes to the speaker, and Jarvis hears himself back. On a watch the speaker and the microphone are centimetres apart, so that is not a subtle failure.
 

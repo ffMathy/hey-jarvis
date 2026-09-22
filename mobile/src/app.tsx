@@ -200,10 +200,13 @@ export function App({ summoned = false }: AppProps) {
     isTouring: !hasWalkedTour && !wasSummoned && tourHasSteps,
   });
 
+  const conversationInSheet = isConversationInSheet(wasSummoned);
+  const isSeeThrough = isScreenSeeThrough(screen, conversationInSheet);
+
   return (
     <ConversationProvider>
       <StatusBar style="light" />
-      <View style={[styles.root, screen === 'sample' ? styles.seeThrough : styles.opaque]}>
+      <View style={[styles.root, isSeeThrough ? styles.seeThrough : styles.opaque]}>
         {screen === 'loading' ? <ActivityIndicator color={theme.colors.accent} /> : null}
         {screen === 'sample' ? <SampleScreen onLeave={() => setIsSampling(false)} /> : null}
         {screen === 'onboarding' ? (
@@ -223,11 +226,28 @@ export function App({ summoned = false }: AppProps) {
           />
         ) : null}
         {screen === 'conversation' && settings ? (
-          <ConversationScreen settings={settings} onEditSettings={() => setIsEditingSettings(true)} />
+          <ConversationScreen
+            settings={settings}
+            onEditSettings={() => setIsEditingSettings(true)}
+            inSheet={conversationInSheet}
+          />
         ) : null}
       </View>
     </ConversationProvider>
   );
+}
+
+/**
+ * Whether a conversation arrives in the same bottom sheet sample mode does, over whatever was on
+ * screen, rather than blacking it out: when summoned, on a phone. See `conversation-sheet.tsx`.
+ */
+function isConversationInSheet(wasSummoned: boolean): boolean {
+  return wasSummoned && Platform.OS === 'android';
+}
+
+/** Whether the root is left unpainted, so that what is behind the app shows around a sheet. */
+function isScreenSeeThrough(screen: Screen, conversationInSheet: boolean): boolean {
+  return screen === 'sample' || (screen === 'conversation' && conversationInSheet);
 }
 
 const styles = StyleSheet.create({

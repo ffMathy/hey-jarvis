@@ -114,6 +114,9 @@ export interface JarvisHologramProps {
    * software rasteriser, and the phone is neither. On a phone the same drawing runs at 58 frames a
    * second in Chrome and 11 in the app, so something in the native path costs far more than
    * anything that can be measured here, and this is the only instrument that can say which half.
+   *
+   * The same timing is what the density loop now steers by, whether or not this is passed: see
+   * `BUILD_BUDGET_MS`. This is only where the readout finds it.
    */
   buildMilliseconds?: SharedValue<number>;
   /**
@@ -243,6 +246,12 @@ const READ_INTERVAL_MS = 40;
 /** The step assumed for a frame with no previous one to measure from. */
 const DEFAULT_FRAME_MS = 16;
 
+/** A mean, or nought when there is nothing to take one of — which the density loop reads as "untimed". */
+function meanOf(total: number, count: number): number {
+  'worklet';
+  return count > 0 ? total / count : 0;
+}
+
 /** Fixed, so the hologram has the same shape every time the app opens. */
 const SCENE_SEED = 1337;
 
@@ -358,6 +367,10 @@ function JarvisHologramView({
   // Frames drawn since the rate was last worked out, and how long that has taken.
   const drawn = useSharedValue(0);
   const measuring = useSharedValue(0);
+  // Pictures built in that time, and how long building them took in all. Their mean is what the
+  // density loop steers by — see `steerDensity` — so it is timed whether or not anyone is watching.
+  const built = useSharedValue(0);
+  const buildingFor = useSharedValue(0);
   // How many of the particles this phone can afford, worked out while it draws them.
   //
   // Started from half of what this phone was last seen *holding*, and from the floor when there is
@@ -441,13 +454,14 @@ function JarvisHologramView({
     measuring.value += Math.min(deltaSeconds, LONGEST_FRAME_WORTH_MEASURING);
     if (measuring.value >= FRAME_RATE_OVER_SECONDS) {
       const measured = drawn.value / measuring.value;
+      const meanBuild = meanOf(buildingFor.value, built.value);
       frameRate.value = measured;
       // Steered once per measurement rather than once a frame, because a rate averaged over half a
       // second is the only honest thing to steer by — and the controller's rate limits are written
       // in shares per second, so it does not care how often it is asked.
       density.modify((control) => {
         'worklet';
-        steerDensity(control, measured, measuring.value);
+        steerDensity(control, measured, measuring.value, meanBuild);
         return control;
       });
       if (particleShare !== undefined) {
@@ -458,6 +472,8 @@ function JarvisHologramView({
       }
       drawn.value = 0;
       measuring.value = 0;
+      built.value = 0;
+      buildingFor.value = 0;
     }
   });
 
@@ -488,7 +504,7 @@ function JarvisHologramView({
   // Building the picture, timed on the thread that does it. `performance.now` exists in the UI
   // runtime; the cost of asking it twice is nothing against what it is measuring.
   const picture = useDerivedValue(() => {
-    const startedAt = buildMilliseconds === undefined ? 0 : performance.now();
+    const startedAt = performance.now();
     // Read once: this is a copy out of the UI runtime, and the drawing wants nine
     // fields of it.
     const current = frame.value;
@@ -522,12 +538,15 @@ function JarvisHologramView({
       scene,
       resources,
     );
-    const built = recorder.finishRecordingAsPicture();
+    const recorded = recorder.finishRecordingAsPicture();
+    const took = performance.now() - startedAt;
+    built.value += 1;
+    buildingFor.value += took;
     if (buildMilliseconds !== undefined) {
       // Eased, because one frame's figure jumps about and what is wanted is the shape of it.
-      buildMilliseconds.value = buildMilliseconds.value * 0.9 + (performance.now() - startedAt) * 0.1;
+      buildMilliseconds.value = buildMilliseconds.value * 0.9 + took * 0.1;
     }
-    return built;
+    return recorded;
   });
 
   // Laid out small and scaled up: see DRAWN_RESOLUTION. The scale is about the canvas's own

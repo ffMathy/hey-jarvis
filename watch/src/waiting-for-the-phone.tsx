@@ -62,6 +62,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#000000',
+    // The square is wider than the screen — see `watch-screen.ts` — and what hangs off it is not
+    // something to scroll to.
+    overflow: 'hidden',
   },
   /**
    * Low on the screen and over the sphere, which fills it.
