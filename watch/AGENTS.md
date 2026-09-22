@@ -25,10 +25,10 @@ watch/
 └── src/
     ├── app.tsx                   # two states: a conversation, or waiting for the phone
     ├── conversation-screen.tsx   # the sphere, and a live ElevenLabs session behind it
-    ├── waiting-for-the-phone.tsx # the sphere idling, and one line saying what is missing
+    ├── waiting-for-the-phone.tsx # sample mode while it waits, and one line saying what is missing
     ├── phone-settings.ts         # the credentials, and the asking that gets them
     ├── microphone-permission.ts  # PermissionsAndroid
-    ├── silent-voice.ts           # a voice that is not there, for the waiting screen
+    ├── watch-density.ts          # the particle ceiling, and letting the drawing find its own count
     └── watch-screen.ts           # how big the sphere is drawn on a round screen
 ```
 
@@ -87,6 +87,8 @@ The same caveats apply as to the phone's copy: the keystore keeps the key from o
 
 The phone's first-run tour explains what an ElevenLabs agent is, asks for the two values, and recommends the assistant role. None of that belongs on a watch. Signing up for ElevenLabs and building an agent is laptop work; the credentials are the phone's to type; and the assistant role on Wear OS is chosen in the watch's own Settings, which no app can open on the user's behalf. What is left for the watch to say is one line — "open Jarvis on your phone" — which is what `waiting-for-the-phone.tsx` says.
 
+Around that line the screen is the phone's **sample mode**, since until the phone answers there is nothing else for Jarvis to do: tapping him walks speaking, listening, thinking and at rest, the mood's name shows for a moment, and the frame rate and particle count sit small at the top. The moods, the simulated voice, the toast and the readout all come from `hologram` (`sample-mode.ts` and `hologram/react/sample`), exactly as the phone's do; only the layout is the watch's, kept clear of a round bezel. The readout is on this screen only — the conversation screen has nothing on it but him.
+
 One case has no phone to ask at all: the app declares `com.google.android.wearable.standalone`, so it installs on a watch whose phone has never had Jarvis. That case gets the same screen and the same line, because the answer is the same: install Jarvis on the phone.
 
 ## The conversation
@@ -97,6 +99,8 @@ Two things differ from the phone, both deliberate:
 
 - **His voice comes from the SDK's analysers**, not from a tap on the WebRTC track. `useAgentVoice` in `hologram/conversation` is the shared implementation, and the note there says why: tapping the track means a native module, a peer-connection id and a ring buffer, and on a sphere this size the SDK's readings are good enough. The phone keeps its tap.
 - **A refused microphone is the end of it.** The phone falls back to a text field in a browser, where there is a keyboard in front of you. Here the assistant gesture *is* the request to be talked to.
+
+**He greets you before he is connected**, exactly as the phone does and with the same hook (`useGreeting` in `hologram/conversation`): "Hello sir, how can I help?" plays from the firmware's recording as soon as the microphone is granted, and everything else — getting off the Bluetooth proxy, the token, the session — happens while he says it, with the agent's first message switched off and the session's microphone muted until he has finished. On a watch the speaker and the microphone are centimetres apart, so that mute is what stops the agent hearing the greeting as the wearer. Dropping the wrist mid-greeting stops it. The listening ring comes from `useUserVoice`, as on the phone. None of this has been heard on a watch yet: whether the greeting survives LiveKit switching the audio mode for the call mid-sentence is the first thing a real one should settle.
 
 **A conversation is held over Wi-Fi or cellular, never the phone's Bluetooth.** Near its phone a watch is online through a Bluetooth proxy that Wear OS prefers because it is cheap to keep up, and it carries TCP only. WebRTC's audio is UDP, so on that network the token request works and the session can even say it is connected, while no audio gets through either way — which is how the watch first behaved: Jarvis turned and said nothing. Before each conversation `modules/jarvis-network` asks for Wi-Fi or cellular with `requestNetwork` and binds the process to it, which is Google's own advice for anything that streams on a watch, and lets it go when the conversation ends or the wrist drops. If neither comes up within a few seconds the conversation is tried anyway, and when it then fails to open, the line over him says to put the watch on Wi-Fi.
 
@@ -147,7 +151,7 @@ Data Layer requires before these two will speak to each other at all.
 3. Under Wireless debugging, choose **Pair new device** and pair from a computer on the same Wi-Fi: `adb pair <ip>:<pairing port>` with the code shown, then `adb connect <ip>:<port>`.
 4. `adb install jarvis-watch-<commit>.apk`
 5. On the watch: **Settings → Apps → Default apps → Digital assistant app → Default digital assistant app → Jarvis**, and confirm.
-6. Hold the side button. Jarvis should come up and turn. With nothing handed over yet he idles, under the line **Open Jarvis on your phone**.
+6. Hold the side button. Jarvis should come up and turn. With nothing handed over yet he is in sample mode — tap him to walk his moods — over the line **Open Jarvis on your phone**.
 7. Open Jarvis on the phone — with the phone app installed and set up. The watch asks for the credentials every few seconds while it is waiting, and the phone answers as soon as it hears one, so this should be all it takes. If it is not, the phone's watch card has a **Send the key to <watch>** button; hold the phone's conversation screen to reach the settings it is on.
 8. The watch should stop waiting and open a conversation by itself. Talk to him.
 

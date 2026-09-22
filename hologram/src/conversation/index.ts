@@ -14,6 +14,7 @@
  * wrong fails at runtime with "No voice session setup strategy registered", nowhere near the cause.
  */
 export { useAgentVoice } from './agent-voice';
+export { useGreeting } from './greeting';
 export { useSdkVoiceReaders } from './sdk-voice-readers';
 export {
   NOTHING_IN_FLIGHT,
@@ -22,3 +23,4 @@ export {
   toolCallStarted,
   useToolActivity,
 } from './tool-activity';
+export { useUserVoice } from './user-voice';

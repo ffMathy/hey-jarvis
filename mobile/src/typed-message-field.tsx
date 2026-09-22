@@ -91,9 +91,9 @@ const styles = StyleSheet.create({
   /**
    * Under the sphere, and quiet about it.
    *
-   * Absolutely positioned for the same reason the frame rate and the settings link are: the sphere
-   * is centred in the whole screen and is wider than it, so anything that took part in the layout
-   * would push him off the middle.
+   * Absolutely positioned for the same reason the settings link is: the sphere is centred in the
+   * whole screen and is wider than it, so anything that took part in the layout would push him off
+   * the middle.
    */
   field: {
     position: 'absolute',

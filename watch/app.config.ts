@@ -4,6 +4,7 @@ import {
   AndroidConfig,
   type ConfigPlugin,
   withAndroidManifest,
+  withAndroidStyles,
   withAppBuildGradle,
   withDangerousMod,
   withGradleProperties,
@@ -129,6 +130,27 @@ const withWatchSdkLevel: ConfigPlugin = (config) =>
   });
 
 /**
+ * Pitch black from the first frame, splash screen included.
+ *
+ * Expo's template opens the activity on `Theme.App.SplashScreen`, whose window background is its
+ * placeholder logo — a grey grid — on white. It shows every time the watch launches Jarvis, before
+ * React has drawn anything, and on an OLED screen that is otherwise off it is a white flash in the
+ * dark. So the splash theme gets the same window background as the app, which `backgroundColor`
+ * below makes black. Android 12's system splash follows it, since it takes the window background
+ * when that is a plain colour.
+ */
+const withBlackSplash: ConfigPlugin = (config) =>
+  withAndroidStyles(config, (styled) => {
+    styled.modResults = AndroidConfig.Styles.assignStylesValue(styled.modResults, {
+      add: true,
+      parent: { name: 'Theme.App.SplashScreen', parent: 'AppTheme' },
+      name: 'android:windowBackground',
+      value: '@color/activityBackground',
+    });
+    return styled;
+  });
+
+/**
  * Jarvis on the wrist.
  *
  * The same sphere as the phone app, from the same files: `hologram/` holds the drawing and the
@@ -195,4 +217,4 @@ const config: ExpoConfig = {
 
 // Signed with the phone app's upload key, which is not a nicety: Play will only deliver two
 // artifacts as one app if they share a package name *and* a signing key.
-export default withReleaseSigning(withWatchSdkLevel(withWatchCapability(withWatchAssistant(config))));
+export default withReleaseSigning(withBlackSplash(withWatchSdkLevel(withWatchCapability(withWatchAssistant(config)))));

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
-import { createSimulatedSpectrum, fillSimulatedSpectrum, simulatedVolume } from './simulated-voice';
+import { createSimulatedSpectrum, fillSimulatedSpectrum } from './simulated-voice';
+import { simulatedVolume } from './voice-analysis';
 import { perceivedLevel, QUIETEST_SPEECH } from './voice-levels';
 
 /**

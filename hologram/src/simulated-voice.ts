@@ -16,10 +16,14 @@
  * the JS thread, every 40 ms — and never on the UI thread.
  */
 
-import { SPECTRUM_BIN_COUNT } from './voice-analysis';
+import { fillRepeatingGreetingSpectrum } from './greeting-voice';
+import { SPEAKING_LOUDEST, SPECTRUM_BIN_COUNT } from './voice-analysis';
 
-/** What the sphere is being asked to look like. `idle` needs no spectrum: it is silence. */
-export type SimulatedMood = 'speaking' | 'thinking';
+/**
+ * What the sphere is being asked to look like. `idle` needs no spectrum: it is silence. `greeting`
+ * is not made up — it is the greeting's measurement, repeated — and is what sample mode speaks with.
+ */
+export type SimulatedMood = 'speaking' | 'thinking' | 'greeting';
 
 /** One syllable's worth of time. Speech is a string of these, some of them silent. */
 const SYLLABLE_SECONDS = 0.26;
@@ -41,14 +45,6 @@ const BREATH_SECONDS = 0.75;
  * thinking.
  */
 const THINKING_HUM = 0.0022;
-
-/**
- * The loudest a syllable gets, again as a mean of the spectrum: 0.25, which arrives as 0.9.
- *
- * Not 1. A voice that saturates on every syllable gives the drawing nothing to tell a loud one
- * from a quiet one with, and the glow is meant to breathe over a sentence.
- */
-const SPEAKING_LOUDEST = 0.25;
 
 /**
  * A repeatable number in 0–1 for a whole number.
@@ -106,6 +102,10 @@ function syllableAt(seconds: number): { loudness: number; slot: number } {
  * for the collector to take back.
  */
 export function fillSimulatedSpectrum(mood: SimulatedMood, seconds: number, spectrum: Uint8Array): Uint8Array {
+  // Not made up at all: the greeting's own measurement, repeated. See `greeting-voice.ts`.
+  if (mood === 'greeting') {
+    return fillRepeatingGreetingSpectrum(seconds, spectrum);
+  }
   const last = spectrum.length - 1;
   const shape = mood === 'speaking' ? speakingShape(seconds) : thinkingShape();
 
@@ -174,22 +174,31 @@ function thinkingShape(): Shape {
   return { loudness: THINKING_HUM, at: (position) => Math.exp(-position * 1.4) };
 }
 
-/**
- * The volume that goes with a spectrum: its mean, 0–1.
- *
- * The same quantity a browser reports — see `sample-voice.web.ts` — rather than the RMS a phone
- * measures, because a simulated voice has no waveform to take an RMS of. The moods above are
- * pitched so that it does not matter which gate they are judged against.
- */
-export function simulatedVolume(spectrum: ArrayLike<number>): number {
-  let sum = 0;
-  for (let index = 0; index < spectrum.length; index++) {
-    sum += spectrum[index] ?? 0;
-  }
-  return spectrum.length === 0 ? 0 : sum / spectrum.length / 255;
-}
-
 /** A spectrum of the right size to hand {@link fillSimulatedSpectrum}. */
 export function createSimulatedSpectrum(): Uint8Array {
   return new Uint8Array(SPECTRUM_BIN_COUNT);
+}
+
+/** How long someone talking to Jarvis speaks before pausing, and how long the pause is. */
+const USER_PHRASE_SECONDS = 2.6;
+const USER_PAUSE_SECONDS = 1.4;
+
+/**
+ * Someone talking to Jarvis, made up from the clock: what ElevenLabs' voice-activity score and the
+ * microphone would say at `seconds`. Phrases with pauses between them, so the listening ring can be
+ * seen coming up and falling back, and syllables within a phrase, so its reach follows a voice.
+ *
+ * The volume is on a microphone's scale — a voice at arm's length is a small number — which is the
+ * scale `hearingLevelFromVolume` expects.
+ */
+export function simulatedUserAt(seconds: number): { presence: number; volume: number } {
+  const period = USER_PHRASE_SECONDS + USER_PAUSE_SECONDS;
+  const into = seconds - Math.floor(seconds / period) * period;
+  if (into >= USER_PHRASE_SECONDS) {
+    return { presence: 0.04, volume: 0.002 };
+  }
+  // The score lags the voice a little at each end, as a detector's does.
+  const edge = Math.min(into / 0.12, (USER_PHRASE_SECONDS - into) / 0.2, 1);
+  const { loudness } = syllableAt(into + 0.4);
+  return { presence: 0.04 + 0.9 * edge, volume: 0.02 + 0.28 * loudness };
 }

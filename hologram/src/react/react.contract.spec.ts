@@ -15,40 +15,61 @@ import { join } from 'node:path';
  * `hologram/react` for a number, which pulled the view in with it, and the hologram never drew
  * again. Nothing about it failed loudly — the error was in the browser's console, on a phone.
  *
- * So the rule is a rule, and this is what holds it: `lifecycle.ts` and everything it imports are
- * Skia-free.
+ * So the rule is a rule, and this is what holds it: `lifecycle.ts` and `sample.ts`, and everything
+ * they import, are Skia-free — and so is the `hologram/conversation` entry, for the same reason.
  */
 
 const REACT_DIR = import.meta.dir;
+const CONVERSATION_DIR = join(REACT_DIR, '..', 'conversation');
 
-/** Every local module `file` imports, followed as far as it goes. */
-function reachableFrom(file: string, seen = new Set<string>()): Set<string> {
-  if (seen.has(file)) {
+/**
+ * Every local module `file` imports, followed as far as it goes — within its own folder, which is
+ * where every module these entries reach lives, apart from the main entry's type-only files.
+ */
+function reachableFrom(directory: string, file: string, seen = new Set<string>()): Set<string> {
+  const path = join(directory, file);
+  if (seen.has(path)) {
     return seen;
   }
-  seen.add(file);
-  const source = readFileSync(join(REACT_DIR, file), 'utf8');
-  for (const match of source.matchAll(/from '(\.[^']+)'/g)) {
+  seen.add(path);
+  const source = readFileSync(path, 'utf8');
+  for (const match of source.matchAll(/from '(\.\/[^']+)'/g)) {
     const relative = match[1] ?? '';
-    const candidates = readdirSync(REACT_DIR).filter(
+    const candidates = readdirSync(directory).filter(
       (name) => name === `${relative.slice(2)}.ts` || name === `${relative.slice(2)}.tsx`,
     );
     for (const candidate of candidates) {
-      reachableFrom(candidate, seen);
+      reachableFrom(directory, candidate, seen);
     }
   }
   return seen;
 }
 
 /** Whether a module names Skia in an import that survives into the bundle. */
-function importsSkia(file: string): boolean {
-  const source = readFileSync(join(REACT_DIR, file), 'utf8');
+function importsSkia(path: string): boolean {
+  const source = readFileSync(path, 'utf8');
   return /^import (?!type )[^;]*from '@shopify\/react-native-skia'/m.test(source);
 }
 
 describe('what a browser may import before CanvasKit has loaded', () => {
   it('keeps the lifecycle entry, and everything it reaches, clear of Skia', () => {
-    const reachable = [...reachableFrom('lifecycle.ts')];
+    const reachable = [...reachableFrom(REACT_DIR, 'lifecycle.ts')];
+
+    expect(reachable.length).toBeGreaterThan(1);
+    expect(reachable.filter(importsSkia)).toEqual([]);
+  });
+
+  it('keeps the sample entry, and everything it reaches, clear of Skia', () => {
+    const reachable = [...reachableFrom(REACT_DIR, 'sample.ts')];
+
+    expect(reachable.length).toBeGreaterThan(1);
+    expect(reachable.filter(importsSkia)).toEqual([]);
+  });
+
+  it('keeps the conversation entry, and everything it reaches, clear of Skia', () => {
+    // A screen holds the conversation — and plays the greeting it opens with — before CanvasKit has
+    // loaded in a browser, which is the whole reason this entry is not part of `hologram/react`.
+    const reachable = [...reachableFrom(CONVERSATION_DIR, 'index.ts')];
 
     expect(reachable.length).toBeGreaterThan(1);
     expect(reachable.filter(importsSkia)).toEqual([]);
@@ -57,6 +78,6 @@ describe('what a browser may import before CanvasKit has loaded', () => {
   it('still has something to protect: the view itself does import Skia', () => {
     // If this ever stops being true the test above has become a tautology, and the real rule —
     // that the view is only ever reached lazily on web — would be going unchecked.
-    expect(importsSkia('hologram-view.tsx')).toBe(true);
+    expect(importsSkia(join(REACT_DIR, 'hologram-view.tsx'))).toBe(true);
   });
 });

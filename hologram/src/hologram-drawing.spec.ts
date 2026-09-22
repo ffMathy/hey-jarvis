@@ -24,7 +24,7 @@ import { VOICE_BAND_COUNT } from './voice-levels';
  * pixels rather than at which functions were called. They cannot say whether it
  * is beautiful; they can say it moves, that it answers Jarvis's voice the way the
  * film's sphere does — with activity, never with a brightness pulse — that it
- * materialises from nothing without a flash, that nothing pops in or out as its slow
+ * spirals out of its core without a flash, that nothing pops in or out as its slow
  * script moves on, and that it stays inside its square.
  */
 
@@ -149,6 +149,20 @@ function lightHeight(pixels: Uint8Array): number {
     }
   }
   return total === 0 ? 0.5 : weighted / total / SIZE;
+}
+
+/** How far out the light sits, in sphere radii at rest: the luminance-weighted mean distance from the middle. */
+function lightReach(pixels: Uint8Array): number {
+  let weighted = 0;
+  let total = 0;
+  for (let y = 0; y < SIZE; y++) {
+    for (let x = 0; x < SIZE; x++) {
+      const here = luminance(pixels, (y * SIZE + x) * 4);
+      weighted += here * radiusOf(x, y);
+      total += here;
+    }
+  }
+  return total === 0 ? 0 : weighted / total;
 }
 
 /** Mean luminance over the whole square, 0–255. */
@@ -416,7 +430,9 @@ describe('the hologram', () => {
     }
 
     expect(agitatedChange).toBeGreaterThan(calmChange * 1.3);
-  });
+    // Some thirty full renders: about three seconds alone, and past bun's default five once the
+    // whole workspace's tests share the machine. The budget is for that, not for a slow drawing.
+  }, 30_000);
 
   it('shows which frequencies are sounding while he talks, not just that he is talking', () => {
     // Same moment, same overall level and agitation; only where the energy sits differs.
@@ -480,17 +496,30 @@ describe('the hologram', () => {
     expect(ROLL_DEGREES_PER_SECOND).toBeGreaterThan(0);
   });
 
-  it('materialises from nothing, and leaves nothing of the intro behind once formed', () => {
-    const formed = brightness(render(silence(2.7)));
+  it('arrives as a vortex out of its core, and nothing else', () => {
+    // The whole of the arrival, at the user's asking: no point of light, no sparks, no spoked
+    // dial — his particles leave the core, nearest first, and spiral out to where they sit.
+    const hologram = mount();
+    const at = (appearance: number) => render({ ...silence(3), appearance }, hologram);
+    const formed = at(1);
 
-    expect(brightness(render({ ...silence(0), appearance: 0 }))).toBeLessThan(0.5);
-    // the spoked dial is up a quarter of the way through the keyframes, well short of the ball
-    const dial = brightness(render({ ...silence(0.9), appearance: 0.25 }));
-    expect(dial).toBeGreaterThan(2);
-    expect(dial).toBeLessThan(formed * 0.5);
-    // the ball is dense by 2.7 s, before the crescent has grown back in
-    expect(brightness(render({ ...silence(2.7), appearance: 0.75 }))).toBeGreaterThan(formed * 0.8);
-    expect(difference(render({ ...silence(3.6), appearance: 0.999 }), render(silence(3.6)))).toBeLessThan(0.5);
+    expect(brightness(at(0))).toBeLessThan(0.5);
+    // Early on the light is still gathered at the core, and it spreads outward steadily.
+    const reaches = [0.2, 0.4, 0.6, 0.8, 1].map((appearance) => lightReach(at(appearance)));
+    for (let step = 1; step < reaches.length; step++) {
+      expect(reaches[step]).toBeGreaterThan(reaches[step - 1]);
+    }
+    expect(reaches[0]).toBeLessThan(reaches[reaches.length - 1] * 0.5);
+    expect(difference(at(0.999), formed)).toBeLessThan(0.5);
+  });
+
+  it('spirals out only the particles it is drawing, so a thinned swarm arrives thinned', () => {
+    // The vortex moves particles; it never adds any. A device drawing a share of the scene sees
+    // that share arrive. The core, the whorl and the rim are not particles and are not thinned, so
+    // the frame as a whole dims by less than the share does — but it has to dim.
+    const hologram = mount();
+    const midway = (density: number) => brightness(render({ ...silence(3), appearance: 0.5, density }, hologram));
+    expect(midway(0.3)).toBeLessThan(midway(1) * 0.9);
   });
 
   it('brings its rim elements and protrusions in and out smoothly, with nothing popping at a script boundary', () => {
@@ -502,11 +531,9 @@ describe('the hologram', () => {
 
   it('materialises without a flash: no one frame of it turns a tenth of the light on at once', () => {
     const hologram = mount();
-    // The materialisation holds the drawing's largest one-frame steps — the dial snapping on and
-    // breaking up, the rim layer coming in — and the script-boundary test above never sees them,
-    // because it only walks a formed ball. The film's dial "snaps on within two film frames",
-    // about five at 60 Hz, so even the sharpest keyframe here should spread over several: none
-    // of them may move a tenth of the light on in one.
+    // The arrival is the vortex over MATERIALISE_SECONDS, and the script-boundary test above never
+    // sees it, because it only walks a formed ball. An arrival so steep it jumped would read
+    // as a flash: none of its frames may move a tenth of the light on in one.
     //
     // Measured as a share of the same moment fully formed, not of the formed ball at rest. The
     // script has one deliberate step in it — a red flash, two film frames long and off again,
@@ -572,6 +599,33 @@ describe('the hologram', () => {
 
       expect(thought).toBeLessThan(calm);
     }
+  });
+
+  it('listens with a faint ring outside the limb that follows how loud they are, and leaves the ball alone', () => {
+    // Someone talking to him is shown as a sign that he hears them, not as anything he does: a ring
+    // of ticks just past the limb whose reach follows their voice. The ball itself must not change,
+    // or listening would read as him speaking.
+    const hologram = mount();
+    const time = 5.4;
+    const ringLight = (pixels: Uint8Array) => {
+      let total = 0;
+      for (let y = 0; y < SIZE; y++) {
+        for (let x = 0; x < SIZE; x++) {
+          const radius = radiusOf(x, y);
+          if (radius > 1.06 && radius < 1.2) total += luminance(pixels, (y * SIZE + x) * 4);
+        }
+      }
+      return total;
+    };
+    const calm = render(silence(time), hologram);
+    const quiet = render({ ...silence(time), hearing: 1, hearingLevel: 0.1 }, hologram);
+    const loud = render({ ...silence(time), hearing: 1, hearingLevel: 1 }, hologram);
+
+    expect(ringLight(quiet)).toBeGreaterThan(ringLight(calm));
+    expect(ringLight(loud)).toBeGreaterThan(ringLight(quiet) * 1.3);
+    expect(Math.abs(discBrightness(loud) - discBrightness(calm))).toBeLessThan(0.5);
+    // Subtle: the whole square brightens by a small share, where speech brightens the ball itself.
+    expect(brightness(loud)).toBeLessThan(brightness(calm) * 1.15);
   });
 
   it('leaves by shrinking and fading, and takes his shadow with him', () => {

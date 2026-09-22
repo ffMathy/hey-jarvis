@@ -19,6 +19,8 @@ declare global {
   interface Window {
     /** How many times anything asked for a microphone, counted by `countMicrophones`. */
     microphonesOpened?: number;
+    /** The source of every sound the page started playing, in order, kept by `listenForSounds`. */
+    soundsPlayed?: string[];
   }
 }
 
@@ -166,9 +168,30 @@ async function refuseMicrophone(page: Page): Promise<void> {
   });
 }
 
+/**
+ * Keeps the source of every sound the page starts playing.
+ *
+ * Playing rather than fetching, because the greeting's player loads the recording the moment the
+ * conversation screen mounts, whether or not it will ever be played — a request for the file
+ * proves nothing. `play()` on a media element is the one thing that says a sound was meant to be
+ * heard, and expo-audio's web player goes through it.
+ */
+async function listenForSounds(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    window.soundsPlayed = [];
+
+    const play = HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play = function (this: HTMLMediaElement) {
+      window.soundsPlayed?.push(this.currentSrc || this.src);
+      return play.call(this);
+    };
+  });
+}
+
 test.beforeEach(async ({ page }) => {
   await blockExternalRequests(page);
   await countMicrophones(page);
+  await listenForSounds(page);
 });
 
 test('opens on the tour, which explains what an agent is before asking for one', async ({ page }) => {
@@ -224,11 +247,10 @@ test('saves valid settings, shows the conversation, and remembers across a reloa
   await page.goto('/');
   await configureElevenLabs(page);
 
-  // The instrument in the corner, which the browser gets and a phone does not. It is deliberately
-  // almost the colour of the background, so what is checked is that it is there and counting —
-  // being hard to read is the point and not something a test can have an opinion about.
-  await expect(page.getByTestId('frame-rate')).toBeVisible();
-  await expect(page.getByTestId('frame-rate')).toContainText('fps');
+  // No readout: the frame-rate and particle count are sample mode's alone. The conversation
+  // screen used to carry a faint copy of them in a browser, and must not again.
+  await expect(page.getByTestId('hologram')).toBeVisible();
+  await expect(page.getByTestId('frame-rate')).toHaveCount(0);
 
   await page.reload();
 
@@ -276,11 +298,16 @@ test('offers sample mode from the tour, walks its moods on a tap, and comes back
   await expect(page.getByTestId('hologram')).toBeVisible();
   await expectHologramToKeepMoving(page);
 
-  // Tapping him walks through what he does — speaking, working, at rest — because there is no text
+  // The one thing on this screen besides him: how fast he is being drawn, and with how many
+  // particles. Sample mode is where the drawing is shown off, so it is where it is measured.
+  await expect(page.getByTestId('frame-rate')).toContainText('fps');
+  await expect(page.getByTestId('frame-rate')).toContainText('sparks');
+
+  // Tapping him walks through what he does — speaking, listening, working, at rest — because there is no text
   // on this screen to hang buttons off, and a tap is now the only thing that changes any of it.
   // What matters is that each mood still draws: they all come from the clock, and one that rendered
   // nothing would look exactly like a hologram that had stopped.
-  for (const _mood of ['thinking', 'idle']) {
+  for (const _mood of ['listening', 'thinking', 'idle']) {
     await page.getByTestId('hologram').click();
     await expectHologramToKeepMoving(page);
   }
@@ -344,6 +371,52 @@ test('asks ElevenLabs for a conversation token for the agent, with the API key',
   // Nothing but the key, so the cross-origin preflight has only that to allow.
   const chosenHeaders = Object.keys(request?.headers ?? {}).filter((name) => !isBrowserHeader(name));
   expect(chosenHeaders).toEqual(['xi-api-key']);
+});
+
+test('greets you from the recording while the conversation is still being dialled', async ({ page }) => {
+  const pageErrors: string[] = [];
+  page.on('pageerror', (error) => pageErrors.push(error.message));
+  let tokenRequests = 0;
+  await page.route(CONVERSATION_TOKEN_URL, async (route: Route) => {
+    tokenRequests++;
+    await answerTokenRequest(route, 200, { token: 'a-webrtc-token', conversation_id: 'conv_1' });
+  });
+
+  await page.goto('/');
+  await configureElevenLabs(page);
+
+  // "Hello sir, how can I help?" — the firmware's recording, bundled into the export and played
+  // once, beside the token request rather than after the session. That the session is then asked
+  // for no first message of its own travels over LiveKit's data channel, which this suite closes;
+  // `greeting-handover.spec.ts` in `hologram` pins the override itself.
+  await expect.poll(() => page.evaluate(() => window.soundsPlayed)).toHaveLength(1);
+  const [greeting] = (await page.evaluate(() => window.soundsPlayed)) ?? [];
+  expect(new URL(greeting ?? '').hostname).toBe('localhost');
+  expect(greeting).toMatch(/greeting.*\.mp3/);
+  await expect.poll(() => tokenRequests).toBe(1);
+
+  expect(pageErrors).toEqual([]);
+});
+
+test('does not greet out loud in a browser nobody has touched since it loaded', async ({ page }) => {
+  let tokenRequests = 0;
+  await page.route(CONVERSATION_TOKEN_URL, async (route: Route) => {
+    tokenRequests++;
+    await answerTokenRequest(route, 200, { token: 'a-webrtc-token', conversation_id: 'conv_1' });
+  });
+
+  await page.goto('/');
+  await configureElevenLabs(page);
+  await expect.poll(() => tokenRequests).toBe(1);
+
+  // A reload lands straight on the conversation with no click behind it, and a browser will not
+  // start a sound then. Trying would only fail — and the agent would have been told not to greet,
+  // leaving nobody to. So he is left to greet in his own voice, as he did before the recording.
+  await page.reload();
+  await expect.poll(() => tokenRequests).toBe(2);
+  // Absence has no event to wait for; the greeting would have started well inside this.
+  await page.waitForTimeout(1000);
+  expect(await page.evaluate(() => window.soundsPlayed)).toEqual([]);
 });
 
 test('explains a rejected API key in terms of the setting to fix', async ({ page }) => {
@@ -481,14 +554,16 @@ test('offers the same field beside a microphone that works', async ({ page }) =>
  * `agent_response` is what a written reply looks like on the wire. Registered after
  * `blockExternalRequests`, so it wins — Playwright tries the most recently added route first.
  */
-async function answerAsJarvis(page: Page, replies: string[]): Promise<string[]> {
+async function answerAsJarvis(page: Page, replies: string[]): Promise<{ heard: string[]; initiations: unknown[] }> {
   const heard: string[] = [];
+  const initiations: unknown[] = [];
 
   await page.routeWebSocket(/convai\/conversation/, (webSocket) => {
     webSocket.onMessage((frame: string | Buffer) => {
       const event = JSON.parse(String(frame));
 
       if (event.type === 'conversation_initiation_client_data') {
+        initiations.push(event);
         webSocket.send(
           JSON.stringify({
             type: 'conversation_initiation_metadata',
@@ -524,7 +599,7 @@ async function answerAsJarvis(page: Page, replies: string[]): Promise<string[]> 
     });
   });
 
-  return heard;
+  return { heard, initiations };
 }
 
 test('shows what Jarvis writes back when there is no voice to say it in', async ({ page }) => {
@@ -535,7 +610,7 @@ test('shows what Jarvis writes back when there is no voice to say it in', async 
     });
   });
   // One answer, so the second question below is one he has not answered yet.
-  const heard = await answerAsJarvis(page, ['Good evening.']);
+  const { heard, initiations } = await answerAsJarvis(page, ['Good evening.']);
 
   await page.goto('/');
   await configureElevenLabs(page);
@@ -545,6 +620,13 @@ test('shows what Jarvis writes back when there is no voice to say it in', async 
   // into `readOnly`, which leaves the element enabled and would make the check vacuous.
   const field = page.getByTestId('typed-message');
   await expect(field).toBeEditable();
+
+  // **No recorded greeting in the one conversation held in writing**, and so the agent keeps its
+  // own first message: he greets in writing, like everything else he says here. Whoever refused the
+  // microphone did it to keep this conversation quiet.
+  expect(initiations).toHaveLength(1);
+  expect(initiations[0]).not.toHaveProperty('conversation_config_override.agent.first_message');
+  expect(await page.evaluate(() => window.soundsPlayed)).toEqual([]);
 
   await field.fill('Are the lights on?');
   await field.press('Enter');

@@ -70,9 +70,9 @@
 //   drawChips           the latest burst's rim chips: solid amber slabs that break up rather
 //                       than fade
 //   drawAccents         the jagged lightning filament and the very rare two-frame red segment
-//   drawIntro           only while materialising: point of light, sparks, band pieces, the spoked
-//                       dial (pieces of uneven length that thin to a rail and break into ragged
-//                       chips), and the tilted equatorial ring of rails and fine ticks
+//   drawListening       while someone talks to him: a slow ring of short ticks just outside the
+//                       limb whose lengths follow how loud they are — faint, and his only sign
+//                       of it, so it is never mistaken for him speaking
 //
 // IDLE MOTION (section 3; nothing breathes, pulses or flickers as a whole)
 // - The outer rim layer rolls clockwise in the screen plane at 11°/s: the truss, the thin
@@ -115,7 +115,7 @@
 //   level       deliberately unused: loudness has no counterpart in the film.
 //   speaking    unused too: agitation already says whether he is talking, and a flag that
 //               flips within one frame would make the sphere jump.
-//   agitation   gated by the intro (below), then:
+//   agitation   drives:
 //               - mix = 0.5·agitation: calm fragments whose ids fall below mix fade out and
 //                 fast fragments (lit 0.06-0.14 s) whose ids fall below 2·mix fade in. Half
 //                 and no more, because the two make up for each other exactly at that share
@@ -145,8 +145,7 @@
 //                 that agitation only lets through, fading by length
 //   burstAge, burstStrength, burstCount
 //               while burstAge < 0.2 s the latest burst's 3 + round(2·strength) chips are drawn
-//               (the strength as the tracker gave it, so a burst in flight while the ball is
-//               still forming cannot gain a chip): #f59a30 slabs with a hot middle and a soft
+//               (the strength as the tracker gave it): #f59a30 slabs with a hot middle and a soft
 //               edge, leaving the left limb about mid-height (clock 255-290°, or split between
 //               250° and 300° for one burst in three, chosen by hashing burstCount) from 1.04R.
 //               One leads, up to 0.33R along the limb by 0.14R across and thrown at 1.6-2.3 R/s;
@@ -162,20 +161,13 @@
 //               them in 10 of its 37 frames. How many onsets the line offers is set by the
 //               tracker's ONSET_RISE, which cannot fall much further without a swell counting
 //               as an onset. Only the latest burst is ever still in flight.
-//   appearance  keyframe time k = appearance / 0.75: the film's section 5 keyframes run
-//               over k 0-1 (2.7 s of MATERIALISE_SECONDS = 3.6 s) and the crescent grows
-//               back in over k 1-1.33. Point of light k 0-0.32; sparks from 0.06 (a row
-//               the spoked dial snaps on within 0.12, in pieces of
-//               uneven length, brightens to 0.3, loses its spokes by 0.64 and its right arc by
-//               0.69, and stays solid and hot until it breaks up over 0.7-0.9, each piece thinning
-//               to its outer rail, shortening from one end and drifting off the band; the tilted
-//               equatorial ring of rails and fine ticks (front and right side only) sweeps in over
-//               0.62-0.77 and drops out piece by piece over 0.84-0.96. The fragments arrive in
-//               patches, behind the band on the left first (revealKey), over 0.45-0.69, and the
-//               fill follows them patch by patch over 0.55-0.81; both run hot over 0.55-1, with
-//               a ragged left limb until 0.78-1; inner shells from 0.62, the core from 0.72,
-//               the rim layer from 0.84, and agitation and chips only
-//               from 0.8. At appearance 1 nothing of the intro is left.
+//   appearance  0-1 over MATERIALISE_SECONDS: the vortex. The sphere is full size from the start
+//               and its particles leave the core on their own clocks, nearest first, spiralling
+//               out a turn and a half as streaks along their path before they settle where they
+//               sit (see swirlFragment); the core shows first, the whorl winds up with them and
+//               the rim fades in last. It moves only the particles already being drawn, so the
+//               scene's count and the density share hold throughout. There is no other arrival:
+//               the film's point of light, sparks and spoked dial are gone at the user's asking.
 //
 // PERFORMANCE AND WORKLET RULES
 // - drawHologram and every helper it calls are worklets ('worklet' directive) that use
@@ -246,7 +238,7 @@ export interface HologramFrame {
   burstStrength: number;
   /** How many bursts there have been, so each throws its chips from a different, repeatable place. */
   burstCount: number;
-  /** 0–1 materialisation progress, 1 = formed: the view passes min(1, time / MATERIALISE_SECONDS). */
+  /** 0–1 arrival progress, 1 = fully here: the view passes min(1, time / MATERIALISE_SECONDS). */
   appearance: number;
   /**
    * 0–1: what share of the particles to draw at all.
@@ -261,10 +253,9 @@ export interface HologramFrame {
   /**
    * 0–1: how much of him is here at all. 1 unless he is leaving.
    *
-   * Not the same thing as {@link appearance}, and that is the point: appearance runs the
-   * materialisation, and running *that* backwards would bring the intro's swirling dial back on
-   * the way out. This fades and shrinks the formed sphere instead, which is the arrival's own
-   * gesture without its ceremony.
+   * Kept apart from {@link appearance} so the view can send him away without rewinding the clock
+   * that arrival is counted on: leaving fades and shrinks the whole sphere, rather than running
+   * the vortex backwards.
    */
   presence: number;
   /**
@@ -275,6 +266,13 @@ export interface HologramFrame {
    * and out so entering and leaving a thought is a fade rather than a switch.
    */
   thinking: number;
+  /**
+   * 0–1: how sure he is that someone is talking to him — ElevenLabs' voice-activity score, eased.
+   * Left out, nobody is. See {@link drawListening}: a quiet ring of light round him, nothing more.
+   */
+  hearing?: number;
+  /** 0–1: how loud they are, eased. Only read while {@link hearing} is above nothing. */
+  hearingLevel?: number;
 }
 
 /**
@@ -298,14 +296,8 @@ type SkiaApiType = HologramSkia;
 // ---- constants (unit space: the sphere's radius R is 1, y points down) ---------------------
 // Clock angles are degrees clockwise from 12 o'clock, as the film study measures them.
 
-/**
- * How long the view takes to count appearance from 0 to 1. The film's keyframes
- * reach a formed ball at 2.7 s (see FORMED_APPEARANCE); the last 0.9 s grows the
- * bright left crescent back in, as the film's does once the ball has formed.
- */
+/** How long the view takes to count appearance from 0 to 1: the vortex bringing him out of the core. */
 export const MATERIALISE_SECONDS = 1.4;
-/** The appearance at which the film's materialisation keyframes reach "formed": 2.7 s of 3.6. */
-const FORMED_APPEARANCE = 0.75;
 
 /**
  * Sphere radius as a fraction of the square, at rest.
@@ -385,8 +377,24 @@ const GLOW_FROM_ENVELOPE = 0.65;
  * pulsates now, and 8% is enough to see without the silhouette lurching.
  */
 const SWELL_WITH_VOICE = 0.18;
-/** How small the sphere starts before it grows into place. */
-const ARRIVAL_SMALLEST = 0.55;
+/** How small the sphere has shrunk to by the time he has gone. */
+const LEAVING_SMALLEST = 0.55;
+/**
+ * The listening ring: how many ticks, where they start, how far the loudest voice reaches them and
+ * how bright the whole ring is at full attention. Deliberately faint — it is a sign that he hears
+ * you, beside everything he does when he answers, and a quarter of his own glow is plenty.
+ */
+const LISTENING_TICKS = 96;
+const LISTENING_INNER = 1.07;
+const LISTENING_REACH = 0.1;
+const LISTENING_ALPHA = 0.42;
+/** How fast the ring turns and how fast its ripple travels round it, in radians a second. */
+const LISTENING_TURN = 0.35;
+const LISTENING_RIPPLE = 3.2;
+/** How far round a fragment has still to go as it leaves the core in the vortex, in radians: a turn and a half. */
+const VORTEX_TWIST = 3 * Math.PI;
+/** How long the vortex's strokes are drawn while they are still travelling, as a multiple of their length. */
+const VORTEX_STRETCH = 4;
 const DEGREES_TO_RADIANS = 0.017453292519943295;
 /** The core sits a hair up and left of centre, well inside the film's 0.08R. */
 const CORE_X = -0.02;
@@ -951,23 +959,6 @@ function buildComets(random: Random) {
   return comets;
 }
 
-/**
- * The materialisation's sparks. Stride 5: x, y, when it appears (keyframe time 0..1),
- * kind (0 the row across the future top, 1 the trail falling down the right, 2 scattered), hash.
- */
-function buildIntroSparks(random: Random) {
-  const sparks: number[] = [];
-  for (let i = 0; i < 34; i++)
-    sparks.push(-0.95 + random() * 1.78, -1.2 + random() * 0.2, 0.06 + random() * 0.11, 0, random());
-  for (let i = 0; i < 18; i++) sparks.push(0.93 + random() * 0.05, 0, 0.1 + (i / 18) * 0.12, 1, random());
-  for (let i = 0; i < 26; i++) {
-    const angle = random() * Math.PI * 2;
-    const radius = 0.3 + random() * 1.05;
-    sparks.push(Math.cos(angle) * radius, Math.sin(angle) * radius * 0.9, 0.08 + random() * 0.3, 2, random());
-  }
-  return sparks;
-}
-
 /** Keeps the worklet copy of the scene small. */
 function roundToFiveDecimals(value: number) {
   return Math.round(value * 1e5) / 1e5;
@@ -997,7 +988,6 @@ export function createHologramScene(seed: number, particleCount: number = PARTIC
     epochs: script.epochs.map(roundToFiveDecimals),
     scriptPeriod: roundToFiveDecimals(script.period),
     comets: buildComets(random).map(roundToFiveDecimals),
-    introSparks: buildIntroSparks(random).map(roundToFiveDecimals),
     // only a seed: the static textures are built straight into paths, never copied to the worklet runtime
     textureSeed: Math.floor(random() * 4294967296),
   };
@@ -1452,8 +1442,6 @@ export function createHologramResources(Skia: SkiaApiType, scene: Scene) {
       [0, 0.22, 0.34, 0.5, 0.74, 1],
     ),
   );
-  const introPointFill = makeFill('#ffffff');
-  introPointFill.setShader(radialGradient(1, ['#ffd872', '#f8b04ac0', '#e8902a40', '#e8902a00'], [0, 0.25, 0.6, 1]));
 
   // The body's strokes vary in brightness along their length (see buildSparkleTexture).
   const sparkleImage = Skia.Image.MakeImage(
@@ -1510,10 +1498,7 @@ export function createHologramResources(Skia: SkiaApiType, scene: Scene) {
     chipCores: makeBuilder(),
     lightning: makeBuilder(),
     red: makeBuilder(),
-    introSparks: makeBuilder(),
-    introBand: makeBuilder(),
-    introInner: makeBuilder(),
-    introSpokes: makeBuilder(),
+    listening: makeBuilder(),
   };
   // one flat list, so the frame can reset them all first
   const allPathBuilders = [
@@ -1533,10 +1518,7 @@ export function createHologramResources(Skia: SkiaApiType, scene: Scene) {
     pathBuilders.chipCores,
     pathBuilders.lightning,
     pathBuilders.red,
-    pathBuilders.introSparks,
-    pathBuilders.introBand,
-    pathBuilders.introInner,
-    pathBuilders.introSpokes,
+    pathBuilders.listening,
   ];
 
   return {
@@ -1544,7 +1526,6 @@ export function createHologramResources(Skia: SkiaApiType, scene: Scene) {
     limbRidgeFill,
     thinRingStroke,
     coreBloomFill,
-    introPointFill,
     whorlGlowStroke: makeStroke('#d8651e', StrokeCap.Round),
     whorlStroke: makeSparkleStroke('#f47126', StrokeCap.Round),
     whorlCoreStroke: makeSparkleStroke('#ff8c38', StrokeCap.Round),
@@ -1595,11 +1576,8 @@ export function createHologramResources(Skia: SkiaApiType, scene: Scene) {
     sparkStroke: makeStroke('#ffae4e', StrokeCap.Round),
     lightningStroke: makeStroke('#c39568', StrokeCap.Butt),
     redStroke: makeStroke('#b3470f', StrokeCap.Butt),
-    introSparkStroke: makeStroke('#ffb848', StrokeCap.Round),
-    introGlowStroke: makeStroke('#e0801a', StrokeCap.Butt),
-    introBandStroke: makeStroke('#eca23c', StrokeCap.Butt),
-    introBandCoreStroke: makeStroke('#ffe961', StrokeCap.Butt),
-    introSpokeStroke: makeStroke('#e8a23c', StrokeCap.Butt),
+    listeningStroke: makeStroke('#ffb454', StrokeCap.Round),
+    listeningGlowStroke: makeStroke('#e8842a', StrokeCap.Round),
     ...buildWhorl(Skia, createRandom(scene.textureSeed ^ 0x5bd1e995)),
     strandFanPath: buildStrandFan(Skia),
     ...buildInnerStructure(Skia),
@@ -1649,9 +1627,8 @@ function hashInteger(value: number) {
 }
 
 /**
- * The order the ball fills in while it materialises, 0 (first) to 1 (last). In the film the
- * fragments arrive behind the dial's band on the left and spread across to the right, in patches
- * rather than evenly, and the glow comes with them.
+ * The order fragments drop out in when the script thins the body, 0 (last to go) to 1 (first):
+ * across from the left and in patches rather than evenly.
  */
 function revealKey(x: number, y: number) {
   'worklet';
@@ -1661,7 +1638,7 @@ function revealKey(x: number, y: number) {
 }
 
 /**
- * The order a fragment joins the ball in, 0..1: low arrives first.
+ * The order a fragment leaves the body in when the script thins it, 0..1: high goes first.
  *
  * Worked out once, when the scene is built, because it never changes — it is the
  * film's reveal pattern at the fragment's place, dithered by its id. It used to be
@@ -1753,10 +1730,7 @@ function readScript(scene: Scene, time: number) {
 function analyseFrame(frame: HologramFrame, size: number, scene: Scene) {
   'worklet';
   const time = frame.time;
-  // keyframe time of the materialisation: 1 = formed, beyond it the crescent grows back in
-  const intro = clamp01(frame.appearance) / FORMED_APPEARANCE;
-  const activityGate = smooth01((intro - 0.8) / 0.2);
-  const agitation = clamp01(frame.agitation) * activityGate;
+  const agitation = clamp01(frame.agitation);
   const bands = frame.bands;
   const lowDrive = clamp01((bandAverage(bands, 0, 6) - 0.35) / 0.45);
   const highDrive = clamp01((bandAverage(bands, 14, 24) - 0.2) / 0.45);
@@ -1767,20 +1741,20 @@ function analyseFrame(frame: HologramFrame, size: number, scene: Scene) {
   // Loudness, not the agitation envelope: the glow follows his voice moment to moment, as the
   // first hologram's did, while the chips and the churn follow the envelope.
   const voice = clamp01(frame.level) ** 0.8;
-  // Folded together on purpose: coming and going are the same gesture, and every layer that
-  // already fades and grows with the arrival therefore fades and shrinks on the way out.
-  const arrival = smooth01(intro) * clamp01(frame.presence);
+  // How far on the vortex is: 1 once it is over.
+  const swirl = clamp01(frame.appearance);
+  const settle = 1 - smooth01(swirl);
+  const presence = clamp01(frame.presence);
+  // The whole sphere fades in over the first fifth of the vortex, so the first particles leaving
+  // the core are seen as they go; their own travel is what does the arriving. Leaving fades it
+  // out through the same layer.
+  const arrival = smooth01(swirl / 0.2) * presence;
   // How much bigger he is this frame than at rest. Mostly loudness, so the sphere breathes with
   // the sentence rather than stepping up and sitting there; the envelope keeps it from dropping
   // back to nothing between syllables.
   const swell = SWELL_WITH_VOICE * (0.7 * voice + 0.3 * agitation);
-  // The sphere grows into place and, with `arrival` fading the whole of it, fades in.
-  //
-  // It used to assemble instead: the fill spreading patch by patch, the fragments arriving in the
-  // film's reveal order behind the dial's band, the limb ragged until late, each layer on its own
-  // ramp. The user asked for the ceremony to go, so every layer now comes up together and the
-  // growth does the work the staggering used to.
-  const radius = size * SPHERE_FRACTION * (ARRIVAL_SMALLEST + (1 - ARRIVAL_SMALLEST) * arrival) * (1 + swell);
+  // Full size from the start of the vortex; it only shrinks on the way out.
+  const radius = size * SPHERE_FRACTION * (LEAVING_SMALLEST + (1 - LEAVING_SMALLEST) * presence) * (1 + swell);
   const intoScan = time - Math.floor(time / SCAN_SECONDS) * SCAN_SECONDS;
   const thinking = clamp01(frame.thinking);
   return {
@@ -1793,19 +1767,20 @@ function analyseFrame(frame: HologramFrame, size: number, scene: Scene) {
     scan: 1.15 - (2.3 * intoScan) / SCAN_SECONDS,
     // And how far the ring has bloomed, in the last stretch of each pass.
     pulse: intoScan > SCAN_SECONDS - PULSE_SECONDS ? (intoScan - (SCAN_SECONDS - PULSE_SECONDS)) / PULSE_SECONDS : 0,
-    intro,
     arrival,
     bodyShare: script.density,
-    introHeat: 0,
-    ragged: 0,
     // Everything but the core recedes while he thinks, so that the plane sweeping through him is
     // what the eye is left with. Without this the whorl, the rim and the ladder go on doing what
     // they always do and the sweep is one more thing happening among several — which is how the
     // first version of thinking looked, and why it did not read as a different state at all.
-    innerAlpha: 1 - 0.8 * thinking,
-    coreAlpha: 1,
-    rimAlpha: 1 - 0.65 * thinking,
-    crescentGrowth: smooth01((intro - 1) / 0.3333),
+    innerAlpha: (1 - 0.8 * thinking) * smooth01((swirl - 0.15) / 0.6),
+    coreAlpha: smooth01(swirl / 0.25),
+    rimAlpha: (1 - 0.65 * thinking) * smooth01((swirl - 0.55) / 0.45),
+    swirl,
+    hearing: clamp01(frame.hearing ?? 0),
+    hearingLevel: clamp01(frame.hearingLevel ?? 0),
+    /** Where {@link swirlFragment} leaves a fragment: x, y, its direction, and how much of it shows. */
+    swirled: [0, 0, 0, 0, 0],
     agitation,
     // Half the calm fragments hand over to fast ones at full agitation, so the turnover rises
     // by about half (the film's churn on "Doctor." rises from 8 to 13 per frame). Half and no
@@ -1822,9 +1797,8 @@ function analyseFrame(frame: HologramFrame, size: number, scene: Scene) {
     spread: agitation * (0.7 + 0.3 * lowDrive),
     frayDrive: agitation * (0.55 + 0.45 * highDrive),
     burstAge,
-    burstStrength: clamp01(frame.burstStrength) * activityGate,
-    // how far the burst throws, and how many chips: the strength as the tracker gave it, so a
-    // burst in flight while the ball is still forming cannot gain a chip half way
+    burstStrength: clamp01(frame.burstStrength),
+    // how far the burst throws, and how many chips
     burstReach: clamp01(frame.burstStrength),
     burstCount: Math.floor(frame.burstCount),
     // wrapped to one turn: the canvas takes float32 angles, which would lose the per-frame
@@ -1840,7 +1814,8 @@ function analyseFrame(frame: HologramFrame, size: number, scene: Scene) {
     /** What the halos and the volume multiply their alpha by: 1 in silence, up to 1 + GLOW_WITH_VOICE. */
     glowGain: 1 + GLOW_WITH_VOICE * (GLOW_FROM_ENVELOPE * agitation + (1 - GLOW_FROM_ENVELOPE) * voice),
     roll: fraction((time * ROLL_DEGREES_PER_SECOND) / 360) * 360,
-    shellTurn: fraction((time * SHELL_DEGREES_PER_SECOND) / 360) * 360,
+    // the whorl winds up with the vortex, settling to its own slow turn as the particles do
+    shellTurn: fraction((time * SHELL_DEGREES_PER_SECOND - 540 * settle * settle) / 360) * 360,
     streamCos: Math.cos(yaw),
     streamSin: Math.sin(yaw),
     // the core's brightness drifts a few percent over many seconds; it never beats
@@ -1953,9 +1928,8 @@ function appendGlyph(
 }
 
 /**
- * Whether a fragment is part of the ball at all, 0..1. While it materialises they arrive in the
- * film's order — in patches, behind the dial's band on the left first (revealKey) — and once it
- * has formed the script's slow fragment density thins them out a little.
+ * Whether a fragment is part of the ball at all, 0..1: the script's slow fragment density thins
+ * them out a little, in the order revealKey gives.
  */
 function fragmentShown(revealOrder: number, state: FrameState) {
   'worklet';
@@ -1983,9 +1957,9 @@ function fragmentStrength(life: number, id: number, pool: number, state: FrameSt
 
 /**
  * Which body builder a fragment goes to: 0 dim, 1 mid, 2 bright. Fading fragments and
- * thinned-out hot ones step down; while the ball forms, `heat` lifts mid ones up.
+ * thinned-out hot ones step down.
  */
-function fragmentTier(brightness: number, strength: number, id: number, hotShare: number, heat: number) {
+function fragmentTier(brightness: number, strength: number, id: number, hotShare: number) {
   'worklet';
   if (brightness === 2) {
     if (strength <= 0.55) return 1;
@@ -1998,7 +1972,7 @@ function fragmentTier(brightness: number, strength: number, id: number, hotShare
     if (margin > -0.12 && strength > 0.86) return 2;
     return 1;
   }
-  if (brightness === 1 && strength > 0.4) return fraction(id * 5.3) < heat ? 2 : 1;
+  if (brightness === 1 && strength > 0.4) return 1;
   return 0;
 }
 
@@ -2101,10 +2075,61 @@ function scanned(y: number, state: FrameState): number {
   return 1 - state.thinking * (1 - SCAN_FLOOR) * (1 - nearness * nearness);
 }
 
+/**
+ * Where a fragment is while the vortex brings it out of the core: writes x, y, its direction and
+ * how much of it shows into `state.swirled` — just where it already is once the vortex is over.
+ *
+ * Each fragment leaves the core on its own clock — the ones nearest it first, the limb last — and
+ * travels out along a spiral, a turn and a half short of where it sits and closing on it as it
+ * slows, drawn longer while it moves so the arms read as streams rather than dots. A fragment
+ * still at the core is not shown at all, so the eye does not start on a blot of light.
+ */
+function swirlFragment(x: number, y: number, unitX: number, unitY: number, id: number, state: FrameState) {
+  'worklet';
+  const out = state.swirled;
+  if (state.swirl >= 1) {
+    out[0] = x;
+    out[1] = y;
+    out[2] = unitX;
+    out[3] = unitY;
+    out[4] = 1;
+    return;
+  }
+  const reach = Math.sqrt(x * x + y * y);
+  const order = clamp01(0.9 * reach + 0.1 * fraction(id * 3.91));
+  const travelled = smooth01((state.swirl - 0.6 * order) / 0.4);
+  const left = 1 - travelled;
+  const spin = VORTEX_TWIST * left * left;
+  const cos = Math.cos(spin);
+  const sin = Math.sin(spin);
+  const scale = 0.04 + 0.96 * travelled;
+  const swirledX = (x * cos + y * sin) * scale;
+  const swirledY = (y * cos - x * sin) * scale;
+  out[0] = swirledX;
+  out[1] = swirledY;
+  // While it travels it points the way it is going — round the core, and a little outward — and
+  // turns back to its own direction as it settles.
+  const distance = Math.sqrt(swirledX * swirledX + swirledY * swirledY) || 1;
+  const outwardX = swirledX / distance;
+  const outwardY = swirledY / distance;
+  const headingX = 0.35 * outwardX - outwardY;
+  const headingY = 0.35 * outwardY + outwardX;
+  const heading = Math.sqrt(headingX * headingX + headingY * headingY);
+  const settled = travelled * travelled;
+  const directionX = (headingX / heading) * (1 - settled) + (unitX * cos + unitY * sin) * settled;
+  const directionY = (headingY / heading) * (1 - settled) + (unitY * cos - unitX * sin) * settled;
+  const direction = Math.sqrt(directionX * directionX + directionY * directionY) || 1;
+  out[2] = directionX / direction;
+  out[3] = directionY / direction;
+  // Not shown until it has left the core, so the eye does not start on a blot of light.
+  // Stretched along its path while it moves, but never longer than the path it has come out on.
+  const stretch = 1 + VORTEX_STRETCH * left * clamp01(distance * 2.5);
+  out[4] = smooth01((travelled - 0.04) * 6) * stretch;
+}
+
 /** The fragment body, turning about the vertical axis, sorted into the dim, mid and bright builders. */
 function appendBody(builders: PathBuilder[], body: number[], state: FrameState) {
   'worklet';
-  const ragged = state.ragged;
   const placed = state.scratch;
   const reading = state.reading;
   for (let offset = 0; offset < body.length; offset += BODY_STRIDE) {
@@ -2127,17 +2152,18 @@ function appendBody(builders: PathBuilder[], body: number[], state: FrameState) 
     placeFragment(body, offset, along, across, state, placed);
     const lit = strength * placed[3];
     if (lit < FRAGMENT_FAINTEST) continue;
-    // while forming, the left limb is ragged: fragments stray outward
-    const ragging = ragged > 0 && placed[0] < 0 && placed[0] * placed[0] + placed[1] * placed[1] > 0.5;
-    const push = ragging ? 1 + ragged * 0.16 * fraction(id * 3.7) : 1;
-    const x = placed[0] * push;
-    const y = placed[1] * push;
+    swirlFragment(placed[0], placed[1], unitX, unitY, id, state);
+    const swirled = state.swirled;
+    const drawn = swirled[4];
+    if (drawn <= 0) continue;
+    const x = swirled[0];
+    const y = swirled[1];
     // While he thinks, only what the plane is passing stays lit; see SCAN_SECONDS.
     const litHere = lit * scanned(y, state);
     if (litHere < FRAGMENT_FAINTEST) continue;
     const facing = placed[2] >= 0;
     // the far side of the ball is dimmer, as the turning shell below the core already is
-    const plain = facing ? fragmentTier(reading[4], litHere, id, state.hotShare, state.introHeat) : 0;
+    const plain = facing ? fragmentTier(reading[4], litHere, id, state.hotShare) : 0;
     // ...and what the plane is in the middle of is lit to the brightest tier whatever it is, which
     // is what makes the pass a line of attention rather than a moving shadow.
     const tier = state.scanBright[0] > 0 && facing ? 2 : plain;
@@ -2146,7 +2172,7 @@ function appendBody(builders: PathBuilder[], body: number[], state: FrameState) 
     // Arriving at a third of its length, as it used to, meant arriving at full brightness over
     // a dozen pixels at once — with twice as many fragments that is a visible speckle at every
     // frame, and it is what the spec's script-boundary check counts.
-    appendGlyph(builders[tier + reading[2]], reading[1], x, y, unitX, unitY, length * 0.5 * litHere);
+    appendGlyph(builders[tier + reading[2]], reading[1], x, y, swirled[2], swirled[3], length * 0.5 * litHere * drawn);
   }
 }
 
@@ -2193,8 +2219,19 @@ function appendStream(builders: PathBuilder[], stream: number[], state: FrameSta
     // a latitude runs horizontally on screen, foreshortened as it turns toward the limb
     const halfX = stream[offset + 3] * cosYaw + stream[offset + 4] * sinYaw;
     const plain = stream[offset + 8] - 3 * state.reading[0];
-    const tier = depth < 0 ? 0 : fragmentTier(plain, lit, stream[offset + 7], state.hotShare, state.introHeat);
-    appendGlyph(builders[tier], stream[offset + 9], x, y, 1, 0, Math.abs(halfX) * lit);
+    const tier = depth < 0 ? 0 : fragmentTier(plain, lit, stream[offset + 7], state.hotShare);
+    swirlFragment(x, y, 1, 0, stream[offset + 7], state);
+    const swirled = state.swirled;
+    if (swirled[4] <= 0) continue;
+    appendGlyph(
+      builders[tier],
+      stream[offset + 9],
+      swirled[0],
+      swirled[1],
+      swirled[2],
+      swirled[3],
+      Math.abs(halfX) * lit * swirled[4],
+    );
   }
 }
 
@@ -2709,9 +2746,9 @@ function crescentStrandNumbers(strand: number, spread: number, out: number[]) {
 /**
  * Builds the crescent's four strands into the width-tier builders (0 thin, 1 medium,
  * 2 wide, 3 core): the inner strands reach the wide and core tiers, the outer ones only
- * the thin and medium. Tier windows are centred on 8:40 and scaled by `growth`.
+ * the thin and medium. Tier windows are centred on 8:40.
  */
-function appendCrescent(builders: PathBuilder[], pieces: number[], state: FrameState, growth: number) {
+function appendCrescent(builders: PathBuilder[], pieces: number[], state: FrameState) {
   'worklet';
   const spread = state.spread;
   const shatterClock = burstClock(state.burstCount);
@@ -2726,7 +2763,7 @@ function appendCrescent(builders: PathBuilder[], pieces: number[], state: FrameS
     for (let tier = 0; tier <= deepestTier; tier++) {
       // 70, 56, 40 and 24 degrees of half-width, thin tier to core tier
       const tierWidth = tier === 0 ? 70 : 72 - tier * 16;
-      const halfWidth = tierWidth * growth * (1 - 0.4 * outer);
+      const halfWidth = tierWidth * (1 - 0.4 * outer);
       appendCrescentStrand(
         builders[tier],
         pieces,
@@ -2751,11 +2788,10 @@ function appendCrescent(builders: PathBuilder[], pieces: number[], state: FrameS
 function drawCrescent(canvas: HologramCanvas, resources: Resources, scene: Scene, state: FrameState) {
   'worklet';
   const weight = Math.max(state.script.crescentWeight, 0.65 * state.agitation) * state.rimAlpha;
-  const growth = state.crescentGrowth;
-  if (weight <= 0.01 || growth <= 0.01) return;
+  if (weight <= 0.01) return;
   const builders = resources.pathBuilders.crescent;
   const spread = state.spread;
-  appendCrescent(builders, scene.crescentPieces, state, growth);
+  appendCrescent(builders, scene.crescentPieces, state);
   const thin = pathOf(resources.skia, builders[0]);
   const medium = pathOf(resources.skia, builders[1]);
   const wide = pathOf(resources.skia, builders[2]);
@@ -2764,7 +2800,7 @@ function drawCrescent(canvas: HologramCanvas, resources: Resources, scene: Scene
   // would pull the measured silhouette in, and the film's does not shrink while he speaks — its
   // width goes up, if anything. What leaves on "Doctor." is the hot core inside the crescent,
   // and that is taken out below.
-  resources.limbBloomFill.setAlphaf(clamp01(0.42 * weight * growth));
+  resources.limbBloomFill.setAlphaf(clamp01(0.42 * weight));
   canvas.drawCircle(0, 0, LIMB_BLOOM_RADIUS, resources.limbBloomFill);
   resources.crescentGlowStroke.setStrokeWidth(0.1 * (1 - 0.5 * spread));
   resources.crescentGlowStroke.setAlphaf(0.26 * weight);
@@ -3024,115 +3060,40 @@ function drawAccents(canvas: HologramCanvas, resources: Resources, state: FrameS
   }
 }
 
-// ---- the materialisation ------------------------------------------------------------------
-
 /**
- * The spoked dial that snaps on at keyframe 0.26: a thick C band from 12 o'clock round the left
- * to about 5 o'clock at 0.9-1.05R, in pieces of uneven length, running on into a smaller
- * foreshortened arc on the right that curls up, with about 30 spokes (often paired) to a hub at
- * (+0.4R, 0). It holds and brightens, loses its spokes by 0.64 and its right arc by 0.69, and
- * from 0.7 breaks up: each piece thins to its outer rail, then shortens from one end, drifts off
- * the band and slides along it, until the last ragged chips have gone by 0.9. It never dims, as
- * the film's stays solid and hot until it breaks (f65-f73).
+ * While someone talks to him: a ring of short ticks just outside the limb, turning slowly, whose
+ * lengths follow how loud they are with a ripple running round it — the way the Voice preview's
+ * LED ring answers a voice. Faint on purpose, and outside the ball rather than in it, so that it
+ * reads as him paying attention and never as him speaking. Nothing at all when nobody is.
  */
-function appendDialBand(band: PathBuilder, inner: PathBuilder, breakUp: number) {
+function drawListening(canvas: HologramCanvas, resources: Resources, state: FrameState) {
   'worklet';
-  let from = 360;
-  for (let piece = 0; piece < 26 && from > 158; piece++) {
-    const hash = hashInteger(piece * 41 + 3);
-    const when = hashInteger(piece * 97 + 11);
-    const span = 5 + 14 * hash;
-    // each piece breaks at its own moment, and none of them is the same length
-    const remaining = 1 - clamp01((breakUp - when * 0.6) / 0.4);
-    const length = (span - 0.15 - 0.35 * hash) * remaining;
-    from -= span;
-    if (length <= 0.8) continue;
-    // it shortens from one end, slides along the band and drifts off it
-    const slide = breakUp * (when - 0.5) * 9;
-    const start = (when < 0.5 ? from + span - 0.2 : from + length + 0.2) + slide;
-    const drift = 1 + breakUp * (1 - remaining) * (when < 0.35 ? -0.07 : 0.03 + 0.12 * hash);
-    appendArc(band, 0, 0, 0.975 * drift, clockRadians(start), -length * DEGREES_TO_RADIANS);
-    // the band thins to its outer rail before it breaks
-    if (breakUp < 0.3 + 0.55 * hash) {
-      appendArc(inner, 0, 0, 0.925 * drift, clockRadians(start), -length * DEGREES_TO_RADIANS);
-    }
+  const hearing = state.hearing;
+  if (hearing <= 0.01) return;
+  const builder = resources.pathBuilders.listening;
+  const level = state.hearingLevel;
+  const turn = state.time * LISTENING_TURN;
+  const ripplePhase = state.time * LISTENING_RIPPLE;
+  for (let tick = 0; tick < LISTENING_TICKS; tick++) {
+    const angle = (tick / LISTENING_TICKS) * 2 * Math.PI + turn;
+    const ripple = 0.5 + 0.5 * Math.sin(angle * 3 - ripplePhase);
+    const own = 0.6 + 0.4 * hashInteger(tick * 53 + 7);
+    const length = 0.012 + LISTENING_REACH * level * (0.3 + 0.7 * ripple) * own;
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    pathMoveTo(builder, cos * LISTENING_INNER, sin * LISTENING_INNER);
+    pathLineTo(builder, cos * (LISTENING_INNER + length), sin * (LISTENING_INNER + length));
   }
+  const ring = pathOf(resources.skia, builder);
+  const alpha = LISTENING_ALPHA * hearing * (0.55 + 0.45 * level);
+  resources.listeningGlowStroke.setStrokeWidth(0.03);
+  resources.listeningGlowStroke.setAlphaf(0.35 * alpha);
+  canvas.drawPath(ring, resources.listeningGlowStroke);
+  resources.listeningStroke.setStrokeWidth(0.009);
+  resources.listeningStroke.setAlphaf(alpha);
+  canvas.drawPath(ring, resources.listeningStroke);
 }
 
-/**
- * The spoked dial that snaps on at keyframe 0.26: the C band above, a smaller foreshortened arc
- * on the right that curls up, and 17 pairs of spokes of uneven length toward a hub at (+0.4R, 0).
- */
-function appendDial(band: PathBuilder, inner: PathBuilder, spokes: PathBuilder, intro: number, time: number) {
-  'worklet';
-  const filmFrame = Math.floor(time * 12);
-  appendDialBand(band, inner, smooth01((intro - 0.66) / 0.18));
-  // the smaller foreshortened arc on the right, curling up to (+0.9R, -0.55R)
-  const arcShare = 1 - smooth01((intro - 0.49) / 0.2);
-  if (arcShare > 0.05) {
-    for (let step = 0; step < 14 * arcShare; step++) {
-      const angleFrom = (100 - step * 10.5) * DEGREES_TO_RADIANS;
-      const angleTo = (100 - (step + 1) * 10.5) * DEGREES_TO_RADIANS;
-      pathMoveTo(band, 0.45 + Math.cos(angleFrom) * 0.55, 0.05 + Math.sin(angleFrom) * 0.92);
-      pathLineTo(band, 0.45 + Math.cos(angleTo) * 0.55, 0.05 + Math.sin(angleTo) * 0.92);
-    }
-  }
-  const spokeShare = 1 - smooth01((intro - 0.5) / 0.14);
-  // Pairs about 11° apart along the band, not an even fan: the film's are "often paired", of
-  // uneven length with many stopping well short of the hub, and they pop in and out while the
-  // dial holds. Their hub is at (+0.4R, 0), off to the right of the sphere's centre.
-  for (let spoke = 0; spoke < 34 && spokeShare > 0; spoke++) {
-    if (hashInteger(filmFrame * 977 + spoke * 31) > 0.78 * spokeShare) continue;
-    const pair = Math.floor(spoke / 2);
-    const clock = 355 - pair * 11.4 - (spoke % 2) * 1.7;
-    const angle = clockRadians(clock);
-    const start = 0.9 + 0.055 * hashInteger(spoke * 7 + 3);
-    const startX = Math.cos(angle) * start;
-    const startY = Math.sin(angle) * start;
-    // a third of them run the whole way in; the rest stop between half way and the hub
-    const reach = hashInteger(spoke * 19 + 11) < 0.34 ? 1 : 0.42 + 0.46 * hashInteger(spoke * 23 + 5);
-    pathMoveTo(spokes, startX, startY);
-    pathLineTo(spokes, startX + (0.4 - startX) * reach, startY - startY * reach);
-  }
-}
-
-/** Everything that only exists while the hologram materialises (keyframe time below 1). */
-function drawIntro(canvas: HologramCanvas, resources: Resources, state: FrameState) {
-  'worklet';
-  const intro = state.intro;
-  if (intro >= 1) return;
-  // The spoked dial, and nothing else.
-  //
-  // The film's materialisation opens on a point of light, throws sparks, assembles a band out
-  // of flying pieces and sweeps a tilted equatorial ring round the ball before it is done. All
-  // of that is gone at the user's request: on a phone it was a lot of ceremony to sit through
-  // every time Jarvis is summoned, and the one part worth keeping is this — the disc of spokes
-  // that swirls while the sphere arrives behind it.
-  const dialAlpha = smooth01(intro / 0.12) * (1 - smooth01((intro - 0.72) / 0.28));
-  if (dialAlpha <= 0) return;
-  const builders = resources.pathBuilders;
-  appendDial(builders.introBand, builders.introInner, builders.introSpokes, intro, state.time);
-  const brighten = 0.65 + 0.35 * smooth01(intro / 0.3);
-  const dialPath = pathOf(resources.skia, builders.introBand);
-  const dialInnerPath = pathOf(resources.skia, builders.introInner);
-  resources.introGlowStroke.setStrokeWidth(0.13);
-  resources.introGlowStroke.setAlphaf(0.2 * dialAlpha * brighten);
-  canvas.drawPath(dialPath, resources.introGlowStroke);
-  canvas.drawPath(dialInnerPath, resources.introGlowStroke);
-  resources.introBandStroke.setStrokeWidth(0.05);
-  resources.introBandStroke.setAlphaf(0.75 * dialAlpha * brighten);
-  canvas.drawPath(dialPath, resources.introBandStroke);
-  canvas.drawPath(dialInnerPath, resources.introBandStroke);
-  resources.introBandCoreStroke.setStrokeWidth(0.02);
-  resources.introBandCoreStroke.setAlphaf(0.8 * dialAlpha * brighten);
-  canvas.drawPath(dialPath, resources.introBandCoreStroke);
-  canvas.drawPath(dialInnerPath, resources.introBandCoreStroke);
-  resources.introSpokeStroke.setStrokeWidth(0.007);
-  resources.introSpokeStroke.setAlphaf(0.75 * dialAlpha);
-  canvas.drawPath(pathOf(resources.skia, builders.introSpokes), resources.introSpokeStroke);
-}
-
-/** Draws one frame of the hologram into a size×size square. */
 /**
  * The ring that blooms out of the core as a pass finishes: one step of the thought, done.
  *
@@ -3149,6 +3110,7 @@ function drawThinkingPulse(canvas: HologramCanvas, resources: Resources, state: 
   canvas.drawCircle(0, 0, 0.15 + 1.05 * state.pulse, paint);
 }
 
+/** Draws one frame of the hologram into a size×size square. */
 export function drawHologram(
   canvas: HologramCanvas,
   size: number,
@@ -3166,9 +3128,8 @@ export function drawHologram(
   canvas.translate(size / 2, size / 2);
   canvas.scale(state.radius, state.radius);
   // While it arrives, the whole sphere is drawn into a layer and that layer is faded in — one
-  // alpha over everything, rather than every layer carrying its own ramp. The dial below is
-  // outside it and stays at full strength, since it is what the sphere fades in behind. The
-  // layer costs an offscreen buffer for the few seconds this lasts and nothing afterwards.
+  // alpha over everything, rather than every layer carrying its own ramp. The layer costs an
+  // offscreen buffer for the second and a half this lasts and nothing afterwards.
   const arriving = state.arrival < 1;
   if (arriving) {
     resources.arrivalFade.setAlphaf(state.arrival);
@@ -3186,7 +3147,7 @@ export function drawHologram(
   drawChips(canvas, resources, state);
   drawAccents(canvas, resources, state);
   drawThinkingPulse(canvas, resources, state);
+  drawListening(canvas, resources, state);
   if (arriving) canvas.restore();
-  drawIntro(canvas, resources, state);
   canvas.restore();
 }

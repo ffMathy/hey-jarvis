@@ -1,15 +1,20 @@
-import { PARTICLE_COUNT } from 'hologram';
+import { hearsSomeone, moodOf, nextSampleMode, PARTICLE_COUNT, SAMPLE_MODE_LABELS, type SampleMode } from 'hologram';
 import { LEAVING_SECONDS, useIsForeground } from 'hologram/react/lifecycle';
+import { FrameRate, ModeToast, useSimulatedUser, useSimulatedVoice } from 'hologram/react/sample';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { BackHandler, Platform, Pressable, useWindowDimensions } from 'react-native';
+import {
+  BackHandler,
+  StatusBar as NativeStatusBar,
+  Platform,
+  Pressable,
+  StyleSheet,
+  useWindowDimensions,
+} from 'react-native';
 import { dismissAssistantWindow } from '../modules/jarvis-assistant';
-import { FrameRate } from './frame-rate';
 import { JarvisHologram } from './jarvis-hologram';
-import { ModeToast } from './mode-toast';
-import { moodOf, nextSampleMode, type SampleMode } from './sample-mode';
 import { SAMPLE_CANVAS, SampleSheet, sampleHologramSize } from './sample-sheet';
-import { useSimulatedVoice } from './simulated-voice';
 import { useSparkDensity } from './spark-density';
+import { theme } from './theme';
 
 interface SampleScreenProps {
   onLeave: () => void;
@@ -37,21 +42,20 @@ interface SampleScreenProps {
  * screen there is nowhere to put buttons, so the sphere is its own control, and the three are told
  * apart by how he looks, which is the whole reason for showing them together. A tap is the only
  * way any of it changes: nothing here listens to anything, and every mood comes from the clock.
- * See `sample-mode.ts` for the order and `simulated-voice.ts` for where they come from.
+ * See `hologram/src/sample-mode.ts` for the order and `hologram/src/simulated-voice.ts` for where
+ * they come from — both shared with the watch, whose waiting screen is a sample mode too.
+ *
+ * **The frame-rate readout is here and nowhere else.** Sample mode is where the drawing is shown
+ * off and measured; the conversation screen is the assistant, and has nothing on it but him.
  */
-/** What a screen reader is told Jarvis is doing, since nothing on screen says it. */
-const MODE_LABELS: Record<SampleMode, string> = {
-  speaking: 'Jarvis, speaking. Tap to see him think.',
-  thinking: 'Jarvis, working through something. Tap to see him at rest.',
-  idle: 'Jarvis, at rest. Tap to hear him speak again.',
-};
-
 export function SampleScreen({ onLeave }: SampleScreenProps) {
   const [mode, setMode] = useState<SampleMode>('speaking');
   const [leaving, setLeaving] = useState(false);
   // Nothing is drawn until the sheet has stopped moving; see `sample-sheet.tsx` for why.
   const [settled, setSettled] = useState(false);
   const voice = useSimulatedVoice(settled ? moodOf(mode) : undefined);
+  // Listening is the one mood where it is somebody else talking: Jarvis is silent and hears them.
+  const user = useSimulatedUser(settled && hearsSomeone(mode));
   const { width, height } = useWindowDimensions();
   // How big the square is, and whether there is a sheet around it at all, are the same decision —
   // so both live in `sample-sheet.tsx` rather than being worked out again here. On a phone it is
@@ -146,7 +150,7 @@ export function SampleScreen({ onLeave }: SampleScreenProps) {
       <Pressable
         accessible
         accessibilityRole="button"
-        accessibilityLabel={MODE_LABELS[mode]}
+        accessibilityLabel={SAMPLE_MODE_LABELS[mode]}
         style={{ width: hologramSize, height: hologramSize }}
         onPress={() => !leaving && setMode(nextSampleMode(mode))}
         testID="hologram"
@@ -155,6 +159,7 @@ export function SampleScreen({ onLeave }: SampleScreenProps) {
           <JarvisHologram
             size={hologramSize}
             voice={voice}
+            user={user}
             thinking={mode === 'thinking'}
             leaving={leaving}
             frameRate={frameRate}
@@ -167,13 +172,31 @@ export function SampleScreen({ onLeave }: SampleScreenProps) {
           />
         ) : null}
       </Pressable>
-      <ModeToast mode={mode} />
+      <ModeToast mode={mode} style={styles.toast} />
       <FrameRate
         frameRate={frameRate}
         buildMilliseconds={buildMilliseconds}
         particleShare={particleShare}
         particles={PARTICLE_COUNT}
+        style={styles.frameRate}
       />
     </SampleSheet>
   );
 }
+
+const styles = StyleSheet.create({
+  /**
+   * Along the bottom, clear of the gesture bar, and out of the way of the sphere — which now takes
+   * the whole screen but for twenty points, so there is nowhere left that is not over him.
+   */
+  toast: {
+    bottom: theme.spacing.large * 2 + (NativeStatusBar.currentHeight ?? 0),
+    color: theme.colors.text,
+  },
+  /** In the corner, out of the way. */
+  frameRate: {
+    left: theme.spacing.large,
+    bottom: theme.spacing.large,
+    color: theme.colors.mutedText,
+  },
+});

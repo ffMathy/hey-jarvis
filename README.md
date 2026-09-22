@@ -6,7 +6,7 @@ An intelligent voice assistant for home automation, powered by AI agents and cus
 
 ## Jarvis, summoned
 
-Hold the power button on the phone and Jarvis comes up over whatever you were doing; on the watch he is the whole screen. Here he is at rest, then speaking, then working through something, and then gone.
+Hold the power button on the phone and Jarvis comes up over whatever you were doing; on the watch he is the whole screen. Here he spirals out of his core while he says his greeting, rests, listens to somebody talking to him, works through what they said, and then goes.
 
 <p align="center">
   <picture>
@@ -20,13 +20,13 @@ Hold the power button on the phone and Jarvis comes up over whatever you were do
   </picture>
 </p>
 
-One sphere, drawn once. Both devices bundle the same [`hologram`](./hologram) package, which is why there is no version of him that is only on the phone. These clips are that same drawing rendered frame by frame at 1300 particles — more than any phone is asked for, since nothing offline has to hold sixty frames a second — by [`hologram/.scripts/render-showcase.ts`](./hologram/.scripts/render-showcase.ts):
+One sphere, drawn once. Both devices bundle the same [`hologram`](./hologram) package, which is why there is no version of him that is only on the phone. These clips are that same drawing rendered frame by frame at 1300 particles — rendered offline, where nothing has to hold a frame rate — by [`hologram/.scripts/render-showcase.ts`](./hologram/.scripts/render-showcase.ts):
 
 ```bash
 bun hologram/.scripts/render-showcase.ts
 ```
 
-Those are animated WebP at a true 60 fps, with a 30 fps GIF behind them for anything that will not animate one — **a README cannot show a video**, because GitHub renders neither a `<video>` element from a file in a repository nor a video served from `raw`. The full-size VP9 copies are here to download: [phone](./docs/jarvis-on-a-phone.webm), [watch](./docs/jarvis-on-a-watch.webm).
+Those are animated WebP at 40 fps and 95% quality, rendered at twice the width they are shown at, with a 40 fps GIF behind them for anything that will not animate one — **a README cannot show a video**, because GitHub renders neither a `<video>` element from a file in a repository nor a video served from `raw`. The full-size VP9 copies are here to download: [phone](./docs/jarvis-on-a-phone.webm), [watch](./docs/jarvis-on-a-watch.webm).
 
 All three are transparent outside the device, so they sit on a light page as happily as a dark one.
 
