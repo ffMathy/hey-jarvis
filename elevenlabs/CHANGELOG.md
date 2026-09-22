@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.0.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v1.0.0...elevenlabs-v2.0.0) (2026-09-21)
+
+
+### ⚠ BREAKING CHANGES
+
+* **elevenlabs:** run the conversation on gpt-5.6-luna ([#755](https://github.com/ffMathy/hey-jarvis/issues/755))
+
+### Features
+
+* **elevenlabs:** run the conversation on gpt-5.6-luna ([#755](https://github.com/ffMathy/hey-jarvis/issues/755)) ([a57af38](https://github.com/ffMathy/hey-jarvis/commit/a57af382541b697002ab3a472d475ee4984054db))
+
 ## [1.0.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v0.19.0...elevenlabs-v1.0.0) (2026-09-21)
 
 
