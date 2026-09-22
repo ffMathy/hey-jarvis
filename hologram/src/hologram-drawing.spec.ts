@@ -614,10 +614,11 @@ describe('the hologram', () => {
     }
   });
 
-  it('listens with a faint ring outside the limb that follows how loud they are, and leaves the ball alone', () => {
+  it('listens with a plain ring outside the limb that follows how loud they are, and leaves the ball alone', () => {
     // Someone talking to him is shown as a sign that he hears them, not as anything he does: a ring
-    // of ticks just past the limb whose reach follows their voice. The ball itself must not change,
-    // or listening would read as him speaking.
+    // of ticks just past the limb whose reach follows their voice. It has to be plain to see — the
+    // first version was too faint to notice — and the ball itself must not change, or listening
+    // would read as him speaking.
     const hologram = mount();
     const time = 5.4;
     const ringLight = (pixels: Uint8Array) => {
@@ -634,11 +635,10 @@ describe('the hologram', () => {
     const quiet = render({ ...silence(time), hearing: 1, hearingLevel: 0.1 }, hologram);
     const loud = render({ ...silence(time), hearing: 1, hearingLevel: 1 }, hologram);
 
-    expect(ringLight(quiet)).toBeGreaterThan(ringLight(calm));
+    // Even a quiet voice lights the band round him several times over; a loud one reaches further.
+    expect(ringLight(quiet)).toBeGreaterThan(ringLight(calm) * 3);
     expect(ringLight(loud)).toBeGreaterThan(ringLight(quiet) * 1.3);
     expect(Math.abs(discBrightness(loud) - discBrightness(calm))).toBeLessThan(0.5);
-    // Subtle: the whole square brightens by a small share, where speech brightens the ball itself.
-    expect(brightness(loud)).toBeLessThan(brightness(calm) * 1.15);
   });
 
   it('leaves by shrinking and fading, and takes his shadow with him', () => {

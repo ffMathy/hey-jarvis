@@ -381,13 +381,22 @@ const SWELL_WITH_VOICE = 0.18;
 const LEAVING_SMALLEST = 0.55;
 /**
  * The listening ring: how many ticks, where they start, how far the loudest voice reaches them and
- * how bright the whole ring is at full attention. Deliberately faint — it is a sign that he hears
- * you, beside everything he does when he answers, and a quarter of his own glow is plenty.
+ * how bright the whole ring is at full attention.
+ *
+ * **Plain to see, but outside the ball.** It went in faint — a quarter of his own glow — and the
+ * user watched sample mode's listening phase and could not see it at all: at the volumes a voice
+ * actually reaches, the ticks were a hundredth of his radius long at forty per cent. So the ticks
+ * reach twice as far and are drawn nearly solid, and a steady halo ring sits under them for as long
+ * as speech is detected, so it shows between syllables too. What keeps it from reading as him
+ * speaking is where it is, not how faint: none of it touches the ball.
  */
 const LISTENING_TICKS = 96;
 const LISTENING_INNER = 1.07;
-const LISTENING_REACH = 0.1;
-const LISTENING_ALPHA = 0.42;
+const LISTENING_REACH = 0.22;
+const LISTENING_ALPHA = 0.9;
+/** The halo under the ticks: where it sits, and how bright it is while someone is speaking. */
+const LISTENING_HALO_RADIUS = 1.1;
+const LISTENING_HALO_ALPHA = 0.55;
 /** How fast the ring turns and how fast its ripple travels round it, in radians a second. */
 const LISTENING_TURN = 0.35;
 const LISTENING_RIPPLE = 3.2;
@@ -3106,18 +3115,26 @@ function drawListening(canvas: HologramCanvas, resources: Resources, state: Fram
     const angle = (tick / LISTENING_TICKS) * 2 * Math.PI + turn;
     const ripple = 0.5 + 0.5 * Math.sin(angle * 3 - ripplePhase);
     const own = 0.6 + 0.4 * hashInteger(tick * 53 + 7);
-    const length = 0.012 + LISTENING_REACH * level * (0.3 + 0.7 * ripple) * own;
+    const length = 0.02 + LISTENING_REACH * level * (0.3 + 0.7 * ripple) * own;
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
     pathMoveTo(builder, cos * LISTENING_INNER, sin * LISTENING_INNER);
     pathLineTo(builder, cos * (LISTENING_INNER + length), sin * (LISTENING_INNER + length));
   }
   const ring = pathOf(resources.skia, builder);
-  const alpha = LISTENING_ALPHA * hearing * (0.55 + 0.45 * level);
-  resources.listeningGlowStroke.setStrokeWidth(0.03);
-  resources.listeningGlowStroke.setAlphaf(0.35 * alpha);
+  const alpha = LISTENING_ALPHA * hearing * (0.7 + 0.3 * level);
+  // The halo first, under the ticks: steady while speech is detected, so the ring is there between
+  // syllables as well as on them.
+  resources.listeningGlowStroke.setStrokeWidth(0.05);
+  resources.listeningGlowStroke.setAlphaf(LISTENING_HALO_ALPHA * hearing * 0.45);
+  canvas.drawCircle(0, 0, LISTENING_HALO_RADIUS, resources.listeningGlowStroke);
+  resources.listeningStroke.setStrokeWidth(0.012);
+  resources.listeningStroke.setAlphaf(LISTENING_HALO_ALPHA * hearing);
+  canvas.drawCircle(0, 0, LISTENING_HALO_RADIUS - 0.03, resources.listeningStroke);
+  resources.listeningGlowStroke.setStrokeWidth(0.05);
+  resources.listeningGlowStroke.setAlphaf(0.45 * alpha);
   canvas.drawPath(ring, resources.listeningGlowStroke);
-  resources.listeningStroke.setStrokeWidth(0.009);
+  resources.listeningStroke.setStrokeWidth(0.016);
   resources.listeningStroke.setAlphaf(alpha);
   canvas.drawPath(ring, resources.listeningStroke);
 }
