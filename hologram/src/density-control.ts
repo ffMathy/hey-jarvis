@@ -115,6 +115,34 @@ export const TARGET_FRAMES_PER_SECOND = 40;
 export const BUILD_BUDGET_MS = 8;
 
 /**
+ * What a device asks the loop to hold: the frame rate it steers to and how long a picture may take
+ * to build. A phone's is {@link PHONE_PACE}; a watch asks for fewer frames and more particles.
+ */
+export interface DensityPace {
+  targetFramesPerSecond: number;
+  buildBudgetMs: number;
+}
+
+/** The phone's pace: {@link TARGET_FRAMES_PER_SECOND} and {@link BUILD_BUDGET_MS}. */
+export const PHONE_PACE: DensityPace = {
+  targetFramesPerSecond: TARGET_FRAMES_PER_SECOND,
+  buildBudgetMs: BUILD_BUDGET_MS,
+};
+
+/**
+ * The watch's pace: thirty frames a second, and half of a thirty-hertz frame to build each picture.
+ *
+ * **At the user's asking, and for a dense sphere rather than a smooth one.** At the phone's pace the
+ * watch ran "super smooth, almost too smooth" — spare capacity spent on frames nobody needs on a
+ * wrist, where it could have been spent on particles. Thirty is also a rate a sixty-hertz watch
+ * face can actually hold, being every other refresh, so the loop has a real place to settle.
+ */
+export const WATCH_PACE: DensityPace = {
+  targetFramesPerSecond: 30,
+  buildBudgetMs: 16,
+};
+
+/**
  * Never fewer than this share of the particles: past it he stops looking like himself.
  *
  * A share, and it therefore has to move whenever `PARTICLE_COUNT` does. What matters is the count
@@ -125,10 +153,9 @@ export const BUILD_BUDGET_MS = 8;
  * can draw and stutter for ever.
  *
  * A watch is the one place this lands somewhere else, knowingly. `watch-density.ts` builds a scene
- * of 1200, so a fortieth of it is thirty fragments rather than 250, and nothing here can tell the
+ * of 5000, so a fortieth of it is 125 fragments rather than 250, and nothing here can tell the
  * difference: this module imports nothing and never sees a count, only a share. It is the right
- * trade there anyway — on a watch the floor is a last resort rather than a resting place, and a
- * watch that cannot hold the target at thirty fragments was never going to hold it at sixty.
+ * trade there anyway — on a watch the floor is a last resort rather than a resting place.
  *
  * **It is a floor, not a destination.** Ending up here used to be routine — see `steerDensity` for
  * the single measurement that could send the whole sphere down to it — and that was a bug rather
@@ -363,6 +390,10 @@ export interface DensityControl {
   ceiling: number;
   /** The share drawn during the last window, so a slow window can be pinned on what caused it. */
   lastDensity: number;
+  /** The frame rate this device steers to. See {@link DensityPace}. */
+  targetFramesPerSecond: number;
+  /** How long building a picture may take on this device, in milliseconds. See {@link DensityPace}. */
+  buildBudgetMs: number;
 }
 
 /**
@@ -386,7 +417,10 @@ export interface DensityControl {
  * `RISING_PER_SECOND` paces that climb: from the floor to everything is about six seconds on a
  * phone that can take it, and from half of a remembered count a few.
  */
-export function createDensityControl(startingDensity: number = FEWEST_PARTICLES): DensityControl {
+export function createDensityControl(
+  startingDensity: number = FEWEST_PARTICLES,
+  pace: DensityPace = PHONE_PACE,
+): DensityControl {
   const density = startingDensity <= 0 ? FEWEST_PARTICLES : clamp(startingDensity, FEWEST_PARTICLES, 1);
   return {
     density,
@@ -401,6 +435,8 @@ export function createDensityControl(startingDensity: number = FEWEST_PARTICLES)
     lastStep: 0,
     ceiling: 1,
     lastDensity: density,
+    targetFramesPerSecond: pace.targetFramesPerSecond,
+    buildBudgetMs: pace.buildBudgetMs,
   };
 }
 
@@ -454,12 +490,12 @@ export function seedFromRemembered(control: DensityControl, share: number): void
  * rate's reading when nothing has been timed yet. Both are "how far over, as a share", so the
  * gains mean the same thing whichever it is.
  */
-function steeringReading(frameReading: number, buildMilliseconds: number): number {
+function steeringReading(frameReading: number, buildMilliseconds: number, buildBudgetMs: number): number {
   'worklet';
   if (buildMilliseconds <= 0) {
     return frameReading;
   }
-  return clamp(buildMilliseconds / BUILD_BUDGET_MS - 1, -1, WORST_ERROR);
+  return clamp(buildMilliseconds / buildBudgetMs - 1, -1, WORST_ERROR);
 }
 
 /**
@@ -506,14 +542,15 @@ function lowerTheCeiling(control: DensityControl, trusted: number, drawnNow: num
 function recordWhatItHolds(control: DensityControl, framesPerSecond: number, onTarget: boolean): void {
   'worklet';
   const atCeiling = control.density >= control.ceiling && control.error <= 0;
-  const holding = (onTarget || atCeiling) && framesPerSecond >= TARGET_FRAMES_PER_SECOND;
+  const holding = (onTarget || atCeiling) && framesPerSecond >= control.targetFramesPerSecond;
   if (holding && control.density > control.proven) {
     control.proven = control.density;
   }
 }
 
 /**
- * Moves the particle count toward whatever holds {@link TARGET_FRAMES_PER_SECOND}.
+ * Moves the particle count toward whatever holds the device's target frame rate — {@link TARGET_FRAMES_PER_SECOND}
+ * on a phone, {@link WATCH_PACE} on a watch.
  *
  * `framesPerSecond` of zero means nothing has been measured yet, and nothing is changed — the loop
  * must not act on the first frame, before there is a rate to act on. Neither does the first real
@@ -537,8 +574,8 @@ export function steerDensity(
   // measured one, less one. Positive when the phone is too slow. Bounded below by -1 whatever the
   // screen does, and clamped above: see WORST_ERROR. This one only sets the ceiling, unless there is
   // no build time to steer by.
-  const frameReading = clamp(TARGET_FRAMES_PER_SECOND / framesPerSecond - 1, -1, WORST_ERROR);
-  const reading = steeringReading(frameReading, buildMilliseconds);
+  const frameReading = clamp(control.targetFramesPerSecond / framesPerSecond - 1, -1, WORST_ERROR);
+  const reading = steeringReading(frameReading, buildMilliseconds, control.buildBudgetMs);
 
   // What was drawn during the window this reading measures, and during the one before it.
   const drawnNow = control.density;

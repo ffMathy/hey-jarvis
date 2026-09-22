@@ -35,12 +35,14 @@ that rule.
 | `hologram` | nothing but types | the drawing, the voice tracker, the simulated voices, sample mode's moods and readout text, the density control, the ElevenLabs credentials and the token request |
 | `hologram/react` | React, Reanimated, Skia | the Skia canvas and the frame loop |
 | `hologram/react/sample` | React, Reanimated — not Skia | sample mode's clock-made voice, mood toast and frame-rate readout, shared by the phone's sample screen and the watch's waiting screen |
-| `hologram/conversation` | React, `@elevenlabs/react-native` | his voice as the SDK hears it, and which of his tool calls are in flight |
+| `hologram/conversation` | React, `@elevenlabs/react-native`, `expo-audio` — not Skia | his voice as the SDK hears it, which of his tool calls are in flight, the recorded greeting he answers with, and the user's voice for the listening ring |
 
 `hologram/conversation` deliberately does **not** reach Skia. That is what lets
 a screen open a conversation before CanvasKit has finished loading in a browser,
 which is the case `mobile/src/jarvis-hologram.web.tsx` exists to handle — and it
 is why the conversation hooks are not simply part of `hologram/react`.
+`react.contract.spec.ts` holds it to that, as it does `./react/lifecycle` and
+`./react/sample`.
 
 ## The rule that makes this package work
 
@@ -73,7 +75,8 @@ hand it a WebRTC track and the watch its own microphone.
 
 `src/conversation/` is where `@elevenlabs/react-native` is called for real, and
 it is thinner still: two flags out of the conversation's own state, two readers
-out of the SDK's analysers, and a list of the tool call ids still in flight.
+out of the SDK's analysers, a list of the tool call ids still in flight, the
+latest `vad_score`, and the greeting's player.
 
 If you find yourself wanting a microphone, a permission prompt, a navigation
 decision or a screen layout in any of the three, it belongs in the app, not
@@ -99,6 +102,21 @@ reaches the message.
 is read where a voice is read — the JS thread, every 40 ms — and never on the UI thread. It makes
 up the two voices sample mode can show without a microphone, Jarvis speaking and Jarvis working,
 as spectra, so they go through every step a real voice does and nothing downstream can tell.
+It also makes up someone talking *to* him (`simulatedUserAt`) — a voice-activity score and a
+microphone level — for sample mode's listening phase.
+
+**Listening is not a voice of his.** While someone talks to Jarvis the sphere shows a faint ring of
+short ticks just outside the limb, turning slowly, their reach following how loud they are
+(`drawListening`). It is driven by a `UserVoice` — ElevenLabs' `vad_score` and the microphone's
+input level in a conversation, `simulatedUserAt` in sample mode — handed to the view as `user`, eased
+per frame by `hearing.ts`. The threshold is the firmware's own 0.25, so the phone, the watch and the
+Voice preview agree on when someone is speaking. Kept deliberately subtle, and outside the ball, so
+it never reads as him talking.
+
+**The arrival is a vortex.** Particles leave the core nearest first and spiral out a turn and a
+half before settling (`swirlFragment`); it moves only the particles being drawn, so the scene's
+count and the density share hold throughout. `.scripts/render-preview.ts` renders the arrival, the
+listening ring and the greeting to WebM for looking at.
 
 **Sample mode is shared, and only sample mode has a readout.** Both devices have one — the phone's
 before there is an account, the watch's while it waits for the phone — so the moods, their order,
@@ -106,6 +124,30 @@ their names and the readout's text live in `sample-mode.ts`, and the voice hook,
 the frame-rate readout in `hologram/react/sample`. Each component takes a `style`: where it sits is
 the app's decision, since a round watch face and a phone sheet want different places. The
 conversation screens show no frame rate and no particle count on either device.
+
+## Summoned, he greets you before he is connected
+
+`useGreeting` (`src/conversation/greeting.ts`) is the voice firmware's trick on the phone and the
+watch: "Hello sir, how can I help?" plays from `assets/greeting.mp3` — the firmware's own recording
+— the moment he is summoned, the session is dialled *behind* it, and the agent is told to skip its
+first message (`overrides: { agent: { firstMessage: '' } }`, the firmware's `first_message: ""`).
+While it plays the sphere follows `createGreetingReaders` at the player's own position, and the
+session's microphone is muted from `onConversationCreated` until it ends, so the agent does not hear
+Jarvis through the speaker as the user. `isGreetingOver` (`greeting-handover.ts`) decides the end:
+the recording's end, or its length plus a grace if playback never started. Three things that are
+easy to break:
+
+- **expo-audio must mix, not take focus.** Unless told `mixWithOthers` it requests audio focus, and
+  LiveKit's own focus request as the call connects would pause him mid-sentence.
+- **Its audio mode is set once, before any session.** On Android `setAudioModeAsync` also writes
+  `AudioManager.mode`, and doing it mid-call would take the call out of `MODE_IN_COMMUNICATION`.
+- **No greeting where it cannot be heard.** A browser that has had no tap refuses to play, so there
+  it is not attempted and the agent keeps its own first message.
+
+`useUserVoice` is the `UserVoice` for the listening ring: presence is only ever the latest
+`vad_score` (`vad-score.ts`), ignored while he speaks or greets — the firmware's
+`speaker_is_active_` rule, since his voice through the speaker scores as the user's — and volume is
+the SDK's input level. Both read zero while the session is not connected or its microphone is muted.
 
 ## Worklets
 

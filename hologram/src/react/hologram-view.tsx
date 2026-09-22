@@ -15,10 +15,15 @@ import {
   createHologramResources,
   createHologramScene,
   createVoiceActivityState,
+  type DensityPace,
   drawHologram,
   easeBands,
+  easeHearing,
+  easeHearingLevel,
   easeLevel,
   foldSpectrum,
+  hearingFromPresence,
+  hearingLevelFromVolume,
   MATERIALISE_SECONDS,
   PARTICLE_COUNT,
   perceivedLevel,
@@ -27,7 +32,7 @@ import {
   VOICE_BAND_COUNT,
   voiceDrive,
 } from '../index';
-import type { JarvisVoice } from '../voice-contract';
+import type { JarvisVoice, UserVoice } from '../voice-contract';
 import { useIsForeground } from './is-foreground';
 import { LEAVING_SECONDS } from './leaving';
 
@@ -44,6 +49,11 @@ export interface JarvisHologramProps {
    * handing over.
    */
   quietestSpeech?: number;
+  /**
+   * The person talking to him, if anyone is: a quieter sign on the sphere that he is listening,
+   * which follows how loud they are. Left out, he never shows it.
+   */
+  user?: UserVoice;
   /**
    * Whether Jarvis is working on something rather than listening or talking — a tool call, say.
    *
@@ -93,6 +103,12 @@ export interface JarvisHologramProps {
    * half: see `REMEMBERED_SHARE`. Either way the first second is spent going up, never down.
    */
   startingShare?: number;
+  /**
+   * The frame rate the density loop holds, and the build budget it steers by. Left out, it is the
+   * phone's forty; the watch asks for thirty, and spends what that frees on particles. See
+   * `DensityPace`.
+   */
+  pace?: DensityPace;
   /**
    * How many fragments the scene is built from at all — the ceiling the density share is a share
    * *of*, rather than how many are drawn right now.
@@ -270,12 +286,14 @@ function JarvisHologramView({
   size,
   voice,
   quietestSpeech,
+  user,
   thinking = false,
   leaving = false,
   frameRate,
   particleShare,
   provenShare,
   startingShare,
+  pace,
   particleCount = PARTICLE_COUNT,
   buildMilliseconds,
   opaque = false,
@@ -288,6 +306,9 @@ function JarvisHologramView({
   const resources = useMemo(() => createHologramResources(Skia, scene), [scene]);
 
   const targetLevel = useSharedValue(0);
+  // The person talking to him, as last read: see `user`.
+  const targetHearing = useSharedValue(0);
+  const targetHearingLevel = useSharedValue(0);
   const targetBands = useSharedValue<number[]>(new Array(VOICE_BAND_COUNT).fill(0));
   const speakingNow = useSharedValue(speaking);
   const thinkingNow = useSharedValue(thinking);
@@ -309,6 +330,8 @@ function JarvisHologramView({
     speaking,
     thinking: 0,
     presence: 1,
+    hearing: 0,
+    hearingLevel: 0,
     activity: createVoiceActivityState(quietestSpeech),
   });
 
@@ -348,6 +371,29 @@ function JarvisHologramView({
     };
   }, [listening, getVolume, getSpectrum, targetLevel, targetBands]);
 
+  // Read on the same beat as his voice, and only while there is someone to hear. Eased on the UI
+  // thread, per frame, like everything else the drawing reads.
+  const getPresence = user?.getPresence;
+  const getUserVolume = user?.getVolume;
+  useEffect(() => {
+    if (getPresence === undefined || getUserVolume === undefined) {
+      targetHearing.value = 0;
+      targetHearingLevel.value = 0;
+      return;
+    }
+    const read = () => {
+      targetHearing.value = hearingFromPresence(getPresence());
+      targetHearingLevel.value = hearingLevelFromVolume(getUserVolume());
+    };
+    read();
+    const timer = setInterval(read, READ_INTERVAL_MS);
+    return () => {
+      clearInterval(timer);
+      targetHearing.value = 0;
+      targetHearingLevel.value = 0;
+    };
+  }, [getPresence, getUserVolume, targetHearing, targetHearingLevel]);
+
   // The clock adds up each frame's step rather than reading the callback's own
   // start time. The callback is a new function on every render — the worklets
   // plugin builds it inline — and Reanimated re-registers a new one from zero,
@@ -383,7 +429,7 @@ function JarvisHologramView({
   // phone that had spent the time since doing something else entirely. The cost of dropping it is
   // a second of climbing after a re-render; the cost of keeping it was an entrance at a thousand
   // particles a phone could no longer afford. See `createDensityControl`.
-  const density = useSharedValue(createDensityControl(startingShare));
+  const density = useSharedValue(createDensityControl(startingShare, pace));
 
   // And again when it arrives, because it does not arrive in time to be the initial value above.
   // Reading it back is a promise and `useSharedValue` only ever uses its argument once, so without
@@ -443,6 +489,8 @@ function JarvisHologramView({
       current.thinking = Math.min(1, Math.max(0, current.thinking + towardThought));
       const towardGone = (leavingNow.value ? -1 : 1) * (deltaSeconds / LEAVING_SECONDS);
       current.presence = Math.min(1, Math.max(0, current.presence + towardGone));
+      current.hearing = easeHearing(current.hearing, targetHearing.value, deltaSeconds);
+      current.hearingLevel = easeHearingLevel(current.hearingLevel, targetHearingLevel.value, deltaSeconds);
       advanceVoiceActivity(current.activity, targetLevel.value, deltaSeconds);
       return current;
     });
@@ -532,6 +580,8 @@ function JarvisHologramView({
         // The materialisation plays once, from the moment this canvas mounted.
         appearance: Math.min(1, current.time / MATERIALISE_SECONDS),
         thinking: current.thinking,
+        hearing: current.hearing,
+        hearingLevel: current.hearingLevel,
         presence: current.presence,
         density: density.value.density,
       },

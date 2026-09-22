@@ -4,9 +4,10 @@ import {
   createSimulatedSpectrum,
   fillSimulatedSpectrum,
   type SimulatedMood,
-  simulatedVolume,
+  simulatedUserAt,
 } from '../simulated-voice';
-import type { JarvisVoice } from '../voice-contract';
+import { simulatedVolume } from '../voice-analysis';
+import type { JarvisVoice, UserVoice } from '../voice-contract';
 
 /**
  * A voice made up out of the clock, for the moods sample mode can show without a microphone.
@@ -37,4 +38,25 @@ export function useSimulatedVoice(mood: SimulatedMood | undefined): JarvisVoice 
       getSpectrum: read,
     };
   }, [mood]);
+}
+
+/**
+ * Someone talking to Jarvis, made up out of the clock — sample mode's listening phase. Undefined
+ * when `active` is false, which is what tells the hologram nobody is. Timed from when it was
+ * switched on, so the phase always opens on the start of a phrase.
+ */
+export function useSimulatedUser(active: boolean): UserVoice | undefined {
+  const startedAt = useRef(0);
+
+  return useMemo(() => {
+    if (!active) {
+      return undefined;
+    }
+    startedAt.current = Date.now();
+    const now = () => simulatedUserAt((Date.now() - startedAt.current) / 1000);
+    return {
+      getPresence: () => now().presence,
+      getVolume: () => now().volume,
+    };
+  }, [active]);
 }

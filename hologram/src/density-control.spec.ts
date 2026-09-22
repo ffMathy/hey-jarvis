@@ -8,6 +8,7 @@ import {
   startFromRemembered,
   steerDensity,
   TARGET_FRAMES_PER_SECOND,
+  WATCH_PACE,
 } from './density-control';
 
 /**
@@ -73,6 +74,21 @@ describe('deciding how many particles this phone can afford', () => {
     expect(control.density).toBeGreaterThan(0.3);
     expect(control.density).toBeLessThan(0.5);
     // And it is *settled*: the last ten seconds barely move.
+    const late = path.slice(-20);
+    expect(Math.max(...late) - Math.min(...late)).toBeLessThan(0.05);
+  });
+
+  it('on a watch, holds thirty frames a second and spends the difference on particles', () => {
+    // The same device, asked for the watch's pace instead of the phone's: it has to settle on
+    // more particles — about four thirds as many, since frame time is a straight line in the count
+    // — and hold at least thirty frames a second while it does.
+    const onPhone = createDensityControl();
+    settle(onPhone, phone(0.4), 40);
+    const onWatch = createDensityControl(undefined, WATCH_PACE);
+    const path = settle(onWatch, phone(0.4), 40);
+
+    expect(onWatch.density).toBeGreaterThan(onPhone.density * 1.2);
+    expect(phone(0.4)(onWatch.density)).toBeGreaterThanOrEqual(WATCH_PACE.targetFramesPerSecond * 0.95);
     const late = path.slice(-20);
     expect(Math.max(...late) - Math.min(...late)).toBeLessThan(0.05);
   });

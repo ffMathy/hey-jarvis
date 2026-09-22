@@ -32,3 +32,18 @@ export interface JarvisVoice {
  * mood, and a replay of a recording — and every one of them is handed to the same drawing.
  */
 export type JarvisVoiceReaders = Pick<JarvisVoice, 'getVolume' | 'getSpectrum'>;
+
+/**
+ * The person talking *to* Jarvis, as far as the sphere needs to know: whether someone is speaking,
+ * and how loudly. Polled with the voice, about every 40 ms.
+ *
+ * Kept apart from {@link JarvisVoice} because it is a different thing on screen — his voice drives
+ * the swarm, theirs only a quiet sign that he is listening — and because it comes from somewhere
+ * else: in a conversation, ElevenLabs' own voice-activity score and the microphone's input level.
+ */
+export interface UserVoice {
+  /** 0–1: how sure the listener is that someone is speaking — ElevenLabs' `vad_score`, as it last arrived. */
+  getPresence: () => number;
+  /** 0–1: how loud they are, as the microphone hears them. */
+  getVolume: () => number;
+}

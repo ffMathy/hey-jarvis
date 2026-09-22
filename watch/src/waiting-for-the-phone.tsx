@@ -1,6 +1,6 @@
-import { moodOf, nextSampleMode, SAMPLE_MODE_LABELS, type SampleMode } from 'hologram';
+import { hearsSomeone, moodOf, nextSampleMode, SAMPLE_MODE_LABELS, type SampleMode } from 'hologram';
 import { JarvisHologram } from 'hologram/react';
-import { FrameRate, ModeToast, useSimulatedVoice } from 'hologram/react/sample';
+import { FrameRate, ModeToast, useSimulatedUser, useSimulatedVoice } from 'hologram/react/sample';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useWatchDensity, WATCH_PARTICLE_COUNT } from './watch-density';
@@ -22,7 +22,7 @@ interface WaitingForThePhoneProps {
  * So what this screen says is only ever waiting, or waiting and knowing why. The sphere turns
  * behind it, because somebody who just installed this on their watch should see Jarvis rather than
  * a spinner — and since there is nothing else for him to do yet, he is the phone's sample mode:
- * tapping him walks speaking, thinking and at rest, the name of the mood shows for a moment, and
+ * tapping him walks speaking, listening, thinking and at rest, the name of the mood shows for a moment, and
  * how fast he is being drawn and with how many particles sits at the top. Those moods, their order
  * and the readout are the phone's own, from `hologram/react/sample`; only where they sit is this
  * screen's, laid out for a round face.
@@ -34,9 +34,11 @@ export function WaitingForThePhone({ isPhoneInRange }: WaitingForThePhoneProps) 
   const size = useWatchHologramSize();
   const [mode, setMode] = useState<SampleMode>('speaking');
   const voice = useSimulatedVoice(moodOf(mode));
+  // Listening is the one mood where it is somebody else talking: Jarvis is silent and hears them.
+  const user = useSimulatedUser(hearsSomeone(mode));
   // Handing these over is what turns the density loop on at all — the drawing skips it
   // entirely when there is nowhere to write the frame rate. See `watch-density.ts`.
-  const { frameRate, buildMilliseconds, particleShare, provenShare } = useWatchDensity();
+  const { frameRate, buildMilliseconds, particleShare, provenShare, pace } = useWatchDensity();
 
   return (
     <View style={styles.screen}>
@@ -52,12 +54,14 @@ export function WaitingForThePhone({ isPhoneInRange }: WaitingForThePhoneProps) 
         <JarvisHologram
           size={size}
           voice={voice}
+          user={user}
           thinking={mode === 'thinking'}
           particleCount={WATCH_PARTICLE_COUNT}
           frameRate={frameRate}
           buildMilliseconds={buildMilliseconds}
           particleShare={particleShare}
           provenShare={provenShare}
+          pace={pace}
           opaque
           background="#000000"
         />

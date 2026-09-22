@@ -70,6 +70,9 @@
 //   drawChips           the latest burst's rim chips: solid amber slabs that break up rather
 //                       than fade
 //   drawAccents         the jagged lightning filament and the very rare two-frame red segment
+//   drawListening       while someone talks to him: a slow ring of short ticks just outside the
+//                       limb whose lengths follow how loud they are — faint, and his only sign
+//                       of it, so it is never mistaken for him speaking
 //
 // IDLE MOTION (section 3; nothing breathes, pulses or flickers as a whole)
 // - The outer rim layer rolls clockwise in the screen plane at 11°/s: the truss, the thin
@@ -158,11 +161,13 @@
 //               them in 10 of its 37 frames. How many onsets the line offers is set by the
 //               tracker's ONSET_RISE, which cannot fall much further without a swell counting
 //               as an onset. Only the latest burst is ever still in flight.
-//   appearance  0-1 over MATERIALISE_SECONDS, eased: the whole sphere fades in and grows
-//               outward from ARRIVAL_SMALLEST of its size to full size, every layer at once.
-//               There is no other arrival: the film's point of light, sparks and spoked dial
-//               are gone at the user's asking — "just have Jarvis both fade in and resize
-//               outwards".
+//   appearance  0-1 over MATERIALISE_SECONDS: the vortex. The sphere is full size from the start
+//               and its particles leave the core on their own clocks, nearest first, spiralling
+//               out a turn and a half as streaks along their path before they settle where they
+//               sit (see swirlFragment); the core shows first, the whorl winds up with them and
+//               the rim fades in last. It moves only the particles already being drawn, so the
+//               scene's count and the density share hold throughout. There is no other arrival:
+//               the film's point of light, sparks and spoked dial are gone at the user's asking.
 //
 // PERFORMANCE AND WORKLET RULES
 // - drawHologram and every helper it calls are worklets ('worklet' directive) that use
@@ -249,7 +254,8 @@ export interface HologramFrame {
    * 0–1: how much of him is here at all. 1 unless he is leaving.
    *
    * Kept apart from {@link appearance} so the view can send him away without rewinding the clock
-   * that arrival is counted on. Both do the same thing to him: fade and shrink the whole sphere.
+   * that arrival is counted on: leaving fades and shrinks the whole sphere, rather than running
+   * the vortex backwards.
    */
   presence: number;
   /**
@@ -260,6 +266,13 @@ export interface HologramFrame {
    * and out so entering and leaving a thought is a fade rather than a switch.
    */
   thinking: number;
+  /**
+   * 0–1: how sure he is that someone is talking to him — ElevenLabs' voice-activity score, eased.
+   * Left out, nobody is. See {@link drawListening}: a quiet ring of light round him, nothing more.
+   */
+  hearing?: number;
+  /** 0–1: how loud they are, eased. Only read while {@link hearing} is above nothing. */
+  hearingLevel?: number;
 }
 
 /**
@@ -283,7 +296,7 @@ type SkiaApiType = HologramSkia;
 // ---- constants (unit space: the sphere's radius R is 1, y points down) ---------------------
 // Clock angles are degrees clockwise from 12 o'clock, as the film study measures them.
 
-/** How long the view takes to count appearance from 0 to 1: the fade in and the growth outward. */
+/** How long the view takes to count appearance from 0 to 1: the vortex bringing him out of the core. */
 export const MATERIALISE_SECONDS = 1.4;
 
 /**
@@ -364,14 +377,20 @@ const GLOW_FROM_ENVELOPE = 0.65;
  * pulsates now, and 8% is enough to see without the silhouette lurching.
  */
 const SWELL_WITH_VOICE = 0.18;
-/** How small the sphere starts before it grows into place. */
-const ARRIVAL_SMALLEST = 0.55;
+/** How small the sphere has shrunk to by the time he has gone. */
+const LEAVING_SMALLEST = 0.55;
 /**
- * How Jarvis arrives: `fade` fades the whole sphere in and grows it outward from
- * {@link ARRIVAL_SMALLEST}; `vortex` keeps it at full size and has its particles spiral out of the
- * core, the rim and the whorl coming in behind them.
+ * The listening ring: how many ticks, where they start, how far the loudest voice reaches them and
+ * how bright the whole ring is at full attention. Deliberately faint — it is a sign that he hears
+ * you, beside everything he does when he answers, and a quarter of his own glow is plenty.
  */
-export type ArrivalStyle = 'fade' | 'vortex';
+const LISTENING_TICKS = 96;
+const LISTENING_INNER = 1.07;
+const LISTENING_REACH = 0.1;
+const LISTENING_ALPHA = 0.42;
+/** How fast the ring turns and how fast its ripple travels round it, in radians a second. */
+const LISTENING_TURN = 0.35;
+const LISTENING_RIPPLE = 3.2;
 /** How far round a fragment has still to go as it leaves the core in the vortex, in radians: a turn and a half. */
 const VORTEX_TWIST = 3 * Math.PI;
 /** How long the vortex's strokes are drawn while they are still travelling, as a multiple of their length. */
@@ -954,16 +973,10 @@ function roundToFiveDecimals(value: number) {
  * `hologram/.scripts/render-showcase.ts`. Everything downstream is a share of whatever this is,
  * so nothing else has to know.
  */
-export function createHologramScene(
-  seed: number,
-  particleCount: number = PARTICLE_COUNT,
-  arrival: ArrivalStyle = 'fade',
-) {
+export function createHologramScene(seed: number, particleCount: number = PARTICLE_COUNT) {
   const random = createRandom(seed);
   const script = buildScript(random);
   return {
-    /** 1 when he arrives as a vortex (see {@link ArrivalStyle}); a number, so the worklet copy stays plain data. */
-    vortexArrival: arrival === 'vortex' ? 1 : 0,
     body: buildBody(random, particleCount).map(roundToFiveDecimals),
     stream: buildStream(random).map(roundToFiveDecimals),
     crescentPieces: buildCrescentPieces(random).map(roundToFiveDecimals),
@@ -1485,6 +1498,7 @@ export function createHologramResources(Skia: SkiaApiType, scene: Scene) {
     chipCores: makeBuilder(),
     lightning: makeBuilder(),
     red: makeBuilder(),
+    listening: makeBuilder(),
   };
   // one flat list, so the frame can reset them all first
   const allPathBuilders = [
@@ -1504,6 +1518,7 @@ export function createHologramResources(Skia: SkiaApiType, scene: Scene) {
     pathBuilders.chipCores,
     pathBuilders.lightning,
     pathBuilders.red,
+    pathBuilders.listening,
   ];
 
   return {
@@ -1561,6 +1576,8 @@ export function createHologramResources(Skia: SkiaApiType, scene: Scene) {
     sparkStroke: makeStroke('#ffae4e', StrokeCap.Round),
     lightningStroke: makeStroke('#c39568', StrokeCap.Butt),
     redStroke: makeStroke('#b3470f', StrokeCap.Butt),
+    listeningStroke: makeStroke('#ffb454', StrokeCap.Round),
+    listeningGlowStroke: makeStroke('#e8842a', StrokeCap.Round),
     ...buildWhorl(Skia, createRandom(scene.textureSeed ^ 0x5bd1e995)),
     strandFanPath: buildStrandFan(Skia),
     ...buildInnerStructure(Skia),
@@ -1724,26 +1741,20 @@ function analyseFrame(frame: HologramFrame, size: number, scene: Scene) {
   // Loudness, not the agitation envelope: the glow follows his voice moment to moment, as the
   // first hologram's did, while the chips and the churn follow the envelope.
   const voice = clamp01(frame.level) ** 0.8;
-  // Folded together on purpose: coming and going are the same gesture, so he fades and shrinks on
-  // the way out exactly as he fades and grows on the way in.
-  const appearance = clamp01(frame.appearance);
-  const presence = clamp01(frame.presence);
-  const vortex = scene.vortexArrival === 1;
-  // In the vortex the layer only fades in over the first fifth, so the first particles leaving the
-  // core are seen; the particles' own travel is what does the arriving.
-  const arrival = (vortex ? smooth01(appearance / 0.2) : smooth01(appearance)) * presence;
-  const grown = vortex ? presence : arrival;
-  // How far on the vortex is: 1 once it is over, and always 1 when he fades in instead.
-  const swirl = vortex ? appearance : 1;
+  // How far on the vortex is: 1 once it is over.
+  const swirl = clamp01(frame.appearance);
   const settle = 1 - smooth01(swirl);
+  const presence = clamp01(frame.presence);
+  // The whole sphere fades in over the first fifth of the vortex, so the first particles leaving
+  // the core are seen as they go; their own travel is what does the arriving. Leaving fades it
+  // out through the same layer.
+  const arrival = smooth01(swirl / 0.2) * presence;
   // How much bigger he is this frame than at rest. Mostly loudness, so the sphere breathes with
   // the sentence rather than stepping up and sitting there; the envelope keeps it from dropping
   // back to nothing between syllables.
   const swell = SWELL_WITH_VOICE * (0.7 * voice + 0.3 * agitation);
-  // Fading in, the sphere grows outward into place and, with `arrival` fading the whole of it,
-  // fades in: every layer comes up together, with nothing drawn over it. In the vortex it is full
-  // size from the start and only shrinks on the way out.
-  const radius = size * SPHERE_FRACTION * (ARRIVAL_SMALLEST + (1 - ARRIVAL_SMALLEST) * grown) * (1 + swell);
+  // Full size from the start of the vortex; it only shrinks on the way out.
+  const radius = size * SPHERE_FRACTION * (LEAVING_SMALLEST + (1 - LEAVING_SMALLEST) * presence) * (1 + swell);
   const intoScan = time - Math.floor(time / SCAN_SECONDS) * SCAN_SECONDS;
   const thinking = clamp01(frame.thinking);
   return {
@@ -1766,6 +1777,8 @@ function analyseFrame(frame: HologramFrame, size: number, scene: Scene) {
     coreAlpha: smooth01(swirl / 0.25),
     rimAlpha: (1 - 0.65 * thinking) * smooth01((swirl - 0.55) / 0.45),
     swirl,
+    hearing: clamp01(frame.hearing ?? 0),
+    hearingLevel: clamp01(frame.hearingLevel ?? 0),
     /** Where {@link swirlFragment} leaves a fragment: x, y, its direction, and how much of it shows. */
     swirled: [0, 0, 0, 0, 0],
     agitation,
@@ -3048,6 +3061,40 @@ function drawAccents(canvas: HologramCanvas, resources: Resources, state: FrameS
 }
 
 /**
+ * While someone talks to him: a ring of short ticks just outside the limb, turning slowly, whose
+ * lengths follow how loud they are with a ripple running round it — the way the Voice preview's
+ * LED ring answers a voice. Faint on purpose, and outside the ball rather than in it, so that it
+ * reads as him paying attention and never as him speaking. Nothing at all when nobody is.
+ */
+function drawListening(canvas: HologramCanvas, resources: Resources, state: FrameState) {
+  'worklet';
+  const hearing = state.hearing;
+  if (hearing <= 0.01) return;
+  const builder = resources.pathBuilders.listening;
+  const level = state.hearingLevel;
+  const turn = state.time * LISTENING_TURN;
+  const ripplePhase = state.time * LISTENING_RIPPLE;
+  for (let tick = 0; tick < LISTENING_TICKS; tick++) {
+    const angle = (tick / LISTENING_TICKS) * 2 * Math.PI + turn;
+    const ripple = 0.5 + 0.5 * Math.sin(angle * 3 - ripplePhase);
+    const own = 0.6 + 0.4 * hashInteger(tick * 53 + 7);
+    const length = 0.012 + LISTENING_REACH * level * (0.3 + 0.7 * ripple) * own;
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    pathMoveTo(builder, cos * LISTENING_INNER, sin * LISTENING_INNER);
+    pathLineTo(builder, cos * (LISTENING_INNER + length), sin * (LISTENING_INNER + length));
+  }
+  const ring = pathOf(resources.skia, builder);
+  const alpha = LISTENING_ALPHA * hearing * (0.55 + 0.45 * level);
+  resources.listeningGlowStroke.setStrokeWidth(0.03);
+  resources.listeningGlowStroke.setAlphaf(0.35 * alpha);
+  canvas.drawPath(ring, resources.listeningGlowStroke);
+  resources.listeningStroke.setStrokeWidth(0.009);
+  resources.listeningStroke.setAlphaf(alpha);
+  canvas.drawPath(ring, resources.listeningStroke);
+}
+
+/**
  * The ring that blooms out of the core as a pass finishes: one step of the thought, done.
  *
  * Reuses the thin ring's paint, drawn at a growing radius and fading as it goes, so it leaves the
@@ -3100,6 +3147,7 @@ export function drawHologram(
   drawChips(canvas, resources, state);
   drawAccents(canvas, resources, state);
   drawThinkingPulse(canvas, resources, state);
+  drawListening(canvas, resources, state);
   if (arriving) canvas.restore();
   canvas.restore();
 }

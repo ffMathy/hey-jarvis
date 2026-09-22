@@ -1,3 +1,4 @@
+import { WATCH_PACE } from 'hologram';
 import { useSharedValue } from 'react-native-reanimated';
 
 /**
@@ -12,8 +13,13 @@ import { useSharedValue } from 'react-native-reanimated';
  *
  * It is a ceiling rather than a count: what is actually drawn starts far below this and only comes
  * up if the frame rate allows, which is the whole point of wiring the controller in below.
+ *
+ * It was 1200, and that was the ceiling the watch actually sat at: the sphere ran "super smooth,
+ * almost too smooth", with frames to spare and nowhere to spend them. Half the phone's scene now,
+ * with the loop holding thirty frames a second ({@link WATCH_PACE}) rather than forty, so what a
+ * watch can afford is decided by the watch rather than by this number.
  */
-export const WATCH_PARTICLE_COUNT = 1200;
+export const WATCH_PARTICLE_COUNT = 5000;
 
 /**
  * Everything the drawing needs in order to find a particle count this watch can actually hold.
@@ -45,5 +51,6 @@ export function useWatchDensity() {
   const particleShare = useSharedValue(0);
   const provenShare = useSharedValue(0);
 
-  return { frameRate, buildMilliseconds, particleShare, provenShare };
+  // The watch's pace — thirty frames a second — handed to the drawing with the rest.
+  return { frameRate, buildMilliseconds, particleShare, provenShare, pace: WATCH_PACE };
 }

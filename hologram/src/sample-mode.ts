@@ -4,7 +4,7 @@ import type { JarvisVoice } from './voice-contract';
 /**
  * What sample mode is showing, and the order tapping Jarvis walks through.
  *
- * Three things he does, on a screen with next to no words on it: speaking, working, and waiting.
+ * Four things he does, on a screen with next to no words on it: speaking, listening, working, and waiting.
  * There are no buttons because there is no text to hang them off, so the sphere itself is the
  * control, and each mood has to be told from the others by how he looks, which is the point of
  * having them side by side at all.
@@ -19,7 +19,7 @@ import type { JarvisVoice } from './voice-contract';
  * and a recording indicator in aid of something the simulated voices show just as well. All three
  * remaining moods come from the clock.
  */
-export const SAMPLE_MODES = ['speaking', 'thinking', 'idle'] as const;
+export const SAMPLE_MODES = ['speaking', 'listening', 'thinking', 'idle'] as const;
 
 export type SampleMode = (typeof SAMPLE_MODES)[number];
 
@@ -29,21 +29,36 @@ export function nextSampleMode(mode: SampleMode): SampleMode {
   return SAMPLE_MODES[(at + 1) % SAMPLE_MODES.length] ?? SAMPLE_MODES[0];
 }
 
-/** Which simulated mood a sample mode asks for, if any. Idle asks for none: it is silence. */
+/**
+ * Which simulated mood a sample mode asks for, if any. Idle asks for none: it is silence. Nor does
+ * listening: there Jarvis is silent and it is the person talking to him who is simulated — see
+ * {@link hearsSomeone}.
+ */
 export function moodOf(mode: SampleMode): SimulatedMood | undefined {
-  return mode === 'speaking' || mode === 'thinking' ? mode : undefined;
+  // Speaking is the greeting, repeated: he speaks here exactly as he does when he is summoned.
+  if (mode === 'speaking') {
+    return 'greeting';
+  }
+  return mode === 'thinking' ? mode : undefined;
+}
+
+/** Whether a sample mode has someone talking to him, which the sphere shows as a quiet listening ring. */
+export function hearsSomeone(mode: SampleMode): boolean {
+  return mode === 'listening';
 }
 
 /** What each mood is called, for the one moment its name is on screen after a tap. */
 export const SAMPLE_MODE_NAMES: Record<SampleMode, string> = {
   speaking: 'Speaking',
+  listening: 'Listening',
   thinking: 'Thinking',
   idle: 'Idle',
 };
 
 /** What a screen reader is told Jarvis is doing, since nothing on screen says it for long. */
 export const SAMPLE_MODE_LABELS: Record<SampleMode, string> = {
-  speaking: 'Jarvis, speaking. Tap to see him think.',
+  speaking: 'Jarvis, speaking. Tap to see him listen.',
+  listening: 'Jarvis, listening to someone talk. Tap to see him think.',
   thinking: 'Jarvis, working through something. Tap to see him at rest.',
   idle: 'Jarvis, at rest. Tap to hear him speak again.',
 };

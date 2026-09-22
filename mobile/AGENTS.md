@@ -64,13 +64,16 @@ The agent on the other end is the same one `elevenlabs/` deploys, with the same 
 ├── voice-analysis.ts             # the FFT and RMS, the same for live audio and the emulator replay
 ├── voice-levels.ts               # spectrum folding, easing, and the agitation/burst tracker
 ├── voice-contract.ts             # JarvisVoice: the two questions the sphere asks a voice
+├── greeting-handover.ts          # when the recorded greeting is over, and the override it comes with
 ├── react/                        # `hologram/react`, the half that needs a framework
 │   ├── hologram-view.tsx         # Skia canvas, Reanimated clocks, reading the voice every frame
 │   └── is-foreground.ts          # stops the clock and the microphone when nobody is looking
 └── conversation/                 # `hologram/conversation`, the half that needs the ElevenLabs SDK
     ├── agent-voice.ts            # his voice as the SDK hears it — the whole voice on web and watch
     ├── sdk-voice-readers.ts      # the SDK's analysers, safe to call before a session exists
-    └── tool-activity.ts          # which tool calls are in flight, and how long he keeps thinking after
+    ├── tool-activity.ts          # which tool calls are in flight, and how long he keeps thinking after
+    ├── greeting.ts               # "Hello sir, how can I help?" while the session is dialled behind it
+    └── user-voice.ts             # the user's vad_score and microphone level, for the listening ring
 
 mobile/
 ├── app.config.ts                 # Expo config: package name, scheme, permissions, plugins
@@ -127,7 +130,7 @@ mobile/
 
 ## The hologram
 
-The conversation screen is built around Jarvis as the film drew him: the golden sphere from the *Avengers: Age of Ultron* lab scene. A round, see-through, warm amber ball, brightest at its core and never dark inside, textured with short bright strokes, bounded by one rim element at a time — a bright crescent on the left limb, a segmented ladder ring, or a thin ring — and a hooked ring at the core. The film's slow protrusions are deliberately not drawn: on a phone they read as an arm swinging out of the ball on a loop, and the user asked for them gone. It turns on its own — the body about the vertical axis, the rim rolling the other way — it fades in and grows outward when it first appears, and when Jarvis talks it grows agitated, glows and swells.
+The conversation screen is built around Jarvis as the film drew him: the golden sphere from the *Avengers: Age of Ultron* lab scene. A round, see-through, warm amber ball, brightest at its core and never dark inside, textured with short bright strokes, bounded by one rim element at a time — a bright crescent on the left limb, a segmented ladder ring, or a thin ring — and a hooked ring at the core. The film's slow protrusions are deliberately not drawn: on a phone they read as an arm swinging out of the ball on a loop, and the user asked for them gone. It turns on its own — the body about the vertical axis, the rim rolling the other way — it spirals out of its core when it first appears, and when Jarvis talks it grows agitated, glows and swells.
 
 None of those numbers are a guess. The proportions, the colours, the rotation speeds, what changes while Jarvis speaks and the order the ball assembles itself in were all measured frame by frame from the scene itself, and `hologram/src/hologram-drawing.ts` cites that study section by section beside the code each finding produced.
 
@@ -159,6 +162,32 @@ an assistant who has finished looks identical to one who is waiting for you. So 
 conversation fades him over `LEAVING_SECONDS`, unmounts the drawing (a frame loop drawing a sphere
 that has faded to nothing is a phone kept awake for no one), and — summoned — lets the sheet follow him down and retracts the assistant's window,
 which is how sample mode leaves too.
+
+### He greets you before he is connected
+
+The moment the microphone is granted, "Hello sir, how can I help?" plays from the firmware's own
+recording and the token request goes out beside it, so by the time he has asked, the session is
+usually up. The session is opened with the agent's first message switched off and its microphone
+muted until the recording ends; if it is slower than that, the screen goes on connecting exactly as
+before, under the same `GIVE_UP_CONNECTING_AFTER_MS`. Hanging up mid-greeting stops it. How it
+works, and the three ways to break it, are in `useGreeting`'s note and `../hologram/AGENTS.md`.
+
+Two places it deliberately does not play. **The text-only session**, a browser that refused the
+microphone: that was a choice to keep the conversation quiet, so he greets in writing there — the
+agent keeps its first message, and it arrives as his first written reply. **A browser nobody has
+touched since it loaded** — a reload straight onto the conversation — which would refuse to play;
+the agent keeps its first message there too, so he is never left not greeting at all.
+
+**Not yet heard on a device.** Everything above is reasoned from the SDK's and expo-audio's
+sources, not listened to. What a phone has to settle: that the greeting keeps playing, on the
+speaker and at a sensible volume, when LiveKit switches Android into `MODE_IN_COMMUNICATION`
+mid-sentence; that the mute lands before the agent hears any of it (there is a window of a few
+milliseconds between the SDK publishing the microphone and `onConversationCreated`); and that
+`vad_score` events arrive over WebRTC as they do over the firmware's socket.
+
+The sphere also shows the user being heard: a faint ring of ticks while ElevenLabs' `vad_score`
+says someone is speaking, reaching further the louder the microphone is. `useUserVoice` feeds it,
+and it ignores the score while Jarvis speaks, since the microphone hears him too.
 
 ### Summoned, he arrives in a sheet
 
@@ -245,13 +274,13 @@ What each layer is, what the voice does to it, and which finding of the film stu
 
   **The fragments now turn over far more slowly than the film's, in both states.** At the film's rate the phone read as a sizzle — the user's word — while Jarvis spoke, "a surface boiling rather than a machine thinking", and what is wanted is his overwhelming calm. The calm pool is about twice as slow as the film's 0.2–0.6 s and the fast pool three to four times slower than it was; measured, that halves the speaking churn and takes a fifth off the idle. It does not take more off the idle however slow the pool gets, because what is left there is the ball *turning*, and the turn is still at the film's measured rate. Do not read the calm as a regression and speed it back up: see `pickFragmentRate`.
 - **The body turns like a globe.** The film's interior does not spin — under 1-3°/s, measured — and the drawing held it pinned for that reason. It no longer does: the body turns about the vertical axis once every `BODY_TURN_SECONDS`, the rate the first hologram used, because a rim rolling round a still ball read as inert on a phone. The rim still rolls in the screen plane at the film's 11°/s and the inner shells still counter-turn at 5°/s.
-- **The arrival is a fade and a growth, and nothing else.** The film assembles the ball: a point of light, sparks, a band built out of flying pieces, a spoked dial, the fill spreading patch by patch, a ragged limb, and a tilted equatorial ring sweeping round. All of that is gone at the user's request — "just have Jarvis both fade in and resize outwards". The whole sphere fades in through a single layer and grows outward from `ARRIVAL_SMALLEST` to full size, every layer at once, over `MATERIALISE_SECONDS` (1.4 s, since it plays on every summoning).
+- **The arrival is a vortex, and nothing else.** The film assembles the ball: a point of light, sparks, a band built out of flying pieces, a spoked dial, the fill spreading patch by patch, a ragged limb, and a tilted equatorial ring sweeping round. All of that is gone at the user's request. Instead the sphere is full size from the start and its particles leave the core, nearest first, spiralling out a turn and a half as streaks before settling; the core shows first, the whorl winds up with them and the rim fades in last, over `MATERIALISE_SECONDS` (1.4 s, since it plays on every summoning). It only moves the particles already being drawn, so the scene's particle count and the density share hold throughout — on the watch as on the phone. A plain fade and growth was tried first and compared side by side; the user chose the vortex.
 - **There are no specks, and the ladder ring is built once per weight.** The drawing used to scatter 220 blinking points over the ball, each a dot with its own halo. A speck cost about as much as a stroke — two crossings into Skia, then stroked five times over for its halo — while contributing a single dot on top of a thousand strokes already twinkling underneath, so it was 14% of a frame for something you had to look for. They are gone, the stroke count went up to make up the light, and the dim and mid halos widened to carry what their halos used to. The ladder truss is built in the rolling frame, so its shape depends only on its weight, which is constant except during a handover: the five paths are memoised on that weight, worth another 10%. Memoised on the *input*, so a frame still draws the same picture whatever preceded it — caching keyed on what happened last frame breaks `draws a frame the same way after other frames`, and rightly.
 - **Onsets and gaps need memory, and memory needs `modify`.** `advanceVoiceActivity` writes into a state object that lives from frame to frame, and it is fed the *raw* reading rather than the eased one, because easing is exactly what smears a syllable's start into a slope. The view advances it inside `activity.modify(...)`, the way the bands are eased: a shared value assigned from the JS runtime gets a warning-only setter in the UI runtime, so writing to it directly would drop every update in silence in a development build and work in release. `hologram/src/voice-levels.ts`'s header says so at length.
-- **It fades in and grows outward.** For the first `MATERIALISE_SECONDS` after the canvas mounts, `appearance = min(1, time / MATERIALISE_SECONDS)`, which the view computes from its own clock, fades the whole sphere in and grows it to full size. Nothing is drawn over it while it does.
+- **It spirals out of its core.** For the first `MATERIALISE_SECONDS` after the canvas mounts, `appearance = min(1, time / MATERIALISE_SECONDS)`, which the view computes from its own clock, runs the vortex. Nothing is drawn over it while it does.
 - **It is all worklets.** `drawHologram` and every helper it calls start with `'worklet'` and use only their arguments and module-level number constants — no mutable module state, no closures, no `Math.random` while drawing; randomness comes from the seeded scene. The scene (flat number arrays, built once from a fixed seed) and the resources (paints, shaders, textures and mutable `PathBuilder`s, built once) are created per mounted canvas and must never be shared between two.
 - **Loudness is eased on the UI thread, not the JS thread.** The SDK refreshes about 25 times a second; easing toward each reading every frame is what keeps the bands smooth, and `easeLevel` is exponential so the result is the same on a 60 Hz and a 120 Hz screen. The tracker is frame-rate independent for the same reason, and tested at 30, 60, 90 and 144 Hz.
-- **It was designed by looking, and is tested by looking.** `hologram/src/hologram-drawing.spec.ts` renders it headlessly through CanvasKit — the same Skia API calls — and asserts on pixels: it moves when silent, it holds its brightness whether he speaks softly or loudly, speech shows as chips beyond the limb and more change than when calm, which bands are sounding changes the picture, the rim turns while the body stays put, it arrives by fading in and growing outward and nothing else, nothing pops at a script boundary, no frame of the arrival turns a tenth of the light on at once, and it stays inside its square. The device check is `.scripts/verify-hologram-on-emulator.sh`, below.
+- **It was designed by looking, and is tested by looking.** `hologram/src/hologram-drawing.spec.ts` renders it headlessly through CanvasKit — the same Skia API calls — and asserts on pixels: it moves when silent, it holds its brightness whether he speaks softly or loudly, speech shows as chips beyond the limb and more change than when calm, which bands are sounding changes the picture, the rim turns while the body stays put, it arrives as a vortex out of its core and nothing else, nothing pops at a script boundary, no frame of the arrival turns a tenth of the light on at once, and it stays inside its square. The device check is `.scripts/verify-hologram-on-emulator.sh`, below.
 
 ## First run
 
@@ -356,6 +385,7 @@ Versions are pinned exactly, and every one of them has to clear the repository's
 
 - `@livekit/react-native` is held at **2.x**. The 3.x line is published as `latest` but does not satisfy `@elevenlabs/react-native`'s peer range.
 - `livekit-client` is a direct dependency even though it is transitive, so only one copy can resolve.
+- `expo-audio` is at **57.0.5**, what Expo 57's `bundledNativeModules.json` allows (`~57.0.4`). It plays the greeting on Android and, through an `HTMLAudioElement`, in a browser. It needs no config plugin: it only plays, and its manifest adds nothing but `MODIFY_AUDIO_SETTINGS`.
 - `@config-plugins/react-native-webrtc` is deliberately **not** installed. Its Android half only adds permissions, and two of them — `CAMERA` and `SYSTEM_ALERT_WINDOW` — have no business in a voice assistant. `app.config.ts` declares the permissions this app actually uses and blocks `CAMERA`, which LiveKit's own manifest would otherwise merge in.
 
 `metro.config.js` points Metro at both this package's `node_modules` and the workspace root's, and keeps hierarchical lookup **on** — the usual monorepo advice to switch it off breaks bun's isolated layout, where walking up from the importing file is how a package finds its own dependencies.
@@ -400,7 +430,7 @@ Tests must not import React Native or any Expo native module — there is no run
 
 `turbo e2e --filter=mobile` exports the production web build and drives it in Chromium — the real bundle, served over HTTP, clicked through. It runs in CI alongside the rest.
 
-The boundary is the ElevenLabs session, which needs a real API key and real quota. Everything up to it is exercised for real: the first-run tour (its two steps in a browser, its links, Back, and the side trip to sample mode and back), settings validation, persistence across a reload, the hologram drawing and moving with CanvasKit loaded from the export's own `canvaskit.wasm`, and the token request to ElevenLabs — its `xi-api-key` header, agent ID and participant name, and that the key never appears in the URL — along with how a rejected key and an unknown agent are explained. The typed field is covered on both of its paths: that a refused microphone still opens a conversation — dialled by asking for a **signed URL** rather than a token — and that the field stops saying "Connecting…" once nothing is; and that a microphone that *works* gets the same field beside it, over a token and not a signed URL, since a typed line there is answered out loud and quietly turning it into a text-only session would be the one way to lose that. A `start` that never opened a session at all gets no field, which is the phone's refused microphone by another route. Both URLs are intercepted with `page.route`; every other non-localhost request is aborted, and non-local WebSockets are closed, so a test can never dial out. Playwright answers CORS preflights for routed requests itself, so whether ElevenLabs' real CORS policy admits the web build is **not** covered — the test checks instead that the request carries no header besides `xi-api-key`, which is all a preflight would have to allow.
+The boundary is the ElevenLabs session, which needs a real API key and real quota. Everything up to it is exercised for real: the first-run tour (its two steps in a browser, its links, Back, and the side trip to sample mode and back), settings validation, persistence across a reload, the hologram drawing and moving with CanvasKit loaded from the export's own `canvaskit.wasm`, and the token request to ElevenLabs — its `xi-api-key` header, agent ID and participant name, and that the key never appears in the URL — along with how a rejected key and an unknown agent are explained. The typed field is covered on both of its paths: that a refused microphone still opens a conversation — dialled by asking for a **signed URL** rather than a token — and that the field stops saying "Connecting…" once nothing is; and that a microphone that *works* gets the same field beside it, over a token and not a signed URL, since a typed line there is answered out loud and quietly turning it into a text-only session would be the one way to lose that. A `start` that never opened a session at all gets no field, which is the phone's refused microphone by another route. The greeting is covered by counting `HTMLMediaElement.play()` in the page — the player fetches the recording at mount whether or not it plays, so a request proves nothing: it plays once from the export's own assets beside the token request, not at all after a reload with no click, and not in the text-only session, whose `conversation_initiation_client_data` must carry no `first_message`. The override on a voice session travels over LiveKit's data channel, which these tests close, so it is pinned by `greeting-handover.spec.ts` in `hologram` instead. Both URLs are intercepted with `page.route`; every other non-localhost request is aborted, and non-local WebSockets are closed, so a test can never dial out. Playwright answers CORS preflights for routed requests itself, so whether ElevenLabs' real CORS policy admits the web build is **not** covered — the test checks instead that the request carries no header besides `xi-api-key`, which is all a preflight would have to allow.
 
 Every test that needs a configured app walks the tour first, through the `walkToCredentials` helper: the app no longer opens on a form, so a spec that types into one without pressing Next is a spec that fails on a missing field rather than on what it was checking.
 

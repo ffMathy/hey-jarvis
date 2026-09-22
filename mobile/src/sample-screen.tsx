@@ -1,6 +1,6 @@
-import { moodOf, nextSampleMode, PARTICLE_COUNT, SAMPLE_MODE_LABELS, type SampleMode } from 'hologram';
+import { hearsSomeone, moodOf, nextSampleMode, PARTICLE_COUNT, SAMPLE_MODE_LABELS, type SampleMode } from 'hologram';
 import { LEAVING_SECONDS, useIsForeground } from 'hologram/react/lifecycle';
-import { FrameRate, ModeToast, useSimulatedVoice } from 'hologram/react/sample';
+import { FrameRate, ModeToast, useSimulatedUser, useSimulatedVoice } from 'hologram/react/sample';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   BackHandler,
@@ -54,6 +54,8 @@ export function SampleScreen({ onLeave }: SampleScreenProps) {
   // Nothing is drawn until the sheet has stopped moving; see `sample-sheet.tsx` for why.
   const [settled, setSettled] = useState(false);
   const voice = useSimulatedVoice(settled ? moodOf(mode) : undefined);
+  // Listening is the one mood where it is somebody else talking: Jarvis is silent and hears them.
+  const user = useSimulatedUser(settled && hearsSomeone(mode));
   const { width, height } = useWindowDimensions();
   // How big the square is, and whether there is a sheet around it at all, are the same decision —
   // so both live in `sample-sheet.tsx` rather than being worked out again here. On a phone it is
@@ -157,6 +159,7 @@ export function SampleScreen({ onLeave }: SampleScreenProps) {
           <JarvisHologram
             size={hologramSize}
             voice={voice}
+            user={user}
             thinking={mode === 'thinking'}
             leaving={leaving}
             frameRate={frameRate}

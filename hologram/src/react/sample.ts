@@ -14,4 +14,4 @@
 
 export { FrameRate } from './frame-rate';
 export { ModeToast } from './mode-toast';
-export { useSimulatedVoice } from './use-simulated-voice';
+export { useSimulatedUser, useSimulatedVoice } from './use-simulated-voice';

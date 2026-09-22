@@ -1,6 +1,6 @@
 import { useConversationControls, useConversationStatus } from '@elevenlabs/react-native';
 import { type ElevenLabsSettings, requestConversationToken, WATCH_PARTICIPANT_NAME } from 'hologram';
-import { useAgentVoice, useToolActivity } from 'hologram/conversation';
+import { useAgentVoice, useGreeting, useToolActivity, useUserVoice } from 'hologram/conversation';
 import { JarvisHologram } from 'hologram/react';
 import { useIsForeground } from 'hologram/react/lifecycle';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -69,11 +69,17 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
   const { startSession, endSession } = useConversationControls();
   const { status } = useConversationStatus();
   const isForeground = useIsForeground();
-  const voice = useAgentVoice();
+  const agentVoice = useAgentVoice();
+  // "Hello sir, how can I help?", from a recording, while the session is dialled behind it — and
+  // the sphere saying it with him. See `greeting.ts` in `hologram/conversation`.
+  const { greeting, greetingVoice, beginGreeting, stopGreeting, greetingSessionOptions } = useGreeting();
+  const voice = greeting ? greetingVoice : agentVoice;
+  // Whoever is talking to him, for the sphere's listening animation. See `user-voice.ts`.
+  const { user, userVoiceHandlers } = useUserVoice({ greeting });
   const size = useWatchHologramSize();
   // Handing these over is what turns the density loop on at all — the drawing skips it
   // entirely when there is nowhere to write the frame rate. See `watch-density.ts`.
-  const { frameRate, buildMilliseconds, particleShare, provenShare } = useWatchDensity();
+  const { frameRate, buildMilliseconds, particleShare, provenShare, pace } = useWatchDensity();
   // What he is doing between hearing you and answering; the drawing has a whole state for it.
   const { thinking, toolHandlers, forgetToolCalls } = useToolActivity();
   const [problem, setProblem] = useState<string | undefined>(undefined);
@@ -115,6 +121,13 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
         return;
       }
 
+      // He answers at once, from a recording, and everything below — the network, the token, the
+      // session — happens while he says it. The session is told not to greet a second time and
+      // keeps its microphone muted until he has finished, so it does not hear him through the
+      // speaker a few centimetres away and take it for the wearer. A session slower than the
+      // greeting goes on connecting exactly as it did before there was one.
+      const greeted = await beginGreeting();
+
       // Off the phone's Bluetooth proxy before anything goes out, token request included: WebRTC's
       // audio does not get through it, which is why the watch used to connect and then say nothing.
       // See `modules/jarvis-network`.
@@ -131,6 +144,8 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
         onError: reportProblem,
         onDisconnect: reportEnding,
         ...toolHandlers,
+        ...userVoiceHandlers,
+        ...(greeted ? greetingSessionOptions : {}),
       });
     } catch (error: unknown) {
       // No session to hold the network for, so it goes now rather than when one ends.
@@ -139,7 +154,16 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
     } finally {
       setIsStarting(false);
     }
-  }, [settings, startSession, toolHandlers, reportProblem, reportEnding]);
+  }, [
+    settings,
+    startSession,
+    beginGreeting,
+    greetingSessionOptions,
+    toolHandlers,
+    userVoiceHandlers,
+    reportProblem,
+    reportEnding,
+  ]);
 
   // Gives up on a conversation that is taking too long to open, and says so — naming Wi-Fi when the
   // watch could not get onto it, since that is then the likeliest reason and the one thing the
@@ -206,6 +230,8 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
     if (!isForeground) {
       tried.current = false;
       setConnectingUntil(undefined);
+      // The wrist dropped mid-greeting: he stops, rather than finishing it into a sleeve.
+      stopGreeting();
       endSession();
       releaseFastNetwork();
       return;
@@ -215,7 +241,7 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
     }
     tried.current = true;
     void start();
-  }, [isForeground, endSession, start, status, isStarting]);
+  }, [isForeground, endSession, stopGreeting, start, status, isStarting]);
 
   return (
     <View style={styles.screen}>
@@ -223,12 +249,14 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
         <JarvisHologram
           size={size}
           voice={voice}
+          user={user}
           thinking={thinking}
           particleCount={WATCH_PARTICLE_COUNT}
           frameRate={frameRate}
           buildMilliseconds={buildMilliseconds}
           particleShare={particleShare}
           provenShare={provenShare}
+          pace={pace}
           opaque
           background="#000000"
         />

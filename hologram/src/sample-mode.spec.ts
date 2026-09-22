@@ -1,9 +1,18 @@
 import { describe, expect, it } from 'bun:test';
-import { describeFrameRate, moodOf, nextSampleMode, SAMPLE_MODES, type SampleMode, SILENT_VOICE } from './sample-mode';
+import {
+  describeFrameRate,
+  hearsSomeone,
+  moodOf,
+  nextSampleMode,
+  SAMPLE_MODES,
+  type SampleMode,
+  SILENT_VOICE,
+} from './sample-mode';
 
 describe('sample mode', () => {
-  it('walks speaking, thinking and idle, and wraps round to the first', () => {
-    expect(nextSampleMode('speaking')).toBe('thinking');
+  it('walks speaking, listening, thinking and idle, and wraps round to the first', () => {
+    expect(nextSampleMode('speaking')).toBe('listening');
+    expect(nextSampleMode('listening')).toBe('thinking');
     expect(nextSampleMode('thinking')).toBe('idle');
     expect(nextSampleMode('idle')).toBe('speaking');
   });
@@ -20,9 +29,15 @@ describe('sample mode', () => {
   });
 
   it('asks for a simulated voice for speaking and thinking, and for silence at rest', () => {
-    expect(moodOf('speaking')).toBe('speaking');
+    // Speaking replays the greeting's own measured pattern, as he speaks when summoned.
+    expect(moodOf('speaking')).toBe('greeting');
     expect(moodOf('thinking')).toBe('thinking');
     expect(moodOf('idle')).toBeUndefined();
+    expect(moodOf('listening')).toBeUndefined();
+  });
+
+  it('has someone talking to him only while listening', () => {
+    expect(SAMPLE_MODES.filter(hearsSomeone)).toEqual(['listening']);
   });
 
   it('has a silent voice that reports nothing', () => {

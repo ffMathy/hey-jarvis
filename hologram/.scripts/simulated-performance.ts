@@ -15,12 +15,18 @@ import {
   createSimulatedSpectrum,
   createVoiceActivityState,
   easeBands,
+  easeHearing,
+  easeHearingLevel,
   easeLevel,
+  fillGreetingSpectrum,
   fillSimulatedSpectrum,
   foldSpectrum,
+  hearingFromPresence,
+  hearingLevelFromVolume,
   MATERIALISE_SECONDS,
   perceivedLevel,
   type SimulatedMood,
+  simulatedUserAt,
   simulatedVolume,
   VOICE_BAND_COUNT,
   voiceDrive,
@@ -41,12 +47,29 @@ export interface SimulatedMoment {
   hologramSeconds: number;
   thinkingWanted: boolean;
   leaving: boolean;
+  /** Seconds into the greeting recording, while it plays: his voice is the greeting, not the mood. */
+  greetingSeconds?: number;
+  /** Seconds into someone talking to him, while they do: sample mode's listening phase. */
+  userSeconds?: number;
   opened?: number;
   showing?: boolean;
 }
 
 function clamp(value: number, lowest: number, highest: number): number {
   return value < lowest ? lowest : value > highest ? highest : value;
+}
+
+/** Writes his voice at this moment into `spectrum` — the greeting while it plays, else the mood — and says whether there is one. */
+function readVoice(moment: SimulatedMoment, spectrum: Uint8Array): boolean {
+  if (moment.greetingSeconds !== undefined) {
+    fillGreetingSpectrum(moment.greetingSeconds, spectrum);
+    return true;
+  }
+  if (moment.mood !== undefined) {
+    fillSimulatedSpectrum(moment.mood, moment.moodSeconds, spectrum);
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -65,14 +88,17 @@ export function createPerformance(frameSeconds: number, thoughtFadeSeconds: numb
   let bands: number[] = new Array(VOICE_BAND_COUNT).fill(0);
   let thinking = 0;
   let presence = 1;
+  let hearing = 0;
+  let hearingLevel = 0;
 
   return (moment: SimulatedMoment) => {
     // What the app reads off the voice every 40 ms, read here every frame: same two questions.
-    const heard =
-      moment.mood === undefined
-        ? 0
-        : perceivedLevel(simulatedVolume(fillSimulatedSpectrum(moment.mood, moment.moodSeconds, spectrum)));
-    const heardBands = moment.mood === undefined ? new Array<number>(VOICE_BAND_COUNT).fill(0) : foldSpectrum(spectrum);
+    const voiced = readVoice(moment, spectrum);
+    const heard = voiced ? perceivedLevel(simulatedVolume(spectrum)) : 0;
+    const heardBands = voiced ? foldSpectrum(spectrum) : new Array<number>(VOICE_BAND_COUNT).fill(0);
+    const user = moment.userSeconds === undefined ? undefined : simulatedUserAt(moment.userSeconds);
+    hearing = easeHearing(hearing, user ? hearingFromPresence(user.presence) : 0, frameSeconds);
+    hearingLevel = easeHearingLevel(hearingLevel, user ? hearingLevelFromVolume(user.volume) : 0, frameSeconds);
 
     level = easeLevel(level, heard, frameSeconds);
     bands = easeBands(bands, heardBands, frameSeconds);
@@ -87,7 +113,7 @@ export function createPerformance(frameSeconds: number, thoughtFadeSeconds: numb
       bands,
       // True for both moods: a simulated voice is always "on", and it is `thinking` that tells
       // them apart. See `useSimulatedVoice`, which does exactly this.
-      speaking: moment.mood !== undefined,
+      speaking: voiced,
       agitation: activity.agitation,
       burstAge: activity.burstAge,
       burstStrength: activity.burstStrength,
@@ -95,6 +121,8 @@ export function createPerformance(frameSeconds: number, thoughtFadeSeconds: numb
       appearance: Math.min(1, moment.hologramSeconds / MATERIALISE_SECONDS),
       thinking,
       presence,
+      hearing,
+      hearingLevel,
       // All of them. Nothing here is racing a screen.
       density: 1,
     };

@@ -17,6 +17,29 @@
 
 /** How many values the spectrum has. The same as the SDK's, so the folding downstream never has to know which it got. */
 export const SPECTRUM_BIN_COUNT = 1024;
+
+/**
+ * The loudest a made-up voice gets — a syllable, or the greeting's loudest moment — as a mean of the spectrum: 0.25, which arrives as 0.9.
+ *
+ * Not 1. A voice that saturates on every syllable gives the drawing nothing to tell a loud one
+ * from a quiet one with, and the glow is meant to breathe over a sentence.
+ */
+export const SPEAKING_LOUDEST = 0.25;
+
+/**
+ * The volume that goes with a spectrum: its mean, 0–1.
+ *
+ * The same quantity a browser reports — see `sample-voice.web.ts` — rather than the RMS a phone
+ * measures, because a simulated voice has no waveform to take an RMS of. The moods above are
+ * pitched so that it does not matter which gate they are judged against.
+ */
+export function simulatedVolume(spectrum: ArrayLike<number>): number {
+  let sum = 0;
+  for (let index = 0; index < spectrum.length; index++) {
+    sum += spectrum[index] ?? 0;
+  }
+  return spectrum.length === 0 ? 0 : sum / spectrum.length / 255;
+}
 /** The span the spectrum covers, also the SDK's. */
 export const SPECTRUM_LOWEST_FREQUENCY = 100;
 export const SPECTRUM_HIGHEST_FREQUENCY = 8000;
