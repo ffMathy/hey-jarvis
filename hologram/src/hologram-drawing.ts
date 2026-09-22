@@ -27,7 +27,9 @@
 //                       furry with short fragments across them, plus the long loop rising 37°
 //                       past the core, the saturated ")" arc at 0.57R and the faint near half of
 //                       the edge-on ellipse — all of it turning the other way; and data streaks
-//   drawBody            the fragment body's dim and mid strokes: 1680 fragments inside 0.94R
+//   drawBody            while someone talks to him, the body gathers into a dozen small clusters
+//                       that drift slowly round inside the ball (see clusterFragment); otherwise
+//                       the fragment body's dim and mid strokes: 1680 fragments inside 0.94R
 //                       (four in five plain dashes, the rest L, bracket, T, Z glyphs, rings and
 //                       cell outlines mostly near the core; median 0.083R, clumped into the mass
 //                       with bare fill between the clumps, heavier on the left) and a
@@ -70,9 +72,6 @@
 //   drawChips           the latest burst's rim chips: solid amber slabs that break up rather
 //                       than fade
 //   drawAccents         the jagged lightning filament and the very rare two-frame red segment
-//   drawListening       while someone talks to him: a slow ring of short ticks just outside the
-//                       limb whose lengths follow how loud they are — faint, and his only sign
-//                       of it, so it is never mistaken for him speaking
 //
 // IDLE MOTION (section 3; nothing breathes, pulses or flickers as a whole)
 // - The outer rim layer rolls clockwise in the screen plane at 11°/s: the truss, the thin
@@ -268,7 +267,8 @@ export interface HologramFrame {
   thinking: number;
   /**
    * 0–1: how sure he is that someone is talking to him — ElevenLabs' voice-activity score, eased.
-   * Left out, nobody is. See {@link drawListening}: a quiet ring of light round him, nothing more.
+   * Left out, nobody is. See {@link clusterFragment}: his particles gather into small clusters that
+   * drift slowly round inside him while someone is speaking.
    */
   hearing?: number;
   /** 0–1: how loud they are, eased. Only read while {@link hearing} is above nothing. */
@@ -380,26 +380,24 @@ const SWELL_WITH_VOICE = 0.18;
 /** How small the sphere has shrunk to by the time he has gone. */
 const LEAVING_SMALLEST = 0.55;
 /**
- * The listening ring: how many ticks, where they start, how far the loudest voice reaches them and
- * how bright the whole ring is at full attention.
- *
- * **Plain to see, but outside the ball.** It went in faint — a quarter of his own glow — and the
- * user watched sample mode's listening phase and could not see it at all: at the volumes a voice
- * actually reaches, the ticks were a hundredth of his radius long at forty per cent. So the ticks
- * reach twice as far and are drawn nearly solid, and a steady halo ring sits under them for as long
- * as speech is detected, so it shows between syllables too. What keeps it from reading as him
- * speaking is where it is, not how faint: none of it touches the ball.
+ * How he listens: while someone talks to him his particles gather into this many small clusters,
+ * which drift slowly round inside the ball. At the user's asking, after a ring of ticks round the
+ * outside read as a decoration rather than as him paying attention — this is the swarm itself
+ * doing something different, which is the more advanced-looking of the two and says "listening"
+ * without looking like anything he does when he speaks.
  */
-const LISTENING_TICKS = 96;
-const LISTENING_INNER = 1.07;
-const LISTENING_REACH = 0.22;
-const LISTENING_ALPHA = 0.9;
-/** The halo under the ticks: where it sits, and how bright it is while someone is speaking. */
-const LISTENING_HALO_RADIUS = 1.1;
-const LISTENING_HALO_ALPHA = 0.55;
-/** How fast the ring turns and how fast its ripple travels round it, in radians a second. */
-const LISTENING_TURN = 0.35;
-const LISTENING_RIPPLE = 3.2;
+const CLUSTER_COUNT = 11;
+/** How far a cluster's particles sit from its middle, at rest and at full voice. */
+const CLUSTER_RADIUS = 0.04;
+const CLUSTER_BREATH = 1.3;
+/** How much of the way to their cluster the particles go at full attention: not quite all of it. */
+const CLUSTER_PULL = 0.88;
+/** The fastest a cluster circles the core, in radians a second: slow, so it reads as drifting. */
+const CLUSTER_ORBIT = 0.32;
+/** How quickly the clusters swell and settle with the voice, in radians a second. */
+const CLUSTER_PULSE = 2.6;
+/** How much shorter a stroke is drawn while it is gathered, so a cluster reads as a knot, not a smear. */
+const CLUSTER_STROKE_SHRINK = 0.55;
 /** How far round a fragment has still to go as it leaves the core in the vortex, in radians: a turn and a half. */
 const VORTEX_TWIST = 3 * Math.PI;
 /** How long the vortex's strokes are drawn while they are still travelling, as a multiple of their length. */
@@ -1530,7 +1528,6 @@ export function createHologramResources(Skia: SkiaApiType, scene: Scene) {
     chipCores: makeBuilder(),
     lightning: makeBuilder(),
     red: makeBuilder(),
-    listening: makeBuilder(),
   };
   // one flat list, so the frame can reset them all first
   const allPathBuilders = [
@@ -1550,7 +1547,6 @@ export function createHologramResources(Skia: SkiaApiType, scene: Scene) {
     pathBuilders.chipCores,
     pathBuilders.lightning,
     pathBuilders.red,
-    pathBuilders.listening,
   ];
 
   return {
@@ -1608,8 +1604,6 @@ export function createHologramResources(Skia: SkiaApiType, scene: Scene) {
     sparkStroke: makeStroke('#ffae4e', StrokeCap.Round),
     lightningStroke: makeStroke('#c39568', StrokeCap.Butt),
     redStroke: makeStroke('#b3470f', StrokeCap.Butt),
-    listeningStroke: makeStroke('#ffb454', StrokeCap.Round),
-    listeningGlowStroke: makeStroke('#e8842a', StrokeCap.Round),
     ...buildWhorl(Skia, createRandom(scene.textureSeed ^ 0x5bd1e995)),
     strandFanPath: buildStrandFan(Skia),
     ...buildInnerStructure(Skia),
@@ -1758,6 +1752,38 @@ function readScript(scene: Scene, time: number) {
   };
 }
 
+/**
+ * Where each listening cluster's middle is at `time`, as x then y for each.
+ *
+ * Spread through the ball on the golden angle, each at its own distance from the core and circling
+ * it at its own slow rate — some one way, some the other — with a gentle wobble on top, so they
+ * drift past each other rather than turning as one wheel. All from the clock.
+ */
+function clusterCentres(time: number, level: number) {
+  'worklet';
+  const centres = new Array<number>(CLUSTER_COUNT * 2);
+  for (let cluster = 0; cluster < CLUSTER_COUNT; cluster++) {
+    // Evenly from near the core to near the limb, so the ball is filled with them, not its middle.
+    const reach = 0.3 + 0.46 * ((cluster + 0.5) / CLUSTER_COUNT);
+    const rate = (fraction(cluster * 0.371) - 0.5) * 2 * CLUSTER_ORBIT * (1 + 0.3 * level);
+    const angle = cluster * 2.399963 + time * rate;
+    centres[cluster * 2] = Math.cos(angle) * reach + 0.05 * Math.sin(time * 0.61 + cluster * 2.1);
+    centres[cluster * 2 + 1] = Math.sin(angle) * reach + 0.05 * Math.cos(time * 0.47 + cluster * 1.3);
+  }
+  return centres;
+}
+
+/** How widely each cluster is spread at `time`: each swells and settles on its own beat as they talk. */
+function clusterSpreads(time: number, level: number) {
+  'worklet';
+  const spreads = new Array<number>(CLUSTER_COUNT);
+  for (let cluster = 0; cluster < CLUSTER_COUNT; cluster++) {
+    const beat = 0.5 + 0.5 * Math.sin(time * CLUSTER_PULSE + cluster * 1.7);
+    spreads[cluster] = CLUSTER_RADIUS * (1 + CLUSTER_BREATH * level * beat);
+  }
+  return spreads;
+}
+
 /** Everything a frame derives from its fields; see the file header for the mapping. */
 function analyseFrame(frame: HologramFrame, size: number, scene: Scene) {
   'worklet';
@@ -1782,6 +1808,8 @@ function analyseFrame(frame: HologramFrame, size: number, scene: Scene) {
   const voice = clamp01(frame.level) ** 0.8;
   const settle = 1 - smooth01(swirl);
   const presence = clamp01(frame.presence);
+  const hearing = clamp01(frame.hearing ?? 0);
+  const hearingLevel = clamp01(frame.hearingLevel ?? 0);
   // The whole sphere fades in over the first fifth of the vortex, so the first particles leaving
   // the core are seen as they go; their own travel is what does the arriving. Leaving fades it
   // out through the same layer.
@@ -1810,12 +1838,18 @@ function analyseFrame(frame: HologramFrame, size: number, scene: Scene) {
     // what the eye is left with. Without this the whorl, the rim and the ladder go on doing what
     // they always do and the sweep is one more thing happening among several — which is how the
     // first version of thinking looked, and why it did not read as a different state at all.
-    innerAlpha: (1 - 0.8 * thinking) * smooth01((swirl - 0.15) / 0.6),
+    // The whorl recedes while he listens, as while he thinks, so the clusters are what is seen.
+    innerAlpha: (1 - 0.8 * thinking) * (1 - 0.6 * hearing) * smooth01((swirl - 0.15) / 0.6),
     coreAlpha: smooth01(swirl / 0.25),
     rimAlpha: (1 - 0.65 * thinking) * smooth01((swirl - 0.55) / 0.45),
     swirl,
-    hearing: clamp01(frame.hearing ?? 0),
-    hearingLevel: clamp01(frame.hearingLevel ?? 0),
+    hearing,
+    /** Where each listening cluster's middle is this frame, x then y; see {@link clusterFragment}. */
+    clusters: clusterCentres(time, hearingLevel),
+    /** And how widely each is spread, which the voice pulses. */
+    clusterSpread: clusterSpreads(time, hearingLevel),
+    /** Where {@link clusterFragment} leaves a fragment: x, y. */
+    clustered: [0, 0],
     /** Where {@link swirlFragment} leaves a fragment: x, y, its direction, and how much of it shows. */
     swirled: [0, 0, 0, 0, 0],
     agitation,
@@ -2164,6 +2198,35 @@ function swirlFragment(x: number, y: number, unitX: number, unitY: number, id: n
   out[4] = smooth01((travelled - 0.04) * 6) * stretch;
 }
 
+/**
+ * Where a fragment is while he listens: writes x, y into `state.clustered` — just where it already
+ * is when nobody is talking to him.
+ *
+ * Every fragment belongs to one of {@link CLUSTER_COUNT} clusters, chosen by its id so it keeps it,
+ * and has its own place in it: an angle and a distance from the middle, also from its id, so a
+ * cluster is a small round swarm rather than a point. As someone starts speaking the fragments
+ * move that share of the way to their place — {@link CLUSTER_PULL} at full attention — and since
+ * each lives only a fraction of a second before it re-lights, the ball resolves into the clusters
+ * rather than sliding into them.
+ */
+function clusterFragment(x: number, y: number, id: number, state: FrameState) {
+  'worklet';
+  const out = state.clustered;
+  const pull = state.hearing * CLUSTER_PULL;
+  if (pull <= 0.001) {
+    out[0] = x;
+    out[1] = y;
+    return;
+  }
+  const cluster = Math.floor(fraction(id * 0.754877) * CLUSTER_COUNT);
+  const angle = fraction(id * 4.1231) * 6.283185307179586;
+  const distance = Math.sqrt(fraction(id * 7.7113)) * state.clusterSpread[cluster];
+  const toX = state.clusters[cluster * 2] + Math.cos(angle) * distance;
+  const toY = state.clusters[cluster * 2 + 1] + Math.sin(angle) * distance;
+  out[0] = x + (toX - x) * pull;
+  out[1] = y + (toY - y) * pull;
+}
+
 /** The fragment body, turning about the vertical axis, sorted into the dim, mid and bright builders. */
 function appendBody(builders: PathBuilder[], body: number[], state: FrameState) {
   'worklet';
@@ -2193,8 +2256,9 @@ function appendBody(builders: PathBuilder[], body: number[], state: FrameState) 
     const swirled = state.swirled;
     const drawn = swirled[4];
     if (drawn <= 0) continue;
-    const x = swirled[0];
-    const y = swirled[1];
+    clusterFragment(swirled[0], swirled[1], id, state);
+    const x = state.clustered[0];
+    const y = state.clustered[1];
     // While he thinks, only what the plane is passing stays lit; see SCAN_SECONDS.
     const litHere = lit * scanned(y, state);
     if (litHere < FRAGMENT_FAINTEST) continue;
@@ -2209,7 +2273,16 @@ function appendBody(builders: PathBuilder[], body: number[], state: FrameState) 
     // Arriving at a third of its length, as it used to, meant arriving at full brightness over
     // a dozen pixels at once — with twice as many fragments that is a visible speckle at every
     // frame, and it is what the spec's script-boundary check counts.
-    appendGlyph(builders[tier + reading[2]], reading[1], x, y, swirled[2], swirled[3], length * 0.5 * litHere * drawn);
+    const gathered = 1 - CLUSTER_STROKE_SHRINK * state.hearing;
+    appendGlyph(
+      builders[tier + reading[2]],
+      reading[1],
+      x,
+      y,
+      swirled[2],
+      swirled[3],
+      length * 0.5 * litHere * drawn * gathered,
+    );
   }
 }
 
@@ -2260,14 +2333,16 @@ function appendStream(builders: PathBuilder[], stream: number[], state: FrameSta
     swirlFragment(x, y, 1, 0, stream[offset + 7], state);
     const swirled = state.swirled;
     if (swirled[4] <= 0) continue;
+    // The shell gathers into the listening clusters too, or it would go on streaming under them.
+    clusterFragment(swirled[0], swirled[1], stream[offset + 7], state);
     appendGlyph(
       builders[tier],
       stream[offset + 9],
-      swirled[0],
-      swirled[1],
+      state.clustered[0],
+      state.clustered[1],
       swirled[2],
       swirled[3],
-      Math.abs(halfX) * lit * swirled[4],
+      Math.abs(halfX) * lit * swirled[4] * (1 - CLUSTER_STROKE_SHRINK * state.hearing),
     );
   }
 }
@@ -3098,48 +3173,6 @@ function drawAccents(canvas: HologramCanvas, resources: Resources, state: FrameS
 }
 
 /**
- * While someone talks to him: a ring of short ticks just outside the limb, turning slowly, whose
- * lengths follow how loud they are with a ripple running round it — the way the Voice preview's
- * LED ring answers a voice. Faint on purpose, and outside the ball rather than in it, so that it
- * reads as him paying attention and never as him speaking. Nothing at all when nobody is.
- */
-function drawListening(canvas: HologramCanvas, resources: Resources, state: FrameState) {
-  'worklet';
-  const hearing = state.hearing;
-  if (hearing <= 0.01) return;
-  const builder = resources.pathBuilders.listening;
-  const level = state.hearingLevel;
-  const turn = state.time * LISTENING_TURN;
-  const ripplePhase = state.time * LISTENING_RIPPLE;
-  for (let tick = 0; tick < LISTENING_TICKS; tick++) {
-    const angle = (tick / LISTENING_TICKS) * 2 * Math.PI + turn;
-    const ripple = 0.5 + 0.5 * Math.sin(angle * 3 - ripplePhase);
-    const own = 0.6 + 0.4 * hashInteger(tick * 53 + 7);
-    const length = 0.02 + LISTENING_REACH * level * (0.3 + 0.7 * ripple) * own;
-    const cos = Math.cos(angle);
-    const sin = Math.sin(angle);
-    pathMoveTo(builder, cos * LISTENING_INNER, sin * LISTENING_INNER);
-    pathLineTo(builder, cos * (LISTENING_INNER + length), sin * (LISTENING_INNER + length));
-  }
-  const ring = pathOf(resources.skia, builder);
-  const alpha = LISTENING_ALPHA * hearing * (0.7 + 0.3 * level);
-  // The halo first, under the ticks: steady while speech is detected, so the ring is there between
-  // syllables as well as on them.
-  resources.listeningGlowStroke.setStrokeWidth(0.05);
-  resources.listeningGlowStroke.setAlphaf(LISTENING_HALO_ALPHA * hearing * 0.45);
-  canvas.drawCircle(0, 0, LISTENING_HALO_RADIUS, resources.listeningGlowStroke);
-  resources.listeningStroke.setStrokeWidth(0.012);
-  resources.listeningStroke.setAlphaf(LISTENING_HALO_ALPHA * hearing);
-  canvas.drawCircle(0, 0, LISTENING_HALO_RADIUS - 0.03, resources.listeningStroke);
-  resources.listeningGlowStroke.setStrokeWidth(0.05);
-  resources.listeningGlowStroke.setAlphaf(0.45 * alpha);
-  canvas.drawPath(ring, resources.listeningGlowStroke);
-  resources.listeningStroke.setStrokeWidth(0.016);
-  resources.listeningStroke.setAlphaf(alpha);
-  canvas.drawPath(ring, resources.listeningStroke);
-}
-
-/**
  * The ring that blooms out of the core as a pass finishes: one step of the thought, done.
  *
  * Reuses the thin ring's paint, drawn at a growing radius and fading as it goes, so it leaves the
@@ -3192,7 +3225,6 @@ export function drawHologram(
   drawChips(canvas, resources, state);
   drawAccents(canvas, resources, state);
   drawThinkingPulse(canvas, resources, state);
-  drawListening(canvas, resources, state);
   if (arriving) canvas.restore();
   canvas.restore();
 }

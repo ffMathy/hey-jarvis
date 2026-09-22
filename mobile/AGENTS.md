@@ -73,7 +73,7 @@ The agent on the other end is the same one `elevenlabs/` deploys, with the same 
     ├── sdk-voice-readers.ts      # the SDK's analysers, safe to call before a session exists
     ├── tool-activity.ts          # which tool calls are in flight, and how long he keeps thinking after
     ├── greeting.ts               # "Hello sir, how can I help?" while the session is dialled behind it
-    └── user-voice.ts             # the user's vad_score and microphone level, for the listening ring
+    └── user-voice.ts             # the user's vad_score and microphone level, for the listening clusters
 
 mobile/
 ├── app.config.ts                 # Expo config: package name, scheme, permissions, plugins
@@ -185,8 +185,9 @@ mid-sentence; that the mute lands before the agent hears any of it (there is a w
 milliseconds between the SDK publishing the microphone and `onConversationCreated`); and that
 `vad_score` events arrive over WebRTC as they do over the firmware's socket.
 
-The sphere also shows the user being heard: a faint ring of ticks while ElevenLabs' `vad_score`
-says someone is speaking, reaching further the louder the microphone is. `useUserVoice` feeds it,
+The sphere also shows the user being heard: while ElevenLabs' `vad_score` says someone is
+speaking, his particles gather into small clusters that drift inside him, swelling the louder the
+microphone is. `useUserVoice` feeds it,
 and it ignores the score while Jarvis speaks, since the microphone hears him too.
 
 ### Summoned, he arrives in a sheet

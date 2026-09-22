@@ -35,7 +35,7 @@ that rule.
 | `hologram` | nothing but types | the drawing, the voice tracker, the simulated voices, sample mode's moods and readout text, the density control, the ElevenLabs credentials and the token request |
 | `hologram/react` | React, Reanimated, Skia | the Skia canvas and the frame loop |
 | `hologram/react/sample` | React, Reanimated — not Skia | sample mode's clock-made voice, mood toast and frame-rate readout, shared by the phone's sample screen and the watch's waiting screen |
-| `hologram/conversation` | React, `@elevenlabs/react-native`, `expo-audio` — not Skia | his voice as the SDK hears it, which of his tool calls are in flight, the recorded greeting he answers with, and the user's voice for the listening ring |
+| `hologram/conversation` | React, `@elevenlabs/react-native`, `expo-audio` — not Skia | his voice as the SDK hears it, which of his tool calls are in flight, the recorded greeting he answers with, and the user's voice for the listening clusters |
 
 `hologram/conversation` deliberately does **not** reach Skia. That is what lets
 a screen open a conversation before CanvasKit has finished loading in a browser,
@@ -105,18 +105,19 @@ as spectra, so they go through every step a real voice does and nothing downstre
 It also makes up someone talking *to* him (`simulatedUserAt`) — a voice-activity score and a
 microphone level — for sample mode's listening phase.
 
-**Listening is not a voice of his.** While someone talks to Jarvis the sphere shows a faint ring of
-short ticks just outside the limb, turning slowly, their reach following how loud they are
-(`drawListening`). It is driven by a `UserVoice` — ElevenLabs' `vad_score` and the microphone's
-input level in a conversation, `simulatedUserAt` in sample mode — handed to the view as `user`, eased
-per frame by `hearing.ts`. The threshold is the firmware's own 0.25, so the phone, the watch and the
-Voice preview agree on when someone is speaking. Kept deliberately subtle, and outside the ball, so
-it never reads as him talking.
+**Listening is not a voice of his.** While someone talks to Jarvis his particles gather into about
+a dozen small clusters that drift slowly round inside the ball, each swelling with how loud they are
+(`clusterFragment`, `clusterCentres`); the whorl recedes so the clusters are what is seen. It is
+driven by a `UserVoice` — ElevenLabs' `vad_score` and the microphone's input level in a
+conversation, `simulatedUserAt` in sample mode — handed to the view as `user`, eased per frame by
+`hearing.ts`. Only the score switches it on, past the firmware's own 0.25, so the phone, the watch
+and the Voice preview agree on when someone is speaking; the level only sets how much the clusters
+swell. It replaced a ring of ticks outside the limb, which the user found too plain.
 
 **The arrival is a vortex.** Particles leave the core nearest first and spiral out a turn and a
 half before settling (`swirlFragment`); it moves only the particles being drawn, so the scene's
 count and the density share hold throughout. `.scripts/render-preview.ts` renders the arrival, the
-listening ring and the greeting to WebM for looking at.
+listening clusters and the greeting to WebM for looking at.
 
 **Sample mode is shared, and only sample mode has a readout.** Both devices have one — the phone's
 before there is an account, the watch's while it waits for the phone — so the moods, their order,
@@ -144,7 +145,7 @@ easy to break:
 - **No greeting where it cannot be heard.** A browser that has had no tap refuses to play, so there
   it is not attempted and the agent keeps its own first message.
 
-`useUserVoice` is the `UserVoice` for the listening ring: presence is only ever the latest
+`useUserVoice` is the `UserVoice` for the listening clusters: presence is only ever the latest
 `vad_score` (`vad-score.ts`), ignored while he speaks or greets — the firmware's
 `speaker_is_active_` rule, since his voice through the speaker scores as the user's — and volume is
 the SDK's input level. Both read zero while the session is not connected or its microphone is muted.

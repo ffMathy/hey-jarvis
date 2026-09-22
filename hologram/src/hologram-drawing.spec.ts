@@ -614,31 +614,35 @@ describe('the hologram', () => {
     }
   });
 
-  it('listens with a plain ring outside the limb that follows how loud they are, and leaves the ball alone', () => {
-    // Someone talking to him is shown as a sign that he hears them, not as anything he does: a ring
-    // of ticks just past the limb whose reach follows their voice. It has to be plain to see — the
-    // first version was too faint to notice — and the ball itself must not change, or listening
-    // would read as him speaking.
+  it('listens by gathering into small clusters that drift inside him, which swell with their voice', () => {
+    // Someone talking to him is shown by the swarm itself: his particles gather into a dozen small
+    // clusters that drift slowly round inside the ball. Measured as how uneven the light inside the
+    // disc is — a swarm spread evenly through the ball is smooth, clusters with dark between them
+    // are not — and nothing may be thrown past the limb, which is what his own speech does.
     const hologram = mount();
-    const time = 5.4;
-    const ringLight = (pixels: Uint8Array) => {
-      let total = 0;
-      for (let y = 0; y < SIZE; y++) {
-        for (let x = 0; x < SIZE; x++) {
-          const radius = radiusOf(x, y);
-          if (radius > 1.06 && radius < 1.2) total += luminance(pixels, (y * SIZE + x) * 4);
+    const unevenness = (pixels: Uint8Array) => {
+      const values: number[] = [];
+      for (let y = 0; y < SIZE; y += 4) {
+        for (let x = 0; x < SIZE; x += 4) {
+          if (radiusOf(x, y) < 0.9) values.push(luminance(pixels, (y * SIZE + x) * 4));
         }
       }
-      return total;
+      const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+      const variance = values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / values.length;
+      return Math.sqrt(variance) / mean;
     };
+    const time = 5.4;
     const calm = render(silence(time), hologram);
     const quiet = render({ ...silence(time), hearing: 1, hearingLevel: 0.1 }, hologram);
     const loud = render({ ...silence(time), hearing: 1, hearingLevel: 1 }, hologram);
 
-    // Even a quiet voice lights the band round him several times over; a loud one reaches further.
-    expect(ringLight(quiet)).toBeGreaterThan(ringLight(calm) * 3);
-    expect(ringLight(loud)).toBeGreaterThan(ringLight(quiet) * 1.3);
-    expect(Math.abs(discBrightness(loud) - discBrightness(calm))).toBeLessThan(0.5);
+    expect(unevenness(quiet)).toBeGreaterThan(unevenness(calm) * 1.3);
+    // Their voice swells the clusters, so how loud they are changes the picture.
+    expect(difference(loud, quiet)).toBeGreaterThan(1);
+    expect(brightBeyondLeftLimb(loud)).toBeLessThanOrEqual(brightBeyondLeftLimb(calm) + 1);
+    // And the clusters move: a second later they are somewhere else.
+    const later = render({ ...silence(time + 1), hearing: 1, hearingLevel: 0.1 }, hologram);
+    expect(difference(later, quiet)).toBeGreaterThan(1);
   });
 
   it('leaves by shrinking and fading, and takes his shadow with him', () => {

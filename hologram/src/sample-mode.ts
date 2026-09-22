@@ -42,7 +42,7 @@ export function moodOf(mode: SampleMode): SimulatedMood | undefined {
   return mode === 'thinking' ? mode : undefined;
 }
 
-/** Whether a sample mode has someone talking to him, which the sphere shows as a quiet listening ring. */
+/** Whether a sample mode has someone talking to him, which the sphere shows by gathering into small drifting clusters. */
 export function hearsSomeone(mode: SampleMode): boolean {
   return mode === 'listening';
 }

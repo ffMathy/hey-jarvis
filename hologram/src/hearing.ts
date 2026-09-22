@@ -1,6 +1,6 @@
 /**
  * How the sphere follows the person talking to him: their voice-activity score and loudness, turned
- * into the two eased numbers the drawing's listening ring reads (`hearing` and `hearingLevel`).
+ * into the two eased numbers the drawing's listening clusters read (`hearing` and `hearingLevel`).
  *
  * Worklets, like the rest of what the frame loop calls: they run on the UI thread once a frame,
  * and take everything they need as arguments.

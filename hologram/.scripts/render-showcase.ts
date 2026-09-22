@@ -288,7 +288,7 @@ function labelAt(phases: Phase[], seconds: number, endsAt: number) {
  *
  * 1. **Welcome** — summoned, he spirals out of his core while he says the greeting, as the apps do.
  * 2. **Speaking** — once he has fully appeared, speech as sample mode shows it.
- * 3. **Listening** — somebody talking to him, and the ring that says he hears them.
+ * 3. **Listening** — somebody talking to him, and his particles gathering into drifting clusters.
  * 4. **Thinking** — working through what they said.
  * 5. **Leaving** — he fades and shrinks away. He is still mid-thought when he goes, which is what
  *    the app does too: leaving does not change what he was doing, it fades what he was doing.
