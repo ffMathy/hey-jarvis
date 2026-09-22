@@ -120,8 +120,8 @@ const WATCH_HOLD_SECONDS = 0.26;
 /** How long a thought takes to settle in: `THOUGHT_FADE_SECONDS` in `hologram-view.tsx`. */
 const THOUGHT_FADE_SECONDS = 0.45;
 
-/** The sheet, as `sample-sheet.tsx` has it. */
-const SHEET_SHARE = 0.4;
+/** The sheet, as `sample-sheet.tsx` has it: as tall as the screen is wide, up to this share of its height. */
+const SHEET_MOST_OF_THE_HEIGHT = 0.6;
 const SHEET_INK = '#0b1220';
 const SHEET_EDGE = '#243043';
 const SHEET_INSET = 14;
@@ -146,7 +146,7 @@ const SCREEN = {
  * How wide each clip is rendered, in pixels. The height follows from the frame's aspect.
  *
  * Both end up with a sphere of about the same size, which is what makes them sit together in a
- * README: the phone's square is inset in a sheet covering 40% of a tall screen, and the watch's is
+ * README: the phone's square is inset in a sheet as tall as the screen is wide, and the watch's is
  * the whole of a small round one.
  */
 const PHONE_WIDTH = 420;
@@ -739,7 +739,7 @@ async function main() {
     height: SCREEN.phone.height * phoneSize.height,
     radius: SCREEN.phone.radius * phoneSize.width,
   };
-  const sheetHeight = Math.round(screen.height * SHEET_SHARE);
+  const sheetHeight = Math.round(Math.min(screen.width, screen.height * SHEET_MOST_OF_THE_HEIGHT));
   // The square fits inside the sheet, inset as `sample-screen.tsx` insets it.
   const phoneHologram = Math.min(screen.width, sheetHeight) - SHEET_INSET * 2;
 

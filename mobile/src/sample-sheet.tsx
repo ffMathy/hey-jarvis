@@ -3,8 +3,26 @@ import { Platform, Pressable, StyleSheet, useWindowDimensions, View } from 'reac
 import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { theme } from './theme';
 
-/** How much of the screen's height the sheet takes. The screen it covers is still the user's. */
-export const SHEET_SHARE = 0.4;
+/**
+ * The most of the screen's height the sheet may take, whatever its width. The screen it covers is
+ * still the user's.
+ *
+ * Only reached on a screen much wider than a phone held upright — a foldable opened flat, say —
+ * where a sheet as tall as the screen is wide would cover nearly all of it.
+ */
+const MOST_OF_THE_HEIGHT = 0.6;
+
+/**
+ * How tall the sheet is: as tall as the screen is wide.
+ *
+ * Jarvis is round, and he is drawn in a square that fills the sheet, so the sheet is square too.
+ * It used to be two fifths of the screen's height, which on a phone held upright is a band
+ * shorter than it is wide — so the square was set by the sheet's height and left empty sheet on
+ * either side of him. As tall as it is wide, he is as big as the phone's width allows.
+ */
+function sheetHeight(width: number, height: number): number {
+  return Math.round(Math.min(width, height * MOST_OF_THE_HEIGHT));
+}
 
 /**
  * What the sheet is made of: very dark, and not quite the near-black everything else sits on.
@@ -34,8 +52,8 @@ const SHEET_EDGE = '#243043';
  * Android made necessary.** It exists because an assistant is summoned over the app you were using,
  * so it has to leave that app visible; and because an opaque Skia canvas is a `SurfaceView`, which
  * has to sit still on something solid. Neither is true in a browser. There is no app behind the
- * page to preserve, and there is no `SurfaceView` — so a sheet along the bottom is forty per cent of
- * the window doing the work of a full screen, with Jarvis stuck in the lower third of it and the
+ * page to preserve, and there is no `SurfaceView` — so a sheet along the bottom is a strip of the
+ * window doing the work of a full screen, with Jarvis stuck in the bottom of it and the
  * rest of the page black. Which is exactly how it looked.
  *
  * On the web he is simply in the middle, as big as the window allows.
@@ -54,7 +72,7 @@ export function sampleHologramSize(width: number, height: number): number {
   if (!HAS_SHEET) {
     return Math.round(Math.min(width, height) * WEB_SHARE);
   }
-  return Math.min(width, Math.round(height * SHEET_SHARE)) - SHEET_INSET * 2;
+  return Math.min(width, sheetHeight(width, height)) - SHEET_INSET * 2;
 }
 
 /** How much of the window's shorter side the square takes, on the web. */
@@ -112,9 +130,9 @@ export function SampleSheet({
   onTapBeside: () => void;
   children: React.ReactNode;
 }) {
-  const { height } = useWindowDimensions();
-  const sheetHeight = Math.round(height * SHEET_SHARE);
-  const below = useSharedValue(HAS_SHEET ? sheetHeight : 0);
+  const { width, height } = useWindowDimensions();
+  const tall = sheetHeight(width, height);
+  const below = useSharedValue(HAS_SHEET ? tall : 0);
 
   /**
    * The two callbacks, held where their identity cannot start an animation.
@@ -154,7 +172,7 @@ export function SampleSheet({
       return;
     }
     if (leaving) {
-      below.value = withTiming(sheetHeight, { duration: LEAVE_MS, easing: Easing.in(Easing.cubic) }, (finished) => {
+      below.value = withTiming(tall, { duration: LEAVE_MS, easing: Easing.in(Easing.cubic) }, (finished) => {
         'worklet';
         if (finished) {
           runOnJS(tellGone)();
@@ -168,7 +186,7 @@ export function SampleSheet({
         runOnJS(tellSettled)();
       }
     });
-  }, [leaving, below, sheetHeight, tellGone, tellSettled]);
+  }, [leaving, below, tall, tellGone, tellSettled]);
 
   const sliding = useAnimatedStyle(() => ({ transform: [{ translateY: below.value }] }));
 
@@ -198,7 +216,7 @@ export function SampleSheet({
         sample mode had no way out at all. The e2e suite caught it; a phone never would.
       */}
       <Pressable accessibilityRole="button" accessibilityLabel="Close" style={styles.beside} onPress={onTapBeside} />
-      <Animated.View style={[styles.sheet, { height: sheetHeight }, sliding]} testID="sample-sheet">
+      <Animated.View style={[styles.sheet, { height: tall }, sliding]} testID="sample-sheet">
         {children}
       </Animated.View>
     </View>
