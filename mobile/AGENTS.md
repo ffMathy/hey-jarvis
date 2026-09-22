@@ -96,7 +96,7 @@ mobile/
     ├── assist-link.ts            # what "opened by the assistant" looks like
     ├── assistant-window.ts       # the window the assistant gesture opens, and retracting it
     ├── sample-screen.tsx         # sample mode: Jarvis alone, tapped to walk through his moods
-    ├── sample-sheet.tsx          # the sheet he arrives in, and why he waits for it to settle
+    ├── sample-sheet.tsx          # the sheet he arrives in when summoned, and why he waits for it to settle
     ├── sample-mode.ts            # the three moods, and the order a tap walks them in
     ├── simulated-voice.ts        # speaking and thinking as a JarvisVoice, made from the clock
     ├── mode-toast.tsx            # the one word sample mode says about which mood is showing
@@ -162,7 +162,21 @@ does while he listens — which is the same complaint the problem line answers, 
 an assistant who has finished looks identical to one who is waiting for you. So the end of a
 conversation fades him over `LEAVING_SECONDS`, unmounts the drawing (a frame loop drawing a sphere
 that has faded to nothing is a phone kept awake for no one), takes the browser's frame-rate readout
-with it, and — summoned — retracts the assistant's window, which is how sample mode leaves too.
+with it, and — summoned — lets the sheet follow him down and retracts the assistant's window,
+which is how sample mode leaves too.
+
+### Summoned, he arrives in a sheet
+
+The assistant gesture puts the conversation in the same bottom sheet sample mode uses
+(`sample-sheet.tsx`), over whatever the user was doing, and he forms once it has stopped moving.
+Opened from the launcher he still fills the screen: there is nothing underneath to keep.
+
+It used to take the whole screen when summoned too, and nobody chose that — the sheet was only
+ever written for sample mode, which is what a summoning showed before there were credentials, so a
+phone that had been set up simply stopped seeing it. Tapping beside the sheet or pressing back hangs
+up. The assistant's window is kept between summonings rather than rebuilt, so a summoning after he
+has gone is noticed by the app returning to the foreground, which brings the sheet back and opens a
+new conversation.
 
 **Ending is not the same as never starting**, and both read `disconnected`. A conversation that
 never opened has failed, and the answer to that is the line saying why *under a sphere that is

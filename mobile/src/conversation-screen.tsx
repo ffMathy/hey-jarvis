@@ -11,11 +11,10 @@ import { useToolActivity } from 'hologram/conversation';
 import { LEAVING_SECONDS } from 'hologram/react/lifecycle';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import { dismissAssistantWindow } from '../modules/jarvis-assistant';
 import { createAssistLaunchClaim } from './assist-link';
 import { afterStatus, isLive, NOT_YET_OPEN } from './conversation-life';
+import { ConversationFrame, useConversationSheet } from './conversation-sheet';
 import { FrameRate } from './frame-rate';
-import { useWholeScreenHologramSize } from './hologram-size';
 import { JarvisHologram } from './jarvis-hologram';
 import { useJarvisVoice } from './jarvis-voice';
 import { requestMicrophoneAccess } from './microphone-permission';
@@ -32,6 +31,12 @@ import { WrittenReplyLine } from './written-reply-line';
 interface ConversationScreenProps {
   settings: ElevenLabsSettings;
   onEditSettings: () => void;
+  /**
+   * Summoned by the assistant gesture on a phone: drawn in the bottom sheet sample mode uses, over
+   * whatever the user was doing, rather than across the whole screen. Opened from the launcher
+   * there is nothing underneath to keep, and he still fills it. See `conversation-sheet.tsx`.
+   */
+  inSheet?: boolean;
 }
 
 /** Summonings already acted on in this process. */
@@ -112,11 +117,10 @@ const GIVE_UP_CONNECTING_AFTER_MS = 20_000;
  * never was: see `spark-density.ts`. It drew a fixed number on every phone, which on a fast one was
  * fewer than it could manage and on a slow one more.
  */
-export function ConversationScreen({ settings, onEditSettings }: ConversationScreenProps) {
-  const { startSession, sendUserMessage } = useConversationControls();
+export function ConversationScreen({ settings, onEditSettings, inSheet = false }: ConversationScreenProps) {
+  const { startSession, sendUserMessage, endSession } = useConversationControls();
   const { status } = useConversationStatus();
   const liveVoice = useJarvisVoice();
-  const hologramSize = useWholeScreenHologramSize();
   const { frameRate, buildMilliseconds, particleShare, provenShare, startingShare } = useSparkDensity();
   // Onto the AirPods, if there are any. Only once the call is up, because the list of routes is
   // empty until LiveKit has started the audio session. See `preferred-microphone.ts`.
@@ -250,7 +254,21 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
     [reportProblem],
   );
 
+  /**
+   * Whether a `start` is already under way, as a ref so that two callers in the same commit see it.
+   *
+   * `isStarting` is state, and state is only seen on the next render — so two effects that both
+   * decide to start in one commit would both see it false and open two WebRTC sessions, the second
+   * tearing down the first. There are two such effects now: a summoning with a launch URL, and the
+   * sheet coming back into view.
+   */
+  const startingNow = useRef(false);
+
   const start = useCallback(async () => {
+    if (startingNow.current) {
+      return;
+    }
+    startingNow.current = true;
     setProblem(undefined);
     setIsStarting(true);
     setConnectingUntil(Date.now() + GIVE_UP_CONNECTING_AFTER_MS);
@@ -316,6 +334,7 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
     } catch (error: unknown) {
       reportProblem(error instanceof Error ? error.message : 'Jarvis could not be reached.');
     } finally {
+      startingNow.current = false;
       setIsStarting(false);
     }
   }, [settings, startSession, toolHandlers, playbackHandlers, reportProblem, reportEnding, rememberWhatHeSaid]);
@@ -418,14 +437,29 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
   /**
    * Summoned, there is a window to retract as well, and nothing behind it but what the user was
    * doing before — so the end of the conversation is the end of the window. Opened as an app or in
-   * a browser there is none, `dismissAssistantWindow` says so, and the screen simply stays, dark
-   * and still reachable by a long press. The same two ways out sample mode has; see its `finish`.
+   * a browser there is none, and the screen simply stays, dark and still reachable by a long press.
+   * The same two ways out sample mode has; see its `finish`. Both live in `conversation-sheet.tsx`,
+   * with everything else that differs when he is summoned into the sheet.
    */
-  useEffect(() => {
-    if (gone) {
-      dismissAssistantWindow();
-    }
-  }, [gone]);
+  const hangUpSession = useCallback(() => {
+    setConnectingUntil(undefined);
+    endSession();
+  }, [endSession]);
+  const goNow = useCallback(() => setGone(true), []);
+  const summonAgain = useCallback(() => {
+    setLife(NOT_YET_OPEN);
+    setGone(false);
+    void start();
+  }, [start]);
+  const sheet = useConversationSheet({
+    inSheet,
+    gone,
+    opened: life.open,
+    endConversation: hangUpSession,
+    goNow,
+    summonAgain,
+  });
+  const { hologramSize, canvas, settled } = sheet;
 
   // A summoning that arrives while this screen is already open: claimed so it is acted on once,
   // and then left alone if a conversation is already under way, since starting again would tear
@@ -439,34 +473,40 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
     }
   }, [launchUrl, start, status, isStarting]);
 
-  return (
+  const screen = (
     // The whole screen is the way into settings, not just the sphere. A long press has to land
     // somewhere, and on a screen with one round thing on it and nothing else, "somewhere" should
     // not mean "on the round thing" — most of what you would press is the dark around him. It is
     // also the only part a test can press: the drawing puts a `<canvas>` over the middle, and that
-    // takes the pointer events for itself.
+    // takes the pointer events for itself. In the sheet, the whole sheet is.
     <Pressable
       accessible
       accessibilityRole="button"
       accessibilityLabel="Jarvis. Press and hold for ElevenLabs settings."
-      style={styles.screen}
+      style={inSheet ? styles.sheetContent : styles.screen}
       onLongPress={ON_A_PHONE ? onEditSettings : undefined}
       testID="conversation"
     >
       {gone ? null : (
         <View style={{ width: hologramSize, height: hologramSize }} testID="hologram">
-          <JarvisHologram
-            size={hologramSize}
-            voice={voice}
-            quietestSpeech={QUIETEST_SPEECH_HERE}
-            thinking={thinking}
-            leaving={ended}
-            frameRate={frameRate}
-            buildMilliseconds={buildMilliseconds}
-            particleShare={particleShare}
-            provenShare={provenShare}
-            startingShare={startingShare}
-          />
+          {settled ? (
+            <JarvisHologram
+              size={hologramSize}
+              voice={voice}
+              quietestSpeech={QUIETEST_SPEECH_HERE}
+              thinking={thinking}
+              leaving={ended}
+              frameRate={frameRate}
+              buildMilliseconds={buildMilliseconds}
+              particleShare={particleShare}
+              provenShare={provenShare}
+              startingShare={startingShare}
+              // Solid in the sheet, as sample mode's is: an opaque canvas is Skia's fast path, and
+              // it has to paint the sheet's own colour or it is a black square on the sheet.
+              opaque={canvas.opaque}
+              background={canvas.background}
+            />
+          ) : null}
         </View>
       )}
 
@@ -536,6 +576,12 @@ export function ConversationScreen({ settings, onEditSettings }: ConversationScr
       )}
     </Pressable>
   );
+
+  return (
+    <ConversationFrame inSheet={inSheet} gone={gone} sheet={sheet}>
+      {screen}
+    </ConversationFrame>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -550,6 +596,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
+  },
+  /** The same, filling the sheet rather than the screen. The sheet does its own clipping. */
+  sheetContent: {
+    flex: 1,
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   /** The browser's way back to setup, which a phone does with a long press instead. */
   settingsLink: {

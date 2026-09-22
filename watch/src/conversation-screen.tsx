@@ -5,6 +5,7 @@ import { JarvisHologram } from 'hologram/react';
 import { useIsForeground } from 'hologram/react/lifecycle';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { type FastNetwork, holdFastNetwork, releaseFastNetwork } from '../modules/jarvis-network';
 import { requestMicrophoneAccess } from './microphone-permission';
 import { useWatchDensity, WATCH_PARTICLE_COUNT } from './watch-density';
 import { useWatchHologramSize } from './watch-screen';
@@ -13,6 +14,25 @@ interface ConversationScreenProps {
   /** The credentials the phone handed over. There is no conversation without them. */
   settings: ElevenLabsSettings;
 }
+
+/**
+ * How long to wait for Wi-Fi or cellular to come up before trying the conversation anyway.
+ *
+ * Bringing Wi-Fi up from off takes a few seconds on a watch; already up, the answer is immediate.
+ * Past this the conversation goes ahead on whatever there is, since a slow start is better than
+ * none — and if that is the Bluetooth proxy, the line below says what to do about it.
+ */
+const WAIT_FOR_FAST_NETWORK_MS = 6000;
+
+/**
+ * How long a conversation may take to open before the screen says it has not.
+ *
+ * The phone's reason, from `GIVE_UP_CONNECTING_AFTER_MS` in `mobile/src/conversation-screen.tsx`:
+ * a WebRTC session that cannot finish coming up waits on a room event with no deadline of its
+ * own, and says nothing while it does. On a watch that is exactly what the Bluetooth proxy
+ * produces, and a sphere turning in silence is indistinguishable from one listening.
+ */
+const GIVE_UP_CONNECTING_AFTER_MS = 20_000;
 
 /** Whether a conversation is open, or on its way to being open. */
 function isLive(status: string): boolean {
@@ -58,6 +78,29 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
   const { thinking, toolHandlers, forgetToolCalls } = useToolActivity();
   const [problem, setProblem] = useState<string | undefined>(undefined);
   const [isStarting, setIsStarting] = useState(false);
+  /** What the conversation is being held over, so a failure can say whether that was the trouble. */
+  const network = useRef<FastNetwork>('none');
+  /** When to stop waiting for the conversation to open, or `undefined` once nothing is waited for. */
+  const [connectingUntil, setConnectingUntil] = useState<number | undefined>(undefined);
+
+  const reportProblem = useCallback((message: string) => {
+    setConnectingUntil(undefined);
+    setProblem(message);
+  }, []);
+
+  /**
+   * A conversation the server closed, which the SDK reports here and not through `onError`. The
+   * same gap the phone's `reportEnding` closes: without it the sphere simply stopped answering. An
+   * agent that hung up after saying goodbye is `agent`, not `error`, and gets no line.
+   */
+  const reportEnding = useCallback(
+    (details: { reason: string; message?: string }) => {
+      if (details.reason === 'error') {
+        reportProblem(details.message || 'The conversation with Jarvis ended unexpectedly.');
+      }
+    },
+    [reportProblem],
+  );
 
   const start = useCallback(async () => {
     setProblem(undefined);
@@ -68,9 +111,15 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
       // where there is a keyboard in front of you; here the assistant gesture *is* the request to
       // be talked to, and there is nowhere to type.
       if (!(await requestMicrophoneAccess())) {
-        setProblem('Jarvis needs the microphone.');
+        reportProblem('Jarvis needs the microphone.');
         return;
       }
+
+      // Off the phone's Bluetooth proxy before anything goes out, token request included: WebRTC's
+      // audio does not get through it, which is why the watch used to connect and then say nothing.
+      // See `modules/jarvis-network`.
+      network.current = await holdFastNetwork(WAIT_FOR_FAST_NETWORK_MS);
+      setConnectingUntil(Date.now() + GIVE_UP_CONNECTING_AFTER_MS);
 
       // Minted here rather than kept: a conversation token is short-lived, and one fetched when
       // the app opened may be dead by the time a wrist is raised.
@@ -79,15 +128,61 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
       startSession({
         conversationToken: token,
         connectionType: 'webrtc',
-        onError: (message) => setProblem(message),
+        onError: reportProblem,
+        onDisconnect: reportEnding,
         ...toolHandlers,
       });
     } catch (error: unknown) {
-      setProblem(error instanceof Error ? error.message : 'Jarvis could not be reached.');
+      // No session to hold the network for, so it goes now rather than when one ends.
+      releaseFastNetwork();
+      reportProblem(error instanceof Error ? error.message : 'Jarvis could not be reached.');
     } finally {
       setIsStarting(false);
     }
-  }, [settings, startSession, toolHandlers]);
+  }, [settings, startSession, toolHandlers, reportProblem, reportEnding]);
+
+  // Gives up on a conversation that is taking too long to open, and says so — naming Wi-Fi when the
+  // watch could not get onto it, since that is then the likeliest reason and the one thing the
+  // person looking can change.
+  useEffect(() => {
+    if (connectingUntil === undefined) {
+      return;
+    }
+    if (status === 'connected') {
+      setConnectingUntil(undefined);
+      return;
+    }
+    const givingUp = setTimeout(
+      () => {
+        setConnectingUntil(undefined);
+        setProblem(
+          network.current === 'none'
+            ? 'Jarvis could not be reached. Put the watch on Wi-Fi.'
+            : 'Jarvis did not answer. ElevenLabs may be unreachable.',
+        );
+      },
+      Math.max(0, connectingUntil - Date.now()),
+    );
+    return () => clearTimeout(givingUp);
+  }, [connectingUntil, status]);
+
+  // The radio goes when the conversation does: a network held up for nobody is a battery spent on
+  // nothing. On the way *down* from live rather than whenever it is not live, because between
+  // `startSession` and the status reading `connecting` there is a render where it is neither — and
+  // letting go then would pull the network out from under the call as it dialled.
+  const wasLive = useRef(false);
+  useEffect(() => {
+    if (isLive(status)) {
+      wasLive.current = true;
+      return;
+    }
+    if (wasLive.current) {
+      wasLive.current = false;
+      releaseFastNetwork();
+    }
+  }, [status]);
+  // And on the way out of the app altogether, whatever state it was in.
+  useEffect(() => () => releaseFastNetwork(), []);
 
   // A call still running when the conversation drops never gets its answer, so the sphere would be
   // left mid-thought — and the next conversation would open with him already thinking about
@@ -110,7 +205,9 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
   useEffect(() => {
     if (!isForeground) {
       tried.current = false;
+      setConnectingUntil(undefined);
       endSession();
+      releaseFastNetwork();
       return;
     }
     if (tried.current || isLive(status) || isStarting) {
@@ -153,11 +250,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#000000',
+    // The square is wider than the screen — see `watch-screen.ts` — and what hangs off it is not
+    // something to scroll to.
+    overflow: 'hidden',
   },
   /**
    * Over him rather than under him, because the sphere fills the screen.
    *
-   * There is no room on a watch for a line below a square the width of the display, so the only
+   * There is no room on a watch for a line below a square wider than the display, so the only
    * place a message can go is on top — and the only time there is one, he is not worth looking at
    * anyway.
    */

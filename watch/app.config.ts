@@ -172,6 +172,9 @@ const config: ExpoConfig = {
       'android.permission.MODIFY_AUDIO_SETTINGS',
       'android.permission.INTERNET',
       'android.permission.ACCESS_NETWORK_STATE',
+      // Asking for Wi-Fi or cellular rather than the phone's Bluetooth proxy, which WebRTC's audio
+      // does not get through. See `modules/jarvis-network`.
+      'android.permission.CHANGE_NETWORK_STATE',
       'android.permission.WAKE_LOCK',
       // Watches are routinely paired to earbuds, and the call's audio has to follow them.
       'android.permission.BLUETOOTH_CONNECT',
