@@ -13,10 +13,12 @@
  * `prepare-device-art.sh`, and `device-art/NOTICE.md` says where each came from and under what
  * licence — including that the watch clips inherit CC BY-SA 4.0 from the frame in them.
  *
- * Two things are deliberately *not* the app. The particle count is {@link PARTICLES} rather than
- * the thousand a phone is asked for, because nothing here has to hold a frame rate at all — it
- * has all the time it likes per frame — and the user asked to see him at full density. And there
- * is no readout in the corner: the sphere and nothing else.
+ * **Each device is drawn at the most particles it can hold** — `PARTICLE_COUNT` on the phone and
+ * `WATCH_PARTICLE_COUNT` on the watch — never at a number chosen here. On a device the density loop
+ * draws a share of that ceiling, whatever the device can afford; nothing here has to hold a frame
+ * rate, so it draws all of it, which is the best he can look on each. The user asked for exactly
+ * that, after the clips were rendered at a fixed 1300 on both and showed a sparser Jarvis than
+ * either device draws. And there is no readout in the corner: the sphere and nothing else.
  *
  * Usage, from the repository root:
  *   bun hologram/.scripts/render-showcase.ts
@@ -48,23 +50,10 @@ import {
   MATERIALISE_SECONDS,
   PARTICLE_COUNT,
   type SimulatedMood,
+  WATCH_PARTICLE_COUNT,
 } from '../src/index';
 import { LEAVING_SECONDS } from '../src/react/leaving';
 import { createPerformance, findLoudestMoment, stillMoment } from './simulated-performance';
-
-/**
- * How many particles the showcase frames are built from.
- *
- * It began as "far more than any phone is asked to draw", back when `PARTICLE_COUNT` gave the apps
- * a thousand and even that was thinned to whatever the phone could afford at its target frame rate
- * — see `density-control.ts`. The apps' ceiling has been raised twice since, to five thousand and
- * then to ten, so this is now the sparser of the two pictures rather than the denser one.
- *
- * Left where it is deliberately: every frame this script renders was framed and reviewed at this
- * density, and the one place the brakes-off reading still matters is the cover, which asks for
- * `PARTICLE_COUNT` outright — see `coverScene` below.
- */
-const PARTICLES = 1300;
 
 /**
  * Forty a second, at the user's asking — the rate the phone holds — for every copy: the archive,
@@ -733,10 +722,12 @@ async function main() {
     throw new Error('CanvasKit did not load');
   }
   const skia = JsiSkApi(globalThis.CanvasKit);
-  // One scene and one set of resources for both clips: the same Jarvis on both devices, which is
-  // the whole point of him living in a package of his own.
-  const scene = createHologramScene(1337, PARTICLES);
-  const resources = createHologramResources(skia, scene);
+  // The same Jarvis on both devices — one seed, one drawing — each at the most particles that
+  // device can hold. See the file header.
+  const phoneScene = createHologramScene(1337, PARTICLE_COUNT);
+  const phoneResources = createHologramResources(skia, phoneScene);
+  const watchScene = createHologramScene(1337, WATCH_PARTICLE_COUNT);
+  const watchResources = createHologramResources(skia, watchScene);
 
   const working = mkdtempSync(join(tmpdir(), 'jarvis-showcase-'));
   const output = join(process.cwd(), 'docs');
@@ -801,7 +792,7 @@ async function main() {
       if (moment.showing) {
         canvas.save();
         canvas.translate((screen.width - phoneHologram) / 2, top + (sheetHeight - phoneHologram) / 2);
-        drawHologram(canvas, phoneHologram, frame, scene, resources);
+        drawHologram(canvas, phoneHologram, frame, phoneScene, phoneResources);
         canvas.restore();
       }
       canvas.restore();
@@ -843,7 +834,7 @@ async function main() {
         // The square is the whole screen, as `useWatchHologramSize` makes it: the drawing keeps its
         // own distance from the edge, so a square the width of a round screen still sits inside it.
         canvas.translate(watchMiddle.x - watchRadius, watchMiddle.y - watchRadius);
-        drawHologram(canvas, watchRadius * 2, frame, scene, resources);
+        drawHologram(canvas, watchRadius * 2, frame, watchScene, watchResources);
       }
       canvas.restore();
     },
@@ -860,10 +851,9 @@ async function main() {
   rmSync(working, { recursive: true, force: true });
 
   // ---- the cover: one still, at full size, with his name round it ------------------------------
-  // Its own scene, at the ceiling a fast phone is now allowed rather than the count the clips use.
-  // A still has no frame rate to hold, so there is no reason for it to be the lesser picture.
-  const coverScene = createHologramScene(1337, PARTICLE_COUNT);
-  const coverResources = createHologramResources(skia, coverScene);
+  // The phone's scene, at the phone's ceiling: the same picture the phone clip is drawn from.
+  const coverScene = phoneScene;
+  const coverResources = phoneResources;
   const typeface = skia.Typeface.MakeFreeTypeFaceFromData(
     skia.Data.fromBytes(readFileSync(join(DEVICE_ART, 'roboto-light.ttf'))),
   );

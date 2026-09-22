@@ -2,26 +2,6 @@ import { WATCH_PACE } from 'hologram';
 import { useSharedValue } from 'react-native-reanimated';
 
 /**
- * How many fragments the watch's scene is built from.
- *
- * A fraction of the phone's {@link PARTICLE_COUNT}, and the single biggest thing that makes the
- * sphere affordable here. The density share thins the scene by skipping fragments *inside* the
- * draw loop, so no share, however small, stops the loop visiting every fragment there is — and
- * building the scene costs this many again, serialised into the worklet runtime at mount. Neither
- * is something the controller can steer away from. On a watch both were being paid in full, for a
- * scene sized for a phone.
- *
- * It is a ceiling rather than a count: what is actually drawn starts far below this and only comes
- * up if the frame rate allows, which is the whole point of wiring the controller in below.
- *
- * It was 1200, and that was the ceiling the watch actually sat at: the sphere ran "super smooth,
- * almost too smooth", with frames to spare and nowhere to spend them. Half the phone's scene now,
- * with the loop holding thirty frames a second ({@link WATCH_PACE}) rather than forty, so what a
- * watch can afford is decided by the watch rather than by this number.
- */
-export const WATCH_PARTICLE_COUNT = 5000;
-
-/**
  * Everything the drawing needs in order to find a particle count this watch can actually hold.
  *
  * **The watch used to pass none of this, and that was the bug.** `hologram-view.tsx` gates its
