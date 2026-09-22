@@ -37,8 +37,9 @@ export const WATCH_PARTICLE_COUNT = 1200;
  * far more than a phone's, so last time's answer is a weaker guess.
  */
 export function useWatchDensity() {
-  // Written by the drawing on the UI thread every measurement window; read by nothing else yet.
-  // They exist because handing them over is what turns the controller on.
+  // Written by the drawing on the UI thread every measurement window. They exist because handing
+  // them over is what turns the controller on. The only other reader is the waiting screen's
+  // sample-mode readout — the conversation screen shows none of it.
   const frameRate = useSharedValue(0);
   const buildMilliseconds = useSharedValue(0);
   const particleShare = useSharedValue(0);

@@ -2,25 +2,23 @@ import { useConversationControls, useConversationStatus } from '@elevenlabs/reac
 import * as Linking from 'expo-linking';
 import {
   type ElevenLabsSettings,
-  PARTICLE_COUNT,
   PHONE_PARTICIPANT_NAME,
   requestConversationToken,
   requestSignedConversationUrl,
 } from 'hologram';
 import { useToolActivity } from 'hologram/conversation';
 import { LEAVING_SECONDS } from 'hologram/react/lifecycle';
+import { useSimulatedVoice } from 'hologram/react/sample';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { createAssistLaunchClaim } from './assist-link';
 import { afterStatus, isLive, NOT_YET_OPEN } from './conversation-life';
 import { ConversationFrame, useConversationSheet } from './conversation-sheet';
-import { FrameRate } from './frame-rate';
 import { JarvisHologram } from './jarvis-hologram';
 import { useJarvisVoice } from './jarvis-voice';
 import { requestMicrophoneAccess } from './microphone-permission';
 import { usePreferredHeadset } from './preferred-microphone';
 import { useQueuedAudio } from './queued-audio';
-import { useSimulatedVoice } from './simulated-voice';
 import { useSparkDensity } from './spark-density';
 import { QUIETEST_SPEECH_HERE } from './speech-floor';
 import { theme } from './theme';
@@ -115,7 +113,9 @@ const GIVE_UP_CONNECTING_AFTER_MS = 20_000;
  *
  * The particle count is the phone's own, as sample mode's has been for a while and this screen's
  * never was: see `spark-density.ts`. It drew a fixed number on every phone, which on a fast one was
- * fewer than it could manage and on a slow one more.
+ * fewer than it could manage and on a slow one more. Nothing on this screen reports it, though, in
+ * a browser or on a phone: the frame-rate and particle readout belongs to sample mode, and this
+ * screen is the assistant, with nothing on it but him.
  */
 export function ConversationScreen({ settings, onEditSettings, inSheet = false }: ConversationScreenProps) {
   const { startSession, sendUserMessage, endSession } = useConversationControls();
@@ -543,26 +543,6 @@ export function ConversationScreen({ settings, onEditSettings, inSheet = false }
           opening={connectingUntil !== undefined}
         />
       ) : null}
-
-      {/*
-        The instrument, left running in a browser and nowhere else.
-
-        On a phone this screen is the assistant and has nothing on it at all; in a browser it is
-        where the drawing is developed, and knowing what it is managing is worth a line of text so
-        dark you have to look for it. `faint` is what makes it that.
-
-        It goes with him. An instrument reporting on a drawing that is no longer being drawn
-        reports the last numbers it ever wrote, for ever, which is worse than reporting nothing.
-      */}
-      {ON_A_PHONE || gone ? null : (
-        <FrameRate
-          frameRate={frameRate}
-          buildMilliseconds={buildMilliseconds}
-          particleShare={particleShare}
-          particles={PARTICLE_COUNT}
-          faint
-        />
-      )}
 
       {ON_A_PHONE ? null : (
         <Pressable

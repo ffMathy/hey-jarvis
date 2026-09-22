@@ -97,16 +97,12 @@ mobile/
     ├── assistant-window.ts       # the window the assistant gesture opens, and retracting it
     ├── sample-screen.tsx         # sample mode: Jarvis alone, tapped to walk through his moods
     ├── sample-sheet.tsx          # the sheet he arrives in when summoned, and why he waits for it to settle
-    ├── sample-mode.ts            # the three moods, and the order a tap walks them in
-    ├── simulated-voice.ts        # speaking and thinking as a JarvisVoice, made from the clock
-    ├── mode-toast.tsx            # the one word sample mode says about which mood is showing
     ├── jarvis-hologram.tsx       # the hologram on Android …
     ├── jarvis-hologram.web.tsx   # … and in a browser, once CanvasKit has loaded
     │                              #   (both are two lines over `hologram/react`)
     ├── hologram-size.ts          # how big it is drawn on this screen
     ├── spark-density.ts          # how many particles this phone can manage …
     ├── spark-memory.ts           # … and remembering what it managed last time
-    ├── frame-rate.tsx            # the instrument, left running in a browser only
     ├── jarvis-voice.ts           # Jarvis's voice on Android: his track, tapped and analysed …
     ├── jarvis-voice.web.ts       # … and in a browser, the same track through Web Audio
     ├── agent-audio-track.ts      # finding Jarvis's track in the conversation's LiveKit room
@@ -161,8 +157,7 @@ He goes. The agent hangs up, the session drops, and the sphere used to go on tur
 does while he listens — which is the same complaint the problem line answers, the other way round:
 an assistant who has finished looks identical to one who is waiting for you. So the end of a
 conversation fades him over `LEAVING_SECONDS`, unmounts the drawing (a frame loop drawing a sphere
-that has faded to nothing is a phone kept awake for no one), takes the browser's frame-rate readout
-with it, and — summoned — lets the sheet follow him down and retracts the assistant's window,
+that has faded to nothing is a phone kept awake for no one), and — summoned — lets the sheet follow him down and retracts the assistant's window,
 which is how sample mode leaves too.
 
 ### Summoned, he arrives in a sheet
@@ -217,6 +212,8 @@ Finding Jarvis's track takes one step outside the SDK's public surface, and **bo
 
 Before the app is set up there is nothing for the hologram to follow, so the settings screen offers **"No key yet? Try the hologram"**. It opens `sample-screen.tsx`: the same hologram, in a sheet, walking through what Jarvis does.
 
+The moods, their order and names, the simulated voice, the mood toast and the frame-rate readout are not this app's: they are `hologram`'s (`sample-mode.ts` in the main entry, and `hologram/react/sample`), because the watch's waiting screen is a sample mode too. Only where they sit on the screen is decided here.
+
 **It used to listen to you, and it does not any more.** There was a fourth mood, `microphone`, that opened the phone's microphone and drove the sphere from your own voice — with a recorder of its own on Android (`MicrophoneRecorder`, `AudioRecord` with `VOICE_RECOGNITION`), a browser path through an `AnalyserNode`, a permission prompt, a recording indicator, and an end-to-end emulator check that played a tone in and compared what the app heard against Android's own audio HAL. All of it is gone, along with `sample-voice.ts`, `sample-voice.web.ts`, `UseSampleVoice`, and the emulator harness's `microphone` run.
 
 What it bought was proof that the hologram follows a real voice, which is worth having — but sample mode is a thing to look at before there is an account, and the simulated voices in `hologram/src/simulated-voice.ts` show the same moods from the clock. Every mood is now a tap, and nothing on that screen opens a microphone.
@@ -234,7 +231,7 @@ What it bought was proof that the hologram follows a real voice, which is worth 
 
 The two costliest single layers to *paint*, measured by taking each out: the shadow (15 ms of the 49) and the particle halos (13 ms). The costliest to *build* is the fragment body, at 64% of it — and the cost there is the sheer number of path commands, not the fragment count, which is why halving the fragments saves under a quarter.
 
-**Sample mode shows the frame rate in the corner**, counted on the UI thread where the frames happen and read twice a second by a leaf component. It reports what the device achieves, so sixty means it is keeping up with `MINIMUM_FRAME_SECONDS` and less is what it managed. Use it before and after any change made for speed.
+**Sample mode shows the frame rate and the particle count in the corner**, counted on the UI thread where the frames happen and read twice a second by a leaf component. It reports what the device achieves, so forty means it is keeping up with `MINIMUM_FRAME_SECONDS` and less is what it managed. Use it before and after any change made for speed. **Only sample mode shows it**, on the phone and the watch alike: the conversation screen used to carry a faint copy in a browser, and it was removed at the user's request — a screen that is the assistant has nothing on it but him. The e2e suite checks both halves of that.
 
 **The square is bigger than the screen, and that is nearly free.** Chips are thrown to about 1.6R on a syllable and the drawing clips at the edge of its square, so a square the size of the screen cut them in mid-air. `useWholeScreenHologramSize` makes it half again wider and `SPHERE_FRACTION` is set against that, so the sphere is the same size on screen and the only thing that cuts a chip is the screen itself — where an edge cannot be seen. Measured, that cost 0.6 ms a frame, because Skia rasterises only what is drawn and everything drawn is sized from the sphere, the shadow included (`BACKDROP_REACH` is in sphere radii).
 
@@ -294,7 +291,7 @@ For each conversation the app asks `GET https://api.elevenlabs.io/v1/convai/conv
 
 **That branch was write-only until it learned to show his answer.** A text-only session returns the reply as an `agent_response` over the socket and never as audio, and nothing in the app rendered it — no transcript, no `onMessage`, nothing. So a browser with the microphone refused could send a line, get an answer, and display absolutely nothing: a silent sphere and an empty screen, indistinguishable from a conversation that had failed. `written-reply.ts` keeps the last thing he said — the last, not a transcript, and cleared the moment you send again so a stale answer never sits under a fresh question — and `written-reply-line.tsx` puts it above the field. It is the only screen in the app with something to read on it, because it is the only one with nothing to listen to.
 
-**The sphere speaks it, out of the clock.** With no audio there is nothing for the hologram to follow, so it idled through the whole exchange: Jarvis answering you while looking exactly like an assistant who had not heard you. `written-reply.ts` also says how long he should look like he is delivering an answer — its length at fourteen characters a second, floored at 0.9 s so "Yes." is still a beat and capped at 12 s so a long answer is not mimed at length over text you have already read — and for that long the screen hands the drawing the same simulated voice sample mode uses (`simulated-voice.ts` here, shapes in `hologram/src/simulated-voice.ts`). It is a spectrum built from the clock, so it goes through the fold into bands, the easing, the agitation envelope and the chip bursts exactly as a real voice does, and nothing downstream knows the difference — which is the whole reason those moods are written as spectra rather than as flags on the drawing.
+**The sphere speaks it, out of the clock.** With no audio there is nothing for the hologram to follow, so it idled through the whole exchange: Jarvis answering you while looking exactly like an assistant who had not heard you. `written-reply.ts` also says how long he should look like he is delivering an answer — its length at fourteen characters a second, floored at 0.9 s so "Yes." is still a beat and capped at 12 s so a long answer is not mimed at length over text you have already read — and for that long the screen hands the drawing the same simulated voice sample mode uses (`useSimulatedVoice` from `hologram/react/sample`, shapes in `hologram/src/simulated-voice.ts`). It is a spectrum built from the clock, so it goes through the fold into bands, the easing, the agitation envelope and the chip bursts exactly as a real voice does, and nothing downstream knows the difference — which is the whole reason those moods are written as spectra rather than as flags on the drawing.
 
 Only ever here. `readingAloud` is set from `onMessage`, which is wired on the text-only session alone, so every conversation that has a voice goes on following Jarvis's real one. The words are genuinely his; the only invented thing is the delivery, and it is invented only where ElevenLabs was asked not to provide one.
 

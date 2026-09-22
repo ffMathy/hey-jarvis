@@ -32,7 +32,8 @@
     "./conversation": "./src/conversation/index.ts",
     "./react": "./src/react/index.ts",
     "./react/lifecycle": "./src/react/lifecycle.ts",
+    "./react/sample": "./src/react/sample.ts",
     "./react/hologram-view": "./src/react/hologram-view.tsx"
   },
-  "//exports": "Three entries, and the split matters: '.' is the design, the voice tracking and the ElevenLabs credentials, with nothing but type imports in it, so it runs headless in the tests and under CanvasKit in a browser. './react' is the view, which needs React, Reanimated and Skia for real. './conversation' needs React and the ElevenLabs SDK but deliberately not Skia, so a screen can hold a conversation before CanvasKit has loaded. './react/hologram-view' is for the browser build's lazy import() only \u2014 CanvasKit has to finish loading before anything Skia-backed is even imported."
+  "//exports": "Three entries, and the split matters: '.' is the design, the voice tracking and the ElevenLabs credentials, with nothing but type imports in it, so it runs headless in the tests and under CanvasKit in a browser. './react' is the view, which needs React, Reanimated and Skia for real. './conversation' needs React and the ElevenLabs SDK but deliberately not Skia, so a screen can hold a conversation before CanvasKit has loaded. './react/sample' is sample mode's clock-made voice, mood toast and frame-rate readout, Skia-free like './react/lifecycle' so a browser screen can import it before CanvasKit has loaded. './react/hologram-view' is for the browser build's lazy import() only \u2014 CanvasKit has to finish loading before anything Skia-backed is even imported."
 }

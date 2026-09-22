@@ -25,10 +25,10 @@ watch/
 └── src/
     ├── app.tsx                   # two states: a conversation, or waiting for the phone
     ├── conversation-screen.tsx   # the sphere, and a live ElevenLabs session behind it
-    ├── waiting-for-the-phone.tsx # the sphere idling, and one line saying what is missing
+    ├── waiting-for-the-phone.tsx # sample mode while it waits, and one line saying what is missing
     ├── phone-settings.ts         # the credentials, and the asking that gets them
     ├── microphone-permission.ts  # PermissionsAndroid
-    ├── silent-voice.ts           # a voice that is not there, for the waiting screen
+    ├── watch-density.ts          # the particle ceiling, and letting the drawing find its own count
     └── watch-screen.ts           # how big the sphere is drawn on a round screen
 ```
 
@@ -86,6 +86,8 @@ The same caveats apply as to the phone's copy: the keystore keeps the key from o
 ### Why the watch does not get a tour of its own
 
 The phone's first-run tour explains what an ElevenLabs agent is, asks for the two values, and recommends the assistant role. None of that belongs on a watch. Signing up for ElevenLabs and building an agent is laptop work; the credentials are the phone's to type; and the assistant role on Wear OS is chosen in the watch's own Settings, which no app can open on the user's behalf. What is left for the watch to say is one line — "open Jarvis on your phone" — which is what `waiting-for-the-phone.tsx` says.
+
+Around that line the screen is the phone's **sample mode**, since until the phone answers there is nothing else for Jarvis to do: tapping him walks speaking, thinking and at rest, the mood's name shows for a moment, and the frame rate and particle count sit small at the top. The moods, the simulated voice, the toast and the readout all come from `hologram` (`sample-mode.ts` and `hologram/react/sample`), exactly as the phone's do; only the layout is the watch's, kept clear of a round bezel. The readout is on this screen only — the conversation screen has nothing on it but him.
 
 One case has no phone to ask at all: the app declares `com.google.android.wearable.standalone`, so it installs on a watch whose phone has never had Jarvis. That case gets the same screen and the same line, because the answer is the same: install Jarvis on the phone.
 
@@ -147,7 +149,7 @@ Data Layer requires before these two will speak to each other at all.
 3. Under Wireless debugging, choose **Pair new device** and pair from a computer on the same Wi-Fi: `adb pair <ip>:<pairing port>` with the code shown, then `adb connect <ip>:<port>`.
 4. `adb install jarvis-watch-<commit>.apk`
 5. On the watch: **Settings → Apps → Default apps → Digital assistant app → Default digital assistant app → Jarvis**, and confirm.
-6. Hold the side button. Jarvis should come up and turn. With nothing handed over yet he idles, under the line **Open Jarvis on your phone**.
+6. Hold the side button. Jarvis should come up and turn. With nothing handed over yet he is in sample mode — tap him to walk his moods — over the line **Open Jarvis on your phone**.
 7. Open Jarvis on the phone — with the phone app installed and set up. The watch asks for the credentials every few seconds while it is waiting, and the phone answers as soon as it hears one, so this should be all it takes. If it is not, the phone's watch card has a **Send the key to <watch>** button; hold the phone's conversation screen to reach the settings it is on.
 8. The watch should stop waiting and open a conversation by itself. Talk to him.
 

@@ -15,8 +15,8 @@ import { join } from 'node:path';
  * `hologram/react` for a number, which pulled the view in with it, and the hologram never drew
  * again. Nothing about it failed loudly — the error was in the browser's console, on a phone.
  *
- * So the rule is a rule, and this is what holds it: `lifecycle.ts` and everything it imports are
- * Skia-free.
+ * So the rule is a rule, and this is what holds it: `lifecycle.ts` and `sample.ts`, and everything
+ * they import, are Skia-free.
  */
 
 const REACT_DIR = import.meta.dir;
@@ -49,6 +49,13 @@ function importsSkia(file: string): boolean {
 describe('what a browser may import before CanvasKit has loaded', () => {
   it('keeps the lifecycle entry, and everything it reaches, clear of Skia', () => {
     const reachable = [...reachableFrom('lifecycle.ts')];
+
+    expect(reachable.length).toBeGreaterThan(1);
+    expect(reachable.filter(importsSkia)).toEqual([]);
+  });
+
+  it('keeps the sample entry, and everything it reaches, clear of Skia', () => {
+    const reachable = [...reachableFrom('sample.ts')];
 
     expect(reachable.length).toBeGreaterThan(1);
     expect(reachable.filter(importsSkia)).toEqual([]);

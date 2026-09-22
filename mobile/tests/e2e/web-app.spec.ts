@@ -224,11 +224,10 @@ test('saves valid settings, shows the conversation, and remembers across a reloa
   await page.goto('/');
   await configureElevenLabs(page);
 
-  // The instrument in the corner, which the browser gets and a phone does not. It is deliberately
-  // almost the colour of the background, so what is checked is that it is there and counting —
-  // being hard to read is the point and not something a test can have an opinion about.
-  await expect(page.getByTestId('frame-rate')).toBeVisible();
-  await expect(page.getByTestId('frame-rate')).toContainText('fps');
+  // No readout: the frame-rate and particle count are sample mode's alone. The conversation
+  // screen used to carry a faint copy of them in a browser, and must not again.
+  await expect(page.getByTestId('hologram')).toBeVisible();
+  await expect(page.getByTestId('frame-rate')).toHaveCount(0);
 
   await page.reload();
 
@@ -275,6 +274,11 @@ test('offers sample mode from the tour, walks its moods on a tap, and comes back
   // beside him — so there is nothing to assert on but the sphere.
   await expect(page.getByTestId('hologram')).toBeVisible();
   await expectHologramToKeepMoving(page);
+
+  // The one thing on this screen besides him: how fast he is being drawn, and with how many
+  // particles. Sample mode is where the drawing is shown off, so it is where it is measured.
+  await expect(page.getByTestId('frame-rate')).toContainText('fps');
+  await expect(page.getByTestId('frame-rate')).toContainText('sparks');
 
   // Tapping him walks through what he does — speaking, working, at rest — because there is no text
   // on this screen to hang buttons off, and a tap is now the only thing that changes any of it.

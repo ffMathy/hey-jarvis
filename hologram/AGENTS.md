@@ -11,6 +11,7 @@ him — today `mobile/` and `watch/`.
 ```
 hologram               the design, the voice tracking, and the ElevenLabs credentials — no framework
 hologram/react         the same sphere as a React Native view you can render
+                       (plus ./react/lifecycle and ./react/sample, which are Skia-free)
 hologram/conversation  the hooks a screen holding an ElevenLabs conversation needs
 ```
 
@@ -31,8 +32,9 @@ that rule.
 
 | Entry | Imports | What it holds |
 | --- | --- | --- |
-| `hologram` | nothing but types | the drawing, the voice tracker, the simulated voices, the density control, the ElevenLabs credentials and the token request |
+| `hologram` | nothing but types | the drawing, the voice tracker, the simulated voices, sample mode's moods and readout text, the density control, the ElevenLabs credentials and the token request |
 | `hologram/react` | React, Reanimated, Skia | the Skia canvas and the frame loop |
+| `hologram/react/sample` | React, Reanimated — not Skia | sample mode's clock-made voice, mood toast and frame-rate readout, shared by the phone's sample screen and the watch's waiting screen |
 | `hologram/conversation` | React, `@elevenlabs/react-native` | his voice as the SDK hears it, and which of his tool calls are in flight |
 
 `hologram/conversation` deliberately does **not** reach Skia. That is what lets
@@ -44,8 +46,8 @@ is why the conversation hooks are not simply part of `hologram/react`.
 
 **Nothing in the main entry imports a value.** The only imports across
 `hologram-drawing.ts`, `voice-levels.ts`, `voice-analysis.ts`,
-`voice-contract.ts`, `elevenlabs-settings.ts` and `conversation-token.ts` are
-`import type`. That is not tidiness; it is the reason the same drawing runs in
+`voice-contract.ts`, `sample-mode.ts`, `elevenlabs-settings.ts` and
+`conversation-token.ts` are `import type`. That is not tidiness; it is the reason the same drawing runs in
 three places:
 
 - native Skia, on a phone or a watch;
@@ -97,6 +99,13 @@ reaches the message.
 is read where a voice is read — the JS thread, every 40 ms — and never on the UI thread. It makes
 up the two voices sample mode can show without a microphone, Jarvis speaking and Jarvis working,
 as spectra, so they go through every step a real voice does and nothing downstream can tell.
+
+**Sample mode is shared, and only sample mode has a readout.** Both devices have one — the phone's
+before there is an account, the watch's while it waits for the phone — so the moods, their order,
+their names and the readout's text live in `sample-mode.ts`, and the voice hook, the mood toast and
+the frame-rate readout in `hologram/react/sample`. Each component takes a `style`: where it sits is
+the app's decision, since a round watch face and a phone sheet want different places. The
+conversation screens show no frame rate and no particle count on either device.
 
 ## Worklets
 

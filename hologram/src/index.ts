@@ -19,6 +19,7 @@ export * from './conversation-token';
 export * from './density-control';
 export * from './elevenlabs-settings';
 export * from './hologram-drawing';
+export * from './sample-mode';
 export * from './simulated-voice';
 export * from './voice-analysis';
 export * from './voice-contract';
