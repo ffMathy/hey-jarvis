@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.0.1](https://github.com/ffMathy/hey-jarvis/compare/root-v4.0.0...root-v4.0.1) (2026-09-22)
+
+
+### Bug Fixes
+
+* summon jarvis into a sheet, let the watch talk, calm the particles ([#757](https://github.com/ffMathy/hey-jarvis/issues/757)) ([9dee957](https://github.com/ffMathy/hey-jarvis/commit/9dee9579ded27473537a253b38a7fd5b73dcd285))
+
 ## [4.0.0](https://github.com/ffMathy/hey-jarvis/compare/root-v3.0.0...root-v4.0.0) (2026-09-21)
 
 
