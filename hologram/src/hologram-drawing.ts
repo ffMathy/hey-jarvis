@@ -366,6 +366,16 @@ const GLOW_FROM_ENVELOPE = 0.65;
 const SWELL_WITH_VOICE = 0.18;
 /** How small the sphere starts before it grows into place. */
 const ARRIVAL_SMALLEST = 0.55;
+/**
+ * How Jarvis arrives: `fade` fades the whole sphere in and grows it outward from
+ * {@link ARRIVAL_SMALLEST}; `vortex` keeps it at full size and has its particles spiral out of the
+ * core, the rim and the whorl coming in behind them.
+ */
+export type ArrivalStyle = 'fade' | 'vortex';
+/** How far round a fragment has still to go as it leaves the core in the vortex, in radians: a turn and a half. */
+const VORTEX_TWIST = 3 * Math.PI;
+/** How long the vortex's strokes are drawn while they are still travelling, as a multiple of their length. */
+const VORTEX_STRETCH = 4;
 const DEGREES_TO_RADIANS = 0.017453292519943295;
 /** The core sits a hair up and left of centre, well inside the film's 0.08R. */
 const CORE_X = -0.02;
@@ -944,10 +954,16 @@ function roundToFiveDecimals(value: number) {
  * `hologram/.scripts/render-showcase.ts`. Everything downstream is a share of whatever this is,
  * so nothing else has to know.
  */
-export function createHologramScene(seed: number, particleCount: number = PARTICLE_COUNT) {
+export function createHologramScene(
+  seed: number,
+  particleCount: number = PARTICLE_COUNT,
+  arrival: ArrivalStyle = 'fade',
+) {
   const random = createRandom(seed);
   const script = buildScript(random);
   return {
+    /** 1 when he arrives as a vortex (see {@link ArrivalStyle}); a number, so the worklet copy stays plain data. */
+    vortexArrival: arrival === 'vortex' ? 1 : 0,
     body: buildBody(random, particleCount).map(roundToFiveDecimals),
     stream: buildStream(random).map(roundToFiveDecimals),
     crescentPieces: buildCrescentPieces(random).map(roundToFiveDecimals),
@@ -1710,14 +1726,24 @@ function analyseFrame(frame: HologramFrame, size: number, scene: Scene) {
   const voice = clamp01(frame.level) ** 0.8;
   // Folded together on purpose: coming and going are the same gesture, so he fades and shrinks on
   // the way out exactly as he fades and grows on the way in.
-  const arrival = smooth01(clamp01(frame.appearance)) * clamp01(frame.presence);
+  const appearance = clamp01(frame.appearance);
+  const presence = clamp01(frame.presence);
+  const vortex = scene.vortexArrival === 1;
+  // In the vortex the layer only fades in over the first fifth, so the first particles leaving the
+  // core are seen; the particles' own travel is what does the arriving.
+  const arrival = (vortex ? smooth01(appearance / 0.2) : smooth01(appearance)) * presence;
+  const grown = vortex ? presence : arrival;
+  // How far on the vortex is: 1 once it is over, and always 1 when he fades in instead.
+  const swirl = vortex ? appearance : 1;
+  const settle = 1 - smooth01(swirl);
   // How much bigger he is this frame than at rest. Mostly loudness, so the sphere breathes with
   // the sentence rather than stepping up and sitting there; the envelope keeps it from dropping
   // back to nothing between syllables.
   const swell = SWELL_WITH_VOICE * (0.7 * voice + 0.3 * agitation);
-  // The sphere grows outward into place and, with `arrival` fading the whole of it, fades in.
-  // That is the entire arrival: every layer comes up together, with nothing drawn over it.
-  const radius = size * SPHERE_FRACTION * (ARRIVAL_SMALLEST + (1 - ARRIVAL_SMALLEST) * arrival) * (1 + swell);
+  // Fading in, the sphere grows outward into place and, with `arrival` fading the whole of it,
+  // fades in: every layer comes up together, with nothing drawn over it. In the vortex it is full
+  // size from the start and only shrinks on the way out.
+  const radius = size * SPHERE_FRACTION * (ARRIVAL_SMALLEST + (1 - ARRIVAL_SMALLEST) * grown) * (1 + swell);
   const intoScan = time - Math.floor(time / SCAN_SECONDS) * SCAN_SECONDS;
   const thinking = clamp01(frame.thinking);
   return {
@@ -1736,9 +1762,12 @@ function analyseFrame(frame: HologramFrame, size: number, scene: Scene) {
     // what the eye is left with. Without this the whorl, the rim and the ladder go on doing what
     // they always do and the sweep is one more thing happening among several — which is how the
     // first version of thinking looked, and why it did not read as a different state at all.
-    innerAlpha: 1 - 0.8 * thinking,
-    coreAlpha: 1,
-    rimAlpha: 1 - 0.65 * thinking,
+    innerAlpha: (1 - 0.8 * thinking) * smooth01((swirl - 0.15) / 0.6),
+    coreAlpha: smooth01(swirl / 0.25),
+    rimAlpha: (1 - 0.65 * thinking) * smooth01((swirl - 0.55) / 0.45),
+    swirl,
+    /** Where {@link swirlFragment} leaves a fragment: x, y, its direction, and how much of it shows. */
+    swirled: [0, 0, 0, 0, 0],
     agitation,
     // Half the calm fragments hand over to fast ones at full agitation, so the turnover rises
     // by about half (the film's churn on "Doctor." rises from 8 to 13 per frame). Half and no
@@ -1772,7 +1801,8 @@ function analyseFrame(frame: HologramFrame, size: number, scene: Scene) {
     /** What the halos and the volume multiply their alpha by: 1 in silence, up to 1 + GLOW_WITH_VOICE. */
     glowGain: 1 + GLOW_WITH_VOICE * (GLOW_FROM_ENVELOPE * agitation + (1 - GLOW_FROM_ENVELOPE) * voice),
     roll: fraction((time * ROLL_DEGREES_PER_SECOND) / 360) * 360,
-    shellTurn: fraction((time * SHELL_DEGREES_PER_SECOND) / 360) * 360,
+    // the whorl winds up with the vortex, settling to its own slow turn as the particles do
+    shellTurn: fraction((time * SHELL_DEGREES_PER_SECOND - 540 * settle * settle) / 360) * 360,
     streamCos: Math.cos(yaw),
     streamSin: Math.sin(yaw),
     // the core's brightness drifts a few percent over many seconds; it never beats
@@ -2032,6 +2062,58 @@ function scanned(y: number, state: FrameState): number {
   return 1 - state.thinking * (1 - SCAN_FLOOR) * (1 - nearness * nearness);
 }
 
+/**
+ * Where a fragment is while the vortex brings it out of the core: writes x, y, its direction and
+ * how much of it shows into `state.swirled` — just where it already is once the vortex is over.
+ *
+ * Each fragment leaves the core on its own clock — the ones nearest it first, the limb last — and
+ * travels out along a spiral, a turn and a half short of where it sits and closing on it as it
+ * slows, drawn longer while it moves so the arms read as streams rather than dots. A fragment
+ * still at the core is not shown at all, so the eye does not start on a blot of light.
+ */
+function swirlFragment(x: number, y: number, unitX: number, unitY: number, id: number, state: FrameState) {
+  'worklet';
+  const out = state.swirled;
+  if (state.swirl >= 1) {
+    out[0] = x;
+    out[1] = y;
+    out[2] = unitX;
+    out[3] = unitY;
+    out[4] = 1;
+    return;
+  }
+  const reach = Math.sqrt(x * x + y * y);
+  const order = clamp01(0.9 * reach + 0.1 * fraction(id * 3.91));
+  const travelled = smooth01((state.swirl - 0.6 * order) / 0.4);
+  const left = 1 - travelled;
+  const spin = VORTEX_TWIST * left * left;
+  const cos = Math.cos(spin);
+  const sin = Math.sin(spin);
+  const scale = 0.04 + 0.96 * travelled;
+  const swirledX = (x * cos + y * sin) * scale;
+  const swirledY = (y * cos - x * sin) * scale;
+  out[0] = swirledX;
+  out[1] = swirledY;
+  // While it travels it points the way it is going — round the core, and a little outward — and
+  // turns back to its own direction as it settles.
+  const distance = Math.sqrt(swirledX * swirledX + swirledY * swirledY) || 1;
+  const outwardX = swirledX / distance;
+  const outwardY = swirledY / distance;
+  const headingX = 0.35 * outwardX - outwardY;
+  const headingY = 0.35 * outwardY + outwardX;
+  const heading = Math.sqrt(headingX * headingX + headingY * headingY);
+  const settled = travelled * travelled;
+  const directionX = (headingX / heading) * (1 - settled) + (unitX * cos + unitY * sin) * settled;
+  const directionY = (headingY / heading) * (1 - settled) + (unitY * cos - unitX * sin) * settled;
+  const direction = Math.sqrt(directionX * directionX + directionY * directionY) || 1;
+  out[2] = directionX / direction;
+  out[3] = directionY / direction;
+  // Not shown until it has left the core, so the eye does not start on a blot of light.
+  // Stretched along its path while it moves, but never longer than the path it has come out on.
+  const stretch = 1 + VORTEX_STRETCH * left * clamp01(distance * 2.5);
+  out[4] = smooth01((travelled - 0.04) * 6) * stretch;
+}
+
 /** The fragment body, turning about the vertical axis, sorted into the dim, mid and bright builders. */
 function appendBody(builders: PathBuilder[], body: number[], state: FrameState) {
   'worklet';
@@ -2057,8 +2139,12 @@ function appendBody(builders: PathBuilder[], body: number[], state: FrameState) 
     placeFragment(body, offset, along, across, state, placed);
     const lit = strength * placed[3];
     if (lit < FRAGMENT_FAINTEST) continue;
-    const x = placed[0];
-    const y = placed[1];
+    swirlFragment(placed[0], placed[1], unitX, unitY, id, state);
+    const swirled = state.swirled;
+    const drawn = swirled[4];
+    if (drawn <= 0) continue;
+    const x = swirled[0];
+    const y = swirled[1];
     // While he thinks, only what the plane is passing stays lit; see SCAN_SECONDS.
     const litHere = lit * scanned(y, state);
     if (litHere < FRAGMENT_FAINTEST) continue;
@@ -2073,7 +2159,7 @@ function appendBody(builders: PathBuilder[], body: number[], state: FrameState) 
     // Arriving at a third of its length, as it used to, meant arriving at full brightness over
     // a dozen pixels at once — with twice as many fragments that is a visible speckle at every
     // frame, and it is what the spec's script-boundary check counts.
-    appendGlyph(builders[tier + reading[2]], reading[1], x, y, unitX, unitY, length * 0.5 * litHere);
+    appendGlyph(builders[tier + reading[2]], reading[1], x, y, swirled[2], swirled[3], length * 0.5 * litHere * drawn);
   }
 }
 
@@ -2121,7 +2207,18 @@ function appendStream(builders: PathBuilder[], stream: number[], state: FrameSta
     const halfX = stream[offset + 3] * cosYaw + stream[offset + 4] * sinYaw;
     const plain = stream[offset + 8] - 3 * state.reading[0];
     const tier = depth < 0 ? 0 : fragmentTier(plain, lit, stream[offset + 7], state.hotShare);
-    appendGlyph(builders[tier], stream[offset + 9], x, y, 1, 0, Math.abs(halfX) * lit);
+    swirlFragment(x, y, 1, 0, stream[offset + 7], state);
+    const swirled = state.swirled;
+    if (swirled[4] <= 0) continue;
+    appendGlyph(
+      builders[tier],
+      stream[offset + 9],
+      swirled[0],
+      swirled[1],
+      swirled[2],
+      swirled[3],
+      Math.abs(halfX) * lit * swirled[4],
+    );
   }
 }
 
