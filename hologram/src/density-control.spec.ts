@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import {
+  BUILD_BUDGET_MS,
   createDensityControl,
   type DensityControl,
   FEWEST_PARTICLES,
@@ -562,5 +563,81 @@ describe('on a screen that can only present whole refreshes', () => {
     const after = path.filter((sample) => sample.at >= 20).map((sample) => sample.density);
 
     expect(Math.min(...after)).toBeGreaterThan(0.3);
+  });
+});
+
+/**
+ * A phone as the view now reports it: a frame rate, and how long each picture took to build.
+ *
+ * Building is a fixed cost plus a cost per particle that grows with heat. Painting is the same
+ * shape, and the frame is presented at whole sixty hertz refreshes, so the frame rate is as
+ * useless as ever below the edge and the build time is the only thing that moves.
+ */
+function timedPhone({ buildPerParticle, paintPerParticle }: { buildPerParticle: number; paintPerParticle: number }) {
+  let heat = 0;
+  return (density: number) => {
+    const build = 1 + buildPerParticle * (1 + heat) * density;
+    const frameMs = build + 2 + paintPerParticle * (1 + heat) * density;
+    heat = Math.max(0, Math.min(1, heat + density * 0.01 - 0.003));
+    const vsync = 1000 / 60;
+    return { build, framesPerSecond: 1000 / (Math.max(1, Math.ceil(frameMs / vsync)) * vsync) };
+  };
+}
+
+function steerFor(control: DensityControl, drawsAt: ReturnType<typeof timedPhone>, windows: number) {
+  const seen: { density: number; framesPerSecond: number; build: number }[] = [];
+  for (let window = 0; window < windows; window++) {
+    const { build, framesPerSecond } = drawsAt(control.density);
+    steerDensity(control, framesPerSecond, 0.5, build);
+    seen.push({ density: control.density, framesPerSecond, build });
+  }
+  return seen;
+}
+
+describe('steering by how long a picture takes to build', () => {
+  it('settles on the build budget and stays there, rather than hunting across a refresh', () => {
+    // A phone whose building is the expensive half: the budget, not the edge, is what stops it.
+    const control = createDensityControl();
+    const seen = steerFor(control, timedPhone({ buildPerParticle: 10, paintPerParticle: 2 }), 80);
+
+    const late = seen.slice(-20);
+    for (const window of late) {
+      expect(window.build).toBeGreaterThan(BUILD_BUDGET_MS * 0.85);
+      expect(window.build).toBeLessThan(BUILD_BUDGET_MS * 1.1);
+      expect(window.framesPerSecond).toBeCloseTo(60, 5);
+    }
+    const densities = late.map((window) => window.density);
+    expect(Math.max(...densities) - Math.min(...densities)).toBeLessThan(0.05);
+  });
+
+  it('follows a phone that heats up down smoothly, without once dropping to thirty', () => {
+    const control = createDensityControl();
+    const seen = steerFor(control, timedPhone({ buildPerParticle: 10, paintPerParticle: 2 }), 240);
+
+    expect(seen.filter((window) => window.framesPerSecond < TARGET_FRAMES_PER_SECOND)).toHaveLength(0);
+    // And it did come down as the phone warmed, rather than sitting where it started.
+    expect(seen[seen.length - 1]?.density).toBeLessThan(Math.max(...seen.map((window) => window.density)));
+  });
+
+  it('is still caught by the frame rate on a phone whose painting runs out first', () => {
+    // Building is cheap here and never gets near its budget, so the build time says "room" all the
+    // way up — which is the case the frame-rate ceiling exists for.
+    const control = createDensityControl();
+    const seen = steerFor(control, timedPhone({ buildPerParticle: 1, paintPerParticle: 20 }), 240);
+
+    expect(control.ceiling).toBeLessThan(1);
+    const lagging = seen.filter((window) => window.framesPerSecond < TARGET_FRAMES_PER_SECOND);
+    expect(lagging.length / seen.length).toBeLessThan(0.15);
+  });
+
+  it('steers by the frame rate until there is a build time to steer by', () => {
+    const byFrameRate = createDensityControl();
+    const byNothingTimed = createDensityControl();
+    settle(byFrameRate, phone(0.4), 20);
+    for (let window = 0; window * 0.5 < 20; window++) {
+      steerDensity(byNothingTimed, phone(0.4)(byNothingTimed.density), 0.5, 0);
+    }
+
+    expect(byNothingTimed.density).toBe(byFrameRate.density);
   });
 });

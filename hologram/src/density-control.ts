@@ -14,11 +14,31 @@
  *
  * Nothing here imports anything. It runs in a worklet on the UI thread, beside the drawing.
  *
- * ## What it steers by, and why it is not the frame rate
+ * ## What it steers by: how long a picture takes to build
  *
- * The error is a **frame time**, not a frame rate, even though a frame rate is what it is handed.
- * They are reciprocals, so it looks like a distinction without a difference, and it is the single
- * most important thing in this file.
+ * **The frame rate cannot be steered to, on a real screen.** A phone presents whole refreshes, so
+ * on a sixty hertz screen it runs at sixty frames a second or thirty and nothing in between — and
+ * the target is forty. Aimed at a number it can never reach, the integral term never rests: below
+ * the edge it reads "room" and climbs, past it "too many" and sheds, and it goes round that loop for
+ * as long as Jarvis is on screen. Worse, the frame rate says nothing at all below the edge — it sits
+ * at the refresh whatever the count is — and then halves in one step. A PID wants a signal that
+ * moves a little when the count moves a little, and the frame rate is the opposite of that.
+ *
+ * How long each picture takes to build is exactly that signal. It is timed on the thread that
+ * does it, it grows steadily with every particle drawn, and it is not rounded to a refresh. So the
+ * loop steers the mean build time of each window toward {@link BUILD_BUDGET_MS}, and settles.
+ *
+ * **It does not see the painting**, which is Skia's half of a frame and happens after the picture
+ * is handed over. So the frame rate is kept as a backstop rather than a target: two windows running
+ * behind it set a ceiling the count may not climb past (see {@link BELOW_WHERE_IT_FELL}), which
+ * catches a phone whose painting runs out of room before its building does. And with no build
+ * time to go on — nothing timed yet — the loop steers by the frame rate as it used to.
+ *
+ * ## Why an error in time rather than in rate
+ *
+ * Build time is a time already, and so is the frame-rate reading: the error is a **frame time**,
+ * not a frame rate, even though a frame rate is what it is handed. They are reciprocals, so it
+ * looks like a distinction without a difference, and it matters.
  *
  * Frame *time* is roughly a straight line in the particle count: a fixed cost for everything that
  * is not particles, plus a cost per particle. Frame *rate* is one over that, which is a hyperbola.
@@ -83,6 +103,16 @@
  * the settled band below is measured against the noise of the average rather than set to nothing.
  */
 export const TARGET_FRAMES_PER_SECOND = 40;
+
+/**
+ * How long building one picture may take on average, in milliseconds: half of a sixty hertz frame.
+ *
+ * The other half is for painting it, and for everything else the thread does. That split is a
+ * guess rather than a measurement — nobody has yet read both halves off a phone — and it is safe
+ * either way round: a phone whose painting needs more than half is caught by the frame-rate
+ * ceiling, and one that needs less simply draws a little under what it could.
+ */
+export const BUILD_BUDGET_MS = 8;
 
 /**
  * Never fewer than this share of the particles: past it he stops looking like himself.
@@ -315,6 +345,11 @@ export interface DensityControl {
    * slowdown and rejects a lone spike outright.
    */
   lastReading: number;
+  /**
+   * The last frame-rate reading, kept apart from {@link lastReading} because with build time to
+   * steer by the two are different readings: this one only ever sets the ceiling.
+   */
+  lastFrameReading: number;
   /** How many measurements have landed. Zero means nothing has been measured on this phone yet. */
   windows: number;
   /** How big a step to take, as a share of the one asked for. See {@link TRUST_SHRINK}. */
@@ -360,6 +395,7 @@ export function createDensityControl(startingDensity: number = FEWEST_PARTICLES)
     previousError: 0,
     errorBeforeThat: 0,
     lastReading: 0,
+    lastFrameReading: 0,
     windows: 0,
     trust: 1,
     lastStep: 0,
@@ -411,6 +447,19 @@ export function seedFromRemembered(control: DensityControl, share: number): void
     return;
   }
   control.density = clamp(share, FEWEST_PARTICLES, 1);
+}
+
+/**
+ * The reading the PID steers by: build time against its budget when there is one, and the frame
+ * rate's reading when nothing has been timed yet. Both are "how far over, as a share", so the
+ * gains mean the same thing whichever it is.
+ */
+function steeringReading(frameReading: number, buildMilliseconds: number): number {
+  'worklet';
+  if (buildMilliseconds <= 0) {
+    return frameReading;
+  }
+  return clamp(buildMilliseconds / BUILD_BUDGET_MS - 1, -1, WORST_ERROR);
 }
 
 /**
@@ -471,7 +520,12 @@ function recordWhatItHolds(control: DensityControl, framesPerSecond: number, onT
  * measurement: an incremental controller works in differences, and one reading has nothing to
  * differ from.
  */
-export function steerDensity(control: DensityControl, framesPerSecond: number, deltaSeconds: number): void {
+export function steerDensity(
+  control: DensityControl,
+  framesPerSecond: number,
+  deltaSeconds: number,
+  buildMilliseconds = 0,
+): void {
   'worklet';
   if (framesPerSecond <= 0 || deltaSeconds <= 0) {
     return;
@@ -480,9 +534,11 @@ export function steerDensity(control: DensityControl, framesPerSecond: number, d
   // Half a second's worth at most, however long the wall clock says this took: see LONGEST_WINDOW.
   const windowSeconds = clamp(deltaSeconds, SHORTEST_WINDOW, LONGEST_WINDOW);
   // The error, in frame time, normalised by the target — which is exactly the target rate over the
-  // measured one, less one. Positive when the phone is too slow, which is when particles have to
-  // go. Bounded below by -1 whatever the screen does, and clamped above: see WORST_ERROR.
-  const reading = clamp(TARGET_FRAMES_PER_SECOND / framesPerSecond - 1, -1, WORST_ERROR);
+  // measured one, less one. Positive when the phone is too slow. Bounded below by -1 whatever the
+  // screen does, and clamped above: see WORST_ERROR. This one only sets the ceiling, unless there is
+  // no build time to steer by.
+  const frameReading = clamp(TARGET_FRAMES_PER_SECOND / framesPerSecond - 1, -1, WORST_ERROR);
+  const reading = steeringReading(frameReading, buildMilliseconds);
 
   // What was drawn during the window this reading measures, and during the one before it.
   const drawnNow = control.density;
@@ -497,15 +553,18 @@ export function steerDensity(control: DensityControl, framesPerSecond: number, d
     control.previousError = reading;
     control.errorBeforeThat = reading;
     control.lastReading = reading;
+    control.lastFrameReading = frameReading;
     return;
   }
   control.windows += 1;
 
-  // The gentler of this reading and the last, so that a lone hitch is not a verdict.
+  // The gentler of each reading and the last, so that a lone hitch is not a verdict.
   const trusted = reading < control.lastReading ? reading : control.lastReading;
   control.lastReading = reading;
+  const trustedFrame = frameReading < control.lastFrameReading ? frameReading : control.lastFrameReading;
+  control.lastFrameReading = frameReading;
 
-  const cut = lowerTheCeiling(control, trusted, drawnNow, drawnBefore);
+  const cut = lowerTheCeiling(control, trustedFrame, drawnNow, drawnBefore);
 
   control.errorBeforeThat = control.previousError;
   control.previousError = control.error;
