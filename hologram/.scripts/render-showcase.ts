@@ -44,6 +44,7 @@ import {
   createHologramResources,
   createHologramScene,
   drawHologram,
+  GREETING_SECONDS,
   MATERIALISE_SECONDS,
   PARTICLE_COUNT,
   type SimulatedMood,
@@ -65,35 +66,46 @@ import { createPerformance, findLoudestMoment, stillMoment } from './simulated-p
  */
 const PARTICLES = 1300;
 
-/** Sixty a second, which is what the apps cap at and what the clips are timed for. */
-const FRAMES_PER_SECOND = 60;
+/**
+ * Forty a second, at the user's asking — the rate the phone holds — for every copy: the archive,
+ * the WebP and the GIF alike. They are all rendered here and none of them is thinned afterwards.
+ */
+const FRAMES_PER_SECOND = 40;
 const FRAME_SECONDS = 1 / FRAMES_PER_SECOND;
 
 /**
- * What the GIF is cut down to. Thirty-three and a third, really: see {@link stitch}.
+ * The GIF's rate: the same forty as everything else, so nothing is dropped from it.
  *
- * A GIF holds its frame delay in hundredths of a second, so `fps=30` becomes a delay of 3, which
- * plays at 33⅓. Nobody can see the difference; what matters is that it is not slowed down.
+ * A GIF holds its frame delay in whole hundredths of a second and forty a second is two and a half,
+ * so ffmpeg writes delays of 2 and 3 in turn, which averages exactly forty and plays in real time.
  */
-const GIF_FRAMES_PER_SECOND = 30;
+const GIF_FRAMES_PER_SECOND = FRAMES_PER_SECOND;
 
 /**
- * How many colours the GIF's palette may hold, out of the 256 the format allows.
- *
- * Fewer than it could have, because a palette entry costs size in every frame that dithers against
- * it, and this clip is mostly two things: amber, and a handful of flat blues. It was 96 while the
- * backdrop was a flat colour, and had to go up once there was a wallpaper — a photographic one
- * needed well over this and still went grey, which is one of the reasons there is not one.
+ * How many times wider than it is shown the README's copies are rendered: twice, so they stay sharp
+ * on a high-density screen. The page sets the displayed width; bandwidth is not the concern here.
  */
-const GIF_COLOURS = 160;
+const README_PIXEL_DENSITY = 2;
 
 /**
- * How hard the WebP is compressed, 0 to 100, higher being better.
- *
- * Seventy holds the sphere's faint outer sparks, which are the first thing to go: they are small,
- * dim and different every frame, which is the exact shape of what a video codec throws away.
+ * How many colours the GIF's palette may hold: every one the format allows, less the one kept for
+ * transparency. It was 160 to keep the file small; the user asked for quality over size.
  */
-const WEBP_QUALITY = 70;
+const GIF_COLOURS = 255;
+
+/**
+ * How hard the WebP is compressed, 0 to 100, higher being better: ninety-five, at the user's asking.
+ *
+ * It was seventy, which only just held the sphere's faint outer sparks — small, dim and different
+ * every frame, the exact shape of what a video codec throws away — and it showed.
+ */
+const WEBP_QUALITY = 95;
+
+/**
+ * The archive copy's constant quality for VP9, 0 to 63, lower being better. Eleven is visually
+ * lossless on this material; it was thirty.
+ */
+const VP9_CRF = 11;
 
 /**
  * How opaque a pixel must be to survive into the GIF, out of 255.
@@ -105,9 +117,9 @@ const WEBP_QUALITY = 70;
  */
 const GIF_ALPHA_THRESHOLD = 64;
 
-/** How long each of the three things he does is held for, at the user's asking. */
-const IDLE_SECONDS = 3;
-const SPEAKING_SECONDS = 3;
+/** How long each of the things he does is held for, at the user's asking. */
+const IDLE_SECONDS = 2;
+const LISTENING_SECONDS = 4;
 const THINKING_SECONDS = 3;
 
 /** How long the sheet takes to arrive, and to go: `ARRIVE_MS` and `LEAVE_MS` in `sample-sheet.tsx`. */
@@ -145,12 +157,15 @@ const SCREEN = {
 /**
  * How wide each clip is rendered, in pixels. The height follows from the frame's aspect.
  *
+ * Exactly {@link README_PIXEL_DENSITY} times the width the README shows each at (240 and 260), so
+ * its copies are drawn at the density they are shown at rather than scaled up to it.
+ *
  * Both end up with a sphere of about the same size, which is what makes them sit together in a
  * README: the phone's square is inset in a sheet as tall as the screen is wide, and the watch's is
  * the whole of a small round one.
  */
-const PHONE_WIDTH = 420;
-const WATCH_WIDTH = 420;
+const PHONE_WIDTH = 480;
+const WATCH_WIDTH = 520;
 
 /**
  * How much of the palette the GIF may use, and how it is chosen.
@@ -244,28 +259,31 @@ function ease(share: number): number {
 /**
  * The clip's script: when each thing happens, and what is happening at a given moment.
  *
- * Idle first, because that is what he does before anyone has said anything, and because the
- * materialisation belongs to it — he forms, and then there are three full seconds of him formed
- * and at rest before the voice starts. He is still mid-thought when he goes, which is what the app
- * does too: leaving does not change what he was doing, it fades what he was doing.
+ * As the apps do it now: summoned, he spirals out of his core while he says the greeting, then
+ * rests, then listens to somebody talking to him, then works through what they said. He is still
+ * mid-thought when he goes, which is what the app does too: leaving does not change what he was
+ * doing, it fades what he was doing.
  */
 function writeScript(opensOver: number, closesOver: number) {
   const appears = opensOver;
-  const speaksAt = appears + MATERIALISE_SECONDS + IDLE_SECONDS;
-  const thinksAt = speaksAt + SPEAKING_SECONDS;
+  const listensAt = appears + Math.max(MATERIALISE_SECONDS, GREETING_SECONDS) + IDLE_SECONDS;
+  const thinksAt = listensAt + LISTENING_SECONDS;
   const leavesAt = thinksAt + THINKING_SECONDS;
   const goneAt = leavesAt + LEAVING_SECONDS;
 
   return {
     endsAt: goneAt + closesOver,
     at(seconds: number) {
-      const mood: SimulatedMood | undefined =
-        seconds >= speaksAt && seconds < thinksAt ? 'speaking' : seconds >= thinksAt ? 'thinking' : undefined;
-      const moodBegan = mood === 'speaking' ? speaksAt : mood === 'thinking' ? thinksAt : 0;
+      const intoGreeting = seconds - appears;
+      const mood: SimulatedMood | undefined = seconds >= thinksAt ? 'thinking' : undefined;
       return {
         mood,
-        /** Timed from when the mood was chosen, so speech opens on a syllable — as `useSimulatedVoice` does. */
-        moodSeconds: seconds - moodBegan,
+        /** Timed from when the mood was chosen, as `useSimulatedVoice` does. */
+        moodSeconds: seconds - thinksAt,
+        /** The greeting, from the moment he appears, as the apps play it. */
+        greetingSeconds: intoGreeting >= 0 && intoGreeting < GREETING_SECONDS ? intoGreeting : undefined,
+        /** Somebody talking to him, for as long as he listens. */
+        userSeconds: seconds >= listensAt && seconds < thinksAt ? seconds - listensAt : undefined,
         /** How far the sheet is up: all the way for everything but the first and last moments. */
         opened: ease(seconds / opensOver) * (1 - ease((seconds - goneAt) / closesOver)),
         /** He is drawn once there is somewhere to draw him, and his clock starts then. */
@@ -590,17 +608,15 @@ function renderClip(
  * play either — so a WebM in `docs/` is something to download, never something anybody sees on the
  * project's front page. Which leaves `<img>`, and what an `<img>` will animate.
  *
- * - **WebP** is what the README actually shows. It is a real video codec in an `<img>`: sixty
- *   frames a second, full colour, and smaller than the GIF below at half its frame rate.
- * - **GIF** is behind it in a `<picture>`, for anything that will not animate a WebP. It cannot be
- *   sixty frames a second whatever it is asked — a GIF's frame delay is a whole number of
- *   hundredths of a second, so the rates it can express are 100, 50, 33⅓, 25 and down — and it has
- *   no interframe compression worth the name and no more than 256 colours in the whole clip. Hence
- *   {@link GIF_FRAMES_PER_SECOND} and {@link GIF_COLOURS}, which is what keeps it near a megabyte.
+ * - **WebP** is what the README actually shows. It is a real video codec in an `<img>`: forty
+ *   frames a second, full colour, at {@link WEBP_QUALITY}.
+ * - **GIF** is behind it in a `<picture>`, for anything that will not animate a WebP: forty frames
+ *   a second too (see {@link GIF_FRAMES_PER_SECOND}), with every colour the format allows. It is
+ *   large; the user asked for quality over size.
  * - **WebM** is the archive copy: VP9, full size, nothing scaled or thinned.
  *
- * Both of the scaled ones drop frames rather than slowing anything down, so all three run in real
- * time and end together.
+ * The two README copies are rendered at {@link README_PIXEL_DENSITY} times the width the page shows
+ * them at. All three run in real time and end together.
  */
 function stitch(frames: string, output: string, shownWidth: number) {
   const input = join(frames, '%05d.png');
@@ -622,7 +638,7 @@ function stitch(frames: string, output: string, shownWidth: number) {
       '-b:v',
       '0',
       '-crf',
-      '30',
+      String(VP9_CRF),
       '-row-mt',
       '1',
       '-an',
@@ -641,7 +657,7 @@ function stitch(frames: string, output: string, shownWidth: number) {
       '-i',
       input,
       '-vf',
-      `scale=${shownWidth}:-2:flags=lanczos`,
+      `scale=${shownWidth * README_PIXEL_DENSITY}:-2:flags=lanczos`,
       '-pix_fmt',
       'yuva420p',
       '-c:v',
@@ -660,7 +676,7 @@ function stitch(frames: string, output: string, shownWidth: number) {
     { stdio: 'ignore' },
   );
 
-  const scaled = `fps=${GIF_FRAMES_PER_SECOND},scale=${shownWidth}:-2:flags=lanczos`;
+  const scaled = `fps=${GIF_FRAMES_PER_SECOND},scale=${shownWidth * README_PIXEL_DENSITY}:-2:flags=lanczos`;
   const palette = join(frames, 'palette.png');
   // One palette for the whole clip rather than per frame: `stats_mode=diff` weights it toward what
   // actually changes, which here is the sphere rather than the phone around it.
@@ -698,7 +714,7 @@ function stitch(frames: string, output: string, shownWidth: number) {
       // `alpha_threshold` is where a pixel stops counting as opaque. It has to exist because a
       // GIF cannot fade out — the device frames' antialiased edges are part-transparent, and every
       // one of those pixels has to be rounded to either fully there or fully gone.
-      `${scaled} [x]; [x][1:v] paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle:alpha_threshold=${GIF_ALPHA_THRESHOLD}`,
+      `${scaled} [x]; [x][1:v] paletteuse=dither=sierra2_4a:diff_mode=rectangle:alpha_threshold=${GIF_ALPHA_THRESHOLD}`,
       '-loop',
       '0',
       `${output}.gif`,
@@ -836,12 +852,9 @@ async function main() {
 
   const phone = join(output, 'jarvis-on-a-phone');
   const watch = join(output, 'jarvis-on-a-watch');
-  // Sized so the two sit level beside each other in a README — the watch frame is much less tall
-  // than the phone, so matching their widths would leave the watch looking like a coin next to it —
-  // and so that neither GIF runs away. The watch costs far more per pixel than the phone: on a
-  // watch the sphere *is* the screen, so nearly every pixel changes every frame, where on the phone
-  // three fifths of the picture is a wallpaper that never moves. Two hundred and sixty is the most
-  // it can have and still come in under three megabytes.
+  // The widths the README shows them at, so the two sit level beside each other — the watch frame
+  // is much less tall than the phone, so matching their widths would leave the watch looking like a
+  // coin next to it. They are rendered at README_PIXEL_DENSITY times these.
   stitch(phoneFrames, phone, 240);
   stitch(watchFrames, watch, 260);
   rmSync(working, { recursive: true, force: true });
