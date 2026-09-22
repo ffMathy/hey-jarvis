@@ -177,14 +177,22 @@ const SHORTEST_WINDOW = 0.1;
  * measurement says only "there is room" and never how much — and a controller facing a sensor that
  * has stopped answering should move at a deliberate pace rather than at one computed from a number
  * that is not telling it anything. That pace is this. It is also therefore how long the entrance
- * takes: from {@link FEWEST_PARTICLES} to nearly all of them in about two seconds.
+ * takes: from {@link FEWEST_PARTICLES} to nearly all of them in about six seconds.
+ *
+ * **It was three times this, and that was most of what the user saw go wrong.** A reading can only
+ * say the phone has fallen behind once a whole window has been drawn too slowly, and the filter and
+ * the lone-hitch rejection below add a window or two more before anything moves. At nearly half
+ * the swarm a second, that is thousands of particles added past the edge before the loop has heard
+ * about the edge at all: Jarvis arrived smooth, lagged a second later, and then shed and climbed
+ * back into the same lag. Slower, the overshoot a late reading costs is a few hundred particles,
+ * and he fills in behind his arrival rather than in a rush that the phone then has to pay for.
  *
  * The falling rate is a backstop rather than the usual path — with the clamps above in place the
  * controller's own step is nearly always the smaller of the two. It is what bounds the very worst
  * case, which is the case that used to be unbounded.
  */
 const FALLING_PER_SECOND = 0.6;
-const RISING_PER_SECOND = 0.45;
+const RISING_PER_SECOND = 0.15;
 
 /**
  * How the loop shrinks its own footsteps when it starts to hunt, and grows them again when it is
@@ -228,7 +236,7 @@ const PLAIN_TROUBLE = 0.5;
  * Beginning at half of it means the phone is never asked, cold, for more than it has already been
  * seen to hold comfortably, and the loop spends its first second finding out what today's phone is
  * good for rather than recovering from an assumption about yesterday's. Climbing back from a half
- * costs a bit over a second at {@link RISING_PER_SECOND} — and that second is spent going *up*,
+ * costs a few seconds at {@link RISING_PER_SECOND} — and that second is spent going *up*,
  * which is the direction nobody notices. The second it replaces was spent shedding, which is the
  * direction everybody does.
  *
@@ -236,6 +244,34 @@ const PLAIN_TROUBLE = 0.5;
  * {@link FEWEST_PARTICLES} — see `startFromRemembered`.
  */
 const REMEMBERED_SHARE = 0.5;
+
+/**
+ * How far under the count where the phone fell behind the loop may climb back to: at most nine
+ * tenths of it, and less the further behind it fell.
+ *
+ * **This is what stops the loop climbing straight back into the lag it has just left.** On a sixty
+ * hertz screen a phone presents sixty frames a second or thirty, and nothing in between — so
+ * {@link TARGET_FRAMES_PER_SECOND} is not a rate it can sit at. Below the edge it reads sixty, which
+ * says "room", and the loop climbs; past the edge it reads thirty, which says "too many", and the
+ * loop sheds. Without a memory of the edge that is the loop's whole life: climb, lag, shed, climb,
+ * lag — the sphere stuttering every few seconds for as long as it is on screen, on a phone that
+ * gets hotter every time and whose edge therefore comes lower every time, until it does not come
+ * back. Which is what the user watched: too many particles, a lag, *more* particles, and a freeze.
+ *
+ * So the first time the phone is seen falling behind — two windows running, so a lone hitch cannot
+ * do it — the lower of the two counts it fell behind at becomes a ceiling, scaled by how far short
+ * of the target it fell, and the loop does not climb above it again for the rest of this
+ * appearance. Frame time is roughly a straight line in the count, so a phone making three quarters
+ * of the target at some count can afford about three quarters of it; the scale is that, never more
+ * than {@link BELOW_WHERE_IT_FELL} so there is always a margin, and never less than
+ * {@link FARTHEST_BELOW_WHERE_IT_FELL}, because a reading that far off is more likely a stall than a
+ * measurement of what the particles cost. It only ever comes
+ * down: a phone that falls behind under the ceiling has shown the edge is lower now, usually
+ * because it is hotter or busier, and gets a lower one. The next appearance starts afresh and finds
+ * its own.
+ */
+const BELOW_WHERE_IT_FELL = 0.9;
+const FARTHEST_BELOW_WHERE_IT_FELL = 0.5;
 
 export interface DensityControl {
   /** 0–1: the share of the particles being drawn. This is the controller's integrator. */
@@ -285,6 +321,13 @@ export interface DensityControl {
   trust: number;
   /** Which way the last step went, which is how the loop knows it has just turned around. */
   lastStep: number;
+  /**
+   * The most particles the loop may climb to on this appearance: 1 until the phone has been seen
+   * falling behind, and then a little under where it fell. See {@link BELOW_WHERE_IT_FELL}.
+   */
+  ceiling: number;
+  /** The share drawn during the last window, so a slow window can be pinned on what caused it. */
+  lastDensity: number;
 }
 
 /**
@@ -305,9 +348,8 @@ export interface DensityControl {
  * Starting under what any phone can draw and climbing means the arrival is smooth and the swarm
  * fills in behind it, which is also just a better entrance.
  *
- * `RISING_PER_SECOND` is what makes that climb quick rather than a crawl: from the floor to
- * everything is a bit over two seconds on a phone that can take it, and from half of a remembered
- * count a bit over one.
+ * `RISING_PER_SECOND` paces that climb: from the floor to everything is about six seconds on a
+ * phone that can take it, and from half of a remembered count a few.
  */
 export function createDensityControl(startingDensity: number = FEWEST_PARTICLES): DensityControl {
   const density = startingDensity <= 0 ? FEWEST_PARTICLES : clamp(startingDensity, FEWEST_PARTICLES, 1);
@@ -321,6 +363,8 @@ export function createDensityControl(startingDensity: number = FEWEST_PARTICLES)
     windows: 0,
     trust: 1,
     lastStep: 0,
+    ceiling: 1,
+    lastDensity: density,
   };
 }
 
@@ -370,6 +414,56 @@ export function seedFromRemembered(control: DensityControl, share: number): void
 }
 
 /**
+ * Lowers the ceiling when two windows running have fallen behind, and cuts the count down to it.
+ * Says whether it cut, because a window that has been cut has already taken its step.
+ *
+ * Two windows running behind the target: this phone has an edge, and it is under what was drawn in
+ * either of them. See BELOW_WHERE_IT_FELL.
+ *
+ * Straight down to it, rather than at the controller's pace: the filter is a window or two behind
+ * the phone, and every one of those windows would be drawn at a rate the user can see stutter. The
+ * ceiling is already a count the phone was just seen to be unable to hold, less a margin, so there
+ * is nothing to find out by approaching it gradually.
+ *
+ * Below `clamp`, for the reason `seedFromRemembered` gives.
+ */
+function lowerTheCeiling(control: DensityControl, trusted: number, drawnNow: number, drawnBefore: number): boolean {
+  'worklet';
+  if (trusted < SETTLED_WITHIN) {
+    return false;
+  }
+  const fellAt = drawnNow < drawnBefore ? drawnNow : drawnBefore;
+  // The share of the target it was making, which is what the reading is the reciprocal of.
+  const making = clamp(1 / (1 + trusted), FARTHEST_BELOW_WHERE_IT_FELL, BELOW_WHERE_IT_FELL);
+  const ceiling = clamp(fellAt * making, FEWEST_PARTICLES, 1);
+  if (ceiling < control.ceiling) {
+    control.ceiling = ceiling;
+  }
+  if (control.density <= control.ceiling) {
+    return false;
+  }
+  control.density = control.ceiling;
+  control.lastStep = 0;
+  return true;
+}
+
+/**
+ * Raises `proven` to the count being drawn, if the loop has arrived there and is holding the target.
+ *
+ * Arrived is either sitting on the target, or pinned at the ceiling with room to spare — which is
+ * as arrived as a phone that can draw everything it is allowed to ever gets. See `proven` for why
+ * only these count.
+ */
+function recordWhatItHolds(control: DensityControl, framesPerSecond: number, onTarget: boolean): void {
+  'worklet';
+  const atCeiling = control.density >= control.ceiling && control.error <= 0;
+  const holding = (onTarget || atCeiling) && framesPerSecond >= TARGET_FRAMES_PER_SECOND;
+  if (holding && control.density > control.proven) {
+    control.proven = control.density;
+  }
+}
+
+/**
  * Moves the particle count toward whatever holds {@link TARGET_FRAMES_PER_SECOND}.
  *
  * `framesPerSecond` of zero means nothing has been measured yet, and nothing is changed — the loop
@@ -390,6 +484,11 @@ export function steerDensity(control: DensityControl, framesPerSecond: number, d
   // go. Bounded below by -1 whatever the screen does, and clamped above: see WORST_ERROR.
   const reading = clamp(TARGET_FRAMES_PER_SECOND / framesPerSecond - 1, -1, WORST_ERROR);
 
+  // What was drawn during the window this reading measures, and during the one before it.
+  const drawnNow = control.density;
+  const drawnBefore = control.lastDensity;
+  control.lastDensity = drawnNow;
+
   if (control.windows === 0) {
     // Nothing to difference against yet. Start the filter *at* the reading rather than at zero, or
     // the first second of every launch is spent watching a filter catch up with a phone.
@@ -406,21 +505,21 @@ export function steerDensity(control: DensityControl, framesPerSecond: number, d
   const trusted = reading < control.lastReading ? reading : control.lastReading;
   control.lastReading = reading;
 
+  const cut = lowerTheCeiling(control, trusted, drawnNow, drawnBefore);
+
   control.errorBeforeThat = control.previousError;
   control.previousError = control.error;
   control.error += (trusted - control.error) * MEASUREMENT_SHARE;
 
   const error = control.error;
-  // Arrived: either sitting on the target, or pinned at the ceiling with room to spare, which is
-  // as arrived as a phone that can draw the lot ever gets. See `proven` for why only these count.
+  // Arrived, and worth remembering as what this phone holds: see `recordWhatItHolds`.
   const onTarget = error > -SETTLED_WITHIN && error < SETTLED_WITHIN;
-  const atCeiling = control.density >= 1 && error <= 0;
-  if ((onTarget || atCeiling) && framesPerSecond >= TARGET_FRAMES_PER_SECOND && control.density > control.proven) {
-    control.proven = control.density;
-  }
+  recordWhatItHolds(control, framesPerSecond, onTarget);
 
-  if (onTarget) {
-    // Inside the band nothing moves: see SETTLED_WITHIN.
+  if (onTarget || cut) {
+    // Inside the band nothing moves: see SETTLED_WITHIN. And a window that has just been cut down
+    // to a new ceiling has already taken its step; the controller's own on top would be shedding
+    // twice for one slowdown.
     return;
   }
 
@@ -446,7 +545,7 @@ export function steerDensity(control: DensityControl, framesPerSecond: number, d
 
   const step = clamp(wanted * control.trust, -FALLING_PER_SECOND * windowSeconds, RISING_PER_SECOND * windowSeconds);
   const before = control.density;
-  control.density = clamp(control.density + step, FEWEST_PARTICLES, 1);
+  control.density = clamp(control.density + step, FEWEST_PARTICLES, control.ceiling);
   // What actually happened, which is what the next step is judged against — the step asked for and
   // the step taken are different things at the floor, at the ceiling and at the rate limits.
   control.lastStep = control.density - before;
