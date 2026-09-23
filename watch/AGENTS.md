@@ -28,7 +28,7 @@ watch/
     ├── waiting-for-the-phone.tsx # sample mode while it waits, and one line saying what is missing
     ├── phone-settings.ts         # the credentials, and the asking that gets them
     ├── microphone-permission.ts  # PermissionsAndroid
-    ├── watch-density.ts          # the particle ceiling, and letting the drawing find its own count
+    ├── watch-density.ts          # the watch's pace, and letting the drawing find its own count (the ceiling is `WATCH_PARTICLE_COUNT`, in `hologram`)
     └── watch-screen.ts           # how big the sphere is drawn on a round screen
 ```
 
@@ -123,6 +123,7 @@ Not yet verified, and only a real watch can say:
 - **With Gemini installed.** The emulator images ship no assistant, so the picker listed only Jarvis. A Pixel Watch lists Gemini too; choosing Jarvis should replace it, but that has not been seen.
 - **The physical button.** The emulator's long press arrived as two `ASSIST` starts a moment apart, where the key event arrived as one. It may be how the emulator injects a long press; the real app has to treat a repeat as the same summoning either way, as the phone app's `createAssistLaunchClaim` already does.
 - **The handover, and the conversation.** Both are new and neither has run on hardware. They typecheck, the four spellings of the two message paths are checked against each other by a test, and CI compiles the Kotlin on every push — and none of that is the same as two devices in the same room. What a real pair would settle, in order: whether the phone's `CapabilityClient` lookup finds the watch when the watch app has never been opened; whether Play Services starts `JarvisPhoneListenerService` for a message on that path with the app force-stopped; whether `EncryptedSharedPreferences` survives a watch reboot; and whether a Wear OS microphone gives WebRTC enough to hold a conversation with, which is the one question none of the code can answer.
+- **Whether the sphere gets its stencil.** The watch draws with the same React Native Skia as the phone, so its window has no stencil buffer either, and it gets the same layer the phone does (`DRAWN_IN_A_LAYER` in `hologram/src/react/hologram-view.tsx`), which lets Skia draw the particle halos on the GPU instead of triangulating them on the CPU every frame. That only works where the GL context can draw instanced geometry and the GPU is not one Skia switches its tessellator off for — [the phone's notes](../mobile/AGENTS.md) list those — and neither has been read off a watch. The waiting screen's readout is where it would show.
 
 ## Getting it onto a watch
 

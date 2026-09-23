@@ -12,10 +12,11 @@ import { useSharedValue } from 'react-native-reanimated';
  * chosen by nobody, on the one device least able to afford being wrong about it.
  *
  * Wiring it up is all it takes for the behaviour the watch wanted anyway, because the controller
- * already works this way: it opens at `FEWEST_PARTICLES` — a fortieth of the scene, which here is
- * thirty fragments — and adds more only while the measured rate is at or above
- * `TARGET_FRAMES_PER_SECOND`, dropping them quickly when it is not. Start at nearly nothing, climb
- * only if the frame rate is held.
+ * already works this way: it opens at `FEWEST_PARTICLES` — a fortieth of the scene, which on the
+ * watch's `WATCH_PARTICLE_COUNT` is 125 fragments — and adds more while building a picture takes
+ * less than the watch's budget (`WATCH_PACE`: 16 ms, at thirty frames a second), never past a count
+ * at which the frame rate was seen falling behind, and sheds them quickly when either says it is
+ * too many. Start at nearly nothing, climb only while it is affordable.
  *
  * No persistence, unlike the phone's `useSparkDensity`. What that saves is the second or so of
  * climbing at startup, and it costs a keystore write on a device where the app is opened for a few
@@ -31,6 +32,7 @@ export function useWatchDensity() {
   const particleShare = useSharedValue(0);
   const provenShare = useSharedValue(0);
 
-  // The watch's pace — thirty frames a second — handed to the drawing with the rest.
+  // The watch's pace — sixteen milliseconds to build a picture, and thirty frames a second as the
+  // backstop — handed to the drawing with the rest.
   return { frameRate, buildMilliseconds, particleShare, provenShare, pace: WATCH_PACE };
 }

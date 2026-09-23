@@ -699,11 +699,65 @@ describe('the hologram', () => {
     expect(dimmed / (thin.length / 4)).toBeLessThan(0.002);
   });
 
-  it('can be built with far fewer particles, which is the only way a watch gets cheaper', () => {
-    // The density share thins the swarm by skipping fragments *inside* the draw loop, so however
-    // low it goes the loop still visits every fragment the scene holds — and the scene is
-    // serialised into the worklet runtime at mount besides. Neither cost can be steered away from,
-    // which is why `watch/src/watch-density.ts` asks for a smaller scene rather than a lower share.
+  it('visits only the particles its share keeps, and exactly as many as the share says', () => {
+    // On a phone the picture is built under Hermes, with no JIT, and there even turning a row away
+    // costs something: about a fifth of what drawing it does. When the loop read every row and threw
+    // most away, the 9,750 of 10,000 it turned away at the floor came to 4.1 ms — half of the build
+    // budget, on a desktop harness, for particles nobody saw. So the scene is kept in the order a
+    // share takes it in, and the loop stops where the kept rows end.
+    //
+    // Unlike the rest of this file this counts reads rather than pixels, because what it pins is a
+    // cost: the picture is the same either way, which the tests above already hold it to.
+    const hologram = mount();
+    const body = hologram.scene.body;
+    const stride = body.length / PARTICLE_COUNT;
+    let reads = 0;
+    const readsPerRow = new Map<number, number>();
+    const counted = new Proxy(body, {
+      get(target, property, receiver) {
+        if (typeof property === 'string' && /^\d+$/.test(property)) {
+          reads++;
+          const row = Math.floor(Number(property) / stride);
+          readsPerRow.set(row, (readsPerRow.get(row) ?? 0) + 1);
+        }
+        return Reflect.get(target, property, receiver);
+      },
+    });
+    const watched = { scene: { ...hologram.scene, body: counted }, resources: hologram.resources };
+    const visit = (density: number) => {
+      reads = 0;
+      readsPerRow.clear();
+      render({ ...silence(6), density }, watched);
+      // The search for where the kept rows end reads one number from each row it probes; the loop
+      // reads several from every row it visits. So a row read more than once is a row visited.
+      const visited = [...readsPerRow].filter(([, count]) => count > 1).map(([row]) => row);
+      return { reads, visited: visited.length, last: Math.max(-1, ...visited) };
+    };
+
+    const floor = visit(0.025);
+    const whole = visit(1);
+    // A fortieth of the particles, and about a fortieth of the reads: reading every row to turn it
+    // away came to about a seventh.
+    expect(floor.reads).toBeLessThan(whole.reads * 0.06);
+    expect(whole.visited).toBe(PARTICLE_COUNT);
+
+    for (const share of [0.025, 0.4, 0.8]) {
+      const { visited, last } = visit(share);
+      // The rows it visits are a run from the start of the scene, which only holds if the scene is
+      // in the share's order...
+      expect(last).toBe(visited - 1);
+      // ...and there are as many of them as the share says: each row's key is an even spread over
+      // 0-1, so the count is the share of the scene give or take a few standard deviations.
+      const expected = share * PARTICLE_COUNT;
+      expect(Math.abs(visited - expected)).toBeLessThan(5 * Math.sqrt(expected * (1 - share)));
+    }
+  });
+
+  it('can be built with far fewer particles, which is what makes a watch cheaper to mount', () => {
+    // The scene is built, put in the share's order and serialised into the worklet runtime at mount,
+    // whatever share of it is drawn. That cost cannot be steered away from, which is why the watch's
+    // screens pass `WATCH_PARTICLE_COUNT` as the view's `particleCount` rather than relying on a
+    // lower share.
     const watchSized = createHologramScene(SEED, 1200);
 
     expect(watchSized.body.length).toBeLessThan(createHologramScene(SEED).body.length);

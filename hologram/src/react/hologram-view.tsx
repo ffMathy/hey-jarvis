@@ -1,6 +1,6 @@
 import { Canvas, Picture, Skia } from '@shopify/react-native-skia';
 import { memo, useEffect, useMemo } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import Animated, {
   type SharedValue,
   useAnimatedStyle,
@@ -113,12 +113,12 @@ export interface JarvisHologramProps {
    * How many fragments the scene is built from at all — the ceiling the density share is a share
    * *of*, rather than how many are drawn right now.
    *
-   * Left alone it is {@link PARTICLE_COUNT}, which is what a phone gets. A watch should ask for far
-   * fewer, and this is the only way to give it them: the share in `density-control.ts` thins the
-   * scene by skipping fragments *inside* the loop, so however low it goes the loop still visits
-   * every one. Building the scene is not free either — that many fragments times `BODY_STRIDE`
-   * numbers, serialised into the worklet runtime when the view mounts. Neither cost can be steered
-   * away from, on any device, which is why it is a parameter and not a measurement.
+   * Left alone it is {@link PARTICLE_COUNT}, which is what a phone gets. A watch asks for fewer,
+   * and this is the only way to give it them: building the scene is not free — that many fragments
+   * times `BODY_STRIDE` numbers, sorted and serialised into the worklet runtime when the view
+   * mounts — and that cost cannot be steered away from on any device, which is why it is a
+   * parameter and not a measurement. The share in `density-control.ts` no longer costs the loop
+   * the rest of the scene: the loop stops where the kept fragments end.
    */
   particleCount?: number;
   /**
@@ -126,10 +126,12 @@ export interface JarvisHologramProps {
    *
    * The companion to {@link frameRate}, and together they say where a slow frame goes. A frame has
    * two halves: this one, which is JavaScript on the UI thread, and painting the picture, which is
-   * Skia. Headlessly they are 3.7 ms and 17 ms — but headlessly is a desktop with a JIT and a
-   * software rasteriser, and the phone is neither. On a phone the same drawing runs at 58 frames a
-   * second in Chrome and 11 in the app, so something in the native path costs far more than
-   * anything that can be measured here, and this is the only instrument that can say which half.
+   * Skia. On a phone the same drawing ran at 58 frames a second in Chrome and 11 in the app, and the
+   * harnesses built to find out why put it on both halves: the painting, because the app's canvas
+   * had no stencil (see {@link DRAWN_IN_A_LAYER}), and this half, because Hermes runs it as
+   * unoptimised bytecode with no JIT — about twelve times slower per particle than V8 with its JIT,
+   * on the same desktop; see `densityRowsEnd` in the drawing. Neither was read off the phone, and
+   * this readout, beside {@link frameRate}, is what would.
    *
    * The same timing is what the density loop now steers by, whether or not this is passed: see
    * `BUILD_BUDGET_MS`. This is only where the readout finds it.
@@ -185,29 +187,84 @@ const GIVE_UP_COVERING_MS = 900;
 /**
  * What share of the screen's own resolution the sphere is drawn at, before being scaled back up.
  *
- * **This is the frame rate, and nothing else here comes close.** Split apart, a frame is 1.2 ms of
- * building the picture and forty-odd of painting it: the drawing is fill-bound, not
- * JavaScript-bound, and fill is pixels. Measured with the same picture at three sizes — 384 px
- * costs 49 ms, 269 px costs 28 ms, 230 px costs 22 ms — while the building stays at 1.2 ms
- * throughout, which is the proof that resolution is the whole of it.
+ * **On a CPU rasteriser this is the frame rate, and nothing else there comes close.** Split apart
+ * headlessly in CanvasKit, which rasterises on the CPU, a frame with the thousand particles it had
+ * then was 1.2 ms of building the picture and forty-odd of painting it, and the painting scaled with
+ * area — 384 px costs 49 ms, 269 px costs 28 ms, 230 px costs 22 ms — while the building stayed at
+ * 1.2 ms throughout.
  *
  * So the canvas is laid out at this share and scaled up. It went in at 0.7, which halved the
  * pixels; the user asked for "a lot" more, and this is a fifth of what a full-resolution canvas
  * would cost. What it buys is worth the sharpness because of what this drawing is: soft glowing
- * strokes over a soft shadow, with no text and no hard edges anywhere in it. On a phone at three
- * device pixels to the point it is still drawn at better than one and a half.
+ * strokes, with no text and no hard edges anywhere in it. On a phone at three device pixels to the
+ * point it is drawn at 1.35.
  *
- * One number, and the only one worth touching for speed.
+ * **On the phone's GPU it was not what set the frame rate.** The app ran at the same few frames a
+ * second whatever the canvas's size, and what it was paying for, as far as a model of it can say, was
+ * Skia triangulating the halos on the CPU for want of a stencil — see {@link DRAWN_IN_A_LAYER} — and
+ * building the picture under Hermes. What the GPU itself pays per pixel, now that it draws the halos,
+ * has not been measured; the phone's own browser, which draws them the same way, held 58.
  */
 const DRAWN_RESOLUTION = 0.45;
+
+/**
+ * Whether the picture is drawn inside a layer of its own, which on Android is expected to be most of
+ * what painting it costs.
+ *
+ * **React Native Skia gives its Android window no stencil buffer** (`EGL_STENCIL_SIZE 0` in its
+ * `gl/Display.h`, in every release up to 2.12), where CanvasKit's WebGL canvas in a browser gets
+ * eight bits of one by default. Skia's GPU backend draws a stroke with antialiasing off through its
+ * tessellator, on the GPU, only when the target has a stencil and the context can draw instanced
+ * geometry. Without a stencil it turns each such stroke into its outline on the CPU and triangulates
+ * it, every frame — the paths are new every frame, so nothing it caches is ever used again. The
+ * particle halos are exactly those: six paths a frame of thousands of wide round-capped dashes, drawn
+ * without antialiasing (see `HALO_ANTIALIASED`). In a model of the two canvases — the real drawing in
+ * CanvasKit on WebGL, in headless Chromium over SwiftShader, at the phone's 714 px and full density —
+ * that is 12.6 MB of triangles and 230-250 ms of Skia's CPU a frame without a stencil, against about
+ * 30 ms with one, nearly all of the difference in the triangulator. It has outliers too: single
+ * frames that took four, ten and twenty seconds, on geometry the triangulator happened to choke on.
+ *
+ * A layer is a surface Skia allocates for itself, so it can always give it a stencil, and drawn into
+ * one the halos go to the GPU as they do in a browser: in the same model, 30-32 ms at full density,
+ * the browser's own figure, with no outlier past 70 ms in 680 frames. The picture comes out within
+ * one level of the browser's. The background is drawn *inside* the layer rather than under it,
+ * because every paint here is Screen-blended against whatever is already there and the picture has
+ * to blend against the same pixels either way: under it, the sheet's colour came out up to 29 levels
+ * off.
+ *
+ * What it costs, going by Skia's source rather than a phone: an offscreen surface the size of the
+ * canvas, rounded up to a power of two, with a stencil attached — about 5 MB at the whole-screen size
+ * on a 3x phone, 1.25 MB in the sheet and a third of a megabyte on a watch, kept for the life of the
+ * app — and one full-canvas draw of it onto the window a frame. While he arrives or leaves the drawing
+ * adds a layer of its own inside this one, so there are two.
+ *
+ * Why a layer rather than asking React Native Skia for a stencil, which would be one number in its
+ * `gl/Display.h`: that is a patch to a native dependency that has to be carried across every upgrade,
+ * and on its own it may not even be correct. React Native Skia wraps the window's surface once and
+ * keeps it, so Skia clears that stencil on the first frame only and loads it after that — and EGL
+ * leaves a window's stencil undefined after every swap. A layer's stencil is Skia's own.
+ *
+ * Only on Android, where the window has no stencil: the web has one already and would only pay for
+ * the copy. And it helps only where the context can draw instanced geometry — OpenGL ES 3, or ES 2
+ * with the instancing extensions — and where Skia has not turned its tessellator off for the GPU,
+ * which it does for Intel, Mali-T, Adreno 3xx and 4xx and old PowerVR Rogue drivers. Current Pixel
+ * phones and watches are not among those, but the first Pixel Watch's Exynos 9110 has a Mali-T, and
+ * there the layer does nothing but cost its copy. React Native Skia asks EGL for ES 2, and the
+ * EGL spec lets a driver return a later version and says it typically does, but what a phone
+ * returns has not been read off one. Where either is missing, the layer costs its copy and changes
+ * nothing else. All of the milliseconds above are WebAssembly on a desktop CPU with an emulated GPU:
+ * the ratios are what should carry over to a phone, not the milliseconds.
+ */
+const DRAWN_IN_A_LAYER = Platform.OS === 'android';
 
 /**
  * The shortest gap between two drawn frames: a hundred and twenty a second at most.
  *
  * **This is a safety rail, not the frame rate.** What Jarvis actually runs at is decided by
- * `density-control.ts`, which adds particles until the frame rate falls to the rate it is aiming
- * for — see `TARGET_FRAMES_PER_SECOND`. This only stops a very fast phone with very few particles
- * from redrawing faster than any screen can show.
+ * `density-control.ts`, which adds particles until building a picture takes `BUILD_BUDGET_MS`, and
+ * never past a count at which the frame rate was seen falling below `TARGET_FRAMES_PER_SECOND`. This
+ * only stops a very fast phone with very few particles from redrawing faster than any screen can
+ * show.
  *
  * **It was a forty-eighth for an hour, and that was a real mistake**: capping at the rate the loop
  * was aiming for made the loop blind, because a measurement can never come back above its own cap,
@@ -240,6 +297,11 @@ const FRAME_RATE_OVER_SECONDS = 0.5;
  * all. `density-control.ts` then has to defend itself against a reading that was never a
  * measurement of anything it can change, and no amount of care there can put back information the
  * measurement threw away.
+ *
+ * Not every such gap was innocent. Before the picture was drawn in a layer ({@link DRAWN_IN_A_LAYER})
+ * Skia's triangulator had rare frames that cost it seconds, in a model of the app's canvas — and a
+ * gap like that *is* the drawing, just not in a way the particle count can steer, since it turns on
+ * one frame's geometry. Capping it here is still right.
  *
  * So a gap longer than this is counted as this. A fifth of a second is five frames a second, which
  * is already far past anything the controller distinguishes — it treats everything below half the
@@ -558,7 +620,12 @@ function JarvisHologramView({
     const current = frame.value;
     const activity = current.activity;
     const recorder = Skia.PictureRecorder();
-    const canvas = recorder.beginRecording(Skia.XYWHRect(0, 0, drawnSize, drawnSize));
+    const bounds = Skia.XYWHRect(0, 0, drawnSize, drawnSize);
+    const canvas = recorder.beginRecording(bounds);
+    // Everything, the background included, in one layer Skia can give a stencil: see DRAWN_IN_A_LAYER.
+    if (DRAWN_IN_A_LAYER) {
+      canvas.saveLayer(undefined, bounds);
+    }
     if (background !== undefined) {
       canvas.drawColor(Skia.Color(background));
     }
@@ -588,6 +655,9 @@ function JarvisHologramView({
       scene,
       resources,
     );
+    if (DRAWN_IN_A_LAYER) {
+      canvas.restore();
+    }
     const recorded = recorder.finishRecordingAsPicture();
     const took = performance.now() - startedAt;
     built.value += 1;
