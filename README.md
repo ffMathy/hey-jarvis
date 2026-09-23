@@ -6,7 +6,7 @@ An intelligent voice assistant for home automation, powered by AI agents and cus
 
 ## Jarvis, summoned
 
-Hold the power button on the phone and Jarvis comes up over whatever you were doing; on the watch he is the whole screen. Here he spirals out of his core while he says his greeting, rests, listens to somebody talking to him, works through what they said, and then goes.
+Hold the power button on the phone and Jarvis comes up over whatever you were doing; on the watch he is the whole screen. Here he spirals out of his core while he says his greeting, speaks, listens to somebody talking to him, works through what they said, and then goes — each phase named in the clip as it plays.
 
 <p align="center">
   <picture>
