@@ -26,13 +26,26 @@ export type ReadStoredValue = (key: string) => Promise<string | undefined>;
 export type WriteStoredValue = (key: string, value: string) => Promise<void>;
 
 /**
- * Asks for the microphone up front, and says whether it was given.
+ * A microphone that was given, and may still be held open by the asking.
+ *
+ * A browser holds it, because a page using the microphone may play sound without
+ * a click and the recorded greeting starts before the session opens a stream of
+ * its own. `release` lets go of it once the greeting has started; see
+ * `microphone-permission.web.ts`. On a phone there is nothing to let go of.
+ */
+export interface MicrophoneAccess {
+  release: () => void;
+}
+
+/**
+ * Asks for the microphone up front, and says whether it was given: `undefined`
+ * if it was not.
  *
  * Up front because WebRTC would otherwise ask in the middle of connecting, and a
  * refusal then surfaces as a failed connection rather than as the permission
  * question it actually was.
  */
-export type RequestMicrophoneAccess = () => Promise<boolean>;
+export type RequestMicrophoneAccess = () => Promise<MicrophoneAccess | undefined>;
 
 /** Jarvis's voice in the open conversation, if there is one. Must be used inside the ElevenLabs `ConversationProvider`. */
 export type UseJarvisVoice = () => JarvisVoice;

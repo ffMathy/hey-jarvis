@@ -17,6 +17,7 @@ import { ConversationFrame, useConversationSheet } from './conversation-sheet';
 import { JarvisHologram } from './jarvis-hologram';
 import { useJarvisVoice } from './jarvis-voice';
 import { requestMicrophoneAccess } from './microphone-permission';
+import type { MicrophoneAccess } from './platform-contracts';
 import { usePreferredHeadset } from './preferred-microphone';
 import { useQueuedAudio } from './queued-audio';
 import { useSparkDensity } from './spark-density';
@@ -58,6 +59,19 @@ const ON_A_PHONE = Platform.OS !== 'web';
  * network is never mistaken for a failure.
  */
 const GIVE_UP_CONNECTING_AFTER_MS = 20_000;
+
+/**
+ * Starts the greeting while the microphone is still held, and lets go of it once the greeting has
+ * started or been refused. Holding it is what lets a browser tab nobody has clicked play a sound at
+ * all; see `microphone-permission.web.ts`.
+ */
+async function greetHolding(microphone: MicrophoneAccess, beginGreeting: () => Promise<boolean>): Promise<boolean> {
+  try {
+    return await beginGreeting();
+  } finally {
+    microphone.release();
+  }
+}
 
 /**
  * The screen Jarvis answers from: him, and nothing else.
@@ -284,14 +298,14 @@ export function ConversationScreen({ settings, onEditSettings, inSheet = false }
     setConnectingUntil(Date.now() + GIVE_UP_CONNECTING_AFTER_MS);
 
     try {
-      const canHear = await requestMicrophoneAccess();
+      const microphone = await requestMicrophoneAccess();
 
       // On a phone a refusal is the end of it: the assistant gesture exists to be talked to, there
       // is no keyboard in front of you when you make it, and a text field would be answering a
       // question nobody asked. In a browser it is the opposite — this is where Jarvis is developed
       // and demonstrated, the keyboard is right there, and refusing the microphone is a thing you
       // do on purpose when you are in a call, in an open office, or want the same input twice.
-      if (!canHear && ON_A_PHONE) {
+      if (!microphone && ON_A_PHONE) {
         reportProblem('Jarvis needs the microphone in order to listen.');
         return;
       }
@@ -310,8 +324,12 @@ export function ConversationScreen({ settings, onEditSettings, inSheet = false }
       // session is told not to greet a second time, and its microphone is kept muted until he has
       // finished, so the agent does not hear him through the speaker and take it for you. If the
       // session is slower than the greeting, the screen simply goes on connecting as it always did.
-      if (canHear) {
-        const greeted = await beginGreeting();
+      //
+      // **In a browser the microphone is still held open while he starts**, which is what lets a tab
+      // nobody has clicked play him at all; it is let go as soon as the greeting has started, or been
+      // refused. See `microphone-permission.web.ts`.
+      if (microphone) {
+        const greeted = await greetHolding(microphone, beginGreeting);
         const { token } = await requestConversationToken({ settings, participantName: PHONE_PARTICIPANT_NAME });
         startSession({
           conversationToken: token,

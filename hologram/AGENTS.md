@@ -158,8 +158,11 @@ easy to break:
   LiveKit's own focus request as the call connects would pause him mid-sentence.
 - **Its audio mode is set once, before any session.** On Android `setAudioModeAsync` also writes
   `AudioManager.mode`, and doing it mid-call would take the call out of `MODE_IN_COMMUNICATION`.
-- **No greeting where it cannot be heard.** A browser that has had no tap refuses to play, so there
-  it is not attempted and the agent keeps its own first message.
+- **In a browser, only while the microphone is held.** A tab nobody has clicked since it loaded
+  refuses to play a sound unless the page is using the microphone, so the phone app's web build
+  holds the stream it asked permission with until `beginGreeting` resolves. There `beginGreeting`
+  waits for the browser's answer, and if it is still no the greeting is dropped and the agent
+  keeps its own first message, so he is never left not greeting at all.
 
 `useUserVoice` is the `UserVoice` for the listening lattice: presence is only ever the latest
 `vad_score` (`vad-score.ts`), ignored while he speaks or greets — the firmware's

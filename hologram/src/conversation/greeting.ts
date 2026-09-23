@@ -1,6 +1,7 @@
 import { useConversationInput } from '@elevenlabs/react-native';
-import { setAudioModeAsync, useAudioPlayer } from 'expo-audio';
+import { type AudioPlayer, setAudioModeAsync, useAudioPlayer } from 'expo-audio';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Platform } from 'react-native';
 import { isGreetingOver, WITHOUT_FIRST_MESSAGE } from '../greeting-handover';
 import { createGreetingReaders } from '../greeting-voice';
 import type { JarvisVoice } from '../voice-contract';
@@ -36,16 +37,21 @@ function mixWithTheCall(): Promise<void> {
 }
 
 /**
- * Whether this is somewhere a sound may start without a tap first.
+ * Whether a greeting just asked to play was refused by the browser.
  *
- * Only ever "no" in a browser that has not been touched since the page loaded — a reload straight
- * onto the conversation — which refuses to play and, in expo-audio's web player, does so as an
- * unhandled rejection. A greeting that cannot be heard must not also take the agent's own first
- * message away, so there it is not attempted at all. A phone and a watch have no such rule, and no
- * `navigator.userActivation` to say otherwise.
+ * **Only a browser refuses**, and only a tab nobody has clicked since it loaded — unless it has
+ * something else that lets it sound, which the conversation screen makes sure it has: a browser
+ * lets a page that is using the microphone play without a click, so the screen holds its
+ * microphone open until the greeting has started. What is left is a browser that refuses anyway,
+ * and a greeting that cannot be heard must not also take the agent's own first message away.
+ *
+ * Read straight after `play()`, because that is when a browser answers: a refused media element
+ * never leaves `paused`, and one that is allowed leaves it at once. A phone and a watch are never
+ * refused, and their players leave `paused` only once the recording has buffered, so there it
+ * would read as a refusal that is not one.
  */
-function maySoundUnprompted(): boolean {
-  return typeof navigator === 'undefined' || navigator.userActivation?.hasBeenActive !== false;
+function refusedToPlay(player: AudioPlayer): boolean {
+  return Platform.OS === 'web' && player.paused;
 }
 
 /**
@@ -61,7 +67,9 @@ function maySoundUnprompted(): boolean {
  * What a screen does with it:
  *
  * 1. `beginGreeting()` as it starts the conversation, before the token request. It resolves to
- *    whether a greeting is playing.
+ *    whether a greeting is playing. In a browser, call it while the page still holds a microphone
+ *    stream — that is what lets an untouched tab play it — and it resolves only once the browser
+ *    has said yes or no.
  * 2. If it is, `greetingSessionOptions` go to `startSession`: the override that switches the agent's
  *    first message off, and the moment the session exists, which mutes its microphone — the agent
  *    must not hear Jarvis greet through the speaker and take it for the user speaking.
@@ -101,29 +109,6 @@ export function useGreeting() {
     }
   }, [setMuted]);
 
-  const beginGreeting = useCallback(async () => {
-    if (!maySoundUnprompted()) {
-      return false;
-    }
-    await mixWithTheCall();
-    askedAt.current = Date.now();
-    rewound.current = false;
-    inProgress.current = true;
-    setGreeting(true);
-    // Summoned before, the player is parked at the end of the last greeting.
-    player
-      .seekTo(0)
-      .catch(() => undefined)
-      .then(() => {
-        if (!inProgress.current) {
-          return;
-        }
-        rewound.current = true;
-        player.play();
-      });
-    return true;
-  }, [player]);
-
   const stopGreeting = useCallback(() => {
     if (!inProgress.current) {
       return;
@@ -131,6 +116,36 @@ export function useGreeting() {
     player.pause();
     finishGreeting();
   }, [player, finishGreeting]);
+
+  const beginGreeting = useCallback(async () => {
+    await mixWithTheCall();
+    askedAt.current = Date.now();
+    rewound.current = false;
+    inProgress.current = true;
+    setGreeting(true);
+    // Summoned before, the player is parked at the end of the last greeting.
+    const started = player
+      .seekTo(0)
+      .catch(() => undefined)
+      .then(() => {
+        if (!inProgress.current) {
+          return false;
+        }
+        rewound.current = true;
+        player.play();
+        return !refusedToPlay(player);
+      });
+    // A phone and a watch are never refused, so they do not wait for the seek: the token request
+    // goes out beside the greeting, not after it.
+    if (Platform.OS !== 'web') {
+      return true;
+    }
+    if (await started) {
+      return true;
+    }
+    stopGreeting();
+    return false;
+  }, [player, stopGreeting]);
 
   useEffect(() => {
     if (!greeting) {
