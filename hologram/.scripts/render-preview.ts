@@ -14,7 +14,7 @@
  * Playwright build of ffmpeg has exactly those and nothing else.
  */
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ImageFormat } from '@shopify/react-native-skia/lib/module/skia/types';
 import { JsiSkApi } from '@shopify/react-native-skia/lib/module/skia/web';
@@ -111,9 +111,15 @@ async function main() {
 
 /** The surface's picture as a JPEG, which is what the frames are stitched from. */
 function snapshot(surface: {
-  makeImageSnapshot: () => { encodeToBytes: (format: ImageFormat, quality: number) => Uint8Array | null };
+  makeImageSnapshot: () => {
+    encodeToBytes: (format: ImageFormat, quality: number) => Uint8Array | null;
+    dispose: () => void;
+  };
 }) {
-  const bytes = surface.makeImageSnapshot().encodeToBytes(ImageFormat.JPEG, 95);
+  const image = surface.makeImageSnapshot();
+  const bytes = image.encodeToBytes(ImageFormat.JPEG, 95);
+  // Freed at once: CanvasKit's images live in its own heap, which a few hundred frames of them fill.
+  image.dispose();
   if (!bytes) {
     throw new Error('Could not encode a frame');
   }
@@ -151,8 +157,10 @@ async function renderListeningStyles(skia: ReturnType<typeof JsiSkApi>, output: 
   if (!single || !together) {
     throw new Error('Could not make a surface');
   }
-  const alone: Uint8Array[][] = styles.map(() => []);
-  const all: Uint8Array[] = [];
+  // Appended to disk frame by frame rather than held: six clips of full-density frames at once is
+  // more than CanvasKit's heap survives.
+  const aloneFrames = styles.map(({ style }) => startFrames(output, `listening-${style}`));
+  const allFrames = startFrames(output, 'listening-side-by-side');
   // One performance per style, each advanced the same way, so every candidate hears the same voice.
   const performs = styles.map(() => createPerformance(FRAME_SECONDS, THOUGHT_FADE_SECONDS));
   for (let index = 0; index * FRAME_SECONDS <= LISTENING_SECONDS; index++) {
@@ -174,7 +182,7 @@ async function renderListeningStyles(skia: ReturnType<typeof JsiSkApi>, output: 
       one.clear(skia.Color('#000000'));
       drawHologram(one, SIZE, frames[place], scene, resources);
       single.flush();
-      alone[place]?.push(snapshot(single));
+      appendFileSync(aloneFrames[place] ?? '', snapshot(single));
       canvas.save();
       canvas.translate(place * SIDE_BY_SIDE_SIZE, 0);
       drawHologram(canvas, SIDE_BY_SIDE_SIZE, frames[place], scene, resources);
@@ -184,20 +192,34 @@ async function renderListeningStyles(skia: ReturnType<typeof JsiSkApi>, output: 
       canvas.drawText(name, left, SIDE_BY_SIDE_SIZE + NAME_SIZE, ink, font);
     });
     together.flush();
-    all.push(snapshot(together));
+    appendFileSync(allFrames, snapshot(together));
   }
-  styles.forEach(({ style }, place) => {
-    encode(output, `listening-${style}`, alone[place] ?? [], ffmpeg);
+  styles.forEach(({ style }) => {
+    stitchFrames(output, `listening-${style}`, ffmpeg);
   });
-  encode(output, 'listening-side-by-side', all, ffmpeg);
+  stitchFrames(output, 'listening-side-by-side', ffmpeg);
+}
+
+/** Where a clip's frames are gathered — concatenated JPEGs — emptied for a fresh clip. */
+function startFrames(output: string, name: string) {
+  const frames = join(output, `jarvis-${name}.mjpeg`);
+  writeFileSync(frames, new Uint8Array());
+  return frames;
 }
 
 /** Stitches JPEG frames into `<name>.webm` in `output`. */
 function encode(output: string, name: string, jpegs: Uint8Array[], ffmpeg: string) {
+  writeFileSync(startFrames(output, name), Buffer.concat(jpegs));
+  stitchFrames(output, name, ffmpeg);
+}
+
+/**
+ * Stitches the frames gathered for `name` into `<name>.webm`, and removes them. This ffmpeg may
+ * have no pipe protocol, so the frames go through a file of concatenated JPEGs.
+ */
+function stitchFrames(output: string, name: string, ffmpeg: string) {
   const file = join(output, `jarvis-${name}.webm`);
-  // This ffmpeg may have no pipe protocol, so the frames go through a file of concatenated JPEGs.
   const frames = join(output, `jarvis-${name}.mjpeg`);
-  writeFileSync(frames, Buffer.concat(jpegs));
   const result = spawnSync(
     ffmpeg,
     ['-y', '-f', 'image2pipe', '-framerate', String(FPS), '-c:v', 'mjpeg', '-i', `file:${frames}`].concat([
@@ -216,7 +238,7 @@ function encode(output: string, name: string, jpegs: Uint8Array[], ffmpeg: strin
   if (result.status !== 0) {
     throw new Error(`ffmpeg failed for ${name}`);
   }
-  console.log(`${file}: ${jpegs.length} frames`);
+  console.log(`${file}: done`);
 }
 
 await main();
