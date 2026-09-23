@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.1](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v2.0.0...elevenlabs-v2.0.1) (2026-09-23)
+
+
+### Bug Fixes
+
+* **mcp:** resume meal plan runs from email replies ([#761](https://github.com/ffMathy/hey-jarvis/issues/761)) ([3ef872b](https://github.com/ffMathy/hey-jarvis/commit/3ef872b66483e1fd1114b4be3723426e7a1bfcbe))
+
 ## [2.0.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v1.0.0...elevenlabs-v2.0.0) (2026-09-21)
 
 
