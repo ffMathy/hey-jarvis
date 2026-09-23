@@ -27,7 +27,9 @@
 //                       furry with short fragments across them, plus the long loop rising 37°
 //                       past the core, the saturated ")" arc at 0.57R and the faint near half of
 //                       the edge-on ellipse — all of it turning the other way; and data streaks
-//   drawBody            the fragment body's dim and mid strokes: 1680 fragments inside 0.94R
+//   drawBody            while someone talks to him, the body snaps onto a slowly turning
+//                       hexagonal lattice that breathes with their voice (see latticeFragment);
+//                       otherwise the fragment body's dim and mid strokes: 1680 fragments inside 0.94R
 //                       (four in five plain dashes, the rest L, bracket, T, Z glyphs, rings and
 //                       cell outlines mostly near the core; median 0.083R, clumped into the mass
 //                       with bare fill between the clumps, heavier on the left) and a
@@ -70,9 +72,6 @@
 //   drawChips           the latest burst's rim chips: solid amber slabs that break up rather
 //                       than fade
 //   drawAccents         the jagged lightning filament and the very rare two-frame red segment
-//   drawListening       while someone talks to him: a slow ring of short ticks just outside the
-//                       limb whose lengths follow how loud they are — faint, and his only sign
-//                       of it, so it is never mistaken for him speaking
 //
 // IDLE MOTION (section 3; nothing breathes, pulses or flickers as a whole)
 // - The outer rim layer rolls clockwise in the screen plane at 11°/s: the truss, the thin
@@ -115,7 +114,7 @@
 //   level       deliberately unused: loudness has no counterpart in the film.
 //   speaking    unused too: agitation already says whether he is talking, and a flag that
 //               flips within one frame would make the sphere jump.
-//   agitation   drives:
+//   agitation   held back until the vortex has all but formed him (appearance 0.6-1), then drives:
 //               - mix = 0.5·agitation: calm fragments whose ids fall below mix fade out and
 //                 fast fragments (lit 0.06-0.14 s) whose ids fall below 2·mix fade in. Half
 //                 and no more, because the two make up for each other exactly at that share
@@ -268,7 +267,8 @@ export interface HologramFrame {
   thinking: number;
   /**
    * 0–1: how sure he is that someone is talking to him — ElevenLabs' voice-activity score, eased.
-   * Left out, nobody is. See {@link drawListening}: a quiet ring of light round him, nothing more.
+   * Left out, nobody is. See {@link latticeFragment}: his particles snap onto a slowly turning
+   * hexagonal lattice while someone is speaking.
    */
   hearing?: number;
   /** 0–1: how loud they are, eased. Only read while {@link hearing} is above nothing. */
@@ -380,17 +380,24 @@ const SWELL_WITH_VOICE = 0.18;
 /** How small the sphere has shrunk to by the time he has gone. */
 const LEAVING_SMALLEST = 0.55;
 /**
- * The listening ring: how many ticks, where they start, how far the loudest voice reaches them and
- * how bright the whole ring is at full attention. Deliberately faint — it is a sign that he hears
- * you, beside everything he does when he answers, and a quarter of his own glow is plenty.
+ * How he listens: while someone talks to him his particles snap onto a hexagonal lattice that turns
+ * slowly inside the ball and breathes with their voice — a crystalline, working look that says
+ * "listening" without resembling anything he does when he speaks.
+ *
+ * Chosen from five candidates rendered side by side: drifting clusters, orbital rings, ripples, a
+ * galaxy's arms and this. It replaced a ring of ticks round the outside of the ball,
+ * which read as a decoration rather than as him paying attention.
  */
-const LISTENING_TICKS = 96;
-const LISTENING_INNER = 1.07;
-const LISTENING_REACH = 0.1;
-const LISTENING_ALPHA = 0.42;
-/** How fast the ring turns and how fast its ripple travels round it, in radians a second. */
-const LISTENING_TURN = 0.35;
-const LISTENING_RIPPLE = 3.2;
+/** How far apart the lattice's points are, and how fast it turns, in radians a second. */
+const LATTICE_SPACING = 0.11;
+const LATTICE_TURN = 0.12;
+/** How much the lattice's spacing swells at full voice, and how quickly it breathes, in radians a second. */
+const LATTICE_BREATH = 0.18;
+const LATTICE_PULSE = 2.4;
+/** How much of the way to their point the particles go at full attention: not quite all of it. */
+const LATTICE_PULL = 0.88;
+/** How much shorter a stroke is drawn while it is on the lattice, so a point reads as a knot, not a smear. */
+const LATTICE_STROKE_SHRINK = 0.55;
 /** How far round a fragment has still to go as it leaves the core in the vortex, in radians: a turn and a half. */
 const VORTEX_TWIST = 3 * Math.PI;
 /** How long the vortex's strokes are drawn while they are still travelling, as a multiple of their length. */
@@ -533,6 +540,29 @@ const FRAGMENT_CODE_GLYPH_STEP = 12;
  * {@link FEWEST_PARTICLES} in `density-control.ts` is a share of this, so it moves when this does.
  */
 export const PARTICLE_COUNT = 10000;
+
+/**
+ * How many fragments the watch's scene is built from.
+ *
+ * A fraction of the phone's {@link PARTICLE_COUNT}, and the single biggest thing that makes the
+ * sphere affordable here. The density share thins the scene by skipping fragments *inside* the
+ * draw loop, so no share, however small, stops the loop visiting every fragment there is — and
+ * building the scene costs this many again, serialised into the worklet runtime at mount. Neither
+ * is something the controller can steer away from. On a watch both were being paid in full, for a
+ * scene sized for a phone.
+ *
+ * It is a ceiling rather than a count: what is actually drawn starts far below this and only comes
+ * up if the frame rate allows — see `watch/src/watch-density.ts`, which wires the controller in.
+ *
+ * Here rather than in the watch app so that anything rendering the watch's Jarvis — the README's
+ * clip, in `.scripts/render-showcase.ts` — draws him at exactly the most the watch can hold.
+ *
+ * It was 1200, and that was the ceiling the watch actually sat at: the sphere ran "super smooth,
+ * almost too smooth", with frames to spare and nowhere to spend them. Half the phone's scene now,
+ * with the loop holding thirty frames a second (`WATCH_PACE` in `density-control.ts`) rather than forty, so what a
+ * watch can afford is decided by the watch rather than by this number.
+ */
+export const WATCH_PARTICLE_COUNT = 5000;
 
 /**
  * Turns a fragment's id into where it sits in the thinning, 0-1.
@@ -1498,7 +1528,6 @@ export function createHologramResources(Skia: SkiaApiType, scene: Scene) {
     chipCores: makeBuilder(),
     lightning: makeBuilder(),
     red: makeBuilder(),
-    listening: makeBuilder(),
   };
   // one flat list, so the frame can reset them all first
   const allPathBuilders = [
@@ -1518,7 +1547,6 @@ export function createHologramResources(Skia: SkiaApiType, scene: Scene) {
     pathBuilders.chipCores,
     pathBuilders.lightning,
     pathBuilders.red,
-    pathBuilders.listening,
   ];
 
   return {
@@ -1576,8 +1604,6 @@ export function createHologramResources(Skia: SkiaApiType, scene: Scene) {
     sparkStroke: makeStroke('#ffae4e', StrokeCap.Round),
     lightningStroke: makeStroke('#c39568', StrokeCap.Butt),
     redStroke: makeStroke('#b3470f', StrokeCap.Butt),
-    listeningStroke: makeStroke('#ffb454', StrokeCap.Round),
-    listeningGlowStroke: makeStroke('#e8842a', StrokeCap.Round),
     ...buildWhorl(Skia, createRandom(scene.textureSeed ^ 0x5bd1e995)),
     strandFanPath: buildStrandFan(Skia),
     ...buildInnerStructure(Skia),
@@ -1730,7 +1756,14 @@ function readScript(scene: Scene, time: number) {
 function analyseFrame(frame: HologramFrame, size: number, scene: Scene) {
   'worklet';
   const time = frame.time;
-  const agitation = clamp01(frame.agitation);
+  // How far on the vortex is: 1 once it is over.
+  const swirl = clamp01(frame.appearance);
+  // What speech does to him — chips thrown off the limb, the crescent splitting, the fraying —
+  // waits until the vortex has all but formed him. The greeting plays while he arrives, and
+  // without this it threw full-size slabs off a limb that was not there yet, into empty space
+  // round a sphere still gathered at its core.
+  const formed = smooth01((swirl - 0.6) / 0.4);
+  const agitation = clamp01(frame.agitation) * formed;
   const bands = frame.bands;
   const lowDrive = clamp01((bandAverage(bands, 0, 6) - 0.35) / 0.45);
   const highDrive = clamp01((bandAverage(bands, 14, 24) - 0.2) / 0.45);
@@ -1741,10 +1774,10 @@ function analyseFrame(frame: HologramFrame, size: number, scene: Scene) {
   // Loudness, not the agitation envelope: the glow follows his voice moment to moment, as the
   // first hologram's did, while the chips and the churn follow the envelope.
   const voice = clamp01(frame.level) ** 0.8;
-  // How far on the vortex is: 1 once it is over.
-  const swirl = clamp01(frame.appearance);
   const settle = 1 - smooth01(swirl);
   const presence = clamp01(frame.presence);
+  const hearing = clamp01(frame.hearing ?? 0);
+  const hearingLevel = clamp01(frame.hearingLevel ?? 0);
   // The whole sphere fades in over the first fifth of the vortex, so the first particles leaving
   // the core are seen as they go; their own travel is what does the arriving. Leaving fades it
   // out through the same layer.
@@ -1773,12 +1806,15 @@ function analyseFrame(frame: HologramFrame, size: number, scene: Scene) {
     // what the eye is left with. Without this the whorl, the rim and the ladder go on doing what
     // they always do and the sweep is one more thing happening among several — which is how the
     // first version of thinking looked, and why it did not read as a different state at all.
-    innerAlpha: (1 - 0.8 * thinking) * smooth01((swirl - 0.15) / 0.6),
+    // The whorl recedes while he listens, as while he thinks, so the lattice is what is seen.
+    innerAlpha: (1 - 0.8 * thinking) * (1 - 0.6 * hearing) * smooth01((swirl - 0.15) / 0.6),
     coreAlpha: smooth01(swirl / 0.25),
     rimAlpha: (1 - 0.65 * thinking) * smooth01((swirl - 0.55) / 0.45),
     swirl,
-    hearing: clamp01(frame.hearing ?? 0),
-    hearingLevel: clamp01(frame.hearingLevel ?? 0),
+    hearing,
+    hearingLevel,
+    /** Where {@link latticeFragment} leaves a fragment: x, y. */
+    listened: [0, 0],
     /** Where {@link swirlFragment} leaves a fragment: x, y, its direction, and how much of it shows. */
     swirled: [0, 0, 0, 0, 0],
     agitation,
@@ -1797,7 +1833,7 @@ function analyseFrame(frame: HologramFrame, size: number, scene: Scene) {
     spread: agitation * (0.7 + 0.3 * lowDrive),
     frayDrive: agitation * (0.55 + 0.45 * highDrive),
     burstAge,
-    burstStrength: clamp01(frame.burstStrength),
+    burstStrength: clamp01(frame.burstStrength) * formed,
     // how far the burst throws, and how many chips
     burstReach: clamp01(frame.burstStrength),
     burstCount: Math.floor(frame.burstCount),
@@ -2127,6 +2163,51 @@ function swirlFragment(x: number, y: number, unitX: number, unitY: number, id: n
   out[4] = smooth01((travelled - 0.04) * 6) * stretch;
 }
 
+/** Its place on the nearest point of the slowly turning hexagonal grid, which breathes with the voice. */
+function latticeTarget(x: number, y: number, id: number, state: FrameState, out: number[]) {
+  'worklet';
+  const turn = state.time * LATTICE_TURN;
+  const cos = Math.cos(turn);
+  const sin = Math.sin(turn);
+  const spacing = LATTICE_SPACING * (1 + LATTICE_BREATH * state.hearingLevel * Math.sin(state.time * LATTICE_PULSE));
+  // Into the grid's own frame, snapped to its nearest row and column — every other row shifted by
+  // half a spacing, which is what makes it hexagonal — and back out.
+  const localX = x * cos + y * sin;
+  const localY = y * cos - x * sin;
+  const rowHeight = spacing * 0.866;
+  const row = Math.round(localY / rowHeight);
+  const shift = row % 2 === 0 ? 0 : spacing / 2;
+  const column = Math.round((localX - shift) / spacing);
+  const jitter = (fraction(id * 7.7113) - 0.5) * 0.018;
+  const snappedX = column * spacing + shift + jitter;
+  const snappedY = row * rowHeight + jitter;
+  out[0] = snappedX * cos - snappedY * sin;
+  out[1] = snappedY * cos + snappedX * sin;
+}
+
+/**
+ * Where a fragment is while he listens: writes x, y into `state.listened` — just where it already
+ * is when nobody is talking to him.
+ *
+ * As someone starts speaking each fragment moves that share of the way — {@link LATTICE_PULL} at
+ * full attention — to the lattice point nearest it, with a little jitter from its id so a point is a
+ * small knot of strokes rather than one. Each fragment lives only a fraction of a second before it
+ * re-lights, so the ball resolves onto the lattice rather than sliding onto it.
+ */
+function latticeFragment(x: number, y: number, id: number, state: FrameState) {
+  'worklet';
+  const out = state.listened;
+  const pull = state.hearing * LATTICE_PULL;
+  if (pull <= 0.001) {
+    out[0] = x;
+    out[1] = y;
+    return;
+  }
+  latticeTarget(x, y, id, state, out);
+  out[0] = x + (out[0] - x) * pull;
+  out[1] = y + (out[1] - y) * pull;
+}
+
 /** The fragment body, turning about the vertical axis, sorted into the dim, mid and bright builders. */
 function appendBody(builders: PathBuilder[], body: number[], state: FrameState) {
   'worklet';
@@ -2156,8 +2237,9 @@ function appendBody(builders: PathBuilder[], body: number[], state: FrameState) 
     const swirled = state.swirled;
     const drawn = swirled[4];
     if (drawn <= 0) continue;
-    const x = swirled[0];
-    const y = swirled[1];
+    latticeFragment(swirled[0], swirled[1], id, state);
+    const x = state.listened[0];
+    const y = state.listened[1];
     // While he thinks, only what the plane is passing stays lit; see SCAN_SECONDS.
     const litHere = lit * scanned(y, state);
     if (litHere < FRAGMENT_FAINTEST) continue;
@@ -2172,7 +2254,16 @@ function appendBody(builders: PathBuilder[], body: number[], state: FrameState) 
     // Arriving at a third of its length, as it used to, meant arriving at full brightness over
     // a dozen pixels at once — with twice as many fragments that is a visible speckle at every
     // frame, and it is what the spec's script-boundary check counts.
-    appendGlyph(builders[tier + reading[2]], reading[1], x, y, swirled[2], swirled[3], length * 0.5 * litHere * drawn);
+    const gathered = 1 - LATTICE_STROKE_SHRINK * state.hearing;
+    appendGlyph(
+      builders[tier + reading[2]],
+      reading[1],
+      x,
+      y,
+      swirled[2],
+      swirled[3],
+      length * 0.5 * litHere * drawn * gathered,
+    );
   }
 }
 
@@ -2223,14 +2314,16 @@ function appendStream(builders: PathBuilder[], stream: number[], state: FrameSta
     swirlFragment(x, y, 1, 0, stream[offset + 7], state);
     const swirled = state.swirled;
     if (swirled[4] <= 0) continue;
+    // The shell snaps onto the lattice too, or it would go on streaming under it.
+    latticeFragment(swirled[0], swirled[1], stream[offset + 7], state);
     appendGlyph(
       builders[tier],
       stream[offset + 9],
-      swirled[0],
-      swirled[1],
+      state.listened[0],
+      state.listened[1],
       swirled[2],
       swirled[3],
-      Math.abs(halfX) * lit * swirled[4],
+      Math.abs(halfX) * lit * swirled[4] * (1 - LATTICE_STROKE_SHRINK * state.hearing),
     );
   }
 }
@@ -3061,40 +3154,6 @@ function drawAccents(canvas: HologramCanvas, resources: Resources, state: FrameS
 }
 
 /**
- * While someone talks to him: a ring of short ticks just outside the limb, turning slowly, whose
- * lengths follow how loud they are with a ripple running round it — the way the Voice preview's
- * LED ring answers a voice. Faint on purpose, and outside the ball rather than in it, so that it
- * reads as him paying attention and never as him speaking. Nothing at all when nobody is.
- */
-function drawListening(canvas: HologramCanvas, resources: Resources, state: FrameState) {
-  'worklet';
-  const hearing = state.hearing;
-  if (hearing <= 0.01) return;
-  const builder = resources.pathBuilders.listening;
-  const level = state.hearingLevel;
-  const turn = state.time * LISTENING_TURN;
-  const ripplePhase = state.time * LISTENING_RIPPLE;
-  for (let tick = 0; tick < LISTENING_TICKS; tick++) {
-    const angle = (tick / LISTENING_TICKS) * 2 * Math.PI + turn;
-    const ripple = 0.5 + 0.5 * Math.sin(angle * 3 - ripplePhase);
-    const own = 0.6 + 0.4 * hashInteger(tick * 53 + 7);
-    const length = 0.012 + LISTENING_REACH * level * (0.3 + 0.7 * ripple) * own;
-    const cos = Math.cos(angle);
-    const sin = Math.sin(angle);
-    pathMoveTo(builder, cos * LISTENING_INNER, sin * LISTENING_INNER);
-    pathLineTo(builder, cos * (LISTENING_INNER + length), sin * (LISTENING_INNER + length));
-  }
-  const ring = pathOf(resources.skia, builder);
-  const alpha = LISTENING_ALPHA * hearing * (0.55 + 0.45 * level);
-  resources.listeningGlowStroke.setStrokeWidth(0.03);
-  resources.listeningGlowStroke.setAlphaf(0.35 * alpha);
-  canvas.drawPath(ring, resources.listeningGlowStroke);
-  resources.listeningStroke.setStrokeWidth(0.009);
-  resources.listeningStroke.setAlphaf(alpha);
-  canvas.drawPath(ring, resources.listeningStroke);
-}
-
-/**
  * The ring that blooms out of the core as a pass finishes: one step of the thought, done.
  *
  * Reuses the thin ring's paint, drawn at a growing radius and fading as it goes, so it leaves the
@@ -3147,7 +3206,6 @@ export function drawHologram(
   drawChips(canvas, resources, state);
   drawAccents(canvas, resources, state);
   drawThinkingPulse(canvas, resources, state);
-  drawListening(canvas, resources, state);
   if (arriving) canvas.restore();
   canvas.restore();
 }

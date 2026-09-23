@@ -50,8 +50,8 @@ export interface JarvisHologramProps {
    */
   quietestSpeech?: number;
   /**
-   * The person talking to him, if anyone is: a quieter sign on the sphere that he is listening,
-   * which follows how loud they are. Left out, he never shows it.
+   * The person talking to him, if anyone is: while they speak his particles snap onto a
+   * lattice that turns inside him, breathing with how loud they are. Left out, he never shows it.
    */
   user?: UserVoice;
   /**

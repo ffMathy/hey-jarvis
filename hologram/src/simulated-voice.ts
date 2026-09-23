@@ -185,7 +185,7 @@ const USER_PAUSE_SECONDS = 1.4;
 
 /**
  * Someone talking to Jarvis, made up from the clock: what ElevenLabs' voice-activity score and the
- * microphone would say at `seconds`. Phrases with pauses between them, so the listening ring can be
+ * microphone would say at `seconds`. Phrases with pauses between them, so the listening lattice can be
  * seen coming up and falling back, and syllables within a phrase, so its reach follows a voice.
  *
  * The volume is on a microphone's scale — a voice at arm's length is a small number — which is the

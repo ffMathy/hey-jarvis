@@ -513,6 +513,19 @@ describe('the hologram', () => {
     expect(difference(at(0.999), formed)).toBeLessThan(0.5);
   });
 
+  it('says the greeting while it arrives without throwing anything off a limb that is not there yet', () => {
+    // The greeting plays during the vortex. Chips, fraying and the split crescent are what speech
+    // does to a formed ball; early in the vortex there is no limb for them to leave, so a frame
+    // spoken over must look like the same frame in silence.
+    const hologram = mount();
+    const bands = spectrum('low', 0.8);
+    for (const appearance of [0.2, 0.4]) {
+      const silent = render({ ...silence(0.5), appearance }, hologram);
+      const spoken = render({ ...speech(0.5, 0.9, bands, 0.05, 3), appearance }, hologram);
+      expect(brightBeyondLeftLimb(spoken)).toBeLessThanOrEqual(brightBeyondLeftLimb(silent) + 1);
+    }
+  });
+
   it('spirals out only the particles it is drawing, so a thinned swarm arrives thinned', () => {
     // The vortex moves particles; it never adds any. A device drawing a share of the scene sees
     // that share arrive. The core, the whorl and the rim are not particles and are not thinned, so
@@ -601,31 +614,43 @@ describe('the hologram', () => {
     }
   });
 
-  it('listens with a faint ring outside the limb that follows how loud they are, and leaves the ball alone', () => {
-    // Someone talking to him is shown as a sign that he hears them, not as anything he does: a ring
-    // of ticks just past the limb whose reach follows their voice. The ball itself must not change,
-    // or listening would read as him speaking.
+  it('listens by snapping onto a turning lattice inside him, which breathes with their voice', () => {
+    // Someone talking to him is shown by the swarm itself: his particles snap onto a hexagonal
+    // lattice that turns slowly inside the ball. Measured as how uneven the light inside the disc
+    // is — a swarm spread evenly through the ball is smooth, knots with dark between them are
+    // not — and nothing may be thrown past the limb, which is what his own speech does.
     const hologram = mount();
-    const time = 5.4;
-    const ringLight = (pixels: Uint8Array) => {
-      let total = 0;
-      for (let y = 0; y < SIZE; y++) {
-        for (let x = 0; x < SIZE; x++) {
-          const radius = radiusOf(x, y);
-          if (radius > 1.06 && radius < 1.2) total += luminance(pixels, (y * SIZE + x) * 4);
+    const unevenness = (pixels: Uint8Array) => {
+      const values: number[] = [];
+      for (let y = 0; y < SIZE; y += 4) {
+        for (let x = 0; x < SIZE; x += 4) {
+          if (radiusOf(x, y) < 0.9) values.push(luminance(pixels, (y * SIZE + x) * 4));
         }
       }
-      return total;
+      const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+      const variance = values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / values.length;
+      return Math.sqrt(variance) / mean;
     };
+    const time = 5.4;
     const calm = render(silence(time), hologram);
     const quiet = render({ ...silence(time), hearing: 1, hearingLevel: 0.1 }, hologram);
     const loud = render({ ...silence(time), hearing: 1, hearingLevel: 1 }, hologram);
 
-    expect(ringLight(quiet)).toBeGreaterThan(ringLight(calm));
-    expect(ringLight(loud)).toBeGreaterThan(ringLight(quiet) * 1.3);
-    expect(Math.abs(discBrightness(loud) - discBrightness(calm))).toBeLessThan(0.5);
-    // Subtle: the whole square brightens by a small share, where speech brightens the ball itself.
-    expect(brightness(loud)).toBeLessThan(brightness(calm) * 1.15);
+    // A lattice's knots are finer than the clusters it replaced, so it roughens the disc by about a
+    // quarter rather than a third — at every moment, not just this one — and more the more he attends.
+    for (const moment of [3, 4, time, 7.3]) {
+      const listening = render({ ...silence(moment), hearing: 1, hearingLevel: 0.1 }, hologram);
+      expect(unevenness(listening)).toBeGreaterThan(unevenness(render(silence(moment), hologram)) * 1.2);
+    }
+    const half = render({ ...silence(time), hearing: 0.5, hearingLevel: 0.1 }, hologram);
+    expect(unevenness(half)).toBeGreaterThan(unevenness(calm));
+    expect(unevenness(quiet)).toBeGreaterThan(unevenness(half));
+    // Their voice makes the lattice breathe, so how loud they are changes the picture.
+    expect(difference(loud, quiet)).toBeGreaterThan(1);
+    expect(brightBeyondLeftLimb(loud)).toBeLessThanOrEqual(brightBeyondLeftLimb(calm) + 1);
+    // And the lattice turns: a second later its knots are somewhere else.
+    const later = render({ ...silence(time + 1), hearing: 1, hearingLevel: 0.1 }, hologram);
+    expect(difference(later, quiet)).toBeGreaterThan(1);
   });
 
   it('leaves by shrinking and fading, and takes his shadow with him', () => {

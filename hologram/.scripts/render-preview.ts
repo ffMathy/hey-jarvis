@@ -1,6 +1,6 @@
 /**
  * Renders short clips of the sphere doing one thing each, to WebM, for looking at a change before it
- * is on a device: the vortex he arrives in, the ring he listens with, and the greeting he says.
+ * is on a device: the vortex he arrives in, the lattice he listens with, and the greeting he says.
  *
  * Every frame goes through the same voice pipeline the app runs — see `simulated-performance.ts` —
  * so what a clip shows is what the view would draw, not an impression of it.
@@ -97,36 +97,68 @@ async function main() {
         drawHologram(canvas, SIZE, perform(moment), scene, resources);
       }
       surface.flush();
-      const bytes = surface.makeImageSnapshot().encodeToBytes(ImageFormat.JPEG, 95);
-      if (!bytes) {
-        throw new Error('Could not encode a frame');
-      }
-      jpegs.push(bytes);
+      jpegs.push(snapshot(surface));
     }
-    const file = join(output, `jarvis-${clip.name}.webm`);
-    // This ffmpeg may have no pipe protocol, so the frames go through a file of concatenated JPEGs.
-    const frames = join(output, `jarvis-${clip.name}.mjpeg`);
-    writeFileSync(frames, Buffer.concat(jpegs));
-    const result = spawnSync(
-      ffmpeg,
-      ['-y', '-f', 'image2pipe', '-framerate', String(FPS), '-c:v', 'mjpeg', '-i', `file:${frames}`].concat([
-        '-c:v',
-        'libvpx',
-        '-b:v',
-        '8M',
-        '-crf',
-        '8',
-        '-an',
-        file,
-      ]),
-      { stdio: ['ignore', 'ignore', 'inherit'] },
-    );
-    rmSync(frames);
-    if (result.status !== 0) {
-      throw new Error(`ffmpeg failed for ${clip.name}`);
-    }
-    console.log(`${file}: ${jpegs.length} frames`);
+    encode(output, clip.name, jpegs, ffmpeg);
   }
+}
+
+/** The surface's picture as a JPEG, which is what the frames are stitched from. */
+function snapshot(surface: {
+  makeImageSnapshot: () => {
+    encodeToBytes: (format: ImageFormat, quality: number) => Uint8Array | null;
+    dispose: () => void;
+  };
+}) {
+  const image = surface.makeImageSnapshot();
+  const bytes = image.encodeToBytes(ImageFormat.JPEG, 95);
+  // Freed at once: CanvasKit's images live in its own heap, which a few hundred frames of them fill.
+  image.dispose();
+  if (!bytes) {
+    throw new Error('Could not encode a frame');
+  }
+  return bytes;
+}
+
+/** Where a clip's frames are gathered — concatenated JPEGs — emptied for a fresh clip. */
+function startFrames(output: string, name: string) {
+  const frames = join(output, `jarvis-${name}.mjpeg`);
+  writeFileSync(frames, new Uint8Array());
+  return frames;
+}
+
+/** Stitches JPEG frames into `<name>.webm` in `output`. */
+function encode(output: string, name: string, jpegs: Uint8Array[], ffmpeg: string) {
+  writeFileSync(startFrames(output, name), Buffer.concat(jpegs));
+  stitchFrames(output, name, ffmpeg);
+}
+
+/**
+ * Stitches the frames gathered for `name` into `<name>.webm`, and removes them. This ffmpeg may
+ * have no pipe protocol, so the frames go through a file of concatenated JPEGs.
+ */
+function stitchFrames(output: string, name: string, ffmpeg: string) {
+  const file = join(output, `jarvis-${name}.webm`);
+  const frames = join(output, `jarvis-${name}.mjpeg`);
+  const result = spawnSync(
+    ffmpeg,
+    ['-y', '-f', 'image2pipe', '-framerate', String(FPS), '-c:v', 'mjpeg', '-i', `file:${frames}`].concat([
+      '-c:v',
+      'libvpx',
+      '-b:v',
+      '8M',
+      '-crf',
+      '8',
+      '-an',
+      file,
+    ]),
+    { stdio: ['ignore', 'ignore', 'inherit'] },
+  );
+  rmSync(frames);
+  if (result.status !== 0) {
+    throw new Error(`ffmpeg failed for ${name}`);
+  }
+  console.log(`${file}: done`);
 }
 
 await main();

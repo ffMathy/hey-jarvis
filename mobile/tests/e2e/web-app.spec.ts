@@ -400,23 +400,34 @@ test('greets you from the recording while the conversation is still being dialle
 
 test('does not greet out loud in a browser nobody has touched since it loaded', async ({ page }) => {
   let tokenRequests = 0;
-  await page.route(CONVERSATION_TOKEN_URL, async (route: Route) => {
+  const answer = async (route: Route) => {
     tokenRequests++;
     await answerTokenRequest(route, 200, { token: 'a-webrtc-token', conversation_id: 'conv_1' });
-  });
+  };
+  await page.route(CONVERSATION_TOKEN_URL, answer);
 
   await page.goto('/');
   await configureElevenLabs(page);
   await expect.poll(() => tokenRequests).toBe(1);
 
-  // A reload lands straight on the conversation with no click behind it, and a browser will not
-  // start a sound then. Trying would only fail — and the agent would have been told not to greet,
-  // leaving nobody to. So he is left to greet in his own voice, as he did before the recording.
-  await page.reload();
+  // A second tab onto the saved settings lands straight on the conversation with no click behind
+  // it, and a browser will not start a sound then. Trying would only fail — and the agent would
+  // have been told not to greet, leaving nobody to. So he is left to greet in his own voice, as he
+  // did before the recording.
+  //
+  // A new tab rather than a reload of this one, and deliberately: a reload is not a guaranteed
+  // clean slate in Chromium, which about one run in five under load still reported the reloaded
+  // page as interacted with and let it play. A tab nobody has touched is exactly the case.
+  const untouched = await page.context().newPage();
+  await blockExternalRequests(untouched);
+  await countMicrophones(untouched);
+  await listenForSounds(untouched);
+  await untouched.route(CONVERSATION_TOKEN_URL, answer);
+  await untouched.goto('/');
   await expect.poll(() => tokenRequests).toBe(2);
   // Absence has no event to wait for; the greeting would have started well inside this.
-  await page.waitForTimeout(1000);
-  expect(await page.evaluate(() => window.soundsPlayed)).toEqual([]);
+  await untouched.waitForTimeout(1000);
+  expect(await untouched.evaluate(() => window.soundsPlayed)).toEqual([]);
 });
 
 test('explains a rejected API key in terms of the setting to fix', async ({ page }) => {

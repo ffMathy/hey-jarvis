@@ -6,7 +6,7 @@ An intelligent voice assistant for home automation, powered by AI agents and cus
 
 ## Jarvis, summoned
 
-Hold the power button on the phone and Jarvis comes up over whatever you were doing; on the watch he is the whole screen. Here he spirals out of his core while he says his greeting, rests, listens to somebody talking to him, works through what they said, and then goes.
+Hold the power button on the phone and Jarvis comes up over whatever you were doing; on the watch he is the whole screen. Here he spirals out of his core while he says his greeting, speaks, listens to somebody talking to him, works through what they said, and then goes — each phase named in the clip as it plays.
 
 <p align="center">
   <picture>
@@ -20,7 +20,7 @@ Hold the power button on the phone and Jarvis comes up over whatever you were do
   </picture>
 </p>
 
-One sphere, drawn once. Both devices bundle the same [`hologram`](./hologram) package, which is why there is no version of him that is only on the phone. These clips are that same drawing rendered frame by frame at 1300 particles — rendered offline, where nothing has to hold a frame rate — by [`hologram/.scripts/render-showcase.ts`](./hologram/.scripts/render-showcase.ts):
+One sphere, drawn once. Both devices bundle the same [`hologram`](./hologram) package, which is why there is no version of him that is only on the phone. These clips are that same drawing rendered frame by frame at the most particles each device can hold — 10,000 on the phone, 5,000 on the watch, where on a device the density loop draws whatever share of that it can afford — by [`hologram/.scripts/render-showcase.ts`](./hologram/.scripts/render-showcase.ts):
 
 ```bash
 bun hologram/.scripts/render-showcase.ts

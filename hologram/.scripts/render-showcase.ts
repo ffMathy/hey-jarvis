@@ -13,10 +13,12 @@
  * `prepare-device-art.sh`, and `device-art/NOTICE.md` says where each came from and under what
  * licence — including that the watch clips inherit CC BY-SA 4.0 from the frame in them.
  *
- * Two things are deliberately *not* the app. The particle count is {@link PARTICLES} rather than
- * the thousand a phone is asked for, because nothing here has to hold a frame rate at all — it
- * has all the time it likes per frame — and the user asked to see him at full density. And there
- * is no readout in the corner: the sphere and nothing else.
+ * **Each device is drawn at the most particles it can hold** — `PARTICLE_COUNT` on the phone and
+ * `WATCH_PARTICLE_COUNT` on the watch — never at a number chosen here. On a device the density loop
+ * draws a share of that ceiling, whatever the device can afford; nothing here has to hold a frame
+ * rate, so it draws all of it, which is the best he can look on each. The user asked for exactly
+ * that, after the clips were rendered at a fixed 1300 on both and showed a sparser Jarvis than
+ * either device draws. And there is no readout in the corner: the sphere and nothing else.
  *
  * Usage, from the repository root:
  *   bun hologram/.scripts/render-showcase.ts
@@ -46,25 +48,14 @@ import {
   drawHologram,
   GREETING_SECONDS,
   MATERIALISE_SECONDS,
+  moodOf,
   PARTICLE_COUNT,
+  SAMPLE_MODE_NAMES,
   type SimulatedMood,
+  WATCH_PARTICLE_COUNT,
 } from '../src/index';
 import { LEAVING_SECONDS } from '../src/react/leaving';
 import { createPerformance, findLoudestMoment, stillMoment } from './simulated-performance';
-
-/**
- * How many particles the showcase frames are built from.
- *
- * It began as "far more than any phone is asked to draw", back when `PARTICLE_COUNT` gave the apps
- * a thousand and even that was thinned to whatever the phone could afford at its target frame rate
- * — see `density-control.ts`. The apps' ceiling has been raised twice since, to five thousand and
- * then to ten, so this is now the sparser of the two pictures rather than the denser one.
- *
- * Left where it is deliberately: every frame this script renders was framed and reviewed at this
- * density, and the one place the brakes-off reading still matters is the cover, which asks for
- * `PARTICLE_COUNT` outright — see `coverScene` below.
- */
-const PARTICLES = 1300;
 
 /**
  * Forty a second, at the user's asking — the rate the phone holds — for every copy: the archive,
@@ -117,10 +108,22 @@ const VP9_CRF = 11;
  */
 const GIF_ALPHA_THRESHOLD = 64;
 
-/** How long each of the things he does is held for, at the user's asking. */
-const IDLE_SECONDS = 2;
+/**
+ * How long each of the things he does is held for: at least three seconds each, at the user's
+ * asking. Only the entrance and the exit are shorter — they take as long as they take.
+ */
+const SPEAKING_SECONDS = 3.5;
 const LISTENING_SECONDS = 4;
-const THINKING_SECONDS = 3;
+const THINKING_SECONDS = 3.5;
+
+/**
+ * The label naming what he is doing, drawn into the clip itself: how big, how bright, and how long
+ * it takes to hand over from one name to the next. Sizes are in rendered pixels, which the README
+ * shows at half size (see README_PIXEL_DENSITY).
+ */
+const LABEL_SIZE = 26;
+const LABEL_INK = '#e2e8f0';
+const LABEL_FADE_SECONDS = 0.3;
 
 /** How long the sheet takes to arrive, and to go: `ARRIVE_MS` and `LEAVE_MS` in `sample-sheet.tsx`. */
 const SHEET_ARRIVES_SECONDS = 0.26;
@@ -256,34 +259,78 @@ function ease(share: number): number {
   return held * held * (3 - 2 * held);
 }
 
+/** A named stretch of the clip, from `from` seconds until the next one begins. */
+interface Phase {
+  label: string;
+  from: number;
+}
+
+/**
+ * Which phase's name shows at `seconds`, and how much of it: in after the phase begins and out
+ * before the next one does, so two names never overlap. The first is up from the start.
+ */
+function labelAt(phases: Phase[], seconds: number, endsAt: number) {
+  let index = 0;
+  while (index + 1 < phases.length && seconds >= (phases[index + 1]?.from ?? endsAt)) {
+    index++;
+  }
+  const current = phases[index] ?? { label: '', from: 0 };
+  const endsBefore = phases[index + 1]?.from ?? endsAt;
+  const fadeIn = index === 0 ? 1 : ease((seconds - current.from) / LABEL_FADE_SECONDS);
+  const fadeOut = 1 - ease((seconds - (endsBefore - LABEL_FADE_SECONDS)) / LABEL_FADE_SECONDS);
+  return { label: current.label, labelAlpha: fadeIn * fadeOut };
+}
+
 /**
  * The clip's script: when each thing happens, and what is happening at a given moment.
  *
- * As the apps do it now: summoned, he spirals out of his core while he says the greeting, then
- * rests, then listens to somebody talking to him, then works through what they said. He is still
- * mid-thought when he goes, which is what the app does too: leaving does not change what he was
- * doing, it fades what he was doing.
+ * Five phases, at the user's asking, each named in the clip by its label:
+ *
+ * 1. **Welcome** — summoned, he spirals out of his core while he says the greeting, as the apps do.
+ * 2. **Speaking** — once he has fully appeared, speech as sample mode shows it.
+ * 3. **Listening** — somebody talking to him, and his particles snapping onto a turning lattice.
+ * 4. **Thinking** — working through what they said.
+ * 5. **Leaving** — he fades and shrinks away. He is still mid-thought when he goes, which is what
+ *    the app does too: leaving does not change what he was doing, it fades what he was doing.
  */
 function writeScript(opensOver: number, closesOver: number) {
   const appears = opensOver;
-  const listensAt = appears + Math.max(MATERIALISE_SECONDS, GREETING_SECONDS) + IDLE_SECONDS;
+  const speaksAt = appears + Math.max(MATERIALISE_SECONDS, GREETING_SECONDS);
+  const listensAt = speaksAt + SPEAKING_SECONDS;
   const thinksAt = listensAt + LISTENING_SECONDS;
   const leavesAt = thinksAt + THINKING_SECONDS;
   const goneAt = leavesAt + LEAVING_SECONDS;
+  const phases: Phase[] = [
+    { label: 'Welcome', from: 0 },
+    { label: SAMPLE_MODE_NAMES.speaking, from: speaksAt },
+    { label: SAMPLE_MODE_NAMES.listening, from: listensAt },
+    { label: SAMPLE_MODE_NAMES.thinking, from: thinksAt },
+    { label: 'Leaving', from: leavesAt },
+  ];
+  const endsAt = goneAt + closesOver;
 
   return {
-    endsAt: goneAt + closesOver,
+    endsAt,
     at(seconds: number) {
       const intoGreeting = seconds - appears;
-      const mood: SimulatedMood | undefined = seconds >= thinksAt ? 'thinking' : undefined;
+      const speaking = seconds >= speaksAt && seconds < listensAt;
+      const mood: SimulatedMood | undefined = speaking
+        ? moodOf('speaking')
+        : seconds >= thinksAt
+          ? moodOf('thinking')
+          : undefined;
+      const { label, labelAlpha } = labelAt(phases, seconds, endsAt);
       return {
         mood,
         /** Timed from when the mood was chosen, as `useSimulatedVoice` does. */
-        moodSeconds: seconds - thinksAt,
+        moodSeconds: seconds - (speaking ? speaksAt : thinksAt),
         /** The greeting, from the moment he appears, as the apps play it. */
         greetingSeconds: intoGreeting >= 0 && intoGreeting < GREETING_SECONDS ? intoGreeting : undefined,
         /** Somebody talking to him, for as long as he listens. */
         userSeconds: seconds >= listensAt && seconds < thinksAt ? seconds - listensAt : undefined,
+        /** What he is doing, as the label in the clip says it, and how much of the label is showing. */
+        label,
+        labelAlpha,
         /** How far the sheet is up: all the way for everything but the first and last moments. */
         opened: ease(seconds / opensOver) * (1 - ease((seconds - goneAt) / closesOver)),
         /** He is drawn once there is somewhere to draw him, and his clock starts then. */
@@ -294,6 +341,25 @@ function writeScript(opensOver: number, closesOver: number) {
       };
     },
   };
+}
+
+/** Draws the label naming what he is doing, centred on `centreX` with its baseline at `baseline`. */
+function drawLabel(
+  skia: SkiaApi,
+  canvas: SkiaCanvas,
+  font: SkiaFont,
+  moment: Moment,
+  centreX: number,
+  baseline: number,
+) {
+  if (moment.labelAlpha <= 0) {
+    return;
+  }
+  const ink = skia.Paint();
+  ink.setAntiAlias(true);
+  ink.setColor(skia.Color(LABEL_INK));
+  ink.setAlphaf(moment.labelAlpha);
+  canvas.drawText(moment.label, centreX - font.getTextWidth(moment.label) / 2, baseline, ink, font);
 }
 
 type Moment = ReturnType<ReturnType<typeof writeScript>['at']>;
@@ -733,10 +799,20 @@ async function main() {
     throw new Error('CanvasKit did not load');
   }
   const skia = JsiSkApi(globalThis.CanvasKit);
-  // One scene and one set of resources for both clips: the same Jarvis on both devices, which is
-  // the whole point of him living in a package of his own.
-  const scene = createHologramScene(1337, PARTICLES);
-  const resources = createHologramResources(skia, scene);
+  // The same Jarvis on both devices — one seed, one drawing — each at the most particles that
+  // device can hold. See the file header.
+  const phoneScene = createHologramScene(1337, PARTICLE_COUNT);
+  const phoneResources = createHologramResources(skia, phoneScene);
+  const watchScene = createHologramScene(1337, WATCH_PARTICLE_COUNT);
+  const watchResources = createHologramResources(skia, watchScene);
+
+  const typeface = skia.Typeface.MakeFreeTypeFaceFromData(
+    skia.Data.fromBytes(readFileSync(join(DEVICE_ART, 'roboto-light.ttf'))),
+  );
+  if (!typeface) {
+    throw new Error('Could not load Roboto — run ./hologram/.scripts/prepare-device-art.sh');
+  }
+  const labelFont = skia.Font(typeface, LABEL_SIZE);
 
   const working = mkdtempSync(join(tmpdir(), 'jarvis-showcase-'));
   const output = join(process.cwd(), 'docs');
@@ -801,9 +877,11 @@ async function main() {
       if (moment.showing) {
         canvas.save();
         canvas.translate((screen.width - phoneHologram) / 2, top + (sheetHeight - phoneHologram) / 2);
-        drawHologram(canvas, phoneHologram, frame, scene, resources);
+        drawHologram(canvas, phoneHologram, frame, phoneScene, phoneResources);
         canvas.restore();
       }
+      // In the sheet, above him, where the app's own mood toast sits.
+      drawLabel(skia, canvas, labelFont, moment, screen.width / 2, top + LABEL_SIZE * 1.6);
       canvas.restore();
       drawArt(skia, canvas, phoneArt, 0, 0, phoneSize.width, phoneSize.height);
     },
@@ -843,8 +921,11 @@ async function main() {
         // The square is the whole screen, as `useWatchHologramSize` makes it: the drawing keeps its
         // own distance from the edge, so a square the width of a round screen still sits inside it.
         canvas.translate(watchMiddle.x - watchRadius, watchMiddle.y - watchRadius);
-        drawHologram(canvas, watchRadius * 2, frame, scene, resources);
+        drawHologram(canvas, watchRadius * 2, frame, watchScene, watchResources);
+        canvas.translate(-(watchMiddle.x - watchRadius), -(watchMiddle.y - watchRadius));
       }
+      // Low on the round face, where the watch's own mood toast sits and the bezel leaves room.
+      drawLabel(skia, canvas, labelFont, moment, watchMiddle.x, watchMiddle.y + watchRadius * 0.72);
       canvas.restore();
     },
   });
@@ -860,16 +941,9 @@ async function main() {
   rmSync(working, { recursive: true, force: true });
 
   // ---- the cover: one still, at full size, with his name round it ------------------------------
-  // Its own scene, at the ceiling a fast phone is now allowed rather than the count the clips use.
-  // A still has no frame rate to hold, so there is no reason for it to be the lesser picture.
-  const coverScene = createHologramScene(1337, PARTICLE_COUNT);
-  const coverResources = createHologramResources(skia, coverScene);
-  const typeface = skia.Typeface.MakeFreeTypeFaceFromData(
-    skia.Data.fromBytes(readFileSync(join(DEVICE_ART, 'roboto-light.ttf'))),
-  );
-  if (!typeface) {
-    throw new Error('Could not load Roboto — run ./hologram/.scripts/prepare-device-art.sh');
-  }
+  // The phone's scene, at the phone's ceiling: the same picture the phone clip is drawn from.
+  const coverScene = phoneScene;
+  const coverResources = phoneResources;
   const wordmark = skia.Font(typeface, COVER_NAME_SIZE);
 
   const coverSurface = skia.Surface.MakeOffscreen(COVER_SIZE, COVER_SIZE) ?? skia.Surface.Make(COVER_SIZE, COVER_SIZE);

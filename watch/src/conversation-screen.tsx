@@ -1,5 +1,10 @@
 import { useConversationControls, useConversationStatus } from '@elevenlabs/react-native';
-import { type ElevenLabsSettings, requestConversationToken, WATCH_PARTICIPANT_NAME } from 'hologram';
+import {
+  type ElevenLabsSettings,
+  requestConversationToken,
+  WATCH_PARTICIPANT_NAME,
+  WATCH_PARTICLE_COUNT,
+} from 'hologram';
 import { useAgentVoice, useGreeting, useToolActivity, useUserVoice } from 'hologram/conversation';
 import { JarvisHologram } from 'hologram/react';
 import { useIsForeground } from 'hologram/react/lifecycle';
@@ -7,7 +12,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { type FastNetwork, holdFastNetwork, releaseFastNetwork } from '../modules/jarvis-network';
 import { requestMicrophoneAccess } from './microphone-permission';
-import { useWatchDensity, WATCH_PARTICLE_COUNT } from './watch-density';
+import { useWatchDensity } from './watch-density';
 import { useWatchHologramSize } from './watch-screen';
 
 interface ConversationScreenProps {
