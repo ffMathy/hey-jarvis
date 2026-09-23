@@ -614,11 +614,11 @@ describe('the hologram', () => {
     }
   });
 
-  it('listens by gathering into small clusters that drift inside him, which swell with their voice', () => {
-    // Someone talking to him is shown by the swarm itself: his particles gather into a dozen small
-    // clusters that drift slowly round inside the ball. Measured as how uneven the light inside the
-    // disc is — a swarm spread evenly through the ball is smooth, clusters with dark between them
-    // are not — and nothing may be thrown past the limb, which is what his own speech does.
+  it('listens by snapping onto a turning lattice inside him, which breathes with their voice', () => {
+    // Someone talking to him is shown by the swarm itself: his particles snap onto a hexagonal
+    // lattice that turns slowly inside the ball. Measured as how uneven the light inside the disc
+    // is — a swarm spread evenly through the ball is smooth, knots with dark between them are
+    // not — and nothing may be thrown past the limb, which is what his own speech does.
     const hologram = mount();
     const unevenness = (pixels: Uint8Array) => {
       const values: number[] = [];
@@ -636,11 +636,19 @@ describe('the hologram', () => {
     const quiet = render({ ...silence(time), hearing: 1, hearingLevel: 0.1 }, hologram);
     const loud = render({ ...silence(time), hearing: 1, hearingLevel: 1 }, hologram);
 
-    expect(unevenness(quiet)).toBeGreaterThan(unevenness(calm) * 1.3);
-    // Their voice swells the clusters, so how loud they are changes the picture.
+    // A lattice's knots are finer than the clusters it replaced, so it roughens the disc by about a
+    // quarter rather than a third — at every moment, not just this one — and more the more he attends.
+    for (const moment of [3, 4, time, 7.3]) {
+      const listening = render({ ...silence(moment), hearing: 1, hearingLevel: 0.1 }, hologram);
+      expect(unevenness(listening)).toBeGreaterThan(unevenness(render(silence(moment), hologram)) * 1.2);
+    }
+    const half = render({ ...silence(time), hearing: 0.5, hearingLevel: 0.1 }, hologram);
+    expect(unevenness(half)).toBeGreaterThan(unevenness(calm));
+    expect(unevenness(quiet)).toBeGreaterThan(unevenness(half));
+    // Their voice makes the lattice breathe, so how loud they are changes the picture.
     expect(difference(loud, quiet)).toBeGreaterThan(1);
     expect(brightBeyondLeftLimb(loud)).toBeLessThanOrEqual(brightBeyondLeftLimb(calm) + 1);
-    // And the clusters move: a second later they are somewhere else.
+    // And the lattice turns: a second later its knots are somewhere else.
     const later = render({ ...silence(time + 1), hearing: 1, hearingLevel: 0.1 }, hologram);
     expect(difference(later, quiet)).toBeGreaterThan(1);
   });

@@ -27,9 +27,9 @@
 //                       furry with short fragments across them, plus the long loop rising 37°
 //                       past the core, the saturated ")" arc at 0.57R and the faint near half of
 //                       the edge-on ellipse — all of it turning the other way; and data streaks
-//   drawBody            while someone talks to him, the body gathers into a dozen small clusters
-//                       that drift slowly round inside the ball (see clusterFragment); otherwise
-//                       the fragment body's dim and mid strokes: 1680 fragments inside 0.94R
+//   drawBody            while someone talks to him, the body snaps onto a slowly turning
+//                       hexagonal lattice that breathes with their voice (see latticeFragment);
+//                       otherwise the fragment body's dim and mid strokes: 1680 fragments inside 0.94R
 //                       (four in five plain dashes, the rest L, bracket, T, Z glyphs, rings and
 //                       cell outlines mostly near the core; median 0.083R, clumped into the mass
 //                       with bare fill between the clumps, heavier on the left) and a
@@ -267,8 +267,8 @@ export interface HologramFrame {
   thinking: number;
   /**
    * 0–1: how sure he is that someone is talking to him — ElevenLabs' voice-activity score, eased.
-   * Left out, nobody is. See {@link clusterFragment}: his particles gather into small clusters that
-   * drift slowly round inside him while someone is speaking.
+   * Left out, nobody is. See {@link latticeFragment}: his particles snap onto a slowly turning
+   * hexagonal lattice while someone is speaking.
    */
   hearing?: number;
   /** 0–1: how loud they are, eased. Only read while {@link hearing} is above nothing. */
@@ -380,52 +380,24 @@ const SWELL_WITH_VOICE = 0.18;
 /** How small the sphere has shrunk to by the time he has gone. */
 const LEAVING_SMALLEST = 0.55;
 /**
- * How he listens: while someone talks to him his particles gather into this many small clusters,
- * which drift slowly round inside the ball. At the user's asking, after a ring of ticks round the
- * outside read as a decoration rather than as him paying attention — this is the swarm itself
- * doing something different, which is the more advanced-looking of the two and says "listening"
- * without looking like anything he does when he speaks.
- */
-const CLUSTER_COUNT = 11;
-/** How far a cluster's particles sit from its middle, at rest and at full voice. */
-const CLUSTER_RADIUS = 0.04;
-const CLUSTER_BREATH = 1.3;
-/** How much of the way to their cluster the particles go at full attention: not quite all of it. */
-const CLUSTER_PULL = 0.88;
-/** The fastest a cluster circles the core, in radians a second: slow, so it reads as drifting. */
-const CLUSTER_ORBIT = 0.32;
-/** How quickly the clusters swell and settle with the voice, in radians a second. */
-const CLUSTER_PULSE = 2.6;
-/**
- * The ways he can show he is listening, for choosing between: `clusters` is what the apps draw; the
- * others are candidates rendered side by side by `.scripts/render-preview.ts`.
+ * How he listens: while someone talks to him his particles snap onto a hexagonal lattice that turns
+ * slowly inside the ball and breathes with their voice — a crystalline, working look that says
+ * "listening" without resembling anything he does when he speaks.
  *
- * - `clusters` — a dozen small swarms drifting round inside the ball.
- * - `orbits` — three tilted orbital rings, like an atom's, each turning at its own rate.
- * - `ripples` — concentric wave crests travelling out from the core, like sound through him.
- * - `galaxy` — two spiral arms winding slowly round the core.
- * - `lattice` — a hexagonal grid the swarm snaps to, turning slowly and breathing with the voice.
+ * Chosen from five candidates rendered side by side: drifting clusters, orbital rings, ripples, a
+ * galaxy's arms and this. It replaced a ring of ticks round the outside of the ball,
+ * which read as a decoration rather than as him paying attention.
  */
-export const LISTENING_STYLES = ['clusters', 'orbits', 'ripples', 'galaxy', 'lattice'] as const;
-export type ListeningStyle = (typeof LISTENING_STYLES)[number];
-/** The orbital rings: how far out each sits, how it is tilted (radians) and how fast it turns. */
-const ORBIT_RADII = [0.8, 0.72, 0.64];
-const ORBIT_TILTS = [0.2, 0.2 + Math.PI / 3, 0.2 + (2 * Math.PI) / 3];
-const ORBIT_RATES = [0.55, -0.45, 0.35];
-/** How round an orbit looks: its short axis as a share of its long one, as a ring seen at a slant. */
-const ORBIT_ROUNDNESS = 0.36;
-/** How far apart the ripples' crests are, how fast they travel outward, and how tightly they gather. */
-const RIPPLE_SPACING = 0.2;
-const RIPPLE_SPEED = 0.16;
-const RIPPLE_GATHER = 0.8;
-/** How tightly the galaxy's arms wind, and how fast they turn. */
-const GALAXY_WIND = 4.2;
-const GALAXY_TURN = 0.35;
-/** The lattice's spacing and how fast it turns. */
+/** How far apart the lattice's points are, and how fast it turns, in radians a second. */
 const LATTICE_SPACING = 0.11;
 const LATTICE_TURN = 0.12;
-/** How much shorter a stroke is drawn while it is gathered, so a cluster reads as a knot, not a smear. */
-const CLUSTER_STROKE_SHRINK = 0.55;
+/** How much the lattice's spacing swells at full voice, and how quickly it breathes, in radians a second. */
+const LATTICE_BREATH = 0.18;
+const LATTICE_PULSE = 2.4;
+/** How much of the way to their point the particles go at full attention: not quite all of it. */
+const LATTICE_PULL = 0.88;
+/** How much shorter a stroke is drawn while it is on the lattice, so a point reads as a knot, not a smear. */
+const LATTICE_STROKE_SHRINK = 0.55;
 /** How far round a fragment has still to go as it leaves the core in the vortex, in radians: a turn and a half. */
 const VORTEX_TWIST = 3 * Math.PI;
 /** How long the vortex's strokes are drawn while they are still travelling, as a multiple of their length. */
@@ -1031,16 +1003,10 @@ function roundToFiveDecimals(value: number) {
  * `hologram/.scripts/render-showcase.ts`. Everything downstream is a share of whatever this is,
  * so nothing else has to know.
  */
-export function createHologramScene(
-  seed: number,
-  particleCount: number = PARTICLE_COUNT,
-  listening: ListeningStyle = 'clusters',
-) {
+export function createHologramScene(seed: number, particleCount: number = PARTICLE_COUNT) {
   const random = createRandom(seed);
   const script = buildScript(random);
   return {
-    /** Which of {@link LISTENING_STYLES} he listens with, as its index: a number, so the worklet copy stays plain data. */
-    listeningStyle: LISTENING_STYLES.indexOf(listening),
     body: buildBody(random, particleCount).map(roundToFiveDecimals),
     stream: buildStream(random).map(roundToFiveDecimals),
     crescentPieces: buildCrescentPieces(random).map(roundToFiveDecimals),
@@ -1786,38 +1752,6 @@ function readScript(scene: Scene, time: number) {
   };
 }
 
-/**
- * Where each listening cluster's middle is at `time`, as x then y for each.
- *
- * Spread through the ball on the golden angle, each at its own distance from the core and circling
- * it at its own slow rate — some one way, some the other — with a gentle wobble on top, so they
- * drift past each other rather than turning as one wheel. All from the clock.
- */
-function clusterCentres(time: number, level: number) {
-  'worklet';
-  const centres = new Array<number>(CLUSTER_COUNT * 2);
-  for (let cluster = 0; cluster < CLUSTER_COUNT; cluster++) {
-    // Evenly from near the core to near the limb, so the ball is filled with them, not its middle.
-    const reach = 0.3 + 0.46 * ((cluster + 0.5) / CLUSTER_COUNT);
-    const rate = (fraction(cluster * 0.371) - 0.5) * 2 * CLUSTER_ORBIT * (1 + 0.3 * level);
-    const angle = cluster * 2.399963 + time * rate;
-    centres[cluster * 2] = Math.cos(angle) * reach + 0.05 * Math.sin(time * 0.61 + cluster * 2.1);
-    centres[cluster * 2 + 1] = Math.sin(angle) * reach + 0.05 * Math.cos(time * 0.47 + cluster * 1.3);
-  }
-  return centres;
-}
-
-/** How widely each cluster is spread at `time`: each swells and settles on its own beat as they talk. */
-function clusterSpreads(time: number, level: number) {
-  'worklet';
-  const spreads = new Array<number>(CLUSTER_COUNT);
-  for (let cluster = 0; cluster < CLUSTER_COUNT; cluster++) {
-    const beat = 0.5 + 0.5 * Math.sin(time * CLUSTER_PULSE + cluster * 1.7);
-    spreads[cluster] = CLUSTER_RADIUS * (1 + CLUSTER_BREATH * level * beat);
-  }
-  return spreads;
-}
-
 /** Everything a frame derives from its fields; see the file header for the mapping. */
 function analyseFrame(frame: HologramFrame, size: number, scene: Scene) {
   'worklet';
@@ -1872,20 +1806,15 @@ function analyseFrame(frame: HologramFrame, size: number, scene: Scene) {
     // what the eye is left with. Without this the whorl, the rim and the ladder go on doing what
     // they always do and the sweep is one more thing happening among several — which is how the
     // first version of thinking looked, and why it did not read as a different state at all.
-    // The whorl recedes while he listens, as while he thinks, so the clusters are what is seen.
+    // The whorl recedes while he listens, as while he thinks, so the lattice is what is seen.
     innerAlpha: (1 - 0.8 * thinking) * (1 - 0.6 * hearing) * smooth01((swirl - 0.15) / 0.6),
     coreAlpha: smooth01(swirl / 0.25),
     rimAlpha: (1 - 0.65 * thinking) * smooth01((swirl - 0.55) / 0.45),
     swirl,
     hearing,
     hearingLevel,
-    /** Where each listening cluster's middle is this frame, x then y; see {@link clusterFragment}. */
-    clusters: clusterCentres(time, hearingLevel),
-    /** And how widely each is spread, which the voice pulses. */
-    clusterSpread: clusterSpreads(time, hearingLevel),
-    listeningStyle: scene.listeningStyle,
-    /** Where {@link clusterFragment} leaves a fragment: x, y. */
-    clustered: [0, 0],
+    /** Where {@link latticeFragment} leaves a fragment: x, y. */
+    listened: [0, 0],
     /** Where {@link swirlFragment} leaves a fragment: x, y, its direction, and how much of it shows. */
     swirled: [0, 0, 0, 0, 0],
     agitation,
@@ -2234,64 +2163,13 @@ function swirlFragment(x: number, y: number, unitX: number, unitY: number, id: n
   out[4] = smooth01((travelled - 0.04) * 6) * stretch;
 }
 
-/** Its place in its cluster: see {@link clusterFragment}. */
-function clusterTarget(id: number, state: FrameState, out: number[]) {
-  'worklet';
-  const cluster = Math.floor(fraction(id * 0.754877) * CLUSTER_COUNT);
-  const angle = fraction(id * 4.1231) * 6.283185307179586;
-  const distance = Math.sqrt(fraction(id * 7.7113)) * state.clusterSpread[cluster];
-  out[0] = state.clusters[cluster * 2] + Math.cos(angle) * distance;
-  out[1] = state.clusters[cluster * 2 + 1] + Math.sin(angle) * distance;
-}
-
-/** Its place on one of three tilted orbital rings, carried round from where it already is. */
-function orbitTarget(x: number, y: number, id: number, state: FrameState, out: number[]) {
-  'worklet';
-  const ring = Math.floor(fraction(id * 7.31) * 3);
-  const radius = ORBIT_RADII[ring] ?? 0.5;
-  const tilt = ORBIT_TILTS[ring] ?? 0;
-  // A ring seen at an angle: a circle squashed to an ellipse, then turned to its tilt.
-  const along = Math.atan2(y, x) + state.time * (ORBIT_RATES[ring] ?? 0.3);
-  const thickness = (fraction(id * 7.7113) - 0.5) * 0.035 * (1 + 2.2 * state.hearingLevel);
-  const flatX = Math.cos(along) * (radius + thickness);
-  const flatY = Math.sin(along) * (radius + thickness) * ORBIT_ROUNDNESS;
-  const wobble = 0.03 * state.hearingLevel * Math.sin(state.time * 3.1 + ring * 2);
-  out[0] = flatX * Math.cos(tilt) - flatY * Math.sin(tilt);
-  out[1] = flatX * Math.sin(tilt) + flatY * Math.cos(tilt) + wobble;
-}
-
-/** Its place on the nearest of the crests travelling out from the core. */
-function rippleTarget(x: number, y: number, id: number, state: FrameState, out: number[]) {
-  'worklet';
-  const distance = Math.sqrt(x * x + y * y);
-  const travelled = state.time * RIPPLE_SPEED;
-  const crest = Math.round((distance - travelled) / RIPPLE_SPACING) * RIPPLE_SPACING + travelled;
-  // Louder voices gather the crests tighter; each fragment keeps a little of its own offset.
-  const gather = RIPPLE_GATHER * (0.6 + 0.4 * state.hearingLevel);
-  const settled = crest + (distance - crest) * (1 - gather) + (fraction(id * 7.7113) - 0.5) * 0.02;
-  const scale = distance > 0.0001 ? Math.max(0, Math.min(0.9, settled)) / distance : 0;
-  out[0] = x * scale;
-  out[1] = y * scale;
-}
-
-/** Its place on the nearer of two spiral arms, turning slowly round the core. */
-function galaxyTarget(x: number, y: number, id: number, state: FrameState, out: number[]) {
-  'worklet';
-  const distance = Math.min(0.88, Math.sqrt(x * x + y * y));
-  const arm = fraction(id * 0.754877) < 0.5 ? 0 : Math.PI;
-  const width = (fraction(id * 4.1231) - 0.5) * (0.35 + 0.5 * state.hearingLevel);
-  const angle = arm + distance * GALAXY_WIND + state.time * GALAXY_TURN + width;
-  out[0] = Math.cos(angle) * distance;
-  out[1] = Math.sin(angle) * distance;
-}
-
-/** Its place on the nearest point of a slowly turning hexagonal grid that breathes with the voice. */
+/** Its place on the nearest point of the slowly turning hexagonal grid, which breathes with the voice. */
 function latticeTarget(x: number, y: number, id: number, state: FrameState, out: number[]) {
   'worklet';
   const turn = state.time * LATTICE_TURN;
   const cos = Math.cos(turn);
   const sin = Math.sin(turn);
-  const spacing = LATTICE_SPACING * (1 + 0.18 * state.hearingLevel * Math.sin(state.time * 2.4));
+  const spacing = LATTICE_SPACING * (1 + LATTICE_BREATH * state.hearingLevel * Math.sin(state.time * LATTICE_PULSE));
   // Into the grid's own frame, snapped to its nearest row and column — every other row shifted by
   // half a spacing, which is what makes it hexagonal — and back out.
   const localX = x * cos + y * sin;
@@ -2308,37 +2186,24 @@ function latticeTarget(x: number, y: number, id: number, state: FrameState, out:
 }
 
 /**
- * Where a fragment is while he listens: writes x, y into `state.clustered` — just where it already
+ * Where a fragment is while he listens: writes x, y into `state.listened` — just where it already
  * is when nobody is talking to him.
  *
- * Every fragment belongs to one of {@link CLUSTER_COUNT} clusters, chosen by its id so it keeps it,
- * and has its own place in it: an angle and a distance from the middle, also from its id, so a
- * cluster is a small round swarm rather than a point. As someone starts speaking the fragments
- * move that share of the way to their place — {@link CLUSTER_PULL} at full attention — and since
- * each lives only a fraction of a second before it re-lights, the ball resolves into the clusters
- * rather than sliding into them.
+ * As someone starts speaking each fragment moves that share of the way — {@link LATTICE_PULL} at
+ * full attention — to the lattice point nearest it, with a little jitter from its id so a point is a
+ * small knot of strokes rather than one. Each fragment lives only a fraction of a second before it
+ * re-lights, so the ball resolves onto the lattice rather than sliding onto it.
  */
-function clusterFragment(x: number, y: number, id: number, state: FrameState) {
+function latticeFragment(x: number, y: number, id: number, state: FrameState) {
   'worklet';
-  const out = state.clustered;
-  const pull = state.hearing * CLUSTER_PULL;
+  const out = state.listened;
+  const pull = state.hearing * LATTICE_PULL;
   if (pull <= 0.001) {
     out[0] = x;
     out[1] = y;
     return;
   }
-  const style = state.listeningStyle;
-  if (style === 1) {
-    orbitTarget(x, y, id, state, out);
-  } else if (style === 2) {
-    rippleTarget(x, y, id, state, out);
-  } else if (style === 3) {
-    galaxyTarget(x, y, id, state, out);
-  } else if (style === 4) {
-    latticeTarget(x, y, id, state, out);
-  } else {
-    clusterTarget(id, state, out);
-  }
+  latticeTarget(x, y, id, state, out);
   out[0] = x + (out[0] - x) * pull;
   out[1] = y + (out[1] - y) * pull;
 }
@@ -2372,9 +2237,9 @@ function appendBody(builders: PathBuilder[], body: number[], state: FrameState) 
     const swirled = state.swirled;
     const drawn = swirled[4];
     if (drawn <= 0) continue;
-    clusterFragment(swirled[0], swirled[1], id, state);
-    const x = state.clustered[0];
-    const y = state.clustered[1];
+    latticeFragment(swirled[0], swirled[1], id, state);
+    const x = state.listened[0];
+    const y = state.listened[1];
     // While he thinks, only what the plane is passing stays lit; see SCAN_SECONDS.
     const litHere = lit * scanned(y, state);
     if (litHere < FRAGMENT_FAINTEST) continue;
@@ -2389,7 +2254,7 @@ function appendBody(builders: PathBuilder[], body: number[], state: FrameState) 
     // Arriving at a third of its length, as it used to, meant arriving at full brightness over
     // a dozen pixels at once — with twice as many fragments that is a visible speckle at every
     // frame, and it is what the spec's script-boundary check counts.
-    const gathered = 1 - CLUSTER_STROKE_SHRINK * state.hearing;
+    const gathered = 1 - LATTICE_STROKE_SHRINK * state.hearing;
     appendGlyph(
       builders[tier + reading[2]],
       reading[1],
@@ -2449,16 +2314,16 @@ function appendStream(builders: PathBuilder[], stream: number[], state: FrameSta
     swirlFragment(x, y, 1, 0, stream[offset + 7], state);
     const swirled = state.swirled;
     if (swirled[4] <= 0) continue;
-    // The shell gathers into the listening clusters too, or it would go on streaming under them.
-    clusterFragment(swirled[0], swirled[1], stream[offset + 7], state);
+    // The shell snaps onto the lattice too, or it would go on streaming under it.
+    latticeFragment(swirled[0], swirled[1], stream[offset + 7], state);
     appendGlyph(
       builders[tier],
       stream[offset + 9],
-      state.clustered[0],
-      state.clustered[1],
+      state.listened[0],
+      state.listened[1],
       swirled[2],
       swirled[3],
-      Math.abs(halfX) * lit * swirled[4] * (1 - CLUSTER_STROKE_SHRINK * state.hearing),
+      Math.abs(halfX) * lit * swirled[4] * (1 - LATTICE_STROKE_SHRINK * state.hearing),
     );
   }
 }
