@@ -1,5 +1,22 @@
 # Changelog
 
+## [4.2.1](https://github.com/ffMathy/hey-jarvis/compare/root-v4.2.0...root-v4.2.1) (2026-09-23)
+
+
+### Bug Fixes
+
+* **mcp:** resume meal plan runs from email replies ([#761](https://github.com/ffMathy/hey-jarvis/issues/761)) ([3ef872b](https://github.com/ffMathy/hey-jarvis/commit/3ef872b66483e1fd1114b4be3723426e7a1bfcbe))
+
+
+### Performance Improvements
+
+* **hologram:** draw halos on the GPU on Android and skip unkept rows ([#766](https://github.com/ffMathy/hey-jarvis/issues/766)) ([113688c](https://github.com/ffMathy/hey-jarvis/commit/113688c2a5df34c0c634677a2c8eb72cb9822eb3))
+
+
+### Documentation
+
+* re-render the README clips with the listening lattice ([#764](https://github.com/ffMathy/hey-jarvis/issues/764)) ([b801d0f](https://github.com/ffMathy/hey-jarvis/commit/b801d0f73911dc5c7d2958eaaf04bfbdf0b43f0d))
+
 ## [4.2.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.1.0...root-v4.2.0) (2026-09-23)
 
 
