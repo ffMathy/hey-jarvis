@@ -177,6 +177,10 @@ const config: ExpoConfig = {
   // `.scripts/expo-release-signing.js`.
   version: androidVersionName(),
   orientation: 'portrait',
+  // The same icon as the phone's. Jarvis himself, drawn by the same code as the sphere, big enough to fill the icon with only a
+  // narrow edge: `icon.png` where a square one is used, and an adaptive icon everywhere Android
+  // masks one — on black, as he is drawn. Rendered by `hologram/.scripts/render-play-assets.ts`.
+  icon: '../hologram/assets/icon.png',
   userInterfaceStyle: 'dark',
   // A watch screen is OLED and mostly off. Black is not a colour choice here: it is the part of
   // the screen that costs nothing to light.
@@ -185,6 +189,11 @@ const config: ExpoConfig = {
   platforms: ['android'],
   android: {
     package: 'com.ffmathy.heyjarvis',
+    // A watch's launcher masks icons to a circle, which is the shape he already is.
+    adaptiveIcon: {
+      foregroundImage: '../hologram/assets/adaptive-icon.png',
+      backgroundColor: '#000000',
+    },
     // Unique across every form factor in the listing, which is what Play requires of a watch
     // artifact sitting beside a phone one. See `.scripts/expo-release-signing.js`.
     versionCode: androidVersionCode(WATCH_VERSION_OFFSET),

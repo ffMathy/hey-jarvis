@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.2.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.1.0...root-v4.2.0) (2026-09-23)
+
+
+### Features
+
+* **hologram:** greet on summon, arrive as a vortex, listen with a lattice ([#762](https://github.com/ffMathy/hey-jarvis/issues/762)) ([a06552f](https://github.com/ffMathy/hey-jarvis/commit/a06552fbb247f487eae366568d279098740e25e6))
+
 ## [4.1.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.0.1...root-v4.1.0) (2026-09-22)
 
 

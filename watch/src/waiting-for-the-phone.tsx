@@ -1,9 +1,16 @@
-import { hearsSomeone, moodOf, nextSampleMode, SAMPLE_MODE_LABELS, type SampleMode } from 'hologram';
+import {
+  hearsSomeone,
+  moodOf,
+  nextSampleMode,
+  SAMPLE_MODE_LABELS,
+  type SampleMode,
+  WATCH_PARTICLE_COUNT,
+} from 'hologram';
 import { JarvisHologram } from 'hologram/react';
 import { FrameRate, ModeToast, useSimulatedUser, useSimulatedVoice } from 'hologram/react/sample';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { useWatchDensity, WATCH_PARTICLE_COUNT } from './watch-density';
+import { useWatchDensity } from './watch-density';
 import { useWatchHologramSize } from './watch-screen';
 
 interface WaitingForThePhoneProps {

@@ -126,6 +126,10 @@ const config: ExpoConfig = {
   // assistant is summoned from outside the app, so there has to be a URL that
   // reaches it: `heyjarvis://assist`.
   scheme: 'heyjarvis',
+  // Jarvis himself, drawn by the same code as the sphere, big enough to fill the icon with only a
+  // narrow edge: `icon.png` where a square one is used, and an adaptive icon everywhere Android
+  // masks one — on black, as he is drawn. Rendered by `hologram/.scripts/render-play-assets.ts`.
+  icon: '../hologram/assets/icon.png',
   userInterfaceStyle: 'dark',
   backgroundColor: '#05070d',
   // No iOS target. Apple has no equivalent of the assistant role — Siri cannot
@@ -149,6 +153,10 @@ const config: ExpoConfig = {
   },
   android: {
     package: 'com.ffmathy.heyjarvis',
+    adaptiveIcon: {
+      foregroundImage: '../hologram/assets/adaptive-icon.png',
+      backgroundColor: '#000000',
+    },
     // What Play orders uploads by, and not the version anybody reads. Even numbers are the phone's;
     // see `.scripts/expo-release-signing.js` for why it may not share one with the watch.
     versionCode: androidVersionCode(PHONE_VERSION_OFFSET),

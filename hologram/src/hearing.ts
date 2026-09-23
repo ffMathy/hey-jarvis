@@ -1,6 +1,6 @@
 /**
  * How the sphere follows the person talking to him: their voice-activity score and loudness, turned
- * into the two eased numbers the drawing's listening ring reads (`hearing` and `hearingLevel`).
+ * into the two eased numbers the drawing's listening lattice reads (`hearing` and `hearingLevel`).
  *
  * Worklets, like the rest of what the frame loop calls: they run on the UI thread once a frame,
  * and take everything they need as arguments.
@@ -11,12 +11,12 @@
  * the phone, the watch and the Voice preview on the shelf agree on when someone is speaking.
  */
 export const HEARING_THRESHOLD = 0.25;
-/** How far above the threshold a score has to be before the ring is fully there. */
+/** How far above the threshold a score has to be before the lattice is fully there. */
 const HEARING_SPAN = 0.35;
-/** How long the ring takes to come up once someone speaks, and to go once they stop. */
+/** How long the lattice takes to come up once someone speaks, and to go once they stop. */
 const HEARING_RISE_SECONDS = 0.15;
 const HEARING_FALL_SECONDS = 0.6;
-/** The same for how far its ticks reach: quicker, so it follows syllables rather than sentences. */
+/** The same for how hard it breathes: quicker, so it follows syllables rather than sentences. */
 const LEVEL_RISE_SECONDS = 0.05;
 const LEVEL_FALL_SECONDS = 0.25;
 
@@ -42,20 +42,20 @@ export function hearingFromPresence(score: number) {
 
 /**
  * How loud they are, 0–1, from a microphone's input volume. The square root, because a voice at a
- * normal distance reads as a small number and the ring should not need shouting at.
+ * normal distance reads as a small number and the lattice should not need shouting at.
  */
 export function hearingLevelFromVolume(volume: number) {
   'worklet';
   return clamp01(Math.sqrt(clamp01(volume)) * 1.4);
 }
 
-/** One frame's step of the ring's presence toward what the voice-activity score now says. */
+/** One frame's step of the lattice's presence toward what the voice-activity score now says. */
 export function easeHearing(current: number, target: number, deltaSeconds: number) {
   'worklet';
   return easeToward(current, target, deltaSeconds, HEARING_RISE_SECONDS, HEARING_FALL_SECONDS);
 }
 
-/** One frame's step of the ring's reach toward how loud they now are. */
+/** One frame's step of how hard the lattice breathes toward how loud they now are. */
 export function easeHearingLevel(current: number, target: number, deltaSeconds: number) {
   'worklet';
   return easeToward(current, target, deltaSeconds, LEVEL_RISE_SECONDS, LEVEL_FALL_SECONDS);
