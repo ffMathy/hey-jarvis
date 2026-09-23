@@ -197,7 +197,7 @@ jobs:
           push: never
           runCmd: |
             bun install --frozen-lockfile
-            bunx turbo test:integration
+            bunx turbo test:integration --log-order=stream
           env: |
             GITHUB_ACTIONS
             GITHUB_TOKEN

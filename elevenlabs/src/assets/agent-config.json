@@ -150,7 +150,7 @@
       "maxConversationDurationMessage": "",
       "prompt": {
         "llm": "gpt-5.6-luna",
-        "reasoningEffort": null,
+        "reasoningEffort": "none",
         "opener": null,
         "enableReasoningSummary": false,
         "temperature": 0,

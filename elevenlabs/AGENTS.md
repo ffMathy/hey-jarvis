@@ -175,15 +175,18 @@ else, and that union is versioned with the SDK, so a model newer than the pinned
 `@elevenlabs/elevenlabs-js` is not selectable until the pin moves.
 
 `reasoningEffort` sits directly beneath `llm` in the same object, and it is
-`null`. On an OpenAI id that is the first thing to suspect if Jarvis stops
-calling tools at all: OpenAI's own chat-completions endpoint rejects a
-tools-bearing request that omits `reasoning_effort`, and this agent is never
-without tools — `end_call`, `skip_turn`, `transfer_to_agent`, and the MCP server
-behind `routePromptWorkflow`. Whether ElevenLabs uses that endpoint, and whether
-it forwards `null` as omitted or as `none`, is undocumented. `LlmReasoningEffort`
-in the SDK admits `none` through `max` if it turns out to need setting, but do
-not set it pre-emptively — a reasoning model pinned to `none` on every
-tool-bearing turn is its own regression. Set it when a transcript says to.
+`"none"`, because a transcript said to. OpenAI's chat-completions endpoint
+rejects a tools-bearing request for this model family unless `reasoning_effort`
+is `none` — omitting the field is refused too — and this agent is never without
+tools: `end_call`, `skip_turn`, `transfer_to_agent`, and the MCP server behind
+`routePromptWorkflow`. With the field left `null`, the integration specs showed
+exactly that: every turn that needed a tool ended the conversation straight
+after sir spoke, with no tool call and no reply, while turns that needed none
+("It is 01:07, sir") went through. The ended conversations then left ElevenLabs
+reporting the MCP integration as connected with zero tools for every
+conversation after them. Moving `llm` to another provider is the moment to
+revisit this: the constraint is OpenAI's, and `LlmReasoningEffort` in the SDK
+admits `none` through `max`.
 
 And the question to ask of any candidate is not how it reads, not what it scores,
 but whether it hangs up when it says it is hanging up. `turbo test:integration
