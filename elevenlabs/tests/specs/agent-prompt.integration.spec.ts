@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, it } from 'bun:test';
 import { assertMcpServerConnected } from '../utils/mcp-connection.js';
 import { TestConversation } from '../utils/test-conversation.js';
 import {
+  ensureTestEnvironment,
   startTestEnvironment,
   stopTestEnvironment,
   TEST_ENVIRONMENT_SETUP_TIMEOUT_MS,
@@ -126,6 +127,7 @@ async function withConversationRetry(
 ): Promise<void> {
   let lastError: Error | undefined;
   for (let attempt = 1; attempt <= MAX_CONVERSATION_RETRIES; attempt++) {
+    await ensureTestEnvironment();
     const conversation = createConversation();
     let succeeded = false;
     try {

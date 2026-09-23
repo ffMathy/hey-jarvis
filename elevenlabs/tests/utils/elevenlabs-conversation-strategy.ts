@@ -26,6 +26,21 @@ interface PongEvent {
   event_id: number;
 }
 
+/**
+ * The longest a single reply is waited for, however busy the agent keeps the socket.
+ *
+ * A reply is otherwise over once the socket goes quiet, and an agent stuck polling a request
+ * that never finishes is never quiet: it calls again every ten seconds or so, for as long as
+ * it is allowed to. Waiting on it then outlasted the test, bun's timeout fired, and bun
+ * killed the test's "dangling processes" on the way out -- which are the MCP server and the
+ * cloudflared tunnel every later spec in the file depends on. One stuck conversation turned
+ * into "no connection to its MCP server" for everything after it.
+ *
+ * Kept under the smallest per-attempt budget a spec gives a conversation (90 seconds), so a
+ * stuck reply fails its own attempt, with its transcript, instead of the whole file.
+ */
+const MAX_REPLY_WAIT_MS = 75_000;
+
 export interface ElevenLabsConversationOptions {
   agentId: string;
   apiKey: string;
@@ -231,6 +246,7 @@ export class ElevenLabsConversationStrategy implements ConversationStrategy {
     };
 
     let timeout = 0;
+    const deadline = Date.now() + MAX_REPLY_WAIT_MS;
 
     let message: Partial<ServerMessage> | null = {};
     while (message !== null) {
@@ -238,6 +254,13 @@ export class ElevenLabsConversationStrategy implements ConversationStrategy {
       if (message?.type === 'mcp_tool_call' && message.mcp_tool_call?.state === 'loading') {
         timeout = 60000; // Wait longer for agent response
       }
+
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) {
+        console.warn(`⚠️ The agent was still busy after ${MAX_REPLY_WAIT_MS / 1000}s; judging the reply so far`);
+        return;
+      }
+      timeout = Math.min(timeout, remaining);
 
       message = await Promise.race([
         waitForNextMessage(),

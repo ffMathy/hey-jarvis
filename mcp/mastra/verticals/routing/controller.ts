@@ -291,6 +291,35 @@ export function rememberMastraRegistry(mastra: Mastra | undefined): void {
   registry = mastra;
 }
 
+/** The session the most recent request was started in, whichever that was. */
+let latestStartedSessionId: string | undefined;
+
+/**
+ * The session a poll reads, which is the one it names -- unless no request was ever started
+ * there, in which case it is the latest request's.
+ *
+ * A poll naming a session nothing was started in can only be a caller that lost track of its
+ * session, and answering it from an empty buffer means "Still processing" with nothing in
+ * progress, forever. That is not hypothetical: the voice agent is never shown a session id
+ * (see `createInstructionsWorkflowTool`), yet on gpt-5.6-luna it filled the optional field in
+ * anyway. A request that failed at once -- the planner found no agent for it -- was polled
+ * under another id for as long as the conversation lasted, and the failure was never heard.
+ *
+ * A session that has been started keeps its own answers, so callers that do keep their ids
+ * straight stay isolated from each other exactly as before.
+ */
+function resolvePolledSessionId(sessionId: string): string {
+  if (progressBySessionId.has(sessionId) || latestStartedSessionId === undefined) {
+    return sessionId;
+  }
+
+  logger.warn('Poll named a session no request was started in; reading the latest request instead', {
+    polledSessionId: sessionId,
+    latestStartedSessionId,
+  });
+  return latestStartedSessionId;
+}
+
 /** The buffer a caller's request accumulates into. Get-or-create, so callers stay isolated. */
 function progressFor(sessionId: string): RoutingProgress {
   const existing = progressBySessionId.get(sessionId);
@@ -530,6 +559,7 @@ const planRuntime: RoutingRuntime = {
     // place would let the old run's last few events land in the new request's report.
     const progress = new RoutingProgress();
     progressBySessionId.set(sessionId, progress);
+    latestStartedSessionId = sessionId;
 
     const mastra = registry;
     if (!mastra) {
@@ -545,13 +575,13 @@ const planRuntime: RoutingRuntime = {
   },
 
   async poll(sessionId) {
-    return buildSnapshot(progressFor(sessionId));
+    return buildSnapshot(progressFor(resolvePolledSessionId(sessionId)));
   },
 
   async waitForChange(sessionId, deadlineMs) {
     // Everything that changes what a poll would say arrives on the run's own stream, so the
     // wait is that stream against the deadline.
-    await Promise.race([progressFor(sessionId).wait(), delay(deadlineMs)]);
+    await Promise.race([progressFor(resolvePolledSessionId(sessionId)).wait(), delay(deadlineMs)]);
   },
 };
 
@@ -575,5 +605,6 @@ export function resetRoutingRuntime(): void {
   runtime = planRuntime;
   progressBySessionId.clear();
   cancelBySessionId.clear();
+  latestStartedSessionId = undefined;
   registry = undefined;
 }

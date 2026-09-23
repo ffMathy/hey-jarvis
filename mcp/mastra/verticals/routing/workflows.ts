@@ -57,7 +57,7 @@ const inputSchema = z.object({
     .string()
     .optional()
     .describe(
-      'Identifies the caller, so concurrent requests do not interfere. Callers that do not set one share a single session.',
+      'Leave this out. Only a caller running several requests side by side needs one, to keep them apart, and it must then pass the same value to getNextInstructionsWorkflow. Callers that do not set one share a single session.',
     ),
 });
 
@@ -314,7 +314,12 @@ const getNextInstructionsStep = createStep({
   id: 'get-next-instructions',
   description: 'Return whatever the routing plan has produced since the last call',
   inputSchema: z.object({
-    sessionId: z.string().optional().describe('The session returned by routePromptWorkflow'),
+    sessionId: z
+      .string()
+      .optional()
+      .describe(
+        'Leave this out unless you passed a sessionId to routePromptWorkflow, and then pass that same value. Never make one up.',
+      ),
   }),
   outputSchema: instructionsOutputSchema,
   execute: async ({ inputData, mastra }) => {
@@ -357,7 +362,12 @@ export const getNextInstructionsWorkflow = createWorkflow({
   id: 'getNextInstructionsWorkflow',
   description: 'Workflow to wait for the next instructions from an in-flight routing request',
   inputSchema: z.object({
-    sessionId: z.string().optional().describe('The session returned by routePromptWorkflow'),
+    sessionId: z
+      .string()
+      .optional()
+      .describe(
+        'Leave this out unless you passed a sessionId to routePromptWorkflow, and then pass that same value. Never make one up.',
+      ),
   }),
   outputSchema: instructionsOutputSchema,
 })
