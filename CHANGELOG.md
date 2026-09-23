@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.2.2](https://github.com/ffMathy/hey-jarvis/compare/root-v4.2.1...root-v4.2.2) (2026-09-23)
+
+
+### Bug Fixes
+
+* **hologram:** let the particle ceiling lift again after a hitch ([#767](https://github.com/ffMathy/hey-jarvis/issues/767)) ([3179f74](https://github.com/ffMathy/hey-jarvis/commit/3179f74681ab7089d928a409c49fd7faa17125f6))
+
 ## [4.2.1](https://github.com/ffMathy/hey-jarvis/compare/root-v4.2.0...root-v4.2.1) (2026-09-23)
 
 
