@@ -10,9 +10,10 @@ const REMEMBER_WHEN_BETTER_BY = 0.03;
 /**
  * Everything a screen needs in order to let the hologram find its own particle count.
  *
- * The drawing decides how many particles it can afford by measuring what it is getting and moving
- * the number until that is the target frame rate — see `density-control.ts`. All a screen has to do
- * is give it somewhere to put the answers and remember the best one for next time.
+ * The drawing decides how many particles it can afford by measuring what it is getting — how long
+ * each picture takes to build, with the frame rate as a backstop — and moving the number until it
+ * is right; see `density-control.ts`. All a screen has to do is give it somewhere to put the answers
+ * and remember the best one for next time.
  *
  * In a hook of its own because both screens want it and the wiring is fiddly enough to get subtly
  * wrong twice: four shared values, a read that has to finish before the first frame is useful, and

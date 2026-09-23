@@ -29,14 +29,15 @@
 //                       the edge-on ellipse — all of it turning the other way; and data streaks
 //   drawBody            while someone talks to him, the body snaps onto a slowly turning
 //                       hexagonal lattice that breathes with their voice (see latticeFragment);
-//                       otherwise the fragment body's dim and mid strokes: 1680 fragments inside 0.94R
+//                       otherwise the fragment body's dim and mid strokes: PARTICLE_COUNT fragments
+//                       inside 0.94R, of which the density share draws what the device affords
 //                       (four in five plain dashes, the rest L, bracket, T, Z glyphs, rings and
 //                       cell outlines mostly near the core; median 0.083R, clumped into the mass
 //                       with bare fill between the clumps, heavier on the left) and a
-//                       336-fragment turning shell in the lower hemisphere. Half of those between
+//                       168-fragment turning shell in the lower hemisphere. Half of those between
 //                       0.3R and 0.62R ride the counter-turning inner layer; the rest are pinned.
-//                       Every tier carries a halo of its own — two nested rings that step up from
-//                       nothing at the outer reach to the stroke — so the light between the
+//                       Every tier carries a halo of its own — a wide faint stroke round each
+//                       fragment (HALO_RINGS) — so the light between the
 //                       strokes comes from the strokes rather than from the wash behind them, and
 //                       goes out and comes back on each fragment's own clock. Mid and
 //                       bright strokes vary in brightness along their length (a tiled sparkle
@@ -173,9 +174,9 @@
 //   only their arguments and module-level number constants: no module-level mutable state,
 //   no closures over outer values, no Math.random while drawing. Randomness comes from the
 //   seeded scene, and per-cycle variation from an integer hash.
-// - The scene is flat number arrays (about 20,000 numbers), cloned into the worklet runtime
-//   once. Doubling the fragment body would have put it half as far over that again, so the
-//   body's rows lost two numbers each instead (see buildBody). The fill and sparkle
+// - The scene is flat number arrays — about a hundred thousand numbers at PARTICLE_COUNT, ten
+//   to a body row — cloned into the worklet runtime once. The body's rows lost two numbers each
+//   when the body was first doubled (see buildBody). The fill and sparkle
 //   textures and the whorl are built straight into Skia images and paths from a seed in
 //   the resources, so they are never copied. The textures are small
 //   (128² and 64²) and built with table lookups and separable noise, because this runs on the
@@ -191,13 +192,20 @@
 //   a Gaussian mask filter was measured and costs more than the ring it would replace,
 //   because its price follows a path's bounding box rather than its ink. It is drawn over
 //   black.
-// - Three rules keep the widest paints affordable. A shader that is transparent over most of
-//   the disc is painted as a band, not a disc (LIMB_BLOOM_BAND); the particle halos — the
-//   widest strokes here, seven paths a frame at two rings each — are the one thing drawn
-//   without antialiasing (HALO_ANTIALIASED); and the inner of those two rings is butt-capped,
-//   where a fragment's halo is otherwise almost all cap (see drawParticleHalo). About a quarter
-//   of the frame between them, which is what lets this drawing render faster than the sparser
-//   one it replaced while carrying twice as many particles.
+// - Two rules keep the widest paints affordable. A shader that is transparent over most of
+//   the disc is painted as a band, not a disc (LIMB_BLOOM_BAND); and the particle halos — the
+//   widest strokes here, six paths a frame at one ring (HALO_RINGS) — are the one thing drawn
+//   without antialiasing (HALO_ANTIALIASED). On a CPU rasteriser leaving the halos aliased saved
+//   about a fifth of the frame. On a GPU it is right only with a stencil, which the app's canvas
+//   gets by being drawn inside a layer (DRAWN_IN_A_LAYER in hologram-view.tsx): without one, Skia
+//   triangulates these halos on the CPU every frame, and above the floor they were most of it.
+// - The body's and the stream's rows are kept in the order of the density share's key
+//   (roundedInDensityOrder), and the loop visits only the rows the share keeps (densityRowsEnd).
+//   Anything that changes which field the share is taken over, or adds a table the share thins,
+//   has to keep that order, or the loop stops in the wrong place.
+// - On a phone every worklet here runs under Hermes with no JIT, as bytecode compiled at runtime
+//   without optimisation: per particle it measured about twelve times what V8 with its JIT pays,
+//   on a desktop harness. Work done per fragment is what costs there.
 // - Geometry lives in unit space under canvas.translate(centre)·scale(R), so gradient
 //   shaders are built once, and the rolling layers are drawn under canvas.rotate. Beyond
 //   paints, gradients and path builders, the textures use Data.fromBytes, Image.MakeImage
@@ -313,9 +321,10 @@ export const MATERIALISE_SECONDS = 1.4;
  * able to extend further out without being clipped." It has 2.1R now.
  *
  * Paying for that in canvas rather than in sphere is deliberate, and it is nearly free: Skia only
- * rasterises what is drawn, the drawn things are all sized from the sphere, and the shadow is
- * capped in sphere radii too (BACKDROP_REACH). What the extra square costs is the surface it is
- * cleared on, not the picture painted into it.
+ * rasterises what is drawn, and the drawn things are all sized from the sphere. What the extra
+ * square costs is the surface it is cleared on — and on a phone the layer the picture is drawn into,
+ * which is the canvas's size (`DRAWN_IN_A_LAYER` in `hologram-view.tsx`) — not the picture painted
+ * into it.
  */
 export const SPHERE_FRACTION = 0.27;
 /** The outer rim layer rolls clockwise in the screen plane: one turn in about 33 s, as the film's ladder ring. */
@@ -413,6 +422,20 @@ const CHIP_GONE_SECONDS = 0.2;
 // Strides of the flat scene tables (the builders describe the fields).
 const BODY_STRIDE = 10;
 const STREAM_STRIDE = 11;
+/** Where a body row and a stream row keep the fragment's id, which the density share is taken over. */
+const BODY_ID_FIELD = 6;
+const STREAM_ID_FIELD = 7;
+
+/**
+ * How the two tables a density share thins are laid out: how wide a row is, and where its id is.
+ *
+ * Exported for the spec, which holds both tables to being in the share's order — see
+ * `roundedInDensityOrder` — since nothing that looks at pixels would notice if one stopped being.
+ */
+export const THINNED_TABLES = {
+  body: { stride: BODY_STRIDE, idField: BODY_ID_FIELD },
+  stream: { stride: STREAM_STRIDE, idField: STREAM_ID_FIELD },
+};
 const CRESCENT_PIECE_STRIDE = 3;
 const CRESCENT_PIECES_PER_STRAND = 14;
 const TRUSS_PIECE_STRIDE = 6;
@@ -471,23 +494,28 @@ const LIMB_RIDGE_RADIUS = 0.955;
 const LIMB_RIDGE_BAND = 0.17;
 
 /**
- * The particle halos are the one thing in the drawing painted without antialiasing, and that is
- * what pays for their second ring.
+ * The particle halos are the one thing in the drawing painted without antialiasing.
  *
  * Analytic antialiasing of a wide stroke is expensive out of all proportion to what it buys
- * here: on this drawing, switching it on for the halo paints alone takes the frame loop from
+ * here: on this drawing, switching it on for the halo paints alone took the frame loop from
  * 3651 ms to 4430 ms — a fifth of the whole frame — because the halos are the widest strokes in
- * the scene and there are seven paths of them a frame. What it buys is a smooth edge, and a halo
- * ring's edge is a step of eighteen luma against the amber behind it. So the saving pays for the
- * second ring and more: two aliased rings come in *under* the single antialiased pass they
- * replace (by 56 to 303 ms over several runs), and halve that step at the same time. What it
- * costs is one jagged pixel on an eighteen-luma boundary: invisible at 1:1 and only findable at
- * four times magnification.
+ * the scene. What it buys is a smooth edge, and a halo ring's edge was then a step of eighteen luma
+ * against the amber behind it: one jagged pixel on that boundary is invisible at 1:1 and only
+ * findable at four times magnification. Those figures are from when the halo had two and then three
+ * rings; it has one now ({@link HALO_RINGS}).
  *
- * Still false with the halo now built of {@link HALO_RINGS} rings rather than two. The outermost
- * carries a fifth of the alpha two rings gave it, so its edge is a step of about four luma —
- * turning antialiasing on for it costs a fifth of the whole frame's rasterising and, side by
- * side at six times magnification, is barely tellable from this.
+ * **All of that was measured on a CPU rasteriser. On a GPU it holds only with a stencil.** Skia's
+ * GPU backend draws a stroke with antialiasing off through its tessellator, on the GPU, when the
+ * canvas has a stencil, the context can draw instanced geometry and the GPU is not one Skia keeps off
+ * its tessellator (see `DRAWN_IN_A_LAYER` in `hologram-view.tsx`), and there these halos cost under a
+ * millisecond of Skia's CPU a frame. Antialiased, they would go to masks rasterised on the CPU, as
+ * the body's strokes do, and the whole frame would cost a tenth to a third more at the floor and
+ * twice as much at full density (CanvasKit on WebGL, Skia's CPU time). Without a stencil it is the
+ * other way round: these are triangulated on the CPU every frame, and above the floor they were
+ * 80-86% of the frame — `DRAWN_IN_A_LAYER` is how the app's canvas got one. On a context that cannot
+ * draw instanced geometry, or a GPU Skia keeps off its tessellator, the layer does not help, and
+ * there antialiased halos measured a quarter to a third of the frame's cost from a quarter of the
+ * particles up, with a visual difference under the noise floor.
  */
 const HALO_ANTIALIASED = false;
 
@@ -529,13 +557,15 @@ const FRAGMENT_CODE_GLYPH_STEP = 12;
  * rather than the one the hardware allows, and those are different questions.
  *
  * What it costs on every phone, fast or slow, is the scene: this many fragments times
- * {@link BODY_STRIDE} numbers, built once and serialised once into the worklet runtime when the
- * view mounts. That is the only part of raising it that nobody can opt out of, and it is worth
- * knowing the size of it: 100,000 numbers, which `createHologramScene` spends 15-20 ms building on
- * a desktop CPU against 8-12 ms at five thousand. A phone is some multiple of that, and then
- * Reanimated copies the lot across. It lands as a hitch when the view mounts rather than as a
- * frame rate, so the controller below cannot thin it away — this is the number to look at first if
- * the arrival ever starts feeling late.
+ * {@link BODY_STRIDE} numbers, built, put in the density share's order and serialised once into the
+ * worklet runtime when the view mounts. That is the only part of raising it that nobody can opt out
+ * of, and it is worth knowing the size of it: 100,000 numbers, which `createHologramScene` spends
+ * about 20 ms building on a desktop under V8 once warm (about 35 on a first, cold call), and about
+ * 70 ms under a Hermes compiled ahead of time the way React Native ships it, on the same desktop —
+ * the density order is about 6 of those 70 — against about half that at five thousand. A
+ * phone is some multiple of that, and then Reanimated copies the lot across. It lands as a hitch
+ * when the view mounts rather than as a frame rate, so the controller below cannot thin it away —
+ * this is the number to look at first if the arrival ever starts feeling late.
  *
  * {@link FEWEST_PARTICLES} in `density-control.ts` is a share of this, so it moves when this does.
  */
@@ -544,12 +574,14 @@ export const PARTICLE_COUNT = 10000;
 /**
  * How many fragments the watch's scene is built from.
  *
- * A fraction of the phone's {@link PARTICLE_COUNT}, and the single biggest thing that makes the
- * sphere affordable here. The density share thins the scene by skipping fragments *inside* the
- * draw loop, so no share, however small, stops the loop visiting every fragment there is — and
- * building the scene costs this many again, serialised into the worklet runtime at mount. Neither
- * is something the controller can steer away from. On a watch both were being paid in full, for a
- * scene sized for a phone.
+ * A fraction of the phone's {@link PARTICLE_COUNT}. Building the scene costs this many fragments,
+ * sorted and serialised into the worklet runtime at mount, and that is not something the controller
+ * can steer away from. It used to cost the draw loop this many as well, since the density share was
+ * taken by skipping fragments inside the loop, so however low it went the loop still visited every
+ * one; on a watch both were being paid in full, for a scene sized for a phone. The loop now stops
+ * where the kept fragments end (see `densityRowsEnd`), so what is left to this is the mount cost, and
+ * where the floor falls: `FEWEST_PARTICLES` is a share, so on a watch it is 125 fragments rather
+ * than 250.
  *
  * It is a ceiling rather than a count: what is actually drawn starts far below this and only comes
  * up if the frame rate allows — see `watch/src/watch-density.ts`, which wires the controller in.
@@ -572,6 +604,9 @@ export const WATCH_PARTICLE_COUNT = 5000;
  * share for every share above that multiplier. Which means no thinning at all until the share
  * falls past it, and the drawing looks untouched the whole way down. It is its own irrational
  * rather than the phase's, so which fragments are drawn does not correlate with when they light.
+ *
+ * The scene's rows are sorted by what this makes of their ids — see {@link roundedInDensityOrder} — so the
+ * fragments any share keeps are the first rows, and the loop stops where they end.
  */
 const DENSITY_FROM_ID = 733.1357;
 
@@ -804,8 +839,8 @@ function buildBody(random: Random, fragmentCount: number) {
  * The lower hemisphere's stream: fragments on an equatorial shell below the core
  * that turns about the vertical axis, so its front drifts right at 0.1-0.2 R/s and
  * its dimmer back drifts left — the film's horizontal counter-streams.
- * Stride 10: x, y, z (rest pose), half-length along the latitude x, z, rate, phase,
- * id, brightness + 3 × pool, glyph (0 dash or 1 L).
+ * Stride {@link STREAM_STRIDE}: x, y, z (rest pose), half-length along the latitude x, z, rate,
+ * phase, id (at {@link STREAM_ID_FIELD}), brightness + 3 × pool, glyph (0 dash or 1 L), reveal order.
  */
 function buildStream(random: Random) {
   const stream: number[] = [];
@@ -995,6 +1030,82 @@ function roundToFiveDecimals(value: number) {
 }
 
 /**
+ * The same rows, rounded (see {@link roundToFiveDecimals}) and reordered so that the fragments any
+ * density share keeps come first.
+ *
+ * **At the floor, the rows it did not keep were most of the build.** The share
+ * used to be taken inside the loop: every row was read, its id hashed, and all but the share thrown
+ * away. On a phone that loop runs under Hermes, which has no JIT and runs a worklet's code as bytecode
+ * compiled at runtime without optimisation. On a Hermes built the way React Native builds it, wrapped
+ * the way the worklets runtime wraps it and timed on a desktop rather than a phone, the build took
+ * 5.1-5.6 ms at the floor, about 4.1 ms of it turning away the 9,750 rows the share did not keep —
+ * half of `BUILD_BUDGET_MS`, spent on particles nobody saw. Going by the harnesses it is one of the
+ * two things that held the app at about a tenth of the particles the same phone's browser climbs to;
+ * the other is the painting, in `hologram-view.tsx`. Neither was read off a phone.
+ *
+ * In the key's order the rows a share keeps are simply the first ones, so the loop finds where they
+ * end with a binary search (`densityRowsEnd`) and stops there. On the same Hermes, in one paired
+ * run: 5.1 → 1.1 ms at the floor and 7.3 → 3.0 ms at a thousand particles, which moves the point
+ * where the build reaches its budget from about 1,350 particles to about 2,900 on that machine.
+ * Where a phone settles is not known. At full density every row is kept
+ * and nothing is saved, so this narrows the gap to a browser rather than closing it. The same
+ * fragments are drawn, in the same tiers and the same places — checked call for call against the loop
+ * this replaced, over ten thousand frames and densities — and only the order they reach each path in
+ * changes. A path's contours are one shape whatever order they come in; drawn on Skia's CPU
+ * rasteriser they match to within a rounding step, a few antialiased pixels one to three levels apart
+ * in a few frames of the vortex (the GPU was not compared).
+ *
+ * Ordered by counting the keys into slices rather than by a comparison sort, and rounded in the same
+ * pass, because this runs on the JS thread every time the view mounts: the keys are spread evenly over
+ * 0-1, so each of `count` slices holds about one row and the whole ordering is a couple of passes. The
+ * key is taken from the *rounded* id, so it is bit for bit the key the loop tests, and rows that share
+ * a key keep the order they were built in, so this is the same (key, row) order a stable sort gives.
+ * Under Hermes it adds about 6 ms to a mount of ten thousand rows, where a comparison sort added 27.
+ *
+ * It calls {@link densityKey}, a worklet declared further down, which the worklets plugin turns into a
+ * constant that is not hoisted. That is safe because this only runs when a view builds its scene, long
+ * after the module has finished loading — it must never be called at module scope.
+ */
+function roundedInDensityOrder(rows: number[], stride: number, idField: number) {
+  const count = rows.length / stride;
+  const keys = new Array<number>(count);
+  // Which of `count` equal slices of 0-1 a key falls in. No key reaches 1, but a product can round up.
+  const sliceOf = (key: number) => Math.min(count - 1, Math.floor(key * count));
+  // How many keys each slice holds, and then where each slice's run starts.
+  const sliceStarts = new Array<number>(count + 1).fill(0);
+  for (let row = 0; row < count; row++) {
+    const key = densityKey(roundToFiveDecimals(rows[row * stride + idField]));
+    keys[row] = key;
+    sliceStarts[sliceOf(key) + 1]++;
+  }
+  for (let slice = 0; slice < count; slice++) {
+    sliceStarts[slice + 1] += sliceStarts[slice];
+  }
+  const order = new Array<number>(count);
+  const nextInSlice = sliceStarts.slice(0, count);
+  for (let row = 0; row < count; row++) {
+    const key = keys[row];
+    const slice = sliceOf(key);
+    // Into its slice's run in key order. Rows arrive in their own order and only strictly greater keys
+    // are stepped past, so rows that share a key stay in the order they were built in.
+    let at = nextInSlice[slice]++;
+    while (at > sliceStarts[slice] && keys[order[at - 1]] > key) {
+      order[at] = order[at - 1];
+      at--;
+    }
+    order[at] = row;
+  }
+  const ordered = new Array<number>(rows.length);
+  for (let position = 0; position < count; position++) {
+    const from = order[position] * stride;
+    for (let field = 0; field < stride; field++) {
+      ordered[position * stride + field] = roundToFiveDecimals(rows[from + field]);
+    }
+  }
+  return ordered;
+}
+
+/**
  * Builds the hologram's random geometry once. Deterministic for a given seed; plain data only.
  *
  * `particleCount` is the most the body can ever have, which a phone then draws a share of — see
@@ -1007,8 +1118,8 @@ export function createHologramScene(seed: number, particleCount: number = PARTIC
   const random = createRandom(seed);
   const script = buildScript(random);
   return {
-    body: buildBody(random, particleCount).map(roundToFiveDecimals),
-    stream: buildStream(random).map(roundToFiveDecimals),
+    body: roundedInDensityOrder(buildBody(random, particleCount), BODY_STRIDE, BODY_ID_FIELD),
+    stream: roundedInDensityOrder(buildStream(random), STREAM_STRIDE, STREAM_ID_FIELD),
     crescentPieces: buildCrescentPieces(random).map(roundToFiveDecimals),
     truss: buildTruss(random).map(roundToFiveDecimals),
     fray: buildFray(random).map(roundToFiveDecimals),
@@ -1030,13 +1141,16 @@ type Scene = ReturnType<typeof createHologramScene>;
 /**
  * A path under construction, kept in JavaScript until it is finished.
  *
- * **This is the frame rate on a phone.** Skia's own builder sends every `moveTo` and `lineTo`
- * across into native code as it is called, and a frame of this drawing is a few thousand of them.
- * Measured with the JIT switched off — which is what Hermes is on a phone — a thousand two-verb
- * dashes cost 4.41 ms built that way against 0.91 ms handed over as one array of commands, while
- * the arithmetic behind them costs 0.08 ms. Nearly the whole cost of building a frame is the
- * crossings, and this removes them: the verbs go into a plain array and the path is made in one
- * call when it is detached.
+ * Skia's own builder sends every `moveTo` and `lineTo` across into native code as it is called,
+ * and a frame of this drawing is a few thousand of them. Measured headlessly with the JIT switched
+ * off, a thousand two-verb dashes cost 4.41 ms built that way against 0.91 ms handed over as one
+ * array of commands, so the verbs go into a plain array and the path is made in one call when it is
+ * detached.
+ *
+ * What is left of the crossings is small. On a Hermes built the way React Native builds it, wrapped
+ * the way the worklets runtime wraps it and timed on a desktop, handing the arrays over costs about
+ * 190 ns a command — 2 ms of the 27 ms it takes to build a frame at full density — and nearly all the
+ * rest is the drawing's own JavaScript, which Hermes runs as unoptimised bytecode with no JIT.
  *
  * Verb numbers are Skia's own, as `PathVerb` gives them, written out rather than imported because
  * this runs in a worklet and an imported enum is one more object to carry across.
@@ -1498,14 +1612,10 @@ export function createHologramResources(Skia: SkiaApiType, scene: Scene) {
     return paint;
   };
 
-  // The particle halos, on their own paints because they are the one thing here drawn without
-  // antialiasing — see HALO_ANTIALIASED. The outer ring is round-capped, which is what makes a
-  // halo round; the inner one is butt-capped, which is what makes it affordable — see
-  // {@link drawParticleHalo}.
+  // The particle halos, on a paint of their own because they are the one thing here drawn without
+  // antialiasing — see HALO_ANTIALIASED. Round-capped, which is what makes a halo round.
   const particleHalo = makeStroke('#dc5c20', StrokeCap.Round);
   particleHalo.setAntiAlias(HALO_ANTIALIASED);
-  const particleHaloInner = makeStroke('#dc5c20', StrokeCap.Butt);
-  particleHaloInner.setAntiAlias(HALO_ANTIALIASED);
 
   const makeBuilder = () => makePathBuilder();
   /** Stands in until the first frame builds the real thing; drawing it is a no-op. */
@@ -1565,7 +1675,6 @@ export function createHologramResources(Skia: SkiaApiType, scene: Scene) {
     bodyHotStroke: makeSparkleStroke('#ff8e3c', StrokeCap.Round),
     bodyGlowStroke: makeStroke('#dc6820', StrokeCap.Round),
     particleHaloStroke: particleHalo,
-    particleHaloInnerStroke: particleHaloInner,
     lineStroke: makeStroke('#ec9440', StrokeCap.Butt),
     coreRingStroke: makeStroke('#ffa440', StrokeCap.Round),
     coreGlowStroke: makeStroke('#ec8c2c', StrokeCap.Round),
@@ -1640,6 +1749,36 @@ function smooth01(value: number) {
 function fraction(value: number) {
   'worklet';
   return value - Math.floor(value);
+}
+
+/** Where a fragment sits in the thinning, 0-1: a share keeps the fragments whose key is under it. */
+export function densityKey(id: number) {
+  'worklet';
+  return fraction(id * DENSITY_FROM_ID);
+}
+
+/**
+ * Where the rows a density share keeps end, as an offset into the table.
+ *
+ * The rows are sorted by {@link densityKey} when the scene is built (see `roundedInDensityOrder`), so the
+ * kept ones are a run from the start and a binary search finds its end: fourteen reads for the
+ * phone's ten thousand, where the loop used to read and hash every row to find out. A share of 1
+ * keeps every row, since no key reaches 1.
+ */
+function densityRowsEnd(rows: number[], stride: number, idField: number, density: number) {
+  'worklet';
+  // Every row before `keptUpTo` is kept and every row from `notKeptFrom` on is not.
+  let keptUpTo = 0;
+  let notKeptFrom = rows.length / stride;
+  while (keptUpTo < notKeptFrom) {
+    const middle = (keptUpTo + notKeptFrom) >> 1;
+    if (densityKey(rows[middle * stride + idField]) < density) {
+      keptUpTo = middle + 1;
+    } else {
+      notKeptFrom = middle;
+    }
+  }
+  return keptUpTo * stride;
 }
 
 /** A repeatable 0..1 hash of an integer. */
@@ -2060,9 +2199,9 @@ function readFragment(body: number[], offset: number, state: FrameState, into: n
   'worklet';
   // Is it lit at all? This is the cheapest question to ask of them: everything below — unpacking
   // its class, where it sits in the reveal — is work the ones that fail would only throw away.
-  const id = body[offset + 6];
-  // Thinned to what this phone can afford, before anything else is asked of it.
-  if (state.density < 1 && fraction(id * DENSITY_FROM_ID) >= state.density) return 0;
+  // Whether this phone can afford it at all is not asked here: the caller only visits the rows the
+  // density share keeps (see densityRowsEnd).
+  const id = body[offset + BODY_ID_FIELD];
   const cycles = state.time * body[offset + 5] + fraction(id * FRAGMENT_PHASE_FROM_ID);
   const cycle = Math.floor(cycles);
   const life = cycles - cycle;
@@ -2213,10 +2352,11 @@ function appendBody(builders: PathBuilder[], body: number[], state: FrameState) 
   'worklet';
   const placed = state.scratch;
   const reading = state.reading;
-  for (let offset = 0; offset < body.length; offset += BODY_STRIDE) {
+  const end = densityRowsEnd(body, BODY_STRIDE, BODY_ID_FIELD, state.density);
+  for (let offset = 0; offset < end; offset += BODY_STRIDE) {
     const strength = readFragment(body, offset, state, reading);
     if (strength <= 0) continue;
-    const id = body[offset + 6];
+    const id = body[offset + BODY_ID_FIELD];
     const unitX = body[offset + 2];
     const unitY = body[offset + 3];
     const length = body[offset + 4];
@@ -2277,8 +2417,7 @@ function appendBody(builders: PathBuilder[], body: number[], state: FrameState) 
  */
 function readShellFragment(stream: number[], offset: number, state: FrameState): number {
   'worklet';
-  const id = stream[offset + 7];
-  if (state.density < 1 && fraction(id * DENSITY_FROM_ID) >= state.density) return 0;
+  const id = stream[offset + STREAM_ID_FIELD];
   const cycles = state.time * stream[offset + 5] + stream[offset + 6];
   const life = cycles - Math.floor(cycles);
   if (life >= FRAGMENT_DUTY) return 0;
@@ -2295,7 +2434,8 @@ function appendStream(builders: PathBuilder[], stream: number[], state: FrameSta
   'worklet';
   const cosYaw = state.streamCos;
   const sinYaw = state.streamSin;
-  for (let offset = 0; offset < stream.length; offset += STREAM_STRIDE) {
+  const end = densityRowsEnd(stream, STREAM_STRIDE, STREAM_ID_FIELD, state.density);
+  for (let offset = 0; offset < end; offset += STREAM_STRIDE) {
     const strength = readShellFragment(stream, offset, state);
     if (strength <= 0) continue;
     const restX = stream[offset];
@@ -2310,12 +2450,12 @@ function appendStream(builders: PathBuilder[], stream: number[], state: FrameSta
     // a latitude runs horizontally on screen, foreshortened as it turns toward the limb
     const halfX = stream[offset + 3] * cosYaw + stream[offset + 4] * sinYaw;
     const plain = stream[offset + 8] - 3 * state.reading[0];
-    const tier = depth < 0 ? 0 : fragmentTier(plain, lit, stream[offset + 7], state.hotShare);
-    swirlFragment(x, y, 1, 0, stream[offset + 7], state);
+    const tier = depth < 0 ? 0 : fragmentTier(plain, lit, stream[offset + STREAM_ID_FIELD], state.hotShare);
+    swirlFragment(x, y, 1, 0, stream[offset + STREAM_ID_FIELD], state);
     const swirled = state.swirled;
     if (swirled[4] <= 0) continue;
     // The shell snaps onto the lattice too, or it would go on streaming under it.
-    latticeFragment(swirled[0], swirled[1], stream[offset + 7], state);
+    latticeFragment(swirled[0], swirled[1], stream[offset + STREAM_ID_FIELD], state);
     appendGlyph(
       builders[tier],
       stream[offset + 9],
@@ -2332,46 +2472,36 @@ function appendStream(builders: PathBuilder[], stream: number[], state: FrameSta
 type DetachedPath = ReturnType<typeof pathOf>;
 
 /**
- * How many nested rings the halo is built from, and what each contributes.
+ * How many nested rings the halo is built from, and what each contributes: one, since the
+ * experiment it was cut to one for.
  *
- * Two rings made a two-step ramp, and with the halo widened the outer step became a visible
- * rim: every particle sat in a disc of flat colour that ended at a hard, and — with
- * antialiasing off — jagged, edge. The user saw exactly that, glow circles round the sparks.
- * Three rings put the steps below what the eye picks out, so the light falls away from the
- * stroke instead of stopping, and the share is chosen so they come to what the two did at the
- * centre: with Screen blending that is 1 - (1 - share)^3 against the old
- * 1 - (1 - 0.52s)(1 - 0.61s), within a couple of percent across the strengths the tiers ask for.
+ * It was three. Two rings made a two-step ramp whose outer step read as a rim — glow circles round
+ * the sparks, which the user saw — and three put the steps below what the eye picks out, with the
+ * share chosen so they came to what two did at the centre (with Screen blending, 1 - (1 - share)^3).
+ * Five were smoother still and cost too much. A sprite with the ramp already in it, through
+ * `drawAtlas`, measured 4.5x *slower* than five rings, because marshalling a transform object per
+ * particle across into Skia costs more than the drawing it saves; the same reason `drawPoints` lost
+ * to plain paths earlier.
  *
- * Five rings were smoother still and cost too much. Every ring paints the middle of every
- * particle again, so the fill grows with the ring count and the halo's width both, and a halo
- * this wide over a thousand particles is most of what the phone's GPU does: five rings doubled
- * that against two, and the user felt it as a dropped frame rate. Three keeps the ramp and hands
- * back most of the cost.
+ * Then the phone drew this at 8 to 11 frames a second and the same picture at 58 in its own browser, and a
+ * build with a quarter of the fragments, a quarter of the shell and one ring ran at 57, so the halo
+ * was cut to a single ring to find out whether the particles or the halo were the cost. The phone
+ * never gave a clean answer — the app stayed slow at one ring — and a model of it did: the real
+ * drawing in CanvasKit on WebGL, with the canvas set up as the app's is. **It was the halo, and not
+ * for any reason a ring count could fix.** The halos are the one paint drawn without antialiasing
+ * (HALO_ANTIALIASED), and Skia's GPU backend draws a non-antialiased stroke through its tessellator,
+ * on the GPU, only when the canvas has a stencil and the context can draw instanced geometry. The
+ * browser's canvas has a stencil; the app's has none, so going by React Native Skia's source every
+ * halo on the phone was turned into an outline on the CPU every frame and triangulated there (or,
+ * past about two thousand dashes in a path, masked). In the model, at 714 px (238 dp at 3x) and full
+ * density: 12.6 MB of triangles and 230-250 ms of Skia's CPU a frame,
+ * 80-86% of it the halos, against about 30 ms for the whole frame with a stencil. The app now draws
+ * inside a layer that has one — see `DRAWN_IN_A_LAYER` in `hologram-view.tsx` — which in the model
+ * costs what the browser's canvas does.
  *
- * A sprite with the ramp already in it, drawn once per particle, would paint the middle once
- * rather than three times — and it is 4.5x *slower* than five rings, because `drawAtlas` wants a
- * transform object per particle and marshalling a thousand of those across into Skia costs more
- * than the drawing it saves. Measured, not assumed; the same reason `drawPoints` lost to plain
- * paths earlier.
- */
-/**
- * ONE RING, AND WE ARE MEASURING WHICH HALF OF THE GEOMETRY COSTS THE FRAME.
- *
- * The phone drew this at 8 frames a second and the same picture at 58 in its own browser. Build
- * was 2.6 ms of a 120 ms frame, so it is not JavaScript; and it did not change with the size of
- * the canvas, which rules out fill rate — the thing five rounds of benchmarks measured, every one
- * of them on a CPU scanline rasteriser where cost *is* pixels. A GPU pays per path segment.
- *
- * A build with a quarter of the fragments, a quarter of the shell and one ring ran at 57. So it is
- * geometry. This build changes exactly one thing against that one: the fragments and the shell are
- * back at full strength, and the halo stays at one ring.
- *
- * The halo is the suspect worth eliminating first, because it strokes *every* path a second time
- * and does it at ten times the width — and a wide stroke is far more geometry than a thin one. If
- * this is still fast, the thousand particles were never the problem and only the halo has to
- * change. If it collapses back to 8, the particles are the cost, and the way to keep them is to
- * stop tessellating them: sprites through `drawAtlas`, which was dismissed earlier on a CPU
- * benchmark we now know was the wrong instrument.
+ * So more rings should be affordable again, though what each adds has not been measured in a browser
+ * or on the app. It stays at one because one is what the user has been looking at, and
+ * bringing the ramp back is a change to how he looks rather than to how fast he is.
  */
 const HALO_RINGS = 1;
 const HALO_RING_SHARE = 0.52;
@@ -3188,7 +3318,11 @@ export function drawHologram(
   canvas.scale(state.radius, state.radius);
   // While it arrives, the whole sphere is drawn into a layer and that layer is faded in — one
   // alpha over everything, rather than every layer carrying its own ramp. The layer costs an
-  // offscreen buffer for the second and a half this lasts and nothing afterwards.
+  // offscreen buffer for as long as this lasts — the first fifth of the vortex (appearance under
+  // 0.2) and the whole of leaving — and no drawing afterwards, though Skia keeps its texture. On a
+  // phone it sits inside the layer the
+  // view draws everything into (DRAWN_IN_A_LAYER in hologram-view.tsx), so for those moments there
+  // are two.
   const arriving = state.arrival < 1;
   if (arriving) {
     resources.arrivalFade.setAlphaf(state.arrival);

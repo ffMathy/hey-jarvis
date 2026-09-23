@@ -73,6 +73,21 @@ and the tracker stepped on the UI thread. It takes a `JarvisVoice` and asks it
 two questions — nothing in it knows where the audio came from, so the phone can
 hand it a WebRTC track and the watch its own microphone.
 
+Two things in the view are there for speed on a device and nowhere else. It
+times how long each picture takes to build, which is what the density loop in
+`density-control.ts` steers by. And on Android it records the whole picture,
+background included, inside one layer (`DRAWN_IN_A_LAYER`): React
+Native Skia gives its Android window no stencil buffer, and without one Skia
+triangulates the particle halos on the CPU every frame, where a layer Skia
+allocates itself can have a stencil and the halos go to the GPU as they do in a
+browser. That was found in a CanvasKit model of the two canvases rather than on
+a phone, and the constant's comment says what it assumes of the GPU. The
+drawing's half of the same work is that the scene's body and shell rows are
+kept in the order of the density share's key (`roundedInDensityOrder`), so the
+loop stops where the kept rows end (`densityRowsEnd`) instead of reading every
+row to throw most of them away — which under Hermes, with no JIT, was 4.1 of
+the 5.3 ms a picture took to build at the floor, on a desktop harness.
+
 `src/conversation/` is where `@elevenlabs/react-native` is called for real, and
 it is thinner still: two flags out of the conversation's own state, two readers
 out of the SDK's analysers, a list of the tool call ids still in flight, the
@@ -166,6 +181,17 @@ worklet is an ordinary function.
 pins the picture itself: byte-identical frames for a given time and voice,
 containment inside the canvas, how much the sphere swells and brightens when
 spoken to, and that no state leaks between frames.
+
+What it cannot see is speed on a device. CanvasKit here rasterises on the CPU,
+under Bun's JavaScript engine with its JIT, and a phone or a watch does neither.
+It paints on the GPU, where which of Skia's path renderers takes a stroke
+depends on whether the canvas has a stencil — see `DRAWN_IN_A_LAYER` in
+`src/react/hologram-view.tsx`, which lives in the view and so is exercised by no
+test here — and it builds the picture under Hermes with no JIT, which on a
+desktop harness cost about twelve times per particle what V8 with its JIT pays.
+A headless millisecond says which way the pixels went, not how fast Jarvis will
+be. Judge a change made for speed on a device, with sample mode's readout of the
+frame rate and the build time.
 
 The on-device check that goes with it lives in the phone app
 (`mobile/.scripts/verify-hologram-on-emulator.sh`) because it needs an emulator.

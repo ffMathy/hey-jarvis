@@ -20,7 +20,7 @@ Hold the power button on the phone and Jarvis comes up over whatever you were do
   </picture>
 </p>
 
-One sphere, drawn once. Both devices bundle the same [`hologram`](./hologram) package, which is why there is no version of him that is only on the phone. These clips are that same drawing rendered frame by frame at the most particles each device can hold — 10,000 on the phone, 5,000 on the watch, where on a device the density loop draws whatever share of that it can afford — by [`hologram/.scripts/render-showcase.ts`](./hologram/.scripts/render-showcase.ts):
+One sphere, drawn once. Both devices bundle the same [`hologram`](./hologram) package, which is why there is no version of him that is only on the phone. These clips are that same drawing rendered frame by frame at the most particles each device is allowed — 10,000 on the phone, 5,000 on the watch, where on a device the density loop draws whatever share of that it can afford — by [`hologram/.scripts/render-showcase.ts`](./hologram/.scripts/render-showcase.ts):
 
 ```bash
 bun hologram/.scripts/render-showcase.ts
@@ -30,7 +30,7 @@ Those are animated WebP at 40 fps and 95% quality, rendered at twice the width t
 
 All three are transparent outside the device, so they sit on a light page as happily as a dark one.
 
-The picture at the top is the same drawing again: one still, mid-sentence, at the full 3000 particles — the most a phone is ever *allowed*, and more than one has ever been measured drawing. It is 1280×640, which is what GitHub wants for a repository's social preview, so the same file serves as both.
+The picture at the top is the same drawing again: one still, mid-sentence, at the phone's full 10,000 particles — the most a phone is ever *allowed*, which is a ceiling rather than what one draws: on a phone the density loop settles at whatever share of it that phone can afford. It is 1280×640, which is what GitHub wants for a repository's social preview, so the same file serves as both.
 
 The devices are real frames rather than drawings: Google's own Pixel 10 Pro device art, and a community vector of a Pixel Watch 3 — Google publishes art for every Pixel phone and none for its watch. [`hologram/.scripts/device-art/NOTICE.md`](./hologram/.scripts/device-art/NOTICE.md) says where each came from and under what licence, **including that the two watch clips are themselves CC BY-SA 4.0** because the frame in them is.
 

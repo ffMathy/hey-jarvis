@@ -1,11 +1,15 @@
 /**
  * How many of Jarvis's particles a phone can afford, worked out while it draws them.
  *
- * The drawing's cost is its geometry: a GPU turns every stroked path into triangles, and this one
- * hands it more than a thousand that are different every frame. How many a given phone can manage
- * at the frame rate it is asked for is not a thing anyone can know in advance — it was 8 frames a
- * second on one phone and 58 in that same phone's browser — so instead of choosing a number, the
- * drawing measures what it is getting and moves the number until the number is right.
+ * The drawing's cost grows with its particles in both halves of a frame. Building the picture is
+ * JavaScript run per particle — on a phone under Hermes, with no JIT — and painting it is Skia
+ * turning paths into something a GPU can draw, which for the particle halos, on a canvas with no
+ * stencil, meant triangulating them on the CPU every frame. How many a given phone can manage at
+ * the pace it is asked for is not a thing anyone can know in advance — the same phone drew this at
+ * 8 frames a second in the app and 58 in its own browser, for reasons it took a layer with a
+ * stencil (`DRAWN_IN_A_LAYER` in `hologram-view.tsx`) and a sorted scene (`densityRowsEnd` in the
+ * drawing) to address — so instead of choosing a number, the drawing measures what it is getting
+ * and moves the number until the number is right.
  *
  * It is a PID controller, in the incremental (velocity) form: each measurement decides how much to
  * *change* the particle count, not what the count should be. That form is the right one here
@@ -34,18 +38,28 @@
  * catches a phone whose painting runs out of room before its building does. And with no build
  * time to go on — nothing timed yet — the loop steers by the frame rate as it used to.
  *
+ * A phone whose painting runs out first is not hypothetical. Before the picture was drawn in a
+ * layer (`DRAWN_IN_A_LAYER` in `hologram-view.tsx`), the app's canvas had no stencil, and in a
+ * CanvasKit model of that canvas painting rather than building was the half that ran out. Its cost
+ * did not even rise steadily with the count there: half the particles cost more to paint than all
+ * of them, 285 ms against 242, because past about 2,048 dashes a halo path has more verbs than
+ * Skia's triangulator will take and goes to a cheaper mask instead. A ceiling found on the way up a
+ * curve like that can sit lower than it needs to. With a stencil the model's painting rises
+ * steadily with the count again.
+ *
  * ## Why an error in time rather than in rate
  *
  * Build time is a time already, and so is the frame-rate reading: the error is a **frame time**,
  * not a frame rate, even though a frame rate is what it is handed. They are reciprocals, so it
  * looks like a distinction without a difference, and it matters.
  *
- * Frame *time* is roughly a straight line in the particle count: a fixed cost for everything that
- * is not particles, plus a cost per particle. Frame *rate* is one over that, which is a hyperbola.
- * A controller has one set of gains, and one set of gains can only be right if the thing it steers
- * responds by the same amount wherever it happens to be. In frame-rate terms it does not: the same
- * handful of particles is worth twenty frames a second near the knee of the curve and two frames a
- * second away from it, so gains tuned where it is slow tear the count apart where it is fast.
+ * Frame *time* is roughly a straight line in the particle count — on a canvas with a stencil, at
+ * least; see above for one without — a fixed cost for everything that is not particles, plus a
+ * cost per particle. Frame *rate* is one over that, which is a hyperbola. A controller has one set
+ * of gains, and one set of gains can only be right if the thing it steers responds by the same
+ * amount wherever it happens to be. In frame-rate terms it does not: the same handful of particles
+ * is worth twenty frames a second near the knee of the curve and two frames a second away from it,
+ * so gains tuned where it is slow tear the count apart where it is fast.
  *
  * The reciprocal also makes the error wildly lopsided, which is what used to make the climb
  * unusable. Measured against a target of forty, a phone drawing at 120 reports an error of -2,
@@ -85,7 +99,8 @@
  */
 
 /**
- * The frame rate it steers toward, and the rate Jarvis actually runs at.
+ * The frame rate a phone must hold: the backstop under {@link BUILD_BUDGET_MS}, and what the loop
+ * steers toward only while nothing has been timed.
  *
  * Exactly forty, not a little under it. It used to sit under the view's cap because a measurement
  * saturates at the cap — at the cap exactly, "fast enough" and "could draw far more" read the same,
@@ -93,8 +108,12 @@
  * `hologram-view.tsx` is now a hundred and twenty, far above this, so there is real error on both
  * sides of forty and the loop can see it.
  *
- * Which means this number does the work. The loop *adds* particles until the frame rate falls to
- * here, so lowering it buys a denser sphere and raising it a smoother one.
+ * It does the work only when nothing has been timed. With a build time to go on, the loop adds
+ * particles until building a picture takes {@link BUILD_BUDGET_MS}, and this is the backstop: two
+ * windows running under it set a ceiling the count may not climb past. So on a phone whose painting
+ * is the limit, lowering it buys a denser sphere and raising it a smoother one; on a phone whose
+ * building is the limit it changes nothing, unless it is raised past the rate that phone already
+ * draws at.
  *
  * One thing it is worth knowing about forty on a sixty hertz screen: a screen presents whole
  * refreshes, so the rates it can actually hold are sixty, thirty, twenty — and forty is not among
@@ -152,10 +171,11 @@ export const WATCH_PACE: DensityPace = {
  * floor rises with it, and a phone that could manage three hundred would be pinned above what it
  * can draw and stutter for ever.
  *
- * A watch is the one place this lands somewhere else, knowingly. `watch-density.ts` builds a scene
- * of 5000, so a fortieth of it is 125 fragments rather than 250, and nothing here can tell the
- * difference: this module imports nothing and never sees a count, only a share. It is the right
- * trade there anyway — on a watch the floor is a last resort rather than a resting place.
+ * A watch is the one place this lands somewhere else, knowingly. The watch's screens build a scene
+ * of `WATCH_PARTICLE_COUNT`, 5000, so a fortieth of it is 125 fragments rather than 250, and
+ * nothing here can tell the difference: this module imports nothing and never sees a count, only a
+ * share. It is the right trade there anyway — on a watch the floor is a last resort rather than a
+ * resting place.
  *
  * **It is a floor, not a destination.** Ending up here used to be routine — see `steerDensity` for
  * the single measurement that could send the whole sphere down to it — and that was a bug rather
@@ -205,12 +225,15 @@ const MEASUREMENT_SHARE = 0.3;
  *
  * **These two are the whole of the bug this file was rewritten for, so they are worth reading
  * carefully.** A measurement arrives as a frame rate and a window, and the loop used to take both
- * at face value. When a phone stalls — a re-render, a collection, another app waking up — one
- * frame can take two seconds, and the window that contains it reports half a frame a second over
- * two seconds. Both halves of that then made the step bigger: the error was enormous because the
- * rate was nearly zero, and the step was scaled by a window that was four times its usual length.
- * The two multiplied, and one such window took the sphere from whatever it was drawing straight to
- * {@link FEWEST_PARTICLES} — the entire range, in a single measurement, from one slow frame.
+ * at face value. When a phone stalls — a re-render, a collection, another app waking up, or, on a
+ * canvas with no stencil, one of the rare frames Skia's triangulator spends seconds on (one took
+ * twenty in a CanvasKit model of the app's canvas before `DRAWN_IN_A_LAYER`, where the frames a
+ * fiftieth of a second either side took about 30 ms) — one frame can take two seconds, and the
+ * window that contains it reports half a frame a second over two seconds. Both halves of that then
+ * made the step bigger: the error was enormous because the rate was nearly zero, and the step was
+ * scaled by a window that was four times its usual length. The two multiplied, and one such window
+ * took the sphere from whatever it was drawing straight to {@link FEWEST_PARTICLES} — the entire
+ * range, in a single measurement, from one slow frame.
  *
  * So: a rate below half the target is simply "too slow" and nothing is gained by knowing how much
  * too slow, and half a second is all the evidence a half-second window can hold however long the
@@ -549,8 +572,9 @@ function recordWhatItHolds(control: DensityControl, framesPerSecond: number, onT
 }
 
 /**
- * Moves the particle count toward whatever holds the device's target frame rate — {@link TARGET_FRAMES_PER_SECOND}
- * on a phone, {@link WATCH_PACE} on a watch.
+ * Moves the particle count toward whatever builds a picture in the device's budget without falling
+ * behind its frame rate — {@link PHONE_PACE} on a phone, {@link WATCH_PACE} on a watch. With no
+ * build time passed it steers by the frame rate instead.
  *
  * `framesPerSecond` of zero means nothing has been measured yet, and nothing is changed — the loop
  * must not act on the first frame, before there is a rate to act on. Neither does the first real

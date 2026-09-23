@@ -6,6 +6,7 @@ import {
   bodyTurnRadians,
   createHologramResources,
   createHologramScene,
+  densityKey,
   drawHologram,
   type HologramFrame,
   MATERIALISE_SECONDS,
@@ -13,6 +14,7 @@ import {
   ROLL_DEGREES_PER_SECOND,
   SHELL_DEGREES_PER_SECOND,
   SPHERE_FRACTION,
+  THINNED_TABLES,
 } from './hologram-drawing';
 import { VOICE_BAND_COUNT } from './voice-levels';
 
@@ -699,11 +701,102 @@ describe('the hologram', () => {
     expect(dimmed / (thin.length / 4)).toBeLessThan(0.002);
   });
 
-  it('can be built with far fewer particles, which is the only way a watch gets cheaper', () => {
-    // The density share thins the swarm by skipping fragments *inside* the draw loop, so however
-    // low it goes the loop still visits every fragment the scene holds — and the scene is
-    // serialised into the worklet runtime at mount besides. Neither cost can be steered away from,
-    // which is why `watch/src/watch-density.ts` asks for a smaller scene rather than a lower share.
+  it('keeps the particles a share thins in the order the share takes them, rounded', () => {
+    // The loop stops where the rows a share keeps end, which is only the right place if every row
+    // before it is kept and every row after it is not — so both tables the share thins are held in
+    // its order. And every number is rounded before the order is taken, or the key the rows were
+    // ordered by would not be the key the loop tests. None of the pixel tests would notice either
+    // going wrong: a scene out of order draws a plausible sphere of the wrong particles.
+    const { scene } = mount();
+    for (const table of ['body', 'stream'] as const) {
+      const rows = scene[table];
+      const { stride, idField } = THINNED_TABLES[table];
+      let previous = -1;
+      for (let offset = 0; offset < rows.length; offset += stride) {
+        const key = densityKey(rows[offset + idField]);
+        expect(key).toBeGreaterThanOrEqual(previous);
+        expect(key).toBeLessThan(1);
+        previous = key;
+      }
+      expect(rows.every((value) => Math.round(value * 1e5) / 1e5 === value)).toBe(true);
+    }
+  });
+
+  it('visits exactly the particles its share keeps, and none of the rest', () => {
+    // On a phone the picture is built under Hermes, with no JIT, and there even turning a row away
+    // costs something: about a sixth of what drawing it does. When the loop read every row and threw
+    // most away, the 9,750 of 10,000 it turned away at the floor came to 4.1 ms — half of the build
+    // budget, on a desktop harness, for particles nobody saw. So the loop stops where the kept rows
+    // end instead.
+    //
+    // Unlike the rest of this file this counts reads rather than pixels, because what it pins is a
+    // cost, and which particles are drawn: the picture is the same as the old loop's, which was
+    // checked call for call outside this suite, and none of the tests above notice which particles
+    // a share draws.
+    const hologram = mount();
+    let reads = 0;
+    const readsPerRow = { body: new Map<number, number>(), stream: new Map<number, number>() };
+    const counted = (table: 'body' | 'stream') =>
+      new Proxy(hologram.scene[table], {
+        get(target, property, receiver) {
+          if (typeof property === 'string' && /^\d+$/.test(property)) {
+            reads++;
+            const row = Math.floor(Number(property) / THINNED_TABLES[table].stride);
+            readsPerRow[table].set(row, (readsPerRow[table].get(row) ?? 0) + 1);
+          }
+          return Reflect.get(target, property, receiver);
+        },
+      });
+    const watched = {
+      scene: { ...hologram.scene, body: counted('body'), stream: counted('stream') },
+      resources: hologram.resources,
+    };
+    const keysOf = (table: 'body' | 'stream') => {
+      const rows = hologram.scene[table];
+      const { stride, idField } = THINNED_TABLES[table];
+      return Array.from({ length: rows.length / stride }, (_, row) => densityKey(rows[row * stride + idField]));
+    };
+    const keys = { body: keysOf('body'), stream: keysOf('stream') };
+    const visit = (density: number) => {
+      reads = 0;
+      readsPerRow.body.clear();
+      readsPerRow.stream.clear();
+      render({ ...silence(6), density }, watched);
+      // The search for where the kept rows end reads one number from each row it probes; the loop
+      // reads several from every row it visits. So a row read more than once is a row visited.
+      const visited = (table: 'body' | 'stream') =>
+        [...readsPerRow[table]]
+          .filter(([, count]) => count > 1)
+          .map(([row]) => row)
+          .sort((first, second) => first - second);
+      return { reads, body: visited('body'), stream: visited('stream') };
+    };
+    const keptUnder = (table: 'body' | 'stream', density: number) =>
+      keys[table].flatMap((key, row) => (key < density ? [row] : []));
+
+    const floor = visit(0.025);
+    const whole = visit(1);
+    // A fortieth of the particles, and about a fortieth of the reads: reading every row to turn it
+    // away came to about a seventh.
+    expect(floor.reads).toBeLessThan(whole.reads * 0.06);
+    expect(whole.body.length).toBe(PARTICLE_COUNT);
+    expect(whole.stream.length).toBe(keys.stream.length);
+
+    // Exactly the rows whose key is under the share, in both tables — at round shares, and at a
+    // share that *is* one row's key, which that row is not kept at.
+    const shares = [0, 0.025, 0.4, 0.8, keys.body[4321], keys.stream[97]];
+    for (const share of shares) {
+      const { body, stream } = visit(share);
+      expect(body).toEqual(keptUnder('body', share));
+      expect(stream).toEqual(keptUnder('stream', share));
+    }
+  });
+
+  it('can be built with far fewer particles, which is what makes a watch cheaper to mount', () => {
+    // The scene is built, put in the share's order and serialised into the worklet runtime at mount,
+    // whatever share of it is drawn. That cost cannot be steered away from, which is why the watch's
+    // screens pass `WATCH_PARTICLE_COUNT` as the view's `particleCount` rather than relying on a
+    // lower share.
     const watchSized = createHologramScene(SEED, 1200);
 
     expect(watchSized.body.length).toBeLessThan(createHologramScene(SEED).body.length);
