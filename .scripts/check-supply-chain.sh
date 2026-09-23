@@ -81,12 +81,14 @@ fi
 # ---------------------------------------------------------------------------
 # `engines` and `peerDependencies` are declarations *about* compatibility, so
 # ranges there are expected; installed dependency versions must be exact.
+# `workspace:` is not a range either: it links a package in this repository,
+# resolves nothing from the registry, and is what `bun add` writes for one.
 unpinned=$(git ls-files -- 'package.json' '*/package.json' | while read -r manifest; do
 	bun --eval "
 		const manifest = require('./${manifest}');
 		for (const section of ['dependencies', 'devDependencies', 'optionalDependencies', 'overrides']) {
 			for (const [name, range] of Object.entries(manifest[section] ?? {})) {
-				if (!/^[0-9]/.test(range)) console.log('${manifest}: ' + section + '.' + name + ' = ' + range);
+				if (!/^([0-9]|workspace:)/.test(range)) console.log('${manifest}: ' + section + '.' + name + ' = ' + range);
 			}
 		}
 	"

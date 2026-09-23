@@ -114,9 +114,25 @@ jobs:
   integration-tests:
     if: ${{ github.event.pull_request.draft == false }}
 
+    # **One run at a time across the whole repository, not one per branch.**
+    # Every run brings up the same cloudflared tunnel (one hostname, one
+    # token, both from the vault) and deploys the same ElevenLabs test agent
+    # pointed at it. Two runs at once register two connectors on that tunnel,
+    # and Cloudflare splits requests between them: a conversation routes its
+    # request on one runner's MCP server and polls the other's, which has
+    # nothing in flight and answers "Still processing" until the eval times
+    # out, and once either run finishes and shuts its server down, the other's
+    # agent reports no MCP connection at all. Per-branch groups let exactly
+    # that happen whenever two pull requests were ready at the same time, and
+    # both runs failed or hit the timeout below.
+    #
+    # Not cancelled in progress, because the run being cancelled would usually
+    # be another pull request's. GitHub keeps only one run waiting per group,
+    # so a newer run replaces an older one that has not started yet; push again
+    # or re-run it to queue it once more.
     concurrency:
-      group: integration-tests-${{ github.actor }}-${{ github.head_ref || github.ref }}
-      cancel-in-progress: true
+      group: integration-tests
+      cancel-in-progress: false
 
     runs-on: ubuntu-latest
     timeout-minutes: 60  # The conversation evals run several minutes each
