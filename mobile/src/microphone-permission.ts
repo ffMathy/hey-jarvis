@@ -10,5 +10,6 @@ import type { RequestMicrophoneAccess } from './platform-contracts';
  */
 export const requestMicrophoneAccess: RequestMicrophoneAccess = async () => {
   const outcome = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
-  return outcome === PermissionsAndroid.RESULTS.GRANTED;
+  // A permission, not a stream: there is nothing held open to release.
+  return outcome === PermissionsAndroid.RESULTS.GRANTED ? { release: () => undefined } : undefined;
 };

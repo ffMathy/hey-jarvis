@@ -19,8 +19,12 @@ declare global {
   interface Window {
     /** How many times anything asked for a microphone, counted by `countMicrophones`. */
     microphonesOpened?: number;
+    /** Every microphone stream handed to the page, in order, kept by `countMicrophones`. */
+    microphoneStreams?: MediaStream[];
     /** The source of every sound the page started playing, in order, kept by `listenForSounds`. */
     soundsPlayed?: string[];
+    /** The source of every sound the browser refused to play, kept by `listenForSounds`. */
+    soundsRefused?: string[];
   }
 }
 
@@ -144,11 +148,14 @@ async function expectHologramToKeepMoving(page: Page): Promise<void> {
 async function countMicrophones(page: Page): Promise<void> {
   await page.addInitScript(() => {
     window.microphonesOpened = 0;
+    window.microphoneStreams = [];
 
     const getUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
     navigator.mediaDevices.getUserMedia = async (constraints) => {
       window.microphonesOpened = (window.microphonesOpened ?? 0) + 1;
-      return getUserMedia(constraints);
+      const stream = await getUserMedia(constraints);
+      window.microphoneStreams?.push(stream);
+      return stream;
     };
   });
 }
@@ -179,11 +186,15 @@ async function refuseMicrophone(page: Page): Promise<void> {
 async function listenForSounds(page: Page): Promise<void> {
   await page.addInitScript(() => {
     window.soundsPlayed = [];
+    window.soundsRefused = [];
 
     const play = HTMLMediaElement.prototype.play;
     HTMLMediaElement.prototype.play = function (this: HTMLMediaElement) {
-      window.soundsPlayed?.push(this.currentSrc || this.src);
-      return play.call(this);
+      const source = this.currentSrc || this.src;
+      window.soundsPlayed?.push(source);
+      const playing = play.call(this);
+      playing.catch(() => window.soundsRefused?.push(source));
+      return playing;
     };
   });
 }
@@ -398,7 +409,7 @@ test('greets you from the recording while the conversation is still being dialle
   expect(pageErrors).toEqual([]);
 });
 
-test('does not greet out loud in a browser nobody has touched since it loaded', async ({ page }) => {
+test('greets from the recording in a browser nobody has touched since it loaded', async ({ page }) => {
   let tokenRequests = 0;
   const answer = async (route: Route) => {
     tokenRequests++;
@@ -411,23 +422,41 @@ test('does not greet out loud in a browser nobody has touched since it loaded', 
   await expect.poll(() => tokenRequests).toBe(1);
 
   // A second tab onto the saved settings lands straight on the conversation with no click behind
-  // it, and a browser will not start a sound then. Trying would only fail — and the agent would
-  // have been told not to greet, leaving nobody to. So he is left to greet in his own voice, as he
-  // did before the recording.
+  // it, and a browser will not start a sound then — unless the page is using the microphone. So
+  // the microphone asked for before the session is held open until the greeting has started, and
+  // he greets from the recording here too, rather than leaving it to the agent's own voice.
   //
   // A new tab rather than a reload of this one, and deliberately: a reload is not a guaranteed
   // clean slate in Chromium, which about one run in five under load still reported the reloaded
   // page as interacted with and let it play. A tab nobody has touched is exactly the case.
   const untouched = await page.context().newPage();
+  const pageErrors: string[] = [];
+  untouched.on('pageerror', (error) => pageErrors.push(error.message));
   await blockExternalRequests(untouched);
   await countMicrophones(untouched);
   await listenForSounds(untouched);
   await untouched.route(CONVERSATION_TOKEN_URL, answer);
   await untouched.goto('/');
   await expect.poll(() => tokenRequests).toBe(2);
-  // Absence has no event to wait for; the greeting would have started well inside this.
-  await untouched.waitForTimeout(1000);
-  expect(await untouched.evaluate(() => window.soundsPlayed)).toEqual([]);
+
+  await expect.poll(() => untouched.evaluate(() => window.soundsPlayed)).toHaveLength(1);
+  const [greeting] = (await untouched.evaluate(() => window.soundsPlayed)) ?? [];
+  expect(greeting).toMatch(/greeting.*\.mp3/);
+  // Asked for is not heard: a refusal arrives on the promise `play()` returned.
+  await untouched.waitForTimeout(500);
+  expect(await untouched.evaluate(() => window.soundsRefused)).toEqual([]);
+
+  // And the microphone held for it is let go once he has started, rather than lighting the
+  // browser's recording indicator for as long as the tab stays open.
+  await expect
+    .poll(() =>
+      untouched.evaluate(() =>
+        window.microphoneStreams?.[0]?.getTracks().every((track) => track.readyState === 'ended'),
+      ),
+    )
+    .toBe(true);
+
+  expect(pageErrors).toEqual([]);
 });
 
 test('explains a rejected API key in terms of the setting to fix', async ({ page }) => {
