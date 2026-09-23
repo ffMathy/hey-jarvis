@@ -340,18 +340,39 @@ const REMEMBERED_SHARE = 0.5;
  *
  * So the first time the phone is seen falling behind — two windows running, so a lone hitch cannot
  * do it — the lower of the two counts it fell behind at becomes a ceiling, scaled by how far short
- * of the target it fell, and the loop does not climb above it again for the rest of this
- * appearance. Frame time is roughly a straight line in the count, so a phone making three quarters
- * of the target at some count can afford about three quarters of it; the scale is that, never more
- * than {@link BELOW_WHERE_IT_FELL} so there is always a margin, and never less than
- * {@link FARTHEST_BELOW_WHERE_IT_FELL}, because a reading that far off is more likely a stall than a
- * measurement of what the particles cost. It only ever comes
- * down: a phone that falls behind under the ceiling has shown the edge is lower now, usually
- * because it is hotter or busier, and gets a lower one. The next appearance starts afresh and finds
- * its own.
+ * of the target it fell, and the loop does not climb above it until the frame rate has plainly had
+ * room for a while (see {@link CEILING_PATIENCE_SECONDS}). Frame time is roughly a straight line in
+ * the count, so a phone making three quarters of the target at some count can afford about three
+ * quarters of it; the scale is that, never more than {@link BELOW_WHERE_IT_FELL} so there is always a
+ * margin, and never less than {@link FARTHEST_BELOW_WHERE_IT_FELL}, because a reading that far off is
+ * more likely a stall than a measurement of what the particles cost. A phone that falls behind under
+ * the ceiling has shown the edge is lower now, usually because it is hotter or busier, and gets a
+ * lower one. Falling behind at the floor sets nothing: there are no particles left to blame.
  */
 const BELOW_WHERE_IT_FELL = 0.9;
 const FARTHEST_BELOW_WHERE_IT_FELL = 0.5;
+
+/**
+ * How long the frame rate has to have held clear of the target, pressed against the ceiling, before
+ * the ceiling starts to lift; how long that wait can grow to; and how fast it lifts once it does.
+ *
+ * **A ceiling that only ever came down was a ceiling for ever, and the watch showed what that
+ * costs.** Two slow windows are all it takes to set one, and a watch has plenty: the view mounting,
+ * the vortex playing inside two layers, the screen re-rendering. Set while it was opening, at the
+ * floor, the ceiling *was* the floor — and the waiting screen stays mounted for as long as the watch
+ * waits, so the user watched thirty-eight frames a second and a count that never went up. A slowdown
+ * is evidence about a moment, and a phone's moment passes: whatever was busy stops, a hot phone cools.
+ *
+ * So once the frame rate has plainly had room — every window clear of the target by more than the
+ * settled band — for {@link CEILING_PATIENCE_SECONDS}, the ceiling lifts, slowly, and the count
+ * follows it up. If that finds the edge again the ceiling comes back down as it always did, and the
+ * next wait is twice as long, up to {@link LONGEST_CEILING_PATIENCE_SECONDS}: a phone that really
+ * does run out of room there pays a lag every minute at most, rather than the climb-lag-shed cycle
+ * the ceiling exists to stop, and a phone that was only busy for a moment gets its particles back.
+ */
+const CEILING_PATIENCE_SECONDS = 4;
+const LONGEST_CEILING_PATIENCE_SECONDS = 64;
+const CEILING_LIFT_PER_SECOND = 0.05;
 
 export interface DensityControl {
   /** 0–1: the share of the particles being drawn. This is the controller's integrator. */
@@ -407,10 +428,17 @@ export interface DensityControl {
   /** Which way the last step went, which is how the loop knows it has just turned around. */
   lastStep: number;
   /**
-   * The most particles the loop may climb to on this appearance: 1 until the phone has been seen
-   * falling behind, and then a little under where it fell. See {@link BELOW_WHERE_IT_FELL}.
+   * The most particles the loop may climb to right now: 1 until the phone has been seen falling
+   * behind, then a little under where it fell, lifting again once the frame rate has plainly had
+   * room for a while. See {@link BELOW_WHERE_IT_FELL} and {@link CEILING_PATIENCE_SECONDS}.
    */
   ceiling: number;
+  /** How long the frame rate has held clear of the target with the count pressed on the ceiling, in seconds. */
+  roomFor: number;
+  /** How long {@link roomFor} has to reach before the ceiling lifts. Doubles each time a lift finds the edge. */
+  patience: number;
+  /** Whether the ceiling has lifted since it last came down, which is what makes the next fall double the wait. */
+  lifted: boolean;
   /** The share drawn during the last window, so a slow window can be pinned on what caused it. */
   lastDensity: number;
   /** The frame rate this device steers to. See {@link DensityPace}. */
@@ -457,6 +485,9 @@ export function createDensityControl(
     trust: 1,
     lastStep: 0,
     ceiling: 1,
+    roomFor: 0,
+    patience: CEILING_PATIENCE_SECONDS,
+    lifted: false,
     lastDensity: density,
     targetFramesPerSecond: pace.targetFramesPerSecond,
     buildBudgetMs: pace.buildBudgetMs,
@@ -541,6 +572,11 @@ function lowerTheCeiling(control: DensityControl, trusted: number, drawnNow: num
     return false;
   }
   const fellAt = drawnNow < drawnBefore ? drawnNow : drawnBefore;
+  // Falling behind at the floor says nothing about what particles cost — there are none left to
+  // shed — and a ceiling set there would only stop the climb once whatever it was has passed.
+  if (fellAt <= FEWEST_PARTICLES) {
+    return false;
+  }
   // The share of the target it was making, which is what the reading is the reciprocal of.
   const making = clamp(1 / (1 + trusted), FARTHEST_BELOW_WHERE_IT_FELL, BELOW_WHERE_IT_FELL);
   const ceiling = clamp(fellAt * making, FEWEST_PARTICLES, 1);
@@ -553,6 +589,44 @@ function lowerTheCeiling(control: DensityControl, trusted: number, drawnNow: num
   control.density = control.ceiling;
   control.lastStep = 0;
   return true;
+}
+
+/**
+ * Lifts the ceiling, slowly, once the frame rate has plainly had room for long enough — and makes the
+ * next wait longer if the last lift found the edge again. See {@link CEILING_PATIENCE_SECONDS}.
+ *
+ * Room is both of the last two windows clear of the target by more than the settled band, with the
+ * count pressed against the ceiling: a count held down by its build budget, or anything else, is not
+ * being held down by the ceiling, and lifting it would be answering a question nobody asked.
+ */
+function liftTheCeiling(
+  control: DensityControl,
+  frameReading: number,
+  previousFrameReading: number,
+  windowSeconds: number,
+  fellAgain: boolean,
+): void {
+  'worklet';
+  if (fellAgain) {
+    if (control.lifted) {
+      control.patience = Math.min(LONGEST_CEILING_PATIENCE_SECONDS, control.patience * 2);
+    }
+    control.lifted = false;
+    control.roomFor = 0;
+    return;
+  }
+  const slower = frameReading > previousFrameReading ? frameReading : previousFrameReading;
+  const pressing = control.ceiling < 1 && control.density >= control.ceiling * 0.98;
+  if (!pressing || slower > -SETTLED_WITHIN) {
+    control.roomFor = 0;
+    return;
+  }
+  control.roomFor += windowSeconds;
+  if (control.roomFor < control.patience) {
+    return;
+  }
+  control.ceiling = clamp(control.ceiling + CEILING_LIFT_PER_SECOND * windowSeconds, FEWEST_PARTICLES, 1);
+  control.lifted = true;
 }
 
 /**
@@ -622,10 +696,13 @@ export function steerDensity(
   // The gentler of each reading and the last, so that a lone hitch is not a verdict.
   const trusted = reading < control.lastReading ? reading : control.lastReading;
   control.lastReading = reading;
-  const trustedFrame = frameReading < control.lastFrameReading ? frameReading : control.lastFrameReading;
+  const previousFrameReading = control.lastFrameReading;
+  const trustedFrame = frameReading < previousFrameReading ? frameReading : previousFrameReading;
   control.lastFrameReading = frameReading;
 
+  const ceilingBefore = control.ceiling;
   const cut = lowerTheCeiling(control, trustedFrame, drawnNow, drawnBefore);
+  liftTheCeiling(control, frameReading, previousFrameReading, windowSeconds, control.ceiling < ceilingBefore);
 
   control.errorBeforeThat = control.previousError;
   control.previousError = control.error;

@@ -479,8 +479,8 @@ describe('the phone stalling, which is not the phone being slow', () => {
     // to be back at the count that froze it within five seconds — which is the user's report
     // exactly: a lag, the particles going *up* again, and a freeze.
     //
-    // So it climbs back to under where it froze and stays there for the rest of this appearance,
-    // quickly rather than in a crawl. The next appearance finds its own count from scratch.
+    // So it climbs back to under where it froze, quickly rather than in a crawl, and waits there
+    // until the frame rate has plainly had room for a while before trying any higher.
     const control = createDensityControl();
     settle(control, phone(0.6), 20);
     const settled = control.density;
@@ -531,21 +531,35 @@ describe('a phone that heats up, which is what the user watched freeze', () => {
     expect(lagging / 120).toBeLessThan(0.15);
   });
 
-  it('never climbs back above where the phone first fell behind', () => {
+  it('tries the edge again only rarely, and less often every time it finds it', () => {
+    // The ceiling used to hold for the rest of the appearance, which kept this phone off the edge
+    // and pinned a watch that had only hitched to its floor for good. It lifts again now, once the
+    // frame rate has plainly had room — and each lift that finds the edge doubles the wait before
+    // the next, so over four minutes the phone lags in a handful of short, ever rarer moments.
     const control = createDensityControl();
     const drawsAt = heatingPhone();
-    let firstCeiling: number | undefined;
-    for (let window = 0; window < 120; window++) {
-      steerDensity(control, drawsAt(control.density), 0.5);
-      if (firstCeiling === undefined && control.ceiling < 1) {
-        firstCeiling = control.ceiling;
+    const lagsStartAt: number[] = [];
+    let lagging = 0;
+    let wasLagging = false;
+    for (let window = 0; window < 480; window++) {
+      const rate = drawsAt(control.density);
+      const lags = rate < TARGET_FRAMES_PER_SECOND;
+      if (lags) {
+        lagging++;
+        if (!wasLagging) {
+          lagsStartAt.push(window);
+        }
       }
-      if (firstCeiling !== undefined) {
-        expect(control.density).toBeLessThanOrEqual(firstCeiling);
-      }
+      wasLagging = lags;
+      steerDensity(control, rate, 0.5);
     }
 
-    expect(firstCeiling).toBeDefined();
+    expect(lagging / 480).toBeLessThan(0.05);
+    expect(lagsStartAt.length).toBeLessThanOrEqual(8);
+    const gaps = lagsStartAt.slice(1).map((start, index) => start - (lagsStartAt[index] ?? 0));
+    gaps.slice(1).forEach((gap, index) => {
+      expect(gap).toBeGreaterThanOrEqual(gaps[index] ?? 0);
+    });
   });
 });
 
@@ -609,6 +623,59 @@ function steerFor(control: DensityControl, drawsAt: ReturnType<typeof timedPhone
   }
   return seen;
 }
+
+/**
+ * A watch with room to spare: thirty-eight frames a second at any count, and a build well inside
+ * its sixteen milliseconds — what the user's watch reported after the stencil fix. Except while it
+ * `hitches`, when something else on the watch takes the frames.
+ */
+function roomyWatch(hitches: (window: number) => boolean) {
+  let window = 0;
+  return (density: number) => {
+    const hitching = hitches(window++);
+    return { framesPerSecond: hitching ? 18 : 38, build: 1 + 8 * density };
+  };
+}
+
+function steerWatch(control: DensityControl, drawsAt: ReturnType<typeof roomyWatch>, windows: number) {
+  const seen: number[] = [];
+  for (let window = 0; window < windows; window++) {
+    const { framesPerSecond, build } = drawsAt(control.density);
+    steerDensity(control, framesPerSecond, 0.5, build);
+    seen.push(control.density);
+  }
+  return seen;
+}
+
+describe('a watch that hitched once', () => {
+  it('still climbs when it hitched while it was opening, at the floor', () => {
+    // What the user saw: thirty-eight frames a second, and a count that never went up. Two slow
+    // windows while the view mounts and the vortex plays are enough to set a ceiling, and set at
+    // the floor that ceiling used to hold for as long as the screen stayed open.
+    const control = createDensityControl(undefined, WATCH_PACE);
+    steerWatch(
+      control,
+      roomyWatch((window) => window >= 1 && window <= 3),
+      80,
+    );
+
+    expect(control.density).toBeGreaterThan(0.5);
+  });
+
+  it('climbs back after a hitch in the middle, once the frames have plainly come back', () => {
+    const control = createDensityControl(undefined, WATCH_PACE);
+    const seen = steerWatch(
+      control,
+      roomyWatch((window) => window === 8 || window === 9),
+      160,
+    );
+    const beforeHitch = seen[7] ?? 0;
+
+    expect(beforeHitch).toBeLessThan(0.9);
+    expect(Math.min(...seen.slice(10, 14))).toBeLessThan(beforeHitch);
+    expect(control.density).toBeGreaterThan(beforeHitch);
+  });
+});
 
 describe('steering by how long a picture takes to build', () => {
   it('settles on the build budget and stays there, rather than hunting across a refresh', () => {
