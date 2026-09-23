@@ -8,8 +8,14 @@
  * rather than left to an integration run to discover.
  */
 
-import { describe, expect, it } from 'bun:test';
-import { asRoutingEvents, buildSnapshot, RoutingProgress } from './controller.js';
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+import {
+  asRoutingEvents,
+  buildSnapshot,
+  getRoutingRuntime,
+  RoutingProgress,
+  resetRoutingRuntime,
+} from './controller.js';
 import { buildRoutingPlan } from './plan.js';
 
 const PLAN = buildRoutingPlan('plan-under-test', [
@@ -166,5 +172,58 @@ describe('a plan run, folded', () => {
     }
 
     expect(buildSnapshot(progress).landed.map((outcome) => outcome.agentId)).toEqual(['internetOfThings', 'weather']);
+  });
+});
+
+/**
+ * The real runtime, with no Mastra instance registered: a request started this way fails at
+ * once ("routing has no Mastra instance to plan against"), which is exactly the shape of the
+ * request that went unheard -- one that ended before the first poll arrived.
+ */
+describe('a poll that names a session no request was started in', () => {
+  // Before as well as after: another spec in the same process may have left a Mastra instance
+  // registered, and with one the request would really be planned instead of failing at once.
+  beforeEach(() => {
+    resetRoutingRuntime();
+  });
+
+  afterEach(() => {
+    resetRoutingRuntime();
+  });
+
+  it('reads the latest request, so a failure the caller polls for under another id is still heard', async () => {
+    const runtime = getRoutingRuntime();
+    await runtime.start('the-id-the-route-call-made-up', 'I need help with something');
+
+    const snapshot = await runtime.poll('a-different-id-the-poll-made-up');
+
+    expect(snapshot.finished).toBe(true);
+    expect(snapshot.error).toBe('routing has no Mastra instance to plan against');
+  });
+
+  it('reads the latest request when the route call named a session and the poll named none', async () => {
+    const runtime = getRoutingRuntime();
+    await runtime.start('mathias', 'What is on my calendar?');
+
+    expect((await runtime.poll('jarvis-voice')).finished).toBe(true);
+  });
+
+  it('keeps a session that was started to itself, so callers that keep their ids stay isolated', async () => {
+    const runtime = getRoutingRuntime();
+    await runtime.start('first-caller', 'What is on my calendar?');
+    await runtime.poll('first-caller');
+    await runtime.start('second-caller', 'What is the weather?');
+
+    // Taken by the first poll above, and not handed the second caller's request instead.
+    expect((await runtime.poll('first-caller')).landed).toEqual([]);
+    expect((await runtime.poll('first-caller')).error).toBe('routing has no Mastra instance to plan against');
+    expect((await runtime.poll('second-caller')).finished).toBe(true);
+  });
+
+  it('still reports nothing in flight when no request has been started at all', async () => {
+    const snapshot = await getRoutingRuntime().poll('nobody-routed-anything');
+
+    expect(snapshot.finished).toBe(false);
+    expect(snapshot.inProgress).toEqual([]);
   });
 });

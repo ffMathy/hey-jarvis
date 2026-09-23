@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
 import { Mastra } from '@mastra/core';
 import { z } from 'zod';
 import { createStep, createWorkflow } from '../../utils/workflows/workflow-factory.js';
@@ -164,6 +164,49 @@ const failsAfterReplyWorkflow = createWorkflow({
   )
   .commit();
 
+/**
+ * The shape of the weekly meal plan: the send-and-wait workflow sits inside an iteration
+ * workflow, and that iteration is looped by `.dowhile()` until the answer approves it.
+ */
+const loopUntilApprovedWorkflow = createWorkflow({
+  id: 'loopUntilApprovedWorkflow',
+  inputSchema: z.object({ recipientEmail: z.string(), question: z.string() }),
+  outputSchema: z.object({ approved: z.boolean() }),
+})
+  .dowhile(
+    createWorkflow({
+      id: 'loopUntilApprovedIteration',
+      inputSchema: z.object({ recipientEmail: z.string(), question: z.string() }),
+      outputSchema: z.object({ recipientEmail: z.string(), question: z.string(), approved: z.boolean() }),
+    })
+      .then(getSendEmailAndAwaitResponseWorkflow('loopUntilApproved', approvalResponseSchema))
+      .then(
+        createStep({
+          id: 'carry-the-question-round',
+          description: 'Hands the question back so the next iteration can ask it again',
+          inputSchema: z.object({ senderEmail: z.string(), response: approvalResponseSchema }),
+          outputSchema: z.object({ recipientEmail: z.string(), question: z.string(), approved: z.boolean() }),
+          execute: async ({ inputData }) => ({
+            recipientEmail: inputData.senderEmail,
+            question: 'Approve the budget?',
+            approved: inputData.response.approved,
+          }),
+        }),
+      )
+      .commit(),
+    async ({ inputData }) => !inputData.approved,
+  )
+  .then(
+    createStep({
+      id: 'report-approval',
+      description: 'Reports the approval the loop ended on',
+      inputSchema: z.object({ recipientEmail: z.string(), question: z.string(), approved: z.boolean() }),
+      outputSchema: z.object({ approved: z.boolean() }),
+      execute: async ({ inputData }) => ({ approved: inputData.approved }),
+    }),
+  )
+  .commit();
+
 // The state the form replies workflow builds up before `process-form-replies` reads it.
 const emailStateSchema = z
   .object({
@@ -193,6 +236,7 @@ const mastra = new Mastra({
     awaitSomethingElseWorkflow,
     failsAfterReplyWorkflow,
     askTwoAtOnceWorkflow,
+    loopUntilApprovedWorkflow,
     humanInTheLoopDemoWorkflow,
     formReplyHarness,
   },
@@ -258,12 +302,48 @@ function replySubjectFor(index: number): string {
   return `Re: ${email.subject}`;
 }
 
+/**
+ * Starts `loopUntilApprovedWorkflow` the way production starts the weekly meal plan --
+ * from a schedule -- and waits for it to suspend on its first question.
+ *
+ * `mastra.schedules.run()` only publishes the start event; the run itself goes on in the
+ * workflow event processor, so there is nothing to await but its effect.
+ */
+async function startScheduledLoop() {
+  await mastra.startWorkers();
+  const schedule = await mastra.schedules.create({
+    workflowId: 'loopUntilApprovedWorkflow',
+    cron: '0 0 1 1 *',
+    inputData: { recipientEmail: 'boss@example.com', question: 'Approve the budget?' },
+  });
+  const { claimId: scheduledRunId } = await mastra.schedules.run(schedule.id);
+
+  const loopWorkflow = mastra.getWorkflow('loopUntilApprovedWorkflow');
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const state = await loopWorkflow.getWorkflowRunById(scheduledRunId, { withNestedWorkflows: false });
+    if (state?.status === 'suspended') {
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+
+  const suspended = await loopWorkflow.getWorkflowRunById(scheduledRunId, { withNestedWorkflows: false });
+  expect(suspended?.status).toBe('suspended');
+  expect(sentEmails).toHaveLength(1);
+  return scheduledRunId;
+}
+
 beforeEach(() => {
   sentEmails.length = 0;
   parsedReplyBodies.length = 0;
   stagedAnswer = undefined;
   parseFailure = undefined;
   parserAnswersForThisFile = true;
+});
+
+afterAll(async () => {
+  // The scheduled-run tests start the workflow event processor and the schedule poller.
+  await mastra.stopWorkers();
 });
 
 afterEach(() => {
@@ -343,6 +423,79 @@ describe('processFormReplies', () => {
     expect(summary).toMatchObject({ formRepliesFound: 1, workflowsResumed: 0, repliesRejected: 1, errors: [] });
     expect(parsedReplyBodies).toEqual([]);
     expect((await mastra.getWorkflow('awaitApprovalWorkflow').getWorkflowRunById(run.runId))?.status).toBe('suspended');
+  });
+
+  it('resumes a question asked inside a dowhile loop, as the weekly meal plan does', async () => {
+    const loopRun = await mastra.getWorkflow('loopUntilApprovedWorkflow').createRun();
+    const started = await loopRun.start({
+      inputData: { recipientEmail: 'boss@example.com', question: 'Approve the budget?' },
+    });
+    assertStatus(started, 'suspended');
+    expect(sentEmails).toHaveLength(1);
+    expect(parseFormRequestSubject(sentEmails[0].subject)?.runId).toBe(loopRun.runId);
+
+    stagedAnswer = { approved: false, comments: 'swap the fish' };
+    const firstSummary = await processReplies([
+      inboundReply({ subject: replySubjectFor(0), from: 'boss@example.com', content: 'Swap the fish' }),
+    ]);
+
+    // Asking for changes loops the run back to the very same step, on a new request. That
+    // is an answer that moved the run on, not a refusal, even though the path is unchanged.
+    expect(firstSummary).toMatchObject({ workflowsResumed: 1, repliesRejected: 0, errors: [] });
+    expect(parsedReplyBodies).toEqual(['Swap the fish']);
+    expect(sentEmails).toHaveLength(2);
+
+    stagedAnswer = { approved: true };
+    const secondSummary = await processReplies([
+      inboundReply({ subject: replySubjectFor(1), from: 'boss@example.com', content: 'OK' }),
+    ]);
+
+    expect(secondSummary).toMatchObject({ workflowsResumed: 1, repliesRejected: 0, errors: [] });
+    const finished = await mastra.getWorkflow('loopUntilApprovedWorkflow').getWorkflowRunById(loopRun.runId);
+    expect(finished?.status).toBe('success');
+    expect(finished?.result).toEqual({ approved: true });
+  });
+
+  it('resumes a question asked by a scheduled run, whose subject names a nested run', async () => {
+    // The scheduler starts runs on Mastra's evented engine, which gives every nested
+    // workflow a run id of its own. The send-and-wait step writes that child id into the
+    // subject, and no registered workflow owns it, so the reply used to be dropped with
+    // "No workflow run with id ... was found" -- every weekly meal plan reply, every week.
+    const scheduledRunId = await startScheduledLoop();
+
+    expect(parseFormRequestSubject(sentEmails[0].subject)?.runId).not.toBe(scheduledRunId);
+
+    stagedAnswer = { approved: false, comments: 'swap the fish' };
+    const firstSummary = await processReplies([
+      inboundReply({ subject: replySubjectFor(0), from: 'boss@example.com', content: 'Swap the fish' }),
+    ]);
+
+    expect(firstSummary).toMatchObject({ workflowsResumed: 1, repliesRejected: 0, errors: [] });
+    expect(sentEmails).toHaveLength(2);
+
+    stagedAnswer = { approved: true };
+    const secondSummary = await processReplies([
+      inboundReply({ subject: replySubjectFor(1), from: 'boss@example.com', content: 'OK' }),
+    ]);
+
+    expect(secondSummary).toMatchObject({ workflowsResumed: 1, repliesRejected: 0, errors: [] });
+    const finished = await mastra.getWorkflow('loopUntilApprovedWorkflow').getWorkflowRunById(scheduledRunId);
+    expect(finished?.status).toBe('success');
+    expect(finished?.result).toEqual({ approved: true });
+  });
+
+  it('still refuses a reply from the wrong sender when the run is found by its request', async () => {
+    const scheduledRunId = await startScheduledLoop();
+
+    stagedAnswer = { approved: true };
+    const summary = await processReplies([
+      inboundReply({ subject: replySubjectFor(0), from: 'intruder@example.com', content: 'OK' }),
+    ]);
+
+    expect(summary).toMatchObject({ workflowsResumed: 0, repliesRejected: 1, errors: [] });
+    expect(parsedReplyBodies).toEqual([]);
+    const pending = await mastra.getWorkflow('loopUntilApprovedWorkflow').getWorkflowRunById(scheduledRunId);
+    expect(pending?.status).toBe('suspended');
   });
 
   it('drives a multi-stage run on to its next question', async () => {
@@ -496,7 +649,9 @@ describe('processFormReplies', () => {
     // A token naming a run that does not exist is an anomaly worth reporting, unlike a
     // reply that simply arrived too late for the run it names.
     expect(summary).toMatchObject({ formRepliesFound: 1, workflowsResumed: 0, repliesRejected: 0 });
-    expect(summary.errors).toEqual(['No workflow run with id nobody-is-waiting-for-this was found']);
+    expect(summary.errors).toEqual([
+      'No workflow run with id nobody-is-waiting-for-this was found, and no suspended run is waiting on request req-nobody-asked',
+    ]);
   });
 
   it('refuses a reply to a question the run has already finished answering', async () => {

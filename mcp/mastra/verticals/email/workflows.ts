@@ -384,7 +384,7 @@ type RegisteredWorkflow = ReturnType<Mastra['listWorkflows']>[string];
  * What the run named by a reply turned out to be.
  */
 type RunLookup =
-  | { kind: 'awaiting'; workflow: RegisteredWorkflow; suspendedStep: WorkflowSuspendedStep }
+  | { kind: 'awaiting'; workflow: RegisteredWorkflow; runId: string; suspendedStep: WorkflowSuspendedStep }
   | { kind: 'not-awaiting'; description: string }
   | { kind: 'not-found'; description: string };
 
@@ -403,6 +403,13 @@ type RunLookup =
  *
  * A run that is found but cannot take the reply does not end the search, because a run id
  * is only unique per workflow; the reason is reported only if no workflow is waiting.
+ *
+ * The run id in the subject is not always a top-level run, though. A run started by the
+ * scheduler executes on Mastra's evented engine, which gives every nested workflow a run
+ * of its own, so the send-and-wait step inside the weekly meal plan sees -- and writes into
+ * the subject -- the id of a child run that no registered workflow owns. When no run
+ * answers to the id, the run is found by the request id instead: it is minted fresh for
+ * every email, and the suspended top-level step carries it in its payload.
  */
 async function findRunAwaitingEmailReply(mastra: Mastra, runId: string, requestId: string): Promise<RunLookup> {
   let firstRunThatCannotTakeIt: string | undefined;
@@ -433,7 +440,7 @@ async function findRunAwaitingEmailReply(mastra: Mastra, runId: string, requestI
     const suspendedStep = awaitingSteps.find((step) => requestIdWaitedOnBy(step) === requestId) ?? awaitingSteps[0];
 
     if (suspendedStep) {
-      return { kind: 'awaiting', workflow, suspendedStep };
+      return { kind: 'awaiting', workflow, runId, suspendedStep };
     }
 
     firstRunThatCannotTakeIt ??= describeRunThatCannotTakeTheReply(
@@ -444,9 +451,54 @@ async function findRunAwaitingEmailReply(mastra: Mastra, runId: string, requestI
     );
   }
 
-  return firstRunThatCannotTakeIt
-    ? { kind: 'not-awaiting', description: firstRunThatCannotTakeIt }
-    : { kind: 'not-found', description: `No workflow run with id ${runId} was found` };
+  if (firstRunThatCannotTakeIt) {
+    return { kind: 'not-awaiting', description: firstRunThatCannotTakeIt };
+  }
+
+  return (
+    (await findSuspendedRunWaitingOnRequest(mastra, requestId)) ?? {
+      kind: 'not-found',
+      description: `No workflow run with id ${runId} was found, and no suspended run is waiting on request ${requestId}`,
+    }
+  );
+}
+
+/**
+ * Finds the suspended top-level run whose email question is the request a reply quotes.
+ *
+ * Only registered workflows are searched, because only they can be resumed; a nested
+ * workflow's suspension is reported on the top-level step that contains it, payload and
+ * all, so the request id is visible from there.
+ */
+async function findSuspendedRunWaitingOnRequest(mastra: Mastra, requestId: string): Promise<RunLookup | undefined> {
+  for (const workflow of Object.values(mastra.listWorkflows())) {
+    const { runs } = await workflow.listWorkflowRuns({ status: 'suspended' });
+
+    for (const { runId } of runs) {
+      const suspendedStep = await findStepWaitingOnRequest(workflow, runId, requestId);
+      if (suspendedStep) {
+        return { kind: 'awaiting', workflow, runId, suspendedStep };
+      }
+    }
+  }
+
+  return undefined;
+}
+
+/** The email step of a run that is suspended waiting on exactly this request, if any. */
+async function findStepWaitingOnRequest(
+  workflow: RegisteredWorkflow,
+  runId: string,
+  requestId: string,
+): Promise<WorkflowSuspendedStep | undefined> {
+  const state = await workflow.getWorkflowRunById(runId, { withNestedWorkflows: false });
+  if (state?.status !== 'suspended') {
+    return undefined;
+  }
+
+  return createWorkflowStateReader(state)
+    .getSuspendedSteps()
+    .find((step) => isAwaitingEmailReply(step.path) && requestIdWaitedOnBy(step) === requestId);
 }
 
 /**
@@ -494,20 +546,22 @@ function readReplyText(email: z.infer<typeof emailObjectSchema>): string | undef
 /**
  * Hands one reply to the suspended run named in its subject.
  *
- * Both halves of the subject token are used: the run id finds the run, and the request id
- * is handed to the suspended step, which accepts the reply only if it is the answer to the
- * request it is actually waiting on.
+ * Both halves of the subject token are used: the run id finds the run (falling back to the
+ * request id when the run id belongs to a nested run), and the request id is handed to the
+ * suspended step, which accepts the reply only if it is the answer to the request it is
+ * actually waiting on.
  *
- * A run left suspended at the same step is how a refusal is told apart from an answer that
- * moved the run on: an accepted answer either finishes the run or suspends it somewhere
- * else, on its next question.
+ * A run still waiting on the same request is how a refusal is told apart from an answer
+ * that moved the run on. The path alone cannot tell them apart: a loop like the weekly meal
+ * plan asks again from the very same step when the answer asks for changes, so an accepted
+ * answer can leave the run suspended exactly where it was -- but on a new request.
  */
 async function applyFormReply(
   mastra: Mastra,
   email: z.infer<typeof emailObjectSchema>,
-  { runId, requestId }: { runId: string; requestId: string },
+  { runId: quotedRunId, requestId }: { runId: string; requestId: string },
 ): Promise<FormReplyOutcome> {
-  const pendingRun = await findRunAwaitingEmailReply(mastra, runId, requestId);
+  const pendingRun = await findRunAwaitingEmailReply(mastra, quotedRunId, requestId);
   if (pendingRun.kind === 'not-found') {
     return { kind: 'unmatched', description: pendingRun.description };
   }
@@ -516,7 +570,7 @@ async function applyFormReply(
     return { kind: 'rejected', description: `Reply from ${email.from.address} was refused: ${pendingRun.description}` };
   }
 
-  const { workflow, suspendedStep } = pendingRun;
+  const { workflow, runId, suspendedStep } = pendingRun;
   const run = await workflow.createRun({ runId });
   const resumed = await run.resume({
     step: suspendedStep.path,
@@ -532,9 +586,12 @@ async function applyFormReply(
     throw new Error(`Resuming ${workflow.id} run ${runId} failed: ${detail}`);
   }
 
+  // The request the step was waiting on, which is not always the one the reply quotes: a
+  // stale reply names an older request, and the step refuses it and keeps waiting on its own.
+  const requestIdStillOpen = requestIdWaitedOnBy(suspendedStep) ?? requestId;
   const stillWaitingForTheSameAnswer =
     resumed.status === 'suspended' &&
-    resumed.suspended.some((path) => path.join(' > ') === suspendedStep.path.join(' > '));
+    (await findStepWaitingOnRequest(workflow, runId, requestIdStillOpen)) !== undefined;
 
   if (stillWaitingForTheSameAnswer) {
     return {

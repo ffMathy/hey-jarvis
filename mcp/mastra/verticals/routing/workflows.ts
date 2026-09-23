@@ -57,7 +57,7 @@ const inputSchema = z.object({
     .string()
     .optional()
     .describe(
-      'Identifies the caller, so concurrent requests do not interfere. Callers that do not set one share a single session.',
+      'Leave this out. Only a caller running several requests side by side needs one, to keep them apart, and it must then pass the same value to getNextInstructionsWorkflow. Callers that do not set one share a single session.',
     ),
 });
 
@@ -156,15 +156,22 @@ const INSTRUCTIONS = {
 } as const;
 
 /**
+ * The recap is for results that never reached Jarvis, not for results he already spoke. "Do not
+ * repeat at length — a few words tying it together is enough" was read by gpt-5.6-luna as leave
+ * to restate the weather, figures and all, and the lasagna reminder a second time, which is the
+ * repetition the routing-orchestration eval fails. So the instruction now forbids it outright.
+ *
  * Finishing one request does not finish the conversation. Jarvis summarised a completed
  * calendar lookup and then, asked to check the blinds and lights, promised to look and
  * called nothing: the loop's last instruction left it holding no pointer back to the tool.
  */
 const ALL_TASKS_COMPLETED_INSTRUCTIONS =
   'All tasks have completed. These are every result this request produced, including any you have ' +
-  'already relayed. Summarize in detail whatever the user has not heard yet, and do not repeat at ' +
-  'length what you already told him — a few words tying it together is enough for those. Speak it ' +
-  'in your own voice: never read an agent name, a tool name or the raw response aloud. ' +
+  'already relayed. Summarize in detail whatever the user has not heard yet, and say nothing again ' +
+  'that you already told him during this request: no figure, list or detail a second time, and no ' +
+  'recap of it at the end. The earlier results are only here in case one of them never reached you; ' +
+  'if you have already spoken about it, leave it out. Speak it in your own voice: never read an ' +
+  'agent name, a tool name or the raw response aloud. ' +
   'That finishes this request, but not the conversation: if the user asks for anything further, ' +
   'send it through routePromptWorkflow exactly as you did this one, however small it sounds and ' +
   'however many times you have already done it. Answering a later request from ' +
@@ -314,7 +321,12 @@ const getNextInstructionsStep = createStep({
   id: 'get-next-instructions',
   description: 'Return whatever the routing plan has produced since the last call',
   inputSchema: z.object({
-    sessionId: z.string().optional().describe('The session returned by routePromptWorkflow'),
+    sessionId: z
+      .string()
+      .optional()
+      .describe(
+        'Leave this out unless you passed a sessionId to routePromptWorkflow, and then pass that same value. Never make one up.',
+      ),
   }),
   outputSchema: instructionsOutputSchema,
   execute: async ({ inputData, mastra }) => {
@@ -357,7 +369,12 @@ export const getNextInstructionsWorkflow = createWorkflow({
   id: 'getNextInstructionsWorkflow',
   description: 'Workflow to wait for the next instructions from an in-flight routing request',
   inputSchema: z.object({
-    sessionId: z.string().optional().describe('The session returned by routePromptWorkflow'),
+    sessionId: z
+      .string()
+      .optional()
+      .describe(
+        'Leave this out unless you passed a sessionId to routePromptWorkflow, and then pass that same value. Never make one up.',
+      ),
   }),
   outputSchema: instructionsOutputSchema,
 })

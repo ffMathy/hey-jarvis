@@ -92,6 +92,7 @@
       "peerDependencies": {
         "@elevenlabs/react-native": "*",
         "@shopify/react-native-skia": "*",
+        "expo-audio": "*",
         "react": "*",
         "react-native": "*",
         "react-native-reanimated": "*",

@@ -251,6 +251,13 @@ export async function ensureTunnelRunning(): Promise<void> {
 }
 
 /**
+ * Whether the tunnel still reaches our MCP server, by its health endpoint.
+ */
+export async function isTunnelHealthy(): Promise<boolean> {
+  return (await checkTunnelHealth()).ok;
+}
+
+/**
  * Stops the cloudflared tunnel if it was started by this process
  */
 export function stopTunnel(): void {
