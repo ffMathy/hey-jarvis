@@ -17,6 +17,9 @@
  * at least 1080 is what it takes to be eligible for promotion — the form says so in a note under
  * the slot, and four costs nothing here.
  *
+ * It also renders the apps' own icons, into `hologram/assets/` where both app configs find them:
+ * `icon.png`, and `adaptive-icon.png` — the foreground of Android's adaptive icon — both on black.
+ *
  * **Everything is opaque.** Wear screenshots are required to be, and the rest would be composited
  * onto whatever the Console and the store app happen to use; a transparent sphere on white is not
  * what anyone would be agreeing to ship. So each one is drawn onto the same near-black wash the
@@ -31,7 +34,7 @@
  * Usage, from the repository root:
  *   bun hologram/.scripts/render-play-assets.ts
  *
- * Writes into `docs/play-assets/`. Needs `device-art/roboto-light.ttf`, which
+ * Writes into `docs/play-assets/`, and the apps' own icons into `hologram/assets/`. Needs `device-art/roboto-light.ttf`, which
  * `prepare-device-art.sh` fetches, and `ffmpeg` on the path — see {@link dropAlphaChannel}.
  */
 import { execFileSync } from 'node:child_process';
@@ -40,11 +43,16 @@ import { join } from 'node:path';
 import { TileMode } from '@shopify/react-native-skia/lib/module/skia/types';
 import { JsiSkApi } from '@shopify/react-native-skia/lib/module/skia/web';
 import { LoadSkiaWeb } from '@shopify/react-native-skia/lib/module/web/LoadSkiaWeb';
-import { createHologramResources, createHologramScene, drawHologram, type SimulatedMood } from '../src/index';
+import {
+  createHologramResources,
+  createHologramScene,
+  drawHologram,
+  PARTICLE_COUNT,
+  type SimulatedMood,
+  SPHERE_FRACTION,
+  WATCH_PARTICLE_COUNT,
+} from '../src/index';
 import { createPerformance, findLoudestMoment, type SimulatedFrame, stillMoment } from './simulated-performance';
-
-/** Every particle, as the cover does: nothing here is racing a screen. */
-const PARTICLES = 1300;
 
 /** The clock the simulated voice is advanced on, matching the clips. */
 const FRAMES_PER_SECOND = 60;
@@ -77,9 +85,29 @@ const DEVICE_ART = join(import.meta.dir, 'device-art');
  */
 const SCREEN_SQUARE_SHARE = 1.32;
 
-/** The two pictures that are not screenshots, and are composed rather than captured. */
-const ICON_SPHERE_SHARE = 0.92;
+/** The feature graphic's drawing square, as a share of its shortest side. */
 const FEATURE_SPHERE_SHARE = 0.78;
+
+/**
+ * How wide the sphere itself is on an icon, as a share of the icon: nearly all of it, with narrow
+ * edges, at the user's asking — a big hologram that fits the whole icon.
+ *
+ * The sphere's own diameter rather than its drawing square's, which is what `share` measures and
+ * which is almost twice as wide (see `SPHERE_FRACTION`). Sized by the square, the icon had him at
+ * half its width in a field of black.
+ */
+const ICON_SPHERE_DIAMETER = 0.9;
+
+/**
+ * The same for Android's adaptive icon, whose foreground is a 108dp square the launcher masks to
+ * the middle 72dp — a circle on a Pixel, and on a watch face — and may pull about by a further
+ * few dp as it animates. So he fills 64 of the 108: nearly all of what any mask shows, with a
+ * narrow edge the rim's segments — which stand just proud of his limb — still fit inside.
+ */
+const ADAPTIVE_ICON_SPHERE_DIAMETER = 64 / 108;
+
+/** Where the app icons go: beside the greeting, in the package both apps take their Jarvis from. */
+const APP_ASSETS = join(import.meta.dir, '..', 'assets');
 
 /** The wordmark on the feature graphic, which is the only picture here with any text on it. */
 const NAME = 'JARVIS';
@@ -89,6 +117,8 @@ const NAME_INK = '#ffd18a';
 
 /** Play's ceilings, in bytes, so {@link check} can measure rather than trust. */
 const ONE_MEGABYTE = 1024 * 1024;
+/** Not a Play slot, so no Play ceiling: only a guard against something having gone badly wrong. */
+const APP_ICON_LARGEST_BYTES = 5 * ONE_MEGABYTE;
 
 type SkiaApi = ReturnType<typeof JsiSkApi>;
 type SkiaSurface = NonNullable<ReturnType<SkiaApi['Surface']['MakeOffscreen']>>;
@@ -117,8 +147,23 @@ interface Asset {
   mood: SimulatedMood | undefined;
   /** Whether to run the voice to its loudest instant first, rather than opening on it. */
   loudest?: boolean;
-  /** The sphere's share of the shortest side. */
+  /** The drawing square's share of the shortest side. */
   share?: number;
+  /** The sphere's own diameter as a share of the shortest side: set instead of `share` on icons. */
+  sphere?: number;
+  /** How many particles: the most the device this picture is of can hold. */
+  particles: number;
+  /** Written into the apps' assets rather than the Play listing's. */
+  forApps?: boolean;
+  /**
+   * Plain black behind him rather than the listing's wash: the apps' icons, so the adaptive icon's
+   * foreground meets the black background layer it is composited onto without a seam.
+   *
+   * Black rather than transparent, though a foreground may be transparent. The drawing blends
+   * everything with Screen, which is light added to what is underneath; over nothing it has no
+   * underneath and comes out a saturated orange nothing like him. Over black it is him.
+   */
+  onBlack?: boolean;
   /** The wordmark, on the one picture that has it. */
   wordmark?: boolean;
 }
@@ -133,14 +178,41 @@ const ASSETS: Asset[] = [
     width: 512,
     height: 512,
     largestBytes: ONE_MEGABYTE,
-    mood: 'speaking',
-    share: ICON_SPHERE_SHARE,
+    // At rest: an icon is too small for a syllable's chips, and there is no room past his limb.
+    mood: undefined,
+    sphere: ICON_SPHERE_DIAMETER,
+    particles: PARTICLE_COUNT,
+  },
+
+  // The apps' own icons, which `mobile/app.config.ts` and `watch/app.config.ts` both point at.
+  {
+    name: 'icon.png',
+    width: 1024,
+    height: 1024,
+    largestBytes: APP_ICON_LARGEST_BYTES,
+    mood: undefined,
+    sphere: ICON_SPHERE_DIAMETER,
+    particles: PARTICLE_COUNT,
+    forApps: true,
+    onBlack: true,
+  },
+  {
+    name: 'adaptive-icon.png',
+    width: 1024,
+    height: 1024,
+    largestBytes: APP_ICON_LARGEST_BYTES,
+    mood: undefined,
+    sphere: ADAPTIVE_ICON_SPHERE_DIAMETER,
+    particles: PARTICLE_COUNT,
+    forApps: true,
+    onBlack: true,
   },
   {
     name: 'feature-graphic-1024x500.png',
     width: 1024,
     height: 500,
     largestBytes: 15 * ONE_MEGABYTE,
+    particles: PARTICLE_COUNT,
     mood: 'speaking',
     loudest: true,
     wordmark: true,
@@ -153,6 +225,7 @@ const ASSETS: Asset[] = [
     width: PHONE_WIDTH,
     height: PHONE_HEIGHT,
     largestBytes: 8 * ONE_MEGABYTE,
+    particles: PARTICLE_COUNT,
     mood: undefined,
   },
   {
@@ -160,6 +233,7 @@ const ASSETS: Asset[] = [
     width: PHONE_WIDTH,
     height: PHONE_HEIGHT,
     largestBytes: 8 * ONE_MEGABYTE,
+    particles: PARTICLE_COUNT,
     mood: 'speaking',
   },
   {
@@ -167,6 +241,7 @@ const ASSETS: Asset[] = [
     width: PHONE_WIDTH,
     height: PHONE_HEIGHT,
     largestBytes: 8 * ONE_MEGABYTE,
+    particles: PARTICLE_COUNT,
     mood: 'speaking',
     loudest: true,
   },
@@ -175,6 +250,7 @@ const ASSETS: Asset[] = [
     width: PHONE_WIDTH,
     height: PHONE_HEIGHT,
     largestBytes: 8 * ONE_MEGABYTE,
+    particles: PARTICLE_COUNT,
     mood: 'thinking',
   },
 
@@ -185,6 +261,7 @@ const ASSETS: Asset[] = [
     width: WATCH_SIDE,
     height: WATCH_SIDE,
     largestBytes: 8 * ONE_MEGABYTE,
+    particles: WATCH_PARTICLE_COUNT,
     mood: undefined,
   },
   {
@@ -192,6 +269,7 @@ const ASSETS: Asset[] = [
     width: WATCH_SIDE,
     height: WATCH_SIDE,
     largestBytes: 8 * ONE_MEGABYTE,
+    particles: WATCH_PARTICLE_COUNT,
     mood: 'speaking',
   },
   {
@@ -199,6 +277,7 @@ const ASSETS: Asset[] = [
     width: WATCH_SIDE,
     height: WATCH_SIDE,
     largestBytes: 8 * ONE_MEGABYTE,
+    particles: WATCH_PARTICLE_COUNT,
     mood: 'speaking',
     loudest: true,
   },
@@ -207,6 +286,7 @@ const ASSETS: Asset[] = [
     width: WATCH_SIDE,
     height: WATCH_SIDE,
     largestBytes: 8 * ONE_MEGABYTE,
+    particles: WATCH_PARTICLE_COUNT,
     mood: 'thinking',
   },
 ];
@@ -289,12 +369,21 @@ function render(
     throw new Error(`Could not make a surface for ${asset.name}`);
   }
   const canvas = surface.getCanvas();
-  paintBackdrop(skia, canvas, asset.width, asset.height);
+  if (asset.onBlack) {
+    canvas.clear(skia.Color('#000000'));
+  } else {
+    paintBackdrop(skia, canvas, asset.width, asset.height);
+  }
 
   // The feature graphic is the one picture that is not just him: he takes the left, his name the
   // right. Everywhere else he is centred, because everywhere else he is the whole screen.
   const shortest = Math.min(asset.width, asset.height);
-  const sphere = Math.round(shortest * (asset.share ?? SCREEN_SQUARE_SHARE));
+  // An icon names the sphere's own width; everything else its drawing square's. See ICON_SPHERE_DIAMETER.
+  const sphere = Math.round(
+    asset.sphere === undefined
+      ? shortest * (asset.share ?? SCREEN_SQUARE_SHARE)
+      : (shortest * asset.sphere) / (2 * SPHERE_FRACTION),
+  );
   const middleX = asset.wordmark ? sphere / 2 + shortest * 0.12 : asset.width / 2;
 
   canvas.save();
@@ -360,9 +449,22 @@ async function main() {
   }
   const skia = JsiSkApi(globalThis.CanvasKit);
 
-  // The same seed the clips use, so the sphere in the store is the sphere in the README.
-  const scene = createHologramScene(1337, PARTICLES);
-  const resources = createHologramResources(skia, scene);
+  // The same seed the clips use, so the sphere in the store is the sphere in the README — and, like
+  // the clips, each device drawn at the most particles it can hold. Built once per count.
+  const hologramFor = new Map<
+    number,
+    { scene: ReturnType<typeof createHologramScene>; resources: ReturnType<typeof createHologramResources> }
+  >();
+  const hologramOf = (particles: number) => {
+    const known = hologramFor.get(particles);
+    if (known) {
+      return known;
+    }
+    const scene = createHologramScene(1337, particles);
+    const built = { scene, resources: createHologramResources(skia, scene) };
+    hologramFor.set(particles, built);
+    return built;
+  };
 
   const typeface = skia.Typeface.MakeFreeTypeFaceFromData(
     skia.Data.fromBytes(readFileSync(join(DEVICE_ART, 'roboto-light.ttf'))),
@@ -374,19 +476,21 @@ async function main() {
 
   const output = join(process.cwd(), 'docs', 'play-assets');
   mkdirSync(output, { recursive: true });
+  mkdirSync(APP_ASSETS, { recursive: true });
 
   // Found once and reused: it is the same voice in every picture that wants its loudest moment.
   const loudestAt = findLoudestMoment(LISTEN_SECONDS, FRAME_SECONDS);
 
   for (const asset of ASSETS) {
     const frame = performTo(asset.mood, asset.loudest ? loudestAt : 0);
-    const path = join(output, asset.name);
+    const path = join(asset.forApps ? APP_ASSETS : output, asset.name);
+    const { scene, resources } = hologramOf(asset.particles);
     writeFileSync(path, render(skia, asset, frame, scene, resources, font));
     dropAlphaChannel(path);
     console.log(check(asset, path));
   }
 
-  console.log(`\n${ASSETS.length} files in ${output}`);
+  console.log(`\n${ASSETS.length} files in ${output} and ${APP_ASSETS}`);
 }
 
 await main();
