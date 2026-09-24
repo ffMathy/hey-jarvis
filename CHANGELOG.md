@@ -1,5 +1,13 @@
 # Changelog
 
+## [4.2.3](https://github.com/ffMathy/hey-jarvis/compare/root-v4.2.2...root-v4.2.3) (2026-09-24)
+
+
+### Bug Fixes
+
+* **hologram:** let the greeting finish before the call takes the audio ([#771](https://github.com/ffMathy/hey-jarvis/issues/771)) ([9f3c3fd](https://github.com/ffMathy/hey-jarvis/commit/9f3c3fdadea4accbf8b61b418ca8e1fda9be0830))
+* **hologram:** play the recorded greeting in an untouched browser tab ([#769](https://github.com/ffMathy/hey-jarvis/issues/769)) ([a951bfc](https://github.com/ffMathy/hey-jarvis/commit/a951bfc15826b1b850cda14b93f2633f0ac83f8a))
+
 ## [4.2.2](https://github.com/ffMathy/hey-jarvis/compare/root-v4.2.1...root-v4.2.2) (2026-09-23)
 
 
