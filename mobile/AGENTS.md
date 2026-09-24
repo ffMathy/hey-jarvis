@@ -184,12 +184,15 @@ the page is using the microphone*, so `microphone-permission.web.ts` holds the s
 permission with until the greeting has started, and lets it go straight after. Released at once, as
 it once was, the recording was refused and the agent greeted in its own voice instead.
 
-**Not yet heard on a device.** Everything above is reasoned from the SDK's and expo-audio's
-sources, not listened to. What a phone has to settle: that the greeting keeps playing, on the
-speaker and at a sensible volume, when LiveKit switches Android into `MODE_IN_COMMUNICATION`
-mid-sentence; that the mute lands before the agent hears any of it (there is a window of a few
-milliseconds between the SDK publishing the microphone and `onConversationCreated`); and that
-`vad_score` events arrive over WebRTC as they do over the firmware's socket.
+**On a phone the session waits for the greeting to finish.** It was first dialled behind it, as
+the firmware does, and heard on a device that did not work: `startSession` starts LiveKit's audio
+session with the SDK's `communication` preset, which switches Android into `MODE_IN_COMMUNICATION`
+and routes playback through the call path, so a second into "Hello sir" the recording turned thin
+and call-processed — not his voice — and was cut off before the end. The token is still fetched
+beside the greeting, but `startSession` now waits for `untilCallMayTakeTheAudio`, which on a phone
+and a watch resolves once the recording is over. A browser has no audio mode to switch, so it goes
+on dialling behind him. Still to settle on a device: that `vad_score` events arrive over WebRTC as
+they do over the firmware's socket.
 
 The sphere also shows the user being heard: while ElevenLabs' `vad_score` says someone is
 speaking, his particles snap onto a lattice that turns inside him, breathing harder the louder the
@@ -331,7 +334,7 @@ For each conversation the app asks `GET https://api.elevenlabs.io/v1/convai/conv
 
 Only ever here. `readingAloud` is set from `onMessage`, which is wired on the text-only session alone, so every conversation that has a voice goes on following Jarvis's real one. The words are genuinely his; the only invented thing is the delivery, and it is invented only where ElevenLabs was asked not to provide one.
 
-**Typing to Jarvis is not that branch, and has not been since he started answering typed lines out loud.** The two were the same thing for as long as the field existed only where the microphone had been refused, and the confusion cost the feature its voice: `textOnly` is what makes ElevenLabs write the reply instead of speaking it, and that override was the only session the field ever appeared in. It is not needed to *send* text. `sendUserMessage` is on `BaseConversation` rather than on `TextConversation`, so a typed line into an ordinary WebRTC session takes exactly the turn a spoken one would — Jarvis speaks the reply, and the sphere follows his voice, because `jarvis-voice.ts` reads his audio track and `mode` and neither knows how the turn began. So the field is on both platforms now, beside a working microphone as readily as without one, and the text-only fallback is what is left when there is no microphone to hold a voice conversation with at all.
+**Typing to Jarvis is not that branch, and has not been since he started answering typed lines out loud.** The two were the same thing for as long as the field existed only where the microphone had been refused, and the confusion cost the feature its voice: `textOnly` is what makes ElevenLabs write the reply instead of speaking it, and that override was the only session the field ever appeared in. It is not needed to *send* text. `sendUserMessage` is on `BaseConversation` rather than on `TextConversation`, so a typed line into an ordinary WebRTC session takes exactly the turn a spoken one would — Jarvis speaks the reply, and the sphere follows his voice, because `jarvis-voice.ts` reads his audio track and `mode` and neither knows how the turn began. So in a browser the field is beside a working microphone as readily as without one, and the text-only fallback is what is left when there is no microphone to hold a voice conversation with at all. **A phone has no field**: it sat under him as an empty bar on every summoning, and the user asked for it gone.
 
 **It also needs the agent's permission.** A typed conversation is asked for by sending the `text_only` override, and overrides are an allow-list: send one the agent does not permit and the server closes the conversation rather than ignoring it. So the session connects, drops immediately, and — because the SDK reports a server-side close through `onDisconnect` and *not* through `onError` — used to say nothing at all: Jarvis faded out because a conversation really had ended, and no line explained why. The screen listens for the ending now, and `platformSettings.overrides.conversationConfigOverride.conversation.textOnly` is on in `elevenlabs/src/assets/agent-config.json`, which reaches the agent only once that project is deployed.
 

@@ -158,6 +158,12 @@ easy to break:
   LiveKit's own focus request as the call connects would pause him mid-sentence.
 - **Its audio mode is set once, before any session.** On Android `setAudioModeAsync` also writes
   `AudioManager.mode`, and doing it mid-call would take the call out of `MODE_IN_COMMUNICATION`.
+- **On a phone and a watch, the session starts after him.** `startSession` starts LiveKit's audio
+  session with the `communication` preset, which puts Android into `MODE_IN_COMMUNICATION` and
+  routes playback through the call path — heard on a device, the recording turned thin mid-word and
+  was cut off. So the token is fetched beside him, but screens `await untilCallMayTakeTheAudio()`
+  before `startSession`; it resolves once the recording is over (at once in a browser), and `false`
+  if he was stopped, in which case there is nobody left to dial for.
 - **In a browser, only while the microphone is held.** A tab nobody has clicked since it loaded
   refuses to play a sound unless the page is using the microphone, so the phone app's web build
   holds the stream it asked permission with until `beginGreeting` resolves. There `beginGreeting`

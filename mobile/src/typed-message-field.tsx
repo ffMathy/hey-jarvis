@@ -27,10 +27,12 @@ interface TypedMessageFieldProps {
  * conversation he still writes back in is the text-only one a browser falls back to when the
  * microphone is refused, because that session is the one where ElevenLabs was asked not to speak.
  *
- * Which is why this is on both platforms rather than only where the microphone failed. A
- * conversation you can drive from the keyboard is one you can hold in an open office, in a call, or
- * on a phone whose microphone is busy — and one whose input is repeatable from one run to the next
- * in a way that speaking never is, which is what makes it a debugging affordance as well.
+ * Which is why it is beside a working microphone and not only where the microphone failed. A
+ * conversation you can drive from the keyboard is one you can hold in an open office or in a call
+ * — and one whose input is repeatable from one run to the next in a way that speaking never is,
+ * which is what makes it a debugging affordance as well. **Only in a browser**, though: on a phone
+ * it was an empty bar under him on every summoning, and the user asked for it gone. See the note on
+ * `ConversationScreen`.
  *
  * The microphone is left listening while it is on screen. Muting it would be a second, invisible
  * mode on a screen whose whole argument is that it has none: somebody who types a line and then

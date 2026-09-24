@@ -70,10 +70,13 @@ function refusedToPlay(player: AudioPlayer): boolean {
  *    whether a greeting is playing. In a browser, call it while the page still holds a microphone
  *    stream — that is what lets an untouched tab play it — and it resolves only once the browser
  *    has said yes or no.
- * 2. If it is, `greetingSessionOptions` go to `startSession`: the override that switches the agent's
- *    first message off, and the moment the session exists, which mutes its microphone — the agent
- *    must not hear Jarvis greet through the speaker and take it for the user speaking.
- * 3. While `greeting` is true, the sphere follows `greetingVoice`, which reads the player's own
+ * 2. `untilCallMayTakeTheAudio()` once the token is in hand, and `startSession` only if it resolves
+ *    true. See the note on it for why a phone and a watch wait there and a browser does not.
+ * 3. If a greeting is playing, `greetingSessionOptions` go to `startSession`: the override that
+ *    switches the agent's first message off, and the moment the session exists, which mutes its
+ *    microphone — the agent must not hear Jarvis greet through the speaker and take it for the user
+ *    speaking.
+ * 4. While `greeting` is true, the sphere follows `greetingVoice`, which reads the player's own
  *    position so it stays on the words however late playback started.
  *
  * When the recording ends — or is given up on, see `isGreetingOver` — the microphone is unmuted and
@@ -94,27 +97,35 @@ export function useGreeting() {
   const rewound = useRef(false);
   /** Whether it is the greeting that muted the microphone, so only the greeting unmutes it. */
   const mutedForGreeting = useRef(false);
+  /** Whoever is waiting in `untilCallMayTakeTheAudio`, told whether he finished or was stopped. */
+  const waitingForTheEnd = useRef<((finished: boolean) => void)[]>([]);
 
-  const finishGreeting = useCallback(() => {
-    inProgress.current = false;
-    setGreeting(false);
-    if (!mutedForGreeting.current) {
-      return;
-    }
-    mutedForGreeting.current = false;
-    try {
-      setMuted(false);
-    } catch {
-      // The session ended while he was greeting, and took the microphone with it.
-    }
-  }, [setMuted]);
+  const finishGreeting = useCallback(
+    (finished: boolean) => {
+      inProgress.current = false;
+      setGreeting(false);
+      for (const answer of waitingForTheEnd.current.splice(0)) {
+        answer(finished);
+      }
+      if (!mutedForGreeting.current) {
+        return;
+      }
+      mutedForGreeting.current = false;
+      try {
+        setMuted(false);
+      } catch {
+        // The session ended while he was greeting, and took the microphone with it.
+      }
+    },
+    [setMuted],
+  );
 
   const stopGreeting = useCallback(() => {
     if (!inProgress.current) {
       return;
     }
     player.pause();
-    finishGreeting();
+    finishGreeting(false);
   }, [player, finishGreeting]);
 
   const beginGreeting = useCallback(async () => {
@@ -158,11 +169,38 @@ export function useGreeting() {
         durationSeconds: player.duration,
       });
       if (over) {
-        finishGreeting();
+        finishGreeting(true);
       }
     }, CHECK_EVERY_MS);
     return () => clearInterval(checking);
   }, [greeting, player, finishGreeting]);
+
+  /**
+   * Resolves once the call may have the device's audio: `true` to go on and start the session, or
+   * `false` if the greeting was stopped meanwhile — the conversation was hung up, and dialling it
+   * now would open a call nobody is waiting for.
+   *
+   * **On a phone and a watch that is not until he has finished greeting.** Starting a session
+   * starts LiveKit's audio session with the SDK's `communication` preset, which puts Android into
+   * `MODE_IN_COMMUNICATION` and routes playback through the call path. A recording still playing
+   * then was heard switching mid-word into a thin, call-processed voice that did not sound like
+   * Jarvis, and cut off before the end. So the token is fetched beside the greeting, as before, but
+   * the session is only started once the recording is over — the voice firmware can dial behind
+   * it because it has no audio mode to change. That costs the handshake after the greeting rather
+   * than during it, which is a moment of listening-without-hearing against a greeting that is
+   * audibly broken.
+   *
+   * **A browser does not wait.** It has no audio mode to switch, so the session goes on being
+   * dialled behind the greeting there, with its microphone muted until he has finished.
+   */
+  const untilCallMayTakeTheAudio = useCallback((): Promise<boolean> => {
+    if (Platform.OS === 'web' || !inProgress.current) {
+      return Promise.resolve(true);
+    }
+    return new Promise((answer) => {
+      waitingForTheEnd.current.push(answer);
+    });
+  }, []);
 
   const greetingSessionOptions = useMemo(
     () => ({
@@ -194,5 +232,5 @@ export function useGreeting() {
     [player],
   );
 
-  return { greeting, greetingVoice, beginGreeting, stopGreeting, greetingSessionOptions };
+  return { greeting, greetingVoice, beginGreeting, stopGreeting, untilCallMayTakeTheAudio, greetingSessionOptions };
 }
