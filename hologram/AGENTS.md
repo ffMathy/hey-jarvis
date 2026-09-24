@@ -35,7 +35,7 @@ that rule.
 | `hologram` | nothing but types | the drawing, the voice tracker, the simulated voices, sample mode's moods and readout text, the density control, the ElevenLabs credentials and the token request |
 | `hologram/react` | React, Reanimated, Skia | the Skia canvas and the frame loop |
 | `hologram/react/sample` | React, Reanimated — not Skia | sample mode's clock-made voice, mood toast and frame-rate readout, shared by the phone's sample screen and the watch's waiting screen |
-| `hologram/conversation` | React, `@elevenlabs/react-native`, `expo-audio` — not Skia | his voice as the SDK hears it, which of his tool calls are in flight, the recorded greeting he answers with, and the user's voice for the listening lattice |
+| `hologram/conversation` | React, `@elevenlabs/react-native`, `expo-audio`, `@livekit/react-native`'s audio session — not Skia | his voice as the SDK hears it, which of his tool calls are in flight, the recorded greeting he answers with, and the user's voice for the listening lattice |
 
 `hologram/conversation` deliberately does **not** reach Skia. That is what lets
 a screen open a conversation before CanvasKit has finished loading in a browser,
@@ -158,12 +158,17 @@ easy to break:
   LiveKit's own focus request as the call connects would pause him mid-sentence.
 - **Its audio mode is set once, before any session.** On Android `setAudioModeAsync` also writes
   `AudioManager.mode`, and doing it mid-call would take the call out of `MODE_IN_COMMUNICATION`.
-- **On a phone and a watch, the session starts after him.** `startSession` starts LiveKit's audio
-  session with the `communication` preset, which puts Android into `MODE_IN_COMMUNICATION` and
-  routes playback through the call path — heard on a device, the recording turned thin mid-word and
-  was cut off. So the token is fetched beside him, but screens `await untilCallMayTakeTheAudio()`
-  before `startSession`; it resolves once the recording is over (at once in a browser), and `false`
-  if he was stopped, in which case there is nobody left to dial for.
+- **On a phone and a watch, he greets inside the call's audio.** `startSession` starts LiveKit's
+  audio session with the `communication` preset, which puts Android into `MODE_IN_COMMUNICATION`.
+  Played as ordinary media before that, the recording was heard on a phone only from the moment the
+  session started under it — thin and clipped — and not at all once the session waited for him. So
+  `beginGreeting` starts that same audio session first (`call-audio.ts`, a no-op `.web.ts` in a
+  browser) and plays inside it; LiveKit's `start` then does nothing when the SDK calls it again.
+  Screens call `releaseCallAudio()` when a start fails, so no call audio is left with no call.
+- **And the session still starts after him.** The token is fetched beside him, but screens
+  `await untilCallMayTakeTheAudio()` before `startSession`; it resolves once the recording is over
+  (at once in a browser), and `false` if he was stopped, in which case there is nobody left to dial
+  for.
 - **In a browser, only while the microphone is held.** A tab nobody has clicked since it loaded
   refuses to play a sound unless the page is using the microphone, so the phone app's web build
   holds the stream it asked permission with until `beginGreeting` resolves. There `beginGreeting`

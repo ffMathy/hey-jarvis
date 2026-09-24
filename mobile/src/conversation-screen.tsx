@@ -146,8 +146,15 @@ export function ConversationScreen({ settings, onEditSettings, inSheet = false }
   const { playbackHandlers } = useQueuedAudio();
   // "Hello sir, how can I help?", from a recording, while the session is dialled behind it. See
   // `greeting.ts` in `hologram/conversation`, and `start` below.
-  const { greeting, greetingVoice, beginGreeting, stopGreeting, untilCallMayTakeTheAudio, greetingSessionOptions } =
-    useGreeting();
+  const {
+    greeting,
+    greetingVoice,
+    beginGreeting,
+    stopGreeting,
+    untilCallMayTakeTheAudio,
+    releaseCallAudio,
+    greetingSessionOptions,
+  } = useGreeting();
   // You, as the conversation hears you, for the sphere's listening animation. See `user-voice.ts`.
   const { user, userVoiceHandlers } = useUserVoice({ greeting });
 
@@ -406,12 +413,25 @@ export function ConversationScreen({ settings, onEditSettings, inSheet = false }
       }
       setCanType(true);
     } catch (error: unknown) {
+      // Nothing is coming to take the call's audio the greeting started, so it is let go here.
+      stopGreeting();
+      releaseCallAudio();
       reportProblem(error instanceof Error ? error.message : 'Jarvis could not be reached.');
     } finally {
       startingNow.current = false;
       setIsStarting(false);
     }
-  }, [settings, startSession, openVoiceSession, toolHandlers, reportProblem, reportEnding, rememberWhatHeSaid]);
+  }, [
+    settings,
+    startSession,
+    openVoiceSession,
+    stopGreeting,
+    releaseCallAudio,
+    toolHandlers,
+    reportProblem,
+    reportEnding,
+    rememberWhatHeSaid,
+  ]);
 
   /**
    * Gives up on a conversation that is taking too long to open, and says so.
