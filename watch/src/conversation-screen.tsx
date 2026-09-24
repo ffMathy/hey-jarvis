@@ -77,7 +77,8 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
   const agentVoice = useAgentVoice();
   // "Hello sir, how can I help?", from a recording, while the session is dialled behind it — and
   // the sphere saying it with him. See `greeting.ts` in `hologram/conversation`.
-  const { greeting, greetingVoice, beginGreeting, stopGreeting, greetingSessionOptions } = useGreeting();
+  const { greeting, greetingVoice, beginGreeting, stopGreeting, untilCallMayTakeTheAudio, greetingSessionOptions } =
+    useGreeting();
   const voice = greeting ? greetingVoice : agentVoice;
   // Whoever is talking to him, for the sphere's listening animation. See `user-voice.ts`.
   const { user, userVoiceHandlers } = useUserVoice({ greeting });
@@ -126,11 +127,9 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
         return;
       }
 
-      // He answers at once, from a recording, and everything below — the network, the token, the
-      // session — happens while he says it. The session is told not to greet a second time and
-      // keeps its microphone muted until he has finished, so it does not hear him through the
-      // speaker a few centimetres away and take it for the wearer. A session slower than the
-      // greeting goes on connecting exactly as it did before there was one.
+      // He answers at once, from a recording, and the network and the token are got while he says
+      // it. The session is told not to greet a second time. A session slower than the greeting
+      // goes on connecting exactly as it did before there was one.
       const greeted = await beginGreeting();
 
       // Off the phone's Bluetooth proxy before anything goes out, token request included: WebRTC's
@@ -142,6 +141,15 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
       // Minted here rather than kept: a conversation token is short-lived, and one fetched when
       // the app opened may be dead by the time a wrist is raised.
       const { token } = await requestConversationToken({ settings, participantName: WATCH_PARTICIPANT_NAME });
+
+      // But the session itself waits for him to finish: starting it switches the watch into call
+      // audio, which clipped the recording and turned it into a voice that was not his. See
+      // `untilCallMayTakeTheAudio`. The wrist dropping mid-greeting stops it, and then there is no
+      // one to dial for.
+      if (!(await untilCallMayTakeTheAudio())) {
+        releaseFastNetwork();
+        return;
+      }
 
       startSession({
         conversationToken: token,
@@ -163,6 +171,7 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
     settings,
     startSession,
     beginGreeting,
+    untilCallMayTakeTheAudio,
     greetingSessionOptions,
     toolHandlers,
     userVoiceHandlers,

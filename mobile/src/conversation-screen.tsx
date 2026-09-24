@@ -92,17 +92,20 @@ async function greetHolding(microphone: MicrophoneAccess, beginGreeting: () => P
  * who is waiting for you. He fades, the drawing stops, and on a phone the assistant's window goes
  * with him — see the effects below `start`.
  *
- * The one thing that does put something on the screen is a field to type into, under him, wherever
- * there is a conversation to type into — see `typed-message-field.tsx`. It is the exception that
- * keeps the rule: there is still nothing to read, only somewhere to write.
+ * The one thing that does put something on the screen is a field to type into, under him, in a
+ * browser — see `typed-message-field.tsx`. It is the exception that keeps the rule: there is still
+ * nothing to read, only somewhere to write.
  *
- * **It used to be a browser's consolation prize for a refused microphone, and Jarvis answered it in
- * writing.** That is because the only session it ever appeared in was the text-only one, which is
- * the one mode where ElevenLabs is asked not to speak. Typing into an ordinary voice session is
- * nothing of the sort: `sendUserMessage` is on the conversation rather than on the text half of it,
- * so a typed line takes the same turn a spoken one would and comes back *spoken*, with the sphere
- * following his voice exactly as it does when you talk to him. So the field is on both platforms
- * now, and the only conversation he still writes back in is the one with no microphone behind it.
+ * **It is not on a phone.** It was, for a while, and sat under him as an empty bar on every
+ * summoning — something on the assistant's screen that was not him, for a keyboard nobody summoning
+ * an assistant is holding. The user asked for it gone. A browser keeps it: that is where Jarvis is
+ * developed and demonstrated, the keyboard is right there, and it is the only way into the
+ * text-only conversation a refused microphone falls back to.
+ *
+ * **Typed, he still answers out loud.** `sendUserMessage` is on the conversation rather than on the
+ * text half of it, so a typed line takes the same turn a spoken one would and comes back *spoken*,
+ * with the sphere following his voice exactly as it does when you talk to him. The only
+ * conversation he writes back in is the one with no microphone behind it.
  *
  * **That one now shows what he wrote**, which it never did. His reply arrived over the socket and
  * nothing rendered it, so typing into the fallback sent the line, got an answer and displayed
@@ -117,9 +120,7 @@ async function greetHolding(microphone: MicrophoneAccess, beginGreeting: () => P
  * voice, overruling it with a clock would be a lie about something the screen can actually see.
  *
  * Settings are still reachable, and how depends on where this is running. On a phone it is a long
- * press anywhere the field is not: a `TextInput` keeps its own long press for selecting text, which
- * is worth more there than a second way into settings, and everything around it is still most of
- * the screen. A long press rather than a link, because this screen is the assistant and an
+ * press anywhere on the screen. A long press rather than a link, because this screen is the assistant and an
  * assistant with a link on it is not one. In a browser it is a plain link, because a browser is not
  * an assistant — it is where this is developed and demonstrated, it already differs in bigger ways
  * (sample mode has no sheet there), and react-native-web does not raise `onLongPress` for a held
@@ -145,14 +146,15 @@ export function ConversationScreen({ settings, onEditSettings, inSheet = false }
   const { playbackHandlers } = useQueuedAudio();
   // "Hello sir, how can I help?", from a recording, while the session is dialled behind it. See
   // `greeting.ts` in `hologram/conversation`, and `start` below.
-  const { greeting, greetingVoice, beginGreeting, stopGreeting, greetingSessionOptions } = useGreeting();
+  const { greeting, greetingVoice, beginGreeting, stopGreeting, untilCallMayTakeTheAudio, greetingSessionOptions } =
+    useGreeting();
   // You, as the conversation hears you, for the sphere's listening animation. See `user-voice.ts`.
   const { user, userVoiceHandlers } = useUserVoice({ greeting });
 
   const [problem, setProblem] = useState<string | undefined>(undefined);
   const [isStarting, setIsStarting] = useState(false);
   // Set once a conversation has actually been opened, which is what puts the text field on this
-  // screen — either kind of conversation, since both take a typed line. It is not the same question
+  // screen in a browser — either kind of conversation, since both take a typed line. It is not the same question
   // as whether one is *connected*: a session that opened and then dropped still has a field, saying
   // so, which is how a browser reports an ElevenLabs it could not finish reaching. What has no
   // field is a `start` that never got as far as a session at all — a phone with the microphone
@@ -288,6 +290,42 @@ export function ConversationScreen({ settings, onEditSettings, inSheet = false }
    */
   const startingNow = useRef(false);
 
+  /**
+   * Greets you, and dials the voice session behind him — though on a phone it is only started once
+   * he has finished; see the note in `start`. Nothing is started if he was hung up on mid-greeting.
+   */
+  const openVoiceSession = useCallback(
+    async (microphone: MicrophoneAccess) => {
+      const greeted = await greetHolding(microphone, beginGreeting);
+      const { token } = await requestConversationToken({ settings, participantName: PHONE_PARTICIPANT_NAME });
+      if (!(await untilCallMayTakeTheAudio())) {
+        return;
+      }
+      startSession({
+        conversationToken: token,
+        connectionType: 'webrtc',
+        onError: reportProblem,
+        onDisconnect: reportEnding,
+        ...toolHandlers,
+        ...playbackHandlers,
+        ...userVoiceHandlers,
+        ...(greeted ? greetingSessionOptions : {}),
+      });
+    },
+    [
+      settings,
+      startSession,
+      beginGreeting,
+      untilCallMayTakeTheAudio,
+      greetingSessionOptions,
+      toolHandlers,
+      playbackHandlers,
+      userVoiceHandlers,
+      reportProblem,
+      reportEnding,
+    ],
+  );
+
   const start = useCallback(async () => {
     if (startingNow.current) {
       return;
@@ -325,22 +363,15 @@ export function ConversationScreen({ settings, onEditSettings, inSheet = false }
       // finished, so the agent does not hear him through the speaker and take it for you. If the
       // session is slower than the greeting, the screen simply goes on connecting as it always did.
       //
+      // **On a phone the session itself waits for him to finish**, because starting it switches
+      // Android into call audio and that turned the rest of the recording into a clipped, thin voice
+      // that did not sound like him. See `untilCallMayTakeTheAudio`.
+      //
       // **In a browser the microphone is still held open while he starts**, which is what lets a tab
       // nobody has clicked play him at all; it is let go as soon as the greeting has started, or been
       // refused. See `microphone-permission.web.ts`.
       if (microphone) {
-        const greeted = await greetHolding(microphone, beginGreeting);
-        const { token } = await requestConversationToken({ settings, participantName: PHONE_PARTICIPANT_NAME });
-        startSession({
-          conversationToken: token,
-          connectionType: 'webrtc',
-          onError: reportProblem,
-          onDisconnect: reportEnding,
-          ...toolHandlers,
-          ...playbackHandlers,
-          ...userVoiceHandlers,
-          ...(greeted ? greetingSessionOptions : {}),
-        });
+        await openVoiceSession(microphone);
       } else {
         // **This is what makes a conversation possible with no microphone at all**, and the one
         // place Jarvis still answers in writing. ElevenLabs runs the session as text on both sides:
@@ -380,18 +411,7 @@ export function ConversationScreen({ settings, onEditSettings, inSheet = false }
       startingNow.current = false;
       setIsStarting(false);
     }
-  }, [
-    settings,
-    startSession,
-    beginGreeting,
-    greetingSessionOptions,
-    toolHandlers,
-    playbackHandlers,
-    userVoiceHandlers,
-    reportProblem,
-    reportEnding,
-    rememberWhatHeSaid,
-  ]);
+  }, [settings, startSession, openVoiceSession, toolHandlers, reportProblem, reportEnding, rememberWhatHeSaid]);
 
   /**
    * Gives up on a conversation that is taking too long to open, and says so.
@@ -574,10 +594,9 @@ export function ConversationScreen({ settings, onEditSettings, inSheet = false }
       ) : null}
 
       {/*
-        The other way in, wherever there is a conversation to type into — which is both platforms,
-        and a live microphone as readily as a refused one. Only a `start` that never opened a
-        session at all has none, and on a phone that is the refused microphone, which the line above
-        has already explained.
+        The other way in, in a browser, wherever there is a conversation to type into — a live
+        microphone as readily as a refused one. Only a `start` that never opened a session at all
+        has none. Never on a phone: see the note on the component.
 
         It leaves with him rather than before him, so the screen empties in one movement. A field
         left behind on a conversation that has ended is somewhere to type that nothing is listening
@@ -593,7 +612,7 @@ export function ConversationScreen({ settings, onEditSettings, inSheet = false }
       */}
       {writtenReply.shown && !gone ? <WrittenReplyLine reply={writtenReply.shown} /> : null}
 
-      {canType && !gone ? (
+      {canType && !gone && !ON_A_PHONE ? (
         <TypedMessageField
           onSend={sendTypedMessage}
           enabled={status === 'connected'}
