@@ -184,15 +184,17 @@ the page is using the microphone*, so `microphone-permission.web.ts` holds the s
 permission with until the greeting has started, and lets it go straight after. Released at once, as
 it once was, the recording was refused and the agent greeted in its own voice instead.
 
-**On a phone the session waits for the greeting to finish.** It was first dialled behind it, as
-the firmware does, and heard on a device that did not work: `startSession` starts LiveKit's audio
-session with the SDK's `communication` preset, which switches Android into `MODE_IN_COMMUNICATION`
-and routes playback through the call path, so a second into "Hello sir" the recording turned thin
-and call-processed — not his voice — and was cut off before the end. The token is still fetched
-beside the greeting, but `startSession` now waits for `untilCallMayTakeTheAudio`, which on a phone
-and a watch resolves once the recording is over. A browser has no audio mode to switch, so it goes
-on dialling behind him. Still to settle on a device: that `vad_score` events arrive over WebRTC as
-they do over the firmware's socket.
+**On a phone he greets inside the call's audio, and the session waits for him.** Both were learned
+on a device. Dialled behind him, `startSession` started LiveKit's audio session — the SDK's
+`communication` preset, `MODE_IN_COMMUNICATION` — a second into "Hello sir", and the recording
+turned thin and clipped from there. Held back until he had finished, he was not heard at all:
+played as ordinary media, the recording had only ever been audible once that audio session was
+running. So `beginGreeting` now starts the same audio session *before* he speaks
+(`hologram/src/conversation/call-audio.ts`) and he greets inside it, on the speaker at call volume,
+with nothing switching under him; the token is fetched beside him and `startSession` waits for
+`untilCallMayTakeTheAudio`. A browser has no call audio and goes on dialling behind him. Still to
+settle on a device: that the greeting sounds like him inside the call's audio, and that
+`vad_score` events arrive over WebRTC as they do over the firmware's socket.
 
 The sphere also shows the user being heard: while ElevenLabs' `vad_score` says someone is
 speaking, his particles snap onto a lattice that turns inside him, breathing harder the louder the

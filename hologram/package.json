@@ -10,9 +10,10 @@
     "format": "cd .. && bunx biome format --write hologram",
     "test": "cd .. && bash hologram/.scripts/test.sh"
   },
-  "//peer": "Whichever app is Jarvis brings its own copy of these; both of them already depend on all six directly. Skia is only a type import in the main entry, but the react entry calls into it, and the conversation entry calls into the ElevenLabs SDK and, for the recorded greeting, expo-audio.",
+  "//peer": "Whichever app is Jarvis brings its own copy of these; both of them already depend on all seven directly. Skia is only a type import in the main entry, but the react entry calls into it, and the conversation entry calls into the ElevenLabs SDK and, for the recorded greeting, expo-audio and LiveKit's audio session.",
   "peerDependencies": {
     "@elevenlabs/react-native": "*",
+    "@livekit/react-native": "*",
     "@shopify/react-native-skia": "*",
     "expo-audio": "*",
     "react": "*",
@@ -21,6 +22,7 @@
   },
   "devDependencies": {
     "@elevenlabs/react-native": "1.2.26",
+    "@livekit/react-native": "2.12.0",
     "@shopify/react-native-skia": "2.6.2",
     "@types/react": "19.2.18",
     "bun-types": "1.3.14",

@@ -5,6 +5,7 @@ import { Platform } from 'react-native';
 import { isGreetingOver, WITHOUT_FIRST_MESSAGE } from '../greeting-handover';
 import { createGreetingReaders } from '../greeting-voice';
 import type { JarvisVoice } from '../voice-contract';
+import { startCallAudio, stopCallAudio } from './call-audio';
 import { GREETING_SOUND } from './greeting-sound';
 
 /** How often a greeting in progress is checked for having finished. */
@@ -22,11 +23,12 @@ let audioModeSet: Promise<void> | undefined;
  * the connection lands: a second into "Hello sir". `mixWithOthers` asks for no focus at all, so
  * there is nothing to lose.
  *
- * **Once per process, and before the first session.** On Android this call also writes
+ * **Once per process, and before the call's audio is started.** On Android this call also writes
  * `AudioManager.mode` — to `MODE_NORMAL`, since the greeting is not routed through the earpiece —
- * and LiveKit puts it in `MODE_IN_COMMUNICATION` for the call. Run again while a call is up, it
- * would take the call out of the mode its echo cancellation depends on. Nothing else in either
- * app plays through expo-audio, so there is nothing for a second call to change anyway.
+ * and LiveKit puts it in `MODE_IN_COMMUNICATION` for the call, which on a phone and a watch now
+ * happens before every greeting (see `call-audio.ts`). Run again after that, it would take the call
+ * out of the mode its echo cancellation depends on. Nothing else in either app plays through
+ * expo-audio, so there is nothing for a second call to change anyway.
  */
 function mixWithTheCall(): Promise<void> {
   audioModeSet ??= setAudioModeAsync({ interruptionMode: 'mixWithOthers', playsInSilentMode: true }).catch(() => {
@@ -67,9 +69,10 @@ function refusedToPlay(player: AudioPlayer): boolean {
  * What a screen does with it:
  *
  * 1. `beginGreeting()` as it starts the conversation, before the token request. It resolves to
- *    whether a greeting is playing. In a browser, call it while the page still holds a microphone
- *    stream — that is what lets an untouched tab play it — and it resolves only once the browser
- *    has said yes or no.
+ *    whether a greeting is playing. On a phone and a watch it puts the device into the call's audio
+ *    first, which is what makes him heard at all; see `call-audio.ts`. In a browser, call it while
+ *    the page still holds a microphone stream — that is what lets an untouched tab play it — and it
+ *    resolves only once the browser has said yes or no.
  * 2. `untilCallMayTakeTheAudio()` once the token is in hand, and `startSession` only if it resolves
  *    true. See the note on it for why a phone and a watch wait there and a browser does not.
  * 3. If a greeting is playing, `greetingSessionOptions` go to `startSession`: the override that
@@ -84,6 +87,8 @@ function refusedToPlay(player: AudioPlayer): boolean {
  * is not up by then simply goes on connecting, exactly as it would have without a greeting.
  *
  * `stopGreeting()` is for hanging up mid-greeting: he stops talking when you dismiss him.
+ * `releaseCallAudio()` is for a conversation that failed before it started — a token that never
+ * came — so the device is not left in call audio with no call.
  */
 export function useGreeting() {
   const player = useAudioPlayer(GREETING_SOUND);
@@ -99,6 +104,22 @@ export function useGreeting() {
   const mutedForGreeting = useRef(false);
   /** Whoever is waiting in `untilCallMayTakeTheAudio`, told whether he finished or was stopped. */
   const waitingForTheEnd = useRef<((finished: boolean) => void)[]>([]);
+  /**
+   * Whether the call's audio was started for the greeting and no session has taken it over yet —
+   * the only time it is the greeting's to stop. Once a session exists, the SDK stops it as the
+   * conversation ends.
+   */
+  const holdingCallAudio = useRef(false);
+
+  const releaseCallAudio = useCallback(() => {
+    if (!holdingCallAudio.current) {
+      return;
+    }
+    holdingCallAudio.current = false;
+    stopCallAudio().catch(() => {
+      // Nothing to put back: it never started.
+    });
+  }, []);
 
   const finishGreeting = useCallback(
     (finished: boolean) => {
@@ -106,6 +127,10 @@ export function useGreeting() {
       setGreeting(false);
       for (const answer of waitingForTheEnd.current.splice(0)) {
         answer(finished);
+      }
+      if (!finished) {
+        // Stopped rather than heard out: hung up on, so no session is coming to take the audio.
+        releaseCallAudio();
       }
       if (!mutedForGreeting.current) {
         return;
@@ -117,7 +142,7 @@ export function useGreeting() {
         // The session ended while he was greeting, and took the microphone with it.
       }
     },
-    [setMuted],
+    [setMuted, releaseCallAudio],
   );
 
   const stopGreeting = useCallback(() => {
@@ -130,6 +155,12 @@ export function useGreeting() {
 
   const beginGreeting = useCallback(async () => {
     await mixWithTheCall();
+    try {
+      await startCallAudio();
+      holdingCallAudio.current = true;
+    } catch {
+      // He greets as ordinary media instead — the most that can be done without it.
+    }
     askedAt.current = Date.now();
     rewound.current = false;
     inProgress.current = true;
@@ -180,15 +211,12 @@ export function useGreeting() {
    * `false` if the greeting was stopped meanwhile — the conversation was hung up, and dialling it
    * now would open a call nobody is waiting for.
    *
-   * **On a phone and a watch that is not until he has finished greeting.** Starting a session
-   * starts LiveKit's audio session with the SDK's `communication` preset, which puts Android into
-   * `MODE_IN_COMMUNICATION` and routes playback through the call path. A recording still playing
-   * then was heard switching mid-word into a thin, call-processed voice that did not sound like
-   * Jarvis, and cut off before the end. So the token is fetched beside the greeting, as before, but
-   * the session is only started once the recording is over — the voice firmware can dial behind
-   * it because it has no audio mode to change. That costs the handshake after the greeting rather
-   * than during it, which is a moment of listening-without-hearing against a greeting that is
-   * audibly broken.
+   * **On a phone and a watch that is not until he has finished greeting.** Dialled behind him, the
+   * session's arrival was heard as the greeting switching mid-word into a thin voice and cutting
+   * off. The call's audio is now started before he speaks (`call-audio.ts`), which takes away the
+   * mode switch that most likely did that — but WebRTC's own audio device coming up under a
+   * recording has not been heard on a device, so the session still waits for him. That costs the
+   * handshake after the greeting rather than during it.
    *
    * **A browser does not wait.** It has no audio mode to switch, so the session goes on being
    * dialled behind the greeting there, with its microphone muted until he has finished.
@@ -211,6 +239,8 @@ export function useGreeting() {
        * `useConversationInput().isMuted` — which `useUserVoice` reads — says so too.
        */
       onConversationCreated: () => {
+        // The session has the call's audio now, and stops it when the conversation ends.
+        holdingCallAudio.current = false;
         if (!inProgress.current) {
           return;
         }
@@ -232,5 +262,13 @@ export function useGreeting() {
     [player],
   );
 
-  return { greeting, greetingVoice, beginGreeting, stopGreeting, untilCallMayTakeTheAudio, greetingSessionOptions };
+  return {
+    greeting,
+    greetingVoice,
+    beginGreeting,
+    stopGreeting,
+    untilCallMayTakeTheAudio,
+    releaseCallAudio,
+    greetingSessionOptions,
+  };
 }

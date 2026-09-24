@@ -77,8 +77,15 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
   const agentVoice = useAgentVoice();
   // "Hello sir, how can I help?", from a recording, while the session is dialled behind it — and
   // the sphere saying it with him. See `greeting.ts` in `hologram/conversation`.
-  const { greeting, greetingVoice, beginGreeting, stopGreeting, untilCallMayTakeTheAudio, greetingSessionOptions } =
-    useGreeting();
+  const {
+    greeting,
+    greetingVoice,
+    beginGreeting,
+    stopGreeting,
+    untilCallMayTakeTheAudio,
+    releaseCallAudio,
+    greetingSessionOptions,
+  } = useGreeting();
   const voice = greeting ? greetingVoice : agentVoice;
   // Whoever is talking to him, for the sphere's listening animation. See `user-voice.ts`.
   const { user, userVoiceHandlers } = useUserVoice({ greeting });
@@ -161,8 +168,11 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
         ...(greeted ? greetingSessionOptions : {}),
       });
     } catch (error: unknown) {
-      // No session to hold the network for, so it goes now rather than when one ends.
+      // No session to hold the network for, so it goes now rather than when one ends — and none
+      // to take the call's audio the greeting started, so that goes too.
       releaseFastNetwork();
+      stopGreeting();
+      releaseCallAudio();
       reportProblem(error instanceof Error ? error.message : 'Jarvis could not be reached.');
     } finally {
       setIsStarting(false);
@@ -171,7 +181,9 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
     settings,
     startSession,
     beginGreeting,
+    stopGreeting,
     untilCallMayTakeTheAudio,
+    releaseCallAudio,
     greetingSessionOptions,
     toolHandlers,
     userVoiceHandlers,
