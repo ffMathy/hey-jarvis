@@ -10,7 +10,7 @@ import { useGreeting, useToolActivity, useUserVoice } from 'hologram/conversatio
 import { LEAVING_SECONDS } from 'hologram/react/lifecycle';
 import { useSimulatedVoice } from 'hologram/react/sample';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, ToastAndroid, View } from 'react-native';
 import { createAssistLaunchClaim } from './assist-link';
 import { afterStatus, isLive, NOT_YET_OPEN } from './conversation-life';
 import { ConversationFrame, useConversationSheet } from './conversation-sheet';
@@ -266,6 +266,26 @@ export function ConversationScreen({ settings, onEditSettings, inSheet = false }
   }, []);
 
   /**
+   * Says what went wrong with the session itself, and on a phone says it in a toast as well.
+   *
+   * **The line alone was not enough there.** A session that fails once it is open — an account out
+   * of credits is the one that was hit: ElevenLabs accepts the token, opens the room, then closes it
+   * with `quota_exceeded` — is also a conversation that has ended, so Jarvis fades and, summoned,
+   * the sheet and the assistant's window go with him, taking the line along before it can be read.
+   * All anyone saw was him vanishing a second after greeting. A toast belongs to the system rather
+   * than to this window, so it outlives him. A browser keeps its screen, and the line on it.
+   */
+  const reportSessionFailure = useCallback(
+    (message: string) => {
+      reportProblem(message);
+      if (Platform.OS === 'android') {
+        ToastAndroid.show(message, ToastAndroid.LONG);
+      }
+    },
+    [reportProblem],
+  );
+
+  /**
    * Says why a conversation ended, when it ended for a reason worth saying.
    *
    * **The SDK does not route this through `onError`**, and that is the whole reason this exists.
@@ -281,10 +301,10 @@ export function ConversationScreen({ settings, onEditSettings, inSheet = false }
   const reportEnding = useCallback(
     (details: { reason: string; message?: string }) => {
       if (details.reason === 'error') {
-        reportProblem(details.message || 'The conversation with Jarvis ended unexpectedly.');
+        reportSessionFailure(details.message || 'The conversation with Jarvis ended unexpectedly.');
       }
     },
-    [reportProblem],
+    [reportSessionFailure],
   );
 
   /**
@@ -311,7 +331,7 @@ export function ConversationScreen({ settings, onEditSettings, inSheet = false }
       startSession({
         conversationToken: token,
         connectionType: 'webrtc',
-        onError: reportProblem,
+        onError: reportSessionFailure,
         onDisconnect: reportEnding,
         ...toolHandlers,
         ...playbackHandlers,
@@ -328,7 +348,7 @@ export function ConversationScreen({ settings, onEditSettings, inSheet = false }
       toolHandlers,
       playbackHandlers,
       userVoiceHandlers,
-      reportProblem,
+      reportSessionFailure,
       reportEnding,
     ],
   );
@@ -403,7 +423,7 @@ export function ConversationScreen({ settings, onEditSettings, inSheet = false }
           signedUrl,
           connectionType: 'websocket',
           textOnly: true,
-          onError: reportProblem,
+          onError: reportSessionFailure,
           onDisconnect: reportEnding,
           // The only place this is asked for, because it is the only place there is anything to
           // read: his reply arrives written here and as audio everywhere else.
@@ -429,6 +449,7 @@ export function ConversationScreen({ settings, onEditSettings, inSheet = false }
     releaseCallAudio,
     toolHandlers,
     reportProblem,
+    reportSessionFailure,
     reportEnding,
     rememberWhatHeSaid,
   ]);

@@ -216,6 +216,14 @@ up. The assistant's window is kept between summonings rather than rebuilt, so a 
 has gone is noticed by the app returning to the foreground, which brings the sheet back and opens a
 new conversation.
 
+**A session that fails once open also says so in a toast.** An account out of credits is
+accepted, connects, and is then closed by ElevenLabs with `quota_exceeded` — which is a
+conversation ending, so he fades and the sheet goes, and the red line went with it before anyone
+could read it. Errors from the session itself (`onError`, and `onDisconnect` with `reason:
+"error"`) go through `reportSessionFailure`, which also shows them as an Android toast that
+outlives the window. Problems before a session exists stay on the line alone, under a sphere that
+is still there.
+
 **Ending is not the same as never starting**, and both read `disconnected`. A conversation that
 never opened has failed, and the answer to that is the line saying why *under a sphere that is
 still there*. So `conversation-life.ts` folds the statuses rather than looking at the current one,
