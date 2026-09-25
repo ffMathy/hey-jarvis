@@ -1,60 +1,14 @@
 import { useConversationInput } from '@elevenlabs/react-native';
-import { type AudioPlayer, setAudioModeAsync, useAudioPlayer } from 'expo-audio';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 import { isGreetingOver, WITHOUT_FIRST_MESSAGE } from '../greeting-handover';
 import { createGreetingReaders } from '../greeting-voice';
 import type { JarvisVoice } from '../voice-contract';
 import { startCallAudio, stopCallAudio } from './call-audio';
-import { GREETING_SOUND } from './greeting-sound';
+import { useGreetingPlayer } from './greeting-player';
 
 /** How often a greeting in progress is checked for having finished. */
 const CHECK_EVERY_MS = 50;
-
-/** The one time this process sets the audio mode, shared by every greeting after it. */
-let audioModeSet: Promise<void> | undefined;
-
-/**
- * Lets the greeting play *alongside* the call that is being dialled behind it.
- *
- * **Without this the call would silence him mid-sentence.** expo-audio on Android asks for audio
- * focus before it plays unless it is told to mix, and LiveKit asks for focus of its own when the
- * session connects — so the player would be handed a focus loss and pause, which is exactly when
- * the connection lands: a second into "Hello sir". `mixWithOthers` asks for no focus at all, so
- * there is nothing to lose.
- *
- * **Once per process, and before the call's audio is started.** On Android this call also writes
- * `AudioManager.mode` — to `MODE_NORMAL`, since the greeting is not routed through the earpiece —
- * and LiveKit puts it in `MODE_IN_COMMUNICATION` for the call, which on a phone and a watch now
- * happens before every greeting (see `call-audio.ts`). Run again after that, it would take the call
- * out of the mode its echo cancellation depends on. Nothing else in either app plays through
- * expo-audio, so there is nothing for a second call to change anyway.
- */
-function mixWithTheCall(): Promise<void> {
-  audioModeSet ??= setAudioModeAsync({ interruptionMode: 'mixWithOthers', playsInSilentMode: true }).catch(() => {
-    // Left as it was: he still greets, and the next summoning tries again.
-    audioModeSet = undefined;
-  });
-  return audioModeSet;
-}
-
-/**
- * Whether a greeting just asked to play was refused by the browser.
- *
- * **Only a browser refuses**, and only a tab nobody has clicked since it loaded — unless it has
- * something else that lets it sound, which the conversation screen makes sure it has: a browser
- * lets a page that is using the microphone play without a click, so the screen holds its
- * microphone open until the greeting has started. What is left is a browser that refuses anyway,
- * and a greeting that cannot be heard must not also take the agent's own first message away.
- *
- * Read straight after `play()`, because that is when a browser answers: a refused media element
- * never leaves `paused`, and one that is allowed leaves it at once. A phone and a watch are never
- * refused, and their players leave `paused` only once the recording has buffered, so there it
- * would read as a refusal that is not one.
- */
-function refusedToPlay(player: AudioPlayer): boolean {
-  return Platform.OS === 'web' && player.paused;
-}
 
 /**
  * Jarvis greeting you from a recording while the conversation is still being dialled.
@@ -70,9 +24,11 @@ function refusedToPlay(player: AudioPlayer): boolean {
  *
  * 1. `beginGreeting()` as it starts the conversation, before the token request. It resolves to
  *    whether a greeting is playing. On a phone and a watch it puts the device into the call's audio
- *    first, which is what makes him heard at all; see `call-audio.ts`. In a browser, call it while
- *    the page still holds a microphone stream — that is what lets an untouched tab play it — and it
- *    resolves only once the browser has said yes or no.
+ *    first and plays the recording *as* call audio, which is what makes him heard at all; see
+ *    `call-audio.ts` and `greeting-player.ts`. In a browser, call it while the page still holds a
+ *    microphone stream — that is what lets an untouched tab play it — and it resolves only once the
+ *    browser has said yes or no. If the recording cannot play, it resolves false, and the agent
+ *    keeps its own first message.
  * 2. `untilCallMayTakeTheAudio()` once the token is in hand, and `startSession` only if it resolves
  *    true. See the note on it for why a phone and a watch wait there and a browser does not.
  * 3. If a greeting is playing, `greetingSessionOptions` go to `startSession`: the override that
@@ -91,7 +47,7 @@ function refusedToPlay(player: AudioPlayer): boolean {
  * came — so the device is not left in call audio with no call.
  */
 export function useGreeting() {
-  const player = useAudioPlayer(GREETING_SOUND);
+  const player = useGreetingPlayer();
   const { setMuted } = useConversationInput();
   const [greeting, setGreeting] = useState(false);
   /** The same fact as `greeting`, for the session callback, which must see it without a render. */
@@ -154,35 +110,24 @@ export function useGreeting() {
   }, [player, finishGreeting]);
 
   const beginGreeting = useCallback(async () => {
-    await mixWithTheCall();
     try {
       await startCallAudio();
       holdingCallAudio.current = true;
     } catch {
-      // He greets as ordinary media instead — the most that can be done without it.
+      // He still greets; whether he can be heard without it is the device's business.
     }
     askedAt.current = Date.now();
     rewound.current = false;
     inProgress.current = true;
     setGreeting(true);
-    // Summoned before, the player is parked at the end of the last greeting.
-    const started = player
-      .seekTo(0)
-      .catch(() => undefined)
-      .then(() => {
-        if (!inProgress.current) {
-          return false;
-        }
-        rewound.current = true;
-        player.play();
-        return !refusedToPlay(player);
-      });
-    // A phone and a watch are never refused, so they do not wait for the seek: the token request
-    // goes out beside the greeting, not after it.
-    if (Platform.OS !== 'web') {
-      return true;
+    const playing = await player.playFromStart();
+    if (!inProgress.current) {
+      // Hung up on while it was starting.
+      player.pause();
+      return false;
     }
-    if (await started) {
+    if (playing) {
+      rewound.current = true;
       return true;
     }
     stopGreeting();

@@ -3,11 +3,12 @@ import { AndroidAudioTypePresets, AudioSession } from '@livekit/react-native';
 /**
  * Puts a phone or a watch into the audio a conversation uses, before there is a conversation.
  *
- * **This is what makes the greeting audible at all.** Played as ordinary media it was heard on a
- * phone only from the moment LiveKit's audio session started under it — a second in, thin and
- * clipped — and once the session was held back until the greeting had finished, not at all. So
- * the device is put into the call's audio first, and the greeting plays inside it: on the speaker,
- * at the volume Jarvis is about to talk at, with nothing changing under him mid-word.
+ * **So the greeting plays where Jarvis is about to talk.** The greeting is played as call audio
+ * (`greeting-player.ts`), and call audio goes where this session routes it: the speaker, at call
+ * volume. Starting it first also means nothing switches under him mid-word when the conversation
+ * takes over — which, dialled behind him, was heard as the recording turning thin and clipping.
+ * On its own it was not enough: a recording still played as media inside it was not heard on a
+ * phone.
  *
  * The configuration is the one `@elevenlabs/react-native` applies as a session starts
  * (`reactNativeSessionSetup`), so when the session does start, LiveKit is already where the SDK was
