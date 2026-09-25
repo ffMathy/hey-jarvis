@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.5.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.4.4...mcp-v2.5.0) (2026-09-25)
+
+
+### Features
+
+* phone alarms, tap-to-write, and a toast for failed sessions ([#786](https://github.com/ffMathy/hey-jarvis/issues/786)) ([a9c7f62](https://github.com/ffMathy/hey-jarvis/commit/a9c7f622a9ee6b7e712172b4bbf2a66a47fa0a5b))
+
+
+### Bug Fixes
+
+* **coding:** assume Jarvis's own repository when a task names none ([#788](https://github.com/ffMathy/hey-jarvis/issues/788)) ([46b546f](https://github.com/ffMathy/hey-jarvis/commit/46b546fb675679e6c3461f6c606966061c0c9c57))
+
 ## [2.4.4](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.4.3...mcp-v2.4.4) (2026-09-25)
 
 
