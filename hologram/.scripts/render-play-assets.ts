@@ -18,7 +18,8 @@
  * the slot, and four costs nothing here.
  *
  * It also renders the apps' own icons, into `hologram/assets/` where both app configs find them:
- * `icon.png`, and `adaptive-icon.png` — the foreground of Android's adaptive icon — both on black.
+ * `icon.png`, and the foreground of Android's adaptive icon — `adaptive-icon.png` for the watch,
+ * `phone-adaptive-icon.png` with a wider margin for the phone — all on black.
  *
  * **Everything is opaque.** Wear screenshots are required to be, and the rest would be composited
  * onto whatever the Console and the store app happen to use; a transparent sphere on white is not
@@ -106,6 +107,14 @@ const ICON_SPHERE_DIAMETER = 0.9;
  */
 const ADAPTIVE_ICON_SPHERE_DIAMETER = 64 / 108;
 
+/**
+ * The phone's adaptive icon, which gets more room than the watch's. A phone launcher masks to a
+ * squircle and sets the icon among others that keep their art well inside it, so at 64 of the 108
+ * he ran into the mask's edge and looked crammed in beside them. At 54 there is a clear black margin
+ * between his rim and the mask.
+ */
+const PHONE_ADAPTIVE_ICON_SPHERE_DIAMETER = 54 / 108;
+
 /** Where the app icons go: beside the greeting, in the package both apps take their Jarvis from. */
 const APP_ASSETS = join(import.meta.dir, '..', 'assets');
 
@@ -184,7 +193,7 @@ const ASSETS: Asset[] = [
     particles: PARTICLE_COUNT,
   },
 
-  // The apps' own icons, which `mobile/app.config.ts` and `watch/app.config.ts` both point at.
+  // The apps' own icons, which `mobile/app.config.ts` and `watch/app.config.ts` point at.
   {
     name: 'icon.png',
     width: 1024,
@@ -203,6 +212,17 @@ const ASSETS: Asset[] = [
     largestBytes: APP_ICON_LARGEST_BYTES,
     mood: undefined,
     sphere: ADAPTIVE_ICON_SPHERE_DIAMETER,
+    particles: PARTICLE_COUNT,
+    forApps: true,
+    onBlack: true,
+  },
+  {
+    name: 'phone-adaptive-icon.png',
+    width: 1024,
+    height: 1024,
+    largestBytes: APP_ICON_LARGEST_BYTES,
+    mood: undefined,
+    sphere: PHONE_ADAPTIVE_ICON_SPHERE_DIAMETER,
     particles: PARTICLE_COUNT,
     forApps: true,
     onBlack: true,

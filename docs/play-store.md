@@ -214,7 +214,7 @@ bun hologram/.scripts/render-play-assets.ts
 
 | Slot in the Console | What to upload |
 | --- | --- |
-| **Appikon** (512×512) | `icon-512.png` |
+| **Appikon** (512×512) | `icon-512.png` — no workflow uploads it, so re-upload it whenever it is re-rendered |
 | **Fremhævet grafik** / Feature graphic (1024×500) | `feature-graphic-1024x500.png` |
 | **Screenshots fra telefonversion** (2-8, 9:16) | the four `phone-*.png`, in name order |
 | **Screenshots for Wear OS** (up to 8, 1:1) | the four `watch-*.png`, in name order |

@@ -82,6 +82,15 @@ const instructionsOutputSchema = z.object({
     .optional()
     .describe('Results that have finished since the last call, if any'),
   taskIdsInProgress: z.array(z.string()).optional().describe('The agents the plan is still waiting on'),
+  questionsForUser: z
+    .array(
+      z.object({
+        id: z.string().describe('The task that asked'),
+        question: z.string().describe('What to ask the user'),
+      }),
+    )
+    .optional()
+    .describe('Questions only the user can answer, which part of the request is waiting on'),
 });
 
 export { inputSchema, instructionsOutputSchema };
@@ -165,13 +174,16 @@ const INSTRUCTIONS = {
  * calendar lookup and then, asked to check the blinds and lights, promised to look and
  * called nothing: the loop's last instruction left it holding no pointer back to the tool.
  */
-const ALL_TASKS_COMPLETED_INSTRUCTIONS =
-  'All tasks have completed. These are every result this request produced, including any you have ' +
+const RECAP_INSTRUCTIONS =
+  'These are every result this request produced, including any you have ' +
   'already relayed. Summarize in detail whatever the user has not heard yet, and say nothing again ' +
   'that you already told him during this request: no figure, list or detail a second time, and no ' +
   'recap of it at the end. The earlier results are only here in case one of them never reached you; ' +
   'if you have already spoken about it, leave it out. Speak it in your own voice: never read an ' +
-  'agent name, a tool name or the raw response aloud. ' +
+  'agent name, a tool name or the raw response aloud. ';
+
+const ALL_TASKS_COMPLETED_INSTRUCTIONS =
+  `All tasks have completed. ${RECAP_INSTRUCTIONS}` +
   'That finishes this request, but not the conversation: if the user asks for anything further, ' +
   'send it through routePromptWorkflow exactly as you did this one, however small it sounds and ' +
   'however many times you have already done it. Answering a later request from ' +
@@ -180,6 +192,33 @@ const ALL_TASKS_COMPLETED_INSTRUCTIONS =
   'left out of this request — if he asked for two things, both should have gone out together, and ' +
   'routing the second one now is a round trip he should never have had to wait through. ' +
   CONVERSATION_CONTROL_EXCEPTION;
+
+/**
+ * The closing instruction when part of the request stopped to ask sir something.
+ *
+ * Three things have to survive the trip into a voice model that is otherwise told never to ask
+ * him anything. That this question is to be asked anyway, because it is not Jarvis's own
+ * uncertainty but the work's. That it is asked and then left alone -- answered neither by
+ * Jarvis nor by a guess. And that the answer goes back the way everything else he says does,
+ * through `routePromptWorkflow`: the planner is shown the questions still open, and recognises
+ * the reply as an answer to one of them (see `verticals/routing/questions.ts`).
+ *
+ * The question comes last so that his answer is the next thing he says.
+ */
+function askTheUserInstructions(hasResults: boolean): string {
+  return (
+    'Part of this request cannot go on until the user answers a question, which is in questionsForUser. ' +
+    (hasResults ? `Everything else has finished. ${RECAP_INSTRUCTIONS}Then ` : '') +
+    'Ask him the question — briefly, in your own voice, as the last thing you say — and stop there to let him answer. ' +
+    'It is not a clarifying question of yours: the work is waiting on it and only he can answer it, so ask it even ' +
+    'though you otherwise never ask him anything, and never answer it for him or guess what he would say. ' +
+    'If there is more than one, ask them together, saying what each is about. ' +
+    'When he answers, send his answer through routePromptWorkflow in his own words, exactly as you would any other ' +
+    'request: that is what carries it back to the work that asked. If he asks for something else instead, route that ' +
+    'as usual, and the question stays open. ' +
+    CONVERSATION_CONTROL_EXCEPTION
+  );
+}
 
 function moreToComeInstructions(): string {
   return (
@@ -265,9 +304,20 @@ function buildClosingReport(snapshot: RoutingSnapshot): z.infer<typeof instructi
     };
   }
 
+  const completedTaskResults = snapshot.all.map((outcome) => ({ id: outcome.taskId, result: outcome.result }));
+
+  if (snapshot.questions.length > 0) {
+    return {
+      instructions: askTheUserInstructions(completedTaskResults.length > 0),
+      ...(completedTaskResults.length > 0 && { completedTaskResults }),
+      taskIdsInProgress: [],
+      questionsForUser: snapshot.questions.map((question) => ({ id: question.taskId, question: question.question })),
+    };
+  }
+
   return {
     instructions: ALL_TASKS_COMPLETED_INSTRUCTIONS,
-    completedTaskResults: snapshot.all.map((outcome) => ({ id: outcome.taskId, result: outcome.result })),
+    completedTaskResults,
     taskIdsInProgress: [],
   };
 }

@@ -157,6 +157,34 @@ docker compose pull && docker compose up -d
 Tags are pinned deliberately rather than tracking `latest`, so an update is something you choose.
 The `mcp-data` volume survives it; nothing is re-authorised.
 
+#### If you let Watchtower update it instead
+
+Running `ghcr.io/ffmathy/mcp:latest` under [Watchtower](https://containrrr.dev/watchtower/) works,
+with two settings that are easy to leave out and expensive when you do:
+
+```bash
+docker run -d --name watchtower --restart always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -e WATCHTOWER_SCHEDULE="0 0 * * * *" \
+  -e WATCHTOWER_CLEANUP=true \
+  -e DOCKER_API_VERSION=1.44 \
+  containrrr/watchtower
+```
+
+- **`WATCHTOWER_CLEANUP=true`.** Without it, every image Watchtower replaces stays behind untagged.
+  This image is about 1.7 GB per release, and anything else on the same host that tracks a moving
+  tag adds its own — `open-webui:main` is 6.5 GB a pull. Left to run for seven months on a 117 GB
+  card, that filled the disk completely, and the first visible symptom was the MCP server failing
+  every tool call with `SQLITE_FULL: database or disk is full`.
+- **`DOCKER_API_VERSION=1.44`.** Docker Engine 29 refuses API versions below 1.44, and Watchtower
+  1.7.1 asks for 1.25. Without the pin the container crash-loops with `client version 1.25 is too
+  old`, and nothing gets updated *or* cleaned up.
+
+Note that with Docker 25 or newer the image layers live under `/var/lib/containerd`, not
+`/var/lib/docker`, so `du` on the Docker directory looks innocent while the card is full. `docker
+system df` and `docker images -f dangling=true` tell the truth; `docker image prune -a -f` is the
+cure.
+
 ### If Home Assistant runs on the same Pi
 
 The IoT tools read `HEY_JARVIS_HOME_ASSISTANT_URL` and `HEY_JARVIS_HOME_ASSISTANT_TOKEN` from
