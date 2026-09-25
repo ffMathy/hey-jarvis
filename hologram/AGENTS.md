@@ -160,8 +160,10 @@ easy to break:
   session the SDK would (`call-audio.ts`: the `communication` preset, on the speaker), and then plays
   the recording through this package's own native module, `JarvisGreeting`
   (`android/.../JarvisGreetingModule.kt`), a `MediaPlayer` with `USAGE_VOICE_COMMUNICATION` — the
-  stream, route and volume Jarvis's voice uses a moment later. LiveKit's `start` does nothing when
-  the SDK calls it again. Screens call `releaseCallAudio()` when a start fails, so no call audio is
+  stream, route and volume Jarvis's voice uses a moment later. It prefers a Bluetooth headset, then
+  a wired one, then the speaker, so the greeting comes out where the conversation will — started on
+  the speaker alone, as the SDK does, he greeted from the phone and answered in the AirPods.
+  LiveKit's `start` does nothing when the SDK calls it again. Screens call `releaseCallAudio()` when a start fails, so no call audio is
   left with no call.
 - **That makes this package a native module.** `expo-module.config.json` at its root is what both
   apps' autolinking finds, since both depend on `hologram`. In a build without it,

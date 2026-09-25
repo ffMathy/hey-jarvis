@@ -10,15 +10,22 @@ import { AndroidAudioTypePresets, AudioSession } from '@livekit/react-native';
  * On its own it was not enough: a recording still played as media inside it was not heard on a
  * phone.
  *
- * The configuration is the one `@elevenlabs/react-native` applies as a session starts
- * (`reactNativeSessionSetup`), so when the session does start, LiveKit is already where the SDK was
- * going to put it: its `start` does nothing on an audio session already running, and the SDK stops
- * it as usual when the conversation ends.
+ * **On the headset, if there is one.** The SDK starts its session preferring the speaker alone, and
+ * the phone app moves the call onto a headset only once it has connected (`usePreferredHeadset`).
+ * Started that way here, the greeting came out of the phone's speaker and the conversation after
+ * it out of the AirPods. So this prefers a Bluetooth headset, then a wired one, then the speaker —
+ * LiveKit's own default order — and the greeting goes where the conversation will.
+ *
+ * Otherwise it is the configuration `@elevenlabs/react-native` applies as a session starts
+ * (`reactNativeSessionSetup`). When the session does start, LiveKit's `start` does nothing on an
+ * audio session already running — and its `configureAudio` only records settings for the next
+ * start — so the SDK's speaker-only preference does not move him back. The SDK stops the session as
+ * usual when the conversation ends.
  */
 export async function startCallAudio(): Promise<void> {
   await AudioSession.configureAudio({
     android: {
-      preferredOutputList: ['speaker'],
+      preferredOutputList: ['bluetooth', 'headset', 'speaker'],
       audioTypeOptions: AndroidAudioTypePresets.communication,
     },
     ios: {
