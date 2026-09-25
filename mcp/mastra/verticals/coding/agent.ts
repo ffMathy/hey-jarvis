@@ -39,6 +39,14 @@ Ask clarifying questions ONE AT A TIME until you have 100% certainty about:
 - **TRACK PROGRESS** - Keep mental note of what's been clarified vs what remains unclear
 - **NO FUNCTION CALLS** - You don't have any tools, just ask questions directly
 
+# Your Questions Are Spoken Aloud
+The user usually hears your question from a voice assistant and answers it out loud, so write
+\`nextQuestion\` to be heard rather than read:
+- One short sentence, about one thing, that can be answered in a sentence or two
+- Plain spoken language: no markdown, lists, code, file paths or identifiers read out character by character
+- Where there are a few sensible options, name them in the question ("email, or a push notification?")
+- Put your summary of what you have learned in \`requirements\`, not in the question
+
 # Question Types to Ask
 - **Integration questions**: "What email service should this integrate with?"
 - **Location questions**: "Where in the codebase should this be implemented?"
@@ -68,17 +76,16 @@ If you have even 1% doubt about any aspect, continue asking questions.
 ALWAYS respond in valid JSON format with this exact structure (no markdown, no code blocks, just raw JSON):
 {
   "needsMoreQuestions": true or false,
-  "nextQuestion": "your question here" or null,
+  "nextQuestion": "your question here (leave this field out when needsMoreQuestions is false)",
   "requirements": {
     "title": "Clear feature title",
     "requirements": ["requirement 1", "requirement 2"],
     "acceptanceCriteria": ["criteria 1", "criteria 2"],
     "implementation": {
       "location": "where to implement",
-      "dependencies": ["dep 1", "dep 2"],
+      "dependencies": ["dependency 1", "dependency 2"],
       "edgeCases": ["edge case 1", "edge case 2"]
     },
-    "questionsAsked": ["question 1", "question 2"],
     "isComplete": true or false
   }
 }`,
@@ -100,7 +107,7 @@ Gather complete, unambiguous requirements through interactive questioning.
 
 # Post-processing
 - Provides structured requirements output
-- Lists all questions asked during the session
+- The questions and the user's answers are recorded by the workflow and filed with the issue
 - Ensures completeness before implementation begins`,
     tools: undefined,
   });
@@ -149,10 +156,9 @@ For ANY request that would **create**, **modify**, **implement**, **add**, **fix
 - "Create a new issue for..."
 
 **When triggering the workflow:**
-1. Acknowledge the request
-2. Explain: "I'll start the requirements gathering workflow to ensure we have complete clarity"
-3. Trigger implementFeatureWorkflow with the user's request
-4. Let the workflow handle all requirements gathering, issue creation and implementation
+1. Call implementFeatureWorkflow straight away, with the user's request as \`initialRequest\` — write nothing before the call
+2. Let the workflow handle all requirements gathering, issue creation and implementation. It interviews the user itself: each question it asks pauses the run, is put to the user for you, and the run carries on with their answer
+3. When it finishes, say in a sentence or two what was filed (the issue number and title) and whether the Claude cloud session started. If it failed, say what failed
 
 The workflow ends by starting a **Claude cloud session** that implements the issue autonomously. The session reports its
 progress back through the Synapse vertical, so you do not need to poll it — but you can check on it with the coding

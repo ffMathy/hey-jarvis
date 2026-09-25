@@ -21,8 +21,11 @@ const gatheredRequirementsSchema = z.object({
       dependencies: z.array(z.string()).optional().describe('Required dependencies or integrations'),
       edgeCases: z.array(z.string()).optional().describe('Edge cases to consider'),
     })
+    // Optional like everything else here: half way through an interview the interviewer may
+    // know nothing about the implementation yet, and a required object failed the whole run
+    // on a reply that was otherwise a perfectly good next question.
+    .optional()
     .describe('Implementation details'),
-  questionsAsked: z.array(z.string()).optional().describe('List of questions asked during requirements gathering'),
   isComplete: z.boolean().optional().describe('Whether all requirements have been gathered'),
 });
 
@@ -37,6 +40,10 @@ const workflowStateSchema = z
     conversationHistory: z.array(
       z.object({ role: z.enum(['user', 'assistant', 'system', 'tool']), content: z.string() }),
     ),
+    // What was asked and what the user said, pair by pair. The interviewer's own summary is
+    // what the requirements are built from, but it is a paraphrase; this is the record the
+    // issue carries, so the session implementing it can read the user's actual words.
+    interview: z.array(z.object({ question: z.string(), answer: z.string() })),
     response: z
       .object({
         needsMoreQuestions: z.boolean(),
@@ -52,7 +59,7 @@ const workflowStateSchema = z
 // Schema for iterative questioning response
 const questioningResponseSchema = z.object({
   needsMoreQuestions: z.boolean().describe('Whether more questions need to be asked'),
-  nextQuestion: z.string().optional().describe('The next question to ask, or null if complete'),
+  nextQuestion: z.string().optional().describe('The next question to ask; left out once no more are needed'),
   requirements: gatheredRequirementsSchema.describe('Current state of gathered requirements'),
 });
 
@@ -84,10 +91,10 @@ Start by asking your first clarifying question to understand what needs to be im
   },
 });
 
-// Step 2: Ask a single question in the requirements gathering loop using workflow state
+// Step 2: Interview the user, one question per suspension, until nothing is left to ask
 const askRequirementsQuestion = createStep({
   id: 'ask-requirements-question',
-  description: 'Asks a single clarifying question using the Requirements Interviewer Agent',
+  description: 'Asks clarifying questions one at a time using the Requirements Interviewer Agent',
   stateSchema: workflowStateSchema,
   inputSchema: z.object({}),
   outputSchema: z.object({}),
@@ -106,8 +113,11 @@ const askRequirementsQuestion = createStep({
 
     const state = params.state;
 
-    // If we have resume data, add the user's answer to conversation history
+    // If we have resume data, add the user's answer to conversation history, and to the
+    // transcript beside the question it answers -- which is the one this step last suspended
+    // with, still in state from before the suspension.
     let conversationHistory = state.conversationHistory ?? [];
+    let interview = state.interview ?? [];
     if (params.resumeData?.userAnswer) {
       conversationHistory = [
         ...conversationHistory,
@@ -115,6 +125,10 @@ const askRequirementsQuestion = createStep({
           role: 'user',
           content: params.resumeData.userAnswer,
         },
+      ];
+      interview = [
+        ...interview,
+        { question: state.response?.nextQuestion ?? '', answer: params.resumeData.userAnswer },
       ];
     }
 
@@ -147,6 +161,7 @@ const askRequirementsQuestion = createStep({
     params.setState({
       ...state,
       conversationHistory: updatedHistory,
+      interview,
       response: currentResponse,
     });
 
@@ -156,10 +171,13 @@ const askRequirementsQuestion = createStep({
         throw new Error('Agent indicated more questions needed but did not provide a question');
       }
 
-      // Suspend the workflow with context for the UI
+      // Suspend the workflow until the user answers. When the coding agent runs this as a
+      // tool, the suspension travels up through the agent to the routing plan, which hands
+      // the question to Jarvis to ask aloud and resumes this run with the answer -- see
+      // `verticals/routing/controller.ts`.
       return await params.suspend({
         question: currentResponse.nextQuestion,
-        context: 'Requirements gathering in progress. Please provide your answer to continue.',
+        context: `Gathering the requirements for: ${state.initialRequest}`,
       });
     }
 
@@ -194,7 +212,6 @@ const prepareIssueCreationData = createStep({
     const implementation = requirements.implementation;
     const dependencies = implementation?.dependencies ?? [];
     const edgeCases = implementation?.edgeCases ?? [];
-    const questionsAsked = requirements.questionsAsked ?? [];
 
     const requirementsSection = requirementsList.map((requirement: string) => `- ${requirement}`).join('\n');
     const acceptanceCriteriaSection = acceptanceCriteriaList
@@ -210,11 +227,15 @@ ${dependencies.map((dependency: string) => `- ${dependency}`).join('\n') || '- N
 ${edgeCases.map((edgeCase: string) => `- ${edgeCase}`).join('\n') || '- None'}
 `;
 
-    const discussionSection = questionsAsked
-      .map((question: string, index: number) => `**Q${index + 1}**: ${question}`)
-      .join('\n\n');
+    const discussionSection =
+      (state.interview ?? [])
+        .map(({ question, answer }, index) => `**Q${index + 1}**: ${question}\n\n**A${index + 1}**: ${answer}`)
+        .join('\n\n') || 'No questions were needed.';
 
-    const finalBody = `## Requirements
+    const finalBody = `## Request
+${state.initialRequest ?? ''}
+
+## Requirements
 ${requirementsSection}
 
 ## Acceptance Criteria
@@ -385,8 +406,8 @@ const formatFinalOutput = createStep({
  *
  * This workflow implements the requirements gathering pattern using workflow state:
  * 1. Initializes the requirements gathering session
- * 2. Uses Mastra's .dowhile() to iteratively:
- *    a. Ask clarifying questions via Requirements Interviewer Agent
+ * 2. Asks clarifying questions via the Requirements Interviewer Agent, suspending on each
+ *    one until the user answers it
  * 3. Prepares and creates the issue with complete requirements (3 sub-steps)
  * 4. Validates success before starting the implementation
  * 5. Starts a Claude cloud session that implements the issue (2 sub-steps)
@@ -411,17 +432,12 @@ export const implementFeatureWorkflow = createWorkflow({
   }),
 })
   .then(initializeGatheringSession)
-  .dowhile(askRequirementsQuestion, async ({ iterationCount }) => {
-    // Safety limit check
-    if (iterationCount >= 50) {
-      throw new Error('Requirements gathering exceeded maximum iterations');
-    }
-
-    // Note: We can't access workflow.state in dowhile condition
-    // The loop will naturally exit when suspend() is not called
-    // which happens when needsMoreQuestions is false
-    return true;
-  })
+  // Not a loop: the step asks, suspends, and is resumed with the answer as many times as the
+  // interview takes, and only returns once there is nothing left to ask. It used to sit in a
+  // `.dowhile` whose condition was always `true`, which meant a finished interview was run
+  // again -- fifty times, until "exceeded maximum iterations" failed the run after the user
+  // had answered everything and before the issue was filed.
+  .then(askRequirementsQuestion)
   .then(prepareIssueCreationData)
   .then(createIssueWithRequirementsTool)
   .then(storeIssueCreationResult)

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { createAgent } from '../../utils/index.js';
 import { getPublicAgents } from '..';
 import type { PlannedChain } from './plan.js';
+import type { OpenQuestion } from './questions.js';
 import { chainsFromTasks } from './task-chains.js';
 
 /**
@@ -34,7 +35,13 @@ export { PLANNER_AGENT_ID };
  * what it depends on.
  *
  * `needs` is required and empty-when-absent rather than optional, because a field the model
- * may omit is a field it will omit.
+ * may omit is a field it will omit. `answers` is required and empty-when-absent for the same
+ * reason.
+ *
+ * `answers` is how a reply to an earlier question finds its way back. The question was put to
+ * the user by Jarvis, so the reply arrives as an ordinary request -- "push, please" -- and the
+ * planner, which reads every request anyway and is shown the questions still open, is the one
+ * place that can tell an answer from a new errand without Jarvis having to label it.
  */
 const planSchema = z.object({
   tasks: z
@@ -55,6 +62,14 @@ const planSchema = z.object({
       }),
     )
     .describe('Tasks run at the same time as each other, except where one names another in `needs`'),
+  answers: z
+    .array(
+      z.object({
+        questionId: z.string().describe('The id of the waiting question this request answers'),
+        answer: z.string().describe("The user's answer to it, in their own words"),
+      }),
+    )
+    .describe('Answers this request gives to the questions listed as waiting, if any; empty otherwise'),
 });
 
 export { planSchema };
@@ -111,6 +126,13 @@ the recipe does. The calendar needs nothing, so it waits for nothing. Note that 
 - \`prompt\` must be self-contained. The agent cannot see the user's request, this plan, or any other agent's answer, so everything it needs must be in the prompt you write
 - For a task with \`needs\`, write the prompt as if that answer is already attached — it is. Say what to do with it rather than restating it, and never write out a guess at what it will say
 
+# Answers to waiting questions
+Sometimes an agent working on an earlier request stopped to ask the user something, and those questions are listed after the request. The user was asked out loud, so the answer arrives as a request like any other — "push, please" in reply to "email, or a push notification?".
+
+- If the request answers one of the listed questions, put it in \`answers\` with that question's id and the answer in the user's own words, and write no task for it: the answer goes straight back to the agent that asked
+- A request can answer a question and ask for something else at the same time; plan the something else as usual
+- If the request answers none of them, or none are listed, leave \`answers\` empty. Never answer a question on the user's behalf, and never treat a new request as an answer just because a question is waiting
+
 # Critical rules
 - If no agent can handle part of the request, leave it out rather than misassigning it
 - Do not invent work the user did not ask for, and do not look up a value the user already gave you
@@ -154,15 +176,44 @@ export async function getRoutingPlannerAgent(): Promise<Agent> {
     description: 'Turns a user request into a plan of delegations for the specialized agents.',
     instructions: plannerInstructions(routableAgents),
     // Planning one request has nothing to recall from the last one, and memory here would
-    // buy an embedding round trip on the one path that cannot afford any: the poll deadline
-    // is 5s against ElevenLabs' 8s cascade timeout.
+    // buy an embedding round trip on the one path that cannot afford any. The questions still
+    // waiting on the user are the one thing it does need from earlier requests, and those are
+    // handed to it in the prompt (see `plannerPrompt`).
     memory: undefined,
   });
 }
 
-/** Asks the planner for a plan, and returns the chains it runs as. */
-export async function planDelegations(planner: Agent, userQuery: string): Promise<PlannedChain[]> {
-  const response = await planner.generate(userQuery, {
+/** An answer the planner found in a request, to a question that was waiting for one. */
+export interface PlannedAnswer {
+  questionId: string;
+  answer: string;
+}
+
+/**
+ * What the planner is given: the request, and the questions still waiting on the user.
+ *
+ * With nothing waiting it is the request alone, exactly as it always was, so the common case is
+ * planned from the same input as before questions existed.
+ */
+export function plannerPrompt(userQuery: string, openQuestions: OpenQuestion[]): string {
+  if (openQuestions.length === 0) {
+    return userQuery;
+  }
+
+  const waiting = openQuestions
+    .map((question) => `- id "${question.id}", asked by ${question.agentId}: ${question.question}`)
+    .join('\n');
+
+  return `The request:\n${userQuery}\n\nQuestions waiting for the user's answer:\n${waiting}`;
+}
+
+/** Asks the planner for a plan: the chains it runs as, and any answers the request gave. */
+export async function planDelegations(
+  planner: Agent,
+  userQuery: string,
+  openQuestions: OpenQuestion[] = [],
+): Promise<{ chains: PlannedChain[]; answers: PlannedAnswer[] }> {
+  const response = await planner.generate(plannerPrompt(userQuery, openQuestions), {
     structuredOutput: { schema: planSchema },
     toolChoice: 'none',
   });
@@ -172,5 +223,10 @@ export async function planDelegations(planner: Agent, userQuery: string): Promis
     throw new Error('The routing planner did not return a plan');
   }
 
-  return chainsFromTasks(plan.tasks, await getRoutableAgentIds());
+  // Only answers to questions that were actually shown, and that say something. A made-up id
+  // would resume nothing, and an empty answer would resume the work with nothing to go on.
+  const openIds = new Set(openQuestions.map((question) => question.id));
+  const answers = plan.answers.filter((answer) => openIds.has(answer.questionId) && answer.answer.trim().length > 0);
+
+  return { chains: chainsFromTasks(plan.tasks, await getRoutableAgentIds()), answers };
 }

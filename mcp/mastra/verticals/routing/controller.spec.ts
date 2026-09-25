@@ -17,6 +17,7 @@ import {
   resetRoutingRuntime,
 } from './controller.js';
 import { buildRoutingPlan } from './plan.js';
+import { forgetOpenQuestions } from './questions.js';
 
 const PLAN = buildRoutingPlan('plan-under-test', [
   { delegations: [{ taskId: 'diary', agentId: 'calendar', prompt: 'What is on my calendar?' }] },
@@ -35,6 +36,36 @@ const WEATHER_STEP = 'plan-under-test-chain-1-1-weather';
 /** A step result, the way a run emits one. */
 function stepResult(id: string, output: unknown, status = 'success') {
   return { type: 'workflow-step-result', payload: { id, status, output } };
+}
+
+/** The resume schema Mastra reports for a step that resumes with `{ userAnswer }`. */
+const USER_ANSWER_SCHEMA = JSON.stringify({
+  type: 'object',
+  properties: { userAnswer: { type: 'string' } },
+  required: ['userAnswer'],
+});
+
+/**
+ * An agent step's tool call suspending, the way it reaches a plan run: the agent's own
+ * `tool-call-suspended` chunk, forwarded by its step as streamed output.
+ */
+function suspendedOutput(
+  stepName: string,
+  suspendPayload: unknown = { question: 'Email, or a push notification?' },
+  resumeSchema = USER_ANSWER_SCHEMA,
+) {
+  return {
+    type: 'workflow-step-output',
+    payload: {
+      stepName,
+      output: {
+        type: 'tool-call-suspended',
+        runId: 'agent-run-1',
+        from: 'AGENT',
+        payload: { toolCallId: 'call-1', toolName: 'workflow-implementFeatureWorkflow', suspendPayload, resumeSchema },
+      },
+    },
+  };
 }
 
 /** A plan run that has announced everything it intends to do, and done none of it yet. */
@@ -104,6 +135,95 @@ describe('reading a chunk off a plan run', () => {
     expect(asRoutingEvents({ type: 'workflow-finish', payload: { workflowStatus: 'success' } }, PLAN)).toEqual([]);
     expect(asRoutingEvents({ type: 'workflow-start', payload: { workflowId: 'chain-0' } }, PLAN)).toEqual([]);
     expect(asRoutingEvents('not a chunk at all', PLAN)).toEqual([]);
+  });
+});
+
+describe('a delegation that stops to ask the user something', () => {
+  beforeEach(() => {
+    forgetOpenQuestions();
+  });
+
+  it('is read off the step’s streamed output, since the step itself never reports a result', () => {
+    expect(asRoutingEvents(suspendedOutput(CALENDAR_STEP), PLAN)).toEqual([
+      {
+        type: 'delegation_suspended',
+        delegationId: CALENDAR_STEP,
+        suspension: {
+          agentRunId: 'agent-run-1',
+          toolCallId: 'call-1',
+          suspendPayload: { question: 'Email, or a push notification?' },
+          resumeSchema: USER_ANSWER_SCHEMA,
+        },
+      },
+    ]);
+  });
+
+  it('ignores everything else a step streams', () => {
+    const textDelta = {
+      type: 'workflow-step-output',
+      payload: { stepName: CALENDAR_STEP, output: { type: 'text-delta', runId: 'agent-run-1', payload: {} } },
+    };
+
+    expect(asRoutingEvents(textDelta, PLAN)).toEqual([]);
+  });
+
+  it('closes the rest of its chain, which was waiting for an answer that will now come later', () => {
+    const events = asRoutingEvents(suspendedOutput(LOCATION_STEP), PLAN);
+
+    expect(events).toMatchObject([
+      { type: 'delegation_suspended', delegationId: LOCATION_STEP },
+      { type: 'delegation_end', delegationId: WEATHER_STEP, isError: true },
+    ]);
+  });
+
+  it('becomes a question for the user rather than a result or something still running', () => {
+    const progress = startedPlan();
+    for (const event of asRoutingEvents(suspendedOutput(CALENDAR_STEP), PLAN)) {
+      progress.handle(event);
+    }
+
+    const snapshot = buildSnapshot(progress);
+    expect(snapshot.inProgress).not.toContain('diary');
+    expect(snapshot.all).toEqual([]);
+    expect(snapshot.questions).toMatchObject([
+      {
+        taskId: 'diary',
+        agentId: 'calendar',
+        question: 'Email, or a push notification?',
+        answerField: 'userAnswer',
+        agentRunId: 'agent-run-1',
+        toolCallId: 'call-1',
+      },
+    ]);
+  });
+
+  it('is reported as a failure when there is nothing to ask', () => {
+    const progress = startedPlan();
+    for (const event of asRoutingEvents(suspendedOutput(CALENDAR_STEP, { context: 'no question here' }), PLAN)) {
+      progress.handle(event);
+    }
+
+    const snapshot = buildSnapshot(progress);
+    expect(snapshot.questions).toEqual([]);
+    expect(snapshot.landed).toMatchObject([{ taskId: 'diary', failed: true }]);
+  });
+
+  it('is reported as a failure when the answer it wants is more than a spoken sentence', () => {
+    const progress = startedPlan();
+    const structuredAnswer = JSON.stringify({
+      type: 'object',
+      properties: { approved: { type: 'boolean' }, comments: { type: 'string' } },
+    });
+    for (const event of asRoutingEvents(
+      suspendedOutput(CALENDAR_STEP, { question: 'Approve?' }, structuredAnswer),
+      PLAN,
+    )) {
+      progress.handle(event);
+    }
+
+    const snapshot = buildSnapshot(progress);
+    expect(snapshot.questions).toEqual([]);
+    expect(snapshot.landed[0].result).toContain('cannot be given out loud');
   });
 });
 

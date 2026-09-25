@@ -45,7 +45,7 @@ describe('the planner', () => {
   it(
     'names only agents that exist, so the plan is one that can be registered',
     async () => {
-      const chains = await planDelegations(mastra.getAgentById(PLANNER_AGENT_ID), WEATHER_QUESTION);
+      const { chains } = await planDelegations(mastra.getAgentById(PLANNER_AGENT_ID), WEATHER_QUESTION);
       const known = await getRoutableAgentIds();
 
       expect(chains.length).toBeGreaterThan(0);

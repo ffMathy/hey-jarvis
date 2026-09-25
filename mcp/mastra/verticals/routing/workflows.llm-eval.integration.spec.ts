@@ -1,4 +1,4 @@
-import { beforeAll, describe, it } from 'bun:test';
+import { beforeAll, describe, expect, it } from 'bun:test';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import type { Agent } from '@mastra/core/agent';
 import { generateObject } from 'ai';
@@ -6,7 +6,8 @@ import { z } from 'zod';
 import { createAgent } from '../../utils/index.js';
 import { isOllamaAvailable } from '../../utils/providers/ollama-provider.js';
 import type { PlannedChain } from './plan.js';
-import { plannerInstructions, planSchema } from './planner.js';
+import { plannerInstructions, plannerPrompt, planSchema } from './planner.js';
+import type { OpenQuestion } from './questions.js';
 import { chainsFromTasks } from './task-chains.js';
 
 /**
@@ -142,8 +143,8 @@ async function createStandInAgent(id: string, description: string): Promise<Agen
   });
 }
 
-/** Plans a query against a set of stand-in agents, using the real planner instructions. */
-async function plan(userQuery: string, agents: Agent[]): Promise<PlannedChain[]> {
+/** Asks the real planner instructions for a plan, with any questions still waiting on the user. */
+async function planWithAnswers(userQuery: string, agents: Agent[], openQuestions: OpenQuestion[] = []) {
   const planner = await createAgent({
     id: 'routing-planner-under-test',
     name: 'RoutingPlannerUnderTest',
@@ -151,7 +152,7 @@ async function plan(userQuery: string, agents: Agent[]): Promise<PlannedChain[]>
     memory: undefined,
   });
 
-  const response = await planner.generate(userQuery, {
+  const response = await planner.generate(plannerPrompt(userQuery, openQuestions), {
     structuredOutput: { schema: planSchema },
     toolChoice: 'none',
   });
@@ -160,7 +161,15 @@ async function plan(userQuery: string, agents: Agent[]): Promise<PlannedChain[]>
     throw new Error('The planner did not return a plan');
   }
 
-  return chainsFromTasks(response.object.tasks, new Set(agents.map((agent) => agent.id)));
+  return {
+    chains: chainsFromTasks(response.object.tasks, new Set(agents.map((agent) => agent.id))),
+    answers: response.object.answers,
+  };
+}
+
+/** Plans a query against a set of stand-in agents, using the real planner instructions. */
+async function plan(userQuery: string, agents: Agent[]): Promise<PlannedChain[]> {
+  return (await planWithAnswers(userQuery, agents)).chains;
 }
 
 const WEATHER_DESCRIPTION = `# Purpose
@@ -171,6 +180,24 @@ Provide weather data. Use this tool to **fetch the current conditions** or a **5
 # When to use
 - The user asks about today's weather, tomorrow's forecast, or the outlook for specific dates.
 - The user needs details for planning travel or outdoor activities.`;
+
+const CODING_DESCRIPTION = `# Purpose
+Manage GitHub repositories, and implement new features, fixes and changes to the Hey Jarvis code.
+
+# When to use
+- The user wants to implement, create, add, fix, or change something in the code
+- The user asks about repositories or issues`;
+
+/** The question the requirements interview asks first, waiting for sir's reply. */
+const WAITING_QUESTION: OpenQuestion = {
+  id: 'q1',
+  taskId: 'feature',
+  agentId: 'coding',
+  question: 'Should the task reminder go out by email, or as a push notification?',
+  agentRunId: 'agent-run-1',
+  toolCallId: 'call-1',
+  answerField: 'userAnswer',
+};
 
 const IOT_DESCRIPTION = `# Purpose
 Control and monitor Internet of Things (IoT) devices. Use this agent to **turn devices on/off**, **adjust settings**, **query device states**, **get user locations via their phones**, and **view historical changes**.
@@ -249,5 +276,41 @@ Two separate chains would be wrong: the weather delegation would then run withou
       `The plan should have two chains of one delegation each: the weather question to the weather agent and the lights question to internetOfThings. Neither depends on the other, so putting them in one chain would make the user wait for no reason.`,
       0.8,
     );
+  }, 120000);
+
+  it('hands a reply to a waiting question back as its answer, rather than planning it as an errand', async () => {
+    if (!ollamaAvailable) {
+      return;
+    }
+
+    const { chains, answers } = await planWithAnswers(
+      'Push, please.',
+      [
+        await createStandInAgent('coding', CODING_DESCRIPTION),
+        await createStandInAgent('weather', WEATHER_DESCRIPTION),
+      ],
+      [WAITING_QUESTION],
+    );
+
+    expect(answers).toEqual([{ questionId: 'q1', answer: expect.stringMatching(/push/i) }]);
+    expect(chains).toEqual([]);
+  }, 120000);
+
+  it('does not take a new request for an answer just because a question is waiting', async () => {
+    if (!ollamaAvailable) {
+      return;
+    }
+
+    const { chains, answers } = await planWithAnswers(
+      'What is the weather in Copenhagen?',
+      [
+        await createStandInAgent('coding', CODING_DESCRIPTION),
+        await createStandInAgent('weather', WEATHER_DESCRIPTION),
+      ],
+      [WAITING_QUESTION],
+    );
+
+    expect(answers).toEqual([]);
+    expect(chains.flatMap((chain) => chain.delegations.map((delegation) => delegation.agentId))).toEqual(['weather']);
   }, 120000);
 });
