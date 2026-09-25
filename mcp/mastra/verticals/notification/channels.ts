@@ -131,11 +131,16 @@ export async function callService(
  * An urgent notification is pushed straight through instead of being batched, and asks iOS for a
  * time-sensitive interruption — that is the level that surfaces through a focus mode, which is
  * exactly the case that routes here: something urgent for a user whose phone is silenced.
+ *
+ * A URL makes tapping the notification open it in the phone's browser. The companion apps disagree
+ * on the key — Android reads `clickAction`, iOS reads `url` — and each ignores the other's, so both
+ * are sent rather than guessing which phone this is.
  */
 export function buildPushPayload(input: {
   message: string;
   title?: string;
   isUrgent: boolean;
+  url?: string;
 }): Record<string, unknown> {
   const payload: Record<string, unknown> = { message: input.message };
 
@@ -143,12 +148,23 @@ export function buildPushPayload(input: {
     payload.title = input.title;
   }
 
+  const data: Record<string, unknown> = {};
+
   if (input.isUrgent) {
-    payload.data = {
+    Object.assign(data, {
       ttl: 0,
       priority: 'high',
       push: { 'interruption-level': 'time-sensitive' },
-    };
+    });
+  }
+
+  const url = input.url?.trim();
+  if (url) {
+    Object.assign(data, { clickAction: url, url });
+  }
+
+  if (Object.keys(data).length > 0) {
+    payload.data = data;
   }
 
   return payload;

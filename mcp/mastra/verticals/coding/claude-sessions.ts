@@ -185,6 +185,99 @@ export async function* streamClaudeSessionEvents(
   }
 }
 
+/** How a session's turn came to an end. */
+export interface FinishedClaudeSessionTurn {
+  /**
+   * Why the session stopped: an idle stop reason (`end_turn`, `requires_action`,
+   * `retries_exhausted`, …) or `terminated` when the session ended for good.
+   */
+  stopReason: string;
+  /** The text of the last message the agent sent, empty when it sent none. */
+  finalMessage: string;
+}
+
+/**
+ * Reads from a session's history whether its latest turn is over, and what the
+ * agent said last in it.
+ *
+ * A session goes idle when its turn is over and terminates when it is over for
+ * good. Walking back from the end, either one found before the turn's
+ * `session.status_running` means there is nothing more to wait for; a turn
+ * that is still going returns `undefined`.
+ */
+export function readFinishedTurn(events: ClaudeSessionEvent[]): FinishedClaudeSessionTurn | undefined {
+  let stopReason: string | undefined;
+
+  for (let index = events.length - 1; index >= 0; index--) {
+    const event = events[index];
+
+    switch (event.type) {
+      case 'session.status_running':
+        // The start of the turn. Reached with no stop behind it, the session is still working;
+        // reached with one, the turn ended without the agent saying anything.
+        return stopReason ? { stopReason, finalMessage: '' } : undefined;
+      case 'session.status_idle':
+        stopReason ??= event.stop_reason.type;
+        break;
+      case 'session.status_terminated':
+        stopReason ??= 'terminated';
+        break;
+      case 'agent.message':
+        if (stopReason) {
+          const finalMessage = event.content
+            .filter((block) => block.type === 'text')
+            .map((block) => block.text)
+            .join('\n')
+            .trim();
+
+          return { stopReason, finalMessage };
+        }
+        break;
+    }
+  }
+
+  return stopReason ? { stopReason, finalMessage: '' } : undefined;
+}
+
+/** How often a waiting caller checks on a session. */
+const TURN_POLL_INTERVAL_MILLISECONDS = 5000;
+
+/**
+ * Waits for a session to finish its turn, and returns what it said last.
+ *
+ * Polls rather than streams: a stream opened after the session started has to
+ * be trusted to replay what it missed, while the event list is the whole
+ * history every time. The session's own status is checked first because it is
+ * the cheaper call, and the history is only read once the session claims to be
+ * done.
+ *
+ * @param sessionId - The session to wait for
+ * @param timeoutMilliseconds - How long to wait before giving up
+ * @returns The finished turn, or `undefined` when the session was still working
+ *   when the time ran out
+ */
+export async function waitForClaudeSessionTurn(
+  sessionId: string,
+  timeoutMilliseconds: number,
+): Promise<FinishedClaudeSessionTurn | undefined> {
+  const deadline = Date.now() + timeoutMilliseconds;
+
+  while (Date.now() < deadline) {
+    const session = await getClaudeSession(sessionId);
+
+    if (session.status === 'idle' || session.status === 'terminated') {
+      const finishedTurn = readFinishedTurn(await listClaudeSessionEvents(sessionId));
+      if (finishedTurn) {
+        return finishedTurn;
+      }
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, TURN_POLL_INTERVAL_MILLISECONDS));
+  }
+
+  return undefined;
+}
+
 /** URL a human can open to watch the session. */
 export function getClaudeSessionUrl(sessionId: string): string {
   return `https://platform.claude.com/sessions/${sessionId}`;

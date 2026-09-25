@@ -149,6 +149,33 @@ describe('buildPushPayload', () => {
       },
     });
   });
+
+  it('opens a link when tapped, on Android and iOS alike', () => {
+    const url = 'https://claude.ai/artifact/abc123';
+
+    expect(buildPushPayload({ message: 'Your chart is ready.', isUrgent: false, url })).toEqual({
+      message: 'Your chart is ready.',
+      data: { clickAction: url, url },
+    });
+  });
+
+  it('keeps the link alongside an urgent push', () => {
+    const url = 'https://claude.ai/artifact/abc123';
+
+    expect(buildPushPayload({ message: 'Water on the floor.', isUrgent: true, url }).data).toEqual({
+      ttl: 0,
+      priority: 'high',
+      push: { 'interruption-level': 'time-sensitive' },
+      clickAction: url,
+      url,
+    });
+  });
+
+  it('ignores a blank link', () => {
+    expect(buildPushPayload({ message: 'The laundry is done.', isUrgent: false, url: '  ' })).toEqual({
+      message: 'The laundry is done.',
+    });
+  });
 });
 
 describe('buildSetAlarmCommand', () => {
