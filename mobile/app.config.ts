@@ -126,9 +126,9 @@ const config: ExpoConfig = {
   // assistant is summoned from outside the app, so there has to be a URL that
   // reaches it: `heyjarvis://assist`.
   scheme: 'heyjarvis',
-  // Jarvis himself, drawn by the same code as the sphere, big enough to fill the icon with only a
-  // narrow edge: `icon.png` where a square one is used, and an adaptive icon everywhere Android
-  // masks one — on black, as he is drawn. Rendered by `hologram/.scripts/render-play-assets.ts`.
+  // Jarvis himself, drawn by the same code as the sphere: `icon.png` where a square icon is used, and
+  // an adaptive icon everywhere Android masks one, with a clear margin inside the launcher's mask —
+  // on black, as he is drawn. Rendered by `hologram/.scripts/render-play-assets.ts`.
   icon: '../hologram/assets/icon.png',
   userInterfaceStyle: 'dark',
   backgroundColor: '#05070d',
@@ -154,7 +154,7 @@ const config: ExpoConfig = {
   android: {
     package: 'com.ffmathy.heyjarvis',
     adaptiveIcon: {
-      foregroundImage: '../hologram/assets/adaptive-icon.png',
+      foregroundImage: '../hologram/assets/phone-adaptive-icon.png',
       backgroundColor: '#000000',
     },
     // What Play orders uploads by, and not the version anybody reads. Even numbers are the phone's;
