@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.2.5](https://github.com/ffMathy/hey-jarvis/compare/root-v4.2.4...root-v4.2.5) (2026-09-25)
+
+
+### Bug Fixes
+
+* **hologram:** play the greeting as call audio on a phone and a watch ([#774](https://github.com/ffMathy/hey-jarvis/issues/774)) ([d54d6b9](https://github.com/ffMathy/hey-jarvis/commit/d54d6b9624a845585a36a49e560d84b10c70af1f))
+
 ## [4.2.4](https://github.com/ffMathy/hey-jarvis/compare/root-v4.2.3...root-v4.2.4) (2026-09-24)
 
 
