@@ -120,6 +120,13 @@ export function useGreeting() {
     rewound.current = false;
     inProgress.current = true;
     setGreeting(true);
+    await player.untilAudible();
+    if (!inProgress.current) {
+      // Hung up on while a headset was still coming up.
+      return false;
+    }
+    // Asked for now, as far as giving up on him goes: the wait was not him being late.
+    askedAt.current = Date.now();
     const playing = await player.playFromStart();
     if (!inProgress.current) {
       // Hung up on while it was starting.

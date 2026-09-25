@@ -1,10 +1,19 @@
 package expo.modules.jarvisgreeting
 
+import android.content.BroadcastReceiver
 import android.content.ContentResolver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.media.AudioAttributes
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
 import android.media.MediaPlayer
 import android.net.Uri
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import expo.modules.kotlin.Promise
 import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
@@ -22,6 +31,18 @@ import expo.modules.kotlin.modules.ModuleDefinition
  * it keeps this module free of dependencies. It asks for no audio focus: the call's audio session,
  * started before this plays, already holds it.
  */
+/**
+ * How long past the headset's call audio reporting itself connected before the greeting starts.
+ *
+ * "Connected" is when the Bluetooth link is up, not when a headset is audibly playing through it,
+ * and AirPods were heard to clip the first word when played into straight away. This is a margin
+ * picked by ear rather than measured; raise it if the start is still clipped.
+ */
+private const val SETTLE_AFTER_CONNECTED_MS = 250L
+
+/** How often a Bluetooth LE Audio headset is checked for having become the call's route. */
+private const val LOOK_EVERY_MS = 100L
+
 class JarvisGreetingModule : Module() {
   private val lock = Any()
   private var player: MediaPlayer? = null
@@ -47,6 +68,27 @@ class JarvisGreetingModule : Module() {
         ready.seekTo(0)
         ready.start()
       }
+    }
+
+    /**
+     * Resolves once the call's audio can actually be heard on the Bluetooth headset it is routed to
+     * — true — or at once, false, when there is no Bluetooth headset to wait for.
+     *
+     * AirPods and every other headset carry a call over a different link from music (the headset
+     * profile, SCO, rather than A2DP), and bringing that link up after the call's audio session has
+     * asked for it takes a moment. Played into before it is up, the first word of the greeting was
+     * lost. So this waits for Android to say the link is connected — the sticky
+     * `ACTION_SCO_AUDIO_STATE_UPDATED` broadcast, or for an LE Audio headset its becoming the
+     * communication device — and gives up after `timeoutMs`, resolving false, rather than keep
+     * him silent for a headset that never answers.
+     */
+    AsyncFunction("untilCallRouteReady") { timeoutMs: Int, promise: Promise ->
+      val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+      if (!hasBluetoothCallHeadset(audioManager)) {
+        promise.resolve(false)
+        return@AsyncFunction
+      }
+      CallRouteWait(context, audioManager, timeoutMs.toLong(), promise).start()
     }
 
     Function("pause") {
@@ -76,6 +118,18 @@ class JarvisGreetingModule : Module() {
         player = null
         preparedFrom = null
       }
+    }
+  }
+
+  /** Whether a headset that can carry a call — Bluetooth Classic or LE Audio — is connected. */
+  private fun hasBluetoothCallHeadset(audioManager: AudioManager): Boolean {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+      return audioManager.availableCommunicationDevices.any {
+        it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO || it.type == AudioDeviceInfo.TYPE_BLE_HEADSET
+      }
+    }
+    return audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any {
+      it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
     }
   }
 
@@ -119,5 +173,71 @@ class JarvisGreetingModule : Module() {
       .authority(context.packageName)
       .appendPath(resourceId.toString())
       .build()
+  }
+}
+
+/**
+ * One wait for a headset's call audio, settled exactly once: connected, or timed out. Runs on the
+ * main thread, where the broadcast is delivered, so settling needs no lock.
+ */
+private class CallRouteWait(
+  private val context: Context,
+  private val audioManager: AudioManager,
+  private val timeoutMs: Long,
+  private val promise: Promise,
+) {
+  private val handler = Handler(Looper.getMainLooper())
+  private var settled = false
+
+  private val receiver = object : BroadcastReceiver() {
+    override fun onReceive(receivedContext: Context, intent: Intent) {
+      val state = intent.getIntExtra(AudioManager.EXTRA_SCO_AUDIO_STATE, AudioManager.SCO_AUDIO_STATE_ERROR)
+      if (state == AudioManager.SCO_AUDIO_STATE_CONNECTED) {
+        settle(ready = true)
+      }
+    }
+  }
+
+  private val lookForLeAudio = object : Runnable {
+    override fun run() {
+      if (settled) {
+        return
+      }
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+        audioManager.communicationDevice?.type == AudioDeviceInfo.TYPE_BLE_HEADSET
+      ) {
+        settle(ready = true)
+        return
+      }
+      handler.postDelayed(this, LOOK_EVERY_MS)
+    }
+  }
+
+  fun start() {
+    handler.post {
+      val filter = IntentFilter(AudioManager.ACTION_SCO_AUDIO_STATE_UPDATED)
+      // A system broadcast, and a sticky one: if the link is already up, it arrives at once.
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        context.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
+      } else {
+        context.registerReceiver(receiver, filter)
+      }
+      handler.post(lookForLeAudio)
+      handler.postDelayed({ settle(ready = false) }, timeoutMs)
+    }
+  }
+
+  private fun settle(ready: Boolean) {
+    if (settled) {
+      return
+    }
+    settled = true
+    handler.removeCallbacksAndMessages(null)
+    runCatching { context.unregisterReceiver(receiver) }
+    if (ready) {
+      handler.postDelayed({ promise.resolve(true) }, SETTLE_AFTER_CONNECTED_MS)
+    } else {
+      promise.resolve(false)
+    }
   }
 }

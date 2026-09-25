@@ -162,7 +162,9 @@ easy to break:
   (`android/.../JarvisGreetingModule.kt`), a `MediaPlayer` with `USAGE_VOICE_COMMUNICATION` — the
   stream, route and volume Jarvis's voice uses a moment later. It prefers a Bluetooth headset, then
   a wired one, then the speaker, so the greeting comes out where the conversation will — started on
-  the speaker alone, as the SDK does, he greeted from the phone and answered in the AirPods.
+  the speaker alone, as the SDK does, he greeted from the phone and answered in the AirPods. On a
+  Bluetooth headset he then waits for its call link to come up (`untilCallRouteReady`, at most
+  2.5 s plus a 250 ms margin): played into straight away, AirPods lost his first word.
   LiveKit's `start` does nothing when the SDK calls it again. Screens call `releaseCallAudio()` when a start fails, so no call audio is
   left with no call.
 - **That makes this package a native module.** `expo-module.config.json` at its root is what both
