@@ -104,6 +104,11 @@ export const sendPushNotification = createTool({
       .boolean()
       .optional()
       .describe('Whether to push the notification through immediately and surface it past a focus mode'),
+    url: z
+      .string()
+      .url()
+      .optional()
+      .describe("Optional: a web address that tapping the notification opens in the phone's browser"),
   }),
   outputSchema: z.object({
     success: z.boolean(),
@@ -111,10 +116,10 @@ export const sendPushNotification = createTool({
     serviceCalled: z.string(),
   }),
   execute: async (inputData) => {
-    const { message, title, isUrgent = false } = inputData;
+    const { message, title, isUrgent = false, url } = inputData;
 
     const service = await findMobileAppNotifyService();
-    await callService(service, buildPushPayload({ message, title, isUrgent }));
+    await callService(service, buildPushPayload({ message, title, isUrgent, url }));
 
     const serviceCalled = `${service.domain}.${service.service}`;
 

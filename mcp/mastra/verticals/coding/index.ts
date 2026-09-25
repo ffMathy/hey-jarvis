@@ -6,12 +6,15 @@ export {
   type ClaudeSessionMetadata,
   type ClaudeSessionStatus,
   createClaudeSession,
+  type FinishedClaudeSessionTurn,
   getClaudeSession,
   getClaudeSessionUrl,
   isClaudeSessionConfigured,
   listClaudeSessionEvents,
+  readFinishedTurn,
   sendClaudeSessionMessage,
   streamClaudeSessionEvents,
+  waitForClaudeSessionTurn,
 } from './claude-sessions.js';
 export {
   type ClaudeSessionContext,

@@ -54,6 +54,11 @@ mcp/
 │   │   │   ├── contacts.ts
 │   │   │   ├── tools.ts
 │   │   │   └── index.ts
+│   │   ├── generative-ui/   # Pages built on request by a Claude session (mostly shortcuts)
+│   │   │   ├── agent.ts
+│   │   │   ├── shortcuts.ts
+│   │   │   ├── tools.ts
+│   │   │   └── index.ts
 │   │   ├── presence/        # Where the user is (shortcuts only)
 │   │   │   ├── shortcuts.ts
 │   │   │   └── index.ts
@@ -231,7 +236,9 @@ would have been announced falls back to a push notification instead of being dro
   `esphome.hass_elevenlabs_<mac>_announce`.
 - **`sendPushNotification`**: pushes through the Home Assistant companion app
   (`notify.mobile_app_*`). Urgent pushes ask for a time-sensitive interruption so they surface
-  through a focus mode.
+  through a focus mode. An optional `url` makes tapping the notification open it in the phone's
+  browser; it is sent as both `clickAction` (Android) and `url` (iOS), since each app ignores the
+  other's key.
 - **`setPhoneAlarm`**: sets an alarm on the phone through the same `notify.mobile_app_*` service,
   sending the companion app's `command_activity` with Android's `SET_ALARM` intent (hour and
   minute as `:int` extras, `SKIP_UI`, and a URL-encoded label). Fire-and-forget: Home Assistant is
@@ -307,6 +314,41 @@ routing, so a surprising route can be traced back to the sensor that caused it.
   `Mathias' iPhone`. Set this when the phone is not named after its owner — companion-app devices
   are named after the phone, so without it a two-phone household cannot be told apart.
 - `HEY_JARVIS_CAR_NAME` (optional): the car's name, when it is not a Tesla behind Tessie.
+
+### Generative UI Vertical (Shortcuts)
+Answers "visualize…" and "generate a UI for…" with an interactive web page (an artifact), and pushes
+its link to the user's phone so a tap opens it in the phone's browser. It builds nothing itself: the
+page is written by a Claude cloud session, which is the coding vertical's to start, and the push is
+the notification vertical's to send. What lives here is the asking — the brief a session builds from —
+and the reading of the link it reports back.
+
+**Available Shortcuts** (`generative-ui/shortcuts.ts`):
+- **`createArtifact`**: a shortcut onto the coding vertical's `runCodingTask`. Wraps the request in a
+  brief (`buildArtifactTask`) that asks for one self-contained, phone-first page, published as an
+  artifact, with its URL alone on the last line of the session's final message — and tells the
+  session not to ask questions or touch a repository, since nobody is watching it work.
+- **`openArtifactOnPhone`**: a shortcut onto the notification vertical's `sendPushNotification`,
+  refusing to send without a `url`. Also how the agent sends an earlier page again.
+
+**Available Tools** (`generative-ui/tools.ts`):
+- **`generateUserInterface`**: the two shortcuts in order. Builds the page, reads its URL out of the
+  session's last message (`findArtifactUrl`, which takes the *last* address so a session that cites
+  its sources first is not taken at its first link), and pushes it to the phone unless `sendToPhone`
+  is `false`. Returns `artifactUrl`, `sessionUrl` and `sentToPhone`. A push that fails is reported
+  next to the link rather than thrown, since the page exists either way.
+
+**Agent:** `generativeUi` is routable, so the planner sends it visualization requests. The builder
+cannot reach Jarvis's own data, so a page about the calendar, the house or the shopping list needs
+that agent to fetch it first and the planner to pass it along — the agent's description says so.
+
+**Requirements:** the Claude session variables under [Coding Agent](#coding-agent), and an agent in
+the Claude console that can publish artifacts; plus the companion-app notify service the
+[Notification Agent](#notification-agent) uses for the push.
+
+**Example Use Cases:**
+- "Visualize the electricity prices for the rest of the day"
+- "Generate a UI for tracking my running times"
+- "Send that chart to my phone again"
 
 ### Phone Vertical (Tools Only)
 Provides outbound calling, texting and contact lookup:
@@ -420,6 +462,11 @@ when it is done.
 - **`getCodingSessionStatus`**: Reports a session's status (`idle`, `running`, `rescheduling`, `terminated`) and the
   messages it has produced.
 - **`sendCodingSessionMessage`**: Sends a follow-up message to a session, to answer a question or redirect its work.
+- **`runCodingTask`**: For work whose result is an answer rather than a pull request. Starts a session on a free-form
+  task, polls it until its turn ends (`waitForClaudeSessionTurn`, up to 15 minutes) and returns the last message it
+  sent. The session is not handed to the watcher, because the caller reports the result itself. Like
+  `startCodingSession` it is not one of the coding agent's own tools; other verticals reach it through shortcuts, such
+  as the [Generative UI Vertical](#generative-ui-vertical-shortcuts)'s `createArtifact`.
 
 **Feeding Back Into Synapse:**
 `ClaudeSessionWatcher` tails each session's server-sent event stream and republishes notable events as Synapse state
@@ -447,8 +494,8 @@ clones the repository and opens the pull request itself; that is console configu
 here.
 
 The vertical imports without any of them — `isClaudeSessionConfigured()` keeps the failure lazy, so
-repository and issue browsing works on the GitHub token alone and only `startCodingSession` and the
-tools that follow a session need the three above.
+repository and issue browsing works on the GitHub token alone and only the tools that start or follow
+a session (`startCodingSession`, `runCodingTask` and the session tools) need the three above.
 
 **Example Use Cases:**
 - "What repositories does ffMathy have?"

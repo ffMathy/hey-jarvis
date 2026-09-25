@@ -15,6 +15,7 @@ import { codingTools, getCodingAgent, getRequirementsInterviewerAgent } from './
 import { commuteTools, getCommuteAgent } from './verticals/commute/index.js';
 import { cookingTools, getCookingAgent } from './verticals/cooking/index.js';
 import { emailTools, getEmailAgent } from './verticals/email/index.js';
+import { generativeUiShortcuts, generativeUiTools, getGenerativeUiAgent } from './verticals/generative-ui/index.js';
 import { getEmailParsingAgent, humanInTheLoopTools } from './verticals/human-in-the-loop/index.js';
 import {
   emailCheckingWorkflow,
@@ -114,6 +115,7 @@ export async function getMastra(): Promise<Mastra> {
       await getCodingAgent(),
       await getEmailAgent(),
       await getEmailParsingAgent(),
+      await getGenerativeUiAgent(),
       await getInternetOfThingsAgent(),
       await getNotificationAgent(),
       await getReflectionAgent(),
@@ -133,6 +135,8 @@ export async function getMastra(): Promise<Mastra> {
       ...commuteTools,
       ...cookingTools,
       ...emailTools,
+      ...generativeUiShortcuts,
+      ...generativeUiTools,
       ...humanInTheLoopTools,
       ...internetOfThingsTools,
       ...internetOfThingsShortcuts,

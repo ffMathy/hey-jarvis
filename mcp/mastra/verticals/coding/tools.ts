@@ -9,6 +9,7 @@ import {
   getClaudeSessionUrl,
   listClaudeSessionEvents,
   sendClaudeSessionMessage,
+  waitForClaudeSessionTurn,
 } from './claude-sessions.js';
 import { DEFAULT_OWNER, DEFAULT_REPOSITORY } from './repository.js';
 import { claudeSessionWatcher } from './session-watcher.js';
@@ -304,6 +305,69 @@ export const startCodingSession = createTool({
         message: `Could not start a Claude cloud session for ${issueUrl}: ${
           error instanceof Error ? error.message : String(error)
         }`,
+      };
+    }
+  },
+});
+
+/** How long {@link runCodingTask} waits for a session before handing back its link instead. */
+export const CODING_TASK_TIMEOUT_MILLISECONDS = 15 * 60 * 1000;
+
+/**
+ * Tool to have a Claude cloud session carry out a task and report back
+ *
+ * Unlike {@link startCodingSession}, which hands off an issue and returns at
+ * once because its result is a pull request, this is for work whose result is
+ * an answer: it waits for the session to finish its turn and returns the last
+ * thing the session said. Other verticals reach it through shortcuts that write
+ * the task for their own purpose.
+ */
+export const runCodingTask = createTool({
+  id: 'runCodingTask',
+  description:
+    'Hands a self-contained task to a Claude cloud session, waits for the session to finish, and returns the last message it sent. For work that produces an answer or a link rather than a pull request.',
+  inputSchema: z.object({
+    task: z.string().describe('The complete instructions for the session; it sees nothing else'),
+  }),
+  outputSchema: z.object({
+    success: z.boolean(),
+    session_id: z.string().optional(),
+    session_url: z.string().optional(),
+    stop_reason: z.string().optional().describe('Why the session stopped, e.g. "end_turn"'),
+    final_message: z.string().optional().describe('The last message the session sent'),
+    message: z.string(),
+  }),
+  execute: async (inputData) => {
+    // As with startCodingSession, a failure is reported rather than thrown, so
+    // the caller can say what went wrong instead of going quiet.
+    try {
+      const session = await createClaudeSession(inputData.task);
+      const sessionUrl = getClaudeSessionUrl(session.id);
+      const finishedTurn = await waitForClaudeSessionTurn(session.id, CODING_TASK_TIMEOUT_MILLISECONDS);
+
+      if (!finishedTurn) {
+        return {
+          success: false,
+          session_id: session.id,
+          session_url: sessionUrl,
+          message: `Claude cloud session ${session.id} was still working after ${CODING_TASK_TIMEOUT_MILLISECONDS / 60_000} minutes. It can be followed at ${sessionUrl}.`,
+        };
+      }
+
+      return {
+        success: finishedTurn.stopReason === 'end_turn',
+        session_id: session.id,
+        session_url: sessionUrl,
+        stop_reason: finishedTurn.stopReason,
+        final_message: finishedTurn.finalMessage,
+        message: `Claude cloud session ${session.id} stopped with "${finishedTurn.stopReason}".`,
+      };
+    } catch (error) {
+      logger.error('[CLAUDE SESSION] Failed to run coding task', { error });
+
+      return {
+        success: false,
+        message: `Could not run the task in a Claude cloud session: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
   },
