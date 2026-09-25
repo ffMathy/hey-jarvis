@@ -360,7 +360,7 @@ if (number) {
    bun run --cwd mcp generate-tokens --reveal-token
    ```
    - Paste the new value into the `refresh token` field of the **Google OAuth** item in the **Personal** vault
-   - Updating 1Password is what matters for CI and deployment: both resolve `mcp/op.env` through `OP_SERVICE_ACCOUNT_TOKEN`, so a stale vault copy leaves them on a token without the contacts scope
+   - Updating 1Password is what matters for deployment and for the integration tests: both resolve `mcp/op.env` from the vault, so a stale vault copy leaves them on a token without the contacts scope
    - Client ID and secret are always read from environment variables; only the refresh token can also live in Mastra storage
    - See [Google OAuth2 Setup](#google-oauth2-setup) for the full flow
 
@@ -1399,8 +1399,8 @@ plain `*.spec.ts` suffix and runs under `turbo test`, which carries no secrets a
 all — so a test that quietly starts reaching for one fails there rather than
 passing on someone's personal account.
 
-CI runs `turbo test` on every push, and `turbo test:integration` only once the
-pull request is out of draft, then on every push after that.
+CI runs `turbo test` on every push. `turbo test:integration` never runs on
+GitHub Actions — only when someone runs the target by hand.
 
 **CRITICAL: Test Server Startup Must Use run-with-env.sh**
 
@@ -1605,8 +1605,8 @@ bun run --cwd mcp generate-tokens
 #### 1Password Items
 
 `mcp/op.env` maps each environment variable to an `op://` reference, resolved at process start by
-`run-with-env.sh` — through the 1Password CLI locally, and through `OP_SERVICE_ACCOUNT_TOKEN` in CI
-and deployment. Everything lives in the **Jarvis** vault:
+`run-with-env.sh` — through the 1Password CLI locally, and through `OP_SERVICE_ACCOUNT_TOKEN` in the
+release workflow and deployment. Everything lives in the **Jarvis** vault:
 
 | Environment variable | 1Password reference |
 | --- | --- |

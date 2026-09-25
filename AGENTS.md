@@ -163,13 +163,13 @@ cache, or persist between runs. Registering one already requires repository
 admin; the CI check makes the other half explicit by rejecting any workflow that
 targets a runner we do not rent from GitHub.
 
-The `OP_SERVICE_ACCOUNT_TOKEN` that unlocks the whole `Jarvis` vault is scoped to
-the one job that cannot do without it. `CI / build` — which compiles the firmware
-and runs `turbo test` over untrusted pull request code on every push — is given
-no vault token at all; only `CI / integration-tests` is, and that job does not
-run while the pull request is a draft. So the window in which a pull request can
-reach the vault opens when its author marks it ready for review, which is also
-the point at which someone is expected to be reading the diff.
+The `OP_SERVICE_ACCOUNT_TOKEN` that unlocks the whole `Jarvis` vault is kept out
+of `CI`, which compiles the firmware and runs `turbo test` over untrusted pull
+request code on every push: that workflow is given no vault token at all, and the
+integration tests that would need one do not run on GitHub Actions (see
+[Testing Changes](#testing-changes)). The workflows that do carry it are
+`Release`, which runs only on `main`, and `Play`, which needs the upload key to
+publish a pull request's build to internal testing.
 
 ### Releases
 
@@ -418,7 +418,7 @@ The suite is split in two by file name.
 | Target | `turbo test` | `turbo test:integration` |
 | Secrets | none — the job runs with an empty environment | the full `Jarvis` vault, via `run-with-env.sh` |
 | Talks to | nothing outside the process | real APIs, a real Home Assistant, a real ElevenLabs agent |
-| Runs in CI | every push | every push once the pull request is out of draft |
+| Runs in CI | every push | never — only when run by hand |
 
 ```bash
 # The mocked tests — no 1Password sign-in needed
@@ -436,6 +436,13 @@ network, or starts the MCP server. Name it `*.integration.spec.ts` and it lands
 there on its own; the `test` job carries no secrets at all, so a test that
 quietly starts reaching for one fails there rather than passing on someone's
 personal account.
+
+`test:integration` never runs on GitHub Actions. It holds real conversations,
+calls real APIs and spends real quota, so it runs only when someone runs the
+target explicitly — `bunx turbo test:integration`, filtered or not — with the
+vault unlocked. CI's green check therefore says nothing
+about the integration half: run it yourself before relying on a change that
+touches what it covers.
 
 <!-- turbo configuration start-->
 <!-- Leave the start & end comments to automatically receive updates. -->

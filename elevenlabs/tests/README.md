@@ -69,9 +69,9 @@ bunx turbo test --filter=elevenlabs --verbose
 ```
 
 The `*.integration.spec.ts` suffix is what decides which half a spec lands in.
-CI runs the offline half on every push and the live half only once the pull
-request is out of draft, so a conversation eval never spends quota on work that
-is still being written.
+CI runs the offline half on every push. The live half never runs on GitHub
+Actions — only when someone runs `turbo test:integration` by hand — so a
+conversation eval never spends quota unless someone asked it to.
 
 ## How the conversation evals decide
 

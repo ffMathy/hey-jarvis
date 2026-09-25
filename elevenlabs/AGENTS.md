@@ -55,8 +55,9 @@ conversation is named `*.integration.spec.ts` and runs under
 above. A spec that only exercises the detectors keeps the plain `*.spec.ts`
 suffix and runs under `turbo test`, which carries no secrets at all.
 
-CI runs the offline half on every push and the live half only once the pull
-request is out of draft — so an eval never spends quota on work in progress.
+CI runs the offline half on every push. The live half never runs on GitHub
+Actions — only when someone runs `turbo test:integration` by hand — so an eval
+never spends quota unless someone asked it to.
 
 ### Test Score Requirements
 All tests must use strict score requirements (>0.9 for 90%+ confidence):

@@ -48,8 +48,9 @@ The suite is split in two by file name:
 Only `test:integration` goes through `run-with-env.sh`, so only it resolves
 secrets from 1Password. `turbo test` runs with none of them, on purpose.
 
-In CI, `turbo test` runs on every push; `turbo test:integration` runs only once
-the pull request is out of draft, and then on every push after that.
+In CI, `turbo test` runs on every push. `turbo test:integration` never runs on
+GitHub Actions — only when someone runs the target explicitly — so a green CI
+run says nothing about it.
 
 A new test belongs in `test:integration` when it needs a credential, reaches the
 network, or starts the MCP server. Give it the `*.integration.spec.ts` suffix and
