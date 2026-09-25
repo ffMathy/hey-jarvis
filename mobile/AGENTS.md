@@ -184,17 +184,19 @@ the page is using the microphone*, so `microphone-permission.web.ts` holds the s
 permission with until the greeting has started, and lets it go straight after. Released at once, as
 it once was, the recording was refused and the agent greeted in its own voice instead.
 
-**On a phone he greets inside the call's audio, and the session waits for him.** Both were learned
-on a device. Dialled behind him, `startSession` started LiveKit's audio session — the SDK's
+**On a phone he greets as call audio, and the session waits for him.** All of it was learned on a
+device. Dialled behind him, `startSession` started LiveKit's audio session — the SDK's
 `communication` preset, `MODE_IN_COMMUNICATION` — a second into "Hello sir", and the recording
 turned thin and clipped from there. Held back until he had finished, he was not heard at all:
-played as ordinary media, the recording had only ever been audible once that audio session was
-running. So `beginGreeting` now starts the same audio session *before* he speaks
-(`hologram/src/conversation/call-audio.ts`) and he greets inside it, on the speaker at call volume,
-with nothing switching under him; the token is fetched beside him and `startSession` waits for
-`untilCallMayTakeTheAudio`. A browser has no call audio and goes on dialling behind him. Still to
-settle on a device: that the greeting sounds like him inside the call's audio, and that
-`vad_score` events arrive over WebRTC as they do over the firmware's socket.
+played by expo-audio, as media, the recording was not heard on its own. Starting the call's audio
+session before him and still playing him as media was tested next, and was silent too. So on a
+phone and a watch he is no longer played by expo-audio at all. `beginGreeting` starts the call's audio session
+(`hologram/src/conversation/call-audio.ts`) and plays the recording through `hologram`'s own native
+module, `JarvisGreeting`, with `USAGE_VOICE_COMMUNICATION` — as the call's own audio, on the speaker,
+at call volume. The token is fetched beside him and `startSession` waits for
+`untilCallMayTakeTheAudio`. A browser plays it with expo-audio and goes on dialling behind him.
+Still to settle on a device: that he is heard this way, and that `vad_score` events arrive over
+WebRTC as they do over the firmware's socket.
 
 The sphere also shows the user being heard: while ElevenLabs' `vad_score` says someone is
 speaking, his particles snap onto a lattice that turns inside him, breathing harder the louder the
@@ -397,7 +399,7 @@ Versions are pinned exactly, and every one of them has to clear the repository's
 
 - `@livekit/react-native` is held at **2.x**. The 3.x line is published as `latest` but does not satisfy `@elevenlabs/react-native`'s peer range.
 - `livekit-client` is a direct dependency even though it is transitive, so only one copy can resolve.
-- `expo-audio` is at **57.0.5**, what Expo 57's `bundledNativeModules.json` allows (`~57.0.4`). It plays the greeting on Android and, through an `HTMLAudioElement`, in a browser. It needs no config plugin: it only plays, and its manifest adds nothing but `MODIFY_AUDIO_SETTINGS`.
+- `expo-audio` is at **57.0.5**, what Expo 57's `bundledNativeModules.json` allows (`~57.0.4`). It plays the greeting in a browser, through an `HTMLAudioElement`; on Android `hologram`'s own native module plays it, as call audio. It needs no config plugin: it only plays, and its manifest adds nothing but `MODIFY_AUDIO_SETTINGS`.
 - `@config-plugins/react-native-webrtc` is deliberately **not** installed. Its Android half only adds permissions, and two of them — `CAMERA` and `SYSTEM_ALERT_WINDOW` — have no business in a voice assistant. `app.config.ts` declares the permissions this app actually uses and blocks `CAMERA`, which LiveKit's own manifest would otherwise merge in.
 
 `metro.config.js` points Metro at both this package's `node_modules` and the workspace root's, and keeps hierarchical lookup **on** — the usual monorepo advice to switch it off breaks bun's isolated layout, where walking up from the importing file is how a package finds its own dependencies.

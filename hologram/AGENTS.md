@@ -35,7 +35,7 @@ that rule.
 | `hologram` | nothing but types | the drawing, the voice tracker, the simulated voices, sample mode's moods and readout text, the density control, the ElevenLabs credentials and the token request |
 | `hologram/react` | React, Reanimated, Skia | the Skia canvas and the frame loop |
 | `hologram/react/sample` | React, Reanimated — not Skia | sample mode's clock-made voice, mood toast and frame-rate readout, shared by the phone's sample screen and the watch's waiting screen |
-| `hologram/conversation` | React, `@elevenlabs/react-native`, `expo-audio`, `@livekit/react-native`'s audio session — not Skia | his voice as the SDK hears it, which of his tool calls are in flight, the recorded greeting he answers with, and the user's voice for the listening lattice |
+| `hologram/conversation` | React, `@elevenlabs/react-native`, `@livekit/react-native`'s audio session, hologram's own native greeting player (`expo-audio` in a browser) — not Skia | his voice as the SDK hears it, which of his tool calls are in flight, the recorded greeting he answers with, and the user's voice for the listening lattice |
 
 `hologram/conversation` deliberately does **not** reach Skia. That is what lets
 a screen open a conversation before CanvasKit has finished loading in a browser,
@@ -154,17 +154,19 @@ Jarvis through the speaker as the user. `isGreetingOver` (`greeting-handover.ts`
 the recording's end, or its length plus a grace if playback never started. Three things that are
 easy to break:
 
-- **expo-audio must mix, not take focus.** Unless told `mixWithOthers` it requests audio focus, and
-  LiveKit's own focus request as the call connects would pause him mid-sentence.
-- **Its audio mode is set once, before any session.** On Android `setAudioModeAsync` also writes
-  `AudioManager.mode`, and doing it mid-call would take the call out of `MODE_IN_COMMUNICATION`.
-- **On a phone and a watch, he greets inside the call's audio.** `startSession` starts LiveKit's
-  audio session with the `communication` preset, which puts Android into `MODE_IN_COMMUNICATION`.
-  Played as ordinary media before that, the recording was heard on a phone only from the moment the
-  session started under it — thin and clipped — and not at all once the session waited for him. So
-  `beginGreeting` starts that same audio session first (`call-audio.ts`, a no-op `.web.ts` in a
-  browser) and plays inside it; LiveKit's `start` then does nothing when the SDK calls it again.
-  Screens call `releaseCallAudio()` when a start fails, so no call audio is left with no call.
+- **On a phone and a watch, he greets as call audio, inside the call's audio session.** Played by
+  expo-audio — media, `USAGE_MEDIA` — the recording was not heard on a phone: not on its own, and
+  not inside LiveKit's audio session started before him either (tested on a phone). So `beginGreeting` first starts the audio
+  session the SDK would (`call-audio.ts`: the `communication` preset, on the speaker), and then plays
+  the recording through this package's own native module, `JarvisGreeting`
+  (`android/.../JarvisGreetingModule.kt`), a `MediaPlayer` with `USAGE_VOICE_COMMUNICATION` — the
+  stream, route and volume Jarvis's voice uses a moment later. LiveKit's `start` does nothing when
+  the SDK calls it again. Screens call `releaseCallAudio()` when a start fails, so no call audio is
+  left with no call.
+- **That makes this package a native module.** `expo-module.config.json` at its root is what both
+  apps' autolinking finds, since both depend on `hologram`. In a build without it,
+  `greeting-player.ts` reports the recording as unplayable, and the agent keeps its own first
+  message. A browser plays the recording with expo-audio (`greeting-player.web.ts`).
 - **And the session still starts after him.** The token is fetched beside him, but screens
   `await untilCallMayTakeTheAudio()` before `startSession`; it resolves once the recording is over
   (at once in a browser), and `false` if he was stopped, in which case there is nobody left to dial
