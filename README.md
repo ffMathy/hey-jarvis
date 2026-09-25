@@ -80,7 +80,7 @@ bunx turbo lint              # Lint everything
 bunx biome check --write .   # Format + lint
 ```
 
-CI runs `turbo test` on every push. `turbo test:integration` waits until the
-pull request is marked ready for review, and then runs on every push after that.
+CI runs `turbo test` on every push. `turbo test:integration` never runs on
+GitHub Actions — only when you run it yourself.
 
 Each project has an `AGENTS.md` with detailed development guidelines.

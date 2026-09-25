@@ -97,6 +97,18 @@ devices and still speak, while remaining a bound on a model that has started loo
 An agent that needs more than twenty needs fewer round trips, not a bigger number — a tool
 that answers in one call rather than one per item.
 
+#### The shared guidelines
+
+`createAgent` follows every agent's own instructions with the same short section: never ask
+questions, make a best-guess assumption instead, and the current time. The instructions are
+resolved on every request, not at construction — agents are built once at boot and the server
+stays up for days, so a time taken then would be days stale.
+
+An agent's answer usually ends the exchange, so a question in it has nowhere to go. The one
+exception is `requirementsInterviewer`, whose questions suspend `implementFeatureWorkflow`
+until the user answers; it is built with `asksQuestions: true`, which leaves out the "never ask"
+line and keeps the time. `mastra/utils/agent-factory.spec.ts` pins the exact text.
+
 ### 🔧 Tool Ecosystem
 - **Model Context Protocol (MCP)** server integrations
 - **Home automation tools** for smart device control
@@ -360,7 +372,7 @@ if (number) {
    bun run --cwd mcp generate-tokens --reveal-token
    ```
    - Paste the new value into the `refresh token` field of the **Google OAuth** item in the **Personal** vault
-   - Updating 1Password is what matters for CI and deployment: both resolve `mcp/op.env` through `OP_SERVICE_ACCOUNT_TOKEN`, so a stale vault copy leaves them on a token without the contacts scope
+   - Updating 1Password is what matters for deployment and for the integration tests: both resolve `mcp/op.env` from the vault, so a stale vault copy leaves them on a token without the contacts scope
    - Client ID and secret are always read from environment variables; only the refresh token can also live in Mastra storage
    - See [Google OAuth2 Setup](#google-oauth2-setup) for the full flow
 
@@ -1399,8 +1411,8 @@ plain `*.spec.ts` suffix and runs under `turbo test`, which carries no secrets a
 all — so a test that quietly starts reaching for one fails there rather than
 passing on someone's personal account.
 
-CI runs `turbo test` on every push, and `turbo test:integration` only once the
-pull request is out of draft, then on every push after that.
+CI runs `turbo test` on every push. `turbo test:integration` never runs on
+GitHub Actions — only when someone runs the target by hand.
 
 **CRITICAL: Test Server Startup Must Use run-with-env.sh**
 
@@ -1605,8 +1617,8 @@ bun run --cwd mcp generate-tokens
 #### 1Password Items
 
 `mcp/op.env` maps each environment variable to an `op://` reference, resolved at process start by
-`run-with-env.sh` — through the 1Password CLI locally, and through `OP_SERVICE_ACCOUNT_TOKEN` in CI
-and deployment. Everything lives in the **Jarvis** vault:
+`run-with-env.sh` — through the 1Password CLI locally, and through `OP_SERVICE_ACCOUNT_TOKEN` in the
+release workflow and deployment. Everything lives in the **Jarvis** vault:
 
 | Environment variable | 1Password reference |
 | --- | --- |

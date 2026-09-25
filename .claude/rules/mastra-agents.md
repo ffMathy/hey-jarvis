@@ -33,6 +33,7 @@ export async function getMyAgent(): Promise<Agent> {
 - **Error reporting**: automatic GitHub issue creation on errors
 - **Observability**: AI tracing and token usage tracking
 - **Scorers**: quality evaluation (answer relevancy, hallucination, etc.)
+- **Shared guidelines**: appended to `instructions` on every request — "never ask questions, make best-guess assumptions" and the current time. Pass `asksQuestions: true` only for an agent whose questions actually reach the user and come back as answers (today, just `requirementsInterviewer`)
 
 ## Naming Conventions
 

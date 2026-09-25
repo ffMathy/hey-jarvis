@@ -1,5 +1,13 @@
 # Changelog
 
+## [4.2.8](https://github.com/ffMathy/hey-jarvis/compare/root-v4.2.7...root-v4.2.8) (2026-09-25)
+
+
+### Bug Fixes
+
+* **hologram:** wait for the headset's call link before greeting ([#783](https://github.com/ffMathy/hey-jarvis/issues/783)) ([d3acd05](https://github.com/ffMathy/hey-jarvis/commit/d3acd05738ab5239069041cf0434e798c8efe5c3))
+* **mcp:** give every agent the shared guidelines and the current time ([#784](https://github.com/ffMathy/hey-jarvis/issues/784)) ([766f22d](https://github.com/ffMathy/hey-jarvis/commit/766f22d680f7710b36ded0763f3d9ce53c9fc46e))
+
 ## [4.2.7](https://github.com/ffMathy/hey-jarvis/compare/root-v4.2.6...root-v4.2.7) (2026-09-25)
 
 

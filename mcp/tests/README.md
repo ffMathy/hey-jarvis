@@ -13,9 +13,9 @@ bunx turbo test --filter=mcp              # the mocked half; no 1Password sign-i
 bunx turbo test:integration --filter=mcp  # the half that needs the vault
 ```
 
-CI runs the mocked half on every push, and the integration half only once the
-pull request is out of draft. Anything below that mentions 1Password applies to
-the integration half alone.
+CI runs the mocked half on every push. The integration half never runs on
+GitHub Actions — only when someone runs `turbo test:integration` by hand.
+Anything below that mentions 1Password applies to the integration half alone.
 
 ## Test Files
 

@@ -20,13 +20,44 @@ import { getDefaultScorers } from './scorers-config.js';
  */
 const MAX_AGENT_STEPS = 20;
 
+/**
+ * An agent's own instructions, followed by the guidelines every agent is given.
+ *
+ * Called for every request rather than once when the agent is built. Agents are built once, at
+ * boot, and the server stays up for days, so a time taken at construction is days stale by the
+ * time anyone asks what is on tomorrow.
+ */
+function withSharedGuidelines(instructions: string, { asksQuestions }: { asksQuestions: boolean }): string {
+  const guidelines = [
+    ...(asksQuestions ? [] : ['Never ask questions. Always make best-guess assumptions.']),
+    `The time is currently: \`${new Date().toString()}\`.`,
+  ];
+
+  return `${instructions}\n\n# Additional context and guidelines\n${guidelines.join('\n')}`;
+}
+
 export async function createAgent(
-  config: Omit<AgentConfig, 'model' | 'memory' | 'scorers'> & {
+  config: Omit<AgentConfig, 'model' | 'memory' | 'scorers' | 'instructions'> & {
+    /** The agent's own instructions. The guidelines every agent shares are appended to them. */
+    instructions: string;
     model?: AgentConfig['model'];
     memory?: AgentConfig['memory'];
     scorers?: AgentConfig['scorers'];
+    /**
+     * Lets the agent ask questions, instead of telling it never to.
+     *
+     * Every other agent is told never to ask and to make a best-guess assumption instead, because
+     * its answer ends the exchange: it is spoken back to the user, and no reply finds its way back
+     * to the agent that asked. Set this only for an agent whose questions do reach the user and
+     * whose answers come back to it — the requirements interviewer, whose questions suspend
+     * `implementFeatureWorkflow` until the user answers, and whose whole job asking is. Telling it
+     * never to ask would contradict its own instructions.
+     */
+    asksQuestions?: boolean;
   },
 ): Promise<Agent> {
+  const { instructions, asksQuestions = false, ...agentConfig } = config;
+
   const DEFAULT_AGENT_CONFIG: Partial<AgentConfig> = {
     // Use shared memory instance by default
     memory: await createMemory(),
@@ -40,7 +71,6 @@ export async function createAgent(
       modelSettings: { temperature: 0 },
       maxSteps: MAX_AGENT_STEPS,
     },
-    instructions: `${config.instructions}\n\n# Additional context and guidelines\nNever ask questions. Always make best-guess assumptions.\nThe time is currently: \`${new Date().toString()}\`.`,
     inputProcessors: [],
     outputProcessors: [
       // Add error reporting processor to all agents by default
@@ -60,7 +90,10 @@ export async function createAgent(
 
   const mergedConfig: AgentConfig = {
     ...DEFAULT_AGENT_CONFIG,
-    ...config,
+    ...agentConfig,
+    // After the spread, so the caller's bare instructions cannot replace the guidelines. Mastra
+    // resolves a function on every call, which is what keeps the time current.
+    instructions: () => withSharedGuidelines(instructions, { asksQuestions }),
     model: resolvedModel,
     // Merge output processors instead of replacing
     outputProcessors: [...defaultProcessors, ...customProcessors],
