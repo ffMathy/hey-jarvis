@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.2.4](https://github.com/ffMathy/hey-jarvis/compare/root-v4.2.3...root-v4.2.4) (2026-09-24)
+
+
+### Bug Fixes
+
+* **hologram:** greet inside the call's audio so the phone hears him ([#772](https://github.com/ffMathy/hey-jarvis/issues/772)) ([2567d00](https://github.com/ffMathy/hey-jarvis/commit/2567d00c232340eee0952b84567588b62927377f))
+
 ## [4.2.3](https://github.com/ffMathy/hey-jarvis/compare/root-v4.2.2...root-v4.2.3) (2026-09-24)
 
 
