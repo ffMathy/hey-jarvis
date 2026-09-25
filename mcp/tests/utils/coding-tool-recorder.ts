@@ -14,7 +14,7 @@ import { createGitHubIssue, startCodingSession } from '../../mastra/verticals/co
 
 export interface CreatedIssue {
   owner?: string;
-  repo: string;
+  repo?: string;
   title: string;
   body: string;
   labels?: string[];
@@ -22,7 +22,7 @@ export interface CreatedIssue {
 
 export interface StartedSession {
   owner?: string;
-  repo: string;
+  repo?: string;
   issue_number: number;
   title?: string;
   instructions?: string;

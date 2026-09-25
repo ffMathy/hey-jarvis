@@ -108,6 +108,26 @@ describe('implementFeatureWorkflow', () => {
     expect(codingTools.startedSessions).toEqual([]);
   });
 
+  it('tells the interviewer the work is in Jarvis’s own repository when the request names none', async () => {
+    const { mastra, interviewerCalls } = await createMastraWithInterviewer();
+    const run = await mastra.getWorkflow('implementFeatureWorkflow').createRun();
+
+    await run.start({ inputData: { initialRequest: 'Remind me about tasks before they are due' } });
+
+    expect(interviewerCalls[0].transcript).toContain('ffMathy/hey-jarvis');
+    expect(interviewerCalls[0].transcript).toContain('do not ask which repository');
+  });
+
+  it('keeps a repository the request did name', async () => {
+    const { mastra, interviewerCalls } = await createMastraWithInterviewer();
+    const run = await mastra.getWorkflow('implementFeatureWorkflow').createRun();
+
+    await run.start({ inputData: { initialRequest: 'Add a dark mode', owner: 'someone', repository: 'their-app' } });
+
+    expect(interviewerCalls[0].transcript).toContain('someone/their-app');
+    expect(interviewerCalls[0].transcript).not.toContain("Jarvis's own codebase");
+  });
+
   it('carries each answer back to the interviewer and asks the next question', async () => {
     const { mastra } = await createMastraWithInterviewer();
     const run = await mastra.getWorkflow('implementFeatureWorkflow').createRun();

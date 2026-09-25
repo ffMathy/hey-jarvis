@@ -390,7 +390,7 @@ Manages GitHub repositories and coordinates feature implementation:
 - **Repository management**: Browse and search repositories for any GitHub user
 - **Issue tracking**: View open, closed, or all issues for repositories
 - **Workflow coordination**: Triggers requirements gathering workflow for new feature requests
-- **Smart defaults**: Defaults to "ffMathy" owner and "hey-jarvis" repository when not specified
+- **Smart defaults**: a task with no repository named is a task on Jarvis himself, `ffMathy/hey-jarvis` (`coding/repository.ts`). Every tool, `implementFeatureWorkflow` and both agents default to it, and the requirements interviewer is told the repository up front and never asks which one is meant
 
 **Key Capabilities:**
 - List all public repositories for a GitHub user
