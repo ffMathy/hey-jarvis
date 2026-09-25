@@ -27,7 +27,11 @@ import {
   weatherMonitoringWorkflow,
   weeklyMealPlanningWorkflow,
 } from './verticals/index.js';
-import { getInternetOfThingsAgent, internetOfThingsTools } from './verticals/internet-of-things/index.js';
+import {
+  getInternetOfThingsAgent,
+  internetOfThingsShortcuts,
+  internetOfThingsTools,
+} from './verticals/internet-of-things/index.js';
 import { getNotificationAgent, notificationTools } from './verticals/notification/index.js';
 import { phoneTools } from './verticals/phone/index.js';
 import { presenceShortcuts } from './verticals/presence/index.js';
@@ -131,6 +135,7 @@ export async function getMastra(): Promise<Mastra> {
       ...emailTools,
       ...humanInTheLoopTools,
       ...internetOfThingsTools,
+      ...internetOfThingsShortcuts,
       ...notificationTools,
       ...phoneTools,
       ...presenceShortcuts,

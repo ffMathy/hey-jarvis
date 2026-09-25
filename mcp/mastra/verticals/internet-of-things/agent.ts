@@ -1,5 +1,6 @@
 import type { Agent } from '@mastra/core/agent';
 import { createAgent } from '../../utils/index.js';
+import { internetOfThingsShortcuts } from './shortcuts.js';
 import { internetOfThingsTools } from './tools.js';
 
 export async function getInternetOfThingsAgent(): Promise<Agent> {
@@ -15,6 +16,7 @@ Your capabilities:
 - Track device changes over time using getChangedDevicesSinceLastTime
 - Fetch historical logbook data to see detailed state transitions using getEntityLogbook
 - Get user location information by accessing phone GPS data when needed
+- Set an alarm on the user's phone with setUserPhoneAlarm, which the Home Assistant companion app carries out
 
 Important guidelines:
 - When calling services, be careful about using appropriate arguments. Prefer explicit identifiers over ambiguous ones.
@@ -24,6 +26,7 @@ Important guidelines:
 - When targeting multiple entities or targets, call the service separately for each target.
 - Use getAllDevices and getAllServices to discover what's available before performing actions.
 - Use getChangedDevicesSinceLastTime to monitor recent activity or detect what has changed.
+- For an alarm, work out the time in 24-hour form first ("half past six tomorrow morning" is 6:30). The phone does not confirm the alarm, so say you asked the phone to set it rather than that it is set. The very first time, the companion app asks for the "Display over other apps" permission instead of setting it; mention that if the user says nothing happened.
 
 Default behavior:
 - If no specific location is mentioned, assume devices are in Mathias and Julie's home in Aarhus, Denmark.
@@ -40,7 +43,8 @@ Control and monitor Internet of Things (IoT) devices. Use this agent to **turn d
 - Automations or routines that need to interact with physical devices in the home.
 - Energy management queries or adjustments to thermostats/climate control.
 - Media playback control (play, pause, adjust volume, change source).
-- You need to access user location data for location-based automations.`,
-    tools: internetOfThingsTools,
+- You need to access user location data for location-based automations.
+- You want an alarm set on your phone ("Wake me at 6:30", "Set an alarm for 14:00 called laundry").`,
+    tools: { ...internetOfThingsTools, ...internetOfThingsShortcuts },
   });
 }

@@ -153,3 +153,46 @@ export function buildPushPayload(input: {
 
   return payload;
 }
+
+/** What `SET_ALARM` needs to know: when, and optionally what to call it. */
+export interface PhoneAlarm {
+  /** 0-23, in the phone's own time zone. */
+  hour: number;
+  /** 0-59. */
+  minute: number;
+  /** Shown in the clock app beside the alarm and when it rings. */
+  label?: string;
+}
+
+/**
+ * Builds the companion-app command that sets an alarm on the phone.
+ *
+ * Android has no way to be told to set an alarm from outside, but the Home Assistant companion
+ * app can launch any activity on command (`message: command_activity`), and Android's clock apps
+ * all answer `android.intent.action.SET_ALARM`. `SKIP_UI` sets it without opening the clock app
+ * over whatever the user is doing.
+ *
+ * The extras are the companion app's own string format: comma-separated `name:value:type`. The
+ * types are spelled out because the alarm's hour and minute must arrive as integers, and the label
+ * is URL-encoded because it is free text and may contain the very commas and colons the format is
+ * split on.
+ */
+export function buildSetAlarmCommand({ hour, minute, label }: PhoneAlarm) {
+  const extras = [
+    `android.intent.extra.alarm.HOUR:${hour}:int`,
+    `android.intent.extra.alarm.MINUTES:${minute}:int`,
+    'android.intent.extra.alarm.SKIP_UI:true:boolean',
+  ];
+  const trimmedLabel = label?.trim();
+  if (trimmedLabel) {
+    extras.push(`android.intent.extra.alarm.MESSAGE:${encodeURIComponent(trimmedLabel)}:urlencoded`);
+  }
+
+  return {
+    message: 'command_activity',
+    data: {
+      intent_action: 'android.intent.action.SET_ALARM',
+      intent_extras: extras.join(','),
+    },
+  };
+}
