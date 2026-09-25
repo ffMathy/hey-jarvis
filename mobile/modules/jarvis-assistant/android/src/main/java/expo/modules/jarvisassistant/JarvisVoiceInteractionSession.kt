@@ -17,6 +17,7 @@ import com.facebook.react.ReactApplication
 import com.facebook.react.ReactHost
 import com.facebook.react.common.LifecycleState
 import com.facebook.react.interfaces.fabric.ReactSurface
+import com.facebook.react.runtime.ReactSurfaceImpl
 import java.lang.ref.WeakReference
 
 /**
@@ -46,6 +47,9 @@ class JarvisVoiceInteractionSession(context: Context) : VoiceInteractionSession(
 
   /** Set only if this session was what resumed React Native, so only it un-resumes it. */
   private var resumedHost: ReactHost? = null
+
+  /** How many times this window has been shown. See {@link announceShowing}. */
+  private var showings = 0
 
   /**
    * Asks for a hardware-accelerated window, before there is anything in it.
@@ -107,8 +111,10 @@ class JarvisVoiceInteractionSession(context: Context) : VoiceInteractionSession(
 
     current = WeakReference(this)
 
-    if (surface != null) {
+    val drawing = surface
+    if (drawing != null) {
       makeWindowSeeThrough()
+      announceShowing(drawing)
       reactHost()?.let { resumeReactNative(it) }
       return
     }
@@ -178,6 +184,34 @@ class JarvisVoiceInteractionSession(context: Context) : VoiceInteractionSession(
     // draws under them, so there are no bar backgrounds of this window's to paint. Setting their
     // colours instead is deprecated from API 35 and does nothing there.
     window.addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
+  }
+
+  /**
+   * Tells the app drawn in this window that the window has been shown again, and nobody else.
+   *
+   * **`AppState` cannot say this, because it belongs to the process rather than to a window.** The
+   * app's own activity is often still alive in the background from an earlier launch, rendering a
+   * second tree on the same JavaScript runtime — and resuming React Native for this window moves
+   * `AppState` to `active` for that tree too. Both used to take it as a summoning. The activity's
+   * tree then started a conversation of its own, behind the app the user was in: the greeting
+   * played and nothing appeared, because what was greeting was underneath.
+   *
+   * A root prop reaches this surface's tree alone. It changes on every showing, which is what lets
+   * the app tell a new summoning from a re-render, as the `summon` value in `AssistLauncher.kt`
+   * does for a launch.
+   */
+  private fun announceShowing(drawing: ReactSurface) {
+    showings += 1
+    val reactSurface = drawing as? ReactSurfaceImpl
+    if (reactSurface == null) {
+      Log.w(TAG, "The assistant window's surface cannot take new props; a second summoning will not be noticed.")
+      return
+    }
+    try {
+      reactSurface.updateInitProps(Bundle().apply { putInt(SHOWING_PROP, showings) })
+    } catch (error: RuntimeException) {
+      Log.w(TAG, "Could not tell the app the assistant window was shown again.", error)
+    }
   }
 
   /**
@@ -261,6 +295,12 @@ class JarvisVoiceInteractionSession(context: Context) : VoiceInteractionSession(
      * spellings together.
      */
     private const val MAIN_COMPONENT = "assistant"
+
+    /**
+     * The root prop that counts this window's showings. `SHOWING_PROP` in
+     * `mobile/src/assistant-window.ts` is the other spelling, pinned by the same contract spec.
+     */
+    private const val SHOWING_PROP = "showing"
 
     /**
      * The session on screen, for the app to close from JavaScript.

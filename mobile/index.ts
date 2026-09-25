@@ -2,7 +2,7 @@ import { registerRootComponent } from 'expo';
 import { createElement } from 'react';
 import { AppRegistry } from 'react-native';
 import { App } from './src/app';
-import { ASSISTANT_SURFACE } from './src/assistant-window';
+import { ASSISTANT_SURFACE, SHOWING_PROP } from './src/assistant-window';
 
 /** The app as anyone opens it: from the launcher, from a deep link, or by the plain assist intent. */
 function LaunchedApp() {
@@ -13,10 +13,11 @@ function LaunchedApp() {
  * The app as the assistant's own window draws it.
  *
  * The same component, told that it is being asked rather than opened — there is no launch URL to
- * read here, because nothing was launched. See `assistant-window.ts`.
+ * read here, because nothing was launched — and which showing of the window this is, which the
+ * session changes every time it is shown. See `assistant-window.ts`.
  */
-function SummonedApp() {
-  return createElement(App, { summoned: true });
+function SummonedApp(props: { [SHOWING_PROP]?: number }) {
+  return createElement(App, { summoned: true, showing: props[SHOWING_PROP] });
 }
 
 // `registerRootComponent` is `AppRegistry.registerComponent` plus the wiring the

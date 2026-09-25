@@ -76,6 +76,11 @@ export interface AppProps {
    * itself there.
    */
   summoned?: boolean;
+  /**
+   * Which showing of the assistant's window this is: a number that changes every time the window
+   * is shown, and is only ever set in that window. See `SHOWING_PROP` in `assistant-window.ts`.
+   */
+  showing?: number;
 }
 
 /**
@@ -87,7 +92,7 @@ export interface AppProps {
  * side trip from setup and back — and where a summoning lands when there is
  * nothing set up yet.
  */
-export function App({ summoned = false }: AppProps) {
+export function App({ summoned = false, showing }: AppProps) {
   const [settings, setSettings] = useState<ElevenLabsSettings | undefined>(undefined);
   /**
    * Whether the first-run tour is already behind this install.
@@ -208,7 +213,9 @@ export function App({ summoned = false }: AppProps) {
       <StatusBar style="light" />
       <View style={[styles.root, isSeeThrough ? styles.seeThrough : styles.opaque]}>
         {screen === 'loading' ? <ActivityIndicator color={theme.colors.accent} /> : null}
-        {screen === 'sample' ? <SampleScreen onLeave={() => setIsSampling(false)} /> : null}
+        {screen === 'sample' ? (
+          <SampleScreen inAssistantWindow={summoned} showing={showing} onLeave={() => setIsSampling(false)} />
+        ) : null}
         {screen === 'onboarding' ? (
           <OnboardingScreen
             settings={settings}
@@ -230,6 +237,8 @@ export function App({ summoned = false }: AppProps) {
             settings={settings}
             onEditSettings={() => setIsEditingSettings(true)}
             inSheet={conversationInSheet}
+            inAssistantWindow={summoned}
+            showing={showing}
           />
         ) : null}
       </View>

@@ -214,8 +214,21 @@ It used to take the whole screen when summoned too, and nobody chose that — th
 ever written for sample mode, which is what a summoning showed before there were credentials, so a
 phone that had been set up simply stopped seeing it. Tapping beside the sheet or pressing back hangs
 up. The assistant's window is kept between summonings rather than rebuilt, so a summoning after he
-has gone is noticed by the app returning to the foreground, which brings the sheet back and opens a
-new conversation.
+has gone is announced by the session itself: every showing sets the surface's `showing` root prop
+(`SHOWING_PROP`) to a new number, which brings the sheet back and opens a new conversation.
+
+**There are two apps on one JavaScript runtime, and a signal has to reach the right one.** The
+assistant's window is a second React Native surface; the app's own activity is often still alive
+from an earlier launch, behind whatever the user is doing, rendering its own tree. Anything that
+belongs to the process rather than to a window reaches both. `AppState` is one — resuming React
+Native for the window moves it to `active` in the activity's tree too — and it used to be how a
+re-summoning was noticed, so the activity answered it as well, with a conversation nobody could see:
+the greeting played and no sheet appeared, because the one greeting was underneath the current app.
+`dismissAssistantWindow` is another, since it retracts whichever window is showing, and the
+activity's conversation ending mid-summoning used to take the window down with it. Launch URLs are a
+third. So a summoning into the window is its `showing` prop, a summoning into the activity is its
+launch URL, the window's tree ignores launch URLs, and only the tree drawn in the window
+(`summoned`, passed down as `inAssistantWindow`) may retract it.
 
 **A session that fails once open also says so in a toast.** An account out of credits is
 accepted, connects, and is then closed by ElevenLabs with `quota_exceeded` — which is a

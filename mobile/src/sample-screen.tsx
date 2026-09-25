@@ -1,5 +1,5 @@
 import { hearsSomeone, moodOf, nextSampleMode, PARTICLE_COUNT, SAMPLE_MODE_LABELS, type SampleMode } from 'hologram';
-import { LEAVING_SECONDS, useIsForeground } from 'hologram/react/lifecycle';
+import { LEAVING_SECONDS } from 'hologram/react/lifecycle';
 import { FrameRate, ModeToast, useSimulatedUser, useSimulatedVoice } from 'hologram/react/sample';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -17,6 +17,10 @@ import { useSparkDensity } from './spark-density';
 import { theme } from './theme';
 
 interface SampleScreenProps {
+  /** Drawn in the assistant's own window rather than the app's activity. See `App`. */
+  inAssistantWindow?: boolean;
+  /** Which showing of the assistant's window this is; changes on every summoning. See `App`. */
+  showing?: number;
   onLeave: () => void;
 }
 
@@ -48,7 +52,7 @@ interface SampleScreenProps {
  * **The frame-rate readout is here and nowhere else.** Sample mode is where the drawing is shown
  * off and measured; the conversation screen is the assistant, and has nothing on it but him.
  */
-export function SampleScreen({ onLeave }: SampleScreenProps) {
+export function SampleScreen({ inAssistantWindow = false, showing, onLeave }: SampleScreenProps) {
   const [mode, setMode] = useState<SampleMode>('speaking');
   const [leaving, setLeaving] = useState(false);
   // Nothing is drawn until the sheet has stopped moving; see `sample-sheet.tsx` for why.
@@ -64,7 +68,6 @@ export function SampleScreen({ onLeave }: SampleScreenProps) {
   // and no `SurfaceView`, and he simply fills the middle of the window.
   const hologramSize = sampleHologramSize(width, height);
   const going = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const isForeground = useIsForeground();
   const { frameRate, buildMilliseconds, particleShare, provenShare, startingShare } = useSparkDensity();
 
   /**
@@ -94,12 +97,18 @@ export function SampleScreen({ onLeave }: SampleScreenProps) {
    * Summoned, the app *is* the assistant's window and there is nothing behind it but whatever the
    * user was already doing, so finishing means retracting that window; opened as an app, there is
    * a settings screen behind it to go back to.
+   *
+   * Which of the two is known rather than tried: `dismissAssistantWindow` retracts whichever
+   * assistant window is showing, including one this screen is not in. See `leaveTheSheet` in
+   * `conversation-sheet.tsx`.
    */
   const finish = useCallback(() => {
-    if (!dismissAssistantWindow()) {
+    if (inAssistantWindow) {
+      dismissAssistantWindow();
+    } else {
       onLeave();
     }
-  }, [onLeave]);
+  }, [inAssistantWindow, onLeave]);
 
   useEffect(() => () => clearTimeout(going.current), []);
 
@@ -119,13 +128,19 @@ export function SampleScreen({ onLeave }: SampleScreenProps) {
   // Nothing is lost by leaving it alone. The canvas is still there and still mounted; the view
   // winds its own clock back to zero when it returns to the foreground, so the materialisation
   // plays again regardless. See `hologram-view.tsx`.
+  //
+  // A new showing of the window is the signal, not the app coming to the foreground: that is the
+  // whole process's, and it moves for the app's own activity as well. See `SHOWING_PROP`.
+  const seenShowing = useRef(showing);
   useEffect(() => {
-    if (isForeground) {
-      clearTimeout(going.current);
-      going.current = undefined;
-      setLeaving(false);
+    if (showing === seenShowing.current) {
+      return;
     }
-  }, [isForeground]);
+    seenShowing.current = showing;
+    clearTimeout(going.current);
+    going.current = undefined;
+    setLeaving(false);
+  }, [showing]);
 
   // The back button leaves the same way a tap does, rather than closing the window from under him.
   // In the assistant's own window this arrives because the session hands the press to React Native
