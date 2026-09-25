@@ -1,5 +1,6 @@
 import type { Tool, ToolExecutionContext } from '@mastra/core/tools';
 import { createTool as mastraCreateTool } from '@mastra/core/tools';
+import { isSlowTask, markAsSlow } from './slow-tasks.js';
 
 /**
  * Configuration for creating a shortcut tool that wraps another tool.
@@ -53,11 +54,14 @@ export function createShortcut<TInput, TOutput>(config: CreateShortcutConfig<TIn
     throw new Error(`Tool ${config.tool.id || 'unknown'} must have an execute function defined for use in shortcuts`);
   }
 
-  return mastraCreateTool({
+  const shortcut = mastraCreateTool({
     id: config.id,
     description: config.description,
     inputSchema: config.tool.inputSchema,
     outputSchema: config.tool.outputSchema,
     execute: config.execute,
   });
+
+  // A shortcut onto a slow tool takes exactly as long as the tool does.
+  return config.tool.id && isSlowTask(config.tool.id) ? markAsSlow(shortcut) : shortcut;
 }

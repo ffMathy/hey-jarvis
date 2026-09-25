@@ -91,6 +91,25 @@ const instructionsOutputSchema = z.object({
     )
     .optional()
     .describe('Questions only the user can answer, which part of the request is waiting on'),
+  slowTaskIds: z
+    .array(z.string())
+    .optional()
+    .describe('Tasks that have just started work taking minutes rather than seconds'),
+});
+
+const pollInputSchema = z.object({
+  sessionId: z
+    .string()
+    .optional()
+    .describe(
+      'Leave this out unless you passed a sessionId to routePromptWorkflow, and then pass that same value. Never make one up.',
+    ),
+  notifyWhenDone: z
+    .boolean()
+    .optional()
+    .describe(
+      'Set to true only when the user has accepted your offer to notify him when slow work is done. Leave it out otherwise.',
+    ),
 });
 
 export { inputSchema, instructionsOutputSchema };
@@ -230,6 +249,46 @@ function moreToComeInstructions(): string {
 }
 
 /**
+ * The offer made when part of a request has started something slow.
+ *
+ * Slow means minutes (see `utils/slow-tasks.ts`), and a voice call is a bad place to spend them:
+ * sir sits through silence, or hangs up and never hears the result. So Jarvis offers to notify
+ * him instead, once per slow task.
+ *
+ * His reply is the dangerous part. Everything else he says goes through `routePromptWorkflow`,
+ * and a new request there supersedes this one -- which would cancel the very work he just agreed
+ * to be told about. So the reply to the offer is answered with `notifyWhenDone` on the next poll,
+ * never routed, and this says so where the rule to route everything is otherwise given.
+ */
+function slowTaskOfferInstructions(hasResults: boolean): string {
+  return (
+    (hasResults ? `More results have arrived since last time. ${INSTRUCTIONS.summarize} Then: ` : '') +
+    'Slow work has started: the tasks in slowTaskIds will take several minutes, and the request is not finished. ' +
+    'Tell the user so in one short sentence, in your own voice, and offer to notify him when it is done so that he ' +
+    'need not stay on the line. Then stop and let him answer. ' +
+    'If he accepts, call getNextInstructionsWorkflow with notifyWhenDone set to true. If he declines or would rather ' +
+    'wait, call getNextInstructionsWorkflow as before. Either way, his reply to this offer is not a new request: never ' +
+    'send it through routePromptWorkflow, because a new request there cancels this one. ' +
+    CONVERSATION_CONTROL_EXCEPTION
+  );
+}
+
+/**
+ * The reply to accepting the offer. The request now carries on without the call, so Jarvis is
+ * released from polling it, and anything further sir asks for can be routed without cancelling it.
+ */
+function notifyWhenDoneInstructions(hasResults: boolean): string {
+  return (
+    (hasResults ? `More results have arrived since last time. ${INSTRUCTIONS.summarize} Then: ` : '') +
+    'The user will be notified when this request is done — with its results, or with any question it needs him to ' +
+    'answer. Tell him so in a few words. It carries on in the background whatever else he asks for, so stop calling ' +
+    'getNextInstructionsWorkflow for it. If he asks for anything further, send it through routePromptWorkflow as ' +
+    'usual; if he has nothing else, let the call end. ' +
+    CONVERSATION_CONTROL_EXCEPTION
+  );
+}
+
+/**
  * How long a single poll may block before we tell Jarvis to call again.
  *
  * This has to fit inside the caller's own tool-call budget, which is the shorter of the
@@ -322,18 +381,26 @@ function buildClosingReport(snapshot: RoutingSnapshot): z.infer<typeof instructi
   };
 }
 
-/** A report covering the delegations that landed since the last poll, if any. */
+/**
+ * A report covering the delegations that landed since the last poll, and any that have just
+ * started something slow, if there is either.
+ */
 function buildProgressReport(snapshot: RoutingSnapshot): z.infer<typeof instructionsOutputSchema> | undefined {
-  if (snapshot.landed.length === 0) {
+  const hasResults = snapshot.landed.length > 0;
+  const hasNewlySlow = snapshot.newlySlow.length > 0;
+  if (!hasResults && !hasNewlySlow) {
     return undefined;
   }
 
   return {
-    instructions: moreToComeInstructions(),
-    completedTaskResults: snapshot.landed.map((outcome) => ({ id: outcome.taskId, result: outcome.result })),
+    instructions: hasNewlySlow ? slowTaskOfferInstructions(hasResults) : moreToComeInstructions(),
+    ...(hasResults && {
+      completedTaskResults: snapshot.landed.map((outcome) => ({ id: outcome.taskId, result: outcome.result })),
+    }),
     // Answerable because the plan is written down before anything runs: what is still
     // outstanding is known, not inferred from whatever happened to start.
     taskIdsInProgress: snapshot.inProgress,
+    ...(hasNewlySlow && { slowTaskIds: snapshot.newlySlow }),
   };
 }
 
@@ -370,20 +437,31 @@ export const routePromptWorkflow = createWorkflow({
 const getNextInstructionsStep = createStep({
   id: 'get-next-instructions',
   description: 'Return whatever the routing plan has produced since the last call',
-  inputSchema: z.object({
-    sessionId: z
-      .string()
-      .optional()
-      .describe(
-        'Leave this out unless you passed a sessionId to routePromptWorkflow, and then pass that same value. Never make one up.',
-      ),
-  }),
+  inputSchema: pollInputSchema,
   outputSchema: instructionsOutputSchema,
   execute: async ({ inputData, mastra }) => {
     rememberMastraRegistry(mastra);
     const sessionId = inputData.sessionId ?? DEFAULT_ROUTING_SESSION_ID;
     const runtime = getRoutingRuntime();
     const deadlineAt = Date.now() + pollDeadlineMs;
+
+    // Accepting the offer is answered at once rather than after a wait: sir has just said yes,
+    // and the reply to that is Jarvis saying he will be told. A request that finished in the
+    // meantime has nothing to notify about, and is reported by the loop below like any other.
+    if (inputData.notifyWhenDone && (await runtime.notifyWhenDone(sessionId))) {
+      const snapshot = await runtime.poll(sessionId);
+      if (!snapshot.finished) {
+        return {
+          instructions: notifyWhenDoneInstructions(snapshot.landed.length > 0),
+          ...(snapshot.landed.length > 0 && {
+            completedTaskResults: snapshot.landed.map((outcome) => ({ id: outcome.taskId, result: outcome.result })),
+          }),
+          taskIdsInProgress: snapshot.inProgress,
+        };
+      }
+
+      return buildClosingReport(snapshot);
+    }
 
     // Each pass reads the delegations afresh. A snapshot marks whatever it reports as
     // handed over, so taking one and discarding it would lose those results -- every path
@@ -418,14 +496,7 @@ const getNextInstructionsStep = createStep({
 export const getNextInstructionsWorkflow = createWorkflow({
   id: 'getNextInstructionsWorkflow',
   description: 'Workflow to wait for the next instructions from an in-flight routing request',
-  inputSchema: z.object({
-    sessionId: z
-      .string()
-      .optional()
-      .describe(
-        'Leave this out unless you passed a sessionId to routePromptWorkflow, and then pass that same value. Never make one up.',
-      ),
-  }),
+  inputSchema: pollInputSchema,
   outputSchema: instructionsOutputSchema,
 })
   .then(getNextInstructionsStep)

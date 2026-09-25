@@ -34,7 +34,8 @@ export interface ClaudeSessionConfiguration {
 /** What a session was started for, stored on the session for traceability. */
 export interface ClaudeSessionMetadata {
   repository: string;
-  issueNumber: number;
+  /** The issue the session implements, when it was started from one. */
+  issueNumber?: number;
 }
 
 /**
@@ -117,7 +118,7 @@ export async function createClaudeSession(task: string, metadata?: ClaudeSession
       ? {
           metadata: {
             repository: metadata.repository,
-            issueNumber: String(metadata.issueNumber),
+            ...(metadata.issueNumber ? { issueNumber: String(metadata.issueNumber) } : {}),
           },
         }
       : {}),

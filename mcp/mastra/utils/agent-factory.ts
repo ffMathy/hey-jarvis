@@ -27,9 +27,9 @@ const MAX_AGENT_STEPS = 20;
  * boot, and the server stays up for days, so a time taken at construction is days stale by the
  * time anyone asks what is on tomorrow.
  */
-function withSharedGuidelines(instructions: string, { asksQuestions }: { asksQuestions: boolean }): string {
+function withSharedGuidelines(instructions: string): string {
   const guidelines = [
-    ...(asksQuestions ? [] : ['Never ask questions. Always make best-guess assumptions.']),
+    'Never ask questions. Always make best-guess assumptions.',
     `The time is currently: \`${new Date().toString()}\`.`,
   ];
 
@@ -43,20 +43,9 @@ export async function createAgent(
     model?: AgentConfig['model'];
     memory?: AgentConfig['memory'];
     scorers?: AgentConfig['scorers'];
-    /**
-     * Lets the agent ask questions, instead of telling it never to.
-     *
-     * Every other agent is told never to ask and to make a best-guess assumption instead, because
-     * its answer ends the exchange: it is spoken back to the user, and no reply finds its way back
-     * to the agent that asked. Set this only for an agent whose questions do reach the user and
-     * whose answers come back to it — the requirements interviewer, whose questions suspend
-     * `implementFeatureWorkflow` until the user answers, and whose whole job asking is. Telling it
-     * never to ask would contradict its own instructions.
-     */
-    asksQuestions?: boolean;
   },
 ): Promise<Agent> {
-  const { instructions, asksQuestions = false, ...agentConfig } = config;
+  const { instructions, ...agentConfig } = config;
 
   const DEFAULT_AGENT_CONFIG: Partial<AgentConfig> = {
     // Use shared memory instance by default
@@ -93,7 +82,7 @@ export async function createAgent(
     ...agentConfig,
     // After the spread, so the caller's bare instructions cannot replace the guidelines. Mastra
     // resolves a function on every call, which is what keeps the time current.
-    instructions: () => withSharedGuidelines(instructions, { asksQuestions }),
+    instructions: () => withSharedGuidelines(instructions),
     model: resolvedModel,
     // Merge output processors instead of replacing
     outputProcessors: [...defaultProcessors, ...customProcessors],

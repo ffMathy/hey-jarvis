@@ -17,6 +17,7 @@ export {
 } from './providers/ollama-provider.js';
 export { createScorersConfig, getDefaultScorers } from './scorers-config.js';
 export { createShortcut } from './shortcut-factory.js';
+export { isSlowTask, markAsSlow } from './slow-tasks.js';
 // Test helper exports
 export { createTool } from './tool-factory.js';
 export { CronPatterns } from './workflows/cron-patterns.js';

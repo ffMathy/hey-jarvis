@@ -10,7 +10,7 @@ import type {
  *
  * For specs that need an agent to behave a particular way — call a tool, answer in JSON, say
  * something — without credentials or a network. The script sees what the model was sent, so a
- * turn can depend on the conversation so far, which is how an interviewer "hears" an answer.
+ * turn can depend on the conversation so far, which is how a planner "hears" an answer.
  */
 
 /** One reply: text, tool calls, or both. */

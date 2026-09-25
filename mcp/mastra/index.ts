@@ -11,7 +11,7 @@ import { createLogger } from './utils/logger.js';
 import { TokenTrackingProcessor, TokenUsageExporter } from './utils/token-usage-exporter.js';
 import { storageRetentionWorkflow, tokenUsageTools } from './verticals/api/index.js';
 import { calendarTools, getCalendarAgent } from './verticals/calendar/index.js';
-import { codingTools, getCodingAgent, getRequirementsInterviewerAgent } from './verticals/coding/index.js';
+import { codingTools, getCodingAgent } from './verticals/coding/index.js';
 import { commuteTools, getCommuteAgent } from './verticals/commute/index.js';
 import { cookingTools, getCookingAgent } from './verticals/cooking/index.js';
 import { emailTools, getEmailAgent } from './verticals/email/index.js';
@@ -119,7 +119,6 @@ export async function getMastra(): Promise<Mastra> {
       await getInternetOfThingsAgent(),
       await getNotificationAgent(),
       await getReflectionAgent(),
-      await getRequirementsInterviewerAgent(),
       await getRoutingPlannerAgent(),
       await getShoppingListAgent(),
       await getShoppingListSummaryAgent(),

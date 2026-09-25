@@ -41,7 +41,7 @@ mcp/
 │   │   │   │   └── index.ts
 │   │   │   └── index.ts
 │   │   ├── coding/      # GitHub repository management
-│   │   │   ├── agent.ts          # Coding agent and the requirements interviewer
+│   │   │   ├── agent.ts          # Coding agent
 │   │   │   ├── tools.ts
 │   │   │   ├── workflows.ts
 │   │   │   └── index.ts
@@ -109,10 +109,10 @@ questions, make a best-guess assumption instead, and the current time. The instr
 resolved on every request, not at construction — agents are built once at boot and the server
 stays up for days, so a time taken then would be days stale.
 
-An agent's answer usually ends the exchange, so a question in it has nowhere to go. The one
-exception is `requirementsInterviewer`, whose questions suspend `implementFeatureWorkflow`
-until the user answers; it is built with `asksQuestions: true`, which leaves out the "never ask"
-line and keeps the time. `mastra/utils/agent-factory.spec.ts` pins the exact text.
+An agent's answer usually ends the exchange, so a question in it has nowhere to go. Questions
+that do reach the user come from workflow steps that suspend — `implementFeatureWorkflow` asks
+the ones its codebase analysis could not answer — never from an agent's own text.
+`mastra/utils/agent-factory.spec.ts` pins the exact text.
 
 ### 🔧 Tool Ecosystem
 - **Model Context Protocol (MCP)** server integrations
@@ -432,7 +432,7 @@ Manages GitHub repositories and coordinates feature implementation:
 - **Repository management**: Browse and search repositories for any GitHub user
 - **Issue tracking**: View open, closed, or all issues for repositories
 - **Workflow coordination**: Triggers requirements gathering workflow for new feature requests
-- **Smart defaults**: a task with no repository named is a task on Jarvis himself, `ffMathy/hey-jarvis` (`coding/repository.ts`). Every tool, `implementFeatureWorkflow` and both agents default to it, and the requirements interviewer is told the repository up front and never asks which one is meant
+- **Smart defaults**: a task with no repository named is a task on Jarvis himself, `ffMathy/hey-jarvis` (`coding/repository.ts`). Every tool, `implementFeatureWorkflow` and the agent default to it, and the session analysing the codebase is told the repository up front and never asks which one is meant
 
 **Key Capabilities:**
 - List all public repositories for a GitHub user
@@ -444,9 +444,12 @@ Manages GitHub repositories and coordinates feature implementation:
 
 **Architecture Pattern:**
 This agent follows the **workflow delegation pattern**. When a user requests a new feature implementation, instead of gathering requirements itself, it delegates to the `implementFeatureWorkflow`, which:
-1. Uses the Requirements Interviewer Agent to gather complete requirements, suspending on each question until the user answers it
-2. Creates an issue with the structured requirements and the questions and answers that produced them
-3. Starts a Claude cloud session that implements the issue autonomously
+1. Has a Claude cloud session read the codebase with the request in hand, and write down what it found and the questions only the user can answer
+2. Asks the user those questions, suspending on each one until it is answered
+3. Starts a Claude cloud session that implements the change autonomously, handed the request, the findings and every answer — no issue is filed
+
+The workflow is [marked slow](#slow-tasks), so routing offers to notify the user instead of
+holding the line while the analysis runs.
 
 By voice, each of those questions is asked by Jarvis and answered through routing — see
 **Questions for the user** under [Routing](#routing).
@@ -457,16 +460,18 @@ rather than to GitHub Copilot, through the official `@anthropic-ai/sdk` client. 
 in a sandboxed cloud environment; it is created with the issue as its task, works unattended, and opens a pull request
 when it is done.
 
-- **`startCodingSession`**: Creates the session, seeded with the issue link and the gathered requirements, and starts
-  watching it. Used by `implementFeatureWorkflow`.
+- **`startCodingSession`**: Creates the session, seeded with the request, the analysis's findings and the user's
+  answers, and starts watching it. Used by `implementFeatureWorkflow`.
 - **`getCodingSessionStatus`**: Reports a session's status (`idle`, `running`, `rescheduling`, `terminated`) and the
   messages it has produced.
 - **`sendCodingSessionMessage`**: Sends a follow-up message to a session, to answer a question or redirect its work.
 - **`runCodingTask`**: For work whose result is an answer rather than a pull request. Starts a session on a free-form
   task, polls it until its turn ends (`waitForClaudeSessionTurn`, up to 15 minutes) and returns the last message it
   sent. The session is not handed to the watcher, because the caller reports the result itself. Like
-  `startCodingSession` it is not one of the coding agent's own tools; other verticals reach it through shortcuts, such
-  as the [Generative UI Vertical](#generative-ui-vertical-shortcuts)'s `createArtifact`.
+  `startCodingSession` it is not one of the coding agent's own tools; `implementFeatureWorkflow` runs it to analyse
+  the codebase, and other verticals reach it through shortcuts, such as the
+  [Generative UI Vertical](#generative-ui-vertical-shortcuts)'s `createArtifact`. It is marked slow, and a shortcut
+  onto it inherits the mark.
 
 **Feeding Back Into Synapse:**
 `ClaudeSessionWatcher` tails each session's server-sent event stream and republishes notable events as Synapse state
@@ -501,7 +506,7 @@ a session (`startCodingSession`, `runCodingTask` and the session tools) need the
 - "What repositories does ffMathy have?"
 - "Show me open issues in hey-jarvis"
 - "Search for repositories about AI agents"
-- "I want to add email notifications" _(triggers requirements workflow)_
+- "I want to add email notifications" _(triggers `implementFeatureWorkflow`)_
 
 ### Commute Agent
 Provides intelligent commute planning and navigation assistance using Google Maps:
@@ -566,58 +571,6 @@ Google Maps APIs require an API key rather than OAuth2 credentials. If you alrea
 
 **Note:**
 Maps APIs are public services (no user data access) that use API keys for billing and quota management, while Calendar/Tasks APIs access private user data and require OAuth2 authentication. Both can be enabled in the same Google Cloud project.
-
-### Requirements Interviewer Agent
-Specialized agent for interactive requirements gathering through structured interviews:
-- **No tools**: Pure conversation agent focused on questioning and clarification
-- **Google Gemini model**: Uses `gemini-flash-latest` for natural language processing
-- **One question at a time**: Focused, sequential questioning for clarity
-- **Never assumes**: Always asks clarifying questions, never guesses
-- **Structured output**: Produces complete requirements document with acceptance criteria
-
-**Key Principles:**
-- **NEVER ASSUME** - Always ask, never guess
-- **ONE QUESTION AT A TIME** - Focus deeply on each aspect
-- **BE SPECIFIC** - Ask detailed, technical questions
-- **VERIFY UNDERSTANDING** - Summarize after each answer
-- **TRACK PROGRESS** - Monitor what's been clarified vs what remains
-
-**Interview Process:**
-1. **Acknowledge** user's answer and summarize what was learned
-2. **Update** mental model of requirements
-3. **Assess** what's still unclear or missing
-4. **Ask** the next most important clarifying question
-
-**Completion Criteria:**
-Only stops when 100% certain about:
-- What exactly is being implemented
-- Where it will be implemented
-- What are the inputs and outputs
-- How it handles edge cases
-- What dependencies are needed
-- What are the acceptance criteria
-
-**Output Structure:**
-```typescript
-{
-  title: "Clear feature name",
-  requirements: ["Specific requirement 1", "Requirement 2", ...],
-  acceptanceCriteria: ["Testable criteria 1", "Criteria 2", ...],
-  implementation: {
-    location: "Where in codebase",
-    dependencies: ["Dependency 1", "Dependency 2", ...],
-    edgeCases: ["Edge case 1", "Edge case 2", ...]
-  },
-  isComplete: true
-}
-```
-
-**Example Questions:**
-- "What email service should this integrate with?"
-- "Where in the codebase should this be implemented?"
-- "What should happen if the API is unavailable?"
-- "What are the expected inputs and outputs?"
-- "Are there any existing patterns to follow?"
 
 ### Reflection Agent
 Answers questions about the assistant itself rather than about the world — what failed, when, in
@@ -733,7 +686,7 @@ small, fast surface, and everything else happens behind them.
 
 **Questions for the user:**
 Some work cannot finish on what the request said. The coding agent runs `implementFeatureWorkflow`
-as a tool, and the requirements interview suspends that workflow on every question it asks —
+as a tool, and that workflow suspends on every question its codebase analysis left for the user —
 which, through Mastra's workflow-as-tool conversion, suspends the agent inside that tool call.
 `verticals/routing/questions.ts` turns that into a question Jarvis can ask, and nothing in it is
 specific to coding: any routable agent whose tool suspends with a `question`, and resumes with a
@@ -761,10 +714,30 @@ single text field, works the same way.
 
 A question sir ignores stays open: talking about something else plans that as usual, and the
 answer is still taken later. Open questions live in memory, so a restart forgets them while the
-suspended run stays in storage; the interview then has to be started again.
+suspended run stays in storage; the request then has to be made again.
 
 `coding-interview.spec.ts` runs the whole path — the two MCP tools, the planner, the coding agent,
-the interview and the issue — on scripted models.
+the questions, the slow-task offer, the notification and the session — on scripted models.
+
+<a id="slow-tasks"></a>
+**Slow tasks:**
+Some work takes minutes: a Claude cloud session reading a codebase, or building a page. A tool or
+workflow is flagged slow in code with `markAsSlow` (`mastra/utils/slow-tasks.ts`), and a shortcut
+onto a slow tool is slow too. The flag belongs to the tool rather than the agent — the coding
+agent lists issues in a second and starts an implementation that takes ten minutes.
+
+1. Routing sees the agent call a slow tool the same way it sees a suspension: the step forwards
+   the agent's `tool-call` chunk as `workflow-step-output`, and its `toolName` (`workflow-<id>` for
+   a workflow) is looked up among the slow ones. That becomes a `delegation_slow` event.
+2. The next poll returns at once with the task in `slowTaskIds`, and instructions to tell the user
+   it will take a few minutes and offer to notify him when it is done. Each task is offered once.
+3. His reply to the offer is **not** routed — a new request supersedes the running one and would
+   cancel the work he just agreed to be told about. If he accepts, Jarvis polls with
+   `notifyWhenDone: true`, which keeps the two-tool surface.
+4. From then on the request outlives the conversation: a newer request does not cancel it, its
+   questions stay open, and when it ends `completion-notice.ts` sends him the results — or the
+   question it is waiting on — through `sendNotification`. He answers it the next time he talks
+   to Jarvis, through **Questions for the user** as usual.
 
 **Why a workflow per request:**
 Which agents a request needs is known only once it arrives, so a request that is a workflow has
@@ -1104,27 +1077,28 @@ Multi-step shopping list processing workflow implementing the original n8n 3-age
 
 **Converted from n8n**: This workflow replicates the exact 3-agent pattern from the original n8n Shopping List Agent workflow, including Information Extractor → Shopping List Mutator → Summarization Agent flow with before/after cart comparison.
 
-### Requirements Gathering Workflow
-Implements the workflow-based requirements gathering pattern for new feature implementation:
-- **`implementFeatureWorkflow`**: Handles complete requirements gathering process before implementation
-- **Step 1 - Gather Requirements**: Uses Requirements Interviewer Agent to ask clarifying questions, one suspension per question
-- **Step 2 - Create Issue**: Creates the GitHub issue with the requirements, acceptance criteria, and the interview transcript
-- **Step 3 - Start Coding Session**: Starts a Claude cloud session that implements the issue, and watches its events
+### Implement Feature Workflow
+Takes a change from a spoken request to a Claude cloud session implementing it:
+- **`implementFeatureWorkflow`**: Analyses the codebase, asks what it could not answer, then implements
+- **Step 1 - Analyse the Codebase**: A Claude cloud session (`runCodingTask`) reads the repository with the request in hand and ends on a JSON object: a title, its findings, and at most five spoken questions only the user can answer
+- **Step 2 - Ask the Questions**: One suspension per question, verbatim; none at all when the codebase settles everything
+- **Step 3 - Start Coding Session**: Starts a Claude cloud session on the change, and watches its events. No issue is filed
 
 **Architecture Pattern:**
 This workflow follows the **agent-as-step** pattern recommended by Mastra for sequential multi-step processes where the exact steps are known in advance (not dynamic routing).
 
 **Workflow Steps:**
-1. **Interactive Interview**: Requirements Interviewer Agent asks questions one at a time until 100% certain. The step
-   suspends on each question and is resumed with the answer, and only returns once nothing is left to ask — it is a
-   single step, not a loop. It used to sit in a `.dowhile` whose condition was always `true`, which ran a finished
-   interview fifty more times and then failed the run before the issue was filed
-2. **Issue Creation**: Creates an issue labeled `["ready", "requirements-complete"]` with the original request, structured
-   requirements, acceptance criteria, implementation details, and every question with the user's answer
-3. **Coding Session**: Starts a Claude cloud session on the issue with the `startCodingSession` tool. The session runs
-   unattended in a sandboxed cloud environment, and every notable event it emits (agent messages, status transitions,
-   errors) is republished as a Synapse state change from the `coding` source, so progress flows into the existing
-   notification path instead of needing the workflow to stay alive
+1. **Codebase Analysis**: The session is told to read, not change, anything, and to decide whatever the code, its
+   documentation and its conventions settle. Only what is left — the user's own choices — becomes a question, written
+   to be heard: one short sentence, no identifiers, options named. Asking before looking was what made the old
+   interview slow and generic, since a model that had never seen the code asked the user where things should go
+2. **Questions**: A single step, not a loop: it suspends on the first unanswered question, is resumed with the answer,
+   and returns once every question is answered
+3. **Coding Session**: Starts a Claude cloud session with the `startCodingSession` tool, handed the request, the
+   analysis's findings and every question with the user's answer in their own words. The session runs unattended in a
+   sandboxed cloud environment, and every notable event it emits (agent messages, status transitions, errors) is
+   republished as a Synapse state change from the `coding` source, so progress flows into the existing notification
+   path instead of needing the workflow to stay alive
 
 **Usage Example:**
 ```typescript
@@ -1136,13 +1110,13 @@ await mastra.workflows.implementFeatureWorkflow.execute({
 ```
 
 **Why Workflow Instead of Agent Network?**
-- **Known sequence**: Requirements gathering follows a predictable pattern (interview → file → implement)
+- **Known sequence**: The work follows a predictable pattern (analyse → ask → implement)
 - **No dynamic routing**: Unlike agent networks, we don't need to choose between different paths at runtime
 - **Deterministic**: Each step has clear inputs/outputs and executes in order
 - **Auditable**: Workflow provides transparent execution trace and step-by-step visibility
 
 **Human-in-the-Loop:**
-The workflow uses Mastra's suspend/resume pattern in the Requirements Interviewer step, allowing the agent to ask questions and wait for user responses before proceeding. It suspends with `{ question, context }` and resumes with `{ userAnswer }` — a single text field, which is what lets routing resume it with a spoken answer. Because the interviewer's questions are read aloud, it is told to ask one short, plain question at a time.
+The workflow uses Mastra's suspend/resume pattern in the questions step, asking each question and waiting for the user's response before proceeding. It suspends with `{ question, context }` and resumes with `{ userAnswer }` — a single text field, which is what lets routing resume it with a spoken answer. Because the questions are read aloud, the analysing session is told to write one short, plain question per choice.
 
 ### Human-in-the-Loop Demo Workflow
 

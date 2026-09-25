@@ -1,85 +1,39 @@
 /**
- * The requirements interview, run the way a voice conversation runs it: one question, a
- * suspension, an answer, the next question, until the interviewer has what it needs — and then
- * an issue and a Claude session, exactly once.
+ * The path from a spoken request to a coding session, run the way a voice conversation runs it:
+ * a session reads the codebase first, its questions are asked one suspension at a time, and once
+ * the last one is answered a second session is started on the change — with no issue in between.
  *
- * The interviewer is a scripted model, and the two tools that reach GitHub and Anthropic are
- * spied on and recorded, so everything between them — the loop, the suspensions, the state carried across
- * them and what finally lands in the issue — is the real workflow.
+ * Both Claude cloud sessions are spied on and recorded, so everything between them — the
+ * analysis being read, the suspensions, the state carried across them and what the implementing
+ * session is finally told — is the real workflow.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+import { afterEach, describe, expect, it } from 'bun:test';
 import { Mastra } from '@mastra/core';
 import { InMemoryStore } from '@mastra/core/storage';
 import {
   type CodingToolRecorder,
-  RECORDED_ISSUE_URL,
+  RECORDED_ANALYSIS,
   RECORDED_SESSION_URL,
+  type RecordCodingToolsOptions,
   recordCodingTools,
 } from '../../../tests/utils/coding-tool-recorder.js';
-import { createScriptedModel } from '../../../tests/utils/scripted-model.js';
-import { createAgent } from '../../utils/agent-factory.js';
-import { implementFeatureWorkflow } from './workflows.js';
+import { isSlowTask } from '../../utils/slow-tasks.js';
+import { buildCodebaseAnalysisTask, implementFeatureWorkflow, readCodebaseAnalysis } from './workflows.js';
 
-let codingTools: CodingToolRecorder;
+const REQUEST = 'Remind me about tasks before they are due';
+const [FIRST_QUESTION, SECOND_QUESTION] = RECORDED_ANALYSIS.questions;
 
-const FIRST_QUESTION = 'Should the reminder go out by email or as a push notification?';
-const SECOND_QUESTION = 'How long before the task is due should it be sent?';
+let codingTools: CodingToolRecorder | undefined;
 
-/**
- * An interviewer that asks two questions and is then satisfied.
- *
- * It decides from what it has been told so far, the way the real one does: the answers arrive
- * as messages in the conversation it is handed on each call.
- */
-function scriptedInterviewer() {
-  return createScriptedModel(({ transcript }) => {
-    const heardFirstAnswer = transcript.includes('Push, please.');
-    const heardSecondAnswer = transcript.includes('An hour before.');
-
-    if (!heardFirstAnswer) {
-      return { text: JSON.stringify({ needsMoreQuestions: true, nextQuestion: FIRST_QUESTION, requirements: {} }) };
-    }
-
-    if (!heardSecondAnswer) {
-      return { text: JSON.stringify({ needsMoreQuestions: true, nextQuestion: SECOND_QUESTION, requirements: {} }) };
-    }
-
-    return {
-      text: JSON.stringify({
-        needsMoreQuestions: false,
-        requirements: {
-          title: 'Push reminders for tasks',
-          requirements: ['Send a push notification an hour before a task is due'],
-          acceptanceCriteria: ['A task due at 15:00 produces a push notification at 14:00'],
-          implementation: { location: 'mcp/mastra/verticals/todo-list', dependencies: [], edgeCases: [] },
-          isComplete: true,
-        },
-      }),
-    };
-  });
-}
-
-async function createMastraWithInterviewer() {
-  const interviewer = scriptedInterviewer();
+function startRun(options?: RecordCodingToolsOptions) {
+  codingTools = recordCodingTools(options);
   const mastra = new Mastra({
     storage: new InMemoryStore(),
     logger: false,
     workflows: { implementFeatureWorkflow },
-    agents: {
-      requirementsInterviewer: await createAgent({
-        id: 'requirementsInterviewer',
-        name: 'RequirementsInterviewer',
-        instructions: 'Interview the user.',
-        model: interviewer.model,
-        // The shared memory reaches for an embedder, which wants credentials a mocked test has
-        // none of, and the step hands the interviewer the whole conversation itself.
-        memory: undefined,
-      }),
-    },
   });
-
-  return { mastra, interviewerCalls: interviewer.calls };
+  return { recorder: codingTools, createRun: () => mastra.getWorkflow('implementFeatureWorkflow').createRun() };
 }
 
 /** A suspended run, read as text, so a spec can look for the question it is waiting on. */
@@ -88,98 +42,129 @@ function suspendedRunText(result: { status: string }): string {
   return JSON.stringify(result);
 }
 
-beforeEach(() => {
-  codingTools = recordCodingTools();
-});
-
 afterEach(() => {
-  codingTools.restore();
+  codingTools?.restore();
+  codingTools = undefined;
 });
 
 describe('implementFeatureWorkflow', () => {
-  it('suspends on the interviewer’s first question, before anything is filed', async () => {
-    const { mastra } = await createMastraWithInterviewer();
-    const run = await mastra.getWorkflow('implementFeatureWorkflow').createRun();
+  it('is marked slow, so routing can offer to notify rather than hold the line', () => {
+    expect(isSlowTask('workflow-implementFeatureWorkflow')).toBe(true);
+  });
 
-    const started = await run.start({ inputData: { initialRequest: 'Remind me about tasks before they are due' } });
+  it('has the codebase analysed before the first question, and starts nothing yet', async () => {
+    const { recorder, createRun } = startRun();
+    const run = await createRun();
 
+    const started = await run.start({ inputData: { initialRequest: REQUEST } });
+
+    expect(recorder.analysisTasks).toHaveLength(1);
+    expect(recorder.analysisTasks[0]).toContain(REQUEST);
     expect(suspendedRunText(started)).toContain(FIRST_QUESTION);
-    expect(codingTools.createdIssues).toEqual([]);
-    expect(codingTools.startedSessions).toEqual([]);
+    expect(recorder.startedSessions).toEqual([]);
   });
 
-  it('tells the interviewer the work is in Jarvis’s own repository when the request names none', async () => {
-    const { mastra, interviewerCalls } = await createMastraWithInterviewer();
-    const run = await mastra.getWorkflow('implementFeatureWorkflow').createRun();
-
-    await run.start({ inputData: { initialRequest: 'Remind me about tasks before they are due' } });
-
-    expect(interviewerCalls[0].transcript).toContain('ffMathy/hey-jarvis');
-    expect(interviewerCalls[0].transcript).toContain('do not ask which repository');
-  });
-
-  it('keeps a repository the request did name', async () => {
-    const { mastra, interviewerCalls } = await createMastraWithInterviewer();
-    const run = await mastra.getWorkflow('implementFeatureWorkflow').createRun();
-
-    await run.start({ inputData: { initialRequest: 'Add a dark mode', owner: 'someone', repository: 'their-app' } });
-
-    expect(interviewerCalls[0].transcript).toContain('someone/their-app');
-    expect(interviewerCalls[0].transcript).not.toContain("Jarvis's own codebase");
-  });
-
-  it('carries each answer back to the interviewer and asks the next question', async () => {
-    const { mastra } = await createMastraWithInterviewer();
-    const run = await mastra.getWorkflow('implementFeatureWorkflow').createRun();
-    await run.start({ inputData: { initialRequest: 'Remind me about tasks before they are due' } });
+  it('asks each of the analysis’s questions in turn', async () => {
+    const { recorder, createRun } = startRun();
+    const run = await createRun();
+    await run.start({ inputData: { initialRequest: REQUEST } });
 
     const afterFirstAnswer = await run.resume({ resumeData: { userAnswer: 'Push, please.' } });
 
     expect(suspendedRunText(afterFirstAnswer)).toContain(SECOND_QUESTION);
-    expect(codingTools.createdIssues).toEqual([]);
+    expect(recorder.analysisTasks).toHaveLength(1);
+    expect(recorder.startedSessions).toEqual([]);
   });
 
-  /**
-   * The loop that asks the questions used to continue while `true`, so the interview never
-   * ended on its own: once the interviewer was satisfied it was simply asked again, fifty times,
-   * and the run then failed with "Requirements gathering exceeded maximum iterations" — after the
-   * user had answered everything, and without ever filing the issue.
-   */
-  it('files the issue and starts the session once the interviewer has what it needs', async () => {
-    const { mastra, interviewerCalls } = await createMastraWithInterviewer();
-    const run = await mastra.getWorkflow('implementFeatureWorkflow').createRun();
-    await run.start({ inputData: { initialRequest: 'Remind me about tasks before they are due' } });
+  it('starts the coding session straight after the last answer, with no issue filed', async () => {
+    const { recorder, createRun } = startRun();
+    const run = await createRun();
+    await run.start({ inputData: { initialRequest: REQUEST } });
     await run.resume({ resumeData: { userAnswer: 'Push, please.' } });
 
     const finished = await run.resume({ resumeData: { userAnswer: 'An hour before.' } });
 
     expect(finished.status).toBe('success');
-    expect(interviewerCalls).toHaveLength(3);
-    expect(codingTools.createdIssues).toHaveLength(1);
-    expect(codingTools.startedSessions).toEqual([
-      expect.objectContaining({ repo: 'hey-jarvis', issue_number: 42, title: 'Push reminders for tasks' }),
+    expect(recorder.startedSessions).toEqual([
+      expect.objectContaining({ repo: 'hey-jarvis', request: REQUEST, title: 'Push reminders for tasks' }),
     ]);
     if (finished.status === 'success') {
-      expect(finished.result).toMatchObject({
-        success: true,
-        issueUrl: RECORDED_ISSUE_URL,
-        sessionUrl: RECORDED_SESSION_URL,
-      });
+      expect(finished.result).toMatchObject({ success: true, sessionUrl: RECORDED_SESSION_URL });
     }
   });
 
-  it('writes down what was asked and what the user answered, so the session can read it', async () => {
-    const { mastra } = await createMastraWithInterviewer();
-    const run = await mastra.getWorkflow('implementFeatureWorkflow').createRun();
-    await run.start({ inputData: { initialRequest: 'Remind me about tasks before they are due' } });
+  it('hands the implementing session the findings and every answer in the user’s own words', async () => {
+    const { recorder, createRun } = startRun();
+    const run = await createRun();
+    await run.start({ inputData: { initialRequest: REQUEST } });
     await run.resume({ resumeData: { userAnswer: 'Push, please.' } });
     await run.resume({ resumeData: { userAnswer: 'An hour before.' } });
 
-    const [issue] = codingTools.createdIssues;
-    expect(issue.body).toContain('Remind me about tasks before they are due');
-    expect(issue.body).toContain(FIRST_QUESTION);
-    expect(issue.body).toContain('Push, please.');
-    expect(issue.body).toContain(SECOND_QUESTION);
-    expect(issue.body).toContain('An hour before.');
+    const instructions = recorder.startedSessions[0].instructions ?? '';
+    expect(instructions).toContain(RECORDED_ANALYSIS.findings);
+    expect(instructions).toContain(FIRST_QUESTION);
+    expect(instructions).toContain('Push, please.');
+    expect(instructions).toContain(SECOND_QUESTION);
+    expect(instructions).toContain('An hour before.');
+  });
+
+  it('goes straight to implementation when the codebase settles everything', async () => {
+    const { recorder, createRun } = startRun({ analysis: { ...RECORDED_ANALYSIS, questions: [] } });
+    const run = await createRun();
+
+    const finished = await run.start({ inputData: { initialRequest: REQUEST } });
+
+    expect(finished.status).toBe('success');
+    expect(recorder.startedSessions).toHaveLength(1);
+  });
+
+  it('keeps a repository the request did name', async () => {
+    const { recorder, createRun } = startRun();
+    const run = await createRun();
+
+    await run.start({ inputData: { initialRequest: 'Add a dark mode', owner: 'someone', repository: 'their-app' } });
+
+    expect(recorder.analysisTasks[0]).toContain('someone/their-app');
+    expect(recorder.analysisTasks[0]).not.toContain("Jarvis's own codebase");
+  });
+});
+
+describe('buildCodebaseAnalysisTask', () => {
+  it('tells the session the repository is settled, and that it only reads', () => {
+    const task = buildCodebaseAnalysisTask(REQUEST, 'ffMathy/hey-jarvis', true);
+
+    expect(task).toContain("ffMathy/hey-jarvis repository — Jarvis's own codebase");
+    expect(task).toContain('never ask which one is meant');
+    expect(task).toContain('Do not change anything');
+  });
+});
+
+describe('readCodebaseAnalysis', () => {
+  const analysis = { title: 'Dark mode', findings: 'Theme tokens live in one file.', questions: ['Dark by default?'] };
+
+  it('reads the object a session ends its turn on', () => {
+    expect(readCodebaseAnalysis(`Done reading.\n\n${JSON.stringify(analysis)}`)).toEqual(analysis);
+  });
+
+  it('reads it out of a code fence', () => {
+    expect(readCodebaseAnalysis(`Here it is:\n\`\`\`json\n${JSON.stringify(analysis)}\n\`\`\``)).toEqual(analysis);
+  });
+
+  it('drops empty questions and keeps at most five', () => {
+    const questions = ['One?', ' ', 'Two?', 'Three?', 'Four?', 'Five?', 'Six?'];
+
+    expect(readCodebaseAnalysis(JSON.stringify({ ...analysis, questions })).questions).toEqual([
+      'One?',
+      'Two?',
+      'Three?',
+      'Four?',
+      'Five?',
+    ]);
+  });
+
+  it('says what went wrong when there is no object to read', () => {
+    expect(() => readCodebaseAnalysis('I could not clone the repository.')).toThrow(
+      'did not end with its JSON summary',
+    );
   });
 });
