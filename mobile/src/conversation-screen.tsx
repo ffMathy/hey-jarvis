@@ -37,6 +37,10 @@ interface ConversationScreenProps {
    * there is nothing underneath to keep, and he still fills it. See `conversation-sheet.tsx`.
    */
   inSheet?: boolean;
+  /** Drawn in the assistant's own window rather than the app's activity. See `App`. */
+  inAssistantWindow?: boolean;
+  /** Which showing of the assistant's window this is; changes on every summoning. See `App`. */
+  showing?: number;
 }
 
 /** Summonings already acted on in this process. */
@@ -163,7 +167,13 @@ async function greetHolding(microphone: MicrophoneAccess, beginGreeting: () => P
  * a browser or on a phone: the frame-rate and particle readout belongs to sample mode, and this
  * screen is the assistant, with nothing on it but him.
  */
-export function ConversationScreen({ settings, onEditSettings, inSheet = false }: ConversationScreenProps) {
+export function ConversationScreen({
+  settings,
+  onEditSettings,
+  inSheet = false,
+  inAssistantWindow = false,
+  showing,
+}: ConversationScreenProps) {
   const { startSession, sendUserMessage, endSession } = useConversationControls();
   const { status } = useConversationStatus();
   const liveVoice = useJarvisVoice();
@@ -350,8 +360,8 @@ export function ConversationScreen({ settings, onEditSettings, inSheet = false }
    *
    * `isStarting` is state, and state is only seen on the next render — so two effects that both
    * decide to start in one commit would both see it false and open two WebRTC sessions, the second
-   * tearing down the first. There are two such effects now: a summoning with a launch URL, and the
-   * sheet coming back into view.
+   * tearing down the first. There are three such effects now: opening the screen, a summoning with
+   * a launch URL, and the assistant's window being shown again.
    */
   const startingNow = useRef(false);
 
@@ -607,32 +617,57 @@ export function ConversationScreen({ settings, onEditSettings, inSheet = false }
     endSession();
   }, [endSession, stopGreeting]);
   const goNow = useCallback(() => setGone(true), []);
-  const summonAgain = useCallback(() => {
-    setLife(NOT_YET_OPEN);
-    setGone(false);
-    void start();
-  }, [start]);
   const sheet = useConversationSheet({
     inSheet,
+    inAssistantWindow,
     gone,
     opened: life.open,
     endConversation: hangUpSession,
     goNow,
-    summonAgain,
   });
   const { hologramSize, canvas, settled } = sheet;
 
-  // A summoning that arrives while this screen is already open: claimed so it is acted on once,
-  // and then left alone if a conversation is already under way, since starting again would tear
-  // down the one that is.
-  useEffect(() => {
-    if (!claimAssistLaunch(launchUrl)) {
+  /**
+   * A summoning that arrives while this screen is already open.
+   *
+   * A conversation still under way is simply shown again, since starting another would tear it
+   * down. Anything else — one that has ended, or never opened — is replaced by a fresh one, and he
+   * comes back with it: `gone` going false is what brings the sheet back up.
+   *
+   * **Bringing him back is not optional.** Starting alone, as a launch URL once did, greets you from
+   * a screen whose sphere has already gone and whose sheet is off the bottom of it — the greeting
+   * and nothing to look at.
+   */
+  const summonAgain = useCallback(() => {
+    if (isLive(status) || startingNow.current) {
       return;
     }
-    if (!isLive(status) && !isStarting) {
-      void start();
+    setLife(NOT_YET_OPEN);
+    setGone(false);
+    void start();
+  }, [start, status]);
+
+  // Summoned by the plain assist intent, into the app's own activity: each summoning is a new URL,
+  // claimed so it is acted on once. Never in the assistant's window, whose tree hears the activity's
+  // URLs as well — they are the process's, not the window's — and claiming one there would answer a
+  // summoning from the one window that is not on screen.
+  useEffect(() => {
+    if (inAssistantWindow || !claimAssistLaunch(launchUrl)) {
+      return;
     }
-  }, [launchUrl, start, status, isStarting]);
+    summonAgain();
+  }, [inAssistantWindow, launchUrl, summonAgain]);
+
+  // Summoned into the assistant's own window, which is kept between summonings: every showing after
+  // the one this screen opened on is a summoning of its own. See `SHOWING_PROP`.
+  const seenShowing = useRef(showing);
+  useEffect(() => {
+    if (showing === seenShowing.current) {
+      return;
+    }
+    seenShowing.current = showing;
+    summonAgain();
+  }, [showing, summonAgain]);
 
   const screen = (
     // The whole screen is the way into settings, not just the sphere. A long press has to land

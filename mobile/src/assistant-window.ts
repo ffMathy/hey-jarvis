@@ -13,3 +13,19 @@
  * opening a window with nothing in it.
  */
 export const ASSISTANT_SURFACE = 'assistant';
+
+/**
+ * The root prop the session sets on that surface every time its window is shown, to a number that
+ * differs each time.
+ *
+ * The window is kept between summonings rather than rebuilt, so a summoning after the first finds
+ * the app already mounted in it and has to be told. `AppState` looked like the way to tell it, and
+ * is not: it belongs to the process, and the process may also be drawing the app's own activity
+ * from an earlier launch, sitting behind whatever the user is doing. That tree heard every
+ * summoning as well, and answered it with a conversation nobody could see. A prop on this surface
+ * reaches this surface's tree and no other.
+ *
+ * Spelled `SHOWING_PROP` in `JarvisVoiceInteractionSession.kt` too, and pinned to it by
+ * `assistant-window.contract.spec.ts`.
+ */
+export const SHOWING_PROP = 'showing';
