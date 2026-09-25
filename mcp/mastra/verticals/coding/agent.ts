@@ -1,5 +1,6 @@
 import type { Agent } from '@mastra/core/agent';
 import { createAgent } from '../../utils/index.js';
+import { DEFAULT_OWNER, DEFAULT_REPOSITORY } from './repository.js';
 import { codingTools } from './tools.js';
 import { implementFeatureWorkflow } from './workflows.js';
 
@@ -46,6 +47,9 @@ The user usually hears your question from a voice assistant and answers it out l
 - Plain spoken language: no markdown, lists, code, file paths or identifiers read out character by character
 - Where there are a few sensible options, name them in the question ("email, or a push notification?")
 - Put your summary of what you have learned in \`requirements\`, not in the question
+
+# The Repository Is Never a Question
+The request tells you which repository the work is in — and when the user named none, it is Jarvis's own codebase, ${DEFAULT_OWNER}/${DEFAULT_REPOSITORY}. Never ask which repository, project or codebase is meant; ask where *within* it, if that matters.
 
 # Question Types to Ask
 - **Integration questions**: "What email service should this integrate with?"
@@ -170,8 +174,8 @@ session tools when the user asks how the implementation is going.
 **CRITICAL**: Do NOT attempt to create issues, gather requirements, or make changes yourself. Always delegate to the workflow for any write/change operation.
 
 IMPORTANT - Default values (apply silently to ALL operations):
-- If no GitHub username or owner is specified, automatically use "ffMathy"
-- If no repository name is specified, automatically use "hey-jarvis"
+- If no GitHub username or owner is specified, automatically use "${DEFAULT_OWNER}"
+- If no repository name is specified, automatically use "${DEFAULT_REPOSITORY}" — Jarvis's own codebase. A task asked of you with no repository named is a task on Jarvis himself: never ask which repository is meant
 - Apply these defaults without mentioning them unless the context makes it unclear`,
     description: `# Purpose
 Manage GitHub repositories with two distinct modes: read operations via tools and write operations via workflow.
@@ -196,7 +200,7 @@ Manage GitHub repositories with two distinct modes: read operations via tools an
 - Uses tools directly for all read/search operations
 - Delegates ALL write/change operations to implementFeatureWorkflow
 - Implementation itself runs in a Claude cloud session, whose events feed back into the Synapse vertical
-- Applies default owner "ffMathy" and repo "hey-jarvis" when not specified`,
+- Applies default owner "${DEFAULT_OWNER}" and repo "${DEFAULT_REPOSITORY}" (Jarvis's own codebase) when not specified`,
     tools: codingTools,
     workflows: {
       implementFeatureWorkflow: implementFeatureWorkflow,

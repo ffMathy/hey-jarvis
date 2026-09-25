@@ -1,13 +1,14 @@
 import type { CoreMessageV4 } from '@mastra/core/agent/message-list';
 import { z } from 'zod';
 import { createStep, createToolStep, createWorkflow } from '../../utils/workflows/workflow-factory.js';
+import { DEFAULT_OWNER, DEFAULT_REPOSITORY } from './repository.js';
 import { createGitHubIssue, startCodingSession } from './tools.js';
 
 // Schema for requirements gathering input
 const requirementsInputSchema = z.object({
   initialRequest: z.string().describe('The initial feature/implementation request from the user'),
-  repository: z.string().optional().describe('The repository name (defaults to "hey-jarvis")'),
-  owner: z.string().optional().describe('The repository owner (defaults to "ffMathy")'),
+  repository: z.string().optional().describe(`The repository name (defaults to "${DEFAULT_REPOSITORY}", Jarvis's own)`),
+  owner: z.string().optional().describe(`The repository owner (defaults to "${DEFAULT_OWNER}")`),
 });
 
 // Schema for gathered requirements
@@ -71,12 +72,14 @@ const initializeGatheringSession = createStep({
   inputSchema: requirementsInputSchema,
   outputSchema: z.object({}),
   execute: async (params) => {
-    const owner = params.inputData.owner || 'ffMathy';
-    const repo = params.inputData.repository || 'hey-jarvis';
+    const owner = params.inputData.owner || DEFAULT_OWNER;
+    const repo = params.inputData.repository || DEFAULT_REPOSITORY;
 
     const initialPrompt = `You are conducting a requirements gathering session for this feature request:
 
 "${params.inputData.initialRequest}"
+
+The work is in the ${owner}/${repo} repository${repo === DEFAULT_REPOSITORY ? " — Jarvis's own codebase" : ''}. That is settled: do not ask which repository.
 
 Start by asking your first clarifying question to understand what needs to be implemented.`;
 
@@ -250,7 +253,7 @@ ${discussionSection}
 
     return {
       owner: state.owner,
-      repo: state.repository ?? 'hey-jarvis',
+      repo: state.repository ?? DEFAULT_REPOSITORY,
       title: requirements.title ?? 'Feature Implementation',
       body: finalBody,
       labels: ['ready', 'requirements-complete'],

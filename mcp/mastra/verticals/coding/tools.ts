@@ -10,6 +10,7 @@ import {
   listClaudeSessionEvents,
   sendClaudeSessionMessage,
 } from './claude-sessions.js';
+import { DEFAULT_OWNER, DEFAULT_REPOSITORY } from './repository.js';
 import { claudeSessionWatcher } from './session-watcher.js';
 
 // Create Octokit instance with optional GitHub token authentication
@@ -113,20 +114,19 @@ type IssueUpdateParams = {
  */
 export const listUserRepositories = createTool({
   id: 'listUserRepositories',
-  description:
-    'Lists all public repositories for a given GitHub username. Returns repository information including name, description, stars, and language. Defaults to "ffMathy" if no username is provided.',
+  description: `Lists all public repositories for a given GitHub username. Returns repository information including name, description, stars, and language. Defaults to "${DEFAULT_OWNER}" if no username is provided.`,
   inputSchema: z.object({
     username: z
       .string()
       .optional()
-      .describe('The GitHub username to list repositories for (defaults to "ffMathy" if not provided)'),
+      .describe(`The GitHub username to list repositories for (defaults to "${DEFAULT_OWNER}" if not provided)`),
   }),
   outputSchema: z.object({
     repositories: z.array(GitHubRepositorySchema),
     total_count: z.number(),
   }),
   execute: async (inputData) => {
-    const username = inputData.username || 'ffMathy';
+    const username = inputData.username || DEFAULT_OWNER;
 
     const { data: repositories } = await octokit.rest.repos.listForUser({
       username,
@@ -146,11 +146,10 @@ export const listUserRepositories = createTool({
  */
 export const listRepositoryIssues = createTool({
   id: 'listRepositoryIssues',
-  description:
-    'Lists all issues for a specific GitHub repository. Can filter by state (open/closed/all). Defaults to "ffMathy" owner if not specified.',
+  description: `Lists all issues for a specific GitHub repository. Can filter by state (open/closed/all). Defaults to "${DEFAULT_OWNER}" owner if not specified.`,
   inputSchema: z.object({
-    owner: z.string().optional().describe('The repository owner (defaults to "ffMathy" if not provided)'),
-    repo: z.string().optional().describe('The repository name (defaults to "hey-jarvis" if not provided)'),
+    owner: z.string().optional().describe(`The repository owner (defaults to "${DEFAULT_OWNER}" if not provided)`),
+    repo: z.string().optional().describe(`The repository name (defaults to "${DEFAULT_REPOSITORY}" if not provided)`),
     state: z.enum(['open', 'closed', 'all']).default('open').describe('Filter issues by state'),
   }),
   outputSchema: z.object({
@@ -158,8 +157,8 @@ export const listRepositoryIssues = createTool({
     total_count: z.number(),
   }),
   execute: async (inputData) => {
-    const owner = inputData.owner || 'ffMathy';
-    const repo = inputData.repo || 'hey-jarvis';
+    const owner = inputData.owner || DEFAULT_OWNER;
+    const repo = inputData.repo || DEFAULT_REPOSITORY;
 
     const { data: issues } = await octokit.rest.issues.listForRepo({
       owner,
@@ -197,18 +196,20 @@ export const listRepositoryIssues = createTool({
  */
 export const searchRepositories = createTool({
   id: 'searchRepositories',
-  description:
-    'Searches for GitHub repositories by name or keywords. Returns matching repositories with their details. Defaults to filtering by "ffMathy" owner if not specified.',
+  description: `Searches for GitHub repositories by name or keywords. Returns matching repositories with their details. Defaults to filtering by "${DEFAULT_OWNER}" owner if not specified.`,
   inputSchema: z.object({
     query: z.string().describe('The search query (repository name or keywords)'),
-    owner: z.string().optional().describe('Filter by repository owner (defaults to "ffMathy" if not provided)'),
+    owner: z
+      .string()
+      .optional()
+      .describe(`Filter by repository owner (defaults to "${DEFAULT_OWNER}" if not provided)`),
   }),
   outputSchema: z.object({
     repositories: z.array(GitHubRepositorySchema),
     total_count: z.number(),
   }),
   execute: async (inputData) => {
-    const owner = inputData.owner || 'ffMathy';
+    const owner = inputData.owner || DEFAULT_OWNER;
 
     // Construct search query with owner filter
     const searchQuery = `${inputData.query} user:${owner}`;
@@ -237,11 +238,13 @@ export const searchRepositories = createTool({
  */
 export const startCodingSession = createTool({
   id: 'startCodingSession',
-  description:
-    'Starts a Claude cloud session that implements a GitHub issue autonomously. The session clones the repository, does the work and opens a pull request. Its events are reported back into the Synapse vertical as state changes. Defaults to "ffMathy" owner if not specified.',
+  description: `Starts a Claude cloud session that implements a GitHub issue autonomously. The session clones the repository, does the work and opens a pull request. Its events are reported back into the Synapse vertical as state changes. Defaults to Jarvis's own repository, "${DEFAULT_OWNER}/${DEFAULT_REPOSITORY}", if none is given.`,
   inputSchema: z.object({
-    owner: z.string().optional().describe('The repository owner (defaults to "ffMathy" if not provided)'),
-    repo: z.string().describe('The repository name (e.g., "hey-jarvis")'),
+    owner: z.string().optional().describe(`The repository owner (defaults to "${DEFAULT_OWNER}" if not provided)`),
+    repo: z
+      .string()
+      .optional()
+      .describe(`The repository name (defaults to "${DEFAULT_REPOSITORY}", Jarvis's own, if not provided)`),
     issue_number: z.number().describe('The issue number the session should implement'),
     title: z.string().optional().describe('The issue title, used to describe the session'),
     instructions: z
@@ -257,8 +260,8 @@ export const startCodingSession = createTool({
     message: z.string(),
   }),
   execute: async (inputData) => {
-    const owner = inputData.owner || 'ffMathy';
-    const repository = `${owner}/${inputData.repo}`;
+    const owner = inputData.owner || DEFAULT_OWNER;
+    const repository = `${owner}/${inputData.repo || DEFAULT_REPOSITORY}`;
     const issueUrl = `https://github.com/${repository}/issues/${inputData.issue_number}`;
 
     const task = [
@@ -377,11 +380,13 @@ export const sendCodingSessionMessage = createTool({
  */
 export const createGitHubIssue = createTool({
   id: 'createGitHubIssue',
-  description:
-    'Creates a new GitHub issue with the given title, body, and optional labels. Useful for reporting errors or bugs. Defaults to "ffMathy" owner if not specified.',
+  description: `Creates a new GitHub issue with the given title, body, and optional labels. Useful for reporting errors or bugs. Defaults to Jarvis's own repository, "${DEFAULT_OWNER}/${DEFAULT_REPOSITORY}", if none is given.`,
   inputSchema: z.object({
-    owner: z.string().optional().describe('The repository owner (defaults to "ffMathy" if not provided)'),
-    repo: z.string().describe('The repository name (e.g., "hey-jarvis")'),
+    owner: z.string().optional().describe(`The repository owner (defaults to "${DEFAULT_OWNER}" if not provided)`),
+    repo: z
+      .string()
+      .optional()
+      .describe(`The repository name (defaults to "${DEFAULT_REPOSITORY}", Jarvis's own, if not provided)`),
     title: z.string().describe('The issue title'),
     body: z.string().describe('The issue description/body'),
     labels: z.array(z.string()).optional().describe('Optional labels to add to the issue (e.g., ["bug", "error"])'),
@@ -393,11 +398,11 @@ export const createGitHubIssue = createTool({
     message: z.string(),
   }),
   execute: async (inputData) => {
-    const owner = inputData.owner || 'ffMathy';
+    const owner = inputData.owner || DEFAULT_OWNER;
 
     const { data: issue } = await octokit.rest.issues.create({
       owner,
-      repo: inputData.repo,
+      repo: inputData.repo || DEFAULT_REPOSITORY,
       title: inputData.title,
       body: inputData.body,
       labels: inputData.labels || [],
@@ -417,11 +422,13 @@ export const createGitHubIssue = createTool({
  */
 export const updateGitHubIssue = createTool({
   id: 'updateGitHubIssue',
-  description:
-    'Updates an existing GitHub issue with new title, body, labels, or state. Useful for updating draft issues with accumulated requirements. Defaults to "ffMathy" owner if not specified.',
+  description: `Updates an existing GitHub issue with new title, body, labels, or state. Useful for updating draft issues with accumulated requirements. Defaults to Jarvis's own repository, "${DEFAULT_OWNER}/${DEFAULT_REPOSITORY}", if none is given.`,
   inputSchema: z.object({
-    owner: z.string().optional().describe('The repository owner (defaults to "ffMathy" if not provided)'),
-    repo: z.string().describe('The repository name (e.g., "hey-jarvis")'),
+    owner: z.string().optional().describe(`The repository owner (defaults to "${DEFAULT_OWNER}" if not provided)`),
+    repo: z
+      .string()
+      .optional()
+      .describe(`The repository name (defaults to "${DEFAULT_REPOSITORY}", Jarvis's own, if not provided)`),
     issue_number: z.number().describe('The issue number to update'),
     title: z.string().optional().describe('Updated issue title'),
     body: z.string().optional().describe('Updated issue description/body'),
@@ -435,11 +442,11 @@ export const updateGitHubIssue = createTool({
     message: z.string(),
   }),
   execute: async (inputData) => {
-    const owner = inputData.owner || 'ffMathy';
+    const owner = inputData.owner || DEFAULT_OWNER;
 
     const updateData: IssueUpdateParams = {
       owner,
-      repo: inputData.repo,
+      repo: inputData.repo || DEFAULT_REPOSITORY,
       issue_number: inputData.issue_number,
     };
 
