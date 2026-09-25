@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.7.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.6.0...mcp-v2.7.0) (2026-09-25)
+
+
+### Features
+
+* **coding:** analyse the codebase first, and offer to notify on slow work ([#792](https://github.com/ffMathy/hey-jarvis/issues/792)) ([03ccd29](https://github.com/ffMathy/hey-jarvis/commit/03ccd290ba9004eef1c41de74e8bb0fce29ffb36))
+
 ## [2.6.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.5.0...mcp-v2.6.0) (2026-09-25)
 
 
