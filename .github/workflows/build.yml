@@ -2,12 +2,12 @@
 
 name: CI
 
+# Only the mocked half of the suite runs here. `turbo test:integration` holds real
+# conversations, calls real APIs and spends real quota, so it never runs on
+# GitHub Actions at all -- it runs when someone runs it by hand.
 on:
   pull_request:
-    # `ready_for_review` is what lets the integration tests start the moment a
-    # draft is marked ready; `synchronize` keeps them running on every push
-    # after that.
-    types: [opened, synchronize, labeled, ready_for_review]
+    types: [opened, synchronize, labeled]
     branches: [ main ]
 
 # Least privilege by default: every job below opts into exactly what it needs.
@@ -106,107 +106,3 @@ jobs:
 
             HEY_JARVIS_WIFI_SSID
             HEY_JARVIS_WIFI_PASSWORD
-
-  # The other half of the suite: the tests that hold real conversations, call
-  # real APIs and spend real quota. A draft pull request is still being written,
-  # so it gets none of this — the run starts when the pull request is marked
-  # ready for review, and then repeats on every push while it stays that way.
-  integration-tests:
-    if: ${{ github.event.pull_request.draft == false }}
-
-    # **One run at a time across the whole repository, not one per branch.**
-    # Every run brings up the same cloudflared tunnel (one hostname, one
-    # token, both from the vault) and deploys the same ElevenLabs test agent
-    # pointed at it. Two runs at once register two connectors on that tunnel,
-    # and Cloudflare splits requests between them: a conversation routes its
-    # request on one runner's MCP server and polls the other's, which has
-    # nothing in flight and answers "Still processing" until the eval times
-    # out, and once either run finishes and shuts its server down, the other's
-    # agent reports no MCP connection at all. Per-branch groups let exactly
-    # that happen whenever two pull requests were ready at the same time, and
-    # both runs failed or hit the timeout below.
-    #
-    # Not cancelled in progress, because the run being cancelled would usually
-    # be another pull request's. GitHub keeps only one run waiting per group,
-    # so a newer run replaces an older one that has not started yet; push again
-    # or re-run it to queue it once more.
-    concurrency:
-      group: integration-tests
-      cancel-in-progress: false
-
-    runs-on: ubuntu-latest
-    timeout-minutes: 60  # The conversation evals run several minutes each
-    permissions:
-      contents: read
-      packages: read
-      models: read
-
-    env:
-      # Every HEY_JARVIS_* secret is resolved at run time from the `Jarvis`
-      # 1Password vault by .scripts/run-with-env.sh, so CI needs only this one
-      # token instead of mirroring ~30 values as GitHub Actions secrets.
-      OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-
-    steps:
-      - name: Free Disk Space (Ubuntu)
-        uses: jlumbroso/free-disk-space@v1.3.1
-        with:
-          android: false
-          dotnet: true
-          haskell: true
-          large-packages: false
-          docker-images: false
-          swap-storage: false
-
-      - name: Checkout
-        uses: actions/checkout@v6.1.0
-        with:
-          fetch-depth: 0  # Fetch all history for turbo affected detection to work
-          # This job runs pull request code with a 1Password service account
-          # token in scope; never leave a usable GitHub token beside it.
-          persist-credentials: false
-
-      - name: Fetch base branch
-        run: git fetch origin main:main
-
-      - name: Set lowercase repository owner
-        run: echo "REPO_OWNER_LC=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
-
-      - name: Restore Turborepo cache
-        uses: actions/cache@v5.1.0
-        with:
-          path: .turbo
-          key: turbo-cache-${{ runner.os }}-${{ github.sha }}
-          restore-keys: |
-            turbo-cache-${{ runner.os }}-
-
-      - name: Run integration tests in dev container
-        uses: devcontainers/ci@v0.3.1900000450
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_ACTOR: ${{ github.actor }}
-          IMAGE_TAG: pr-${{ github.event.pull_request.number }}
-          IMAGE_OWNER: ${{ env.REPO_OWNER_LC }}
-          REGISTRY: ghcr.io
-          TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
-          TURBO_TEAM: ${{ vars.TURBO_TEAM }}
-          WORKSPACE_ROOT: /workspaces/hey-jarvis
-        with:
-          imageName: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
-          cacheFrom: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
-          push: never
-          runCmd: |
-            bun install --frozen-lockfile
-            bunx turbo test:integration --log-order=stream
-          env: |
-            GITHUB_ACTIONS
-            GITHUB_TOKEN
-            GITHUB_ACTOR
-            IMAGE_TAG
-            IMAGE_OWNER
-            REGISTRY
-            WORKSPACE_ROOT
-            TURBO_TOKEN
-            TURBO_TEAM
-
-            OP_SERVICE_ACCOUNT_TOKEN
