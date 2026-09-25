@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.2.6](https://github.com/ffMathy/hey-jarvis/compare/root-v4.2.5...root-v4.2.6) (2026-09-25)
+
+
+### Bug Fixes
+
+* **hologram:** greet on the headset the conversation will use ([#776](https://github.com/ffMathy/hey-jarvis/issues/776)) ([9fd735f](https://github.com/ffMathy/hey-jarvis/commit/9fd735f9162a3043a303411c4caa53dcdd0b4785))
+
 ## [4.2.5](https://github.com/ffMathy/hey-jarvis/compare/root-v4.2.4...root-v4.2.5) (2026-09-25)
 
 
