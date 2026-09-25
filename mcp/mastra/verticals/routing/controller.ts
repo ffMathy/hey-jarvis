@@ -1,6 +1,8 @@
 import type { Mastra } from '@mastra/core';
 import type { Agent } from '@mastra/core/agent';
 import { logger } from '../../utils/logger.js';
+import { isSlowTask } from '../../utils/slow-tasks.js';
+import { sendCompletionNotice } from './completion-notice.js';
 import { buildRoutingPlan, type PlannedChain, type RoutingPlan } from './plan.js';
 import { sweepOldRoutingPlans } from './plan-retention.js';
 import { getRoutingPlannerAgent, PLANNER_AGENT_ID, type PlannedAnswer, planDelegations } from './planner.js';
@@ -54,6 +56,8 @@ export type RoutingEvent =
   | { type: 'delegation_end'; delegationId: string; result: unknown; isError: boolean }
   /** A delegation stopped to ask something only the user can answer. See ./questions.ts. */
   | { type: 'delegation_suspended'; delegationId: string; suspension: DelegationSuspension }
+  /** A delegation started something marked slow. See `utils/slow-tasks.ts`. */
+  | { type: 'delegation_slow'; delegationId: string }
   /** The request failed outright. */
   | { type: 'error'; message: string }
   /** The plan run ended. */
@@ -99,6 +103,17 @@ export class RoutingProgress {
    * cancel that work the moment he replied.
    */
   questions: OpenQuestion[] = [];
+  /** Tasks that started something slow, which the caller has not been told about yet. */
+  unannouncedSlowTaskIds: string[] = [];
+  /** Every task that started something slow, so each is announced once. */
+  private readonly slowTaskIds = new Set<string>();
+  /**
+   * Whether the user asked to be notified when this request is done.
+   *
+   * Such a request no longer belongs to the conversation that started it: a newer request does
+   * not supersede it, and what it comes to is sent to the user rather than waiting to be polled.
+   */
+  notifyWhenDone = false;
   /** Whether the plan run has ended. */
   runFinished = false;
   error?: string;
@@ -117,7 +132,7 @@ export class RoutingProgress {
 
   /** Resolves when there is something new to say, or the request has ended. */
   wait(): Promise<void> {
-    if (this.pending.length > 0 || this.error || this.isFinished()) {
+    if (this.pending.length > 0 || this.unannouncedSlowTaskIds.length > 0 || this.error || this.isFinished()) {
       return Promise.resolve();
     }
     return new Promise<void>((resolve) => {
@@ -149,75 +164,95 @@ export class RoutingProgress {
 
   /** Folds one event from the plan run into the buffer. */
   handle(event: RoutingEvent): void {
-    if (event.type === 'delegation_start') {
-      this.outstandingByDelegationId.set(event.delegationId, { taskId: event.taskId, agentId: event.agentId });
-      return;
-    }
-
-    if (event.type === 'delegation_end') {
-      const delegation = this.outstandingByDelegationId.get(event.delegationId);
-      if (!delegation) {
-        // Already reported. A chain reports its own result as well as its steps', so the
-        // same answer can arrive twice; relaying it twice would have Jarvis say it twice.
+    switch (event.type) {
+      case 'delegation_start':
+        this.outstandingByDelegationId.set(event.delegationId, { taskId: event.taskId, agentId: event.agentId });
         return;
-      }
-      this.outstandingByDelegationId.delete(event.delegationId);
-
-      const answer = formatDelegationResult(event.result);
-
-      // An empty answer is not one. An agent that stops on a tool-calls step returns no text
-      // at all, which reaches the caller as a delegation that succeeded and said nothing --
-      // and Jarvis, told to summarize it, has nothing to summarize and no reason to mention
-      // that anything went wrong.
-      const answeredWithNothing = !event.isError && answer.length === 0;
-      this.settle({
-        taskId: delegation.taskId,
-        agentId: delegation.agentId,
-        result: answeredWithNothing ? 'finished without answering' : answer,
-        failed: event.isError || answeredWithNothing,
-      });
-      return;
-    }
-
-    if (event.type === 'delegation_suspended') {
-      const delegation = this.outstandingByDelegationId.get(event.delegationId);
-      if (!delegation) {
+      case 'delegation_end':
+        this.handleDelegationEnd(event);
         return;
-      }
-      this.outstandingByDelegationId.delete(event.delegationId);
-
-      const readable = readSuspension(event.suspension);
-      if ('problem' in readable) {
-        this.settle({ ...delegation, result: `stopped part way: ${readable.problem}`, failed: true });
+      case 'delegation_suspended':
+        this.handleDelegationSuspended(event);
         return;
-      }
+      case 'delegation_slow':
+        this.handleDelegationSlow(event);
+        return;
+      case 'error':
+        this.fail(event.message);
+        return;
+      case 'finished':
+        logger.info('Routing plan run settled', {
+          delegations: this.all.length,
+          unanswered: this.outstandingByDelegationId.size,
+        });
+        this.abandonOutstandingDelegations('did not report a result before the plan finished');
+        this.runFinished = true;
+        this.wake();
+        return;
+    }
+  }
 
-      const question: OpenQuestion = {
-        id: nextQuestionId(),
-        ...delegation,
-        question: readable.question,
-        answerField: readable.answerField,
-        agentRunId: event.suspension.agentRunId,
-        toolCallId: event.suspension.toolCallId,
-      };
-      logger.info('Delegation is waiting on an answer from the user', { ...delegation, questionId: question.id });
-      this.questions.push(question);
-      this.wake();
+  private handleDelegationEnd(event: Extract<RoutingEvent, { type: 'delegation_end' }>): void {
+    const delegation = this.outstandingByDelegationId.get(event.delegationId);
+    if (!delegation) {
+      // Already reported. A chain reports its own result as well as its steps', so the
+      // same answer can arrive twice; relaying it twice would have Jarvis say it twice.
+      return;
+    }
+    this.outstandingByDelegationId.delete(event.delegationId);
+
+    const answer = formatDelegationResult(event.result);
+
+    // An empty answer is not one. An agent that stops on a tool-calls step returns no text
+    // at all, which reaches the caller as a delegation that succeeded and said nothing --
+    // and Jarvis, told to summarize it, has nothing to summarize and no reason to mention
+    // that anything went wrong.
+    const answeredWithNothing = !event.isError && answer.length === 0;
+    this.settle({
+      taskId: delegation.taskId,
+      agentId: delegation.agentId,
+      result: answeredWithNothing ? 'finished without answering' : answer,
+      failed: event.isError || answeredWithNothing,
+    });
+  }
+
+  private handleDelegationSuspended(event: Extract<RoutingEvent, { type: 'delegation_suspended' }>): void {
+    const delegation = this.outstandingByDelegationId.get(event.delegationId);
+    if (!delegation) {
+      return;
+    }
+    this.outstandingByDelegationId.delete(event.delegationId);
+
+    const readable = readSuspension(event.suspension);
+    if ('problem' in readable) {
+      this.settle({ ...delegation, result: `stopped part way: ${readable.problem}`, failed: true });
       return;
     }
 
-    if (event.type === 'error') {
-      this.fail(event.message);
+    const question: OpenQuestion = {
+      id: nextQuestionId(),
+      ...delegation,
+      question: readable.question,
+      answerField: readable.answerField,
+      agentRunId: event.suspension.agentRunId,
+      toolCallId: event.suspension.toolCallId,
+    };
+    logger.info('Delegation is waiting on an answer from the user', { ...delegation, questionId: question.id });
+    this.questions.push(question);
+    this.wake();
+  }
+
+  private handleDelegationSlow(event: Extract<RoutingEvent, { type: 'delegation_slow' }>): void {
+    const delegation = this.outstandingByDelegationId.get(event.delegationId);
+    if (!delegation || this.slowTaskIds.has(delegation.taskId)) {
       return;
     }
+    this.slowTaskIds.add(delegation.taskId);
 
-    if (event.type === 'finished') {
-      logger.info('Routing plan run settled', {
-        delegations: this.all.length,
-        unanswered: this.outstandingByDelegationId.size,
-      });
-      this.abandonOutstandingDelegations('did not report a result before the plan finished');
-      this.runFinished = true;
+    // Nothing to offer once the user has already asked to be notified.
+    if (!this.notifyWhenDone) {
+      logger.info('Delegation started something slow', { ...delegation });
+      this.unannouncedSlowTaskIds.push(delegation.taskId);
       this.wake();
     }
   }
@@ -292,6 +327,8 @@ export interface RoutingSnapshot {
   finished: boolean;
   /** Questions the request is waiting on the user to answer. */
   questions: OpenQuestion[];
+  /** Tasks that have started something slow since the last poll. */
+  newlySlow: string[];
   error?: string;
 }
 
@@ -304,6 +341,8 @@ export interface RoutingSnapshot {
 export function buildSnapshot(progress: RoutingProgress): RoutingSnapshot {
   const landed = progress.pending;
   progress.pending = [];
+  const newlySlow = progress.unannouncedSlowTaskIds;
+  progress.unannouncedSlowTaskIds = [];
 
   return {
     landed,
@@ -311,6 +350,7 @@ export function buildSnapshot(progress: RoutingProgress): RoutingSnapshot {
     inProgress: [...new Set([...progress.outstandingByDelegationId.values()].map((one) => one.taskId))],
     finished: progress.isFinished(),
     questions: progress.questions,
+    newlySlow,
     error: progress.error,
   };
 }
@@ -330,6 +370,11 @@ export interface RoutingRuntime {
   poll(sessionId: string): Promise<RoutingSnapshot>;
   /** Resolves when the request next changes, or after `deadlineMs`. */
   waitForChange(sessionId: string, deadlineMs: number): Promise<void>;
+  /**
+   * Has the user notified when the session's request is done, and lets it outlive the
+   * conversation. Resolves to whether there was anything left to wait for.
+   */
+  notifyWhenDone(sessionId: string): Promise<boolean>;
 }
 
 let registry: Mastra | undefined;
@@ -437,7 +482,7 @@ function asWorkflowChunk(chunk: unknown): WorkflowChunk | undefined {
 export function asRoutingEvents(chunk: unknown, plan: RoutingPlan): RoutingEvent[] {
   const parsed = asWorkflowChunk(chunk);
   if (parsed?.type === 'workflow-step-output') {
-    return asSuspensionEvents(parsed.payload, plan);
+    return [...asSlowTaskEvents(parsed.payload, plan), ...asSuspensionEvents(parsed.payload, plan)];
   }
 
   if (parsed?.type !== 'workflow-step-result') {
@@ -498,6 +543,49 @@ export function asRoutingEvents(chunk: unknown, plan: RoutingPlan): RoutingEvent
  */
 const WAITING_ON_AN_EARLIER_QUESTION = 'did not run, because the step before it stopped to ask the user something';
 
+/** Whether one of an agent's own chunks is it calling a tool that was marked slow. */
+function isSlowToolCall(chunk: unknown): boolean {
+  if (typeof chunk !== 'object' || chunk === null || !('type' in chunk) || chunk.type !== 'tool-call') {
+    return false;
+  }
+  const payload = 'payload' in chunk ? chunk.payload : undefined;
+  if (typeof payload !== 'object' || payload === null || !('toolName' in payload)) {
+    return false;
+  }
+  return typeof payload.toolName === 'string' && isSlowTask(payload.toolName);
+}
+
+/**
+ * The delegation a step's streamed output belongs to.
+ *
+ * The step's name is its bare id here, but is read as the last dotted segment all the same,
+ * since a nested step can be reported under its chain's id as well.
+ */
+function delegationIdOfStepOutput(payload: Record<string, unknown>, plan: RoutingPlan): string | undefined {
+  const { stepName } = payload;
+  if (typeof stepName !== 'string') {
+    return undefined;
+  }
+
+  const delegationId = stepName.split('.').pop() ?? stepName;
+  return plan.agentByStepId.has(delegationId) ? delegationId : undefined;
+}
+
+/**
+ * A delegation starting something slow, read off a step's streamed output.
+ *
+ * Seen the same way a suspension is: the agent step forwards its agent's `tool-call` chunk, and
+ * the tool it names is looked up among those marked slow.
+ */
+function asSlowTaskEvents(payload: Record<string, unknown>, plan: RoutingPlan): RoutingEvent[] {
+  if (!isSlowToolCall(payload.output)) {
+    return [];
+  }
+
+  const delegationId = delegationIdOfStepOutput(payload, plan);
+  return delegationId ? [{ type: 'delegation_slow', delegationId }] : [];
+}
+
 /**
  * A delegation stopping to ask something, read off a step's streamed output.
  *
@@ -506,19 +594,11 @@ const WAITING_ON_AN_EARLIER_QUESTION = 'did not run, because the step before it 
  * `tool-call-suspended` chunk. That is the only place it shows: the step itself never reports a
  * result, because Mastra's agent step waits for the agent to finish and a suspended agent does
  * not (see `consumeRun`).
- *
- * The step's name is its bare id here, but is read as the last dotted segment all the same,
- * since a nested step can be reported under its chain's id as well.
  */
 function asSuspensionEvents(payload: Record<string, unknown>, plan: RoutingPlan): RoutingEvent[] {
   const suspension = asDelegationSuspension(payload.output);
-  const { stepName } = payload;
-  if (!suspension || typeof stepName !== 'string') {
-    return [];
-  }
-
-  const delegationId = stepName.split('.').pop() ?? stepName;
-  if (!plan.agentByStepId.has(delegationId)) {
+  const delegationId = suspension ? delegationIdOfStepOutput(payload, plan) : undefined;
+  if (!suspension || !delegationId) {
     return [];
   }
 
@@ -705,6 +785,9 @@ async function resumeWithAnswer(
     let suspension: DelegationSuspension | undefined;
     for await (const chunk of output.fullStream) {
       suspension = asDelegationSuspension(chunk) ?? suspension;
+      if (isSlowToolCall(chunk)) {
+        progress.handle({ type: 'delegation_slow', delegationId });
+      }
     }
 
     if (suspension) {
@@ -776,8 +859,9 @@ async function runRequest(
   ]);
 
   // Kept for the next request to answer -- unless this one was superseded, in which case its
-  // closing report will never be read and sir will never hear what it asked.
-  if (progressBySessionId.get(sessionId) === progress) {
+  // closing report will never be read and sir will never hear what it asked. A request he is to
+  // be notified about is never superseded: he hears its questions in the notification.
+  if (progressBySessionId.get(sessionId) === progress || progress.notifyWhenDone) {
     rememberOpenQuestions(progress.questions);
   } else if (progress.questions.length > 0) {
     logger.warn('Dropping questions from a superseded routing request', {
@@ -801,9 +885,10 @@ const planRuntime: RoutingRuntime = {
 
     // A new request supersedes the one before it, which is what the caller means: the voice
     // assistant has moved on. Cancelling is what makes that true rather than leaving the
-    // previous plan running behind it.
+    // previous plan running behind it -- except for a request the user asked to be notified
+    // about, which he expects to finish however the conversation goes on.
     const abortPrevious = abortBySessionId.get(sessionId);
-    if (abortPrevious && !previous.runFinished && !previous.isIdle()) {
+    if (abortPrevious && !previous.runFinished && !previous.isIdle() && !previous.notifyWhenDone) {
       logger.info('Superseding a routing request that was still running', { sessionId });
       abortPrevious.abort();
     }
@@ -825,9 +910,22 @@ const planRuntime: RoutingRuntime = {
 
     // Not awaited: the caller is a voice assistant on a short tool-call deadline, and the
     // whole contract is that it polls for results rather than waiting for them.
-    void runRequest(mastra, sessionId, progress, userQuery, abort.signal).catch((error: unknown) => {
-      progress.fail(error instanceof Error ? error.message : String(error));
-    });
+    void runRequest(mastra, sessionId, progress, userQuery, abort.signal)
+      .catch((error: unknown) => {
+        progress.fail(error instanceof Error ? error.message : String(error));
+      })
+      .then(() => notifyIfAsked(progress));
+  },
+
+  async notifyWhenDone(sessionId) {
+    const progress = progressFor(resolvePolledSessionId(sessionId));
+    if (progress.isFinished() || progress.isIdle()) {
+      return false;
+    }
+
+    logger.info('The user will be notified when this routing request is done', { sessionId });
+    progress.notifyWhenDone = true;
+    return true;
   },
 
   async poll(sessionId) {
@@ -840,6 +938,19 @@ const planRuntime: RoutingRuntime = {
     await Promise.race([progressFor(resolvePolledSessionId(sessionId)).wait(), delay(deadlineMs)]);
   },
 };
+
+/** Sends the user what a request came to, if he asked to be told. Never throws. */
+async function notifyIfAsked(progress: RoutingProgress): Promise<void> {
+  if (!progress.notifyWhenDone) {
+    return;
+  }
+
+  try {
+    await sendCompletionNotice(progress);
+  } catch (error) {
+    logger.error('Could not notify the user that a routing request is done', { error });
+  }
+}
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));

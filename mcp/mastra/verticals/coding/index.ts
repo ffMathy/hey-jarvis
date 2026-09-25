@@ -1,5 +1,5 @@
 // Coding vertical exports
-export { getCodingAgent, getRequirementsInterviewerAgent } from './agent.js';
+export { getCodingAgent } from './agent.js';
 export {
   type ClaudeSession,
   type ClaudeSessionEvent,
@@ -27,4 +27,4 @@ export {
   toStateChange,
 } from './session-watcher.js';
 export { codingTools } from './tools.js';
-export { implementFeatureWorkflow } from './workflows.js';
+export { type CodebaseAnalysis, implementFeatureWorkflow, readCodebaseAnalysis } from './workflows.js';

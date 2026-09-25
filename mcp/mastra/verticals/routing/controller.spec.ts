@@ -9,6 +9,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+import { markAsSlow } from '../../utils/slow-tasks.js';
 import {
   asRoutingEvents,
   buildSnapshot,
@@ -224,6 +225,49 @@ describe('a delegation that stops to ask the user something', () => {
     const snapshot = buildSnapshot(progress);
     expect(snapshot.questions).toEqual([]);
     expect(snapshot.landed[0].result).toContain('cannot be given out loud');
+  });
+});
+
+describe('a delegation that starts something slow', () => {
+  function toolCallOutput(stepName: string, toolName: string) {
+    return {
+      type: 'workflow-step-output',
+      payload: {
+        stepName,
+        output: { type: 'tool-call', runId: 'agent-run-1', from: 'AGENT', payload: { toolCallId: 'call-1', toolName } },
+      },
+    };
+  }
+
+  it('is read off the agent calling a tool marked slow', () => {
+    markAsSlow({ id: 'readTheWholeCodebase' });
+
+    expect(asRoutingEvents(toolCallOutput(CALENDAR_STEP, 'readTheWholeCodebase'), PLAN)).toEqual([
+      { type: 'delegation_slow', delegationId: CALENDAR_STEP },
+    ]);
+  });
+
+  it('is read off the agent starting a workflow marked slow', () => {
+    markAsSlow({ id: 'buildTheWholeFeature' });
+
+    expect(asRoutingEvents(toolCallOutput(CALENDAR_STEP, 'workflow-buildTheWholeFeature'), PLAN)).toEqual([
+      { type: 'delegation_slow', delegationId: CALENDAR_STEP },
+    ]);
+  });
+
+  it('ignores a tool that answers quickly', () => {
+    expect(asRoutingEvents(toolCallOutput(CALENDAR_STEP, 'listCalendarEvents'), PLAN)).toEqual([]);
+  });
+
+  it('is announced once, and not at all once the user has asked to be notified', () => {
+    const progress = startedPlan();
+    progress.handle({ type: 'delegation_slow', delegationId: CALENDAR_STEP });
+    progress.handle({ type: 'delegation_slow', delegationId: CALENDAR_STEP });
+    expect(buildSnapshot(progress).newlySlow).toEqual(['diary']);
+
+    progress.notifyWhenDone = true;
+    progress.handle({ type: 'delegation_slow', delegationId: WEATHER_STEP });
+    expect(buildSnapshot(progress).newlySlow).toEqual([]);
   });
 });
 

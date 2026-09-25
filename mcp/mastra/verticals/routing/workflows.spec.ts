@@ -91,7 +91,20 @@ const fakeRuntime: RoutingRuntime = {
     // is what keeps the poll loop from spinning through it in tight iterations.
     await new Promise((resolve) => setTimeout(resolve, deadlineMs));
   },
+  async notifyWhenDone(sessionId) {
+    const progress = progressFor(sessionId);
+    if (progress.isFinished() || progress.isIdle()) {
+      return false;
+    }
+    progress.notifyWhenDone = true;
+    return true;
+  },
 };
+
+/** A delegation's agent starting something marked slow, the way a plan run reports it. */
+function startSlowWork(sessionId: string, delegationId: string): void {
+  progressFor(sessionId).handle({ type: 'delegation_slow', delegationId });
+}
 
 async function runWorkflow<TInput, TResult>(
   workflow: { createRun(): Promise<{ start: (args: { inputData: TInput }) => Promise<TResult> }> },
@@ -366,6 +379,71 @@ describe('a request that is waiting on the user', () => {
 
     expect(outcome.questionsForUser).toBeUndefined();
     expect(outcome.taskIdsInProgress).toEqual(['weather']);
+  });
+});
+
+describe('a request that has started something slow', () => {
+  it('has Jarvis offer to notify the user, without routing his reply', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'add push reminders for tasks', async: false });
+    startSlowWork(DEFAULT_ROUTING_SESSION_ID, startDelegation(DEFAULT_ROUTING_SESSION_ID, 'coding'));
+
+    const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(outcome.slowTaskIds).toEqual(['coding']);
+    expect(outcome.taskIdsInProgress).toEqual(['coding']);
+    expect(outcome.instructions).toContain('offer to notify him when it is done');
+    expect(outcome.instructions).toContain('notifyWhenDone set to true');
+    expect(outcome.instructions).toContain('never send it through routePromptWorkflow');
+    expect(outcome.instructions).toContain('end_call');
+  });
+
+  it('makes the offer once per task', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'add push reminders for tasks', async: false });
+    const delegationId = startDelegation(DEFAULT_ROUTING_SESSION_ID, 'coding');
+    startSlowWork(DEFAULT_ROUTING_SESSION_ID, delegationId);
+    await runWorkflow(getNextInstructionsWorkflow, {});
+
+    startSlowWork(DEFAULT_ROUTING_SESSION_ID, delegationId);
+    const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(outcome.slowTaskIds).toBeUndefined();
+    expect(outcome.instructions).toContain('Still processing');
+  });
+
+  it('relays results that landed alongside the offer', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'weather, and add push reminders', async: false });
+    delegate(DEFAULT_ROUTING_SESSION_ID, 'weather', 'It is 8 degrees.');
+    startSlowWork(DEFAULT_ROUTING_SESSION_ID, startDelegation(DEFAULT_ROUTING_SESSION_ID, 'coding'));
+
+    const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(outcome.completedTaskResults).toEqual([{ id: 'weather', result: 'It is 8 degrees.' }]);
+    expect(outcome.slowTaskIds).toEqual(['coding']);
+  });
+
+  it('takes the user up on it, and releases Jarvis from polling', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'add push reminders for tasks', async: false });
+    startSlowWork(DEFAULT_ROUTING_SESSION_ID, startDelegation(DEFAULT_ROUTING_SESSION_ID, 'coding'));
+    await runWorkflow(getNextInstructionsWorkflow, {});
+
+    const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, { notifyWhenDone: true }));
+
+    expect(progressFor(DEFAULT_ROUTING_SESSION_ID).notifyWhenDone).toBe(true);
+    expect(outcome.instructions).toContain('will be notified when this request is done');
+    expect(outcome.instructions).toContain('stop calling getNextInstructionsWorkflow');
+    expect(outcome.taskIdsInProgress).toEqual(['coding']);
+  });
+
+  it('reports a request that finished before he accepted, rather than promising a notification', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'add push reminders for tasks', async: false });
+    const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    delegate(DEFAULT_ROUTING_SESSION_ID, 'coding', 'Started a Claude cloud session.');
+    endPlanRun(progress);
+
+    const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, { notifyWhenDone: true }));
+
+    expect(progress.notifyWhenDone).toBe(false);
+    expect(outcome.instructions).toStartWith('All tasks have completed');
   });
 });
 

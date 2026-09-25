@@ -157,7 +157,7 @@ describe('createAgent instructions', () => {
     setSystemTime();
   });
 
-  async function createProbe(extra: { asksQuestions?: boolean } = {}) {
+  async function createProbe() {
     return createAgent({
       id: 'probe',
       name: 'probe',
@@ -166,7 +166,6 @@ describe('createAgent instructions', () => {
       // The shared memory reaches for an embedder, which wants credentials a mocked test has
       // none of. Instructions are resolved without it.
       memory: undefined,
-      ...extra,
     });
   }
 
@@ -182,22 +181,6 @@ describe('createAgent instructions', () => {
         '',
         '# Additional context and guidelines',
         'Never ask questions. Always make best-guess assumptions.',
-        `The time is currently: \`${now.toString()}\`.`,
-      ].join('\n'),
-    );
-  });
-
-  it('does not tell an agent whose questions reach the user never to ask them', async () => {
-    const now = new Date('2026-09-25T08:30:00Z');
-    setSystemTime(now);
-
-    const agent = await createProbe({ asksQuestions: true });
-
-    expect(await agent.getInstructions()).toBe(
-      [
-        'Base instructions.',
-        '',
-        '# Additional context and guidelines',
         `The time is currently: \`${now.toString()}\`.`,
       ].join('\n'),
     );

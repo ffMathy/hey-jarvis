@@ -4,9 +4,9 @@ import { logger } from '../../utils/logger.js';
  * Questions a delegation stopped to ask, and the answers that resume it.
  *
  * Some work cannot be finished on what the request said. The coding agent's
- * `implementFeatureWorkflow` interviews sir before it files anything, and each question it asks
- * suspends the workflow -- which, because the agent runs that workflow as a tool, suspends the
- * agent too. That is Mastra's own mechanism, and it says exactly what routing needs to know: the
+ * `implementFeatureWorkflow` asks sir whatever the codebase could not answer before it starts
+ * implementing anything, and each question it asks suspends the workflow -- which, because the
+ * agent runs that workflow as a tool, suspends the agent too. That is Mastra's own mechanism, and it says exactly what routing needs to know: the
  * agent run that is waiting, the tool call it is waiting in, what it wants to ask, and the shape
  * of the answer that resumes it.
  *
@@ -80,7 +80,7 @@ export function asDelegationSuspension(chunk: unknown): DelegationSuspension | u
  * The one field of a resume schema that a spoken answer can fill.
  *
  * An answer arrives as a sentence, so a tool can be resumed with one only if what it resumes
- * with is a single piece of text -- the interview's `{ userAnswer }`. Anything richer would need
+ * with is a single piece of text -- the coding workflow's `{ userAnswer }`. Anything richer would need
  * the answer taken apart first, and nothing that suspends asks for that today.
  */
 function answerFieldOf(resumeSchema: string | undefined): string | undefined {

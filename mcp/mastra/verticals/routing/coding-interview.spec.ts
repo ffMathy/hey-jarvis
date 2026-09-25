@@ -4,14 +4,17 @@
  * This is the path the ElevenLabs agent takes, through the same two MCP tools it calls:
  * `routePromptWorkflow` with what sir said, then `getNextInstructionsWorkflow` until a response
  * closes the request. In between, the planner hands the request to the coding agent, the coding
- * agent starts `implementFeatureWorkflow` as a tool, and the interview suspends it on its first
- * question -- which has to come back out of the poll as something Jarvis can ask. Sir's reply
- * goes back in through `routePromptWorkflow`, and has to reach the suspended interview rather
- * than start a new errand.
+ * agent starts `implementFeatureWorkflow` as a tool, a Claude session reads the codebase, and the
+ * workflow suspends on the first question that session could not answer -- which has to come
+ * back out of the poll as something Jarvis can ask. Sir's reply goes back in through
+ * `routePromptWorkflow`, and has to reach the suspended workflow rather than start a new errand.
  *
- * Every model is scripted and the GitHub and Claude tools are recorders, so what is tested is
- * the plumbing between them: that a suspension surfaces, that an answer resumes it, and that the
- * interview ends in exactly one issue and one session.
+ * The workflow is marked slow, so the poll also has to offer to notify him instead of holding the
+ * line, and taking that offer has to let the request outlive the conversation.
+ *
+ * Every model is scripted and both Claude sessions are recorders, so what is tested is the
+ * plumbing between them: that a suspension surfaces, that an answer resumes it, that the slow
+ * offer and the notification work, and that the questions end in exactly one session.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
@@ -19,7 +22,9 @@ import { Mastra } from '@mastra/core';
 import { InMemoryStore } from '@mastra/core/storage';
 import {
   type CodingToolRecorder,
-  RECORDED_ISSUE_URL,
+  RECORDED_ANALYSIS,
+  RECORDED_SESSION_URL,
+  type RecordCodingToolsOptions,
   recordCodingTools,
 } from '../../../tests/utils/coding-tool-recorder.js';
 import { createScriptedModel } from '../../../tests/utils/scripted-model.js';
@@ -27,6 +32,11 @@ import { createAgent } from '../../utils/agent-factory.js';
 import { createInstructionsWorkflowTool, createSimplifiedWorkflowTool } from '../../utils/mcp-tool-factory.js';
 import { executeTool } from '../../utils/tool-factory.js';
 import { implementFeatureWorkflow } from '../coding/workflows.js';
+import {
+  type CompletionNotice,
+  resetCompletionNotifierForTest,
+  setCompletionNotifierForTest,
+} from './completion-notice.js';
 import { resetRoutingRuntime } from './controller.js';
 import { PLANNER_AGENT_ID } from './planner.js';
 import { listOpenQuestions } from './questions.js';
@@ -38,10 +48,10 @@ import {
 } from './workflows.js';
 
 const FEATURE_REQUEST = 'Build me reminders that go out before my tasks are due.';
-const FIRST_QUESTION = 'Should the reminder go out by email, or as a push notification?';
+const [FIRST_QUESTION, SECOND_QUESTION] = RECORDED_ANALYSIS.questions;
 const FIRST_ANSWER = 'Push, please.';
-const SECOND_QUESTION = 'How long before the task is due should it be sent?';
 const SECOND_ANSWER = 'An hour before.';
+const SESSION_STARTED = 'A Claude cloud session is now implementing push reminders for tasks.';
 
 /**
  * The planner: a coding task for the feature request, and an answer for anything said while a
@@ -73,38 +83,14 @@ function scriptedPlanner() {
 /** The coding agent: starts the workflow, and reports once the workflow has finished. */
 function scriptedCodingAgent() {
   return createScriptedModel(({ transcript }) => {
-    if (transcript.includes(RECORDED_ISSUE_URL)) {
-      return { text: 'Filed issue #42, "Push reminders for tasks", and a Claude cloud session is implementing it.' };
+    if (transcript.includes(RECORDED_SESSION_URL)) {
+      return { text: SESSION_STARTED };
     }
 
     return {
       toolCalls: [
         { toolName: 'workflow-implementFeatureWorkflow', input: { inputData: { initialRequest: FEATURE_REQUEST } } },
       ],
-    };
-  });
-}
-
-/** The interviewer: two questions, then satisfied. */
-function scriptedInterviewer() {
-  return createScriptedModel(({ transcript }) => {
-    if (!transcript.includes(FIRST_ANSWER)) {
-      return { text: JSON.stringify({ needsMoreQuestions: true, nextQuestion: FIRST_QUESTION, requirements: {} }) };
-    }
-
-    if (!transcript.includes(SECOND_ANSWER)) {
-      return { text: JSON.stringify({ needsMoreQuestions: true, nextQuestion: SECOND_QUESTION, requirements: {} }) };
-    }
-
-    return {
-      text: JSON.stringify({
-        needsMoreQuestions: false,
-        requirements: {
-          title: 'Push reminders for tasks',
-          requirements: ['Send a push notification an hour before a task is due'],
-          isComplete: true,
-        },
-      }),
     };
   });
 }
@@ -123,17 +109,22 @@ interface PollResponse {
   completedTaskResults?: { id: string; result: unknown }[];
   taskIdsInProgress?: string[];
   questionsForUser?: { id: string; question: string }[];
+  slowTaskIds?: string[];
 }
 
 /** The openings a response has when it closes a request, and only then. */
 const CLOSING_OPENINGS = ['All tasks have completed', 'The request could not be completed', 'Part of this request'];
+
+async function poll(input: { notifyWhenDone?: boolean } = {}): Promise<PollResponse> {
+  return (await executeTool(pollTool, input)) as PollResponse;
+}
 
 /** Says something to Jarvis, and does what he does: polls until the request is closed. */
 async function say(userQuery: string): Promise<PollResponse> {
   await executeTool(routeTool, { userQuery, async: false });
 
   for (let attempt = 0; attempt < 30; attempt += 1) {
-    const response = (await executeTool(pollTool, {})) as PollResponse;
+    const response = await poll();
     if (CLOSING_OPENINGS.some((opening) => response.instructions.startsWith(opening))) {
       return response;
     }
@@ -142,19 +133,17 @@ async function say(userQuery: string): Promise<PollResponse> {
   throw new Error(`"${userQuery}" was never closed`);
 }
 
-let codingTools: CodingToolRecorder;
-let interviewerCalls: ReturnType<typeof createScriptedModel>['calls'];
+let codingTools: CodingToolRecorder | undefined;
 
-beforeEach(async () => {
-  resetRoutingRuntime();
-  setPollDeadlineForTest(1_000);
-  codingTools = recordCodingTools();
+/**
+ * Registers the workflows and agents on a fresh instance, with the analysing session recorded.
+ *
+ * Registering the workflows here is what hands their steps this instance: the routing steps plan
+ * against its agents, and the coding workflow persists its suspension in its storage.
+ */
+async function setUp(options?: RecordCodingToolsOptions): Promise<CodingToolRecorder> {
+  codingTools = recordCodingTools(options);
 
-  const interviewer = scriptedInterviewer();
-  interviewerCalls = interviewer.calls;
-
-  // Registering the workflows here is what hands their steps this instance: the routing steps
-  // plan against its agents, and the interview persists its suspension in its storage.
   new Mastra({
     storage: new InMemoryStore(),
     logger: false,
@@ -164,40 +153,51 @@ beforeEach(async () => {
       coding: await scriptedAgent('coding', scriptedCodingAgent().model, {
         workflows: { implementFeatureWorkflow },
       }),
-      requirementsInterviewer: await scriptedAgent('requirementsInterviewer', interviewer.model),
     },
   });
+
+  return codingTools;
+}
+
+beforeEach(() => {
+  resetRoutingRuntime();
+  setPollDeadlineForTest(1_000);
 });
 
 afterEach(() => {
-  codingTools.restore();
+  codingTools?.restore();
+  codingTools = undefined;
+  resetCompletionNotifierForTest();
   resetRoutingRuntime();
   resetPollDeadlineForTest();
 });
 
 describe('a coding request made by voice', () => {
-  it('comes back as the interviewer’s first question, with nothing filed yet', async () => {
+  it('comes back as the first question the codebase could not answer, with nothing started yet', async () => {
+    const recorder = await setUp();
+
     const response = await say(FEATURE_REQUEST);
 
     expect(response.questionsForUser).toEqual([{ id: 'feature', question: FIRST_QUESTION }]);
     expect(response.instructions).toContain('send his answer through routePromptWorkflow');
-    expect(codingTools.createdIssues).toEqual([]);
+    expect(recorder.analysisTasks).toHaveLength(1);
+    expect(recorder.startedSessions).toEqual([]);
   }, 60_000);
 
-  it('carries each answer back to the interview, and asks the next question', async () => {
+  it('carries each answer back to the workflow, and asks the next question', async () => {
+    const recorder = await setUp();
     await say(FEATURE_REQUEST);
 
     const response = await say(FIRST_ANSWER);
 
     expect(response.questionsForUser).toEqual([{ id: 'feature', question: SECOND_QUESTION }]);
-    expect(codingTools.createdIssues).toEqual([]);
-    // The interview heard the answer, rather than a fresh interview being started with it.
-    const lastInterviewerCall = interviewerCalls[interviewerCalls.length - 1];
-    expect(lastInterviewerCall.transcript).toContain(FIRST_ANSWER);
-    expect(lastInterviewerCall.transcript).toContain(FEATURE_REQUEST);
+    // The workflow heard the answer, rather than a fresh analysis being started with it.
+    expect(recorder.analysisTasks).toHaveLength(1);
+    expect(recorder.startedSessions).toEqual([]);
   }, 60_000);
 
-  it('ends in one issue and one Claude session, reported back as the request’s result', async () => {
+  it('ends in one Claude session, reported back as the request’s result', async () => {
+    const recorder = await setUp();
     await say(FEATURE_REQUEST);
     await say(FIRST_ANSWER);
 
@@ -205,20 +205,15 @@ describe('a coding request made by voice', () => {
 
     expect(response.instructions).toStartWith('All tasks have completed');
     expect(response.questionsForUser).toBeUndefined();
-    expect(response.completedTaskResults).toEqual([
-      {
-        id: 'feature',
-        result: 'Filed issue #42, "Push reminders for tasks", and a Claude cloud session is implementing it.',
-      },
-    ]);
-    expect(codingTools.createdIssues).toHaveLength(1);
-    expect(codingTools.createdIssues[0].body).toContain(FIRST_ANSWER);
-    expect(codingTools.createdIssues[0].body).toContain(SECOND_ANSWER);
-    expect(codingTools.startedSessions).toEqual([expect.objectContaining({ issue_number: 42 })]);
+    expect(response.completedTaskResults).toEqual([{ id: 'feature', result: SESSION_STARTED }]);
+    expect(recorder.startedSessions).toHaveLength(1);
+    expect(recorder.startedSessions[0].instructions).toContain(FIRST_ANSWER);
+    expect(recorder.startedSessions[0].instructions).toContain(SECOND_ANSWER);
     expect(listOpenQuestions()).toEqual([]);
   }, 60_000);
 
   it('keeps the question open while sir talks about something else, and takes the answer after', async () => {
+    await setUp();
     await say(FEATURE_REQUEST);
 
     const aside = await say('What is the meaning of life?');
@@ -227,5 +222,65 @@ describe('a coding request made by voice', () => {
 
     const response = await say(FIRST_ANSWER);
     expect(response.questionsForUser).toEqual([{ id: 'feature', question: SECOND_QUESTION }]);
+  }, 60_000);
+});
+
+describe('a coding request that takes minutes', () => {
+  /** Longer than a poll's deadline, so the analysis is still running when the first poll returns. */
+  const SLOW_ANALYSIS = { analysisDelayMilliseconds: 2_500 };
+
+  /** Captures the notices that would be sent to sir, and resolves once the first one is. */
+  function recordNotices() {
+    const notices: CompletionNotice[] = [];
+    const firstNotice = new Promise<void>((resolve) => {
+      setCompletionNotifierForTest(async (notice) => {
+        notices.push(notice);
+        resolve();
+      });
+    });
+    return { notices, firstNotice };
+  }
+
+  it('has Jarvis offer to notify sir rather than hold the line', async () => {
+    await setUp(SLOW_ANALYSIS);
+    await executeTool(routeTool, { userQuery: FEATURE_REQUEST, async: false });
+
+    const response = await poll();
+
+    expect(response.slowTaskIds).toEqual(['feature']);
+    expect(response.instructions).toContain('offer to notify him when it is done');
+  }, 60_000);
+
+  it('sends sir the question once he has taken the offer, and still takes his answer later', async () => {
+    const recorder = await setUp(SLOW_ANALYSIS);
+    const { notices, firstNotice } = recordNotices();
+    await executeTool(routeTool, { userQuery: FEATURE_REQUEST, async: false });
+    await poll();
+
+    const accepted = await poll({ notifyWhenDone: true });
+    expect(accepted.instructions).toContain('will be notified when this request is done');
+
+    await firstNotice;
+    expect(notices).toEqual([{ title: 'Jarvis has a question', message: expect.stringContaining(FIRST_QUESTION) }]);
+    expect(recorder.startedSessions).toEqual([]);
+
+    const response = await say(FIRST_ANSWER);
+    expect(response.questionsForUser).toEqual([{ id: 'feature', question: SECOND_QUESTION }]);
+  }, 60_000);
+
+  it('is not cancelled by what sir asks for next', async () => {
+    const recorder = await setUp(SLOW_ANALYSIS);
+    const { notices, firstNotice } = recordNotices();
+    await executeTool(routeTool, { userQuery: FEATURE_REQUEST, async: false });
+    await poll();
+    await poll({ notifyWhenDone: true });
+
+    // A new request would ordinarily supersede the running one and cancel it.
+    await say('What is the meaning of life?');
+    await firstNotice;
+
+    expect(recorder.analysisTasks).toHaveLength(1);
+    expect(notices[0].message).toContain(FIRST_QUESTION);
+    expect(listOpenQuestions()).toMatchObject([{ question: FIRST_QUESTION }]);
   }, 60_000);
 });

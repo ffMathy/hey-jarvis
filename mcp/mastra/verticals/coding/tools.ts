@@ -2,6 +2,7 @@ import { pick } from 'lodash-es';
 import { Octokit } from 'octokit';
 import { z } from 'zod';
 import { logger } from '../../utils/logger.js';
+import { markAsSlow } from '../../utils/slow-tasks.js';
 import { createTool } from '../../utils/tool-factory.js';
 import {
   createClaudeSession,
@@ -230,7 +231,7 @@ export const searchRepositories = createTool({
 });
 
 /**
- * Tool to hand an issue to a Claude cloud session for implementation
+ * Tool to hand a change to a Claude cloud session for implementation
  *
  * The session runs unattended in a sandboxed cloud environment. Its events are
  * watched from the moment it starts and forwarded into the Synapse vertical as
@@ -239,19 +240,21 @@ export const searchRepositories = createTool({
  */
 export const startCodingSession = createTool({
   id: 'startCodingSession',
-  description: `Starts a Claude cloud session that implements a GitHub issue autonomously. The session clones the repository, does the work and opens a pull request. Its events are reported back into the Synapse vertical as state changes. Defaults to Jarvis's own repository, "${DEFAULT_OWNER}/${DEFAULT_REPOSITORY}", if none is given.`,
+  description: `Starts a Claude cloud session that implements a change autonomously. The session clones the repository, does the work and opens a pull request. Its events are reported back into the Synapse vertical as state changes. Defaults to Jarvis's own repository, "${DEFAULT_OWNER}/${DEFAULT_REPOSITORY}", if none is given.`,
   inputSchema: z.object({
     owner: z.string().optional().describe(`The repository owner (defaults to "${DEFAULT_OWNER}" if not provided)`),
     repo: z
       .string()
       .optional()
       .describe(`The repository name (defaults to "${DEFAULT_REPOSITORY}", Jarvis's own, if not provided)`),
-    issue_number: z.number().describe('The issue number the session should implement'),
-    title: z.string().optional().describe('The issue title, used to describe the session'),
+    request: z.string().describe('What the user asked for, in their own words'),
+    title: z.string().optional().describe('A short title for the change, used to describe the session'),
     instructions: z
       .string()
       .optional()
-      .describe('Extra instructions for the session, such as the gathered requirements'),
+      .describe(
+        "Extra instructions for the session, such as what is already known about the codebase and the user's answers to questions about the change",
+      ),
   }),
   outputSchema: z.object({
     success: z.boolean(),
@@ -263,46 +266,37 @@ export const startCodingSession = createTool({
   execute: async (inputData) => {
     const owner = inputData.owner || DEFAULT_OWNER;
     const repository = `${owner}/${inputData.repo || DEFAULT_REPOSITORY}`;
-    const issueUrl = `https://github.com/${repository}/issues/${inputData.issue_number}`;
 
     const task = [
-      `Implement GitHub issue #${inputData.issue_number} in the ${repository} repository.`,
-      `Issue: ${issueUrl}`,
+      `Implement the following change in the ${repository} repository.`,
       inputData.title ? `Title: ${inputData.title}` : undefined,
-      inputData.instructions ? `\nRequirements:\n${inputData.instructions}` : undefined,
-      '\nWork on a dedicated branch, follow the repository conventions in AGENTS.md and CLAUDE.md, run the tests, and open a pull request that closes the issue when you are done.',
+      `\nRequest:\n${inputData.request}`,
+      inputData.instructions ? `\n${inputData.instructions}` : undefined,
+      '\nWork on a dedicated branch, follow the repository conventions in AGENTS.md and CLAUDE.md, run the tests, and open a pull request when you are done.',
     ]
       .filter((line): line is string => typeof line === 'string')
       .join('\n');
 
     // A session that fails to start is reported rather than thrown, so the
-    // caller still learns about the issue that was created for it.
+    // caller can say what went wrong instead of going quiet.
     try {
-      const session = await createClaudeSession(task, { repository, issueNumber: inputData.issue_number });
+      const session = await createClaudeSession(task, { repository });
 
-      claudeSessionWatcher.watch(session.id, {
-        repository,
-        issueNumber: inputData.issue_number,
-        title: inputData.title,
-      });
+      claudeSessionWatcher.watch(session.id, { repository, title: inputData.title });
 
       return {
         success: true,
         session_id: session.id,
         session_url: getClaudeSessionUrl(session.id),
         status: session.status,
-        message: `Started Claude cloud session ${session.id} for issue #${inputData.issue_number}`,
+        message: `Started Claude cloud session ${session.id} in ${repository}`,
       };
     } catch (error) {
-      logger.error('[CLAUDE SESSION] Failed to start session', {
-        repository,
-        issueNumber: inputData.issue_number,
-        error,
-      });
+      logger.error('[CLAUDE SESSION] Failed to start session', { repository, error });
 
       return {
         success: false,
-        message: `Could not start a Claude cloud session for ${issueUrl}: ${
+        message: `Could not start a Claude cloud session in ${repository}: ${
           error instanceof Error ? error.message : String(error)
         }`,
       };
@@ -316,62 +310,64 @@ export const CODING_TASK_TIMEOUT_MILLISECONDS = 15 * 60 * 1000;
 /**
  * Tool to have a Claude cloud session carry out a task and report back
  *
- * Unlike {@link startCodingSession}, which hands off an issue and returns at
+ * Unlike {@link startCodingSession}, which hands off a change and returns at
  * once because its result is a pull request, this is for work whose result is
  * an answer: it waits for the session to finish its turn and returns the last
  * thing the session said. Other verticals reach it through shortcuts that write
  * the task for their own purpose.
  */
-export const runCodingTask = createTool({
-  id: 'runCodingTask',
-  description:
-    'Hands a self-contained task to a Claude cloud session, waits for the session to finish, and returns the last message it sent. For work that produces an answer or a link rather than a pull request.',
-  inputSchema: z.object({
-    task: z.string().describe('The complete instructions for the session; it sees nothing else'),
-  }),
-  outputSchema: z.object({
-    success: z.boolean(),
-    session_id: z.string().optional(),
-    session_url: z.string().optional(),
-    stop_reason: z.string().optional().describe('Why the session stopped, e.g. "end_turn"'),
-    final_message: z.string().optional().describe('The last message the session sent'),
-    message: z.string(),
-  }),
-  execute: async (inputData) => {
-    // As with startCodingSession, a failure is reported rather than thrown, so
-    // the caller can say what went wrong instead of going quiet.
-    try {
-      const session = await createClaudeSession(inputData.task);
-      const sessionUrl = getClaudeSessionUrl(session.id);
-      const finishedTurn = await waitForClaudeSessionTurn(session.id, CODING_TASK_TIMEOUT_MILLISECONDS);
+export const runCodingTask = markAsSlow(
+  createTool({
+    id: 'runCodingTask',
+    description:
+      'Hands a self-contained task to a Claude cloud session, waits for the session to finish, and returns the last message it sent. For work that produces an answer or a link rather than a pull request.',
+    inputSchema: z.object({
+      task: z.string().describe('The complete instructions for the session; it sees nothing else'),
+    }),
+    outputSchema: z.object({
+      success: z.boolean(),
+      session_id: z.string().optional(),
+      session_url: z.string().optional(),
+      stop_reason: z.string().optional().describe('Why the session stopped, e.g. "end_turn"'),
+      final_message: z.string().optional().describe('The last message the session sent'),
+      message: z.string(),
+    }),
+    execute: async (inputData) => {
+      // As with startCodingSession, a failure is reported rather than thrown, so
+      // the caller can say what went wrong instead of going quiet.
+      try {
+        const session = await createClaudeSession(inputData.task);
+        const sessionUrl = getClaudeSessionUrl(session.id);
+        const finishedTurn = await waitForClaudeSessionTurn(session.id, CODING_TASK_TIMEOUT_MILLISECONDS);
 
-      if (!finishedTurn) {
+        if (!finishedTurn) {
+          return {
+            success: false,
+            session_id: session.id,
+            session_url: sessionUrl,
+            message: `Claude cloud session ${session.id} was still working after ${CODING_TASK_TIMEOUT_MILLISECONDS / 60_000} minutes. It can be followed at ${sessionUrl}.`,
+          };
+        }
+
         return {
-          success: false,
+          success: finishedTurn.stopReason === 'end_turn',
           session_id: session.id,
           session_url: sessionUrl,
-          message: `Claude cloud session ${session.id} was still working after ${CODING_TASK_TIMEOUT_MILLISECONDS / 60_000} minutes. It can be followed at ${sessionUrl}.`,
+          stop_reason: finishedTurn.stopReason,
+          final_message: finishedTurn.finalMessage,
+          message: `Claude cloud session ${session.id} stopped with "${finishedTurn.stopReason}".`,
+        };
+      } catch (error) {
+        logger.error('[CLAUDE SESSION] Failed to run coding task', { error });
+
+        return {
+          success: false,
+          message: `Could not run the task in a Claude cloud session: ${error instanceof Error ? error.message : String(error)}`,
         };
       }
-
-      return {
-        success: finishedTurn.stopReason === 'end_turn',
-        session_id: session.id,
-        session_url: sessionUrl,
-        stop_reason: finishedTurn.stopReason,
-        final_message: finishedTurn.finalMessage,
-        message: `Claude cloud session ${session.id} stopped with "${finishedTurn.stopReason}".`,
-      };
-    } catch (error) {
-      logger.error('[CLAUDE SESSION] Failed to run coding task', { error });
-
-      return {
-        success: false,
-        message: `Could not run the task in a Claude cloud session: ${error instanceof Error ? error.message : String(error)}`,
-      };
-    }
-  },
-});
+    },
+  }),
+);
 
 /**
  * Tool to check what a Claude cloud session is currently doing
