@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.6.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.5.0...mcp-v2.6.0) (2026-09-25)
+
+
+### Features
+
+* **mcp:** add generative ui vertical that builds artifacts on request ([#789](https://github.com/ffMathy/hey-jarvis/issues/789)) ([5e1783e](https://github.com/ffMathy/hey-jarvis/commit/5e1783e4e0fc9dac81c5c78c096d41bc15a04dca))
+
 ## [2.5.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.4.4...mcp-v2.5.0) (2026-09-25)
 
 
