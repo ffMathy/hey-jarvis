@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.4.3](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.4.2...mcp-v2.4.3) (2026-09-25)
+
+
+### Bug Fixes
+
+* **coding:** carry interview questions to Jarvis and answers back ([#780](https://github.com/ffMathy/hey-jarvis/issues/780)) ([77e1bef](https://github.com/ffMathy/hey-jarvis/commit/77e1befc50d2daa19c1693e0e9e655265c90a80b))
+
+
+### Documentation
+
+* **mcp:** document watchtower cleanup flag and api pin ([#778](https://github.com/ffMathy/hey-jarvis/issues/778)) ([c3d891d](https://github.com/ffMathy/hey-jarvis/commit/c3d891db473ec8493aa45cc26a0fb70769d01541))
+
 ## [2.4.2](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.4.1...mcp-v2.4.2) (2026-09-23)
 
 

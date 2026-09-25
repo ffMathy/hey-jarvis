@@ -1,5 +1,18 @@
 # Changelog
 
+## [4.2.7](https://github.com/ffMathy/hey-jarvis/compare/root-v4.2.6...root-v4.2.7) (2026-09-25)
+
+
+### Bug Fixes
+
+* **coding:** carry interview questions to Jarvis and answers back ([#780](https://github.com/ffMathy/hey-jarvis/issues/780)) ([77e1bef](https://github.com/ffMathy/hey-jarvis/commit/77e1befc50d2daa19c1693e0e9e655265c90a80b))
+* **mobile:** give the phone launcher icon a clear margin ([#779](https://github.com/ffMathy/hey-jarvis/issues/779)) ([290f532](https://github.com/ffMathy/hey-jarvis/commit/290f532edfed4e965fce5efa6d4c15ffa5666b6a))
+
+
+### Documentation
+
+* **mcp:** document watchtower cleanup flag and api pin ([#778](https://github.com/ffMathy/hey-jarvis/issues/778)) ([c3d891d](https://github.com/ffMathy/hey-jarvis/commit/c3d891db473ec8493aa45cc26a0fb70769d01541))
+
 ## [4.2.6](https://github.com/ffMathy/hey-jarvis/compare/root-v4.2.5...root-v4.2.6) (2026-09-25)
 
 
