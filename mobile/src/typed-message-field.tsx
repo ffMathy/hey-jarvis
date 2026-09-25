@@ -16,6 +16,8 @@ interface TypedMessageFieldProps {
    * microphone was switched off.
    */
   opening: boolean;
+  /** Whether to take focus, and so the keyboard, as soon as it appears. */
+  autoFocus?: boolean;
 }
 
 /**
@@ -30,9 +32,9 @@ interface TypedMessageFieldProps {
  * Which is why it is beside a working microphone and not only where the microphone failed. A
  * conversation you can drive from the keyboard is one you can hold in an open office or in a call
  * — and one whose input is repeatable from one run to the next in a way that speaking never is,
- * which is what makes it a debugging affordance as well. **Only in a browser**, though: on a phone
- * it was an empty bar under him on every summoning, and the user asked for it gone. See the note on
- * `ConversationScreen`.
+ * which is what makes it a debugging affordance as well. **On a phone only on request**: it was an
+ * empty bar under him on every summoning, and the user asked for it gone, so there it appears when
+ * a tap on him switches the conversation into writing. See `text-mode.ts`.
  *
  * The microphone is left listening while it is on screen. Muting it would be a second, invisible
  * mode on a screen whose whole argument is that it has none: somebody who types a line and then
@@ -53,7 +55,7 @@ interface TypedMessageFieldProps {
  * is not a conflict: each platform reads the one it understands. Enter still submits either way —
  * web gates that on `blurOnSubmit || !multiline`, and this field is not multiline.
  */
-export function TypedMessageField({ onSend, enabled, opening }: TypedMessageFieldProps) {
+export function TypedMessageField({ onSend, enabled, opening, autoFocus = false }: TypedMessageFieldProps) {
   const [draft, setDraft] = useState('');
 
   const send = useCallback(() => {
@@ -77,6 +79,7 @@ export function TypedMessageField({ onSend, enabled, opening }: TypedMessageFiel
       submitBehavior="submit"
       blurOnSubmit={false}
       editable={enabled}
+      autoFocus={autoFocus}
       placeholder={enabled ? 'Type to Jarvis' : opening ? 'Connecting…' : 'Not connected'}
       placeholderTextColor={theme.colors.mutedText}
       autoCapitalize="none"

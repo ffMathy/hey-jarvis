@@ -114,6 +114,7 @@ mobile/
     ├── queued-audio.ts           # dropping what a browser still has queued when he is cut off
     ├── conversation-life.ts      # whether a conversation is open, and whether one has ended
     ├── typed-message-field.tsx   # writing to Jarvis instead of talking, and he still answers aloud
+    ├── text-mode.ts              # tapping him on a phone: the voice session held in writing, and back
     ├── written-reply.ts          # the last thing he said in writing, and how long he takes to say it …
     ├── written-reply-line.tsx    # … and the one thing on this screen there is to read
     ├── theme.ts                  # the one place colours and spacing are defined
@@ -215,6 +216,14 @@ phone that had been set up simply stopped seeing it. Tapping beside the sheet or
 up. The assistant's window is kept between summonings rather than rebuilt, so a summoning after he
 has gone is noticed by the app returning to the foreground, which brings the sheet back and opens a
 new conversation.
+
+**A session that fails once open also says so in a toast.** An account out of credits is
+accepted, connects, and is then closed by ElevenLabs with `quota_exceeded` — which is a
+conversation ending, so he fades and the sheet goes, and the red line went with it before anyone
+could read it. Errors from the session itself (`onError`, and `onDisconnect` with `reason:
+"error"`) go through `reportSessionFailure`, which also shows them as an Android toast that
+outlives the window. Problems before a session exists stay on the line alone, under a sphere that
+is still there.
 
 **Ending is not the same as never starting**, and both read `disconnected`. A conversation that
 never opened has failed, and the answer to that is the line saying why *under a sphere that is
@@ -338,7 +347,7 @@ For each conversation the app asks `GET https://api.elevenlabs.io/v1/convai/conv
 
 Only ever here. `readingAloud` is set from `onMessage`, which is wired on the text-only session alone, so every conversation that has a voice goes on following Jarvis's real one. The words are genuinely his; the only invented thing is the delivery, and it is invented only where ElevenLabs was asked not to provide one.
 
-**Typing to Jarvis is not that branch, and has not been since he started answering typed lines out loud.** The two were the same thing for as long as the field existed only where the microphone had been refused, and the confusion cost the feature its voice: `textOnly` is what makes ElevenLabs write the reply instead of speaking it, and that override was the only session the field ever appeared in. It is not needed to *send* text. `sendUserMessage` is on `BaseConversation` rather than on `TextConversation`, so a typed line into an ordinary WebRTC session takes exactly the turn a spoken one would — Jarvis speaks the reply, and the sphere follows his voice, because `jarvis-voice.ts` reads his audio track and `mode` and neither knows how the turn began. So in a browser the field is beside a working microphone as readily as without one, and the text-only fallback is what is left when there is no microphone to hold a voice conversation with at all. **A phone has no field**: it sat under him as an empty bar on every summoning, and the user asked for it gone.
+**Typing to Jarvis is not that branch, and has not been since he started answering typed lines out loud.** The two were the same thing for as long as the field existed only where the microphone had been refused, and the confusion cost the feature its voice: `textOnly` is what makes ElevenLabs write the reply instead of speaking it, and that override was the only session the field ever appeared in. It is not needed to *send* text. `sendUserMessage` is on `BaseConversation` rather than on `TextConversation`, so a typed line into an ordinary WebRTC session takes exactly the turn a spoken one would — Jarvis speaks the reply, and the sphere follows his voice, because `jarvis-voice.ts` reads his audio track and `mode` and neither knows how the turn began. So in a browser the field is beside a working microphone as readily as without one, and the text-only fallback is what is left when there is no microphone to hold a voice conversation with at all. **A phone has no field until asked for**: it sat under him as an empty bar on every summoning, and the user asked for it gone. Tapping Jarvis now switches a phone's conversation into writing and back (`text-mode.ts`). A phone cannot open the text-only session — `@elevenlabs/react-native` refuses WebSocket sessions on a device — so the voice session stays up with the microphone muted and his volume at zero, the field appears with the keyboard, and his replies are written above it (`onMessage` is wired on the voice session, but only kept while in writing), the sphere miming them as in a browser's text-only session. The mode is applied whenever the session is connected, so a tap during the greeting lands once it is up, and it is never remembered: every conversation starts in voice.
 
 **It also needs the agent's permission.** A typed conversation is asked for by sending the `text_only` override, and overrides are an allow-list: send one the agent does not permit and the server closes the conversation rather than ignoring it. So the session connects, drops immediately, and — because the SDK reports a server-side close through `onDisconnect` and *not* through `onError` — used to say nothing at all: Jarvis faded out because a conversation really had ended, and no line explained why. The screen listens for the ending now, and `platformSettings.overrides.conversationConfigOverride.conversation.textOnly` is on in `elevenlabs/src/assets/agent-config.json`, which reaches the agent only once that project is deployed.
 

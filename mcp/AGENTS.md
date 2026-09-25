@@ -175,7 +175,7 @@ Provides general cooking and recipe search capabilities:
 
 ### Notification Agent
 Delivers a message to a person over whichever channel actually reaches them, based on where they are:
-- **4 notification tools**: `sendNotification`, `notifyDevice`, `sendPushNotification`, `getPrimaryUserPresence`
+- **5 notification tools**: `sendNotification`, `notifyDevice`, `sendPushNotification`, `setPhoneAlarm`, `getPrimaryUserPresence`
 - **Local Qwen3 model** via Ollama, with a fallback provider — the agent only classifies target and urgency, so a small model is enough
 - **Deterministic routing**: the channel is decided in code (`routing.ts`), not by the model
 - **Presence-aware**: reads the car, the house and the phone's ringer out of Home Assistant before deciding
@@ -232,6 +232,13 @@ would have been announced falls back to a push notification instead of being dro
 - **`sendPushNotification`**: pushes through the Home Assistant companion app
   (`notify.mobile_app_*`). Urgent pushes ask for a time-sensitive interruption so they surface
   through a focus mode.
+- **`setPhoneAlarm`**: sets an alarm on the phone through the same `notify.mobile_app_*` service,
+  sending the companion app's `command_activity` with Android's `SET_ALARM` intent (hour and
+  minute as `:int` extras, `SKIP_UI`, and a URL-encoded label). Fire-and-forget: Home Assistant is
+  not told whether the clock app took it. The first such command makes the companion app ask for
+  the "Display over other apps" permission instead of acting — a one-time step on the phone. The
+  routed Internet of Things agent reaches it through its `setUserPhoneAlarm` shortcut
+  (`internet-of-things/shortcuts.ts`), since the notification agent is not one the router picks.
 - **`getPrimaryUserPresence`**: reports in-car / home / phone-silenced and the reason for each.
   `sendNotification` does this for itself; the tool exists for answering "where is he?" and for
   tracing a surprising route.
@@ -2072,6 +2079,7 @@ The MCP server does not require authentication. All endpoints are publicly acces
 ### Internet of Things (IoT)
 - Voice command processing through ESPHome firmware
 - Smart device control and automation
+- Alarms on the user's phone, through the companion app (`setUserPhoneAlarm`, a shortcut onto the notification vertical's `setPhoneAlarm`)
 - Sensor data processing and analysis
 - Scene and routine management
 

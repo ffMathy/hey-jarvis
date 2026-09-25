@@ -4,6 +4,7 @@ import { sendEmail } from '../email/tools.js';
 import { initiatePhoneCall, sendTextMessage } from '../phone/tools.js';
 import {
   buildPushPayload,
+  buildSetAlarmCommand,
   callService,
   DEFAULT_ANNOUNCE_SILENCE_SECONDS,
   findAnnounceServices,
@@ -120,6 +121,49 @@ export const sendPushNotification = createTool({
     return {
       success: true,
       message: `Push notification sent via ${serviceCalled}`,
+      serviceCalled,
+    };
+  },
+});
+
+/**
+ * Set an alarm on the primary user's phone, through the Home Assistant companion app.
+ *
+ * It rides the same `notify.mobile_app_*` service as a push notification, carrying a command
+ * rather than a message: the companion app launches Android's `SET_ALARM` intent, and the phone's
+ * clock app sets the alarm. See `buildSetAlarmCommand`.
+ *
+ * Two things this cannot see. The command is fire-and-forget — Home Assistant is not told whether
+ * the clock app took it, so success here means it was sent. And the first command of this kind
+ * makes the companion app ask for the "Display over other apps" permission instead of acting,
+ * because Android lets a background app start an activity only with it.
+ */
+export const setPhoneAlarm = createTool({
+  id: 'setPhoneAlarm',
+  description:
+    "Set an alarm in the clock app on the primary user's Android phone, through the Home Assistant companion app. Takes the time as hour and minute in 24-hour form, in the phone's own time zone, and an optional label. The alarm is set without opening the clock app.",
+  inputSchema: z.object({
+    hour: z.number().int().min(0).max(23).describe('The hour the alarm rings, 0-23'),
+    minute: z.number().int().min(0).max(59).describe('The minute the alarm rings, 0-59'),
+    label: z.string().optional().describe('Optional: what the alarm is for, shown when it rings'),
+  }),
+  outputSchema: z.object({
+    success: z.boolean(),
+    message: z.string(),
+    serviceCalled: z.string(),
+  }),
+  execute: async (inputData) => {
+    const { hour, minute, label } = inputData;
+
+    const service = await findMobileAppNotifyService();
+    await callService(service, buildSetAlarmCommand({ hour, minute, label }));
+
+    const serviceCalled = `${service.domain}.${service.service}`;
+    const time = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+
+    return {
+      success: true,
+      message: `Sent the phone a command to set an alarm for ${time} via ${serviceCalled}. The phone does not confirm it; if this is the first alarm, the companion app asks for the "Display over other apps" permission instead of setting it.`,
       serviceCalled,
     };
   },
@@ -307,4 +351,5 @@ export const notificationTools = {
   notifyDevice,
   sendNotification,
   sendPushNotification,
+  setPhoneAlarm,
 };

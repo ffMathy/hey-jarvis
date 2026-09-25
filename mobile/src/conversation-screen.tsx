@@ -10,7 +10,7 @@ import { useGreeting, useToolActivity, useUserVoice } from 'hologram/conversatio
 import { LEAVING_SECONDS } from 'hologram/react/lifecycle';
 import { useSimulatedVoice } from 'hologram/react/sample';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, ToastAndroid, View } from 'react-native';
 import { createAssistLaunchClaim } from './assist-link';
 import { afterStatus, isLive, NOT_YET_OPEN } from './conversation-life';
 import { ConversationFrame, useConversationSheet } from './conversation-sheet';
@@ -22,6 +22,7 @@ import { usePreferredHeadset } from './preferred-microphone';
 import { useQueuedAudio } from './queued-audio';
 import { useSparkDensity } from './spark-density';
 import { QUIETEST_SPEECH_HERE } from './speech-floor';
+import { useTextMode } from './text-mode';
 import { theme } from './theme';
 import { TypedMessageField } from './typed-message-field';
 import { afterMessage, SAYING_NOTHING } from './written-reply';
@@ -44,6 +45,11 @@ const claimAssistLaunch = createAssistLaunchClaim();
 /** Where the screen has to be bare, and where it does not. See the note on the component. */
 const ON_A_PHONE = Platform.OS !== 'web';
 
+/** What the screen is to a screen reader: on a phone a tap switches modes, and a hold opens settings. */
+const SCREEN_LABEL = ON_A_PHONE
+  ? 'Jarvis. Tap to switch between talking and writing. Press and hold for ElevenLabs settings.'
+  : 'Jarvis. Press and hold for ElevenLabs settings.';
+
 /**
  * How long the screen waits for a conversation to open before saying it has not.
  *
@@ -59,6 +65,30 @@ const ON_A_PHONE = Platform.OS !== 'web';
  * network is never mistaken for a failure.
  */
 const GIVE_UP_CONNECTING_AFTER_MS = 20_000;
+
+/**
+ * What tapping the screen does: on a phone, once there is a conversation that has not ended, it
+ * switches between talking and writing (see `text-mode.ts`). Anywhere else, nothing.
+ */
+function tapToSwitchModes({
+  canType,
+  ended,
+  toggleTextMode,
+}: {
+  canType: boolean;
+  ended: boolean;
+  toggleTextMode: () => void;
+}): (() => void) | undefined {
+  return ON_A_PHONE && canType && !ended ? toggleTextMode : undefined;
+}
+
+/**
+ * Whether the field to type into is on screen: wherever a conversation was opened and he has not
+ * gone — always in a browser, and on a phone only while it is held in writing.
+ */
+function showsTypedField({ canType, gone, textMode }: { canType: boolean; gone: boolean; textMode: boolean }) {
+  return canType && !gone && (!ON_A_PHONE || textMode);
+}
 
 /**
  * Starts the greeting while the microphone is still held, and lets go of it once the greeting has
@@ -96,11 +126,12 @@ async function greetHolding(microphone: MicrophoneAccess, beginGreeting: () => P
  * browser — see `typed-message-field.tsx`. It is the exception that keeps the rule: there is still
  * nothing to read, only somewhere to write.
  *
- * **It is not on a phone.** It was, for a while, and sat under him as an empty bar on every
- * summoning — something on the assistant's screen that was not him, for a keyboard nobody summoning
- * an assistant is holding. The user asked for it gone. A browser keeps it: that is where Jarvis is
- * developed and demonstrated, the keyboard is right there, and it is the only way into the
- * text-only conversation a refused microphone falls back to.
+ * **On a phone it is there only when asked for.** It used to sit under him as an empty bar on
+ * every summoning — something on the assistant's screen that was not him, for a keyboard nobody
+ * summoning an assistant is holding — and the user asked for it gone. Tapping him now switches the
+ * conversation into writing and back (see `text-mode.ts`), and the field comes with it. A browser
+ * keeps it always: that is where Jarvis is developed and demonstrated, the keyboard is right there,
+ * and it is the only way into the text-only conversation a refused microphone falls back to.
  *
  * **Typed, he still answers out loud.** `sendUserMessage` is on the conversation rather than on the
  * text half of it, so a typed line takes the same turn a spoken one would and comes back *spoken*,
@@ -178,6 +209,13 @@ export function ConversationScreen({ settings, onEditSettings, inSheet = false }
   const rememberWhatHeSaid = useCallback((incoming: { message: string; role: string }) => {
     setWrittenReply((reply) => afterMessage(reply, incoming, Date.now()));
   }, []);
+  // Tapping him switches a phone's conversation between talking and writing. See `text-mode.ts`.
+  const clearWrittenReply = useCallback(() => setWrittenReply(SAYING_NOTHING), []);
+  const { textMode, toggleTextMode, resetTextMode, rememberInTextMode } = useTextMode({
+    connected: status === 'connected',
+    onSwitch: clearWrittenReply,
+    remember: rememberWhatHeSaid,
+  });
   /**
    * Sends what was typed, and forgets the answer to the last thing.
    *
@@ -266,6 +304,26 @@ export function ConversationScreen({ settings, onEditSettings, inSheet = false }
   }, []);
 
   /**
+   * Says what went wrong with the session itself, and on a phone says it in a toast as well.
+   *
+   * **The line alone was not enough there.** A session that fails once it is open — an account out
+   * of credits is the one that was hit: ElevenLabs accepts the token, opens the room, then closes it
+   * with `quota_exceeded` — is also a conversation that has ended, so Jarvis fades and, summoned,
+   * the sheet and the assistant's window go with him, taking the line along before it can be read.
+   * All anyone saw was him vanishing a second after greeting. A toast belongs to the system rather
+   * than to this window, so it outlives him. A browser keeps its screen, and the line on it.
+   */
+  const reportSessionFailure = useCallback(
+    (message: string) => {
+      reportProblem(message);
+      if (Platform.OS === 'android') {
+        ToastAndroid.show(message, ToastAndroid.LONG);
+      }
+    },
+    [reportProblem],
+  );
+
+  /**
    * Says why a conversation ended, when it ended for a reason worth saying.
    *
    * **The SDK does not route this through `onError`**, and that is the whole reason this exists.
@@ -281,10 +339,10 @@ export function ConversationScreen({ settings, onEditSettings, inSheet = false }
   const reportEnding = useCallback(
     (details: { reason: string; message?: string }) => {
       if (details.reason === 'error') {
-        reportProblem(details.message || 'The conversation with Jarvis ended unexpectedly.');
+        reportSessionFailure(details.message || 'The conversation with Jarvis ended unexpectedly.');
       }
     },
-    [reportProblem],
+    [reportSessionFailure],
   );
 
   /**
@@ -311,11 +369,13 @@ export function ConversationScreen({ settings, onEditSettings, inSheet = false }
       startSession({
         conversationToken: token,
         connectionType: 'webrtc',
-        onError: reportProblem,
+        onError: reportSessionFailure,
         onDisconnect: reportEnding,
         ...toolHandlers,
         ...playbackHandlers,
         ...userVoiceHandlers,
+        // Only kept while the conversation is held in writing; see `text-mode.ts`.
+        onMessage: rememberInTextMode,
         ...(greeted ? greetingSessionOptions : {}),
       });
     },
@@ -328,7 +388,8 @@ export function ConversationScreen({ settings, onEditSettings, inSheet = false }
       toolHandlers,
       playbackHandlers,
       userVoiceHandlers,
-      reportProblem,
+      rememberInTextMode,
+      reportSessionFailure,
       reportEnding,
     ],
   );
@@ -339,6 +400,8 @@ export function ConversationScreen({ settings, onEditSettings, inSheet = false }
     }
     startingNow.current = true;
     setProblem(undefined);
+    // Every summoning starts in voice, and with nothing written; see `text-mode.ts`.
+    resetTextMode();
     setIsStarting(true);
     setConnectingUntil(Date.now() + GIVE_UP_CONNECTING_AFTER_MS);
 
@@ -403,7 +466,7 @@ export function ConversationScreen({ settings, onEditSettings, inSheet = false }
           signedUrl,
           connectionType: 'websocket',
           textOnly: true,
-          onError: reportProblem,
+          onError: reportSessionFailure,
           onDisconnect: reportEnding,
           // The only place this is asked for, because it is the only place there is anything to
           // read: his reply arrives written here and as audio everywhere else.
@@ -427,8 +490,10 @@ export function ConversationScreen({ settings, onEditSettings, inSheet = false }
     openVoiceSession,
     stopGreeting,
     releaseCallAudio,
+    resetTextMode,
     toolHandlers,
     reportProblem,
+    reportSessionFailure,
     reportEnding,
     rememberWhatHeSaid,
   ]);
@@ -578,9 +643,11 @@ export function ConversationScreen({ settings, onEditSettings, inSheet = false }
     <Pressable
       accessible
       accessibilityRole="button"
-      accessibilityLabel="Jarvis. Press and hold for ElevenLabs settings."
+      accessibilityLabel={SCREEN_LABEL}
       style={inSheet ? styles.sheetContent : styles.screen}
       onLongPress={ON_A_PHONE ? onEditSettings : undefined}
+      // Tapping him switches between talking and writing, once there is a conversation to switch.
+      onPress={tapToSwitchModes({ canType, ended, toggleTextMode })}
       testID="conversation"
     >
       {gone ? null : (
@@ -616,27 +683,30 @@ export function ConversationScreen({ settings, onEditSettings, inSheet = false }
       {/*
         The other way in, in a browser, wherever there is a conversation to type into — a live
         microphone as readily as a refused one. Only a `start` that never opened a session at all
-        has none. Never on a phone: see the note on the component.
+        has none. On a phone only while the conversation is held in writing: see `text-mode.ts`.
 
         It leaves with him rather than before him, so the screen empties in one movement. A field
         left behind on a conversation that has ended is somewhere to type that nothing is listening
         to, which is worse than no field at all.
       */}
       {/*
-        What he said, when saying it is not something he can do out loud. Never set outside the
-        text-only session, so this is absent on every conversation that has a voice — which is the
-        screen as designed, and why this is gated on the reply itself rather than on the platform.
+        What he said, when saying it is not something he can do out loud. Set only in the text-only
+        session and, on a phone, while a voice conversation is held in writing, so it is absent
+        whenever he is being heard — which is the screen as designed, and why this is gated on the
+        reply itself rather than on the platform.
 
         It goes when he goes, for the same reason the field does: an answer left on screen after
         the conversation carrying it has ended is the last thing he ever said, kept for ever.
       */}
       {writtenReply.shown && !gone ? <WrittenReplyLine reply={writtenReply.shown} /> : null}
 
-      {canType && !gone && !ON_A_PHONE ? (
+      {showsTypedField({ canType, gone, textMode }) ? (
         <TypedMessageField
           onSend={sendTypedMessage}
           enabled={status === 'connected'}
           opening={connectingUntil !== undefined}
+          // Switched into writing with a tap, the keyboard is what was asked for.
+          autoFocus={ON_A_PHONE}
         />
       ) : null}
 

@@ -7,7 +7,12 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import type { ServicesApiEntry } from './channels.js';
-import { buildPushPayload, selectAnnounceServices, selectMobileAppNotifyService } from './channels.js';
+import {
+  buildPushPayload,
+  buildSetAlarmCommand,
+  selectAnnounceServices,
+  selectMobileAppNotifyService,
+} from './channels.js';
 
 const environmentKeys = ['HEY_JARVIS_PRIMARY_USER_NOTIFY_SERVICE', 'HEY_JARVIS_PRIMARY_USER_PHONE_DEVICE'] as const;
 const originalEnvironment = new Map(environmentKeys.map((key) => [key, process.env[key]]));
@@ -143,5 +148,32 @@ describe('buildPushPayload', () => {
         push: { 'interruption-level': 'time-sensitive' },
       },
     });
+  });
+});
+
+describe('buildSetAlarmCommand', () => {
+  it("launches Android's SET_ALARM through the companion app, with the time as integers", () => {
+    expect(buildSetAlarmCommand({ hour: 6, minute: 30 })).toEqual({
+      message: 'command_activity',
+      data: {
+        intent_action: 'android.intent.action.SET_ALARM',
+        intent_extras:
+          'android.intent.extra.alarm.HOUR:6:int,android.intent.extra.alarm.MINUTES:30:int,android.intent.extra.alarm.SKIP_UI:true:boolean',
+      },
+    });
+  });
+
+  it('URL-encodes the label, so its commas and colons cannot split the extras', () => {
+    const { data } = buildSetAlarmCommand({ hour: 14, minute: 0, label: 'Laundry: towels, sheets' });
+    const extras = data.intent_extras.split(',');
+
+    expect(extras).toHaveLength(4);
+    expect(extras[3]).toBe('android.intent.extra.alarm.MESSAGE:Laundry%3A%20towels%2C%20sheets:urlencoded');
+  });
+
+  it('leaves the label out when it is blank', () => {
+    const { data } = buildSetAlarmCommand({ hour: 7, minute: 5, label: '   ' });
+
+    expect(data.intent_extras).not.toContain('MESSAGE');
   });
 });
