@@ -13,8 +13,8 @@
  * streaming is the call a routing plan's agent step makes.
  */
 
-import { describe, expect, it } from 'bun:test';
-import type { LanguageModelV3StreamPart, LanguageModelV3Usage } from '@ai-sdk/provider';
+import { afterEach, describe, expect, it, setSystemTime } from 'bun:test';
+import type { LanguageModelV3CallOptions, LanguageModelV3StreamPart, LanguageModelV3Usage } from '@ai-sdk/provider';
 import { z } from 'zod';
 import { createAgent } from './agent-factory.js';
 import { createTool } from './tool-factory.js';
@@ -118,5 +118,113 @@ describe('createAgent', () => {
     await streamed.text;
 
     expect(counts.toolCallsMade).toBeLessThan(100);
+  }, 30000);
+});
+
+/** A model that answers every call at once, handing each call's system messages to `onCall`. */
+function modelReadingSystemPrompt(onCall: (systemMessages: string[]) => void) {
+  const answer = async ({ prompt }: LanguageModelV3CallOptions) => {
+    onCall(prompt.flatMap((message) => (message.role === 'system' ? [message.content] : [])));
+
+    return streamOf([
+      { type: 'stream-start', warnings: [] },
+      { type: 'text-start', id: 'text' },
+      { type: 'text-delta', id: 'text', delta: 'Answered.' },
+      { type: 'text-end', id: 'text' },
+      { type: 'finish', finishReason: { unified: 'stop' as const, raw: 'stop' }, usage },
+    ]);
+  };
+
+  return {
+    specificationVersion: 'v3' as const,
+    provider: 'test',
+    modelId: 'test',
+    supportedUrls: {},
+    doStream: answer,
+    doGenerate: answer,
+  };
+}
+
+/**
+ * What every agent is told on top of its own instructions.
+ *
+ * These were once built and then overwritten by the caller's bare instructions, so for a while no
+ * agent was told the time or told not to ask questions, and nothing noticed. The exact text is
+ * pinned here for that reason.
+ */
+describe('createAgent instructions', () => {
+  afterEach(() => {
+    setSystemTime();
+  });
+
+  async function createProbe(extra: { asksQuestions?: boolean } = {}) {
+    return createAgent({
+      id: 'probe',
+      name: 'probe',
+      instructions: 'Base instructions.',
+      model: modelReadingSystemPrompt(() => {}),
+      // The shared memory reaches for an embedder, which wants credentials a mocked test has
+      // none of. Instructions are resolved without it.
+      memory: undefined,
+      ...extra,
+    });
+  }
+
+  it('follows the agent’s own instructions with the guidelines every agent shares', async () => {
+    const now = new Date('2026-09-25T08:30:00Z');
+    setSystemTime(now);
+
+    const agent = await createProbe();
+
+    expect(await agent.getInstructions()).toBe(
+      [
+        'Base instructions.',
+        '',
+        '# Additional context and guidelines',
+        'Never ask questions. Always make best-guess assumptions.',
+        `The time is currently: \`${now.toString()}\`.`,
+      ].join('\n'),
+    );
+  });
+
+  it('does not tell an agent whose questions reach the user never to ask them', async () => {
+    const now = new Date('2026-09-25T08:30:00Z');
+    setSystemTime(now);
+
+    const agent = await createProbe({ asksQuestions: true });
+
+    expect(await agent.getInstructions()).toBe(
+      [
+        'Base instructions.',
+        '',
+        '# Additional context and guidelines',
+        `The time is currently: \`${now.toString()}\`.`,
+      ].join('\n'),
+    );
+  });
+
+  it('tells the model the time of the request, not the time the agent was built', async () => {
+    // Agents are built once, at boot, and the server then runs for days.
+    const builtAt = new Date('2026-09-25T08:30:00Z');
+    const askedAt = new Date('2026-09-28T19:05:00Z');
+    const systemPrompts: string[][] = [];
+
+    setSystemTime(builtAt);
+    const agent = await createAgent({
+      id: 'probe',
+      name: 'probe',
+      instructions: 'Base instructions.',
+      model: modelReadingSystemPrompt((systemMessages) => systemPrompts.push(systemMessages)),
+      memory: undefined,
+    });
+
+    setSystemTime(askedAt);
+    const streamed = await agent.stream([{ role: 'user', content: 'What time is it?' }]);
+    await streamed.text;
+
+    const systemPrompt = systemPrompts.flat().join('\n');
+    expect(systemPrompts).toHaveLength(1);
+    expect(systemPrompt).toContain(`The time is currently: \`${askedAt.toString()}\`.`);
+    expect(systemPrompt).not.toContain(builtAt.toString());
   }, 30000);
 });

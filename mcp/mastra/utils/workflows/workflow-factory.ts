@@ -1,5 +1,4 @@
 import { Mastra } from '@mastra/core';
-import type { AgentConfig } from '@mastra/core/agent';
 import type { StandardSchemaWithJSON } from '@mastra/core/schema';
 import type { ToolExecuteFunction, ToolExecutionContext } from '@mastra/core/tools';
 import {
@@ -222,11 +221,7 @@ export function createAgentStep<
     StepParams<TStepId, TStateSchema, TInputSchema, TOutputSchema, TResumeSchema, TSuspendSchema>,
     'id' | 'description' | 'stateSchema' | 'inputSchema' | 'outputSchema' | 'resumeSchema' | 'suspendSchema'
   > & {
-    agentConfig: Omit<AgentConfig, 'model' | 'memory' | 'scorers'> & {
-      model?: AgentConfig['model'];
-      memory?: AgentConfig['memory'];
-      scorers?: AgentConfig['scorers'];
-    };
+    agentConfig: Parameters<typeof createAgent>[0];
     prompt: (
       params: ExecuteFunctionParams<
         TStateSchema extends z.ZodTypeAny ? z.infer<TStateSchema> : unknown,
