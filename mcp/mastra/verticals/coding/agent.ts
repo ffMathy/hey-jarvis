@@ -110,6 +110,9 @@ Gather complete, unambiguous requirements through interactive questioning.
 - The questions and the user's answers are recorded by the workflow and filed with the issue
 - Ensures completeness before implementation begins`,
     tools: undefined,
+    // Asking is the whole job, and each question reaches the user by suspending
+    // implementFeatureWorkflow until they answer.
+    asksQuestions: true,
   });
 }
 

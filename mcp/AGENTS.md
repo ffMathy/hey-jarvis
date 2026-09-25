@@ -97,6 +97,18 @@ devices and still speak, while remaining a bound on a model that has started loo
 An agent that needs more than twenty needs fewer round trips, not a bigger number — a tool
 that answers in one call rather than one per item.
 
+#### The shared guidelines
+
+`createAgent` follows every agent's own instructions with the same short section: never ask
+questions, make a best-guess assumption instead, and the current time. The instructions are
+resolved on every request, not at construction — agents are built once at boot and the server
+stays up for days, so a time taken then would be days stale.
+
+An agent's answer usually ends the exchange, so a question in it has nowhere to go. The one
+exception is `requirementsInterviewer`, whose questions suspend `implementFeatureWorkflow`
+until the user answers; it is built with `asksQuestions: true`, which leaves out the "never ask"
+line and keeps the time. `mastra/utils/agent-factory.spec.ts` pins the exact text.
+
 ### 🔧 Tool Ecosystem
 - **Model Context Protocol (MCP)** server integrations
 - **Home automation tools** for smart device control
