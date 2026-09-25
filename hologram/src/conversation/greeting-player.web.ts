@@ -17,6 +17,8 @@ export function useGreetingPlayer(): GreetingPlayer {
   const player = useAudioPlayer(GREETING_SOUND);
   return useMemo(
     () => ({
+      // A browser routes its own audio, and there is nothing to wait for.
+      untilAudible: async () => undefined,
       playFromStart: async () => {
         // Summoned before, the player is parked at the end of the last greeting.
         await player.seekTo(0).catch(() => undefined);

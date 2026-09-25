@@ -5,6 +5,11 @@ import { GREETING_SOUND } from './greeting-sound';
 
 /** What the greeting needs of whatever plays the recording. */
 export interface GreetingPlayer {
+  /**
+   * Resolves once what is played can be heard where it will be played — at once, unless a headset's
+   * call audio is still coming up. Never rejects: a route that does not answer is waited out.
+   */
+  untilAudible(): Promise<void>;
   /** Plays from the start. Resolves whether it is playing, which is false if it could not. */
   playFromStart(): Promise<boolean>;
   pause(): void;
@@ -18,12 +23,23 @@ export interface GreetingPlayer {
 
 /** `hologram/android`'s `JarvisGreetingModule`. */
 interface JarvisGreeting {
+  untilCallRouteReady(timeoutMs: number): Promise<boolean>;
   play(source: string): Promise<void>;
   pause(): void;
   isPlaying(): boolean;
   currentTime(): number;
   duration(): number;
 }
+
+/**
+ * The longest a greeting waits for a Bluetooth headset's call audio to come up.
+ *
+ * Long enough for AirPods to switch from music to the headset profile, which takes about a second;
+ * short enough that a headset which never answers costs a pause rather than the greeting. It has
+ * to stay under the greeting's own grace — `isGreetingOver` gives up on a greeting its length plus
+ * `GREETING_GRACE_SECONDS` after it was asked for — or he would be given up on while waiting.
+ */
+const WAIT_FOR_HEADSET_MS = 2500;
 
 /**
  * Absent in a build without the native side. The greeting then does not play, and the agent keeps
@@ -45,6 +61,11 @@ export function useGreetingPlayer(): GreetingPlayer {
     // A Metro URL in a development build, a raw resource's name in a release one.
     const source = Image.resolveAssetSource(GREETING_SOUND)?.uri;
     return {
+      untilAudible: async () => {
+        // A headset's call link takes a moment, and played into before it is up, AirPods lost the
+        // first word. See `untilCallRouteReady` in `JarvisGreetingModule.kt`.
+        await module?.untilCallRouteReady(WAIT_FOR_HEADSET_MS).catch(() => false);
+      },
       playFromStart: async () => {
         if (!module || !source) {
           return false;
