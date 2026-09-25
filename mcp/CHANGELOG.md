@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.4.4](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.4.3...mcp-v2.4.4) (2026-09-25)
+
+
+### Bug Fixes
+
+* **mcp:** give every agent the shared guidelines and the current time ([#784](https://github.com/ffMathy/hey-jarvis/issues/784)) ([766f22d](https://github.com/ffMathy/hey-jarvis/commit/766f22d680f7710b36ded0763f3d9ce53c9fc46e))
+
 ## [2.4.3](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.4.2...mcp-v2.4.3) (2026-09-25)
 
 
