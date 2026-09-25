@@ -41,8 +41,7 @@ mcp/
 │   │   │   │   └── index.ts
 │   │   │   └── index.ts
 │   │   ├── coding/      # GitHub repository management
-│   │   │   ├── agent.ts
-│   │   │   ├── requirements-agent.ts
+│   │   │   ├── agent.ts          # Coding agent and the requirements interviewer
 │   │   │   ├── tools.ts
 │   │   │   ├── workflows.ts
 │   │   │   └── index.ts
@@ -384,10 +383,12 @@ Manages GitHub repositories and coordinates feature implementation:
 
 **Architecture Pattern:**
 This agent follows the **workflow delegation pattern**. When a user requests a new feature implementation, instead of gathering requirements itself, it delegates to the `implementFeatureWorkflow`, which:
-1. Creates a draft issue
-2. Uses the Requirements Interviewer Agent to gather complete requirements
-3. Updates the issue with structured requirements
-4. Starts a Claude cloud session that implements the issue autonomously
+1. Uses the Requirements Interviewer Agent to gather complete requirements, suspending on each question until the user answers it
+2. Creates an issue with the structured requirements and the questions and answers that produced them
+3. Starts a Claude cloud session that implements the issue autonomously
+
+By voice, each of those questions is asked by Jarvis and answered through routing — see
+**Questions for the user** under [Routing](#routing).
 
 **Claude Cloud Sessions:**
 Implementation work is delegated to the [Claude Managed Agents session API](https://platform.claude.com/docs/en/managed-agents/sessions)
@@ -541,7 +542,6 @@ Only stops when 100% certain about:
     dependencies: ["Dependency 1", "Dependency 2", ...],
     edgeCases: ["Edge case 1", "Edge case 2", ...]
   },
-  questionsAsked: ["Q1", "Q2", ...],
   isComplete: true
 }
 ```
@@ -662,6 +662,43 @@ small, fast surface, and everything else happens behind them.
 5. When the run ends, the request is done and the closing report recaps everything — including
    anything the run never got to, so a delegation that never answered is reported rather than
    dropped.
+6. A delegation that stops to ask the user something is reported in that closing report as a
+   question, in `questionsForUser` — see **Questions for the user** below.
+
+**Questions for the user:**
+Some work cannot finish on what the request said. The coding agent runs `implementFeatureWorkflow`
+as a tool, and the requirements interview suspends that workflow on every question it asks —
+which, through Mastra's workflow-as-tool conversion, suspends the agent inside that tool call.
+`verticals/routing/questions.ts` turns that into a question Jarvis can ask, and nothing in it is
+specific to coding: any routable agent whose tool suspends with a `question`, and resumes with a
+single text field, works the same way.
+
+1. The suspension reaches the plan run as a `workflow-step-output` wrapping the agent's
+   `tool-call-suspended` chunk, carrying the agent run id, the tool call id, the question and the
+   resume schema. That is the only place it shows.
+2. **The plan run is then stopped.** Mastra's agent step resolves on the agent's `onFinish`, and a
+   suspended agent never finishes, so the step — and the run, and the stream routing reads — would
+   wait forever while Jarvis heard "Still processing" on every poll. Once every delegation in the
+   plan has answered or asked, `consumeRun` cancels the run. The suspended agent is not part of it:
+   it is persisted in storage as an `agentic-loop` run of its own, which is what gets resumed.
+3. The closing report carries the question in `questionsForUser`, with instructions to ask it last
+   and stop. Questions wait for the closing report because sir's answer arrives as a new request,
+   and a new request supersedes the old one — asking early would cancel whatever else was still
+   running the moment he replied.
+4. His answer comes back through **`routePromptWorkflow`**, like everything else he says. Open
+   questions are kept past the request that asked them and shown to the planner alongside every
+   request; the planner's `answers` field says which question a request answers, if any. That keeps
+   the answer on the existing two tools and keeps Jarvis from having to label a reply as one.
+5. The answer resumes the agent with `agent.resumeStream({ [field]: answer }, { runId, toolCallId })`.
+   The tool gets the answer, the workflow carries on, and the agent either finishes — its text is
+   the delegation's result — or stops on the next question, which is asked in turn.
+
+A question sir ignores stays open: talking about something else plans that as usual, and the
+answer is still taken later. Open questions live in memory, so a restart forgets them while the
+suspended run stays in storage; the interview then has to be started again.
+
+`coding-interview.spec.ts` runs the whole path — the two MCP tools, the planner, the coding agent,
+the interview and the issue — on scripted models.
 
 **Why a workflow per request:**
 Which agents a request needs is known only once it arrives, so a request that is a workflow has
@@ -719,10 +756,12 @@ That is a hard constraint, not an accident of the current design: the model on t
 chosen for speed, and every extra tool is surface it has to reason about on a latency budget
 that has no room for it.
 
-It is also the reason there is no approval gate on this path. Gating a delegation means parking
-the run and asking, and an answer needs a tool to come back through — a third tool, which the
-constraint above rules out. A gate the caller cannot answer is worse than no gate: the run
-parks, every poll repeats the same question, and the request never finishes.
+It is also why a question's answer comes back through `routePromptWorkflow` rather than a tool
+of its own (see **Questions for the user** above): the planner already reads every request, so it
+is the one that recognises a reply as an answer. Approval gates are still not on this path: an
+approval resumes with `{ approved: boolean }` rather than a sentence, so `readSuspension` refuses
+it and the delegation is reported as failed rather than left parked on a question nobody can
+answer.
 
 **Authoring rules a generated plan has to respect:**
 `createStepFromAgent` fixes every agent step's input to `{ prompt }` and its output to
@@ -1002,19 +1041,21 @@ Multi-step shopping list processing workflow implementing the original n8n 3-age
 ### Requirements Gathering Workflow
 Implements the workflow-based requirements gathering pattern for new feature implementation:
 - **`implementFeatureWorkflow`**: Handles complete requirements gathering process before implementation
-- **Step 1 - Create Draft Issue**: Creates initial GitHub issue to track requirements gathering progress
-- **Step 2 - Gather Requirements**: Uses Requirements Interviewer Agent to ask clarifying questions
-- **Step 3 - Update Issue**: Updates GitHub issue with complete requirements and acceptance criteria
-- **Step 4 - Start Coding Session**: Starts a Claude cloud session that implements the issue, and watches its events
+- **Step 1 - Gather Requirements**: Uses Requirements Interviewer Agent to ask clarifying questions, one suspension per question
+- **Step 2 - Create Issue**: Creates the GitHub issue with the requirements, acceptance criteria, and the interview transcript
+- **Step 3 - Start Coding Session**: Starts a Claude cloud session that implements the issue, and watches its events
 
 **Architecture Pattern:**
 This workflow follows the **agent-as-step** pattern recommended by Mastra for sequential multi-step processes where the exact steps are known in advance (not dynamic routing).
 
 **Workflow Steps:**
-1. **Draft Issue Creation**: Creates a GitHub issue labeled `["draft", "requirements-gathering"]` with initial request
-2. **Interactive Interview**: Requirements Interviewer Agent asks questions one at a time until 100% certain
-3. **Issue Update**: Formats and updates issue with structured requirements, acceptance criteria, and implementation details
-4. **Coding Session**: Starts a Claude cloud session on the issue with the `startCodingSession` tool. The session runs
+1. **Interactive Interview**: Requirements Interviewer Agent asks questions one at a time until 100% certain. The step
+   suspends on each question and is resumed with the answer, and only returns once nothing is left to ask — it is a
+   single step, not a loop. It used to sit in a `.dowhile` whose condition was always `true`, which ran a finished
+   interview fifty more times and then failed the run before the issue was filed
+2. **Issue Creation**: Creates an issue labeled `["ready", "requirements-complete"]` with the original request, structured
+   requirements, acceptance criteria, implementation details, and every question with the user's answer
+3. **Coding Session**: Starts a Claude cloud session on the issue with the `startCodingSession` tool. The session runs
    unattended in a sandboxed cloud environment, and every notable event it emits (agent messages, status transitions,
    errors) is republished as a Synapse state change from the `coding` source, so progress flows into the existing
    notification path instead of needing the workflow to stay alive
@@ -1029,13 +1070,13 @@ await mastra.workflows.implementFeatureWorkflow.execute({
 ```
 
 **Why Workflow Instead of Agent Network?**
-- **Known sequence**: Requirements gathering follows a predictable pattern (create → interview → update → assign)
+- **Known sequence**: Requirements gathering follows a predictable pattern (interview → file → implement)
 - **No dynamic routing**: Unlike agent networks, we don't need to choose between different paths at runtime
 - **Deterministic**: Each step has clear inputs/outputs and executes in order
 - **Auditable**: Workflow provides transparent execution trace and step-by-step visibility
 
 **Human-in-the-Loop:**
-The workflow uses Mastra's suspend/resume pattern in the Requirements Interviewer step, allowing the agent to ask questions and wait for user responses before proceeding.
+The workflow uses Mastra's suspend/resume pattern in the Requirements Interviewer step, allowing the agent to ask questions and wait for user responses before proceeding. It suspends with `{ question, context }` and resumes with `{ userAnswer }` — a single text field, which is what lets routing resume it with a spoken answer. Because the interviewer's questions are read aloud, it is told to ask one short, plain question at a time.
 
 ### Human-in-the-Loop Demo Workflow
 

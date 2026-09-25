@@ -3,7 +3,18 @@ import type { Agent } from '@mastra/core/agent';
 import { logger } from '../../utils/logger.js';
 import { buildRoutingPlan, type PlannedChain, type RoutingPlan } from './plan.js';
 import { sweepOldRoutingPlans } from './plan-retention.js';
-import { getRoutingPlannerAgent, PLANNER_AGENT_ID, planDelegations } from './planner.js';
+import { getRoutingPlannerAgent, PLANNER_AGENT_ID, type PlannedAnswer, planDelegations } from './planner.js';
+import {
+  asDelegationSuspension,
+  type DelegationSuspension,
+  forgetOpenQuestions,
+  listOpenQuestions,
+  nextQuestionId,
+  type OpenQuestion,
+  readSuspension,
+  rememberOpenQuestions,
+  takeOpenQuestion,
+} from './questions.js';
 
 /**
  * The routing runtime: plan a request, register the plan as a workflow, run it, report it.
@@ -32,7 +43,7 @@ export const DEFAULT_ROUTING_SESSION_ID = 'jarvis-voice';
 /**
  * What a routing request can report, folded from the plan run's event stream.
  *
- * Its own union rather than Mastra's chunk type, because only these four things change what
+ * Its own union rather than Mastra's chunk type, because only these few things change what
  * a poll may say and the chunk union is wide. Naming them here is also what lets the poll
  * loop be tested without a model: the spec feeds these directly.
  */
@@ -41,6 +52,8 @@ export type RoutingEvent =
   | { type: 'delegation_start'; delegationId: string; taskId: string; agentId: string }
   /** A delegation finished, or failed with `isError`. */
   | { type: 'delegation_end'; delegationId: string; result: unknown; isError: boolean }
+  /** A delegation stopped to ask something only the user can answer. See ./questions.ts. */
+  | { type: 'delegation_suspended'; delegationId: string; suspension: DelegationSuspension }
   /** The request failed outright. */
   | { type: 'error'; message: string }
   /** The plan run ended. */
@@ -78,6 +91,14 @@ export class RoutingProgress {
   pending: DelegationOutcome[] = [];
   /** Every outcome this request produced, for the closing recap. */
   all: DelegationOutcome[] = [];
+  /**
+   * Questions this request's delegations stopped to ask.
+   *
+   * Reported with the closing recap and not before: sir's answer arrives as a new request,
+   * and a new request supersedes this one, so asking while other work is still running would
+   * cancel that work the moment he replied.
+   */
+  questions: OpenQuestion[] = [];
   /** Whether the plan run has ended. */
   runFinished = false;
   error?: string;
@@ -107,10 +128,10 @@ export class RoutingProgress {
   /**
    * Whether the request is done.
    *
-   * The run ending is the whole of it. Anything still outstanding when it ends has no later
-   * event coming, so the end of the run closes those out rather than this map being trusted
-   * to drain on its own -- waiting on it is what once left a live request polling
-   * "Still processing" until the caller gave up.
+   * The request's work ending is the whole of it -- its plan run, and any answers it carried
+   * back to questions. Anything still outstanding when that ends has no later event coming, so
+   * the end closes those out rather than this map being trusted to drain on its own -- waiting
+   * on it is what once left a live request polling "Still processing" until the caller gave up.
    */
   isFinished(): boolean {
     return this.runFinished;
@@ -118,7 +139,12 @@ export class RoutingProgress {
 
   /** Whether this session has never been asked to route anything. */
   isIdle(): boolean {
-    return !this.runFinished && this.all.length === 0 && this.outstandingByDelegationId.size === 0;
+    return (
+      !this.runFinished &&
+      this.all.length === 0 &&
+      this.questions.length === 0 &&
+      this.outstandingByDelegationId.size === 0
+    );
   }
 
   /** Folds one event from the plan run into the buffer. */
@@ -144,18 +170,38 @@ export class RoutingProgress {
       // and Jarvis, told to summarize it, has nothing to summarize and no reason to mention
       // that anything went wrong.
       const answeredWithNothing = !event.isError && answer.length === 0;
-      const outcome: DelegationOutcome = {
+      this.settle({
         taskId: delegation.taskId,
         agentId: delegation.agentId,
         result: answeredWithNothing ? 'finished without answering' : answer,
         failed: event.isError || answeredWithNothing,
-      };
-      if (outcome.failed) {
-        logger.error('Delegation did not complete', { ...delegation, result: outcome.result });
+      });
+      return;
+    }
+
+    if (event.type === 'delegation_suspended') {
+      const delegation = this.outstandingByDelegationId.get(event.delegationId);
+      if (!delegation) {
+        return;
+      }
+      this.outstandingByDelegationId.delete(event.delegationId);
+
+      const readable = readSuspension(event.suspension);
+      if ('problem' in readable) {
+        this.settle({ ...delegation, result: `stopped part way: ${readable.problem}`, failed: true });
+        return;
       }
 
-      this.pending.push(outcome);
-      this.all.push(outcome);
+      const question: OpenQuestion = {
+        id: nextQuestionId(),
+        ...delegation,
+        question: readable.question,
+        answerField: readable.answerField,
+        agentRunId: event.suspension.agentRunId,
+        toolCallId: event.suspension.toolCallId,
+      };
+      logger.info('Delegation is waiting on an answer from the user', { ...delegation, questionId: question.id });
+      this.questions.push(question);
       this.wake();
       return;
     }
@@ -174,6 +220,22 @@ export class RoutingProgress {
       this.runFinished = true;
       this.wake();
     }
+  }
+
+  /** Records a delegation that has finished, one way or another, and wakes whoever is polling. */
+  private settle(outcome: DelegationOutcome): void {
+    if (outcome.failed) {
+      logger.error('Delegation did not complete', { ...outcome });
+    }
+
+    this.pending.push(outcome);
+    this.all.push(outcome);
+    this.wake();
+  }
+
+  /** Whether a delegation has yet to answer or ask. */
+  isOutstanding(delegationId: string): boolean {
+    return this.outstandingByDelegationId.has(delegationId);
   }
 
   /**
@@ -228,6 +290,8 @@ export interface RoutingSnapshot {
   inProgress: string[];
   /** Whether the plan run is done. */
   finished: boolean;
+  /** Questions the request is waiting on the user to answer. */
+  questions: OpenQuestion[];
   error?: string;
 }
 
@@ -246,6 +310,7 @@ export function buildSnapshot(progress: RoutingProgress): RoutingSnapshot {
     all: progress.all,
     inProgress: [...new Set([...progress.outstandingByDelegationId.values()].map((one) => one.taskId))],
     finished: progress.isFinished(),
+    questions: progress.questions,
     error: progress.error,
   };
 }
@@ -269,7 +334,8 @@ export interface RoutingRuntime {
 
 let registry: Mastra | undefined;
 const progressBySessionId = new Map<string, RoutingProgress>();
-const cancelBySessionId = new Map<string, () => Promise<void>>();
+/** Stops whatever a session's request still has running, when a newer request supersedes it. */
+const abortBySessionId = new Map<string, AbortController>();
 
 /**
  * Remembers the Mastra instance the routing workflows are running under.
@@ -370,6 +436,10 @@ function asWorkflowChunk(chunk: unknown): WorkflowChunk | undefined {
  */
 export function asRoutingEvents(chunk: unknown, plan: RoutingPlan): RoutingEvent[] {
   const parsed = asWorkflowChunk(chunk);
+  if (parsed?.type === 'workflow-step-output') {
+    return asSuspensionEvents(parsed.payload, plan);
+  }
+
   if (parsed?.type !== 'workflow-step-result') {
     return [];
   }
@@ -421,6 +491,49 @@ export function asRoutingEvents(chunk: unknown, plan: RoutingPlan): RoutingEvent
 }
 
 /**
+ * What the rest of a chain is reported as when a step in it stops to ask the user something.
+ *
+ * Those steps were waiting for that step's answer, which will now only come once the user has
+ * answered, in a later request -- and nothing resumes a chain, only the agent that asked.
+ */
+const WAITING_ON_AN_EARLIER_QUESTION = 'did not run, because the step before it stopped to ask the user something';
+
+/**
+ * A delegation stopping to ask something, read off a step's streamed output.
+ *
+ * An agent step forwards everything its agent streams, so a tool call that suspends inside it
+ * reaches the plan run as a `workflow-step-output` wrapping the agent's own
+ * `tool-call-suspended` chunk. That is the only place it shows: the step itself never reports a
+ * result, because Mastra's agent step waits for the agent to finish and a suspended agent does
+ * not (see `consumeRun`).
+ *
+ * The step's name is its bare id here, but is read as the last dotted segment all the same,
+ * since a nested step can be reported under its chain's id as well.
+ */
+function asSuspensionEvents(payload: Record<string, unknown>, plan: RoutingPlan): RoutingEvent[] {
+  const suspension = asDelegationSuspension(payload.output);
+  const { stepName } = payload;
+  if (!suspension || typeof stepName !== 'string') {
+    return [];
+  }
+
+  const delegationId = stepName.split('.').pop() ?? stepName;
+  if (!plan.agentByStepId.has(delegationId)) {
+    return [];
+  }
+
+  const chain = [...plan.delegationIdsByChainStepId.values()].find((ids) => ids.includes(delegationId)) ?? [];
+  const blocked: RoutingEvent[] = chain.slice(chain.indexOf(delegationId) + 1).map((blockedId) => ({
+    type: 'delegation_end',
+    delegationId: blockedId,
+    result: WAITING_ON_AN_EARLIER_QUESTION,
+    isError: true,
+  }));
+
+  return [{ type: 'delegation_suspended', delegationId, suspension }, ...blocked];
+}
+
+/**
  * What a chained delegation is reported as when only the chain's own result reaches us.
  *
  * Its answer is not lost -- the next step in the chain was handed it, and what that step
@@ -430,18 +543,26 @@ export function asRoutingEvents(chunk: unknown, plan: RoutingPlan): RoutingEvent
 const ANSWERED_INTO_THE_NEXT_STEP = 'answered, and its answer was given to the next step of its chain';
 
 /**
- * Reads the plan run into the caller's buffer, to the end.
+ * Reads the plan run into the caller's buffer, until the plan has nothing left to say.
  *
- * The stream ending is the run ending, whether it ended by finishing or by being cancelled
- * for a newer request, so `finished` is reported from the same place either way.
+ * Usually that is the end of the stream, whether the run ended by finishing or by being
+ * cancelled for a newer request. The exception is a delegation that stopped to ask the user
+ * something: Mastra's agent step resolves on the agent's `onFinish`, and an agent that
+ * suspended never finishes, so the step -- and with it the run and this stream -- would wait
+ * forever. The caller would hear "Still processing" for as long as it kept asking. So once every
+ * delegation in the plan has either answered or asked, the run is stopped here instead. The
+ * agent that asked is not part of the run; it is suspended in storage in its own right, and is
+ * what the answer resumes.
  */
 async function consumeRun(
   sessionId: string,
   progress: RoutingProgress,
   plan: RoutingPlan,
   chunks: { getReader(): { read(): Promise<{ done: boolean; value?: unknown }>; releaseLock(): void } },
+  stopRun: () => Promise<void>,
 ): Promise<void> {
   const reader = chunks.getReader();
+  let waitingOnTheUser = false;
 
   try {
     while (true) {
@@ -452,6 +573,16 @@ async function consumeRun(
 
       for (const event of asRoutingEvents(value, plan)) {
         progress.handle(event);
+        waitingOnTheUser ||= event.type === 'delegation_suspended';
+      }
+
+      const planHasNothingLeftToSay = [...plan.agentByStepId.keys()].every(
+        (delegationId) => !progress.isOutstanding(delegationId),
+      );
+      if (waitingOnTheUser && planHasNothingLeftToSay) {
+        logger.info('Stopping a routing plan run that is waiting on the user', { sessionId, planId: plan.id });
+        await stopRun();
+        break;
       }
     }
   } catch (error) {
@@ -461,7 +592,6 @@ async function consumeRun(
     reader.releaseLock();
   }
 
-  progress.handle({ type: 'finished' });
   logger.info('Routing plan run settled', { sessionId, planId: plan.id, delegations: progress.all.length });
 }
 
@@ -498,19 +628,19 @@ function newPlanId(): string {
 }
 
 /**
- * Plans a request, registers the plan, and runs it.
+ * Registers a plan and runs it.
  *
  * Registering before running is what puts the plan in Studio whether or not the run goes
  * well: a request that fails half way is exactly the one worth looking at.
  */
-async function runPlan(mastra: Mastra, sessionId: string, progress: RoutingProgress, userQuery: string): Promise<void> {
-  const chains: PlannedChain[] = await planDelegations(await resolvePlannerAgent(mastra), userQuery);
-
-  if (chains.length === 0) {
-    progress.fail('none of the specialized agents can handle this request');
-    return;
-  }
-
+async function runPlan(
+  mastra: Mastra,
+  sessionId: string,
+  progress: RoutingProgress,
+  userQuery: string,
+  chains: PlannedChain[],
+  signal: AbortSignal,
+): Promise<void> {
   const plan = buildRoutingPlan(newPlanId(), chains);
   await mastra.addDynamicWorkflows(plan.graphs);
   logger.info('Registered a routing plan', { planId: plan.id, delegations: plan.delegationCount });
@@ -527,15 +657,142 @@ async function runPlan(mastra: Mastra, sessionId: string, progress: RoutingProgr
   }
 
   const run = await mastra.getWorkflowById(plan.id).createRun();
-  cancelBySessionId.set(sessionId, () => run.cancel());
+  const cancelRun = async () => {
+    await run.cancel().catch((error: unknown) => {
+      logger.warn('Could not cancel a routing plan run', { sessionId, planId: plan.id, error });
+    });
+  };
+  signal.addEventListener('abort', () => void cancelRun(), { once: true });
 
   const output = run.stream({ inputData: { prompt: userQuery } });
-  const consumed = consumeRun(sessionId, progress, plan, output.fullStream);
+  const consumed = consumeRun(sessionId, progress, plan, output.fullStream, cancelRun);
 
   // Sweeping after the run is under way, not before it: the sweep reads and writes storage,
   // and the caller is a voice assistant that has already been told to start polling.
   await sweepOldRoutingPlans(mastra);
   await consumed;
+}
+
+/** The delegation an answer is reported as, which is the task that asked the question. */
+function answerDelegationId(question: OpenQuestion): string {
+  return `answer-${question.id}`;
+}
+
+/**
+ * Carries an answer back to the agent that asked for it, and reports what it does next.
+ *
+ * The agent is resumed where it stopped -- inside the tool call that suspended -- so the tool
+ * gets the answer and the agent carries on from there: it either finishes and says what came
+ * of it, or its tool stops on another question, which is asked in turn.
+ */
+async function resumeWithAnswer(
+  mastra: Mastra,
+  progress: RoutingProgress,
+  question: OpenQuestion,
+  answer: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const delegationId = answerDelegationId(question);
+
+  try {
+    const output = await mastra
+      .getAgentById(question.agentId)
+      .resumeStream(
+        { [question.answerField]: answer },
+        { runId: question.agentRunId, toolCallId: question.toolCallId, abortSignal: signal },
+      );
+
+    let suspension: DelegationSuspension | undefined;
+    for await (const chunk of output.fullStream) {
+      suspension = asDelegationSuspension(chunk) ?? suspension;
+    }
+
+    if (suspension) {
+      progress.handle({ type: 'delegation_suspended', delegationId, suspension });
+      return;
+    }
+
+    progress.handle({ type: 'delegation_end', delegationId, result: { text: await output.text }, isError: false });
+  } catch (error) {
+    progress.handle({
+      type: 'delegation_end',
+      delegationId,
+      result: `could not carry the answer back: ${error instanceof Error ? error.message : String(error)}`,
+      isError: true,
+    });
+  }
+}
+
+/** The questions a request's answers are for, taken off the list of those still open. */
+function takeAnsweredQuestions(answers: PlannedAnswer[]): { question: OpenQuestion; answer: string }[] {
+  return answers.flatMap(({ questionId, answer }) => {
+    const question = takeOpenQuestion(questionId);
+    return question ? [{ question, answer }] : [];
+  });
+}
+
+/**
+ * Plans a request and does everything it asks: the new work in a plan run, and each answer it
+ * gives to an open question carried back to the agent that asked.
+ */
+async function runRequest(
+  mastra: Mastra,
+  sessionId: string,
+  progress: RoutingProgress,
+  userQuery: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const { chains, answers } = await planDelegations(await resolvePlannerAgent(mastra), userQuery, listOpenQuestions());
+
+  // Superseded while it was being planned: nothing will read this request, so it must not
+  // start work -- and above all must not take the questions its answers are for.
+  if (signal.aborted) {
+    return;
+  }
+
+  const answered = takeAnsweredQuestions(answers);
+
+  if (chains.length === 0 && answered.length === 0) {
+    progress.fail('none of the specialized agents can handle this request');
+    return;
+  }
+
+  // Outstanding from the start, like the plan's own delegations, so the first poll already
+  // knows the answer is being worked on.
+  for (const { question } of answered) {
+    progress.handle({
+      type: 'delegation_start',
+      delegationId: answerDelegationId(question),
+      taskId: question.taskId,
+      agentId: question.agentId,
+    });
+  }
+
+  // Settled rather than all: a plan run that fails must not close the request while an answer
+  // is still being carried back, or a question that answer leads to would be asked of nobody.
+  const outcomes = await Promise.allSettled([
+    ...answered.map(({ question, answer }) => resumeWithAnswer(mastra, progress, question, answer, signal)),
+    ...(chains.length > 0 ? [runPlan(mastra, sessionId, progress, userQuery, chains, signal)] : []),
+  ]);
+
+  // Kept for the next request to answer -- unless this one was superseded, in which case its
+  // closing report will never be read and sir will never hear what it asked.
+  if (progressBySessionId.get(sessionId) === progress) {
+    rememberOpenQuestions(progress.questions);
+  } else if (progress.questions.length > 0) {
+    logger.warn('Dropping questions from a superseded routing request', {
+      sessionId,
+      questionIds: progress.questions.map((question) => question.id),
+    });
+  }
+
+  const failure = outcomes.find((outcome) => outcome.status === 'rejected');
+  if (failure) {
+    progress.fail(failure.reason instanceof Error ? failure.reason.message : String(failure.reason));
+    return;
+  }
+
+  progress.handle({ type: 'finished' });
 }
 
 const planRuntime: RoutingRuntime = {
@@ -545,14 +802,13 @@ const planRuntime: RoutingRuntime = {
     // A new request supersedes the one before it, which is what the caller means: the voice
     // assistant has moved on. Cancelling is what makes that true rather than leaving the
     // previous plan running behind it.
-    const cancel = cancelBySessionId.get(sessionId);
-    if (cancel && !previous.runFinished && !previous.isIdle()) {
+    const abortPrevious = abortBySessionId.get(sessionId);
+    if (abortPrevious && !previous.runFinished && !previous.isIdle()) {
       logger.info('Superseding a routing request that was still running', { sessionId });
-      void cancel().catch((error: unknown) => {
-        logger.warn('Could not cancel the superseded routing run', { sessionId, error });
-      });
+      abortPrevious.abort();
     }
-    cancelBySessionId.delete(sessionId);
+    const abort = new AbortController();
+    abortBySessionId.set(sessionId, abort);
 
     // A fresh buffer rather than a cleared one. Cancelling a run does not stop it
     // instantly, and its reader holds whatever buffer it was started with -- so clearing in
@@ -569,7 +825,7 @@ const planRuntime: RoutingRuntime = {
 
     // Not awaited: the caller is a voice assistant on a short tool-call deadline, and the
     // whole contract is that it polls for results rather than waiting for them.
-    void runPlan(mastra, sessionId, progress, userQuery).catch((error: unknown) => {
+    void runRequest(mastra, sessionId, progress, userQuery, abort.signal).catch((error: unknown) => {
       progress.fail(error instanceof Error ? error.message : String(error));
     });
   },
@@ -604,7 +860,8 @@ export function setRoutingRuntime(next: RoutingRuntime): void {
 export function resetRoutingRuntime(): void {
   runtime = planRuntime;
   progressBySessionId.clear();
-  cancelBySessionId.clear();
+  abortBySessionId.clear();
+  forgetOpenQuestions();
   latestStartedSessionId = undefined;
   registry = undefined;
 }

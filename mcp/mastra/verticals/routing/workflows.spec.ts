@@ -57,6 +57,20 @@ function finishDelegation(sessionId: string, delegationId: string, result: unkno
   progressFor(sessionId).handle({ type: 'delegation_end', delegationId, result, isError });
 }
 
+/** A delegation's agent stopping to ask the user something, the way a plan run reports it. */
+function suspendDelegation(sessionId: string, delegationId: string, question: string): void {
+  progressFor(sessionId).handle({
+    type: 'delegation_suspended',
+    delegationId,
+    suspension: {
+      agentRunId: 'agent-run-1',
+      toolCallId: 'call-1',
+      suspendPayload: { question },
+      resumeSchema: JSON.stringify({ type: 'object', properties: { userAnswer: { type: 'string' } } }),
+    },
+  });
+}
+
 /** One delegation, announced and answered — the common case. */
 function delegate(sessionId: string, agentId: string, text: string): void {
   finishDelegation(sessionId, startDelegation(sessionId, agentId), { text });
@@ -285,6 +299,73 @@ describe('getNextInstructionsWorkflow', () => {
 
     expect(outcome.instructions).toContain('could not be completed');
     expect(outcome.instructions).toContain('the plan could not be registered');
+  });
+});
+
+describe('a request that is waiting on the user', () => {
+  const QUESTION = 'Should the reminder go out by email, or as a push notification?';
+
+  it('hands Jarvis the question once everything else is done, and tells him to ask it', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'remind me before tasks are due', async: false });
+    const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    suspendDelegation(DEFAULT_ROUTING_SESSION_ID, startDelegation(DEFAULT_ROUTING_SESSION_ID, 'coding'), QUESTION);
+    endPlanRun(progress);
+
+    const closing = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(closing.questionsForUser).toEqual([{ id: 'coding', question: QUESTION }]);
+    expect(closing.completedTaskResults).toBeUndefined();
+    expect(closing.taskIdsInProgress).toEqual([]);
+    // "All tasks have completed" would be untrue, and would invite him to close the matter.
+    expect(closing.instructions).not.toContain('All tasks have completed');
+  });
+
+  /**
+   * The agent prompt tells Jarvis never to ask sir a clarifying question, and to assume
+   * instead. A question from the work is the one exception, so the instruction has to say so
+   * outright — and has to say where the answer goes, since nothing else in the loop would.
+   */
+  it('says the question is to be asked, not answered for him, and where his answer goes', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'remind me before tasks are due', async: false });
+    const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    suspendDelegation(DEFAULT_ROUTING_SESSION_ID, startDelegation(DEFAULT_ROUTING_SESSION_ID, 'coding'), QUESTION);
+    endPlanRun(progress);
+
+    const { instructions } = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(instructions).toContain('questionsForUser');
+    expect(instructions).toContain('ask it even though you otherwise never ask him anything');
+    expect(instructions).toContain('never answer it for him');
+    expect(instructions).toContain('send his answer through routePromptWorkflow');
+    // The hang-up exception travels with every instruction that sends him back to routing.
+    expect(instructions).toContain('end_call');
+  });
+
+  it('relays the rest of the request’s results before the question', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'weather, and remind me about tasks', async: false });
+    const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    delegate(DEFAULT_ROUTING_SESSION_ID, 'weather', 'It is 8 degrees.');
+    suspendDelegation(DEFAULT_ROUTING_SESSION_ID, startDelegation(DEFAULT_ROUTING_SESSION_ID, 'coding'), QUESTION);
+    endPlanRun(progress);
+
+    const closing = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(closing.completedTaskResults).toEqual([{ id: 'weather', result: 'It is 8 degrees.' }]);
+    expect(closing.questionsForUser).toEqual([{ id: 'coding', question: QUESTION }]);
+    expect(closing.instructions).toContain('Summarize in detail whatever the user has not heard yet');
+  });
+
+  it('holds the question back while other work is still running', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'weather, and remind me about tasks', async: false });
+    startDelegation(DEFAULT_ROUTING_SESSION_ID, 'weather');
+    suspendDelegation(DEFAULT_ROUTING_SESSION_ID, startDelegation(DEFAULT_ROUTING_SESSION_ID, 'coding'), QUESTION);
+
+    // His answer arrives as a new request, and a new request supersedes this one -- so asking
+    // now would cancel the weather the moment he replied.
+    const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(outcome.questionsForUser).toBeUndefined();
+    expect(outcome.taskIdsInProgress).toEqual(['weather']);
   });
 });
 
