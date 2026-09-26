@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.9.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.8.0...mcp-v2.9.0) (2026-09-26)
+
+
+### Features
+
+* **coding:** run coding sessions on the claude subscription in a docker sandbox ([#881](https://github.com/ffMathy/hey-jarvis/issues/881)) ([b2c6dad](https://github.com/ffMathy/hey-jarvis/commit/b2c6dadb73f8fe87d5ba19d70763209a22b2e0f7))
+
 ## [2.8.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.7.1...mcp-v2.8.0) (2026-09-26)
 
 

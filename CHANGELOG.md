@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.8.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.7.1...root-v4.8.0) (2026-09-26)
+
+
+### Features
+
+* **coding:** run coding sessions on the claude subscription in a docker sandbox ([#881](https://github.com/ffMathy/hey-jarvis/issues/881)) ([b2c6dad](https://github.com/ffMathy/hey-jarvis/commit/b2c6dadb73f8fe87d5ba19d70763209a22b2e0f7))
+
 ## [4.7.1](https://github.com/ffMathy/hey-jarvis/compare/root-v4.7.0...root-v4.7.1) (2026-09-26)
 
 
