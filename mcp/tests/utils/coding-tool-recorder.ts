@@ -3,7 +3,7 @@ import { runCodingTask, startCodingSession } from '../../mastra/verticals/coding
 import type { CodebaseAnalysis } from '../../mastra/verticals/coding/workflows.js';
 
 /**
- * Stands in for the two Claude cloud sessions `implementFeatureWorkflow` runs, which would
+ * Stands in for the two Claude Code sessions `implementFeatureWorkflow` runs, which would
  * otherwise read a real codebase and implement a real change.
  *
  * Spied on rather than replaced with `mock.module`, and that matters. `createToolStep` keeps the
@@ -29,7 +29,7 @@ export interface CodingToolRecorder {
   restore(): void;
 }
 
-export const RECORDED_SESSION_URL = 'https://claude.ai/code/session_123';
+export const RECORDED_SESSION_ID = 'session_123';
 
 export interface RecordCodingToolsOptions {
   /** What the analysing session reports. Two questions by default. */
@@ -64,7 +64,7 @@ export function recordCodingTools({
       stop_reason: 'end_turn',
       // The way a session ends its turn: a line of its own, then the object it was asked for.
       final_message: `I have read the codebase.\n\n${JSON.stringify(analysis)}`,
-      message: 'Claude cloud session session_analysis stopped with "end_turn".',
+      message: 'Claude Code session session_analysis stopped with "end_turn".',
     };
   });
 
@@ -72,10 +72,9 @@ export function recordCodingTools({
     startedSessions.push(inputData);
     return {
       success: true,
-      session_id: 'session_123',
-      session_url: RECORDED_SESSION_URL,
+      session_id: RECORDED_SESSION_ID,
       status: 'running',
-      message: 'Started Claude cloud session session_123 in ffMathy/hey-jarvis',
+      message: 'Started Claude Code session session_123 in ffMathy/hey-jarvis',
     };
   });
 

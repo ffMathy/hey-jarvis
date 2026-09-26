@@ -6,7 +6,7 @@ import { sendPushNotification } from '../notification/tools.js';
 /**
  * Shortcuts are tools that piggy-back on other verticals' capabilities.
  *
- * Nothing in this vertical builds anything itself. The page is written by a Claude cloud session,
+ * Nothing in this vertical builds anything itself. The page is written by a Claude Code session,
  * which is the coding vertical's to start, and it reaches the user's phone as a push notification,
  * which is the notification vertical's to send. What lives here is the asking: the brief a session
  * needs to turn "visualize my electricity prices" into a published page, and the reading of the
@@ -14,7 +14,7 @@ import { sendPushNotification } from '../notification/tools.js';
  */
 
 /**
- * Turns a request into the brief a Claude cloud session builds from.
+ * Turns a request into the brief a Claude Code session builds from.
  *
  * The session sees nothing but this text, and nobody is watching it work, so the brief carries
  * everything it would otherwise have asked about: that the page is opened on a phone, that it must
@@ -63,7 +63,7 @@ export function findArtifactUrl(message: string): string | undefined {
 }
 
 /**
- * Has a Claude cloud session build and publish a page for a request.
+ * Has a Claude Code session build and publish a page for a request.
  *
  * A shortcut onto the coding vertical's `runCodingTask`: the caller says what to show, and the
  * shortcut turns that into a brief the session can work from alone. The artifact's URL is in the
@@ -72,7 +72,7 @@ export function findArtifactUrl(message: string): string | undefined {
 export const createArtifact = createShortcut({
   id: 'createArtifact',
   description:
-    "Have a Claude cloud session build an interactive web page (an artifact) for what `task` describes, publish it, and report back with its URL at the end of `final_message`. Takes a few minutes. `task` should say what to show and include any data the page needs, since the session can't reach Jarvis's own.",
+    "Have a Claude Code session build an interactive web page (an artifact) for what `task` describes, publish it, and report back with its URL at the end of `final_message`. Takes a few minutes. `task` should say what to show and include any data the page needs, since the session can't reach Jarvis's own.",
   tool: runCodingTask,
   execute: async (inputData, context) =>
     await executeTool(runCodingTask, { task: buildArtifactTask(inputData.task) }, context),

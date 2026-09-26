@@ -10,7 +10,7 @@ import { LOW_THINKING_PROVIDER_OPTIONS } from '../../utils/index.js';
 import { getCodingAgent } from './agent.js';
 
 describe('getCodingAgent', () => {
-  it('thinks at low, since it only chooses a tool -- the codebase is read in a cloud session', async () => {
+  it('thinks at low, since it only chooses a tool -- the codebase is read in a Claude Code session', async () => {
     const agent = await getCodingAgent();
 
     expect(await agent.getDefaultOptions()).toMatchObject({ providerOptions: LOW_THINKING_PROVIDER_OPTIONS });

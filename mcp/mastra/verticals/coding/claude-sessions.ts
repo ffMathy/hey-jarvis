@@ -1,238 +1,153 @@
 /**
- * Claude cloud session client.
+ * Claude Code sessions, run on a host logged in to the user's Claude subscription.
  *
- * Thin wrapper around the Claude Managed Agents session API, which is what the
- * coding vertical delegates actual implementation work to. A session is an
- * agent instance running in a sandboxed cloud environment; it is created with a
- * task, emits events while it works, and can be steered with follow-up
- * messages.
+ * The coding vertical delegates actual implementation work to Claude Code. A session is started
+ * with a task, works unattended in a directory of its own on the host, and can be steered with
+ * follow-up messages. Each run of it is one `claude --print` process, reached over SSH (see
+ * `claude-code-host.ts`); a message sent while it works is written to the same process, and one
+ * sent after it has finished starts a new process that resumes the session.
  *
- * @see https://platform.claude.com/docs/en/managed-agents/sessions
+ * What a session says is kept here, in memory, as a small set of events: the process started, the
+ * agent said something, the process stopped, or something broke. Claude Code emits far more —
+ * every tool call and its result — and none of it is what anyone following the session wants to
+ * hear. Being in memory, a session does not outlive a restart of the server; the transcript stays
+ * on the host, where `claude --resume` in the session's directory picks it up by hand.
+ *
+ * @see https://code.claude.com/docs/en/headless
  */
 
-import Anthropic from '@anthropic-ai/sdk';
-import type { BetaManagedAgentsSessionEvent } from '@anthropic-ai/sdk/resources/beta/sessions/events';
-import type { BetaManagedAgentsSession } from '@anthropic-ai/sdk/resources/beta/sessions/sessions';
+import { randomUUID } from 'node:crypto';
+import { createInterface } from 'node:readline';
+import { truncate } from 'lodash-es';
 import { logger } from '../../utils/logger.js';
+import {
+  type ClaudeCodeLauncher,
+  type ClaudeCodeProcess,
+  HOST_SESSIONS_DIRECTORY,
+  launchClaudeCodeOverSsh,
+} from './claude-code-host.js';
 
-export type ClaudeSession = BetaManagedAgentsSession;
-export type ClaudeSessionEvent = BetaManagedAgentsSessionEvent;
-export type ClaudeSessionStatus = ClaudeSession['status'];
+export type ClaudeSessionStatus = 'running' | 'idle';
+
+/** A session as its callers see it. */
+export interface ClaudeSession {
+  id: string;
+  status: ClaudeSessionStatus;
+}
+
+/** What happened in a session, in the few kinds that matter to anyone following it. */
+export type ClaudeSessionEvent =
+  | { id: string; type: 'session.status_running' }
+  | { id: string; type: 'agent.message'; text: string }
+  | {
+      id: string;
+      type: 'session.status_idle';
+      /** `end_turn` when the work finished, otherwise why it stopped. */
+      stopReason: string;
+    }
+  | { id: string; type: 'session.error'; message: string };
+
+/** An event before the session has numbered it: each kind of event, without its `id`. */
+type UnnumberedEvent = ClaudeSessionEvent extends infer Event
+  ? Event extends unknown
+    ? Omit<Event, 'id'>
+    : never
+  : never;
+
+/** Longest error excerpt carried in an event. */
+const MAXIMUM_ERROR_LENGTH = 1000;
 
 /**
- * Configuration needed to talk to the session API.
+ * One line of Claude Code's stream-json output.
  *
- * All three come from the environment. Their values are never logged — only
- * whether they are set — per the repository's secret handling rules.
+ * Only the fields read here are described. `assistant` carries a model message, `result` closes a
+ * turn; everything else — the `system` init line, tool results echoed back as `user` — is passed
+ * over.
  */
-export interface ClaudeSessionConfiguration {
-  apiKey: string;
-  agentId: string;
-  environmentId: string;
+interface ClaudeCodeOutputLine {
+  type?: string;
+  subtype?: string;
+  is_error?: boolean;
+  result?: string;
+  errors?: string[];
+  message?: { content?: Array<{ type?: string; text?: string }> };
 }
 
-/** What a session was started for, stored on the session for traceability. */
-export interface ClaudeSessionMetadata {
-  repository: string;
-  /** The issue the session implements, when it was started from one. */
-  issueNumber?: number;
+/** Whether a line's `result` event ends the turn, and how. */
+export interface ClaudeCodeTurnResult {
+  stopReason: string;
+  error?: string;
 }
 
 /**
- * Reads the session credentials from the environment.
+ * Reads what a line of stream-json output means for the session.
  *
- * @throws If any of them is missing, naming which one without revealing values
+ * @returns The agent's message, when the line is one with text in it; the end of a turn, when the
+ *   line is a `result`; nothing otherwise, including for a line that is not JSON at all
  */
-export function getClaudeSessionConfiguration(): ClaudeSessionConfiguration {
-  const apiKey = process.env.HEY_JARVIS_ANTHROPIC_API_KEY;
-  const agentId = process.env.HEY_JARVIS_CLAUDE_AGENT_ID;
-  const environmentId = process.env.HEY_JARVIS_CLAUDE_ENVIRONMENT_ID;
-
-  if (!apiKey || !agentId || !environmentId) {
-    const missing = [
-      !apiKey && 'HEY_JARVIS_ANTHROPIC_API_KEY',
-      !agentId && 'HEY_JARVIS_CLAUDE_AGENT_ID',
-      !environmentId && 'HEY_JARVIS_CLAUDE_ENVIRONMENT_ID',
-    ].filter((name): name is string => typeof name === 'string');
-
-    throw new Error(
-      `Claude cloud sessions are not configured. Missing environment variables: ${missing.join(', ')}. ` +
-        'Create an agent and an environment in the Claude console, then set these before starting a coding session.',
-    );
-  }
-
-  return { apiKey, agentId, environmentId };
-}
-
-/** True when the environment carries everything a session needs. */
-export function isClaudeSessionConfigured(): boolean {
+export function readClaudeCodeOutputLine(
+  line: string,
+): { type: 'message'; text: string } | { type: 'result'; result: ClaudeCodeTurnResult } | undefined {
+  let parsed: ClaudeCodeOutputLine;
   try {
-    getClaudeSessionConfiguration();
-    return true;
+    parsed = JSON.parse(line);
   } catch {
-    return false;
-  }
-}
-
-let client: Anthropic | undefined;
-
-/**
- * The Anthropic client, created on first use.
- *
- * Constructed lazily rather than at module load so that importing the coding
- * vertical does not require the credentials to be present — only starting or
- * following a session does.
- */
-function getClient(): Anthropic {
-  if (!client) {
-    client = new Anthropic({ apiKey: getClaudeSessionConfiguration().apiKey });
+    return undefined;
   }
 
-  return client;
-}
+  if (parsed.type === 'assistant') {
+    const text = (parsed.message?.content ?? [])
+      .filter((block) => block.type === 'text' && typeof block.text === 'string')
+      .map((block) => block.text)
+      .join('\n')
+      .trim();
 
-/**
- * Creates a cloud session and starts it on the given task.
- *
- * The task is passed as an initial `user.message` event, which makes the
- * session start `running` straight away instead of sitting idle waiting for a
- * separate event post.
- *
- * @param task - The instructions the session should carry out
- * @param metadata - What the session is working on, kept on the session itself
- * @returns The created session, including the id used to follow it
- */
-export async function createClaudeSession(task: string, metadata?: ClaudeSessionMetadata): Promise<ClaudeSession> {
-  const configuration = getClaudeSessionConfiguration();
+    return text ? { type: 'message', text } : undefined;
+  }
 
-  const session = await getClient().beta.sessions.create({
-    agent: configuration.agentId,
-    environment_id: configuration.environmentId,
-    initial_events: [
-      {
-        type: 'user.message',
-        content: [{ type: 'text', text: task }],
-      },
-    ],
-    ...(metadata
-      ? {
-          metadata: {
-            repository: metadata.repository,
-            ...(metadata.issueNumber ? { issueNumber: String(metadata.issueNumber) } : {}),
-          },
-        }
-      : {}),
-  });
-
-  logger.info('[CLAUDE SESSION] Session created', { sessionId: session.id, status: session.status });
-
-  return session;
-}
-
-/** Retrieves a session's current state. */
-export async function getClaudeSession(sessionId: string): Promise<ClaudeSession> {
-  return await getClient().beta.sessions.retrieve(sessionId);
-}
-
-/**
- * Sends a follow-up message to a running or idle session.
- *
- * Used to answer a question the session asked, or to redirect it mid-flight.
- */
-export async function sendClaudeSessionMessage(sessionId: string, message: string): Promise<void> {
-  await getClient().beta.sessions.events.send(sessionId, {
-    events: [
-      {
-        type: 'user.message',
-        content: [{ type: 'text', text: message }],
-      },
-    ],
-  });
-}
-
-/**
- * A session's events of the given types, newest first, fetched a page at a time as they are read.
- *
- * Newest first because every caller wants the end of the history, and a session that has worked
- * for a few minutes has hundreds of events behind it -- every tool call, every thinking block --
- * each page of them one more request in series. Read from the end and filtered by type, the
- * caller stops after the handful it needs, usually within the first page.
- */
-function listClaudeSessionEventsNewestFirst(
-  sessionId: string,
-  types: readonly ClaudeSessionEvent['type'][],
-  pageSize?: number,
-): AsyncIterable<ClaudeSessionEvent> {
-  return getClient().beta.sessions.events.list(sessionId, {
-    order: 'desc',
-    types: [...types],
-    ...(pageSize ? { limit: pageSize } : {}),
-  });
-}
-
-/** The event types {@link readFinishedTurn} decides from; everything else it passes over. */
-const TURN_EVENT_TYPES = [
-  'session.status_running',
-  'session.status_idle',
-  'session.status_terminated',
-  'agent.message',
-] as const satisfies readonly ClaudeSessionEvent['type'][];
-
-/** The text of an agent message, its blocks joined. */
-function messageText(event: Extract<ClaudeSessionEvent, { type: 'agent.message' }>): string {
-  return event.content
-    .filter((block) => block.type === 'text')
-    .map((block) => block.text)
-    .join('\n')
-    .trim();
-}
-
-/**
- * Tails a session's live event stream.
- *
- * Yields only persisted events: the stream also carries `event_start` and
- * `event_delta` previews of in-progress text, which have no identity of their
- * own and are followed by the whole event moments later.
- *
- * @param sessionId - The session to follow
- * @param signal - Aborts the underlying connection when cancelled
- */
-export async function* streamClaudeSessionEvents(
-  sessionId: string,
-  signal?: AbortSignal,
-): AsyncGenerator<ClaudeSessionEvent> {
-  const stream = await getClient().beta.sessions.events.stream(sessionId, undefined, { signal });
-
-  for await (const event of stream) {
-    if (event.type === 'event_start' || event.type === 'event_delta') {
-      continue;
+  if (parsed.type === 'result') {
+    if (!parsed.is_error) {
+      return { type: 'result', result: { stopReason: 'end_turn' } };
     }
 
-    yield event;
+    // A failed turn says why in `result` (an API error, a missing login) or in `errors`, and names
+    // the kind of failure in `subtype` unless it is one that still counts as `success`.
+    const stopReason = parsed.subtype && parsed.subtype !== 'success' ? parsed.subtype : 'error';
+    const error = parsed.result || parsed.errors?.join('\n') || stopReason;
+
+    return { type: 'result', result: { stopReason, error: truncate(error, { length: MAXIMUM_ERROR_LENGTH }) } };
   }
+
+  return undefined;
+}
+
+/** A user message as Claude Code reads it with `--input-format stream-json`. */
+export function toClaudeCodeInputLine(message: string): string {
+  return `${JSON.stringify({
+    type: 'user',
+    message: { role: 'user', content: [{ type: 'text', text: message }] },
+    parent_tool_use_id: null,
+    session_id: '',
+  })}\n`;
 }
 
 /** How a session's turn came to an end. */
 export interface FinishedClaudeSessionTurn {
-  /**
-   * Why the session stopped: an idle stop reason (`end_turn`, `requires_action`,
-   * `retries_exhausted`, …) or `terminated` when the session ended for good.
-   */
+  /** Why the session stopped: `end_turn` when it finished its work, otherwise what went wrong. */
   stopReason: string;
   /** The text of the last message the agent sent, empty when it sent none. */
   finalMessage: string;
 }
 
 /**
- * Reads from a session's history whether its latest turn is over, and what the
- * agent said last in it.
+ * Reads from a session's history whether its latest turn is over, and what the agent said last in
+ * it.
  *
- * A session goes idle when its turn is over and terminates when it is over for
- * good. Walking back from the end, either one found before the turn's
- * `session.status_running` means there is nothing more to wait for; a turn
- * that is still going returns `undefined`.
+ * Walking back from the end, a `session.status_idle` found before the turn's
+ * `session.status_running` means there is nothing more to wait for; a turn that is still going
+ * returns `undefined`.
  */
-export function readFinishedTurn(events: ClaudeSessionEvent[]): FinishedClaudeSessionTurn | undefined {
+export function readFinishedTurn(events: readonly ClaudeSessionEvent[]): FinishedClaudeSessionTurn | undefined {
   let stopReason: string | undefined;
 
   for (let index = events.length - 1; index >= 0; index--) {
@@ -244,14 +159,11 @@ export function readFinishedTurn(events: ClaudeSessionEvent[]): FinishedClaudeSe
         // reached with one, the turn ended without the agent saying anything.
         return stopReason ? { stopReason, finalMessage: '' } : undefined;
       case 'session.status_idle':
-        stopReason ??= event.stop_reason.type;
-        break;
-      case 'session.status_terminated':
-        stopReason ??= 'terminated';
+        stopReason ??= event.stopReason;
         break;
       case 'agent.message':
         if (stopReason) {
-          return { stopReason, finalMessage: messageText(event) };
+          return { stopReason, finalMessage: event.text };
         }
         break;
     }
@@ -260,104 +172,296 @@ export function readFinishedTurn(events: ClaudeSessionEvent[]): FinishedClaudeSe
   return stopReason ? { stopReason, finalMessage: '' } : undefined;
 }
 
-/**
- * {@link readFinishedTurn} over a history read newest first, reading no further back than the
- * start of the latest turn.
- *
- * Nothing before that `session.status_running` can change the answer, so the rest of the history
- * is never fetched: the question the user is waiting on follows the analysis by one page of
- * events rather than by every page the session produced.
- */
-export async function readLatestTurn(
-  newestFirst: AsyncIterable<ClaudeSessionEvent>,
-): Promise<FinishedClaudeSessionTurn | undefined> {
-  const latestTurn: ClaudeSessionEvent[] = [];
-
-  for await (const event of newestFirst) {
-    latestTurn.unshift(event);
-    if (event.type === 'session.status_running') {
-      break;
-    }
-  }
-
-  return readFinishedTurn(latestTurn);
+interface SessionRecord {
+  id: string;
+  status: ClaudeSessionStatus;
+  events: ClaudeSessionEvent[];
+  /** Whether Claude Code has created the session on the host, so the next process resumes it. */
+  exists: boolean;
+  /** The process working on the session, while there is one that can still take messages. */
+  process?: ClaudeCodeProcess;
+  /** Settles once a process being launched is working, so two messages at once start only one. */
+  launching?: Promise<void>;
+  /** Messages written to the process that it has not closed a turn for yet. */
+  unansweredMessages: number;
+  /** Settles when the last process has exited. */
+  lastExit: Promise<unknown>;
+  /** Called whenever an event is added. */
+  listeners: Set<() => void>;
 }
 
 /**
- * The text of the latest messages in a history read newest first, oldest of them first.
+ * The sessions this server has started, and the processes working on them.
  *
- * Stops reading once it has `count`, so the rest of the history is never fetched.
+ * One instance serves the whole server; tests make their own with a fake launcher.
  */
-export async function readLatestMessages(
-  newestFirst: AsyncIterable<ClaudeSessionEvent>,
-  count: number,
-): Promise<string[]> {
-  const messages: string[] = [];
-  if (count <= 0) {
-    return messages;
-  }
+export class ClaudeCodeSessions {
+  private readonly sessions = new Map<string, SessionRecord>();
+  private nextEventNumber = 0;
 
-  for await (const event of newestFirst) {
-    const text = event.type === 'agent.message' ? messageText(event) : '';
-    if (text.length > 0) {
-      messages.unshift(text);
+  constructor(private readonly launch: ClaudeCodeLauncher = launchClaudeCodeOverSsh) {}
+
+  /**
+   * Creates a session and starts it on the given task.
+   *
+   * @throws When the process cannot be started, e.g. because the host is not configured
+   */
+  async create(task: string): Promise<ClaudeSession> {
+    const record: SessionRecord = {
+      id: randomUUID(),
+      status: 'idle',
+      events: [],
+      exists: false,
+      unansweredMessages: 0,
+      lastExit: Promise.resolve(),
+      listeners: new Set(),
+    };
+
+    this.sessions.set(record.id, record);
+
+    try {
+      await this.send(record.id, task);
+    } catch (error) {
+      this.sessions.delete(record.id);
+      throw error;
     }
 
-    // Checked after the event rather than before the next one, which would already have been
-    // fetched -- a whole page of it, when this one ended the page.
-    if (messages.length >= count) {
-      break;
+    logger.info('[CLAUDE SESSION] Session created', { sessionId: record.id });
+
+    return this.get(record.id);
+  }
+
+  /**
+   * A session's current state.
+   *
+   * @throws For a session this server does not know, which includes every session started before
+   *   it last restarted
+   */
+  get(sessionId: string): ClaudeSession {
+    const record = this.require(sessionId);
+    return { id: record.id, status: record.status };
+  }
+
+  /**
+   * Sends a message to a session.
+   *
+   * A session still working reads it once its current turn is over; one that has finished is
+   * resumed on it.
+   */
+  async send(sessionId: string, message: string): Promise<void> {
+    const record = this.require(sessionId);
+
+    if (!record.process) {
+      record.launching ??= this.relaunch(record).finally(() => {
+        record.launching = undefined;
+      });
+      await record.launching;
+    }
+
+    record.unansweredMessages++;
+    record.process?.input.write(toClaudeCodeInputLine(message));
+  }
+
+  /**
+   * A session's events, from its first, then each new one as it happens, until `signal` aborts.
+   *
+   * A session can always be resumed with another message, so its events never run out on their
+   * own.
+   */
+  async *stream(sessionId: string, signal?: AbortSignal): AsyncGenerator<ClaudeSessionEvent> {
+    const record = this.require(sessionId);
+    let index = 0;
+
+    while (!signal?.aborted) {
+      while (index < record.events.length) {
+        yield record.events[index++];
+      }
+
+      // The caller may have aborted while this was suspended at a yield, and an abort that has
+      // already happened is never announced to a listener added after it.
+      if (signal?.aborted) {
+        return;
+      }
+
+      await new Promise<void>((resolve) => {
+        const done = () => {
+          record.listeners.delete(done);
+          signal?.removeEventListener('abort', done);
+          resolve();
+        };
+        record.listeners.add(done);
+        signal?.addEventListener('abort', done);
+      });
     }
   }
 
-  return messages;
+  /** The text of the latest messages the agent has sent, oldest of them first. */
+  latestMessages(sessionId: string, count: number): string[] {
+    if (count <= 0) {
+      return [];
+    }
+
+    return this.require(sessionId)
+      .events.flatMap((event) => (event.type === 'agent.message' ? [event.text] : []))
+      .slice(-count);
+  }
+
+  /**
+   * Waits for a session to finish its turn, and returns what it said last.
+   *
+   * @returns The finished turn, or `undefined` when the session was still working when the time
+   *   ran out
+   */
+  async waitForTurn(sessionId: string, timeoutMilliseconds: number): Promise<FinishedClaudeSessionTurn | undefined> {
+    const record = this.require(sessionId);
+
+    for await (const event of this.stream(sessionId, AbortSignal.timeout(timeoutMilliseconds))) {
+      // An idle event replayed from an earlier turn is passed over while the session is working
+      // on a later one.
+      if (event.type === 'session.status_idle' && record.status === 'idle') {
+        return readFinishedTurn(record.events);
+      }
+    }
+
+    return undefined;
+  }
+
+  private require(sessionId: string): SessionRecord {
+    const record = this.sessions.get(sessionId);
+    if (!record) {
+      throw new Error(
+        `There is no Claude Code session ${sessionId} on this server. Sessions are kept in memory, so one ` +
+          `started before the server last restarted is gone from here — its transcript is still on the host, ` +
+          `in ~/${HOST_SESSIONS_DIRECTORY}/${sessionId}.`,
+      );
+    }
+
+    return record;
+  }
+
+  private emit(record: SessionRecord, event: UnnumberedEvent): void {
+    record.events.push({ ...event, id: `${record.id}:${this.nextEventNumber++}` });
+    for (const listener of [...record.listeners]) {
+      listener();
+    }
+  }
+
+  /**
+   * Launches a process for a session that has none, once the last one has exited, so two never
+   * write to the same transcript.
+   */
+  private async relaunch(record: SessionRecord): Promise<void> {
+    await record.lastExit;
+    this.start(record, await this.launch(record.id, record.exists));
+  }
+
+  /** Hands a freshly launched process the session, and follows it until it exits. */
+  private start(record: SessionRecord, claudeCode: ClaudeCodeProcess): void {
+    record.process = claudeCode;
+    record.status = 'running';
+    record.lastExit = claudeCode.exited;
+    this.emit(record, { type: 'session.status_running' });
+
+    void this.follow(record, claudeCode);
+  }
+
+  private async follow(record: SessionRecord, claudeCode: ClaudeCodeProcess): Promise<void> {
+    for await (const line of createInterface({ input: claudeCode.output, crlfDelay: Number.POSITIVE_INFINITY })) {
+      // Any output at all means Claude Code is running, and has created the session to resume. A
+      // process that never got that far -- SSH could not connect -- leaves nothing to resume.
+      record.exists = true;
+      const output = readClaudeCodeOutputLine(line);
+
+      if (output?.type === 'message') {
+        this.emit(record, { type: 'agent.message', text: output.text });
+      } else if (output?.type === 'result') {
+        if (output.result.error) {
+          this.emit(record, { type: 'session.error', message: output.result.error });
+        }
+
+        record.unansweredMessages = Math.max(0, record.unansweredMessages - 1);
+        if (record.unansweredMessages === 0) {
+          // Nothing left to answer, so the process is let go: ending its input is what lets it exit.
+          // From here a new message starts a new process, which resumes the session.
+          this.finish(record, claudeCode, output.result.stopReason);
+        }
+      }
+    }
+
+    const { code, stderr } = await claudeCode.exited;
+
+    // A process that exits with messages still unanswered never got to its `result`: SSH could not
+    // connect, `claude` is not installed, or the connection dropped mid-turn.
+    if (record.process === claudeCode) {
+      logger.error('[CLAUDE SESSION] Claude Code exited before finishing its turn', { sessionId: record.id, code });
+
+      this.emit(record, {
+        type: 'session.error',
+        message: truncate(stderr || `Claude Code exited with code ${code}`, { length: MAXIMUM_ERROR_LENGTH }),
+      });
+      this.finish(record, claudeCode, 'process_exited');
+    }
+  }
+
+  private finish(record: SessionRecord, claudeCode: ClaudeCodeProcess, stopReason: string): void {
+    claudeCode.input.end();
+    record.process = undefined;
+    record.unansweredMessages = 0;
+    record.status = 'idle';
+    this.emit(record, { type: 'session.status_idle', stopReason });
+  }
+}
+
+const sessions = new ClaudeCodeSessions();
+
+/**
+ * Creates a session and starts it on the given task.
+ *
+ * @param task - The instructions the session should carry out
+ * @returns The created session, including the id used to follow it
+ */
+export async function createClaudeSession(task: string): Promise<ClaudeSession> {
+  return await sessions.create(task);
+}
+
+/** Retrieves a session's current state. */
+export function getClaudeSession(sessionId: string): ClaudeSession {
+  return sessions.get(sessionId);
+}
+
+/**
+ * Sends a follow-up message to a running or idle session.
+ *
+ * Used to answer a question the session asked, or to redirect it.
+ */
+export async function sendClaudeSessionMessage(sessionId: string, message: string): Promise<void> {
+  await sessions.send(sessionId, message);
+}
+
+/**
+ * Follows a session's events, from its first, until `signal` aborts.
+ *
+ * @param sessionId - The session to follow
+ * @param signal - Stops following when aborted
+ */
+export function streamClaudeSessionEvents(sessionId: string, signal?: AbortSignal): AsyncGenerator<ClaudeSessionEvent> {
+  return sessions.stream(sessionId, signal);
 }
 
 /** The latest messages a session's agent has sent, oldest of them first. */
-export async function listLatestClaudeSessionMessages(sessionId: string, count: number): Promise<string[]> {
-  return await readLatestMessages(listClaudeSessionEventsNewestFirst(sessionId, ['agent.message'], count), count);
+export function listLatestClaudeSessionMessages(sessionId: string, count: number): string[] {
+  return sessions.latestMessages(sessionId, count);
 }
-
-/** How often a waiting caller checks on a session. */
-const TURN_POLL_INTERVAL_MILLISECONDS = 5000;
 
 /**
  * Waits for a session to finish its turn, and returns what it said last.
  *
- * Polls rather than streams: a stream opened after the session started has to
- * be trusted to replay what it missed, while the event list is the whole
- * history every time. The session's own status is checked first because it is
- * the cheaper call, and the history is only read once the session claims to be
- * done -- from the end, and only as far back as the start of the turn.
- *
- * @param sessionId - The session to wait for
- * @param timeoutMilliseconds - How long to wait before giving up
- * @returns The finished turn, or `undefined` when the session was still working
- *   when the time ran out
+ * @returns The finished turn, or `undefined` when the session was still working when the time ran
+ *   out
  */
 export async function waitForClaudeSessionTurn(
   sessionId: string,
   timeoutMilliseconds: number,
 ): Promise<FinishedClaudeSessionTurn | undefined> {
-  const deadline = Date.now() + timeoutMilliseconds;
-
-  while (Date.now() < deadline) {
-    const session = await getClaudeSession(sessionId);
-
-    if (session.status === 'idle' || session.status === 'terminated') {
-      const finishedTurn = await readLatestTurn(listClaudeSessionEventsNewestFirst(sessionId, TURN_EVENT_TYPES));
-      if (finishedTurn) {
-        return finishedTurn;
-      }
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, TURN_POLL_INTERVAL_MILLISECONDS));
-  }
-
-  return undefined;
-}
-
-/** URL a human can open to watch the session. */
-export function getClaudeSessionUrl(sessionId: string): string {
-  return `https://platform.claude.com/sessions/${sessionId}`;
+  return await sessions.waitForTurn(sessionId, timeoutMilliseconds);
 }

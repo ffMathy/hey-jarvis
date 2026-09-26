@@ -1,7 +1,7 @@
 /**
  * Generative UI tests.
  *
- * Building a page takes a Claude cloud session and pushing it takes a phone, so what is covered
+ * Building a page takes a Claude Code session and pushing it takes a phone, so what is covered
  * here is the part in between that is this vertical's own: the brief a session is given, and the
  * reading of the link it reports back.
  */

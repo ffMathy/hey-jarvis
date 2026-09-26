@@ -1,15 +1,13 @@
 // Coding vertical exports
 export { getCodingAgent } from './agent.js';
+export { isClaudeCodeHostConfigured } from './claude-code-host.js';
 export {
   type ClaudeSession,
   type ClaudeSessionEvent,
-  type ClaudeSessionMetadata,
   type ClaudeSessionStatus,
   createClaudeSession,
   type FinishedClaudeSessionTurn,
   getClaudeSession,
-  getClaudeSessionUrl,
-  isClaudeSessionConfigured,
   listLatestClaudeSessionMessages,
   readFinishedTurn,
   sendClaudeSessionMessage,
@@ -21,9 +19,6 @@ export {
   ClaudeSessionWatcher,
   CODING_STATE_CHANGE_SOURCE,
   claudeSessionWatcher,
-  isReportableEvent,
-  REPORTED_EVENT_TYPES,
-  type ReportedSessionEvent,
   toStateChange,
 } from './session-watcher.js';
 export { codingTools } from './tools.js';

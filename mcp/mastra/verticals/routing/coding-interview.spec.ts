@@ -23,7 +23,7 @@ import { InMemoryStore } from '@mastra/core/storage';
 import {
   type CodingToolRecorder,
   RECORDED_ANALYSIS,
-  RECORDED_SESSION_URL,
+  RECORDED_SESSION_ID,
   type RecordCodingToolsOptions,
   recordCodingTools,
 } from '../../../tests/utils/coding-tool-recorder.js';
@@ -51,7 +51,7 @@ const FEATURE_REQUEST = 'Build me reminders that go out before my tasks are due.
 const [FIRST_QUESTION, SECOND_QUESTION] = RECORDED_ANALYSIS.questions;
 const FIRST_ANSWER = 'Push, please.';
 const SECOND_ANSWER = 'An hour before.';
-const SESSION_STARTED = 'A Claude cloud session is now implementing push reminders for tasks.';
+const SESSION_STARTED = 'A Claude Code session is now implementing push reminders for tasks.';
 
 /**
  * The planner: a coding task for the feature request, and an answer for anything said while a
@@ -90,7 +90,7 @@ function scriptedPlanner() {
 /** The coding agent: starts the workflow, and reports once the workflow has finished. */
 function scriptedCodingAgent() {
   return createScriptedModel(({ transcript }) => {
-    if (transcript.includes(RECORDED_SESSION_URL)) {
+    if (transcript.includes(RECORDED_SESSION_ID)) {
       return { text: SESSION_STARTED };
     }
 

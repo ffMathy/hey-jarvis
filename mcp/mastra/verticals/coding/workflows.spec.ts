@@ -3,7 +3,7 @@
  * a session reads the codebase first, its questions are asked one suspension at a time, and once
  * the last one is answered a second session is started on the change — with no issue in between.
  *
- * Both Claude cloud sessions are spied on and recorded, so everything between them — the
+ * Both Claude Code sessions are spied on and recorded, so everything between them — the
  * analysis being read, the suspensions, the state carried across them and what the implementing
  * session is finally told — is the real workflow.
  */
@@ -14,7 +14,7 @@ import { InMemoryStore } from '@mastra/core/storage';
 import {
   type CodingToolRecorder,
   RECORDED_ANALYSIS,
-  RECORDED_SESSION_URL,
+  RECORDED_SESSION_ID,
   type RecordCodingToolsOptions,
   recordCodingTools,
 } from '../../../tests/utils/coding-tool-recorder.js';
@@ -89,7 +89,7 @@ describe('implementFeatureWorkflow', () => {
       expect.objectContaining({ repo: 'hey-jarvis', request: REQUEST, title: 'Push reminders for tasks' }),
     ]);
     if (finished.status === 'success') {
-      expect(finished.result).toMatchObject({ success: true, sessionUrl: RECORDED_SESSION_URL });
+      expect(finished.result).toMatchObject({ success: true, sessionId: RECORDED_SESSION_ID });
     }
   });
 

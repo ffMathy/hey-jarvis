@@ -196,6 +196,59 @@ talks to `http://supervisor/core`, which is how a Home Assistant **add-on** reac
 exists and works, but this repository ships no add-on manifest, so nothing installs it that way
 today. Running it as a plain container, as above, is the supported route.
 
+### Letting Jarvis code on your Claude subscription
+
+The coding vertical does not call a model API for its sessions. It runs the official Claude Code CLI
+over SSH, on a host that is logged in to your Claude subscription, so the work is billed to the
+subscription rather than to an API key. The host can be the Pi itself — which is what the
+`host.docker.internal` entry in the compose file is for — or any bigger machine the container can
+reach, which is worth it if the Pi has less than 4 GB: a session clones the repository, installs its
+dependencies and runs its tests there.
+
+Claude Code never runs inside the container: the container holds the service account token for
+the whole vault, and a session that skips permission prompts could read it. On the host it runs as a
+user of its own, which is what bounds it.
+
+1. **Create that user, and give it Git and the GitHub CLI.** No `sudo`, and not in the `docker` group.
+
+   ```bash
+   sudo adduser --disabled-password --gecos '' jarvis
+   sudo apt-get install -y git gh
+   ```
+
+2. **As that user, install Claude Code and log in, and log in to GitHub.** Sessions clone with `gh`
+   and open their pull requests with it. Install Bun too, since sessions working on this repository
+   run its tests.
+
+   ```bash
+   sudo -iu jarvis
+   curl -fsSL https://claude.ai/install.sh | bash
+   curl -fsSL https://bun.sh/install | bash
+   ~/.local/bin/claude          # log in with your Claude account, then /exit
+   gh auth login && gh auth setup-git
+   git config --global user.name 'Jarvis' && git config --global user.email '<you>@users.noreply.github.com'
+   ```
+
+3. **Give the container a key to it.** In the `Jarvis` vault, create an **SSH Key** item named
+   `Claude Code` (let 1Password generate an Ed25519 key), and add a text field `SSH target` to it,
+   holding `jarvis@host.docker.internal` — or `jarvis@<host>` for another machine, with
+   `ssh://jarvis@<host>:<port>` for a port other than 22. Then authorize its public key for the
+   user, with `restrict` in front so the key can run a command and do nothing else:
+
+   ```bash
+   sudo -iu jarvis sh -c 'mkdir -p ~/.ssh && chmod 700 ~/.ssh && echo "restrict ssh-ed25519 AAAA..." >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys'
+   ```
+
+`mcp/op.env` maps both fields, so the server resolves them like every other secret, and neither
+the key nor the target is written to the Pi outside the container. The container pins the host's key
+the first time it connects, in `/data/claude-code-known-hosts`; delete that file if the host is
+reinstalled.
+
+Each session works in `~/jarvis-sessions/<session id>` on the host. The server keeps track of its
+sessions in memory, so after a restart it no longer knows the ones it started — but the transcripts
+stay on the host, and `cd ~/jarvis-sessions/<id> && claude --resume <id>` picks any of them up by
+hand.
+
 ### Troubleshooting
 
 | Symptom | Cause |

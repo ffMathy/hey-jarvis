@@ -2,7 +2,7 @@
  * Tools and workflows that take minutes rather than seconds.
  *
  * Most of what an agent does answers while the user is still on the line: a calendar lookup, a
- * light switched, a forecast read. A few things do not — a Claude cloud session reading a
+ * light switched, a forecast read. A few things do not — a Claude Code session reading a
  * codebase, or building a page — and a voice conversation held open for those is sir listening to
  * silence. Marking one here is what lets routing notice the moment an agent starts one, and have
  * Jarvis offer to notify him when it is done instead (see `verticals/routing/workflows.ts`).

@@ -438,7 +438,7 @@ describe('a request that has started something slow', () => {
   it('reports a request that finished before he accepted, rather than promising a notification', async () => {
     await runWorkflow(routePromptWorkflow, { userQuery: 'add push reminders for tasks', async: false });
     const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
-    delegate(DEFAULT_ROUTING_SESSION_ID, 'coding', 'Started a Claude cloud session.');
+    delegate(DEFAULT_ROUTING_SESSION_ID, 'coding', 'Started a Claude Code session.');
     endPlanRun(progress);
 
     const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, { notifyWhenDone: true }));

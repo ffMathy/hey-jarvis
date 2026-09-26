@@ -26,6 +26,10 @@ services:
       HEY_JARVIS_STORAGE_PATH: /data
     volumes:
       - mcp-data:/data
+    extra_hosts:
+      # Lets the coding vertical SSH to Claude Code on this machine itself, as
+      # jarvis@host.docker.internal. Docker on Linux does not define the name on its own.
+      - 'host.docker.internal:host-gateway'
     ports:
       # 4111 Mastra Studio + API, 4112 MCP endpoint. Published on the LAN for local
       # access; ElevenLabs reaches 4112 through the tunnel below, not through these.
