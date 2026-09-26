@@ -150,15 +150,41 @@ export async function sendClaudeSessionMessage(sessionId: string, message: strin
   });
 }
 
-/** Lists every event a session has produced so far. */
-export async function listClaudeSessionEvents(sessionId: string): Promise<ClaudeSessionEvent[]> {
-  const events: ClaudeSessionEvent[] = [];
+/**
+ * A session's events of the given types, newest first, fetched a page at a time as they are read.
+ *
+ * Newest first because every caller wants the end of the history, and a session that has worked
+ * for a few minutes has hundreds of events behind it -- every tool call, every thinking block --
+ * each page of them one more request in series. Read from the end and filtered by type, the
+ * caller stops after the handful it needs, usually within the first page.
+ */
+function listClaudeSessionEventsNewestFirst(
+  sessionId: string,
+  types: readonly ClaudeSessionEvent['type'][],
+  pageSize?: number,
+): AsyncIterable<ClaudeSessionEvent> {
+  return getClient().beta.sessions.events.list(sessionId, {
+    order: 'desc',
+    types: [...types],
+    ...(pageSize ? { limit: pageSize } : {}),
+  });
+}
 
-  for await (const event of getClient().beta.sessions.events.list(sessionId)) {
-    events.push(event);
-  }
+/** The event types {@link readFinishedTurn} decides from; everything else it passes over. */
+const TURN_EVENT_TYPES = [
+  'session.status_running',
+  'session.status_idle',
+  'session.status_terminated',
+  'agent.message',
+] as const satisfies readonly ClaudeSessionEvent['type'][];
 
-  return events;
+/** The text of an agent message, its blocks joined. */
+function messageText(event: Extract<ClaudeSessionEvent, { type: 'agent.message' }>): string {
+  return event.content
+    .filter((block) => block.type === 'text')
+    .map((block) => block.text)
+    .join('\n')
+    .trim();
 }
 
 /**
@@ -225,19 +251,71 @@ export function readFinishedTurn(events: ClaudeSessionEvent[]): FinishedClaudeSe
         break;
       case 'agent.message':
         if (stopReason) {
-          const finalMessage = event.content
-            .filter((block) => block.type === 'text')
-            .map((block) => block.text)
-            .join('\n')
-            .trim();
-
-          return { stopReason, finalMessage };
+          return { stopReason, finalMessage: messageText(event) };
         }
         break;
     }
   }
 
   return stopReason ? { stopReason, finalMessage: '' } : undefined;
+}
+
+/**
+ * {@link readFinishedTurn} over a history read newest first, reading no further back than the
+ * start of the latest turn.
+ *
+ * Nothing before that `session.status_running` can change the answer, so the rest of the history
+ * is never fetched: the question the user is waiting on follows the analysis by one page of
+ * events rather than by every page the session produced.
+ */
+export async function readLatestTurn(
+  newestFirst: AsyncIterable<ClaudeSessionEvent>,
+): Promise<FinishedClaudeSessionTurn | undefined> {
+  const latestTurn: ClaudeSessionEvent[] = [];
+
+  for await (const event of newestFirst) {
+    latestTurn.unshift(event);
+    if (event.type === 'session.status_running') {
+      break;
+    }
+  }
+
+  return readFinishedTurn(latestTurn);
+}
+
+/**
+ * The text of the latest messages in a history read newest first, oldest of them first.
+ *
+ * Stops reading once it has `count`, so the rest of the history is never fetched.
+ */
+export async function readLatestMessages(
+  newestFirst: AsyncIterable<ClaudeSessionEvent>,
+  count: number,
+): Promise<string[]> {
+  const messages: string[] = [];
+  if (count <= 0) {
+    return messages;
+  }
+
+  for await (const event of newestFirst) {
+    const text = event.type === 'agent.message' ? messageText(event) : '';
+    if (text.length > 0) {
+      messages.unshift(text);
+    }
+
+    // Checked after the event rather than before the next one, which would already have been
+    // fetched -- a whole page of it, when this one ended the page.
+    if (messages.length >= count) {
+      break;
+    }
+  }
+
+  return messages;
+}
+
+/** The latest messages a session's agent has sent, oldest of them first. */
+export async function listLatestClaudeSessionMessages(sessionId: string, count: number): Promise<string[]> {
+  return await readLatestMessages(listClaudeSessionEventsNewestFirst(sessionId, ['agent.message'], count), count);
 }
 
 /** How often a waiting caller checks on a session. */
@@ -250,7 +328,7 @@ const TURN_POLL_INTERVAL_MILLISECONDS = 5000;
  * be trusted to replay what it missed, while the event list is the whole
  * history every time. The session's own status is checked first because it is
  * the cheaper call, and the history is only read once the session claims to be
- * done.
+ * done -- from the end, and only as far back as the start of the turn.
  *
  * @param sessionId - The session to wait for
  * @param timeoutMilliseconds - How long to wait before giving up
@@ -267,7 +345,7 @@ export async function waitForClaudeSessionTurn(
     const session = await getClaudeSession(sessionId);
 
     if (session.status === 'idle' || session.status === 'terminated') {
-      const finishedTurn = readFinishedTurn(await listClaudeSessionEvents(sessionId));
+      const finishedTurn = await readLatestTurn(listClaudeSessionEventsNewestFirst(sessionId, TURN_EVENT_TYPES));
       if (finishedTurn) {
         return finishedTurn;
       }

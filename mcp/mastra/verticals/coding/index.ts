@@ -10,7 +10,7 @@ export {
   getClaudeSession,
   getClaudeSessionUrl,
   isClaudeSessionConfigured,
-  listClaudeSessionEvents,
+  listLatestClaudeSessionMessages,
   readFinishedTurn,
   sendClaudeSessionMessage,
   streamClaudeSessionEvents,

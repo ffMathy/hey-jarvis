@@ -28,13 +28,6 @@ const MAX_ERROR_LENGTH = 1000;
 /** How deep {@link errorSummary} follows a `cause` chain. */
 const MAX_CAUSE_DEPTH = 3;
 
-/** The fields a stored error is read for. A serialized Error and a MastraError both carry them. */
-interface ErrorLike {
-  message?: unknown;
-  name?: unknown;
-  cause?: unknown;
-}
-
 function truncateTo(value: string, max: number): string {
   return value.length > max ? `${value.slice(0, max)}… (truncated)` : value;
 }
@@ -79,13 +72,12 @@ export function errorSummary(error: unknown, depth = 0): string {
     return truncateTo(String(error), MAX_ERROR_LENGTH);
   }
 
-  const candidate = error as ErrorLike;
-  const message = typeof candidate.message === 'string' ? candidate.message : undefined;
-  const name = typeof candidate.name === 'string' && candidate.name !== 'Error' ? candidate.name : undefined;
+  const message = 'message' in error && typeof error.message === 'string' ? error.message : undefined;
+  const name = 'name' in error && typeof error.name === 'string' && error.name !== 'Error' ? error.name : undefined;
 
   const head = message ? (name ? `${name}: ${message}` : message) : stringify(error);
 
-  const cause = depth < MAX_CAUSE_DEPTH ? errorSummary(candidate.cause, depth + 1) : '';
+  const cause = depth < MAX_CAUSE_DEPTH && 'cause' in error ? errorSummary(error.cause, depth + 1) : '';
   // A cause that only repeats the wrapper adds a clause and no information.
   const joined = cause && !head.includes(cause) ? `${head} (caused by: ${cause})` : head;
 
@@ -162,7 +154,7 @@ export interface TraceReport {
   /** Whether anything in the trace failed. */
   failed: boolean;
   /**
-   * The spans that carry an error, innermost first.
+   * The spans that carry an error, innermost first, each with its trimmed payloads.
    *
    * Which is the answer to "why did this fail": a run fails from the inside out, so the
    * first failing span is the tool or model call that broke and every span above it is
@@ -193,13 +185,41 @@ function depthOf(span: SpanLike, byId: Map<string, SpanLike>): number {
   return depth;
 }
 
-/** Builds the report for one trace out of its spans. */
+/** The spans of one trace that carry an error, the innermost -- the cause -- first. */
+function failingInnermostFirst(spans: SpanLike[]): SpanLike[] {
+  const byId = new Map(spans.map((span) => [span.spanId, span]));
+
+  return spans
+    .filter((span) => span.error !== null && span.error !== undefined)
+    .sort((left, right) => depthOf(right, byId) - depthOf(left, byId));
+}
+
+/**
+ * The failure that started a trace's troubles, without its payloads, or nothing when nothing in
+ * it failed.
+ *
+ * What a list of failures carries for each one, so "why didn't that work?" is answered from the
+ * list: a failed run's root span usually carries no error of its own -- it failed from the inside
+ * -- and without this every failure in the list took another tool call to explain.
+ */
+export function innermostFailure(spans: SpanLike[]): SpanReport | undefined {
+  const [innermost] = failingInnermostFirst(spans);
+  return innermost ? spanReport(innermost) : undefined;
+}
+
+/**
+ * Builds the report for one trace out of its spans.
+ *
+ * The failing spans carry their payloads whatever `includePayloads` says, because what the
+ * broken call was given is often the reason it broke. The option decides only whether every
+ * other span carries them too: a routed request is dozens of spans, and their payloads are most
+ * of what a model would otherwise have to read before it could answer.
+ */
 export function traceReport(
   traceId: string,
   spans: SpanLike[],
   options: { includePayloads?: boolean } = {},
 ): TraceReport {
-  const byId = new Map(spans.map((span) => [span.spanId, span]));
   const inStartOrder = [...spans].sort((left, right) =>
     (toIso(left.startedAt) ?? '').localeCompare(toIso(right.startedAt) ?? ''),
   );
@@ -207,10 +227,7 @@ export function traceReport(
   const root = spans.find((span) => !span.parentSpanId) ?? inStartOrder[0];
   const reports = inStartOrder.map((span) => spanReport(span, options));
 
-  const failing = spans
-    .filter((span) => span.error !== null && span.error !== undefined)
-    .sort((left, right) => depthOf(right, byId) - depthOf(left, byId))
-    .map((span) => spanReport(span, options));
+  const failing = failingInnermostFirst(spans).map((span) => spanReport(span, { includePayloads: true }));
 
   return {
     traceId,

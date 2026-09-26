@@ -2,12 +2,12 @@
  * Reading a session's history for the end of its turn.
  *
  * `waitForClaudeSessionTurn` polls a live session, which needs credentials; what it decides from
- * each poll is `readFinishedTurn`, and that is covered here against histories of the shape the
- * event list returns.
+ * each poll is `readLatestTurn` over `readFinishedTurn`, and both are covered here against
+ * histories of the shape the event list returns.
  */
 
 import { describe, expect, it } from 'bun:test';
-import { type ClaudeSessionEvent, readFinishedTurn } from './claude-sessions.js';
+import { type ClaudeSessionEvent, readFinishedTurn, readLatestMessages, readLatestTurn } from './claude-sessions.js';
 
 const PROCESSED_AT = '2026-09-25T10:00:00Z';
 
@@ -84,5 +84,80 @@ describe('readFinishedTurn', () => {
 
   it('is not finished when an earlier turn ended and a new one is under way', () => {
     expect(readFinishedTurn([running('1'), message('2', 'First answer.'), idle('3'), running('4')])).toBeUndefined();
+  });
+});
+
+/**
+ * A history as the event list hands it back newest first, counting how much of it was read.
+ *
+ * Every event read is one the API had to send, and once a page runs out the next is one more
+ * request in series, so how little is read is the point of reading from the end.
+ */
+function newestFirst(history: ClaudeSessionEvent[]) {
+  const reading = { eventsRead: 0 };
+
+  async function* events() {
+    for (const event of [...history].reverse()) {
+      reading.eventsRead++;
+      yield event;
+    }
+  }
+
+  return { events: events(), reading };
+}
+
+/** A session that worked through many turns, the way a long analysis leaves its history. */
+function longHistory(turns: number): ClaudeSessionEvent[] {
+  return Array.from({ length: turns }, (_, turn) => [
+    running(`${turn}-running`),
+    message(`${turn}-message`, `Answer ${turn}.`),
+    idle(`${turn}-idle`),
+  ]).flat();
+}
+
+describe('readLatestTurn', () => {
+  it('reads no further back than the start of the latest turn', async () => {
+    const history = longHistory(50);
+    const { events, reading } = newestFirst(history);
+
+    expect(await readLatestTurn(events)).toEqual({ stopReason: 'end_turn', finalMessage: 'Answer 49.' });
+    expect(reading.eventsRead).toBe(3);
+  });
+
+  it('answers what the whole history would have answered', async () => {
+    const histories = [
+      [],
+      [running('1'), message('2', 'Looking into it.')],
+      [running('1'), message('2', 'First answer.'), idle('3'), running('4'), idle('5')],
+      [running('1'), message('2', 'First answer.'), idle('3'), running('4')],
+      [running('1'), message('2', 'Giving up.'), terminated('3')],
+      longHistory(3),
+    ];
+
+    for (const history of histories) {
+      expect(await readLatestTurn(newestFirst(history).events)).toEqual(readFinishedTurn(history));
+    }
+  });
+});
+
+describe('readLatestMessages', () => {
+  it('returns the latest messages oldest first, and stops reading once it has them', async () => {
+    const { events, reading } = newestFirst(longHistory(50).filter((event) => event.type === 'agent.message'));
+
+    expect(await readLatestMessages(events, 3)).toEqual(['Answer 47.', 'Answer 48.', 'Answer 49.']);
+    expect(reading.eventsRead).toBe(3);
+  });
+
+  it('passes over messages with no text in them', async () => {
+    const { events } = newestFirst([message('1', 'Started.'), message('2'), message('3', '  '), message('4', 'Done.')]);
+
+    expect(await readLatestMessages(events, 5)).toEqual(['Started.', 'Done.']);
+  });
+
+  it('reads nothing when no messages are wanted', async () => {
+    const { events, reading } = newestFirst([message('1', 'Started.')]);
+
+    expect(await readLatestMessages(events, 0)).toEqual([]);
+    expect(reading.eventsRead).toBe(0);
   });
 });

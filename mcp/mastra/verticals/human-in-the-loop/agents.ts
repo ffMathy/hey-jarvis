@@ -1,5 +1,6 @@
 import type { z } from 'zod';
 import { createAgent } from '../../utils/agent-factory.js';
+import { LOW_THINKING_PROVIDER_OPTIONS } from '../../utils/providers/google-provider.js';
 
 export async function getEmailParsingAgent() {
   return createAgent({
@@ -24,6 +25,9 @@ Guidelines:
 - If information is missing but can be reasonably inferred, make the inference
 - If information is truly missing and cannot be inferred, use null or empty values`,
     tools: {},
+    // Reading "yeah fine, go ahead" into { approved: true } is extraction, not reasoning, and the
+    // run the reply resumes waits on every second of it.
+    defaultOptions: { providerOptions: LOW_THINKING_PROVIDER_OPTIONS },
   });
 }
 
