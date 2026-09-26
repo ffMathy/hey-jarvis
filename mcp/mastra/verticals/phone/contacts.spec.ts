@@ -588,4 +588,18 @@ describe('lookupContact', () => {
 
     expect(recordedRequests).toHaveLength(1);
   });
+
+  it('downloads the address book once for lookups made at the same time', async () => {
+    // "Text Sarah and mom" has the agent look both up in one step, before anything is cached.
+    responsePages = [connectionsPage([sarah, mom])];
+
+    const [sarahLookup, momLookup] = await Promise.all([
+      executeTool(lookupContact, { name: 'Sarah', limit: 5, requirePhoneNumber: true }),
+      executeTool(lookupContact, { name: 'mom', limit: 5, requirePhoneNumber: true }),
+    ]);
+
+    expect(sarahLookup.matches[0]?.displayName).toBe('Sarah Connor');
+    expect(momLookup.matches[0]?.displayName).toBe('Anne Lorenzen');
+    expect(recordedRequests).toHaveLength(1);
+  });
 });

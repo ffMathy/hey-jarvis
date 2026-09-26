@@ -278,6 +278,15 @@ interface ContactsCacheEntry {
 let contactsCache: ContactsCacheEntry | undefined;
 
 /**
+ * The download in progress, if there is one.
+ *
+ * A request that names two people ("text Sarah and Tom") has the agent look both
+ * up in the same step, and with nothing cached each lookup would download the
+ * whole address book for itself. The second one waits on the first instead.
+ */
+let contactsDownload: Promise<Contact[]> | undefined;
+
+/**
  * Drops the cached address book.
  *
  * Exported for tests, which would otherwise see one spec's fetch answer the
@@ -285,6 +294,7 @@ let contactsCache: ContactsCacheEntry | undefined;
  */
 export function clearContactsCache(): void {
   contactsCache = undefined;
+  contactsDownload = undefined;
 }
 
 /**
@@ -303,6 +313,22 @@ async function fetchAllContacts(forceRefresh: boolean): Promise<Contact[]> {
     return contactsCache.contacts;
   }
 
+  // A download already under way is as fresh as a new one would be, so even a
+  // forced refresh can share it.
+  if (!contactsDownload) {
+    const download = downloadAllContacts().finally(() => {
+      if (contactsDownload === download) {
+        contactsDownload = undefined;
+      }
+    });
+    contactsDownload = download;
+  }
+
+  return await contactsDownload;
+}
+
+/** Downloads the whole address book, page by page, into the cache. */
+async function downloadAllContacts(): Promise<Contact[]> {
   const auth = await getGoogleAuth();
   const people = google.people({ version: 'v1', auth });
 
