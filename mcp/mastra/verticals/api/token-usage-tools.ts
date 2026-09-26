@@ -78,8 +78,11 @@ Use this tool when:
     }
 
     // Get usage for all models
-    const allUsage = await storage.getAllModelUsage(startDate, endDate);
-    const totalUsage = await storage.getTotalUsage(startDate, endDate);
+    // Independent reads, so neither waits on the other.
+    const [allUsage, totalUsage] = await Promise.all([
+      storage.getAllModelUsage(startDate, endDate),
+      storage.getTotalUsage(startDate, endDate),
+    ]);
 
     return {
       success: true,

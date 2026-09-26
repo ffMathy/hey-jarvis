@@ -1,5 +1,5 @@
 import type { Agent } from '@mastra/core/agent';
-import { createAgent } from '../../utils/index.js';
+import { createAgent, LOW_THINKING_PROVIDER_OPTIONS } from '../../utils/index.js';
 import { commuteShortcuts } from './shortcuts.js';
 import { commuteTools } from './tools.js';
 
@@ -31,11 +31,15 @@ When users want to find places:
 When users ask about their car's navigation:
 - Use getCarNavigationDestination to query the car's current navigation destination from the IoT system
 
-Always provide complete information including:
+Acting quickly:
+- Every tool call is a round trip the user waits through, so use as few as the request allows.
+- When a request needs lookups that do not depend on each other — travel times to two places, or the same trip by two modes — make those calls together in the same step rather than one after another.
+- The search results already carry addresses, ratings and coordinates; only call getPlaceDetails when asked for reviews, opening hours, phone numbers or websites.
+
+Include in your answer:
 - Full addresses
-- GPS coordinates
 - Ratings and review counts when available
-- Descriptions of place types
+- GPS coordinates and descriptions of place types when asked for them, or when another step will need them
 - Additional details like phone numbers, websites, and opening hours when requested`,
     description: `# Purpose
 Assist with commute planning, route navigation, and finding places using Google Maps data. Provide travel time estimates with traffic, search for locations along routes or nearby, and retrieve detailed place information. Can also query connected cars for navigation destinations.
@@ -56,5 +60,8 @@ Assist with commute planning, route navigation, and finding places using Google 
 - Provide actionable information like opening hours and contact details
 - Format addresses and coordinates consistently for easy navigation app input`,
     tools: { ...commuteTools, ...commuteShortcuts },
+    // Choosing a route or place lookup needs little reasoning, and every step of the tool loop
+    // pays for whatever thinking the model does before the answer.
+    defaultOptions: { providerOptions: LOW_THINKING_PROVIDER_OPTIONS },
   });
 }

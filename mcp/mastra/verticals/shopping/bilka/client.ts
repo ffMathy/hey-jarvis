@@ -1,52 +1,66 @@
+import { z } from 'zod';
 import { authenticateWithBilka } from './auth.js';
-import type { BilkaCartResponse, ProductCatalogResponse } from './types.js';
+import type { BilkaCartResponse } from './types.js';
 
 /**
- * Searches for products in the Bilka catalog using Algolia search
+ * The product fields a catalogue search asks Algolia for.
+ *
+ * Only what `findProductInCatalog` hands the model. Descriptions, images and nutrition tables
+ * used to be fetched and parsed as well, only for the tool's output schema to drop them, and a
+ * search now asks for several filtered result lists at once.
+ */
+const CATALOG_ATTRIBUTES_TO_RETRIEVE = ['objectID', 'name', 'brand', 'subBrand', 'price', 'attributes'];
+
+const catalogHitSchema = z.object({
+  objectID: z.string(),
+  name: z.string(),
+  brand: z.string().nullish(),
+  subBrand: z.string().nullish(),
+  /** In øre. */
+  price: z.number(),
+  attributes: z.array(z.object({ attributeName: z.string() })).nullish(),
+});
+
+export type CatalogHit = z.infer<typeof catalogHitSchema>;
+
+const catalogSearchResponseSchema = z.object({
+  results: z.array(z.object({ hits: z.array(catalogHitSchema) })),
+});
+
+/**
+ * Searches the Bilka catalogue once per attribute filter, in a single request.
+ *
+ * Algolia's multi-query endpoint runs every query in the body and answers them together, so
+ * asking for the organic, the Danish and the unfiltered results costs one round trip rather
+ * than one per filter.
+ *
+ * @param searchQuery - What to search for
+ * @param attributeFilters - One query per entry; `undefined` searches without a filter
+ * @returns The hits of each query, in the order of `attributeFilters`
  */
 export async function searchProductCatalog(
   searchQuery: string,
-  attributeName?: string,
-): Promise<ProductCatalogResponse> {
-  const attributesToRetrieve = [
-    'objectID',
-    'attributes',
-    'brand',
-    'countryOfOrigin',
-    'description',
-    'netcontent',
-    'images',
-    'infos',
-    'name',
-    'productType',
-    'properties',
-    'subBrand',
-    'units',
-    'price',
-    'unitsOfMeasure',
-  ];
-
+  attributeFilters: ReadonlyArray<string | undefined>,
+): Promise<CatalogHit[][]> {
   const requestBody = {
-    requests: [
-      {
-        indexName: 'prod_BILKATOGO_PRODUCTS',
-        params: [
-          `attributesToRetrieve=${encodeURIComponent(JSON.stringify(attributesToRetrieve))}`,
-          `query=${encodeURIComponent(searchQuery)}`,
-          `distinct=false`,
-          `page=0`,
-          `hitsPerPage=15`,
-          `facets=${encodeURIComponent(JSON.stringify([]))}`,
-          `clickAnalytics=true`,
-          `analyticsTags=${encodeURIComponent(JSON.stringify([]))}`,
-          `userToken=${process.env.HEY_JARVIS_BILKA_USER_TOKEN}`,
-          `getRankingInfo=false`,
-          attributeName && `filters=${encodeURIComponent(`attributes.attributeName:"${attributeName}"`)}`,
-        ]
-          .filter((x) => !!x)
-          .join('&'),
-      },
-    ],
+    requests: attributeFilters.map((attributeName) => ({
+      indexName: 'prod_BILKATOGO_PRODUCTS',
+      params: [
+        `attributesToRetrieve=${encodeURIComponent(JSON.stringify(CATALOG_ATTRIBUTES_TO_RETRIEVE))}`,
+        `query=${encodeURIComponent(searchQuery)}`,
+        `distinct=false`,
+        `page=0`,
+        `hitsPerPage=15`,
+        `facets=${encodeURIComponent(JSON.stringify([]))}`,
+        `clickAnalytics=true`,
+        `analyticsTags=${encodeURIComponent(JSON.stringify([]))}`,
+        `userToken=${process.env.HEY_JARVIS_BILKA_USER_TOKEN}`,
+        `getRankingInfo=false`,
+        attributeName && `filters=${encodeURIComponent(`attributes.attributeName:"${attributeName}"`)}`,
+      ]
+        .filter((x) => !!x)
+        .join('&'),
+    })),
     strategy: 'none',
   };
 
@@ -67,7 +81,8 @@ export async function searchProductCatalog(
     throw new Error(`Search failed: ${response.status} ${response.statusText}`);
   }
 
-  return (await response.json()) as ProductCatalogResponse;
+  const { results } = catalogSearchResponseSchema.parse(await response.json());
+  return results.map((result) => result.hits);
 }
 
 /**

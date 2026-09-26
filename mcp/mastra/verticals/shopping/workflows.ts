@@ -1,6 +1,8 @@
 import { z } from 'zod';
+import { createAgent, LOW_THINKING_PROVIDER_OPTIONS } from '../../utils/index.js';
+import { withRetry } from '../../utils/retry.js';
 import { createAgentStep, createStep, createToolStep, createWorkflow } from '../../utils/workflows/workflow-factory.js';
-import { getCurrentCartContents, shoppingTools } from './tools.js';
+import { findProductInCatalog, getCurrentCartContents, setProductBasketQuantity } from './tools.js';
 
 // Schema for shopping list input
 const shoppingListInputSchema = z.object({
@@ -119,6 +121,8 @@ Guidelines:
 - Set operationType correctly: "set" for adding or updating items, "remove" for deletions, null if the item already exists with the correct quantity`,
     description: 'Specialized agent for extracting structured product information from shopping requests',
     tools: undefined,
+    // Turning a request into a list of products is extraction, not deliberation.
+    defaultOptions: { providerOptions: LOW_THINKING_PROVIDER_OPTIONS },
   },
   inputSchema: z.object({}),
   outputSchema: extractedProductSchema,
@@ -153,14 +157,11 @@ Please respond with valid JSON matching this structure:
 });
 
 // Step 5: Process extracted products
-// Products passed through context - no state needed since only used once
-const processExtractedProducts = createAgentStep({
-  id: 'process-extracted-products',
-  description: 'Processes each extracted product using the Shopping List Mutator Agent',
-  agentConfig: {
-    id: 'shopping-list-mutator',
-    name: 'ShoppingListMutator',
-    instructions: `You are a helpful shopping assistant that manages shopping cart items.
+// The products arrive through context; the basket they change is read from state.
+const shoppingListMutatorConfig = {
+  id: 'shopping-list-mutator',
+  name: 'ShoppingListMutator',
+  instructions: `You are a helpful shopping assistant that manages shopping cart items.
 
 Your task is to process product operations by adding or removing items from the cart.
 
@@ -168,19 +169,42 @@ For each product operation:
 - "set": Add or update the product quantity in the cart using your available tools
 - "remove": Remove the product from the cart
 
-Use the find_product_in_catalog tool to search for products and set_product_basket_quantity to update the cart.
+Every tool call is a round trip, so make as few as you can:
+- The current basket is given to you, with each product's objectID. A product that is already in it, or that is to be removed, needs no search.
+- Search for every other product in one findProductInCatalog call.
+- Make every basket change in one setProductBasketQuantity call. The quantity you set replaces the one in the basket, and 0 removes the product.
 
 Provide a summary of the actions you took for each product.`,
-    description: 'Specialized agent for processing shopping cart mutations',
-    tools: shoppingTools,
-  },
+  description: 'Specialized agent for processing shopping cart mutations',
+  tools: { findProductInCatalog, setProductBasketQuantity },
+  // Matching a product to a search result needs little reasoning, and each step of the tool
+  // loop pays for whatever thinking the model does.
+  defaultOptions: { providerOptions: LOW_THINKING_PROVIDER_OPTIONS },
+} satisfies Parameters<typeof createAgent>[0];
+
+/**
+ * Runs the mutator agent over the products that need a change.
+ *
+ * A plain step rather than `createAgentStep`, because that runs its agent with `toolChoice:
+ * 'none'` to get structured output back -- so the mutator could never call a tool, and the step
+ * reported changes to the basket that were never made. A request that changes nothing (every
+ * product already in the basket as asked) skips the model altogether.
+ */
+const processExtractedProducts = createStep({
+  id: 'process-extracted-products',
+  description: 'Processes each extracted product using the Shopping List Mutator Agent',
+  stateSchema: workflowStateSchema,
   inputSchema: extractedProductSchema,
   outputSchema: z.object({
     mutationResults: z.array(z.string()),
   }),
-  prompt: ({ inputData }) => {
-    const productsToProcess = inputData.products.filter((p) => p.operationType !== null);
-    return `Please process each of these products that require action (operationType is not null):
+  execute: async ({ inputData, state }) => {
+    const productsToProcess = inputData.products.filter((product) => product.operationType !== null);
+    if (productsToProcess.length === 0) {
+      return { mutationResults: [] };
+    }
+
+    const prompt = `Please process each of these products that require action (operationType is not null):
 
 ${JSON.stringify(productsToProcess)}
 
@@ -188,7 +212,19 @@ For each product:
 1. If operationType is "set": Add or update the product in the shopping cart
 2. If operationType is "remove": Remove the product from the cart
 
+The basket currently contains:
+${JSON.stringify(state.cartBefore ?? [])}
+
 Use your available tools to search for products and update the cart. Return a summary of the actions taken for each product.`;
+
+    const mutator = await createAgent({ ...shoppingListMutatorConfig, memory: undefined });
+    // Retried only on a transient provider failure. Setting a quantity is idempotent, so a
+    // retried run that repeats a change already made leaves the basket as it was meant to be.
+    const response = await withRetry(() => mutator.generate(prompt), {
+      label: 'shopping list mutator',
+    });
+
+    return { mutationResults: [response.text] };
   },
 });
 
@@ -236,6 +272,8 @@ Format your response in a friendly, conversational way in Danish. Include:
 Keep your summary concise but informative.`,
     description: 'Specialized agent for summarizing shopping list changes and providing user feedback',
     tools: undefined,
+    // Summarising a before and an after needs no deliberation to speak of.
+    defaultOptions: { providerOptions: LOW_THINKING_PROVIDER_OPTIONS },
   },
   inputSchema: z.unknown(),
   outputSchema: shoppingListResultSchema,

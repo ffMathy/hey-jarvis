@@ -1,53 +1,44 @@
 import { z } from 'zod';
-import { getOllamaModelOrFallback } from '../../utils/providers/ollama-provider.js';
 import { executeTool } from '../../utils/tool-factory.js';
-import { createAgentStep, createStep, createWorkflow } from '../../utils/workflows/workflow-factory.js';
+import { createStep, createWorkflow } from '../../utils/workflows/workflow-factory.js';
 import { registerStateChange } from '../synapse/tools.js';
-import { weatherTools } from './tools.js';
+import { type CurrentWeather, getCurrentWeatherByCity } from './tools.js';
 
-// Agent-as-step for scheduled weather check (uses local Qwen3 via Ollama for cost-efficiency,
-// falls back to Gemini when Ollama is not configured)
-const scheduledWeatherCheck = createAgentStep({
+/**
+ * The current weather as one line of prose, for the notification system to read.
+ *
+ * Exported for testing.
+ */
+export function describeCurrentWeather(weather: CurrentWeather): string {
+  const gust = weather.windGust === undefined ? '' : ` (gusts ${weather.windGust} m/s)`;
+
+  return (
+    `${weather.location}: ${weather.temperature}°C (feels like ${weather.feelsLike}°C, ` +
+    `${weather.tempMin}–${weather.tempMax}°C), ${weather.description}. ` +
+    `Humidity ${weather.humidity}%, wind ${weather.windSpeed} m/s${gust} from ${weather.windDirection}°, ` +
+    `cloud cover ${weather.cloudiness}%, pressure ${weather.pressure} hPa.`
+  );
+}
+
+/**
+ * Fetches the hourly weather for Aarhus.
+ *
+ * A direct tool call rather than an agent step. The agent step this replaces could not call a
+ * tool at all -- `createAgentStep` runs its agent with `toolChoice: 'none'` -- so every hourly
+ * update it registered was the model's guess at the weather rather than the weather. The lookup
+ * needs no judgement, so it now costs one API call and no model call.
+ */
+const scheduledWeatherCheck = createStep({
   id: 'scheduled-weather-check',
   description: 'Checks weather for Aarhus every hour',
-  agentConfig: {
-    model: getOllamaModelOrFallback(),
-    id: 'weather',
-    name: 'Weather',
-    instructions: `You are a weather agent which can provide weather insights via tools (current weather information and 5-day future prognosises for certain locations).
-
-If no location is given, assume the city Aarhus in Denmark, where Mathias and Julie lives.
-
-When users ask for weather information:
-1. If they provide a city name, use the city-based tools
-2. If they provide coordinates, use the coordinate-based tools
-3. If no location is specified, default to "aarhus,dk"
-4. For forecast requests, use the forecast tools
-5. For current conditions, use the current weather tools
-
-Always provide comprehensive weather information including temperature, humidity, wind conditions, and weather descriptions.`,
-    description: `# Purpose  
-Provide weather data. Use this tool to **fetch the current conditions** or a **5-day forecast** for any location specified by city name, postal/ZIP code, or latitude/longitude coordinates. **Location is mandatory.**  
-
-# When to use
-- The user asks about today's weather, tomorrow's forecast, or the outlook for specific dates ("Will it rain in Paris this weekend?").
-- The user needs details for planning travel or outdoor activities (temperature, precipitation chance, wind, humidity, UV index, sunrise/sunset).
-- The user wants to compare weather between multiple places or check conditions along a route.
-- Severe-weather awareness: the user is concerned about storms, heatwaves, cold snaps, or air-quality alerts.
-- Any automation (e.g., deciding whether to water the lawn) requires up-to-date weather data first.
-
-# Post-processing  
-- **Validate** the query succeeded and capture key metrics (current temp, feels-like, condition, wind, humidity, plus daily highs/lows and precipitation probabilities for five days).
-- **Summarize** clearly: current conditions first, followed by the 5-day outlook—use concise prose or a compact list; avoid overwhelming detail.
-- **Convert units** to match the user's locale or stated preference (°C/°F, mm/in, km/h/mph); note conversions if they differ from the source.
-- **Highlight significant events** (e.g., "Thunderstorms expected Thursday afternoon") and offer brief guidance if relevant.`,
-    tools: weatherTools,
-  },
   inputSchema: z.object({}),
   outputSchema: z.object({
     result: z.string(),
   }),
-  prompt: () => 'Get current weather for Aarhus, Denmark',
+  execute: async (params) => {
+    const weather = await executeTool(getCurrentWeatherByCity, { cityName: 'aarhus,dk' }, { mastra: params.mastra });
+    return { result: describeCurrentWeather(weather) };
+  },
 });
 
 // Register weather state change for notification analysis

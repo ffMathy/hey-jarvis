@@ -1,5 +1,5 @@
 import type { Agent } from '@mastra/core/agent';
-import { createAgent } from '../../utils/index.js';
+import { createAgent, LOW_THINKING_PROVIDER_OPTIONS } from '../../utils/index.js';
 import { shoppingTools } from './tools.js';
 import { shoppingListWorkflow } from './workflows.js';
 
@@ -74,17 +74,18 @@ The products might be written in Danish.
 - After exhausting reasonable retries, gracefully return that the item could not be added.
 
 # Workflow Process
-1. First, get the current cart contents to understand what's already in the basket
-2. For each item to add:
-   - Search for the product using the find_product_in_catalog tool
-   - Apply the priority hierarchy to select the best match
-   - Set the basket quantity using set_product_basket_quantity tool
-3. For items to remove, set quantity to 0
-4. Provide a summary of what was added/removed and any items that couldn't be found`,
+Every tool call is a round trip the user waits through, so make as few as the request allows.
+1. In your first step, call getCurrentCartContents and findProductInCatalog together, searching for every product to add in that one findProductInCatalog call. The cart tells you what is already in the basket, and gives you the objectID of anything to remove, which needs no search.
+2. Apply the priority hierarchy to each product's results. Retry only the searches that found nothing, all together in one more findProductInCatalog call with simplified terms or synonyms.
+3. Make every basket change in one setProductBasketQuantity call. The quantity you set replaces the one in the basket, so for a product already there, set the new total. To remove an item, set its quantity to 0.
+4. Provide a short summary of what was added/removed and any items that couldn't be found`,
 
     description:
       'Specialized agent for managing shopping lists in Bilka online store. Can add/remove items, search products, and manage cart contents.',
     tools: shoppingTools,
+    // Picking a product from a handful of search results needs little reasoning, and every step
+    // of the tool loop pays for whatever thinking the model does before the basket changes.
+    defaultOptions: { providerOptions: LOW_THINKING_PROVIDER_OPTIONS },
   });
 }
 
@@ -111,5 +112,7 @@ Be concise but informative.`,
     workflows: {
       shoppingListWorkflow,
     },
+    // Summarising a before and an after needs no deliberation to speak of.
+    defaultOptions: { providerOptions: LOW_THINKING_PROVIDER_OPTIONS },
   });
 }

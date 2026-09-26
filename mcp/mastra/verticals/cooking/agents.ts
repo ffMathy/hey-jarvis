@@ -1,5 +1,5 @@
 import type { Agent } from '@mastra/core/agent';
-import { createAgent } from '../../utils/index.js';
+import { createAgent, LOW_THINKING_PROVIDER_OPTIONS } from '../../utils/index.js';
 import { cookingTools } from './tools.js';
 import { generateMealPlanWorkflow } from './workflows.js';
 
@@ -28,12 +28,22 @@ Key rules:
 - Provide detailed recipe information
 - Filter for "Aftensmad" (dinner) category when appropriate
 - Avoid weird soups like "burgersuppe", "tacosuppe", "lasagnesuppe"
-- For meal planning requests, delegate to the generateMealPlanWorkflow workflow`,
+- For meal planning requests, delegate to the generateMealPlanWorkflow workflow
+
+Acting quickly:
+- Every tool call is a round trip the user waits through, so use as few as the request allows.
+- searchRecipes returns the recipes in full, ingredients and directions included. Answer from its results; only call getRecipeById for a recipe you know by id and do not already have.
+- When you need several searches, make them together in the same step rather than one after another.
+- To browse the whole catalogue, use getRecipeCatalog, never getAllRecipes, which returns every recipe in full.`,
 
     description: 'Comprehensive cooking agent for recipe search and meal planning',
     tools: cookingTools,
     workflows: {
       generateMealPlanWorkflow,
     },
+    // Choosing a search term and reading the results back needs little reasoning, and every step
+    // of the tool loop pays for whatever thinking the model does. The meal plan keeps its default
+    // thinking inside the workflow, where the scaling and scheduling happen.
+    defaultOptions: { providerOptions: LOW_THINKING_PROVIDER_OPTIONS },
   });
 }
