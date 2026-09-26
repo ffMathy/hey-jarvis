@@ -102,7 +102,10 @@ The agent prompt in `src/assets/agent-prompt.md` defines:
 - **Personality**: J.A.R.V.I.S.-inspired wit, dry humor
 - **Addressing**: Always call the user "sir"
 - **No Follow-ups**: Make assumptions rather than asking clarifying questions
-- **Conciseness**: Brief, witty acknowledgements (5-15 words, max 20)
+- **Conciseness**: Brief, witty acknowledgements (5-15 words, max 20) — and for a routed
+  request, whatever length the `instructions` field asks for, which outranks the prompt's own
+  rules: a few words for a command, a sentence for a lookup, detail for a briefing, full
+  character for conversation (the planner labels each request; see `mcp/AGENTS.md`)
 - **When to reach for a tool**: answer outright or route, and never both
 - **Analysis Mode**: any phrase *beginning* with "analysis" drops the persona for
   a flat, robot-like step-by-step readout. Whatever follows the word is the focus,
@@ -114,6 +117,7 @@ The agent prompt in `src/assets/agent-prompt.md` defines:
 - **Ending the call**: a closing line in character, then the `end_call` tool — a
   written "[end_call invoked]" is a stage direction, not a call, and leaves the
   line open
+- **When sir is silent**: see **Hanging up when he goes quiet** below
 
 Keep it short. The prompt is carried on every turn, so anything the agent does
 not need in order to decide its *next* utterance does not belong in it — that is
@@ -194,6 +198,30 @@ but whether it hangs up when it says it is hanging up. `turbo test:integration
 --filter=elevenlabs` is what asks it, because those specs hold live conversations
 with the deployed agent; a model swap that has not been through them is a guess —
 this one included, until they run.
+
+## Hanging up when he goes quiet
+
+A finished request should not leave the line open until the 30-second `silenceEndCallTimeout`
+gives up on it. So every finished request — answered, failed, or handed off to a notification —
+ends with the routing loop telling Jarvis to call **`hangUpWhenQuiet`**, a client tool declared in
+`agent-config.json` (`expectsResponse: false`, `executionMode: post_tool_speech`). The client keeps
+the clock, because only the client knows when Jarvis has stopped talking and whether sir has said
+anything since: three seconds of quiet ends the call, and anything he says first disarms it. The
+phone and watch apps handle it in `hologram/conversation`, the Voice speaker in its firmware. A
+request still waiting on him — a question, a slow-work offer — never carries it.
+
+A telephone call has no client to keep that clock, so the agent also has **`turnTimeout: 3`**: after
+three seconds of silence, ElevenLabs asks Jarvis to speak again. The prompt's **When Sir Is Silent**
+section and the `end_call`/`skip_turn` descriptions tell him what that means — after a finished
+request, `end_call` without a word; while the conversation waits on sir, `skip_turn`. That setting
+is agent-wide, so it applies on every medium, where the client usually wins the race by a model
+round trip. `initialWaitTime: 30` keeps it from firing at the start of a session whose first
+message is empty (the apps play a recorded greeting instead). If the model ever fills those
+silences with "are you still there?", `turnTimeout: -1` switches the whole mechanism off again and
+leaves the client tool doing the work where there is a client.
+
+The test agent keeps its client tools (`applyTestAgentOverrides` in `src/main.ts`): the loop names
+`hangUpWhenQuiet`, and an agent without it would be tested against an instruction it cannot follow.
 
 ### What belongs in the routing instructions instead
 

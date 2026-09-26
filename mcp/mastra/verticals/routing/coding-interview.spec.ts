@@ -63,12 +63,19 @@ function scriptedPlanner() {
     const answer = [FIRST_ANSWER, SECOND_ANSWER].find((candidate) => transcript.includes(candidate));
 
     if (waitingQuestionId && answer) {
-      return { text: JSON.stringify({ tasks: [], answers: [{ questionId: waitingQuestionId, answer }] }) };
+      return {
+        text: JSON.stringify({
+          responseStyle: 'briefing',
+          tasks: [],
+          answers: [{ questionId: waitingQuestionId, answer }],
+        }),
+      };
     }
 
     if (transcript.includes(FEATURE_REQUEST)) {
       return {
         text: JSON.stringify({
+          responseStyle: 'briefing',
           tasks: [{ id: 'feature', agentId: 'coding', prompt: FEATURE_REQUEST, needs: '' }],
           answers: [],
         }),
@@ -76,7 +83,7 @@ function scriptedPlanner() {
     }
 
     // Nothing any agent can do, and no answer to anything.
-    return { text: JSON.stringify({ tasks: [], answers: [] }) };
+    return { text: JSON.stringify({ responseStyle: 'conversation', tasks: [], answers: [] }) };
   });
 }
 

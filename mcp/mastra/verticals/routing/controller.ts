@@ -5,7 +5,13 @@ import { isSlowTask } from '../../utils/slow-tasks.js';
 import { sendCompletionNotice } from './completion-notice.js';
 import { buildRoutingPlan, type PlannedChain, type RoutingPlan } from './plan.js';
 import { sweepOldRoutingPlans } from './plan-retention.js';
-import { getRoutingPlannerAgent, PLANNER_AGENT_ID, type PlannedAnswer, planDelegations } from './planner.js';
+import {
+  getRoutingPlannerAgent,
+  PLANNER_AGENT_ID,
+  type PlannedAnswer,
+  planDelegations,
+  type ResponseStyle,
+} from './planner.js';
 import {
   asDelegationSuspension,
   type DelegationSuspension,
@@ -114,6 +120,13 @@ export class RoutingProgress {
    * not supersede it, and what it comes to is sent to the user rather than waiting to be polled.
    */
   notifyWhenDone = false;
+  /**
+   * How the planner said this request should be answered.
+   *
+   * `briefing` until the plan says otherwise: a request that fails before it is planned is reported
+   * with whatever it managed, and the style that errs on the side of saying enough is the safe one.
+   */
+  responseStyle: ResponseStyle = 'briefing';
   /** Whether the plan run has ended. */
   runFinished = false;
   error?: string;
@@ -348,6 +361,8 @@ export interface RoutingSnapshot {
   questions: OpenQuestion[];
   /** Tasks that have started something slow since the last poll. */
   newlySlow: string[];
+  /** How the planner said the request should be answered. */
+  responseStyle: ResponseStyle;
   error?: string;
 }
 
@@ -370,6 +385,7 @@ export function buildSnapshot(progress: RoutingProgress): RoutingSnapshot {
     finished: progress.isFinished(),
     questions: progress.questions,
     newlySlow,
+    responseStyle: progress.responseStyle,
     error: progress.error,
   };
 }
@@ -853,7 +869,12 @@ async function runRequest(
   userQuery: string,
   signal: AbortSignal,
 ): Promise<void> {
-  const { chains, answers } = await planDelegations(await resolvePlannerAgent(mastra), userQuery, listOpenQuestions());
+  const { chains, answers, responseStyle } = await planDelegations(
+    await resolvePlannerAgent(mastra),
+    userQuery,
+    listOpenQuestions(),
+  );
+  progress.responseStyle = responseStyle;
   logger.info('Routing request planned', {
     sessionId,
     chains: chains.length,

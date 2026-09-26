@@ -238,8 +238,13 @@ class ElevenLabsAgentManager {
       config.conversationConfig.agent.prompt.mcpServerIds = [TEST_AGENT_MCP_SERVER_ID];
       console.log('🔧 Setting mcpServerIds to local tunnel MCP server for test agent');
 
-      config.conversationConfig.agent.prompt.tools = [];
-      console.log('🔧 Clearing tools array for test agent');
+      // Client tools stay: the routing loop tells the agent to call `hangUpWhenQuiet` at the end of
+      // every finished request, and on an agent without it that instruction names a tool that does
+      // not exist -- which the tests would then measure instead of the agent's real behaviour.
+      config.conversationConfig.agent.prompt.tools = (config.conversationConfig.agent.prompt.tools ?? []).filter(
+        (tool) => tool.type === 'client',
+      );
+      console.log('🔧 Clearing all but the client tools for test agent');
     }
 
     // Suffix agent name with " (test)" to distinguish from production

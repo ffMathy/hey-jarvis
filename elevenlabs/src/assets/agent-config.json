@@ -8,7 +8,7 @@
       "keywords": []
     },
     "turn": {
-      "turnTimeout": -1,
+      "turnTimeout": 3,
       "silenceEndCallTimeout": 30,
       "mode": "turn",
       "turnEagerness": "normal",
@@ -43,7 +43,8 @@
         "randomizeFillers": false,
         "maxSoftTimeoutsPerGeneration": 1,
         "disable_until_first_user_message": false
-      }
+      },
+      "initialWaitTime": 30
     },
     "tts": {
       "modelId": "eleven_v3_conversational",
@@ -194,7 +195,7 @@
           "endCall": {
             "type": "system",
             "name": "end_call",
-            "description": "# Purpose\n\nEnd the call. Use it to hang up once sir is done with the conversation.\n\n---\n\n# When to Call\n\n## 1) Explicit endings\n\n* A goodbye in any form: \"bye\", \"see you\", \"that'll be all\".\n* A request to hang up or end the call.\n* A statement that the need is met: \"that's what I needed\", \"all set\", \"thanks, that's all\".\n* A refusal of further help: \"no thanks\", \"I'm good\".\n\n## 2) Implicit endings\n\n* An intention to leave: \"I need to go\", \"it's getting late\".\n* Minimal, disengaged replies once everything asked for has been answered.\n* The conversation reaching its natural end with nothing outstanding.\n\n> **Call it once per call, and never retry it.**\n\n---\n\n# Before Calling\n\nSay one closing line first, tied to what this particular conversation was about rather than a line that would fit any of them. Then call the tool.\n\n> **DO NOT:**\n>\n> * Ask whether the call should be ended - if he said so, end it.\n> * End it while he is raising something new.\n> * Close with something bland (\"Okay, bye\").\n> * Keep talking once he has ended the conversation.\n\n---\n\n# Calling It\n\nCalling the tool is a silent machine action, and writing about it is not calling it. \"[end_call invoked]\", \"*hangs up*\" and \"-> end_call\" all leave the call open and sir waiting on the line, whether or not he hears the words. Say the closing line, then make the call itself.\n\n---\n\n# Examples *(the closing line only - the call follows it silently, and each one is invented fresh)*\n\n**A) Explicit completion**\n\n* User: \"That's all I needed, thanks!\"\n* Assistant: \"Glad to be of service, sir. Do try to retain it this time.\"\n\n**B) User asks to hang up**\n\n* User: \"Please end the call.\"\n* Assistant: \"Certainly, sir. Do try not to miss me too much.\"\n\n**C) Implicit ending (intention to leave)**\n\n* User: \"I need to run - late for a meeting.\"\n* Assistant: \"Off you go, sir. I shall be here, untroubled by punctuality.\"",
+            "description": "# Purpose\n\nEnd the call. Use it to hang up once sir is done with the conversation.\n\n---\n\n# When to Call\n\n## 1) Explicit endings\n\n* A goodbye in any form: \"bye\", \"see you\", \"that'll be all\".\n* A request to hang up or end the call.\n* A statement that the need is met: \"that's what I needed\", \"all set\", \"thanks, that's all\".\n* A refusal of further help: \"no thanks\", \"I'm good\".\n\n## 2) Implicit endings\n\n* An intention to leave: \"I need to go\", \"it's getting late\".\n* Minimal, disengaged replies once everything asked for has been answered.\n* The conversation reaching its natural end with nothing outstanding.\n\n## 3) Silence after a finished request\n\n* You are asked to speak again while sir has said nothing since your last reply, and that reply finished a request he made - its answer given, nothing asked of him, nothing still running. He has what he came for.\n\nIn this one case, **end the call without a closing line**: he has already heard your last words, and a goodbye into silence only keeps him waiting. Call the tool and say nothing.\n\n> **Call it once per call, and never retry it.**\n\n---\n\n# Before Calling\n\nSay one closing line first, tied to what this particular conversation was about rather than a line that would fit any of them. Then call the tool. The one exception is the silence after a finished request above: there, say nothing and call it.\n\n> **DO NOT:**\n>\n> * Ask whether the call should be ended - if he said so, end it.\n> * End it while he is raising something new.\n> * Close with something bland (\"Okay, bye\").\n> * Keep talking once he has ended the conversation.\n\n---\n\n# Calling It\n\nCalling the tool is a silent machine action, and writing about it is not calling it. \"[end_call invoked]\", \"*hangs up*\" and \"-> end_call\" all leave the call open and sir waiting on the line, whether or not he hears the words. Say the closing line, then make the call itself.\n\n---\n\n# Examples *(the closing line only - the call follows it silently, and each one is invented fresh)*\n\n**A) Explicit completion**\n\n* User: \"That's all I needed, thanks!\"\n* Assistant: \"Glad to be of service, sir. Do try to retain it this time.\"\n\n**B) User asks to hang up**\n\n* User: \"Please end the call.\"\n* Assistant: \"Certainly, sir. Do try not to miss me too much.\"\n\n**C) Implicit ending (intention to leave)**\n\n* User: \"I need to run - late for a meeting.\"\n* Assistant: \"Off you go, sir. I shall be here, untroubled by punctuality.\"",
             "responseTimeoutSecs": 20,
             "disableInterruptions": false,
             "interruptionMode": "allow",
@@ -227,7 +228,7 @@
           "skipTurn": {
             "type": "system",
             "name": "skip_turn",
-            "description": "Skip a turn when the user explicitly indicates they need a moment to think or perform an action.\nDo not respond verbally after calling this function; simply wait for the user to speak again.\nUse this function for utterances similar to:\n- \"Give me a second\"\n- \"Let me think\"\n- \"Hold on, let me check\"\n\nDo not call this function if the user is silent without expressing an intention to pause, or if they pose a direct question that requires a response.",
+            "description": "Stay quiet and keep waiting for the user, without saying anything.\n\nCall it when:\n- He explicitly asks for a moment: \"give me a second\", \"let me think\", \"hold on, let me check\".\n- You are asked to speak again while he has said nothing since your last reply, and the conversation is waiting on him: you asked him a question, offered him something, or greeted him and he has not asked for anything yet. His silence there is him thinking, not him leaving.\n\nDo not respond verbally after calling this function; simply wait for the user to speak again.\n\nDo not call it when a request of his has just finished and he has said nothing since - that is the end of the conversation, and end_call is the tool for it. Do not call it when he poses a direct question that requires a response.",
             "responseTimeoutSecs": 20,
             "disableInterruptions": false,
             "interruptionMode": "allow",
@@ -299,7 +300,7 @@
           {
             "type": "system",
             "name": "end_call",
-            "description": "# Purpose\n\nEnd the call. Use it to hang up once sir is done with the conversation.\n\n---\n\n# When to Call\n\n## 1) Explicit endings\n\n* A goodbye in any form: \"bye\", \"see you\", \"that'll be all\".\n* A request to hang up or end the call.\n* A statement that the need is met: \"that's what I needed\", \"all set\", \"thanks, that's all\".\n* A refusal of further help: \"no thanks\", \"I'm good\".\n\n## 2) Implicit endings\n\n* An intention to leave: \"I need to go\", \"it's getting late\".\n* Minimal, disengaged replies once everything asked for has been answered.\n* The conversation reaching its natural end with nothing outstanding.\n\n> **Call it once per call, and never retry it.**\n\n---\n\n# Before Calling\n\nSay one closing line first, tied to what this particular conversation was about rather than a line that would fit any of them. Then call the tool.\n\n> **DO NOT:**\n>\n> * Ask whether the call should be ended - if he said so, end it.\n> * End it while he is raising something new.\n> * Close with something bland (\"Okay, bye\").\n> * Keep talking once he has ended the conversation.\n\n---\n\n# Calling It\n\nCalling the tool is a silent machine action, and writing about it is not calling it. \"[end_call invoked]\", \"*hangs up*\" and \"-> end_call\" all leave the call open and sir waiting on the line, whether or not he hears the words. Say the closing line, then make the call itself.\n\n---\n\n# Examples *(the closing line only - the call follows it silently, and each one is invented fresh)*\n\n**A) Explicit completion**\n\n* User: \"That's all I needed, thanks!\"\n* Assistant: \"Glad to be of service, sir. Do try to retain it this time.\"\n\n**B) User asks to hang up**\n\n* User: \"Please end the call.\"\n* Assistant: \"Certainly, sir. Do try not to miss me too much.\"\n\n**C) Implicit ending (intention to leave)**\n\n* User: \"I need to run - late for a meeting.\"\n* Assistant: \"Off you go, sir. I shall be here, untroubled by punctuality.\"",
+            "description": "# Purpose\n\nEnd the call. Use it to hang up once sir is done with the conversation.\n\n---\n\n# When to Call\n\n## 1) Explicit endings\n\n* A goodbye in any form: \"bye\", \"see you\", \"that'll be all\".\n* A request to hang up or end the call.\n* A statement that the need is met: \"that's what I needed\", \"all set\", \"thanks, that's all\".\n* A refusal of further help: \"no thanks\", \"I'm good\".\n\n## 2) Implicit endings\n\n* An intention to leave: \"I need to go\", \"it's getting late\".\n* Minimal, disengaged replies once everything asked for has been answered.\n* The conversation reaching its natural end with nothing outstanding.\n\n## 3) Silence after a finished request\n\n* You are asked to speak again while sir has said nothing since your last reply, and that reply finished a request he made - its answer given, nothing asked of him, nothing still running. He has what he came for.\n\nIn this one case, **end the call without a closing line**: he has already heard your last words, and a goodbye into silence only keeps him waiting. Call the tool and say nothing.\n\n> **Call it once per call, and never retry it.**\n\n---\n\n# Before Calling\n\nSay one closing line first, tied to what this particular conversation was about rather than a line that would fit any of them. Then call the tool. The one exception is the silence after a finished request above: there, say nothing and call it.\n\n> **DO NOT:**\n>\n> * Ask whether the call should be ended - if he said so, end it.\n> * End it while he is raising something new.\n> * Close with something bland (\"Okay, bye\").\n> * Keep talking once he has ended the conversation.\n\n---\n\n# Calling It\n\nCalling the tool is a silent machine action, and writing about it is not calling it. \"[end_call invoked]\", \"*hangs up*\" and \"-> end_call\" all leave the call open and sir waiting on the line, whether or not he hears the words. Say the closing line, then make the call itself.\n\n---\n\n# Examples *(the closing line only - the call follows it silently, and each one is invented fresh)*\n\n**A) Explicit completion**\n\n* User: \"That's all I needed, thanks!\"\n* Assistant: \"Glad to be of service, sir. Do try to retain it this time.\"\n\n**B) User asks to hang up**\n\n* User: \"Please end the call.\"\n* Assistant: \"Certainly, sir. Do try not to miss me too much.\"\n\n**C) Implicit ending (intention to leave)**\n\n* User: \"I need to run - late for a meeting.\"\n* Assistant: \"Off you go, sir. I shall be here, untroubled by punctuality.\"",
             "responseTimeoutSecs": 20,
             "disableInterruptions": false,
             "interruptionMode": "allow",
@@ -332,7 +333,7 @@
           {
             "type": "system",
             "name": "skip_turn",
-            "description": "Skip a turn when the user explicitly indicates they need a moment to think or perform an action.\nDo not respond verbally after calling this function; simply wait for the user to speak again.\nUse this function for utterances similar to:\n- \"Give me a second\"\n- \"Let me think\"\n- \"Hold on, let me check\"\n\nDo not call this function if the user is silent without expressing an intention to pause, or if they pose a direct question that requires a response.",
+            "description": "Stay quiet and keep waiting for the user, without saying anything.\n\nCall it when:\n- He explicitly asks for a moment: \"give me a second\", \"let me think\", \"hold on, let me check\".\n- You are asked to speak again while he has said nothing since your last reply, and the conversation is waiting on him: you asked him a question, offered him something, or greeted him and he has not asked for anything yet. His silence there is him thinking, not him leaving.\n\nDo not respond verbally after calling this function; simply wait for the user to speak again.\n\nDo not call it when a request of his has just finished and he has said nothing since - that is the end of the conversation, and end_call is the tool for it. Do not call it when he poses a direct question that requires a response.",
             "responseTimeoutSecs": 20,
             "disableInterruptions": false,
             "interruptionMode": "allow",
@@ -344,6 +345,26 @@
             "params": {
               "systemToolType": "skip_turn"
             }
+          },
+          {
+            "type": "client",
+            "name": "hangUpWhenQuiet",
+            "description": "Ends the call if sir stays quiet for a few seconds after you have finished speaking. Call it exactly when the instructions field of a routing response tells you to - at the end of a finished request, after you have spoken its result - silently, without announcing it. It never cuts him off: anything he says first keeps the call open, and his device keeps the clock.",
+            "responseTimeoutSecs": 20,
+            "disableInterruptions": false,
+            "interruptionMode": "allow",
+            "forcePreToolSpeech": false,
+            "preToolSpeech": "off",
+            "assignments": [],
+            "toolCallSoundBehavior": "auto",
+            "toolErrorHandlingMode": "hide",
+            "parameters": {
+              "type": "object",
+              "properties": {},
+              "required": []
+            },
+            "expectsResponse": false,
+            "executionMode": "post_tool_speech"
           }
         ]
       }

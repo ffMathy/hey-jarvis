@@ -707,6 +707,23 @@ small, fast surface, and everything else happens behind them.
 6. A delegation that stops to ask the user something is reported in that closing report as a
    question, in `questionsForUser` — see **Questions for the user** below.
 
+**How long the answer is:** the planner labels every request with a `responseStyle`, by where its
+value lands (`RESPONSE_STYLES` in `routing/planner.ts`):
+- `command` — something changed in the world (lights, alarms, list additions): a few words, with a
+  remark only where the result differs from what was asked
+- `lookup` — one fact: one sentence, at most one remark
+- `briefing` — several facts or a summary: detail, at most one remark
+- `conversation` — open-ended: full character
+
+A mixed request takes the style that needs the most words. Every report the loop sends speaks in
+that style (`SPEAKING_INSTRUCTIONS` in `routing/workflows.ts`); it used to ask for "a detailed
+manner" every time, which is how "turn off the lights" earned a paragraph.
+
+**Ending the call:** every finished request — answered, failed, or handed to a notification — ends
+by telling Jarvis to call the `hangUpWhenQuiet` client tool (`HANG_UP_WHEN_QUIET_TOOL`), which the
+client turns into a hang-up after three seconds of quiet. Nothing still waiting on sir carries it.
+See **Hanging up when he goes quiet** in `elevenlabs/AGENTS.md`.
+
 **Questions for the user:**
 Some work cannot finish on what the request said. The coding agent runs `implementFeatureWorkflow`
 as a tool, and that workflow suspends on every question its codebase analysis left for the user —

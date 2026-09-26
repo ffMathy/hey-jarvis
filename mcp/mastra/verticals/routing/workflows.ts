@@ -6,6 +6,7 @@ import {
   type RoutingSnapshot,
   rememberMastraRegistry,
 } from './controller.js';
+import type { ResponseStyle } from './planner.js';
 
 /* -------------------------------------------------------------------------- */
 /* Public contract                                                            */
@@ -179,9 +180,60 @@ const INSTRUCTIONS = {
     CONVERSATION_CONTROL_EXCEPTION,
   stillProcessing:
     'Still processing your request. Call getNextInstructionsWorkflow again to wait a bit longer for it to complete. Say nothing to the user in the meantime — he has already been told you are on it, and has no use for a running commentary on the waiting.',
-  summarize:
-    'Summarize the new completed task results in a detailed manner, in your own voice — never read an agent name, a tool name or the raw response aloud.',
 } as const;
+
+/**
+ * How to speak a result, by the style the planner gave the request (see `RESPONSE_STYLES`).
+ *
+ * This used to be one sentence for every request -- "summarize the new completed task results in
+ * a detailed manner" -- so "turn off the lights" was explicitly asked for detail, and Jarvis
+ * obliged with a paragraph and a quip about a room he could not see. Only a briefing wants detail.
+ * A command wants a confirmation, and its words are worth spending only where the result differs
+ * from what was asked; a lookup wants its one fact; conversation is where the wit belongs.
+ */
+const SPEAKING_INSTRUCTIONS: Record<ResponseStyle, string> = {
+  command:
+    'Confirm what was done in a few words, in your own voice — "Done, sir." is enough. Add no remark unless ' +
+    'something went differently than he asked — a device not found, a value you had to choose for him, a part ' +
+    'that failed — and then say exactly what differed; that is where a dry remark may go. If he cannot see the ' +
+    'result himself — an alarm, a list, a message sent — name the one detail that proves it, such as the time or ' +
+    'the item.',
+  lookup: 'Give him the answer in one short sentence, with at most one dry remark.',
+  briefing: 'Summarize the results in detail, in a natural spoken order, with at most one dry remark.',
+  conversation: 'Answer in your full character — the wit is welcome here — but keep it to what you would say out loud.',
+};
+
+function speakingInstructions(style: ResponseStyle): string {
+  return `${SPEAKING_INSTRUCTIONS[style]} Never read an agent name, a tool name or the raw response aloud.`;
+}
+
+/**
+ * The client tool that ends the call a few seconds after Jarvis finishes, unless sir speaks.
+ *
+ * Declared on the agent in `elevenlabs/src/assets/agent-config.json` and handled by every client
+ * that can hear sir -- the phone and watch apps through `hologram/conversation`, the Voice speaker
+ * in its firmware. Its name has to match in all of those places.
+ *
+ * A finished request is where a call most often dies of politeness: Jarvis has answered, sir has
+ * what he came for, and the line stays open until a thirty-second silence timeout gives up on it.
+ * The client, not the model, keeps the clock, because only the client knows when Jarvis has
+ * actually stopped talking and whether sir has said anything since.
+ */
+export const HANG_UP_WHEN_QUIET_TOOL = 'hangUpWhenQuiet';
+
+/**
+ * What ends every finished request: the silent hand-off to the hang-up, and the one fallback for a
+ * call with no client to keep the clock.
+ *
+ * A telephone call has no app on the other end, so nothing handles the client tool there. What it
+ * has instead is the agent's turn timeout, which asks Jarvis to speak again after a short silence
+ * -- and at that point, with nothing new from sir, the right thing to say is nothing, and to hang up.
+ */
+const HANG_UP_WHEN_QUIET_INSTRUCTIONS =
+  `Once you have said it, call ${HANG_UP_WHEN_QUIET_TOOL}, silently and without announcing it. It does not ` +
+  'hang up by itself: the call ends only if he then stays quiet for a few seconds, so it never cuts him off, and ' +
+  'anything he says first keeps the line open. If you are asked to speak again before he has said anything, he ' +
+  'has nothing more: call end_call without a word. ';
 
 /**
  * The recap is for results that never reached Jarvis, not for results he already spoke. "Do not
@@ -193,24 +245,30 @@ const INSTRUCTIONS = {
  * calendar lookup and then, asked to check the blinds and lights, promised to look and
  * called nothing: the loop's last instruction left it holding no pointer back to the tool.
  */
-const RECAP_INSTRUCTIONS =
-  'These are every result this request produced, including any you have ' +
-  'already relayed. Summarize in detail whatever the user has not heard yet, and say nothing again ' +
-  'that you already told him during this request: no figure, list or detail a second time, and no ' +
-  'recap of it at the end. The earlier results are only here in case one of them never reached you; ' +
-  'if you have already spoken about it, leave it out. Speak it in your own voice: never read an ' +
-  'agent name, a tool name or the raw response aloud. ';
+function recapInstructions(style: ResponseStyle): string {
+  return (
+    'These are every result this request produced, including any you have already relayed. Tell him ' +
+    'whatever he has not heard yet, and say nothing again that you already told him during this request: ' +
+    'no figure, list or detail a second time, and no recap of it at the end. The earlier results are only ' +
+    'here in case one of them never reached you; if you have already spoken about it, leave it out. ' +
+    `${speakingInstructions(style)} `
+  );
+}
 
-const ALL_TASKS_COMPLETED_INSTRUCTIONS =
-  `All tasks have completed. ${RECAP_INSTRUCTIONS}` +
-  'That finishes this request, but not the conversation: if the user asks for anything further, ' +
-  'send it through routePromptWorkflow exactly as you did this one, however small it sounds and ' +
-  'however many times you have already done it. Answering a later request from ' +
-  'memory, or promising to look and then calling nothing, leaves him with nothing at all. ' +
-  'Anything further means something he says next, not a part of what he already asked that you ' +
-  'left out of this request — if he asked for two things, both should have gone out together, and ' +
-  'routing the second one now is a round trip he should never have had to wait through. ' +
-  CONVERSATION_CONTROL_EXCEPTION;
+function allTasksCompletedInstructions(style: ResponseStyle): string {
+  return (
+    `All tasks have completed. ${recapInstructions(style)}` +
+    HANG_UP_WHEN_QUIET_INSTRUCTIONS +
+    'That finishes this request, but not the conversation: if the user asks for anything further, ' +
+    'send it through routePromptWorkflow exactly as you did this one, however small it sounds and ' +
+    'however many times you have already done it. Answering a later request from ' +
+    'memory, or promising to look and then calling nothing, leaves him with nothing at all. ' +
+    'Anything further means something he says next, not a part of what he already asked that you ' +
+    'left out of this request — if he asked for two things, both should have gone out together, and ' +
+    'routing the second one now is a round trip he should never have had to wait through. ' +
+    CONVERSATION_CONTROL_EXCEPTION
+  );
+}
 
 /**
  * The closing instruction when part of the request stopped to ask sir something.
@@ -224,10 +282,10 @@ const ALL_TASKS_COMPLETED_INSTRUCTIONS =
  *
  * The question comes last so that his answer is the next thing he says.
  */
-function askTheUserInstructions(hasResults: boolean): string {
+function askTheUserInstructions(hasResults: boolean, style: ResponseStyle): string {
   return (
     'Part of this request cannot go on until the user answers a question, which is in questionsForUser. ' +
-    (hasResults ? `Everything else has finished. ${RECAP_INSTRUCTIONS}Then ` : '') +
+    (hasResults ? `Everything else has finished. ${recapInstructions(style)}Then ` : '') +
     'Ask him the question — briefly, in your own voice, as the last thing you say — and stop there to let him answer. ' +
     'It is not a clarifying question of yours: the work is waiting on it and only he can answer it, so ask it even ' +
     'though you otherwise never ask him anything, and never answer it for him or guess what he would say. ' +
@@ -239,10 +297,10 @@ function askTheUserInstructions(hasResults: boolean): string {
   );
 }
 
-function moreToComeInstructions(): string {
+function moreToComeInstructions(style: ResponseStyle): string {
   return (
     `More results have arrived since last time, but the request is not finished yet. ` +
-    `${INSTRUCTIONS.summarize} ` +
+    `${speakingInstructions(style)} ` +
     `Then call getNextInstructionsWorkflow again, without announcing that you are checking — ` +
     `the user was told once that you are on it, and wants the results rather than the machinery.`
   );
@@ -260,9 +318,9 @@ function moreToComeInstructions(): string {
  * to be told about. So the reply to the offer is answered with `notifyWhenDone` on the next poll,
  * never routed, and this says so where the rule to route everything is otherwise given.
  */
-function slowTaskOfferInstructions(hasResults: boolean): string {
+function slowTaskOfferInstructions(hasResults: boolean, style: ResponseStyle): string {
   return (
-    (hasResults ? `More results have arrived since last time. ${INSTRUCTIONS.summarize} Then: ` : '') +
+    (hasResults ? `More results have arrived since last time. ${speakingInstructions(style)} Then: ` : '') +
     'Slow work has started: the tasks in slowTaskIds will take several minutes, and the request is not finished. ' +
     'Tell the user so in one short sentence, in your own voice, and offer to notify him when it is done so that he ' +
     'need not stay on the line. Then stop and let him answer. ' +
@@ -277,13 +335,14 @@ function slowTaskOfferInstructions(hasResults: boolean): string {
  * The reply to accepting the offer. The request now carries on without the call, so Jarvis is
  * released from polling it, and anything further sir asks for can be routed without cancelling it.
  */
-function notifyWhenDoneInstructions(hasResults: boolean): string {
+function notifyWhenDoneInstructions(hasResults: boolean, style: ResponseStyle): string {
   return (
-    (hasResults ? `More results have arrived since last time. ${INSTRUCTIONS.summarize} Then: ` : '') +
+    (hasResults ? `More results have arrived since last time. ${speakingInstructions(style)} Then: ` : '') +
     'The user will be notified when this request is done — with its results, or with any question it needs him to ' +
     'answer. Tell him so in a few words. It carries on in the background whatever else he asks for, so stop calling ' +
-    'getNextInstructionsWorkflow for it. If he asks for anything further, send it through routePromptWorkflow as ' +
-    'usual; if he has nothing else, let the call end. ' +
+    'getNextInstructionsWorkflow for it. ' +
+    HANG_UP_WHEN_QUIET_INSTRUCTIONS +
+    'If he asks for anything further, send it through routePromptWorkflow as usual. ' +
     CONVERSATION_CONTROL_EXCEPTION
   );
 }
@@ -355,7 +414,11 @@ function buildClosingReport(snapshot: RoutingSnapshot): z.infer<typeof instructi
     // asked, so it goes with the apology rather than being dropped alongside the rest.
     const answered = snapshot.all.filter((outcome) => !outcome.failed);
     return {
-      instructions: `The request could not be completed: ${snapshot.error}. ${INSTRUCTIONS.summarize}`,
+      instructions:
+        `The request could not be completed: ${snapshot.error}. Tell him plainly, in a sentence, what could not be ` +
+        `done, then anything that did finish: ${speakingInstructions(snapshot.responseStyle)} ` +
+        HANG_UP_WHEN_QUIET_INSTRUCTIONS +
+        CONVERSATION_CONTROL_EXCEPTION,
       ...(answered.length > 0 && {
         completedTaskResults: answered.map((outcome) => ({ id: outcome.taskId, result: outcome.result })),
       }),
@@ -367,7 +430,7 @@ function buildClosingReport(snapshot: RoutingSnapshot): z.infer<typeof instructi
 
   if (snapshot.questions.length > 0) {
     return {
-      instructions: askTheUserInstructions(completedTaskResults.length > 0),
+      instructions: askTheUserInstructions(completedTaskResults.length > 0, snapshot.responseStyle),
       ...(completedTaskResults.length > 0 && { completedTaskResults }),
       taskIdsInProgress: [],
       questionsForUser: snapshot.questions.map((question) => ({ id: question.taskId, question: question.question })),
@@ -375,7 +438,7 @@ function buildClosingReport(snapshot: RoutingSnapshot): z.infer<typeof instructi
   }
 
   return {
-    instructions: ALL_TASKS_COMPLETED_INSTRUCTIONS,
+    instructions: allTasksCompletedInstructions(snapshot.responseStyle),
     completedTaskResults,
     taskIdsInProgress: [],
   };
@@ -393,7 +456,9 @@ function buildProgressReport(snapshot: RoutingSnapshot): z.infer<typeof instruct
   }
 
   return {
-    instructions: hasNewlySlow ? slowTaskOfferInstructions(hasResults) : moreToComeInstructions(),
+    instructions: hasNewlySlow
+      ? slowTaskOfferInstructions(hasResults, snapshot.responseStyle)
+      : moreToComeInstructions(snapshot.responseStyle),
     ...(hasResults && {
       completedTaskResults: snapshot.landed.map((outcome) => ({ id: outcome.taskId, result: outcome.result })),
     }),
@@ -452,7 +517,7 @@ const getNextInstructionsStep = createStep({
       const snapshot = await runtime.poll(sessionId);
       if (!snapshot.finished) {
         return {
-          instructions: notifyWhenDoneInstructions(snapshot.landed.length > 0),
+          instructions: notifyWhenDoneInstructions(snapshot.landed.length > 0, snapshot.responseStyle),
           ...(snapshot.landed.length > 0 && {
             completedTaskResults: snapshot.landed.map((outcome) => ({ id: outcome.taskId, result: outcome.result })),
           }),
