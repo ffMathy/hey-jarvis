@@ -158,6 +158,7 @@ Provides intelligent weather information and forecasting capabilities:
 ### Shopping List Agent
 Provides intelligent shopping list management for Bilka online store with Danish language support:
 - **4 Bilka integration tools**: Product search via Algolia, cart quantity management, cart retrieval, and cart clearing
+- **Whole lists in one call**: `findProductInCatalog` takes `search_queries` and `setProductBasketQuantity` takes `items`, so a shopping list is one tool call each rather than one model round trip per product. Each search sends all six preference filters in a single Algolia request, and callers arriving together share one Bilka sign-in
 - **Google Gemini model**: Uses `gemini-flash-latest` for natural language processing in Danish
 - **Priority-based selection**: Organic certification, Danish origin, healthier options, and price optimization
 - **Smart quantity handling**: Balances food waste reduction with requested quantities (20% tolerance)
@@ -1077,11 +1078,11 @@ Multi-step weather processing workflow with state change registration:
 - **State change registration**: Automatically registers weather updates for notification analysis
 
 **Workflow Steps:**
-1. **Scheduled Weather Check**: Weather agent gets current weather for Aarhus, Denmark
+1. **Scheduled Weather Check**: reads the current weather for Aarhus, Denmark straight from the weather API and writes the line itself — no model call
 2. **Register State Change**: Calls `registerStateChange` tool to persist weather data and trigger notification analysis
 
 **Technical Implementation:**
-- Uses agent-as-step pattern for weather retrieval
+- The check calls the weather tool directly. It was an agent step, and `createAgentStep` runs its agent with tools disabled, so every hourly update was the model guessing the weather; the factory now refuses tools at compile time
 - Uses custom step with tool execution for state change registration
 - Transforms weather result into structured state change format
 - Triggers `stateChangeNotificationWorkflow` asynchronously
@@ -1091,7 +1092,7 @@ Multi-step shopping list processing workflow implementing the original n8n 3-age
 - **`shoppingListWorkflow`**: Handles natural language shopping requests in Danish with 5-step process
 - **Step 1 - Cart Snapshot**: Gets current cart contents as "before" baseline
 - **Step 2 - Information Extraction**: Uses specialized Information Extractor agent to parse user requests into structured product data with operation types (set/remove/null)
-- **Step 3 - Product Mutation**: Processes each extracted product using Shopping List Mutator Agent with full tool access for search, selection, and cart modification
+- **Step 3 - Product Mutation**: A plain step running the Shopping List Mutator Agent's own tool loop, with only the search and set tools and the current basket in its prompt; it skips the model when nothing needs changing. It used to be an agent step, whose tools are disabled, so it never changed the basket
 - **Step 4 - Updated Cart Snapshot**: Gets final cart contents as "after" comparison
 - **Step 5 - Summary Generation**: Uses Summarization Agent to compare before/after states and provide user feedback in Danish
 - **Error handling**: Comprehensive retry logic and graceful failure messages for each step

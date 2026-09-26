@@ -1,5 +1,6 @@
 /**
- * A small in-memory cache for data that changes rarely, such as published recipes.
+ * A small in-memory cache for data that changes rarely: published recipes, the list of calendars,
+ * the devices in a Home Assistant domain.
  *
  * A value is kept for `ttlMs` after it was asked for, and callers that ask while it is still
  * loading share that load. A load that fails is forgotten at once, so the next caller tries

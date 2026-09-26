@@ -3,6 +3,7 @@ import { chunk } from 'lodash-es';
 import { z } from 'zod';
 import { logger } from '../../utils/logger.js';
 import { createTool } from '../../utils/tool-factory.js';
+import { createTtlCache } from '../../utils/ttl-cache.js';
 
 // Interface for Home Assistant logbook entry
 interface LogbookEntry {
@@ -328,7 +329,8 @@ const RENDER_CONCURRENCY = 4;
  */
 const DEVICE_ID_CACHE_TTL_MS = 60_000;
 
-const deviceIdsByDomain = new Map<string, { ids: string[]; fetchedAt: number }>();
+/** Keyed by domain, with the empty key for every device. There are a few dozen domains at most. */
+const deviceIdsByDomain = createTtlCache<string[]>({ ttlMs: DEVICE_ID_CACHE_TTL_MS, maxEntries: 50 });
 
 /**
  * Fetches just the device IDs, which is cheap enough to always fit in one render.
@@ -338,18 +340,12 @@ const deviceIdsByDomain = new Map<string, { ids: string[]; fetchedAt: number }>(
  * sensor, plug and phone in the house first.
  */
 async function fetchDeviceIds(domain?: string): Promise<string[]> {
-  const cacheKey = domain ?? '';
-  const cached = deviceIdsByDomain.get(cacheKey);
-  if (cached && Date.now() - cached.fetchedAt < DEVICE_ID_CACHE_TTL_MS) {
-    return cached.ids;
-  }
-
-  const source = domain ? `states.${domain}` : 'states';
-  const template = `{{ ${source}|map(attribute='entity_id')|map('device_id')|unique|reject('eq',None)|list|to_json }}`;
-  const ids = await renderStringList(template);
-
-  deviceIdsByDomain.set(cacheKey, { ids, fetchedAt: Date.now() });
-  return ids;
+  return await deviceIdsByDomain.get(domain ?? '', async () => {
+    const source = domain ? `states.${domain}` : 'states';
+    return await renderStringList(
+      `{{ ${source}|map(attribute='entity_id')|map('device_id')|unique|reject('eq',None)|list|to_json }}`,
+    );
+  });
 }
 
 /** Renders a template that emits a JSON list of strings. */

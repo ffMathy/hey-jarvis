@@ -120,7 +120,6 @@ Guidelines:
 - For fresh herbs and products with varying quantities, use a single quantity
 - Set operationType correctly: "set" for adding or updating items, "remove" for deletions, null if the item already exists with the correct quantity`,
     description: 'Specialized agent for extracting structured product information from shopping requests',
-    tools: undefined,
     // Turning a request into a list of products is extraction, not deliberation.
     defaultOptions: { providerOptions: LOW_THINKING_PROVIDER_OPTIONS },
   },
@@ -271,7 +270,6 @@ Format your response in a friendly, conversational way in Danish. Include:
 
 Keep your summary concise but informative.`,
     description: 'Specialized agent for summarizing shopping list changes and providing user feedback',
-    tools: undefined,
     // Summarising a before and an after needs no deliberation to speak of.
     defaultOptions: { providerOptions: LOW_THINKING_PROVIDER_OPTIONS },
   },

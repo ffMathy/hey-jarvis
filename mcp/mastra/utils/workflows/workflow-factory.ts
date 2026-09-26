@@ -221,7 +221,16 @@ export function createAgentStep<
     StepParams<TStepId, TStateSchema, TInputSchema, TOutputSchema, TResumeSchema, TSuspendSchema>,
     'id' | 'description' | 'stateSchema' | 'inputSchema' | 'outputSchema' | 'resumeSchema' | 'suspendSchema'
   > & {
-    agentConfig: Parameters<typeof createAgent>[0];
+    /**
+     * The agent to run, which may not be given tools.
+     *
+     * The step asks its agent for structured output with `toolChoice: 'none'`, so a tool handed to
+     * it is never called -- and nothing says so. The shopping workflow's basket step and the hourly
+     * weather check were each built that way, and each quietly reported work it never did: a
+     * basket it never changed, weather the model made up. A step whose agent needs its tools is a
+     * plain `createStep` running the agent's own tool loop.
+     */
+    agentConfig: Omit<Parameters<typeof createAgent>[0], 'tools'>;
     prompt: (
       params: ExecuteFunctionParams<
         TStateSchema extends z.ZodTypeAny ? z.infer<TStateSchema> : unknown,

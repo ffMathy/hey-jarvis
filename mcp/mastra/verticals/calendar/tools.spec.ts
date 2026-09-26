@@ -8,7 +8,7 @@
  */
 
 import { afterEach, describe, expect, it, setSystemTime } from 'bun:test';
-import { buildEventPatch, type CalendarEvent, collectEventsFromCalendars, reuseFor } from './tools.js';
+import { buildEventPatch, type CalendarEvent, collectEventsFromCalendars } from './tools.js';
 
 function event(id: string, calendarId: string, start: string): CalendarEvent {
   return { id, calendarId, summary: id, start, end: start, status: 'confirmed', htmlLink: `https://calendar/${id}` };
@@ -104,45 +104,6 @@ describe('collectEventsFromCalendars', () => {
 
     expect(events.map((listed) => listed.id)).toEqual(['dinner']);
     expect(unreachableCalendars).toEqual(['Work']);
-  });
-});
-
-describe('reuseFor', () => {
-  it('loads once and reuses the value until it is stale', async () => {
-    setSystemTime(new Date('2026-09-26T08:00:00Z'));
-    let loads = 0;
-    const getValue = reuseFor(60_000, async () => ++loads);
-
-    expect(await getValue()).toBe(1);
-    expect(await getValue()).toBe(1);
-
-    setSystemTime(new Date('2026-09-26T08:01:00Z'));
-    expect(await getValue()).toBe(2);
-  });
-
-  it('shares one load between concurrent callers', async () => {
-    let loads = 0;
-    const getValue = reuseFor(60_000, async () => {
-      await Bun.sleep(5);
-      return ++loads;
-    });
-
-    expect(await Promise.all([getValue(), getValue()])).toEqual([1, 1]);
-    expect(loads).toBe(1);
-  });
-
-  it('does not keep a failed load', async () => {
-    let loads = 0;
-    const getValue = reuseFor(60_000, async () => {
-      loads++;
-      if (loads === 1) {
-        throw new Error('Service Unavailable');
-      }
-      return loads;
-    });
-
-    await expect(getValue()).rejects.toThrow('Service Unavailable');
-    expect(await getValue()).toBe(2);
   });
 });
 

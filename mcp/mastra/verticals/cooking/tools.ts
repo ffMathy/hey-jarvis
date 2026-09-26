@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { createTool, executeTool } from '../../utils/tool-factory.js';
+import { createTtlCache } from '../../utils/ttl-cache.js';
 import { recipeCatalogEntrySchema, toPlainTextSummary } from './recipe-catalog.js';
-import { createTtlCache } from './ttl-cache.js';
 
 // Interface for Valdemarsro Recipe API responses
 interface ValdemarsroRecipe {

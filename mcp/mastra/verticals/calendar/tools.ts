@@ -3,6 +3,7 @@ import { chunk } from 'lodash-es';
 import { z } from 'zod';
 import { getGoogleAuth } from '../../credentials/google-auth.js';
 import { createTool } from '../../utils/tool-factory.js';
+import { createTtlCache } from '../../utils/ttl-cache.js';
 
 // Tool to create a calendar event
 export const createCalendarEvent = createTool({
@@ -237,33 +238,6 @@ export async function collectEventsFromCalendars(
 }
 
 /**
- * Reuses what `load` returns for `ttlMs` after it returned it.
- *
- * Concurrent callers share one load, and a failed load is not kept, so the next caller tries again.
- */
-export function reuseFor<TValue>(ttlMs: number, load: () => Promise<TValue>): () => Promise<TValue> {
-  let cached: { value: TValue; loadedAt: number } | undefined;
-  let loading: Promise<TValue> | undefined;
-
-  return async () => {
-    if (cached && Date.now() - cached.loadedAt < ttlMs) {
-      return cached.value;
-    }
-
-    loading ??= load()
-      .then((value) => {
-        cached = { value, loadedAt: Date.now() };
-        return value;
-      })
-      .finally(() => {
-        loading = undefined;
-      });
-
-    return await loading;
-  };
-}
-
-/**
  * How long the list of calendars is reused.
  *
  * Asking every calendar for its events starts from this list, and a calendar is added about as
@@ -271,7 +245,18 @@ export function reuseFor<TValue>(ttlMs: number, load: () => Promise<TValue>): ()
  */
 const CALENDAR_LIST_TTL_MS = 10 * 60_000;
 
-const getCalendarList = reuseFor(CALENDAR_LIST_TTL_MS, async () => {
+/** One of the user's calendars, as the calendar list reports it. */
+interface CalendarListEntry {
+  id: string;
+  summary: string;
+  description?: string;
+  primary?: boolean;
+  backgroundColor?: string;
+}
+
+const calendarListCache = createTtlCache<CalendarListEntry[]>({ ttlMs: CALENDAR_LIST_TTL_MS, maxEntries: 1 });
+
+async function loadCalendarList(): Promise<CalendarListEntry[]> {
   const auth = await getGoogleAuth();
   const calendar = google.calendar({ version: 'v3', auth });
 
@@ -286,7 +271,12 @@ const getCalendarList = reuseFor(CALENDAR_LIST_TTL_MS, async () => {
     primary: entry.primary ?? undefined,
     backgroundColor: entry.backgroundColor ?? undefined,
   }));
-});
+}
+
+/** The calendars the user has, reused for {@link CALENDAR_LIST_TTL_MS}. */
+async function getCalendarList(): Promise<CalendarListEntry[]> {
+  return await calendarListCache.get('calendars', loadCalendarList);
+}
 
 // Tool to get calendar events
 export const getCalendarEvents = createTool({

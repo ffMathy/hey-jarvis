@@ -143,7 +143,6 @@ export const generateMealPlanWorkflow = createWorkflow({
 
       Return only the ids. Do NOT invent ids, and do NOT write the meal plan.`,
         description: 'Specialized agent for picking the recipes behind a weekly meal plan',
-        tools: undefined,
         // Picking two varied dinners from a shortlist is a light choice. The scheduling step after
         // it, which scales every ingredient, keeps the default thinking.
         defaultOptions: { providerOptions: LOW_THINKING_PROVIDER_OPTIONS },
@@ -226,7 +225,6 @@ Return the ids of the recipes you picked.${preferencesText}`;
       - Select different recipes
       - Format for email presentation`,
         description: 'Specialized agent for creating weekly meal plan schedules',
-        tools: undefined,
       },
       stateSchema: generateMealPlanStateSchema,
       inputSchema: z.object({
@@ -278,7 +276,6 @@ Special features:
 
 IMPORTANT: The subject line must be plain text only - no HTML tags or formatting allowed. Only the body (htmlContent) should contain HTML.`,
     description: 'Specialized agent for formatting meal plans into HTML emails',
-    tools: undefined,
   },
   inputSchema: z.object({
     mealplan: mealPlanSchema,
@@ -384,7 +381,6 @@ Change request indicators:
 - Dietary concerns or preferences
 - Any feedback that isn't pure approval`,
     description: 'Specialized agent for analyzing meal plan feedback',
-    tools: undefined,
   },
   inputSchema: z.object({
     senderEmail: z.string(),

@@ -18,7 +18,6 @@ import {
   resetCookingCachesForTest,
   searchRecipes,
 } from './tools.js';
-import { createTtlCache } from './ttl-cache.js';
 
 const API_KEY_ENV = 'HEY_JARVIS_VALDEMARSRO_API_KEY';
 
@@ -172,33 +171,6 @@ describe('collectPages', () => {
     };
 
     await expect(collectPages(failing)).rejects.toThrow('Bad Gateway');
-  });
-});
-
-describe('createTtlCache', () => {
-  it('shares one load between callers, and forgets a failed one', async () => {
-    const cache = createTtlCache<number>({ ttlMs: 60_000, maxEntries: 2 });
-    let loads = 0;
-
-    const values = await Promise.all([cache.get('a', async () => ++loads), cache.get('a', async () => ++loads)]);
-    expect(values).toEqual([1, 1]);
-
-    await expect(
-      cache.get('b', async () => {
-        throw new Error('down');
-      }),
-    ).rejects.toThrow('down');
-    expect(await cache.get('b', async () => 42)).toBe(42);
-  });
-
-  it('drops the oldest entry past its size', async () => {
-    const cache = createTtlCache<string>({ ttlMs: 60_000, maxEntries: 2 });
-    await cache.get('a', async () => 'first');
-    await cache.get('b', async () => 'second');
-    await cache.get('c', async () => 'third');
-
-    expect(await cache.get('a', async () => 'reloaded')).toBe('reloaded');
-    expect(await cache.get('c', async () => 'reloaded')).toBe('third');
   });
 });
 
