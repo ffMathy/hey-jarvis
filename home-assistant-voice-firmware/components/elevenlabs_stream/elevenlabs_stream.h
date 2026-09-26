@@ -102,10 +102,17 @@ public:
   // Notification/proactive message support
   std::string initial_message_; // Custom initial message for proactive notifications
 
-  // How long an announcement waits for a reply before hanging up, and the state used to
-  // time it. 0 disables the whole mechanism, which is what wake-word conversations use:
-  // somebody said the wake word, so they are already talking and the call should live as
-  // long as the agent's own settings allow.
+  // How long the room may stay quiet before the call is hung up, and the state used to
+  // time it. The same window serves two purposes:
+  //
+  //   - an announcement waits response_window_ms_ (from start_stream) for a reply
+  //   - after the agent finishes a request it calls the hangUpWhenQuiet client tool, and
+  //     a wake-word conversation then hangs up after HANG_UP_WHEN_QUIET_WINDOW_MS of
+  //     quiet (see hang_up_when_quiet_)
+  //
+  // 0 disables the whole mechanism, which is how a wake-word conversation starts:
+  // somebody said the wake word, so they are already talking, and the call lives until
+  // the agent says the request is finished.
   //
   // Timed here rather than by the service, because silence_end_call_timeout is not an
   // overridable field -- the overridable set is prompt, first_message, language, LLM,
@@ -118,10 +125,17 @@ public:
   // and being ignored -- vad_score, the service's own estimate of whether a person is
   // speaking, which the LED ring has been driven from all along.
   uint32_t response_window_ms_{0};
-  // True while an announcement is still waiting to hear a reply. Cleared for good by the
-  // first real transcript: from then on somebody is in the conversation and the window
-  // has served its purpose.
+  // True while the window is armed and waiting to hear a reply. For an announcement it is
+  // cleared for good by the first real transcript: from then on somebody is in the
+  // conversation and the window has served its purpose. For hangUpWhenQuiet it is cleared
+  // by any sign of the user speaking, and armed again by the next hangUpWhenQuiet.
   bool awaiting_response_{false};
+  // True when the armed window came from hangUpWhenQuiet rather than an announcement.
+  // The two differ in how they treat the user speaking: an announcement only pushes its
+  // clock back on vad_score, because it is still waiting for a real answer, whereas
+  // speech after a finished request is a new request -- so it disarms the window, and
+  // the agent re-arms it when that request is finished in turn.
+  bool hang_up_when_quiet_{false};
   // True once the agent has produced audio in this stream. The clock must not run before
   // that, or the window expires while the announcement is still being synthesised.
   bool agent_has_spoken_{false};

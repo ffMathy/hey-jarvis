@@ -57,7 +57,30 @@ export { PLANNER_AGENT_ID };
  * planner, which reads every request anyway and is shown the questions still open, is the one
  * place that can tell an answer from a new errand without Jarvis having to label it.
  */
+/**
+ * How long, and in what voice, Jarvis should answer a request.
+ *
+ * Decided here because this is the one place that reads every request with its intent in view,
+ * and it costs nothing extra: the planner is already choosing agents, and which agents it chose
+ * mostly settles the question. The voice model is told the result through the closing
+ * instruction (see `responseStyleInstructions` in `workflows.ts`), which arrives exactly when it
+ * is about to speak.
+ *
+ * The test is where the value of the request lands. A command's value is in the house or on the
+ * phone, and the words only confirm it, so they should be as few as possible. A lookup's value is
+ * the words, but only a few of them. A briefing's value is the words, and there are many. A
+ * conversation's value is the exchange itself, which is where Jarvis's wit earns its keep.
+ */
+export const RESPONSE_STYLES = ['command', 'lookup', 'briefing', 'conversation'] as const;
+
+export type ResponseStyle = (typeof RESPONSE_STYLES)[number];
+
 const planSchema = z.object({
+  responseStyle: z
+    .enum(RESPONSE_STYLES)
+    .describe(
+      'How the answer should sound: command, lookup, briefing or conversation, as described in the instructions',
+    ),
   tasks: z
     .array(
       z.object({
@@ -147,6 +170,15 @@ Sometimes an agent working on an earlier request stopped to ask the user somethi
 - A request can answer a question and ask for something else at the same time; plan the something else as usual
 - If the request answers none of them, or none are listed, leave \`answers\` empty. Never answer a question on the user's behalf, and never treat a new request as an answer just because a question is waiting
 
+# How the answer should sound
+Set \`responseStyle\` to how Jarvis should answer once the plan has run. Ask where the value of the request lands:
+- \`command\` — it changes something in the world, and the words only confirm it: lights, blinds, music, scenes, heating, an alarm or timer, adding to the shopping or to-do list, sending a message. He wants it done, not described
+- \`lookup\` — it asks for one fact: is the door locked, the weather now, when the next meeting is, how long the drive takes
+- \`briefing\` — it asks for several facts or a summary: the calendar for the week, new emails, research, a recipe, a status report
+- \`conversation\` — it is open-ended: an opinion, advice, planning something together, chat
+
+When a request mixes kinds, pick the one that needs the most words — a command and a lookup together is a \`lookup\`; anything with a briefing in it is a \`briefing\`. An answer to a waiting question takes the style of the work it resumes. With no tasks at all, use \`conversation\`.
+
 # Critical rules
 - If no agent can handle part of the request, leave it out rather than misassigning it
 - Do not invent work the user did not ask for, and do not look up a value the user already gave you
@@ -227,7 +259,7 @@ export async function planDelegations(
   planner: Agent,
   userQuery: string,
   openQuestions: OpenQuestion[] = [],
-): Promise<{ chains: PlannedChain[]; answers: PlannedAnswer[] }> {
+): Promise<{ chains: PlannedChain[]; answers: PlannedAnswer[]; responseStyle: ResponseStyle }> {
   const response = await planner.generate(plannerPrompt(userQuery, openQuestions), {
     structuredOutput: { schema: planSchema },
     toolChoice: 'none',
@@ -243,5 +275,9 @@ export async function planDelegations(
   const openIds = new Set(openQuestions.map((question) => question.id));
   const answers = plan.answers.filter((answer) => openIds.has(answer.questionId) && answer.answer.trim().length > 0);
 
-  return { chains: chainsFromTasks(plan.tasks, await getRoutableAgentIds()), answers };
+  return {
+    chains: chainsFromTasks(plan.tasks, await getRoutableAgentIds()),
+    answers,
+    responseStyle: plan.responseStyle,
+  };
 }

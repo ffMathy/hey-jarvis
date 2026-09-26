@@ -24,6 +24,28 @@ Designed to be compatible with:
 - Voice processing hardware
 - Home Assistant ecosystem
 
+## Ending a Conversation
+
+The `elevenlabs_stream` component (`components/elevenlabs_stream/`) hangs up on its own
+in three cases. Each ends through `stop_stream()`, so `on_end` fires, the wake word
+restarts and the LEDs go idle:
+
+- **`end_call`** — the agent's system tool, received as an `agent_tool_response`. The
+  device waits for the farewell to finish playing first.
+- **`hangUpWhenQuiet`** — a client tool the agent calls at the end of every finished
+  request (`expects_response: false`, `post_tool_speech`), received as
+  `{"type":"client_tool_call","client_tool_call":{"tool_name":"hangUpWhenQuiet",...}}`.
+  It arms a 3 s quiet window (`HANG_UP_WHEN_QUIET_WINDOW_MS`). The clock only runs
+  while Jarvis's audio is not playing, and Jarvis speaking again resets it. Any user
+  speech (`vad_score` ≥ 0.5 or a `user_transcript`) disarms it until the next call. No
+  `client_tool_result` is sent back.
+- **Announcement window** — `announce` starts a stream with a `timeout`, and the same
+  quiet window hangs up if nobody answers. Speech only pushes that clock back, and the
+  first transcript drops it. After that the conversation behaves like a wake-word one.
+
+The windows are timed on the device because ElevenLabs' `silence_end_call_timeout` is
+not an overridable setting.
+
 ## Wake Word Configuration
 
 ### Supported Wake Words

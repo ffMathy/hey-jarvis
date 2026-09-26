@@ -65,6 +65,7 @@ The agent on the other end is the same one `elevenlabs/` deploys, with the same 
 ├── voice-levels.ts               # spectrum folding, easing, and the agitation/burst tracker
 ├── voice-contract.ts             # JarvisVoice: the two questions the sphere asks a voice
 ├── greeting-handover.ts          # when the recorded greeting is over, and the override it comes with
+├── quiet-hang-up.ts              # when a finished request followed by quiet ends the call
 ├── react/                        # `hologram/react`, the half that needs a framework
 │   ├── hologram-view.tsx         # Skia canvas, Reanimated clocks, reading the voice every frame
 │   └── is-foreground.ts          # stops the clock and the microphone when nobody is looking
@@ -73,6 +74,7 @@ The agent on the other end is the same one `elevenlabs/` deploys, with the same 
     ├── sdk-voice-readers.ts      # the SDK's analysers, safe to call before a session exists
     ├── tool-activity.ts          # which tool calls are in flight, and how long he keeps thinking after
     ├── greeting.ts               # "Hello sir, how can I help?" while the session is dialled behind it
+    ├── hang-up-when-quiet.ts     # ending the call after a finished request and three seconds of quiet
     └── user-voice.ts             # the user's vad_score and microphone level, for the listening lattice
 
 mobile/
@@ -163,6 +165,14 @@ an assistant who has finished looks identical to one who is waiting for you. So 
 conversation fades him over `LEAVING_SECONDS`, unmounts the drawing (a frame loop drawing a sphere
 that has faded to nothing is a phone kept awake for no one), and — summoned — lets the sheet follow him down and retracts the assistant's window,
 which is how sample mode leaves too.
+
+**Quiet after a finished request ends it too.** The agent calls its `hangUpWhenQuiet` client tool at
+the end of every request, and if nobody says anything for three seconds after he has finished, the
+screen hangs up through `hangUpSession` — the same path as tapping beside the sheet, so he fades and
+the window goes. Speaking, a transcript or typing calls it off; the rules are in
+`../hologram/AGENTS.md`. The text-only session registers the tool as well: nothing is spoken or scored
+there, so it is three seconds after the call, counted once he has finished miming his written answer,
+unless a line is typed.
 
 ### He greets you before he is connected
 

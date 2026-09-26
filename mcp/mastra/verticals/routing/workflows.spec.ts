@@ -22,6 +22,7 @@ import {
 } from './controller.js';
 import {
   getNextInstructionsWorkflow,
+  HANG_UP_WHEN_QUIET_TOOL,
   resetPollDeadlineForTest,
   routePromptWorkflow,
   setPollDeadlineForTest,
@@ -365,7 +366,7 @@ describe('a request that is waiting on the user', () => {
 
     expect(closing.completedTaskResults).toEqual([{ id: 'weather', result: 'It is 8 degrees.' }]);
     expect(closing.questionsForUser).toEqual([{ id: 'coding', question: QUESTION }]);
-    expect(closing.instructions).toContain('Summarize in detail whatever the user has not heard yet');
+    expect(closing.instructions).toContain('Tell him whatever he has not heard yet');
   });
 
   it('holds the question back while other work is still running', async () => {
@@ -444,6 +445,123 @@ describe('a request that has started something slow', () => {
 
     expect(progress.notifyWhenDone).toBe(false);
     expect(outcome.instructions).toStartWith('All tasks have completed');
+  });
+});
+
+/**
+ * How long Jarvis is told to be, and when the call is allowed to end.
+ *
+ * The planner labels each request (see `RESPONSE_STYLES`), and every report speaks in that style.
+ * A finished request also ends with the hand-off to `hangUpWhenQuiet`, which the client turns into
+ * a hang-up if sir stays quiet -- and nothing that is still waiting on him may carry it, or the
+ * call would end under a question he was about to answer.
+ */
+describe('how a request is answered, and when the call may end', () => {
+  it('confirms a command in a few words, and hands over to the hang-up', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'turn off the living room lights', async: false });
+    const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    progress.responseStyle = 'command';
+    delegate(DEFAULT_ROUTING_SESSION_ID, 'internetOfThings', 'Turned off 3 lights in the living room.');
+    endPlanRun(progress);
+
+    const closing = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(closing.instructions).toContain('"Done, sir." is enough');
+    expect(closing.instructions).not.toContain('in detail');
+    expect(closing.instructions).toContain(HANG_UP_WHEN_QUIET_TOOL);
+  });
+
+  it('gives a briefing its detail, and still hands over to the hang-up once it is done', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'what is on my calendar this week', async: false });
+    const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    progress.responseStyle = 'briefing';
+    delegate(DEFAULT_ROUTING_SESSION_ID, 'calendar', 'Three meetings and a dentist appointment.');
+    endPlanRun(progress);
+
+    const closing = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(closing.instructions).toContain('Summarize the results in detail');
+    expect(closing.instructions).toContain(HANG_UP_WHEN_QUIET_TOOL);
+  });
+
+  it('answers a lookup in one sentence, and conversation in full character', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'is the front door locked', async: false });
+    const lookup = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    lookup.responseStyle = 'lookup';
+    delegate(DEFAULT_ROUTING_SESSION_ID, 'internetOfThings', 'The front door is locked.');
+    endPlanRun(lookup);
+    const lookupClosing = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    await runWorkflow(routePromptWorkflow, { userQuery: 'what do you make of my week', async: false });
+    const conversation = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    conversation.responseStyle = 'conversation';
+    delegate(DEFAULT_ROUTING_SESSION_ID, 'calendar', 'A quiet week.');
+    endPlanRun(conversation);
+    const conversationClosing = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(lookupClosing.instructions).toContain('one short sentence');
+    expect(conversationClosing.instructions).toContain('full character');
+  });
+
+  it('speaks results that land part way in the request\u2019s style, without ending the call', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'lights off and blinds down', async: false });
+    progressFor(DEFAULT_ROUTING_SESSION_ID).responseStyle = 'command';
+    delegate(DEFAULT_ROUTING_SESSION_ID, 'internetOfThings', 'Lights off.');
+    startDelegation(DEFAULT_ROUTING_SESSION_ID, 'blinds');
+
+    const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(outcome.instructions).toContain('"Done, sir." is enough');
+    expect(outcome.instructions).not.toContain(HANG_UP_WHEN_QUIET_TOOL);
+  });
+
+  it('hands over to the hang-up after a request that failed, which is finished too', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'turn off the lights', async: false });
+    progressFor(DEFAULT_ROUTING_SESSION_ID).fail('the house did not answer');
+
+    const closing = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(closing.instructions).toContain('could not be completed');
+    expect(closing.instructions).toContain(HANG_UP_WHEN_QUIET_TOOL);
+    expect(closing.instructions).toContain('end_call');
+  });
+
+  it('never ends the call under a question he has yet to answer', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'remind me before tasks are due', async: false });
+    const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    suspendDelegation(
+      DEFAULT_ROUTING_SESSION_ID,
+      startDelegation(DEFAULT_ROUTING_SESSION_ID, 'coding'),
+      'Email, or a push notification?',
+    );
+    endPlanRun(progress);
+
+    const closing = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(closing.instructions).not.toContain(HANG_UP_WHEN_QUIET_TOOL);
+  });
+
+  it('never ends the call under an offer he has yet to answer', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'add push reminders for tasks', async: false });
+    startSlowWork(DEFAULT_ROUTING_SESSION_ID, startDelegation(DEFAULT_ROUTING_SESSION_ID, 'coding'));
+
+    const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(outcome.instructions).not.toContain(HANG_UP_WHEN_QUIET_TOOL);
+  });
+
+  it('hands over to the hang-up once he has agreed to be notified instead', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'add push reminders for tasks', async: false });
+    startSlowWork(DEFAULT_ROUTING_SESSION_ID, startDelegation(DEFAULT_ROUTING_SESSION_ID, 'coding'));
+    await runWorkflow(getNextInstructionsWorkflow, {});
+
+    const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, { notifyWhenDone: true }));
+
+    expect(outcome.instructions).toContain(HANG_UP_WHEN_QUIET_TOOL);
+  });
+
+  it('errs on the side of saying enough when the planner never labelled the request', () => {
+    expect(new RoutingProgress().responseStyle).toBe('briefing');
   });
 });
 

@@ -159,8 +159,9 @@ api:
     # silence_end_call_timeout cannot be used instead: it is not an overridable setting,
     # and a conversation sent an override it does not accept is rejected outright.
     #
-    # Answer and the conversation simply continues as a normal one. Say nothing and it
-    # closes itself.
+    # Answer and the conversation simply continues as a normal one -- which, like a
+    # wake-word conversation, hangs up after 3s of quiet once the agent has finished a
+    # request and called its hangUpWhenQuiet client tool. Say nothing and it closes itself.
     - service: announce
       variables:
         message: string

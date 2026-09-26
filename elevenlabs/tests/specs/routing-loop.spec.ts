@@ -48,7 +48,7 @@ const polled = (delivered: string[], stillRunning: string[]): ServerMessage =>
   called('getNextInstructionsWorkflow', {
     instructions:
       stillRunning.length === 0
-        ? 'All tasks have completed. Summarize the new completed task results in a detailed manner.'
+        ? 'All tasks have completed. Summarize the results in detail, in a natural spoken order.'
         : 'More tasks have finished since last time, but not all tasks have completed yet.',
     completedTaskResults: delivered.map((id) => ({ id, result: `Result of ${id}` })),
     taskIdsInProgress: stillRunning,
