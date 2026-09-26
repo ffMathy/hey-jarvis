@@ -22,6 +22,7 @@ export * from './greeting-handover';
 export * from './greeting-voice';
 export * from './hearing';
 export * from './hologram-drawing';
+export * from './quiet-hang-up';
 export * from './sample-mode';
 export * from './simulated-voice';
 export * from './voice-analysis';

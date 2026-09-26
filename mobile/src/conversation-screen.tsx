@@ -6,7 +6,7 @@ import {
   requestConversationToken,
   requestSignedConversationUrl,
 } from 'hologram';
-import { useGreeting, useToolActivity, useUserVoice } from 'hologram/conversation';
+import { inTurn, useGreeting, useHangUpWhenQuiet, useToolActivity, useUserVoice } from 'hologram/conversation';
 import { LEAVING_SECONDS } from 'hologram/react/lifecycle';
 import { useSimulatedVoice } from 'hologram/react/sample';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -227,24 +227,6 @@ export function ConversationScreen({
     remember: rememberWhatHeSaid,
   });
   /**
-   * Sends what was typed, and forgets the answer to the last thing.
-   *
-   * **The clearing is done here rather than left to the message coming back**, because in a
-   * text-only session it does not come back. `onMessage` reports a user line from a
-   * `user_transcript`, which is what ASR produces — and a conversation held as text runs no ASR,
-   * so a line you typed may never be echoed at all. Left to that, a stale answer would sit under
-   * the question you just asked for as long as Jarvis took to answer it, reading as his reply to
-   * it. `afterMessage` still handles a user line for the session that does echo one; this is what
-   * makes the screen right in the session that does not.
-   */
-  const sendTypedMessage = useCallback(
-    (message: string) => {
-      setWrittenReply(SAYING_NOTHING);
-      sendUserMessage(message);
-    },
-    [sendUserMessage],
-  );
-  /**
    * When to stop waiting for the conversation to open, or `undefined` once nothing is waited for.
    *
    * A moment rather than a countdown, so that anything which re-arms the wait — the status moving
@@ -298,6 +280,56 @@ export function ConversationScreen({
    * first message is switched off for exactly as long as this plays.
    */
   const voice = readingAloud ? simulatedVoice : greeting ? greetingVoice : liveVoice;
+
+  /**
+   * Hangs up, whoever asks: the user tapping beside the sheet or pressing back, or the quiet after a
+   * finished request (below).
+   *
+   * Summoned, there is a window to retract as well, and nothing behind it but what the user was
+   * doing before — so the end of the conversation is the end of the window. Opened as an app or in
+   * a browser there is none, and the screen simply stays, dark and still reachable by a long press.
+   * The same two ways out sample mode has; see its `finish`. Both live in `conversation-sheet.tsx`,
+   * with everything else that differs when he is summoned into the sheet.
+   */
+  const hangUpSession = useCallback(() => {
+    setConnectingUntil(undefined);
+    // Dismissed mid-greeting, he stops talking rather than finishing the sentence to nobody.
+    stopGreeting();
+    endSession();
+  }, [endSession, stopGreeting]);
+
+  /**
+   * Hanging up once a finished request is followed by quiet. At the end of every request the agent
+   * calls its `hangUpWhenQuiet` client tool, and three seconds of nobody saying anything after he
+   * has finished ends the call exactly as tapping beside the sheet would. See `useHangUpWhenQuiet`.
+   *
+   * An answer he is still miming in writing counts as him speaking, since it is still on screen
+   * being read and would leave with him.
+   */
+  const { quietSessionOptions, heardTheUser } = useHangUpWhenQuiet({ hangUp: hangUpSession, speaking: readingAloud });
+
+  /**
+   * Sends what was typed, and forgets the answer to the last thing.
+   *
+   * **The clearing is done here rather than left to the message coming back**, because in a
+   * text-only session it does not come back. `onMessage` reports a user line from a
+   * `user_transcript`, which is what ASR produces — and a conversation held as text runs no ASR,
+   * so a line you typed may never be echoed at all. Left to that, a stale answer would sit under
+   * the question you just asked for as long as Jarvis took to answer it, reading as his reply to
+   * it. `afterMessage` still handles a user line for the session that does echo one; this is what
+   * makes the screen right in the session that does not.
+   *
+   * For the same reason it is the screen that tells the quiet hang-up the user has answered: a line
+   * that is never echoed back is never heard by it either.
+   */
+  const sendTypedMessage = useCallback(
+    (message: string) => {
+      heardTheUser();
+      setWrittenReply(SAYING_NOTHING);
+      sendUserMessage(message);
+    },
+    [sendUserMessage, heardTheUser],
+  );
 
   const launchUrl = Linking.useURL();
 
@@ -384,8 +416,12 @@ export function ConversationScreen({
         ...toolHandlers,
         ...playbackHandlers,
         ...userVoiceHandlers,
+        // The client tool, and the two handlers below that both it and something else want.
+        ...quietSessionOptions,
+        // The listening lattice and the quiet hang-up hear the user through the same score.
+        onVadScore: inTurn(userVoiceHandlers.onVadScore, quietSessionOptions.onVadScore),
         // Only kept while the conversation is held in writing; see `text-mode.ts`.
-        onMessage: rememberInTextMode,
+        onMessage: inTurn(rememberInTextMode, quietSessionOptions.onMessage),
         ...(greeted ? greetingSessionOptions : {}),
       });
     },
@@ -398,6 +434,7 @@ export function ConversationScreen({
       toolHandlers,
       playbackHandlers,
       userVoiceHandlers,
+      quietSessionOptions,
       rememberInTextMode,
       reportSessionFailure,
       reportEnding,
@@ -478,10 +515,14 @@ export function ConversationScreen({
           textOnly: true,
           onError: reportSessionFailure,
           onDisconnect: reportEnding,
+          ...toolHandlers,
+          // Hung up on quiet here too. Nothing is spoken or scored in this session, so it is three
+          // seconds after the call — counted once he has finished miming his written answer —
+          // unless a line is typed.
+          ...quietSessionOptions,
           // The only place this is asked for, because it is the only place there is anything to
           // read: his reply arrives written here and as audio everywhere else.
-          onMessage: rememberWhatHeSaid,
-          ...toolHandlers,
+          onMessage: inTurn(rememberWhatHeSaid, quietSessionOptions.onMessage),
         });
       }
       setCanType(true);
@@ -502,6 +543,7 @@ export function ConversationScreen({
     releaseCallAudio,
     resetTextMode,
     toolHandlers,
+    quietSessionOptions,
     reportProblem,
     reportSessionFailure,
     reportEnding,
@@ -603,19 +645,6 @@ export function ConversationScreen({
     return () => clearTimeout(fading);
   }, [ended]);
 
-  /**
-   * Summoned, there is a window to retract as well, and nothing behind it but what the user was
-   * doing before — so the end of the conversation is the end of the window. Opened as an app or in
-   * a browser there is none, and the screen simply stays, dark and still reachable by a long press.
-   * The same two ways out sample mode has; see its `finish`. Both live in `conversation-sheet.tsx`,
-   * with everything else that differs when he is summoned into the sheet.
-   */
-  const hangUpSession = useCallback(() => {
-    setConnectingUntil(undefined);
-    // Dismissed mid-greeting, he stops talking rather than finishing the sentence to nobody.
-    stopGreeting();
-    endSession();
-  }, [endSession, stopGreeting]);
   const goNow = useCallback(() => setGone(true), []);
   const sheet = useConversationSheet({
     inSheet,
@@ -738,6 +767,8 @@ export function ConversationScreen({
       {showsTypedField({ canType, gone, textMode }) ? (
         <TypedMessageField
           onSend={sendTypedMessage}
+          // Someone writing an answer has answered, as far as the quiet hang-up is concerned.
+          onTyping={heardTheUser}
           enabled={status === 'connected'}
           opening={connectingUntil !== undefined}
           // Switched into writing with a tap, the keyboard is what was asked for.

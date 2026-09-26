@@ -101,6 +101,12 @@ The same ElevenLabs agent the phone talks to, over WebRTC, opened the moment the
 
 **He answers in the phone's earbuds when the phone has some.** A watch can't play into a headset connected to its phone, because Android has no such route. So before anything is played or recorded, the watch sends the phone a Data Layer *request* on `/jarvis/answer-on-the-phone` and waits up to three seconds (`ASK_THE_PHONE_MS`). The phone (`JarvisWatchSummonService` in `mobile/modules/jarvis-assistant`) says yes only when all of these hold: a Bluetooth headset is connected, the phone isn't locked behind a PIN (Smart Lock counts as unlocked), Jarvis is its assistant, and its assistant window has actually come up. That window is exactly what the phone's own gesture opens, so the conversation goes to the AirPods the way it always does there. The watch then shows "Jarvis is answering on your phone." and holds no conversation. Any other answer, or none, and the watch talks for itself. The phone gives its window two seconds, less than the watch waits, so that the watch doesn't give up on a phone that is about to say yes. `watch-link.contract.spec.ts` checks the two timeouts against each other. A phone window that opens after its own two seconds can't be taken back, and then both of them talk. None of this has run on hardware. The open questions are whether `showSession` from a background request opens the window with the phone's screen off, and whether the phone's microphone is allowed in that state.
 
+**He hangs up when it goes quiet.** At the end of every request the agent calls its
+`hangUpWhenQuiet` client tool, and three seconds of nobody speaking after he has finished ends the
+session the way the agent hanging up does: the network is let go and he stays on the screen until the
+wrist drops. The wearer speaking calls it off. It is `useHangUpWhenQuiet` from
+`hologram/conversation`, shared with the phone; see [its notes](../hologram/AGENTS.md).
+
 **On the watch's own speaker he is at 90% of the call volume.** Everything he says there is call audio, and full call volume from a wrist carries across a room. `modules/jarvis-volume` lowers `STREAM_VOICE_CALL` to 90% of its maximum before the greeting, in the watch's own volume steps, rounded down so a five-step scale really comes down one step. It only ever lowers the volume: a wearer who set it lower keeps their setting.
 
 Two things differ from the phone, both deliberate:

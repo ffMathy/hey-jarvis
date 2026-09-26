@@ -5,7 +5,14 @@ import {
   WATCH_PARTICIPANT_NAME,
   WATCH_PARTICLE_COUNT,
 } from 'hologram';
-import { useAgentVoice, useGreeting, useToolActivity, useUserVoice } from 'hologram/conversation';
+import {
+  inTurn,
+  useAgentVoice,
+  useGreeting,
+  useHangUpWhenQuiet,
+  useToolActivity,
+  useUserVoice,
+} from 'hologram/conversation';
 import { JarvisHologram } from 'hologram/react';
 import { useIsForeground } from 'hologram/react/lifecycle';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -148,6 +155,21 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
     [reportProblem],
   );
 
+  /**
+   * Hangs up once a finished request is followed by three seconds of quiet — the agent's
+   * `hangUpWhenQuiet` client tool, answered here. See `useHangUpWhenQuiet` in `hologram/conversation`.
+   *
+   * It ends the conversation the way it ends when the agent hangs up: the session goes, and the
+   * network is let go on the way down from live (below). He stays on the screen, as he does then,
+   * and dropping the wrist is still what puts the watch away.
+   */
+  const hangUpQuietly = useCallback(() => {
+    setConnectingUntil(undefined);
+    stopGreeting();
+    endSession();
+  }, [endSession, stopGreeting]);
+  const { quietSessionOptions } = useHangUpWhenQuiet({ hangUp: hangUpQuietly });
+
   const start = useCallback(async () => {
     setProblem(undefined);
     setOnThePhone(false);
@@ -202,6 +224,10 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
         onDisconnect: reportEnding,
         ...toolHandlers,
         ...userVoiceHandlers,
+        // The client tool, and what tells it the wearer has answered.
+        ...quietSessionOptions,
+        // The listening lattice and the quiet hang-up hear the wearer through the same score.
+        onVadScore: inTurn(userVoiceHandlers.onVadScore, quietSessionOptions.onVadScore),
         ...(greeted ? greetingSessionOptions : {}),
       });
     } catch (error: unknown) {
@@ -224,6 +250,7 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
     greetingSessionOptions,
     toolHandlers,
     userVoiceHandlers,
+    quietSessionOptions,
     reportProblem,
     reportEnding,
   ]);
