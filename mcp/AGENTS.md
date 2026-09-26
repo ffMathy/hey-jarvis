@@ -261,7 +261,11 @@ would have been announced falls back to a push notification instead of being dro
   device, so without it a two-phone household cannot be told apart.
 - `HEY_JARVIS_PRIMARY_USER_NOTIFY_SERVICE` (optional): pins the companion-app notify service, e.g.
   `notify.mobile_app_mathias_iphone`, which is then called without fetching the service list at
-  all. Otherwise it is discovered, and discovery refuses to guess between several phones. The
+  all. Otherwise it is discovered: the user's own `notify.<name>_phone` (e.g. `notify.mathias_phone`,
+  the notify group his automations already target) wins when it exists, then the `mobile_app_*`
+  phone matching his name or device slug, then the only phone. Watches (`mobile_app_*watch*`) are
+  never picked, because the Wear OS companion app ignores `command_activity` and would drop an
+  alarm without a word. Discovery refuses to guess between several phones. The
   service list discovery reads is kept between calls and refreshed in the background after ten
   minutes, and looked up afresh when the kept list picks nothing or a service it picked has gone.
 - `HEY_JARVIS_CAR_NAME` (optional): the car's name, when it is not a Tesla behind Tessie.

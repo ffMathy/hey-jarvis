@@ -34,6 +34,28 @@ const ANNOUNCE_SERVICE_SUFFIX = '_announce';
 /** The prefix Home Assistant gives every companion-app notify service. */
 const MOBILE_APP_SERVICE_PREFIX = 'mobile_app_';
 
+/**
+ * Marks a companion-app notify service as a watch's rather than a phone's.
+ *
+ * A Wear OS watch registers with Home Assistant as a `mobile_app_*` device of its own, named after
+ * the watch ("Pixel Watch 3"). It shows a push notification, but it ignores the phone commands --
+ * `command_activity` among them -- so an alarm sent to it is silently dropped. And the phone
+ * mirrors every notification onto the watch anyway, so the watch is never the one to send to.
+ */
+const WATCH_SERVICE_PATTERN = 'watch';
+
+/**
+ * What the user's own notify service for his phone is called, when he has made one.
+ *
+ * A household with several companion-app devices -- a second phone, a watch -- tends to give the
+ * user's phone a name of its own, a notify group of one such as `notify.mathias_phone`, and to
+ * write its automations against that. It points at the right phone by construction, so it is
+ * trusted above any guess made from the `mobile_app_*` names.
+ */
+function userPhoneServiceName(userName: string): string {
+  return `${slugify(userName)}_phone`;
+}
+
 /** How long the announcement leaves the microphone open for a reply before hanging up. */
 export const DEFAULT_ANNOUNCE_SILENCE_SECONDS = 3;
 
@@ -196,12 +218,14 @@ export function selectAnnounceServices(entries: ServicesApiEntry[], deviceName?:
  * Resolution order:
  *
  * 1. `HEY_JARVIS_PRIMARY_USER_NOTIFY_SERVICE`, when the service name is pinned in configuration.
- * 2. The `notify.mobile_app_*` service matching the configured phone device slug, or the user's
+ * 2. The user's own `notify.<name>_phone` service, when he has made one (see
+ *    {@link userPhoneServiceName}).
+ * 3. The `notify.mobile_app_*` phone matching the configured phone device slug, or the user's
  *    own name when no device is configured.
- * 3. The only `notify.mobile_app_*` service there is, if the household has exactly one phone.
+ * 4. The only `notify.mobile_app_*` phone there is, if the household has exactly one.
  *
- * Anything else throws: pushing a private message to the wrong person's phone is worse than
- * failing loudly.
+ * Watches are never picked (see {@link WATCH_SERVICE_PATTERN}). Anything else throws: pushing a
+ * private message to the wrong person's phone is worse than failing loudly.
  */
 export function selectMobileAppNotifyService(
   entries: ServicesApiEntry[],
@@ -212,29 +236,36 @@ export function selectMobileAppNotifyService(
     return pinned;
   }
 
-  const mobileAppServices = servicesInDomain(entries, 'notify').filter((service) =>
-    service.startsWith(MOBILE_APP_SERVICE_PREFIX),
+  const notifyServices = servicesInDomain(entries, 'notify');
+
+  const userPhoneService = userPhoneServiceName(userName);
+  if (notifyServices.includes(userPhoneService)) {
+    return { domain: 'notify', service: userPhoneService };
+  }
+
+  const phoneServices = notifyServices.filter(
+    (service) => service.startsWith(MOBILE_APP_SERVICE_PREFIX) && !service.includes(WATCH_SERVICE_PATTERN),
   );
 
-  if (mobileAppServices.length === 0) {
+  if (phoneServices.length === 0) {
     throw new Error(
-      'No Home Assistant companion app (notify.mobile_app_*) service is available, so no push notification can be sent. Install the companion app on the phone, or set HEY_JARVIS_PRIMARY_USER_NOTIFY_SERVICE.',
+      'No Home Assistant companion app (notify.mobile_app_*) service for a phone is available, so nothing can be sent to the phone. Install the companion app on the phone, or set HEY_JARVIS_PRIMARY_USER_NOTIFY_SERVICE.',
     );
   }
 
   const slug = getPrimaryUserPhoneDeviceSlug() ?? slugify(userName);
-  const matching = mobileAppServices.find((service) => service.includes(slug));
+  const matching = phoneServices.find((service) => service.includes(slug));
 
   if (matching) {
     return { domain: 'notify', service: matching };
   }
 
-  if (mobileAppServices.length === 1) {
-    return { domain: 'notify', service: mobileAppServices[0] };
+  if (phoneServices.length === 1) {
+    return { domain: 'notify', service: phoneServices[0] };
   }
 
   throw new Error(
-    `Several phones are registered with the Home Assistant companion app (${mobileAppServices.join(', ')}) and none of them matches "${slug}". Set HEY_JARVIS_PRIMARY_USER_NOTIFY_SERVICE to the right one.`,
+    `Several phones are registered with the Home Assistant companion app (${phoneServices.join(', ')}) and none of them matches "${slug}". Set HEY_JARVIS_PRIMARY_USER_NOTIFY_SERVICE to the right one.`,
   );
 }
 
@@ -362,7 +393,8 @@ export interface PhoneAlarm {
  * The extras are the companion app's own string format: comma-separated `name:value:type`. The
  * types are spelled out because the alarm's hour and minute must arrive as integers, and the label
  * is URL-encoded because it is free text and may contain the very commas and colons the format is
- * split on.
+ * split on. An untyped `HOUR:07` would arrive as the same integer -- the app guesses digits as an
+ * int -- so this is the same intent a hand-written Home Assistant automation sends.
  */
 export function buildSetAlarmCommand({ hour, minute, label }: PhoneAlarm) {
   const extras = [

@@ -117,6 +117,32 @@ describe('selectMobileAppNotifyService', () => {
     expect(() => selectMobileAppNotifyService(entries, 'Mathias')).toThrow(/HEY_JARVIS_PRIMARY_USER_NOTIFY_SERVICE/);
   });
 
+  it("prefers the user's own notify service for his phone over any companion-app guess", () => {
+    const entries = servicesOf({
+      notify: ['mobile_app_mathias_pixel_watch', 'mobile_app_pixel_9_pro', 'mobile_app_julie_s_phone', 'mathias_phone'],
+    });
+
+    expect(selectMobileAppNotifyService(entries, 'Mathias')).toEqual({ domain: 'notify', service: 'mathias_phone' });
+  });
+
+  it('never picks a watch, which ignores the commands a phone carries out', () => {
+    const entries = servicesOf({ notify: ['mobile_app_mathias_pixel_watch', 'mobile_app_mathias_pixel_9'] });
+
+    expect(selectMobileAppNotifyService(entries, 'Mathias').service).toBe('mobile_app_mathias_pixel_9');
+  });
+
+  it('treats a phone and its watch as the only phone in the house', () => {
+    const entries = servicesOf({ notify: ['mobile_app_pixel_watch_3', 'mobile_app_pixel_9_pro'] });
+
+    expect(selectMobileAppNotifyService(entries, 'Mathias').service).toBe('mobile_app_pixel_9_pro');
+  });
+
+  it('says so when the only companion-app device is a watch', () => {
+    expect(() => selectMobileAppNotifyService(servicesOf({ notify: ['mobile_app_pixel_watch_3'] }), 'Mathias')).toThrow(
+      /companion app/,
+    );
+  });
+
   it('says so when no phone has the companion app', () => {
     expect(() => selectMobileAppNotifyService(servicesOf({ notify: ['persistent_notification'] }), 'Mathias')).toThrow(
       /companion app/,
