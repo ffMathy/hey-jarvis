@@ -117,6 +117,14 @@ export class RoutingProgress {
   /** Whether the plan run has ended. */
   runFinished = false;
   error?: string;
+  /**
+   * When the request was started, which every timing this request logs is measured from.
+   *
+   * Time to action is what a voice request is judged by, and it is spread across the planner, the
+   * plan's registration and every agent the plan names -- so each of those logs how far into the
+   * request it landed, and a slow request can be read back as a breakdown rather than one number.
+   */
+  readonly startedAt = Date.now();
 
   /** Polls parked waiting for the next delegation to land. */
   private waiters: (() => void)[] = [];
@@ -257,10 +265,21 @@ export class RoutingProgress {
     }
   }
 
+  /** How long ago the request was started. */
+  elapsedMs(): number {
+    return Date.now() - this.startedAt;
+  }
+
   /** Records a delegation that has finished, one way or another, and wakes whoever is polling. */
   private settle(outcome: DelegationOutcome): void {
     if (outcome.failed) {
-      logger.error('Delegation did not complete', { ...outcome });
+      logger.error('Delegation did not complete', { ...outcome, elapsedMs: this.elapsedMs() });
+    } else {
+      logger.info('Delegation answered', {
+        taskId: outcome.taskId,
+        agentId: outcome.agentId,
+        elapsedMs: this.elapsedMs(),
+      });
     }
 
     this.pending.push(outcome);
@@ -672,7 +691,12 @@ async function consumeRun(
     reader.releaseLock();
   }
 
-  logger.info('Routing plan run settled', { sessionId, planId: plan.id, delegations: progress.all.length });
+  logger.info('Routing plan run settled', {
+    sessionId,
+    planId: plan.id,
+    delegations: progress.all.length,
+    elapsedMs: progress.elapsedMs(),
+  });
 }
 
 /**
@@ -723,7 +747,11 @@ async function runPlan(
 ): Promise<void> {
   const plan = buildRoutingPlan(newPlanId(), chains);
   await mastra.addDynamicWorkflows(plan.graphs);
-  logger.info('Registered a routing plan', { planId: plan.id, delegations: plan.delegationCount });
+  logger.info('Registered a routing plan', {
+    planId: plan.id,
+    delegations: plan.delegationCount,
+    elapsedMs: progress.elapsedMs(),
+  });
 
   // Every delegation is outstanding from here, before a single step has run, so the first
   // poll can already name the whole of the work.
@@ -826,6 +854,12 @@ async function runRequest(
   signal: AbortSignal,
 ): Promise<void> {
   const { chains, answers } = await planDelegations(await resolvePlannerAgent(mastra), userQuery, listOpenQuestions());
+  logger.info('Routing request planned', {
+    sessionId,
+    chains: chains.length,
+    answers: answers.length,
+    elapsedMs: progress.elapsedMs(),
+  });
 
   // Superseded while it was being planned: nothing will read this request, so it must not
   // start work -- and above all must not take the questions its answers are for.

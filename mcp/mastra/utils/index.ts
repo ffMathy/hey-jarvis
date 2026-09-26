@@ -3,7 +3,7 @@ export { createAgent } from './agent-factory.js';
 // MCP-facing tool exports
 export { createInstructionsWorkflowTool, createSimplifiedWorkflowTool } from './mcp-tool-factory.js';
 // Provider exports
-export { getModel, google } from './providers/google-provider.js';
+export { getModel, google, LOW_THINKING_PROVIDER_OPTIONS } from './providers/google-provider.js';
 export {
   getOllamaApiUrl,
   getOllamaBaseUrl,

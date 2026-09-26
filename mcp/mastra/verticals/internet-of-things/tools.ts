@@ -1,5 +1,7 @@
 import { getDistance } from 'geolib';
+import { chunk } from 'lodash-es';
 import { z } from 'zod';
+import { logger } from '../../utils/logger.js';
 import { createTool } from '../../utils/tool-factory.js';
 
 // Interface for Home Assistant logbook entry
@@ -123,11 +125,29 @@ export async function callHomeAssistantApi(endpoint: string, method = 'GET', bod
   return response.json();
 }
 
+/**
+ * Makes a Home Assistant domain safe to write into a template.
+ *
+ * Domains are lower-case words joined by underscores. The model sometimes capitalises one
+ * ("Light"), which used to match nothing at all rather than fail, so it is normalised first;
+ * anything still not domain-shaped is refused, because it is written into template source
+ * where it would be syntax rather than a name.
+ *
+ * @throws If the value is not a domain name
+ */
+export function normalizeDomain(domain: string): string {
+  const normalized = domain.trim().toLowerCase();
+  if (!/^[a-z0-9_]+$/.test(normalized)) {
+    throw new Error(`"${domain}" is not a Home Assistant domain; expected something like "light" or "switch"`);
+  }
+  return normalized;
+}
+
 // Tool to call an IoT service
 export const callIoTService = createTool({
   id: 'callIoTService',
   description:
-    'Call an IoT service to control devices or trigger actions. Use this to turn devices on/off, adjust settings, or perform any IoT service action.',
+    'Call an IoT service to control devices or trigger actions. Use this to turn devices on/off, adjust settings, or perform any IoT service action. Target a whole room with "area_id", or several entities at once by passing "entity_id" as a list, in a single call.',
   inputSchema: z.object({
     domain: z
       .string()
@@ -140,7 +160,7 @@ export const callIoTService = createTool({
     data: z
       .record(z.string(), z.unknown())
       .describe(
-        'A parameter object containing the service data. Typically includes "entity_id" and service-specific parameters like "brightness_pct", "temperature", "rgb_color", etc.',
+        'A parameter object containing the service data: the target, and any service-specific parameters like "brightness_pct", "temperature", "rgb_color", etc. The target is "area_id" (every matching entity in that area, e.g. {"area_id": "living_room"}), "entity_id" (one id or a list of ids), or "device_id".',
       ),
   }),
   outputSchema: z.object({
@@ -152,7 +172,13 @@ export const callIoTService = createTool({
   }),
   execute: async (inputData) => {
     const endpoint = `services/${inputData.domain}/${inputData.serviceId}`;
+    const calledAt = Date.now();
     await callHomeAssistantApi(endpoint, 'POST', inputData.data);
+    // The moment the house actually changes, which is what a slow request is measured against.
+    logger.info('Called a Home Assistant service', {
+      service: `${inputData.domain}.${inputData.serviceId}`,
+      durationMs: Date.now() - calledAt,
+    });
 
     return {
       success: true,
@@ -250,8 +276,9 @@ export const getAllDevices = createTool({
     ),
   }),
   execute: async (inputData) => {
-    const deviceIds = await fetchDeviceIds();
-    const devices = await fetchDevicesInBatches(deviceIds, inputData.domain);
+    const domain = inputData.domain ? normalizeDomain(inputData.domain) : undefined;
+    const deviceIds = await fetchDeviceIds(domain);
+    const devices = await fetchDevicesInBatches(deviceIds, domain);
 
     return { devices };
   },
@@ -271,9 +298,50 @@ const HA_TEMPLATE_OUTPUT_LIMIT_MESSAGE = 'exceeded maximum size';
  */
 const DEVICE_BATCH_SIZE = 25;
 
-/** Fetches just the device IDs, which is cheap enough to always fit in one render. */
-async function fetchDeviceIds(): Promise<string[]> {
-  const template = `{{ states|map(attribute='entity_id')|map('device_id')|unique|reject('eq',None)|list|to_json }}`;
+/**
+ * How many batch renders are in flight at once.
+ *
+ * Home Assistant renders templates on its own event loop, so this does not make the rendering
+ * itself parallel -- what it removes is a network round trip per batch spent waiting for the
+ * previous one. Kept small so a large installation cannot queue dozens of heavy renders at once.
+ */
+const RENDER_CONCURRENCY = 4;
+
+/**
+ * How long a list of device IDs is reused.
+ *
+ * Devices are added and removed rarely, while the list is fetched on every `getAllDevices` call
+ * -- and every presence and commute lookup goes through that tool. Only the IDs are reused;
+ * states and attributes are always rendered fresh.
+ */
+const DEVICE_ID_CACHE_TTL_MS = 60_000;
+
+const deviceIdsByDomain = new Map<string, { ids: string[]; fetchedAt: number }>();
+
+/**
+ * Fetches just the device IDs, which is cheap enough to always fit in one render.
+ *
+ * With a domain, only devices that have an entity in it: the device template drops every other
+ * device anyway, so rendering them was pure cost -- a request about lights used to render every
+ * sensor, plug and phone in the house first.
+ */
+async function fetchDeviceIds(domain?: string): Promise<string[]> {
+  const cacheKey = domain ?? '';
+  const cached = deviceIdsByDomain.get(cacheKey);
+  if (cached && Date.now() - cached.fetchedAt < DEVICE_ID_CACHE_TTL_MS) {
+    return cached.ids;
+  }
+
+  const source = domain ? `states.${domain}` : 'states';
+  const template = `{{ ${source}|map(attribute='entity_id')|map('device_id')|unique|reject('eq',None)|list|to_json }}`;
+  const ids = await renderStringList(template);
+
+  deviceIdsByDomain.set(cacheKey, { ids, fetchedAt: Date.now() });
+  return ids;
+}
+
+/** Renders a template that emits a JSON list of strings. */
+async function renderStringList(template: string): Promise<string[]> {
   const response = await callHomeAssistantApi('template', 'POST', { template });
   const ids: unknown = typeof response === 'string' ? JSON.parse(response) : response;
 
@@ -308,12 +376,16 @@ async function fetchDevicesInBatches(deviceIds: string[], domain?: string): Prom
  * returns for each, halving any batch that `render` rejects because Home
  * Assistant's template output limit was exceeded.
  *
+ * Up to `concurrency` batches are rendered at a time, and the results keep the
+ * order of `items` whatever order the renders finish in.
+ *
  * Exported for testing: the halving behaviour only shows up against an
  * installation large enough to overflow, which no test can rely on.
  *
  * @param items - Items to render, in order
  * @param batchSize - Items per render attempt
  * @param render - Renders one batch; may reject with an output-limit error
+ * @param concurrency - How many batches may be rendering at once
  * @throws Whatever `render` throws, if it is not an output-limit error or if a
  * single item still overflows on its own
  */
@@ -321,11 +393,15 @@ export async function renderInBatches<TItem, TResult>(
   items: TItem[],
   batchSize: number,
   render: (batch: TItem[]) => Promise<TResult[]>,
+  concurrency: number = RENDER_CONCURRENCY,
 ): Promise<TResult[]> {
   const results: TResult[] = [];
 
-  for (let index = 0; index < items.length; index += batchSize) {
-    results.push(...(await renderBatch(items.slice(index, index + batchSize), render)));
+  for (const wave of chunk(chunk(items, batchSize), concurrency)) {
+    const rendered = await Promise.all(wave.map((batch) => renderBatch(batch, render)));
+    for (const batchResults of rendered) {
+      results.push(...batchResults);
+    }
   }
 
   return results;
@@ -359,6 +435,7 @@ async function renderBatch<TItem, TResult>(
   }
 }
 
+/** @param domain - Already passed through {@link normalizeDomain}, since it is written into the template */
 function buildDeviceTemplate(deviceIds: string[], domain?: string): string {
   const domainFilter = domain ? `and st.domain == '${domain}'` : '';
 
@@ -474,6 +551,208 @@ export const getAllServices = createTool({
     };
   },
 });
+
+/** One entity as `findEntities` lists it: enough to target it, and nothing else. */
+export interface EntitySummary {
+  id: string;
+  name: string;
+  area: string | null;
+  state: string;
+}
+
+/**
+ * Entities per template render in `findEntities`. Each one renders to well under a hundred
+ * characters, so this stays far below Home Assistant's output cap.
+ */
+const ENTITY_SUMMARY_BATCH_SIZE = 250;
+
+/**
+ * The most entities `findEntities` hands back.
+ *
+ * Every entity listed is input the agent's next step has to read, and that is the step the
+ * action waits on. A list longer than this means the search was too broad to act on anyway.
+ */
+const MAX_ENTITIES_FOUND = 150;
+
+function buildEntitySummaryTemplate(entityIds: string[]): string {
+  return `
+{%- set ns = namespace(items=[]) -%}
+{%- for e in ${JSON.stringify(entityIds)} -%}
+  {%- set st = states[e] -%}
+  {%- if st -%}
+    {%- set ns.items = ns.items + [{"id":e,"name":st.name|string,"area":area_name(e),"state":st.state|string}] -%}
+  {%- endif -%}
+{%- endfor -%}
+{{ ns.items | to_json }}
+    `
+    .split('\n')
+    .map((line) => line.trim())
+    .join('\n');
+}
+
+/**
+ * Narrows entities to those in an area and matching a search, both case-insensitive substrings.
+ *
+ * Substrings rather than exact matches because the words arrive from speech: "living room" has
+ * to find the area named "Living Room", and "lamp" the entity "Sofa lamp".
+ */
+export function filterEntities(
+  entities: EntitySummary[],
+  { area, search }: { area?: string; search?: string },
+): EntitySummary[] {
+  const wantedArea = area?.trim().toLowerCase();
+  const wantedText = search?.trim().toLowerCase();
+
+  return entities.filter((entity) => {
+    if (wantedArea && !entity.area?.toLowerCase().includes(wantedArea)) {
+      return false;
+    }
+    if (wantedText && !`${entity.id} ${entity.name}`.toLowerCase().includes(wantedText)) {
+      return false;
+    }
+    return true;
+  });
+}
+
+// Tool to find entities by domain, area and name, without their attributes
+export const findEntities = createTool({
+  id: 'findEntities',
+  description:
+    'Find entities to control, by domain, area and name. Returns only each entity\'s id, name, area and current state, so it is much faster than getAllDevices. Use it to find the entity ids a service call should target. Always pass a domain when you know it (e.g. "light").',
+  inputSchema: z.object({
+    domain: z.string().optional().describe('Only entities in this domain, e.g. "light", "switch", "cover", "climate"'),
+    area: z.string().optional().describe('Only entities in an area whose name contains this, e.g. "living room"'),
+    search: z.string().optional().describe('Only entities whose id or name contains this, e.g. "lamp"'),
+  }),
+  outputSchema: z.object({
+    entities: z.array(
+      z.object({
+        id: z.string(),
+        name: z.string(),
+        area: z.string().nullable(),
+        state: z.string(),
+      }),
+    ),
+    totalMatches: z
+      .number()
+      .describe('How many entities matched, which is more than were returned if the list was cut short'),
+  }),
+  execute: async (inputData) => {
+    const entityIds = await fetchEntityIds(inputData.domain ? normalizeDomain(inputData.domain) : undefined);
+    const entities = await renderInBatches(entityIds, ENTITY_SUMMARY_BATCH_SIZE, async (batch) => {
+      const response = await callHomeAssistantApi('template', 'POST', { template: buildEntitySummaryTemplate(batch) });
+      const parsed: unknown = typeof response === 'string' ? JSON.parse(response) : response;
+
+      // The template emits exactly the EntitySummary shape, and the outputSchema validates it.
+      return Array.isArray(parsed) ? (parsed as EntitySummary[]) : [];
+    });
+
+    const matches = filterEntities(entities, inputData);
+    return { entities: matches.slice(0, MAX_ENTITIES_FOUND), totalMatches: matches.length };
+  },
+});
+
+const homeAreasSchema = z.array(z.object({ id: z.string(), name: z.string() }));
+
+/** An area Home Assistant knows, as a service call targets it. */
+export type HomeArea = z.infer<typeof homeAreasSchema>[number];
+
+/**
+ * How long the list of areas is reused before it is refreshed.
+ *
+ * Areas change about as often as furniture moves. The list is put in front of the IoT agent on
+ * every request, so it is served from here and refreshed in the background once stale.
+ */
+const AREA_CACHE_TTL_MS = 10 * 60_000;
+
+/**
+ * The longest a request waits for the areas when none have been fetched yet.
+ *
+ * The list saves the agent a lookup, so waiting long for it would defeat the purpose -- past
+ * this the agent is given its instructions without it and finds what it needs with a tool.
+ */
+const AREA_LOOKUP_TIMEOUT_MS = 2_000;
+
+/** How long a failed lookup is left alone before trying again, so an outage is not paid per request. */
+const AREA_RETRY_AFTER_MS = 60_000;
+
+let cachedAreas: { areas: HomeArea[]; fetchedAt: number } | undefined;
+let areaLookupFailedAt: number | undefined;
+let areaRefresh: Promise<HomeArea[]> | undefined;
+
+/** Forgets the cached device IDs and areas, for tests. */
+export function resetHomeAssistantCachesForTest(): void {
+  deviceIdsByDomain.clear();
+  cachedAreas = undefined;
+  areaLookupFailedAt = undefined;
+  areaRefresh = undefined;
+}
+
+async function fetchAreas(): Promise<HomeArea[]> {
+  const template =
+    '{%- set ns = namespace(items=[]) -%}' +
+    '{%- for a in areas() -%}{%- set ns.items = ns.items + [{"id":a,"name":area_name(a)}] -%}{%- endfor -%}' +
+    '{{ ns.items | to_json }}';
+  const response = await callHomeAssistantApi('template', 'POST', { template });
+  const parsed: unknown = typeof response === 'string' ? JSON.parse(response) : response;
+
+  return homeAreasSchema.parse(parsed);
+}
+
+/** Fetches the areas into the cache, sharing one lookup between concurrent callers. Never rejects. */
+function refreshAreas(): Promise<HomeArea[]> {
+  areaRefresh ??= fetchAreas()
+    .then((areas) => {
+      cachedAreas = { areas, fetchedAt: Date.now() };
+      areaLookupFailedAt = undefined;
+      return areas;
+    })
+    .catch((error: unknown) => {
+      areaLookupFailedAt = Date.now();
+      logger.warn('Could not list the Home Assistant areas', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return cachedAreas?.areas ?? [];
+    })
+    .finally(() => {
+      areaRefresh = undefined;
+    });
+
+  return areaRefresh;
+}
+
+/**
+ * The areas a service call can target, or an empty list when they cannot be had quickly.
+ *
+ * Served from the cache whenever there is one, stale or not -- a stale list is refreshed in the
+ * background rather than waited for -- so only the very first request after boot waits on Home
+ * Assistant, and then for {@link AREA_LOOKUP_TIMEOUT_MS} at most.
+ */
+export async function getHomeAreas(): Promise<HomeArea[]> {
+  const now = Date.now();
+
+  if (cachedAreas) {
+    if (now - cachedAreas.fetchedAt >= AREA_CACHE_TTL_MS) {
+      void refreshAreas();
+    }
+    return cachedAreas.areas;
+  }
+
+  if (areaLookupFailedAt !== undefined && now - areaLookupFailedAt < AREA_RETRY_AFTER_MS) {
+    return [];
+  }
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<HomeArea[]>((resolve) => {
+    timer = setTimeout(() => resolve([]), AREA_LOOKUP_TIMEOUT_MS);
+  });
+
+  try {
+    return await Promise.race([refreshAreas(), timedOut]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 // Tool to get devices that have changed since a specific time
 export const getChangedDevicesSince = createTool({
@@ -838,13 +1117,15 @@ export function batchEntityIdsForHistory(entityIds: string[], maxLength = MAX_HI
   return batches;
 }
 
-/** Fetches every entity ID known to Home Assistant, which is cheap enough for one render. */
-async function fetchAllEntityIds(): Promise<string[]> {
-  const template = `{{ states|map(attribute='entity_id')|list|to_json }}`;
-  const response = await callHomeAssistantApi('template', 'POST', { template });
-  const ids: unknown = typeof response === 'string' ? JSON.parse(response) : response;
-
-  return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : [];
+/**
+ * Fetches the entity IDs known to Home Assistant -- every one, or those in one domain -- which
+ * is cheap enough for one render.
+ *
+ * @param domain - Already passed through {@link normalizeDomain}, since it is written into the template
+ */
+async function fetchEntityIds(domain?: string): Promise<string[]> {
+  const source = domain ? `states.${domain}` : 'states';
+  return await renderStringList(`{{ ${source}|map(attribute='entity_id')|list|to_json }}`);
 }
 
 /** Requests the history of one batch of entities. */
@@ -884,7 +1165,7 @@ export async function fetchHistoricalStates(options: HistoricalStatesOptions = {
   const startTime = options.startTime || new Date(Date.now() - 15 * 60 * 1000).toISOString();
   const minimalResponse = options.minimalResponse ?? true;
 
-  const entityIds = options.entityIds?.length ? options.entityIds : await fetchAllEntityIds();
+  const entityIds = options.entityIds?.length ? options.entityIds : await fetchEntityIds();
 
   // Convert array responses to a record keyed by entity_id
   const history: Record<string, HistoricalStateEntry[]> = {};
@@ -913,6 +1194,7 @@ export async function fetchHistoricalStates(options: HistoricalStatesOptions = {
 // Export all tools together for convenience
 export const internetOfThingsTools = {
   callIoTService,
+  findEntities,
   getEntityLogbook,
   getAllDevices,
   getAllServices,

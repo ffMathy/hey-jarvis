@@ -623,9 +623,13 @@ here rather than guessed at.
 
 ### Routing Planner Agent
 Turns a voice request into a **plan** for the specialized agents to run:
-- **The eleven public agents are its catalogue**, baked into its instructions at boot
+- **The twelve public agents are its catalogue**, baked into its instructions at boot
 - **No tools of its own**: it writes a plan, it never runs one and never sees a result
 - **No memory**: planning one request has nothing to recall from the last
+- **Flash-Lite, not Flash**: every request waits on the planner before any work starts, and
+  picking agents from a list is classification rather than reasoning. Flash-Lite also thinks at
+  `minimal` by default. If plans get worse, `PLANNER_MODEL` in `routing/planner.ts` is the line to
+  revert, and the routing LLM eval is what shows it — run it by hand, since CI never does
 
 The planner writes a flat list of **tasks**. Each names one agent, the prompt it is given, and
 in `needs` the id of the one task whose answer it cannot be carried out without. Tasks run at
@@ -2101,6 +2105,15 @@ The MCP server does not require authentication. All endpoints are publicly acces
 - Voice command processing through ESPHome firmware
 - Smart device control and automation
 - Alarms on the user's phone, through the companion app (`setUserPhoneAlarm`, a shortcut onto the notification vertical's `setPhoneAlarm`)
+- **Everyday control is one tool call.** "Turn off the living room lights" is `callIoTService`
+  with `{"area_id": "living_room"}`, made without any lookup: the agent's instructions list the
+  home's areas (cached for ten minutes, refreshed in the background), and Home Assistant targets
+  a whole area, or a list of entities, in one call. `findEntities` returns only id, name, area and
+  state for when ids are needed; `getAllDevices`, with every attribute, is for when they matter.
+  The agent runs at `low` thinking (`LOW_THINKING_PROVIDER_OPTIONS`), since each step of its tool
+  loop is a wait before the house changes. Routing logs `elapsedMs` for the plan, its
+  registration and each delegation, and `callIoTService` logs the service call itself, so a slow
+  request can be read back as a breakdown
 - Sensor data processing and analysis
 - Scene and routine management
 

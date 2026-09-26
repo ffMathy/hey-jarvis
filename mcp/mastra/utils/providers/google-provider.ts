@@ -1,4 +1,4 @@
-import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { createGoogleGenerativeAI, type GoogleLanguageModelOptions } from '@ai-sdk/google';
 
 /**
  * Creates a Google Generative AI provider instance using
@@ -41,3 +41,20 @@ export const google = createGoogleGenerativeAI({
 export function getModel(geminiModel: string) {
   return google(geminiModel);
 }
+
+/**
+ * Provider options that keep a Gemini Flash model's thinking short.
+ *
+ * Flash thinks at `medium` unless told otherwise, and every step of an agent's tool loop pays
+ * for it -- on a request like "turn off the living room lights" that is several steps of
+ * reasoning about a choice that needs next to none, all of it before the lights change.
+ *
+ * `low` rather than `minimal`, because `low` is the lowest level every Flash accepts: 3.7 and 3.8
+ * Flash reject `minimal` with a validation error, and `gemini-flash-latest` moves between them
+ * without notice. A `thinkingBudget` of 0 is no way out either -- Gemini 3 models reject it
+ * outright. Pass this as an agent's `defaultOptions.providerOptions`; Mastra deep-merges an
+ * agent's default options into every call, workflow agent steps included.
+ */
+export const LOW_THINKING_PROVIDER_OPTIONS = {
+  google: { thinkingConfig: { thinkingLevel: 'low' } } satisfies GoogleLanguageModelOptions,
+};
