@@ -114,6 +114,15 @@ describe('the paths the ElevenLabs credentials travel between the two apps', () 
     expect(readSource(WATCH_MANIFEST)).toContain('com.google.android.gms.wearable.MESSAGE_RECEIVED');
   });
 
+  it('puts no permission on either listener service that Play Services might not hold', () => {
+    // A service only binds for a caller holding the permission it names, so the leftover
+    // `BIND_LISTENER` permission could only ever keep Play Services out — silently, since the
+    // handover still works whenever the watch app happens to be open.
+    for (const manifest of [WATCH_MANIFEST, PHONE_ASSISTANT_MANIFEST]) {
+      expect(readSource(manifest)).not.toContain('android:permission="com.google.android.gms');
+    }
+  });
+
   it('names the same event on both sides of each app', () => {
     // Kotlin emits it and TypeScript subscribes by name, with nothing checking the two agree.
     expect(readSource(PHONE_TYPESCRIPT)).toContain(readKotlinConstant(PHONE_MODULE, 'WATCH_ASKED'));

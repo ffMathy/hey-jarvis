@@ -18,15 +18,21 @@
 
       - `exported="true"`, because it is Play Services — a different UID — that binds it. Exported
         does not mean open: the Data Layer only delivers between two apps that share a package
-        name and a signing key, and the `BIND_LISTENER` permission below is Google's own.
+        name and a signing key, and `WearableListenerService` itself checks that the caller is
+        Play Services.
       - the exact `MESSAGE_RECEIVED` action, which is how Play Services finds it at all.
       - the `<data>` path, which narrows delivery to the one path this app answers on. Without it
         the service is woken for every message any part of the Data Layer carries.
+
+      And one thing is deliberately absent: an `android:permission`. This used to require
+      `com.google.android.gms.permission.BIND_LISTENER`, a name left over from the `BIND_LISTENER`
+      API Google deprecated in 2016. A service only binds for a caller holding the permission it
+      names, and nothing says Play Services holds that one, so it could only ever stop the service
+      starting. Google's own manifests for this service carry no permission.
     -->
     <service
       android:name="expo.modules.jarvisphone.JarvisPhoneListenerService"
-      android:exported="true"
-      android:permission="com.google.android.gms.permission.BIND_LISTENER">
+      android:exported="true">
       <intent-filter>
         <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
         <data android:scheme="wear" android:host="*" android:pathPrefix="/jarvis/elevenlabs-settings" />
