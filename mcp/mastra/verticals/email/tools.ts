@@ -2,6 +2,7 @@ import { ConfidentialClientApplication } from '@azure/msal-node';
 import { z } from 'zod';
 import { getCredentialsStorage, getEmailStateStorage } from '../../storage/index.js';
 import { createTool } from '../../utils/tool-factory.js';
+import { createAccessTokenCache, type IssuedAccessToken } from './access-token-cache.js';
 
 // Interface for Microsoft Graph API responses
 interface GraphEmailMessage {
@@ -35,9 +36,8 @@ interface GraphEmailListResponse {
 }
 
 /**
- * Creates and configures a Microsoft OAuth2 client for Graph API access.
+ * Exchanges the stored refresh token for a Microsoft Graph access token.
  *
- * The client automatically refreshes access tokens using the stored refresh token.
  * Refresh tokens are long-lived and only need to be obtained once using the
  * `bun run --cwd mcp generate-tokens` command.
  *
@@ -47,7 +47,7 @@ interface GraphEmailListResponse {
  *
  * @throws {Error} If credentials are not found in either location
  */
-const getMicrosoftAuth = async (): Promise<string> => {
+const acquireMicrosoftAccessToken = async (): Promise<IssuedAccessToken> => {
   const clientId = process.env.HEY_JARVIS_MICROSOFT_CLIENT_ID;
   const clientSecret = process.env.HEY_JARVIS_MICROSOFT_CLIENT_SECRET;
   let refreshToken = process.env.HEY_JARVIS_MICROSOFT_REFRESH_TOKEN;
@@ -96,8 +96,13 @@ const getMicrosoftAuth = async (): Promise<string> => {
     throw new Error('No response received from Microsoft token endpoint');
   }
 
-  return response.accessToken;
+  return { accessToken: response.accessToken, expiresOn: response.expiresOn };
 };
+
+const microsoftAccessTokens = createAccessTokenCache(acquireMicrosoftAccessToken);
+
+/** A Microsoft Graph access token, reused until shortly before it expires. See {@link createAccessTokenCache}. */
+const getMicrosoftAuth = (): Promise<string> => microsoftAccessTokens.get();
 
 // Base URL for Microsoft Graph API
 const GRAPH_API_BASE = 'https://graph.microsoft.com/v1.0';
@@ -124,11 +129,61 @@ function buildGraphApiUrlWithFilter(baseUrl: string, filterExpression?: string, 
   return url;
 }
 
+/**
+ * The fields `findEmails` reports, and so the only ones it asks Graph for.
+ *
+ * Without `$select` Graph sends every property of every message, full HTML body included -- a
+ * newsletter alone can be a hundred kilobytes -- all to be thrown away here, since the tool
+ * reports only the preview.
+ */
+const LISTED_EMAIL_FIELDS = [
+  'id',
+  'subject',
+  'bodyPreview',
+  'from',
+  'receivedDateTime',
+  'isRead',
+  'hasAttachments',
+  'isDraft',
+];
+
+/** What `findEmails` searches by. */
+export interface FindEmailsQuery {
+  searchQuery?: string;
+  folder: string;
+  limit: number;
+  isRead?: boolean;
+  hasAttachment?: boolean;
+}
+
+/** The Graph request `findEmails` makes for a query. */
+export function buildFindEmailsUrl({ searchQuery, folder, limit, isRead, hasAttachment }: FindEmailsQuery): string {
+  const filters: string[] = [];
+  if (isRead !== undefined) {
+    filters.push(`isRead eq ${isRead}`);
+  }
+  if (hasAttachment !== undefined) {
+    filters.push(`hasAttachments eq ${hasAttachment}`);
+  }
+
+  // $orderby is omitted whenever a search is being run. Microsoft Graph rejects the
+  // combination outright -- "The query parameter '$orderBy' is not supported with
+  // '$search'" (error code SearchWithOrderBy, HTTP 400) -- so every searchQuery call
+  // this tool ever made failed. It went unnoticed because the only test exercising the
+  // filter passed a parameter name the tool does not accept, so the argument was
+  // dropped and the request never carried a search at all. Graph returns search hits
+  // by relevance, which is the sensible order for a search anyway.
+  const ordering = searchQuery ? '' : '&$orderby=receivedDateTime desc';
+  const baseUrl = `${GRAPH_API_BASE}/me/mailFolders/${folder}/messages?$top=${limit}&$select=${LISTED_EMAIL_FIELDS.join(',')}${ordering}`;
+  const filterExpression = filters.length > 0 ? filters.join(' and ') : undefined;
+  return buildGraphApiUrlWithFilter(baseUrl, filterExpression, searchQuery);
+}
+
 // Tool to find/search emails
 export const findEmails = createTool({
   id: 'findEmails',
   description:
-    'Find and search emails by various filters. When searching for text content, try different variations of the same text.',
+    'Find and search emails by various filters. Search once with the most likely wording; only when that finds nothing, try a variation of the text (e.g. "foo bar" then "foobar").',
   inputSchema: z.object({
     searchQuery: z
       .string()
@@ -159,28 +214,7 @@ export const findEmails = createTool({
   }),
   execute: async (inputData) => {
     const accessToken = await getMicrosoftAuth();
-    const { searchQuery, folder, limit, isRead, hasAttachment } = inputData;
-
-    // Build the filter query
-    const filters: string[] = [];
-    if (isRead !== undefined) {
-      filters.push(`isRead eq ${isRead}`);
-    }
-    if (hasAttachment !== undefined) {
-      filters.push(`hasAttachments eq ${hasAttachment}`);
-    }
-
-    // $orderby is omitted whenever a search is being run. Microsoft Graph rejects the
-    // combination outright -- "The query parameter '$orderBy' is not supported with
-    // '$search'" (error code SearchWithOrderBy, HTTP 400) -- so every searchQuery call
-    // this tool ever made failed. It went unnoticed because the only test exercising the
-    // filter passed a parameter name the tool does not accept, so the argument was
-    // dropped and the request never carried a search at all. Graph returns search hits
-    // by relevance, which is the sensible order for a search anyway.
-    const ordering = searchQuery ? '' : '&$orderby=receivedDateTime desc';
-    const baseUrl = `${GRAPH_API_BASE}/me/mailFolders/${folder}/messages?$top=${limit}${ordering}`;
-    const filterExpression = filters.length > 0 ? filters.join(' and ') : undefined;
-    const url = buildGraphApiUrlWithFilter(baseUrl, filterExpression, searchQuery);
+    const url = buildFindEmailsUrl(inputData);
 
     const response = await fetch(url, {
       headers: {
@@ -307,10 +341,11 @@ export const draftReply = createTool({
     const accessToken = await getMicrosoftAuth();
     const { messageId, replyMessage, replyAll } = inputData;
 
-    const _endpoint = replyAll ? 'replyAll' : 'reply';
+    // createReplyAll addresses the draft to everyone on the original, createReply to its sender.
+    const endpoint = replyAll ? 'createReplyAll' : 'createReply';
 
     // Create reply draft
-    const response = await fetch(`${GRAPH_API_BASE}/me/messages/${messageId}/createReply`, {
+    const response = await fetch(`${GRAPH_API_BASE}/me/messages/${messageId}/${endpoint}`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -557,12 +592,14 @@ export async function findNewEmailsSinceLastCheck(
   mailboxFolder = 'inbox',
   limit = 50,
 ): Promise<FindNewEmailsResult> {
-  const accessToken = await getMicrosoftAuth();
+  // Neither lookup needs the other, so neither waits for the other.
+  const [accessToken, lastSeenState] = await Promise.all([
+    getMicrosoftAuth(),
+    getEmailStateStorage().then((emailStateStorage) => emailStateStorage.getLastSeenEmail(storageKey)),
+  ]);
 
-  const emailStateStorage = await getEmailStateStorage();
-  const lastSeenState = await emailStateStorage.getLastSeenEmail(storageKey);
-
-  const baseUrl = `${GRAPH_API_BASE}/me/mailFolders/${mailboxFolder}/messages?$top=${limit}&$orderby=receivedDateTime desc`;
+  const selectedFields = [...LISTED_EMAIL_FIELDS, 'body'].join(',');
+  const baseUrl = `${GRAPH_API_BASE}/me/mailFolders/${mailboxFolder}/messages?$top=${limit}&$select=${selectedFields}&$orderby=receivedDateTime desc`;
 
   // If we have a last seen timestamp, filter for emails received after that time
   const filterExpression = lastSeenState ? `receivedDateTime gt ${lastSeenState.lastEmailReceivedDateTime}` : undefined;

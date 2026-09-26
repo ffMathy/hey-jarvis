@@ -1,5 +1,5 @@
 import type { Agent } from '@mastra/core/agent';
-import { createAgent } from '../../utils/index.js';
+import { createAgent, LOW_THINKING_PROVIDER_OPTIONS } from '../../utils/index.js';
 import { todoListTools } from './tools.js';
 
 export async function getTodoListAgent(): Promise<Agent> {
@@ -15,6 +15,12 @@ Your capabilities include:
 4. Retrieving all tasks from a task list
 5. Listing all available task lists
 6. Marking tasks as completed or needs action
+
+Acting quickly:
+- Every tool call is a round trip the user waits through, so use as few as the request allows.
+- Add a task with createTask straight away, into the default list, without looking anything up first.
+- To complete, change or delete a task, find it with one getAllTasks call using search with a word from it (e.g. "milk" for "buy milk"), then act on the id it returned.
+- Only call getAllTaskLists when the user names a list other than the default one and you need its id.
 
 When users request task operations:
 - For creating tasks: If no due date is specified, create the task without one (users can add it later)
@@ -45,5 +51,8 @@ Manage Google Tasks to-do lists. Use this agent to **create, read, update, and d
 - **Handle errors gracefully** and suggest alternatives if an operation fails
 - **Group tasks** logically when displaying multiple tasks (e.g., by due date, priority, or list)`,
     tools: todoListTools,
+    // Adding or ticking off a task is a lookup and a single change, and every step of the tool
+    // loop pays for whatever thinking the model does before it.
+    defaultOptions: { providerOptions: LOW_THINKING_PROVIDER_OPTIONS },
   });
 }

@@ -8,6 +8,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
+import { isSlowTask } from '../../utils/slow-tasks.js';
 import { executeTool } from '../../utils/tool-factory.js';
 import { createArtifact, openArtifactOnPhone } from './shortcuts.js';
 import { generateUserInterface } from './tools.js';
@@ -47,6 +48,10 @@ afterEach(() => {
 });
 
 describe('generateUserInterface', () => {
+  it('is marked slow, so routing offers to send the page on instead of holding the call', () => {
+    expect(isSlowTask(generateUserInterface.id)).toBe(true);
+  });
+
   it('returns the published link and pushes it to the phone', async () => {
     sessionReports(`The chart is ready.\n${ARTIFACT_URL}`);
 

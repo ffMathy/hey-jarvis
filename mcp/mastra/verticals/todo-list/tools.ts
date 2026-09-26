@@ -1,4 +1,4 @@
-import { google } from 'googleapis';
+import { google, type tasks_v1 } from 'googleapis';
 import { z } from 'zod';
 import { getGoogleAuth } from '../../credentials/google-auth.js';
 import { createTool } from '../../utils/tool-factory.js';
@@ -78,12 +78,40 @@ export const deleteTask = createTool({
   },
 });
 
+/** A task as the tools report it. */
+export interface TaskSummary {
+  id: string;
+  title: string;
+  notes?: string;
+  due?: string;
+  status: string;
+  completed?: string;
+  selfLink: string;
+}
+
+/**
+ * Narrows tasks to those whose title or notes contain `search`, ignoring case.
+ *
+ * A substring rather than an exact match because the words arrive from speech: "milk" has to find
+ * "Buy milk". Google Tasks has no search of its own, so this runs on the page that was fetched.
+ */
+export function filterTasks(tasks: TaskSummary[], search?: string): TaskSummary[] {
+  const wantedText = search?.trim().toLowerCase();
+  if (!wantedText) {
+    return tasks;
+  }
+
+  return tasks.filter((task) => `${task.title} ${task.notes ?? ''}`.toLowerCase().includes(wantedText));
+}
+
 // Tool to get all tasks
 export const getAllTasks = createTool({
   id: 'getAllTasks',
-  description: 'Get all tasks from a Google Tasks list',
+  description:
+    'Get the tasks in a Google Tasks list. Pass search to get only the tasks mentioning a word, e.g. to find the one task to update or delete.',
   inputSchema: z.object({
     taskListId: z.string().default('@default').describe('Task list ID (default: @default for the default task list)'),
+    search: z.string().optional().describe('Only tasks whose title or notes contain this, e.g. "milk"'),
     showCompleted: z
       .boolean()
       .optional()
@@ -112,28 +140,70 @@ export const getAllTasks = createTool({
       tasklist: inputData.taskListId,
       showCompleted: inputData.showCompleted,
       maxResults: inputData.maxResults,
+      // Only what is reported, so Google leaves out etags, positions, links and the rest.
+      fields: 'items(id,title,notes,due,status,completed,selfLink)',
     });
 
     const taskItems = response.data.items || [];
+    const listedTasks = taskItems.map((task) => ({
+      id: task.id!,
+      title: task.title!,
+      notes: task.notes ?? undefined,
+      due: task.due ?? undefined,
+      status: task.status!,
+      completed: task.completed ?? undefined,
+      selfLink: task.selfLink!,
+    }));
 
-    return {
-      tasks: taskItems.map((task) => ({
-        id: task.id!,
-        title: task.title!,
-        notes: task.notes ?? undefined,
-        due: task.due ?? undefined,
-        status: task.status!,
-        completed: task.completed ?? undefined,
-        selfLink: task.selfLink!,
-      })),
-    };
+    return { tasks: filterTasks(listedTasks, inputData.search) };
   },
 });
 
-// Tool to update a task
+/** The changes `updateTask` can make to a task. */
+export interface TaskChanges {
+  title?: string;
+  notes?: string;
+  dueDate?: string;
+  status?: 'needsAction' | 'completed';
+}
+
+/**
+ * The patch that makes exactly the changes asked for, and leaves the rest of the task alone.
+ *
+ * Reopening a task clears its completion date along with its status, which is what the Tasks
+ * API expects of a task that is no longer done.
+ */
+export function buildTaskPatch(changes: TaskChanges): tasks_v1.Schema$Task {
+  const patch: tasks_v1.Schema$Task = {};
+
+  if (changes.title) {
+    patch.title = changes.title;
+  }
+  if (changes.notes !== undefined) {
+    patch.notes = changes.notes;
+  }
+  if (changes.dueDate !== undefined) {
+    patch.due = changes.dueDate;
+  }
+  if (changes.status) {
+    patch.status = changes.status;
+  }
+  if (changes.status === 'needsAction') {
+    patch.completed = null;
+  }
+
+  return patch;
+}
+
+/**
+ * Tool to update a task
+ *
+ * One `patch` rather than a `get` followed by an `update`, so marking something done is one
+ * round trip to Google instead of two.
+ */
 export const updateTask = createTool({
   id: 'updateTask',
-  description: 'Update an existing task in Google Tasks',
+  description: 'Update an existing task in Google Tasks, e.g. to mark it completed. Only the fields given are changed.',
   inputSchema: z.object({
     taskListId: z.string().default('@default').describe('Task list ID (default: @default for the default task list)'),
     taskId: z.string().describe('Task ID to update'),
@@ -155,34 +225,10 @@ export const updateTask = createTool({
     const auth = await getGoogleAuth();
     const tasks = google.tasks({ version: 'v1', auth });
 
-    // First get the existing task
-    const existingTask = await tasks.tasks.get({
+    const response = await tasks.tasks.patch({
       tasklist: inputData.taskListId,
       task: inputData.taskId,
-    });
-
-    // Prepare update payload
-    const updatedTask: {
-      title: string | null | undefined;
-      notes: string | null | undefined;
-      status: string | null | undefined;
-      due?: string | null;
-    } = {
-      title: inputData.title || existingTask.data.title,
-      notes: inputData.notes !== undefined ? inputData.notes : existingTask.data.notes,
-      status: inputData.status || existingTask.data.status,
-    };
-
-    if (inputData.dueDate !== undefined) {
-      updatedTask.due = inputData.dueDate;
-    } else if (existingTask.data.due) {
-      updatedTask.due = existingTask.data.due;
-    }
-
-    const response = await tasks.tasks.update({
-      tasklist: inputData.taskListId,
-      task: inputData.taskId,
-      requestBody: updatedTask,
+      requestBody: buildTaskPatch(inputData),
     });
 
     return {

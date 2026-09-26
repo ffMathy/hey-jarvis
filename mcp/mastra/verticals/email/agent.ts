@@ -1,5 +1,5 @@
 import type { Agent } from '@mastra/core/agent';
-import { createAgent } from '../../utils/index.js';
+import { createAgent, LOW_THINKING_PROVIDER_OPTIONS } from '../../utils/index.js';
 import { emailTools } from './tools.js';
 
 export async function getEmailAgent(): Promise<Agent> {
@@ -17,7 +17,7 @@ Your capabilities include:
 
 When users ask about emails:
 - Use the findEmails tool to search for specific emails
-- Try different text variations when searching (e.g., "foo bar", "foobar", "fubar")
+- Every tool call is a round trip the user waits through, so search once with the most likely wording, and narrow it with isRead or hasAttachment when the request says so. Only when a search finds nothing, try a variation of the text (e.g., "foo bar", then "foobar")
 - Default to searching the inbox folder unless specified otherwise
 - Provide clear summaries of email content
 
@@ -42,5 +42,9 @@ Manage emails. Use this agent to **search for emails**, **create drafts**, **rep
 - The user wants to delete an email or draft
 - The user asks about unread messages, emails with attachments, or specific email folders`,
     tools: emailTools,
+    // Finding an email or filing a draft is a choice of one or two tool calls, and every step of
+    // the tool loop pays for whatever thinking the model does first. Drafting text needs no
+    // deliberate reasoning either.
+    defaultOptions: { providerOptions: LOW_THINKING_PROVIDER_OPTIONS },
   });
 }
