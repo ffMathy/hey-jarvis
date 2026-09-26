@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v2.0.2...elevenlabs-v2.1.0) (2026-09-26)
+
+
+### Features
+
+* **mcp:** answer each request at its length, and end quiet calls ([#877](https://github.com/ffMathy/hey-jarvis/issues/877)) ([b5f233c](https://github.com/ffMathy/hey-jarvis/commit/b5f233cc4a4bf4a2ac73ad9a642fdfe6cbb4bde9))
+
 ## [2.0.2](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v2.0.1...elevenlabs-v2.0.2) (2026-09-25)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.11.2...home-assistant-voice-firmware-v0.12.0) (2026-09-26)
+
+
+### Features
+
+* **mcp:** answer each request at its length, and end quiet calls ([#877](https://github.com/ffMathy/hey-jarvis/issues/877)) ([b5f233c](https://github.com/ffMathy/hey-jarvis/commit/b5f233cc4a4bf4a2ac73ad9a642fdfe6cbb4bde9))
+
 ## [0.11.2](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.11.1...home-assistant-voice-firmware-v0.11.2) (2026-08-20)
 
 
