@@ -17,6 +17,11 @@ import expo.modules.kotlin.Promise
 import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executor
+import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.TimeUnit
 
 /**
  * Plays Jarvis's recorded greeting as call audio rather than as media.
@@ -43,6 +48,9 @@ private const val SETTLE_AFTER_CONNECTED_MS = 250L
 /** How often a Bluetooth LE Audio headset is checked for having become the call's route. */
 private const val LOOK_EVERY_MS = 100L
 
+/** How long to wait for Android to finish switching the audio mode before carrying on anyway. */
+private const val MODE_SWITCH_TIMEOUT_MS = 2000L
+
 class JarvisGreetingModule : Module() {
   private val lock = Any()
   private var player: MediaPlayer? = null
@@ -51,6 +59,15 @@ class JarvisGreetingModule : Module() {
 
   private val context: Context
     get() = appContext.reactContext ?: throw Exceptions.ReactContextLost()
+
+  /**
+   * Where the audio mode is switched: one thread of its own, never the main one, and one switch at
+   * a time in the order they were asked for. See `enterCallMode`.
+   */
+  private val modeSwitcher = Executors.newSingleThreadExecutor()
+
+  /** The mode `enterCallMode` switched from, to go back to; null when it has not. Only touched on `modeSwitcher`. */
+  private var modeBeforeCall: Int? = null
 
   override fun definition() = ModuleDefinition {
     Name("JarvisGreeting")
@@ -91,6 +108,48 @@ class JarvisGreetingModule : Module() {
       CallRouteWait(context, audioManager, timeoutMs.toLong(), promise).start()
     }
 
+    /**
+     * Switches the device into call mode (`MODE_IN_COMMUNICATION`) off the main thread, and resolves
+     * once Android has finished switching.
+     *
+     * LiveKit's audio session does this itself as it starts — on the main thread, where Reanimated
+     * draws the sphere, and Android takes a noticeable moment over it: up to Android 11 inside
+     * `setMode`, and from 12 inside the next call that needs AudioService's mode lock, which LiveKit
+     * makes straight after. That was a freeze in every arrival, just as the greeting began. Switched
+     * here first, LiveKit asks for the mode already in force, which changes nothing.
+     *
+     * LiveKit also remembers the mode it found so it can put it back — and it now finds call mode,
+     * so putting things back is `leaveCallMode`'s job.
+     */
+    AsyncFunction("enterCallMode") { promise: Promise ->
+      val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+      onModeSwitcher(promise) {
+        if (modeBeforeCall == null) {
+          modeBeforeCall = audioManager.mode
+        }
+        switchMode(audioManager, AudioManager.MODE_IN_COMMUNICATION)
+      }
+    }
+
+    /**
+     * Puts back the mode `enterCallMode` switched from, off the main thread, once LiveKit's audio
+     * session has stopped.
+     *
+     * LiveKit stops by posting to the front of the main thread's queue, and on stopping puts back
+     * the mode it found — call mode, since `enterCallMode` got there first. So this first waits its
+     * own turn on the main thread, behind that stop if it has been asked for, and only then switches
+     * back here. The caller makes sure it has been asked for; see `stopCallAudio`.
+     */
+    AsyncFunction("leaveCallMode") { promise: Promise ->
+      val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+      Handler(Looper.getMainLooper()).post {
+        onModeSwitcher(promise) {
+          modeBeforeCall?.let { switchMode(audioManager, it) }
+          modeBeforeCall = null
+        }
+      }
+    }
+
     Function("pause") {
       synchronized(lock) {
         player?.takeIf { it.isPlaying }?.pause()
@@ -113,11 +172,64 @@ class JarvisGreetingModule : Module() {
     }
 
     OnDestroy {
+      modeSwitcher.shutdown()
       synchronized(lock) {
         player?.release()
         player = null
         preparedFrom = null
       }
+    }
+  }
+
+  /**
+   * Runs `switching` on `modeSwitcher` and resolves `promise` after it. Resolves at once instead if
+   * the module is already gone, since there is then nothing left to switch for.
+   */
+  private fun onModeSwitcher(promise: Promise, switching: () -> Unit) {
+    try {
+      modeSwitcher.execute {
+        switching()
+        promise.resolve(null)
+      }
+    } catch (error: RejectedExecutionException) {
+      promise.resolve(null)
+    }
+  }
+
+  /**
+   * Switches the audio mode and returns once Android has finished — or after
+   * `MODE_SWITCH_TIMEOUT_MS`, or on any failure. Nothing breaks either way: on the way in, LiveKit
+   * still switches on the main thread as it did before this existed, and on the way out the mode
+   * stays where LiveKit left it.
+   */
+  private fun switchMode(audioManager: AudioManager, mode: Int) {
+    try {
+      if (audioManager.mode == mode) {
+        return
+      }
+      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+        // Synchronous here: it returns once the switch is done.
+        audioManager.mode = mode
+        return
+      }
+      val switched = CountDownLatch(1)
+      val listener = AudioManager.OnModeChangedListener { changedTo ->
+        if (changedTo == mode) {
+          switched.countDown()
+        }
+      }
+      // Told on the binder thread that brings the news, since `modeSwitcher` is the one waiting.
+      audioManager.addOnModeChangedListener(Executor { it.run() }, listener)
+      try {
+        audioManager.mode = mode
+        switched.await(MODE_SWITCH_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+      } finally {
+        audioManager.removeOnModeChangedListener(listener)
+      }
+    } catch (error: RuntimeException) {
+      // See above: never worse than before.
+    } catch (error: InterruptedException) {
+      Thread.currentThread().interrupt()
     }
   }
 

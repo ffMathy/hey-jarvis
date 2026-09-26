@@ -1,4 +1,25 @@
 import { AndroidAudioTypePresets, AudioSession } from '@livekit/react-native';
+import { requireOptionalNativeModule } from 'expo';
+
+/** The half of `hologram/android`'s `JarvisGreetingModule` that switches the audio mode. */
+interface CallMode {
+  enterCallMode(): Promise<void>;
+  leaveCallMode(): Promise<void>;
+}
+
+/** Absent in a build without the native side, where LiveKit switches the mode as it always did. */
+const callMode = requireOptionalNativeModule<CallMode>('JarvisGreeting') ?? undefined;
+
+/** The last start or stop asked for, so the next one waits for it: each is several steps long. */
+let lastChange: Promise<void> = Promise.resolve();
+
+function afterLastChange(change: () => Promise<void>): Promise<void> {
+  const next = lastChange.then(change, change);
+  lastChange = next.catch(() => {
+    // Reported to whoever asked for it; the next change still goes ahead.
+  });
+  return next;
+}
 
 /**
  * Puts a phone or a watch into the audio a conversation uses, before there is a conversation.
@@ -19,23 +40,49 @@ import { AndroidAudioTypePresets, AudioSession } from '@livekit/react-native';
  * Otherwise it is the configuration `@elevenlabs/react-native` applies as a session starts
  * (`reactNativeSessionSetup`). When the session does start, LiveKit's `start` does nothing on an
  * audio session already running — and its `configureAudio` only records settings for the next
- * start — so the SDK's speaker-only preference does not move him back. The SDK stops the session as
- * usual when the conversation ends.
+ * start — so the SDK's speaker-only preference does not move him back.
+ *
+ * **Call mode is switched first, off the main thread.** LiveKit switches the device into
+ * `MODE_IN_COMMUNICATION` as its session starts, on Android's main thread — where Reanimated draws
+ * the sphere — and Android takes a noticeable moment over it, which froze him once in every arrival,
+ * just as the greeting began. `enterCallMode` does it on a thread of its own and waits for it, so
+ * LiveKit then asks for the mode already in force, which changes nothing. That leaves LiveKit
+ * remembering call mode as the one to put back, so going back is `stopCallAudio`'s job.
  */
-export async function startCallAudio(): Promise<void> {
-  await AudioSession.configureAudio({
-    android: {
-      preferredOutputList: ['bluetooth', 'headset', 'speaker'],
-      audioTypeOptions: AndroidAudioTypePresets.communication,
-    },
-    ios: {
-      defaultOutput: 'speaker',
-    },
+export function startCallAudio(): Promise<void> {
+  return afterLastChange(async () => {
+    await callMode?.enterCallMode();
+    await AudioSession.configureAudio({
+      android: {
+        preferredOutputList: ['bluetooth', 'headset', 'speaker'],
+        audioTypeOptions: AndroidAudioTypePresets.communication,
+      },
+      ios: {
+        defaultOutput: 'speaker',
+      },
+    });
+    await AudioSession.startAudioSession();
   });
-  await AudioSession.startAudioSession();
 }
 
-/** Lets go of the call's audio again, for a greeting that never got as far as a conversation. */
+/**
+ * Lets go of the call's audio, and puts back the audio mode it was started from.
+ *
+ * Called whenever it ends: a greeting that never got as far as a conversation, and every
+ * conversation that has ended — whose audio the SDK has already stopped by the time it says so, so
+ * stopping it again here does nothing.
+ *
+ * **The order is the point.** LiveKit's `stopAudioSession` returns before it has done anything: it
+ * is queued on React Native's bridge, and there it only posts the real stop to the front of the
+ * main thread's queue — a stop that puts back call mode, which is what LiveKit found. `leaveCallMode`
+ * has to come after that. So a call that *answers* is made on the same bridge queue first
+ * (`getAudioOutputs`), which runs after the stop has been posted; `leaveCallMode` then waits its turn
+ * on the main thread behind it, and switches back off it.
+ */
 export function stopCallAudio(): Promise<void> {
-  return AudioSession.stopAudioSession();
+  return afterLastChange(async () => {
+    await AudioSession.stopAudioSession();
+    await AudioSession.getAudioOutputs();
+    await callMode?.leaveCallMode();
+  });
 }
