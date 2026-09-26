@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.7.1](https://github.com/ffMathy/hey-jarvis/compare/root-v4.7.0...root-v4.7.1) (2026-09-26)
+
+
+### Bug Fixes
+
+* **hologram:** switch into call audio off the main thread ([#880](https://github.com/ffMathy/hey-jarvis/issues/880)) ([306dc38](https://github.com/ffMathy/hey-jarvis/commit/306dc3823ec8e7d47daa9cc3d10b99fb806c8134))
+
 ## [4.7.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.6.0...root-v4.7.0) (2026-09-26)
 
 
