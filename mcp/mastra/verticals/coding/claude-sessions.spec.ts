@@ -1,39 +1,33 @@
 /**
- * Reading a session's history for the end of its turn.
+ * Claude Code sessions, with the host replaced by a fake launcher.
  *
- * `waitForClaudeSessionTurn` polls a live session, which needs credentials; what it decides from
- * each poll is `readLatestTurn` over `readFinishedTurn`, and both are covered here against
- * histories of the shape the event list returns.
+ * A real session is a `claude --print` process on another machine, reached over SSH. What is
+ * tested here is everything this side of that pipe: reading Claude Code's stream-json output,
+ * deciding when a turn is over, writing follow-ups to a process still working, and resuming a
+ * session whose process has finished.
  */
 
 import { describe, expect, it } from 'bun:test';
-import { type ClaudeSessionEvent, readFinishedTurn, readLatestMessages, readLatestTurn } from './claude-sessions.js';
-
-const PROCESSED_AT = '2026-09-25T10:00:00Z';
+import { PassThrough } from 'node:stream';
+import type { ClaudeCodeProcess } from './claude-code-host.js';
+import {
+  ClaudeCodeSessions,
+  type ClaudeSessionEvent,
+  readClaudeCodeOutputLine,
+  readFinishedTurn,
+  toClaudeCodeInputLine,
+} from './claude-sessions.js';
 
 function running(id: string): ClaudeSessionEvent {
-  return { id, type: 'session.status_running', processed_at: PROCESSED_AT };
+  return { id, type: 'session.status_running' };
 }
 
-function message(id: string, ...texts: string[]): ClaudeSessionEvent {
-  return {
-    id,
-    type: 'agent.message',
-    processed_at: PROCESSED_AT,
-    content: texts.map((text) => ({ type: 'text', text })),
-  };
+function message(id: string, text: string): ClaudeSessionEvent {
+  return { id, type: 'agent.message', text };
 }
 
-function idle(id: string): ClaudeSessionEvent {
-  return { id, type: 'session.status_idle', processed_at: PROCESSED_AT, stop_reason: { type: 'end_turn' } };
-}
-
-function terminated(id: string): ClaudeSessionEvent {
-  return { id, type: 'session.status_terminated', processed_at: PROCESSED_AT };
-}
-
-function thinking(id: string): ClaudeSessionEvent {
-  return { id, type: 'agent.thinking', processed_at: PROCESSED_AT };
+function idle(id: string, stopReason = 'end_turn'): ClaudeSessionEvent {
+  return { id, type: 'session.status_idle', stopReason };
 }
 
 describe('readFinishedTurn', () => {
@@ -42,37 +36,24 @@ describe('readFinishedTurn', () => {
   });
 
   it('is not finished while the session is still working', () => {
-    expect(readFinishedTurn([running('1'), message('2', 'Looking into it.'), thinking('3')])).toBeUndefined();
+    expect(readFinishedTurn([running('1'), message('2', 'Looking into it.')])).toBeUndefined();
   });
 
   it('returns the last thing the agent said once it goes idle', () => {
     const turn = readFinishedTurn([
       running('1'),
       message('2', 'Building the page.'),
-      thinking('3'),
-      message('4', 'Done.', 'https://claude.ai/artifact/abc'),
-      idle('5'),
+      message('3', 'Done.\nhttps://claude.ai/artifact/abc'),
+      idle('4'),
     ]);
 
     expect(turn).toEqual({ stopReason: 'end_turn', finalMessage: 'Done.\nhttps://claude.ai/artifact/abc' });
   });
 
-  it('reports a session that ended for good as terminated', () => {
-    expect(readFinishedTurn([running('1'), message('2', 'Giving up.'), terminated('3')])).toEqual({
-      stopReason: 'terminated',
-      finalMessage: 'Giving up.',
-    });
-  });
-
   it('carries the stop reason through when the session stopped for another reason', () => {
-    const waiting: ClaudeSessionEvent = {
-      id: '3',
-      type: 'session.status_idle',
-      processed_at: PROCESSED_AT,
-      stop_reason: { type: 'retries_exhausted' },
-    };
-
-    expect(readFinishedTurn([running('1'), message('2', 'Trying.'), waiting])?.stopReason).toBe('retries_exhausted');
+    expect(readFinishedTurn([running('1'), message('2', 'Trying.'), idle('3', 'error_max_turns')])?.stopReason).toBe(
+      'error_max_turns',
+    );
   });
 
   it('does not answer with a message from an earlier turn', () => {
@@ -87,77 +68,339 @@ describe('readFinishedTurn', () => {
   });
 });
 
-/**
- * A history as the event list hands it back newest first, counting how much of it was read.
- *
- * Every event read is one the API had to send, and once a page runs out the next is one more
- * request in series, so how little is read is the point of reading from the end.
- */
-function newestFirst(history: ClaudeSessionEvent[]) {
-  const reading = { eventsRead: 0 };
+describe('readClaudeCodeOutputLine', () => {
+  it('reads the text of an assistant message, and passes over its tool calls', () => {
+    const line = JSON.stringify({
+      type: 'assistant',
+      message: {
+        content: [
+          { type: 'text', text: 'Cloning the repository.' },
+          { type: 'tool_use', id: 'toolu_1', name: 'Bash', input: { command: 'gh repo clone x/y' } },
+        ],
+      },
+    });
 
-  async function* events() {
-    for (const event of [...history].reverse()) {
-      reading.eventsRead++;
-      yield event;
-    }
-  }
-
-  return { events: events(), reading };
-}
-
-/** A session that worked through many turns, the way a long analysis leaves its history. */
-function longHistory(turns: number): ClaudeSessionEvent[] {
-  return Array.from({ length: turns }, (_, turn) => [
-    running(`${turn}-running`),
-    message(`${turn}-message`, `Answer ${turn}.`),
-    idle(`${turn}-idle`),
-  ]).flat();
-}
-
-describe('readLatestTurn', () => {
-  it('reads no further back than the start of the latest turn', async () => {
-    const history = longHistory(50);
-    const { events, reading } = newestFirst(history);
-
-    expect(await readLatestTurn(events)).toEqual({ stopReason: 'end_turn', finalMessage: 'Answer 49.' });
-    expect(reading.eventsRead).toBe(3);
+    expect(readClaudeCodeOutputLine(line)).toEqual({ type: 'message', text: 'Cloning the repository.' });
   });
 
-  it('answers what the whole history would have answered', async () => {
-    const histories = [
-      [],
-      [running('1'), message('2', 'Looking into it.')],
-      [running('1'), message('2', 'First answer.'), idle('3'), running('4'), idle('5')],
-      [running('1'), message('2', 'First answer.'), idle('3'), running('4')],
-      [running('1'), message('2', 'Giving up.'), terminated('3')],
-      longHistory(3),
-    ];
+  it('passes over an assistant message that is only a tool call', () => {
+    const line = JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Read' }] } });
 
-    for (const history of histories) {
-      expect(await readLatestTurn(newestFirst(history).events)).toEqual(readFinishedTurn(history));
-    }
+    expect(readClaudeCodeOutputLine(line)).toBeUndefined();
+  });
+
+  it('passes over everything else Claude Code prints', () => {
+    expect(readClaudeCodeOutputLine(JSON.stringify({ type: 'system', subtype: 'init' }))).toBeUndefined();
+    expect(readClaudeCodeOutputLine(JSON.stringify({ type: 'user', message: { content: [] } }))).toBeUndefined();
+    expect(readClaudeCodeOutputLine('Warning: something that is not JSON')).toBeUndefined();
+  });
+
+  it('ends the turn on a successful result', () => {
+    const line = JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: 'Done.' });
+
+    expect(readClaudeCodeOutputLine(line)).toEqual({ type: 'result', result: { stopReason: 'end_turn' } });
+  });
+
+  it('reports why a failed turn failed', () => {
+    const notLoggedIn = JSON.stringify({
+      type: 'result',
+      subtype: 'success',
+      is_error: true,
+      result: 'Invalid API key · Please run /login',
+    });
+    const outOfTurns = JSON.stringify({ type: 'result', subtype: 'error_max_turns', is_error: true });
+
+    expect(readClaudeCodeOutputLine(notLoggedIn)).toEqual({
+      type: 'result',
+      result: { stopReason: 'error', error: 'Invalid API key · Please run /login' },
+    });
+    expect(readClaudeCodeOutputLine(outOfTurns)).toEqual({
+      type: 'result',
+      result: { stopReason: 'error_max_turns', error: 'error_max_turns' },
+    });
   });
 });
 
-describe('readLatestMessages', () => {
-  it('returns the latest messages oldest first, and stops reading once it has them', async () => {
-    const { events, reading } = newestFirst(longHistory(50).filter((event) => event.type === 'agent.message'));
+describe('toClaudeCodeInputLine', () => {
+  it('writes a message as one line of stream-json', () => {
+    const line = toClaudeCodeInputLine('Fix the bug.\nThen open a pull request.');
 
-    expect(await readLatestMessages(events, 3)).toEqual(['Answer 47.', 'Answer 48.', 'Answer 49.']);
-    expect(reading.eventsRead).toBe(3);
+    expect(line.endsWith('\n')).toBe(true);
+    expect(line.trimEnd()).not.toContain('\n');
+    expect(JSON.parse(line)).toMatchObject({
+      type: 'user',
+      message: { role: 'user', content: [{ type: 'text', text: 'Fix the bug.\nThen open a pull request.' }] },
+    });
+  });
+});
+
+/** A Claude Code process whose output the test writes, and whose input the test reads. */
+class FakeClaudeCode {
+  readonly input = new PassThrough();
+  readonly output = new PassThrough();
+  readonly received: string[] = [];
+  private exit: (result: { code: number | null; stderr: string }) => void = () => {};
+  readonly exited = new Promise<{ code: number | null; stderr: string }>((resolve) => {
+    this.exit = resolve;
   });
 
-  it('passes over messages with no text in them', async () => {
-    const { events } = newestFirst([message('1', 'Started.'), message('2'), message('3', '  '), message('4', 'Done.')]);
+  constructor(
+    readonly sessionId: string,
+    readonly resume: boolean,
+  ) {
+    this.input.setEncoding('utf8');
+    this.input.on('data', (chunk: string) => {
+      this.received.push(...chunk.split('\n').filter((line) => line.length > 0));
+    });
+    // Claude Code exits once its input ends and its last turn is answered.
+    this.input.on('end', () => this.close(0));
+  }
 
-    expect(await readLatestMessages(events, 5)).toEqual(['Started.', 'Done.']);
+  say(text: string): void {
+    this.output.write(`${JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text }] } })}\n`);
+  }
+
+  finishTurn(isError = false, result = 'Done.'): void {
+    this.output.write(`${JSON.stringify({ type: 'result', subtype: 'success', is_error: isError, result })}\n`);
+  }
+
+  close(code: number | null, stderr = ''): void {
+    if (this.output.writableEnded) {
+      return;
+    }
+
+    this.output.end();
+    this.exit({ code, stderr });
+  }
+
+  receivedTexts(): string[] {
+    return this.received.map((line) => JSON.parse(line).message.content[0].text);
+  }
+}
+
+function fakeHost() {
+  const launched: FakeClaudeCode[] = [];
+  const sessions = new ClaudeCodeSessions(async (sessionId, resume): Promise<ClaudeCodeProcess> => {
+    const claudeCode = new FakeClaudeCode(sessionId, resume);
+    launched.push(claudeCode);
+    return claudeCode;
   });
 
-  it('reads nothing when no messages are wanted', async () => {
-    const { events, reading } = newestFirst([message('1', 'Started.')]);
+  return { sessions, launched };
+}
 
-    expect(await readLatestMessages(events, 0)).toEqual([]);
-    expect(reading.eventsRead).toBe(0);
+/** Lets the session read what the fake wrote. */
+async function settle(): Promise<void> {
+  for (let tick = 0; tick < 5; tick++) {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+}
+
+/** Every event a session has recorded so far. */
+async function recordedEvents(sessions: ClaudeCodeSessions, sessionId: string): Promise<ClaudeSessionEvent[]> {
+  const events: ClaudeSessionEvent[] = [];
+  const controller = new AbortController();
+  const following = (async () => {
+    for await (const event of sessions.stream(sessionId, controller.signal)) {
+      events.push(event);
+    }
+  })();
+
+  await settle();
+  controller.abort();
+  await following;
+
+  return events;
+}
+
+describe('ClaudeCodeSessions', () => {
+  it('starts a new session in the sandbox with the task as its first message', async () => {
+    const { sessions, launched } = fakeHost();
+
+    const session = await sessions.create('Build the page.');
+
+    expect(session.status).toBe('running');
+    expect(launched).toHaveLength(1);
+    expect(launched[0].sessionId).toBe(session.id);
+    expect(launched[0].resume).toBe(false);
+    await settle();
+    expect(launched[0].receivedTexts()).toEqual(['Build the page.']);
+  });
+
+  it('forgets a session whose process could not be started, and says why', async () => {
+    const sessions = new ClaudeCodeSessions(async () => {
+      throw new Error('Claude Code sessions are not configured.');
+    });
+
+    await expect(sessions.create('Build the page.')).rejects.toThrow('not configured');
+  });
+
+  it('goes idle when the turn is answered, and lets the process exit', async () => {
+    const { sessions, launched } = fakeHost();
+    const session = await sessions.create('Build the page.');
+
+    launched[0].say('Building it.');
+    launched[0].finishTurn();
+    await settle();
+
+    expect(sessions.get(session.id).status).toBe('idle');
+    expect(launched[0].input.writableEnded).toBe(true);
+    expect(await sessions.waitForTurn(session.id, 1000)).toEqual({
+      stopReason: 'end_turn',
+      finalMessage: 'Building it.',
+    });
+  });
+
+  it('waits for a turn still under way', async () => {
+    const { sessions, launched } = fakeHost();
+    const session = await sessions.create('Build the page.');
+
+    const waiting = sessions.waitForTurn(session.id, 1000);
+    launched[0].say('https://claude.ai/artifact/abc');
+    launched[0].finishTurn();
+
+    expect(await waiting).toEqual({ stopReason: 'end_turn', finalMessage: 'https://claude.ai/artifact/abc' });
+  });
+
+  it('gives up waiting when the time runs out', async () => {
+    const { sessions } = fakeHost();
+    const session = await sessions.create('Build the page.');
+
+    expect(await sessions.waitForTurn(session.id, 20)).toBeUndefined();
+  });
+
+  it('hands a message to the process still working, and stays running until it is answered too', async () => {
+    const { sessions, launched } = fakeHost();
+    const session = await sessions.create('Implement the change.');
+
+    await sessions.send(session.id, 'Use push notifications, not e-mail.');
+    launched[0].finishTurn();
+    await settle();
+
+    expect(launched).toHaveLength(1);
+    expect(sessions.get(session.id).status).toBe('running');
+    expect(launched[0].receivedTexts()).toEqual(['Implement the change.', 'Use push notifications, not e-mail.']);
+
+    launched[0].finishTurn();
+    await settle();
+
+    expect(sessions.get(session.id).status).toBe('idle');
+  });
+
+  it('resumes a finished session in a new process', async () => {
+    const { sessions, launched } = fakeHost();
+    const session = await sessions.create('Implement the change.');
+    launched[0].finishTurn();
+    await settle();
+
+    await sessions.send(session.id, 'Also update the documentation.');
+
+    expect(launched).toHaveLength(2);
+    expect(launched[1].sessionId).toBe(session.id);
+    expect(launched[1].resume).toBe(true);
+    expect(sessions.get(session.id).status).toBe('running');
+    await settle();
+    expect(launched[1].receivedTexts()).toEqual(['Also update the documentation.']);
+  });
+
+  it('starts one process for two messages sent to an idle session at once', async () => {
+    const { sessions, launched } = fakeHost();
+    const session = await sessions.create('Implement the change.');
+    launched[0].finishTurn();
+    await settle();
+
+    await Promise.all([sessions.send(session.id, 'First.'), sessions.send(session.id, 'Second.')]);
+    await settle();
+
+    expect(launched).toHaveLength(2);
+    expect(launched[1].receivedTexts()).toEqual(['First.', 'Second.']);
+  });
+
+  it('reports a failed turn as an error', async () => {
+    const { sessions, launched } = fakeHost();
+    const session = await sessions.create('Build the page.');
+
+    launched[0].finishTurn(true, 'Invalid API key · Please run /login');
+    await settle();
+
+    const events = await recordedEvents(sessions, session.id);
+    expect(events.map((event) => event.type)).toEqual([
+      'session.status_running',
+      'session.error',
+      'session.status_idle',
+    ]);
+    expect(events[1]).toMatchObject({ message: 'Invalid API key · Please run /login' });
+    expect(await sessions.waitForTurn(session.id, 1000)).toMatchObject({ stopReason: 'error' });
+  });
+
+  it('reports a process that exits without answering, with what it wrote to stderr', async () => {
+    const { sessions, launched } = fakeHost();
+    const session = await sessions.create('Build the page.');
+
+    launched[0].close(255, 'ssh: connect to host host.docker.internal port 22: Connection refused');
+    await settle();
+
+    const events = await recordedEvents(sessions, session.id);
+    expect(events.map((event) => event.type)).toEqual([
+      'session.status_running',
+      'session.error',
+      'session.status_idle',
+    ]);
+    expect(events[1]).toMatchObject({ message: expect.stringContaining('Connection refused') });
+    expect(await sessions.waitForTurn(session.id, 1000)).toMatchObject({ stopReason: 'process_exited' });
+  });
+
+  it('starts a session afresh, rather than resuming it, when its first process never reached the host', async () => {
+    const { sessions, launched } = fakeHost();
+    const session = await sessions.create('Build the page.');
+    launched[0].close(255, 'Connection refused');
+    await settle();
+
+    await sessions.send(session.id, 'Try again.');
+
+    expect(launched[1].resume).toBe(false);
+  });
+
+  it('streams every event from the first, then each new one as it happens', async () => {
+    const { sessions, launched } = fakeHost();
+    const session = await sessions.create('Build the page.');
+    launched[0].say('Working.');
+    await settle();
+
+    const controller = new AbortController();
+    const streamed: string[] = [];
+    const following = (async () => {
+      for await (const event of sessions.stream(session.id, controller.signal)) {
+        streamed.push(event.type);
+      }
+    })();
+
+    launched[0].finishTurn();
+    await settle();
+    controller.abort();
+    await following;
+
+    expect(streamed).toEqual(['session.status_running', 'agent.message', 'session.status_idle']);
+    expect(new Set((await recordedEvents(sessions, session.id)).map((event) => event.id)).size).toBe(3);
+  });
+
+  it('keeps only the latest messages when asked for a few', async () => {
+    const { sessions, launched } = fakeHost();
+    const session = await sessions.create('Build the page.');
+    for (const text of ['One.', 'Two.', 'Three.']) {
+      launched[0].say(text);
+    }
+    await settle();
+
+    expect(sessions.latestMessages(session.id, 2)).toEqual(['Two.', 'Three.']);
+    expect(sessions.latestMessages(session.id, 0)).toEqual([]);
+  });
+
+  it('says a session is unknown, and where its transcript is, after a restart', () => {
+    const { sessions } = fakeHost();
+
+    expect(() => sessions.get('0b7e1d52-6c3f-4f7e-9a51-2f7d8c9e0a11')).toThrow(
+      'jarvis sandbox, in ~/jarvis-sessions/0b7e1d52-6c3f-4f7e-9a51-2f7d8c9e0a11',
+    );
   });
 });

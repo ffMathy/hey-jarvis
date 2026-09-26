@@ -10,7 +10,7 @@ const DEFAULT_NOTIFICATION_TITLE = 'Jarvis built something for you';
 /**
  * Builds a page for a request and hands back its link, pushing it to the user's phone on the way.
  *
- * The vertical's two shortcuts, run in order: {@link createArtifact} has a Claude cloud session
+ * The vertical's two shortcuts, run in order: {@link createArtifact} has a Claude Code session
  * build and publish the page, and {@link openArtifactOnPhone} sends it to the phone. It exists as
  * one tool rather than leaving the chaining to the agent because the link has to be read out of
  * the session's last message first, and that is a job for code, not for a model.
@@ -24,7 +24,7 @@ export const generateUserInterface = markAsSlow(
   createTool({
     id: 'generateUserInterface',
     description:
-      "Visualize something or generate a user interface for it: a Claude cloud session builds an interactive web page (an artifact) and publishes it, and its URL is returned. By default the URL is also pushed to the primary user's phone, so tapping the notification opens it in the phone's browser. Takes a few minutes.",
+      "Visualize something or generate a user interface for it: a Claude Code session builds an interactive web page (an artifact) and publishes it, and its URL is returned. By default the URL is also pushed to the primary user's phone, so tapping the notification opens it in the phone's browser. Takes a few minutes.",
     inputSchema: z.object({
       request: z
         .string()
@@ -45,7 +45,6 @@ export const generateUserInterface = markAsSlow(
     outputSchema: z.object({
       success: z.boolean(),
       artifactUrl: z.string().optional().describe('The HTTP(S) URL the page was published at'),
-      sessionUrl: z.string().optional().describe('Where the Claude cloud session that built it can be followed'),
       sentToPhone: z.boolean().describe("Whether a push notification opening the page reached the user's phone"),
       message: z.string(),
     }),
@@ -58,7 +57,6 @@ export const generateUserInterface = markAsSlow(
       if (!artifactUrl) {
         return {
           success: false,
-          sessionUrl: session.session_url,
           sentToPhone: false,
           message: session.success
             ? `The session finished without reporting a link to the page. It said: ${session.final_message || 'nothing'}`
@@ -70,7 +68,6 @@ export const generateUserInterface = markAsSlow(
         return {
           success: true,
           artifactUrl,
-          sessionUrl: session.session_url,
           sentToPhone: false,
           message: `The page is published at ${artifactUrl}.`,
         };
@@ -92,7 +89,6 @@ export const generateUserInterface = markAsSlow(
         return {
           success: true,
           artifactUrl,
-          sessionUrl: session.session_url,
           sentToPhone: true,
           message: `The page is published at ${artifactUrl}, and a notification that opens it was pushed to the phone.`,
         };
@@ -102,7 +98,6 @@ export const generateUserInterface = markAsSlow(
         return {
           success: true,
           artifactUrl,
-          sessionUrl: session.session_url,
           sentToPhone: false,
           message: `The page is published at ${artifactUrl}, but pushing it to the phone failed: ${
             error instanceof Error ? error.message : String(error)

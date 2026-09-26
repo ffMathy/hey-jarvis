@@ -7,7 +7,7 @@ import { generativeUiTools } from './tools.js';
  * Generative UI Agent
  *
  * Answers the requests that are better seen than heard — "visualize…", "generate a UI for…" —
- * with a page. It builds nothing itself: `generateUserInterface` has a Claude cloud session build
+ * with a page. It builds nothing itself: `generateUserInterface` has a Claude Code session build
  * and publish the page, and pushes the link to the user's phone, where a tap opens it.
  */
 export async function getGenerativeUiAgent(): Promise<Agent> {
@@ -41,7 +41,7 @@ Build interactive web pages (artifacts) on request — charts, dashboards, diagr
 - The user asks for a page that was built earlier to be sent to their phone again
 
 # Good to know
-- The page is built by a Claude cloud session and takes a few minutes
+- The page is built by a Claude Code session and takes a few minutes
 - The builder cannot reach Jarvis's own data. When the page should show the calendar, the house, the shopping list or anything else another agent owns, have that agent fetch it first and pass it along in the prompt`,
     tools: { ...generativeUiTools, openArtifactOnPhone },
     // The agent's one decision is the brief it hands generateUserInterface, and the moment it

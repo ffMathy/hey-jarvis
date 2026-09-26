@@ -1,7 +1,7 @@
 /**
  * `generateUserInterface` tests.
  *
- * The two shortcuts it chains reach a Claude cloud session and a phone, so both are replaced for
+ * The two shortcuts it chains reach a Claude Code session and a phone, so both are replaced for
  * each test with `spyOn` — scoped to the test, unlike `mock.module`, which would replace the
  * coding and notification verticals for every test file sharing the process. What is left is the
  * tool's own decisions: when there is a link, whether to push it, and what a failed push costs.
@@ -14,7 +14,6 @@ import { createArtifact, openArtifactOnPhone } from './shortcuts.js';
 import { generateUserInterface } from './tools.js';
 
 const ARTIFACT_URL = 'https://claude.ai/artifact/abc123';
-const SESSION_URL = 'https://platform.claude.com/sessions/sesn_1';
 
 function spyOnShortcuts() {
   return {
@@ -30,10 +29,9 @@ function sessionReports(finalMessage: string, success = true) {
   createArtifactSpy.mockResolvedValue({
     success,
     session_id: 'sesn_1',
-    session_url: SESSION_URL,
     stop_reason: 'end_turn',
     final_message: finalMessage,
-    message: 'Claude cloud session sesn_1 stopped with "end_turn".',
+    message: 'Claude Code session sesn_1 stopped with "end_turn".',
   });
 }
 
@@ -63,7 +61,6 @@ describe('generateUserInterface', () => {
     expect(result).toMatchObject({
       success: true,
       artifactUrl: ARTIFACT_URL,
-      sessionUrl: SESSION_URL,
       sentToPhone: true,
     });
     expect(createArtifactSpy.mock.calls[0][0]).toEqual({ task: 'Visualize the electricity prices for today' });
@@ -102,7 +99,7 @@ describe('generateUserInterface', () => {
 
     const result = await executeTool(generateUserInterface, { request: 'Draw a diagram' });
 
-    expect(result).toMatchObject({ success: false, sentToPhone: false, sessionUrl: SESSION_URL });
+    expect(result).toMatchObject({ success: false, sentToPhone: false });
     expect(result.artifactUrl).toBeUndefined();
     expect(result.message).toContain('I could not publish the page.');
     expect(openArtifactOnPhoneSpy).not.toHaveBeenCalled();
@@ -111,7 +108,7 @@ describe('generateUserInterface', () => {
   it('passes on why the session failed', async () => {
     createArtifactSpy.mockResolvedValue({
       success: false,
-      message: 'Could not run the task in a Claude cloud session: not configured',
+      message: 'Could not run the task in a Claude Code session: not configured',
     });
 
     const result = await executeTool(generateUserInterface, { request: 'Draw a diagram' });

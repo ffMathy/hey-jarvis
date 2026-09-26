@@ -56,7 +56,7 @@ describe('slow tasks', () => {
     expect(isSlowTask(shortcut.id)).toBe(false);
   });
 
-  it('counts building an artifact as slow, since it runs a Claude cloud session', () => {
+  it('counts building an artifact as slow, since it runs a Claude Code session', () => {
     expect(isSlowTask(createArtifact.id)).toBe(true);
   });
 });

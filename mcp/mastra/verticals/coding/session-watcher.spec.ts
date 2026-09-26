@@ -1,30 +1,14 @@
 import { describe, expect, it } from 'bun:test';
 import type { StateChange } from '../synapse/state-change.js';
 import type { ClaudeSessionEvent } from './claude-sessions.js';
-import {
-  ClaudeSessionWatcher,
-  isReportableEvent,
-  type ReportedSessionEvent,
-  toStateChange,
-} from './session-watcher.js';
+import { ClaudeSessionWatcher, toStateChange } from './session-watcher.js';
 
-const PROCESSED_AT = '2026-08-18T10:00:00Z';
-
-function messageEvent(id: string, text: string): ReportedSessionEvent {
-  return {
-    id,
-    type: 'agent.message',
-    processed_at: PROCESSED_AT,
-    content: [{ type: 'text', text }],
-  };
+function messageEvent(id: string, text: string): ClaudeSessionEvent {
+  return { id, type: 'agent.message', text };
 }
 
-function runningEvent(id: string): ReportedSessionEvent {
-  return { id, type: 'session.status_running', processed_at: PROCESSED_AT };
-}
-
-function thinkingEvent(id: string): ClaudeSessionEvent {
-  return { id, type: 'agent.thinking', processed_at: PROCESSED_AT };
+function runningEvent(id: string): ClaudeSessionEvent {
+  return { id, type: 'session.status_running' };
 }
 
 /** Waits for the watcher's detached event loop to drain. */
@@ -57,28 +41,17 @@ describe('toStateChange', () => {
   });
 
   it('reports why a session went idle', () => {
-    const stateChange = toStateChange(
-      { id: 'sevt_2', type: 'session.status_idle', processed_at: PROCESSED_AT, stop_reason: { type: 'end_turn' } },
-      'sess_1',
-    );
+    const stateChange = toStateChange({ id: 'sevt_2', type: 'session.status_idle', stopReason: 'end_turn' }, 'sess_1');
 
     expect(stateChange.stateType).toBe('coding_session_session_status_idle');
     expect(stateChange.stateData.stopReason).toBe('end_turn');
   });
 
   it('reports session errors', () => {
-    const stateChange = toStateChange(
-      {
-        id: 'sevt_3',
-        type: 'session.error',
-        processed_at: PROCESSED_AT,
-        error: { type: 'unknown_error', message: 'sandbox died', retry_status: { type: 'terminal' } },
-      },
-      'sess_1',
-    );
+    const stateChange = toStateChange({ id: 'sevt_3', type: 'session.error', message: 'Connection refused' }, 'sess_1');
 
-    expect(stateChange.stateData.error).toBe('sandbox died');
-    expect(stateChange.stateData.errorType).toBe('unknown_error');
+    expect(stateChange.stateType).toBe('coding_session_session_error');
+    expect(stateChange.stateData.error).toBe('Connection refused');
   });
 
   it('truncates long messages so one event cannot swamp the batch', () => {
@@ -92,32 +65,6 @@ describe('toStateChange', () => {
     const stateChange = toStateChange(runningEvent('sevt_5'), 'sess_1');
 
     expect(stateChange.stateData.message).toBeUndefined();
-  });
-});
-
-describe('isReportableEvent', () => {
-  it('reports messages, status transitions and errors', () => {
-    expect(isReportableEvent(messageEvent('a', 'hello'))).toBe(true);
-    expect(isReportableEvent(runningEvent('b'))).toBe(true);
-    expect(
-      isReportableEvent({
-        id: 'c',
-        type: 'session.error',
-        processed_at: PROCESSED_AT,
-        error: { type: 'unknown_error', message: 'boom', retry_status: { type: 'terminal' } },
-      }),
-    ).toBe(true);
-  });
-
-  it('skips the high-volume internals of a session', () => {
-    expect(isReportableEvent(thinkingEvent('d'))).toBe(false);
-    expect(
-      isReportableEvent({
-        id: 'e',
-        type: 'span.model_request_start',
-        processed_at: PROCESSED_AT,
-      }),
-    ).toBe(false);
   });
 });
 
@@ -151,10 +98,8 @@ describe('ClaudeSessionWatcher', () => {
     return { watcher, published, streamedSessionIds };
   }
 
-  it('forwards each reportable event into synapse', async () => {
-    const { watcher, published } = watcherOver([
-      [runningEvent('sevt_1'), thinkingEvent('sevt_2'), messageEvent('sevt_3', 'Pushed a branch')],
-    ]);
+  it('forwards each event into synapse', async () => {
+    const { watcher, published } = watcherOver([[runningEvent('sevt_1'), messageEvent('sevt_2', 'Pushed a branch')]]);
 
     watcher.watch('sess_1', { repository: 'ffMathy/hey-jarvis' });
     await settle();

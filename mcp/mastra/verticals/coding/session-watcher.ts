@@ -1,11 +1,12 @@
 /**
- * Claude cloud session watcher.
+ * Claude Code session watcher.
  *
- * A coding session runs unattended in the cloud, so nothing in the house hears
- * about it unless something is listening. This watcher tails a session's event
- * stream and forwards every noteworthy event into the Synapse vertical as a
- * state change, which is where subscriptions, batching and notification
- * decisions already live.
+ * A coding session runs unattended in the host's sandbox, so nothing in the
+ * house hears about it unless something is listening. This watcher follows a
+ * session's events and forwards each one into the Synapse vertical as a state
+ * change, which is where subscriptions, batching and notification decisions
+ * already live. The session already keeps only the events worth hearing about
+ * (see `claude-sessions.ts`), so every one of them is forwarded.
  */
 
 import { truncate } from 'lodash-es';
@@ -17,26 +18,6 @@ import { type ClaudeSessionEvent, streamClaudeSessionEvents } from './claude-ses
 
 /** Vertical name every coding state change is attributed to. */
 export const CODING_STATE_CHANGE_SOURCE = 'coding';
-
-/**
- * Event types worth waking Synapse for.
- *
- * A session emits far more than this — thinking blocks, every tool call, model
- * request spans — and each state change costs tokens once Synapse reasons over
- * the batch. These four are the ones that change what a human would want to
- * know: the agent said something, it started, it stopped, or it broke.
- */
-export const REPORTED_EVENT_TYPES = [
-  'agent.message',
-  'session.status_running',
-  'session.status_idle',
-  'session.error',
-] as const;
-
-/** The events {@link REPORTED_EVENT_TYPES} selects, narrowed from the union. */
-export type ReportedSessionEvent = Extract<ClaudeSessionEvent, { type: (typeof REPORTED_EVENT_TYPES)[number] }>;
-
-const reportedEventTypes = new Set<string>(REPORTED_EVENT_TYPES);
 
 /** Longest message excerpt carried into a state change. */
 const MAXIMUM_MESSAGE_LENGTH = 500;
@@ -57,31 +38,19 @@ export interface ClaudeSessionContext {
   title?: string;
 }
 
-/** Whether an event should reach Synapse at all. */
-export function isReportableEvent(event: ClaudeSessionEvent): event is ReportedSessionEvent {
-  return reportedEventTypes.has(event.type);
-}
-
 /**
  * Pulls the one field that carries an event's meaning.
  *
  * A status transition is meaningful on its own and contributes nothing here.
  */
-function describeEvent(event: ReportedSessionEvent): Record<string, unknown> {
+function describeEvent(event: ClaudeSessionEvent): Record<string, unknown> {
   switch (event.type) {
-    case 'agent.message': {
-      const message = event.content
-        .filter((block) => block.type === 'text')
-        .map((block) => block.text)
-        .join('\n')
-        .trim();
-
-      return message ? { message: truncate(message, { length: MAXIMUM_MESSAGE_LENGTH }) } : {};
-    }
+    case 'agent.message':
+      return { message: truncate(event.text, { length: MAXIMUM_MESSAGE_LENGTH }) };
     case 'session.status_idle':
-      return { stopReason: event.stop_reason.type };
+      return { stopReason: event.stopReason };
     case 'session.error':
-      return { error: event.error.message, errorType: event.error.type };
+      return { error: event.message };
     default:
       return {};
   }
@@ -100,7 +69,7 @@ function describeEvent(event: ReportedSessionEvent): Record<string, unknown> {
  * @param context - What the session was started for, if known
  */
 export function toStateChange(
-  event: ReportedSessionEvent,
+  event: ClaudeSessionEvent,
   sessionId: string,
   context: ClaudeSessionContext = {},
 ): StateChange {
@@ -135,7 +104,7 @@ interface WatchedSession {
 }
 
 /**
- * Follows Claude cloud sessions and republishes their events as Synapse state
+ * Follows Claude Code sessions and republishes their events as Synapse state
  * changes.
  *
  * One watcher handles many sessions. Watching is idempotent: asking to watch a
@@ -210,8 +179,8 @@ export class ClaudeSessionWatcher {
           await this.handleEvent(sessionId, context, event);
         }
 
-        // A stream that ends on its own means the session has nothing more to
-        // say, so the watch is done.
+        // A session's own stream runs until the watch is cancelled; one that
+        // ends on its own has nothing more to say, so the watch is done.
         break;
       } catch (error) {
         if (signal.aborted) {
@@ -234,7 +203,7 @@ export class ClaudeSessionWatcher {
     context: ClaudeSessionContext,
     event: ClaudeSessionEvent,
   ): Promise<void> {
-    if (this.seenEventIds.has(event.id) || !isReportableEvent(event)) {
+    if (this.seenEventIds.has(event.id)) {
       return;
     }
 

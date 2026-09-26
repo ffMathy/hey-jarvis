@@ -7,7 +7,6 @@ import { createTool } from '../../utils/tool-factory.js';
 import {
   createClaudeSession,
   getClaudeSession,
-  getClaudeSessionUrl,
   listLatestClaudeSessionMessages,
   sendClaudeSessionMessage,
   waitForClaudeSessionTurn,
@@ -238,16 +237,17 @@ export const searchRepositories = createTool({
 });
 
 /**
- * Tool to hand a change to a Claude cloud session for implementation
+ * Tool to hand a change to a Claude Code session for implementation
  *
- * The session runs unattended in a sandboxed cloud environment. Its events are
+ * The session runs unattended in the host's Docker Sandbox, billed to the
+ * user's Claude subscription. Its events are
  * watched from the moment it starts and forwarded into the Synapse vertical as
  * state changes, so progress, questions and failures surface through the same
  * notification path as everything else in the house.
  */
 export const startCodingSession = createTool({
   id: 'startCodingSession',
-  description: `Starts a Claude cloud session that implements a change autonomously. The session clones the repository, does the work and opens a pull request. Its events are reported back into the Synapse vertical as state changes. Defaults to Jarvis's own repository, "${DEFAULT_OWNER}/${DEFAULT_REPOSITORY}", if none is given.`,
+  description: `Starts a Claude Code session that implements a change autonomously. The session clones the repository, does the work and opens a pull request. Its events are reported back into the Synapse vertical as state changes. Defaults to Jarvis's own repository, "${DEFAULT_OWNER}/${DEFAULT_REPOSITORY}", if none is given.`,
   inputSchema: z.object({
     owner: z.string().optional().describe(`The repository owner (defaults to "${DEFAULT_OWNER}" if not provided)`),
     repo: z
@@ -266,7 +266,6 @@ export const startCodingSession = createTool({
   outputSchema: z.object({
     success: z.boolean(),
     session_id: z.string().optional(),
-    session_url: z.string().optional(),
     status: z.string().optional(),
     message: z.string(),
   }),
@@ -279,7 +278,9 @@ export const startCodingSession = createTool({
       inputData.title ? `Title: ${inputData.title}` : undefined,
       `\nRequest:\n${inputData.request}`,
       inputData.instructions ? `\n${inputData.instructions}` : undefined,
-      '\nWork on a dedicated branch, follow the repository conventions in AGENTS.md and CLAUDE.md, run the tests, and open a pull request when you are done.',
+      // The session starts in an empty directory of its own in the sandbox, so it fetches the code
+      // itself. The sandbox's proxy signs `gh` in; `gh auth setup-git` lets `git push` use the same.
+      `\nStart by cloning the repository into the current directory with \`gh repo clone ${repository}\`, and run \`gh auth setup-git\` so you can push. Work on a dedicated branch, follow the repository conventions in AGENTS.md and CLAUDE.md, run the tests, and open a pull request when you are done.`,
     ]
       .filter((line): line is string => typeof line === 'string')
       .join('\n');
@@ -287,23 +288,22 @@ export const startCodingSession = createTool({
     // A session that fails to start is reported rather than thrown, so the
     // caller can say what went wrong instead of going quiet.
     try {
-      const session = await createClaudeSession(task, { repository });
+      const session = await createClaudeSession(task);
 
       claudeSessionWatcher.watch(session.id, { repository, title: inputData.title });
 
       return {
         success: true,
         session_id: session.id,
-        session_url: getClaudeSessionUrl(session.id),
         status: session.status,
-        message: `Started Claude cloud session ${session.id} in ${repository}`,
+        message: `Started Claude Code session ${session.id} in ${repository}`,
       };
     } catch (error) {
       logger.error('[CLAUDE SESSION] Failed to start session', { repository, error });
 
       return {
         success: false,
-        message: `Could not start a Claude cloud session in ${repository}: ${
+        message: `Could not start a Claude Code session in ${repository}: ${
           error instanceof Error ? error.message : String(error)
         }`,
       };
@@ -311,11 +311,11 @@ export const startCodingSession = createTool({
   },
 });
 
-/** How long {@link runCodingTask} waits for a session before handing back its link instead. */
+/** How long {@link runCodingTask} waits for a session before handing back its id instead. */
 export const CODING_TASK_TIMEOUT_MILLISECONDS = 15 * 60 * 1000;
 
 /**
- * Tool to have a Claude cloud session carry out a task and report back
+ * Tool to have a Claude Code session carry out a task and report back
  *
  * Unlike {@link startCodingSession}, which hands off a change and returns at
  * once because its result is a pull request, this is for work whose result is
@@ -327,14 +327,13 @@ export const runCodingTask = markAsSlow(
   createTool({
     id: 'runCodingTask',
     description:
-      'Hands a self-contained task to a Claude cloud session, waits for the session to finish, and returns the last message it sent. For work that produces an answer or a link rather than a pull request.',
+      'Hands a self-contained task to a Claude Code session, waits for the session to finish, and returns the last message it sent. For work that produces an answer or a link rather than a pull request.',
     inputSchema: z.object({
       task: z.string().describe('The complete instructions for the session; it sees nothing else'),
     }),
     outputSchema: z.object({
       success: z.boolean(),
       session_id: z.string().optional(),
-      session_url: z.string().optional(),
       stop_reason: z.string().optional().describe('Why the session stopped, e.g. "end_turn"'),
       final_message: z.string().optional().describe('The last message the session sent'),
       message: z.string(),
@@ -344,32 +343,29 @@ export const runCodingTask = markAsSlow(
       // the caller can say what went wrong instead of going quiet.
       try {
         const session = await createClaudeSession(inputData.task);
-        const sessionUrl = getClaudeSessionUrl(session.id);
         const finishedTurn = await waitForClaudeSessionTurn(session.id, CODING_TASK_TIMEOUT_MILLISECONDS);
 
         if (!finishedTurn) {
           return {
             success: false,
             session_id: session.id,
-            session_url: sessionUrl,
-            message: `Claude cloud session ${session.id} was still working after ${CODING_TASK_TIMEOUT_MILLISECONDS / 60_000} minutes. It can be followed at ${sessionUrl}.`,
+            message: `Claude Code session ${session.id} was still working after ${CODING_TASK_TIMEOUT_MILLISECONDS / 60_000} minutes. It can be followed with getCodingSessionStatus.`,
           };
         }
 
         return {
           success: finishedTurn.stopReason === 'end_turn',
           session_id: session.id,
-          session_url: sessionUrl,
           stop_reason: finishedTurn.stopReason,
           final_message: finishedTurn.finalMessage,
-          message: `Claude cloud session ${session.id} stopped with "${finishedTurn.stopReason}".`,
+          message: `Claude Code session ${session.id} stopped with "${finishedTurn.stopReason}".`,
         };
       } catch (error) {
         logger.error('[CLAUDE SESSION] Failed to run coding task', { error });
 
         return {
           success: false,
-          message: `Could not run the task in a Claude cloud session: ${error instanceof Error ? error.message : String(error)}`,
+          message: `Could not run the task in a Claude Code session: ${error instanceof Error ? error.message : String(error)}`,
         };
       }
     },
@@ -386,44 +382,39 @@ export const runCodingTask = markAsSlow(
 export const LATEST_SESSION_MESSAGE_COUNT = 5;
 
 /**
- * Tool to check what a Claude cloud session is currently doing
+ * Tool to check what a Claude Code session is currently doing
  */
 export const getCodingSessionStatus = createTool({
   id: 'getCodingSessionStatus',
-  description: `Gets the current status of a Claude cloud session started for a coding task, along with the last ${LATEST_SESSION_MESSAGE_COUNT} messages it sent.`,
+  description: `Gets the current status of a Claude Code session started for a coding task, along with the last ${LATEST_SESSION_MESSAGE_COUNT} messages it sent.`,
   inputSchema: z.object({
-    session_id: z.string().describe('The Claude cloud session ID'),
+    session_id: z.string().describe('The Claude Code session ID'),
   }),
   outputSchema: z.object({
     session_id: z.string(),
-    session_url: z.string(),
-    status: z.string(),
+    status: z.enum(['running', 'idle']),
     messages: z.array(z.string()).describe('The latest messages the session sent, oldest of them first'),
   }),
   execute: async (inputData) => {
-    const [session, messages] = await Promise.all([
-      getClaudeSession(inputData.session_id),
-      listLatestClaudeSessionMessages(inputData.session_id, LATEST_SESSION_MESSAGE_COUNT),
-    ]);
+    const session = getClaudeSession(inputData.session_id);
 
     return {
       session_id: session.id,
-      session_url: getClaudeSessionUrl(session.id),
       status: session.status,
-      messages,
+      messages: listLatestClaudeSessionMessages(inputData.session_id, LATEST_SESSION_MESSAGE_COUNT),
     };
   },
 });
 
 /**
- * Tool to steer a running Claude cloud session
+ * Tool to steer a running Claude Code session
  */
 export const sendCodingSessionMessage = createTool({
   id: 'sendCodingSessionMessage',
   description:
-    'Sends a follow-up message to a running Claude cloud session, to answer a question it asked or to redirect the work it is doing.',
+    'Sends a follow-up message to a running Claude Code session, to answer a question it asked or to redirect the work it is doing.',
   inputSchema: z.object({
-    session_id: z.string().describe('The Claude cloud session ID'),
+    session_id: z.string().describe('The Claude Code session ID'),
     message: z.string().describe('The message to send to the session'),
   }),
   outputSchema: z.object({
@@ -435,7 +426,7 @@ export const sendCodingSessionMessage = createTool({
 
     return {
       success: true,
-      message: `Sent message to Claude cloud session ${inputData.session_id}`,
+      message: `Sent message to Claude Code session ${inputData.session_id}`,
     };
   },
 });

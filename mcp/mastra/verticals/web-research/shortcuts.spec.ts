@@ -1,7 +1,7 @@
 /**
  * `visualizeResearch` tests.
  *
- * The page builder it hands off to reaches a Claude cloud session and a phone, so it is replaced
+ * The page builder it hands off to reaches a Claude Code session and a phone, so it is replaced
  * for each test with `spyOn` -- scoped to the test, unlike `mock.module`. What is left is the
  * shortcut's own promises: that the research agent has it, that routing sees it as slow, and that
  * the request it was given reaches the builder whole.

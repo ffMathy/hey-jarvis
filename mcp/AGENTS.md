@@ -330,7 +330,7 @@ routing, so a surprising route can be traced back to the sensor that caused it.
 ### Generative UI Vertical (Shortcuts)
 Answers "visualize…" and "generate a UI for…" with an interactive web page (an artifact), and pushes
 its link to the user's phone so a tap opens it in the phone's browser. It builds nothing itself: the
-page is written by a Claude cloud session, which is the coding vertical's to start, and the push is
+page is written by a Claude Code session, which is the coding vertical's to start, and the push is
 the notification vertical's to send. What lives here is the asking — the brief a session builds from —
 and the reading of the link it reports back.
 
@@ -346,7 +346,7 @@ and the reading of the link it reports back.
 - **`generateUserInterface`**: the two shortcuts in order. Builds the page, reads its URL out of the
   session's last message (`findArtifactUrl`, which takes the *last* address so a session that cites
   its sources first is not taken at its first link), and pushes it to the phone unless `sendToPhone`
-  is `false`. Returns `artifactUrl`, `sessionUrl` and `sentToPhone`. A push that fails is reported
+  is `false`. Returns `artifactUrl` and `sentToPhone`. A push that fails is reported
   next to the link rather than thrown, since the page exists either way.
 
 **Agent:** `generativeUi` is routable, so the planner sends it visualization requests. The builder
@@ -360,8 +360,8 @@ second agent that would only get the research as text. It is slow like the tool 
 beside Gemini's built-in search, a mix only Gemini 3 accepts in one request, so the research agent
 must stay on a Gemini 3 model.
 
-**Requirements:** the Claude session variables under [Coding Agent](#coding-agent), and an agent in
-the Claude console that can publish artifacts; plus the companion-app notify service the
+**Requirements:** the Claude Code sandbox under [Coding Agent](#coding-agent), on a subscription
+that can publish artifacts; plus the companion-app notify service the
 [Notification Agent](#notification-agent) uses for the push.
 
 **Example Use Cases:**
@@ -446,7 +446,7 @@ if (number) {
 
 ### Coding Agent
 Manages GitHub repositories and coordinates feature implementation:
-- **7 tools**: List repositories, list issues, search repositories, create/update GitHub issues, follow and steer Claude cloud sessions
+- **7 tools**: List repositories, list issues, search repositories, create/update GitHub issues, follow and steer Claude Code sessions
 - **Google Gemini model**: Uses `gemini-flash-latest` for natural language processing
 - **Repository management**: Browse and search repositories for any GitHub user
 - **Issue tracking**: View open, closed, or all issues for repositories
@@ -463,9 +463,9 @@ Manages GitHub repositories and coordinates feature implementation:
 
 **Architecture Pattern:**
 This agent follows the **workflow delegation pattern**. When a user requests a new feature implementation, instead of gathering requirements itself, it delegates to the `implementFeatureWorkflow`, which:
-1. Has a Claude cloud session read the codebase with the request in hand, and write down what it found and the questions only the user can answer
+1. Has a Claude Code session read the codebase with the request in hand, and write down what it found and the questions only the user can answer
 2. Asks the user those questions, suspending on each one until it is answered
-3. Starts a Claude cloud session that implements the change autonomously, handed the request, the findings and every answer — no issue is filed
+3. Starts a Claude Code session that implements the change autonomously, handed the request, the findings and every answer — no issue is filed
 
 The workflow is [marked slow](#slow-tasks), so routing offers to notify the user instead of
 holding the line while the analysis runs.
@@ -473,19 +473,37 @@ holding the line while the analysis runs.
 By voice, each of those questions is asked by Jarvis and answered through routing — see
 **Questions for the user** under [Routing](#routing).
 
-**Claude Cloud Sessions:**
-Implementation work is delegated to the [Claude Managed Agents session API](https://platform.claude.com/docs/en/managed-agents/sessions)
-rather than to GitHub Copilot, through the official `@anthropic-ai/sdk` client. A session is an agent instance running
-in a sandboxed cloud environment; it is created with the issue as its task, works unattended, and opens a pull request
-when it is done.
+**Claude Code Sessions:**
+Implementation work is delegated to the official [Claude Code CLI](https://code.claude.com/docs/en/headless), signed
+in to the user's Claude **subscription** with a token from `claude setup-token` — so it is billed there, not to an API
+key. It runs inside a [Docker Sandbox](https://docs.docker.com/ai/sandboxes/) named `jarvis` on the host: a microVM
+with its own filesystem, Docker daemon and egress proxy, which is what bounds a session that skips permission prompts.
+A sandbox needs KVM and the `sbx` daemon on the host, so the server reaches the host over SSH and runs
+`sbx exec -i jarvis …` there (`claude-code-host.ts`). The SSH key gets no shell: its forced command,
+`mcp/.scripts/claude-code-ssh-command.sh`, accepts only `start <session id>` or `resume <session id>` and fixes the
+sandbox, the directory and the `claude` command line itself, so a compromised container can start sessions in the
+sandbox and do nothing else on the host. `claude-code-ssh-command.spec.ts` runs it under `sh` with a fake `sbx`, and
+most of what it checks is what the script refuses. The subscription token travels on the first line of stdin, never
+on a command line. Each run of a session is one `claude --print` process in `~/jarvis-sessions/<session id>` inside
+the sandbox, talking stream-json both ways. The session clones the repository with `gh`, which the sandbox's proxy
+signs in with the host's `sbx` GitHub secret, works unattended and opens a pull request when it is done.
+
+`ClaudeCodeSessions` (`claude-sessions.ts`) keeps each session's events in memory, reduced to the four that matter
+— `session.status_running`, `agent.message`, `session.status_idle` (with `end_turn` or why else it stopped) and
+`session.error`. A message sent while a session works is written to the same process; one sent after it went idle
+resumes the session in a new process (`claude --resume`). Being in memory, sessions do not survive a restart of the
+server, though their transcripts stay in the sandbox.
+
+Claude Code never runs in the server's own container, which carries the 1Password service account token for the
+whole vault.
 
 - **`startCodingSession`**: Creates the session, seeded with the request, the analysis's findings and the user's
   answers, and starts watching it. Used by `implementFeatureWorkflow`.
-- **`getCodingSessionStatus`**: Reports a session's status (`idle`, `running`, `rescheduling`, `terminated`) and the
-  last five messages it has produced, read newest first in one request rather than by paging its whole history.
+- **`getCodingSessionStatus`**: Reports a session's status (`running` or `idle`) and the last five messages it has
+  produced.
 - **`sendCodingSessionMessage`**: Sends a follow-up message to a session, to answer a question or redirect its work.
 - **`runCodingTask`**: For work whose result is an answer rather than a pull request. Starts a session on a free-form
-  task, polls it until its turn ends (`waitForClaudeSessionTurn`, up to 15 minutes) and returns the last message it
+  task, waits until its turn ends (`waitForClaudeSessionTurn`, up to 15 minutes) and returns the last message it
   sent. The session is not handed to the watcher, because the caller reports the result itself. Like
   `startCodingSession` it is not one of the coding agent's own tools; `implementFeatureWorkflow` runs it to analyse
   the codebase, and other verticals reach it through shortcuts, such as the
@@ -493,33 +511,27 @@ when it is done.
   onto it inherits the mark.
 
 **Feeding Back Into Synapse:**
-`ClaudeSessionWatcher` tails each session's server-sent event stream and republishes notable events as Synapse state
-changes with the source `coding` and a state type derived from the event type (for example
-`coding_session_agent_message`). Only `agent.message`, `session.status_running`, `session.status_idle` and
-`session.error` are forwarded — a session emits far more (thinking blocks, every tool call, model request spans), and
-each state change costs tokens once Synapse reasons over the batch. Events are deduplicated by id, so a reconnecting
-stream that replays history never re-notifies, and a failed hand-off is logged without tearing down the watch.
+`ClaudeSessionWatcher` follows each session's events and republishes them as Synapse state changes with the source
+`coding` and a state type derived from the event type (for example `coding_session_agent_message`). The session has
+already dropped what is not worth hearing — Claude Code prints every tool call and its result, and each state change
+costs tokens once Synapse reasons over the batch. Events are deduplicated by id, and a failed hand-off is logged
+without tearing down the watch.
 
 **Environment Requirements:**
-
-The Claude session credentials come from the **Anthropic** item in the `Jarvis` vault, and `mcp/op.env`
-maps every variable below:
 
 | Environment variable | 1Password reference | What it is |
 | --- | --- | --- |
 | `HEY_JARVIS_GITHUB_API_TOKEN` | already mapped in `mcp/op.env` | GitHub token with `repo` scope — the tools read repositories and issues, and create and update issues |
-| `HEY_JARVIS_ANTHROPIC_API_KEY` | `op://Jarvis/Anthropic/API key` | Claude API key with access to the Managed Agents beta |
-| `HEY_JARVIS_CLAUDE_AGENT_ID` | `op://Jarvis/Anthropic/Agent ID` | ID of the agent sessions are created from |
-| `HEY_JARVIS_CLAUDE_ENVIRONMENT_ID` | `op://Jarvis/Anthropic/Environment ID` | ID of the environment sessions run in |
+| `HEY_JARVIS_CLAUDE_CODE_SSH_TARGET` | `op://Jarvis/Claude Code/SSH target` | The host with the `jarvis` sandbox: `user@host`, or `ssh://user@host:port` |
+| `HEY_JARVIS_CLAUDE_CODE_SSH_PRIVATE_KEY` | `op://Jarvis/Claude Code/private key?ssh-format=openssh` | The key the host authorizes for that user |
+| `HEY_JARVIS_CLAUDE_CODE_OAUTH_TOKEN` | `op://Jarvis/Claude Code/OAuth token` | The subscription token `claude setup-token` prints |
 
-Create the agent and the environment in the Claude console first — the IDs are what these variables
-carry. The environment is also where the session's own GitHub access is configured, since the session
-clones the repository and opens the pull request itself; that is console configuration, not a variable
-here.
+The host itself — 64-bit Linux with KVM and glibc 2.39 or newer, a user of its own signed in to Docker and pinned to
+the forced command, the `jarvis` sandbox and its GitHub secret — is set up as described in **Letting Jarvis code on your Claude subscription** in `mcp/README.md`.
 
-The vertical imports without any of them — `isClaudeSessionConfigured()` keeps the failure lazy, so
-repository and issue browsing works on the GitHub token alone and only the tools that start or follow
-a session (`startCodingSession`, `runCodingTask` and the session tools) need the three above.
+The vertical imports without any of them — `isClaudeCodeHostConfigured()` keeps the failure lazy, so repository
+and issue browsing works on the GitHub token alone and only the tools that start or follow a session
+(`startCodingSession`, `runCodingTask` and the session tools) need the host.
 
 **Example Use Cases:**
 - "What repositories does ffMathy have?"
@@ -765,7 +777,7 @@ the questions, the slow-task offer, the notification and the session — on scri
 
 <a id="slow-tasks"></a>
 **Slow tasks:**
-Some work takes minutes: a Claude cloud session reading a codebase, or building a page. A tool or
+Some work takes minutes: a Claude Code session reading a codebase, or building a page. A tool or
 workflow is flagged slow in code with `markAsSlow` (`mastra/utils/slow-tasks.ts`), and a shortcut
 onto a slow tool is slow too. The flag belongs to the tool rather than the agent — the coding
 agent lists issues in a second and starts an implementation that takes ten minutes.
@@ -1122,11 +1134,11 @@ Multi-step shopping list processing workflow implementing the original n8n 3-age
 **Converted from n8n**: This workflow replicates the exact 3-agent pattern from the original n8n Shopping List Agent workflow, including Information Extractor → Shopping List Mutator → Summarization Agent flow with before/after cart comparison.
 
 ### Implement Feature Workflow
-Takes a change from a spoken request to a Claude cloud session implementing it:
+Takes a change from a spoken request to a Claude Code session implementing it:
 - **`implementFeatureWorkflow`**: Analyses the codebase, asks what it could not answer, then implements
-- **Step 1 - Analyse the Codebase**: A Claude cloud session (`runCodingTask`) reads the repository with the request in hand and ends on a JSON object: a title, its findings, and at most five spoken questions only the user can answer
+- **Step 1 - Analyse the Codebase**: A Claude Code session (`runCodingTask`) reads the repository with the request in hand and ends on a JSON object: a title, its findings, and at most five spoken questions only the user can answer
 - **Step 2 - Ask the Questions**: One suspension per question, verbatim; none at all when the codebase settles everything
-- **Step 3 - Start Coding Session**: Starts a Claude cloud session on the change, and watches its events. No issue is filed
+- **Step 3 - Start Coding Session**: Starts a Claude Code session on the change, and watches its events. No issue is filed
 
 **Architecture Pattern:**
 This workflow follows the **agent-as-step** pattern recommended by Mastra for sequential multi-step processes where the exact steps are known in advance (not dynamic routing).
@@ -1138,7 +1150,7 @@ This workflow follows the **agent-as-step** pattern recommended by Mastra for se
    interview slow and generic, since a model that had never seen the code asked the user where things should go
 2. **Questions**: A single step, not a loop: it suspends on the first unanswered question, is resumed with the answer,
    and returns once every question is answered
-3. **Coding Session**: Starts a Claude cloud session with the `startCodingSession` tool, handed the request, the
+3. **Coding Session**: Starts a Claude Code session with the `startCodingSession` tool, handed the request, the
    analysis's findings and every question with the user's answer in their own words. The session runs unattended in a
    sandboxed cloud environment, and every notable event it emits (agent messages, status transitions, errors) is
    republished as a Synapse state change from the `coding` source, so progress flows into the existing notification
@@ -1559,7 +1571,7 @@ All environment variables use the `HEY_JARVIS_` prefix for easy management and D
 - **ElevenLabs**: `HEY_JARVIS_ELEVENLABS_API_KEY`, `HEY_JARVIS_ELEVENLABS_AGENT_ID`, `HEY_JARVIS_ELEVENLABS_VOICE_ID` for voice AI (test agent ID `HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID` takes precedence for phone calls)
 - **Recipes**: `HEY_JARVIS_VALDEMARSRO_API_KEY` for Danish recipe data
 - **GitHub**: `HEY_JARVIS_GITHUB_API_TOKEN` for GitHub API access (coding agent and error reporting processor)
-- **Claude cloud sessions**: `HEY_JARVIS_ANTHROPIC_API_KEY`, `HEY_JARVIS_CLAUDE_AGENT_ID`, `HEY_JARVIS_CLAUDE_ENVIRONMENT_ID` for the coding vertical's implementation sessions
+- **Claude Code sessions**: `HEY_JARVIS_CLAUDE_CODE_SSH_TARGET`, `HEY_JARVIS_CLAUDE_CODE_SSH_PRIVATE_KEY` to reach the host whose Docker Sandbox the coding vertical runs Claude Code in, and `HEY_JARVIS_CLAUDE_CODE_OAUTH_TOKEN` to bill it to the Claude subscription
 - **WiFi**: `HEY_JARVIS_WIFI_SSID`, `HEY_JARVIS_WIFI_PASSWORD` for Home Assistant Voice Firmware
 - **Notifications**: `HEY_JARVIS_PRIMARY_USER_PHONE_NUMBER` so Jarvis can call or text the primary user; optionally `HEY_JARVIS_PRIMARY_USER_NAME`, `HEY_JARVIS_PRIMARY_USER_PHONE_DEVICE`, `HEY_JARVIS_PRIMARY_USER_NOTIFY_SERVICE` and `HEY_JARVIS_CAR_NAME` to pin down which person, phone and car the routing looks at
 

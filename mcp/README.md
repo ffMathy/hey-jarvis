@@ -196,6 +196,112 @@ talks to `http://supervisor/core`, which is how a Home Assistant **add-on** reac
 exists and works, but this repository ships no add-on manifest, so nothing installs it that way
 today. Running it as a plain container, as above, is the supported route.
 
+### Letting Jarvis code on your Claude subscription
+
+The coding vertical does not call a model API for its sessions. It runs the official Claude Code CLI,
+signed in with a token from `claude setup-token`, so the work is billed to your Claude subscription
+rather than to an API key. Each session runs inside a [Docker Sandbox](https://docs.docker.com/ai/sandboxes/)
+— a microVM with its own filesystem, Docker daemon and egress proxy — so a session that skips
+permission prompts cannot reach anything on the host. A sandbox needs KVM and the `sbx` daemon, which
+live on the host, so the container reaches the host over SSH and runs `sbx exec` there. The host can
+be the Pi itself — which is what the `host.docker.internal` entry in the compose file is for — or any
+other machine the container can reach.
+
+The SSH key gets no shell on the host. Its only command is
+[`.scripts/claude-code-ssh-command.sh`](./.scripts/claude-code-ssh-command.sh), which sshd runs
+whatever the connection asked for. It accepts `start <session id>` or `resume <session id>` and
+nothing else, and fixes everything that matters itself: the `jarvis` sandbox, the session's
+directory, and the `claude` command line. A compromised container can start Claude Code sessions in
+the sandbox, and that is all.
+
+Any 64-bit Linux on bare metal with KVM can run Docker Sandboxes — the Pi 4 and 5 included — but
+Docker only publishes packages for Ubuntu 24.04 and newer (and Rocky Linux). The Ubuntu 24.04
+package needs glibc 2.39, so it also installs on **Raspberry Pi OS based on Debian 13 (trixie)**,
+which has 2.41, but not on one based on Debian 12 (bookworm), which has 2.36; `ldd --version` says
+which you have. A sandbox takes up to half the host's memory by default, and a session clones the
+repository, installs its dependencies and runs its tests in it, so an 8 GB Pi — or a bigger
+machine — is the realistic floor.
+
+1. **Create a user for it, and install Docker Sandboxes.** No `sudo`, and not in the `docker` group
+   — only `kvm`. Lingering keeps the sandbox daemon running between SSH connections. Take the newest
+   `.deb` from [sbx-releases](https://github.com/docker/sbx-releases/releases) rather than this one.
+
+   ```bash
+   sudo adduser --disabled-password --gecos '' jarvis
+   sudo usermod -aG kvm jarvis
+   sudo loginctl enable-linger jarvis
+   wget https://github.com/docker/sbx-releases/releases/download/v0.37.1/DockerSandboxes-linux-arm64-ubuntu2404.deb
+   sudo apt install ./DockerSandboxes-linux-arm64-ubuntu2404.deb
+   ```
+
+2. **As that user, sign in to Docker, create the sandbox, and give it GitHub.** Every session runs in
+   the one sandbox named `jarvis`. The GitHub token needs to clone, push and open pull requests on
+   your repositories; the sandbox's proxy hands it to `gh` on the way out, so it never enters the
+   sandbox itself. Sessions working on this repository run its tests, so give the sandbox Bun too.
+
+   ```bash
+   sudo -iu jarvis
+   sbx login
+   mkdir -p ~/jarvis-workspace && sbx create --name jarvis claude ~/jarvis-workspace
+   sbx secret set -g github
+   sbx exec jarvis sh -c 'curl -fsSL https://bun.sh/install | bash'
+   ```
+
+3. **Put the rest in 1Password.** In the `Jarvis` vault, create an **SSH Key** item named
+   `Claude Code` (let 1Password generate an Ed25519 key) and add two fields to it:
+
+   | Field | Value |
+   | --- | --- |
+   | `SSH target` | `jarvis@host.docker.internal` — or `jarvis@<host>` for another machine, with `ssh://jarvis@<host>:<port>` for a port other than 22 |
+   | `OAuth token` | what `claude setup-token` prints, run on any machine where you are signed in to Claude Code with your subscription |
+
+4. **Install the forced command, and pin the user to it.** Root owns the script, so the `jarvis`
+   user cannot change what it runs. The key's `command=` option forces it for that key, and the
+   `sshd` drop-in forces it for every login as `jarvis` — so no other key, and no edit to
+   `authorized_keys`, gets a shell either.
+
+   ```bash
+   sudo curl -fsSL -o /usr/local/bin/jarvis-claude-code \
+     https://raw.githubusercontent.com/ffMathy/hey-jarvis/main/mcp/.scripts/claude-code-ssh-command.sh
+   sudo chmod 755 /usr/local/bin/jarvis-claude-code
+
+   sudo tee /etc/ssh/sshd_config.d/jarvis.conf <<'SSHD'
+   Match User jarvis
+       ForceCommand /usr/local/bin/jarvis-claude-code
+       PasswordAuthentication no
+       PermitTTY no
+       AllowTcpForwarding no
+       AllowStreamLocalForwarding no
+       AllowAgentForwarding no
+       X11Forwarding no
+   SSHD
+   sudo systemctl reload ssh
+
+   sudo -iu jarvis sh -c 'mkdir -p ~/.ssh && chmod 700 ~/.ssh && echo "restrict,command=\"/usr/local/bin/jarvis-claude-code\" ssh-ed25519 AAAA..." >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys'
+   ```
+
+   `ssh jarvis@<host> bash` should now answer `jarvis-claude-code: refusing "bash"` and nothing more.
+
+`mcp/op.env` maps all three fields, so the server resolves them like every other secret, and none
+of them is written to the Pi outside the container. The subscription token goes to the host on the
+first line of the SSH connection's input, never on a command line, and on into the sandbox as
+`CLAUDE_CODE_OAUTH_TOKEN`. The container pins the host's key the first time it connects, in
+`/data/claude-code-known-hosts`; delete that file if the host is reinstalled.
+
+Each session works in `~/jarvis-sessions/<session id>` inside the sandbox. The server keeps track of
+its sessions in memory, so after a restart it no longer knows the ones it started — but the
+transcripts stay in the sandbox, and
+`sbx exec -it jarvis sh -c 'cd ~/jarvis-sessions/<id> && claude --resume <id>'` picks any of them
+up by hand.
+
+If sessions start failing with `Not authenticated to Docker`, the host's Docker sign-in has expired:
+run `sudo -iu jarvis sbx login` from your own account — the `jarvis` user's own SSH logins can only
+run the forced command. The same goes for the `sbx exec -it jarvis …` above, prefixed the same way.
+
+If a sandbox will not start on a Pi 5, try the 4 KB-page kernel: the Pi 5's default kernel uses
+16 KB pages, and the sandbox's own kernel is built for 4 KB ones. Add `kernel=kernel8.img` to
+`/boot/firmware/config.txt` and reboot.
+
 ### Troubleshooting
 
 | Symptom | Cause |

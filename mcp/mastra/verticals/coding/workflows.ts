@@ -56,7 +56,7 @@ export function buildCodebaseAnalysisTask(request: string, repository: string, i
 
 "${request}"
 
-Clone the repository and study the parts of it this request touches: where the change belongs, what it builds on, the conventions it has to follow (AGENTS.md and CLAUDE.md included), and how it should behave. Do not change anything, create a branch or open a pull request — this session only reads.
+Clone the repository into the current directory (\`gh repo clone ${repository}\`) and study the parts of it this request touches: where the change belongs, what it builds on, the conventions it has to follow (AGENTS.md and CLAUDE.md included), and how it should behave. Do not change anything, create a branch or open a pull request — this session only reads.
 
 Then decide what is still unclear. Anything the code, its documentation or its conventions settle is not a question: decide it, and write it into your findings. What is left are the choices only the user can make — what he wants, not how the codebase works. Ask at most ${MAXIMUM_QUESTIONS}, and none at all if the request is clear enough to build.
 
@@ -101,7 +101,7 @@ export function readCodebaseAnalysis(finalMessage: string): CodebaseAnalysis {
 // Step 1: Write the task for the session that reads the codebase
 const prepareCodebaseAnalysis = createStep({
   id: 'prepare-codebase-analysis',
-  description: 'Writes the task for the Claude cloud session that analyses the codebase before anything is asked',
+  description: 'Writes the task for the Claude Code session that analyses the codebase before anything is asked',
   stateSchema: workflowStateSchema,
   inputSchema: requestInputSchema,
   outputSchema: z.object({ task: z.string() }),
@@ -126,10 +126,10 @@ const prepareCodebaseAnalysis = createStep({
   },
 });
 
-// Step 2: Have a Claude cloud session read the codebase and write the questions
+// Step 2: Have a Claude Code session read the codebase and write the questions
 const analyzeCodebaseTool = createToolStep({
   id: 'analyze-codebase-tool',
-  description: 'Runs a Claude cloud session that reads the codebase and works out what only the user can answer',
+  description: 'Runs a Claude Code session that reads the codebase and works out what only the user can answer',
   stateSchema: workflowStateSchema,
   tool: runCodingTask,
 });
@@ -220,7 +220,7 @@ function buildImplementationInstructions(
 // Step 5: Prepare the implementing session's task
 const prepareCodingSessionData = createStep({
   id: 'prepare-coding-session-data',
-  description: 'Prepares the Claude cloud session that implements the change',
+  description: 'Prepares the Claude Code session that implements the change',
   stateSchema: workflowStateSchema,
   inputSchema: z.object({}),
   outputSchema: z.object({
@@ -247,10 +247,10 @@ const prepareCodingSessionData = createStep({
   },
 });
 
-// Step 6: Start the Claude cloud session that implements the change
+// Step 6: Start the Claude Code session that implements the change
 const startCodingSessionTool = createToolStep({
   id: 'start-coding-session-tool',
-  description: 'Starts a Claude cloud session that implements the change',
+  description: 'Starts a Claude Code session that implements the change',
   stateSchema: workflowStateSchema,
   tool: startCodingSession,
 });
@@ -260,7 +260,6 @@ const codingSessionResultSchema = z.object({
   success: z.boolean(),
   message: z.string(),
   session_id: z.string().optional(),
-  session_url: z.string().optional(),
   status: z.string().optional(),
 });
 
@@ -275,33 +274,31 @@ const formatFinalOutput = createStep({
     message: z.string(),
     title: z.string().optional(),
     sessionId: z.string().optional(),
-    sessionUrl: z.string().optional(),
   }),
   execute: async (params) => {
     const input = codingSessionResultSchema.parse(params.inputData);
     const title = params.state.analysis?.title;
 
     if (!input.success) {
-      return { success: false, message: `The Claude cloud session did not start: ${input.message}`, title };
+      return { success: false, message: `The Claude Code session did not start: ${input.message}`, title };
     }
 
     return {
       success: true,
-      message: `Started a Claude cloud session on "${title ?? params.state.initialRequest}". ${input.message}`,
+      message: `Started a Claude Code session on "${title ?? params.state.initialRequest}". ${input.message}`,
       title,
       sessionId: input.session_id,
-      sessionUrl: input.session_url,
     };
   },
 });
 
 /**
- * Workflow that takes a change from a spoken request to a Claude cloud session implementing it
+ * Workflow that takes a change from a spoken request to a Claude Code session implementing it
  *
- * 1. A Claude cloud session reads the codebase with the request in hand, and writes down what it
+ * 1. A Claude Code session reads the codebase with the request in hand, and writes down what it
  *    found and the questions only the user can answer (3 sub-steps)
  * 2. Those questions are put to the user, suspending on each one until it is answered
- * 3. A Claude cloud session is started on the change, handed the request, the findings and
+ * 3. A Claude Code session is started on the change, handed the request, the findings and
  *    every answer in the user's own words (2 sub-steps)
  *
  * No issue is filed: the session is the record of the work, and the pull request it opens is
@@ -322,7 +319,6 @@ export const implementFeatureWorkflow = markAsSlow(
       message: z.string(),
       title: z.string().optional(),
       sessionId: z.string().optional(),
-      sessionUrl: z.string().optional(),
     }),
   })
     .then(prepareCodebaseAnalysis)

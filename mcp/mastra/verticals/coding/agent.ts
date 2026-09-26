@@ -24,7 +24,7 @@ For ANY request to **view**, **find**, **list**, **search**, or **check** inform
 - Get issue details
 
 **Coding Session Tools:**
-- Check the status and messages of a running Claude cloud session
+- Check the status and messages of a running Claude Code session
 - Send a follow-up message to a session, to answer a question it asked or redirect its work
 
 **When handling read operations:**
@@ -49,8 +49,8 @@ For ANY request that would **create**, **modify**, **implement**, **add**, **fix
 
 **When triggering the workflow:**
 1. Call implementFeatureWorkflow straight away, with the user's request as \`initialRequest\` — write nothing before the call
-2. Let the workflow handle everything from there. A Claude cloud session first reads the codebase with the request in hand, which takes a few minutes; then the workflow asks the user whatever the code could not answer. Each question pauses the run, is put to the user for you, and the run carries on with their answer
-3. Once every question is answered, the workflow starts a **Claude cloud session** that implements the change autonomously and opens a pull request. No issue is filed
+2. Let the workflow handle everything from there. A Claude Code session first reads the codebase with the request in hand, which takes a few minutes; then the workflow asks the user whatever the code could not answer. Each question pauses the run, is put to the user for you, and the run carries on with their answer
+3. Once every question is answered, the workflow starts a **Claude Code session** that implements the change autonomously and opens a pull request. No issue is filed
 4. When it finishes, say in a sentence or two what the session is working on and whether it started. If it failed, say what failed
 
 The session reports its progress back through the Synapse vertical, so you do not need to poll it — but you can check on
@@ -78,13 +78,13 @@ Manage GitHub repositories with two distinct modes: read operations via tools an
 - Any request that would modify code
 
 # Capabilities
-- **Read Mode**: Use GitHub tools to list/search repositories and issues, and to follow running Claude cloud sessions
-- **Write Mode**: Trigger implementFeatureWorkflow for any implementation request: a Claude cloud session analyses the codebase, the user answers what it could not settle, and another session implements the change
+- **Read Mode**: Use GitHub tools to list/search repositories and issues, and to follow running Claude Code sessions
+- **Write Mode**: Trigger implementFeatureWorkflow for any implementation request: a Claude Code session analyses the codebase, the user answers what it could not settle, and another session implements the change
 
 # Behavior
 - Uses tools directly for all read/search operations
 - Delegates ALL write/change operations to implementFeatureWorkflow
-- Implementation itself runs in a Claude cloud session, whose events feed back into the Synapse vertical
+- Implementation itself runs in a Claude Code session, whose events feed back into the Synapse vertical
 - An implementation request is slow: the codebase analysis alone takes minutes before the first question
 - Applies default owner "${DEFAULT_OWNER}" and repo "${DEFAULT_REPOSITORY}" (Jarvis's own codebase) when not specified`,
     tools: codingTools,
@@ -92,7 +92,7 @@ Manage GitHub repositories with two distinct modes: read operations via tools an
       implementFeatureWorkflow: implementFeatureWorkflow,
     },
     // What this model decides is which tool to call and how to say what came back. The reading
-    // of the codebase that does need thought happens in a Claude cloud session, not here, so every
+    // of the codebase that does need thought happens in a Claude Code session, not here, so every
     // step of this loop would otherwise pay medium thinking for a choice that needs next to none.
     defaultOptions: { providerOptions: LOW_THINKING_PROVIDER_OPTIONS },
   });
