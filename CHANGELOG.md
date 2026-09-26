@@ -1,5 +1,22 @@
 # Changelog
 
+## [4.6.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.5.0...root-v4.6.0) (2026-09-26)
+
+
+### Features
+
+* **watch:** answer in the phone's earbuds, and speak at 90% volume ([#876](https://github.com/ffMathy/hey-jarvis/issues/876)) ([5bf2f9e](https://github.com/ffMathy/hey-jarvis/commit/5bf2f9e0a2563ef043a66ead639a039f6009675c))
+
+
+### Bug Fixes
+
+* **assistant:** keep summonings out of the app's background activity ([#794](https://github.com/ffMathy/hey-jarvis/issues/794)) ([f1d4def](https://github.com/ffMathy/hey-jarvis/commit/f1d4def45db55c74d20b92d4d4a3ed306045c12a))
+
+
+### Performance Improvements
+
+* **mcp:** cut the time from a routed request to the answer ([#875](https://github.com/ffMathy/hey-jarvis/issues/875)) ([17f4958](https://github.com/ffMathy/hey-jarvis/commit/17f49586d9d4fc7e8ef4d4496c308da7af04e37a))
+
 ## [4.5.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.4.0...root-v4.5.0) (2026-09-25)
 
 
