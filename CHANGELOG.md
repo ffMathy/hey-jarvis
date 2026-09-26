@@ -1,5 +1,17 @@
 # Changelog
 
+## [4.7.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.6.0...root-v4.7.0) (2026-09-26)
+
+
+### Features
+
+* **mcp:** answer each request at its length, and end quiet calls ([#877](https://github.com/ffMathy/hey-jarvis/issues/877)) ([b5f233c](https://github.com/ffMathy/hey-jarvis/commit/b5f233cc4a4bf4a2ac73ad9a642fdfe6cbb4bde9))
+
+
+### Bug Fixes
+
+* **mcp:** send phone alarms to the phone, never to the watch ([#879](https://github.com/ffMathy/hey-jarvis/issues/879)) ([7e98bf5](https://github.com/ffMathy/hey-jarvis/commit/7e98bf5f38a721a4b6bb63fb362f29661649e50f))
+
 ## [4.6.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.5.0...root-v4.6.0) (2026-09-26)
 
 
