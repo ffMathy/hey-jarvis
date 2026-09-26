@@ -479,7 +479,11 @@ in to the user's Claude **subscription** with a token from `claude setup-token` 
 key. It runs inside a [Docker Sandbox](https://docs.docker.com/ai/sandboxes/) named `jarvis` on the host: a microVM
 with its own filesystem, Docker daemon and egress proxy, which is what bounds a session that skips permission prompts.
 A sandbox needs KVM and the `sbx` daemon on the host, so the server reaches the host over SSH and runs
-`sbx exec -i jarvis …` there (`claude-code-host.ts`). The subscription token travels on the first line of stdin, never
+`sbx exec -i jarvis …` there (`claude-code-host.ts`). The SSH key gets no shell: its forced command,
+`mcp/.scripts/claude-code-ssh-command.sh`, accepts only `start <session id>` or `resume <session id>` and fixes the
+sandbox, the directory and the `claude` command line itself, so a compromised container can start sessions in the
+sandbox and do nothing else on the host. `claude-code-ssh-command.spec.ts` runs it under `sh` with a fake `sbx`, and
+most of what it checks is what the script refuses. The subscription token travels on the first line of stdin, never
 on a command line. Each run of a session is one `claude --print` process in `~/jarvis-sessions/<session id>` inside
 the sandbox, talking stream-json both ways. The session clones the repository with `gh`, which the sandbox's proxy
 signs in with the host's `sbx` GitHub secret, works unattended and opens a pull request when it is done.
@@ -522,8 +526,8 @@ without tearing down the watch.
 | `HEY_JARVIS_CLAUDE_CODE_SSH_PRIVATE_KEY` | `op://Jarvis/Claude Code/private key?ssh-format=openssh` | The key the host authorizes for that user |
 | `HEY_JARVIS_CLAUDE_CODE_OAUTH_TOKEN` | `op://Jarvis/Claude Code/OAuth token` | The subscription token `claude setup-token` prints |
 
-The host itself — Ubuntu 24.04 or newer with KVM, a user of its own signed in to Docker, the `jarvis` sandbox and its
-GitHub secret — is set up as described in **Letting Jarvis code on your Claude subscription** in `mcp/README.md`.
+The host itself — 64-bit Linux with KVM and glibc 2.39 or newer, a user of its own signed in to Docker and pinned to
+the forced command, the `jarvis` sandbox and its GitHub secret — is set up as described in **Letting Jarvis code on your Claude subscription** in `mcp/README.md`.
 
 The vertical imports without any of them — `isClaudeCodeHostConfigured()` keeps the failure lazy, so repository
 and issue browsing works on the GitHub token alone and only the tools that start or follow a session

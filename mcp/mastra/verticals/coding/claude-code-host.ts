@@ -10,6 +10,11 @@
  * the host. A sandbox needs KVM and the `sbx` daemon, which live on the host rather than in the
  * server's container — so the server reaches the host over SSH, and the host runs `sbx exec`.
  *
+ * The SSH key gets no shell on the host. Its forced command is `mcp/.scripts/claude-code-ssh-command.sh`,
+ * which accepts only `start <session id>` or `resume <session id>` and fixes everything else — the
+ * sandbox, the directory and the `claude` command line — so a compromised container can start
+ * Claude Code sessions in the sandbox and do nothing else on the host.
+ *
  * Nothing runs Claude Code inside the server's own container: the container carries the 1Password
  * service account token for the whole vault, and a session that skips permission prompts could
  * read it out of `/proc`.
@@ -21,13 +26,16 @@ import os from 'node:os';
 import path from 'node:path';
 import type { Readable, Writable } from 'node:stream';
 
-/** The sandbox every session runs in, created once on the host with `sbx create --name jarvis claude`. */
+/**
+ * The sandbox every session runs in, created once on the host with `sbx create --name jarvis claude`.
+ * The host's forced command fixes it; it is named here only to say where a session's transcript is.
+ */
 export const SANDBOX_NAME = 'jarvis';
 
-/** Where, inside the sandbox, each session gets a working directory of its own. */
+/** Where, inside the sandbox, each session works in a directory of its own. Also fixed by the host. */
 export const SANDBOX_SESSIONS_DIRECTORY = 'jarvis-sessions';
 
-/** Claude Code session ids are UUIDs; anything else never reaches the remote shell. */
+/** Claude Code session ids are UUIDs, and the host refuses anything else. */
 const SESSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /** Longest stretch of stderr kept for reporting why a process failed. */
@@ -85,16 +93,12 @@ export function isClaudeCodeHostConfigured(): boolean {
 }
 
 /**
- * The command the host runs for one Claude Code process.
+ * What the server asks the host for: to start a session, or to resume one.
  *
- * The host reads the subscription token off the first line of stdin — so it is never part of a
- * command line, on either side of the SSH hop — and `sbx exec -e` hands it on into the sandbox.
- * Everything after that line is Claude Code's own input.
- *
- * Inside the sandbox, every session works in a directory of its own, and a session is resumed from
- * the directory it started in, because that is where Claude Code keeps its transcript. The session
- * id is the only value interpolated, and only once it is known to be a UUID; the inner command is
- * single-quoted on the host, so `$HOME` is the sandbox's, not the host's.
+ * This is all the connection gets to say. The host's forced command reads it from
+ * `SSH_ORIGINAL_COMMAND`, refuses anything else, and runs Claude Code in the sandbox itself (see
+ * `mcp/.scripts/claude-code-ssh-command.sh`). The host checks the id too; checking it here as well
+ * turns a bug into a clear error rather than a refused connection.
  *
  * @param sessionId - The Claude Code session id
  * @param resume - Whether the session already exists in the sandbox and is being continued
@@ -104,30 +108,7 @@ export function buildRemoteCommand(sessionId: string, resume: boolean): string {
     throw new Error(`Not a Claude Code session id: ${sessionId}`);
   }
 
-  const directory = `"$HOME/${SANDBOX_SESSIONS_DIRECTORY}/${sessionId}"`;
-  const insideSandbox = [
-    `mkdir -p ${directory}`,
-    `cd ${directory}`,
-    [
-      'exec claude --print',
-      // Messages go in as JSON lines on stdin, so the prompt is never part of the command line --
-      // no quoting across the SSH hop, and nothing in `ps` -- and a follow-up can be written to a
-      // process that is still working.
-      '--input-format stream-json',
-      '--output-format stream-json --verbose',
-      // Nobody is there to answer a permission prompt. The sandbox is what bounds the session.
-      '--dangerously-skip-permissions',
-      resume ? `--resume ${sessionId}` : `--session-id ${sessionId}`,
-    ].join(' '),
-  ].join(' && ');
-
-  return [
-    'IFS= read -r CLAUDE_CODE_OAUTH_TOKEN',
-    'export CLAUDE_CODE_OAUTH_TOKEN',
-    // `-i` keeps stdin open, the way Claude Code reads its messages. `sbx exec` starts the sandbox
-    // first if it is stopped.
-    `exec sbx exec -i -e CLAUDE_CODE_OAUTH_TOKEN ${SANDBOX_NAME} sh -c '${insideSandbox}'`,
-  ].join(' && ');
+  return `${resume ? 'resume' : 'start'} ${sessionId}`;
 }
 
 /** A running Claude Code process, as the session manager sees it. */
@@ -233,7 +214,7 @@ export const launchClaudeCodeOverSsh: ClaudeCodeLauncher = async (sessionId, res
   // A write to a process that has already gone fails with EPIPE, which is reported through the
   // exit instead; left unhandled it would take the whole server down.
   child.stdin.on('error', () => {});
-  // The first line is the token, which the remote command reads before handing stdin to Claude Code.
+  // The first line is the token, which the host reads before handing stdin on to Claude Code.
   child.stdin.write(`${configuration.oauthToken}\n`);
 
   return { input: child.stdin, output: child.stdout, exited };
