@@ -95,6 +95,26 @@
       </intent-filter>
     </activity>
 
+    <!--
+      The watch asking whether the phone will hold the conversation, because
+      the phone has earbuds in. Play Services starts this for a request on the
+      path below, whether or not the app is running. See
+      `JarvisWatchSummonService.kt`.
+
+      Exported because it is Play Services, a different UID, that binds it;
+      `WearableListenerService` checks that it is Play Services calling, and
+      the Data Layer only delivers from this app's twin on the watch. The
+      `<data>` path keeps it from being woken for anything else.
+    -->
+    <service
+      android:name="expo.modules.jarvisassistant.JarvisWatchSummonService"
+      android:exported="true">
+      <intent-filter>
+        <action android:name="com.google.android.gms.wearable.REQUEST_RECEIVED" />
+        <data android:scheme="wear" android:host="*" android:path="/jarvis/answer-on-the-phone" />
+      </intent-filter>
+    </service>
+
   </application>
 
 </manifest>

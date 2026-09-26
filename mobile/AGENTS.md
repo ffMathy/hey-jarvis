@@ -392,6 +392,10 @@ Only a *running* phone app can answer an ask, because the credentials are behind
 
 Four strings hold this together — two paths, each spelled in Kotlin and in TypeScript, on each of two devices — with no compiler between any of them. `src/watch-link.contract.spec.ts` reads all of them out of their sources, along with the manifest entry that wakes the watch, and fails if they drift.
 
+### Answering the watch in the earbuds
+
+`modules/jarvis-assistant/.../JarvisWatchSummonService.kt` is a `WearableListenerService` for Data Layer *requests* on `/jarvis/answer-on-the-phone`. The watch sends one on every summoning. If a Bluetooth headset is connected, the phone isn't locked behind a PIN, and Jarvis holds the assistant role, it calls `showSession` on `JarvisVoiceInteractionService`. That opens the same window the phone's own gesture opens, so the conversation goes to the AirPods and not out of the watch's speaker. It replies `1` only once `JarvisVoiceInteractionSession.onShow` has run. If that takes longer than two seconds it replies `0`, and the watch talks for itself. Nothing public can cancel a session once `showSession` has asked for it, so a window that opens later than that means two of him talk at once. The window normally opens within a few hundred milliseconds or not at all. See [the watch's notes](../watch/AGENTS.md#the-conversation).
+
 ## Becoming the assistant
 
 Registration is entirely declarative, and every piece of it is load-bearing. `modules/jarvis-assistant/android/src/main/AndroidManifest.xml` is a *library* manifest that the Android build merges into the app's own, which is why there is no config plugin for any of this.

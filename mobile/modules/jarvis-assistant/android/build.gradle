@@ -27,4 +27,8 @@ dependencies {
   // Native's own Gradle plugin substitutes for the copy in `node_modules`; it is what every
   // library in this app's tree asks for.
   compileOnly 'com.facebook.react:react-native:+'
+  // Hearing the watch ask to be answered here, in the phone's earbuds. See
+  // `JarvisWatchSummonService.kt`. The same version as `jarvis-watch`, which already puts it in
+  // the app.
+  implementation 'com.google.android.gms:play-services-wearable:19.0.0'
 }

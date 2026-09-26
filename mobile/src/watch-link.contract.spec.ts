@@ -11,7 +11,8 @@ import { join } from 'node:path';
  * which devices advertise a name, and the watch advertises one from a resource its config plugin
  * writes. **The settings path**, which carries the ElevenLabs credentials from the phone to the
  * watch so they are only ever typed on a keyboard worth typing them on. **The asking path**, which
- * carries the watch's request for them back the other way.
+ * carries the watch's request for them back the other way. **The answering path**, which carries the
+ * watch asking the phone to hold a conversation in its earbuds, and the phone's reply.
  *
  * Nothing fails loudly if any of them drift. Both apps build, both install, both run — and the
  * phone says Jarvis is not on the watch however many times it is installed, or the watch waits for
@@ -33,6 +34,9 @@ const PHONE_TYPESCRIPT = 'mobile/modules/jarvis-watch/index.ts';
 const WATCH_MODULE = 'watch/modules/jarvis-phone/android/src/main/java/expo/modules/jarvisphone/JarvisPhoneModule.kt';
 const WATCH_TYPESCRIPT = 'watch/modules/jarvis-phone/index.ts';
 const WATCH_MANIFEST = 'watch/modules/jarvis-phone/android/src/main/AndroidManifest.xml';
+const PHONE_SUMMON_SERVICE =
+  'mobile/modules/jarvis-assistant/android/src/main/java/expo/modules/jarvisassistant/JarvisWatchSummonService.kt';
+const PHONE_ASSISTANT_MANIFEST = 'mobile/modules/jarvis-assistant/android/src/main/AndroidManifest.xml';
 
 /** One `const NAME = "value"` out of a Kotlin source, however it is qualified. */
 function readKotlinConstant(source: string, name: string): string {
@@ -110,6 +114,15 @@ describe('the paths the ElevenLabs credentials travel between the two apps', () 
     expect(readSource(WATCH_MANIFEST)).toContain('com.google.android.gms.wearable.MESSAGE_RECEIVED');
   });
 
+  it('puts no permission on either listener service that Play Services might not hold', () => {
+    // A service only binds for a caller holding the permission it names, so the leftover
+    // `BIND_LISTENER` permission could only ever keep Play Services out — silently, since the
+    // handover still works whenever the watch app happens to be open.
+    for (const manifest of [WATCH_MANIFEST, PHONE_ASSISTANT_MANIFEST]) {
+      expect(readSource(manifest)).not.toContain('android:permission="com.google.android.gms');
+    }
+  });
+
   it('names the same event on both sides of each app', () => {
     // Kotlin emits it and TypeScript subscribes by name, with nothing checking the two agree.
     expect(readSource(PHONE_TYPESCRIPT)).toContain(readKotlinConstant(PHONE_MODULE, 'WATCH_ASKED'));
@@ -124,5 +137,37 @@ describe('the paths the ElevenLabs credentials travel between the two apps', () 
         readSource('watch/modules/jarvis-phone/android/src/main/java/expo/modules/jarvisphone/PhoneSettingsStore.kt'),
       ).toContain(`"${field}"`);
     }
+  });
+});
+
+describe('the path the watch asks the phone to answer in its earbuds on', () => {
+  it('is spelled the same on the phone and on the watch', () => {
+    // A mismatch fails quietly the safe way — the request finds no listener, and the watch talks
+    // out of its own speaker — which is exactly why nothing else would notice.
+    const wanted = readKotlinConstant(PHONE_SUMMON_SERVICE, 'ANSWER_PATH');
+
+    expect(wanted).toMatch(/^\/jarvis\//);
+    expect(readKotlinConstant(WATCH_MODULE, 'ANSWER_PATH')).toBe(wanted);
+  });
+
+  it('is claimed as a request in the manifest that wakes the phone for it', () => {
+    // `sendRequest` is delivered as REQUEST_RECEIVED, not MESSAGE_RECEIVED, and only to a service
+    // whose filter claims the path — otherwise the phone answers only while its app is open.
+    const manifest = readSource(PHONE_ASSISTANT_MANIFEST);
+
+    expect(manifest).toContain(readKotlinConstant(PHONE_SUMMON_SERVICE, 'ANSWER_PATH'));
+    expect(manifest).toContain('com.google.android.gms.wearable.REQUEST_RECEIVED');
+    expect(manifest).toContain('expo.modules.jarvisassistant.JarvisWatchSummonService');
+  });
+
+  it('waits on the phone less long than the watch waits for it', () => {
+    // A phone that opened after the watch had given up would be a second Jarvis talking over the
+    // first. The phone's wait plus a Bluetooth round trip has to fit in the watch's.
+    const phoneWait = /WAIT_FOR_THE_WINDOW_MS\s*=\s*(\d+)L/.exec(readSource(PHONE_SUMMON_SERVICE));
+    const watchWait = /ASK_THE_PHONE_MS\s*=\s*([\d_]+);/.exec(readSource('watch/src/conversation-screen.tsx'));
+
+    expect(phoneWait).not.toBeNull();
+    expect(watchWait).not.toBeNull();
+    expect(Number(watchWait?.[1].replaceAll('_', '')) - Number(phoneWait?.[1])).toBeGreaterThanOrEqual(500);
   });
 });

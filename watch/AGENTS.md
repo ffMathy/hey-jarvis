@@ -22,6 +22,7 @@ watch/
 │   ├── index.ts                  # the JS side
 │   └── android/src/main/         # Kotlin, and the library manifest declaring the listener service
 ├── modules/jarvis-network/       # Wi-Fi or cellular for a conversation, off the phone's Bluetooth
+├── modules/jarvis-volume/        # the call volume, brought down to 90% before he speaks
 └── src/
     ├── app.tsx                   # two states: a conversation, or waiting for the phone
     ├── conversation-screen.tsx   # the sphere, and a live ElevenLabs session behind it
@@ -72,6 +73,9 @@ Two message paths, and that is the whole of it:
 | --- | --- | --- |
 | `/jarvis/elevenlabs-settings` | phone → watch | `{"apiKey": …, "agentId": …}` |
 | `/jarvis/ask-for-credentials` | watch → phone | nothing at all |
+| `/jarvis/answer-on-the-phone` | watch → phone, a request | nothing; the reply is one byte, 1 if the phone took the conversation |
+
+The third path isn't part of the handover. It's how a summoning moves to the phone's earbuds: see [The conversation](#the-conversation).
 
 The watch asks on every start it makes with no credentials, and again every few seconds while it is waiting. The phone answers two ways: automatically whenever it hears the request and has credentials (`mobile/src/answer-the-watch.ts`), and on demand from the button on the watch card in its own settings.
 
@@ -94,6 +98,10 @@ One case has no phone to ask at all: the app declares `com.google.android.wearab
 ## The conversation
 
 The same ElevenLabs agent the phone talks to, over WebRTC, opened the moment the screen is. There is no button, no status line and no title — the argument is the phone conversation screen's, only more so, since a round 45 mm display has nowhere to put any of it. What tells you which of you is talking is what the sphere is doing.
+
+**He answers in the phone's earbuds when the phone has some.** A watch can't play into a headset connected to its phone, because Android has no such route. So before anything is played or recorded, the watch sends the phone a Data Layer *request* on `/jarvis/answer-on-the-phone` and waits up to three seconds (`ASK_THE_PHONE_MS`). The phone (`JarvisWatchSummonService` in `mobile/modules/jarvis-assistant`) says yes only when all of these hold: a Bluetooth headset is connected, the phone isn't locked behind a PIN (Smart Lock counts as unlocked), Jarvis is its assistant, and its assistant window has actually come up. That window is exactly what the phone's own gesture opens, so the conversation goes to the AirPods the way it always does there. The watch then shows "Jarvis is answering on your phone." and holds no conversation. Any other answer, or none, and the watch talks for itself. The phone gives its window two seconds, less than the watch waits, so that the watch doesn't give up on a phone that is about to say yes. `watch-link.contract.spec.ts` checks the two timeouts against each other. A phone window that opens after its own two seconds can't be taken back, and then both of them talk. None of this has run on hardware. The open questions are whether `showSession` from a background request opens the window with the phone's screen off, and whether the phone's microphone is allowed in that state.
+
+**On the watch's own speaker he is at 90% of the call volume.** Everything he says there is call audio, and full call volume from a wrist carries across a room. `modules/jarvis-volume` lowers `STREAM_VOICE_CALL` to 90% of its maximum before the greeting, in the watch's own volume steps, rounded down so a five-step scale really comes down one step. It only ever lowers the volume: a wearer who set it lower keeps their setting.
 
 Two things differ from the phone, both deliberate:
 
