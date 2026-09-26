@@ -110,6 +110,8 @@ class JarvisVoiceInteractionSession(context: Context) : VoiceInteractionSession(
     super.onShow(args, showFlags)
 
     current = WeakReference(this)
+    nextShowing?.invoke()
+    nextShowing = null
 
     val drawing = surface
     if (drawing != null) {
@@ -309,6 +311,13 @@ class JarvisVoiceInteractionSession(context: Context) : VoiceInteractionSession(
      * keeps a retracted one alive.
      */
     private var current: WeakReference<JarvisVoiceInteractionSession>? = null
+
+    /**
+     * Told once, the next time a window is shown. `JarvisWatchSummonService` sets it before asking
+     * for one, so that it answers the watch only once the phone has really come up — a request the
+     * system quietly declines must leave the watch to talk for itself. Main thread only.
+     */
+    internal var nextShowing: (() -> Unit)? = null
 
     /** Closes the assistant window, if one is open. Safe to call from any thread. */
     internal fun dismissCurrent(): Boolean {

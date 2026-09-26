@@ -1,6 +1,8 @@
 package expo.modules.jarvisphone
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import com.google.android.gms.wearable.MessageClient
 import com.google.android.gms.wearable.MessageEvent
 import com.google.android.gms.wearable.Wearable
@@ -23,6 +25,13 @@ import expo.modules.kotlin.modules.ModuleDefinition
  */
 internal const val SETTINGS_PATH = "/jarvis/elevenlabs-settings"
 internal const val ASK_PATH = "/jarvis/ask-for-credentials"
+
+/**
+ * The watch asking the phone to hold a conversation for it, because the phone has earbuds in; the
+ * phone answers on the same request with one byte, 1 for yes. `ANSWER_PATH` in the phone's
+ * `JarvisWatchSummonService.kt` is the other spelling, pinned by the same contract spec.
+ */
+internal const val ANSWER_PATH = "/jarvis/answer-on-the-phone"
 
 /**
  * What the watch knows about the phone beside it: only ever the ElevenLabs credentials.
@@ -55,6 +64,12 @@ class JarvisPhoneModule : Module() {
     // run, not an error, and the screen says "open Jarvis on your phone" either way.
     AsyncFunction("askThePhone") { promise: Promise ->
       askThePhone(context(), promise)
+    }
+
+    // Asks the phone to answer this summoning itself, in its earbuds. Resolves true only if it
+    // said it has; false for no phone, a phone with no headset, and no reply within `timeoutMs`.
+    AsyncFunction("askThePhoneToAnswer") { timeoutMs: Int, promise: Promise ->
+      askThePhoneToAnswer(context(), timeoutMs.toLong(), promise)
     }
 
     Events(SETTINGS_ARRIVED)
@@ -113,4 +128,40 @@ private fun askThePhone(context: Context, promise: Promise) {
       promise.resolve(true)
     }
     .addOnFailureListener { promise.resolve(false) }
+}
+
+/**
+ * Asks the phone whether it will hold this conversation, and resolves with its answer.
+ *
+ * A request rather than a message, because the watch has to know: talking for itself when the
+ * phone has taken it would be two Jarvises, and staying quiet when it has not would be none. Sent
+ * to the nearby node, which on a watch is its phone. Settled exactly once — by the reply, by a
+ * failure, or by the timeout, which is what a phone that has gone quiet produces.
+ */
+private fun askThePhoneToAnswer(context: Context, timeoutMs: Long, promise: Promise) {
+  val main = Handler(Looper.getMainLooper())
+  var settled = false
+  val settle = { answer: Boolean ->
+    main.post {
+      if (!settled) {
+        settled = true
+        promise.resolve(answer)
+      }
+    }
+  }
+  main.postDelayed({ settle(false) }, timeoutMs)
+
+  Wearable.getNodeClient(context).connectedNodes
+    .addOnSuccessListener { nodes ->
+      val phone = nodes.firstOrNull { it.isNearby } ?: nodes.firstOrNull()
+      if (phone == null) {
+        settle(false)
+        return@addOnSuccessListener
+      }
+      Wearable.getMessageClient(context)
+        .sendRequest(phone.id, ANSWER_PATH, ByteArray(0))
+        .addOnSuccessListener { reply -> settle(reply.firstOrNull() == 1.toByte()) }
+        .addOnFailureListener { settle(false) }
+    }
+    .addOnFailureListener { settle(false) }
 }

@@ -11,6 +11,8 @@ import { useIsForeground } from 'hologram/react/lifecycle';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { type FastNetwork, holdFastNetwork, releaseFastNetwork } from '../modules/jarvis-network';
+import { askThePhoneToAnswer } from '../modules/jarvis-phone';
+import { capCallVolume } from '../modules/jarvis-volume';
 import { requestMicrophoneAccess } from './microphone-permission';
 import { useWatchDensity } from './watch-density';
 import { useWatchHologramSize } from './watch-screen';
@@ -39,6 +41,24 @@ const WAIT_FOR_FAST_NETWORK_MS = 6000;
  */
 const GIVE_UP_CONNECTING_AFTER_MS = 20_000;
 
+/**
+ * How long to wait for the phone to say whether it will hold the conversation in its earbuds.
+ *
+ * Longer than the phone gives its own window to come up (`WAIT_FOR_THE_WINDOW_MS` in
+ * `JarvisWatchSummonService.kt`, two seconds) plus the round trip over Bluetooth, so the watch never
+ * gives up on a phone that is about to say yes — which would be two of him talking. A phone with no
+ * headset, or none in range, answers at once, so this is only ever waited out by a phone gone quiet.
+ */
+const ASK_THE_PHONE_MS = 3000;
+
+/**
+ * How loud he is on the watch's own speaker, as a share of its call volume.
+ *
+ * Full call volume carried across a room from the wrist. Nine tenths of the scale, in the watch's
+ * own volume steps, is still plainly heard at arm's length. See `modules/jarvis-volume`.
+ */
+const CALL_VOLUME_SHARE = 0.9;
+
 /** Whether a conversation is open, or on its way to being open. */
 function isLive(status: string): boolean {
   return status === 'connected' || status === 'connecting';
@@ -60,6 +80,11 @@ function isLive(status: string): boolean {
  * that is a deliberate difference from the phone. See `useAgentVoice` in `hologram/conversation`:
  * tapping the track means a native module, a peer-connection id and a ring buffer, and on a watch
  * the readings the SDK gives are good enough for a sphere this size.
+ *
+ * **He answers in the phone's earbuds when there are some.** Summoned on the wrist, he asks the
+ * phone first, and a phone with AirPods connected holds the conversation itself, where only the
+ * wearer hears it — the watch cannot play into a headset connected to its phone. The watch then says
+ * so, and stays out of it. See `JarvisWatchSummonService.kt` in `mobile/modules/jarvis-assistant`.
  *
  * **It ends when the wrist drops, and that is the difference that matters most from the phone.** A
  * phone conversation survives the app going to the background — the assistant's window is retracted
@@ -96,6 +121,8 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
   // What he is doing between hearing you and answering; the drawing has a whole state for it.
   const { thinking, toolHandlers, forgetToolCalls } = useToolActivity();
   const [problem, setProblem] = useState<string | undefined>(undefined);
+  /** Whether the phone took this summoning, in its earbuds, so the watch holds no conversation. */
+  const [onThePhone, setOnThePhone] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
   /** What the conversation is being held over, so a failure can say whether that was the trouble. */
   const network = useRef<FastNetwork>('none');
@@ -123,9 +150,17 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
 
   const start = useCallback(async () => {
     setProblem(undefined);
+    setOnThePhone(false);
     setIsStarting(true);
 
     try {
+      // Before anything is played or recorded here: a phone with AirPods in keeps the conversation
+      // off the watch's speaker altogether.
+      if (await askThePhoneToAnswer(ASK_THE_PHONE_MS)) {
+        setOnThePhone(true);
+        return;
+      }
+
       // On a watch a refusal is the end of it. The phone falls back to a text field in a browser,
       // where there is a keyboard in front of you; here the assistant gesture *is* the request to
       // be talked to, and there is nowhere to type.
@@ -137,6 +172,8 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
       // He answers at once, from a recording, and the network and the token are got while he says
       // it. The session is told not to greet a second time. A session slower than the greeting
       // goes on connecting exactly as it did before there was one.
+      // Down from full call volume before he says a word, greeting included.
+      capCallVolume(CALL_VOLUME_SHARE);
       const greeted = await beginGreeting();
 
       // Off the phone's Bluetooth proxy before anything goes out, token request included: WebRTC's
@@ -288,6 +325,12 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
         />
       </View>
 
+      {onThePhone ? (
+        <Text style={styles.onThePhone} testID="conversation-on-the-phone">
+          Jarvis is answering on your phone.
+        </Text>
+      ) : null}
+
       {problem ? (
         <Text style={styles.problem} testID="conversation-problem">
           {problem}
@@ -320,6 +363,15 @@ const styles = StyleSheet.create({
     left: 24,
     right: 24,
     color: '#f87171',
+    textAlign: 'center',
+    fontSize: 13,
+  },
+  /** Where the problem line would be, in the colour of him rather than of something wrong. */
+  onThePhone: {
+    position: 'absolute',
+    left: 24,
+    right: 24,
+    color: '#38bdf8',
     textAlign: 'center',
     fontSize: 13,
   },

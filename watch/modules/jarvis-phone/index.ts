@@ -12,6 +12,7 @@ interface JarvisPhoneNativeModule {
   readSettings(): StoredSettings | null;
   forgetSettings(): void;
   askThePhone(): Promise<boolean>;
+  askThePhoneToAnswer(timeoutMs: number): Promise<boolean>;
   addListener(event: 'onSettingsArrived', listener: () => void): { remove: () => void };
 }
 
@@ -61,6 +62,25 @@ export async function askThePhoneForSettings(): Promise<boolean> {
   }
   try {
     return await nativeModule.askThePhone();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Asks the phone to hold this conversation, in its earbuds, and says whether it has.
+ *
+ * The phone says yes only when it has a Bluetooth headset connected, is unlocked, has Jarvis as its
+ * assistant, and has actually opened his window — see `JarvisWatchSummonService.kt` in
+ * `mobile/modules/jarvis-assistant`. Anything else, including no answer within `timeoutMs`, is
+ * false, and the watch talks for itself.
+ */
+export async function askThePhoneToAnswer(timeoutMs: number): Promise<boolean> {
+  if (!nativeModule) {
+    return false;
+  }
+  try {
+    return await nativeModule.askThePhoneToAnswer(timeoutMs);
   } catch {
     return false;
   }
