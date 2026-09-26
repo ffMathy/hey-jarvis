@@ -44,7 +44,7 @@ import { getShoppingListAgent, getShoppingListSummaryAgent, shoppingTools } from
 import { getStateChangeReactorAgent, synapseTools } from './verticals/synapse/index.js';
 import { getTodoListAgent, todoListTools } from './verticals/todo-list/index.js';
 import { getWeatherAgent, weatherTools } from './verticals/weather/index.js';
-import { getWebResearchAgent } from './verticals/web-research/index.js';
+import { getWebResearchAgent, webResearchShortcuts } from './verticals/web-research/index.js';
 import { retireUnrestartableRuns } from './workflow-run-recovery.js';
 
 // Set up the Google AI SDK environment variable immediately.
@@ -152,6 +152,7 @@ export async function getMastra(): Promise<Mastra> {
       ...synapseTools,
       ...todoListTools,
       ...weatherTools,
+      ...webResearchShortcuts,
     },
     bundler: {
       // @yarflam/potion-base-8m resolves its embedding table relative to its own

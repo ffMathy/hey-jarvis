@@ -341,6 +341,13 @@ and the reading of the link it reports back.
 cannot reach Jarvis's own data, so a page about the calendar, the house or the shopping list needs
 that agent to fetch it first and the planner to pass it along — the agent's description says so.
 
+**Also reached from web research:** `visualizeResearch` (`web-research/shortcuts.ts`) is a shortcut
+onto `generateUserInterface`, so "look into X and show me a chart" is one delegation to `webResearch`
+— it researches, then hands its findings to the builder itself, rather than the planner chaining a
+second agent that would only get the research as text. It is slow like the tool it wraps. It sits
+beside Gemini's built-in search, a mix only Gemini 3 accepts in one request, so the research agent
+must stay on a Gemini 3 model.
+
 **Requirements:** the Claude session variables under [Coding Agent](#coding-agent), and an agent in
 the Claude console that can publish artifacts; plus the companion-app notify service the
 [Notification Agent](#notification-agent) uses for the push.

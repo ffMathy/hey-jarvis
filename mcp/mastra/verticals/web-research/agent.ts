@@ -1,5 +1,6 @@
 import type { Agent } from '@mastra/core/agent';
 import { createAgent } from '../../utils/index.js';
+import { webResearchShortcuts } from './shortcuts.js';
 import { webResearchTools } from './tools.js';
 
 /**
@@ -14,6 +15,13 @@ import { webResearchTools } from './tools.js';
  *
  * Thinking stays at Flash's default: judging whether results answer the question, and weighing
  * sources that disagree, is the part of this agent where reasoning pays for itself.
+ *
+ * **It can also hand what it found to the page builder** (`visualizeResearch`), so "look into
+ * electricity prices this week and show me a chart" is one delegation rather than two. That puts
+ * an ordinary function tool beside Gemini's built-in search, which only Gemini 3 accepts in one
+ * request -- the AI SDK sends them together for a Gemini 3 model and drops the function tool,
+ * with a warning, for anything older. `gemini-flash-latest` is Gemini 3; pinning this agent to an
+ * older model would quietly take the shortcut away.
  */
 export async function getWebResearchAgent(): Promise<Agent> {
   return createAgent({
@@ -32,7 +40,11 @@ When you need to search for information:
 
 How to answer:
 - By default, answer directly in a few plain sentences, with the key facts first, then the sources' titles and URLs. Your answer is usually read out loud, so do not use markdown.
-- When the request says the result is for an email or asks for HTML, format it in HTML instead. For each result include a title, a summary of the information found and the URLs from the search results. It's important that you don't mix markdown into it - it needs to be pure HTML.`,
+- When the request says the result is for an email or asks for HTML, format it in HTML instead. For each result include a title, a summary of the information found and the URLs from the search results. It's important that you don't mix markdown into it - it needs to be pure HTML.
+
+Visualizing research:
+- When the user wants to see, chart, compare visually or visualize what you found, research first, then call visualizeResearch once with everything the page should show: the findings, the figures and the source URLs. The page builder cannot search or see this conversation, so anything left out of the request is missing from the page.
+- Then answer in a sentence or two with the key facts, and say that the page is being built and will be sent to the phone.`,
     description: `# Purpose
 Perform web research on any topic using Google Search tool. The agent uses real-time web search to provide factual, well-researched results with source citations.
 
@@ -42,6 +54,7 @@ Perform web research on any topic using Google Search tool. The agent uses real-
 - The user wants detailed information from web searches with citations
 - The user asks for facts, statistics, news, or any information that needs verification from multiple sources
 - The user needs research formatted as HTML for email delivery (say so in the prompt)
+- The user wants the research visualized — a chart, a comparison or a page to look at. The agent researches and then builds the page itself, so ask it for both in one prompt
 
 # How it works
 The agent uses the googleSearch tool to:
@@ -55,6 +68,6 @@ The agent uses the googleSearch tool to:
 - **Summarize** findings clearly with URL citations
 - **Format** the answer as a few plain sentences, or as pure HTML (no markdown) when the prompt says it is for an email
 - **Prioritize** factual accuracy - search again if the results conflict`,
-    tools: webResearchTools,
+    tools: { ...webResearchTools, ...webResearchShortcuts },
   });
 }
