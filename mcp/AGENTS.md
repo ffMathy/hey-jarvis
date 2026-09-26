@@ -463,7 +463,7 @@ when it is done.
 - **`startCodingSession`**: Creates the session, seeded with the request, the analysis's findings and the user's
   answers, and starts watching it. Used by `implementFeatureWorkflow`.
 - **`getCodingSessionStatus`**: Reports a session's status (`idle`, `running`, `rescheduling`, `terminated`) and the
-  messages it has produced.
+  last five messages it has produced, read newest first in one request rather than by paging its whole history.
 - **`sendCodingSessionMessage`**: Sends a follow-up message to a session, to answer a question or redirect its work.
 - **`runCodingTask`**: For work whose result is an answer rather than a pull request. Starts a session on a free-form
   task, polls it until its turn ends (`waitForClaudeSessionTurn`, up to 15 minutes) and returns the last message it
@@ -597,10 +597,14 @@ It reads three things, because a failure lands in a different place depending on
 - **`listRecentFailures`**: the failures themselves, each with a traceId. Filtered on `hasChildError`
   rather than on the trace's own status — a run fails from the inside, so the tool call that broke
   carries the error while the agent span above it may well have recovered and finished clean.
-  Matching on the root's status alone misses exactly the failures worth asking about.
+  Matching on the root's status alone misses exactly the failures worth asking about. Each failure
+  carries its `cause` — the innermost failing span — so "why did that fail?" is usually answered
+  without a `describeTrace` call.
 - **`describeTrace`**: one trace span by span, with the failing spans ordered innermost first. That
   ordering is the answer to "why": the deepest failure is the thing that actually broke, and every
-  span above it is a wrapper reporting that something below it did.
+  span above it is a wrapper reporting that something below it did. Inputs and outputs are included
+  for the failing spans only, unless `includePayloads` is set: a routed request has dozens of spans,
+  and every payload is text the agent has to read before it can answer.
 - **`listWorkflowRuns`**: recent runs with their status and, for the failed ones, which step stopped
   them. A `foreach` step reports each failing iteration separately, because "the step failed" and
   "the step failed on two of forty items" are different answers.

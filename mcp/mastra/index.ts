@@ -1,5 +1,6 @@
 import { Mastra } from '@mastra/core';
 import type { Agent } from '@mastra/core/agent';
+import { SpanType } from '@mastra/core/observability';
 import { MastraServer } from '@mastra/hono';
 import { CloudExporter, DefaultExporter, Observability, SamplingStrategyType } from '@mastra/observability';
 import { Hono } from 'hono';
@@ -91,6 +92,10 @@ export async function getMastra(): Promise<Mastra> {
           sampling: { type: SamplingStrategyType.ALWAYS },
           exporters: [new DefaultExporter(), new CloudExporter(), new TokenUsageExporter()],
           spanOutputProcessors: [new TokenTrackingProcessor()],
+          // One span per streamed chunk of every model call, which nothing here reads: token usage
+          // is taken from the generation spans, and the reflection agent reads failing spans. Kept,
+          // they are storage writes on every call and noise in every trace that agent is handed.
+          excludeSpanTypes: [SpanType.MODEL_CHUNK],
         },
       },
     }),
