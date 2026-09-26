@@ -29,7 +29,12 @@ private val NOT_ANSWERING = byteArrayOf(0)
  *
  * It has to stay under `ASK_THE_PHONE_MS` in `watch/src/conversation-screen.tsx`, which is how long
  * the watch waits for this reply: a phone that opened after the watch gave up would be a second
- * Jarvis talking over the first. When it runs out the window is put away again for the same reason.
+ * Jarvis talking over the first.
+ *
+ * Past it, nothing can take the request back. `VoiceInteractionService` has a public `showSession`
+ * and no public way to cancel one, so a window the system opens later than this still opens, and
+ * both of them talk. Two seconds is generous for a window that normally appears within a few
+ * hundred milliseconds or not at all.
  */
 private const val WAIT_FOR_THE_WINDOW_MS = 2000L
 
@@ -89,7 +94,6 @@ class JarvisWatchSummonService : WearableListenerService() {
       {
         if (reply.trySetResult(NOT_ANSWERING)) {
           JarvisVoiceInteractionSession.nextShowing = null
-          JarvisVoiceInteractionService.unsummon()
         }
       },
       WAIT_FOR_THE_WINDOW_MS,

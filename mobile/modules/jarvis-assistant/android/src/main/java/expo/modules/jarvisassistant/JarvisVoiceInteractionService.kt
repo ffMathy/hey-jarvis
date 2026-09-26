@@ -56,14 +56,5 @@ class JarvisVoiceInteractionService : VoiceInteractionService() {
         false
       }
     }
-
-    /** Puts the window away again, for a summoning the watch has stopped waiting for. */
-    internal fun unsummon() {
-      try {
-        active?.get()?.hideSession()
-      } catch (error: RuntimeException) {
-        Log.w(TAG, "Could not put the assistant's window away.", error)
-      }
-    }
   }
 }
