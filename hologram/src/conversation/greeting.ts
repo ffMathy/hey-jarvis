@@ -1,4 +1,4 @@
-import { useConversationInput } from '@elevenlabs/react-native';
+import { useConversationInput, useConversationStatus } from '@elevenlabs/react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 import { isGreetingOver, WITHOUT_FIRST_MESSAGE } from '../greeting-handover';
@@ -44,11 +44,14 @@ const CHECK_EVERY_MS = 50;
  *
  * `stopGreeting()` is for hanging up mid-greeting: he stops talking when you dismiss him.
  * `releaseCallAudio()` is for a conversation that failed before it started — a token that never
- * came — so the device is not left in call audio with no call.
+ * came — so the device is not left in call audio with no call. Once a conversation has been dialled,
+ * its ending lets go of the call's audio instead, whatever ended it — see `stopCallAudio`, which is
+ * also what puts the device's audio mode back.
  */
 export function useGreeting() {
   const player = useGreetingPlayer();
   const { setMuted } = useConversationInput();
+  const { status } = useConversationStatus();
   const [greeting, setGreeting] = useState(false);
   /** The same fact as `greeting`, for the session callback, which must see it without a render. */
   const inProgress = useRef(false);
@@ -62,20 +65,47 @@ export function useGreeting() {
   const waitingForTheEnd = useRef<((finished: boolean) => void)[]>([]);
   /**
    * Whether the call's audio was started for the greeting and no session has taken it over yet —
-   * the only time it is the greeting's to stop. Once a session exists, the SDK stops it as the
-   * conversation ends.
+   * the only time `releaseCallAudio` stops it. Once a session exists, its ending does.
    */
   const holdingCallAudio = useRef(false);
+  /** Whether the call's audio is on, whoever holds it, so it is let go of exactly once. */
+  const callAudioOn = useRef(false);
+  /**
+   * Whether a conversation has been dialled since the call's audio went on. Also set as the session
+   * is created, in case `connecting` never reaches a render before `disconnected` replaces it.
+   */
+  const dialled = useRef(false);
+
+  const endCallAudio = useCallback(() => {
+    holdingCallAudio.current = false;
+    dialled.current = false;
+    if (!callAudioOn.current) {
+      return;
+    }
+    callAudioOn.current = false;
+    stopCallAudio().catch(() => {
+      // Nothing to put back: it never started.
+    });
+  }, []);
 
   const releaseCallAudio = useCallback(() => {
     if (!holdingCallAudio.current) {
       return;
     }
-    holdingCallAudio.current = false;
-    stopCallAudio().catch(() => {
-      // Nothing to put back: it never started.
-    });
-  }, []);
+    endCallAudio();
+  }, [endCallAudio]);
+
+  // A conversation that was dialled and is over, however it went: the SDK has stopped LiveKit's
+  // session by the time it says `disconnected`, but only this puts the audio mode back.
+  useEffect(() => {
+    if (status === 'connecting' || status === 'connected') {
+      dialled.current = true;
+      return;
+    }
+    if (status === 'disconnected' && dialled.current) {
+      endCallAudio();
+    }
+  }, [status, endCallAudio]);
 
   const finishGreeting = useCallback(
     (finished: boolean) => {
@@ -110,9 +140,12 @@ export function useGreeting() {
   }, [player, finishGreeting]);
 
   const beginGreeting = useCallback(async () => {
+    // Marked before rather than after: a start that fails partway may still have switched the
+    // audio mode, and stopping what never started does nothing.
+    callAudioOn.current = true;
+    holdingCallAudio.current = true;
     try {
       await startCallAudio();
-      holdingCallAudio.current = true;
     } catch {
       // He still greets; whether he can be heard without it is the device's business.
     }
@@ -191,8 +224,9 @@ export function useGreeting() {
        * `useConversationInput().isMuted` — which `useUserVoice` reads — says so too.
        */
       onConversationCreated: () => {
-        // The session has the call's audio now, and stops it when the conversation ends.
+        // The session has the call's audio now, and the conversation's ending lets go of it.
         holdingCallAudio.current = false;
+        dialled.current = true;
         if (!inProgress.current) {
           return;
         }

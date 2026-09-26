@@ -174,9 +174,6 @@
       },
     },
   },
-  "patchedDependencies": {
-    "@livekit/react-native@2.12.0": "patches/@livekit%2Freact-native@2.12.0.patch",
-  },
   "overrides": {
     "@grpc/grpc-js": "1.14.4",
     "@hono/node-server": "2.1.1",

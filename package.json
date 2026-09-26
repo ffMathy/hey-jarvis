@@ -129,8 +129,5 @@
     "open": "11.0.1",
     "twilio": "6.1.0",
     "zod": "4.4.3"
-  },
-  "patchedDependencies": {
-    "@livekit/react-native@2.12.0": "patches/@livekit%2Freact-native@2.12.0.patch"
   }
 }

@@ -3,42 +3,69 @@ import { readFileSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 
 /**
- * That the call's audio still starts off the main thread on Android.
+ * What `call-audio.ts` relies on LiveKit and the ElevenLabs SDK to keep doing.
  *
- * `startCallAudio` goes through LiveKit's `AudioSwitchManager`, which as published switches the
- * audio mode into `MODE_IN_COMMUNICATION` on the main thread — the thread Reanimated draws the sphere
- * on — and Android takes a noticeable moment to switch it. That was the one freeze in his arrival,
- * at the moment the greeting started. The root `patches/` directory moves the switch onto a thread
- * of its own and makes `startAudioSession` resolve only once the call's audio is up, so the greeting
- * is not played into the earpiece while it switches.
- *
- * A LiveKit bump that leaves the patch behind breaks nothing loudly — the freeze just comes back —
- * so this reads the installed package and fails if it is not the patched one.
+ * The audio mode is switched in and out off the main thread by `JarvisGreetingModule`, and going
+ * back out has to happen after LiveKit's own stop, which puts back the call mode it found. That
+ * order is not something either library promises; it follows from how each is written today. A new
+ * version that changes it breaks nothing loudly — the phone is simply left in call mode after
+ * Jarvis hangs up, or the freeze in his arrival comes back — so this reads the installed packages
+ * and fails if any of it has moved.
  */
 
-/** The installed `@livekit/react-native`, followed through bun's links. */
-const LIVEKIT = realpathSync(join(import.meta.dir, '../../node_modules/@livekit/react-native'));
-const NATIVE_SOURCES = join(LIVEKIT, 'android/src/main/java/com/livekit/reactnative');
+const HOLOGRAM_ROOT = join(import.meta.dir, '../..');
 
-function readNativeSource(relativePath: string): string {
-  return readFileSync(join(NATIVE_SOURCES, relativePath), 'utf8');
+/** The installed `@livekit/react-native`, followed through bun's links. */
+const LIVEKIT = realpathSync(join(HOLOGRAM_ROOT, 'node_modules/@livekit/react-native'));
+const LIVEKIT_NATIVE = join(LIVEKIT, 'android/src/main/java/com/livekit/reactnative');
+/** The installed `@elevenlabs/react-native`, and the `@elevenlabs/client` beside it. */
+const REACT_NATIVE_SDK = realpathSync(join(HOLOGRAM_ROOT, 'node_modules/@elevenlabs/react-native'));
+const CLIENT_SDK = realpathSync(join(REACT_NATIVE_SDK, '../client'));
+
+function read(root: string, relativePath: string): string {
+  return readFileSync(join(root, relativePath), 'utf8');
 }
 
 describe("LiveKit's audio session on Android", () => {
-  it('switches the audio mode on a thread of its own before AudioSwitch starts on the main one', () => {
-    const manager = readNativeSource('audio/AudioSwitchManager.java');
+  const module = read(LIVEKIT_NATIVE, 'LivekitReactNativeModule.kt');
+  const manager = read(LIVEKIT_NATIVE, 'audio/AudioSwitchManager.java');
 
-    expect(manager).toContain('private final ExecutorService sequencer');
-    expect(manager).toMatch(/switchModeTo\(audioMode\);\s*\}\s*runOnMainAndWait\(/);
+  it('stops through a bridge method that returns nothing, so its work is queued rather than awaited', () => {
+    expect(module).toMatch(/@ReactMethod\s+fun stopAudioSession\(\)\s*\{\s*audioManager\.stop\(\)/);
   });
 
-  it('puts the mode back after stopping, since AudioSwitch now finds the call mode already set', () => {
-    expect(readNativeSource('audio/AudioSwitchManager.java')).toContain('switchModeTo(modeBeforeStart)');
+  it('answers `getAudioOutputs` on the same module, which `stopCallAudio` waits on as a barrier behind the stop', () => {
+    expect(module).toMatch(/@ReactMethod\s+fun getAudioOutputs\(promise: Promise\)/);
   });
 
-  it("resolves `startAudioSession` once the session is up, so the greeting is played as the call's audio", () => {
-    expect(readNativeSource('LivekitReactNativeModule.kt')).toMatch(
-      /fun startAudioSession\(promise: Promise\)\s*\{\s*audioManager\.start \{ promise\.resolve\(null\) \}/,
+  it('does its starting and stopping on the main thread, which `leaveCallMode` queues behind', () => {
+    expect(manager).toContain('private final Handler handler = new Handler(Looper.getMainLooper());');
+    expect(manager).toMatch(
+      /public void stop\(\) \{\s*handler\.removeCallbacksAndMessages\(null\);\s*handler\.postAtFrontOfQueue\(/,
+    );
+  });
+
+  it('switches into the mode it is configured with only when it manages audio focus, which the preset asks for', () => {
+    expect(manager).toContain('audioSwitch.setAudioMode(audioMode);');
+    expect(manager).toContain('audioSwitch.setManageAudioFocus(manageAudioFocus);');
+  });
+});
+
+describe('the ElevenLabs SDK', () => {
+  it("stops LiveKit's audio session as a voice session is taken down", () => {
+    const setup = read(REACT_NATIVE_SDK, 'dist/index.react-native.js');
+
+    expect(setup).toMatch(/detach: async \(\) => \{[\s\S]*?finally \{\s*await AudioSession\.stopAudioSession\(\);/);
+  });
+
+  it('takes the session down before it reports `disconnected`, which is when `useGreeting` lets go', () => {
+    const conversation = read(CLIENT_SDK, 'dist/BaseConversation.js');
+
+    expect(conversation).toMatch(
+      /await this\.handleEndSession\(\);\s*\}\s*finally \{[\s\S]*?this\.updateStatus\("disconnected"\);/,
+    );
+    expect(read(CLIENT_SDK, 'dist/VoiceConversation.js')).toMatch(
+      /async handleEndSession\(\) \{[\s\S]*?await this\.cleanUp\(\);/,
     );
   });
 });

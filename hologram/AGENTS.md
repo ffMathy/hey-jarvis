@@ -167,15 +167,18 @@ easy to break:
   2.5 s plus a 250 ms margin): played into straight away, AirPods lost his first word.
   LiveKit's `start` does nothing when the SDK calls it again. Screens call `releaseCallAudio()` when a start fails, so no call audio is
   left with no call.
-- **Starting the call's audio must not touch the main thread for long.** Reanimated draws the
-  sphere on Android's main thread, and LiveKit, as published, switched the phone into call mode
-  (`MODE_IN_COMMUNICATION`) there — which Android takes a noticeable moment over, so the sphere froze
-  once in every arrival, just as the greeting began. The root `patches/` moves the switch onto a
-  thread of its own inside LiveKit's `AudioSwitchManager`, starts its `AudioSwitch` on the main
-  thread only once the switch has taken effect, puts the old mode back the same way on stop, and
-  makes `startAudioSession` resolve once all of that is done — so `beginGreeting` still plays him
-  as call audio rather than into the earpiece mid-switch. `call-audio.contract.spec.ts` fails if a
-  LiveKit bump leaves the patch behind.
+- **Call mode is switched off the main thread, by this package.** Reanimated draws the sphere on
+  Android's main thread, and LiveKit switches the device into `MODE_IN_COMMUNICATION` there as its
+  session starts — which Android takes a noticeable moment over, so the sphere froze once in every
+  arrival, just as the greeting began. So `startCallAudio` first has `JarvisGreeting`'s
+  `enterCallMode` switch it on a thread of its own and wait for it, and LiveKit then asks for the
+  mode already in force. LiveKit also remembers that as the mode to put back, so `stopCallAudio`
+  does the putting back: after LiveKit's stop (a bridge call that only *posts* to the main thread,
+  so `getAudioOutputs` on the same bridge queue is awaited first as a barrier), `leaveCallMode`
+  queues behind it on the main thread and switches back off it. `useGreeting` calls it on every
+  ending — `releaseCallAudio`, and any dialled conversation reaching `disconnected`, by which time
+  the SDK has stopped LiveKit's session. `call-audio.contract.spec.ts` fails if LiveKit or the SDK
+  stops behaving the way that order relies on.
 - **That makes this package a native module.** `expo-module.config.json` at its root is what both
   apps' autolinking finds, since both depend on `hologram`. In a build without it,
   `greeting-player.ts` reports the recording as unplayable, and the agent keeps its own first
