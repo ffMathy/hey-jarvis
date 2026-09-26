@@ -214,7 +214,7 @@ async function recordedEvents(sessions: ClaudeCodeSessions, sessionId: string): 
 }
 
 describe('ClaudeCodeSessions', () => {
-  it('starts a new session on the host with the task as its first message', async () => {
+  it('starts a new session in the sandbox with the task as its first message', async () => {
     const { sessions, launched } = fakeHost();
 
     const session = await sessions.create('Build the page.');
@@ -400,7 +400,7 @@ describe('ClaudeCodeSessions', () => {
     const { sessions } = fakeHost();
 
     expect(() => sessions.get('0b7e1d52-6c3f-4f7e-9a51-2f7d8c9e0a11')).toThrow(
-      '~/jarvis-sessions/0b7e1d52-6c3f-4f7e-9a51-2f7d8c9e0a11',
+      'jarvis sandbox, in ~/jarvis-sessions/0b7e1d52-6c3f-4f7e-9a51-2f7d8c9e0a11',
     );
   });
 });

@@ -1,7 +1,7 @@
 /**
  * Claude Code session watcher.
  *
- * A coding session runs unattended on the Claude Code host, so nothing in the
+ * A coding session runs unattended in the host's sandbox, so nothing in the
  * house hears about it unless something is listening. This watcher follows a
  * session's events and forwards each one into the Synapse vertical as a state
  * change, which is where subscriptions, batching and notification decisions

@@ -1,15 +1,18 @@
 /**
- * The machine Claude Code runs on, reached over SSH.
+ * Where Claude Code runs: a Docker Sandbox on the host, reached over SSH.
  *
  * The coding vertical does not call a model API for its sessions. It runs the official Claude Code
- * CLI on a host that is logged in to the user's Claude subscription — the Raspberry Pi itself, or
- * any other machine the server can reach — so the work is billed to that subscription rather than
- * to an API key. The server holds only an SSH key; the Claude login, and the GitHub login the
- * session clones and opens pull requests with, live on the host.
+ * CLI, signed in to the user's Claude subscription with a token from `claude setup-token`, so the
+ * work is billed to that subscription rather than to an API key.
+ *
+ * Claude Code runs in a Docker Sandbox (`sbx`): a microVM of its own, with its own filesystem,
+ * Docker daemon and egress proxy, so a session that skips permission prompts can reach nothing on
+ * the host. A sandbox needs KVM and the `sbx` daemon, which live on the host rather than in the
+ * server's container — so the server reaches the host over SSH, and the host runs `sbx exec`.
  *
  * Nothing runs Claude Code inside the server's own container: the container carries the 1Password
  * service account token for the whole vault, and a session that skips permission prompts could
- * read it out of `/proc`. On a host of its own, as a user of its own, it can reach none of that.
+ * read it out of `/proc`.
  */
 
 import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
@@ -18,8 +21,11 @@ import os from 'node:os';
 import path from 'node:path';
 import type { Readable, Writable } from 'node:stream';
 
-/** Where, on the host, each session gets a working directory of its own. */
-export const HOST_SESSIONS_DIRECTORY = 'jarvis-sessions';
+/** The sandbox every session runs in, created once on the host with `sbx create --name jarvis claude`. */
+export const SANDBOX_NAME = 'jarvis';
+
+/** Where, inside the sandbox, each session gets a working directory of its own. */
+export const SANDBOX_SESSIONS_DIRECTORY = 'jarvis-sessions';
 
 /** Claude Code session ids are UUIDs; anything else never reaches the remote shell. */
 const SESSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -28,16 +34,18 @@ const SESSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-
 const MAXIMUM_STDERR_LENGTH = 4000;
 
 /**
- * Configuration needed to reach the host.
+ * Configuration needed to reach the host, and to sign Claude Code in.
  *
- * Both come from the environment. Their values are never logged — only whether they are set — per
- * the repository's secret handling rules.
+ * All of it comes from the environment. The values are never logged — only whether they are set —
+ * per the repository's secret handling rules.
  */
 export interface ClaudeCodeHostConfiguration {
   /** The SSH destination: `user@host`, or `ssh://user@host:port` for a port other than 22. */
   target: string;
   /** The private key, in OpenSSH format, whose public half the host authorizes. */
   privateKey: string;
+  /** The subscription token `claude setup-token` printed. */
+  oauthToken: string;
 }
 
 /**
@@ -48,20 +56,22 @@ export interface ClaudeCodeHostConfiguration {
 export function getClaudeCodeHostConfiguration(): ClaudeCodeHostConfiguration {
   const target = process.env.HEY_JARVIS_CLAUDE_CODE_SSH_TARGET;
   const privateKey = process.env.HEY_JARVIS_CLAUDE_CODE_SSH_PRIVATE_KEY;
+  const oauthToken = process.env.HEY_JARVIS_CLAUDE_CODE_OAUTH_TOKEN;
 
-  if (!target || !privateKey) {
+  if (!target || !privateKey || !oauthToken) {
     const missing = [
       !target && 'HEY_JARVIS_CLAUDE_CODE_SSH_TARGET',
       !privateKey && 'HEY_JARVIS_CLAUDE_CODE_SSH_PRIVATE_KEY',
+      !oauthToken && 'HEY_JARVIS_CLAUDE_CODE_OAUTH_TOKEN',
     ].filter((name): name is string => typeof name === 'string');
 
     throw new Error(
       `Claude Code sessions are not configured. Missing environment variables: ${missing.join(', ')}. ` +
-        'Set up a host with Claude Code logged in to your subscription, then point these at it.',
+        'Set up a host with a Docker Sandbox for Claude Code, then point these at it.',
     );
   }
 
-  return { target, privateKey };
+  return { target, privateKey, oauthToken };
 }
 
 /** True when the environment carries everything needed to reach the host. */
@@ -77,25 +87,25 @@ export function isClaudeCodeHostConfigured(): boolean {
 /**
  * The command the host runs for one Claude Code process.
  *
- * Every session works in a directory of its own, and a session is resumed from the directory it
- * started in, because that is where Claude Code keeps its transcript. The session id is the only
- * value interpolated, and only once it is known to be a UUID.
+ * The host reads the subscription token off the first line of stdin — so it is never part of a
+ * command line, on either side of the SSH hop — and `sbx exec -e` hands it on into the sandbox.
+ * Everything after that line is Claude Code's own input.
  *
- * `$HOME/.local/bin` is put on the path because that is where the native installer puts `claude`,
- * and a non-interactive SSH command does not read the shell profile that would otherwise add it.
+ * Inside the sandbox, every session works in a directory of its own, and a session is resumed from
+ * the directory it started in, because that is where Claude Code keeps its transcript. The session
+ * id is the only value interpolated, and only once it is known to be a UUID; the inner command is
+ * single-quoted on the host, so `$HOME` is the sandbox's, not the host's.
  *
  * @param sessionId - The Claude Code session id
- * @param resume - Whether the session already exists on the host and is being continued
+ * @param resume - Whether the session already exists in the sandbox and is being continued
  */
 export function buildRemoteCommand(sessionId: string, resume: boolean): string {
   if (!SESSION_ID_PATTERN.test(sessionId)) {
     throw new Error(`Not a Claude Code session id: ${sessionId}`);
   }
 
-  const directory = `"$HOME/${HOST_SESSIONS_DIRECTORY}/${sessionId}"`;
-
-  return [
-    'export PATH="$HOME/.local/bin:$PATH"',
+  const directory = `"$HOME/${SANDBOX_SESSIONS_DIRECTORY}/${sessionId}"`;
+  const insideSandbox = [
     `mkdir -p ${directory}`,
     `cd ${directory}`,
     [
@@ -105,10 +115,18 @@ export function buildRemoteCommand(sessionId: string, resume: boolean): string {
       // process that is still working.
       '--input-format stream-json',
       '--output-format stream-json --verbose',
-      // Nobody is there to answer a permission prompt. The host user is what bounds the session.
+      // Nobody is there to answer a permission prompt. The sandbox is what bounds the session.
       '--dangerously-skip-permissions',
       resume ? `--resume ${sessionId}` : `--session-id ${sessionId}`,
     ].join(' '),
+  ].join(' && ');
+
+  return [
+    'IFS= read -r CLAUDE_CODE_OAUTH_TOKEN',
+    'export CLAUDE_CODE_OAUTH_TOKEN',
+    // `-i` keeps stdin open, the way Claude Code reads its messages. `sbx exec` starts the sandbox
+    // first if it is stopped.
+    `exec sbx exec -i -e CLAUDE_CODE_OAUTH_TOKEN ${SANDBOX_NAME} sh -c '${insideSandbox}'`,
   ].join(' && ');
 }
 
@@ -167,10 +185,10 @@ function collectStderr(child: ChildProcessWithoutNullStreams): () => string {
 }
 
 /**
- * Starts Claude Code on the host over SSH.
+ * Starts Claude Code in the host's sandbox, over SSH.
  *
  * `ssh` gets an environment with nothing in it but `PATH`, and reads no configuration but what is
- * passed here, so none of the server's secrets can travel with it.
+ * passed here, so none of the server's secrets can travel with it but the one it is handed on stdin.
  */
 export const launchClaudeCodeOverSsh: ClaudeCodeLauncher = async (sessionId, resume) => {
   const configuration = getClaudeCodeHostConfiguration();
@@ -215,6 +233,8 @@ export const launchClaudeCodeOverSsh: ClaudeCodeLauncher = async (sessionId, res
   // A write to a process that has already gone fails with EPIPE, which is reported through the
   // exit instead; left unhandled it would take the whole server down.
   child.stdin.on('error', () => {});
+  // The first line is the token, which the remote command reads before handing stdin to Claude Code.
+  child.stdin.write(`${configuration.oauthToken}\n`);
 
   return { input: child.stdin, output: child.stdout, exited };
 };

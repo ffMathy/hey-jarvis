@@ -239,8 +239,8 @@ export const searchRepositories = createTool({
 /**
  * Tool to hand a change to a Claude Code session for implementation
  *
- * The session runs unattended on the Claude Code host, billed to the user's
- * Claude subscription. Its events are
+ * The session runs unattended in the host's Docker Sandbox, billed to the
+ * user's Claude subscription. Its events are
  * watched from the moment it starts and forwarded into the Synapse vertical as
  * state changes, so progress, questions and failures surface through the same
  * notification path as everything else in the house.
@@ -278,8 +278,9 @@ export const startCodingSession = createTool({
       inputData.title ? `Title: ${inputData.title}` : undefined,
       `\nRequest:\n${inputData.request}`,
       inputData.instructions ? `\n${inputData.instructions}` : undefined,
-      // The session starts in an empty directory of its own on the host, so it fetches the code itself.
-      `\nStart by cloning the repository into the current directory with \`gh repo clone ${repository}\`. Work on a dedicated branch, follow the repository conventions in AGENTS.md and CLAUDE.md, run the tests, and open a pull request when you are done.`,
+      // The session starts in an empty directory of its own in the sandbox, so it fetches the code
+      // itself. The sandbox's proxy signs `gh` in; `gh auth setup-git` lets `git push` use the same.
+      `\nStart by cloning the repository into the current directory with \`gh repo clone ${repository}\`, and run \`gh auth setup-git\` so you can push. Work on a dedicated branch, follow the repository conventions in AGENTS.md and CLAUDE.md, run the tests, and open a pull request when you are done.`,
     ]
       .filter((line): line is string => typeof line === 'string')
       .join('\n');

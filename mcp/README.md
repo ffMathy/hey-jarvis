@@ -198,56 +198,75 @@ today. Running it as a plain container, as above, is the supported route.
 
 ### Letting Jarvis code on your Claude subscription
 
-The coding vertical does not call a model API for its sessions. It runs the official Claude Code CLI
-over SSH, on a host that is logged in to your Claude subscription, so the work is billed to the
-subscription rather than to an API key. The host can be the Pi itself — which is what the
-`host.docker.internal` entry in the compose file is for — or any bigger machine the container can
-reach, which is worth it if the Pi has less than 4 GB: a session clones the repository, installs its
-dependencies and runs its tests there.
+The coding vertical does not call a model API for its sessions. It runs the official Claude Code CLI,
+signed in with a token from `claude setup-token`, so the work is billed to your Claude subscription
+rather than to an API key. Each session runs inside a [Docker Sandbox](https://docs.docker.com/ai/sandboxes/)
+— a microVM with its own filesystem, Docker daemon and egress proxy — so a session that skips
+permission prompts cannot reach anything on the host. A sandbox needs KVM and the `sbx` daemon, which
+live on the host, so the container reaches the host over SSH and runs `sbx exec` there. The host can
+be the Pi itself — which is what the `host.docker.internal` entry in the compose file is for — or any
+other machine the container can reach.
 
-Claude Code never runs inside the container: the container holds the service account token for
-the whole vault, and a session that skips permission prompts could read it. On the host it runs as a
-user of its own, which is what bounds it.
+Docker Sandboxes supports **Ubuntu 24.04 or newer on arm64 or amd64, on bare metal with KVM**.
+Raspberry Pi OS is not one of them, so a Pi that runs sessions needs Ubuntu Server 24.04 (64-bit)
+instead; the Pi 4 and 5 both support KVM. A sandbox takes up to half the host's memory by default,
+and a session clones the repository, installs its dependencies and runs its tests in it, so an 8 GB
+Pi — or a bigger machine — is the realistic floor.
 
-1. **Create that user, and give it Git and the GitHub CLI.** No `sudo`, and not in the `docker` group.
+1. **Create a user for it, and install Docker Sandboxes.** No `sudo`, and not in the `docker` group
+   — only `kvm`. Lingering keeps the sandbox daemon running between SSH connections. Take the newest
+   `.deb` from [sbx-releases](https://github.com/docker/sbx-releases/releases) rather than this one.
 
    ```bash
    sudo adduser --disabled-password --gecos '' jarvis
-   sudo apt-get install -y git gh
+   sudo usermod -aG kvm jarvis
+   sudo loginctl enable-linger jarvis
+   wget https://github.com/docker/sbx-releases/releases/download/v0.37.1/DockerSandboxes-linux-arm64-ubuntu2404.deb
+   sudo apt install ./DockerSandboxes-linux-arm64-ubuntu2404.deb
    ```
 
-2. **As that user, install Claude Code and log in, and log in to GitHub.** Sessions clone with `gh`
-   and open their pull requests with it. Install Bun too, since sessions working on this repository
-   run its tests.
+2. **As that user, sign in to Docker, create the sandbox, and give it GitHub.** Every session runs in
+   the one sandbox named `jarvis`. The GitHub token needs to clone, push and open pull requests on
+   your repositories; the sandbox's proxy hands it to `gh` on the way out, so it never enters the
+   sandbox itself. Sessions working on this repository run its tests, so give the sandbox Bun too.
 
    ```bash
    sudo -iu jarvis
-   curl -fsSL https://claude.ai/install.sh | bash
-   curl -fsSL https://bun.sh/install | bash
-   ~/.local/bin/claude          # log in with your Claude account, then /exit
-   gh auth login && gh auth setup-git
-   git config --global user.name 'Jarvis' && git config --global user.email '<you>@users.noreply.github.com'
+   sbx login
+   mkdir -p ~/jarvis-workspace && sbx create --name jarvis claude ~/jarvis-workspace
+   sbx secret set -g github
+   sbx exec jarvis sh -c 'curl -fsSL https://bun.sh/install | bash'
    ```
 
-3. **Give the container a key to it.** In the `Jarvis` vault, create an **SSH Key** item named
-   `Claude Code` (let 1Password generate an Ed25519 key), and add a text field `SSH target` to it,
-   holding `jarvis@host.docker.internal` — or `jarvis@<host>` for another machine, with
-   `ssh://jarvis@<host>:<port>` for a port other than 22. Then authorize its public key for the
-   user, with `restrict` in front so the key can run a command and do nothing else:
+3. **Put the rest in 1Password.** In the `Jarvis` vault, create an **SSH Key** item named
+   `Claude Code` (let 1Password generate an Ed25519 key) and add two fields to it:
+
+   | Field | Value |
+   | --- | --- |
+   | `SSH target` | `jarvis@host.docker.internal` — or `jarvis@<host>` for another machine, with `ssh://jarvis@<host>:<port>` for a port other than 22 |
+   | `OAuth token` | what `claude setup-token` prints, run on any machine where you are signed in to Claude Code with your subscription |
+
+4. **Authorize the key for the user**, with `restrict` in front so it can run a command and do
+   nothing else:
 
    ```bash
    sudo -iu jarvis sh -c 'mkdir -p ~/.ssh && chmod 700 ~/.ssh && echo "restrict ssh-ed25519 AAAA..." >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys'
    ```
 
-`mcp/op.env` maps both fields, so the server resolves them like every other secret, and neither
-the key nor the target is written to the Pi outside the container. The container pins the host's key
-the first time it connects, in `/data/claude-code-known-hosts`; delete that file if the host is
-reinstalled.
+`mcp/op.env` maps all three fields, so the server resolves them like every other secret, and none
+of them is written to the Pi outside the container. The subscription token goes to the host on the
+first line of the SSH connection's input, never on a command line, and on into the sandbox as
+`CLAUDE_CODE_OAUTH_TOKEN`. The container pins the host's key the first time it connects, in
+`/data/claude-code-known-hosts`; delete that file if the host is reinstalled.
 
-Each session works in `~/jarvis-sessions/<session id>` on the host. The server keeps track of its
-sessions in memory, so after a restart it no longer knows the ones it started — but the transcripts
-stay on the host, and `cd ~/jarvis-sessions/<id> && claude --resume <id>` picks any of them up by
-hand.
+Each session works in `~/jarvis-sessions/<session id>` inside the sandbox. The server keeps track of
+its sessions in memory, so after a restart it no longer knows the ones it started — but the
+transcripts stay in the sandbox, and
+`sbx exec -it jarvis sh -c 'cd ~/jarvis-sessions/<id> && claude --resume <id>'` picks any of them
+up by hand.
+
+If sessions start failing with `Not authenticated to Docker`, the host's Docker sign-in has expired:
+run `sbx login` again as `jarvis`.
 
 ### Troubleshooting
 

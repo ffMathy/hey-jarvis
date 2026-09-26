@@ -360,8 +360,8 @@ second agent that would only get the research as text. It is slow like the tool 
 beside Gemini's built-in search, a mix only Gemini 3 accepts in one request, so the research agent
 must stay on a Gemini 3 model.
 
-**Requirements:** the Claude Code host under [Coding Agent](#coding-agent), logged in with a Claude
-account that can publish artifacts; plus the companion-app notify service the
+**Requirements:** the Claude Code sandbox under [Coding Agent](#coding-agent), on a subscription
+that can publish artifacts; plus the companion-app notify service the
 [Notification Agent](#notification-agent) uses for the push.
 
 **Example Use Cases:**
@@ -474,17 +474,21 @@ By voice, each of those questions is asked by Jarvis and answered through routin
 **Questions for the user** under [Routing](#routing).
 
 **Claude Code Sessions:**
-Implementation work is delegated to the official [Claude Code CLI](https://code.claude.com/docs/en/headless), run
-over SSH on a host that is logged in to the user's Claude **subscription** — so it is billed there, not to an API
-key (`claude-code-host.ts`). Each run of a session is one `claude --print` process in `~/jarvis-sessions/<session id>`
-on the host, talking stream-json both ways and skipping permission prompts; the host user is what bounds it. The
-session clones the repository with `gh`, works unattended and opens a pull request when it is done.
+Implementation work is delegated to the official [Claude Code CLI](https://code.claude.com/docs/en/headless), signed
+in to the user's Claude **subscription** with a token from `claude setup-token` — so it is billed there, not to an API
+key. It runs inside a [Docker Sandbox](https://docs.docker.com/ai/sandboxes/) named `jarvis` on the host: a microVM
+with its own filesystem, Docker daemon and egress proxy, which is what bounds a session that skips permission prompts.
+A sandbox needs KVM and the `sbx` daemon on the host, so the server reaches the host over SSH and runs
+`sbx exec -i jarvis …` there (`claude-code-host.ts`). The subscription token travels on the first line of stdin, never
+on a command line. Each run of a session is one `claude --print` process in `~/jarvis-sessions/<session id>` inside
+the sandbox, talking stream-json both ways. The session clones the repository with `gh`, which the sandbox's proxy
+signs in with the host's `sbx` GitHub secret, works unattended and opens a pull request when it is done.
 
 `ClaudeCodeSessions` (`claude-sessions.ts`) keeps each session's events in memory, reduced to the four that matter
 — `session.status_running`, `agent.message`, `session.status_idle` (with `end_turn` or why else it stopped) and
 `session.error`. A message sent while a session works is written to the same process; one sent after it went idle
 resumes the session in a new process (`claude --resume`). Being in memory, sessions do not survive a restart of the
-server, though their transcripts stay on the host.
+server, though their transcripts stay in the sandbox.
 
 Claude Code never runs in the server's own container, which carries the 1Password service account token for the
 whole vault.
@@ -514,14 +518,14 @@ without tearing down the watch.
 | Environment variable | 1Password reference | What it is |
 | --- | --- | --- |
 | `HEY_JARVIS_GITHUB_API_TOKEN` | already mapped in `mcp/op.env` | GitHub token with `repo` scope — the tools read repositories and issues, and create and update issues |
-| `HEY_JARVIS_CLAUDE_CODE_SSH_TARGET` | `op://Jarvis/Claude Code/SSH target` | Where Claude Code runs: `user@host`, or `ssh://user@host:port` |
+| `HEY_JARVIS_CLAUDE_CODE_SSH_TARGET` | `op://Jarvis/Claude Code/SSH target` | The host with the `jarvis` sandbox: `user@host`, or `ssh://user@host:port` |
 | `HEY_JARVIS_CLAUDE_CODE_SSH_PRIVATE_KEY` | `op://Jarvis/Claude Code/private key?ssh-format=openssh` | The key the host authorizes for that user |
+| `HEY_JARVIS_CLAUDE_CODE_OAUTH_TOKEN` | `op://Jarvis/Claude Code/OAuth token` | The subscription token `claude setup-token` prints |
 
-The host itself — a user of its own with Claude Code, Git, the GitHub CLI and Bun, logged in to Claude and to GitHub
-— is set up as described in **Letting Jarvis code on your Claude subscription** in `mcp/README.md`. Its GitHub login
-is what the session clones and opens pull requests with; the Claude login is what it is billed to.
+The host itself — Ubuntu 24.04 or newer with KVM, a user of its own signed in to Docker, the `jarvis` sandbox and its
+GitHub secret — is set up as described in **Letting Jarvis code on your Claude subscription** in `mcp/README.md`.
 
-The vertical imports without either variable — `isClaudeCodeHostConfigured()` keeps the failure lazy, so repository
+The vertical imports without any of them — `isClaudeCodeHostConfigured()` keeps the failure lazy, so repository
 and issue browsing works on the GitHub token alone and only the tools that start or follow a session
 (`startCodingSession`, `runCodingTask` and the session tools) need the host.
 
@@ -1563,7 +1567,7 @@ All environment variables use the `HEY_JARVIS_` prefix for easy management and D
 - **ElevenLabs**: `HEY_JARVIS_ELEVENLABS_API_KEY`, `HEY_JARVIS_ELEVENLABS_AGENT_ID`, `HEY_JARVIS_ELEVENLABS_VOICE_ID` for voice AI (test agent ID `HEY_JARVIS_ELEVENLABS_TEST_AGENT_ID` takes precedence for phone calls)
 - **Recipes**: `HEY_JARVIS_VALDEMARSRO_API_KEY` for Danish recipe data
 - **GitHub**: `HEY_JARVIS_GITHUB_API_TOKEN` for GitHub API access (coding agent and error reporting processor)
-- **Claude Code sessions**: `HEY_JARVIS_CLAUDE_CODE_SSH_TARGET`, `HEY_JARVIS_CLAUDE_CODE_SSH_PRIVATE_KEY` to reach the host the coding vertical runs Claude Code on, billed to the Claude subscription it is logged in to
+- **Claude Code sessions**: `HEY_JARVIS_CLAUDE_CODE_SSH_TARGET`, `HEY_JARVIS_CLAUDE_CODE_SSH_PRIVATE_KEY` to reach the host whose Docker Sandbox the coding vertical runs Claude Code in, and `HEY_JARVIS_CLAUDE_CODE_OAUTH_TOKEN` to bill it to the Claude subscription
 - **WiFi**: `HEY_JARVIS_WIFI_SSID`, `HEY_JARVIS_WIFI_PASSWORD` for Home Assistant Voice Firmware
 - **Notifications**: `HEY_JARVIS_PRIMARY_USER_PHONE_NUMBER` so Jarvis can call or text the primary user; optionally `HEY_JARVIS_PRIMARY_USER_NAME`, `HEY_JARVIS_PRIMARY_USER_PHONE_DEVICE`, `HEY_JARVIS_PRIMARY_USER_NOTIFY_SERVICE` and `HEY_JARVIS_CAR_NAME` to pin down which person, phone and car the routing looks at
 

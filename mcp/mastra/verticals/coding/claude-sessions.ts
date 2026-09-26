@@ -1,17 +1,17 @@
 /**
- * Claude Code sessions, run on a host logged in to the user's Claude subscription.
+ * Claude Code sessions, run in a Docker Sandbox on the user's Claude subscription.
  *
  * The coding vertical delegates actual implementation work to Claude Code. A session is started
- * with a task, works unattended in a directory of its own on the host, and can be steered with
- * follow-up messages. Each run of it is one `claude --print` process, reached over SSH (see
- * `claude-code-host.ts`); a message sent while it works is written to the same process, and one
- * sent after it has finished starts a new process that resumes the session.
+ * with a task, works unattended in a directory of its own inside the host's sandbox, and can be
+ * steered with follow-up messages. Each run of it is one `claude --print` process, reached over SSH
+ * and `sbx exec` (see `claude-code-host.ts`); a message sent while it works is written to the same
+ * process, and one sent after it has finished starts a new process that resumes the session.
  *
  * What a session says is kept here, in memory, as a small set of events: the process started, the
  * agent said something, the process stopped, or something broke. Claude Code emits far more —
  * every tool call and its result — and none of it is what anyone following the session wants to
  * hear. Being in memory, a session does not outlive a restart of the server; the transcript stays
- * on the host, where `claude --resume` in the session's directory picks it up by hand.
+ * in the sandbox, where `claude --resume` in the session's directory picks it up by hand.
  *
  * @see https://code.claude.com/docs/en/headless
  */
@@ -23,8 +23,9 @@ import { logger } from '../../utils/logger.js';
 import {
   type ClaudeCodeLauncher,
   type ClaudeCodeProcess,
-  HOST_SESSIONS_DIRECTORY,
   launchClaudeCodeOverSsh,
+  SANDBOX_NAME,
+  SANDBOX_SESSIONS_DIRECTORY,
 } from './claude-code-host.js';
 
 export type ClaudeSessionStatus = 'running' | 'idle';
@@ -176,7 +177,7 @@ interface SessionRecord {
   id: string;
   status: ClaudeSessionStatus;
   events: ClaudeSessionEvent[];
-  /** Whether Claude Code has created the session on the host, so the next process resumes it. */
+  /** Whether Claude Code has created the session in the sandbox, so the next process resumes it. */
   exists: boolean;
   /** The process working on the session, while there is one that can still take messages. */
   process?: ClaudeCodeProcess;
@@ -331,8 +332,8 @@ export class ClaudeCodeSessions {
     if (!record) {
       throw new Error(
         `There is no Claude Code session ${sessionId} on this server. Sessions are kept in memory, so one ` +
-          `started before the server last restarted is gone from here — its transcript is still on the host, ` +
-          `in ~/${HOST_SESSIONS_DIRECTORY}/${sessionId}.`,
+          `started before the server last restarted is gone from here — its transcript is still in the ` +
+          `${SANDBOX_NAME} sandbox, in ~/${SANDBOX_SESSIONS_DIRECTORY}/${sessionId}.`,
       );
     }
 
@@ -368,7 +369,8 @@ export class ClaudeCodeSessions {
   private async follow(record: SessionRecord, claudeCode: ClaudeCodeProcess): Promise<void> {
     for await (const line of createInterface({ input: claudeCode.output, crlfDelay: Number.POSITIVE_INFINITY })) {
       // Any output at all means Claude Code is running, and has created the session to resume. A
-      // process that never got that far -- SSH could not connect -- leaves nothing to resume.
+      // process that never got that far -- SSH could not connect, the sandbox would not start --
+      // leaves nothing to resume.
       record.exists = true;
       const output = readClaudeCodeOutputLine(line);
 
@@ -391,7 +393,7 @@ export class ClaudeCodeSessions {
     const { code, stderr } = await claudeCode.exited;
 
     // A process that exits with messages still unanswered never got to its `result`: SSH could not
-    // connect, `claude` is not installed, or the connection dropped mid-turn.
+    // connect, the sandbox could not be started, or the connection dropped mid-turn.
     if (record.process === claudeCode) {
       logger.error('[CLAUDE SESSION] Claude Code exited before finishing its turn', { sessionId: record.id, code });
 
