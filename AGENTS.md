@@ -132,6 +132,16 @@ blocks them, so nobody has to re-derive it:
 Three of those trace to `serve-handler` ← `serve` ← the `mastra` CLI, so a single
 upstream bump there would clear them.
 
+### Patching a dependency
+
+When a dependency's own code has to change, it is patched with `bun patch <package>`, edited in
+place, and saved with `bun patch --commit <path>`: the diff lands in `patches/` and is named under
+`patchedDependencies` in the root `package.json`, so it is reviewed like any other change and
+applied on every install. A missing patch file fails `bun install`, which is why `mcp/Dockerfile`
+copies `patches/` beside the manifests. A patch is pinned to one version, so bumping the package
+means carrying the patch forward — pair each one with a test that reads the installed source and
+fails without it. Today there is one: `@livekit/react-native`, see `hologram/AGENTS.md`.
+
 ### Install scripts are never trusted
 
 Because `ignoreScripts = true` applies to this workspace too, `prepare` does not

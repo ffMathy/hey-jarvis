@@ -433,7 +433,7 @@ adb shell cmd role get-role-holders android.app.role.ASSISTANT
 
 Versions are pinned exactly, and every one of them has to clear the repository's 7-day npm cooldown (see the root AGENTS.md). Three pins are not just "the latest that fits":
 
-- `@livekit/react-native` is held at **2.x**. The 3.x line is published as `latest` but does not satisfy `@elevenlabs/react-native`'s peer range.
+- `@livekit/react-native` is held at **2.x**. The 3.x line is published as `latest` but does not satisfy `@elevenlabs/react-native`'s peer range. It is also **patched** (`patches/` at the root): as published it switches Android into call mode on the main thread, which froze the hologram once per summoning as the greeting began. See the call-audio note in `../hologram/AGENTS.md`. Bumping it means carrying the patch forward, which `hologram/src/conversation/call-audio.contract.spec.ts` checks.
 - `livekit-client` is a direct dependency even though it is transitive, so only one copy can resolve.
 - `expo-audio` is at **57.0.5**, what Expo 57's `bundledNativeModules.json` allows (`~57.0.4`). It plays the greeting in a browser, through an `HTMLAudioElement`; on Android `hologram`'s own native module plays it, as call audio. It needs no config plugin: it only plays, and its manifest adds nothing but `MODIFY_AUDIO_SETTINGS`.
 - `@config-plugins/react-native-webrtc` is deliberately **not** installed. Its Android half only adds permissions, and two of them — `CAMERA` and `SYSTEM_ALERT_WINDOW` — have no business in a voice assistant. `app.config.ts` declares the permissions this app actually uses and blocks `CAMERA`, which LiveKit's own manifest would otherwise merge in.

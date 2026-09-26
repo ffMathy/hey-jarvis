@@ -1,0 +1,225 @@
+diff --git a/android/src/main/java/com/livekit/reactnative/LivekitReactNativeModule.kt b/android/src/main/java/com/livekit/reactnative/LivekitReactNativeModule.kt
+index f78e72896c2acc6ff60a44b1d330c17fd9fc0931..f4fc450083c42ac2950e561fe7264277189d1955 100644
+--- a/android/src/main/java/com/livekit/reactnative/LivekitReactNativeModule.kt
++++ b/android/src/main/java/com/livekit/reactnative/LivekitReactNativeModule.kt
+@@ -116,9 +116,11 @@ class LivekitReactNativeModule(reactContext: ReactApplicationContext) : ReactCon
+         }
+     }
+ 
++    // Resolved once the session has really started, which is now off the main thread and takes as
++    // long as Android's audio mode switch: audio played before then is not yet call audio.
+     @ReactMethod
+-    fun startAudioSession() {
+-        audioManager.start()
++    fun startAudioSession(promise: Promise) {
++        audioManager.start { promise.resolve(null) }
+     }
+ 
+     @ReactMethod
+diff --git a/android/src/main/java/com/livekit/reactnative/audio/AudioSwitchManager.java b/android/src/main/java/com/livekit/reactnative/audio/AudioSwitchManager.java
+index 0e96a261a7c67b485d0e0994b49e4327ede5b070..0a793d9dda85d0072561cff8f40cc448f2998146 100644
+--- a/android/src/main/java/com/livekit/reactnative/audio/AudioSwitchManager.java
++++ b/android/src/main/java/com/livekit/reactnative/audio/AudioSwitchManager.java
+@@ -3,11 +3,14 @@ package com.livekit.reactnative.audio;
+ import android.content.Context;
+ import android.media.AudioAttributes;
+ import android.media.AudioManager;
++import android.os.Build;
+ import android.os.Handler;
+ import android.os.Looper;
++import android.util.Log;
+ 
+ import androidx.annotation.NonNull;
+ import androidx.annotation.Nullable;
++import androidx.annotation.RequiresApi;
+ 
+ import com.twilio.audioswitch.AudioDevice;
+ import com.twilio.audioswitch.AudioSwitch;
+@@ -16,6 +19,10 @@ import java.util.ArrayList;
+ import java.util.Collections;
+ import java.util.List;
+ import java.util.Objects;
++import java.util.concurrent.CountDownLatch;
++import java.util.concurrent.ExecutorService;
++import java.util.concurrent.Executors;
++import java.util.concurrent.TimeUnit;
+ 
+ import kotlin.Unit;
+ import kotlin.jvm.functions.Function2;
+@@ -43,6 +50,42 @@ public class AudioSwitchManager {
+     // AudioSwitch is not threadsafe, so all calls should be done on the main thread.
+     private final Handler handler = new Handler(Looper.getMainLooper());
+ 
++    private static final String TAG = "AudioSwitchManager";
++
++    /** How long to wait for Android to finish switching the audio mode before carrying on anyway. */
++    private static final long MODE_SWITCH_TIMEOUT_MS = 2000;
++
++    /**
++     * Where starting and stopping happen, one at a time, in the order they were asked for, and where
++     * the audio mode is switched — never on the main thread.
++     *
++     * Switching into MODE_IN_COMMUNICATION makes Android reconfigure its audio hardware, which takes
++     * a noticeable moment. Up to Android 11 `setMode` itself waits for that; from Android 12 it
++     * returns at once, and the next AudioManager call that needs AudioService's mode lock —
++     * `setSpeakerphoneOn`, `startBluetoothSco`, both of which AudioSwitch makes as it activates —
++     * waits instead. Either way, done by AudioSwitch on the main thread, it froze everything drawn
++     * there for as long as the hardware took: an animation on screen visibly stopped at the moment a
++     * call's audio started.
++     *
++     * So the mode is switched here first, and AudioSwitch is only started once it has taken effect.
++     * Its own `setMode` then asks for the mode already in force, which changes nothing. AudioSwitch
++     * itself stays on the main thread, as it has to.
++     */
++    private final ExecutorService sequencer = Executors.newSingleThreadExecutor();
++
++    /** Whether `start` has run and `stop` has not since. Only touched on `sequencer`. */
++    private boolean started = false;
++
++    /**
++     * The audio mode from before `start` switched it, or null when `start` did not switch it.
++     *
++     * AudioSwitch remembers the mode it found and puts it back when it stops — but it now finds the
++     * mode already switched, so it puts back the call's own mode. This is what really goes back.
++     * Only touched on `sequencer`.
++     */
++    @Nullable
++    private Integer modeBeforeStart = null;
++
+     @Nullable
+     private AudioSwitch audioSwitch;
+ 
+@@ -125,9 +168,23 @@ public class AudioSwitchManager {
+     }
+ 
+     public void start() {
+-        if (audioSwitch == null) {
+-            handler.removeCallbacksAndMessages(null);
+-            handler.postAtFrontOfQueue(() -> {
++        start(() -> {
++        });
++    }
++
++    /** Starts, and calls `onStarted` on `sequencer` once AudioSwitch is active — or at once if it already was. */
++    public void start(@NonNull Runnable onStarted) {
++        sequencer.execute(() -> {
++            if (started) {
++                onStarted.run();
++                return;
++            }
++            // AudioSwitch only sets the mode when it manages audio focus, so neither does this.
++            if (manageAudioFocus) {
++                modeBeforeStart = audioManager.getMode();
++                switchModeTo(audioMode);
++            }
++            runOnMainAndWait(() -> {
+                 audioSwitch = new AudioSwitch(
+                         context,
+                         loggingEnabled,
+@@ -144,17 +201,102 @@ public class AudioSwitchManager {
+                 audioSwitch.start(audioDeviceChangeListener);
+                 audioSwitch.activate();
+             });
+-        }
++            started = true;
++            onStarted.run();
++        });
+     }
+ 
++    /**
++     * Stops, and puts back the audio mode `start` switched from.
++     *
++     * Returns at once, as it always has: whoever stops the session is not kept waiting for the
++     * mode to switch back. A `start` asked for meanwhile still waits for this to finish, in turn.
++     */
+     public void stop() {
++        sequencer.execute(() -> {
++            if (!started) {
++                return;
++            }
++            runOnMainAndWait(() -> {
++                if (audioSwitch != null) {
++                    audioSwitch.stop();
++                }
++                audioSwitch = null;
++            });
++            if (modeBeforeStart != null) {
++                switchModeTo(modeBeforeStart);
++                modeBeforeStart = null;
++            }
++            started = false;
++        });
++    }
++
++    /**
++     * Runs `action` at the front of the main thread's queue, and waits for it on `sequencer`.
++     *
++     * Waiting is what keeps a start and a stop asked for in quick succession in their order; the
++     * main thread never waits for `sequencer`, so the two cannot deadlock.
++     */
++    private void runOnMainAndWait(Runnable action) {
++        CountDownLatch done = new CountDownLatch(1);
++        // Anything still waiting to reach AudioSwitch was asked for before this, and is superseded.
+         handler.removeCallbacksAndMessages(null);
+         handler.postAtFrontOfQueue(() -> {
+-            if (audioSwitch != null) {
+-                audioSwitch.stop();
++            try {
++                action.run();
++            } finally {
++                done.countDown();
+             }
+-            audioSwitch = null;
+         });
++        try {
++            done.await();
++        } catch (InterruptedException e) {
++            Thread.currentThread().interrupt();
++        }
++    }
++
++    /**
++     * Switches the audio mode, and returns once Android has finished switching it — or after
++     * {@link #MODE_SWITCH_TIMEOUT_MS}, or on any failure. Either way AudioSwitch still asks for the
++     * mode itself once it starts, so the worst this can do is leave the wait on the main thread, as
++     * it was before this existed.
++     */
++    private void switchModeTo(int mode) {
++        try {
++            if (audioManager.getMode() == mode) {
++                return;
++            }
++            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
++                // Synchronous here: it returns once the switch is done.
++                audioManager.setMode(mode);
++                return;
++            }
++            awaitModeSwitch(mode);
++        } catch (RuntimeException e) {
++            Log.w(TAG, "Could not switch the audio mode to " + mode + " off the main thread", e);
++        }
++    }
++
++    @RequiresApi(Build.VERSION_CODES.S)
++    private void awaitModeSwitch(int mode) {
++        CountDownLatch switched = new CountDownLatch(1);
++        AudioManager.OnModeChangedListener listener = changedTo -> {
++            if (changedTo == mode) {
++                switched.countDown();
++            }
++        };
++        // Told on the binder thread that brings the news, since `sequencer` is the one waiting.
++        audioManager.addOnModeChangedListener(Runnable::run, listener);
++        try {
++            audioManager.setMode(mode);
++            if (!switched.await(MODE_SWITCH_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
++                Log.w(TAG, "Audio mode did not reach " + mode + " within " + MODE_SWITCH_TIMEOUT_MS + " ms");
++            }
++        } catch (InterruptedException e) {
++            Thread.currentThread().interrupt();
++        } finally {
++            audioManager.removeOnModeChangedListener(listener);
++        }
+     }
+ 
+     public void setMicrophoneMute(boolean mute) {

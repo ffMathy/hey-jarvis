@@ -21,6 +21,13 @@ import { AndroidAudioTypePresets, AudioSession } from '@livekit/react-native';
  * audio session already running — and its `configureAudio` only records settings for the next
  * start — so the SDK's speaker-only preference does not move him back. The SDK stops the session as
  * usual when the conversation ends.
+ *
+ * **On Android this no longer holds up the main thread.** As published, LiveKit switched the phone
+ * into call mode there, and Android takes a noticeable moment to do that — long enough to freeze
+ * the sphere mid-arrival, since Reanimated draws him on that same thread. The root `patches/`
+ * moves the switch onto a thread of its own and makes `startAudioSession` resolve only once the
+ * call's audio is up, which is what keeps the greeting out of the earpiece while it switches.
+ * `call-audio.contract.spec.ts` fails if a LiveKit bump leaves the patch behind.
  */
 export async function startCallAudio(): Promise<void> {
   await AudioSession.configureAudio({

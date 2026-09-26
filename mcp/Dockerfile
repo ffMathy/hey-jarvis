@@ -42,6 +42,9 @@ COPY home-assistant-voice-firmware/package.json ./home-assistant-voice-firmware/
 COPY hologram/package.json ./hologram/
 COPY mobile/package.json ./mobile/
 COPY watch/package.json ./watch/
+# The root `patchedDependencies` names these, and Bun fails the install when one
+# is missing — whether or not the patched package is one this image uses.
+COPY patches/ ./patches/
 
 # --frozen-lockfile installs exactly what bun.lock pins and fails if anything
 # would have to be resolved fresh from the registry.
