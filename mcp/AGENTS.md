@@ -231,9 +231,9 @@ would have been announced falls back to a push notification instead of being dro
   `title`, picks the channel from the tree above, delivers it, and reports which channel it used
   and why.
 - **`notifyDevice`**: announces a message on the Home Assistant Voice Preview Edition speakers via
-  the firmware's ESPHome `announce` service. The service is discovered at call time, because the
-  device is flashed with `name_add_mac_suffix: true` and is therefore called
-  `esphome.hass_elevenlabs_<mac>_announce`.
+  the firmware's ESPHome `announce` service, on every matching speaker at once. The service is
+  discovered rather than configured, because the device is flashed with `name_add_mac_suffix: true`
+  and is therefore called `esphome.hass_elevenlabs_<mac>_announce`.
 - **`sendPushNotification`**: pushes through the Home Assistant companion app
   (`notify.mobile_app_*`). Urgent pushes ask for a time-sensitive interruption so they surface
   through a focus mode. An optional `url` makes tapping the notification open it in the phone's
@@ -259,8 +259,10 @@ would have been announced falls back to a push notification instead of being dro
   Set this when the phone is not named after its owner — companion-app entities are named after the
   device, so without it a two-phone household cannot be told apart.
 - `HEY_JARVIS_PRIMARY_USER_NOTIFY_SERVICE` (optional): pins the companion-app notify service, e.g.
-  `notify.mobile_app_mathias_iphone`. Otherwise it is discovered, and discovery refuses to guess
-  between several phones.
+  `notify.mobile_app_mathias_iphone`, which is then called without fetching the service list at
+  all. Otherwise it is discovered, and discovery refuses to guess between several phones. The
+  service list discovery reads is kept between calls and refreshed in the background after ten
+  minutes, and looked up afresh when the kept list picks nothing or a service it picked has gone.
 - `HEY_JARVIS_CAR_NAME` (optional): the car's name, when it is not a Tesla behind Tessie.
 
 **Example Usage:**
@@ -302,7 +304,12 @@ knows comes from the Internet of Things vertical, and what lives here is the *re
   car parked in the driveway sits within GPS range of somebody standing in the kitchen, so proximity
   alone would put the user in the car every time he is home.
 - **`fetchPresenceSources()`**: both questions read the same two sources, so a caller asking more
-  than one fetches once and passes the result to each.
+  than one fetches once and passes the result to each. The whole house is searched only to *find*
+  the car and the phone; their device ids are then remembered per user, and later calls render just
+  those two (`renderDevicesById` in the IoT vertical), with states always fresh. After ten minutes
+  the ids are still used and the house is searched again behind the request; a device that has
+  gone, or a render that fails, falls back to the full search. `getPresenceDevices` still renders
+  the whole house.
 
 Each answer comes back as `{ answer, reason }` — the reason is carried through to the notification
 routing, so a surprising route can be traced back to the sensor that caused it.

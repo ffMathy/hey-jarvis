@@ -299,6 +299,18 @@ const HA_TEMPLATE_OUTPUT_LIMIT_MESSAGE = 'exceeded maximum size';
 const DEVICE_BATCH_SIZE = 25;
 
 /**
+ * Renders the given devices, exactly as `getAllDevices` would, without looking up the rest of the
+ * house.
+ *
+ * For callers that already know which devices they want -- presence remembers the car and the
+ * phone once it has found them -- and would otherwise pay for rendering every device to read two.
+ * Devices Home Assistant no longer knows, or that have no entity left, are absent from the result.
+ */
+export async function renderDevicesById(deviceIds: string[]): Promise<DeviceState[]> {
+  return await fetchDevicesInBatches(deviceIds);
+}
+
+/**
  * How many batch renders are in flight at once.
  *
  * Home Assistant renders templates on its own event loop, so this does not make the rendering

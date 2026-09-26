@@ -12,7 +12,6 @@
 import { afterEach, beforeEach, describe, expect, it, setSystemTime, spyOn } from 'bun:test';
 import { z } from 'zod';
 import { type DeviceState, resetHomeAssistantCachesForTest } from '../internet-of-things/tools.js';
-import { buildPresenceDeviceTemplate } from './device-render.js';
 import { fetchPresenceSources, resetPresenceCachesForTest } from './shortcuts.js';
 
 const templateRequestSchema = z.object({ template: z.string() });
@@ -70,8 +69,8 @@ function kindOf(template: string): 'people' | 'device ids' | 'every device' | 'p
   if (template.includes("map('device_id')")) {
     return 'device ids';
   }
-  // Only the device template behind getAllDevices truncates long values.
-  return template.includes('MAX_STR') ? 'every device' : 'presence devices';
+  // Both device renders use the same template; the search renders every device, the lamp included.
+  return template.includes('"lamp-device"') ? 'every device' : 'presence devices';
 }
 
 /**
@@ -217,14 +216,5 @@ describe('fetchPresenceSources', () => {
     // The short render and the search behind it run side by side, so only what ran is certain.
     expect(kinds().slice(2).sort()).toEqual(['device ids', 'every device', 'presence devices']);
     fetchSpy.mockRestore();
-  });
-});
-
-describe('buildPresenceDeviceTemplate', () => {
-  it('keeps only the position of the attributes', () => {
-    const template = buildPresenceDeviceTemplate(['car-device']);
-
-    expect(template).toContain('["latitude","longitude"]');
-    expect(template).toContain('device_entities(d)');
   });
 });

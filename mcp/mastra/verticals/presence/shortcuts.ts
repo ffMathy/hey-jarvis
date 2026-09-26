@@ -3,8 +3,13 @@ import { extractErrorMessage } from '../../utils/errors.js';
 import { logger } from '../../utils/logger.js';
 import { createShortcut } from '../../utils/shortcut-factory.js';
 import { executeTool } from '../../utils/tool-factory.js';
-import { type DeviceState, getAllDevices, inferUserLocation, type UserLocation } from '../internet-of-things/tools.js';
-import { renderDevicesById } from './device-render.js';
+import {
+  type DeviceState,
+  getAllDevices,
+  inferUserLocation,
+  renderDevicesById,
+  type UserLocation,
+} from '../internet-of-things/tools.js';
 
 /**
  * Shortcuts are tools that piggy-back on other verticals' capabilities.
