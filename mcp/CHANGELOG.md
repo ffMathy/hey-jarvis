@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.7.1](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.7.0...mcp-v2.7.1) (2026-09-26)
+
+
+### Performance Improvements
+
+* **mcp:** cut the time from a routed request to the answer ([#875](https://github.com/ffMathy/hey-jarvis/issues/875)) ([17f4958](https://github.com/ffMathy/hey-jarvis/commit/17f49586d9d4fc7e8ef4d4496c308da7af04e37a))
+
 ## [2.7.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.6.0...mcp-v2.7.0) (2026-09-25)
 
 
