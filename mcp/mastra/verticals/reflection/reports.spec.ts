@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { errorSummary, failedSteps, runReport, spanReport, traceReport } from './reports';
+import { errorSummary, failedSteps, innermostFailure, runReport, spanReport, traceReport } from './reports';
 
 /**
  * What the reflection vertical is allowed to say about a failure.
@@ -160,6 +160,30 @@ describe('traceReport', () => {
     expect(report.failingSpans).toEqual([]);
   });
 
+  it('keeps the payloads of the failing spans alone unless every payload is asked for', () => {
+    // A routed request is dozens of spans, and their payloads are most of the answer's length.
+    // What the broken call was given is often why it broke, so those are kept regardless.
+    const spans = [
+      span({ spanId: 'agent', input: 'what is on today?', output: 'Sorry, something went wrong.' }),
+      span({
+        spanId: 'tool',
+        parentSpanId: 'agent',
+        name: 'getCalendarEvents',
+        spanType: 'tool_call',
+        input: { calendarId: 'primary' },
+        error: { message: 'invalid_grant: token expired' },
+      }),
+    ];
+
+    const report = traceReport('trace-1', spans);
+
+    expect(report.failingSpans[0]).toMatchObject({ name: 'getCalendarEvents', input: '{"calendarId":"primary"}' });
+    expect(report.spans.some((reported) => 'input' in reported || 'output' in reported)).toBe(false);
+    expect(traceReport('trace-1', spans, { includePayloads: true }).spans[0].output).toBe(
+      'Sorry, something went wrong.',
+    );
+  });
+
   it('does not hang on a parent chain that refers to itself', () => {
     const report = traceReport('trace-1', [
       span({ spanId: 'a', parentSpanId: 'b', error: { message: 'boom' } }),
@@ -167,6 +191,31 @@ describe('traceReport', () => {
     ]);
 
     expect(report.failingSpans).toHaveLength(1);
+  });
+});
+
+describe('innermostFailure', () => {
+  it('names the deepest failing span, which is the cause, without its payloads', () => {
+    const cause = innermostFailure([
+      span({ spanId: 'root', name: 'routePrompt', spanType: 'workflow_run' }),
+      span({ spanId: 'agent', parentSpanId: 'root', name: 'calendar', error: { message: 'tool execution failed' } }),
+      span({
+        spanId: 'tool',
+        parentSpanId: 'agent',
+        name: 'getCalendarEvents',
+        spanType: 'tool_call',
+        input: { calendarId: 'primary' },
+        error: { message: 'invalid_grant: token expired' },
+      }),
+    ]);
+
+    expect(cause).toMatchObject({ name: 'getCalendarEvents', error: 'invalid_grant: token expired' });
+    expect(cause).not.toHaveProperty('input');
+  });
+
+  it('has nothing to name when nothing in the trace failed, or the trace is gone', () => {
+    expect(innermostFailure([span()])).toBeUndefined();
+    expect(innermostFailure([])).toBeUndefined();
   });
 });
 

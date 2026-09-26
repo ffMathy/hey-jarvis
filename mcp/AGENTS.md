@@ -158,6 +158,7 @@ Provides intelligent weather information and forecasting capabilities:
 ### Shopping List Agent
 Provides intelligent shopping list management for Bilka online store with Danish language support:
 - **4 Bilka integration tools**: Product search via Algolia, cart quantity management, cart retrieval, and cart clearing
+- **Whole lists in one call**: `findProductInCatalog` takes `search_queries` and `setProductBasketQuantity` takes `items`, so a shopping list is one tool call each rather than one model round trip per product. Each search sends all six preference filters in a single Algolia request, and callers arriving together share one Bilka sign-in
 - **Google Gemini model**: Uses `gemini-flash-latest` for natural language processing in Danish
 - **Priority-based selection**: Organic certification, Danish origin, healthier options, and price optimization
 - **Smart quantity handling**: Balances food waste reduction with requested quantities (20% tolerance)
@@ -231,9 +232,9 @@ would have been announced falls back to a push notification instead of being dro
   `title`, picks the channel from the tree above, delivers it, and reports which channel it used
   and why.
 - **`notifyDevice`**: announces a message on the Home Assistant Voice Preview Edition speakers via
-  the firmware's ESPHome `announce` service. The service is discovered at call time, because the
-  device is flashed with `name_add_mac_suffix: true` and is therefore called
-  `esphome.hass_elevenlabs_<mac>_announce`.
+  the firmware's ESPHome `announce` service, on every matching speaker at once. The service is
+  discovered rather than configured, because the device is flashed with `name_add_mac_suffix: true`
+  and is therefore called `esphome.hass_elevenlabs_<mac>_announce`.
 - **`sendPushNotification`**: pushes through the Home Assistant companion app
   (`notify.mobile_app_*`). Urgent pushes ask for a time-sensitive interruption so they surface
   through a focus mode. An optional `url` makes tapping the notification open it in the phone's
@@ -259,8 +260,10 @@ would have been announced falls back to a push notification instead of being dro
   Set this when the phone is not named after its owner — companion-app entities are named after the
   device, so without it a two-phone household cannot be told apart.
 - `HEY_JARVIS_PRIMARY_USER_NOTIFY_SERVICE` (optional): pins the companion-app notify service, e.g.
-  `notify.mobile_app_mathias_iphone`. Otherwise it is discovered, and discovery refuses to guess
-  between several phones.
+  `notify.mobile_app_mathias_iphone`, which is then called without fetching the service list at
+  all. Otherwise it is discovered, and discovery refuses to guess between several phones. The
+  service list discovery reads is kept between calls and refreshed in the background after ten
+  minutes, and looked up afresh when the kept list picks nothing or a service it picked has gone.
 - `HEY_JARVIS_CAR_NAME` (optional): the car's name, when it is not a Tesla behind Tessie.
 
 **Example Usage:**
@@ -302,7 +305,12 @@ knows comes from the Internet of Things vertical, and what lives here is the *re
   car parked in the driveway sits within GPS range of somebody standing in the kitchen, so proximity
   alone would put the user in the car every time he is home.
 - **`fetchPresenceSources()`**: both questions read the same two sources, so a caller asking more
-  than one fetches once and passes the result to each.
+  than one fetches once and passes the result to each. The whole house is searched only to *find*
+  the car and the phone; their device ids are then remembered per user, and later calls render just
+  those two (`renderDevicesById` in the IoT vertical), with states always fresh. After ten minutes
+  the ids are still used and the house is searched again behind the request; a device that has
+  gone, or a render that fails, falls back to the full search. `getPresenceDevices` still renders
+  the whole house.
 
 Each answer comes back as `{ answer, reason }` — the reason is carried through to the notification
 routing, so a surprising route can be traced back to the sensor that caused it.
@@ -340,6 +348,13 @@ and the reading of the link it reports back.
 **Agent:** `generativeUi` is routable, so the planner sends it visualization requests. The builder
 cannot reach Jarvis's own data, so a page about the calendar, the house or the shopping list needs
 that agent to fetch it first and the planner to pass it along — the agent's description says so.
+
+**Also reached from web research:** `visualizeResearch` (`web-research/shortcuts.ts`) is a shortcut
+onto `generateUserInterface`, so "look into X and show me a chart" is one delegation to `webResearch`
+— it researches, then hands its findings to the builder itself, rather than the planner chaining a
+second agent that would only get the research as text. It is slow like the tool it wraps. It sits
+beside Gemini's built-in search, a mix only Gemini 3 accepts in one request, so the research agent
+must stay on a Gemini 3 model.
 
 **Requirements:** the Claude session variables under [Coding Agent](#coding-agent), and an agent in
 the Claude console that can publish artifacts; plus the companion-app notify service the
@@ -463,7 +478,7 @@ when it is done.
 - **`startCodingSession`**: Creates the session, seeded with the request, the analysis's findings and the user's
   answers, and starts watching it. Used by `implementFeatureWorkflow`.
 - **`getCodingSessionStatus`**: Reports a session's status (`idle`, `running`, `rescheduling`, `terminated`) and the
-  messages it has produced.
+  last five messages it has produced, read newest first in one request rather than by paging its whole history.
 - **`sendCodingSessionMessage`**: Sends a follow-up message to a session, to answer a question or redirect its work.
 - **`runCodingTask`**: For work whose result is an answer rather than a pull request. Starts a session on a free-form
   task, polls it until its turn ends (`waitForClaudeSessionTurn`, up to 15 minutes) and returns the last message it
@@ -597,10 +612,14 @@ It reads three things, because a failure lands in a different place depending on
 - **`listRecentFailures`**: the failures themselves, each with a traceId. Filtered on `hasChildError`
   rather than on the trace's own status — a run fails from the inside, so the tool call that broke
   carries the error while the agent span above it may well have recovered and finished clean.
-  Matching on the root's status alone misses exactly the failures worth asking about.
+  Matching on the root's status alone misses exactly the failures worth asking about. Each failure
+  carries its `cause` — the innermost failing span — so "why did that fail?" is usually answered
+  without a `describeTrace` call.
 - **`describeTrace`**: one trace span by span, with the failing spans ordered innermost first. That
   ordering is the answer to "why": the deepest failure is the thing that actually broke, and every
-  span above it is a wrapper reporting that something below it did.
+  span above it is a wrapper reporting that something below it did. Inputs and outputs are included
+  for the failing spans only, unless `includePayloads` is set: a routed request has dozens of spans,
+  and every payload is text the agent has to read before it can answer.
 - **`listWorkflowRuns`**: recent runs with their status and, for the failed ones, which step stopped
   them. A `foreach` step reports each failing iteration separately, because "the step failed" and
   "the step failed on two of forty items" are different answers.
@@ -623,9 +642,13 @@ here rather than guessed at.
 
 ### Routing Planner Agent
 Turns a voice request into a **plan** for the specialized agents to run:
-- **The eleven public agents are its catalogue**, baked into its instructions at boot
+- **The twelve public agents are its catalogue**, baked into its instructions at boot
 - **No tools of its own**: it writes a plan, it never runs one and never sees a result
 - **No memory**: planning one request has nothing to recall from the last
+- **Flash-Lite, not Flash**: every request waits on the planner before any work starts, and
+  picking agents from a list is classification rather than reasoning. Flash-Lite also thinks at
+  `minimal` by default. If plans get worse, `PLANNER_MODEL` in `routing/planner.ts` is the line to
+  revert, and the routing LLM eval is what shows it — run it by hand, since CI never does
 
 The planner writes a flat list of **tasks**. Each names one agent, the prompt it is given, and
 in `needs` the id of the one task whose answer it cannot be carried out without. Tasks run at
@@ -1055,11 +1078,11 @@ Multi-step weather processing workflow with state change registration:
 - **State change registration**: Automatically registers weather updates for notification analysis
 
 **Workflow Steps:**
-1. **Scheduled Weather Check**: Weather agent gets current weather for Aarhus, Denmark
+1. **Scheduled Weather Check**: reads the current weather for Aarhus, Denmark straight from the weather API and writes the line itself — no model call
 2. **Register State Change**: Calls `registerStateChange` tool to persist weather data and trigger notification analysis
 
 **Technical Implementation:**
-- Uses agent-as-step pattern for weather retrieval
+- The check calls the weather tool directly. It was an agent step, and `createAgentStep` runs its agent with tools disabled, so every hourly update was the model guessing the weather; the factory now refuses tools at compile time
 - Uses custom step with tool execution for state change registration
 - Transforms weather result into structured state change format
 - Triggers `stateChangeNotificationWorkflow` asynchronously
@@ -1069,7 +1092,7 @@ Multi-step shopping list processing workflow implementing the original n8n 3-age
 - **`shoppingListWorkflow`**: Handles natural language shopping requests in Danish with 5-step process
 - **Step 1 - Cart Snapshot**: Gets current cart contents as "before" baseline
 - **Step 2 - Information Extraction**: Uses specialized Information Extractor agent to parse user requests into structured product data with operation types (set/remove/null)
-- **Step 3 - Product Mutation**: Processes each extracted product using Shopping List Mutator Agent with full tool access for search, selection, and cart modification
+- **Step 3 - Product Mutation**: A plain step running the Shopping List Mutator Agent's own tool loop, with only the search and set tools and the current basket in its prompt; it skips the model when nothing needs changing. It used to be an agent step, whose tools are disabled, so it never changed the basket
 - **Step 4 - Updated Cart Snapshot**: Gets final cart contents as "after" comparison
 - **Step 5 - Summary Generation**: Uses Summarization Agent to compare before/after states and provide user feedback in Danish
 - **Error handling**: Comprehensive retry logic and graceful failure messages for each step
@@ -2101,6 +2124,15 @@ The MCP server does not require authentication. All endpoints are publicly acces
 - Voice command processing through ESPHome firmware
 - Smart device control and automation
 - Alarms on the user's phone, through the companion app (`setUserPhoneAlarm`, a shortcut onto the notification vertical's `setPhoneAlarm`)
+- **Everyday control is one tool call.** "Turn off the living room lights" is `callIoTService`
+  with `{"area_id": "living_room"}`, made without any lookup: the agent's instructions list the
+  home's areas (cached for ten minutes, refreshed in the background), and Home Assistant targets
+  a whole area, or a list of entities, in one call. `findEntities` returns only id, name, area and
+  state for when ids are needed; `getAllDevices`, with every attribute, is for when they matter.
+  The agent runs at `low` thinking (`LOW_THINKING_PROVIDER_OPTIONS`), since each step of its tool
+  loop is a wait before the house changes. Routing logs `elapsedMs` for the plan, its
+  registration and each delegation, and `callIoTService` logs the service call itself, so a slow
+  request can be read back as a breakdown
 - Sensor data processing and analysis
 - Scene and routine management
 

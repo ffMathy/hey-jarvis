@@ -1,3 +1,6 @@
+import { z } from 'zod';
+import { extractErrorMessage } from '../../utils/errors.js';
+import { logger } from '../../utils/logger.js';
 import { callHomeAssistantApi } from '../internet-of-things/tools.js';
 import { getPrimaryUserName, getPrimaryUserPhoneDeviceSlug, slugify } from '../presence/index.js';
 
@@ -7,18 +10,24 @@ export interface HomeAssistantService {
   service: string;
 }
 
+/** Home Assistant's `/api/services` response: each domain, and the services it offers. */
+const servicesApiResponseSchema = z.array(
+  z.object({
+    domain: z.string(),
+    services: z.record(z.string(), z.unknown()).catch({}),
+  }),
+);
+
 /** One entry of Home Assistant's `/api/services` response: a domain and the services it offers. */
-export interface ServicesApiEntry {
-  domain: string;
-  services: Record<string, unknown>;
-}
+export type ServicesApiEntry = z.infer<typeof servicesApiResponseSchema>[number];
 
 /**
  * The ESPHome service the Hey Jarvis voice firmware exposes for proactive announcements.
  *
  * The device is flashed with `name_add_mac_suffix: true`, so its services are named
  * `esphome.hass_elevenlabs_<mac>_announce` — the MAC part differs per device and cannot be
- * hardcoded, which is why every announcement starts by asking Home Assistant what exists.
+ * hardcoded, which is why announcements are sent to whatever Home Assistant's list of services
+ * says exists.
  */
 const ANNOUNCE_SERVICE_SUFFIX = '_announce';
 
@@ -28,15 +37,142 @@ const MOBILE_APP_SERVICE_PREFIX = 'mobile_app_';
 /** How long the announcement leaves the microphone open for a reply before hanging up. */
 export const DEFAULT_ANNOUNCE_SILENCE_SECONDS = 3;
 
+/**
+ * How long Home Assistant's list of services is trusted before it is fetched again.
+ *
+ * Every push notification, alarm and announcement starts by working out which service reaches
+ * the phone or the speakers, and the list that answers it holds every service of every
+ * integration -- a large response, fetched for an answer that only changes when a phone or a
+ * speaker is added. So the list is kept, and once this has passed it is still used while a fresh
+ * copy is fetched behind the request. What a kept list can get wrong is handled where it is used:
+ * see {@link callSelectedServices}.
+ */
+const SERVICES_CACHE_TTL_MS = 10 * 60_000;
+
+let cachedServices: { entries: ServicesApiEntry[]; fetchedAt: number } | undefined;
+let servicesRefresh: Promise<ServicesApiEntry[]> | undefined;
+
+/** Forgets the kept list of services, for tests. */
+export function resetServicesCacheForTest(): void {
+  cachedServices = undefined;
+  servicesRefresh = undefined;
+}
+
 /** Everything Home Assistant can do right now, as domains and their services. */
-export async function fetchServices(): Promise<ServicesApiEntry[]> {
-  const response = (await callHomeAssistantApi('services')) as ServicesApiEntry[];
-  return Array.isArray(response) ? response : [];
+async function fetchServices(): Promise<ServicesApiEntry[]> {
+  return servicesApiResponseSchema.parse(await callHomeAssistantApi('services'));
+}
+
+/** Fetches the list into the cache, sharing one request between concurrent callers. */
+function refreshServices(): Promise<ServicesApiEntry[]> {
+  if (servicesRefresh) {
+    return servicesRefresh;
+  }
+
+  const refresh = fetchServices()
+    .then((entries) => {
+      cachedServices = { entries, fetchedAt: Date.now() };
+      return entries;
+    })
+    .finally(() => {
+      if (servicesRefresh === refresh) {
+        servicesRefresh = undefined;
+      }
+    });
+
+  servicesRefresh = refresh;
+  return refresh;
+}
+
+/** The kept list, if there is one, with a refresh started behind it once it is stale. */
+function readCachedServices(): ServicesApiEntry[] | undefined {
+  if (cachedServices && Date.now() - cachedServices.fetchedAt >= SERVICES_CACHE_TTL_MS) {
+    refreshServices().catch((error: unknown) => {
+      logger.warn('Could not refresh the Home Assistant services', { error: extractErrorMessage(error) });
+    });
+  }
+
+  return cachedServices?.entries;
+}
+
+function isSameService(left: HomeAssistantService, right: HomeAssistantService): boolean {
+  return left.domain === right.domain && left.service === right.service;
+}
+
+/** What `select` picks from a kept list, or nothing when it cannot pick from it. */
+function selectFromCachedServices(
+  select: (entries: ServicesApiEntry[]) => HomeAssistantService[],
+  entries: ServicesApiEntry[],
+): HomeAssistantService[] {
+  try {
+    return select(entries);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Calls every service `select` picks out of Home Assistant's services, all at once, with `data`.
+ *
+ * The services are picked from the kept list (see {@link SERVICES_CACHE_TTL_MS}), which can only
+ * be wrong about a phone or speaker that has since been added, renamed or removed. So the list is
+ * fetched afresh whenever the kept one picks nothing, or picks a service that then fails. A
+ * service that failed and is still offered failed for real, and that failure is thrown; one that
+ * is no longer offered is dropped, and whatever the fresh list offers in its place that has not
+ * been called yet is called instead. Nothing is called twice, so nobody hears a message twice.
+ *
+ * @returns The services that were called
+ * @throws Whatever `select` throws on a fresh list, or the first service that failed for real
+ */
+export async function callSelectedServices(
+  select: (entries: ServicesApiEntry[]) => HomeAssistantService[],
+  data: Record<string, unknown>,
+): Promise<HomeAssistantService[]> {
+  const cachedEntries = readCachedServices();
+  const cachedSelection = cachedEntries ? selectFromCachedServices(select, cachedEntries) : [];
+
+  if (cachedSelection.length === 0) {
+    const services = select(await refreshServices());
+    await Promise.all(services.map((service) => callService(service, data)));
+    return services;
+  }
+
+  const outcomes = await Promise.allSettled(cachedSelection.map((service) => callService(service, data)));
+  const succeeded = cachedSelection.filter((_service, index) => outcomes[index]?.status === 'fulfilled');
+  const failures = cachedSelection.flatMap((service, index) => {
+    const outcome = outcomes[index];
+    return outcome?.status === 'rejected' ? [{ service, reason: outcome.reason }] : [];
+  });
+
+  const [firstFailure] = failures;
+  if (!firstFailure) {
+    return succeeded;
+  }
+
+  const freshEntries = await refreshServices().catch(() => undefined);
+  if (!freshEntries) {
+    throw firstFailure.reason;
+  }
+
+  const freshSelection = select(freshEntries);
+  const genuineFailure = failures.find(({ service }) =>
+    freshSelection.some((candidate) => isSameService(candidate, service)),
+  );
+  if (genuineFailure) {
+    throw genuineFailure.reason;
+  }
+
+  const replacements = freshSelection.filter(
+    (candidate) => !cachedSelection.some((called) => isSameService(called, candidate)),
+  );
+  await Promise.all(replacements.map((service) => callService(service, data)));
+
+  return [...succeeded, ...replacements];
 }
 
 function servicesInDomain(entries: ServicesApiEntry[], domain: string): string[] {
   const entry = entries.find((candidate) => candidate.domain === domain);
-  return entry ? Object.keys(entry.services ?? {}) : [];
+  return entry ? Object.keys(entry.services) : [];
 }
 
 /**
@@ -71,12 +207,9 @@ export function selectMobileAppNotifyService(
   entries: ServicesApiEntry[],
   userName: string = getPrimaryUserName(),
 ): HomeAssistantService {
-  const configured = process.env.HEY_JARVIS_PRIMARY_USER_NOTIFY_SERVICE?.trim();
-  if (configured) {
-    const separatorIndex = configured.indexOf('.');
-    return separatorIndex === -1
-      ? { domain: 'notify', service: configured }
-      : { domain: configured.slice(0, separatorIndex), service: configured.slice(separatorIndex + 1) };
+  const pinned = getPinnedNotifyService();
+  if (pinned) {
+    return pinned;
   }
 
   const mobileAppServices = servicesInDomain(entries, 'notify').filter((service) =>
@@ -105,16 +238,54 @@ export function selectMobileAppNotifyService(
   );
 }
 
-/** Every Hey Jarvis voice device that can announce, or just the one whose name was asked for. */
-export async function findAnnounceServices(deviceName?: string): Promise<HomeAssistantService[]> {
-  return selectAnnounceServices(await fetchServices(), deviceName);
+/** The notify service pinned by `HEY_JARVIS_PRIMARY_USER_NOTIFY_SERVICE`, if one is. */
+function getPinnedNotifyService(): HomeAssistantService | undefined {
+  const configured = process.env.HEY_JARVIS_PRIMARY_USER_NOTIFY_SERVICE?.trim();
+  if (!configured) {
+    return undefined;
+  }
+
+  const separatorIndex = configured.indexOf('.');
+  return separatorIndex === -1
+    ? { domain: 'notify', service: configured }
+    : { domain: configured.slice(0, separatorIndex), service: configured.slice(separatorIndex + 1) };
 }
 
-/** The companion-app notify service for the primary user's phone. */
-export async function findMobileAppNotifyService(
+/**
+ * Announces on every Hey Jarvis voice device, or just the one whose name was asked for.
+ *
+ * @returns The announce services that were called; empty when no device matched
+ */
+export async function announceOnVoiceDevices(
+  data: Record<string, unknown>,
+  deviceName?: string,
+): Promise<HomeAssistantService[]> {
+  return await callSelectedServices((entries) => selectAnnounceServices(entries, deviceName), data);
+}
+
+/**
+ * Sends `data` to the companion-app notify service for the primary user's phone.
+ *
+ * A pinned service is called straight away, without asking Home Assistant which services exist.
+ *
+ * @returns The service that was called
+ */
+export async function callPrimaryUserNotifyService(
+  data: Record<string, unknown>,
   userName: string = getPrimaryUserName(),
 ): Promise<HomeAssistantService> {
-  return selectMobileAppNotifyService(await fetchServices(), userName);
+  const pinned = getPinnedNotifyService();
+  if (pinned) {
+    await callService(pinned, data);
+    return pinned;
+  }
+
+  const [service] = await callSelectedServices((entries) => [selectMobileAppNotifyService(entries, userName)], data);
+  if (!service) {
+    // Unreachable: a selection of one either throws or is called. Kept so the type says so.
+    throw new Error("No companion-app notify service was called for the primary user's phone.");
+  }
+  return service;
 }
 
 /** Calls a Home Assistant service. */

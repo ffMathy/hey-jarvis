@@ -29,6 +29,29 @@ describe('renderInBatches', () => {
     expect(result).toEqual(items);
   });
 
+  it('renders several batches at once, but never more than asked, and keeps their order', async () => {
+    let inFlight = 0;
+    let mostInFlight = 0;
+    const items = Array.from({ length: 10 }, (_, i) => i);
+
+    const result = await renderInBatches(
+      items,
+      2,
+      async (batch) => {
+        inFlight++;
+        mostInFlight = Math.max(mostInFlight, inFlight);
+        // Later batches finish first, so an order kept by accident would show.
+        await Bun.sleep(10 - batch[0]);
+        inFlight--;
+        return batch;
+      },
+      3,
+    );
+
+    expect(result).toEqual(items);
+    expect(mostInFlight).toBe(3);
+  });
+
   it('halves a batch that overflows and still returns every item in order', async () => {
     const attempted: number[][] = [];
     const items = Array.from({ length: 4 }, (_, i) => i);

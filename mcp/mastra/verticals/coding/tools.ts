@@ -1,4 +1,4 @@
-import { pick } from 'lodash-es';
+import { pick, truncate } from 'lodash-es';
 import { Octokit } from 'octokit';
 import { z } from 'zod';
 import { logger } from '../../utils/logger.js';
@@ -8,7 +8,7 @@ import {
   createClaudeSession,
   getClaudeSession,
   getClaudeSessionUrl,
-  listClaudeSessionEvents,
+  listLatestClaudeSessionMessages,
   sendClaudeSessionMessage,
   waitForClaudeSessionTurn,
 } from './claude-sessions.js';
@@ -87,7 +87,7 @@ const GitHubIssueSchema = z.object({
   title: z.string(),
   state: z.string(),
   html_url: z.string(),
-  body: z.string().nullable(),
+  body: z.string().nullable().describe('The start of the issue body, cut short when it is long'),
   created_at: z.string(),
   updated_at: z.string(),
   labels: z
@@ -144,11 +144,21 @@ export const listUserRepositories = createTool({
 });
 
 /**
+ * How much of an issue's body {@link listRepositoryIssues} keeps.
+ *
+ * A listing is read for which issues there are, and the model reads all of it before it can
+ * answer. A hundred issues with their bodies in full -- the automatically filed ones carry whole
+ * stack traces -- is tens of thousands of tokens of reading for a question answered by the titles
+ * and the first lines.
+ */
+const MAXIMUM_ISSUE_BODY_LENGTH = 300;
+
+/**
  * Tool to list all issues for a specific repository
  */
 export const listRepositoryIssues = createTool({
   id: 'listRepositoryIssues',
-  description: `Lists all issues for a specific GitHub repository. Can filter by state (open/closed/all). Defaults to "${DEFAULT_OWNER}" owner if not specified.`,
+  description: `Lists all issues for a specific GitHub repository, each with the start of its body. Can filter by state (open/closed/all). Defaults to "${DEFAULT_OWNER}/${DEFAULT_REPOSITORY}", Jarvis's own, if not specified — call it straight away for that one, without looking the repository up first.`,
   inputSchema: z.object({
     owner: z.string().optional().describe(`The repository owner (defaults to "${DEFAULT_OWNER}" if not provided)`),
     repo: z.string().optional().describe(`The repository name (defaults to "${DEFAULT_REPOSITORY}" if not provided)`),
@@ -178,15 +188,12 @@ export const listRepositoryIssues = createTool({
         title: issue.title,
         state: issue.state,
         html_url: issue.html_url,
-        body: issue.body ?? null,
+        body: issue.body ? truncate(issue.body, { length: MAXIMUM_ISSUE_BODY_LENGTH }) : null,
         created_at: issue.created_at,
         updated_at: issue.updated_at,
-        labels:
-          issue.labels.map((label) =>
-            typeof label === 'string'
-              ? { name: label, color: '' }
-              : { name: label.name || '', color: label.color || '' },
-          ) || [],
+        labels: issue.labels.map((label) =>
+          typeof label === 'string' ? { name: label, color: '' } : { name: label.name || '', color: label.color || '' },
+        ),
       })),
       total_count: actualIssues.length,
     };
@@ -370,12 +377,20 @@ export const runCodingTask = markAsSlow(
 );
 
 /**
+ * How many of a session's messages {@link getCodingSessionStatus} hands back.
+ *
+ * "How is it going?" is answered by what the session said last. A session that has worked for an
+ * hour has said a great deal more, and all of it used to be fetched page by page and then read by
+ * the model before a word of the answer.
+ */
+export const LATEST_SESSION_MESSAGE_COUNT = 5;
+
+/**
  * Tool to check what a Claude cloud session is currently doing
  */
 export const getCodingSessionStatus = createTool({
   id: 'getCodingSessionStatus',
-  description:
-    'Gets the current status of a Claude cloud session started for a coding task, along with the messages it has produced so far.',
+  description: `Gets the current status of a Claude cloud session started for a coding task, along with the last ${LATEST_SESSION_MESSAGE_COUNT} messages it sent.`,
   inputSchema: z.object({
     session_id: z.string().describe('The Claude cloud session ID'),
   }),
@@ -383,23 +398,13 @@ export const getCodingSessionStatus = createTool({
     session_id: z.string(),
     session_url: z.string(),
     status: z.string(),
-    messages: z.array(z.string()),
+    messages: z.array(z.string()).describe('The latest messages the session sent, oldest of them first'),
   }),
   execute: async (inputData) => {
-    const [session, events] = await Promise.all([
+    const [session, messages] = await Promise.all([
       getClaudeSession(inputData.session_id),
-      listClaudeSessionEvents(inputData.session_id),
+      listLatestClaudeSessionMessages(inputData.session_id, LATEST_SESSION_MESSAGE_COUNT),
     ]);
-
-    const messages = events
-      .filter((event) => event.type === 'agent.message')
-      .map((event) =>
-        event.content
-          .filter((block) => block.type === 'text')
-          .map((block) => block.text)
-          .join('\n'),
-      )
-      .filter((message) => message.length > 0);
 
     return {
       session_id: session.id,

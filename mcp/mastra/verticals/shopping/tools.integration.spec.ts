@@ -5,12 +5,14 @@ import { findProductInCatalog, getCurrentCartContents } from './tools';
 describe('Shopping Tools Integration Tests', () => {
   describe('findProductInCatalog', () => {
     it('should search for products in the catalog', async () => {
-      const result = await executeTool(findProductInCatalog, {
-        search_query: 'mælk',
+      const searches = await executeTool(findProductInCatalog, {
+        search_queries: ['mælk'],
       });
 
-      // Validate structure
-      expect(result).toBeDefined();
+      // One entry per query, in the order asked
+      expect(searches).toHaveLength(1);
+      expect(searches[0].search_query).toBe('mælk');
+      const result = searches[0].products;
       expect(Array.isArray(result)).toBe(true);
 
       // If results exist, validate structure

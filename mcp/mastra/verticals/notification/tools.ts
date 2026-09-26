@@ -3,12 +3,11 @@ import { createTool, executeTool } from '../../utils/tool-factory.js';
 import { sendEmail } from '../email/tools.js';
 import { initiatePhoneCall, sendTextMessage } from '../phone/tools.js';
 import {
+  announceOnVoiceDevices,
   buildPushPayload,
   buildSetAlarmCommand,
-  callService,
+  callPrimaryUserNotifyService,
   DEFAULT_ANNOUNCE_SILENCE_SECONDS,
-  findAnnounceServices,
-  findMobileAppNotifyService,
 } from './channels.js';
 import { getUserPresence } from './presence.js';
 import { decideNotificationChannel, type NotificationChannel } from './routing.js';
@@ -60,7 +59,8 @@ export const notifyDevice = createTool({
   execute: async (inputData) => {
     const { message, deviceName, silenceSeconds = DEFAULT_ANNOUNCE_SILENCE_SECONDS } = inputData;
 
-    const services = await findAnnounceServices(deviceName);
+    // Every device at once, so the rooms speak together rather than one after another.
+    const services = await announceOnVoiceDevices({ message, silence_seconds: silenceSeconds }, deviceName);
 
     if (services.length === 0) {
       return {
@@ -70,10 +70,6 @@ export const notifyDevice = createTool({
           : 'No Hey Jarvis voice device exposes an announce service. Check that the device is flashed with the Hey Jarvis ElevenLabs firmware and connected to Home Assistant.',
         servicesCalled: [],
       };
-    }
-
-    for (const service of services) {
-      await callService(service, { message, silence_seconds: silenceSeconds });
     }
 
     const servicesCalled = services.map(({ domain, service }) => `${domain}.${service}`);
@@ -118,8 +114,7 @@ export const sendPushNotification = createTool({
   execute: async (inputData) => {
     const { message, title, isUrgent = false, url } = inputData;
 
-    const service = await findMobileAppNotifyService();
-    await callService(service, buildPushPayload({ message, title, isUrgent, url }));
+    const service = await callPrimaryUserNotifyService(buildPushPayload({ message, title, isUrgent, url }));
 
     const serviceCalled = `${service.domain}.${service.service}`;
 
@@ -160,8 +155,7 @@ export const setPhoneAlarm = createTool({
   execute: async (inputData) => {
     const { hour, minute, label } = inputData;
 
-    const service = await findMobileAppNotifyService();
-    await callService(service, buildSetAlarmCommand({ hour, minute, label }));
+    const service = await callPrimaryUserNotifyService(buildSetAlarmCommand({ hour, minute, label }));
 
     const serviceCalled = `${service.domain}.${service.service}`;
     const time = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;

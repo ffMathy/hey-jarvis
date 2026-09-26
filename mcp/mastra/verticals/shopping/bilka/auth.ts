@@ -7,30 +7,38 @@ export interface AuthTokens {
   jwtToken: string;
 }
 
-let cachedTokens: {
-  tokens: AuthTokens | undefined;
-  refreshTime: Date;
-};
+/**
+ * How long a sign-in is reused, counted from when it started.
+ *
+ * Counted from the start rather than from when it finished, because that is when the JWT's own
+ * clock started. A failed sign-in is kept for as long, so a wrong password is not retried
+ * against Gigya on every request.
+ */
+const SIGN_IN_REUSE_MS = 5 * 60 * 1000;
+
+let currentSignIn: { tokens: Promise<AuthTokens>; startedAt: number } | undefined;
 
 /**
- * Authenticates with Bilka's API and returns session tokens
+ * Authenticates with Bilka's API and returns session tokens.
+ *
+ * Callers that arrive while a sign-in is under way wait for that one rather than starting their
+ * own. The cart and a basket change are often asked for at the same moment, and the second
+ * caller used to find a half-finished sign-in in the cache and fail with "Could not sign in."
  */
 export async function authenticateWithBilka(): Promise<AuthTokens> {
-  const cacheDurationInMinutes = 5;
-  if (cachedTokens && cachedTokens.refreshTime.getTime() + cacheDurationInMinutes * 60 * 1000 > Date.now()) {
-    if (!cachedTokens.tokens) {
-      throw new Error('Could not sign in.');
-    }
-
-    return cachedTokens.tokens;
+  if (!currentSignIn || Date.now() - currentSignIn.startedAt >= SIGN_IN_REUSE_MS) {
+    currentSignIn = { tokens: signIn(), startedAt: Date.now() };
   }
 
-  const newCachedTokens: typeof cachedTokens = {
-    tokens: undefined,
-    refreshTime: new Date(),
-  };
-  cachedTokens = newCachedTokens;
+  return await currentSignIn.tokens;
+}
 
+/** Forgets the current sign-in, so each test starts signed out. */
+export function resetBilkaSignInForTest(): void {
+  currentSignIn = undefined;
+}
+
+async function signIn(): Promise<AuthTokens> {
   // Step 1: Login with credentials to get login token
   const loginResponse = await fetch('https://accounts.eu1.gigya.com/accounts.login', {
     method: 'POST',
@@ -38,9 +46,9 @@ export async function authenticateWithBilka(): Promise<AuthTokens> {
       'Content-Type': 'application/x-www-form-urlencoded',
     },
     body: new URLSearchParams({
-      loginID: process.env.HEY_JARVIS_BILKA_EMAIL!,
-      password: process.env.HEY_JARVIS_BILKA_PASSWORD!,
-      apiKey: process.env.HEY_JARVIS_BILKA_API_KEY!,
+      loginID: process.env.HEY_JARVIS_BILKA_EMAIL ?? '',
+      password: process.env.HEY_JARVIS_BILKA_PASSWORD ?? '',
+      apiKey: process.env.HEY_JARVIS_BILKA_API_KEY ?? '',
     }),
   });
 
@@ -50,14 +58,11 @@ export async function authenticateWithBilka(): Promise<AuthTokens> {
     throw new Error('Failed to get login token');
   }
 
-  const authTokens: AuthTokens = {
-    sessionInfo: loginData.sessionInfo,
-    jwtToken: undefined!,
-  };
+  const sessionInfo: AuthTokens['sessionInfo'] = loginData.sessionInfo;
 
   // Step 2: Exchange login token for JWT token
   const jwtResponse = await fetch(
-    `https://accounts.eu1.gigya.com/accounts.getJWT?login_token=${authTokens.sessionInfo.cookieValue}&apiKey=${process.env.HEY_JARVIS_BILKA_API_KEY}`,
+    `https://accounts.eu1.gigya.com/accounts.getJWT?login_token=${sessionInfo.cookieValue}&apiKey=${process.env.HEY_JARVIS_BILKA_API_KEY}`,
     {
       method: 'POST',
     },
@@ -68,10 +73,5 @@ export async function authenticateWithBilka(): Promise<AuthTokens> {
     throw new Error('Failed to get JWT token');
   }
 
-  authTokens.jwtToken = jwtData.id_token;
-
-  newCachedTokens.tokens = authTokens;
-  newCachedTokens.refreshTime = new Date();
-
-  return authTokens;
+  return { sessionInfo, jwtToken: jwtData.id_token };
 }

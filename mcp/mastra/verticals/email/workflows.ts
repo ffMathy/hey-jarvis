@@ -511,8 +511,7 @@ function requestIdWaitedOnBy(step: WorkflowSuspendedStep): string | undefined {
   const payload: unknown = step.suspendPayload;
 
   if (payload && typeof payload === 'object' && 'requestId' in payload) {
-    const { requestId } = payload as { requestId: unknown };
-    return typeof requestId === 'string' ? requestId : undefined;
+    return typeof payload.requestId === 'string' ? payload.requestId : undefined;
   }
 
   return undefined;

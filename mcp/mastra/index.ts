@@ -1,5 +1,6 @@
 import { Mastra } from '@mastra/core';
 import type { Agent } from '@mastra/core/agent';
+import { SpanType } from '@mastra/core/observability';
 import { MastraServer } from '@mastra/hono';
 import { CloudExporter, DefaultExporter, Observability, SamplingStrategyType } from '@mastra/observability';
 import { Hono } from 'hono';
@@ -43,7 +44,7 @@ import { getShoppingListAgent, getShoppingListSummaryAgent, shoppingTools } from
 import { getStateChangeReactorAgent, synapseTools } from './verticals/synapse/index.js';
 import { getTodoListAgent, todoListTools } from './verticals/todo-list/index.js';
 import { getWeatherAgent, weatherTools } from './verticals/weather/index.js';
-import { getWebResearchAgent } from './verticals/web-research/index.js';
+import { getWebResearchAgent, webResearchShortcuts } from './verticals/web-research/index.js';
 import { retireUnrestartableRuns } from './workflow-run-recovery.js';
 
 // Set up the Google AI SDK environment variable immediately.
@@ -91,6 +92,10 @@ export async function getMastra(): Promise<Mastra> {
           sampling: { type: SamplingStrategyType.ALWAYS },
           exporters: [new DefaultExporter(), new CloudExporter(), new TokenUsageExporter()],
           spanOutputProcessors: [new TokenTrackingProcessor()],
+          // One span per streamed chunk of every model call, which nothing here reads: token usage
+          // is taken from the generation spans, and the reflection agent reads failing spans. Kept,
+          // they are storage writes on every call and noise in every trace that agent is handed.
+          excludeSpanTypes: [SpanType.MODEL_CHUNK],
         },
       },
     }),
@@ -147,6 +152,7 @@ export async function getMastra(): Promise<Mastra> {
       ...synapseTools,
       ...todoListTools,
       ...weatherTools,
+      ...webResearchShortcuts,
     },
     bundler: {
       // @yarflam/potion-base-8m resolves its embedding table relative to its own

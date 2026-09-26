@@ -1,5 +1,5 @@
 import type { Agent } from '@mastra/core/agent';
-import { createAgent } from '../../utils/index.js';
+import { createAgent, LOW_THINKING_PROVIDER_OPTIONS } from '../../utils/index.js';
 import { openArtifactOnPhone } from './shortcuts.js';
 import { generativeUiTools } from './tools.js';
 
@@ -44,5 +44,9 @@ Build interactive web pages (artifacts) on request — charts, dashboards, diagr
 - The page is built by a Claude cloud session and takes a few minutes
 - The builder cannot reach Jarvis's own data. When the page should show the calendar, the house, the shopping list or anything else another agent owns, have that agent fetch it first and pass it along in the prompt`,
     tools: { ...generativeUiTools, openArtifactOnPhone },
+    // The agent's one decision is the brief it hands generateUserInterface, and the moment it
+    // calls that tool is the moment routing can offer to notify the user rather than hold the
+    // line. Thinking at medium only postpones that moment; the builder does the thinking.
+    defaultOptions: { providerOptions: LOW_THINKING_PROVIDER_OPTIONS },
   });
 }

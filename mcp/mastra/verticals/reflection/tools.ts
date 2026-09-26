@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { getMastraStorageProvider } from '../../storage/index.js';
 import { diagnosticCount, recentDiagnostics } from '../../utils/diagnostics.js';
 import { createTool } from '../../utils/tool-factory.js';
-import { runReport, spanReport, traceReport } from './reports.js';
+import { innermostFailure, runReport, spanReport, traceReport } from './reports.js';
 
 /**
  * Reading Jarvis's own machinery.
@@ -113,10 +113,16 @@ const failedStepSchema = z.object({
  * from the inside: the tool call that broke carries the error, and the agent span above it
  * may well have recovered and finished cleanly. Asking only for traces whose *root* failed
  * misses exactly the failures worth asking about.
+ *
+ * For the same reason each failure carries its `cause`, the innermost span that failed. The
+ * root span a list returns has no error of its own more often than not, so a list of roots
+ * answered "what failed" and left every "why" to a describeTrace call -- one more model round
+ * trip. The causes are read from each trace's structure, which leaves out every payload, and
+ * all of them at once: they come from the local database, in milliseconds.
  */
 export const listRecentFailures = createTool({
   id: 'listRecentFailures',
-  description: `List the runs that failed recently — which agent or workflow it was, when, and what the error said.
+  description: `List the runs that failed recently — which agent or workflow it was, when, and its cause: the innermost step that failed, and what its error said.
 
 Use this tool when:
 - The user asks what has gone wrong, what is broken, or why something did not work
@@ -134,7 +140,15 @@ Use this tool when:
     lookbackHours: z.number().describe('The window these failures were read from'),
     failureCount: z.number().describe('How many failures are in this answer'),
     failures: z
-      .array(spanReportSchema.extend({ traceId: z.string(), entity: z.string() }))
+      .array(
+        spanReportSchema.extend({
+          traceId: z.string(),
+          entity: z.string(),
+          cause: spanReportSchema
+            .optional()
+            .describe('The innermost step that failed — usually the reason. Absent when the trace has been swept.'),
+        }),
+      )
       .describe('The failed runs, newest first'),
   }),
   execute: async (inputData) => {
@@ -150,14 +164,24 @@ Use this tool when:
       orderBy: { field: 'startedAt', direction: 'DESC' },
     });
 
+    // A cause that cannot be read is left off rather than failing the list, which answered
+    // without causes before it had them.
+    const structures = await Promise.all(
+      spans.map((span) => store.getStructure({ traceId: span.traceId }).catch(() => null)),
+    );
+
     return {
       lookbackHours: inputData.lookbackHours,
       failureCount: spans.length,
-      failures: spans.map((span) => ({
-        ...spanReport(span),
-        traceId: span.traceId,
-        entity: span.entityName ?? span.name,
-      })),
+      failures: spans.map((span, index) => {
+        const cause = innermostFailure(structures[index]?.spans ?? []);
+        return {
+          ...spanReport(span),
+          traceId: span.traceId,
+          entity: span.entityName ?? span.name,
+          ...(cause ? { cause } : {}),
+        };
+      }),
     };
   },
 });
@@ -171,10 +195,10 @@ Use this tool when:
  */
 export const describeTrace = createTool({
   id: 'describeTrace',
-  description: `Read one trace in full: every step of the run, which of them failed, and what each was given and returned.
+  description: `Read one trace in full: every step of the run, which of them failed, and what the failing ones were given and returned.
 
 Use this tool when:
-- You have a traceId from listRecentFailures and need to know why it failed
+- The cause listRecentFailures gave is not enough, and you need the steps around it
 - The user asks what happened during a specific request
 - A failure needs explaining rather than just reporting`,
   inputSchema: z.object({
@@ -182,8 +206,10 @@ Use this tool when:
     includePayloads: z
       .boolean()
       .optional()
-      .default(true)
-      .describe('Whether to include what each step was given and returned, trimmed. Turn off for a shorter answer.'),
+      .default(false)
+      .describe(
+        'Whether every step also carries what it was given and returned, trimmed. The failing steps always do. Turn on when you need to see what the other steps did, such as in a request that did not fail.',
+      ),
   }),
   outputSchema: z.object({
     found: z.boolean().describe('Whether a trace with this id is still in storage'),
@@ -193,7 +219,10 @@ Use this tool when:
     startedAt: z.string().optional(),
     durationMs: z.number().optional(),
     failed: z.boolean().optional().describe('Whether anything in the trace failed'),
-    failingSpans: z.array(spanReportSchema).optional().describe('The spans that failed, innermost — the cause — first'),
+    failingSpans: z
+      .array(spanReportSchema)
+      .optional()
+      .describe('The spans that failed, innermost — the cause — first, each with what it was given and returned'),
     spans: z.array(spanReportSchema).optional().describe('Every span in the trace, in the order it started'),
   }),
   execute: async (inputData) => {

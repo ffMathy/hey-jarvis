@@ -325,7 +325,7 @@ export function getSendEmailAndAwaitResponseWorkflow<TResponseSchema extends z.Z
   return createWorkflow({
     id: `sendEmailAndAwaitResponseWorkflow-${slug}`,
     inputSchema: sendAndWaitInputSchema,
-    outputSchema: outputSchema as z.ZodType<z.infer<typeof outputSchema>>,
+    outputSchema,
   })
     .then(sendFormRequestEmail)
     .then(createAwaitEmailResponseStep(responseSchema))

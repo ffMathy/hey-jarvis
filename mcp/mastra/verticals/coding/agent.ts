@@ -1,5 +1,5 @@
 import type { Agent } from '@mastra/core/agent';
-import { createAgent } from '../../utils/index.js';
+import { createAgent, LOW_THINKING_PROVIDER_OPTIONS } from '../../utils/index.js';
 import { DEFAULT_OWNER, DEFAULT_REPOSITORY } from './repository.js';
 import { codingTools } from './tools.js';
 import { implementFeatureWorkflow } from './workflows.js';
@@ -28,10 +28,12 @@ For ANY request to **view**, **find**, **list**, **search**, or **check** inform
 - Send a follow-up message to a session, to answer a question it asked or redirect its work
 
 **When handling read operations:**
+- Every tool call is a round trip the user waits through, so answer with as few as the request allows — usually one
+- Call the tool that answers the question straight away. The defaults below name the repository, so never list or search repositories just to confirm it before listing its issues
 - Present information clearly with key details (stars, language, issue numbers, states)
 - Include direct GitHub URLs for quick access
 - Summarize results when showing many items
-- Be proactive in suggesting relevant repositories or issues
+- Point out other relevant repositories or issues you have already seen, rather than looking for more
 
 # MODE 2: WRITE/CHANGE OPERATIONS - Trigger Workflow
 For ANY request that would **create**, **modify**, **implement**, **add**, **fix**, **change**, or **update** something, immediately trigger the implementFeatureWorkflow.
@@ -89,5 +91,9 @@ Manage GitHub repositories with two distinct modes: read operations via tools an
     workflows: {
       implementFeatureWorkflow: implementFeatureWorkflow,
     },
+    // What this model decides is which tool to call and how to say what came back. The reading
+    // of the codebase that does need thought happens in a Claude cloud session, not here, so every
+    // step of this loop would otherwise pay medium thinking for a choice that needs next to none.
+    defaultOptions: { providerOptions: LOW_THINKING_PROVIDER_OPTIONS },
   });
 }

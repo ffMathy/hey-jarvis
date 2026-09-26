@@ -1,7 +1,15 @@
 import { getDistance } from 'geolib';
+import { extractErrorMessage } from '../../utils/errors.js';
+import { logger } from '../../utils/logger.js';
 import { createShortcut } from '../../utils/shortcut-factory.js';
 import { executeTool } from '../../utils/tool-factory.js';
-import { type DeviceState, getAllDevices, inferUserLocation, type UserLocation } from '../internet-of-things/tools.js';
+import {
+  type DeviceState,
+  getAllDevices,
+  inferUserLocation,
+  renderDevicesById,
+  type UserLocation,
+} from '../internet-of-things/tools.js';
 
 /**
  * Shortcuts are tools that piggy-back on other verticals' capabilities.
@@ -179,6 +187,11 @@ export const getUserLocation = createShortcut({
     await executeTool(inferUserLocation, { userName: inputData.userName ?? getPrimaryUserName() }, context),
 });
 
+/** Whether a device is one a presence question turns on: the car, or the user's phone. */
+function isPresenceDevice(device: DeviceState, userName: string): boolean {
+  return isCarDevice(device) || isUserPhoneDevice(device, userName);
+}
+
 /**
  * The devices that say where the user is: the car, and his phone.
  *
@@ -194,9 +207,97 @@ export const getPresenceDevices = createShortcut({
     const { devices } = await executeTool(getAllDevices, {}, context);
     const userName = getPrimaryUserName();
 
-    return { devices: devices.filter((device) => isCarDevice(device) || isUserPhoneDevice(device, userName)) };
+    return { devices: devices.filter((device) => isPresenceDevice(device, userName)) };
   },
 });
+
+/**
+ * How long the ids of the car and the phone are trusted before they are looked for again.
+ *
+ * Every notification to the user asks where he is, and finding the car and the phone means
+ * rendering every device in the house -- by far the slowest part of routing a message. Which
+ * devices they are changes when a phone or a car is replaced, not between messages, so the ids
+ * are reused and only those two devices are rendered. Once this has passed they are still used,
+ * and looked for again behind the request, so a new phone is picked up by the message after.
+ */
+const PRESENCE_DEVICE_IDS_TTL_MS = 10 * 60_000;
+
+const presenceDeviceIdsByUser = new Map<string, { ids: string[]; fetchedAt: number }>();
+const presenceDeviceSearches = new Map<string, Promise<DeviceState[]>>();
+
+/** Forgets which devices are the car and the phone, for tests. */
+export function resetPresenceCachesForTest(): void {
+  presenceDeviceIdsByUser.clear();
+  presenceDeviceSearches.clear();
+}
+
+/**
+ * Looks through every device in the house for the car and the phone, and remembers their ids.
+ *
+ * Concurrent callers share one search, so a burst of notifications renders the house once.
+ */
+function searchPresenceDevices(userName: string): Promise<DeviceState[]> {
+  const running = presenceDeviceSearches.get(userName);
+  if (running) {
+    return running;
+  }
+
+  const search = executeTool(getAllDevices, {})
+    .then(({ devices }) => {
+      const presenceDevices = devices.filter((device) => isPresenceDevice(device, userName));
+      presenceDeviceIdsByUser.set(userName, {
+        ids: presenceDevices.map((device) => device.id),
+        fetchedAt: Date.now(),
+      });
+      return presenceDevices;
+    })
+    .finally(() => {
+      if (presenceDeviceSearches.get(userName) === search) {
+        presenceDeviceSearches.delete(userName);
+      }
+    });
+
+  presenceDeviceSearches.set(userName, search);
+  return search;
+}
+
+/**
+ * The car and the user's phone, as they are right now.
+ *
+ * Their states are always rendered fresh; only which devices they are is remembered. The rendered
+ * devices are matched again, so one that has been renamed out of being the car or the phone drops
+ * out at once. A remembered device that Home Assistant no longer has -- a phone whose companion app
+ * was reinstalled comes back as a new device -- sends the request back to searching the whole
+ * house, as does the short render failing for any reason.
+ */
+async function fetchPresenceDevices(userName: string): Promise<DeviceState[]> {
+  const known = presenceDeviceIdsByUser.get(userName);
+  if (!known) {
+    return await searchPresenceDevices(userName);
+  }
+
+  if (Date.now() - known.fetchedAt >= PRESENCE_DEVICE_IDS_TTL_MS) {
+    searchPresenceDevices(userName).catch((error: unknown) => {
+      logger.warn('Could not look for the car and the phone again', { error: extractErrorMessage(error) });
+    });
+  }
+
+  let devices: DeviceState[];
+  try {
+    devices = await renderDevicesById(known.ids);
+  } catch (error) {
+    logger.warn('Could not render the car and the phone on their own; searching every device instead', {
+      error: extractErrorMessage(error),
+    });
+    return await searchPresenceDevices(userName);
+  }
+
+  if (devices.length < known.ids.length) {
+    return await searchPresenceDevices(userName);
+  }
+
+  return devices.filter((device) => isPresenceDevice(device, userName));
+}
 
 /**
  * Fetches everything the presence questions are answered from, in one go.
@@ -207,10 +308,10 @@ export const getPresenceDevices = createShortcut({
 export async function fetchPresenceSources(userName: string = getPrimaryUserName()): Promise<PresenceSources> {
   const [locations, devices] = await Promise.all([
     executeTool(getUserLocation, { userName }),
-    executeTool(getPresenceDevices, {}),
+    fetchPresenceDevices(userName),
   ]);
 
-  return { location: locations.users[0], devices: devices.devices };
+  return { location: locations.users[0], devices };
 }
 
 /**
@@ -284,7 +385,7 @@ export function readCarAnswer({ location, devices }: PresenceSources): PresenceA
     return { answer: false, reason: 'The car is occupied, but there is no GPS fix to place the user in it.' };
   }
 
-  const distanceMeters = distanceToCar(occupied, location);
+  const distanceMeters = distanceToCar(occupied, { latitude: location.latitude, longitude: location.longitude });
   if (distanceMeters === null) {
     return { answer: false, reason: `${occupied.name} is occupied, but reports no location of its own.` };
   }
@@ -340,9 +441,7 @@ function isCarOccupied(car: DeviceState): boolean {
 }
 
 /** How far the user is from the car, or null when the car reports no position. */
-function distanceToCar(car: DeviceState, location: UserLocation): number | null {
-  const userPosition = { latitude: location.latitude as number, longitude: location.longitude as number };
-
+function distanceToCar(car: DeviceState, userPosition: { latitude: number; longitude: number }): number | null {
   let closest: number | null = null;
   for (const entity of car.entities) {
     const latitude = readNumberAttribute(entity, 'latitude');

@@ -60,12 +60,46 @@ function isNavigationEntity(entity: Entity): boolean {
 }
 
 /**
+ * The domains a Tessie car's navigation lives in: the arrival sensors, and the trackers for
+ * where the car is and where it is heading.
+ */
+const NAVIGATION_DOMAINS = ['sensor', 'device_tracker'];
+
+/**
+ * Joins the per-domain views of the same devices back into one device each.
+ *
+ * A device's `last_changed` is its latest entity's, so the joined device takes the later one.
+ * Exported for testing.
+ */
+export function mergeDevicesAcrossDomains(devicesPerDomain: Device[][]): Device[] {
+  const devicesById = new Map<string, Device>();
+
+  for (const device of devicesPerDomain.flat()) {
+    const seen = devicesById.get(device.id);
+    if (!seen) {
+      devicesById.set(device.id, device);
+      continue;
+    }
+
+    devicesById.set(device.id, {
+      ...seen,
+      entities: [...seen.entities, ...device.entities],
+      last_changed:
+        Date.parse(device.last_changed) > Date.parse(seen.last_changed) ? device.last_changed : seen.last_changed,
+    });
+  }
+
+  return Array.from(devicesById.values());
+}
+
+/**
  * Get the current navigation destination from a connected Tesla via Tessie.
  * This shortcut uses the IoT vertical's getAllDevices tool to query
  * the car's navigation system state using Tessie-specific entity patterns.
  *
- * The shortcut searches all domains to find Tessie devices, then filters
- * to only return navigation-related entities.
+ * Every entity it returns is a sensor or a device tracker, so it asks for those two domains --
+ * at the same time -- rather than rendering every light, switch and media player in the house
+ * with all their attributes only to throw them away.
  */
 export const getCarNavigationDestination = createShortcut({
   id: 'getCarNavigationDestination',
@@ -73,8 +107,10 @@ export const getCarNavigationDestination = createShortcut({
     "Get the current navigation destination from a connected Tesla via Tessie integration. Uses IoT device integration to query the car's navigation system for destination, distance to arrival, time to arrival, and traffic delay.",
   tool: getAllDevices,
   execute: async (_inputData, context): Promise<{ devices: DeviceState[] }> => {
-    const { devices: allDevices } = await executeTool(getAllDevices, {}, context);
-    const carDevices = allDevices.filter(isTessieCarDevice);
+    const devicesPerDomain = await Promise.all(
+      NAVIGATION_DOMAINS.map(async (domain) => (await executeTool(getAllDevices, { domain }, context)).devices),
+    );
+    const carDevices = mergeDevicesAcrossDomains(devicesPerDomain).filter(isTessieCarDevice);
 
     if (carDevices.length === 0) {
       return {

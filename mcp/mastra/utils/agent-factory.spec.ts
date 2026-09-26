@@ -186,6 +186,31 @@ describe('createAgent instructions', () => {
     );
   });
 
+  it('resolves instructions given as a function on every call, guidelines still appended', async () => {
+    const now = new Date('2026-09-25T08:30:00Z');
+    setSystemTime(now);
+    let resolved = 0;
+
+    const agent = await createAgent({
+      id: 'probe',
+      name: 'probe',
+      instructions: async () => `Looked up ${++resolved} time(s).`,
+      model: modelReadingSystemPrompt(() => {}),
+      memory: undefined,
+    });
+
+    await agent.getInstructions();
+    expect(await agent.getInstructions()).toBe(
+      [
+        'Looked up 2 time(s).',
+        '',
+        '# Additional context and guidelines',
+        'Never ask questions. Always make best-guess assumptions.',
+        `The time is currently: \`${now.toString()}\`.`,
+      ].join('\n'),
+    );
+  });
+
   it('tells the model the time of the request, not the time the agent was built', async () => {
     // Agents are built once, at boot, and the server then runs for days.
     const builtAt = new Date('2026-09-25T08:30:00Z');

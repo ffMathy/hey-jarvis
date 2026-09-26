@@ -1,69 +1,97 @@
 import { z } from 'zod';
 import { createTool } from '../../utils/tool-factory.js';
 
-// Interface for OpenWeatherMap current weather response
-interface CurrentWeatherResponse {
-  weather: Array<{
-    main: string;
-    description: string;
-    icon: string;
-  }>;
-  main: {
-    temp: number;
-    feels_like: number;
-    temp_min: number;
-    temp_max: number;
-    pressure: number;
-    humidity: number;
-  };
-  wind: {
-    speed: number;
-    deg: number;
-    gust?: number;
-  };
-  clouds: {
-    all: number;
-  };
-  name: string;
-  coord: {
-    lat: number;
-    lon: number;
-  };
-}
+// The parts of OpenWeatherMap's responses the tools read. Parsed rather than cast, so a response
+// that lacks one of them fails here, with its field named, instead of somewhere downstream.
+const conditionsSchema = z.object({
+  main: z.object({
+    temp: z.number(),
+    feels_like: z.number(),
+    temp_min: z.number(),
+    temp_max: z.number(),
+    pressure: z.number(),
+    humidity: z.number(),
+  }),
+  wind: z.object({
+    speed: z.number(),
+    deg: z.number(),
+    gust: z.number().optional(),
+  }),
+  clouds: z.object({
+    all: z.number(),
+  }),
+  weather: z
+    .array(
+      z.object({
+        main: z.string(),
+        description: z.string(),
+      }),
+    )
+    .min(1),
+});
 
-// Interface for OpenWeatherMap 5-day forecast response
-interface ForecastResponse {
-  city: {
-    name: string;
-    coord: {
-      lat: number;
-      lon: number;
-    };
-  };
-  list: Array<{
-    dt_txt: string;
-    main: {
-      temp: number;
-      feels_like: number;
-      temp_min: number;
-      temp_max: number;
-      pressure: number;
-      humidity: number;
-    };
-    wind: {
-      speed: number;
-      deg: number;
-      gust?: number;
-    };
-    clouds: {
-      all: number;
-    };
-    weather: Array<{
-      main: string;
-      description: string;
-    }>;
-  }>;
-}
+const coordinatesResponseSchema = z.object({ lat: z.number(), lon: z.number() });
+
+const currentWeatherResponseSchema = conditionsSchema.extend({
+  name: z.string(),
+  coord: coordinatesResponseSchema,
+});
+
+const forecastResponseSchema = z.object({
+  city: z.object({
+    name: z.string(),
+    coord: coordinatesResponseSchema,
+  }),
+  list: z.array(conditionsSchema.extend({ dt_txt: z.string() })),
+});
+
+const conditionsOutputSchema = z.object({
+  temperature: z.number(),
+  feelsLike: z.number(),
+  tempMin: z.number(),
+  tempMax: z.number(),
+  humidity: z.number(),
+  pressure: z.number(),
+  windSpeed: z.number(),
+  windDirection: z.number(),
+  windGust: z.number().optional(),
+  cloudiness: z.number(),
+  condition: z.string(),
+  description: z.string(),
+});
+
+const coordinatesOutputSchema = z.object({
+  lat: z.number(),
+  lon: z.number(),
+});
+
+/** What the current-weather tools return. */
+const currentWeatherSchema = conditionsOutputSchema.extend({
+  location: z.string(),
+  coordinates: coordinatesOutputSchema,
+});
+
+export type CurrentWeather = z.infer<typeof currentWeatherSchema>;
+
+/** What the forecast tools return. */
+const forecastSchema = z.object({
+  location: z.string(),
+  coordinates: coordinatesOutputSchema,
+  forecast: z.array(conditionsOutputSchema.extend({ datetime: z.string() })),
+});
+
+const cityNameInputSchema = z.object({
+  cityName: z
+    .string()
+    .describe(
+      'The city name in format "city,country" (e.g., "berlin,de" for Berlin in Germany or "aarhus,dk" for Mathias\' location in Denmark)',
+    ),
+});
+
+const coordinatesInputSchema = z.object({
+  latitude: z.number().describe('Latitude coordinate'),
+  longitude: z.number().describe('Longitude coordinate'),
+});
 
 // Get OpenWeatherMap API key from environment
 const getApiKey = () => {
@@ -74,265 +102,102 @@ const getApiKey = () => {
   return apiKey;
 };
 
+/** The query string that picks a location, by city name or by coordinates. */
+function byCity({ cityName }: z.infer<typeof cityNameInputSchema>): string {
+  return `q=${encodeURIComponent(cityName)}`;
+}
+
+function byCoordinates({ latitude, longitude }: z.infer<typeof coordinatesInputSchema>): string {
+  return `lat=${latitude}&lon=${longitude}`;
+}
+
+async function fetchOpenWeatherMap(endpoint: 'weather' | 'forecast', locationQuery: string): Promise<unknown> {
+  const url = `https://api.openweathermap.org/data/2.5/${endpoint}?${locationQuery}&appid=${getApiKey()}&units=metric&lang=en`;
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch ${endpoint} data: ${response.statusText}`);
+  }
+
+  return await response.json();
+}
+
+function toConditions(conditions: z.infer<typeof conditionsSchema>): z.infer<typeof conditionsOutputSchema> {
+  return {
+    temperature: conditions.main.temp,
+    feelsLike: conditions.main.feels_like,
+    tempMin: conditions.main.temp_min,
+    tempMax: conditions.main.temp_max,
+    humidity: conditions.main.humidity,
+    pressure: conditions.main.pressure,
+    windSpeed: conditions.wind.speed,
+    windDirection: conditions.wind.deg,
+    windGust: conditions.wind.gust,
+    cloudiness: conditions.clouds.all,
+    condition: conditions.weather[0].main,
+    description: conditions.weather[0].description,
+  };
+}
+
+async function fetchCurrentWeather(locationQuery: string): Promise<CurrentWeather> {
+  const data = currentWeatherResponseSchema.parse(await fetchOpenWeatherMap('weather', locationQuery));
+
+  return {
+    ...toConditions(data),
+    location: data.name,
+    coordinates: {
+      lat: data.coord.lat,
+      lon: data.coord.lon,
+    },
+  };
+}
+
+async function fetchForecast(locationQuery: string): Promise<z.infer<typeof forecastSchema>> {
+  const data = forecastResponseSchema.parse(await fetchOpenWeatherMap('forecast', locationQuery));
+
+  return {
+    location: data.city.name,
+    coordinates: {
+      lat: data.city.coord.lat,
+      lon: data.city.coord.lon,
+    },
+    forecast: data.list.map((item) => ({ datetime: item.dt_txt, ...toConditions(item) })),
+  };
+}
+
 // Tool to get current weather by city name
 export const getCurrentWeatherByCity = createTool({
   id: 'getCurrentWeatherByCity',
   description: 'Get current weather information for a specific city',
-  inputSchema: z.object({
-    cityName: z
-      .string()
-      .describe(
-        'The city name in format "city,country" (e.g., "berlin,de" for Berlin in Germany or "aarhus,dk" for Mathias\' location in Denmark)',
-      ),
-  }),
-  outputSchema: z.object({
-    temperature: z.number(),
-    feelsLike: z.number(),
-    tempMin: z.number(),
-    tempMax: z.number(),
-    humidity: z.number(),
-    pressure: z.number(),
-    windSpeed: z.number(),
-    windDirection: z.number(),
-    windGust: z.number().optional(),
-    cloudiness: z.number(),
-    condition: z.string(),
-    description: z.string(),
-    location: z.string(),
-    coordinates: z.object({
-      lat: z.number(),
-      lon: z.number(),
-    }),
-  }),
-  execute: async (inputData) => {
-    const apiKey = getApiKey();
-    const url = `https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(inputData.cityName)}&appid=${apiKey}&units=metric&lang=en`;
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch weather data: ${response.statusText}`);
-    }
-
-    const data = (await response.json()) as CurrentWeatherResponse;
-
-    return {
-      temperature: data.main.temp,
-      feelsLike: data.main.feels_like,
-      tempMin: data.main.temp_min,
-      tempMax: data.main.temp_max,
-      humidity: data.main.humidity,
-      pressure: data.main.pressure,
-      windSpeed: data.wind.speed,
-      windDirection: data.wind.deg,
-      windGust: data.wind.gust,
-      cloudiness: data.clouds.all,
-      condition: data.weather[0].main,
-      description: data.weather[0].description,
-      location: data.name,
-      coordinates: {
-        lat: data.coord.lat,
-        lon: data.coord.lon,
-      },
-    };
-  },
+  inputSchema: cityNameInputSchema,
+  outputSchema: currentWeatherSchema,
+  execute: async (inputData) => await fetchCurrentWeather(byCity(inputData)),
 });
 
 // Tool to get current weather by GPS coordinates
 export const getCurrentWeatherByCoordinates = createTool({
   id: 'getCurrentWeatherByCoordinates',
   description: 'Get current weather information for specific GPS coordinates',
-  inputSchema: z.object({
-    latitude: z.number().describe('Latitude coordinate'),
-    longitude: z.number().describe('Longitude coordinate'),
-  }),
-  outputSchema: z.object({
-    temperature: z.number(),
-    feelsLike: z.number(),
-    tempMin: z.number(),
-    tempMax: z.number(),
-    humidity: z.number(),
-    pressure: z.number(),
-    windSpeed: z.number(),
-    windDirection: z.number(),
-    windGust: z.number().optional(),
-    cloudiness: z.number(),
-    condition: z.string(),
-    description: z.string(),
-    location: z.string(),
-    coordinates: z.object({
-      lat: z.number(),
-      lon: z.number(),
-    }),
-  }),
-  execute: async (inputData) => {
-    const apiKey = getApiKey();
-    const url = `https://api.openweathermap.org/data/2.5/weather?lat=${inputData.latitude}&lon=${inputData.longitude}&appid=${apiKey}&units=metric&lang=en`;
-
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch weather data: ${response.statusText}`);
-    }
-
-    const data = (await response.json()) as CurrentWeatherResponse;
-
-    return {
-      temperature: data.main.temp,
-      feelsLike: data.main.feels_like,
-      tempMin: data.main.temp_min,
-      tempMax: data.main.temp_max,
-      humidity: data.main.humidity,
-      pressure: data.main.pressure,
-      windSpeed: data.wind.speed,
-      windDirection: data.wind.deg,
-      windGust: data.wind.gust,
-      cloudiness: data.clouds.all,
-      condition: data.weather[0].main,
-      description: data.weather[0].description,
-      location: data.name,
-      coordinates: {
-        lat: data.coord.lat,
-        lon: data.coord.lon,
-      },
-    };
-  },
+  inputSchema: coordinatesInputSchema,
+  outputSchema: currentWeatherSchema,
+  execute: async (inputData) => await fetchCurrentWeather(byCoordinates(inputData)),
 });
 
 // Tool to get 5-day forecast by city name
 export const getForecastByCity = createTool({
   id: 'getForecastByCity',
   description: 'Get 5-day weather forecast for a specific city',
-  inputSchema: z.object({
-    cityName: z
-      .string()
-      .describe(
-        'The city name in format "city,country" (e.g., "berlin,de" for Berlin in Germany or "aarhus,dk" for Mathias\' location in Denmark)',
-      ),
-  }),
-  outputSchema: z.object({
-    location: z.string(),
-    coordinates: z.object({
-      lat: z.number(),
-      lon: z.number(),
-    }),
-    forecast: z.array(
-      z.object({
-        datetime: z.string(),
-        temperature: z.number(),
-        feelsLike: z.number(),
-        tempMin: z.number(),
-        tempMax: z.number(),
-        humidity: z.number(),
-        pressure: z.number(),
-        windSpeed: z.number(),
-        windDirection: z.number(),
-        windGust: z.number().optional(),
-        cloudiness: z.number(),
-        condition: z.string(),
-        description: z.string(),
-      }),
-    ),
-  }),
-  execute: async (inputData) => {
-    const apiKey = getApiKey();
-    const url = `https://api.openweathermap.org/data/2.5/forecast?q=${encodeURIComponent(inputData.cityName)}&appid=${apiKey}&units=metric&lang=en`;
-
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch forecast data: ${response.statusText}`);
-    }
-
-    const data = (await response.json()) as ForecastResponse;
-
-    return {
-      location: data.city.name,
-      coordinates: {
-        lat: data.city.coord.lat,
-        lon: data.city.coord.lon,
-      },
-      forecast: data.list.map((item) => ({
-        datetime: item.dt_txt,
-        temperature: item.main.temp,
-        feelsLike: item.main.feels_like,
-        tempMin: item.main.temp_min,
-        tempMax: item.main.temp_max,
-        humidity: item.main.humidity,
-        pressure: item.main.pressure,
-        windSpeed: item.wind.speed,
-        windDirection: item.wind.deg,
-        windGust: item.wind.gust,
-        cloudiness: item.clouds.all,
-        condition: item.weather[0].main,
-        description: item.weather[0].description,
-      })),
-    };
-  },
+  inputSchema: cityNameInputSchema,
+  outputSchema: forecastSchema,
+  execute: async (inputData) => await fetchForecast(byCity(inputData)),
 });
 
 // Tool to get 5-day forecast by GPS coordinates
 export const getForecastByCoordinates = createTool({
   id: 'getForecastByCoordinates',
   description: 'Get 5-day weather forecast for specific GPS coordinates',
-  inputSchema: z.object({
-    latitude: z.number().describe('Latitude coordinate'),
-    longitude: z.number().describe('Longitude coordinate'),
-  }),
-  outputSchema: z.object({
-    location: z.string(),
-    coordinates: z.object({
-      lat: z.number(),
-      lon: z.number(),
-    }),
-    forecast: z.array(
-      z.object({
-        datetime: z.string(),
-        temperature: z.number(),
-        feelsLike: z.number(),
-        tempMin: z.number(),
-        tempMax: z.number(),
-        humidity: z.number(),
-        pressure: z.number(),
-        windSpeed: z.number(),
-        windDirection: z.number(),
-        windGust: z.number().optional(),
-        cloudiness: z.number(),
-        condition: z.string(),
-        description: z.string(),
-      }),
-    ),
-  }),
-  execute: async (inputData) => {
-    const apiKey = getApiKey();
-    const url = `https://api.openweathermap.org/data/2.5/forecast?lat=${inputData.latitude}&lon=${inputData.longitude}&appid=${apiKey}&units=metric&lang=en`;
-
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch forecast data: ${response.statusText}`);
-    }
-
-    const data = (await response.json()) as ForecastResponse;
-
-    return {
-      location: data.city.name,
-      coordinates: {
-        lat: data.city.coord.lat,
-        lon: data.city.coord.lon,
-      },
-      forecast: data.list.map((item) => ({
-        datetime: item.dt_txt,
-        temperature: item.main.temp,
-        feelsLike: item.main.feels_like,
-        tempMin: item.main.temp_min,
-        tempMax: item.main.temp_max,
-        humidity: item.main.humidity,
-        pressure: item.main.pressure,
-        windSpeed: item.wind.speed,
-        windDirection: item.wind.deg,
-        windGust: item.wind.gust,
-        cloudiness: item.clouds.all,
-        condition: item.weather[0].main,
-        description: item.weather[0].description,
-      })),
-    };
-  },
+  inputSchema: coordinatesInputSchema,
+  outputSchema: forecastSchema,
+  execute: async (inputData) => await fetchForecast(byCoordinates(inputData)),
 });
 
 // Export all tools together for convenience

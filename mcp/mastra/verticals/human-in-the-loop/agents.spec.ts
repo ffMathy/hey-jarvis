@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test';
 import { z } from 'zod';
 import * as realAgentFactory from '../../utils/agent-factory.js';
+import { LOW_THINKING_PROVIDER_OPTIONS } from '../../utils/providers/google-provider.js';
 
 /**
  * `parseEmailReply` is the only thing in this vertical that talks to a model, so the model
@@ -85,6 +86,12 @@ describe('getEmailParsingAgent', () => {
     const agent = await getEmailParsingAgent();
 
     expect(Object.keys(await agent.listTools())).toEqual([]);
+  });
+
+  it('reads replies at low thinking, since turning one into an answer is extraction', async () => {
+    const agent = await getEmailParsingAgent();
+
+    expect(await agent.getDefaultOptions()).toMatchObject({ providerOptions: LOW_THINKING_PROVIDER_OPTIONS });
   });
 });
 

@@ -38,8 +38,13 @@ function withSharedGuidelines(instructions: string): string {
 
 export async function createAgent(
   config: Omit<AgentConfig, 'model' | 'memory' | 'scorers' | 'instructions'> & {
-    /** The agent's own instructions. The guidelines every agent shares are appended to them. */
-    instructions: string;
+    /**
+     * The agent's own instructions. The guidelines every agent shares are appended to them.
+     *
+     * A function is resolved on every call, for instructions that carry something looked up at
+     * request time -- the Home Assistant areas the IoT agent can target, say.
+     */
+    instructions: string | (() => Promise<string>);
     model?: AgentConfig['model'];
     memory?: AgentConfig['memory'];
     scorers?: AgentConfig['scorers'];
@@ -82,7 +87,10 @@ export async function createAgent(
     ...agentConfig,
     // After the spread, so the caller's bare instructions cannot replace the guidelines. Mastra
     // resolves a function on every call, which is what keeps the time current.
-    instructions: () => withSharedGuidelines(instructions),
+    instructions:
+      typeof instructions === 'string'
+        ? () => withSharedGuidelines(instructions)
+        : async () => withSharedGuidelines(await instructions()),
     model: resolvedModel,
     // Merge output processors instead of replacing
     outputProcessors: [...defaultProcessors, ...customProcessors],

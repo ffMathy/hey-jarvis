@@ -1,6 +1,6 @@
 import type { Agent } from '@mastra/core/agent';
 import { z } from 'zod';
-import { createAgent } from '../../utils/index.js';
+import { createAgent, getModel } from '../../utils/index.js';
 import { getPublicAgents } from '..';
 import type { PlannedChain } from './plan.js';
 import type { OpenQuestion } from './questions.js';
@@ -19,6 +19,20 @@ import { chainsFromTasks } from './task-chains.js';
  */
 
 const PLANNER_AGENT_ID = 'routing-planner';
+
+/**
+ * The model the planner runs on.
+ *
+ * Flash-Lite rather than the Flash every other agent uses, because the planner is the one call
+ * every request waits on before any work starts, and what it does -- pick agents from a list and
+ * write each a prompt -- is classification rather than reasoning. Flash-Lite also thinks at
+ * `minimal` by default, where Flash thinks at `medium`, so no thinking override is set here: the
+ * default is already the fastest level, and naming one risks a level a later model rejects.
+ *
+ * If plans get worse, this is the line to revert. The routing LLM eval
+ * (`workflows.llm-eval.integration.spec.ts`) is what judges them, and it only runs by hand.
+ */
+const PLANNER_MODEL = 'gemini-flash-lite-latest';
 
 export { PLANNER_AGENT_ID };
 
@@ -175,6 +189,7 @@ export async function getRoutingPlannerAgent(): Promise<Agent> {
     name: 'RoutingPlanner',
     description: 'Turns a user request into a plan of delegations for the specialized agents.',
     instructions: plannerInstructions(routableAgents),
+    model: getModel(PLANNER_MODEL),
     // Planning one request has nothing to recall from the last one, and memory here would
     // buy an embedding round trip on the one path that cannot afford any. The questions still
     // waiting on the user are the one thing it does need from earlier requests, and those are
