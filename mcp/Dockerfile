@@ -74,9 +74,11 @@ ENV WORKSPACE_ROOT=/workspace
 WORKDIR /workspace
 
 # Install supervisor for process management, wget for healthcheck, netcat for
-# port checking, bash to run run-with-env.sh, and the SSH client the coding
-# vertical reaches the Claude Code host with (see verticals/coding/claude-code-host.ts)
-RUN apk add --no-cache supervisor wget netcat-openbsd bash openssh-client
+# port checking, bash to run run-with-env.sh, the SSH client the coding
+# vertical reaches the Claude Code host with (see verticals/coding/claude-code-host.ts),
+# and git, which publishes a session's work from here rather than from the sandbox
+# (see verticals/coding/publish-session-work.ts)
+RUN apk add --no-cache supervisor wget netcat-openbsd bash openssh-client git
 
 # The 1Password CLI resolves the op:// references in mcp/op.env at startup, and
 # those in mcp/op.optional.env that resolve (both arrive with the mcp/ copy below)

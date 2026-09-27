@@ -11,9 +11,10 @@
  * server's container — so the server reaches the host over SSH, and the host runs `sbx exec`.
  *
  * The SSH key gets no shell on the host. Its forced command is `mcp/.scripts/claude-code-ssh-command.sh`,
- * which accepts only `start <session id>` or `resume <session id>` and fixes everything else — the
- * sandbox, the directory and the `claude` command line — so a compromised container can start
- * Claude Code sessions in the sandbox and do nothing else on the host. It also decides for itself
+ * which accepts only `start <session id>`, `resume <session id>` or `export <session id>` and fixes
+ * everything else — the sandbox, the directory, and the `claude` and `git` command lines — so a
+ * compromised container can start Claude Code sessions in the sandbox, fetch their work as a git
+ * bundle, and do nothing else on the host. It also decides for itself
  * whether a session is started or resumed, from whether its transcript is in the sandbox, and holds
  * a per-session lock there so no two processes ever run one session at once.
  *
@@ -214,18 +215,19 @@ function collectStderr(child: ChildProcessWithoutNullStreams): () => string {
 }
 
 /**
- * Starts Claude Code in the host's sandbox, over SSH.
+ * The `ssh` invocation every request to the host goes through: this key and no other, no
+ * configuration but what is passed here, and the host's key pinned beside the server's state.
  *
- * `ssh` gets an environment with nothing in it but `PATH`, and reads no configuration but what is
- * passed here, so none of the server's secrets can travel with it but the one it is handed on stdin.
+ * `ssh` gets an environment with nothing in it but `PATH`, so none of the server's secrets can
+ * travel with it but what a caller hands it on stdin.
  */
-export const launchClaudeCodeOverSsh: ClaudeCodeLauncher = async (sessionId, resume) => {
+async function spawnSsh(remoteCommand: string): Promise<ChildProcessWithoutNullStreams> {
   const configuration = getClaudeCodeHostConfiguration();
   const keyPath = await writePrivateKey(configuration.privateKey);
   const knownHostsPath = getKnownHostsPath();
   await mkdir(path.dirname(knownHostsPath), { recursive: true });
 
-  const child = spawn(
+  return spawn(
     'ssh',
     [
       '-T',
@@ -252,10 +254,21 @@ export const launchClaudeCodeOverSsh: ClaudeCodeLauncher = async (sessionId, res
       '-o',
       'ServerAliveCountMax=4',
       configuration.target,
-      buildRemoteCommand(sessionId, resume),
+      remoteCommand,
     ],
     { env: { PATH: process.env.PATH ?? '' } },
   );
+}
+
+/**
+ * Starts Claude Code in the host's sandbox, over SSH.
+ *
+ * The subscription token is the one secret that travels, on the first line of stdin.
+ */
+export const launchClaudeCodeOverSsh: ClaudeCodeLauncher = async (sessionId, resume) => {
+  const remoteCommand = buildRemoteCommand(sessionId, resume);
+  const { oauthToken } = getClaudeCodeHostConfiguration();
+  const child = await spawnSsh(remoteCommand);
 
   const stderr = collectStderr(child);
   const exited = new Promise<ClaudeCodeExit>((resolve) => {
@@ -267,7 +280,7 @@ export const launchClaudeCodeOverSsh: ClaudeCodeLauncher = async (sessionId, res
   // exit instead; left unhandled it would take the whole server down.
   child.stdin.on('error', () => {});
   // The first line is the token, which the host reads before handing stdin on to Claude Code.
-  child.stdin.write(`${configuration.oauthToken}\n`);
+  child.stdin.write(`${oauthToken}\n`);
 
   return {
     input: child.stdin,
@@ -278,4 +291,94 @@ export const launchClaudeCodeOverSsh: ClaudeCodeLauncher = async (sessionId, res
       child.kill();
     },
   };
+};
+
+/**
+ * What the server asks the host for to fetch a session's work: `export <session id>`.
+ *
+ * The host answers with a git bundle of the session's branches on stdout (see
+ * `mcp/.scripts/claude-code-ssh-command.sh`), so the sandbox never needs a GitHub credential that can
+ * push; the server publishes the work with its own (see `publish-session-work.ts`).
+ */
+export function buildExportCommand(sessionId: string): string {
+  if (!SESSION_ID_PATTERN.test(sessionId)) {
+    throw new Error(`Not a Claude Code session id: ${sessionId}`);
+  }
+
+  return `export ${sessionId}`;
+}
+
+/** How long an export may take, connection included, before it is given up on. */
+const EXPORT_TIMEOUT_MILLISECONDS = 5 * 60 * 1000;
+
+/** What each of the forced command's `export` exit codes means, for the error that reports it. */
+const EXPORT_EXIT_REASONS: Record<number, string> = {
+  64: 'the host refused the request, so its forced command is probably older than `export` and needs reinstalling',
+  66: 'the session has no repository in its directory',
+  67: 'the session committed nothing beyond the default branch',
+  68: 'the session’s repository has no default branch (origin/HEAD) to export against',
+  70: 'git failed to bundle the session’s work',
+  75: 'the session is busy with another turn',
+  255: 'SSH could not reach the host',
+};
+
+/**
+ * Fetches a session's work from the host as a git bundle, refusing one larger than `maximumBytes`.
+ * Swapped out in tests.
+ */
+export type SessionWorkExporter = (sessionId: string, maximumBytes: number) => Promise<Buffer>;
+
+/**
+ * Fetches a session's work from the host's sandbox as a git bundle, over SSH.
+ *
+ * Nothing is sent: the host reads no input for an export. What comes back was written in the
+ * sandbox, so it is treated as untrusted: it is only ever read by git, and never beyond
+ * `maximumBytes`, past which the connection is dropped.
+ *
+ * @throws When the host could not export the session, saying why from its exit code
+ */
+export const exportSessionWorkOverSsh: SessionWorkExporter = async (sessionId, maximumBytes) => {
+  const child = await spawnSsh(buildExportCommand(sessionId));
+  child.stdin.on('error', () => {});
+  child.stdin.end();
+  const stderr = collectStderr(child);
+
+  return await new Promise<Buffer>((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    let failure: Error | undefined;
+
+    const fail = (error: Error) => {
+      failure ??= error;
+      child.kill();
+    };
+    const timer = setTimeout(
+      () =>
+        fail(
+          new Error(`Exporting session ${sessionId} took longer than ${EXPORT_TIMEOUT_MILLISECONDS / 60_000} minutes`),
+        ),
+      EXPORT_TIMEOUT_MILLISECONDS,
+    );
+
+    child.stdout.on('data', (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > maximumBytes) {
+        fail(new Error(`The work of session ${sessionId} is larger than ${Math.round(maximumBytes / 1024 / 1024)} MB`));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    child.on('error', fail);
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      if (failure) {
+        reject(failure);
+      } else if (code !== 0) {
+        const reason = (code !== null && EXPORT_EXIT_REASONS[code]) || `the host exited with code ${code}`;
+        reject(new Error(`Could not export session ${sessionId}: ${reason}. ${stderr()}`.trim()));
+      } else {
+        resolve(Buffer.concat(chunks));
+      }
+    });
+  });
 };

@@ -56,7 +56,7 @@ export function buildCodebaseAnalysisTask(request: string, repository: string, i
 
 "${request}"
 
-Clone the repository into the current directory (\`gh repo clone ${repository}\`) and study the parts of it this request touches: where the change belongs, what it builds on, the conventions it has to follow (AGENTS.md and CLAUDE.md included), and how it should behave. Do not change anything, create a branch or open a pull request — this session only reads.
+Clone the repository into the current directory (\`git clone https://github.com/${repository}.git .\` — it needs no credentials) and study the parts of it this request touches: where the change belongs, what it builds on, the conventions it has to follow (AGENTS.md and CLAUDE.md included), and how it should behave. Do not change anything, create a branch or open a pull request — this session only reads.
 
 Then decide what is still unclear. Anything the code, its documentation or its conventions settle is not a question: decide it, and write it into your findings. What is left are the choices only the user can make — what he wants, not how the codebase works. Ask at most ${MAXIMUM_QUESTIONS}, and none at all if the request is clear enough to build.
 
@@ -301,7 +301,8 @@ const formatFinalOutput = createStep({
  * 3. A Claude Code session is started on the change, handed the request, the findings and
  *    every answer in the user's own words (2 sub-steps)
  *
- * No issue is filed: the session is the record of the work, and the pull request it opens is
+ * No issue is filed: the session is the record of the work, and the pull request opened for its
+ * branch — by the server, once the session is done, since the session itself cannot push — is
  * where the work is reviewed. The session's events are watched from the moment it starts and
  * republished as Synapse state changes, so its progress reaches the notification system without
  * the workflow having to stay alive for the duration of the implementation.

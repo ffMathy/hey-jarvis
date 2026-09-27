@@ -5,28 +5,34 @@
 # the jarvis user's authorized_keys (see "Letting Jarvis code on your Claude subscription" in
 # mcp/README.md). sshd runs it whatever command the connection asked for, and hands that request
 # over in SSH_ORIGINAL_COMMAND. So the MCP container gets no shell on the host: all it can choose is
-# which session to run, and everything else is fixed here -- including that it runs in the jarvis
-# Docker Sandbox, never on the host itself.
+# which session to run or export, and everything else is fixed here -- including that it runs in
+# the jarvis Docker Sandbox, never on the host itself.
 #
 # The request is exactly one of:
 #
 #   start <session id>
 #   resume <session id>
+#   export <session id>
 #
-# Both mean "run this session". The word is only the client's guess: whether Claude Code starts the
-# session afresh or resumes it is decided in the sandbox, by whether its transcript is there, so a
-# client that guessed wrong -- a first run that failed before Claude Code wrote anything, or one
-# that wrote the transcript without the client seeing a line of it -- cannot wedge the session.
+# `start` and `resume` both mean "run this session". The word is only the client's guess: whether
+# Claude Code starts the session afresh or resumes it is decided in the sandbox, by whether its
+# transcript is there, so a client that guessed wrong -- a first run that failed before Claude Code
+# wrote anything, or one that wrote the transcript without the client seeing a line of it -- cannot
+# wedge the session. For those two, the first line of stdin is the Claude subscription token; the
+# rest is Claude Code's own stream-json input.
 #
-# The first line of stdin is the Claude subscription token; the rest is Claude Code's own
-# stream-json input. The mirror of this is `claude-code-host.ts`.
+# `export` writes the session's work to stdout as a git bundle, and nothing else. The sandbox holds
+# no GitHub credential that can push, so the server fetches the work this way and publishes it with
+# its own. It reads no token and no input at all.
+#
+# The mirror of this is `claude-code-host.ts`.
 set -eu
 
 # sshd accepts LC_* from the client, so pin the locale: bracket ranges below must stay byte-based.
 export LC_ALL=C
 
 reject() {
-  echo "jarvis-claude-code: refusing \"${SSH_ORIGINAL_COMMAND:-}\" -- expected \"start <session id>\" or \"resume <session id>\"" >&2
+  echo "jarvis-claude-code: refusing \"${SSH_ORIGINAL_COMMAND:-}\" -- expected \"start <session id>\", \"resume <session id>\" or \"export <session id>\"" >&2
   exit 64
 }
 
@@ -35,7 +41,7 @@ mode=${request%% *}
 session_id=${request#* }
 
 case "$mode" in
-  start | resume) ;;
+  start | resume | export) ;;
   *) reject ;;
 esac
 
@@ -46,6 +52,36 @@ case "$session_id" in
   *[!0-9a-f-]* | '') reject ;;
 esac
 printf '%s\n' "$session_id" | grep -Eqx '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' || reject
+
+# What `export` runs in the sandbox, step by step. As below, `$HOME` and the sandbox's own variables
+# are escaped so the sandbox expands them; the session id is the only thing interpolated here.
+#
+# 1. The session's repository is its directory itself, because sessions clone into `.`. Git is
+#    pointed at `.git` there explicitly rather than left to look for one, so a session that never
+#    cloned cannot have some other repository further up exported in its place.
+# 2. The same lock `start` and `resume` take, so a turn is never exported halfway through. The
+#    server exports as soon as a turn ends, while the process that ran it may still be exiting, so
+#    it waits briefly -- but a session that has started another turn is busy, and exits with 75.
+# 3. The bundle holds every local branch, less everything the remote's default branch already had
+#    when the session last fetched it (`^refs/remotes/origin/<default>`). So its prerequisites --
+#    the commits it builds on without carrying -- all lie on that default branch, and the server
+#    satisfies them by fetching the default branch from GitHub before it unbundles: a default branch
+#    only moves forward, so what it had then it still has.
+#
+# Exit codes: 66 no session directory or no repository in it, 67 nothing committed beyond the
+# default branch, 68 no default branch to export against (no `origin/HEAD`), 70 git itself failed,
+# 75 the session is busy.
+if [ "$mode" = export ]; then
+  exec sbx exec jarvis sh -c "\
+unset CDPATH; \
+cd \"\$HOME/jarvis-sessions/$session_id\" 2>/dev/null && [ -d .git ] || { echo \"jarvis-claude-code: session $session_id has no repository in its directory\" >&2; exit 66; }; \
+exec 9>>\"\$HOME/jarvis-sessions/$session_id.lock\" && \
+flock -w 30 9 || { echo \"jarvis-claude-code: session $session_id is still running in another process\" >&2; exit 75; }; \
+base=\$(git --git-dir=.git symbolic-ref --quiet refs/remotes/origin/HEAD) || { echo \"jarvis-claude-code: session $session_id has no origin/HEAD, so no default branch to export against\" >&2; exit 68; }; \
+count=\$(git --git-dir=.git rev-list --count --branches \"^\$base\") || { echo \"jarvis-claude-code: could not count the commits of session $session_id\" >&2; exit 70; }; \
+[ \"\$count\" -gt 0 ] || { echo \"jarvis-claude-code: session $session_id has committed nothing beyond \$base\" >&2; exit 67; }; \
+git --git-dir=.git bundle create --quiet - --branches \"^\$base\" || { echo \"jarvis-claude-code: could not bundle session $session_id\" >&2; exit 70; }" </dev/null
+fi
 
 # The token comes in on stdin rather than in the request, so it is never part of a command line on
 # either side of the SSH hop, and `sbx exec -e` hands it on into the sandbox.

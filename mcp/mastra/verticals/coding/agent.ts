@@ -50,7 +50,7 @@ For ANY request that would **create**, **modify**, **implement**, **add**, **fix
 **When triggering the workflow:**
 1. Call implementFeatureWorkflow straight away, with the user's request as \`initialRequest\` — write nothing before the call
 2. Let the workflow handle everything from there. A Claude Code session first reads the codebase with the request in hand, which takes a few minutes; then the workflow asks the user whatever the code could not answer. Each question pauses the run, is put to the user for you, and the run carries on with their answer
-3. Once every question is answered, the workflow starts a **Claude Code session** that implements the change autonomously and opens a pull request. No issue is filed
+3. Once every question is answered, the workflow starts a **Claude Code session** that implements the change autonomously on a branch; when it is done, the branch is pushed and a pull request opened for it. No issue is filed
 4. When it finishes, say in a sentence or two what the session is working on and whether it started. If it failed, say what failed
 
 The session reports its progress back through the Synapse vertical, so you do not need to poll it — but you can check on
