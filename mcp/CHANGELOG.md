@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.11.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.10.0...mcp-v2.11.0) (2026-09-27)
+
+
+### Features
+
+* **coding:** publish session work from the server instead of the san… ([#891](https://github.com/ffMathy/hey-jarvis/issues/891)) ([bba3ef9](https://github.com/ffMathy/hey-jarvis/commit/bba3ef902af8f660aa4f0a5394da2f69f04fe7db))
+
 ## [2.10.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.9.1...mcp-v2.10.0) (2026-09-27)
 
 
