@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.9.1](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.9.0...mcp-v2.9.1) (2026-09-27)
+
+
+### Bug Fixes
+
+* **coding:** keep the server up when claude code secrets are missing ([#884](https://github.com/ffMathy/hey-jarvis/issues/884)) ([96216d5](https://github.com/ffMathy/hey-jarvis/commit/96216d5d0950e62eee56d7ec9f2783147d9b537c))
+* **coding:** let the host decide between starting and resuming a session ([#885](https://github.com/ffMathy/hey-jarvis/issues/885)) ([ff7f6bf](https://github.com/ffMathy/hey-jarvis/commit/ff7f6bfaf072c567ab14a5ad6181af99404c82a6))
+
 ## [2.9.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.8.0...mcp-v2.9.0) (2026-09-26)
 
 
