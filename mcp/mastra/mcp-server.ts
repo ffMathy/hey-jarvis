@@ -5,6 +5,7 @@ import express from 'express';
 import { logTokenUsageSummary } from './index.js';
 import { initializeScheduler } from './scheduler.js';
 import { createInstructionsWorkflowTool, createSimplifiedWorkflowTool } from './utils/mcp-tool-factory.js';
+import { getMissingClaudeCodeHostVariables, isClaudeCodeHostConfigured } from './verticals/coding/index.js';
 import { getPublicAgents, registerApiRoutes, registerShoppingTriggers } from './verticals/index.js';
 import { getNextInstructionsWorkflow, routePromptWorkflow } from './verticals/routing/workflows.js';
 
@@ -113,6 +114,13 @@ export async function startMcpServer() {
 
   // Register email triggers for shopping notifications
   registerShoppingTriggers();
+
+  // The Claude Code secrets are optional (mcp/op.optional.env), so say once why coding sessions will not start
+  if (!isClaudeCodeHostConfigured()) {
+    console.warn(
+      `⚠️ Claude Code sessions are not configured. Missing: ${getMissingClaudeCodeHostVariables().join(', ')}. Coding sessions will not start.`,
+    );
+  }
 
   // Log token usage summary on startup
   await logTokenUsageSummary();

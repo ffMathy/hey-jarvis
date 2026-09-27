@@ -6,7 +6,12 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
-import { buildRemoteCommand, getClaudeCodeHostConfiguration, isClaudeCodeHostConfigured } from './claude-code-host.js';
+import {
+  buildRemoteCommand,
+  getClaudeCodeHostConfiguration,
+  getMissingClaudeCodeHostVariables,
+  isClaudeCodeHostConfigured,
+} from './claude-code-host.js';
 
 const SESSION_ID = '0b7e1d52-6c3f-4f7e-9a51-2f7d8c9e0a11';
 
@@ -55,6 +60,7 @@ describe('getClaudeCodeHostConfiguration', () => {
     process.env.HEY_JARVIS_CLAUDE_CODE_SSH_PRIVATE_KEY = 'not a real key';
 
     expect(isClaudeCodeHostConfigured()).toBe(false);
+    expect(getMissingClaudeCodeHostVariables()).toEqual(['HEY_JARVIS_CLAUDE_CODE_OAUTH_TOKEN']);
     expect(() => getClaudeCodeHostConfiguration()).toThrow('HEY_JARVIS_CLAUDE_CODE_OAUTH_TOKEN');
   });
 
@@ -64,6 +70,7 @@ describe('getClaudeCodeHostConfiguration', () => {
     process.env.HEY_JARVIS_CLAUDE_CODE_OAUTH_TOKEN = 'not a real token';
 
     expect(isClaudeCodeHostConfigured()).toBe(true);
+    expect(getMissingClaudeCodeHostVariables()).toEqual([]);
     expect(getClaudeCodeHostConfiguration().target).toBe('jarvis@host.docker.internal');
   });
 });

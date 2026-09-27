@@ -78,7 +78,8 @@ WORKDIR /workspace
 # vertical reaches the Claude Code host with (see verticals/coding/claude-code-host.ts)
 RUN apk add --no-cache supervisor wget netcat-openbsd bash openssh-client
 
-# The 1Password CLI resolves the op:// references in mcp/op.env at startup
+# The 1Password CLI resolves the op:// references in mcp/op.env at startup, and
+# those in mcp/op.optional.env that resolve (both arrive with the mcp/ copy below)
 COPY --from=onepassword /usr/local/bin/op /usr/local/bin/op
 
 # Copy node_modules and package files
@@ -92,13 +93,13 @@ COPY --from=builder /workspace/mcp ./mcp
 # Copy runtime scripts and configuration
 COPY mcp/supervisord.conf /etc/supervisord.conf
 COPY mcp/healthcheck.sh /workspace/healthcheck.sh
-COPY .scripts/run-with-env.sh /workspace/.scripts/run-with-env.sh
+COPY .scripts/run-with-env.sh .scripts/append-optional-env.sh /workspace/.scripts/
 
 # Expose ports for services (4111: Mastra Server + UI, 4112: MCP Server)
 EXPOSE 4111 4112
 
 # Make healthcheck and secret-resolving wrapper executable
-RUN chmod +x /workspace/healthcheck.sh /workspace/.scripts/run-with-env.sh
+RUN chmod +x /workspace/healthcheck.sh /workspace/.scripts/run-with-env.sh /workspace/.scripts/append-optional-env.sh
 
 # Health check to verify all services are running
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \

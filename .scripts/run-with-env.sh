@@ -3,12 +3,19 @@
 # 1. op.env.local (pre-resolved secrets file) — fastest, no 1Password CLI needed
 # 2. Already-set environment variables — e.g. from CI or Docker
 # 3. 1Password CLI (op run) — resolves op:// references on the fly
+#
+# A sibling <name>.optional.env (e.g. mcp/op.env → mcp/op.optional.env) holds references a
+# process can run without. They never count as missing, and in step 3 only the ones that resolve
+# are passed to `op run` — see append-optional-env.sh.
 
 env_file="$1"
 shift
 
 # Derive the local env file path by appending .local (e.g. mcp/op.env → mcp/op.env.local)
 local_env_file="${env_file}.local"
+
+# Derive the optional env file path (e.g. mcp/op.env → mcp/op.optional.env)
+optional_env_file="${env_file%.env}.optional.env"
 
 # Priority 1: Use op.env.local if it exists (pre-resolved secrets)
 if [ -f "$local_env_file" ]; then
@@ -67,5 +74,8 @@ done < <(env)
 
 # Append the original env file (allows 1Password references to override)
 cat "$env_file" >> "$temp_env_file"
+
+# Append the optional references that resolve, so a missing one cannot stop `op run`
+bash "$(dirname "${BASH_SOURCE[0]}")/append-optional-env.sh" "$optional_env_file" "$temp_env_file"
 
 exec op run --env-file="$temp_env_file" --no-masking -- "$@"
