@@ -22,6 +22,29 @@ import { getRecipeById, getRecipeCatalog, recipeSchema } from './tools.js';
 // Use Gemini Flash for cooking workflows - better quality for recipe processing
 const cookingModel = getModel('gemini-flash-latest');
 
+// The household has a baby who is learning to eat and tastes the family's dinner. The rules follow
+// "Mad til børn" (Mejeriforeningen / Landbrug & Fødevarer, 2025), which matches the Danish Health
+// Authority's advice for babies of 6-12 months. Both the recipe selector and the scheduler get them.
+const BABY_TASTING_GUIDELINES = `The household has a baby who is learning to eat, somewhere between 6 and 12 months old.
+The dinners are for the adults: they must still be proper, tasty adult food, scaled for the adults only.
+But the baby tastes the same dinner, so it can learn the family's food. Every dinner must therefore also
+give the baby a safe tasting portion, following the Danish guidance ("Mad til børn", 2025):
+
+- Not too spicy: no chili heat or strong spices in the baby's portion. Mild spices and herbs are good,
+  since learning new tastes is the point
+- Go easy on salt: the baby's portion should be as unsalted as possible
+- No honey in anything the baby tastes, not even cooked into a sauce or glaze
+- No large predatory fish: tuna (tinned tuna too), swordfish, pike, halibut ("hellefisk") and porbeagle
+  ("sildehaj"). Salmon, cod, saithe, plaice, mackerel, herring, prawns and mussels are all fine
+- Eggs only when fully cooked through, never raw or runny
+- Nothing the baby can choke on: no whole nuts, peanuts, seeds, whole grapes, popcorn, or pieces of raw,
+  hard vegetables such as carrot
+- Spinach, beetroot, fennel, rocket and celery only in small amounts, as the baby tolerates little nitrate
+- Fresh herbs and leafy greens only when heated through in the dish, never sprinkled raw on the baby's portion
+- Little cinnamon, and no tea
+- Meat, poultry or fish give the baby the iron it needs, so dinners with one of them are good
+- The baby's portion is cut into small, soft pieces (or roughly mashed), and served lukewarm`;
+
 // Response schema for meal plan feedback - captures the human's free-form response
 const mealPlanFeedbackResponseSchema = z.object({
   feedbackText: z.string().describe('The human feedback text about the meal plan'),
@@ -140,6 +163,14 @@ export const generateMealPlanWorkflow = createWorkflow({
       3. Pick recipes that differ from each other in main ingredient and style
       4. Honour the user's preferences when they are given
       5. Avoid weird soups such as "burgersuppe", "tacosuppe" and "lasagnesuppe"
+      6. Pick dishes the baby can taste as well (see below). Skip dishes that are hot or strongly spiced
+         all the way through, or built around something the baby must not eat (tuna, honey glaze, nuts,
+         raw egg). A dish whose heat or salt can be added at the end is fine, since the baby's portion
+         can be set aside first
+      7. Prefer dishes whose parts can be served separately (meat, potatoes or rice, vegetables), so the
+         baby can taste each one on its own
+
+      ${BABY_TASTING_GUIDELINES}
 
       Return only the ids. Do NOT invent ids, and do NOT write the meal plan.`,
         description: 'Specialized agent for picking the recipes behind a weekly meal plan',
@@ -219,7 +250,18 @@ Return the ids of the recipes you picked.${preferencesText}`;
          - Pantry staples last
       3. Assign Danish weekday names
       4. Ensure proper ingredient quantities
-      
+      5. Adapt the directions so the baby can taste the dinner (see below), without changing the
+         dish for the adults:
+         - Where a recipe adds chili, strong spices or most of its salt, move that to the end, after
+           the baby's portion has been set aside, or serve it at the table
+         - Add one direction, in the same language as the recipe's directions and starting with
+           "Til baby:", that says when to set the baby's portion aside and how to serve it
+           (for example: cut into small, soft pieces, without the raw herbs, lukewarm)
+         - Leave out of the baby's portion anything the guidelines rule out
+         - Do not add extra quantities for the baby, who only tastes
+
+      ${BABY_TASTING_GUIDELINES}
+
       Do NOT:
       - Search for new recipes
       - Select different recipes
@@ -269,6 +311,7 @@ Format requirements (for every recipe in the plan):
 
 Special features:
 - Add "save X g for later" notes (50% transparent, smaller font) for ingredients used in multiple recipes
+- Keep the direction starting with "Til baby:" (how to set aside the baby's tasting portion), and make that label bold
 - Use colors compatible with light/dark email themes
 - Include proper spacing between sections
 - Make HTML email-client compatible with inline styles
