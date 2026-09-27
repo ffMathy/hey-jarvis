@@ -17,7 +17,7 @@ import { generateUserInterface } from '../generative-ui/tools.js';
 export const visualizeResearch = createShortcut({
   id: 'visualizeResearch',
   description:
-    "Turn research you have already done into an interactive web page (an artifact) and, by default, push it to the primary user's phone. Use it when the user asks to see, show, chart, compare visually or visualize what was found. The page builder sees nothing but the request, so put every finding, figure and source URL it should show into it. Takes a few minutes.",
+    "Turn web research you have already done into an interactive web page (an artifact) and, by default, push it to the primary user's phone. Use it when the user asks to see, show, chart, compare visually or visualize what was found. The page builder sees nothing but the request, so put every finding, figure and source URL it should show into it. Takes a few minutes.",
   tool: generateUserInterface,
   execute: async (inputData, context) => await executeTool(generateUserInterface, inputData, context),
 });

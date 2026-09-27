@@ -2,7 +2,7 @@ import { pick, truncate } from 'lodash-es';
 import { z } from 'zod';
 import { logger } from '../../utils/logger.js';
 import { markAsSlow } from '../../utils/slow-tasks.js';
-import { createTool } from '../../utils/tool-factory.js';
+import { createTool, executeTool } from '../../utils/tool-factory.js';
 import {
   createClaudeSession,
   getClaudeSession,
@@ -371,6 +371,83 @@ export const runCodingTask = markAsSlow(
 );
 
 /**
+ * Turns a question about a repository into the brief a Claude Code session answers it from.
+ *
+ * The session sees nothing but this text and nobody is watching it, so the brief says everything
+ * it would otherwise ask: that it only reads, that it asks nothing, and that its answer is passed
+ * on -- read aloud, or handed to another agent such as the page builder -- rather than shown in a
+ * terminal. `context` is what the code cannot tell it: most often the failures the reflection
+ * agent found, which live in Mastra's own storage where a session cannot reach.
+ */
+export function buildCodebaseQuestionTask(
+  question: string,
+  repository: string,
+  isJarvisOwn: boolean,
+  context?: string,
+): string {
+  return [
+    `Answer a question about the ${repository} repository${isJarvisOwn ? " — Jarvis's own codebase" : ''}, from the user of Jarvis, a voice assistant:`,
+    '',
+    question.trim(),
+    ...(context?.trim() ? ['', 'What is known beyond the code, to take into account:', context.trim()] : []),
+    '',
+    'How to answer it:',
+    `- Clone the repository into the current directory (\`git clone https://github.com/${repository}.git .\` — it needs no credentials) and read the parts of it the question is about, AGENTS.md and CLAUDE.md included.`,
+    '- This session only reads: do not change anything, create a branch, open a pull request or file an issue.',
+    '- Nobody is there to answer questions, so do not ask any. Make sensible assumptions and carry on.',
+    '- Ground every claim in the code, and name the files it is about. Say plainly when the code does not settle something rather than guessing.',
+    '- Your final message is the answer. It is passed on as it is -- read aloud, or handed to another agent to act on -- so make it complete on its own: no references to earlier messages, and no questions at the end.',
+  ].join('\n');
+}
+
+/**
+ * Tool to have a Claude Code session read a repository and answer a question about it
+ *
+ * The read-only counterpart of {@link startCodingSession}: "how does the scheduler work", "review
+ * the routing vertical", "what could be improved in Jarvis" all need the code read, but none of
+ * them need it changed. Without it, a question about Jarvis's own code had no agent to go to, and
+ * the planner sent it to web research, which answered it from the internet.
+ */
+export const analyzeCodebase = markAsSlow(
+  createTool({
+    id: 'analyzeCodebase',
+    description: `Has a Claude Code session read a repository and answer a question about it: how something works, a code review, ideas for improvement, technical debt, or where something lives. It only reads; nothing is changed. Takes a few minutes. Defaults to Jarvis's own repository, "${DEFAULT_OWNER}/${DEFAULT_REPOSITORY}", if none is given.`,
+    inputSchema: z.object({
+      owner: z.string().optional().describe(`The repository owner (defaults to "${DEFAULT_OWNER}" if not provided)`),
+      repo: z
+        .string()
+        .optional()
+        .describe(`The repository name (defaults to "${DEFAULT_REPOSITORY}", Jarvis's own, if not provided)`),
+      question: z.string().describe('What to find out about the code, in the words of the request'),
+      context: z
+        .string()
+        .optional()
+        .describe(
+          'Anything to take into account that the code cannot show, such as recent failures and errors another agent reported. Pass it on in full; the session sees nothing but what it is given',
+        ),
+    }),
+    outputSchema: runCodingTask.outputSchema,
+    execute: async (inputData, context) => {
+      const owner = inputData.owner || DEFAULT_OWNER;
+      const repo = inputData.repo || DEFAULT_REPOSITORY;
+
+      return await executeTool(
+        runCodingTask,
+        {
+          task: buildCodebaseQuestionTask(
+            inputData.question,
+            `${owner}/${repo}`,
+            owner === DEFAULT_OWNER && repo === DEFAULT_REPOSITORY,
+            inputData.context,
+          ),
+        },
+        context,
+      );
+    },
+  }),
+);
+
+/**
  * How many of a session's messages {@link getCodingSessionStatus} hands back.
  *
  * "How is it going?" is answered by what the session said last. A session that has worked for an
@@ -525,6 +602,7 @@ export const codingTools = {
   listUserRepositories,
   listRepositoryIssues,
   searchRepositories,
+  analyzeCodebase,
   getCodingSessionStatus,
   sendCodingSessionMessage,
 };
