@@ -5,7 +5,8 @@
  * Used by the IoT monitoring workflow to detect state changes.
  */
 
-import { type Client, createClient } from '@libsql/client';
+import type { Client } from '@libsql/client';
+import { openSqliteClient } from './sqlite-client.js';
 
 export interface StoredDeviceState {
   entityId: string;
@@ -29,9 +30,7 @@ export class DeviceStateStorage {
   private initialized = false;
 
   constructor(databasePath: string) {
-    this.client = createClient({
-      url: `file:${databasePath}`,
-    });
+    this.client = openSqliteClient(databasePath);
   }
 
   /**

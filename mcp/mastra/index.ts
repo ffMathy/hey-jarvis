@@ -6,6 +6,7 @@ import { CloudExporter, DefaultExporter, Observability, SamplingStrategyType } f
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { getCorsOptions } from './cors.js';
+import { ownsSchedules } from './schedule-reconciler.js';
 import { getMastraStorageProvider, getTokenUsageStorage } from './storage/index.js';
 import { stripTransferEncodingHeader } from './streaming-headers.js';
 import { createLogger } from './utils/logger.js';
@@ -81,6 +82,10 @@ export async function getMastra(): Promise<Mastra> {
     // does: without a handler the rejection is swallowed, with no schedule id attached to
     // say which one it was.
     scheduler: {
+      // Off in the Studio process, so only one process claims fires and runs scheduled
+      // workflows; see ownsSchedules. Left unset elsewhere, where Mastra turns it on for
+      // the schedule rows it finds.
+      enabled: ownsSchedules() ? undefined : false,
       onError: (error, { scheduleId }) => {
         mastraLogger.error('Scheduled workflow failed', { scheduleId, error });
       },
@@ -202,9 +207,11 @@ app.use('*', stripTransferEncodingHeader);
 
 export const mastra = await getMastra();
 
-// Before the boot restart walks into a run whose workflow has moved on under it.
-// See ./workflow-run-recovery.ts.
-await retireUnrestartableRuns(mastra);
+// Before the boot restart walks into a run it cannot resume. See ./workflow-run-recovery.ts.
+// Only the process that runs the scheduled workflows may treat a positionless run as
+// abandoned: seen from the Studio process, the same run is usually one mcp-server is
+// executing right now.
+await retireUnrestartableRuns(mastra, { retirePositionlessRuns: ownsSchedules() });
 
 // 2. Initialize the Mastra Server Adapter
 // This class wraps our Hono app and injects the Mastra capabilities.

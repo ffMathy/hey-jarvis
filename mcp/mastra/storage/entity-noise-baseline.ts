@@ -5,7 +5,8 @@
  * Baselines are calculated from historical state data to determine typical fluctuation levels.
  */
 
-import { type Client, createClient } from '@libsql/client';
+import type { Client } from '@libsql/client';
+import { openSqliteClient } from './sqlite-client.js';
 
 export interface EntityNoiseBaseline {
   entityId: string;
@@ -36,9 +37,7 @@ export class EntityNoiseBaselineStorage {
   private initialized = false;
 
   constructor(databasePath: string) {
-    this.client = createClient({
-      url: `file:${databasePath}`,
-    });
+    this.client = openSqliteClient(databasePath);
   }
 
   /**

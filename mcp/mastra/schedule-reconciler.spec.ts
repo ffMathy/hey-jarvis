@@ -17,7 +17,7 @@ import { mkdtemp, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import path from 'path';
 import { z } from 'zod';
-import { reconcileSchedules } from './schedule-reconciler.js';
+import { ownsSchedules, reconcileSchedules } from './schedule-reconciler.js';
 import { createStep, createWorkflow } from './utils/workflows/workflow-factory.js';
 
 const databaseDirectory = await mkdtemp(path.join(tmpdir(), 'scheduler-spec-'));
@@ -196,5 +196,19 @@ describe('a schedule this file does not own', () => {
     const stored = await storedWorkflowSchedules();
     expect(stored).toHaveLength(2);
     expect(stored.filter((schedule) => schedule.managedBy === 'hey-jarvis-scheduler')).toHaveLength(1);
+  });
+});
+
+describe('which process fires the schedules', () => {
+  it('is not the Studio process, which `mastra dev` marks with MASTRA_DEV', () => {
+    expect(ownsSchedules({ MASTRA_DEV: 'true' })).toBe(false);
+  });
+
+  it('is the MCP server, which runs without the mark', () => {
+    expect(ownsSchedules({})).toBe(true);
+  });
+
+  it('treats only the exact value `mastra dev` sets as the mark', () => {
+    expect(ownsSchedules({ MASTRA_DEV: 'false' })).toBe(true);
   });
 });

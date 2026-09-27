@@ -5,7 +5,8 @@
  * Aggregates token usage from Mastra AI tracing data.
  */
 
-import { type Client, createClient } from '@libsql/client';
+import type { Client } from '@libsql/client';
+import { openSqliteClient } from './sqlite-client.js';
 
 export interface TokenUsageRecord {
   id: number;
@@ -43,9 +44,7 @@ export class TokenUsageStorage {
   private initialized = false;
 
   constructor(databasePath: string) {
-    this.client = createClient({
-      url: `file:${databasePath}`,
-    });
+    this.client = openSqliteClient(databasePath);
   }
 
   /**

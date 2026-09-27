@@ -5,7 +5,8 @@
  * Used by the email monitoring workflow to avoid processing the same emails repeatedly.
  */
 
-import { type Client, createClient } from '@libsql/client';
+import type { Client } from '@libsql/client';
+import { openSqliteClient } from './sqlite-client.js';
 
 export interface LastEmailState {
   folder: string;
@@ -19,9 +20,7 @@ export class EmailStateStorage {
   private initialized = false;
 
   constructor(databasePath: string) {
-    this.client = createClient({
-      url: `file:${databasePath}`,
-    });
+    this.client = openSqliteClient(databasePath);
   }
 
   /**

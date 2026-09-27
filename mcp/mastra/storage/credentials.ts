@@ -5,16 +5,15 @@
  * Client IDs and secrets are always read from environment variables for security.
  */
 
-import { type Client, createClient } from '@libsql/client';
+import type { Client } from '@libsql/client';
+import { openSqliteClient } from './sqlite-client.js';
 
 export class CredentialsStorage {
   private client: Client;
   private initialized = false;
 
   constructor(databasePath: string) {
-    this.client = createClient({
-      url: `file:${databasePath}`,
-    });
+    this.client = openSqliteClient(databasePath);
   }
 
   /**

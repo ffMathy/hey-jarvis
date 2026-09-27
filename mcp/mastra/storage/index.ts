@@ -7,6 +7,7 @@ import { DeviceStateStorage } from './device-state.js';
 import { EmailStateStorage } from './email-state.js';
 import { EntityNoiseBaselineStorage } from './entity-noise-baseline.js';
 import { withFeedbackFrom } from './observability.js';
+import { SQLITE_BUSY_TIMEOUT_MS } from './sqlite-client.js';
 import { SubscriptionStorage } from './subscriptions.js';
 import { TokenUsageStorage } from './token-usage.js';
 
@@ -44,6 +45,10 @@ export async function getSqlStorageProvider(): Promise<LibSQLStore> {
     sqlStorageProviderInstance = new LibSQLStore({
       id: 'hey-jarvis-sql-storage',
       url: `file:${getSqlDatabasePath()}`,
+      // The same wait as every other connection to this file; see SQLITE_BUSY_TIMEOUT_MS.
+      // LibSQLStore also puts the file in WAL mode, which is persistent, so the storage
+      // classes' own connections read without blocking on a writer.
+      connectionTimeoutMs: SQLITE_BUSY_TIMEOUT_MS,
     });
   }
   return sqlStorageProviderInstance;
