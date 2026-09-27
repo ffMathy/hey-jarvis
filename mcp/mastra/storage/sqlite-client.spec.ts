@@ -31,7 +31,12 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  // Windows can take a moment to let go of a file a closed connection had open.
+  // A closed connection only lets go of the file once its statements are finalized, and the
+  // one that failed on purpose above is only finalized by the garbage collector. Windows
+  // refuses to delete a file that is still open.
+  Bun.gc(true);
+  await Bun.sleep(50);
+  Bun.gc(true);
   await rm(databaseDirectory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
