@@ -313,6 +313,63 @@ export const startCodingSession = createTool({
 export const CODING_TASK_TIMEOUT_MILLISECONDS = 15 * 60 * 1000;
 
 /**
+ * Added to every task {@link runCodingTask} starts a session on.
+ *
+ * The answer is the last message of the session's turn, and a process is let go the moment its turn
+ * ends (see `claude-sessions.ts`) — so work a session leaves running in the background is stopped
+ * unfinished, and a turn that ends on "waiting for the background agent" answers nothing.
+ */
+export const FOREGROUND_WORK_NOTE =
+  'Your turn ending is what hands your answer back, and anything still running then is stopped. So do all of the work in the foreground: never run a subagent or a command in the background, and do not end your turn until the task is done and your final message says what was asked for.';
+
+/** What {@link runCodingTask} and {@link continueCodingTask} report. */
+const codingTaskResultSchema = z.object({
+  success: z.boolean(),
+  session_id: z.string().optional(),
+  stop_reason: z.string().optional().describe('Why the session stopped, e.g. "end_turn"'),
+  final_message: z.string().optional().describe('The last message the session sent'),
+  message: z.string(),
+});
+
+type CodingTaskResult = z.infer<typeof codingTaskResultSchema>;
+
+/**
+ * Hands a session work with `handOver`, waits for the turn that follows, and reports how it ended.
+ *
+ * A failure is reported rather than thrown, as with startCodingSession, so the caller can say what
+ * went wrong instead of going quiet.
+ */
+async function awaitCodingTaskTurn(handOver: () => Promise<string>): Promise<CodingTaskResult> {
+  try {
+    const sessionId = await handOver();
+    const finishedTurn = await waitForClaudeSessionTurn(sessionId, CODING_TASK_TIMEOUT_MILLISECONDS);
+
+    if (!finishedTurn) {
+      return {
+        success: false,
+        session_id: sessionId,
+        message: `Claude Code session ${sessionId} was still working after ${CODING_TASK_TIMEOUT_MILLISECONDS / 60_000} minutes. It can be followed with getCodingSessionStatus.`,
+      };
+    }
+
+    return {
+      success: finishedTurn.stopReason === 'end_turn',
+      session_id: sessionId,
+      stop_reason: finishedTurn.stopReason,
+      final_message: finishedTurn.finalMessage,
+      message: `Claude Code session ${sessionId} stopped with "${finishedTurn.stopReason}".`,
+    };
+  } catch (error) {
+    logger.error('[CLAUDE SESSION] Failed to run coding task', { error });
+
+    return {
+      success: false,
+      message: `Could not run the task in a Claude Code session: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
+/**
  * Tool to have a Claude Code session carry out a task and report back
  *
  * Unlike {@link startCodingSession}, which hands off a change and returns at
@@ -329,44 +386,36 @@ export const runCodingTask = markAsSlow(
     inputSchema: z.object({
       task: z.string().describe('The complete instructions for the session; it sees nothing else'),
     }),
-    outputSchema: z.object({
-      success: z.boolean(),
-      session_id: z.string().optional(),
-      stop_reason: z.string().optional().describe('Why the session stopped, e.g. "end_turn"'),
-      final_message: z.string().optional().describe('The last message the session sent'),
-      message: z.string(),
+    outputSchema: codingTaskResultSchema,
+    execute: async (inputData) =>
+      await awaitCodingTaskTurn(
+        async () => (await createClaudeSession(`${inputData.task}\n\n${FOREGROUND_WORK_NOTE}`)).id,
+      ),
+  }),
+);
+
+/**
+ * Tool to send a {@link runCodingTask} session one more message and report back
+ *
+ * For asking again when the answer did not come back the way it was asked for:
+ * the session is resumed with everything it did so far, which is far quicker
+ * than starting over.
+ */
+export const continueCodingTask = markAsSlow(
+  createTool({
+    id: 'continueCodingTask',
+    description:
+      'Sends a follow-up message to a Claude Code session that ran a task, waits for the session to finish again, and returns the last message it sent.',
+    inputSchema: z.object({
+      session_id: z.string().describe('The Claude Code session ID'),
+      message: z.string().describe('The message to send to the session'),
     }),
-    execute: async (inputData) => {
-      // As with startCodingSession, a failure is reported rather than thrown, so
-      // the caller can say what went wrong instead of going quiet.
-      try {
-        const session = await createClaudeSession(inputData.task);
-        const finishedTurn = await waitForClaudeSessionTurn(session.id, CODING_TASK_TIMEOUT_MILLISECONDS);
-
-        if (!finishedTurn) {
-          return {
-            success: false,
-            session_id: session.id,
-            message: `Claude Code session ${session.id} was still working after ${CODING_TASK_TIMEOUT_MILLISECONDS / 60_000} minutes. It can be followed with getCodingSessionStatus.`,
-          };
-        }
-
-        return {
-          success: finishedTurn.stopReason === 'end_turn',
-          session_id: session.id,
-          stop_reason: finishedTurn.stopReason,
-          final_message: finishedTurn.finalMessage,
-          message: `Claude Code session ${session.id} stopped with "${finishedTurn.stopReason}".`,
-        };
-      } catch (error) {
-        logger.error('[CLAUDE SESSION] Failed to run coding task', { error });
-
-        return {
-          success: false,
-          message: `Could not run the task in a Claude Code session: ${error instanceof Error ? error.message : String(error)}`,
-        };
-      }
-    },
+    outputSchema: codingTaskResultSchema,
+    execute: async (inputData) =>
+      await awaitCodingTaskTurn(async () => {
+        await sendClaudeSessionMessage(inputData.session_id, inputData.message);
+        return inputData.session_id;
+      }),
   }),
 );
 

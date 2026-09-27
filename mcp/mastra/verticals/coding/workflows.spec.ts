@@ -19,7 +19,12 @@ import {
   recordCodingTools,
 } from '../../../tests/utils/coding-tool-recorder.js';
 import { isSlowTask } from '../../utils/slow-tasks.js';
-import { buildCodebaseAnalysisTask, implementFeatureWorkflow, readCodebaseAnalysis } from './workflows.js';
+import {
+  ANALYSIS_FOLLOW_UP,
+  buildCodebaseAnalysisTask,
+  implementFeatureWorkflow,
+  readCodebaseAnalysis,
+} from './workflows.js';
 
 const REQUEST = 'Remind me about tasks before they are due';
 const [FIRST_QUESTION, SECOND_QUESTION] = RECORDED_ANALYSIS.questions;
@@ -116,6 +121,43 @@ describe('implementFeatureWorkflow', () => {
 
     expect(finished.status).toBe('success');
     expect(recorder.startedSessions).toHaveLength(1);
+  });
+
+  it('asks the analysing session once more when its turn ends without the JSON summary', async () => {
+    const { recorder, createRun } = startRun({
+      analysisTurns: [
+        'Waiting for the background audit agent to complete before finalizing findings.',
+        JSON.stringify(RECORDED_ANALYSIS),
+      ],
+    });
+    const run = await createRun();
+
+    const started = await run.start({ inputData: { initialRequest: REQUEST } });
+
+    expect(recorder.analysisTasks).toHaveLength(1);
+    expect(recorder.analysisFollowUps).toEqual([ANALYSIS_FOLLOW_UP]);
+    expect(suspendedRunText(started)).toContain(FIRST_QUESTION);
+  });
+
+  it('fails, saying why, when the follow-up ends without the JSON summary too', async () => {
+    const { recorder, createRun } = startRun({ analysisTurns: ['Still waiting for the background agent.'] });
+    const run = await createRun();
+
+    const finished = await run.start({ inputData: { initialRequest: REQUEST } });
+
+    expect(finished.status).toBe('failed');
+    expect(JSON.stringify(finished)).toContain('did not end with its JSON summary');
+    expect(recorder.analysisFollowUps).toHaveLength(1);
+    expect(recorder.startedSessions).toEqual([]);
+  });
+
+  it('asks nothing more of a session that answered the first time', async () => {
+    const { recorder, createRun } = startRun();
+    const run = await createRun();
+
+    await run.start({ inputData: { initialRequest: REQUEST } });
+
+    expect(recorder.analysisFollowUps).toEqual([]);
   });
 
   it('keeps a repository the request did name', async () => {

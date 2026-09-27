@@ -112,6 +112,9 @@ export CLAUDE_CODE_OAUTH_TOKEN
 # --input-format stream-json   messages arrive as JSON lines on stdin, so a follow-up can be written
 #                              to a process that is still working
 # --dangerously-skip-permissions   nobody is there to answer a prompt; the sandbox bounds the session
+# CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1   the server lets a process go as soon as its turn ends, so
+#                              a subagent or command left running in the background is stopped
+#                              unfinished, and a turn that ends to wait for one reports nothing
 exec sbx exec -i -e CLAUDE_CODE_OAUTH_TOKEN jarvis sh -c "\
 mkdir -p \"\$HOME/jarvis-sessions/$session_id\" && \
 cd \"\$HOME/jarvis-sessions/$session_id\" && \
@@ -119,6 +122,6 @@ exec 9>>\"\$HOME/jarvis-sessions/$session_id.lock\" && \
 { flock -w 120 9 || { echo \"jarvis-claude-code: session $session_id is still running in another process\" >&2; exit 75; }; } && \
 session_flag=--session-id && \
 for transcript in \"\$HOME\"/.claude/projects/*/$session_id.jsonl; do if [ -s \"\$transcript\" ]; then session_flag=--resume; fi; done && \
-claude --print --input-format stream-json --output-format stream-json --verbose \
+CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 claude --print --input-format stream-json --output-format stream-json --verbose \
 --dangerously-skip-permissions \$session_flag $session_id 9>&-; \
 exit \$?"

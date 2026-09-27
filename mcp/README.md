@@ -236,6 +236,9 @@ does not let go. `export` takes the same lock, so a turn is never exported halfw
 Update `/usr/local/bin/jarvis-claude-code` from step 4 whenever the script changes. A copy from
 before `export` still runs sessions, but refuses every export, so no session's work is ever
 published: each finished session reports `the host refused the request` instead of a pull request.
+A copy from before background tasks were switched off (`CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`) lets
+a session end its turn to wait for a background agent, which is stopped with the turn — the server
+asks such a session once more for its answer, but the reinstalled script keeps it from happening.
 
 Any 64-bit Linux on bare metal with KVM can run Docker Sandboxes — the Pi 4 and 5 included — but
 Docker only publishes packages for Ubuntu 24.04 and newer (and Rocky Linux). The Ubuntu 24.04

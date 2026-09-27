@@ -46,6 +46,7 @@ exit "\${FAKE_FLOCK_STATUS:-0}"
 const FAKE_CLAUDE = `#!/bin/sh
 for argument in "$@"; do printf 'claude:%s\\n' "$argument"; done
 printf 'cwd:%s\\n' "$(pwd)"
+printf 'background-tasks-disabled:%s\\n' "\${CLAUDE_CODE_DISABLE_BACKGROUND_TASKS:-}"
 sed 's/^/stdin:/'
 `;
 
@@ -105,6 +106,7 @@ function runAsSshd(request: string, options: { stdin?: string; flockStatus?: num
     flock: withPrefix('flock:'),
     claudeArguments: withPrefix('claude:'),
     cwd: withPrefix('cwd:')[0],
+    backgroundTasksDisabled: withPrefix('background-tasks-disabled:')[0],
     stdin: withPrefix('stdin:'),
   };
 }
@@ -134,6 +136,12 @@ describe('claude-code-ssh-command.sh', () => {
     expect(sbxArguments.slice(0, 7)).toEqual(['exec', '-i', '-e', 'CLAUDE_CODE_OAUTH_TOKEN', 'jarvis', 'sh', '-c']);
     expect(sbxArguments[7]).toContain(`cd "$HOME/jarvis-sessions/${SESSION_ID}"`);
     expect(claudeArguments.slice(0, CLAUDE_COMMAND_LINE.length)).toEqual(CLAUDE_COMMAND_LINE);
+  });
+
+  it('runs Claude Code without background tasks, which would be stopped when its turn ends', () => {
+    const { backgroundTasksDisabled } = runAsSshd(`start ${SESSION_ID}`);
+
+    expect(backgroundTasksDisabled).toBe('1');
   });
 
   it("works in the session's own directory", () => {

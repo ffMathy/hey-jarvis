@@ -446,7 +446,7 @@ if (number) {
 
 ### Coding Agent
 Manages GitHub repositories and coordinates feature implementation:
-- **5 agent tools** (`codingTools`): list repositories (`listUserRepositories`), list issues (`listRepositoryIssues`), search repositories (`searchRepositories`), and follow and steer Claude Code sessions (`getCodingSessionStatus`, `sendCodingSessionMessage`). `tools.ts` also defines `startCodingSession` and `runCodingTask`, which `implementFeatureWorkflow` and other verticals' shortcuts run rather than the agent, and `createGitHubIssue` and `updateGitHubIssue`, which nothing registers today
+- **5 agent tools** (`codingTools`): list repositories (`listUserRepositories`), list issues (`listRepositoryIssues`), search repositories (`searchRepositories`), and follow and steer Claude Code sessions (`getCodingSessionStatus`, `sendCodingSessionMessage`). `tools.ts` also defines `startCodingSession`, `runCodingTask` and `continueCodingTask`, which `implementFeatureWorkflow` and other verticals' shortcuts run rather than the agent, and `createGitHubIssue` and `updateGitHubIssue`, which nothing registers today
 - **Google Gemini model**: Uses `gemini-flash-latest` for natural language processing
 - **Repository management**: Browse and search repositories for any GitHub user
 - **Issue tracking**: View open, closed, or all issues for repositories
@@ -575,7 +575,13 @@ whole vault.
   `startCodingSession` it is not one of the coding agent's own tools; `implementFeatureWorkflow` runs it to analyse
   the codebase, and other verticals reach it through shortcuts, such as the
   [Generative UI Vertical](#generative-ui-vertical-shortcuts)'s `createArtifact`. It is marked slow, and a shortcut
-  onto it inherits the mark.
+  onto it inherits the mark. Every task it starts ends on `FOREGROUND_WORK_NOTE`, which tells the session to work in
+  the foreground: its answer is the last message of its turn, and the process is let go the moment that turn ends,
+  so a subagent or command left running in the background is stopped unfinished — and a turn that ends on "waiting
+  for the background agent" answers nothing.
+- **`continueCodingTask`**: Sends a `runCodingTask` session one more message, waits for the turn that follows and
+  reports it the same way. For asking again when an answer did not come back as asked for; resuming keeps what the
+  session already did. `implementFeatureWorkflow` uses it when the analysis ends without its JSON object.
 
 **Feeding Back Into Synapse:**
 `ClaudeSessionWatcher` follows each session's events and republishes them as Synapse state changes with the source
@@ -598,7 +604,9 @@ The host itself — 64-bit Linux with KVM and glibc 2.39 or newer, a user of its
 the forced command, and the `jarvis` sandbox, with no GitHub secret for public repositories and only a read-only
 one for private ones — is set up as described in **Letting Jarvis code on your Claude subscription** in
 `mcp/README.md`. The forced command has to be reinstalled whenever it changes: a copy from before `export` refuses
-every export (exit 64), so no session's work is published.
+every export (exit 64), so no session's work is published, and a copy from before it set
+`CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` lets a session end its turn to wait for a background agent that is then
+stopped with it.
 
 The three `HEY_JARVIS_CLAUDE_CODE_*` references live in `mcp/op.optional.env`, not `mcp/op.env`. `op run` fails
 on the first reference it cannot resolve, and when they sat in `mcp/op.env` a missing `Claude Code` item crash-looped
@@ -1258,7 +1266,7 @@ Multi-step shopping list processing workflow implementing the original n8n 3-age
 ### Implement Feature Workflow
 Takes a change from a spoken request to a Claude Code session implementing it:
 - **`implementFeatureWorkflow`**: Analyses the codebase, asks what it could not answer, then implements
-- **Step 1 - Analyse the Codebase**: A Claude Code session (`runCodingTask`) reads the repository with the request in hand and ends on a JSON object: a title, its findings, and at most five spoken questions only the user can answer
+- **Step 1 - Analyse the Codebase**: A Claude Code session (`runCodingTask`) reads the repository with the request in hand and ends on a JSON object: a title, its findings, and at most five spoken questions only the user can answer. A turn that ends without the object is resumed once (`continueCodingTask`) and asked for it again
 - **Step 2 - Ask the Questions**: One suspension per question, verbatim; none at all when the codebase settles everything
 - **Step 3 - Start Coding Session**: Starts a Claude Code session on the change, and watches its events; the watcher opens the pull request once the session is done. No issue is filed
 
