@@ -5,6 +5,10 @@ import { generateObject } from 'ai';
 import { z } from 'zod';
 import { createAgent } from '../../utils/index.js';
 import { isOllamaAvailable } from '../../utils/providers/ollama-provider.js';
+import { getCodingAgent } from '../coding/agent.js';
+import { getGenerativeUiAgent } from '../generative-ui/agent.js';
+import { getReflectionAgent } from '../reflection/agent.js';
+import { getWebResearchAgent } from '../web-research/agent.js';
 import type { PlannedChain } from './plan.js';
 import { plannerInstructions, plannerPrompt, planSchema } from './planner.js';
 import type { OpenQuestion } from './questions.js';
@@ -274,6 +278,38 @@ Two separate chains would be wrong: the weather delegation would then run withou
       chains,
       userQuery,
       `The plan should have two chains of one delegation each: the weather question to the weather agent and the lights question to internetOfThings. Neither depends on the other, so putting them in one chain would make the user wait for no reason.`,
+      0.8,
+    );
+  }, 120000);
+
+  it("sends ideas for Jarvis's own code to the agents that can see it, not to web research", async () => {
+    if (!ollamaAvailable) {
+      return;
+    }
+
+    // The real agents rather than stand-ins: this request was once planned onto web research,
+    // because no description but research's covered "gather ideas and visualize them", and it is
+    // the descriptions themselves that are under test.
+    const userQuery = 'Gather a list of ideas to improve coding wise on Jarvis, and then visualize the ideas.';
+    const chains = await plan(userQuery, [
+      await getCodingAgent(),
+      await getReflectionAgent(),
+      await getWebResearchAgent(),
+      await getGenerativeUiAgent(),
+    ]);
+
+    const delegatedAgentIds = chains.flatMap((chain) => chain.delegations.map((delegation) => delegation.agentId));
+    expect(delegatedAgentIds).not.toContain('webResearch');
+
+    await assertPlanCriteria(
+      chains,
+      userQuery,
+      `The plan should:
+1. Delegate to coding to read Jarvis's own code and gather ideas for improving it
+2. Delegate to generativeUi AFTER coding, IN THE SAME CHAIN, so the page is built from the ideas coding found
+3. Optionally delegate to reflection FIRST in that same chain, so coding is handed the recent failures to ground its ideas in
+
+It must NOT delegate to webResearch: the ideas are about Jarvis's own code, which the web knows nothing about. generativeUi in a chain of its own would also be wrong, since it would then have no ideas to visualize.`,
       0.8,
     );
   }, 120000);

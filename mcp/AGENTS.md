@@ -362,6 +362,12 @@ second agent that would only get the research as text. It is slow like the tool 
 beside Gemini's built-in search, a mix only Gemini 3 accepts in one request, so the research agent
 must stay on a Gemini 3 model.
 
+The shortcut is for research *on the web*. A request about Jarvis himself — ideas for his code, why
+he failed — is not research the web can do, however it is phrased, and web research's description
+says so and names the coding and reflection agents instead. Those are chained by the planner rather
+than reached through more shortcuts on web research: a shortcut belongs to the agent that already
+holds the context, and here web research holds none of it.
+
 **Requirements:** the Claude Code sandbox under [Coding Agent](#coding-agent), on a subscription
 that can publish artifacts; plus the companion-app notify service the
 [Notification Agent](#notification-agent) uses for the push.
@@ -447,11 +453,12 @@ if (number) {
    - See [Google OAuth2 Setup](#google-oauth2-setup) for the full flow
 
 ### Coding Agent
-Manages GitHub repositories and coordinates feature implementation:
-- **5 agent tools** (`codingTools`): list repositories (`listUserRepositories`), list issues (`listRepositoryIssues`), search repositories (`searchRepositories`), and follow and steer Claude Code sessions (`getCodingSessionStatus`, `sendCodingSessionMessage`). `tools.ts` also defines `startCodingSession` and `runCodingTask`, which `implementFeatureWorkflow` and other verticals' shortcuts run rather than the agent, and `createGitHubIssue` and `updateGitHubIssue`, which nothing registers today
+Reads, analyses and changes code — Jarvis's own above all — and manages GitHub repositories:
+- **6 agent tools** (`codingTools`): list repositories (`listUserRepositories`), list issues (`listRepositoryIssues`), search repositories (`searchRepositories`), answer questions about the code (`analyzeCodebase`), and follow and steer Claude Code sessions (`getCodingSessionStatus`, `sendCodingSessionMessage`). `tools.ts` also defines `startCodingSession` and `runCodingTask`, which `implementFeatureWorkflow` and other verticals' shortcuts run rather than the agent, and `createGitHubIssue` and `updateGitHubIssue`, which nothing registers today
 - **Google Gemini model**: Uses `gemini-flash-latest` for natural language processing
 - **Repository management**: Browse and search repositories for any GitHub user
 - **Issue tracking**: View open, closed, or all issues for repositories
+- **Codebase questions**: `analyzeCodebase` has a Claude Code session read the code and answer — how something works, a review, ideas for improvement, technical debt — without changing anything. It is `runCodingTask` with a read-only brief (`buildCodebaseQuestionTask`), and it is slow like the tool it wraps. A `context` input carries what the code cannot show, most often the reflection agent's failures, which live in Mastra's storage where a session cannot reach. Before it existed, a question about Jarvis's own code had no agent to go to, and "gather ideas to improve Jarvis and visualize them" was planned onto web research. The planned shape now is reflection → coding → generativeUi, one chain, each handed the previous answer
 - **Workflow coordination**: Triggers requirements gathering workflow for new feature requests
 - **Smart defaults**: a task with no repository named is a task on Jarvis himself, `ffMathy/hey-jarvis` (`coding/repository.ts`). Every tool, `implementFeatureWorkflow` and the agent default to it, and the session analysing the codebase is told the repository up front and never asks which one is meant
 
@@ -575,7 +582,7 @@ whole vault.
   task, waits until its turn ends (`waitForClaudeSessionTurn`, up to 15 minutes) and returns the last message it
   sent. The session is not handed to the watcher, because the caller reports the result itself. Like
   `startCodingSession` it is not one of the coding agent's own tools; `implementFeatureWorkflow` runs it to analyse
-  the codebase, and other verticals reach it through shortcuts, such as the
+  the codebase, the agent's own `analyzeCodebase` wraps it with a read-only brief, and other verticals reach it through shortcuts, such as the
   [Generative UI Vertical](#generative-ui-vertical-shortcuts)'s `createArtifact`. It is marked slow, and a shortcut
   onto it inherits the mark.
 

@@ -1,16 +1,24 @@
 /**
- * What the coding agent reads before it can answer "which issues are open?".
+ * What the coding agent reads before it can answer "which issues are open?", and what it hands a
+ * Claude Code session asked a question about the code.
  *
  * The model reads a tool's whole answer before its first word, so an issue listing is kept to
  * what a listing is for: which issues there are, and how each one starts.
  *
- * GitHub is faked at `fetch`, scoped to each test.
+ * GitHub is faked at `fetch`, and Claude Code at `runCodingTask`, scoped to each test.
  */
 
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
+import { isSlowTask } from '../../utils/slow-tasks.js';
 import { executeTool } from '../../utils/tool-factory.js';
 import { DEFAULT_OWNER, DEFAULT_REPOSITORY } from './repository.js';
-import { listRepositoryIssues } from './tools.js';
+import {
+  analyzeCodebase,
+  buildCodebaseQuestionTask,
+  codingTools,
+  listRepositoryIssues,
+  runCodingTask,
+} from './tools.js';
 
 /**
  * A stand-in for `fetch` that answers every request with `respond`, recording the URLs asked for.
@@ -89,5 +97,107 @@ describe('listRepositoryIssues', () => {
 
     expect(result.issues.map((listed) => listed.number)).toEqual([1]);
     expect(result.total_count).toBe(1);
+  });
+});
+
+describe('buildCodebaseQuestionTask', () => {
+  const task = buildCodebaseQuestionTask(
+    '  Gather ideas to improve Jarvis coding-wise  ',
+    `${DEFAULT_OWNER}/${DEFAULT_REPOSITORY}`,
+    true,
+  );
+
+  it("carries the question, trimmed, and names the repository as Jarvis's own", () => {
+    expect(task).toContain('\nGather ideas to improve Jarvis coding-wise\n');
+    expect(task).toContain(`${DEFAULT_OWNER}/${DEFAULT_REPOSITORY} repository — Jarvis's own codebase`);
+  });
+
+  it('keeps the session to reading, without questions', () => {
+    expect(task).toContain('This session only reads');
+    expect(task).toContain('do not ask any');
+  });
+
+  it('asks for an answer that stands on its own, since it is handed on', () => {
+    expect(task).toContain('make it complete on its own');
+  });
+
+  it('passes on what the code cannot show, and leaves the section out when there is none', () => {
+    const withContext = buildCodebaseQuestionTask(
+      'What could be improved?',
+      'someone/else',
+      false,
+      'The calendar agent failed 12 times: token expired.',
+    );
+
+    expect(withContext).toContain(
+      'What is known beyond the code, to take into account:\nThe calendar agent failed 12 times: token expired.',
+    );
+    expect(withContext).not.toContain("Jarvis's own codebase");
+    expect(task).not.toContain('What is known beyond the code');
+    expect(buildCodebaseQuestionTask('Why?', 'someone/else', false, '   ')).not.toContain(
+      'What is known beyond the code',
+    );
+  });
+});
+
+describe('analyzeCodebase', () => {
+  let restoreSession: (() => void) | undefined;
+
+  afterEach(() => {
+    restoreSession?.();
+    restoreSession = undefined;
+  });
+
+  function fakeSession() {
+    const tasks: string[] = [];
+    const sessionSpy = spyOn(runCodingTask, 'execute').mockImplementation(async (inputData) => {
+      tasks.push(inputData.task);
+      return {
+        success: true,
+        session_id: 'session_question',
+        stop_reason: 'end_turn',
+        final_message: 'The scheduler lives in mcp/mastra/scheduler.ts.',
+        message: 'Claude Code session session_question stopped with "end_turn".',
+      };
+    });
+    restoreSession = () => sessionSpy.mockRestore();
+
+    return tasks;
+  }
+
+  it("asks a session about Jarvis's own repository when none is named, and returns its answer", async () => {
+    const tasks = fakeSession();
+
+    const result = await executeTool(analyzeCodebase, {
+      question: 'How does the scheduler work?',
+      context: 'Two scheduled runs failed last night.',
+    });
+
+    expect(result.final_message).toBe('The scheduler lives in mcp/mastra/scheduler.ts.');
+    expect(tasks).toEqual([
+      buildCodebaseQuestionTask(
+        'How does the scheduler work?',
+        `${DEFAULT_OWNER}/${DEFAULT_REPOSITORY}`,
+        true,
+        'Two scheduled runs failed last night.',
+      ),
+    ]);
+  });
+
+  it('reads the repository it is given', async () => {
+    const tasks = fakeSession();
+
+    await executeTool(analyzeCodebase, { owner: 'someone', repo: 'else', question: 'What does it do?' });
+
+    expect(tasks[0]).toContain('someone/else repository');
+    expect(tasks[0]).not.toContain("Jarvis's own codebase");
+  });
+
+  it('is marked slow, so routing offers to notify rather than hold the line', () => {
+    expect(isSlowTask('analyzeCodebase')).toBe(true);
+  });
+
+  it('is one of the tools the coding agent is given', () => {
+    expect(codingTools.analyzeCodebase).toBe(analyzeCodebase);
   });
 });
