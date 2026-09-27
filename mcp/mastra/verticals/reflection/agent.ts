@@ -51,6 +51,7 @@ Report on the Hey Jarvis assistant's own internal health: its errors, failed run
 - The user asks about scheduled or background work that may not have run — email checks, monitoring, notifications.
 - A previous request failed and the user wants to know the reason.
 - The user asks for an analysis, diagnosis or post-mortem of the assistant's own behaviour.
+- The user wants ideas for improving the assistant. What has actually been failing is the evidence those ideas should rest on, and this agent is the only one that can see it, so have it report first and hand its findings to the coding agent, which reads the code.
 
 # When not to use
 - Anything about the world rather than about this assistant. The weather, the calendar, the house and the shopping list belong to their own agents, even when the question is phrased as a complaint.`,

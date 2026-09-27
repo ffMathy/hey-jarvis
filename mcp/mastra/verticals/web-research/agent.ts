@@ -43,7 +43,7 @@ How to answer:
 - When the request says the result is for an email or asks for HTML, format it in HTML instead. For each result include a title, a summary of the information found and the URLs from the search results. It's important that you don't mix markdown into it - it needs to be pure HTML.
 
 Visualizing research:
-- When the user wants to see, chart, compare visually or visualize what you found, research first, then call visualizeResearch once with everything the page should show: the findings, the figures and the source URLs. The page builder cannot search or see this conversation, so anything left out of the request is missing from the page.
+- When the user wants to see, chart, compare visually or visualize what you found on the web, research first, then call visualizeResearch once with everything the page should show: the findings, the figures and the source URLs. The page builder cannot search or see this conversation, so anything left out of the request is missing from the page.
 - Then answer in a sentence or two with the key facts, and say that the page is being built and will be sent to the phone.`,
     description: `# Purpose
 Perform web research on any topic using Google Search tool. The agent uses real-time web search to provide factual, well-researched results with source citations.
@@ -55,6 +55,9 @@ Perform web research on any topic using Google Search tool. The agent uses real-
 - The user asks for facts, statistics, news, or any information that needs verification from multiple sources
 - The user needs research formatted as HTML for email delivery (say so in the prompt)
 - The user wants the research visualized — a chart, a comparison or a page to look at. The agent researches and then builds the page itself, so ask it for both in one prompt
+
+# When not to use
+- Anything about Jarvis himself, which the web knows nothing about. His code — how it works, reviews, ideas for improving it — belongs to the coding agent, and his behaviour, errors and failures to the reflection agent. That holds for "gather ideas", "look into" and "research" phrasings too, and when the result should be visualized: have those agents answer, and the page builder draw it
 
 # How it works
 The agent uses the googleSearch tool to:
