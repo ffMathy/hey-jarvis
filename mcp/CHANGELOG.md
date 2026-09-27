@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.10.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.9.1...mcp-v2.10.0) (2026-09-27)
+
+
+### Features
+
+* **cooking:** let the baby taste the weekly meal plan dinners ([#889](https://github.com/ffMathy/hey-jarvis/issues/889)) ([84c6698](https://github.com/ffMathy/hey-jarvis/commit/84c66982ea13e2265180a3f32a4faa134e2593de))
+
 ## [2.9.1](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.9.0...mcp-v2.9.1) (2026-09-27)
 
 

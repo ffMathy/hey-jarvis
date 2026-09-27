@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.9.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.8.1...root-v4.9.0) (2026-09-27)
+
+
+### Features
+
+* **cooking:** let the baby taste the weekly meal plan dinners ([#889](https://github.com/ffMathy/hey-jarvis/issues/889)) ([84c6698](https://github.com/ffMathy/hey-jarvis/commit/84c66982ea13e2265180a3f32a4faa134e2593de))
+
 ## [4.8.1](https://github.com/ffMathy/hey-jarvis/compare/root-v4.8.0...root-v4.8.1) (2026-09-27)
 
 
