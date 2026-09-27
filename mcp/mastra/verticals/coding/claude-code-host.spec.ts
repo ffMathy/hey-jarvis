@@ -11,6 +11,7 @@ import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {
+  buildExportCommand,
   buildRemoteCommand,
   getClaudeCodeHostConfiguration,
   getMissingClaudeCodeHostVariables,
@@ -34,6 +35,17 @@ describe('buildRemoteCommand', () => {
   it('refuses anything but a UUID before the host has to', () => {
     expect(() => buildRemoteCommand("x'; rm -rf ~; '", false)).toThrow('Not a Claude Code session id');
     expect(() => buildRemoteCommand(`${SESSION_ID} && reboot`, true)).toThrow('Not a Claude Code session id');
+  });
+});
+
+describe('buildExportCommand', () => {
+  it('asks for the session’s work', () => {
+    expect(buildExportCommand(SESSION_ID)).toBe(`export ${SESSION_ID}`);
+  });
+
+  it('refuses anything but a UUID before the host has to', () => {
+    expect(() => buildExportCommand(`${SESSION_ID} --all`)).toThrow('Not a Claude Code session id');
+    expect(() => buildExportCommand('../other')).toThrow('Not a Claude Code session id');
   });
 });
 

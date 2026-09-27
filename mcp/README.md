@@ -209,18 +209,33 @@ other machine the container can reach.
 
 The SSH key gets no shell on the host. Its only command is
 [`.scripts/claude-code-ssh-command.sh`](./.scripts/claude-code-ssh-command.sh), which sshd runs
-whatever the connection asked for. It accepts `start <session id>` or `resume <session id>` and
-nothing else, and fixes everything that matters itself: the `jarvis` sandbox, the session's
-directory, and the `claude` command line. A compromised container can start Claude Code sessions in
-the sandbox, and that is all.
+whatever the connection asked for. It accepts `start <session id>`, `resume <session id>` or
+`export <session id>` and nothing else, and fixes everything that matters itself: the `jarvis`
+sandbox, the session's directory, and the `claude` and `git` command lines. A compromised container
+can start Claude Code sessions in the sandbox and fetch their work, and that is all.
+
+The sandbox gets no GitHub credential that can write. A session clones the repository over plain
+HTTPS, commits on a branch named `jarvis/…`, and pushes nothing: it ends its turn by naming the
+branch and the pull request's title and description. The server then fetches the work with
+`export`, which answers with a `git bundle` of the session's branches, pushes the branch with its
+own `Jarvis → GitHub API key` token, and opens the pull request. So the server, not the session,
+decides what reaches GitHub, and it refuses a branch outside `jarvis/`, the default branch, and a
+branch whose `.github/workflows/`, `.github/actions/` or `.github/actions.lock` differ from the
+default branch's — the repository's own branches, and pull requests from them, run its workflows
+with its secrets. The token therefore needs
+**Contents**, **Pull requests** and **Issues** read and write on every repository Jarvis may code
+on.
 
 The script also decides for itself whether a session is started or resumed: it resumes when the
 session's transcript is in the sandbox, and starts it otherwise, whichever word the connection
 used. And it runs one process per session at most. Each takes a lock on
 `~/jarvis-sessions/<session id>.lock` in the sandbox first, waiting up to two minutes for a previous
 process — one a dropped connection left finishing its turn, say — and exiting with code 75 if it
-does not let go. Update `/usr/local/bin/jarvis-claude-code` from step 4 whenever the script changes;
-the server still works against an older copy, but without either of those guarantees.
+does not let go. `export` takes the same lock, so a turn is never exported halfway through.
+
+Update `/usr/local/bin/jarvis-claude-code` from step 4 whenever the script changes. A copy from
+before `export` still runs sessions, but refuses every export, so no session's work is ever
+published: each finished session reports `the host refused the request` instead of a pull request.
 
 Any 64-bit Linux on bare metal with KVM can run Docker Sandboxes — the Pi 4 and 5 included — but
 Docker only publishes packages for Ubuntu 24.04 and newer (and Rocky Linux). The Ubuntu 24.04
@@ -242,18 +257,22 @@ machine — is the realistic floor.
    sudo apt install ./DockerSandboxes-linux-arm64-ubuntu2404.deb
    ```
 
-2. **As that user, sign in to Docker, create the sandbox, and give it GitHub.** Every session runs in
-   the one sandbox named `jarvis`. The GitHub token needs to clone, push and open pull requests on
-   your repositories; the sandbox's proxy hands it to `gh` on the way out, so it never enters the
-   sandbox itself. Sessions working on this repository run its tests, so give the sandbox Bun too.
+2. **As that user, sign in to Docker and create the sandbox.** Every session runs in the one sandbox
+   named `jarvis`. Sessions working on this repository run its tests, so give the sandbox Bun too.
 
    ```bash
    sudo -iu jarvis
    sbx login
    mkdir -p ~/jarvis-workspace && sbx create --name jarvis claude ~/jarvis-workspace
-   sbx secret set -g github
    sbx exec jarvis sh -c 'curl -fsSL https://bun.sh/install | bash'
    ```
+
+   The sandbox needs no GitHub secret for public repositories: sessions clone them anonymously, and
+   the server pushes. Only for a private one does it need `sbx secret set -g github`, and then with
+   a token that can only **read** its contents — the sandbox's proxy hands it to anything that asks
+   on the way out, and a token that can push would give a session back what this setup takes away.
+   A `github` secret set for an earlier version of this setup can push, so remove it or replace it
+   with a read-only one (`sbx secret --help` lists how).
 
 3. **Put the rest in 1Password.** In the `Jarvis` vault, create an **SSH Key** item named
    `Claude Code` (let 1Password generate an Ed25519 key) and add two fields to it:

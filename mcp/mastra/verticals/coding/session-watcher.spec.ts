@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'bun:test';
 import type { StateChange } from '../synapse/state-change.js';
 import type { ClaudeSessionEvent } from './claude-sessions.js';
-import { ClaudeSessionWatcher, toStateChange } from './session-watcher.js';
+import type { PublishTarget, SessionWorkPublication } from './publish-session-work.js';
+import {
+  ClaudeSessionWatcher,
+  type SessionWorkPublisher,
+  toPublicationStateChange,
+  toStateChange,
+} from './session-watcher.js';
 
 function messageEvent(id: string, text: string): ClaudeSessionEvent {
   return { id, type: 'agent.message', text };
@@ -10,6 +16,17 @@ function messageEvent(id: string, text: string): ClaudeSessionEvent {
 function runningEvent(id: string): ClaudeSessionEvent {
   return { id, type: 'session.status_running' };
 }
+
+function idleEvent(id: string, stopReason = 'end_turn'): ClaudeSessionEvent {
+  return { id, type: 'session.status_idle', stopReason };
+}
+
+const PUBLISHED: SessionWorkPublication = {
+  status: 'published',
+  branch: 'jarvis/add-greeting',
+  pullRequest: { number: 42, url: 'https://github.com/ffMathy/hey-jarvis/pull/42' },
+  created: true,
+};
 
 /** Waits for the watcher's detached event loop to drain. */
 async function settle(): Promise<void> {
@@ -68,8 +85,42 @@ describe('toStateChange', () => {
   });
 });
 
+describe('toPublicationStateChange', () => {
+  const context = { repository: 'ffMathy/hey-jarvis', title: 'Add a greeting' };
+
+  it('carries the pull request a session’s work was published as', () => {
+    const stateChange = toPublicationStateChange(PUBLISHED, 'sess_1', 'sevt_9', context);
+
+    expect(stateChange.source).toBe('coding');
+    expect(stateChange.stateType).toBe('coding_session_pull_request_opened');
+    expect(stateChange.stateData).toMatchObject({
+      sessionId: 'sess_1',
+      eventId: 'sevt_9',
+      repository: 'ffMathy/hey-jarvis',
+      task: 'Add a greeting',
+      branch: 'jarvis/add-greeting',
+      pullRequestNumber: 42,
+      pullRequestUrl: 'https://github.com/ffMathy/hey-jarvis/pull/42',
+      created: true,
+    });
+  });
+
+  it.each([
+    ['refused', true],
+    ['failed', false],
+  ] as const)('says why a session’s work was not published, when it %s', (status, refused) => {
+    const stateChange = toPublicationStateChange({ status, reason: 'It changes CI.' }, 'sess_1', 'sevt_9', context);
+
+    expect(stateChange.stateType).toBe('coding_session_pull_request_failed');
+    expect(stateChange.stateData).toMatchObject({ refused, error: 'It changes CI.' });
+  });
+});
+
 describe('ClaudeSessionWatcher', () => {
-  function watcherOver(events: ClaudeSessionEvent[][]): {
+  function watcherOver(
+    events: ClaudeSessionEvent[][],
+    publishWork?: SessionWorkPublisher,
+  ): {
     watcher: ClaudeSessionWatcher;
     published: StateChange[];
     streamedSessionIds: string[];
@@ -93,10 +144,148 @@ describe('ClaudeSessionWatcher', () => {
         published.push(stateChange);
       },
       0,
+      publishWork,
     );
 
     return { watcher, published, streamedSessionIds };
   }
+
+  /** Records what it is asked to publish, and answers with `publication`. */
+  function recordingPublisher(publication: SessionWorkPublication = PUBLISHED) {
+    const calls: { sessionId: string; target: PublishTarget; finalMessage: string }[] = [];
+    const publishWork: SessionWorkPublisher = async (sessionId, target, finalMessage) => {
+      calls.push({ sessionId, target, finalMessage });
+      return publication;
+    };
+    return { calls, publishWork };
+  }
+
+  const PUBLISH_TO = { owner: 'ffMathy', repo: 'hey-jarvis' };
+
+  it('publishes the work of a turn that finished, from what the agent said last in it', async () => {
+    const { calls, publishWork } = recordingPublisher();
+    const { watcher, published } = watcherOver(
+      [
+        [
+          runningEvent('sevt_1'),
+          messageEvent('sevt_2', 'Cloning.'),
+          messageEvent('sevt_3', 'Done. ```jarvis-pull-request ...```'),
+          idleEvent('sevt_4'),
+        ],
+      ],
+      publishWork,
+    );
+
+    watcher.watch('sess_1', { repository: 'ffMathy/hey-jarvis', publishTo: PUBLISH_TO });
+    await settle();
+
+    expect(calls).toEqual([
+      { sessionId: 'sess_1', target: PUBLISH_TO, finalMessage: 'Done. ```jarvis-pull-request ...```' },
+    ]);
+    expect(published.map((change) => change.stateType).slice(-2)).toEqual([
+      'coding_session_session_status_idle',
+      'coding_session_pull_request_opened',
+    ]);
+    expect(published[published.length - 1]?.stateData.pullRequestUrl).toBe(
+      'https://github.com/ffMathy/hey-jarvis/pull/42',
+    );
+  });
+
+  it('reads each turn’s own last message, not an earlier turn’s', async () => {
+    const { calls, publishWork } = recordingPublisher();
+    const { watcher } = watcherOver(
+      [
+        [
+          runningEvent('sevt_1'),
+          messageEvent('sevt_2', 'Should it be in Danish?'),
+          idleEvent('sevt_3'),
+          runningEvent('sevt_4'),
+          idleEvent('sevt_5'),
+        ],
+      ],
+      publishWork,
+    );
+
+    watcher.watch('sess_1', { publishTo: PUBLISH_TO });
+    await settle();
+
+    expect(calls.map((call) => call.finalMessage)).toEqual(['Should it be in Danish?', '']);
+  });
+
+  it('publishes nothing for a session that was not started to implement a change', async () => {
+    const { calls, publishWork } = recordingPublisher();
+    const { watcher } = watcherOver(
+      [[runningEvent('sevt_1'), messageEvent('sevt_2', 'Here is the answer.'), idleEvent('sevt_3')]],
+      publishWork,
+    );
+
+    watcher.watch('sess_1', { repository: 'ffMathy/hey-jarvis' });
+    await settle();
+
+    expect(calls).toEqual([]);
+  });
+
+  it.each(['timed_out', 'process_exited', 'error_during_execution'])(
+    'publishes nothing for a turn that stopped with %s',
+    async (stopReason) => {
+      const { calls, publishWork } = recordingPublisher();
+      const { watcher } = watcherOver([[runningEvent('sevt_1'), idleEvent('sevt_2', stopReason)]], publishWork);
+
+      watcher.watch('sess_1', { publishTo: PUBLISH_TO });
+      await settle();
+
+      expect(calls).toEqual([]);
+    },
+  );
+
+  it('publishes a turn once, even when a reconnect replays it', async () => {
+    const { calls, publishWork } = recordingPublisher();
+    const turn = [runningEvent('sevt_1'), messageEvent('sevt_2', 'Done.'), idleEvent('sevt_3')];
+    let attempts = 0;
+    const watcher = new ClaudeSessionWatcher(
+      async function* () {
+        attempts++;
+        yield* turn;
+        if (attempts === 1) {
+          throw new Error('connection reset');
+        }
+      },
+      async () => {},
+      0,
+      publishWork,
+    );
+
+    watcher.watch('sess_1', { publishTo: PUBLISH_TO });
+    await settle();
+    await settle();
+
+    expect(attempts).toBeGreaterThanOrEqual(2);
+    expect(calls).toHaveLength(1);
+  });
+
+  it('reports nothing more for a turn that did not end on finished work', async () => {
+    const { watcher, published } = watcherOver([[runningEvent('sevt_1'), idleEvent('sevt_2')]], async () => undefined);
+
+    watcher.watch('sess_1', { publishTo: PUBLISH_TO });
+    await settle();
+
+    expect(published.map((change) => change.stateType)).toEqual([
+      'coding_session_session_status_running',
+      'coding_session_session_status_idle',
+    ]);
+  });
+
+  it('reports a publisher that throws as work that was not published', async () => {
+    const { watcher, published } = watcherOver([[runningEvent('sevt_1'), idleEvent('sevt_2')]], async () => {
+      throw new Error('disk full');
+    });
+
+    watcher.watch('sess_1', { publishTo: PUBLISH_TO });
+    await settle();
+
+    expect(published[published.length - 1]?.stateType).toBe('coding_session_pull_request_failed');
+    expect(published[published.length - 1]?.stateData).toMatchObject({ refused: false, error: 'disk full' });
+  });
 
   it('forwards each event into synapse', async () => {
     const { watcher, published } = watcherOver([[runningEvent('sevt_1'), messageEvent('sevt_2', 'Pushed a branch')]]);

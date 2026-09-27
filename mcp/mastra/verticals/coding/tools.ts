@@ -1,5 +1,4 @@
 import { pick, truncate } from 'lodash-es';
-import { Octokit } from 'octokit';
 import { z } from 'zod';
 import { logger } from '../../utils/logger.js';
 import { markAsSlow } from '../../utils/slow-tasks.js';
@@ -11,15 +10,10 @@ import {
   sendClaudeSessionMessage,
   waitForClaudeSessionTurn,
 } from './claude-sessions.js';
+import { octokit } from './github-client.js';
+import { buildSessionWorkInstructions } from './publish-session-work.js';
 import { DEFAULT_OWNER, DEFAULT_REPOSITORY } from './repository.js';
 import { claudeSessionWatcher } from './session-watcher.js';
-
-// Create Octokit instance with optional GitHub token authentication
-// Using HEY_JARVIS_GITHUB_API_TOKEN for consistency with other env vars
-const octokit = new Octokit({
-  userAgent: 'Hey-Jarvis-MCP-Server',
-  auth: process.env.HEY_JARVIS_GITHUB_API_TOKEN,
-});
 
 // Extract Octokit response types for type inference
 type OctokitRepoListResponse = Awaited<ReturnType<typeof octokit.rest.repos.listForUser>>;
@@ -243,11 +237,13 @@ export const searchRepositories = createTool({
  * user's Claude subscription. Its events are
  * watched from the moment it starts and forwarded into the Synapse vertical as
  * state changes, so progress, questions and failures surface through the same
- * notification path as everything else in the house.
+ * notification path as everything else in the house. The session has no way to
+ * push, so the watcher publishes its branch and opens the pull request once a
+ * turn ends with the work done.
  */
 export const startCodingSession = createTool({
   id: 'startCodingSession',
-  description: `Starts a Claude Code session that implements a change autonomously. The session clones the repository, does the work and opens a pull request. Its events are reported back into the Synapse vertical as state changes. Defaults to Jarvis's own repository, "${DEFAULT_OWNER}/${DEFAULT_REPOSITORY}", if none is given.`,
+  description: `Starts a Claude Code session that implements a change autonomously. The session clones the repository and commits the work on a branch, and Jarvis pushes the branch and opens a pull request once it is done. Its events, and the pull request, are reported back into the Synapse vertical as state changes. Defaults to Jarvis's own repository, "${DEFAULT_OWNER}/${DEFAULT_REPOSITORY}", if none is given.`,
   inputSchema: z.object({
     owner: z.string().optional().describe(`The repository owner (defaults to "${DEFAULT_OWNER}" if not provided)`),
     repo: z
@@ -271,7 +267,8 @@ export const startCodingSession = createTool({
   }),
   execute: async (inputData) => {
     const owner = inputData.owner || DEFAULT_OWNER;
-    const repository = `${owner}/${inputData.repo || DEFAULT_REPOSITORY}`;
+    const repo = inputData.repo || DEFAULT_REPOSITORY;
+    const repository = `${owner}/${repo}`;
 
     const task = [
       `Implement the following change in the ${repository} repository.`,
@@ -279,8 +276,9 @@ export const startCodingSession = createTool({
       `\nRequest:\n${inputData.request}`,
       inputData.instructions ? `\n${inputData.instructions}` : undefined,
       // The session starts in an empty directory of its own in the sandbox, so it fetches the code
-      // itself. The sandbox's proxy signs `gh` in; `gh auth setup-git` lets `git push` use the same.
-      `\nStart by cloning the repository into the current directory with \`gh repo clone ${repository}\`, and run \`gh auth setup-git\` so you can push. Work on a dedicated branch, follow the repository conventions in AGENTS.md and CLAUDE.md, run the tests, and open a pull request when you are done.`,
+      // itself — but it pushes nothing: the watcher publishes its branch from the server once it is
+      // done (see `publish-session-work.ts`).
+      `\n${buildSessionWorkInstructions(repository)}`,
     ]
       .filter((line): line is string => typeof line === 'string')
       .join('\n');
@@ -290,7 +288,7 @@ export const startCodingSession = createTool({
     try {
       const session = await createClaudeSession(task);
 
-      claudeSessionWatcher.watch(session.id, { repository, title: inputData.title });
+      claudeSessionWatcher.watch(session.id, { repository, title: inputData.title, publishTo: { owner, repo } });
 
       return {
         success: true,

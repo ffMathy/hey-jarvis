@@ -480,15 +480,54 @@ key. It runs inside a [Docker Sandbox](https://docs.docker.com/ai/sandboxes/) na
 with its own filesystem, Docker daemon and egress proxy, which is what bounds a session that skips permission prompts.
 A sandbox needs KVM and the `sbx` daemon on the host, so the server reaches the host over SSH and runs
 `sbx exec -i jarvis …` there (`claude-code-host.ts`). The SSH key gets no shell: its forced command,
-`mcp/.scripts/claude-code-ssh-command.sh`, accepts only `start <session id>` or `resume <session id>` and fixes the
-sandbox, the directory and the `claude` command line itself, so a compromised container can start sessions in the
-sandbox and do nothing else on the host. `claude-code-ssh-command.spec.ts` runs it under `sh` with a fake `sbx` that
-goes on to run the sandbox's half against a fake `flock` and `claude`, and most of what it checks is what the script
-refuses. It sets `PATH` to `/usr/bin:/bin`, so it runs on Linux (CI) and not under Windows' own `sh` lookup. The
-subscription token travels on the first line of stdin, never on a command line. Each run of a session is one
-`claude --print` process in `~/jarvis-sessions/<session id>` inside the sandbox, talking stream-json both ways. The
-session clones the repository with `gh`, which the sandbox's proxy signs in with the host's `sbx` GitHub secret,
-works unattended and opens a pull request when it is done.
+`mcp/.scripts/claude-code-ssh-command.sh`, accepts only `start <session id>`, `resume <session id>` or
+`export <session id>` and fixes the sandbox, the directory and the `claude` and `git` command lines itself, so a
+compromised container can start sessions in the sandbox, fetch their work, and do nothing else on the host.
+`claude-code-ssh-command.spec.ts` runs it under `sh` with a fake `sbx` that goes on to run the sandbox's half against
+a fake `flock` and `claude` and the real `git`, and most of what it checks is what the script refuses. The fakes
+report to a log file, not stdout, because `export`'s stdout must be the bundle alone. It sets `PATH` to
+`/usr/bin:/bin`, so it runs on Linux (CI) and not under Windows' own `sh` lookup. The subscription token travels on
+the first line of stdin, never on a command line. Each run of a session is one `claude --print` process in
+`~/jarvis-sessions/<session id>` inside the sandbox, talking stream-json both ways. The session clones the repository
+anonymously over HTTPS, works unattended, commits on a `jarvis/…` branch, and pushes nothing — the server publishes
+its work (below).
+
+**The sandbox cannot write to GitHub; the server publishes.** A session started by `startCodingSession` is told
+(`buildSessionWorkInstructions` in `publish-session-work.ts`) to commit on a branch named `jarvis/<description>`, not
+to push or open a pull request, and to end its final message with a fenced block tagged `jarvis-pull-request`
+holding `{"branch", "title", "body"}` as JSON. `readSessionWork` takes the block from the last such opening fence to
+the message's last closing fence — so a description with code fences of its own survives — and validates it with
+zod; a turn without it (a question, say) publishes nothing. When `ClaudeSessionWatcher` sees such a session go idle
+with `end_turn`, it calls `publishSessionWork`, which:
+
+1. refuses a branch outside `jarvis/` before anything else;
+2. runs `export <session id>` over the same SSH path (`exportSessionWorkOverSsh`), capped at
+   `MAXIMUM_BUNDLE_BYTES` (50 MB), past which the connection is dropped. In the sandbox that takes the session's
+   lock (`flock -w 30`, exit **75** if a turn is running), locates the repository at the session's directory
+   itself (`--git-dir=.git`, no discovery upwards), and writes
+   `git bundle create - --branches ^refs/remotes/origin/<default>` to stdout — every local branch, less what the
+   default branch had when the session last fetched. So every prerequisite of the bundle is a commit of the default
+   branch, which only moves forward, and the server satisfies them by cloning the default branch before it
+   unbundles. Other exits: **66** no repository, **67** nothing committed, **68** no `origin/HEAD`, **70** git
+   failed;
+3. in a temporary directory, removed afterwards whatever happens, makes a bare, blobless, single-branch clone of the
+   default branch from GitHub and fetches the branch out of the bundle with `fetch.fsckObjects`;
+4. refuses the default branch itself, a branch with no commits of its own, and a branch whose `CI_PROTECTED_PATHS` —
+   `.github/workflows/`, `.github/actions/` and `.github/actions.lock`, one constant — differ at all from the default
+   branch's current tip, because the repository's own branches, and pull requests from them, run its workflows with
+   its secrets. The tip rather than the merge-base, since a pushed branch runs the workflows of its own head commit,
+   and one based on an old commit would bring back that commit's workflows; a branch that is merely behind a change
+   to CI is refused until it is rebased;
+5. pushes the branch, without force, with `HEY_JARVIS_GITHUB_API_TOKEN`, handed to git as an
+   `http.https://github.com/.extraheader` through `GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_0`/`GIT_CONFIG_VALUE_0` in an
+   environment with nothing of the server's in it — never on a command line;
+6. opens the pull request with the vertical's Octokit client (`github-client.ts`), or finds the one already open for
+   the branch, which the push has just updated.
+
+The outcome reaches Synapse as `coding_session_pull_request_opened` (with `pullRequestUrl`) or
+`coding_session_pull_request_failed` (with `error`, and `refused: true` when the work broke a rule rather than the
+publishing failing). `runCodingTask` sessions are never watched, so they never publish. The container's image
+carries `git` for this.
 
 **The host decides between starting and resuming.** `start` and `resume` both mean "run this session": inside the
 sandbox the forced command passes `--resume` when `~/.claude/projects/*/<session id>.jsonl` exists and is not empty,
@@ -524,8 +563,9 @@ directory, removed when the server exits; a failed write is retried on the next 
 Claude Code never runs in the server's own container, which carries the 1Password service account token for the
 whole vault.
 
-- **`startCodingSession`**: Creates the session, seeded with the request, the analysis's findings and the user's
-  answers, and starts watching it. Used by `implementFeatureWorkflow`.
+- **`startCodingSession`**: Creates the session, seeded with the request, the analysis's findings, the user's
+  answers and how its work gets published, and starts watching it with `publishTo` set, so the watcher opens the
+  pull request once it is done. Used by `implementFeatureWorkflow`.
 - **`getCodingSessionStatus`**: Reports a session's status (`running` or `idle`) and the last five messages it has
   produced.
 - **`sendCodingSessionMessage`**: Sends a follow-up message to a session, to answer a question or redirect its work.
@@ -542,19 +582,23 @@ whole vault.
 `coding` and a state type derived from the event type (for example `coding_session_agent_message`). The session has
 already dropped what is not worth hearing — Claude Code prints every tool call and its result, and each state change
 costs tokens once Synapse reasons over the batch. Events are deduplicated by id, and a failed hand-off is logged
-without tearing down the watch.
+without tearing down the watch. A finished turn is published once, when its `session.status_idle` is first seen, and
+the watcher waits for it before handling the session's next event, so a session is never published twice at once.
 
 **Environment Requirements:**
 
 | Environment variable | 1Password reference | What it is |
 | --- | --- | --- |
-| `HEY_JARVIS_GITHUB_API_TOKEN` | already mapped in `mcp/op.env` | GitHub token with `repo` scope — the tools read repositories and issues |
+| `HEY_JARVIS_GITHUB_API_TOKEN` | already mapped in `mcp/op.env` | GitHub token (`Jarvis → GitHub API key`) with **Contents**, **Pull requests** and **Issues** read and write on every repository Jarvis may code on — the tools read repositories and issues, and the server pushes sessions' branches and opens their pull requests with it |
 | `HEY_JARVIS_CLAUDE_CODE_SSH_TARGET` | `op://Jarvis/Claude Code/SSH target` | The host with the `jarvis` sandbox: `user@host`, or `ssh://user@host:port`. With the MCP container on host networking (`--network host`), `jarvis@127.0.0.1` — there `host.docker.internal` is the `docker0` gateway, whose port 22 host firewalls commonly drop |
 | `HEY_JARVIS_CLAUDE_CODE_SSH_PRIVATE_KEY` | `op://Jarvis/Claude Code/private key?ssh-format=openssh` | The key the host authorizes for that user |
 | `HEY_JARVIS_CLAUDE_CODE_OAUTH_TOKEN` | `op://Jarvis/Claude Code/OAuth token` | The subscription token `claude setup-token` prints |
 
 The host itself — 64-bit Linux with KVM and glibc 2.39 or newer, a user of its own signed in to Docker and pinned to
-the forced command, the `jarvis` sandbox and its GitHub secret — is set up as described in **Letting Jarvis code on your Claude subscription** in `mcp/README.md`.
+the forced command, and the `jarvis` sandbox, with no GitHub secret for public repositories and only a read-only
+one for private ones — is set up as described in **Letting Jarvis code on your Claude subscription** in
+`mcp/README.md`. The forced command has to be reinstalled whenever it changes: a copy from before `export` refuses
+every export (exit 64), so no session's work is published.
 
 The three `HEY_JARVIS_CLAUDE_CODE_*` references live in `mcp/op.optional.env`, not `mcp/op.env`. `op run` fails
 on the first reference it cannot resolve, and when they sat in `mcp/op.env` a missing `Claude Code` item crash-looped
@@ -1216,7 +1260,7 @@ Takes a change from a spoken request to a Claude Code session implementing it:
 - **`implementFeatureWorkflow`**: Analyses the codebase, asks what it could not answer, then implements
 - **Step 1 - Analyse the Codebase**: A Claude Code session (`runCodingTask`) reads the repository with the request in hand and ends on a JSON object: a title, its findings, and at most five spoken questions only the user can answer
 - **Step 2 - Ask the Questions**: One suspension per question, verbatim; none at all when the codebase settles everything
-- **Step 3 - Start Coding Session**: Starts a Claude Code session on the change, and watches its events. No issue is filed
+- **Step 3 - Start Coding Session**: Starts a Claude Code session on the change, and watches its events; the watcher opens the pull request once the session is done. No issue is filed
 
 **Architecture Pattern:**
 This workflow follows the **agent-as-step** pattern recommended by Mastra for sequential multi-step processes where the exact steps are known in advance (not dynamic routing).
@@ -1229,10 +1273,13 @@ This workflow follows the **agent-as-step** pattern recommended by Mastra for se
 2. **Questions**: A single step, not a loop: it suspends on the first unanswered question, is resumed with the answer,
    and returns once every question is answered
 3. **Coding Session**: Starts a Claude Code session with the `startCodingSession` tool, handed the request, the
-   analysis's findings and every question with the user's answer in their own words. The session runs unattended in a
-   sandboxed cloud environment, and every notable event it emits (agent messages, status transitions, errors) is
+   analysis's findings and every question with the user's answer in their own words. The session runs unattended in
+   the host's Docker Sandbox, and every notable event it emits (agent messages, status transitions, errors) is
    republished as a Synapse state change from the `coding` source, so progress flows into the existing notification
-   path instead of needing the workflow to stay alive
+   path instead of needing the workflow to stay alive. The session commits on a `jarvis/…` branch and pushes nothing;
+   when it is done, the watcher pushes the branch and opens the pull request from the server, and reports its link as
+   `coding_session_pull_request_opened` (see **The sandbox cannot write to GitHub; the server publishes** under
+   [Coding Agent](#coding-agent))
 
 **Usage Example:**
 ```typescript

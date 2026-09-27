@@ -7,6 +7,11 @@
  * change, which is where subscriptions, batching and notification decisions
  * already live. The session already keeps only the events worth hearing about
  * (see `claude-sessions.ts`), so every one of them is forwarded.
+ *
+ * It is also where a session's work leaves the sandbox. A session started to
+ * implement a change cannot push, so when one of its turns ends with the work
+ * done, the watcher publishes it (`publish-session-work.ts`) and reports the
+ * pull request — or why there is none — as a state change of its own.
  */
 
 import { truncate } from 'lodash-es';
@@ -15,6 +20,7 @@ import { executeTool } from '../../utils/tool-factory.js';
 import type { StateChange } from '../synapse/state-change.js';
 import { registerStateChange } from '../synapse/tools.js';
 import { type ClaudeSessionEvent, streamClaudeSessionEvents } from './claude-sessions.js';
+import { type PublishTarget, publishSessionWork, type SessionWorkPublication } from './publish-session-work.js';
 
 /** Vertical name every coding state change is attributed to. */
 export const CODING_STATE_CHANGE_SOURCE = 'coding';
@@ -36,6 +42,11 @@ export interface ClaudeSessionContext {
   issueNumber?: number;
   /** Human-readable title of the task. */
   title?: string;
+  /**
+   * Where the session's work is published once a turn ends with it done. Only a session started to
+   * implement a change has one; a session asked for an answer publishes nothing.
+   */
+  publishTo?: PublishTarget;
 }
 
 /**
@@ -80,11 +91,54 @@ export function toStateChange(
       sessionId,
       eventId: event.id,
       eventType: event.type,
-      ...(context.repository ? { repository: context.repository } : {}),
-      ...(context.issueNumber ? { issueNumber: context.issueNumber } : {}),
-      ...(context.title ? { task: context.title } : {}),
+      ...describeContext(context),
       ...describeEvent(event),
     },
+  };
+}
+
+function describeContext(context: ClaudeSessionContext): Record<string, unknown> {
+  return {
+    ...(context.repository ? { repository: context.repository } : {}),
+    ...(context.issueNumber ? { issueNumber: context.issueNumber } : {}),
+    ...(context.title ? { task: context.title } : {}),
+  };
+}
+
+/**
+ * Turns how publishing a session's work went into the state change Synapse receives:
+ * `coding_session_pull_request_opened` with its link, or `coding_session_pull_request_failed` with
+ * why — `refused` when the work broke a rule, rather than the publishing itself going wrong.
+ *
+ * @param eventId - The id of the event that ended the turn, so the state change can be traced to it
+ */
+export function toPublicationStateChange(
+  publication: SessionWorkPublication,
+  sessionId: string,
+  eventId: string,
+  context: ClaudeSessionContext = {},
+): StateChange {
+  const common = { sessionId, eventId, ...describeContext(context) };
+
+  if (publication.status === 'published') {
+    return {
+      source: CODING_STATE_CHANGE_SOURCE,
+      stateType: 'coding_session_pull_request_opened',
+      stateData: {
+        ...common,
+        branch: publication.branch,
+        pullRequestNumber: publication.pullRequest.number,
+        pullRequestUrl: publication.pullRequest.url,
+        // False when the branch already had one open, which the push has now updated.
+        created: publication.created,
+      },
+    };
+  }
+
+  return {
+    source: CODING_STATE_CHANGE_SOURCE,
+    stateType: 'coding_session_pull_request_failed',
+    stateData: { ...common, refused: publication.status === 'refused', error: publication.reason },
   };
 }
 
@@ -93,6 +147,13 @@ export type ClaudeSessionEventStream = (sessionId: string, signal: AbortSignal) 
 
 /** Sink state changes are handed to; swapped out in tests. */
 export type StateChangePublisher = (stateChange: StateChange) => Promise<void>;
+
+/** Publishes a session's work, if its turn ended with it done; swapped out in tests. */
+export type SessionWorkPublisher = (
+  sessionId: string,
+  target: PublishTarget,
+  finalMessage: string,
+) => Promise<SessionWorkPublication | undefined>;
 
 async function publishToSynapse(stateChange: StateChange): Promise<void> {
   await executeTool(registerStateChange, stateChange);
@@ -120,6 +181,7 @@ export class ClaudeSessionWatcher {
       streamClaudeSessionEvents(sessionId, signal),
     private readonly publish: StateChangePublisher = publishToSynapse,
     private readonly reconnectDelayMilliseconds: number = RECONNECT_DELAY_MILLISECONDS,
+    private readonly publishWork: SessionWorkPublisher = publishSessionWork,
   ) {}
 
   /**
@@ -174,9 +236,19 @@ export class ClaudeSessionWatcher {
 
     while (!signal.aborted && consecutiveFailures < MAXIMUM_CONSECUTIVE_FAILURES) {
       try {
+        // What the agent said last in the current turn. Kept for replayed events too, since a
+        // reconnect replays the session from its first event.
+        let finalMessage = '';
+
         for await (const event of this.streamEvents(sessionId, signal)) {
           consecutiveFailures = 0;
-          await this.handleEvent(sessionId, context, event);
+          if (event.type === 'session.status_running') {
+            finalMessage = '';
+          } else if (event.type === 'agent.message') {
+            finalMessage = event.text;
+          }
+
+          await this.handleEvent(sessionId, context, event, finalMessage);
         }
 
         // A session's own stream runs until the watch is cancelled; one that
@@ -202,6 +274,7 @@ export class ClaudeSessionWatcher {
     sessionId: string,
     context: ClaudeSessionContext,
     event: ClaudeSessionEvent,
+    finalMessage: string,
   ): Promise<void> {
     if (this.seenEventIds.has(event.id)) {
       return;
@@ -209,12 +282,30 @@ export class ClaudeSessionWatcher {
 
     this.seenEventIds.add(event.id);
 
+    await this.forward(sessionId, event.id, toStateChange(event, sessionId, context));
+
+    // A turn that finished its work is published once, when its end is first seen. The next event
+    // waits for it, so a session is never published twice at once.
+    if (event.type === 'session.status_idle' && event.stopReason === 'end_turn' && context.publishTo) {
+      const publication = await this.publishWork(sessionId, context.publishTo, finalMessage).catch(
+        (error: unknown): SessionWorkPublication => ({
+          status: 'failed',
+          reason: error instanceof Error ? error.message : String(error),
+        }),
+      );
+      if (publication) {
+        await this.forward(sessionId, event.id, toPublicationStateChange(publication, sessionId, event.id, context));
+      }
+    }
+  }
+
+  private async forward(sessionId: string, eventId: string, stateChange: StateChange): Promise<void> {
     try {
-      await this.publish(toStateChange(event, sessionId, context));
+      await this.publish(stateChange);
     } catch (error) {
       // A failed hand-off must not tear down the watch: the next event still
       // deserves a chance to reach Synapse.
-      logger.error('[CLAUDE SESSION] Failed to register state change', { sessionId, eventId: event.id, error });
+      logger.error('[CLAUDE SESSION] Failed to register state change', { sessionId, eventId, error });
     }
   }
 }
