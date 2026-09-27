@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import { markAsSlow } from '../../utils/slow-tasks.js';
+import { executeTool } from '../../utils/tool-factory.js';
 import { createStep, createToolStep, createWorkflow } from '../../utils/workflows/workflow-factory.js';
 import { DEFAULT_OWNER, DEFAULT_REPOSITORY } from './repository.js';
-import { runCodingTask, startCodingSession } from './tools.js';
+import { continueCodingTask, runCodingTask, startCodingSession } from './tools.js';
 
 // Schema for the request the workflow is started with
 const requestInputSchema = z.object({
@@ -138,23 +139,54 @@ const analyzeCodebaseTool = createToolStep({
 const codingTaskResultSchema = z.object({
   success: z.boolean(),
   message: z.string(),
+  session_id: z.string().optional(),
   final_message: z.string().optional(),
 });
+
+/**
+ * What the analysing session is told when its turn ended without the JSON object.
+ *
+ * Most often it had handed the reading to a background agent and ended its turn to wait for it —
+ * which stops the agent, since a session's process is let go when its turn ends. Resuming the
+ * session keeps everything it had already read, so asking again is far quicker than starting over.
+ */
+export const ANALYSIS_FOLLOW_UP =
+  'Your turn ended without the JSON summary, and anything you left running in the background was stopped with it. Finish the analysis now, in the foreground — redo whatever that background work was meant to find — and end your final message with only the JSON object you were asked for, and nothing after it.';
 
 // Step 3: Keep what the session found
 const storeCodebaseAnalysis = createStep({
   id: 'store-codebase-analysis',
-  description: 'Reads the findings and questions out of the analysing session’s last message',
+  description:
+    'Reads the findings and questions out of the analysing session’s last message, asking once more if they are not there',
   stateSchema: workflowStateSchema,
   inputSchema: z.unknown(),
   outputSchema: z.object({}),
   execute: async (params) => {
     const result = codingTaskResultSchema.parse(params.inputData);
-    if (!result.success || !result.final_message) {
+    if (!result.success) {
       throw new Error(`The codebase could not be analysed: ${result.message}`);
     }
 
-    params.setState({ ...params.state, analysis: readCodebaseAnalysis(result.final_message) });
+    let analysis: CodebaseAnalysis;
+    try {
+      analysis = readCodebaseAnalysis(result.final_message ?? '');
+    } catch (error) {
+      if (!result.session_id) {
+        throw error;
+      }
+
+      const retried = await executeTool(continueCodingTask, {
+        session_id: result.session_id,
+        message: ANALYSIS_FOLLOW_UP,
+      });
+      if (!retried.success) {
+        throw new Error(`The codebase could not be analysed: ${retried.message}`);
+      }
+
+      analysis = readCodebaseAnalysis(retried.final_message ?? '');
+    }
+
+    params.setState({ ...params.state, analysis });
     return {};
   },
 });
@@ -296,7 +328,8 @@ const formatFinalOutput = createStep({
  * Workflow that takes a change from a spoken request to a Claude Code session implementing it
  *
  * 1. A Claude Code session reads the codebase with the request in hand, and writes down what it
- *    found and the questions only the user can answer (3 sub-steps)
+ *    found and the questions only the user can answer — resumed once and asked again if its turn
+ *    ends without them (3 sub-steps)
  * 2. Those questions are put to the user, suspending on each one until it is answered
  * 3. A Claude Code session is started on the change, handed the request, the findings and
  *    every answer in the user's own words (2 sub-steps)
