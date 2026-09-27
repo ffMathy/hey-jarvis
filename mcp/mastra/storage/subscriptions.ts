@@ -13,8 +13,9 @@
  * without an LLM call.
  */
 
-import { type Client, createClient } from '@libsql/client';
+import type { Client } from '@libsql/client';
 import { STATIC_EMBEDDING_DIMENSIONS } from '../utils/static-embedder.js';
+import { openSqliteClient } from './sqlite-client.js';
 
 export interface SubscriptionComponents {
   /** The triggering event, e.g. "the sun goes down". Required. */
@@ -123,9 +124,7 @@ export class SubscriptionStorage {
   private initialized = false;
 
   constructor(databasePath: string) {
-    this.client = createClient({
-      url: `file:${databasePath}`,
-    });
+    this.client = openSqliteClient(databasePath);
   }
 
   /**

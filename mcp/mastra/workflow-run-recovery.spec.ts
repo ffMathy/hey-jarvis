@@ -117,4 +117,75 @@ describe('retiring runs the boot restart cannot resume', () => {
     expect(call[0].opts.status).toBe('failed');
     expect(call[0].opts.error.name).toBe('StaleWorkflowRun');
   });
+
+  it('only retires a run that is still active when the update lands', async () => {
+    // A run that finishes between the listing and the update keeps the result it finished with.
+    const { mastra, updateWorkflowState } = mastraWith({
+      workflows: { emailCheckingWorkflow: { serializedStepGraph: GRAPH } },
+      runs: [
+        { workflowName: 'emailCheckingWorkflow', runId: 'run-7', snapshot: { serializedStepGraph: CHANGED_GRAPH } },
+      ],
+    });
+
+    await retireUnrestartableRuns(mastra as never);
+
+    const [call] = updateWorkflowState.mock.calls as unknown as [{ opts: { expectedStatus: string[] } }][];
+    expect(call[0].opts.expectedStatus).toEqual(['running', 'waiting']);
+  });
+});
+
+describe('runs that never recorded a position', () => {
+  // What a scheduled run looks like for its whole life: the event-driven engine persists it as
+  // running with no position and only writes one when it ends. Restarting it starts the engine
+  // at index `undefined`, which runs no step and then crashes on `lastOutput.result`.
+  const positionless = {
+    workflowName: 'emailCheckingWorkflow',
+    runId: 'sched_schedule_1_1',
+    snapshot: { serializedStepGraph: GRAPH, status: 'running', activePaths: [] },
+  };
+
+  it('are retired by the process that executes them', async () => {
+    const { mastra, updateWorkflowState } = mastraWith({
+      workflows: { emailCheckingWorkflow: { serializedStepGraph: GRAPH } },
+      runs: [positionless],
+    });
+
+    await retireUnrestartableRuns(mastra as never, { retirePositionlessRuns: true });
+
+    expect(retired(updateWorkflowState)).toEqual(['sched_schedule_1_1']);
+  });
+
+  it('are left alone by any other process, which cannot tell them from runs in flight', async () => {
+    const { mastra, updateWorkflowState } = mastraWith({
+      workflows: { emailCheckingWorkflow: { serializedStepGraph: GRAPH } },
+      runs: [positionless],
+    });
+
+    await retireUnrestartableRuns(mastra as never);
+
+    expect(retired(updateWorkflowState)).toEqual([]);
+  });
+
+  it('do not include a run that has reached a step, which the restart can resume', async () => {
+    const { mastra, updateWorkflowState } = mastraWith({
+      workflows: { emailCheckingWorkflow: { serializedStepGraph: GRAPH } },
+      runs: [{ ...positionless, runId: 'run-8', snapshot: { ...positionless.snapshot, activePaths: [0] } }],
+    });
+
+    await retireUnrestartableRuns(mastra as never, { retirePositionlessRuns: true });
+
+    expect(retired(updateWorkflowState)).toEqual([]);
+  });
+
+  it('say so on the run, rather than blaming a changed workflow', async () => {
+    const { mastra, updateWorkflowState } = mastraWith({
+      workflows: { emailCheckingWorkflow: { serializedStepGraph: GRAPH } },
+      runs: [positionless],
+    });
+
+    await retireUnrestartableRuns(mastra as never, { retirePositionlessRuns: true });
+
+    const [call] = updateWorkflowState.mock.calls as unknown as [{ opts: { error: { message: string } } }][];
+    expect(call[0].opts.error.message).toContain('before it recorded which step it had reached');
+  });
 });

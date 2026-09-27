@@ -925,6 +925,42 @@ scheduler about thirty seconds later, silently.
 - A runtime pause is not permanent: reconciliation restates `status: active`, because the
   declarations are what say whether a schedule should be running
 
+**Only `mcp-server` fires schedules:**
+The container runs `mcp-server` and `mastra dev` side by side (`mcp/supervisord.conf`), both on
+the same `mastra.sql.db`. `mastra dev` starts its workers unconditionally, and Mastra starts a
+scheduler for any schedule rows it finds — so until this was pinned down, both processes polled
+the same rows every ten seconds, raced to claim each fire, and ran the winner's workflow in
+whichever process won. Twice the writers on one SQLite write lock is what produced the
+`Failed to claim due schedule fire` / `SQLITE_BUSY: database is locked` bursts on the Pi, and the
+400 Studio answered a chat with. `ownsSchedules()` in `schedule-reconciler.ts` reads the
+`MASTRA_DEV=true` that `mastra dev` sets on the server it spawns, and `mastra/index.ts` passes
+`scheduler: { enabled: false }` there. Studio can still list, pause and edit schedules; it just
+never fires them.
+
+**Runs left behind by a restart:**
+`mastra dev` asks Mastra to restart every active workflow run once its server is up. A scheduled
+run is persisted as `running` with `activePaths: []` and keeps that until it ends — the
+event-driven engine only records a position on end, failure or suspend — so one interrupted
+mid-flight can never be restarted: the engine starts at index `undefined`, runs no step, and
+throws `undefined is not an object (evaluating 'lastOutput.result')`. Every crash left more of
+them, and every boot logged the error once per orphan. `retireUnrestartableRuns`
+(`workflow-run-recovery.ts`) marks them failed with the reason on the run, alongside runs whose
+workflow graph has changed. It only retires positionless runs in the process that owns the
+schedules, at boot, before its scheduler starts — from `mastra dev` such a run is
+indistinguishable from one `mcp-server` is executing right now. That means `mastra dev` can still
+log the error for a scheduled run that happens to be in flight when it boots; the restart throws
+before running any step, so it changes nothing.
+
+**SQLite connections:**
+Every table lives in `mastra.sql.db`, opened by LibSQLStore and by each class in
+`mastra/storage/`, in both processes. Open a new connection with `openSqliteClient`
+(`storage/sqlite-client.ts`), never a bare `createClient({ url })`: the bare client's busy timeout
+is zero, so it fails with `SQLITE_BUSY` the instant anything else is writing.
+`SQLITE_BUSY_TIMEOUT_MS` (15 s) is shared with LibSQLStore's `connectionTimeoutMs`. LibSQLStore
+also switches the file to WAL, which persists in the file, so readers never wait on a writer. The
+wait happens inside the synchronous driver and stalls that process's event loop, so it is a
+ceiling for a slow SD card, not something to lean on.
+
 **Available Cron Patterns** (`utils/workflows/cron-patterns.ts`):
 - `EVERY_MINUTE`: `* * * * *`
 - `EVERY_3_HOURS`: `0 */3 * * *`

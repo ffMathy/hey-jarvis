@@ -34,6 +34,27 @@ import {
  * boots the whole server, and the reconcile has to be testable on its own.
  */
 
+/**
+ * Whether this process is the one that fires the schedules.
+ *
+ * The container runs two processes against the same `mastra.sql.db`: `mcp-server`, which
+ * reconciles the schedules and starts the scheduler, and `mastra dev`, which serves Studio.
+ * Both build the same Mastra instance, and `mastra dev` starts its workers too — at which
+ * point Mastra sees the schedule rows `mcp-server` wrote and starts a second scheduler.
+ * Two schedulers poll the same rows every ten seconds and race to claim each fire; the
+ * claim is safe, but whichever wins runs the workflow in its own process, so every write
+ * of every scheduled run could come from either side. That doubled the contention for the
+ * one SQLite write lock, and it is where the `Failed to claim due schedule fire` and
+ * `SQLITE_BUSY` bursts came from.
+ *
+ * `mastra dev` marks the server it spawns with `MASTRA_DEV=true`, so that is what tells
+ * the Studio process apart. Everything else — `mcp-server`, or `mastra/index.ts` served
+ * on its own — keeps the scheduler.
+ */
+export function ownsSchedules(environment: Record<string, string | undefined> = process.env): boolean {
+  return environment.MASTRA_DEV !== 'true';
+}
+
 /** The timezone every cadence here is written in. */
 export const TIMEZONE = 'Europe/Copenhagen';
 
