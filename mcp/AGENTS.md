@@ -482,17 +482,44 @@ A sandbox needs KVM and the `sbx` daemon on the host, so the server reaches the 
 `sbx exec -i jarvis …` there (`claude-code-host.ts`). The SSH key gets no shell: its forced command,
 `mcp/.scripts/claude-code-ssh-command.sh`, accepts only `start <session id>` or `resume <session id>` and fixes the
 sandbox, the directory and the `claude` command line itself, so a compromised container can start sessions in the
-sandbox and do nothing else on the host. `claude-code-ssh-command.spec.ts` runs it under `sh` with a fake `sbx`, and
-most of what it checks is what the script refuses. The subscription token travels on the first line of stdin, never
-on a command line. Each run of a session is one `claude --print` process in `~/jarvis-sessions/<session id>` inside
-the sandbox, talking stream-json both ways. The session clones the repository with `gh`, which the sandbox's proxy
-signs in with the host's `sbx` GitHub secret, works unattended and opens a pull request when it is done.
+sandbox and do nothing else on the host. `claude-code-ssh-command.spec.ts` runs it under `sh` with a fake `sbx` that
+goes on to run the sandbox's half against a fake `flock` and `claude`, and most of what it checks is what the script
+refuses. It sets `PATH` to `/usr/bin:/bin`, so it runs on Linux (CI) and not under Windows' own `sh` lookup. The
+subscription token travels on the first line of stdin, never on a command line. Each run of a session is one
+`claude --print` process in `~/jarvis-sessions/<session id>` inside the sandbox, talking stream-json both ways. The
+session clones the repository with `gh`, which the sandbox's proxy signs in with the host's `sbx` GitHub secret,
+works unattended and opens a pull request when it is done.
+
+**The host decides between starting and resuming.** `start` and `resume` both mean "run this session": inside the
+sandbox the forced command passes `--resume` when `~/.claude/projects/*/<session id>.jsonl` exists and is not empty,
+and `--session-id` otherwise. The server still sends its guess, since a host on the older forced command goes by it,
+but a wrong guess — a first run that died before Claude Code wrote anything, or one that wrote the transcript without
+the server seeing a line — can no longer wedge a session into `No conversation found` or `already in use`.
+
+**One process per session.** Before running `claude`, the sandbox takes `flock -w 120` on
+`~/jarvis-sessions/<session id>.lock` (beside the session's directory, so the directory stays empty for a clone) and
+exits with **75** if another process still holds it after two minutes — as one can when a dropped SSH connection
+leaves the previous `claude` finishing its turn. The lock is held by the waiting shell, and `claude` runs with the
+descriptor closed, so a background process the session leaves behind cannot hold it. The other exit codes a session
+error can carry are **64** (request refused), **65** (no token on stdin) and **255** (SSH itself failed).
 
 `ClaudeCodeSessions` (`claude-sessions.ts`) keeps each session's events in memory, reduced to the four that matter
 — `session.status_running`, `agent.message`, `session.status_idle` (with `end_turn` or why else it stopped) and
 `session.error`. A message sent while a session works is written to the same process; one sent after it went idle
-resumes the session in a new process (`claude --resume`). Being in memory, sessions do not survive a restart of the
-server, though their transcripts stay in the sandbox.
+resumes the session in a new process. Being in memory, sessions do not survive a restart of the server, though their
+transcripts stay in the sandbox. Nothing waits on a process without a limit:
+
+- A new process waits 30 seconds for the previous one to exit, then kills it (`ClaudeCodeProcess.kill()`, which ends
+  the SSH connection) and launches anyway; the host's lock covers whatever is left in the sandbox.
+- A process that goes 60 minutes without closing its turn (`MAXIMUM_TURN_DURATION_MILLISECONDS`, restarted per turn)
+  is killed, with a `session.error` and a `timed_out` stop.
+- Sending a message to a process that has stopped fails instead of reporting success, and a newly launched process
+  that exits within 20 seconds without writing a line (refused, no token, SSH failure) makes `send()` — and so
+  `create()` — throw with its exit code and the end of its stderr. The same text reaches the watcher as
+  `session.error` for a process that dies later.
+
+The SSH key is written once per server process to a `0600` file in a `0700` directory under the system temp
+directory, removed when the server exits; a failed write is retried on the next launch rather than remembered.
 
 Claude Code never runs in the server's own container, which carries the 1Password service account token for the
 whole vault.
@@ -543,9 +570,9 @@ so repository and issue browsing works on the GitHub token alone and only the to
 (`getMissingClaudeCodeHostVariables()`, names only).
 
 To resume a session by hand on the host, run
-`sbx exec -it -e CLAUDE_CODE_OAUTH_TOKEN jarvis sh -c 'cd ~/jarvis-sessions/<id> && claude --resume <id>'` as the
-`jarvis` user with `CLAUDE_CODE_OAUTH_TOKEN` exported first — without `-e` Claude Code in the sandbox runs
-unauthenticated. On a Pi 5, `sbx diagnose` warning about `mkfs.erofs` and 16 KB blocks means the 16 KB-page kernel;
+`sbx exec -it -e CLAUDE_CODE_OAUTH_TOKEN jarvis sh -c 'cd ~/jarvis-sessions/<id> && flock -w 120 ../<id>.lock claude --resume <id>'`
+as the `jarvis` user with `CLAUDE_CODE_OAUTH_TOKEN` exported first — without `-e` Claude Code in the sandbox runs
+unauthenticated, and the `flock` keeps it from overlapping a process Jarvis starts. On a Pi 5, `sbx diagnose` warning about `mkfs.erofs` and 16 KB blocks means the 16 KB-page kernel;
 `mcp/README.md` has the fix.
 
 **Example Use Cases:**

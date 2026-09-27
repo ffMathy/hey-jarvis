@@ -3,16 +3,18 @@
  *
  * A real session is a `claude --print` process on another machine, reached over SSH. What is
  * tested here is everything this side of that pipe: reading Claude Code's stream-json output,
- * deciding when a turn is over, writing follow-ups to a process still working, and resuming a
- * session whose process has finished.
+ * deciding when a turn is over, writing follow-ups to a process still working, resuming a session
+ * whose process has finished, and never waiting on a process without a limit.
  */
 
 import { describe, expect, it } from 'bun:test';
 import { PassThrough } from 'node:stream';
-import type { ClaudeCodeProcess } from './claude-code-host.js';
+import type { ClaudeCodeExit, ClaudeCodeProcess } from './claude-code-host.js';
 import {
   ClaudeCodeSessions,
+  type ClaudeCodeSessionTimeouts,
   type ClaudeSessionEvent,
+  describeClaudeCodeExit,
   readClaudeCodeOutputLine,
   readFinishedTurn,
   toClaudeCodeInputLine,
@@ -121,6 +123,21 @@ describe('readClaudeCodeOutputLine', () => {
   });
 });
 
+describe('describeClaudeCodeExit', () => {
+  it('names the exit code, and keeps the end of stderr, where the reason is', () => {
+    const stderr = `Sandbox jarvis started successfully\n${'.'.repeat(2000)}\nssh: Connection refused`;
+    const description = describeClaudeCodeExit({ code: 255, stderr });
+
+    expect(description).toStartWith('Claude Code exited with code 255: ');
+    expect(description).toEndWith('ssh: Connection refused');
+    expect(description.length).toBeLessThanOrEqual(1000);
+  });
+
+  it('makes do without stderr', () => {
+    expect(describeClaudeCodeExit({ code: null, stderr: '' })).toBe('Claude Code exited with code null');
+  });
+});
+
 describe('toClaudeCodeInputLine', () => {
   it('writes a message as one line of stream-json', () => {
     const line = toClaudeCodeInputLine('Fix the bug.\nThen open a pull request.');
@@ -134,26 +151,47 @@ describe('toClaudeCodeInputLine', () => {
   });
 });
 
+/** How a fake process behaves when it is told to stop. */
+interface FakeBehaviour {
+  /** Whether it exits once its input ends, as Claude Code does. A dead connection does not. */
+  exitsWhenInputEnds?: boolean;
+  /** Whether it exits when killed. */
+  exitsWhenKilled?: boolean;
+}
+
 /** A Claude Code process whose output the test writes, and whose input the test reads. */
 class FakeClaudeCode {
   readonly input = new PassThrough();
   readonly output = new PassThrough();
   readonly received: string[] = [];
-  private exit: (result: { code: number | null; stderr: string }) => void = () => {};
-  readonly exited = new Promise<{ code: number | null; stderr: string }>((resolve) => {
+  killed = false;
+  private exit: (result: ClaudeCodeExit) => void = () => {};
+  readonly exited = new Promise<ClaudeCodeExit>((resolve) => {
     this.exit = resolve;
   });
 
   constructor(
     readonly sessionId: string,
     readonly resume: boolean,
+    private readonly behaviour: FakeBehaviour = {},
   ) {
     this.input.setEncoding('utf8');
     this.input.on('data', (chunk: string) => {
       this.received.push(...chunk.split('\n').filter((line) => line.length > 0));
     });
     // Claude Code exits once its input ends and its last turn is answered.
-    this.input.on('end', () => this.close(0));
+    this.input.on('end', () => {
+      if (this.behaviour.exitsWhenInputEnds ?? true) {
+        this.close(0);
+      }
+    });
+  }
+
+  kill(): void {
+    this.killed = true;
+    if (this.behaviour.exitsWhenKilled ?? true) {
+      this.close(null, 'Killed by signal');
+    }
   }
 
   say(text: string): void {
@@ -178,21 +216,42 @@ class FakeClaudeCode {
   }
 }
 
-function fakeHost() {
+/** Short enough that no test waits on them for long; the turn limit is out of the way unless set. */
+const TEST_TIMEOUTS: ClaudeCodeSessionTimeouts = {
+  previousProcessExitMilliseconds: 10,
+  maximumTurnDurationMilliseconds: 60_000,
+  startupConfirmationMilliseconds: 10,
+};
+
+function fakeHost(
+  options: {
+    behaviour?: FakeBehaviour;
+    timeouts?: Partial<ClaudeCodeSessionTimeouts>;
+    onLaunch?: (fake: FakeClaudeCode) => void;
+  } = {},
+) {
   const launched: FakeClaudeCode[] = [];
-  const sessions = new ClaudeCodeSessions(async (sessionId, resume): Promise<ClaudeCodeProcess> => {
-    const claudeCode = new FakeClaudeCode(sessionId, resume);
-    launched.push(claudeCode);
-    return claudeCode;
-  });
+  const sessions = new ClaudeCodeSessions(
+    async (sessionId, resume): Promise<ClaudeCodeProcess> => {
+      const claudeCode = new FakeClaudeCode(sessionId, resume, options.behaviour);
+      launched.push(claudeCode);
+      options.onLaunch?.(claudeCode);
+      return claudeCode;
+    },
+    { ...TEST_TIMEOUTS, ...options.timeouts },
+  );
 
   return { sessions, launched };
+}
+
+function sleep(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 /** Lets the session read what the fake wrote. */
 async function settle(): Promise<void> {
   for (let tick = 0; tick < 5; tick++) {
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await sleep(0);
   }
 }
 
@@ -346,11 +405,13 @@ describe('ClaudeCodeSessions', () => {
       'session.error',
       'session.status_idle',
     ]);
-    expect(events[1]).toMatchObject({ message: expect.stringContaining('Connection refused') });
+    expect(events[1]).toMatchObject({
+      message: expect.stringMatching(/^Claude Code exited with code 255: .*Connection refused/),
+    });
     expect(await sessions.waitForTurn(session.id, 1000)).toMatchObject({ stopReason: 'process_exited' });
   });
 
-  it('starts a session afresh, rather than resuming it, when its first process never reached the host', async () => {
+  it('hints to the host that a session whose first process never reached it has nothing to resume', async () => {
     const { sessions, launched } = fakeHost();
     const session = await sessions.create('Build the page.');
     launched[0].close(255, 'Connection refused');
@@ -359,6 +420,124 @@ describe('ClaudeCodeSessions', () => {
     await sessions.send(session.id, 'Try again.');
 
     expect(launched[1].resume).toBe(false);
+  });
+
+  it('refuses to create a session whose process stops before saying anything, with the reason', async () => {
+    const { sessions } = fakeHost({
+      onLaunch: (fake) =>
+        fake.close(65, 'jarvis-claude-code: expected the Claude subscription token on the first line of input'),
+    });
+
+    await expect(sessions.create('Build the page.')).rejects.toThrow(
+      /stopped before it started\. Claude Code exited with code 65: .*subscription token/,
+    );
+  });
+
+  it('reports a resumed session whose process stops before saying anything as not sent', async () => {
+    let closeAtOnce = false;
+    const { sessions, launched } = fakeHost({
+      onLaunch: (fake) => {
+        if (closeAtOnce) {
+          fake.close(75, 'jarvis-claude-code: session is still running in another process');
+        }
+      },
+    });
+    const session = await sessions.create('Implement the change.');
+    launched[0].finishTurn();
+    await settle();
+
+    closeAtOnce = true;
+    await expect(sessions.send(session.id, 'Also update the documentation.')).rejects.toThrow('code 75');
+
+    const events = await recordedEvents(sessions, session.id);
+    expect(events[events.length - 2]).toMatchObject({
+      type: 'session.error',
+      message: expect.stringContaining('another process'),
+    });
+    expect(sessions.get(session.id).status).toBe('idle');
+  });
+
+  it('reports a message to a process whose input has closed as not sent', async () => {
+    const { sessions, launched } = fakeHost();
+    const session = await sessions.create('Implement the change.');
+
+    launched[0].input.destroy();
+
+    await expect(sessions.send(session.id, 'Use push notifications.')).rejects.toThrow(
+      'stopped before it could be sent',
+    );
+  });
+
+  it('kills a previous process that will not exit, then resumes the session in a new one', async () => {
+    const { sessions, launched } = fakeHost({ behaviour: { exitsWhenInputEnds: false } });
+    const session = await sessions.create('Implement the change.');
+    launched[0].finishTurn();
+    await settle();
+
+    await sessions.send(session.id, 'Also update the documentation.');
+
+    expect(launched[0].killed).toBe(true);
+    expect(launched).toHaveLength(2);
+    expect(sessions.get(session.id).status).toBe('running');
+  });
+
+  it('resumes the session even when the previous process survives being killed', async () => {
+    const { sessions, launched } = fakeHost({ behaviour: { exitsWhenInputEnds: false, exitsWhenKilled: false } });
+    const session = await sessions.create('Implement the change.');
+    launched[0].finishTurn();
+    await settle();
+
+    await sessions.send(session.id, 'Also update the documentation.');
+
+    expect(launched[0].killed).toBe(true);
+    expect(launched).toHaveLength(2);
+  });
+
+  it('does not kill a previous process that exits in time', async () => {
+    const { sessions, launched } = fakeHost();
+    const session = await sessions.create('Implement the change.');
+    launched[0].finishTurn();
+    await settle();
+
+    await sessions.send(session.id, 'Also update the documentation.');
+
+    expect(launched[0].killed).toBe(false);
+  });
+
+  it('stops a process that never finishes its turn', async () => {
+    const { sessions, launched } = fakeHost({
+      timeouts: { maximumTurnDurationMilliseconds: 30 },
+      // Says it has started, so creating the session does not wait out the startup window.
+      onLaunch: (fake) => fake.output.write(`${JSON.stringify({ type: 'system', subtype: 'init' })}\n`),
+    });
+    const session = await sessions.create('Build the page.');
+
+    await sleep(80);
+
+    expect(launched[0].killed).toBe(true);
+    expect(sessions.get(session.id).status).toBe('idle');
+    const events = await recordedEvents(sessions, session.id);
+    expect(events.map((event) => event.type)).toEqual([
+      'session.status_running',
+      'session.error',
+      'session.status_idle',
+    ]);
+    expect(events[1]).toMatchObject({ message: expect.stringContaining('did not finish its turn') });
+    expect(await sessions.waitForTurn(session.id, 1000)).toMatchObject({ stopReason: 'timed_out' });
+  });
+
+  it('gives each turn of a process its own time', async () => {
+    const { sessions, launched } = fakeHost({ timeouts: { maximumTurnDurationMilliseconds: 100 } });
+    const session = await sessions.create('Implement the change.');
+    await sessions.send(session.id, 'Use push notifications.');
+
+    await sleep(60);
+    launched[0].finishTurn();
+    await sleep(60);
+
+    // Past the limit since the process started, but only 60 milliseconds into the second turn.
+    expect(launched[0].killed).toBe(false);
+    expect(sessions.get(session.id).status).toBe('running');
   });
 
   it('streams every event from the first, then each new one as it happens', async () => {

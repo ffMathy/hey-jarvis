@@ -13,7 +13,9 @@
  * The SSH key gets no shell on the host. Its forced command is `mcp/.scripts/claude-code-ssh-command.sh`,
  * which accepts only `start <session id>` or `resume <session id>` and fixes everything else — the
  * sandbox, the directory and the `claude` command line — so a compromised container can start
- * Claude Code sessions in the sandbox and do nothing else on the host.
+ * Claude Code sessions in the sandbox and do nothing else on the host. It also decides for itself
+ * whether a session is started or resumed, from whether its transcript is in the sandbox, and holds
+ * a per-session lock there so no two processes ever run one session at once.
  *
  * Nothing runs Claude Code inside the server's own container: the container carries the 1Password
  * service account token for the whole vault, and a session that skips permission prompts could
@@ -21,6 +23,7 @@
  */
 
 import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
+import { rmSync } from 'node:fs';
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -96,15 +99,17 @@ export function isClaudeCodeHostConfigured(): boolean {
 }
 
 /**
- * What the server asks the host for: to start a session, or to resume one.
+ * What the server asks the host for: to run a session, starting or resuming it.
  *
  * This is all the connection gets to say. The host's forced command reads it from
  * `SSH_ORIGINAL_COMMAND`, refuses anything else, and runs Claude Code in the sandbox itself (see
- * `mcp/.scripts/claude-code-ssh-command.sh`). The host checks the id too; checking it here as well
- * turns a bug into a clear error rather than a refused connection.
+ * `mcp/.scripts/claude-code-ssh-command.sh`). It decides between starting and resuming by whether
+ * the session's transcript is in the sandbox, so the word sent here is only a hint — kept because
+ * a host still on the older forced command goes by it. The host checks the id too; checking it
+ * here as well turns a bug into a clear error rather than a refused connection.
  *
  * @param sessionId - The Claude Code session id
- * @param resume - Whether the session already exists in the sandbox and is being continued
+ * @param resume - Whether this server believes the session already exists in the sandbox
  */
 export function buildRemoteCommand(sessionId: string, resume: boolean): string {
   if (!SESSION_ID_PATTERN.test(sessionId)) {
@@ -114,17 +119,36 @@ export function buildRemoteCommand(sessionId: string, resume: boolean): string {
   return `${resume ? 'resume' : 'start'} ${sessionId}`;
 }
 
+/** How a Claude Code process ended. */
+export interface ClaudeCodeExit {
+  /** The exit code, or `null` when the process was killed by a signal or could not be spawned. */
+  code: number | null;
+  /** The end of what it wrote to stderr. */
+  stderr: string;
+}
+
 /** A running Claude Code process, as the session manager sees it. */
 export interface ClaudeCodeProcess {
   /** Where user messages are written, one stream-json line each. Ending it lets the process exit. */
   input: Writable;
   /** Claude Code's stream-json output, one event per line. */
   output: Readable;
-  /** Settles once the process has exited, with its exit code and the end of what it wrote to stderr. */
-  exited: Promise<{ code: number | null; stderr: string }>;
+  /** Settles once the process has exited. Never rejects. */
+  exited: Promise<ClaudeCodeExit>;
+  /**
+   * Stops the process without waiting for it to finish its turn. Does nothing once it has exited.
+   *
+   * Over SSH this ends the connection; the host's per-session lock keeps whatever is left of it in
+   * the sandbox from overlapping the next process.
+   */
+  kill(): void;
 }
 
-/** Starts a Claude Code process for a session; swapped out in tests. */
+/**
+ * Starts a Claude Code process for a session; swapped out in tests.
+ *
+ * `resume` is only a hint: the host decides for itself whether the session is resumed.
+ */
 export type ClaudeCodeLauncher = (sessionId: string, resume: boolean) => Promise<ClaudeCodeProcess>;
 
 /**
@@ -141,20 +165,41 @@ function getKnownHostsPath(): string {
 let privateKeyPath: Promise<string> | undefined;
 
 /**
- * Writes the private key to a file only this process's user can read, once.
+ * Writes the private key to a file only this process's user can read, once per server process.
  *
  * `ssh` reads a key from a file and nowhere else. It refuses a key whose file others can read, and
  * one that does not end in a newline, which a value copied out of a vault often does not.
+ *
+ * The file is shared by every session, so it stays until the server exits, and is removed then. A
+ * write that fails is not remembered, so the next launch tries again rather than failing forever.
+ *
+ * @param parentDirectory - Where the key's private directory is made; the system's by default
+ * @internal Exported for tests.
  */
-function writePrivateKey(privateKey: string): Promise<string> {
-  privateKeyPath ??= (async () => {
-    const directory = await mkdtemp(path.join(os.tmpdir(), 'claude-code-ssh-'));
-    const keyPath = path.join(directory, 'id');
-    await writeFile(keyPath, privateKey.endsWith('\n') ? privateKey : `${privateKey}\n`, { mode: 0o600 });
-    return keyPath;
-  })();
+export function writePrivateKey(privateKey: string, parentDirectory = os.tmpdir()): Promise<string> {
+  privateKeyPath ??= writePrivateKeyFile(privateKey, parentDirectory).catch((error: unknown) => {
+    privateKeyPath = undefined;
+    throw error;
+  });
 
   return privateKeyPath;
+}
+
+async function writePrivateKeyFile(privateKey: string, parentDirectory: string): Promise<string> {
+  // `mkdtemp` makes the directory 0700, so nobody else can even list it.
+  const directory = await mkdtemp(path.join(parentDirectory, 'claude-code-ssh-'));
+  const removeDirectory = () => rmSync(directory, { recursive: true, force: true });
+
+  try {
+    const keyPath = path.join(directory, 'id');
+    await writeFile(keyPath, privateKey.endsWith('\n') ? privateKey : `${privateKey}\n`, { mode: 0o600 });
+    // `exit` handlers cannot wait, so the removal is synchronous.
+    process.once('exit', removeDirectory);
+    return keyPath;
+  } catch (error) {
+    removeDirectory();
+    throw error;
+  }
 }
 
 /** Collects a process's stderr, keeping only its end. */
@@ -213,7 +258,7 @@ export const launchClaudeCodeOverSsh: ClaudeCodeLauncher = async (sessionId, res
   );
 
   const stderr = collectStderr(child);
-  const exited = new Promise<{ code: number | null; stderr: string }>((resolve) => {
+  const exited = new Promise<ClaudeCodeExit>((resolve) => {
     child.on('error', (error) => resolve({ code: null, stderr: `${stderr()}\n${error.message}`.trim() }));
     child.on('close', (code) => resolve({ code, stderr: stderr() }));
   });
@@ -224,5 +269,13 @@ export const launchClaudeCodeOverSsh: ClaudeCodeLauncher = async (sessionId, res
   // The first line is the token, which the host reads before handing stdin on to Claude Code.
   child.stdin.write(`${configuration.oauthToken}\n`);
 
-  return { input: child.stdin, output: child.stdout, exited };
+  return {
+    input: child.stdin,
+    output: child.stdout,
+    exited,
+    // Signalling a child that has already exited does nothing.
+    kill: () => {
+      child.kill();
+    },
+  };
 };

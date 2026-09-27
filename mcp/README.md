@@ -214,6 +214,14 @@ nothing else, and fixes everything that matters itself: the `jarvis` sandbox, th
 directory, and the `claude` command line. A compromised container can start Claude Code sessions in
 the sandbox, and that is all.
 
+The script also decides for itself whether a session is started or resumed: it resumes when the
+session's transcript is in the sandbox, and starts it otherwise, whichever word the connection
+used. And it runs one process per session at most. Each takes a lock on
+`~/jarvis-sessions/<session id>.lock` in the sandbox first, waiting up to two minutes for a previous
+process — one a dropped connection left finishing its turn, say — and exiting with code 75 if it
+does not let go. Update `/usr/local/bin/jarvis-claude-code` from step 4 whenever the script changes;
+the server still works against an older copy, but without either of those guarantees.
+
 Any 64-bit Linux on bare metal with KVM can run Docker Sandboxes — the Pi 4 and 5 included — but
 Docker only publishes packages for Ubuntu 24.04 and newer (and Rocky Linux). The Ubuntu 24.04
 package needs glibc 2.39, so it also installs on **Raspberry Pi OS based on Debian 13 (trixie)**,
@@ -302,8 +310,11 @@ or the session runs unauthenticated:
 ```bash
 sudo -iu jarvis
 read -rs CLAUDE_CODE_OAUTH_TOKEN && export CLAUDE_CODE_OAUTH_TOKEN   # paste the OAuth token
-sbx exec -it -e CLAUDE_CODE_OAUTH_TOKEN jarvis sh -c 'cd ~/jarvis-sessions/<id> && claude --resume <id>'
+sbx exec -it -e CLAUDE_CODE_OAUTH_TOKEN jarvis sh -c 'cd ~/jarvis-sessions/<id> && flock -w 120 ../<id>.lock claude --resume <id>'
 ```
+
+The `flock` takes the same lock the forced command does, so a session picked up by hand and one
+Jarvis resumes never run at once.
 
 If sessions start failing with `Not authenticated to Docker`, the host's Docker sign-in has expired:
 run `sudo -iu jarvis sbx login` from your own account — the `jarvis` user's own SSH logins can only
