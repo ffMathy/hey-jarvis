@@ -1,5 +1,18 @@
 # Changelog
 
+## [4.11.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.10.0...root-v4.11.0) (2026-09-27)
+
+
+### Features
+
+* **coding:** answer questions about jarvis's own code ([#894](https://github.com/ffMathy/hey-jarvis/issues/894)) ([fa58e0c](https://github.com/ffMathy/hey-jarvis/commit/fa58e0c28e5ed19d418648c9dafb89b6e6c544ce))
+
+
+### Bug Fixes
+
+* **coding:** keep analysis sessions from ending on background work ([#895](https://github.com/ffMathy/hey-jarvis/issues/895)) ([5940e30](https://github.com/ffMathy/hey-jarvis/commit/5940e3093ae58403859d09e9b2da6107c14a3ce6))
+* **mcp:** load the primary user's phone number from 1Password ([#893](https://github.com/ffMathy/hey-jarvis/issues/893)) ([84ef4f3](https://github.com/ffMathy/hey-jarvis/commit/84ef4f35ec370248cb2a0d05b5fe10ea2e384bbd))
+
 ## [4.10.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.9.0...root-v4.10.0) (2026-09-27)
 
 
