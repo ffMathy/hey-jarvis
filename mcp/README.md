@@ -139,8 +139,8 @@ The image is public, so the Pi needs no registry login.
 | `mcp-server.ts` | 4112 | JWT-authenticated MCP endpoint — the one ElevenLabs calls |
 
 Secrets are never written to the Pi. The 1Password CLI lives inside the image and resolves the
-`op://` references in `mcp/op.env` at process start, from the service account token. The only
-credential on disk is that token, in `.env`.
+`op://` references in `mcp/op.env` (and those in `mcp/op.optional.env` that resolve) at process
+start, from the service account token. The only credential on disk is that token, in `.env`.
 
 The `cloudflared` container shares the MCP container's network namespace, so the tunnel's existing
 ingress rule — `http://localhost:4112`, configured in the Zero Trust dashboard — keeps meaning the
@@ -252,7 +252,7 @@ machine — is the realistic floor.
 
    | Field | Value |
    | --- | --- |
-   | `SSH target` | `jarvis@host.docker.internal` — or `jarvis@<host>` for another machine, with `ssh://jarvis@<host>:<port>` for a port other than 22 |
+   | `SSH target` | `jarvis@host.docker.internal` — or `jarvis@<host>` for another machine, with `ssh://jarvis@<host>:<port>` for a port other than 22. If the MCP container runs with host networking (`--network host`), use `jarvis@127.0.0.1` instead: there `host.docker.internal` resolves to the `docker0` gateway, and host firewalls commonly drop port 22 on it, so the connection times out |
    | `OAuth token` | what `claude setup-token` prints, run on any machine where you are signed in to Claude Code with your subscription |
 
 4. **Install the forced command, and pin the user to it.** Root owns the script, so the `jarvis`
@@ -282,24 +282,36 @@ machine — is the realistic floor.
 
    `ssh jarvis@<host> bash` should now answer `jarvis-claude-code: refusing "bash"` and nothing more.
 
-`mcp/op.env` maps all three fields, so the server resolves them like every other secret, and none
-of them is written to the Pi outside the container. The subscription token goes to the host on the
-first line of the SSH connection's input, never on a command line, and on into the sandbox as
-`CLAUDE_CODE_OAUTH_TOKEN`. The container pins the host's key the first time it connects, in
+`mcp/op.optional.env` maps all three fields, so the server resolves them like every other secret,
+and none of them is written to the Pi outside the container. They are optional on purpose: `op run`
+stops at the first reference it cannot resolve, so `run-with-env.sh` checks each optional one first
+and leaves out any that does not resolve. Without the `Claude Code` item — or with a field missing
+from it — the server starts as usual, the MCP server logs one `Claude Code sessions are not
+configured` warning naming the missing variables, and only coding sessions are unavailable.
+
+The subscription token goes to the host on the first line of the SSH connection's input, never on a
+command line, and on into the sandbox as `CLAUDE_CODE_OAUTH_TOKEN`. The container pins the host's key the first time it connects, in
 `/data/claude-code-known-hosts`; delete that file if the host is reinstalled.
 
 Each session works in `~/jarvis-sessions/<session id>` inside the sandbox. The server keeps track of
 its sessions in memory, so after a restart it no longer knows the ones it started — but the
-transcripts stay in the sandbox, and
-`sbx exec -it jarvis sh -c 'cd ~/jarvis-sessions/<id> && claude --resume <id>'` picks any of them
-up by hand.
+transcripts stay in the sandbox, and any of them can be picked up by hand. Claude Code in the
+sandbox is signed in only by the token it is handed, so export it first and pass it on with `-e`,
+or the session runs unauthenticated:
+
+```bash
+sudo -iu jarvis
+read -rs CLAUDE_CODE_OAUTH_TOKEN && export CLAUDE_CODE_OAUTH_TOKEN   # paste the OAuth token
+sbx exec -it -e CLAUDE_CODE_OAUTH_TOKEN jarvis sh -c 'cd ~/jarvis-sessions/<id> && claude --resume <id>'
+```
 
 If sessions start failing with `Not authenticated to Docker`, the host's Docker sign-in has expired:
 run `sudo -iu jarvis sbx login` from your own account — the `jarvis` user's own SSH logins can only
-run the forced command. The same goes for the `sbx exec -it jarvis …` above, prefixed the same way.
+run the forced command, which is also why the resume above starts from `sudo -iu jarvis`.
 
 If a sandbox will not start on a Pi 5, try the 4 KB-page kernel: the Pi 5's default kernel uses
-16 KB pages, and the sandbox's own kernel is built for 4 KB ones. Add `kernel=kernel8.img` to
+16 KB pages, and the sandbox's own kernel is built for 4 KB ones. The tell-tale is `sbx diagnose`
+warning about `mkfs.erofs` and 16 KB blocks. Add `kernel=kernel8.img` to
 `/boot/firmware/config.txt` and reboot.
 
 ### Troubleshooting

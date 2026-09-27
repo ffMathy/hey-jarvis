@@ -17,6 +17,9 @@
 # stream-json input. The mirror of this is `claude-code-host.ts`.
 set -eu
 
+# sshd accepts LC_* from the client, so pin the locale: bracket ranges below must stay byte-based.
+export LC_ALL=C
+
 reject() {
   echo "jarvis-claude-code: refusing \"${SSH_ORIGINAL_COMMAND:-}\" -- expected \"start <session id>\" or \"resume <session id>\"" >&2
   exit 64
@@ -42,7 +45,12 @@ printf '%s\n' "$session_id" | grep -Eqx '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-
 
 # The token comes in on stdin rather than in the request, so it is never part of a command line on
 # either side of the SSH hop, and `sbx exec -e` hands it on into the sandbox.
-IFS= read -r CLAUDE_CODE_OAUTH_TOKEN || reject
+reject_token() {
+  echo "jarvis-claude-code: expected the Claude subscription token on the first line of input" >&2
+  exit 65
+}
+IFS= read -r CLAUDE_CODE_OAUTH_TOKEN || reject_token
+[ -n "$CLAUDE_CODE_OAUTH_TOKEN" ] || reject_token
 export CLAUDE_CODE_OAUTH_TOKEN
 
 # Inside the sandbox, every session works in a directory of its own, and is resumed from the one it

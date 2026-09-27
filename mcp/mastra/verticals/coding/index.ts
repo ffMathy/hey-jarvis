@@ -1,6 +1,6 @@
 // Coding vertical exports
 export { getCodingAgent } from './agent.js';
-export { isClaudeCodeHostConfigured } from './claude-code-host.js';
+export { getMissingClaudeCodeHostVariables, isClaudeCodeHostConfigured } from './claude-code-host.js';
 export {
   type ClaudeSession,
   type ClaudeSessionEvent,

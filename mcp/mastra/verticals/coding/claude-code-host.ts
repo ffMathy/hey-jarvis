@@ -57,6 +57,20 @@ export interface ClaudeCodeHostConfiguration {
 }
 
 /**
+ * Names the host configuration variables the environment does not set — names only, never values.
+ *
+ * They come from `mcp/op.optional.env`, so a missing 1Password item leaves them unset rather than
+ * stopping the server.
+ */
+export function getMissingClaudeCodeHostVariables(): string[] {
+  return [
+    'HEY_JARVIS_CLAUDE_CODE_SSH_TARGET',
+    'HEY_JARVIS_CLAUDE_CODE_SSH_PRIVATE_KEY',
+    'HEY_JARVIS_CLAUDE_CODE_OAUTH_TOKEN',
+  ].filter((name) => !process.env[name]);
+}
+
+/**
  * Reads the host configuration from the environment.
  *
  * @throws If any of it is missing, naming which without revealing values
@@ -67,14 +81,8 @@ export function getClaudeCodeHostConfiguration(): ClaudeCodeHostConfiguration {
   const oauthToken = process.env.HEY_JARVIS_CLAUDE_CODE_OAUTH_TOKEN;
 
   if (!target || !privateKey || !oauthToken) {
-    const missing = [
-      !target && 'HEY_JARVIS_CLAUDE_CODE_SSH_TARGET',
-      !privateKey && 'HEY_JARVIS_CLAUDE_CODE_SSH_PRIVATE_KEY',
-      !oauthToken && 'HEY_JARVIS_CLAUDE_CODE_OAUTH_TOKEN',
-    ].filter((name): name is string => typeof name === 'string');
-
     throw new Error(
-      `Claude Code sessions are not configured. Missing environment variables: ${missing.join(', ')}. ` +
+      `Claude Code sessions are not configured. Missing environment variables: ${getMissingClaudeCodeHostVariables().join(', ')}. ` +
         'Set up a host with a Docker Sandbox for Claude Code, then point these at it.',
     );
   }
@@ -84,12 +92,7 @@ export function getClaudeCodeHostConfiguration(): ClaudeCodeHostConfiguration {
 
 /** True when the environment carries everything needed to reach the host. */
 export function isClaudeCodeHostConfigured(): boolean {
-  try {
-    getClaudeCodeHostConfiguration();
-    return true;
-  } catch {
-    return false;
-  }
+  return getMissingClaudeCodeHostVariables().length === 0;
 }
 
 /**
@@ -193,6 +196,10 @@ export const launchClaudeCodeOverSsh: ClaudeCodeLauncher = async (sessionId, res
       'StrictHostKeyChecking=accept-new',
       '-o',
       `UserKnownHostsFile=${knownHostsPath}`,
+      // A host that is down or firewalled drops the SYN rather than refusing it, and without a
+      // limit a session would wait out the kernel's own TCP timeout — minutes — before failing.
+      '-o',
+      'ConnectTimeout=15',
       // A session can go quiet for minutes while a build or test suite runs. Keepalives stop a
       // router in between from dropping the connection as idle, and notice a host that is gone.
       '-o',

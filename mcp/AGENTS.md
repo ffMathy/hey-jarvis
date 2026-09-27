@@ -446,7 +446,7 @@ if (number) {
 
 ### Coding Agent
 Manages GitHub repositories and coordinates feature implementation:
-- **7 tools**: List repositories, list issues, search repositories, create/update GitHub issues, follow and steer Claude Code sessions
+- **5 agent tools** (`codingTools`): list repositories (`listUserRepositories`), list issues (`listRepositoryIssues`), search repositories (`searchRepositories`), and follow and steer Claude Code sessions (`getCodingSessionStatus`, `sendCodingSessionMessage`). `tools.ts` also defines `startCodingSession` and `runCodingTask`, which `implementFeatureWorkflow` and other verticals' shortcuts run rather than the agent, and `createGitHubIssue` and `updateGitHubIssue`, which nothing registers today
 - **Google Gemini model**: Uses `gemini-flash-latest` for natural language processing
 - **Repository management**: Browse and search repositories for any GitHub user
 - **Issue tracking**: View open, closed, or all issues for repositories
@@ -457,7 +457,7 @@ Manages GitHub repositories and coordinates feature implementation:
 - List all public repositories for a GitHub user
 - Search repositories by name, keywords, or topics
 - View issues with filtering by state (open/closed/all)
-- Create and update GitHub issues programmatically
+- Follow and steer running Claude Code sessions
 - Trigger requirements gathering workflow for new implementations
 - Provide GitHub URLs for quick access to repositories and issues
 
@@ -521,17 +521,32 @@ without tearing down the watch.
 
 | Environment variable | 1Password reference | What it is |
 | --- | --- | --- |
-| `HEY_JARVIS_GITHUB_API_TOKEN` | already mapped in `mcp/op.env` | GitHub token with `repo` scope — the tools read repositories and issues, and create and update issues |
-| `HEY_JARVIS_CLAUDE_CODE_SSH_TARGET` | `op://Jarvis/Claude Code/SSH target` | The host with the `jarvis` sandbox: `user@host`, or `ssh://user@host:port` |
+| `HEY_JARVIS_GITHUB_API_TOKEN` | already mapped in `mcp/op.env` | GitHub token with `repo` scope — the tools read repositories and issues |
+| `HEY_JARVIS_CLAUDE_CODE_SSH_TARGET` | `op://Jarvis/Claude Code/SSH target` | The host with the `jarvis` sandbox: `user@host`, or `ssh://user@host:port`. With the MCP container on host networking (`--network host`), `jarvis@127.0.0.1` — there `host.docker.internal` is the `docker0` gateway, whose port 22 host firewalls commonly drop |
 | `HEY_JARVIS_CLAUDE_CODE_SSH_PRIVATE_KEY` | `op://Jarvis/Claude Code/private key?ssh-format=openssh` | The key the host authorizes for that user |
 | `HEY_JARVIS_CLAUDE_CODE_OAUTH_TOKEN` | `op://Jarvis/Claude Code/OAuth token` | The subscription token `claude setup-token` prints |
 
 The host itself — 64-bit Linux with KVM and glibc 2.39 or newer, a user of its own signed in to Docker and pinned to
 the forced command, the `jarvis` sandbox and its GitHub secret — is set up as described in **Letting Jarvis code on your Claude subscription** in `mcp/README.md`.
 
-The vertical imports without any of them — `isClaudeCodeHostConfigured()` keeps the failure lazy, so repository
-and issue browsing works on the GitHub token alone and only the tools that start or follow a session
-(`startCodingSession`, `runCodingTask` and the session tools) need the host.
+The three `HEY_JARVIS_CLAUDE_CODE_*` references live in `mcp/op.optional.env`, not `mcp/op.env`. `op run` fails
+on the first reference it cannot resolve, and when they sat in `mcp/op.env` a missing `Claude Code` item crash-looped
+both supervisord programs and took all of Jarvis down. Now `.scripts/run-with-env.sh` hands `op run` only the
+optional references that resolve (`.scripts/append-optional-env.sh` tests each with `op read`, printing the
+reference, never the value), and they never count as missing when deciding whether to fall back to 1Password. A
+missing item disables coding sessions and nothing else.
+
+The vertical imports without any of them — `getClaudeCodeHostConfiguration()` throws only when a session is launched,
+so repository and issue browsing works on the GitHub token alone and only the tools that start or follow a session
+(`startCodingSession`, `runCodingTask` and the session tools) need the host. At startup `mcp-server.ts` checks
+`isClaudeCodeHostConfigured()` and logs one warning naming whichever variables are missing
+(`getMissingClaudeCodeHostVariables()`, names only).
+
+To resume a session by hand on the host, run
+`sbx exec -it -e CLAUDE_CODE_OAUTH_TOKEN jarvis sh -c 'cd ~/jarvis-sessions/<id> && claude --resume <id>'` as the
+`jarvis` user with `CLAUDE_CODE_OAUTH_TOKEN` exported first — without `-e` Claude Code in the sandbox runs
+unauthenticated. On a Pi 5, `sbx diagnose` warning about `mkfs.erofs` and 16 KB blocks means the 16 KB-page kernel;
+`mcp/README.md` has the fix.
 
 **Example Use Cases:**
 - "What repositories does ffMathy have?"
@@ -2161,7 +2176,8 @@ const PROVIDERS: OAuthProvider[] = [
    ];
    ```
 
-5. **Update Environment Files**: Add new variables to `mcp/op.env`
+5. **Update Environment Files**: Add new variables to `mcp/op.env` — or to `mcp/op.optional.env` if the server
+   must keep running while the 1Password item does not exist yet (a missing `mcp/op.env` reference stops it)
    ```bash
    HEY_JARVIS_YOUR_PROVIDER_CLIENT_ID="op://Jarvis/Your Provider/Hey Jarvis client ID"
    HEY_JARVIS_YOUR_PROVIDER_CLIENT_SECRET="op://Jarvis/Your Provider/Hey Jarvis client secret"

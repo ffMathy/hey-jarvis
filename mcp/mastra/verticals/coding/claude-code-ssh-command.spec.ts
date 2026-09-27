@@ -97,10 +97,15 @@ describe('claude-code-ssh-command.sh', () => {
     expect(sbxArguments).toEqual([]);
   });
 
-  it('refuses a connection that sends no token', () => {
-    const { status, sbxArguments } = runAsSshd(`start ${SESSION_ID}`, '');
+  it.each([
+    ['sends no input at all', ''],
+    ['sends an empty first line', '\n{"type":"user"}\n'],
+  ])('refuses a connection that %s, as a missing token rather than a bad request', (_description, stdin) => {
+    const { status, stderr, sbxArguments } = runAsSshd(`start ${SESSION_ID}`, stdin);
 
-    expect(status).toBe(64);
+    expect(status).toBe(65);
+    expect(stderr).toContain('expected the Claude subscription token on the first line of input');
+    expect(stderr).not.toContain('refusing');
     expect(sbxArguments).toEqual([]);
   });
 });
