@@ -265,7 +265,7 @@ async function deliver(input: DeliveryInput): Promise<{ success: boolean; messag
   switch (input.channel) {
     case 'phone-call': {
       const result = await executeTool(initiatePhoneCall, {
-        phoneNumber: resolvePhoneNumber(input.target),
+        phoneNumber: resolvePhoneNumber(input.target, 'called'),
         firstMessage: input.message,
       });
       return { success: result.success, message: result.message };
@@ -287,7 +287,7 @@ async function deliver(input: DeliveryInput): Promise<{ success: boolean; messag
 
     case 'text-message': {
       const result = await executeTool(sendTextMessage, {
-        phoneNumber: resolvePhoneNumber(input.target),
+        phoneNumber: resolvePhoneNumber(input.target, 'texted'),
         message: input.message,
       });
       return { success: result.success, message: result.message };
@@ -309,13 +309,16 @@ async function deliver(input: DeliveryInput): Promise<{ success: boolean; messag
  *
  * A contact carries its own; the primary user does not, because a `user` target deliberately
  * holds no contact details — so his has to come from configuration.
+ *
+ * `action` names the channel in the error, because "reached by phone" alone reads the same for a
+ * call and an SMS, and which one it was is the first thing anyone tracing a failure asks.
  */
-function resolvePhoneNumber(target: NotificationTarget): string {
+function resolvePhoneNumber(target: NotificationTarget, action: 'called' | 'texted'): string {
   if (isUserTarget(target)) {
     const phoneNumber = getPrimaryUserPhoneNumber();
     if (!phoneNumber) {
       throw new Error(
-        `${getPrimaryUserName()} has to be reached by phone, but no number is configured. Set HEY_JARVIS_PRIMARY_USER_PHONE_NUMBER to his number in E.164 format.`,
+        `${getPrimaryUserName()} has to be ${action}, but no number is configured. Set HEY_JARVIS_PRIMARY_USER_PHONE_NUMBER to his number in E.164 format.`,
       );
     }
     return phoneNumber;
@@ -323,7 +326,7 @@ function resolvePhoneNumber(target: NotificationTarget): string {
 
   const phoneNumber = target.phoneNumber?.trim();
   if (!phoneNumber) {
-    throw new Error(`${describeNotificationTarget(target)} has no phone number to reach.`);
+    throw new Error(`${describeNotificationTarget(target)} has to be ${action}, but has no phone number.`);
   }
   return phoneNumber;
 }

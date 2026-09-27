@@ -253,7 +253,9 @@ would have been announced falls back to a push notification instead of being dro
 
 **Required Environment Variables:**
 - `HEY_JARVIS_PRIMARY_USER_PHONE_NUMBER`: the primary user's own number in E.164 format. Needed
-  before Jarvis can call or text him — a `user` target carries no number of its own.
+  before Jarvis can call him — a `user` target carries no number of its own. Resolved from
+  `op://Jarvis/Primary user/Phone number` through `mcp/op.optional.env`, so a missing item only
+  disables calling him rather than stopping the server.
 - `HEY_JARVIS_PRIMARY_USER_NAME` (optional): the primary user's name. Defaults to `Mathias`, and is
   what person and phone entities are matched against.
 - `HEY_JARVIS_PRIMARY_USER_PHONE_DEVICE` (optional): device slug of his phone, e.g. `mathias_iphone`.
