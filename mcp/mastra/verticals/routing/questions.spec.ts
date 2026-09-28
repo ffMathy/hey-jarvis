@@ -14,6 +14,7 @@ import {
   listOpenQuestions,
   nextQuestionId,
   type OpenQuestion,
+  openAnsweredByQuestion,
   readSuspension,
   rememberOpenQuestions,
   takeOpenQuestion,
@@ -127,5 +128,38 @@ describe('what the planner is shown', () => {
     expect(prompt).toContain('Push, please.');
     expect(prompt).toContain(`"${question.id}"`);
     expect(prompt).toContain('Email, or a push notification?');
+  });
+});
+
+describe('a question opened with a function to answer it', () => {
+  it('is open from the moment it is opened, under an id of its own', () => {
+    const opened = openAnsweredByQuestion({
+      taskId: 'Add a greeting',
+      agentId: 'coding',
+      question: 'Danish, or English?',
+      deliverAnswer: async () => 'Passed on.',
+    });
+
+    expect(opened.id).toMatch(/^q\d+$/);
+    expect(listOpenQuestions()).toEqual([opened]);
+  });
+
+  it('is answered once, like any other question', async () => {
+    const answers: string[] = [];
+    const opened = openAnsweredByQuestion({
+      taskId: 'Add a greeting',
+      agentId: 'coding',
+      question: 'Danish, or English?',
+      deliverAnswer: async (answer) => {
+        answers.push(answer);
+        return 'Passed on.';
+      },
+    });
+
+    const taken = takeOpenQuestion(opened.id);
+    expect(taken).toBe(opened);
+    expect(takeOpenQuestion(opened.id)).toBeUndefined();
+    expect(await opened.deliverAnswer('Danish.')).toBe('Passed on.');
+    expect(answers).toEqual(['Danish.']);
   });
 });

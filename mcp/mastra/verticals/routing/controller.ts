@@ -15,12 +15,15 @@ import {
 import {
   asDelegationSuspension,
   type DelegationSuspension,
+  type AnsweredByQuestion,
   forgetOpenQuestions,
+  isAnsweredByQuestion,
   listOpenQuestions,
   nextQuestionId,
   type OpenQuestion,
   readSuspension,
   rememberOpenQuestions,
+  type SuspendedAgentQuestion,
   takeOpenQuestion,
 } from './questions.js';
 
@@ -250,7 +253,7 @@ export class RoutingProgress {
       return;
     }
 
-    const question: OpenQuestion = {
+    const question: SuspendedAgentQuestion = {
       id: nextQuestionId(),
       ...delegation,
       question: readable.question,
@@ -812,7 +815,7 @@ function answerDelegationId(question: OpenQuestion): string {
 async function resumeWithAnswer(
   mastra: Mastra,
   progress: RoutingProgress,
-  question: OpenQuestion,
+  question: SuspendedAgentQuestion,
   answer: string,
   signal: AbortSignal,
 ): Promise<void> {
@@ -840,6 +843,28 @@ async function resumeWithAnswer(
     }
 
     progress.handle({ type: 'delegation_end', delegationId, result: { text: await output.text }, isError: false });
+  } catch (error) {
+    progress.handle({
+      type: 'delegation_end',
+      delegationId,
+      result: `could not carry the answer back: ${error instanceof Error ? error.message : String(error)}`,
+      isError: true,
+    });
+  }
+}
+
+/**
+ * Hands an answer to the function its question was opened with, and reports what came of it.
+ *
+ * For work nothing suspended for -- a Claude Code session that stopped to ask, most often -- so
+ * there is no agent to resume: the question's own `deliverAnswer` knows where the answer goes.
+ */
+async function deliverAnswer(progress: RoutingProgress, question: AnsweredByQuestion, answer: string): Promise<void> {
+  const delegationId = answerDelegationId(question);
+
+  try {
+    const text = await question.deliverAnswer(answer);
+    progress.handle({ type: 'delegation_end', delegationId, result: { text }, isError: false });
   } catch (error) {
     progress.handle({
       type: 'delegation_end',
@@ -909,7 +934,11 @@ async function runRequest(
   // Settled rather than all: a plan run that fails must not close the request while an answer
   // is still being carried back, or a question that answer leads to would be asked of nobody.
   const outcomes = await Promise.allSettled([
-    ...answered.map(({ question, answer }) => resumeWithAnswer(mastra, progress, question, answer, signal)),
+    ...answered.map(({ question, answer }) =>
+      isAnsweredByQuestion(question)
+        ? deliverAnswer(progress, question, answer)
+        : resumeWithAnswer(mastra, progress, question, answer, signal),
+    ),
     ...(chains.length > 0 ? [runPlan(mastra, sessionId, progress, userQuery, chains, signal)] : []),
   ]);
 

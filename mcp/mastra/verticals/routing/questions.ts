@@ -12,6 +12,12 @@ import { logger } from '../../utils/logger.js';
  *
  * Nothing here is specific to coding. Any tool of any routable agent that suspends with a
  * `question` becomes a question for sir, and is resumed with his answer.
+ *
+ * Work that runs outside a routing request asks too. A Claude Code session implementing a change
+ * can stop at any point to ask sir something, long after the request that started it has been
+ * answered; nothing is suspended then, so its question is opened with the function that hands the
+ * answer on (see {@link openAnsweredByQuestion}). Either way the answer arrives the same way -- as
+ * whatever sir says next to Jarvis, which the planner matches to the question it answers.
  */
 
 /** A delegation's agent, stopped inside a tool call until someone answers it. */
@@ -26,24 +32,45 @@ export interface DelegationSuspension {
   resumeSchema: string | undefined;
 }
 
+/** What every question put to sir carries, however its answer is carried back. */
+interface QuestionBase {
+  /** Short and unique, so the planner can say which question a request answers. */
+  id: string;
+  /** The task that asked, which is what the caller is told. */
+  taskId: string;
+  /** The agent that is waiting, or the vertical whose work is. */
+  agentId: string;
+  question: string;
+}
+
+/** A question an agent suspended on, answered by resuming it where it stopped. */
+export interface SuspendedAgentQuestion extends QuestionBase {
+  agentRunId: string;
+  toolCallId: string;
+  /** The field of the resume data the answer is written into. */
+  answerField: string;
+}
+
+/**
+ * A question whose answer is handed to a function, for work nothing suspended for.
+ *
+ * `deliverAnswer` resolves to what came of it, which is what sir is told once he has answered.
+ */
+export interface AnsweredByQuestion extends QuestionBase {
+  deliverAnswer: (answer: string) => Promise<string>;
+}
+
 /**
  * A question put to sir, waiting for his answer.
  *
  * Kept past the request that asked it, since the answer only ever arrives as a later request:
  * Jarvis asks, sir replies, and the reply is routed like anything else he says.
  */
-export interface OpenQuestion {
-  /** Short and unique, so the planner can say which question a request answers. */
-  id: string;
-  /** The task that asked, which is what the caller is told. */
-  taskId: string;
-  /** The agent that is waiting. */
-  agentId: string;
-  question: string;
-  agentRunId: string;
-  toolCallId: string;
-  /** The field of the resume data the answer is written into. */
-  answerField: string;
+export type OpenQuestion = SuspendedAgentQuestion | AnsweredByQuestion;
+
+/** Whether a question's answer goes to a function rather than to a suspended agent. */
+export function isAnsweredByQuestion(question: OpenQuestion): question is AnsweredByQuestion {
+  return 'deliverAnswer' in question;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -144,6 +171,18 @@ export function rememberOpenQuestions(questions: OpenQuestion[]): void {
   for (const question of questions) {
     openQuestionsById.set(question.id, question);
   }
+}
+
+/**
+ * Opens a question whose answer is handed to `deliverAnswer`, and keeps it until sir answers.
+ *
+ * Opened before it is asked, because the answer can come back within seconds: a question asked
+ * on a call is answered on that same call.
+ */
+export function openAnsweredByQuestion(question: Omit<AnsweredByQuestion, 'id'>): AnsweredByQuestion {
+  const opened = { ...question, id: nextQuestionId() };
+  rememberOpenQuestions([opened]);
+  return opened;
 }
 
 /** Every question still waiting for an answer, oldest first. */

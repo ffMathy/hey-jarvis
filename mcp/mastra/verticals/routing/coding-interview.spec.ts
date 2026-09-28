@@ -1,42 +1,38 @@
 /**
- * A coding request from Jarvis's side of the line, from the first sentence to the Claude session.
+ * A coding request from Jarvis's side of the line, from the first sentence to the answer that
+ * reaches the Claude session.
  *
  * This is the path the ElevenLabs agent takes, through the same two MCP tools it calls:
  * `routePromptWorkflow` with what sir said, then `getNextInstructionsWorkflow` until a response
- * closes the request. In between, the planner hands the request to the coding agent, the coding
- * agent starts `implementFeatureWorkflow` as a tool, a Claude session reads the codebase, and the
- * workflow suspends on the first question that session could not answer -- which has to come
- * back out of the poll as something Jarvis can ask. Sir's reply goes back in through
- * `routePromptWorkflow`, and has to reach the suspended workflow rather than start a new errand.
+ * closes the request. In between, the planner hands the request to the coding agent, and the
+ * coding agent starts `implementFeatureWorkflow` as a tool, which starts a Claude session at once
+ * -- nothing is asked first.
  *
- * The workflow is marked slow, so the poll also has to offer to notify him instead of holding the
- * line, and taking that offer has to let the request outlive the conversation.
+ * The session asks later, whenever it needs something only sir can decide: its turn ends on a
+ * question, the watcher asks him over a channel his answer can come back on, and his answer -- the
+ * next thing he says to Jarvis, on that call or any later one -- goes back in through
+ * `routePromptWorkflow` and has to reach the session rather than start a new errand.
  *
- * Every model is scripted and both Claude sessions are recorders, so what is tested is the
- * plumbing between them: that a suspension surfaces, that an answer resumes it, that the slow
- * offer and the notification work, and that the questions end in exactly one session.
+ * Every model is scripted, the Claude session is a recorder and asking is spied on, so what is
+ * tested is the plumbing between them.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 import { Mastra } from '@mastra/core';
 import { InMemoryStore } from '@mastra/core/storage';
 import {
   type CodingToolRecorder,
-  RECORDED_ANALYSIS,
   RECORDED_SESSION_ID,
-  type RecordCodingToolsOptions,
   recordCodingTools,
 } from '../../../tests/utils/coding-tool-recorder.js';
 import { createScriptedModel } from '../../../tests/utils/scripted-model.js';
 import { createAgent } from '../../utils/agent-factory.js';
 import { createInstructionsWorkflowTool, createSimplifiedWorkflowTool } from '../../utils/mcp-tool-factory.js';
 import { executeTool } from '../../utils/tool-factory.js';
+import type { ClaudeSessionEvent } from '../coding/claude-sessions.js';
+import { ClaudeSessionWatcher, createSessionQuestionAsker } from '../coding/session-watcher.js';
 import { implementFeatureWorkflow } from '../coding/workflows.js';
-import {
-  type CompletionNotice,
-  resetCompletionNotifierForTest,
-  setCompletionNotifierForTest,
-} from './completion-notice.js';
+import { askQuestion } from '../notification/tools.js';
 import { resetRoutingRuntime } from './controller.js';
 import { PLANNER_AGENT_ID } from './planner.js';
 import { listOpenQuestions } from './questions.js';
@@ -48,10 +44,10 @@ import {
 } from './workflows.js';
 
 const FEATURE_REQUEST = 'Build me reminders that go out before my tasks are due.';
-const [FIRST_QUESTION, SECOND_QUESTION] = RECORDED_ANALYSIS.questions;
-const FIRST_ANSWER = 'Push, please.';
-const SECOND_ANSWER = 'An hour before.';
+const SESSION_QUESTION = 'Should the reminder go out by email, or as a push notification?';
+const ANSWER = 'Push, please.';
 const SESSION_STARTED = 'A Claude Code session is now implementing push reminders for tasks.';
+const TITLE = 'Push reminders for tasks';
 
 /**
  * The planner: a coding task for the feature request, and an answer for anything said while a
@@ -60,14 +56,13 @@ const SESSION_STARTED = 'A Claude Code session is now implementing push reminder
 function scriptedPlanner() {
   return createScriptedModel(({ transcript }) => {
     const waitingQuestionId = transcript.match(/id "(q\d+)", asked by/)?.[1];
-    const answer = [FIRST_ANSWER, SECOND_ANSWER].find((candidate) => transcript.includes(candidate));
 
-    if (waitingQuestionId && answer) {
+    if (waitingQuestionId && transcript.includes(ANSWER)) {
       return {
         text: JSON.stringify({
-          responseStyle: 'briefing',
+          responseStyle: 'command',
           tasks: [],
-          answers: [{ questionId: waitingQuestionId, answer }],
+          answers: [{ questionId: waitingQuestionId, answer: ANSWER }],
         }),
       };
     }
@@ -114,7 +109,6 @@ const pollTool = createSimplifiedWorkflowTool(getNextInstructionsWorkflow);
 interface PollResponse {
   instructions: string;
   completedTaskResults?: { id: string; result: unknown }[];
-  taskIdsInProgress?: string[];
   questionsForUser?: { id: string; question: string }[];
   slowTaskIds?: string[];
 }
@@ -122,16 +116,12 @@ interface PollResponse {
 /** The openings a response has when it closes a request, and only then. */
 const CLOSING_OPENINGS = ['All tasks have completed', 'The request could not be completed', 'Part of this request'];
 
-async function poll(input: { notifyWhenDone?: boolean } = {}): Promise<PollResponse> {
-  return (await executeTool(pollTool, input)) as PollResponse;
-}
-
 /** Says something to Jarvis, and does what he does: polls until the request is closed. */
 async function say(userQuery: string): Promise<PollResponse> {
   await executeTool(routeTool, { userQuery, async: false });
 
   for (let attempt = 0; attempt < 30; attempt += 1) {
-    const response = await poll();
+    const response = (await executeTool(pollTool, {})) as PollResponse;
     if (CLOSING_OPENINGS.some((opening) => response.instructions.startsWith(opening))) {
       return response;
     }
@@ -140,16 +130,59 @@ async function say(userQuery: string): Promise<PollResponse> {
   throw new Error(`"${userQuery}" was never closed`);
 }
 
-let codingTools: CodingToolRecorder | undefined;
+/** What the session was asked, and what reached it. */
+interface SessionLine {
+  asked: { question: string; about?: string }[];
+  sent: { sessionId: string; message: string }[];
+}
 
 /**
- * Registers the workflows and agents on a fresh instance, with the analysing session recorded.
+ * Has a watched session end its turn on a question, the way a real one does, and records both
+ * directions of the line: what sir was asked, and what was sent back to the session.
+ */
+async function sessionAsks(question: string): Promise<SessionLine> {
+  const line: SessionLine = { asked: [], sent: [] };
+  askSpy = spyOn(askQuestion, 'execute').mockImplementation(async (inputData) => {
+    line.asked.push(inputData);
+    return { success: true, channel: 'phone-call', reason: 'He is in the car.', message: 'Phone call initiated' };
+  });
+
+  const turn: ClaudeSessionEvent[] = [
+    { id: 'sevt_1', type: 'session.status_running' },
+    { id: 'sevt_2', type: 'agent.message', text: `I read the code.\n\n\`\`\`jarvis-question\n${question}\n\`\`\`` },
+    { id: 'sevt_3', type: 'session.status_idle', stopReason: 'end_turn' },
+  ];
+  const watcher = new ClaudeSessionWatcher(
+    async function* () {
+      yield* turn;
+    },
+    async () => {},
+    0,
+    async () => undefined,
+    createSessionQuestionAsker(async (sessionId, message) => {
+      line.sent.push({ sessionId, message });
+    }),
+  );
+
+  watcher.watch(RECORDED_SESSION_ID, { title: TITLE });
+  for (let attempt = 0; attempt < 50 && line.asked.length === 0; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+
+  return line;
+}
+
+let codingTools: CodingToolRecorder | undefined;
+let askSpy: { mockRestore(): void } | undefined;
+
+/**
+ * Registers the workflows and agents on a fresh instance, with the Claude session recorded.
  *
  * Registering the workflows here is what hands their steps this instance: the routing steps plan
- * against its agents, and the coding workflow persists its suspension in its storage.
+ * against its agents.
  */
-async function setUp(options?: RecordCodingToolsOptions): Promise<CodingToolRecorder> {
-  codingTools = recordCodingTools(options);
+async function setUp(): Promise<CodingToolRecorder> {
+  codingTools = recordCodingTools();
 
   new Mastra({
     storage: new InMemoryStore(),
@@ -174,120 +207,66 @@ beforeEach(() => {
 afterEach(() => {
   codingTools?.restore();
   codingTools = undefined;
-  resetCompletionNotifierForTest();
+  askSpy?.mockRestore();
+  askSpy = undefined;
   resetRoutingRuntime();
   resetPollDeadlineForTest();
 });
 
 describe('a coding request made by voice', () => {
-  it('comes back as the first question the codebase could not answer, with nothing started yet', async () => {
+  it('starts one Claude session at once, asking nothing first', async () => {
     const recorder = await setUp();
 
     const response = await say(FEATURE_REQUEST);
 
-    expect(response.questionsForUser).toEqual([{ id: 'feature', question: FIRST_QUESTION }]);
-    expect(response.instructions).toContain('send his answer through routePromptWorkflow');
-    expect(recorder.analysisTasks).toHaveLength(1);
-    expect(recorder.startedSessions).toEqual([]);
-  }, 60_000);
-
-  it('carries each answer back to the workflow, and asks the next question', async () => {
-    const recorder = await setUp();
-    await say(FEATURE_REQUEST);
-
-    const response = await say(FIRST_ANSWER);
-
-    expect(response.questionsForUser).toEqual([{ id: 'feature', question: SECOND_QUESTION }]);
-    // The workflow heard the answer, rather than a fresh analysis being started with it.
-    expect(recorder.analysisTasks).toHaveLength(1);
-    expect(recorder.startedSessions).toEqual([]);
-  }, 60_000);
-
-  it('ends in one Claude session, reported back as the request’s result', async () => {
-    const recorder = await setUp();
-    await say(FEATURE_REQUEST);
-    await say(FIRST_ANSWER);
-
-    const response = await say(SECOND_ANSWER);
-
     expect(response.instructions).toStartWith('All tasks have completed');
     expect(response.questionsForUser).toBeUndefined();
+    expect(response.slowTaskIds).toBeUndefined();
     expect(response.completedTaskResults).toEqual([{ id: 'feature', result: SESSION_STARTED }]);
-    expect(recorder.startedSessions).toHaveLength(1);
-    expect(recorder.startedSessions[0].instructions).toContain(FIRST_ANSWER);
-    expect(recorder.startedSessions[0].instructions).toContain(SECOND_ANSWER);
-    expect(listOpenQuestions()).toEqual([]);
-  }, 60_000);
-
-  it('keeps the question open while sir talks about something else, and takes the answer after', async () => {
-    await setUp();
-    await say(FEATURE_REQUEST);
-
-    const aside = await say('What is the meaning of life?');
-    expect(aside.instructions).toStartWith('The request could not be completed');
-    expect(listOpenQuestions()).toMatchObject([{ question: FIRST_QUESTION }]);
-
-    const response = await say(FIRST_ANSWER);
-    expect(response.questionsForUser).toEqual([{ id: 'feature', question: SECOND_QUESTION }]);
+    expect(recorder.startedSessions).toEqual([expect.objectContaining({ request: FEATURE_REQUEST })]);
   }, 60_000);
 });
 
-describe('a coding request that takes minutes', () => {
-  /** Longer than a poll's deadline, so the analysis is still running when the first poll returns. */
-  const SLOW_ANALYSIS = { analysisDelayMilliseconds: 2_500 };
+describe('a question the Claude session asks along the way', () => {
+  it('is put to sir, and stays open until he answers', async () => {
+    await setUp();
+    await say(FEATURE_REQUEST);
 
-  /** Captures the notices that would be sent to sir, and resolves once the first one is. */
-  function recordNotices() {
-    const notices: CompletionNotice[] = [];
-    const firstNotice = new Promise<void>((resolve) => {
-      setCompletionNotifierForTest(async (notice) => {
-        notices.push(notice);
-        resolve();
-      });
-    });
-    return { notices, firstNotice };
-  }
+    const line = await sessionAsks(SESSION_QUESTION);
 
-  it('has Jarvis offer to notify sir rather than hold the line', async () => {
-    await setUp(SLOW_ANALYSIS);
-    await executeTool(routeTool, { userQuery: FEATURE_REQUEST, async: false });
-
-    const response = await poll();
-
-    expect(response.slowTaskIds).toEqual(['feature']);
-    expect(response.instructions).toContain('offer to notify him when it is done');
+    expect(line.asked).toEqual([{ question: SESSION_QUESTION, about: TITLE }]);
+    expect(listOpenQuestions()).toMatchObject([{ question: SESSION_QUESTION, agentId: 'coding' }]);
+    expect(line.sent).toEqual([]);
   }, 60_000);
 
-  it('sends sir the question once he has taken the offer, and still takes his answer later', async () => {
-    const recorder = await setUp(SLOW_ANALYSIS);
-    const { notices, firstNotice } = recordNotices();
-    await executeTool(routeTool, { userQuery: FEATURE_REQUEST, async: false });
-    await poll();
+  it('gets his answer, back through routePromptWorkflow, to the session that asked', async () => {
+    const recorder = await setUp();
+    await say(FEATURE_REQUEST);
+    const line = await sessionAsks(SESSION_QUESTION);
 
-    const accepted = await poll({ notifyWhenDone: true });
-    expect(accepted.instructions).toContain('will be notified when this request is done');
+    const response = await say(ANSWER);
 
-    await firstNotice;
-    expect(notices).toEqual([{ title: 'Jarvis has a question', message: expect.stringContaining(FIRST_QUESTION) }]);
-    expect(recorder.startedSessions).toEqual([]);
-
-    const response = await say(FIRST_ANSWER);
-    expect(response.questionsForUser).toEqual([{ id: 'feature', question: SECOND_QUESTION }]);
+    expect(line.sent).toEqual([{ sessionId: RECORDED_SESSION_ID, message: ANSWER }]);
+    expect(response.instructions).toStartWith('All tasks have completed');
+    expect(response.completedTaskResults).toEqual([
+      { id: TITLE, result: expect.stringContaining('Passed the answer on to the Claude Code session') },
+    ]);
+    // The answer reached the session that asked, rather than starting another one.
+    expect(recorder.startedSessions).toHaveLength(1);
+    expect(listOpenQuestions()).toEqual([]);
   }, 60_000);
 
-  it('is not cancelled by what sir asks for next', async () => {
-    const recorder = await setUp(SLOW_ANALYSIS);
-    const { notices, firstNotice } = recordNotices();
-    await executeTool(routeTool, { userQuery: FEATURE_REQUEST, async: false });
-    await poll();
-    await poll({ notifyWhenDone: true });
+  it('stays open while sir talks about something else, and takes the answer after', async () => {
+    await setUp();
+    await say(FEATURE_REQUEST);
+    const line = await sessionAsks(SESSION_QUESTION);
 
-    // A new request would ordinarily supersede the running one and cancel it.
-    await say('What is the meaning of life?');
-    await firstNotice;
+    const aside = await say('What is the meaning of life?');
+    expect(aside.instructions).toStartWith('The request could not be completed');
+    expect(listOpenQuestions()).toMatchObject([{ question: SESSION_QUESTION }]);
+    expect(line.sent).toEqual([]);
 
-    expect(recorder.analysisTasks).toHaveLength(1);
-    expect(notices[0].message).toContain(FIRST_QUESTION);
-    expect(listOpenQuestions()).toMatchObject([{ question: FIRST_QUESTION }]);
+    await say(ANSWER);
+    expect(line.sent).toEqual([{ sessionId: RECORDED_SESSION_ID, message: ANSWER }]);
   }, 60_000);
 });

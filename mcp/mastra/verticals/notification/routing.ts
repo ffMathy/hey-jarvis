@@ -121,3 +121,51 @@ function decideForPrimaryUser(presence: UserPresence, isUrgent: boolean): Channe
     reason: `${userName} is away and the message is not urgent, so it goes out as a push notification. ${reasons.home}`,
   };
 }
+
+/**
+ * Picks the channel a question for the primary user goes out on.
+ *
+ * A question is only worth asking where he can answer it, so this keeps to the two channels that
+ * carry his reply back to Jarvis — a call, and the house speakers, which stay listening after they
+ * speak. Whichever he answers on, his reply reaches `routePromptWorkflow` like anything else he
+ * says, and is matched to the question it answers (see `routing/questions.ts`).
+ *
+ * 1. **In the car** → call him, as for any notification.
+ * 2. **Phone silenced** → he has asked for quiet, and neither a call nor the speakers can reach him
+ *    without breaking it. The question goes out as a push notification instead, saying that he can
+ *    answer it the next time he talks to Jarvis — the question stays open until then.
+ * 3. **At home** → the house asks him out loud, and listens for his answer.
+ * 4. **Out** → call him.
+ *
+ * Unlike a notification, urgency does not come into it: a question holds up the work that asked
+ * it until it is answered, so it is always worth asking now.
+ */
+export function decideQuestionChannel(presence: UserPresence): ChannelDecision {
+  const { userName, isHome, isInCar, isPhoneSilenced, reasons } = presence;
+
+  if (isInCar) {
+    return {
+      channel: 'phone-call',
+      reason: `${userName} is in the car, so Jarvis calls him to ask. ${reasons.car}`,
+    };
+  }
+
+  if (isPhoneSilenced) {
+    return {
+      channel: 'push-notification',
+      reason: `${userName}'s phone is silenced, so rather than ring him or talk over the room, the question goes out as a push notification he can answer the next time he talks to Jarvis. ${reasons.phone}`,
+    };
+  }
+
+  if (isHome) {
+    return {
+      channel: 'voice-announcement',
+      reason: `${userName} is home, so the house asks him out loud and listens for his answer. ${reasons.home}`,
+    };
+  }
+
+  return {
+    channel: 'phone-call',
+    reason: `${userName} is away, so Jarvis calls him to ask. ${reasons.home}`,
+  };
+}
