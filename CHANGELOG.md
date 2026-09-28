@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.12.1](https://github.com/ffMathy/hey-jarvis/compare/root-v4.12.0...root-v4.12.1) (2026-09-28)
+
+
+### Bug Fixes
+
+* **coding:** tell the user when a coding session is done ([#901](https://github.com/ffMathy/hey-jarvis/issues/901)) ([ac9da32](https://github.com/ffMathy/hey-jarvis/commit/ac9da327fdac35eb3ff8f6cf702f9315e882bb40))
+
 ## [4.12.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.11.0...root-v4.12.0) (2026-09-28)
 
 
