@@ -12,15 +12,22 @@
  * implement a change cannot push, so when one of its turns ends with the work
  * done, the watcher publishes it (`publish-session-work.ts`) and reports the
  * pull request — or why there is none — as a state change of its own.
+ *
+ * And it is how a session asks the user something. A turn that ends on a question
+ * (`session-questions.ts`) is not published: the question is put to the user over a channel his
+ * answer can come back on, and the answer resumes the session. So a session can ask at any point
+ * in its work — before it has changed a line, or halfway through — and carry on from there.
  */
 
 import { truncate } from 'lodash-es';
 import { logger } from '../../utils/logger.js';
 import { executeTool } from '../../utils/tool-factory.js';
+import { askUserQuestion } from '../notification/tools.js';
 import type { StateChange } from '../synapse/state-change.js';
 import { registerStateChange } from '../synapse/tools.js';
-import { type ClaudeSessionEvent, streamClaudeSessionEvents } from './claude-sessions.js';
+import { type ClaudeSessionEvent, sendClaudeSessionMessage, streamClaudeSessionEvents } from './claude-sessions.js';
 import { type PublishTarget, publishSessionWork, type SessionWorkPublication } from './publish-session-work.js';
+import { readSessionQuestion } from './session-questions.js';
 
 /** Vertical name every coding state change is attributed to. */
 export const CODING_STATE_CHANGE_SOURCE = 'coding';
@@ -142,6 +149,75 @@ export function toPublicationStateChange(
   };
 }
 
+/** How asking a session's question went, as far as the state change reporting it says. */
+export type SessionQuestionAsking =
+  | { status: 'asked'; questionId: string; channel: string; reason: string }
+  | { status: 'failed'; error: string };
+
+/**
+ * Turns a question a session stopped to ask into the state change Synapse receives:
+ * `coding_session_question_asked`, with how it reached the user, or `coding_session_question_failed`
+ * with why it did not. Either way the question is open, and the user's next word to Jarvis can
+ * answer it.
+ */
+export function toQuestionStateChange(
+  question: string,
+  asking: SessionQuestionAsking,
+  sessionId: string,
+  eventId: string,
+  context: ClaudeSessionContext = {},
+): StateChange {
+  const common = { sessionId, eventId, ...describeContext(context), question };
+
+  if (asking.status === 'asked') {
+    return {
+      source: CODING_STATE_CHANGE_SOURCE,
+      stateType: 'coding_session_question_asked',
+      stateData: { ...common, questionId: asking.questionId, channel: asking.channel, reason: asking.reason },
+    };
+  }
+
+  return {
+    source: CODING_STATE_CHANGE_SOURCE,
+    stateType: 'coding_session_question_failed',
+    stateData: { ...common, error: asking.error },
+  };
+}
+
+/** Puts a session's question to the user, and says how it went; swapped out in tests. */
+export type SessionQuestionAsker = (
+  sessionId: string,
+  question: string,
+  context: ClaudeSessionContext,
+) => Promise<SessionQuestionAsking>;
+
+/**
+ * Builds the asker every watched session's questions go through: it asks the user, and hands his
+ * answer to the session with `sendMessage`.
+ *
+ * The answer resumes the session with everything it did so far, and what the user hears back is
+ * that it did — the session's own reply to it arrives later, as its events always do.
+ */
+export function createSessionQuestionAsker(
+  sendMessage: (sessionId: string, message: string) => Promise<void> = sendClaudeSessionMessage,
+): SessionQuestionAsker {
+  return async (sessionId, question, context) => {
+    const asked = await askUserQuestion({
+      question,
+      about: context.title,
+      askedBy: { taskId: context.title ?? `Claude Code session ${sessionId}`, agentId: CODING_STATE_CHANGE_SOURCE },
+      deliverAnswer: async (answer) => {
+        await sendMessage(sessionId, answer);
+        return `Passed the answer on to the Claude Code session${context.title ? ` working on "${context.title}"` : ''}, which carries on with it.`;
+      },
+    });
+
+    return asked.success
+      ? { status: 'asked', questionId: asked.questionId, channel: asked.channel, reason: asked.reason }
+      : { status: 'failed', error: asked.message };
+  };
+}
+
 /** Event stream a watcher tails; swapped out in tests. */
 export type ClaudeSessionEventStream = (sessionId: string, signal: AbortSignal) => AsyncIterable<ClaudeSessionEvent>;
 
@@ -182,6 +258,7 @@ export class ClaudeSessionWatcher {
     private readonly publish: StateChangePublisher = publishToSynapse,
     private readonly reconnectDelayMilliseconds: number = RECONNECT_DELAY_MILLISECONDS,
     private readonly publishWork: SessionWorkPublisher = publishSessionWork,
+    private readonly askQuestion: SessionQuestionAsker = createSessionQuestionAsker(),
   ) {}
 
   /**
@@ -284,9 +361,27 @@ export class ClaudeSessionWatcher {
 
     await this.forward(sessionId, event.id, toStateChange(event, sessionId, context));
 
+    if (event.type !== 'session.status_idle' || event.stopReason !== 'end_turn') {
+      return;
+    }
+
+    // A turn that ended on a question is waiting for the user, not done: it is asked, and the
+    // answer resumes the session.
+    const question = readSessionQuestion(finalMessage);
+    if (question) {
+      const asking = await this.askQuestion(sessionId, question, context).catch(
+        (error: unknown): SessionQuestionAsking => ({
+          status: 'failed',
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+      await this.forward(sessionId, event.id, toQuestionStateChange(question, asking, sessionId, event.id, context));
+      return;
+    }
+
     // A turn that finished its work is published once, when its end is first seen. The next event
     // waits for it, so a session is never published twice at once.
-    if (event.type === 'session.status_idle' && event.stopReason === 'end_turn' && context.publishTo) {
+    if (context.publishTo) {
       const publication = await this.publishWork(sessionId, context.publishTo, finalMessage).catch(
         (error: unknown): SessionWorkPublication => ({
           status: 'failed',

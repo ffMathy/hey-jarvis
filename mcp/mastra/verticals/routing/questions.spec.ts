@@ -14,9 +14,12 @@ import {
   listOpenQuestions,
   nextQuestionId,
   type OpenQuestion,
+  openAnsweredByQuestion,
+  QUESTION_REMINDER_INTERVAL_MS,
   readSuspension,
   rememberOpenQuestions,
   takeOpenQuestion,
+  takeQuestionsToBringUp,
 } from './questions.js';
 
 function openQuestion(overrides: Partial<OpenQuestion> = {}): OpenQuestion {
@@ -127,5 +130,67 @@ describe('what the planner is shown', () => {
     expect(prompt).toContain('Push, please.');
     expect(prompt).toContain(`"${question.id}"`);
     expect(prompt).toContain('Email, or a push notification?');
+  });
+});
+
+describe('a question opened with a function to answer it', () => {
+  it('is open from the moment it is opened, under an id of its own', () => {
+    const opened = openAnsweredByQuestion({
+      taskId: 'Add a greeting',
+      agentId: 'coding',
+      question: 'Danish, or English?',
+      deliverAnswer: async () => 'Passed on.',
+    });
+
+    expect(opened.id).toMatch(/^q\d+$/);
+    expect(listOpenQuestions()).toEqual([opened]);
+  });
+
+  it('is answered once, like any other question', async () => {
+    const answers: string[] = [];
+    const opened = openAnsweredByQuestion({
+      taskId: 'Add a greeting',
+      agentId: 'coding',
+      question: 'Danish, or English?',
+      deliverAnswer: async (answer) => {
+        answers.push(answer);
+        return 'Passed on.';
+      },
+    });
+
+    const taken = takeOpenQuestion(opened.id);
+    expect(taken).toBe(opened);
+    expect(takeOpenQuestion(opened.id)).toBeUndefined();
+    expect(await opened.deliverAnswer('Danish.')).toBe('Passed on.');
+    expect(answers).toEqual(['Danish.']);
+  });
+});
+
+describe('bringing open questions up again', () => {
+  const NOW = 1_000_000_000;
+
+  it('brings up every open question the reply does not already ask', () => {
+    const waiting = openQuestion();
+    const askedNow = openQuestion();
+    rememberOpenQuestions([waiting, askedNow]);
+
+    expect(takeQuestionsToBringUp(new Set([askedNow.id]), NOW)).toEqual([waiting]);
+  });
+
+  it('leaves a question alone for a while once it has been brought up', () => {
+    const waiting = openQuestion();
+    rememberOpenQuestions([waiting]);
+    takeQuestionsToBringUp(new Set(), NOW);
+
+    expect(takeQuestionsToBringUp(new Set(), NOW + QUESTION_REMINDER_INTERVAL_MS - 1)).toEqual([]);
+    expect(takeQuestionsToBringUp(new Set(), NOW + QUESTION_REMINDER_INTERVAL_MS)).toEqual([waiting]);
+  });
+
+  it('never brings up a question that has been answered', () => {
+    const waiting = openQuestion();
+    rememberOpenQuestions([waiting]);
+    takeOpenQuestion(waiting.id);
+
+    expect(takeQuestionsToBringUp(new Set(), NOW)).toEqual([]);
   });
 });

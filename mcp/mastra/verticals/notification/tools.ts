@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { createTool, executeTool } from '../../utils/tool-factory.js';
 import { sendEmail } from '../email/tools.js';
 import { initiatePhoneCall, sendTextMessage } from '../phone/tools.js';
+import { type AnsweredByQuestion, openAnsweredByQuestion } from '../routing/questions.js';
 import {
   announceOnVoiceDevices,
   buildPushPayload,
@@ -10,7 +11,7 @@ import {
   DEFAULT_ANNOUNCE_SILENCE_SECONDS,
 } from './channels.js';
 import { getUserPresence } from './presence.js';
-import { decideNotificationChannel, type NotificationChannel } from './routing.js';
+import { decideNotificationChannel, decideQuestionChannel, type NotificationChannel } from './routing.js';
 import {
   describeNotificationTarget,
   getPrimaryUserName,
@@ -246,6 +247,83 @@ export const sendNotification = createTool({
     };
   },
 });
+
+/** The heading of a question that could only go out as a push notification. */
+const QUESTION_PUSH_TITLE = 'Jarvis has a question';
+
+/**
+ * Ask the primary user a question, over a channel his answer can come back on.
+ *
+ * The counterpart of `sendNotification` for a message that needs a reply: a call, or the house
+ * speakers, which listen after they speak (see `decideQuestionChannel`). His reply reaches Jarvis
+ * as whatever he says next, and finds its way back only if the question is open — so this tool
+ * asks, and {@link askUserQuestion} opens the question and then asks it. Use that, unless the
+ * question is open already.
+ */
+export const askQuestion = createTool({
+  id: 'askQuestion',
+  description:
+    "Ask the primary user (Mathias) a question he has to answer, over a channel that can hear his reply: a call from Jarvis while he is in the car or away, the house speakers while he is home, and a push notification only when his phone is silenced, in which case he answers the next time he talks to Jarvis. Never used for a message that needs no answer — that is sendNotification's job.",
+  inputSchema: z.object({
+    question: z
+      .string()
+      .describe('The question, written to be heard: one short sentence about one thing, with no markup'),
+    about: z
+      .string()
+      .optional()
+      .describe('Optional: a few words saying what the question is about, e.g. "the task reminders change"'),
+  }),
+  outputSchema: z.object({
+    success: z.boolean(),
+    channel: z.string(),
+    reason: z.string(),
+    message: z.string(),
+  }),
+  execute: async (inputData) => {
+    const { question, about } = inputData;
+
+    const { channel, reason } = decideQuestionChannel(await getUserPresence());
+    const spoken = about ? `A question about ${about}: ${question}` : question;
+
+    const delivery = await deliver({
+      channel,
+      target: { type: 'user' },
+      message: channel === 'push-notification' ? `${spoken} Answer it the next time you talk to Jarvis.` : spoken,
+      title: QUESTION_PUSH_TITLE,
+      isUrgent: false,
+    });
+
+    return { success: delivery.success, channel, reason, message: delivery.message };
+  },
+});
+
+/** Who is asking a question, as the user is told once he has answered it. */
+export type QuestionAsker = Pick<AnsweredByQuestion, 'taskId' | 'agentId'>;
+
+/**
+ * Opens a question for the primary user, then asks it with {@link askQuestion}.
+ *
+ * His answer, whenever it comes and on whichever channel, is handed to `deliverAnswer`. The
+ * question is opened first and stays open if asking it fails, since he can still answer it the
+ * next time he talks to Jarvis.
+ *
+ * @returns The id the question is known by, and how it was asked
+ */
+export async function askUserQuestion(input: {
+  question: string;
+  about?: string;
+  askedBy: QuestionAsker;
+  deliverAnswer: AnsweredByQuestion['deliverAnswer'];
+}) {
+  const opened = openAnsweredByQuestion({
+    ...input.askedBy,
+    question: input.question,
+    deliverAnswer: input.deliverAnswer,
+  });
+
+  const asked = await executeTool(askQuestion, { question: input.question, about: input.about });
+  return { questionId: opened.id, ...asked };
+}
 
 interface DeliveryInput {
   channel: NotificationChannel;

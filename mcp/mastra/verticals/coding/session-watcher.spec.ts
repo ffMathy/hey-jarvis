@@ -1,11 +1,16 @@
-import { describe, expect, it } from 'bun:test';
+import { afterEach, describe, expect, it, spyOn } from 'bun:test';
+import { askQuestion } from '../notification/tools.js';
+import { forgetOpenQuestions, isAnsweredByQuestion, listOpenQuestions } from '../routing/questions.js';
 import type { StateChange } from '../synapse/state-change.js';
 import type { ClaudeSessionEvent } from './claude-sessions.js';
 import type { PublishTarget, SessionWorkPublication } from './publish-session-work.js';
 import {
   ClaudeSessionWatcher,
+  createSessionQuestionAsker,
+  type SessionQuestionAsker,
   type SessionWorkPublisher,
   toPublicationStateChange,
+  toQuestionStateChange,
   toStateChange,
 } from './session-watcher.js';
 
@@ -120,6 +125,7 @@ describe('ClaudeSessionWatcher', () => {
   function watcherOver(
     events: ClaudeSessionEvent[][],
     publishWork?: SessionWorkPublisher,
+    askSessionQuestion?: SessionQuestionAsker,
   ): {
     watcher: ClaudeSessionWatcher;
     published: StateChange[];
@@ -145,6 +151,7 @@ describe('ClaudeSessionWatcher', () => {
       },
       0,
       publishWork,
+      askSessionQuestion,
     );
 
     return { watcher, published, streamedSessionIds };
@@ -287,6 +294,55 @@ describe('ClaudeSessionWatcher', () => {
     expect(published[published.length - 1]?.stateData).toMatchObject({ refused: false, error: 'disk full' });
   });
 
+  it('asks the user the question a turn ended on, and publishes nothing', async () => {
+    const { calls, publishWork } = recordingPublisher();
+    const asked: { sessionId: string; question: string; title?: string }[] = [];
+    const { watcher, published } = watcherOver(
+      [
+        [
+          runningEvent('sevt_1'),
+          messageEvent('sevt_2', 'I read the code.\n\n```jarvis-question\nShould it be in Danish, or English?\n```'),
+          idleEvent('sevt_3'),
+        ],
+      ],
+      publishWork,
+      async (sessionId, question, context) => {
+        asked.push({ sessionId, question, title: context.title });
+        return { status: 'asked', questionId: 'q1', channel: 'phone-call', reason: 'He is in the car.' };
+      },
+    );
+
+    watcher.watch('sess_1', { title: 'Add a greeting', publishTo: PUBLISH_TO });
+    await settle();
+
+    expect(asked).toEqual([
+      { sessionId: 'sess_1', question: 'Should it be in Danish, or English?', title: 'Add a greeting' },
+    ]);
+    expect(calls).toEqual([]);
+    expect(published[published.length - 1]).toMatchObject({
+      stateType: 'coding_session_question_asked',
+      stateData: { question: 'Should it be in Danish, or English?', questionId: 'q1', channel: 'phone-call' },
+    });
+  });
+
+  it('reports a question that could not be asked', async () => {
+    const { watcher, published } = watcherOver(
+      [[runningEvent('sevt_1'), messageEvent('sevt_2', '```jarvis-question\nDanish?\n```'), idleEvent('sevt_3')]],
+      async () => undefined,
+      async () => {
+        throw new Error('no phone number is configured');
+      },
+    );
+
+    watcher.watch('sess_1', { publishTo: PUBLISH_TO });
+    await settle();
+
+    expect(published[published.length - 1]).toMatchObject({
+      stateType: 'coding_session_question_failed',
+      stateData: { question: 'Danish?', error: 'no phone number is configured' },
+    });
+  });
+
   it('forwards each event into synapse', async () => {
     const { watcher, published } = watcherOver([[runningEvent('sevt_1'), messageEvent('sevt_2', 'Pushed a branch')]]);
 
@@ -402,5 +458,85 @@ describe('ClaudeSessionWatcher', () => {
 
     expect(attempts).toBeGreaterThanOrEqual(2);
     expect(published).toHaveLength(1);
+  });
+});
+
+describe('toQuestionStateChange', () => {
+  it('names the question and how it reached the user', () => {
+    const stateChange = toQuestionStateChange(
+      'Danish?',
+      { status: 'asked', questionId: 'q1', channel: 'voice-announcement', reason: 'He is home.' },
+      'sess_1',
+      'sevt_3',
+      { title: 'Add a greeting' },
+    );
+
+    expect(stateChange).toEqual({
+      source: 'coding',
+      stateType: 'coding_session_question_asked',
+      stateData: {
+        sessionId: 'sess_1',
+        eventId: 'sevt_3',
+        task: 'Add a greeting',
+        question: 'Danish?',
+        questionId: 'q1',
+        channel: 'voice-announcement',
+        reason: 'He is home.',
+      },
+    });
+  });
+});
+
+describe('createSessionQuestionAsker', () => {
+  afterEach(() => {
+    forgetOpenQuestions();
+  });
+
+  it('asks the user, and hands his answer to the session that asked', async () => {
+    const askSpy = spyOn(askQuestion, 'execute').mockImplementation(async () => ({
+      success: true,
+      channel: 'phone-call',
+      reason: 'He is in the car.',
+      message: 'Phone call initiated',
+    }));
+    const sent: { sessionId: string; message: string }[] = [];
+
+    try {
+      const asking = await createSessionQuestionAsker(async (sessionId, message) => {
+        sent.push({ sessionId, message });
+      })('sess_1', 'Danish, or English?', { title: 'Add a greeting' });
+
+      expect(asking).toMatchObject({ status: 'asked', channel: 'phone-call' });
+      expect(askSpy.mock.calls[0]?.[0]).toEqual({ question: 'Danish, or English?', about: 'Add a greeting' });
+
+      const [question] = listOpenQuestions();
+      expect(question).toMatchObject({ taskId: 'Add a greeting', agentId: 'coding', question: 'Danish, or English?' });
+      if (!question || !isAnsweredByQuestion(question)) {
+        throw new Error('The question was not opened with a function to answer it');
+      }
+
+      expect(await question.deliverAnswer('Danish, please.')).toContain('Add a greeting');
+      expect(sent).toEqual([{ sessionId: 'sess_1', message: 'Danish, please.' }]);
+    } finally {
+      askSpy.mockRestore();
+    }
+  });
+
+  it('keeps the question open when it could not be asked, for his next word to Jarvis', async () => {
+    const askSpy = spyOn(askQuestion, 'execute').mockImplementation(async () => ({
+      success: false,
+      channel: 'voice-announcement',
+      reason: 'He is home.',
+      message: 'No Hey Jarvis voice device exposes an announce service.',
+    }));
+
+    try {
+      const asking = await createSessionQuestionAsker(async () => {})('sess_1', 'Danish?', {});
+
+      expect(asking).toEqual({ status: 'failed', error: 'No Hey Jarvis voice device exposes an announce service.' });
+      expect(listOpenQuestions()).toMatchObject([{ question: 'Danish?', taskId: 'Claude Code session sess_1' }]);
+    } finally {
+      askSpy.mockRestore();
+    }
   });
 });

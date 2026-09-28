@@ -1,6 +1,6 @@
 import { truncate } from 'lodash-es';
 import { executeTool } from '../../utils/tool-factory.js';
-import { sendNotification } from '../notification/tools.js';
+import { askQuestion, sendNotification } from '../notification/tools.js';
 import type { RoutingProgress } from './controller.js';
 
 /**
@@ -8,8 +8,10 @@ import type { RoutingProgress } from './controller.js';
  *
  * Slow work is offered this instead of a held line (see `utils/slow-tasks.ts`), so the notice has
  * to carry whatever the closing report would have: the answers, what failed, and above all any
- * question the work stopped to ask — which he answers the next time he talks to Jarvis, because
- * the question stays open until then (see ./questions.ts).
+ * question the work stopped to ask. A notice with a question in it is asked rather than sent, over
+ * a channel his answer can come back on (see `askQuestion`); whatever he answers, then or the next
+ * time he talks to Jarvis, finds the question, because it stays open until then (see
+ * ./questions.ts).
  */
 
 /** Longest notice sent. It may be read aloud, so it stays a few sentences. */
@@ -18,6 +20,8 @@ const MAXIMUM_NOTICE_LENGTH = 600;
 export interface CompletionNotice {
   title: string;
   message: string;
+  /** Whether the notice asks him something, and so has to go out where he can answer it. */
+  expectsAnswer: boolean;
 }
 
 /** Writes the notice for a request that has finished. */
@@ -36,6 +40,7 @@ export function buildCompletionNotice(
       message: truncate([...answers, `Before your request can go on, I need to know: ${questions}`].join(' '), {
         length: MAXIMUM_NOTICE_LENGTH,
       }),
+      expectsAnswer: true,
     };
   }
 
@@ -45,6 +50,7 @@ export function buildCompletionNotice(
       message: truncate([`Your request could not be completed: ${progress.error}.`, ...answers].join(' '), {
         length: MAXIMUM_NOTICE_LENGTH,
       }),
+      expectsAnswer: false,
     };
   }
 
@@ -53,13 +59,19 @@ export function buildCompletionNotice(
     message: truncate([...answers, ...failures].join(' ') || 'Your request is done.', {
       length: MAXIMUM_NOTICE_LENGTH,
     }),
+    expectsAnswer: false,
   };
 }
 
 /** How a notice reaches the user. Swapped out in tests. */
 export type CompletionNotifier = (notice: CompletionNotice) => Promise<void>;
 
-const notifyUser: CompletionNotifier = async ({ title, message }) => {
+const notifyUser: CompletionNotifier = async ({ title, message, expectsAnswer }) => {
+  if (expectsAnswer) {
+    await executeTool(askQuestion, { question: message });
+    return;
+  }
+
   await executeTool(sendNotification, { target: { type: 'user' }, title, message });
 };
 

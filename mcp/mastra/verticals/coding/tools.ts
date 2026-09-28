@@ -13,6 +13,7 @@ import {
 import { octokit } from './github-client.js';
 import { buildSessionWorkInstructions } from './publish-session-work.js';
 import { DEFAULT_OWNER, DEFAULT_REPOSITORY } from './repository.js';
+import { buildSessionQuestionInstructions } from './session-questions.js';
 import { claudeSessionWatcher } from './session-watcher.js';
 
 // Extract Octokit response types for type inference
@@ -234,16 +235,19 @@ export const searchRepositories = createTool({
  * Tool to hand a change to a Claude Code session for implementation
  *
  * The session runs unattended in the host's Docker Sandbox, billed to the
- * user's Claude subscription. Its events are
- * watched from the moment it starts and forwarded into the Synapse vertical as
- * state changes, so progress, questions and failures surface through the same
- * notification path as everything else in the house. The session has no way to
- * push, so the watcher publishes its branch and opens the pull request once a
- * turn ends with the work done.
+ * user's Claude subscription. It reads the codebase before it changes anything,
+ * and goes straight on to implement the change unless something is left that
+ * only the user can decide — then, or at any later point, it stops to ask, and
+ * the watcher puts the question to him and resumes the session with his answer
+ * (see `session-questions.ts`). Its events are watched from the moment it starts
+ * and forwarded into the Synapse vertical as state changes, so progress and
+ * failures surface through the same notification path as everything else in the
+ * house. The session has no way to push, so the watcher publishes its branch and
+ * opens the pull request once a turn ends with the work done.
  */
 export const startCodingSession = createTool({
   id: 'startCodingSession',
-  description: `Starts a Claude Code session that implements a change autonomously. The session clones the repository and commits the work on a branch, and Jarvis pushes the branch and opens a pull request once it is done. Its events, and the pull request, are reported back into the Synapse vertical as state changes. Defaults to Jarvis's own repository, "${DEFAULT_OWNER}/${DEFAULT_REPOSITORY}", if none is given.`,
+  description: `Starts a Claude Code session that implements a change autonomously. The session clones the repository, studies the code, and commits the work on a branch; Jarvis pushes the branch and opens a pull request once it is done. Whenever the session needs a decision only the user can make, Jarvis asks him on a call or on the house speakers and hands his answer back to the session. Its events, and the pull request, are reported back into the Synapse vertical as state changes. Defaults to Jarvis's own repository, "${DEFAULT_OWNER}/${DEFAULT_REPOSITORY}", if none is given.`,
   inputSchema: z.object({
     owner: z.string().optional().describe(`The repository owner (defaults to "${DEFAULT_OWNER}" if not provided)`),
     repo: z
@@ -256,7 +260,7 @@ export const startCodingSession = createTool({
       .string()
       .optional()
       .describe(
-        "Extra instructions for the session, such as what is already known about the codebase and the user's answers to questions about the change",
+        'Extra instructions for the session, such as anything the user already said about how the change should work',
       ),
   }),
   outputSchema: z.object({
@@ -279,6 +283,7 @@ export const startCodingSession = createTool({
       // itself — but it pushes nothing: the watcher publishes its branch from the server once it is
       // done (see `publish-session-work.ts`).
       `\n${buildSessionWorkInstructions(repository)}`,
+      `\n${buildSessionQuestionInstructions()}`,
     ]
       .filter((line): line is string => typeof line === 'string')
       .join('\n');
@@ -322,7 +327,7 @@ export const CODING_TASK_TIMEOUT_MILLISECONDS = 15 * 60 * 1000;
 export const FOREGROUND_WORK_NOTE =
   'Your turn ending is what hands your answer back, and anything still running then is stopped. So do all of the work in the foreground: never run a subagent or a command in the background, and do not end your turn until the task is done and your final message says what was asked for.';
 
-/** What {@link runCodingTask} and {@link continueCodingTask} report. */
+/** What {@link runCodingTask} reports. */
 const codingTaskResultSchema = z.object({
   success: z.boolean(),
   session_id: z.string().optional(),
@@ -391,31 +396,6 @@ export const runCodingTask = markAsSlow(
       await awaitCodingTaskTurn(
         async () => (await createClaudeSession(`${inputData.task}\n\n${FOREGROUND_WORK_NOTE}`)).id,
       ),
-  }),
-);
-
-/**
- * Tool to send a {@link runCodingTask} session one more message and report back
- *
- * For asking again when the answer did not come back the way it was asked for:
- * the session is resumed with everything it did so far, which is far quicker
- * than starting over.
- */
-export const continueCodingTask = markAsSlow(
-  createTool({
-    id: 'continueCodingTask',
-    description:
-      'Sends a follow-up message to a Claude Code session that ran a task, waits for the session to finish again, and returns the last message it sent.',
-    inputSchema: z.object({
-      session_id: z.string().describe('The Claude Code session ID'),
-      message: z.string().describe('The message to send to the session'),
-    }),
-    outputSchema: codingTaskResultSchema,
-    execute: async (inputData) =>
-      await awaitCodingTaskTurn(async () => {
-        await sendClaudeSessionMessage(inputData.session_id, inputData.message);
-        return inputData.session_id;
-      }),
   }),
 );
 

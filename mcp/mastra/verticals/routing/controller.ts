@@ -13,15 +13,19 @@ import {
   type ResponseStyle,
 } from './planner.js';
 import {
+  type AnsweredByQuestion,
   asDelegationSuspension,
   type DelegationSuspension,
   forgetOpenQuestions,
+  isAnsweredByQuestion,
   listOpenQuestions,
   nextQuestionId,
   type OpenQuestion,
   readSuspension,
   rememberOpenQuestions,
+  type SuspendedAgentQuestion,
   takeOpenQuestion,
+  takeQuestionsToBringUp,
 } from './questions.js';
 
 /**
@@ -109,6 +113,13 @@ export class RoutingProgress {
    * cancel that work the moment he replied.
    */
   questions: OpenQuestion[] = [];
+  /**
+   * Questions work started earlier is still waiting on, which the closing report brings up.
+   *
+   * Asked before this request -- on a call he missed, in a push notification, or in a conversation
+   * he moved on from -- and not answered by it. See `takeQuestionsToBringUp`.
+   */
+  earlierQuestions: OpenQuestion[] = [];
   /** Tasks that started something slow, which the caller has not been told about yet. */
   unannouncedSlowTaskIds: string[] = [];
   /** Every task that started something slow, so each is announced once. */
@@ -250,7 +261,7 @@ export class RoutingProgress {
       return;
     }
 
-    const question: OpenQuestion = {
+    const question: SuspendedAgentQuestion = {
       id: nextQuestionId(),
       ...delegation,
       question: readable.question,
@@ -359,6 +370,8 @@ export interface RoutingSnapshot {
   finished: boolean;
   /** Questions the request is waiting on the user to answer. */
   questions: OpenQuestion[];
+  /** Questions work started earlier is waiting on, to bring up once the request is done. */
+  earlierQuestions: OpenQuestion[];
   /** Tasks that have started something slow since the last poll. */
   newlySlow: string[];
   /** How the planner said the request should be answered. */
@@ -384,6 +397,7 @@ export function buildSnapshot(progress: RoutingProgress): RoutingSnapshot {
     inProgress: [...new Set([...progress.outstandingByDelegationId.values()].map((one) => one.taskId))],
     finished: progress.isFinished(),
     questions: progress.questions,
+    earlierQuestions: progress.earlierQuestions,
     newlySlow,
     responseStyle: progress.responseStyle,
     error: progress.error,
@@ -812,7 +826,7 @@ function answerDelegationId(question: OpenQuestion): string {
 async function resumeWithAnswer(
   mastra: Mastra,
   progress: RoutingProgress,
-  question: OpenQuestion,
+  question: SuspendedAgentQuestion,
   answer: string,
   signal: AbortSignal,
 ): Promise<void> {
@@ -850,12 +864,49 @@ async function resumeWithAnswer(
   }
 }
 
+/**
+ * Hands an answer to the function its question was opened with, and reports what came of it.
+ *
+ * For work nothing suspended for -- a Claude Code session that stopped to ask, most often -- so
+ * there is no agent to resume: the question's own `deliverAnswer` knows where the answer goes.
+ */
+async function deliverAnswer(progress: RoutingProgress, question: AnsweredByQuestion, answer: string): Promise<void> {
+  const delegationId = answerDelegationId(question);
+
+  try {
+    const text = await question.deliverAnswer(answer);
+    progress.handle({ type: 'delegation_end', delegationId, result: { text }, isError: false });
+  } catch (error) {
+    progress.handle({
+      type: 'delegation_end',
+      delegationId,
+      result: `could not carry the answer back: ${error instanceof Error ? error.message : String(error)}`,
+      isError: true,
+    });
+  }
+}
+
 /** The questions a request's answers are for, taken off the list of those still open. */
 function takeAnsweredQuestions(answers: PlannedAnswer[]): { question: OpenQuestion; answer: string }[] {
   return answers.flatMap(({ questionId, answer }) => {
     const question = takeOpenQuestion(questionId);
     return question ? [{ question, answer }] : [];
   });
+}
+
+/**
+ * Hands the request's closing report the questions earlier work is still waiting on.
+ *
+ * Only for a request whose report will be heard: a superseded one is never read, and one the user
+ * is notified about sends its own questions and no others. Taking them marks them as brought up,
+ * so doing it for a report nobody hears would silence the reminder for nothing.
+ */
+function bringUpEarlierQuestions(sessionId: string, progress: RoutingProgress): void {
+  if (progressBySessionId.get(sessionId) !== progress || progress.notifyWhenDone) {
+    return;
+  }
+
+  progress.earlierQuestions = takeQuestionsToBringUp(new Set(progress.questions.map((question) => question.id)));
 }
 
 /**
@@ -891,6 +942,7 @@ async function runRequest(
   const answered = takeAnsweredQuestions(answers);
 
   if (chains.length === 0 && answered.length === 0) {
+    bringUpEarlierQuestions(sessionId, progress);
     progress.fail('none of the specialized agents can handle this request');
     return;
   }
@@ -909,7 +961,11 @@ async function runRequest(
   // Settled rather than all: a plan run that fails must not close the request while an answer
   // is still being carried back, or a question that answer leads to would be asked of nobody.
   const outcomes = await Promise.allSettled([
-    ...answered.map(({ question, answer }) => resumeWithAnswer(mastra, progress, question, answer, signal)),
+    ...answered.map(({ question, answer }) =>
+      isAnsweredByQuestion(question)
+        ? deliverAnswer(progress, question, answer)
+        : resumeWithAnswer(mastra, progress, question, answer, signal),
+    ),
     ...(chains.length > 0 ? [runPlan(mastra, sessionId, progress, userQuery, chains, signal)] : []),
   ]);
 
@@ -924,6 +980,7 @@ async function runRequest(
       questionIds: progress.questions.map((question) => question.id),
     });
   }
+  bringUpEarlierQuestions(sessionId, progress);
 
   const failure = outcomes.find((outcome) => outcome.status === 'rejected');
   if (failure) {

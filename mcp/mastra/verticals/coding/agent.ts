@@ -55,8 +55,8 @@ For ANY request that would **create**, **modify**, **implement**, **add**, **fix
 
 **When triggering the workflow:**
 1. Call implementFeatureWorkflow straight away, with the user's request as \`initialRequest\` — write nothing before the call
-2. Let the workflow handle everything from there. A Claude Code session first reads the codebase with the request in hand, which takes a few minutes; then the workflow asks the user whatever the code could not answer. Each question pauses the run, is put to the user for you, and the run carries on with their answer
-3. Once every question is answered, the workflow starts a **Claude Code session** that implements the change autonomously on a branch; when it is done, the branch is pushed and a pull request opened for it. No issue is filed
+2. Let the workflow handle everything from there. It starts a **Claude Code session** at once, which reads the codebase and implements the change autonomously on a branch; when it is done, the branch is pushed and a pull request opened for it. No issue is filed
+3. Never ask the user anything first. The session decides whatever the code settles, and asks only what is his to decide — whenever that comes up, Jarvis puts the question to him on a call or on the house speakers and hands his answer back to the session
 4. When it finishes, say in a sentence or two what the session is working on and whether it started. If it failed, say what failed
 
 The session reports its progress back through the Synapse vertical, so you do not need to poll it — but you can check on
@@ -86,14 +86,14 @@ Everything about code, Jarvis's own above all: reading and analysing it, managin
 
 # Capabilities
 - **Read Mode**: Use GitHub tools to list/search repositories and issues, and to follow running Claude Code sessions; have a Claude Code session read the code and answer questions about it, without changing anything
-- **Write Mode**: Trigger implementFeatureWorkflow for any implementation request: a Claude Code session analyses the codebase, the user answers what it could not settle, and another session implements the change
+- **Write Mode**: Trigger implementFeatureWorkflow for any implementation request: a Claude Code session reads the codebase and implements the change, asking the user along the way only what the code cannot settle
 
 # Behavior
 - Uses tools directly for all read/search operations
 - Cannot see the assistant's own runtime records. For ideas grounded in what has actually been failing, have the reflection agent report the failures first and pass them along in the prompt
 - Delegates ALL write/change operations to implementFeatureWorkflow
 - Implementation itself runs in a Claude Code session, whose events feed back into the Synapse vertical
-- An implementation request is slow: the codebase analysis alone takes minutes before the first question
+- An implementation request returns as soon as the session has started; its questions, if any, reach the user later on a call or on the house speakers
 - Applies default owner "${DEFAULT_OWNER}" and repo "${DEFAULT_REPOSITORY}" (Jarvis's own codebase) when not specified`,
     tools: codingTools,
     workflows: {

@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from 'bun:test';
 import type { UserPresence } from './presence.js';
-import { decideNotificationChannel } from './routing.js';
+import { decideNotificationChannel, decideQuestionChannel } from './routing.js';
 import type { ContactTarget, NotificationTarget } from './targets.js';
 
 const user: NotificationTarget = { type: 'user' };
@@ -194,6 +194,40 @@ describe('decideNotificationChannel', () => {
 
     for (const decision of decisions) {
       expect(decision.reason.length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('decideQuestionChannel', () => {
+  it('calls him in the car, even with his phone silenced', () => {
+    expect(decideQuestionChannel(presenceOf({ isInCar: true, isPhoneSilenced: true })).channel).toBe('phone-call');
+  });
+
+  it('asks out loud on the house speakers when he is home', () => {
+    const decision = decideQuestionChannel(presenceOf({ isHome: true }));
+
+    expect(decision.channel).toBe('voice-announcement');
+    expect(decision.reason).toContain('listens for his answer');
+  });
+
+  it('calls him when he is out', () => {
+    expect(decideQuestionChannel(presenceOf()).channel).toBe('phone-call');
+  });
+
+  it.each([true, false])('keeps quiet for a silenced phone, home or not (home: %p)', (isHome) => {
+    const decision = decideQuestionChannel(presenceOf({ isHome, isPhoneSilenced: true }));
+
+    expect(decision.channel).toBe('push-notification');
+    expect(decision.reason).toContain('the next time he talks to Jarvis');
+  });
+
+  it('never picks a channel that cannot hear an answer while he can be reached', () => {
+    for (const isHome of [true, false]) {
+      for (const isInCar of [true, false]) {
+        const { channel } = decideQuestionChannel(presenceOf({ isHome, isInCar }));
+
+        expect(['phone-call', 'voice-announcement']).toContain(channel);
+      }
     }
   });
 });

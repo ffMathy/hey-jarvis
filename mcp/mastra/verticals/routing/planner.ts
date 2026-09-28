@@ -164,7 +164,7 @@ the recipe does. The calendar needs nothing, so it waits for nothing. Note that 
 - For a task with \`needs\`, write the prompt as if that answer is already attached — it is. Say what to do with it rather than restating it, and never write out a guess at what it will say
 
 # Answers to waiting questions
-Sometimes an agent working on an earlier request stopped to ask the user something, and those questions are listed after the request. The user was asked out loud, so the answer arrives as a request like any other — "push, please" in reply to "email, or a push notification?".
+Sometimes work started earlier — an agent on an earlier request, or a coding session implementing a change — stopped to ask the user something, and those questions are listed after the request. The user was asked out loud, on a call, on the house speakers or in conversation, so the answer arrives as a request like any other — "push, please" in reply to "email, or a push notification?". Jarvis may quote the question it answers ("Answer to 'email, or a push notification?': push, please"); the answer is still only what the user said.
 
 - If the request answers one of the listed questions, put it in \`answers\` with that question's id and the answer in the user's own words, and write no task for it: the answer goes straight back to the agent that asked
 - A request can answer a question and ask for something else at the same time; plan the something else as usual
