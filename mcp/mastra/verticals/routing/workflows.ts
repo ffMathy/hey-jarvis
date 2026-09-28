@@ -293,7 +293,9 @@ function askTheUserInstructions(hasResults: boolean, style: ResponseStyle, waiti
       (hasResults ? `${recapInstructions(style)}Then remind him of it and ` : 'Remind him of it and ');
 
   return (
-    upperFirst(`${lead}ask him the question — briefly, in your own voice, as the last thing you say — and stop there to let him answer. `) +
+    upperFirst(
+      `${lead}ask him the question — briefly, in your own voice, as the last thing you say — and stop there to let him answer. `,
+    ) +
     'It is not a clarifying question of yours: the work is waiting on it and only he can answer it, so ask it even ' +
     'though you otherwise never ask him anything, and never answer it for him or guess what he would say. ' +
     'If there is more than one, ask them together, saying what each is about. ' +
