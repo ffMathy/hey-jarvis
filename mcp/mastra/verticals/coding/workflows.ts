@@ -80,7 +80,7 @@ const formatFinalOutput = createStep({
 
     return {
       success: true,
-      message: `Started a Claude Code session on "${title ?? initialRequest}". It studies the codebase, asks the user whatever only he can decide, and implements the change. ${input.message}`,
+      message: `Started a Claude Code session on "${title ?? initialRequest}". It studies the codebase, asks the user whatever only he can decide, and implements the change. The user is notified automatically when it is done, with its pull request — tell him so rather than offering it, since there is nothing for him to accept. ${input.message}`,
       title,
       sessionId: input.session_id,
     };

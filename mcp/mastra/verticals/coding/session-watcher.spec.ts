@@ -7,10 +7,12 @@ import type { PublishTarget, SessionWorkPublication } from './publish-session-wo
 import {
   ClaudeSessionWatcher,
   createSessionQuestionAsker,
+  type SessionOutcomeNotice,
   type SessionQuestionAsker,
   type SessionWorkPublisher,
   toPublicationStateChange,
   toQuestionStateChange,
+  toSessionOutcomeNotice,
   toStateChange,
 } from './session-watcher.js';
 
@@ -121,6 +123,26 @@ describe('toPublicationStateChange', () => {
   });
 });
 
+describe('toSessionOutcomeNotice', () => {
+  it('names the task and the pull request to review', () => {
+    const notice = toSessionOutcomeNotice(PUBLISHED, { title: 'Add a greeting' });
+
+    expect(notice.title).toContain('#42');
+    expect(notice.message).toContain('"Add a greeting"');
+    expect(notice.message).toContain('pull request #42 is open');
+  });
+
+  it('says an existing pull request was updated rather than opened', () => {
+    expect(toSessionOutcomeNotice({ ...PUBLISHED, created: false }).message).toContain('is updated');
+  });
+
+  it('says why the work could not be published', () => {
+    const notice = toSessionOutcomeNotice({ status: 'refused', reason: 'it changed CI' });
+
+    expect(notice.message).toContain('could not be published: it changed CI');
+  });
+});
+
 describe('ClaudeSessionWatcher', () => {
   function watcherOver(
     events: ClaudeSessionEvent[][],
@@ -129,9 +151,11 @@ describe('ClaudeSessionWatcher', () => {
   ): {
     watcher: ClaudeSessionWatcher;
     published: StateChange[];
+    notices: SessionOutcomeNotice[];
     streamedSessionIds: string[];
   } {
     const published: StateChange[] = [];
+    const notices: SessionOutcomeNotice[] = [];
     const streamedSessionIds: string[] = [];
     const streams = [...events];
 
@@ -152,9 +176,12 @@ describe('ClaudeSessionWatcher', () => {
       0,
       publishWork,
       askSessionQuestion,
+      async (notice) => {
+        notices.push(notice);
+      },
     );
 
-    return { watcher, published, streamedSessionIds };
+    return { watcher, published, notices, streamedSessionIds };
   }
 
   /** Records what it is asked to publish, and answers with `publication`. */
@@ -196,6 +223,54 @@ describe('ClaudeSessionWatcher', () => {
     expect(published[published.length - 1]?.stateData.pullRequestUrl).toBe(
       'https://github.com/ffMathy/hey-jarvis/pull/42',
     );
+  });
+
+  it('tells the user the session is done, with its pull request', async () => {
+    const { publishWork } = recordingPublisher();
+    const { watcher, notices } = watcherOver(
+      [[runningEvent('sevt_1'), messageEvent('sevt_2', 'Done.'), idleEvent('sevt_3')]],
+      publishWork,
+    );
+
+    watcher.watch('sess_1', { title: 'Add a greeting', publishTo: PUBLISH_TO });
+    await settle();
+
+    expect(notices).toEqual([toSessionOutcomeNotice(PUBLISHED, { title: 'Add a greeting' })]);
+  });
+
+  it('tells the user nothing while a turn has not finished the work', async () => {
+    const { watcher, notices } = watcherOver([[runningEvent('sevt_1'), idleEvent('sevt_2')]], async () => undefined);
+
+    watcher.watch('sess_1', { publishTo: PUBLISH_TO });
+    await settle();
+
+    expect(notices).toEqual([]);
+  });
+
+  it('keeps watching when the user could not be told', async () => {
+    const { publishWork } = recordingPublisher();
+    const published: StateChange[] = [];
+    const watcher = new ClaudeSessionWatcher(
+      async function* () {
+        yield runningEvent('sevt_1');
+        yield idleEvent('sevt_2');
+        yield messageEvent('sevt_3', 'after');
+      },
+      async (stateChange) => {
+        published.push(stateChange);
+      },
+      0,
+      publishWork,
+      undefined,
+      async () => {
+        throw new Error('no channel');
+      },
+    );
+
+    watcher.watch('sess_1', { publishTo: PUBLISH_TO });
+    await settle();
+
+    expect(published[published.length - 1]?.stateType).toBe('coding_session_agent_message');
   });
 
   it('reads each turn’s own last message, not an earlier turn’s', async () => {
@@ -249,6 +324,7 @@ describe('ClaudeSessionWatcher', () => {
     const { calls, publishWork } = recordingPublisher();
     const turn = [runningEvent('sevt_1'), messageEvent('sevt_2', 'Done.'), idleEvent('sevt_3')];
     let attempts = 0;
+    let notified = 0;
     const watcher = new ClaudeSessionWatcher(
       async function* () {
         attempts++;
@@ -260,6 +336,10 @@ describe('ClaudeSessionWatcher', () => {
       async () => {},
       0,
       publishWork,
+      undefined,
+      async () => {
+        notified++;
+      },
     );
 
     watcher.watch('sess_1', { publishTo: PUBLISH_TO });
@@ -268,6 +348,7 @@ describe('ClaudeSessionWatcher', () => {
 
     expect(attempts).toBeGreaterThanOrEqual(2);
     expect(calls).toHaveLength(1);
+    expect(notified).toBe(1);
   });
 
   it('reports nothing more for a turn that did not end on finished work', async () => {
