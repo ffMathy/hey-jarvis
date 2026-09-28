@@ -8,6 +8,7 @@ This directory contains all test files for the ElevenLabs integration project.
 tests/
 ├── specs/          # Test specification files
 │   ├── agent-prompt.integration.spec.ts          # live — needs credentials + tunnel
+│   ├── camera.integration.spec.ts                # live — needs credentials + tunnel
 │   ├── routing-orchestration.integration.spec.ts # live — needs credentials + tunnel
 │   ├── acknowledgement-timing.spec.ts            # offline
 │   ├── agent-config.spec.ts                      # offline
@@ -38,8 +39,11 @@ The MCP server lifecycle (`mcp-server-manager.ts`) and the retry helper
 
 Test utility functions are located in `tests/utils/`:
 - `test-conversation.ts` - Conversation testing framework
-- `conversation-strategy.ts` - Base conversation strategy interface
-- `elevenlabs-conversation-strategy.ts` - ElevenLabs WebSocket strategy
+- `conversation-strategy.ts` - Base conversation strategy interface, the message log's
+  types, and the transcript the evaluator reads
+- `elevenlabs-conversation-strategy.ts` - ElevenLabs WebSocket strategy. It can send a
+  contextual update, and answer client tool calls the way a device would when a test passes
+  `answerClientToolCall`; without one, client tool calls are recorded and left unanswered
 - `gemini-mastra-conversation-strategy.ts` - Gemini/Mastra evaluation strategy
 - `mcp-connection.ts` - Whether the agent actually reached its MCP server, so an
   eval never scores a conversation that had no tools to call
@@ -50,7 +54,8 @@ Test utility functions are located in `tests/utils/`:
 - `spoken-tool-call.ts` - Detects an agent reciting a tool call instead of making one
 - `test-environment.ts` - Brings the MCP server and tunnel up and down around a
   spec file. Both halves live here because both spec files share the same ports,
-  so the teardown of one has to finish before the setup of the next begins
+  so the teardown of one has to finish before the setup of the next begins. Also
+  `withConversationRetry`, which holds a fresh conversation for each attempt
 - `acknowledgement-timing.ts` - Whether the user heard anything before the results,
   and whether he was told twice that he is being attended to
 - `tunnel-manager.ts` - Cloudflare tunnel management
@@ -120,6 +125,17 @@ recognise without a word, so it runs the hand-written client tools in
 `agent-config.json` through the SDK's own serialiser with unknown keys set to fail —
 a snake_case key that would have vanished, or an enum value that would have failed the
 release, fails here on the push instead.
+
+## The camera eval
+
+`camera.integration.spec.ts` stands in for the phone. Told by a contextual update that the device
+has a camera — the sentence the phone sends — the agent has to take "What's the total on this
+receipt?" through `preparePhotoUpload`, then `openCamera` (which the test answers with a photo id,
+as the phone would), then `routePromptWorkflow` naming that id. Told nothing, the same request must
+reach for neither tool, as on the watch, the Voice speaker or a phone call. The order and content
+of the calls are asserted off the socket; the evaluator only judges whether Jarvis spoke as though
+he could see a photo he cannot. No photo is really uploaded, so the routed answer is never a real
+total.
 
 ## The orchestration eval
 

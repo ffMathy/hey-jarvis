@@ -95,10 +95,10 @@ describe('making somewhere for a photo to go', () => {
       });
       const tools = await client.listTools();
       const tool = tools.photos_preparePhotoUpload;
-      if (!tool?.execute) {
+      if (!tool) {
         throw new Error('preparePhotoUpload was not published');
       }
-      const result = await tool.execute({}, {});
+      const result = await executeTool(tool, {});
       await client.disconnect();
       return result;
     };
@@ -121,10 +121,8 @@ describe('making somewhere for a photo to go', () => {
   it('opens the slot the URL names, for one photo', async () => {
     const result = await callTool({ 'x-forwarded-host': 'jarvis.example.com', 'x-forwarded-proto': 'https' });
 
-    const uploadToken =
-      String(Reflect.get(Object(result), 'uploadUrl'))
-        .split('/')
-        .at(-1) ?? '';
+    const uploadUrlParts = String(Reflect.get(Object(result), 'uploadUrl')).split('/');
+    const uploadToken = uploadUrlParts[uploadUrlParts.length - 1] ?? '';
     expect(claimUploadSlot(uploadToken)).toBe(true);
     expect(claimUploadSlot(uploadToken)).toBe(false);
   }, 15_000);
@@ -169,7 +167,8 @@ describe('looking at a photo', () => {
     await executeTool(lookAtPhoto, { photoId: 'photo1', question: 'What is the total on this receipt?' }, { mastra });
 
     expect(calls).toHaveLength(1);
-    const parts = (calls[0]?.options.prompt ?? []).flatMap((message) =>
+    // Each role's message holds its own kinds of part; all that matters here is whether one is the photo.
+    const parts = (calls[0]?.options.prompt ?? []).flatMap((message): unknown[] =>
       typeof message.content === 'string' ? [] : message.content,
     );
     expect(parts).toContainEqual(expect.objectContaining({ type: 'file', mediaType: 'image/jpeg' }));

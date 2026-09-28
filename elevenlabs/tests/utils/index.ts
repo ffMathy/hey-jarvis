@@ -8,6 +8,13 @@ export {
   stripAudioTags,
 } from './acknowledgement-timing';
 export {
+  type ClientToolAnswerer,
+  type ClientToolCall,
+  clientToolNamesIn,
+  mcpToolNamesIn,
+  transcriptOf,
+} from './conversation-strategy';
+export {
   type ElevenLabsConversationOptions,
   ElevenLabsConversationStrategy,
 } from './elevenlabs-conversation-strategy';
@@ -46,7 +53,9 @@ export {
   TestConversation,
 } from './test-conversation';
 export {
+  MAX_CONVERSATION_RETRIES,
   startTestEnvironment,
   stopTestEnvironment,
   TEST_ENVIRONMENT_SETUP_TIMEOUT_MS,
+  withConversationRetry,
 } from './test-environment';

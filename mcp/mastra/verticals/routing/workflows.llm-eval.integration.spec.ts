@@ -8,6 +8,8 @@ import { isOllamaAvailable } from '../../utils/providers/ollama-provider.js';
 import { getCodingAgent } from '../coding/agent.js';
 import { getGenerativeUiAgent } from '../generative-ui/agent.js';
 import { getReflectionAgent } from '../reflection/agent.js';
+import { getShoppingListAgent } from '../shopping/agents.js';
+import { getVisionAgent } from '../vision/agents.js';
 import { getWebResearchAgent } from '../web-research/agent.js';
 import type { PlannedChain } from './plan.js';
 import { plannerInstructions, plannerPrompt, planSchema } from './planner.js';
@@ -310,6 +312,56 @@ Two separate chains would be wrong: the weather delegation would then run withou
 3. Optionally delegate to reflection FIRST in that same chain, so coding is handed the recent failures to ground its ideas in
 
 It must NOT delegate to webResearch: the ideas are about Jarvis's own code, which the web knows nothing about. generativeUi in a chain of its own would also be wrong, since it would then have no ideas to visualize.`,
+      0.8,
+    );
+  }, 120000);
+
+  // The voice agent names a photo sir has shown it as "(photo photo3)", and the vision agent's own
+  // description is all that tells the planner where that goes — so these plan against the real
+  // vision and shopping list agents rather than stand-ins.
+  it('sends a question about a photo to the vision agent, with the photo id in its prompt', async () => {
+    if (!ollamaAvailable) {
+      return;
+    }
+
+    const chains = await plan('What is the total on this receipt? (photo photo3)', [
+      await getVisionAgent(),
+      await getShoppingListAgent(),
+      await createStandInAgent('weather', WEATHER_DESCRIPTION),
+    ]);
+
+    const delegations = chains.flatMap((chain) => chain.delegations);
+    expect(delegations.map((delegation) => delegation.agentId)).toEqual(['vision']);
+    // The vision agent sees its own prompt and not the request, so without the id it would look at
+    // whichever photo came last.
+    expect(delegations[0]?.prompt).toContain('photo3');
+  }, 120000);
+
+  it('reads the receipt in the photo before adding what is on it to the shopping list', async () => {
+    if (!ollamaAvailable) {
+      return;
+    }
+
+    const userQuery = 'Add what is on this receipt to my shopping list (photo photo3)';
+    const chains = await plan(userQuery, [
+      await getVisionAgent(),
+      await getShoppingListAgent(),
+      await createStandInAgent('weather', WEATHER_DESCRIPTION),
+    ]);
+
+    expect(chains.map((chain) => chain.delegations.map((delegation) => delegation.agentId))).toEqual([
+      ['vision', 'shoppingList'],
+    ]);
+    expect(chains[0]?.delegations[0]?.prompt).toContain('photo3');
+
+    await assertPlanCriteria(
+      chains,
+      userQuery,
+      `The plan should:
+1. Delegate to vision to read the items on the receipt in photo3, with "photo3" in its prompt
+2. Delegate to shoppingList AFTER it, IN THE SAME CHAIN, to add the items vision reads off the receipt
+
+shoppingList in a chain of its own would be wrong: it would run without knowing what is on the receipt, and would have to invent the items.`,
       0.8,
     );
   }, 120000);

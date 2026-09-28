@@ -371,10 +371,10 @@
           {
             "type": "client",
             "name": "openCamera",
-            "description": "Opens the camera on sir's phone and hands back the photo's id once he has taken it. Call it only where a context update said the device has a camera, and only after preparePhotoUpload, as its instructions say. Sir framing the shot is not silence: while it runs, the conversation is waiting on him.",
+            "description": "Opens the camera on sir's phone and hands back the photo's id once he has taken it. Call it only when preparePhotoUpload's instructions say to. While it runs, the conversation is waiting on him. If it returns an error or times out, do not call it again: tell sir the camera is not available here.",
             "responseTimeoutSecs": 120,
-            "disableInterruptions": false,
-            "interruptionMode": "allow",
+            "disableInterruptions": true,
+            "interruptionMode": "disable_during_tool",
             "forcePreToolSpeech": false,
             "preToolSpeech": "auto",
             "assignments": [],

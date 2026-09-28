@@ -245,26 +245,59 @@ calls. `preparePhotoUpload`, an MCP tool on the Mastra server, mints a single-us
 ElevenLabs relays that result to the client as an `mcp_tool_call` event, where the phone keeps it.
 Then **`openCamera`**, a client tool declared in `agent-config.json`, opens the camera, uploads to
 the kept URL and answers with the photo's id, which the agent hands `routePromptWorkflow` with sir's
-question. Had the URL been a parameter, anything that can put words in the model's mouth — an email
-it summarised, the text on an earlier photo — could have sent the photo elsewhere, so `openCamera`
-takes none. The device's half of the contract is `hologram/src/camera-request.ts`.
+question as "(photo photo1)" — in the first call about it and every follow-up, which is how the
+planner knows to send it to the `vision` agent. Had the URL been a parameter, anything that can put
+words in the model's mouth — an email it summarised, the text on an earlier photo — could have sent
+the photo elsewhere, so `openCamera` takes none. The tool's name is spelled for the devices in
+`hologram/src/camera-request.ts`, and the phone's half of the contract is
+`mobile/src/camera-answers.ts`.
 
-**`openCamera` waits as long as ElevenLabs allows** — `expectsResponse: true`,
-`responseTimeoutSecs: 120` — so the agent holds the turn while sir frames the shot, and the prompt
-counts an open camera as the conversation waiting on him rather than finished. Every outcome the
-phone reports, a photo not taken included, comes back as a result carrying `instructions`, never as
-an error.
+**It is the one thing the agent does without routing.** Everything else outside the conversation is
+behind `routePromptWorkflow`, and the prompt says so; the photo is the exception because the upload
+URL has to be ready the moment sir raises the camera, not after the planner has run. What the photo
+*shows* is routed like anything else.
 
-**Only a device that says it has a camera is asked.** The watch, the Voice speaker and telephone
-calls share this agent. The phone announces its camera in a contextual update once connected, and
-the prompt asks for the camera only where it has heard one. The watch and the speaker still answer
-a stray `openCamera` with "no camera here", rather than leave the agent in two minutes of silence.
+**`openCamera` waits as long as ElevenLabs allows, and cannot be interrupted while it does** —
+`expectsResponse: true`, `responseTimeoutSecs: 120`, `interruptionMode: disable_during_tool` (with
+the deprecated `disableInterruptions` set to agree) — so the agent holds the turn while sir frames
+the shot, and the prompt counts an open camera as the conversation waiting on him rather than
+finished. Interruptions are off because sir talking while he frames the shot would otherwise cancel
+the pending call, and the photo's id would come back to a call the agent had already let go of.
+Every outcome the phone reports, a photo not taken included, comes back as a result carrying
+`instructions`, never as an error.
+
+**An error or a timeout from `openCamera` is not retried.** The prompt tells the agent to call a
+failed tool again at once, which is right for the routing tools and wrong here: on a device without
+the tool, each retry is two more minutes of silence, or another red toast. So the tool's own
+description says not to call it again and to tell sir the camera is not available — said there once,
+beside the tool it is about, rather than as an exception in the prompt.
+
+**Only a device that says it has a camera is asked, and the prompt says so once.** The watch, the
+Voice speaker and telephone calls share this agent. The phone announces its camera in a contextual
+update once connected, and the gate is stated in the prompt's `preparePhotoUpload` entry alone.
+`openCamera` is only ever called when `preparePhotoUpload`'s instructions say to — the way
+`hangUpWhenQuiet` is only called when the routing instructions say to — so its entry and its
+description need no gate of their own, and repeating it there is how the two copies drift apart. The
+watch and the speaker still answer a stray `openCamera` with "no camera here", rather than leave the
+agent in two minutes of silence.
 
 **`clientEvents` carries `mcp_tool_call` and `client_tool_call` for it.** The first is what delivers
 the URL, which means every client now receives MCP results — the speaker logs only their tool name
 and state, since a result can hold an email summary or that very URL. `applyTestAgentOverrides`
 still adds `mcp_tool_call` to the test agent should the config ever drop it, because the integration
 specs read tool calls off the socket.
+
+**What checks it.** `tests/specs/agent-config.spec.ts` pins the device's side of the contract — the
+tool's name, `expectsResponse`, the 120-second timeout, no parameters, `disable_during_tool`, and both
+client events — on every push, where the devices' own specs are cached by turbo until their package
+changes. `tests/specs/camera.integration.spec.ts` holds two live conversations with a stood-in phone:
+told the device has a camera, "What's the total on this receipt?" has to reach `preparePhotoUpload`,
+then `openCamera` after its URL is out, then `routePromptWorkflow` naming "photo1"; told nothing, the
+same request must reach for neither tool. And the routing LLM eval in
+`mcp/mastra/verticals/routing/workflows.llm-eval.integration.spec.ts` checks the planner's half:
+"(photo photo3)" goes to `vision` with the id in its prompt, and "add what is on this receipt to my
+shopping list" reads the photo before `shoppingList` in the same chain. Both evals need credentials
+and run only under `turbo test:integration`.
 
 **None of this reaches the live agent until a release deploys it.** `bunx turbo deploy` runs in the
 release workflow, and only when a releasable commit type (`feat`, `fix`, `perf`, `refactor`, `docs`)

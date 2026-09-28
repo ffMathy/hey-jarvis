@@ -2,13 +2,12 @@ import { afterAll, beforeAll, describe, it } from 'bun:test';
 import { assertMcpServerConnected } from '../utils/mcp-connection.js';
 import { TestConversation } from '../utils/test-conversation.js';
 import {
-  ensureTestEnvironment,
+  MAX_CONVERSATION_RETRIES,
   startTestEnvironment,
   stopTestEnvironment,
   TEST_ENVIRONMENT_SETUP_TIMEOUT_MS,
+  withConversationRetry,
 } from '../utils/test-environment.js';
-
-const MAX_CONVERSATION_RETRIES = 3;
 
 const CONVERSATION_TIMEOUT_MS = 90000;
 
@@ -114,34 +113,6 @@ async function waitForToolCallsBeyond(conversation: TestConversation, baseline: 
   }
 
   return toolNames;
-}
-
-/**
- * LLM-based conversation tests are inherently non-deterministic.
- * Retries the entire conversation flow (new connection each time)
- * to account for variance in both agent responses and evaluator scoring.
- */
-async function withConversationRetry(
-  createConversation: () => TestConversation,
-  testBody: (conversation: TestConversation) => Promise<void>,
-): Promise<void> {
-  let lastError: Error | undefined;
-  for (let attempt = 1; attempt <= MAX_CONVERSATION_RETRIES; attempt++) {
-    await ensureTestEnvironment();
-    const conversation = createConversation();
-    let succeeded = false;
-    try {
-      await testBody(conversation);
-      succeeded = true;
-    } catch (error) {
-      lastError = error as Error;
-      console.warn(`⚠️ Attempt ${attempt}/${MAX_CONVERSATION_RETRIES} failed: ${lastError.message.split('\n')[0]}`);
-    } finally {
-      await conversation.disconnect();
-    }
-    if (succeeded) return;
-  }
-  throw lastError;
 }
 
 /**

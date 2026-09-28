@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { ClientEvent } from '@elevenlabs/elevenlabs-js/api';
+import { ClientEvent, ToolInterruptionMode } from '@elevenlabs/elevenlabs-js/api';
 import { PromptAgentApiModelInputToolsItem } from '@elevenlabs/elevenlabs-js/serialization';
 import agentConfig from '../../src/assets/agent-config.json';
 
@@ -45,10 +45,52 @@ describe('the committed agent config', () => {
       expect(knownEvents).toContain(clientEvent);
     }
   });
+});
 
-  it('sends every client the MCP results, which is how the phone gets its photo upload URL', () => {
-    // Relayed by ElevenLabs rather than written by the model, so nothing the model reads can
-    // choose where sir's photo goes. See `hologram/src/camera-request.ts`.
-    expect(agentConfig.conversationConfig.conversation.clientEvents).toContain(ClientEvent.McpToolCall);
+/**
+ * The agent's half of showing Jarvis something, held to what the phone's half assumes of it.
+ *
+ * The phone and the watch answer the tool named `OPEN_CAMERA_TOOL` in `hologram/src/camera-request.ts`
+ * — the phone with the answers in `mobile/src/camera-answers.ts` — and Mastra's instructions name it
+ * as `OPEN_CAMERA_TOOL` in `mcp/mastra/verticals/vision/tools.ts`. Nothing but this file stands
+ * between those spellings and the configuration below. The devices' own specs pin their side, but
+ * turbo caches them until something in their package changes; this spec runs on every push, so a
+ * change made here alone is still checked against what the device expects.
+ */
+describe('the openCamera client tool', () => {
+  const openCamera = agentConfig.conversationConfig.agent.prompt.tools.find(
+    (tool) => tool.type === 'client' && tool.name === 'openCamera',
+  );
+
+  it('is declared as a client tool, under the name the phone answers', () => {
+    expect(openCamera).toBeDefined();
+  });
+
+  it('holds the turn until the phone answers, for as long as ElevenLabs allows', () => {
+    // Sir framing a shot takes a while, and the answer carries the photo's id: an agent that did
+    // not wait would have nothing to ask about.
+    expect(openCamera?.expectsResponse).toBe(true);
+    expect(openCamera?.responseTimeoutSecs).toBe(120);
+  });
+
+  it('asks the model for nothing, so nothing the model reads can choose where the photo goes', () => {
+    // The upload URL reaches the phone in the relayed `preparePhotoUpload` result instead. A
+    // parameter here is one the model could be talked into filling with some other address.
+    expect(openCamera?.parameters?.properties).toEqual({});
+  });
+
+  it('cannot be interrupted while the camera is open', () => {
+    // Sir speaking mid-capture would otherwise cancel the pending call, and the photo's id would
+    // arrive for a call the agent had already let go of.
+    expect(openCamera?.interruptionMode).toBe(ToolInterruptionMode.DisableDuringTool);
+  });
+
+  it('sends every client the events the phone answers it through', () => {
+    const clientEvents = agentConfig.conversationConfig.conversation.clientEvents;
+
+    // The MCP results carry the upload URL, relayed by ElevenLabs rather than written by the model.
+    expect(clientEvents).toContain(ClientEvent.McpToolCall);
+    // The call itself, which the phone answers with the photo's id.
+    expect(clientEvents).toContain(ClientEvent.ClientToolCall);
   });
 });
