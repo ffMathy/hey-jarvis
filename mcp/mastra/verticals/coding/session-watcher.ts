@@ -11,7 +11,9 @@
  * It is also where a session's work leaves the sandbox. A session started to
  * implement a change cannot push, so when one of its turns ends with the work
  * done, the watcher publishes it (`publish-session-work.ts`) and reports the
- * pull request — or why there is none — as a state change of its own.
+ * pull request — or why there is none — as a state change of its own. It also tells the user
+ * directly, because that is what Jarvis promises when the session starts: a state change reaches him
+ * only if one of his subscriptions happens to match it.
  *
  * And it is how a session asks the user something. A turn that ends on a question
  * (`session-questions.ts`) is not published: the question is put to the user over a channel his
@@ -22,7 +24,7 @@
 import { truncate } from 'lodash-es';
 import { logger } from '../../utils/logger.js';
 import { executeTool } from '../../utils/tool-factory.js';
-import { askUserQuestion } from '../notification/tools.js';
+import { askUserQuestion, sendNotification } from '../notification/tools.js';
 import type { StateChange } from '../synapse/state-change.js';
 import { registerStateChange } from '../synapse/tools.js';
 import { type ClaudeSessionEvent, sendClaudeSessionMessage, streamClaudeSessionEvents } from './claude-sessions.js';
@@ -149,6 +151,42 @@ export function toPublicationStateChange(
   };
 }
 
+/** What the user is told once a session's work has been published, or could not be. */
+export interface SessionOutcomeNotice {
+  title: string;
+  message: string;
+}
+
+/**
+ * Words the notice the user gets when a session is done: the pull request to review, or why there
+ * is none. It may be read aloud, so it names the pull request by number rather than reading a link.
+ */
+export function toSessionOutcomeNotice(
+  publication: SessionWorkPublication,
+  context: ClaudeSessionContext = {},
+): SessionOutcomeNotice {
+  const task = context.title ? `"${context.title}"` : 'your coding task';
+
+  if (publication.status === 'published') {
+    return {
+      title: `Pull request #${publication.pullRequest.number} is ready`,
+      message: `The Claude Code session on ${task} is done: pull request #${publication.pullRequest.number} is ${publication.created ? 'open' : 'updated'} for review.`,
+    };
+  }
+
+  return {
+    title: 'A coding session could not be published',
+    message: `The Claude Code session on ${task} finished, but its work could not be published: ${publication.reason}`,
+  };
+}
+
+/** Tells the user how a session ended; swapped out in tests. */
+export type SessionOutcomeNotifier = (notice: SessionOutcomeNotice) => Promise<void>;
+
+const notifyUserOfSessionOutcome: SessionOutcomeNotifier = async ({ title, message }) => {
+  await executeTool(sendNotification, { target: { type: 'user' }, title, message });
+};
+
 /** How asking a session's question went, as far as the state change reporting it says. */
 export type SessionQuestionAsking =
   | { status: 'asked'; questionId: string; channel: string; reason: string }
@@ -259,6 +297,7 @@ export class ClaudeSessionWatcher {
     private readonly reconnectDelayMilliseconds: number = RECONNECT_DELAY_MILLISECONDS,
     private readonly publishWork: SessionWorkPublisher = publishSessionWork,
     private readonly askQuestion: SessionQuestionAsker = createSessionQuestionAsker(),
+    private readonly notifyUser: SessionOutcomeNotifier = notifyUserOfSessionOutcome,
   ) {}
 
   /**
@@ -390,6 +429,9 @@ export class ClaudeSessionWatcher {
       );
       if (publication) {
         await this.forward(sessionId, event.id, toPublicationStateChange(publication, sessionId, event.id, context));
+        await this.notifyUser(toSessionOutcomeNotice(publication, context)).catch((error: unknown) => {
+          logger.error('[CLAUDE SESSION] Failed to tell the user how the session ended', { sessionId, error });
+        });
       }
     }
   }

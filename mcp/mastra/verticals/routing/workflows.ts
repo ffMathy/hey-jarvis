@@ -230,12 +230,18 @@ export const HANG_UP_WHEN_QUIET_TOOL = 'hangUpWhenQuiet';
  * A telephone call has no app on the other end, so nothing handles the client tool there. What it
  * has instead is the agent's turn timeout, which asks Jarvis to speak again after a short silence
  * -- and at that point, with nothing new from sir, the right thing to say is nothing, and to hang up.
+ *
+ * It also rules out ending on an offer. A coding session's result said it would report back, and
+ * Jarvis turned that into "shall I let you know when it is done?" and then, as told here, called
+ * the hang-up -- which closed the line while sir was still saying yes.
  */
 const HANG_UP_WHEN_QUIET_INSTRUCTIONS =
   `Once you have said it, call ${HANG_UP_WHEN_QUIET_TOOL}, silently and without announcing it. It does not ` +
   'hang up by itself: the call ends only if he then stays quiet for a few seconds, so it never cuts him off, and ' +
   'anything he says first keeps the line open. If you are asked to speak again before he has said anything, he ' +
-  'has nothing more: call end_call without a word. ';
+  'has nothing more: call end_call without a word. Because of that, never end what you say here on a question or an ' +
+  'offer — "shall I let you know when it is done?" — since the line closes while he is still answering it. State ' +
+  'what will happen instead; work that tells him when it is done says so in its result. ';
 
 /**
  * The recap is for results that never reached Jarvis, not for results he already spoke. "Do not
