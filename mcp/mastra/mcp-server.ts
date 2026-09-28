@@ -12,6 +12,7 @@ import {
   preparePhotoUpload,
   registerApiRoutes,
   registerShoppingTriggers,
+  whyPhotoUploadsAreOff,
   withoutUploadToken,
 } from './verticals/index.js';
 import { getNextInstructionsWorkflow, routePromptWorkflow } from './verticals/routing/workflows.js';
@@ -44,7 +45,8 @@ export async function startMcpServer() {
 
   // JSON body parsing middleware for API routes. Not the MCP endpoint and its subpaths, which read
   // the raw body, and not the photo route, which is open to anyone and must turn a stranger away
-  // before reading anything they send (see `claimSlotBeforeReading` in `verticals/api/routes.ts`).
+  // before reading anything they send (see `requirePhotoUploadKey` and `claimSlotBeforeReading` in
+  // `verticals/api/routes.ts`).
   app.use((req, res, next) => {
     if (req.path === mcpPath || req.path.startsWith(`${mcpPath}/`) || req.path.startsWith(`${PHOTO_UPLOAD_PATH}/`)) {
       next();
@@ -133,6 +135,13 @@ export async function startMcpServer() {
     console.warn(
       `⚠️ Claude Code sessions are not configured. Missing: ${getMissingClaudeCodeHostVariables().join(', ')}. Coding sessions will not start.`,
     );
+  }
+
+  // The photo upload key is optional too, and without it no photo is taken in: say so once, and at
+  // most how long a key that is too short is — never the key itself
+  const photoUploadsOffBecause = whyPhotoUploadsAreOff();
+  if (photoUploadsOffBecause) {
+    console.warn(`⚠️ ${photoUploadsOffBecause}`);
   }
 
   // Log token usage summary on startup

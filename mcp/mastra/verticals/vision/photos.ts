@@ -10,11 +10,13 @@ import { randomBytes } from 'node:crypto';
  * (`mastra dev`, port 4111) has a store of its own that nothing ever fills.
  *
  * **A photo arrives through a slot, and a slot takes one.** The phone knows no address of this
- * server and holds no secret for it (see "Configuration" in `mobile/AGENTS.md`), so a photo is let
- * in by a capability instead: `preparePhotoUpload` opens a slot with 128 random bits for a name,
- * hands the agent the URL of it, and the first body sent there — within {@link UPLOAD_SLOT_MS} —
- * is the photo. The slot is claimed *before* its body is read, which is what keeps a stranger from
- * making this process buffer uploads it will only refuse: a request for a slot that does not exist
+ * server (see "Configuration" in `mobile/AGENTS.md`), so it is handed one per photo:
+ * `preparePhotoUpload` opens a slot with 128 random bits for a name, hands the agent the URL of it,
+ * and the first body sent there — within {@link UPLOAD_SLOT_MS} — is the photo. The one secret the
+ * phone does hold, the photo upload key (`upload-key.ts`), is checked in front of the slot; the slot
+ * is what ties a photo to the request it was asked for, and what keeps the number of them bounded.
+ * It is claimed *before* its body is read, which is what keeps a stranger from making this process
+ * buffer uploads it will only refuse: a request without the key, or for a slot that does not exist,
  * is turned away with nothing read, and a slot is read from once.
  *
  * **Everything is bounded**, because the Pi this runs on has two gigabytes for two processes: at
@@ -107,7 +109,7 @@ export function openUploadSlot(now = Date.now()): { uploadToken: string; expires
   prune(now);
   makeRoom(openSlots, MAX_OPEN_SLOTS);
 
-  // 128 bits, URL-safe: 22 characters nobody can guess, and the only thing that lets a photo in.
+  // 128 bits, URL-safe: 22 characters nobody can guess, and with the upload key what lets a photo in.
   const uploadToken = randomBytes(16).toString('base64url');
   const expiresAt = now + UPLOAD_SLOT_MS;
   openSlots.set(uploadToken, expiresAt);

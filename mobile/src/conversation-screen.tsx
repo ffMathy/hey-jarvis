@@ -39,6 +39,11 @@ import { WrittenReplyLine } from './written-reply-line';
 
 interface ConversationScreenProps {
   settings: ElevenLabsSettings;
+  /**
+   * The key Mastra asks for before it takes a photo, or `undefined` when sir has not given this
+   * phone one — in which case there is no camera here at all. See `photo-upload-key.ts`.
+   */
+  photoUploadKey: string | undefined;
   onEditSettings: () => void;
   /**
    * Summoned by the assistant gesture on a phone: drawn in the bottom sheet sample mode uses, over
@@ -104,15 +109,17 @@ function showsTypedField({ canType, gone, textMode }: { canType: boolean; gone: 
 }
 
 /**
- * Whether the camera is beside him: while there is a conversation to show something to. Not during
- * the greeting, whose microphone is still muted, and not while a phone is held in writing, where the
- * keyboard has pushed the field up to where the button would be.
+ * Whether the camera is beside him: while there is a conversation to show something to, and a photo
+ * this phone could send to it — which takes the photo upload key. Not during the greeting, whose
+ * microphone is still muted, and not while a phone is held in writing, where the keyboard has pushed
+ * the field up to where the button would be.
  *
  * **And not while he is busy with something else**, unless it is him asking for it. Pressing it sends
  * a turn of its own, and a turn in the middle of one replaces it: a request still being worked on is
  * cancelled, and an answer still being spoken is cut off.
  */
 function showsCameraButton({
+  canSendPhotos,
   connected,
   gone,
   settled,
@@ -122,6 +129,7 @@ function showsCameraButton({
   speaking,
   wanted,
 }: {
+  canSendPhotos: boolean;
   connected: boolean;
   gone: boolean;
   settled: boolean;
@@ -131,7 +139,7 @@ function showsCameraButton({
   speaking: boolean;
   wanted: boolean;
 }) {
-  const inFront = connected && !gone && settled && !greeting && !(ON_A_PHONE && textMode);
+  const inFront = canSendPhotos && connected && !gone && settled && !greeting && !(ON_A_PHONE && textMode);
   return inFront && (wanted || !(thinking || speaking));
 }
 
@@ -175,7 +183,8 @@ async function greetHolding(microphone: MicrophoneAccess, beginGreeting: () => P
  * something you decide to do rather than something he can guess, so it needs a door — but only one
  * you can find, never one you have to read: a small outline at the sphere's lower right, at half
  * strength, there only while he is connected. He can also ask for it himself (`camera-tool.ts`), and
- * in a browser, where the camera cannot open without a tap, the button lighting up is how he asks.
+ * in a browser, where the camera cannot open without a tap, the button lighting up is how he asks. A
+ * phone without the photo upload key has no door at all, since nothing it sent would be let in.
  *
  * **On a phone it is there only when asked for.** It used to sit under him as an empty bar on
  * every summoning — something on the assistant's screen that was not him, for a keyboard nobody
@@ -216,6 +225,7 @@ async function greetHolding(microphone: MicrophoneAccess, beginGreeting: () => P
  */
 export function ConversationScreen({
   settings,
+  photoUploadKey,
   onEditSettings,
   inSheet = false,
   inAssistantWindow = false,
@@ -354,9 +364,8 @@ export function ConversationScreen({
    * An answer he is still miming in writing keeps it waiting, since it is still on screen being read
    * and would leave with him; so does the camera, open or still sending what it took.
    */
-  const { cameraSessionOptions, cameraBusy, cameraWanted, sirAnswered, showJarvisSomething } = useCameraTool({
-    inAssistantWindow,
-  });
+  const { cameraSessionOptions, cameraBusy, cameraWanted, canSendPhotos, sirAnswered, showJarvisSomething } =
+    useCameraTool({ inAssistantWindow, photoUploadKey });
   const { quietSessionOptions, heardTheUser } = useHangUpWhenQuiet({
     hangUp: hangUpSession,
     busy: readingAloud || cameraBusy,
@@ -843,6 +852,7 @@ export function ConversationScreen({
       {/* The camera, beside him. See `showsCameraButton`. */}
       <CameraButton
         visible={showsCameraButton({
+          canSendPhotos,
           connected: status === 'connected',
           gone,
           settled,

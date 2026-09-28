@@ -712,6 +712,27 @@ test('says nothing to type into when no conversation was opened at all', async (
 /** Where Mastra would have Jarvis's photo sent. Answered by `page.route` below, and nowhere else. */
 const UPLOAD_URL = 'https://jarvis.example.test/api/photos/Q2hhbmdlIG1lIHBsZWFzZQ';
 
+/** The key Mastra asks for before it takes a photo, as sir would type it into the settings screen. */
+const PHOTO_UPLOAD_KEY = 'u8Jq-2vN_x9P!rT4sK7w';
+
+/** Mastra taking the photo, and saying what it filed it as. */
+const PHOTO_RECEIVED = { status: 201, body: { success: true, message: 'Photo received', data: { photoId: 'photo7' } } };
+
+/**
+ * Opens the settings screen from the conversation, types the photo upload key into it — or clears
+ * it, given an empty one — and saves, leaving the app back on the conversation screen.
+ *
+ * The settings screen rather than the tour, because the tour does not ask for it: photos are
+ * something to add once Jarvis works. See `settings-screen.tsx`.
+ */
+async function savePhotoUploadKey(page: Page, photoUploadKey: string): Promise<void> {
+  await page.getByTestId('open-settings').click();
+  await page.getByTestId('photo-upload-key').fill(photoUploadKey);
+  await page.getByTestId('save-settings').click();
+  await expect(page.getByTestId('hologram')).toBeVisible();
+  await expect(page.getByTestId('photo-upload-key')).toHaveCount(0);
+}
+
 /** A one-pixel PNG: something the browser can decode, draw and re-encode as a JPEG like any photo. */
 const ONE_PIXEL = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
@@ -781,8 +802,36 @@ const OPEN_CAMERA = {
   client_tool_call: { tool_name: 'openCamera', tool_call_id: 'call_1', parameters: {}, event_id: 1 },
 };
 
-/** Opens a text-only conversation with a socket the test speaks for the agent on, and Mastra's upload URL answered. */
-async function openAConversationToShowThingsTo(page: Page) {
+/** How many conversations the page has opened on the socket the test speaks for the agent on. */
+function conversationsOpened(heard: unknown[]): number {
+  return heard.filter((event) => JSON.stringify(event).includes('"type":"conversation_initiation_client_data"')).length;
+}
+
+/** What the page has said since it last opened a conversation: what the conversation now open heard. */
+function sinceTheLastConversationOpened(heard: unknown[]): unknown[] {
+  const opened = heard.findLastIndex((event) =>
+    JSON.stringify(event).includes('"type":"conversation_initiation_client_data"'),
+  );
+  return heard.slice(opened + 1);
+}
+
+/**
+ * Opens a text-only conversation with a socket the test speaks for the agent on, and Mastra's upload
+ * URL answered with `uploadAnswer` — having given the phone the photo upload key, unless
+ * `photoUploadKey` is `undefined`.
+ *
+ * **The key is given the way sir would give it**: ElevenLabs set up on the tour, a conversation
+ * opened without a camera, and the key saved on the settings screen while that conversation is still
+ * connected. Saving a new key ends it, and the conversation screen opens another built with the key
+ * (see `settings-screen.tsx`), so what this returns is the second conversation, and `say` speaks on it.
+ */
+async function openAConversationToShowThingsTo(
+  page: Page,
+  {
+    photoUploadKey,
+    uploadAnswer = PHOTO_RECEIVED,
+  }: { photoUploadKey: string | undefined; uploadAnswer?: { status: number; body: unknown } },
+) {
   await refuseMicrophone(page);
   await page.route(SIGNED_URL_URL, async (route: Route) => {
     await answerTokenRequest(route, 200, {
@@ -791,25 +840,36 @@ async function openAConversationToShowThingsTo(page: Page) {
   });
   const agent = await speakForTheAgent(page);
 
-  const uploads: { method: string; contentType: string | undefined; body: Buffer | null }[] = [];
+  const uploads: {
+    method: string;
+    contentType: string | undefined;
+    authorization: string | undefined;
+    body: Buffer | null;
+  }[] = [];
   await page.route(`${UPLOAD_URL}`, async (route: Route) => {
     const request = route.request();
     uploads.push({
       method: request.method(),
       contentType: request.headers()['content-type'],
+      authorization: request.headers().authorization,
       body: request.postDataBuffer(),
     });
     await route.fulfill({
-      status: 201,
+      status: uploadAnswer.status,
       contentType: 'application/json',
       headers: { 'access-control-allow-origin': '*' },
-      body: JSON.stringify({ success: true, message: 'Photo received', data: { photoId: 'photo7' } }),
+      body: JSON.stringify(uploadAnswer.body),
     });
   });
 
   await page.goto('/');
   await configureElevenLabs(page);
   await expect(page.getByTestId('typed-message')).toBeEditable();
+  if (photoUploadKey !== undefined) {
+    await savePhotoUploadKey(page, photoUploadKey);
+    await expect.poll(() => conversationsOpened(agent.heard)).toBe(2);
+    await expect(page.getByTestId('typed-message')).toBeEditable();
+  }
 
   return { ...agent, uploads };
 }
@@ -838,26 +898,65 @@ function toolResults(heard: unknown[]): ToolResult[] {
   return heard.filter(isToolResult);
 }
 
+/** Whether the page told the agent there is a camera here. */
+function toldOfACamera(heard: unknown[]): boolean {
+  return heard.some(
+    (event) =>
+      JSON.stringify(event).includes('"type":"contextual_update"') && JSON.stringify(event).includes('openCamera'),
+  );
+}
+
 test('tells Jarvis it has a camera, and puts one beside him', async ({ page }) => {
-  const { heard } = await openAConversationToShowThingsTo(page);
+  const { heard } = await openAConversationToShowThingsTo(page, { photoUploadKey: PHOTO_UPLOAD_KEY });
 
   // The agent only asks for photos where a device has said it can take one.
-  await expect
-    .poll(() =>
-      heard.some(
-        (event) =>
-          JSON.stringify(event).includes('"type":"contextual_update"') && JSON.stringify(event).includes('openCamera'),
-      ),
-    )
-    .toBe(true);
+  await expect.poll(() => toldOfACamera(heard)).toBe(true);
 
   // Faint, and there: the one thing on the screen besides him.
   await expect(page.getByTestId('open-camera')).toBeVisible();
   await expect(page.getByTestId('hologram')).toBeVisible();
 });
 
+test('opens a new conversation when the key is added during one, and gives that one the camera', async ({ page }) => {
+  // The key is saved while the conversation the tour landed on is still connected. That one was
+  // started without it, and its tool would have gone on answering that there is no key.
+  const { heard } = await openAConversationToShowThingsTo(page, { photoUploadKey: PHOTO_UPLOAD_KEY });
+
+  // So it was hung up, and another opened in its place: the first heard nothing of a camera, and
+  // the second — built with the key — is told of one.
+  expect(conversationsOpened(heard)).toBe(2);
+  const beforeTheKey = heard.slice(0, heard.length - sinceTheLastConversationOpened(heard).length);
+  expect(toldOfACamera(beforeTheKey)).toBe(false);
+  await expect.poll(() => toldOfACamera(sinceTheLastConversationOpened(heard))).toBe(true);
+  await expect(page.getByTestId('open-camera')).toBeVisible();
+});
+
+test('hangs up the conversation that had the key when it is cleared, and offers no camera in the next', async ({
+  page,
+}) => {
+  const { heard, say, uploads } = await openAConversationToShowThingsTo(page, { photoUploadKey: PHOTO_UPLOAD_KEY });
+  await expect.poll(() => toldOfACamera(heard)).toBe(true);
+
+  // Cleared mid-conversation — because sir thinks it leaked, say. The conversation that was given it
+  // must not go on sending it.
+  await savePhotoUploadKey(page, '');
+  await expect.poll(() => conversationsOpened(heard)).toBe(3);
+  await expect(page.getByTestId('typed-message')).toBeEditable();
+
+  say(UPLOAD_PREPARED);
+  say(OPEN_CAMERA);
+  await expect.poll(() => toolResults(heard).length).toBe(1);
+  expect(JSON.parse(toolResults(heard)[0]?.result ?? '{}').instructions).toContain(
+    'has not given this phone the photo upload key',
+  );
+  expect(toldOfACamera(sinceTheLastConversationOpened(heard))).toBe(false);
+  await expect(page.getByTestId('open-camera')).toHaveCount(0);
+  expect(uploads).toHaveLength(0);
+});
+
 test('sends the photo Jarvis asks for to where Mastra said, and tells him what it is called', async ({ page }) => {
-  const { heard, say, uploads } = await openAConversationToShowThingsTo(page);
+  // In the conversation that replaced the one the key was added during: see the test above.
+  const { heard, say, uploads } = await openAConversationToShowThingsTo(page, { photoUploadKey: PHOTO_UPLOAD_KEY });
 
   say(UPLOAD_PREPARED);
   say(OPEN_CAMERA);
@@ -869,10 +968,12 @@ test('sends the photo Jarvis asks for to where Mastra said, and tells him what i
   );
   await showAPhoto(page);
 
-  // Sent once, as a JPEG, to exactly the URL the MCP result carried.
+  // Sent once, as a JPEG, to exactly the URL the MCP result carried — with the key from the settings,
+  // which is what Mastra checks before it looks at anything else.
   await expect.poll(() => uploads.length).toBe(1);
   expect(uploads[0]?.method).toBe('PUT');
   expect(uploads[0]?.contentType).toBe('image/jpeg');
+  expect(uploads[0]?.authorization).toBe(`Bearer ${PHOTO_UPLOAD_KEY}`);
   expect(uploads[0]?.body?.subarray(0, 2)).toEqual(Buffer.from([0xff, 0xd8]));
 
   // And the agent is answered with the photo's id, as a result rather than an error.
@@ -884,7 +985,7 @@ test('sends the photo Jarvis asks for to where Mastra said, and tells him what i
 });
 
 test('asks Jarvis to look when the camera button is tapped, and sends the photo when he does', async ({ page }) => {
-  const { heard, say, uploads } = await openAConversationToShowThingsTo(page);
+  const { heard, say, uploads } = await openAConversationToShowThingsTo(page, { photoUploadKey: PHOTO_UPLOAD_KEY });
 
   await showAPhoto(page);
 
@@ -906,12 +1007,13 @@ test('asks Jarvis to look when the camera button is tapped, and sends the photo 
 
   // The photo was already taken, so the call is answered with it rather than opening the camera again.
   await expect.poll(() => uploads.length).toBe(1);
+  expect(uploads[0]?.authorization).toBe(`Bearer ${PHOTO_UPLOAD_KEY}`);
   await expect.poll(() => toolResults(heard).length).toBe(1);
   expect(JSON.parse(toolResults(heard)[0]?.result ?? '{}')).toMatchObject({ photoId: 'photo7' });
 });
 
 test('never sends a photo anywhere the model names, only where Mastra said', async ({ page }) => {
-  const { heard, say, uploads } = await openAConversationToShowThingsTo(page);
+  const { heard, say, uploads } = await openAConversationToShowThingsTo(page, { photoUploadKey: PHOTO_UPLOAD_KEY });
 
   // No MCP result, only a call with an address in it: the kind a prompt injection would write.
   say({
@@ -928,4 +1030,123 @@ test('never sends a photo anywhere the model names, only where Mastra said', asy
   await expect.poll(() => toolResults(heard).length, { timeout: 10_000 }).toBe(1);
   expect(JSON.parse(toolResults(heard)[0]?.result ?? '{}').instructions).toContain('preparePhotoUpload');
   expect(uploads).toHaveLength(0);
+});
+
+test('offers no camera without a photo upload key, and sends Jarvis to the settings for one', async ({ page }) => {
+  const { heard, say, uploads } = await openAConversationToShowThingsTo(page, { photoUploadKey: undefined });
+
+  // Asked anyway, with somewhere to send the photo and all: the call is answered at once, and says
+  // where the key is added. Mastra would refuse anything this phone sent, so nothing is opened for it.
+  say(UPLOAD_PREPARED);
+  say(OPEN_CAMERA);
+  await expect.poll(() => toolResults(heard).length).toBe(1);
+  const [answer] = toolResults(heard);
+  expect(answer?.is_error).toBe(false);
+  const told = JSON.parse(answer?.result ?? '{}');
+  expect(told.instructions).toContain('has not given this phone the photo upload key');
+  expect(told.instructions).toContain("app's settings");
+  expect(told.photoId).toBeUndefined();
+
+  // Nothing told the agent there was a camera here — the conversation was up long before that call —
+  // and nothing beside him offers one, lit up or not.
+  expect(toldOfACamera(heard)).toBe(false);
+  await expect(page.getByTestId('open-camera')).toHaveCount(0);
+  expect(uploads).toHaveLength(0);
+});
+
+test('tells Jarvis when the server refuses the photo upload key', async ({ page }) => {
+  const { heard, say, uploads } = await openAConversationToShowThingsTo(page, {
+    photoUploadKey: PHOTO_UPLOAD_KEY,
+    // Mastra's own refusal: its envelope, with the key's status. Cloudflare's would not be this.
+    uploadAnswer: { status: 401, body: { success: false, message: 'This upload needs the photo upload key.' } },
+  });
+
+  say(UPLOAD_PREPARED);
+  say(OPEN_CAMERA);
+  await showAPhoto(page);
+
+  await expect.poll(() => uploads.length).toBe(1);
+  expect(uploads[0]?.authorization).toBe(`Bearer ${PHOTO_UPLOAD_KEY}`);
+
+  // Told apart from a photo that simply did not arrive: this one sir can fix, and trying again cannot.
+  await expect.poll(() => toolResults(heard).length).toBe(1);
+  const told = JSON.parse(toolResults(heard)[0]?.result ?? '{}');
+  expect(told.instructions).toContain("refused this phone's photo upload key");
+  expect(told.photoId).toBeUndefined();
+});
+
+test('refuses a photo upload key shorter than the server takes, and saves nothing', async ({ page }) => {
+  await page.goto('/');
+  await configureElevenLabs(page);
+
+  await page.getByTestId('open-settings').click();
+  // Named where it is kept, beside the API key, since the browser keeps it no better.
+  await expect(page.getByTestId('storage-note')).toContainText('photo upload key');
+  await expect(page.getByTestId('photo-upload-key')).toHaveValue('');
+
+  // A change to another field on the same screen, so "saves nothing" is something to check.
+  await page.getByTestId('agent-id').fill('agent_changed');
+  await page.getByTestId('photo-upload-key').fill('too-short-key');
+  await page.getByTestId('save-settings').click();
+
+  await expect(page.getByTestId('settings-problem')).toContainText('at least 16 characters');
+  // Still on the settings screen: a refused save must not fall through to the conversation.
+  await expect(page.getByTestId('photo-upload-key')).toBeVisible();
+  await expect(page.getByTestId('hologram')).toHaveCount(0);
+
+  // Nothing was kept — not the key, and not the agent ID saved beside it.
+  await page.reload();
+  await expect(page.getByTestId('hologram')).toBeVisible();
+  await page.getByTestId('open-settings').click();
+  await expect(page.getByTestId('agent-id')).toHaveValue(AGENT_ID);
+  await expect(page.getByTestId('photo-upload-key')).toHaveValue('');
+
+  // And one long enough is kept, across a reload, like the rest of the settings.
+  await page.getByTestId('photo-upload-key').fill(PHOTO_UPLOAD_KEY);
+  await page.getByTestId('save-settings').click();
+  await expect(page.getByTestId('hologram')).toBeVisible();
+  await page.reload();
+  await page.getByTestId('open-settings').click();
+  await expect(page.getByTestId('photo-upload-key')).toHaveValue(PHOTO_UPLOAD_KEY);
+});
+
+test('leaves a key that could not be read alone when the rest of the settings are saved', async ({ page }) => {
+  await page.goto('/');
+  await configureElevenLabs(page);
+  await savePhotoUploadKey(page, PHOTO_UPLOAD_KEY);
+
+  // The store refusing to give the key up, as a keystore can in a window still coming up: it is
+  // there, and reading it throws. The settings screen can only start its field empty.
+  await page.addInitScript(() => {
+    const getItem = Storage.prototype.getItem;
+    Storage.prototype.getItem = function (this: Storage, key: string) {
+      if (key === 'jarvis.photo-upload-key') {
+        throw new DOMException('The key cannot be read just now', 'SecurityError');
+      }
+      return getItem.call(this, key);
+    };
+  });
+  await page.reload();
+  await page.getByTestId('open-settings').click();
+  await expect(page.getByTestId('photo-upload-key')).toHaveValue('');
+
+  // Sir came to change the agent ID, and saves without touching the empty field.
+  await page.getByTestId('agent-id').fill('agent_changed');
+  await page.getByTestId('save-settings').click();
+  await expect(page.getByTestId('hologram')).toBeVisible();
+
+  // The agent ID is saved, and the key that only failed to load is still there, not erased by the
+  // empty field that stood in for it. Read by name, which does not go through `getItem`.
+  const kept = await page.evaluate(() => {
+    const readByName = (key: string): string | null => {
+      const value: unknown = window.localStorage[key];
+      return typeof value === 'string' ? value : null;
+    };
+    return {
+      settings: readByName('jarvis.elevenlabs-settings'),
+      photoUploadKey: readByName('jarvis.photo-upload-key'),
+    };
+  });
+  expect(JSON.parse(kept.settings ?? '{}')).toMatchObject({ agentId: 'agent_changed' });
+  expect(kept.photoUploadKey).toBe(PHOTO_UPLOAD_KEY);
 });

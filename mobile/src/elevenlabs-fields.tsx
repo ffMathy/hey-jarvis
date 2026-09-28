@@ -1,29 +1,64 @@
 import { type ElevenLabsSettings, parseElevenLabsSettings } from 'hologram';
 import { useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { PHOTO_UPLOAD_KEY_VARIABLE, type PhotoUploadKeyChange, parsePhotoUploadKey } from './photo-upload-key';
 import { theme } from './theme';
 
 interface ElevenLabsFieldsProps {
   /** What to start with, when there is already something stored. */
   settings: ElevenLabsSettings | undefined;
+  /**
+   * Whether to ask for the photo upload key as well, and the one read if one was — which is not
+   * always the one stored, since a read can fail. The settings screen asks; the tour does not,
+   * because photos are something to add once Jarvis works, not something to learn about before he
+   * does.
+   */
+  photos?: { storedKey: string | undefined };
   /** What the button says. "Save" on the settings screen; "Continue" on the tour. */
   submitLabel: string;
-  /** Called with values that parsed. Nothing is reported upwards until they do. */
-  onSubmit: (settings: ElevenLabsSettings) => void;
+  /**
+   * Called with values that parsed — and, where the photo upload key is asked for and sir changed
+   * it, the change. Nothing is reported upwards until everything on the form parses, so a form with
+   * one bad field saves none of them.
+   */
+  onSubmit: (settings: ElevenLabsSettings, photoUploadKeyChange: PhotoUploadKeyChange | undefined) => void;
 }
 
 /**
- * The two values, the note about where they are kept, and the button that accepts them.
+ * Where the note says the secrets on this form are kept, which is not the same place everywhere —
+ * naming the photo upload key only on the form that asks for it.
+ */
+function describeStorage(asksForPhotoUploadKey: boolean): string {
+  if (Platform.OS !== 'web') {
+    return asksForPhotoUploadKey
+      ? 'The API key and the photo upload key are kept in the Android keystore.'
+      : 'The API key is kept in the Android keystore.';
+  }
+  return asksForPhotoUploadKey
+    ? 'In a browser the API key and the photo upload key are kept in local storage, which is not a keystore: anything running on this page can read them. On Android they go in the keystore instead.'
+    : 'In a browser the API key is kept in local storage, which is not a keystore: anything running on this page can read it. On Android it goes in the keystore instead.';
+}
+
+/**
+ * The two values, the note about where they are kept, and the button that accepts them — and, on
+ * the settings screen, the photo upload key beside them.
  *
  * Extracted because there are now two screens that ask for them — the settings screen and the
  * credentials step of the first-run tour — and two copies of a field that must not autofill, must
  * not autocorrect and must be validated the same way is two copies of four decisions that are easy
  * to get subtly different. The test IDs live here too, so the end-to-end suite sees one form
  * whichever screen is showing it.
+ *
+ * **The photo upload key is here rather than on a form of its own** so that one button saves the
+ * screen and one line says what is wrong with it. It is Jarvis's server's secret rather than
+ * ElevenLabs', and it goes nowhere near the watch: see `photo-upload-key.ts`.
  */
-export function ElevenLabsFields({ settings, submitLabel, onSubmit }: ElevenLabsFieldsProps) {
+export function ElevenLabsFields({ settings, photos, submitLabel, onSubmit }: ElevenLabsFieldsProps) {
   const [apiKey, setApiKey] = useState(settings?.apiKey ?? '');
   const [agentId, setAgentId] = useState(settings?.agentId ?? '');
+  const [photoUploadKey, setPhotoUploadKey] = useState(photos?.storedKey ?? '');
+  /** The key the field started from, which is what a save is measured against. See `submit`. */
+  const [startingPhotoUploadKey] = useState(photos?.storedKey);
   const [problem, setProblem] = useState<string | undefined>(undefined);
 
   const submit = () => {
@@ -34,16 +69,27 @@ export function ElevenLabsFields({ settings, submitLabel, onSubmit }: ElevenLabs
       return;
     }
 
+    // Read only where it was asked for, so the tour can never overwrite a key it did not show.
+    const photoResult = photos ? parsePhotoUploadKey(photoUploadKey) : { key: undefined };
+    if ('problem' in photoResult) {
+      setProblem(photoResult.problem);
+      return;
+    }
+
+    // And reported only if it differs from what the field started from. A key that could not be
+    // read starts the field empty, so saving the field as it stood would erase a key that had only
+    // failed to load, when sir came here to change the agent ID.
+    const photoUploadKeyChange =
+      photos && photoResult.key !== startingPhotoUploadKey ? { key: photoResult.key } : undefined;
+
     setProblem(undefined);
-    onSubmit(result.settings);
+    onSubmit(result.settings, photoUploadKeyChange);
   };
 
   return (
     <>
       <Text style={styles.explanation} testID="storage-note">
-        {Platform.OS === 'web'
-          ? 'In a browser the API key is kept in local storage, which is not a keystore: anything running on this page can read it. On Android it goes in the keystore instead.'
-          : 'The API key is kept in the Android keystore.'}
+        {describeStorage(photos !== undefined)}
       </Text>
 
       <View style={styles.field}>
@@ -81,6 +127,31 @@ export function ElevenLabsFields({ settings, submitLabel, onSubmit }: ElevenLabs
           placeholderTextColor={theme.colors.mutedText}
         />
       </View>
+
+      {photos ? (
+        <View style={styles.field}>
+          <Text style={styles.label}>Photos</Text>
+          <Text style={styles.explanation}>
+            The key Jarvis's server asks for before it accepts a photo you show him: the same value as{' '}
+            {PHOTO_UPLOAD_KEY_VARIABLE} there. Leave it empty and the camera stays off.
+          </Text>
+          <TextInput
+            style={styles.input}
+            value={photoUploadKey}
+            onChangeText={setPhotoUploadKey}
+            autoCapitalize="none"
+            autoCorrect={false}
+            secureTextEntry
+            // Kept out of password managers and autofill for the API key's reason: saving it there
+            // would copy a server's secret off the device, out of the keystore it is meant to live in.
+            autoComplete="off"
+            importantForAutofill="no"
+            placeholder="Photo upload key"
+            testID="photo-upload-key"
+            placeholderTextColor={theme.colors.mutedText}
+          />
+        </View>
+      ) : null}
 
       {problem ? (
         <Text style={styles.problem} testID="settings-problem">

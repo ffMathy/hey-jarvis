@@ -432,7 +432,9 @@ ElevenLabs needs. Studio on 4111 is therefore not reachable until you route a ho
    identity policy — you authenticate with your email and Studio loads normally. Service tokens are
    for machine clients such as ElevenLabs and the test suite; a browser does not need them. The one
    path on the MCP hostname that must bypass Access is `/api/photos/*`, which the phone uploads to
-   without a token — see "MCP Server Access" in [AGENTS.md](./AGENTS.md#mcp-server-access).
+   without an Access token. The bypass opens a door that asks for a key: the route itself refuses
+   any upload without the photo upload key (`HEY_JARVIS_PHOTO_UPLOAD_KEY`) — see "MCP Server
+   Access" in [AGENTS.md](./AGENTS.md#mcp-server-access).
 
 ### If Studio is served from a different origin
 
@@ -464,5 +466,8 @@ Secrets managed via 1Password CLI. Key variables:
 - Google API key (Gemini), OpenWeatherMap API key
 - Bilka credentials, Algolia keys
 - OAuth credentials for Google Calendar, Gmail, GitHub, Microsoft
+- Photo upload key (optional): `HEY_JARVIS_PHOTO_UPLOAD_KEY`, from
+  `op://Jarvis/Photo upload key/password` in `mcp/op.optional.env`. The phone sends the same key,
+  entered in its settings, with every photo; without it on the server, photo uploads are off.
 
 See [AGENTS.md](./AGENTS.md) for development guidelines.

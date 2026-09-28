@@ -137,6 +137,12 @@ of the calls are asserted off the socket; the evaluator only judges whether Jarv
 he could see a photo he cannot. No photo is really uploaded, so the routed answer is never a real
 total.
 
+It needs the `Photo upload key` item in the `Jarvis` vault as well as the usual credentials. The
+local MCP server reads it as `HEY_JARVIS_PHOTO_UPLOAD_KEY` through `mcp/op.optional.env`, which
+leaves out a reference that does not resolve; without it `preparePhotoUpload` answers
+`PHOTO_UPLOADS_SWITCHED_OFF` with no upload URL, and the eval fails on the URL it expects. A
+pre-generated `mcp/op.env.local` has to be generated again before it carries the key.
+
 ## The orchestration eval
 
 `routing-orchestration.integration.spec.ts` is the one eval that watches a whole request run

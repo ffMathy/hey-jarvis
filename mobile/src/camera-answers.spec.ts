@@ -6,7 +6,9 @@ import {
   CAMERA_NOT_OPENED,
   CAMERA_ON_THIS_DEVICE,
   NO_PHOTO_TAKEN,
+  NO_PHOTO_UPLOAD_KEY,
   NO_UPLOAD_URL,
+  PHOTO_KEY_REFUSED,
   PHOTO_NOT_SENT,
   PHOTOS_UNAVAILABLE,
   PREPARE_PHOTO_UPLOAD_TOOL,
@@ -138,6 +140,8 @@ describe('what the agent is told', () => {
     for (const outcome of [
       NO_PHOTO_TAKEN,
       PHOTO_NOT_SENT,
+      NO_PHOTO_UPLOAD_KEY,
+      PHOTO_KEY_REFUSED,
       NO_UPLOAD_URL,
       PHOTOS_UNAVAILABLE,
       CAMERA_NOT_OPENED,
@@ -153,5 +157,30 @@ describe('what the agent is told', () => {
 
   it('sends a model that forgot the upload URL back for one', () => {
     expect(JSON.parse(NO_UPLOAD_URL).instructions).toContain('preparePhotoUpload');
+  });
+
+  it('sends sir to the settings when this phone has no photo upload key, and stops the agent asking', () => {
+    const told = JSON.parse(NO_PHOTO_UPLOAD_KEY).instructions;
+
+    // The one fix there is, and where it is made: nothing on the server side can give a phone a key.
+    expect(told).toContain('photo upload key');
+    expect(told).toContain("app's settings");
+    // Asked again, the answer would be the same; a model told only "not now" tries again.
+    expect(told).toContain('do not call openCamera again in this conversation');
+  });
+
+  it('sends sir to the settings when the server refuses the key, and does not have the agent retry', () => {
+    const told = JSON.parse(PHOTO_KEY_REFUSED).instructions;
+
+    expect(told).toContain('refused');
+    expect(told).toContain('photo upload key');
+    expect(told).toContain("app's settings");
+    expect(told).toContain('do not try again unless he asks');
+  });
+
+  it('tells a refused key apart from a photo that simply did not arrive', () => {
+    // A photo that did not arrive may well arrive the next time; a key that was refused will not.
+    expect(PHOTO_KEY_REFUSED).not.toBe(PHOTO_NOT_SENT);
+    expect(JSON.parse(PHOTO_NOT_SENT).instructions).not.toContain('settings');
   });
 });

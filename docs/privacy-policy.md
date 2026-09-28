@@ -58,6 +58,7 @@ never transmitted to us.**
 | --- | --- | --- |
 | Your ElevenLabs API key | To authenticate you to the voice service you have chosen to use | Android and Wear OS: the operating system's encrypted keystore (`expo-secure-store`). Web: your browser's `localStorage` |
 | Your ElevenLabs agent identifier | To know which assistant to connect you to | As above |
+| Your photo upload key, if you enter one | To prove to the service your assistant sends photographs to — such as your own server — that a photograph comes from you. Without one the App offers no camera | Android: the operating system's encrypted keystore, as the API key is. Web: your browser's `localStorage`. It is never sent to the Wear OS application |
 | A remembered particle count | A display setting, so the animation opens at a quality your device has already sustained | As above |
 | The last photograph you showed your assistant | To send it (see [§4](#4-third-party-services)) | Android: the App's private cache, which no other app can read and which is never backed up, until the next photograph replaces it. Web: in memory only, until it is sent |
 
@@ -82,7 +83,10 @@ When, and only when, you hold a conversation:
   during that conversation, and to nowhere else. That address belongs to a service you have
   configured your assistant to use, such as your own server. The App never uploads a photograph you
   did not just take — or, in the web version, pick — for this purpose, and cannot browse your photo
-  library by itself.
+  library by itself;
+- your photo upload key is sent with that photograph, to that same address, so the service can tell
+  the photograph is yours. It is sent only with a photograph, and never to ElevenLabs, to us, or
+  anywhere else. The App takes no photographs at all until you have entered one.
 
 **That transmission is to ElevenLabs, not to us.** We neither receive, intercept, log nor retain any
 of it. What ElevenLabs does with it is governed by its own agreement with you and its own privacy

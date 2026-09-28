@@ -1,9 +1,17 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
 import express, { type Request as ExpressRequest, type Response as ExpressResponse, type NextFunction } from 'express';
 import type { Server } from 'http';
 import { z } from 'zod';
 import { createStep, createWorkflow, getWorkflowRuntime } from '../../utils/workflows/workflow-factory.js';
-import { findPhoto, forgetPhotos, MAX_PHOTO_BYTES, openUploadSlot, UPLOAD_SLOT_MS } from '../vision/index.js';
+import {
+  claimUploadSlot,
+  findPhoto,
+  forgetPhotos,
+  MAX_PHOTO_BYTES,
+  openUploadSlot,
+  PHOTO_UPLOAD_KEY_VARIABLE,
+  UPLOAD_SLOT_MS,
+} from '../vision/index.js';
 import {
   createWorkflowApiHandler,
   extractWorkflowError,
@@ -448,16 +456,39 @@ describe('the photo upload', () => {
   /** A JPEG's first bytes, which is all the route looks at: it keeps what it is sent. */
   const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
 
+  /** The key this server is configured with for these tests, and the one the phone sends. */
+  const PHOTO_UPLOAD_KEY = 'a-photo-upload-key-for-tests';
+
+  const environmentKeys = [PHOTO_UPLOAD_KEY_VARIABLE] as const;
+  const originalEnvironment = new Map(environmentKeys.map((key) => [key, process.env[key]]));
+
+  /** Sends a JPEG with exactly these headers, for the tests about what a request has to carry. */
+  function putPhotoWith(uploadToken: string, headers: Record<string, string>, body: Uint8Array<ArrayBuffer> = JPEG) {
+    return fetch(`${baseUrl}/api/photos/${uploadToken}`, { method: 'PUT', headers, body });
+  }
+
+  /** Sends a photo as the phone does: with the key. */
   function putPhoto(uploadToken: string, body: Uint8Array<ArrayBuffer> = JPEG, contentType = 'image/jpeg') {
-    return fetch(`${baseUrl}/api/photos/${uploadToken}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': contentType },
+    return putPhotoWith(
+      uploadToken,
+      { 'Content-Type': contentType, Authorization: `Bearer ${PHOTO_UPLOAD_KEY}` },
       body,
-    });
+    );
   }
 
   beforeEach(() => {
     forgetPhotos();
+    process.env[PHOTO_UPLOAD_KEY_VARIABLE] = PHOTO_UPLOAD_KEY;
+  });
+
+  afterEach(() => {
+    for (const [key, value] of originalEnvironment) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
   });
 
   it('is the path the phone checks an upload URL against', () => {
@@ -529,16 +560,126 @@ describe('the photo upload', () => {
     expect((await putPhoto(uploadToken, new Uint8Array(0))).status).toBe(415);
   });
 
-  it('lets the browser build send from its own origin', async () => {
+  it('lets the browser build send from its own origin, with the key in a header', async () => {
+    // A browser's preflight carries no key, so it must be answered without one.
+    delete process.env[PHOTO_UPLOAD_KEY_VARIABLE];
+
     const preflight = await fetch(`${baseUrl}/api/photos/Q2hhbmdlIG1lIHBsZWFzZQ`, { method: 'OPTIONS' });
 
     expect(preflight.status).toBe(204);
     expect(preflight.headers.get('access-control-allow-origin')).toBe('*');
     expect(preflight.headers.get('access-control-allow-methods')).toContain('PUT');
     expect(preflight.headers.get('access-control-allow-headers')).toContain('Content-Type');
+    expect(preflight.headers.get('access-control-allow-headers')).toContain('Authorization');
+
+    process.env[PHOTO_UPLOAD_KEY_VARIABLE] = PHOTO_UPLOAD_KEY;
 
     const { uploadToken } = openUploadSlot();
     expect((await putPhoto(uploadToken)).headers.get('access-control-allow-origin')).toBe('*');
+  });
+
+  describe('the photo upload key', () => {
+    /** What a refusal for want of the key looks like, whatever was missing from the request. */
+    async function expectKeyRefused(response: Response) {
+      expect(response.status).toBe(401);
+      expect(response.headers.get('www-authenticate')).toBe('Bearer realm="jarvis-photos"');
+      // The phone tells a refused key from Cloudflare's refusals by this envelope.
+      expect(await readBody(response)).toEqual({ success: false, message: 'This upload needs the photo upload key.' });
+    }
+
+    it('takes a photo that carries it, under the scheme in any case', async () => {
+      const { uploadToken } = openUploadSlot();
+
+      const response = await putPhotoWith(uploadToken, {
+        'Content-Type': 'image/jpeg',
+        Authorization: `bearer ${PHOTO_UPLOAD_KEY}`,
+      });
+
+      expect(response.status).toBe(201);
+      expect(findPhoto('photo1')?.data).toEqual(Buffer.from(JPEG));
+    });
+
+    it('turns away an upload without it, saying which key and how to send it', async () => {
+      const { uploadToken } = openUploadSlot();
+
+      await expectKeyRefused(await putPhotoWith(uploadToken, { 'Content-Type': 'image/jpeg' }));
+      expect(findPhoto(undefined)).toBeUndefined();
+    });
+
+    it('turns away the wrong key', async () => {
+      const { uploadToken } = openUploadSlot();
+
+      await expectKeyRefused(
+        await putPhotoWith(uploadToken, {
+          'Content-Type': 'image/jpeg',
+          Authorization: `Bearer ${PHOTO_UPLOAD_KEY.slice(0, -1)}X`,
+        }),
+      );
+      expect(findPhoto(undefined)).toBeUndefined();
+    });
+
+    it('turns away the right key under any scheme but Bearer', async () => {
+      const { uploadToken } = openUploadSlot();
+
+      await expectKeyRefused(
+        await putPhotoWith(uploadToken, { 'Content-Type': 'image/jpeg', Authorization: `Basic ${PHOTO_UPLOAD_KEY}` }),
+      );
+      await expectKeyRefused(
+        await putPhotoWith(uploadToken, { 'Content-Type': 'image/jpeg', Authorization: PHOTO_UPLOAD_KEY }),
+      );
+    });
+
+    it('leaves the slot for the phone when an upload without it is turned away', async () => {
+      // Otherwise anyone who saw the URL could not use it, but could still spend it before sir's phone.
+      const { uploadToken } = openUploadSlot();
+      await expectKeyRefused(await putPhotoWith(uploadToken, { 'Content-Type': 'image/jpeg' }));
+
+      const response = await putPhoto(uploadToken);
+
+      expect(response.status).toBe(201);
+      expect(findPhoto('photo1')?.data).toEqual(Buffer.from(JPEG));
+    });
+
+    it('is asked for before anything else about the request, and before a byte of it is read', async () => {
+      const { uploadToken } = openUploadSlot();
+
+      // Neither a body too large to be a photo nor one that is not an image is looked at first. Not
+      // JSON for the second: this test app parses JSON everywhere, which the MCP server does not.
+      await expectKeyRefused(
+        await putPhotoWith(uploadToken, { 'Content-Type': 'image/jpeg' }, new Uint8Array(MAX_PHOTO_BYTES + 1)),
+      );
+      await expectKeyRefused(await putPhotoWith(uploadToken, { 'Content-Type': 'text/plain' }));
+      expect(forwardedError).toBeUndefined();
+      expect(claimUploadSlot(uploadToken)).toBe(true);
+    });
+
+    it('switches uploads off, without touching a slot, when this server has no key', async () => {
+      delete process.env[PHOTO_UPLOAD_KEY_VARIABLE];
+      const { uploadToken } = openUploadSlot();
+
+      const response = await putPhoto(uploadToken);
+
+      expect(response.status).toBe(503);
+      expect(await readBody(response)).toEqual({
+        success: false,
+        message: 'Photo uploads are switched off on this server.',
+      });
+      expect(response.headers.get('www-authenticate')).toBeNull();
+      expect(findPhoto(undefined)).toBeUndefined();
+      expect(claimUploadSlot(uploadToken)).toBe(true);
+    });
+
+    it('counts a configured key that is too short as none', async () => {
+      process.env[PHOTO_UPLOAD_KEY_VARIABLE] = 'too-short';
+      const { uploadToken } = openUploadSlot();
+
+      const response = await putPhotoWith(uploadToken, {
+        'Content-Type': 'image/jpeg',
+        Authorization: 'Bearer too-short',
+      });
+
+      expect(response.status).toBe(503);
+    });
   });
 
   it('keeps upload tokens out of the request log', () => {

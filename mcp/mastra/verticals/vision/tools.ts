@@ -4,6 +4,7 @@ import { withRetry } from '../../utils/retry.js';
 import { createTool, type ToolMastra } from '../../utils/tool-factory.js';
 import { getPhotoReaderAgent, PHOTO_READER_AGENT_ID } from './agents.js';
 import { findPhoto, openUploadSlot } from './photos.js';
+import { configuredPhotoUploadKey } from './upload-key.js';
 
 /**
  * The client tool on sir's phone that takes the photo. The phone's own spelling is
@@ -28,6 +29,15 @@ export const PHOTO_UPLOAD_READY = `Now call ${OPEN_CAMERA_TOOL}, with no paramet
 /** What the voice agent is told when this server cannot say where it is. */
 export const PHOTO_UPLOAD_UNAVAILABLE =
   'Photos cannot be sent to Jarvis right now: the request did not say which address it came in on. Tell sir in one short sentence.';
+
+/**
+ * What the voice agent is told when this server has no photo upload key, and so takes no photos.
+ *
+ * Not something sir can fix from the phone, which is why it does not send him to its settings: the
+ * key is missing on the server's side (see `upload-key.ts`).
+ */
+export const PHOTO_UPLOADS_SWITCHED_OFF =
+  'Photos cannot be sent to Jarvis: this server has no photo upload key. Tell sir in one short sentence.';
 
 /** A host header's value as far as it is trusted: a name or an address, and perhaps a port. */
 const HOST = /^[A-Za-z0-9.-]+(?::\d{1,5})?$/;
@@ -73,7 +83,15 @@ export function publicOrigin(mcpExtra: unknown): string | undefined {
  *
  * Published on the MCP server only (see `mcp-server.ts`), because the URL is built from the MCP
  * request it arrives on and the slot lives in that server's memory. See `photos.ts` for the slot,
- * and `camera-answers.ts` and `camera-tool.ts` in `mobile` for the device's half.
+ * `upload-key.ts` for the key the phone sends beside it, and `camera-answers.ts` and
+ * `camera-tool.ts` in `mobile` for the device's half.
+ *
+ * **The key is asked about before the host.** A server without one refuses every upload, so a slot
+ * it opened could never be filled, and the agent is better told so here than by a phone whose photo
+ * was turned away. When the agent is the one asking to see something, that is before the camera
+ * opens. When sir opens it himself, from the phone's button, it is already open by the time this is
+ * called — the phone offers the button on its own key, and cannot know this server has none — so he
+ * hears it after the shot, but at least with the reason.
  */
 export const preparePhotoUpload = createTool({
   id: 'preparePhotoUpload',
@@ -91,6 +109,10 @@ export const preparePhotoUpload = createTool({
     instructions: z.string().describe('What to do next'),
   }),
   execute: async (_inputData, context) => {
+    if (!configuredPhotoUploadKey()) {
+      return { instructions: PHOTO_UPLOADS_SWITCHED_OFF };
+    }
+
     const origin = publicOrigin(context?.mcp?.extra);
     if (!origin) {
       return { instructions: PHOTO_UPLOAD_UNAVAILABLE };

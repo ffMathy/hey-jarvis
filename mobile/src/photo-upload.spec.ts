@@ -21,26 +21,87 @@ function mastraAnswer(body: unknown, status = 201): Promise<Response> {
 
 const PHOTO = new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xe0])], { type: 'image/jpeg' });
 
+/** The photo upload key, as sir typed it into the settings screen. */
+const PHOTO_UPLOAD_KEY = 'u8Jq-2vN_x9P!rT4sK7w';
+
+/** Sends {@link PHOTO} to {@link UPLOAD_URL} with {@link PHOTO_UPLOAD_KEY}, through the given server. */
+function sendTo(server: { send: (url: string, init: RequestInit) => Promise<Response> }) {
+  return sendPhoto({
+    photo: PHOTO,
+    uploadUrl: UPLOAD_URL,
+    photoUploadKey: PHOTO_UPLOAD_KEY,
+    fetchImplementation: server.send,
+  });
+}
+
 describe('sending a photo to Mastra', () => {
-  it('puts the JPEG at the upload URL, and nothing else', async () => {
+  it('puts the JPEG at the upload URL with the photo upload key, and nothing else', async () => {
     const server = createServer(() =>
       mastraAnswer({ success: true, message: 'Photo received', data: { photoId: 'photo3' } }),
     );
 
-    await sendPhoto({ photo: PHOTO, uploadUrl: UPLOAD_URL, fetchImplementation: server.send });
+    await sendTo(server);
 
     expect(server.requests).toHaveLength(1);
     expect(server.requests[0]?.url).toBe(UPLOAD_URL);
     expect(server.requests[0]?.init.method).toBe('PUT');
-    expect(server.requests[0]?.init.headers).toEqual({ 'Content-Type': 'image/jpeg' });
+    // The key as the server reads it: a bearer token, in the one header it looks in.
+    expect(server.requests[0]?.init.headers).toEqual({
+      'Content-Type': 'image/jpeg',
+      Authorization: `Bearer ${PHOTO_UPLOAD_KEY}`,
+    });
     expect(server.requests[0]?.init.body).toBe(PHOTO);
   });
 
   it('hands back the id Mastra filed it under', async () => {
     const server = createServer(() => mastraAnswer({ success: true, message: 'ok', data: { photoId: 'photo3' } }));
 
-    expect(await sendPhoto({ photo: PHOTO, uploadUrl: UPLOAD_URL, fetchImplementation: server.send })).toEqual({
-      photoId: 'photo3',
+    expect(await sendTo(server)).toEqual({ photoId: 'photo3' });
+  });
+
+  it('says the key was refused when Mastra says so, since that is the one sir can fix', async () => {
+    const server = createServer(() =>
+      mastraAnswer({ success: false, message: 'This upload needs the photo upload key.' }, 401),
+    );
+
+    expect(await sendTo(server)).toEqual({
+      problem: "Jarvis's server refused the photo upload key. Check it in the app's settings.",
+      keyRefused: true,
+    });
+  });
+
+  it('does not blame the key for a 401 that is not Mastra’s', async () => {
+    // Cloudflare Access turns requests away with a page of its own. Sending sir to change a key that
+    // was right would leave him with two problems.
+    const server = createServer(() => Promise.resolve(new Response('<html>Cloudflare Access</html>', { status: 401 })));
+
+    expect(await sendTo(server)).toEqual({
+      problem: 'The server turned the photo away. Cloudflare Access may need a bypass for /api/photos.',
+      keyRefused: false,
+    });
+  });
+
+  it('does not blame the key for a 401 in any other JSON either', async () => {
+    const server = createServer(() => mastraAnswer({ error: 'unauthorized' }, 401));
+
+    expect(await sendTo(server)).toMatchObject({ keyRefused: false });
+  });
+
+  it('does not blame the key for Mastra refusing something else', async () => {
+    // The envelope alone is not the key: a 404 is a spent link whatever it is wrapped in.
+    const server = createServer(() => mastraAnswer({ success: false, message: 'expired' }, 404));
+
+    expect(await sendTo(server)).toMatchObject({ keyRefused: false });
+  });
+
+  it('says a server with no key of its own takes no photos', async () => {
+    const server = createServer(() =>
+      mastraAnswer({ success: false, message: 'Photo uploads are switched off on this server.' }, 503),
+    );
+
+    expect(await sendTo(server)).toEqual({
+      problem: 'Photo uploads are switched off on the server.',
+      keyRefused: false,
     });
   });
 
@@ -50,42 +111,52 @@ describe('sending a photo to Mastra', () => {
       Promise.resolve(new Response('<html>Sign in with Cloudflare Access</html>', { status: 200 })),
     );
 
-    const delivery = await sendPhoto({ photo: PHOTO, uploadUrl: UPLOAD_URL, fetchImplementation: server.send });
-
-    expect(delivery).toEqual({ problem: 'The server answered with something that was not Mastra.' });
+    expect(await sendTo(server)).toEqual({
+      problem: 'The server answered with something that was not Mastra.',
+      keyRefused: false,
+    });
   });
 
   it('does not take any JSON with a 200 for a delivery either', async () => {
     const server = createServer(() => mastraAnswer({ success: true, data: { photoId: '../../etc/passwd' } }, 200));
 
-    const delivery = await sendPhoto({ photo: PHOTO, uploadUrl: UPLOAD_URL, fetchImplementation: server.send });
-
-    expect(delivery).toEqual({ problem: 'The server answered with something that was not Mastra.' });
+    expect(await sendTo(server)).toEqual({
+      problem: 'The server answered with something that was not Mastra.',
+      keyRefused: false,
+    });
   });
 
   it('says an upload link was spent or stale, which is what a 404 from the upload path means', async () => {
     const server = createServer(() => mastraAnswer({ success: false, message: 'expired' }, 404));
 
-    expect(await sendPhoto({ photo: PHOTO, uploadUrl: UPLOAD_URL, fetchImplementation: server.send })).toEqual({
+    expect(await sendTo(server)).toEqual({
       problem: 'The upload link had expired or been used already.',
+      keyRefused: false,
     });
   });
 
   it('names Cloudflare Access when the tunnel turns the photo away', async () => {
-    const server = createServer(() => Promise.resolve(new Response('Forbidden', { status: 403 })));
+    const server = createServer(() => Promise.resolve(new Response('<html>Forbidden</html>', { status: 403 })));
 
-    const delivery = await sendPhoto({ photo: PHOTO, uploadUrl: UPLOAD_URL, fetchImplementation: server.send });
-
-    expect(delivery).toEqual({
+    expect(await sendTo(server)).toEqual({
       problem: 'The server turned the photo away. Cloudflare Access may need a bypass for /api/photos.',
+      keyRefused: false,
     });
   });
 
   it('answers rather than throws when the network is not there', async () => {
     const server = createServer(() => Promise.reject(new TypeError('Network request failed')));
 
-    expect(await sendPhoto({ photo: PHOTO, uploadUrl: UPLOAD_URL, fetchImplementation: server.send })).toEqual({
-      problem: 'The server could not be reached.',
-    });
+    expect(await sendTo(server)).toEqual({ problem: 'The server could not be reached.', keyRefused: false });
+  });
+
+  it('never puts the key in what it says went wrong', async () => {
+    // The problem is logged on the phone. A key in a log is a key in every bug report.
+    for (const status of [400, 401, 403, 404, 413, 500, 503]) {
+      const server = createServer(() => mastraAnswer({ success: false, message: PHOTO_UPLOAD_KEY }, status));
+      const delivery = await sendTo(server);
+
+      expect('problem' in delivery && delivery.problem).not.toContain(PHOTO_UPLOAD_KEY);
+    }
   });
 });

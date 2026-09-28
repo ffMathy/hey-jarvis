@@ -6,6 +6,8 @@ import type { AnyWorkflow, AnyWorkflowResult } from '../../utils/workflows/workf
 import { shoppingListWorkflow } from '../shopping/workflows.js';
 import {
   claimUploadSlot,
+  configuredPhotoUploadKey,
+  holdsPhotoUploadKey,
   KEEP_PHOTO_MS,
   keepPhoto,
   MAX_PHOTO_BYTES,
@@ -174,17 +176,55 @@ function photoMediaType(contentType: string | undefined): PhotoMediaType | undef
 /**
  * Lets the browser build send a photo from the origin it is served from.
  *
- * Any origin, because the token in the path is the whole of the authority to upload: there are no
- * cookies or credentials for a wildcard to expose, and the phone's browser build is served from
- * GitHub Pages rather than from this server.
+ * Any origin, because what authorises an upload is written into the request by the phone itself —
+ * the key in `Authorization`, the slot's token in the path — rather than anything a browser attaches
+ * on its own: there are no cookies for a wildcard to expose, and a page on another origin that knows
+ * neither can send nothing. `Authorization` has to be named here, since a browser sends that header
+ * across origins only when the preflight allows it; the phone's browser build is served from GitHub
+ * Pages rather than from this server.
  */
 function allowAnyOrigin(_request: Request, response: Response, next: NextFunction): void {
   response.set({
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'PUT, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     'Access-Control-Max-Age': '600',
   });
+  next();
+}
+
+/** The realm a refused upload is told to authenticate for, so a client can tell this refusal apart. */
+const PHOTO_UPLOAD_REALM = 'jarvis-photos';
+
+/**
+ * Turns an upload away before anything else is looked at, unless it carries the photo upload key.
+ *
+ * **Ahead of the slot, and without touching it.** A slot is spent once it is claimed, so a request
+ * without the key must never reach {@link claimSlotBeforeReading}: otherwise anyone who saw an upload
+ * URL could not use it, but could still make sure sir's phone could not either. Checked here, a
+ * request without the key costs two hashes and leaves the slot for the phone.
+ *
+ * **Fails closed.** A server with no key configured takes no photos (`503`) rather than taking them
+ * from anyone. The header is read and compared, never logged (see `vision/upload-key.ts`).
+ */
+function requirePhotoUploadKey(request: Request, response: Response, next: NextFunction): void {
+  const expectedKey = configuredPhotoUploadKey();
+  if (!expectedKey) {
+    response.status(503).json({
+      success: false,
+      message: 'Photo uploads are switched off on this server.',
+    } satisfies WorkflowApiResponse);
+    return;
+  }
+
+  if (!holdsPhotoUploadKey(request.headers.authorization, expectedKey)) {
+    response
+      .status(401)
+      .set('WWW-Authenticate', `Bearer realm="${PHOTO_UPLOAD_REALM}"`)
+      .json({ success: false, message: 'This upload needs the photo upload key.' } satisfies WorkflowApiResponse);
+    return;
+  }
+
   next();
 }
 
@@ -192,10 +232,11 @@ function allowAnyOrigin(_request: Request, response: Response, next: NextFunctio
  * Turns an upload away before a byte of it is read, unless it is an image for a live slot.
  *
  * **The order is the protection.** This path has to be reachable without Cloudflare Access — the
- * phone holds no service token — so anyone can send to it. A body parser in front of this would read
- * a stranger's ten megabytes into memory before refusing them, and a few hundred of those at once
- * are the Pi's memory, and with it the process every other part of Jarvis runs in. Checked first,
- * a guessed token costs one map lookup, and a slot is read from once.
+ * phone holds no Access service token — so anyone can send to it, and even a request with the key
+ * is read only once it is known to be wanted. A body parser in front of this would read a
+ * stranger's ten megabytes into memory before refusing them, and a few hundred of those at once are
+ * the Pi's memory, and with it the process every other part of Jarvis runs in. Checked first, a
+ * guessed token costs one map lookup, and a slot is read from once.
  */
 function claimSlotBeforeReading(request: Request, response: Response, next: NextFunction): void {
   if (!photoMediaType(request.headers['content-type'])) {
@@ -252,8 +293,12 @@ export function withoutUploadToken(url: string): string {
 }
 
 /**
- * Registers the endpoint sir's phone sends a photo to. See `vision/photos.ts` for the slot a photo
- * comes in through, and `preparePhotoUpload` for where its URL comes from.
+ * Registers the endpoint sir's phone sends a photo to. See `vision/upload-key.ts` for the key it
+ * has to carry, `vision/photos.ts` for the slot a photo comes in through, and `preparePhotoUpload`
+ * for where its URL comes from.
+ *
+ * The preflight asks for no key: a browser sends `OPTIONS` without the headers it is asking about,
+ * so it could not carry one, and it answers nothing but which headers may follow.
  *
  * @returns The registered path, for logging
  */
@@ -261,7 +306,14 @@ export function registerPhotoUploadApi(router: Router): string {
   router.options(PHOTO_UPLOAD_ROUTE, allowAnyOrigin, (_request: Request, response: Response) => {
     response.sendStatus(204);
   });
-  router.put(PHOTO_UPLOAD_ROUTE, allowAnyOrigin, claimSlotBeforeReading, readPhoto, keepUploadedPhoto);
+  router.put(
+    PHOTO_UPLOAD_ROUTE,
+    allowAnyOrigin,
+    requirePhotoUploadKey,
+    claimSlotBeforeReading,
+    readPhoto,
+    keepUploadedPhoto,
+  );
   logger.info('[API] Registered photo upload endpoint', { method: 'PUT', path: PHOTO_UPLOAD_ROUTE });
   return PHOTO_UPLOAD_ROUTE;
 }
@@ -275,7 +327,8 @@ export interface RegisteredApiRoute {
 /**
  * Registers all API routes on the provided Express router.
  * The workflow routes are intended to be called from Home Assistant via REST calls; the photo
- * route by sir's phone, with a URL the voice agent had minted for it.
+ * route by sir's phone, with a URL the voice agent had minted for it and the photo upload key from
+ * its settings.
  *
  * @param router - The Express router to register routes on
  * @returns Every registered route, for logging purposes

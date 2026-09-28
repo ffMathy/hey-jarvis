@@ -92,9 +92,10 @@ mobile/
     ├── onboarding.ts             # its steps, which of them this device has, and every link
     ├── onboarding-storage.ts     # whether the tour has been walked
     ├── conversation-screen.tsx   # the hologram, and nothing else on the screen but a faint camera
-    ├── settings-screen.tsx       # the two fields with no tour around them, for coming back to
-    ├── elevenlabs-fields.tsx     # the two fields themselves, shared with the tour
+    ├── settings-screen.tsx       # the two fields with no tour around them, and the photo upload key
+    ├── elevenlabs-fields.tsx     # the fields themselves, shared with the tour (which skips the key)
     ├── settings-storage.ts       # platform-agnostic half of persistence
+    ├── read-again.ts             # reading the keystore again when the reading, not the value, failed
     ├── watch-card.tsx            # whether Jarvis is on the paired watch, and the key handover
     ├── answer-the-watch.ts       # sends the credentials across whenever the watch asks
     ├── use-assistant-registration.ts  # whether Jarvis still holds the assistant role
@@ -118,7 +119,8 @@ mobile/
     ├── camera-tool.ts            # showing Jarvis something: the `openCamera` tool and the button's tap
     ├── camera-answers.ts         # what the agent is told, and where a photo may be sent
     ├── photo-request.ts          # the tool call, the photo and the upload URL meeting, in any order
-    ├── photo-upload.ts           # sending the photo to Mastra, and reading back its id
+    ├── photo-upload.ts           # sending the photo to Mastra with the key, and reading back its id
+    ├── photo-upload-key.ts       # the photo upload key: what it may be, and where it is kept
     ├── camera-button.tsx         # the camera beside him
     ├── take-photo.ts             # the phone's own camera app, through modules/jarvis-assistant …
     ├── take-photo.web.ts         # … and a file picker in a browser
@@ -303,17 +305,32 @@ agent ─ preparePhotoUpload (MCP) ──▶ Mastra mints a one-photo upload slo
           ▼
 phone  keeps the upload URL (camera-answers.ts readOfferedUploadUrl)
 agent ─ openCamera (client tool, no parameters) ──▶ phone opens the camera
-phone  PUT image/jpeg ──▶ Mastra /api/photos/<token> ──▶ { photoId }
+phone  PUT image/jpeg, Authorization: Bearer <photo upload key> ──▶ Mastra /api/photos/<token> ──▶ { photoId }
 phone  answers openCamera with the id ──▶ agent asks routePromptWorkflow "… (photo photo3)"
 ```
 
-Four decisions carry it, and each has a reason:
+Five decisions carry it, and each has a reason:
 
 - **The upload URL never passes through the model.** `openCamera` takes no parameters. The URL is read
   from the MCP result ElevenLabs relays to the client, which the model cannot write — so an email it
   summarised or a page it read cannot talk it into sending sir's photo elsewhere. The phone still
-  knows no Mastra address and holds no Mastra secret (see Configuration); the address arrives one
-  photo at a time, from Mastra. Only a URL of the upload path's shape is ever used.
+  knows no Mastra address (see Configuration); the address arrives one photo at a time, from
+  Mastra. Only a URL of the upload path's shape is ever used.
+- **The photo carries a key the URL does not.** Mastra's upload route needs a Cloudflare Access
+  bypass for `/api/photos/*`, because the phone cannot pass Access, so anybody can reach it. The
+  one-photo URL is a good capability but not a secret only the phone holds: it reaches the phone
+  inside an MCP result ElevenLabs relays, so it has been through a third party. So the bypass opens a
+  door that asks for a key, not an open one: the phone also sends the **photo upload key** — typed
+  into the settings screen, the same value as `HEY_JARVIS_PHOTO_UPLOAD_KEY` on the server — as
+  `Authorization: Bearer <key>`, and the server checks it before it touches the slot (`mcp/AGENTS.md`,
+  "Vision"). Both sides fail closed: a server without a key refuses every photo (`503`), and a phone
+  without one offers no camera at all — it tells the agent nothing, shows no button, and answers an
+  `openCamera` that comes anyway at once with `NO_PHOTO_UPLOAD_KEY`, which sends sir to the settings,
+  without opening the camera. A key the server turns away is answered with `PHOTO_KEY_REFUSED` rather
+  than `PHOTO_NOT_SENT`, because it is the one failure sir can fix and a retry cannot;
+  `photo-upload.ts` only calls it that for a `401` in Mastra's own JSON envelope, since Cloudflare's
+  refusals are pages of its own and a phone told its key was wrong when the tunnel stopped it would
+  send sir to change a key that was right.
 - **The phone's own camera app takes the photo, and `CAMERA` stays blocked.** Summoned, the
   conversation is drawn in the assistant's window, which has no activity — and expo-camera's view
   and the image picker both need one, as does a runtime permission prompt. So `JarvisPhotoActivity`
@@ -351,9 +368,27 @@ him answering (`answered`). `user_activity` is sent every five seconds meanwhile
 ends a call thirty seconds after the user last spoke — whether that covers the time behind the
 camera app, where JavaScript's timers stop, is still to be checked on a device.
 
-**Only the phone is asked.** Once connected it tells the agent it has a camera
-(`CAMERA_ON_THIS_DEVICE`, a contextual update); the prompt asks for photos only where it has heard
-that. The watch answers `openCamera` with "no camera here" anyway, and so does the voice firmware.
+**Only the phone is asked, and only with the key.** Once connected, a phone that has the photo
+upload key tells the agent it has a camera (`CAMERA_ON_THIS_DEVICE`, a contextual update); the
+prompt asks for photos only where it has heard that. A phone without the key says nothing, and the
+watch answers `openCamera` with "no camera here" anyway, as does the voice firmware.
+
+**A key changed on the settings screen takes a new conversation.** Holding the conversation screen
+to reach the settings unmounts it but not its session, and ElevenLabs keeps the `openCamera` tool
+and MCP handler the session was started with — the old screen's, reading the old screen's key. A key
+added there went on being answered with `NO_PHOTO_UPLOAD_KEY`, and a cleared one went on being sent.
+So a save that changes the key ends that conversation (`settings-screen.tsx`), and the conversation
+screen it returns to opens a new one built with the new key; a save that leaves the key as it was
+leaves the conversation alone. The key is also read again on every summoning after the first
+(`app.tsx`), because the assistant's window is kept between summonings and the key is as often
+changed in the app's own window — which is where the agent sends sir to add it.
+
+**A key that cannot be read is tried again, and never erased.** It is read beside the ElevenLabs
+settings, from the same keystore at the same moment, so it fails when they do — in a window the
+system has only just made. `loadPhotoUploadKey` says `unreadable` rather than "none", and it is
+retried as the settings are (`read-again.ts`); only a key that still cannot be read is no key, and
+the camera stays off. The settings screen then starts the field empty, so it writes the key only if
+sir changed the field: saving an untouched one would have erased a key that had only failed to load.
 
 ## Sample mode
 
@@ -423,14 +458,15 @@ Nothing in the tour is shown to a **summoned** app. Somebody who has just made t
 
 ## Configuration
 
-The app ships with no credential. It talks to ElevenLabs directly, and both settings are typed into the tour's credentials step on first run — or into the settings screen afterwards — and kept in the Android keystore, or on web in `localStorage`:
+The app ships with no credential. It talks to ElevenLabs directly, and both ElevenLabs settings are typed into the tour's credentials step on first run — or into the settings screen afterwards — and kept in the Android keystore, or on web in `localStorage`. The photo upload key is optional, asked for on the settings screen only, and kept the same way:
 
 | Setting | What it is |
 | --- | --- |
 | API key | An ElevenLabs API key, sent as `xi-api-key` to ElevenLabs and nowhere else |
 | Agent ID | The Jarvis agent — the value of `HEY_JARVIS_ELEVENLABS_AGENT_ID` |
+| Photo upload key | Optional. The value of `HEY_JARVIS_PHOTO_UPLOAD_KEY` on the Mastra server, at least 16 characters; sent as `Authorization: Bearer <key>` with a photo, to the upload URL Mastra minted for it, and nowhere else. Empty keeps the camera off |
 
-Both values are also what the **watch** needs, and it is given them from here rather than asked for them: see [Handing the credentials to the watch](#handing-the-credentials-to-the-watch). `conversation-token.ts` and `elevenlabs-settings.ts` live in `hologram/` for the same reason — both devices use them, so neither owns them.
+The two ElevenLabs values are also what the **watch** needs, and it is given them from here rather than asked for them: see [Handing the credentials to the watch](#handing-the-credentials-to-the-watch). `conversation-token.ts` and `elevenlabs-settings.ts` live in `hologram/` for the same reason — both devices use them, so neither owns them. The photo upload key is not one of them: it is kept apart from `ElevenLabsSettings` (`photo-upload-key.ts`, under its own storage key) and is never sent to the watch, which has no camera to use it with.
 
 For each conversation the app asks `GET https://api.elevenlabs.io/v1/convai/conversation/token` for a WebRTC token for that agent, and the session runs on the token; the key itself is used for nothing else.
 
@@ -448,14 +484,18 @@ Only ever here. `readingAloud` is set from `onMessage`, which is wired on the te
 
 `conversation-token.ts` turns each failure into what to fix — a rejected key, a key without permission to start conversations (which ElevenLabs can also answer with 401), an agent ID the account does not have or a malformed one (400), an account out of credits (402), rate limiting (429) — by reading only ElevenLabs' fixed `detail.status` / `detail.code` identifiers. It never repeats anything else from a response, since a message can echo the request that carried the key.
 
-This used to go through the MCP server, which held the key and handed the phone tokens behind a shared secret. It was changed so the app needs nothing but ElevenLabs: no server address, no second secret, no tunnel to reach. Photos keep it that way: the address a photo is sent to is minted by Mastra for that one photo and reaches the phone through the conversation (see "Showing him something"), so there is still nothing to configure. The price is a real credential on the phone, so give the app **its own key**, restricted to what a conversation needs where the account allows it — then a lost phone is one revoked key, not every integration on the account.
+This used to go through the MCP server, which held the key and handed the phone tokens behind a shared secret. It was changed so the app needs nothing but ElevenLabs to talk to Jarvis: no server address and no tunnel to reach. The address a photo is sent to keeps it that way — it is minted by Mastra for that one photo and reaches the phone through the conversation (see "Showing him something").
+
+**Photos do bring back exactly one Jarvis-server secret, and only for photos.** The photo upload key is the one thing on the phone that is Mastra's rather than ElevenLabs': optional, so a phone without it talks to Jarvis exactly as before and simply has no camera; kept apart from the ElevenLabs settings and never handed to the watch; and only ever sent with a photo, to the URL Mastra minted for it — never with a conversation, never to ElevenLabs, never in a log. It is asked for because that URL passes through ElevenLabs on its way here, and the route it names has to be open past Cloudflare Access; see "Showing him something". Parsed by `parsePhotoUploadKey` in `photo-upload-key.ts`: at least `MIN_PHOTO_UPLOAD_KEY_LENGTH` (16) characters, as the server requires, and nothing a header value cannot carry — printable ASCII with no spaces. `photo-upload-key.contract.spec.ts` reads the server's length and variable name out of `mcp/mastra/verticals/vision/upload-key.ts` and fails if either drifts.
+
+The ElevenLabs API key is a real credential on the phone, so give the app **its own key**, restricted to what a conversation needs where the account allows it — then a lost phone is one revoked key, not every integration on the account. The photo upload key is likewise worth making for this purpose alone, so a lost phone means replacing one item in 1Password — `Photo upload key` in the `Jarvis` vault, which the server reads through `mcp/op.optional.env` — and restarting the server, and nothing else.
 
 What the keystore does and does not do for that key:
 
 - **It keeps it from other apps.** `expo-secure-store` encrypts the entry with a key held in the Android Keystore, which only this app's user ID can use.
 - **It keeps it out of backups.** The `expo-secure-store` config plugin in `app.config.ts` adds backup and data-extraction rules that leave its storage out of Google's cloud backup and device-to-device transfer. (After a restore the entry would not decrypt anyway, since the keystore key never leaves the phone; the app then simply opens on the settings screen.)
 - **It does not protect it from an update of this app — and the side-loaded APK makes that easy.** Anything installed as an update of `com.ffmathy.heyjarvis` runs as the same app and can read the key. Android only accepts an update signed with the same key, but the APK the Mobile APK workflow builds is signed with the Expo template's public debug key (see "Getting an APK onto a phone"), so *any* APK signed with that key qualifies — including the workflow's own builds of pull requests. Never install a pull request's APK over an install that holds your real key. Closing this properly means signing with a private release key kept in a CI secret that pull request builds cannot reach.
-- **It is not autofill's.** Both settings fields opt out of autofill and password managers, so saving them does not copy the key into a synced vault.
+- **It is not autofill's.** Every settings field opts out of autofill and password managers, so saving them does not copy either key into a synced vault.
 
 Reading the key can also fail outright — a keystore key invalidated by an OS update, say — and that reads as "nothing stored": the app opens on the settings screen rather than hanging on its loading spinner.
 
@@ -546,7 +586,7 @@ Everything under `src/` that can be tested without a device is, and it runs in t
 bunx turbo test --filter=mobile
 ```
 
-Tests must not import React Native or any Expo native module — there is no runtime for them under `bun test`. Keep logic worth testing in plain `.ts` files (`assist-link.ts`, `elevenlabs-settings.ts`, `conversation-token.ts`) and let the `.tsx` files stay thin enough to read.
+Tests must not import React Native or any Expo native module — there is no runtime for them under `bun test`. Keep logic worth testing in plain `.ts` files (`assist-link.ts`, `elevenlabs-settings.ts`, `conversation-token.ts`) and let the `.tsx` files stay thin enough to read. Where such a file also reads the store — `photo-upload-key.ts` does — its spec replaces `key-value-store` with `mock.module` before importing it, since the real one pulls in `expo-secure-store` and React Native with it.
 
 `turbo build` bundles the JavaScript with Metro rather than assembling an APK. That needs no Android SDK, so it runs in CI's dev container on every push, and it still catches the failures a bundle can catch: an import that does not resolve, a native module missing from the tree, a file no test imports. The native build — Kotlin, Gradle, the manifest merge — is exercised by the Mobile APK workflow, only when the app changes.
 
@@ -556,7 +596,7 @@ Tests must not import React Native or any Expo native module — there is no run
 
 The boundary is the ElevenLabs session, which needs a real API key and real quota. Everything up to it is exercised for real: the first-run tour (its two steps in a browser, its links, Back, and the side trip to sample mode and back), settings validation, persistence across a reload, the hologram drawing and moving with CanvasKit loaded from the export's own `canvaskit.wasm`, and the token request to ElevenLabs — its `xi-api-key` header, agent ID and participant name, and that the key never appears in the URL — along with how a rejected key and an unknown agent are explained. The typed field is covered on both of its paths: that a refused microphone still opens a conversation — dialled by asking for a **signed URL** rather than a token — and that the field stops saying "Connecting…" once nothing is; and that a microphone that *works* gets the same field beside it, over a token and not a signed URL, since a typed line there is answered out loud and quietly turning it into a text-only session would be the one way to lose that. A `start` that never opened a session at all gets no field, which is the phone's refused microphone by another route. The greeting is covered by counting `HTMLMediaElement.play()` in the page — the player fetches the recording at mount whether or not it plays, so a request proves nothing: it plays once from the export's own assets beside the token request, plays without being refused in a tab nobody has clicked — with the microphone held for it let go afterwards — and does not play in the text-only session, whose `conversation_initiation_client_data` must carry no `first_message`. The override on a voice session travels over LiveKit's data channel, which these tests close, so it is pinned by `greeting-handover.spec.ts` in `hologram` instead. Both URLs are intercepted with `page.route`; every other non-localhost request is aborted, and non-local WebSockets are closed, so a test can never dial out. Playwright answers CORS preflights for routed requests itself, so whether ElevenLabs' real CORS policy admits the web build is **not** covered — the test checks instead that the request carries no header besides `xi-api-key`, which is all a preflight would have to allow.
 
-**The camera is covered end to end in the text-only session**, whose socket the suite can play ElevenLabs' side of (`speakForTheAgent`): the page tells the agent it has a camera once connected; a relayed `preparePhotoUpload` result followed by an `openCamera` call lights the button, a tap opens the file chooser, the picked image is `PUT` as a JPEG to exactly the URL the MCP result carried, and the call is answered with the photo's id; a tap with no call waiting sends sir's turn, holds the photo and sends it when the call comes; and a call naming an address of its own, with no MCP result behind it, uploads nothing and is sent to fetch one. What it cannot reach is the phone's camera app and the assistant's window stepping aside for it — see below.
+**The camera is covered end to end in the text-only session**, whose socket the suite can play ElevenLabs' side of (`speakForTheAgent`). Every camera test but one first saves a photo upload key on the settings screen (`savePhotoUploadKey`) while the conversation the tour landed on is still connected — the way sir would — and carries on in the conversation that replaces it, the first having been hung up because its tools were built without the key. With the key: the page tells the agent it has a camera once connected; a relayed `preparePhotoUpload` result followed by an `openCamera` call lights the button, a tap opens the file chooser, the picked image is `PUT` as a JPEG to exactly the URL the MCP result carried, with `Authorization: Bearer <key>`, and the call is answered with the photo's id; a tap with no call waiting sends sir's turn, holds the photo and sends it when the call comes; a call naming an address of its own, with no MCP result behind it, uploads nothing and is sent to fetch one; and a `401` in Mastra's envelope from the upload route is answered with `PHOTO_KEY_REFUSED`. Without it: no contextual update, no button, and an `openCamera` call answered at once with `NO_PHOTO_UPLOAD_KEY`. Added during a conversation, the key hangs it up and the next is told of a camera; cleared during one, the next is told nothing and answers `openCamera` with `NO_PHOTO_UPLOAD_KEY`. The settings screen refuses a key shorter than sixteen characters and saves nothing else on the screen with it, keeps a valid one across a reload, and leaves a key it could not read alone when the rest of the screen is saved. What it cannot reach is the phone's camera app and the assistant's window stepping aside for it — see below.
 
 Every test that needs a configured app walks the tour first, through the `walkToCredentials` helper: the app no longer opens on a form, so a spec that types into one without pressing Next is a spec that fails on a missing field rather than on what it was checking.
 
@@ -564,7 +604,7 @@ Set `CHROMIUM_EXECUTABLE_PATH` to run against a Chromium that Playwright did not
 
 ### What CI cannot test, and what stands in for it
 
-**Showing Jarvis a photo on a device** has not been run on one yet. Before relying on it, check on a phone or an emulator with a camera app: that the camera comes up over the assistant's window and the window comes back after it with the conversation still open; that the same works from the app's own activity, where the conversation's JavaScript is paused behind the camera — LiveKit's keep-alive runs on JavaScript timers, so a long capture may cost a reconnect; that ElevenLabs does not end a call while sir frames a shot in silence; that the relayed `mcp_tool_call` result really carries the upload URL; and that a receipt arrives upright. What stands in for the native half meanwhile is `take-photo.contract.spec.ts` — the provider's authority and directory, the activity's manifest entry, the module's function names and the photo's size, read out of the Kotlin, the manifest and the resource as text — and the Mobile APK workflow compiling it.
+**Showing Jarvis a photo on a device** has not been run on one yet. Before relying on it, check on a phone or an emulator with a camera app: that the camera comes up over the assistant's window and the window comes back after it with the conversation still open; that the same works from the app's own activity, where the conversation's JavaScript is paused behind the camera — LiveKit's keep-alive runs on JavaScript timers, so a long capture may cost a reconnect; that ElevenLabs does not end a call while sir frames a shot in silence; that the relayed `mcp_tool_call` result really carries the upload URL; that the photo upload key reaches Mastra through the tunnel, `Authorization` header and all; and that a receipt arrives upright. What stands in for the native half meanwhile is `take-photo.contract.spec.ts` — the provider's authority and directory, the activity's manifest entry, the module's function names and the photo's size, read out of the Kotlin, the manifest and the resource as text — and the Mobile APK workflow compiling it.
 
 CI has no Android emulator, and neither does an agent sandbox: that needs the Android SDK and hardware virtualisation, and the SDK only comes from `dl.google.com`. So the device-level behaviour — the assist gesture, the role picker, the session opening the app — is checked by hand on an emulator, with the script below, rather than on every push. The commands above under "Becoming the assistant" are how to look at it there, and this is the one-line version:
 

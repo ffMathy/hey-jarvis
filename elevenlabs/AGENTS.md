@@ -274,7 +274,10 @@ beside the tool it is about, rather than as an exception in the prompt.
 
 **Only a device that says it has a camera is asked, and the prompt says so once.** The watch, the
 Voice speaker and telephone calls share this agent. The phone announces its camera in a contextual
-update once connected, and the gate is stated in the prompt's `preparePhotoUpload` entry alone.
+update once connected — but only once it holds the **photo upload key** the Mastra server asks for
+before it takes a photo (`HEY_JARVIS_PHOTO_UPLOAD_KEY` there, typed into the phone's settings); a
+phone without it says nothing, and is never asked. The gate is stated in the prompt's
+`preparePhotoUpload` entry alone.
 `openCamera` is only ever called when `preparePhotoUpload`'s instructions say to — the way
 `hangUpWhenQuiet` is only called when the routing instructions say to — so its entry and its
 description need no gate of their own, and repeating it there is how the two copies drift apart. The
@@ -297,7 +300,11 @@ same request must reach for neither tool. And the routing LLM eval in
 `mcp/mastra/verticals/routing/workflows.llm-eval.integration.spec.ts` checks the planner's half:
 "(photo photo3)" goes to `vision` with the id in its prompt, and "add what is on this receipt to my
 shopping list" reads the photo before `shoppingList` in the same chain. Both evals need credentials
-and run only under `turbo test:integration`.
+and run only under `turbo test:integration`. The camera eval also needs the `Photo upload key` item
+in the `Jarvis` vault, which reaches the local MCP server as `HEY_JARVIS_PHOTO_UPLOAD_KEY` through
+`mcp/op.optional.env`: an optional reference that does not resolve is left out, and a server without
+the key answers `preparePhotoUpload` with `PHOTO_UPLOADS_SWITCHED_OFF` and no URL, which fails the
+eval. A pre-generated `mcp/op.env.local` has to be generated again to pick the key up.
 
 **None of this reaches the live agent until a release deploys it.** `bunx turbo deploy` runs in the
 release workflow, and only when a releasable commit type (`feat`, `fix`, `perf`, `refactor`, `docs`)

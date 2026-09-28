@@ -4,6 +4,8 @@ import type { ClientTools } from 'hologram/conversation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   CAMERA_ON_THIS_DEVICE,
+  NO_PHOTO_UPLOAD_KEY,
+  PHOTO_KEY_REFUSED,
   PHOTO_NOT_SENT,
   photoShown,
   REPLACED_BY_A_LATER_CALL,
@@ -37,6 +39,19 @@ const STILL_HERE_EVERY_MS = 5_000;
  * (`CAMERA_ON_THIS_DEVICE`); the agent's prompt asks for photos only where it has heard that, so the
  * watch, the house speakers and phone calls are never asked.
  *
+ * **And only with the photo upload key.** Mastra refuses a photo without it (`photo-upload-key.ts`
+ * says why it asks), so a phone that has not been given one offers no camera at all: it tells the
+ * agent nothing, `canSendPhotos` keeps the button off the screen, and a call that comes anyway is
+ * answered at once with where to add the key (`NO_PHOTO_UPLOAD_KEY`) rather than opening a camera
+ * for a photo that could only be turned away. A key the server refuses is answered apart from any
+ * other failure (`PHOTO_KEY_REFUSED`), because it is the one sir can fix and retrying cannot.
+ *
+ * **The key a conversation uses is the one this hook was given, as it is now.** The session keeps
+ * the tool and the MCP handler of the screen that started it, even after that screen has gone, so a
+ * key changed on the settings screen ends the conversation there and the next is built with the new
+ * one (`settings-screen.tsx`). The one change that reaches a conversation still running here is a
+ * summoning reading the key again (`app.tsx`), and the tool and `send` read it through a ref for that.
+ *
  * `cameraBusy` and `sirAnswered` are for the quiet hang-up. The camera open, or its photo still on
  * the way, is not the room going quiet, so it holds the clock. And sir opening the camera, and his
  * photo arriving, both answer whatever finished request was waiting on quiet: the photo hands Jarvis
@@ -46,9 +61,16 @@ const STILL_HERE_EVERY_MS = 5_000;
  *
  * The session options go to `startSession` beside the other hooks' — their `clientTools` merged with
  * `mergeClientTools` and `onMCPToolCall` with `inTurn`, never spread, or one hook's replaces the
- * other's. Both are built once per session and read everything live through refs.
+ * other's. Both are built once per session and read everything live through refs, the key included.
  */
-export function useCameraTool({ inAssistantWindow }: { inAssistantWindow: boolean }) {
+export function useCameraTool({
+  inAssistantWindow,
+  photoUploadKey,
+}: {
+  inAssistantWindow: boolean;
+  /** The key Mastra asks for before it takes a photo, or `undefined` when sir has not given one. */
+  photoUploadKey: string | undefined;
+}) {
   const { status } = useConversationStatus();
   const { sendUserMessage, sendContextualUpdate, sendUserActivity } = useConversationControls();
 
@@ -61,6 +83,15 @@ export function useCameraTool({ inAssistantWindow }: { inAssistantWindow: boolea
   const heldPhoto = useRef<Blob | undefined>(undefined);
   /** Which conversation a photo in flight belongs to, so one that lands after the end is dropped. */
   const conversation = useRef(0);
+  /**
+   * The key as it is now, for a tool handed to the session before it may have changed — which it
+   * does under a live conversation when a summoning finds this one still open and reads the key
+   * again, perhaps changed in the app's other window. See the note above.
+   */
+  const latestPhotoUploadKey = useRef(photoUploadKey);
+  useEffect(() => {
+    latestPhotoUploadKey.current = photoUploadKey;
+  }, [photoUploadKey]);
 
   const [cameraOpen, setCameraOpen] = useState(false);
   const [sending, setSending] = useState(false);
@@ -85,10 +116,18 @@ export function useCameraTool({ inAssistantWindow }: { inAssistantWindow: boolea
         answer(PHOTO_NOT_SENT);
         return;
       }
+      const photoUploadKeyNow = latestPhotoUploadKey.current;
+      if (!photoUploadKeyNow) {
+        // Only if the key was taken away while a call waited on the camera — cleared in the other
+        // window, and read again for a summoning — since a call without one is answered before it
+        // can wait. The photo would only be refused, so it is not sent.
+        answer(NO_PHOTO_UPLOAD_KEY);
+        return;
+      }
 
       const sentIn = conversation.current;
       setSending(true);
-      void sendPhoto({ photo, uploadUrl }).then((delivery) => {
+      void sendPhoto({ photo, uploadUrl, photoUploadKey: photoUploadKeyNow }).then((delivery) => {
         if (sentIn !== conversation.current) {
           return;
         }
@@ -98,8 +137,9 @@ export function useCameraTool({ inAssistantWindow }: { inAssistantWindow: boolea
           answer(photoShown(delivery.photoId));
           return;
         }
+        // The problem is words chosen in `photo-upload.ts`, never the response or the key.
         console.warn(`The photo for Jarvis was not sent: ${delivery.problem}`);
-        answer(PHOTO_NOT_SENT);
+        answer(delivery.keyRefused ? PHOTO_KEY_REFUSED : PHOTO_NOT_SENT);
       });
     },
     [answer],
@@ -205,10 +245,13 @@ export function useCameraTool({ inAssistantWindow }: { inAssistantWindow: boolea
   }, [openTheCamera, sendUserMessage]);
 
   const connected = status === 'connected';
+  /** Whether there is a photo this phone could send that Mastra would take. */
+  const canSendPhotos = photoUploadKey !== undefined;
 
-  // A device with a camera says so, once per conversation, so the agent knows it may ask.
+  // A device with a camera, and the key to send its photos with, says so once per conversation, so
+  // the agent knows it may ask. One without the key says nothing, and is not asked.
   useEffect(() => {
-    if (!connected) {
+    if (!connected || !canSendPhotos) {
       return;
     }
     try {
@@ -216,7 +259,7 @@ export function useCameraTool({ inAssistantWindow }: { inAssistantWindow: boolea
     } catch {
       // Gone between the status and this; the next conversation says it again.
     }
-  }, [connected, sendContextualUpdate]);
+  }, [connected, canSendPhotos, sendContextualUpdate]);
 
   // Anything but `connected` ends whatever was under way — a photo is only ever for the
   // conversation that asked for it.
@@ -265,12 +308,17 @@ export function useCameraTool({ inAssistantWindow }: { inAssistantWindow: boolea
     () => ({
       clientTools: {
         // Whatever the model put in the parameters is ignored: where the photo goes is Mastra's to say.
-        [OPEN_CAMERA_TOOL]: () =>
-          new Promise<string>((resolve) => {
+        [OPEN_CAMERA_TOOL]: () => {
+          // Without the key there is no photo Mastra would take, so the camera is not opened for one.
+          if (!latestPhotoUploadKey.current) {
+            return Promise.resolve(NO_PHOTO_UPLOAD_KEY);
+          }
+          return new Promise<string>((resolve) => {
             answer(REPLACED_BY_A_LATER_CALL);
             answerTheCall.current = resolve;
             happen({ type: 'asked', at: Date.now() });
-          }),
+          });
+        },
       } satisfies ClientTools,
       // Every MCP call the agent makes is relayed here; the one that mints an upload URL is kept.
       onMCPToolCall: (mcpToolCall: unknown) => {
@@ -287,6 +335,7 @@ export function useCameraTool({ inAssistantWindow }: { inAssistantWindow: boolea
     cameraSessionOptions,
     cameraBusy: busy,
     cameraWanted: wanted,
+    canSendPhotos,
     sirAnswered,
     showJarvisSomething,
   };

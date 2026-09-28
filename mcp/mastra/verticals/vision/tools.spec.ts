@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
 import type { Server } from 'node:http';
 import { Mastra } from '@mastra/core';
 import { InMemoryStore } from '@mastra/core/storage';
@@ -8,16 +8,18 @@ import { createScriptedModel } from '../../../tests/utils/scripted-model.js';
 import { createAgent } from '../../utils/agent-factory.js';
 import { executeTool } from '../../utils/tool-factory.js';
 import { PHOTO_READER_AGENT_ID } from './agents.js';
-import { claimUploadSlot, findPhoto, forgetPhotos, keepPhoto } from './photos.js';
+import { claimUploadSlot, findPhoto, forgetPhotos, keepPhoto, MAX_OPEN_SLOTS, openUploadSlot } from './photos.js';
 import {
   lookAtPhoto,
   NO_PHOTO_TO_LOOK_AT,
   OPEN_CAMERA_TOOL,
   PHOTO_UPLOAD_READY,
   PHOTO_UPLOAD_UNAVAILABLE,
+  PHOTO_UPLOADS_SWITCHED_OFF,
   preparePhotoUpload,
   publicOrigin,
 } from './tools.js';
+import { PHOTO_UPLOAD_KEY_VARIABLE } from './upload-key.js';
 
 /**
  * The upload URL the phone will send a photo to, as `camera-answers.ts` in `mobile` checks it.
@@ -31,8 +33,27 @@ function arrivedWith(headers: Record<string, string>) {
   return { http: { req: new Request('http://0.0.0.0:4112/api/mcp', { headers }) } };
 }
 
+/** A key long enough to count, for the tests that need uploads switched on. */
+const PHOTO_UPLOAD_KEY = 'a-photo-upload-key-for-tests';
+
+const environmentKeys = [PHOTO_UPLOAD_KEY_VARIABLE] as const;
+const originalEnvironment = new Map(environmentKeys.map((key) => [key, process.env[key]]));
+
 beforeEach(() => {
   forgetPhotos();
+  for (const key of environmentKeys) {
+    delete process.env[key];
+  }
+});
+
+afterEach(() => {
+  for (const [key, value] of originalEnvironment) {
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  }
 });
 
 describe("this server's own address, as the caller reached it", () => {
@@ -110,6 +131,8 @@ describe('making somewhere for a photo to go', () => {
   });
 
   it('hands back an upload URL on the host ElevenLabs called, which the phone will send to', async () => {
+    process.env[PHOTO_UPLOAD_KEY_VARIABLE] = PHOTO_UPLOAD_KEY;
+
     const result = await callTool({ 'x-forwarded-host': 'jarvis.example.com', 'x-forwarded-proto': 'https' });
 
     expect(result).toMatchObject({ instructions: PHOTO_UPLOAD_READY });
@@ -119,6 +142,8 @@ describe('making somewhere for a photo to go', () => {
   }, 15_000);
 
   it('opens the slot the URL names, for one photo', async () => {
+    process.env[PHOTO_UPLOAD_KEY_VARIABLE] = PHOTO_UPLOAD_KEY;
+
     const result = await callTool({ 'x-forwarded-host': 'jarvis.example.com', 'x-forwarded-proto': 'https' });
 
     const uploadUrlParts = String(Reflect.get(Object(result), 'uploadUrl')).split('/');
@@ -126,6 +151,36 @@ describe('making somewhere for a photo to go', () => {
     expect(claimUploadSlot(uploadToken)).toBe(true);
     expect(claimUploadSlot(uploadToken)).toBe(false);
   }, 15_000);
+
+  it('says photos are switched off, and opens no slot, when this server has no photo upload key', async () => {
+    // Every slot there is room for, opened first: a slot opened now would let go of the oldest to
+    // make room, so the oldest still being there is what says none was.
+    const alreadyOpen = Array.from({ length: MAX_OPEN_SLOTS }, () => openUploadSlot().uploadToken);
+
+    const result = await callTool({ 'x-forwarded-host': 'jarvis.example.com', 'x-forwarded-proto': 'https' });
+
+    expect(result).toMatchObject({ instructions: PHOTO_UPLOADS_SWITCHED_OFF });
+    expect(Reflect.get(Object(result), 'uploadUrl')).toBeUndefined();
+    expect(claimUploadSlot(alreadyOpen[0] ?? '')).toBe(true);
+  }, 15_000);
+});
+
+describe('asking about the key before the host', () => {
+  it('says photos are switched off even when it cannot tell where it is, since no slot could be filled', async () => {
+    expect(await executeTool(preparePhotoUpload, {})).toEqual({ instructions: PHOTO_UPLOADS_SWITCHED_OFF });
+  });
+
+  it('counts a key that is too short as none', async () => {
+    process.env[PHOTO_UPLOAD_KEY_VARIABLE] = 'too-short';
+
+    expect(await executeTool(preparePhotoUpload, {})).toEqual({ instructions: PHOTO_UPLOADS_SWITCHED_OFF });
+  });
+
+  it('asks where it is only once there is a key', async () => {
+    process.env[PHOTO_UPLOAD_KEY_VARIABLE] = PHOTO_UPLOAD_KEY;
+
+    expect(await executeTool(preparePhotoUpload, {})).toEqual({ instructions: PHOTO_UPLOAD_UNAVAILABLE });
+  });
 });
 
 describe('what the voice agent is told', () => {
@@ -137,6 +192,13 @@ describe('what the voice agent is told', () => {
 
   it('says so when this server cannot tell where it is', () => {
     expect(PHOTO_UPLOAD_UNAVAILABLE).not.toContain(OPEN_CAMERA_TOOL);
+  });
+
+  it('says so when this server takes no photos, without sending the agent on to the camera', () => {
+    expect(PHOTO_UPLOADS_SWITCHED_OFF).toBe(
+      'Photos cannot be sent to Jarvis: this server has no photo upload key. Tell sir in one short sentence.',
+    );
+    expect(PHOTO_UPLOADS_SWITCHED_OFF).not.toContain(OPEN_CAMERA_TOOL);
   });
 });
 

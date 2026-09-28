@@ -4,16 +4,19 @@
  *
  * **Jarvis cannot see, and neither can the agent he speaks through.** What can is a multimodal
  * model behind `routePromptWorkflow` on the Mastra server — so a photo has to get *there*, and the
- * phone knows no Mastra address and holds no Mastra secret, on purpose (see "Configuration" in
- * `mobile/AGENTS.md`). The address therefore comes from Mastra itself, one photo at a time:
+ * phone knows no Mastra address, on purpose (see "Configuration" in `mobile/AGENTS.md`). The one
+ * Mastra secret it holds is the photo upload key, and only if sir has typed it into the settings
+ * screen: it goes with a photo and nowhere else, because the address a photo is sent to is not a
+ * secret only the phone knows (`photo-upload-key.ts`). The address comes from Mastra itself, one
+ * photo at a time:
  *
  * 1. The agent calls the MCP tool {@link PREPARE_PHOTO_UPLOAD_TOOL}, and Mastra answers with a
  *    single-use upload URL of its own, good for a few minutes.
  * 2. ElevenLabs relays that answer to the device as an `mcp_tool_call` event, and the device keeps
  *    the URL ({@link readOfferedUploadUrl}).
  * 3. The agent calls `openCamera` (`OPEN_CAMERA_TOOL` in `hologram`). The device opens the camera, sends the photo to the
- *    URL it kept, and answers with the id Mastra filed it under ({@link photoShown}) — or with why
- *    there is none.
+ *    URL it kept with the photo upload key, and answers with the id Mastra filed it under
+ *    ({@link photoShown}) — or with why there is none.
  * 4. The agent asks `routePromptWorkflow` about the photo by that id.
  *
  * **The URL never passes through the model.** It could have — as a parameter of `openCamera`, copied
@@ -36,7 +39,9 @@
  * connected ({@link CAMERA_ON_THIS_DEVICE}), and the agent only asks where it has been told — a
  * dynamic variable would have done it too, and failed every conversation from a device that did
  * not send one. The watch answers the tool anyway, with `NO_CAMERA_HERE` from `hologram`, in case
- * it is asked — which, with the tool's name, is all of this the two devices share.
+ * it is asked — which, with the tool's name, is all of this the two devices share. A phone without
+ * the photo upload key says nothing either, since the server would refuse whatever it sent, and
+ * answers a call that comes anyway with where to add the key ({@link NO_PHOTO_UPLOAD_KEY}).
  *
  * Imports nothing, so the whole of the phone's side of the contract is a test with no SDK in it.
  * The hook that answers the tool is `camera-tool.ts`.
@@ -49,7 +54,8 @@
 export const PREPARE_PHOTO_UPLOAD_TOOL = 'preparePhotoUpload';
 
 /**
- * What a device with a camera tells the agent once the conversation is up.
+ * What a device with a camera, and the photo upload key to send its photos with, tells the agent
+ * once the conversation is up.
  *
  * A contextual update rather than a message: it is background the agent keeps, and it neither
  * starts a turn nor interrupts one. The agent's prompt asks for the camera only where it has heard
@@ -154,6 +160,29 @@ export const NO_PHOTO_TAKEN = answer({
 export const PHOTO_NOT_SENT = answer({
   instructions:
     'The photo was taken but could not be sent to you. Tell sir so in one short sentence, and do not try again unless he asks.',
+});
+
+/**
+ * The phone has not been given the photo upload key, so there is no photo it could send that the
+ * server would take. Answered at once, without opening the camera: a photo sir framed only to have
+ * it refused is worse than being told up front.
+ *
+ * Only reached if the agent calls anyway — a phone without the key never tells it there is a camera
+ * here — so it also says not to ask again, which is all a model needs to stop going round.
+ */
+export const NO_PHOTO_UPLOAD_KEY = answer({
+  instructions:
+    "Sir has not given this phone the photo upload key, so it cannot send you photos. Tell him in one short sentence that he can add it in the app's settings, and do not call openCamera again in this conversation.",
+});
+
+/**
+ * The server turned the photo away because of the key: the one it has and the one this phone sent
+ * differ. Told apart from {@link PHOTO_NOT_SENT} because it is fixable, by sir, in the settings —
+ * and because trying again with the same key would only be refused again.
+ */
+export const PHOTO_KEY_REFUSED = answer({
+  instructions:
+    "Jarvis's server refused this phone's photo upload key. Tell sir in one short sentence to check the photo upload key in the app's settings, and do not try again unless he asks.",
 });
 
 /** The agent called before Mastra had minted somewhere to send the photo. */

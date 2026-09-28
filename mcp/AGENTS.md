@@ -66,6 +66,7 @@ mcp/
 │   │   │   ├── agents.ts
 │   │   │   ├── photos.ts    # The in-memory store and its upload slots
 │   │   │   ├── tools.ts
+│   │   │   ├── upload-key.ts # The key the phone sends with every photo
 │   │   │   └── index.ts
 │   │   └── reflection/      # The assistant's own errors and failed runs
 │   │       ├── agent.ts
@@ -414,16 +415,36 @@ and ask about it. The camera and the shot are the phone's (see "Showing him some
 2. ElevenLabs relays that result to the phone as an `mcp_tool_call` event, and the phone keeps the
    URL. The model never passes it on: `openCamera`, the client tool the agent calls next, takes no
    parameters, so a model talked into naming another address cannot send the photo anywhere.
-3. The phone `PUT`s the JPEG to the URL. The first body sent to a slot within five minutes is the
-   photo; it answers `201` with `{ photoId }`, which `openCamera` hands back to the agent.
+3. The phone `PUT`s the JPEG to the URL with the **photo upload key** from its settings, as
+   `Authorization: Bearer <key>`. The first body sent to a slot within five minutes, with the key, is
+   the photo; it answers `201` with `{ photoId }`, which `openCamera` hands back to the agent.
 4. The agent calls `routePromptWorkflow` with sir's question and `(photo <id>)` in it, and the
    planner routes it to the vision agent.
+
+**The photo upload key** (`vision/upload-key.ts`) is a shared secret: `HEY_JARVIS_PHOTO_UPLOAD_KEY`
+on the server, and the same value typed into the phone's settings. It is there because the upload
+route has to bypass Cloudflare Access, and a slot's URL, however unguessable, is not a secret only the
+phone holds — this server writes it into an MCP result that ElevenLabs relays. The key is checked in
+front of the slot, not instead of it: the slot still binds a photo to the one request it was minted
+for and bounds what the process holds. Both sides **fail closed**. A server without a key (or with
+one under 16 characters, `MIN_PHOTO_UPLOAD_KEY_LENGTH`) takes no photos: `preparePhotoUpload`
+answers `PHOTO_UPLOADS_SWITCHED_OFF` and opens no slot, the route answers `503`, and
+`mcp-server.ts` logs one warning at startup saying why — naming the variable and, for a key that is
+too short, its length, never its value. A phone without a key never offers the camera. The key is
+compared in constant time (both sides hashed with SHA-256, then `timingSafeEqual`), and the
+`Authorization` header is never logged. The phone checks the same 16-character minimum, and a
+contract test in `mobile` reads it and the variable's name from `upload-key.ts`.
 
 **Available Tools** (`vision/tools.ts`):
 - **`preparePhotoUpload`**: MCP-only — registered in `mcp-server.ts`, not on the Mastra instance,
   because the URL is built from the MCP request and the slot lives in that process. The URL must stay
   in the text channel of its result as well as the structured one, since that is what ElevenLabs
-  relays; it must never take the empty-text shape of `createInstructionsWorkflowTool`.
+  relays; it must never take the empty-text shape of `createInstructionsWorkflowTool`. It asks
+  whether there is a photo upload key *before* it looks at the host: without one, a slot could never
+  be filled, and the agent is told so rather than left to learn it from a refused upload. When the
+  agent asks for the photo, that is before the camera opens; when sir opens it himself from the
+  phone's button, the camera is already open when this is called — the phone shows the button on its
+  own key and cannot know the server has none — so he hears it after the shot.
 - **`lookAtPhoto`**: fetches the photo by id and shows it, beside the question, to the photo reader.
   The only way any agent here sees a photo, since a routed agent is handed text and nothing else.
   Its answer is the reading quoted as the photo's content, with the photo's age:
@@ -445,16 +466,33 @@ first, a photo kept for 30 minutes. An id is matched however a model wrote it ("
 old. Studio's process (`mastra dev`, 4111) has a store of its own that nothing fills, so photos can
 only be asked about through the MCP server.
 
-**The upload route** (`PUT /api/photos/:uploadToken`, `api/routes.ts`) is open to anyone — the
-phone holds no Cloudflare Access service token — so **the slot is claimed before the body is read**:
-a wrong content type is a `415` and an unknown or used token a `404`, both with nothing read, and
-only then does `express.raw` read at most 3 MB. The JSON parser in `mcp-server.ts` skips the path
-for the same reason, and the request log writes it without its token (`withoutUploadToken`). CORS
-allows any origin, because the token is the whole of the authority and the browser build is served
-from GitHub Pages.
+**The upload route** (`PUT /api/photos/:uploadToken`, `api/routes.ts`) is reachable by anyone —
+the phone holds no Cloudflare Access service token — so **nothing is read until the request has
+earned it**, in this order:
+1. `requirePhotoUploadKey`: no key configured is a `503` (`Photo uploads are switched off on this
+   server.`); a missing, wrong or non-`Bearer` `Authorization` header is a `401` (`This upload needs
+   the photo upload key.`) with `WWW-Authenticate: Bearer realm="jarvis-photos"`. Both are Mastra's
+   JSON envelope with `success: false`, which is how the phone tells a refused key from a Cloudflare
+   refusal. Neither touches the slot, so a request without the key cannot spend one before the
+   phone does.
+2. `claimSlotBeforeReading`: a wrong content type is a `415`, and an unknown or used token a `404`.
+3. Only then does `express.raw` read at most 3 MB.
 
-**Requirements:** a Cloudflare Access bypass for `/api/photos/*` — see
-[MCP Server Access](#mcp-server-access).
+The JSON parser in `mcp-server.ts` skips the path for the same reason, and the request log writes
+it without its token (`withoutUploadToken`) and never with its headers. CORS allows any origin and
+the `Authorization` header: what authorises an upload is written into the request by the phone —
+the key and the token — rather than anything a browser attaches by itself, and the browser build is
+served from GitHub Pages. The `OPTIONS` preflight asks for no key, since a browser cannot send one
+with it.
+
+**Required Environment Variables:**
+- `HEY_JARVIS_PHOTO_UPLOAD_KEY` (optional): the photo upload key, at least 16 characters, resolved
+  from `op://Jarvis/Photo upload key/password` through `mcp/op.optional.env`. Without it the server
+  starts as usual and photo uploads are off. The phone accepts printable ASCII without spaces, so
+  generate it with letters, digits and symbols only.
+
+**Requirements:** a Cloudflare Access bypass for `/api/photos/*`, and the photo upload key on both
+the server and the phone — see [MCP Server Access](#mcp-server-access).
 
 **Example Use Cases:**
 - "What's the total on this receipt?"
@@ -902,7 +940,7 @@ small, fast surface, and everything else happens behind them.
 
 The one other tool on the MCP server is `preparePhotoUpload` (see [Vision Vertical](#vision-vertical)),
 and it is not a way round the planner: it answers a question about the conversation itself — where
-the phone can send a photo — which has to be ready before the camera opens, and which no agent
+the phone can send a photo — which has to be ready by the time the photo is, and which no agent
 behind the planner could answer, since the URL is built from the MCP request.
 
 **Workflows:**
@@ -1827,6 +1865,7 @@ All environment variables use the `HEY_JARVIS_` prefix for easy management and D
 - **Claude Code sessions**: `HEY_JARVIS_CLAUDE_CODE_SSH_TARGET`, `HEY_JARVIS_CLAUDE_CODE_SSH_PRIVATE_KEY` to reach the host whose Docker Sandbox the coding vertical runs Claude Code in, and `HEY_JARVIS_CLAUDE_CODE_OAUTH_TOKEN` to bill it to the Claude subscription
 - **WiFi**: `HEY_JARVIS_WIFI_SSID`, `HEY_JARVIS_WIFI_PASSWORD` for Home Assistant Voice Firmware
 - **Notifications**: `HEY_JARVIS_PRIMARY_USER_PHONE_NUMBER` so Jarvis can call or text the primary user; optionally `HEY_JARVIS_PRIMARY_USER_NAME`, `HEY_JARVIS_PRIMARY_USER_PHONE_DEVICE`, `HEY_JARVIS_PRIMARY_USER_NOTIFY_SERVICE` and `HEY_JARVIS_CAR_NAME` to pin down which person, phone and car the routing looks at
+- **Photos** (optional): `HEY_JARVIS_PHOTO_UPLOAD_KEY`, the key the phone sends with every photo it shows Jarvis, at least 16 characters, from `op://Jarvis/Photo upload key/password` through `mcp/op.optional.env`. Without it photo uploads are off (see [Vision Vertical](#vision-vertical))
 
 #### Development Setup
 1. **Install 1Password CLI**: Follow [1Password CLI installation guide](https://developer.1password.com/docs/cli/get-started/)
@@ -2403,29 +2442,39 @@ const PROVIDERS: OAuthProvider[] = [
 
 ## MCP Server Access
 
-The MCP server itself checks no credentials on port 4112. What stands in front of it is the
+The MCP server itself checks no credentials on port 4112, but for the photo upload key on the one
+path described below. What stands in front of it is the
 Cloudflare tunnel and its **Cloudflare Access** application: ElevenLabs and the integration tests
 present a service token (`CF-Access-Client-Id` / `CF-Access-Client-Secret`), and a browser signs in
 with an identity policy.
 
-**One path must bypass Access: `/api/photos/*`.** The phone uploads photos there and holds no
-service token — the app is configured with nothing but an ElevenLabs key and agent — so without a
-bypass Access answers every upload with its sign-in page, and the phone reports "The server turned
-the photo away". In Zero Trust → Access → Applications, add a self-hosted application for
-`<your MCP hostname>/api/photos/*` with a single **Bypass** policy (include: Everyone). It covers
-every method, which matters because the browser build sends a CORS preflight (`OPTIONS`) first.
+**One path must bypass Access: `/api/photos/*`.** The phone uploads photos there and cannot
+present an Access service token, so without a bypass Access answers every upload with its sign-in
+page, and the phone reports "The server turned the photo away". In Zero Trust → Access →
+Applications, add a self-hosted application for `<your MCP hostname>/api/photos/*` with a single
+**Bypass** policy (include: Everyone). It covers every method, which matters because the browser
+build sends a CORS preflight (`OPTIONS`) first.
 
-What protects that path instead is the capability in it: a token of 128 random bits that
-`preparePhotoUpload` minted for one photo, good for five minutes, and claimed before a byte of the
-body is read (see [Vision Vertical](#vision-vertical)). Nothing else under `/api` is reachable
-without Access.
+**The bypass opens a door that asks for a key.** This is the one path where the MCP server checks a
+credential itself: the **photo upload key**, which the phone sends as `Authorization: Bearer <key>`
+and the server compares with `HEY_JARVIS_PHOTO_UPLOAD_KEY`. Without the key an upload is a `401`,
+and a server with no key configured refuses every upload with a `503`. Behind the key is the
+capability in the path: a token of 128 random bits that `preparePhotoUpload` minted for one photo,
+good for five minutes, and claimed before a byte of the body is read (see
+[Vision Vertical](#vision-vertical)). Nothing else under `/api` is reachable without Access.
 
-**Rolling the camera out** takes three steps, in this order:
-1. Deploy the MCP server image with the vision vertical, and add the bypass above.
-2. Redeploy the ElevenLabs agent (`bunx turbo deploy --filter=elevenlabs`). It adds the `openCamera`
+**Rolling the camera out** takes five steps, in this order:
+1. Create the 1Password item **`Photo upload key`** in the `Jarvis` vault, with a generated password
+   of at least 16 characters (letters, digits and symbols, no spaces) in its `password` field.
+   `mcp/op.optional.env` maps it to `HEY_JARVIS_PHOTO_UPLOAD_KEY`.
+2. Deploy the MCP server image with the vision vertical, and add the bypass above. The startup log
+   should not say `Photo uploads are off`.
+3. Enter the same key in the phone app's settings, under **Photos**. Until it has one, the phone
+   never offers the camera.
+4. Redeploy the ElevenLabs agent (`bunx turbo deploy --filter=elevenlabs`). It adds the `openCamera`
    client tool and the `mcp_tool_call` client event; an agent that has `openCamera` before the server
    has `preparePhotoUpload` can only fail to take a photo.
-3. In the ElevenLabs dashboard, check that `preparePhotoUpload` is allowed to run without approval
+5. In the ElevenLabs dashboard, check that `preparePhotoUpload` is allowed to run without approval
    on the MCP server's tool approval policy, like the routing tools.
 
 ## Integration Capabilities

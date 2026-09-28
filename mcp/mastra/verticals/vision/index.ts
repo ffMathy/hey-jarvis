@@ -23,7 +23,15 @@ export {
   PHOTO_UPLOAD_PATH,
   PHOTO_UPLOAD_READY,
   PHOTO_UPLOAD_UNAVAILABLE,
+  PHOTO_UPLOADS_SWITCHED_OFF,
   preparePhotoUpload,
   publicOrigin,
   visionTools,
 } from './tools.js';
+export {
+  configuredPhotoUploadKey,
+  holdsPhotoUploadKey,
+  MIN_PHOTO_UPLOAD_KEY_LENGTH,
+  PHOTO_UPLOAD_KEY_VARIABLE,
+  whyPhotoUploadsAreOff,
+} from './upload-key.js';
