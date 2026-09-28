@@ -13,9 +13,9 @@ import {
   type ResponseStyle,
 } from './planner.js';
 import {
+  type AnsweredByQuestion,
   asDelegationSuspension,
   type DelegationSuspension,
-  type AnsweredByQuestion,
   forgetOpenQuestions,
   isAnsweredByQuestion,
   listOpenQuestions,

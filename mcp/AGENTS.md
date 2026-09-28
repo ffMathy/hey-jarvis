@@ -110,8 +110,9 @@ resolved on every request, not at construction — agents are built once at boot
 stays up for days, so a time taken then would be days stale.
 
 An agent's answer usually ends the exchange, so a question in it has nowhere to go. Questions
-that do reach the user come from workflow steps that suspend — `implementFeatureWorkflow` asks
-the ones its codebase analysis could not answer — never from an agent's own text.
+that do reach the user come from a tool that suspends, or from a Claude Code session that stops
+to ask (see **Questions a coding session asks** under the coding vertical), never from an agent's
+own text.
 `mastra/utils/agent-factory.spec.ts` pins the exact text.
 
 ### 🔧 Tool Ecosystem
@@ -226,6 +227,23 @@ would have been announced falls back to a push notification instead of being dro
   silences the user's.
 - `notification/presence.ts` composes the three into the single reading the router takes. All three
   read the same devices, so they are fetched once and handed to each.
+
+**Asking a question (`askQuestion`):**
+A notification needs no reply; a question does, so it keeps to the channels that can hear one:
+
+```
+in the car?            → phone call from Jarvis
+phone silenced?        → push notification saying he can answer the next time he talks to Jarvis
+at home?               → Home Assistant Voice announcement, which listens after it speaks
+out?                   → phone call from Jarvis
+```
+
+Urgency does not come into it: a question holds up the work that asked it. `decideQuestionChannel`
+in `routing.ts` is the tree. `askQuestion` only asks; the answer comes back as whatever the user
+says next to Jarvis, and finds its way back only if the question is open. So work that asks calls
+`askUserQuestion`, which opens the question with a `deliverAnswer` function (see **Questions for
+the user** under [Routing](#routing)) and then asks it. It is left out of `notificationTools`, so
+the notification agent cannot ask a question nobody is waiting on.
 
 **Available Tools:**
 - **`sendNotification`**: the one to use. Takes `target`, `message`, `isUrgent` and an optional
@@ -454,13 +472,13 @@ if (number) {
 
 ### Coding Agent
 Reads, analyses and changes code — Jarvis's own above all — and manages GitHub repositories:
-- **6 agent tools** (`codingTools`): list repositories (`listUserRepositories`), list issues (`listRepositoryIssues`), search repositories (`searchRepositories`), answer questions about the code (`analyzeCodebase`), and follow and steer Claude Code sessions (`getCodingSessionStatus`, `sendCodingSessionMessage`). `tools.ts` also defines `startCodingSession`, `runCodingTask` and `continueCodingTask`, which `implementFeatureWorkflow` and other verticals' shortcuts run rather than the agent, and `createGitHubIssue` and `updateGitHubIssue`, which nothing registers today
+- **6 agent tools** (`codingTools`): list repositories (`listUserRepositories`), list issues (`listRepositoryIssues`), search repositories (`searchRepositories`), answer questions about the code (`analyzeCodebase`), and follow and steer Claude Code sessions (`getCodingSessionStatus`, `sendCodingSessionMessage`). `tools.ts` also defines `startCodingSession` and `runCodingTask`, which `implementFeatureWorkflow` and other verticals' shortcuts run rather than the agent, and `createGitHubIssue` and `updateGitHubIssue`, which nothing registers today
 - **Google Gemini model**: Uses `gemini-flash-latest` for natural language processing
 - **Repository management**: Browse and search repositories for any GitHub user
 - **Issue tracking**: View open, closed, or all issues for repositories
 - **Codebase questions**: `analyzeCodebase` has a Claude Code session read the code and answer — how something works, a review, ideas for improvement, technical debt — without changing anything. It is `runCodingTask` with a read-only brief (`buildCodebaseQuestionTask`), and it is slow like the tool it wraps. A `context` input carries what the code cannot show, most often the reflection agent's failures, which live in Mastra's storage where a session cannot reach. Before it existed, a question about Jarvis's own code had no agent to go to, and "gather ideas to improve Jarvis and visualize them" was planned onto web research. The planned shape now is reflection → coding → generativeUi, one chain, each handed the previous answer
 - **Workflow coordination**: Triggers requirements gathering workflow for new feature requests
-- **Smart defaults**: a task with no repository named is a task on Jarvis himself, `ffMathy/hey-jarvis` (`coding/repository.ts`). Every tool, `implementFeatureWorkflow` and the agent default to it, and the session analysing the codebase is told the repository up front and never asks which one is meant
+- **Smart defaults**: a task with no repository named is a task on Jarvis himself, `ffMathy/hey-jarvis` (`coding/repository.ts`). Every tool, `implementFeatureWorkflow` and the agent default to it, and the implementing session is told the repository up front and never asks which one is meant
 
 **Key Capabilities:**
 - List all public repositories for a GitHub user
@@ -471,16 +489,29 @@ Reads, analyses and changes code — Jarvis's own above all — and manages GitH
 - Provide GitHub URLs for quick access to repositories and issues
 
 **Architecture Pattern:**
-This agent follows the **workflow delegation pattern**. When a user requests a new feature implementation, instead of gathering requirements itself, it delegates to the `implementFeatureWorkflow`, which:
-1. Has a Claude Code session read the codebase with the request in hand, and write down what it found and the questions only the user can answer
-2. Asks the user those questions, suspending on each one until it is answered
-3. Starts a Claude Code session that implements the change autonomously, handed the request, the findings and every answer — no issue is filed
+This agent follows the **workflow delegation pattern**. When a user requests a new feature implementation, instead of gathering requirements itself, it delegates to the `implementFeatureWorkflow`, which starts a Claude Code session on the change at once — no issue is filed, and nothing is asked first. The session reads the codebase, decides whatever the code settles, and implements the change; a request the code settles is never held up by a question. The workflow returns as soon as the session has started, so it is not marked slow.
 
-The workflow is [marked slow](#slow-tasks), so routing offers to notify the user instead of
-holding the line while the analysis runs.
+**Questions a coding session asks:**
+Only a choice that is the user's to make stops a session, and it can come up at any point — before
+the session has changed a line, or halfway through. The session is told how
+(`buildSessionQuestionInstructions` in `session-questions.ts`): end the turn on a fenced block tagged
+`jarvis-question` holding one short spoken question, and nothing after it. When
+`ClaudeSessionWatcher` sees a turn end with `end_turn` on such a block (`readSessionQuestion`), it
+publishes nothing for that turn and instead asks through `createSessionQuestionAsker`:
 
-By voice, each of those questions is asked by Jarvis and answered through routing — see
-**Questions for the user** under [Routing](#routing).
+1. `askUserQuestion` opens the question with a `deliverAnswer` function that sends the answer to the
+   session (`sendClaudeSessionMessage`), then asks it with `askQuestion` — a call in the car or away,
+   the house speakers at home (see the [Notification Agent](#notification-agent)).
+2. The watcher reports `coding_session_question_asked` (question, id, channel) or
+   `coding_session_question_failed` to Synapse.
+3. The user answers on that call, on the speakers, or the next time he talks to Jarvis. His words go
+   through `routePromptWorkflow`, the planner matches them to the open question, and the controller
+   hands them to `deliverAnswer`, which resumes the session with everything it had done. Jarvis tells
+   him the answer was passed on; the session's own reply arrives later as its events always do.
+
+This replaced a separate analysing session and an up-front interview that suspended the workflow
+once per question. That always cost minutes before anything was built, and its questions went out
+through `sendNotification`, whose channels could not hear an answer.
 
 **Claude Code Sessions:**
 Implementation work is delegated to the official [Claude Code CLI](https://code.claude.com/docs/en/headless), signed
@@ -572,25 +603,21 @@ directory, removed when the server exits; a failed write is retried on the next 
 Claude Code never runs in the server's own container, which carries the 1Password service account token for the
 whole vault.
 
-- **`startCodingSession`**: Creates the session, seeded with the request, the analysis's findings, the user's
-  answers and how its work gets published, and starts watching it with `publishTo` set, so the watcher opens the
-  pull request once it is done. Used by `implementFeatureWorkflow`.
+- **`startCodingSession`**: Creates the session, seeded with the request, how its work gets published and when and
+  how it may ask the user something, and starts watching it with `publishTo` set, so the watcher asks its questions
+  and opens the pull request once it is done. Used by `implementFeatureWorkflow`.
 - **`getCodingSessionStatus`**: Reports a session's status (`running` or `idle`) and the last five messages it has
   produced.
 - **`sendCodingSessionMessage`**: Sends a follow-up message to a session, to answer a question or redirect its work.
 - **`runCodingTask`**: For work whose result is an answer rather than a pull request. Starts a session on a free-form
   task, waits until its turn ends (`waitForClaudeSessionTurn`, up to 15 minutes) and returns the last message it
   sent. The session is not handed to the watcher, because the caller reports the result itself. Like
-  `startCodingSession` it is not one of the coding agent's own tools; `implementFeatureWorkflow` runs it to analyse
-  the codebase, the agent's own `analyzeCodebase` wraps it with a read-only brief, and other verticals reach it through shortcuts, such as the
+  `startCodingSession` it is not one of the coding agent's own tools; the agent's own `analyzeCodebase` wraps it with a read-only brief, and other verticals reach it through shortcuts, such as the
   [Generative UI Vertical](#generative-ui-vertical-shortcuts)'s `createArtifact`. It is marked slow, and a shortcut
   onto it inherits the mark. Every task it starts ends on `FOREGROUND_WORK_NOTE`, which tells the session to work in
   the foreground: its answer is the last message of its turn, and the process is let go the moment that turn ends,
   so a subagent or command left running in the background is stopped unfinished — and a turn that ends on "waiting
   for the background agent" answers nothing.
-- **`continueCodingTask`**: Sends a `runCodingTask` session one more message, waits for the turn that follows and
-  reports it the same way. For asking again when an answer did not come back as asked for; resuming keeps what the
-  session already did. `implementFeatureWorkflow` uses it when the analysis ends without its JSON object.
 
 **Feeding Back Into Synapse:**
 `ClaudeSessionWatcher` follows each session's events and republishes them as Synapse state changes with the source
@@ -844,12 +871,19 @@ client turns into a hang-up after three seconds of quiet. Nothing still waiting 
 See **Hanging up when he goes quiet** in `elevenlabs/AGENTS.md`.
 
 **Questions for the user:**
-Some work cannot finish on what the request said. The coding agent runs `implementFeatureWorkflow`
-as a tool, and that workflow suspends on every question its codebase analysis left for the user —
-which, through Mastra's workflow-as-tool conversion, suspends the agent inside that tool call.
-`verticals/routing/questions.ts` turns that into a question Jarvis can ask, and nothing in it is
-specific to coding: any routable agent whose tool suspends with a `question`, and resumes with a
-single text field, works the same way.
+Some work cannot finish on what the request said. Questions come from two places, and
+`verticals/routing/questions.ts` keeps both kinds as an `OpenQuestion` until sir answers:
+
+- **A tool that suspends.** Any routable agent whose tool suspends with a `question`, and resumes
+  with a single text field, suspends the agent inside that tool call. Its answer resumes that agent
+  (the steps below).
+- **Work outside any request.** A Claude Code session implementing a change asks long after the
+  request that started it was answered (see **Questions a coding session asks** under the coding
+  vertical). Nothing is suspended then, so the question is opened with `openAnsweredByQuestion` and
+  a `deliverAnswer` function, asked over a channel his answer can come back on (`askQuestion`), and
+  its answer is handed to that function. What the function returns is the delegation's result.
+
+A suspending tool goes like this:
 
 1. The suspension reaches the plan run as a `workflow-step-output` wrapping the agent's
    `tool-call-suspended` chunk, carrying the agent run id, the tool call id, the question and the
@@ -875,12 +909,18 @@ A question sir ignores stays open: talking about something else plans that as us
 answer is still taken later. Open questions live in memory, so a restart forgets them while the
 suspended run stays in storage; the request then has to be made again.
 
-`coding-interview.spec.ts` runs the whole path — the two MCP tools, the planner, the coding agent,
-the questions, the slow-task offer, the notification and the session — on scripted models.
+A reply given on a call or on the house speakers only reaches the work if the ElevenLabs agent
+routes it, so its prompt (`elevenlabs/src/assets/agent-prompt.md`) says a reply to a question the
+call opened with is passed to `routePromptWorkflow` with the question it answers, never merely
+acknowledged. Before that rule, an answer given on a call could go no further than the call.
+
+`coding-interview.spec.ts` runs the whole coding path — the two MCP tools, the planner, the coding
+agent, the session watcher asking a session's question, and the answer reaching that session — on
+scripted models.
 
 <a id="slow-tasks"></a>
 **Slow tasks:**
-Some work takes minutes: a Claude Code session reading a codebase, or building a page. A tool or
+Some work takes minutes: a Claude Code session answering a question about a codebase, or building a page. A tool or
 workflow is flagged slow in code with `markAsSlow` (`mastra/utils/slow-tasks.ts`), and a shortcut
 onto a slow tool is slow too. The flag belongs to the tool rather than the agent — the coding
 agent lists issues in a second and starts an implementation that takes ten minutes.
@@ -894,9 +934,10 @@ agent lists issues in a second and starts an implementation that takes ten minut
    cancel the work he just agreed to be told about. If he accepts, Jarvis polls with
    `notifyWhenDone: true`, which keeps the two-tool surface.
 4. From then on the request outlives the conversation: a newer request does not cancel it, its
-   questions stay open, and when it ends `completion-notice.ts` sends him the results — or the
-   question it is waiting on — through `sendNotification`. He answers it the next time he talks
-   to Jarvis, through **Questions for the user** as usual.
+   questions stay open, and when it ends `completion-notice.ts` sends him the results through
+   `sendNotification` — or, when it is waiting on a question, asks it through `askQuestion`, where
+   his answer can come back. He answers it there or the next time he talks to Jarvis, through
+   **Questions for the user** as usual.
 
 **Why a workflow per request:**
 Which agents a request needs is known only once it arrives, so a request that is a workflow has
@@ -1274,29 +1315,24 @@ Multi-step shopping list processing workflow implementing the original n8n 3-age
 
 ### Implement Feature Workflow
 Takes a change from a spoken request to a Claude Code session implementing it:
-- **`implementFeatureWorkflow`**: Analyses the codebase, asks what it could not answer, then implements
-- **Step 1 - Analyse the Codebase**: A Claude Code session (`runCodingTask`) reads the repository with the request in hand and ends on a JSON object: a title, its findings, and at most five spoken questions only the user can answer. A turn that ends without the object is resumed once (`continueCodingTask`) and asked for it again
-- **Step 2 - Ask the Questions**: One suspension per question, verbatim; none at all when the codebase settles everything
-- **Step 3 - Start Coding Session**: Starts a Claude Code session on the change, and watches its events; the watcher opens the pull request once the session is done. No issue is filed
-
-**Architecture Pattern:**
-This workflow follows the **agent-as-step** pattern recommended by Mastra for sequential multi-step processes where the exact steps are known in advance (not dynamic routing).
+- **`implementFeatureWorkflow`**: Starts the session at once; the session studies the codebase, asks only what the user alone can decide, and implements
+- **Step 1 - Prepare**: Resolves the repository (Jarvis's own by default) and an optional title
+- **Step 2 - Start Coding Session**: Starts a Claude Code session on the change with `startCodingSession`, and watches its events; the watcher asks the session's questions and opens the pull request once the session is done. No issue is filed
+- **Step 3 - Format**: Says whether the session started, and on what
 
 **Workflow Steps:**
-1. **Codebase Analysis**: The session is told to read, not change, anything, and to decide whatever the code, its
-   documentation and its conventions settle. Only what is left — the user's own choices — becomes a question, written
-   to be heard: one short sentence, no identifiers, options named. Asking before looking was what made the old
-   interview slow and generic, since a model that had never seen the code asked the user where things should go
-2. **Questions**: A single step, not a loop: it suspends on the first unanswered question, is resumed with the answer,
-   and returns once every question is answered
-3. **Coding Session**: Starts a Claude Code session with the `startCodingSession` tool, handed the request, the
-   analysis's findings and every question with the user's answer in their own words. The session runs unattended in
-   the host's Docker Sandbox, and every notable event it emits (agent messages, status transitions, errors) is
-   republished as a Synapse state change from the `coding` source, so progress flows into the existing notification
-   path instead of needing the workflow to stay alive. The session commits on a `jarvis/…` branch and pushes nothing;
-   when it is done, the watcher pushes the branch and opens the pull request from the server, and reports its link as
-   `coding_session_pull_request_opened` (see **The sandbox cannot write to GitHub; the server publishes** under
-   [Coding Agent](#coding-agent))
+1. **Prepare**: The request goes to the session as the user said it.
+2. **Coding Session**: The session is told to read the parts of the codebase the request touches before changing
+   anything, and to decide whatever the code, its documentation and its conventions settle. When nothing is left that
+   only the user can decide, which is the usual case, it implements the change without asking. When something is, it
+   asks then or at any later point (see **Questions a coding session asks** under [Coding Agent](#coding-agent)). The
+   session runs unattended in the host's Docker Sandbox, and every notable event it emits (agent messages, status
+   transitions, errors) is republished as a Synapse state change from the `coding` source, so progress flows into the
+   existing notification path instead of needing the workflow to stay alive. The session commits on a `jarvis/…`
+   branch and pushes nothing; when it is done, the watcher pushes the branch and opens the pull request from the
+   server, and reports its link as `coding_session_pull_request_opened` (see **The sandbox cannot write to GitHub; the
+   server publishes** under [Coding Agent](#coding-agent))
+3. **Format**: Reports the session id and title, or why the session did not start.
 
 **Usage Example:**
 ```typescript
@@ -1307,14 +1343,11 @@ await mastra.workflows.implementFeatureWorkflow.execute({
 });
 ```
 
-**Why Workflow Instead of Agent Network?**
-- **Known sequence**: The work follows a predictable pattern (analyse → ask → implement)
-- **No dynamic routing**: Unlike agent networks, we don't need to choose between different paths at runtime
-- **Deterministic**: Each step has clear inputs/outputs and executes in order
-- **Auditable**: Workflow provides transparent execution trace and step-by-step visibility
-
-**Human-in-the-Loop:**
-The workflow uses Mastra's suspend/resume pattern in the questions step, asking each question and waiting for the user's response before proceeding. It suspends with `{ question, context }` and resumes with `{ userAnswer }` — a single text field, which is what lets routing resume it with a spoken answer. Because the questions are read aloud, the analysing session is told to write one short, plain question per choice.
+**Why it asks nothing up front:**
+It used to run a separate analysing session first and suspend once per question it wrote. That cost
+minutes before anything was built even when nothing needed asking, and could only ask before the
+work began. Letting the implementing session ask means a clear request is built straight away and a
+question that only shows up halfway through can still be asked.
 
 ### Human-in-the-Loop Demo Workflow
 

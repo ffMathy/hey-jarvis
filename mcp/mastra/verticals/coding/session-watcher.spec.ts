@@ -315,7 +315,9 @@ describe('ClaudeSessionWatcher', () => {
     watcher.watch('sess_1', { title: 'Add a greeting', publishTo: PUBLISH_TO });
     await settle();
 
-    expect(asked).toEqual([{ sessionId: 'sess_1', question: 'Should it be in Danish, or English?', title: 'Add a greeting' }]);
+    expect(asked).toEqual([
+      { sessionId: 'sess_1', question: 'Should it be in Danish, or English?', title: 'Add a greeting' },
+    ]);
     expect(calls).toEqual([]);
     expect(published[published.length - 1]).toMatchObject({
       stateType: 'coding_session_question_asked',

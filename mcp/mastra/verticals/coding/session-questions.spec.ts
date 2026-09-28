@@ -27,7 +27,9 @@ describe('readSessionQuestion', () => {
   });
 
   it('keeps a question short enough to be read aloud', () => {
-    expect(readSessionQuestion(`\`\`\`jarvis-question\n${'why '.repeat(200)}\n\`\`\``)?.length).toBeLessThanOrEqual(300);
+    expect(readSessionQuestion(`\`\`\`jarvis-question\n${'why '.repeat(200)}\n\`\`\``)?.length).toBeLessThanOrEqual(
+      300,
+    );
   });
 });
 
