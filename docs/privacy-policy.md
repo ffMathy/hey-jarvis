@@ -1,7 +1,7 @@
 # Privacy Policy for Jarvis
 
 **Effective date: 17 September 2026**
-**Last updated: 17 September 2026**
+**Last updated: 28 September 2026**
 
 This Privacy Policy describes how the Jarvis application ("Jarvis", "the App") handles information.
 It applies to the Android application, the Wear OS application and the web version, all published
@@ -21,7 +21,7 @@ you or your device is transmitted to the Developer at any time, for any purpose.
 mechanism in the App by which that could occur.
 
 The sections below explain what the App does hold on your own device, and what it sends to the
-third-party service you choose to connect it to. They are provided for completeness and transparency;
+third-party services you choose to connect it to. They are provided for completeness and transparency;
 none of it involves the Developer receiving anything.
 
 ---
@@ -38,7 +38,8 @@ means:
 - account credentials, because the App has no accounts and no sign-in;
 - device identifiers, advertising identifiers, or IP addresses;
 - location data of any kind, whether precise or approximate;
-- contacts, calendar entries, photographs, files, or messages;
+- contacts, calendar entries, photographs, files, or messages. A photograph you choose to show your
+  assistant is sent to a service of your own, never to us — see [§4](#4-third-party-services);
 - usage analytics, telemetry, crash reports, diagnostics, or performance data;
 - cookies or similar tracking technologies used for tracking purposes.
 
@@ -58,6 +59,7 @@ never transmitted to us.**
 | Your ElevenLabs API key | To authenticate you to the voice service you have chosen to use | Android and Wear OS: the operating system's encrypted keystore (`expo-secure-store`). Web: your browser's `localStorage` |
 | Your ElevenLabs agent identifier | To know which assistant to connect you to | As above |
 | A remembered particle count | A display setting, so the animation opens at a quality your device has already sustained | As above |
+| The last photograph you showed your assistant | To send it (see [§4](#4-third-party-services)) | Android: the App's private cache, which no other app can read and which is never backed up, until the next photograph replaces it. Web: in memory only, until it is sent |
 
 You may erase all of it at any time by uninstalling the App, or, in the web version, by clearing site
 data for the page in your browser. The Developer has no copy of it and no means of obtaining one.
@@ -67,13 +69,20 @@ data for the page in your browser. The Developer has no copy of it and no means 
 ## 4. Third-party services
 
 The App is a client for **ElevenLabs**, a third-party conversational voice service. It is not usable
-until you supply your own ElevenLabs API key, and it connects to no other remote service.
+until you supply your own ElevenLabs API key. The only other remote service it connects to is the one
+your ElevenLabs assistant names for a photograph, and only when you show it one (below).
 
 When, and only when, you hold a conversation:
 
 - audio captured from your microphone is transmitted to ElevenLabs in order to be understood;
 - text you type, where you use the text input instead of speaking, is transmitted to ElevenLabs;
-- the assistant's replies are received from ElevenLabs.
+- the assistant's replies are received from ElevenLabs;
+- a photograph you take to show your assistant — after tapping the camera button, or agreeing when
+  the assistant asks to see something — is uploaded to the address your assistant supplied for it
+  during that conversation, and to nowhere else. That address belongs to a service you have
+  configured your assistant to use, such as your own server. The App never uploads a photograph you
+  did not just take — or, in the web version, pick — for this purpose, and cannot browse your photo
+  library by itself.
 
 **That transmission is to ElevenLabs, not to us.** We neither receive, intercept, log nor retain any
 of it. What ElevenLabs does with it is governed by its own agreement with you and its own privacy
@@ -91,6 +100,10 @@ Developer has no visibility of them.
 
 The App requests the following permissions, and uses each only for the stated purpose:
 
+- **No camera permission.** When you show your assistant something, the App asks your device's own
+  camera app to take one photograph, which needs no permission of the App's own; the App cannot
+  open the camera by itself, and never sees anything but the one photograph you took. In the web
+  version, the browser's own file or camera picker is used in the same way.
 - **Microphone (`RECORD_AUDIO`)** — to hear you during a conversation. Audio is streamed to
   ElevenLabs while a conversation is open and is not recorded to storage, retained by the App, or
   sent anywhere else. The App does not listen when a conversation is not open. If you decline this
@@ -159,4 +172,5 @@ Questions about this Privacy Policy may be sent to:
 The declarations made in the Google Play Data Safety section for this App are consistent with this
 policy: no data is collected, and no data is shared with the Developer. Audio and text transmitted to
 ElevenLabs during a conversation are handled by ElevenLabs as a service you have chosen and
-authenticated to with your own key.
+authenticated to with your own key, and a photograph you show your assistant by the service your
+own assistant is configured to use.

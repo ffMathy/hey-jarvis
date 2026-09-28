@@ -103,11 +103,16 @@
       Translucent rather than NoDisplay, because it has to stay alive for the
       camera's answer, and a NoDisplay activity still alive when it would be
       resumed is killed by the system. Not exported: only this app starts it.
+
+      No task affinity, so that started from the assistant's window in a task
+      of its own it never joins — and brings forward — the app's own activity,
+      which would leave sir in Jarvis rather than where he summoned him from.
     -->
     <activity
       android:name="expo.modules.jarvisassistant.JarvisPhotoActivity"
       android:exported="false"
       android:excludeFromRecents="true"
+      android:taskAffinity=""
       android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
     <!--

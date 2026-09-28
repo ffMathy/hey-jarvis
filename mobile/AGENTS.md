@@ -84,14 +84,14 @@ mobile/
 ├── eas.json                      # development / preview / production builds
 ├── modules/jarvis-assistant/     # the local Expo module that owns the assistant registration
 │   ├── index.ts                  # the JS side
-│   └── android/src/main/         # Kotlin, the merged manifest, and res/xml
+│   └── android/src/main/         # Kotlin, the merged manifest, and res/xml — and the photo activity
 ├── modules/jarvis-audio/         # raw audio for the hologram: the microphone, or Jarvis's WebRTC track
 └── src/
     ├── app.tsx                   # root component: the tour, settings, the conversation, sample mode
     ├── onboarding-screen.tsx     # the first-run tour: agents, credentials, assistant role
     ├── onboarding.ts             # its steps, which of them this device has, and every link
     ├── onboarding-storage.ts     # whether the tour has been walked
-    ├── conversation-screen.tsx   # the hologram, and nothing else on the screen
+    ├── conversation-screen.tsx   # the hologram, and nothing else on the screen but a faint camera
     ├── settings-screen.tsx       # the two fields with no tour around them, for coming back to
     ├── elevenlabs-fields.tsx     # the two fields themselves, shared with the tour
     ├── settings-storage.ts       # platform-agnostic half of persistence
@@ -115,6 +115,13 @@ mobile/
     ├── played-voice.ts           # the same, from the samples a browser is playing
     ├── queued-audio.ts           # dropping what a browser still has queued when he is cut off
     ├── conversation-life.ts      # whether a conversation is open, and whether one has ended
+    ├── camera-tool.ts            # showing Jarvis something: the `openCamera` tool and the button's tap
+    ├── camera-answers.ts         # what the agent is told, and where a photo may be sent
+    ├── photo-request.ts          # the tool call, the photo and the upload URL meeting, in any order
+    ├── photo-upload.ts           # sending the photo to Mastra, and reading back its id
+    ├── camera-button.tsx         # the camera beside him
+    ├── take-photo.ts             # the phone's own camera app, through modules/jarvis-assistant …
+    ├── take-photo.web.ts         # … and a file picker in a browser
     ├── typed-message-field.tsx   # writing to Jarvis instead of talking, and he still answers aloud
     ├── text-mode.ts              # tapping him on a phone: the voice session held in writing, and back
     ├── written-reply.ts          # the last thing he said in writing, and how long he takes to say it …
@@ -283,6 +290,71 @@ So `modules/jarvis-audio` hangs its own `AudioTap` off the same audio — Jarvis
 
 Finding Jarvis's track takes one step outside the SDK's public surface, and **both platforms take the same step**: `useRawConversation()` is public, but the LiveKit room is on the conversation's protected `connection`. `agent-audio-track.ts` reaches it with `Reflect.get`, checks it is a real `livekit-client` `Room`, and follows the participant whose identity contains "agent" — as the SDK's own code does. What each platform then does with the publication differs, so that is where they part: Android turns it into the pair of native ids its `AudioTap` needs, and `jarvis-voice.web.ts` checks it is the browser's own `MediaStreamTrack` and points Web Audio at it. `agent-audio-track.contract.spec.ts` reads the installed SDK and fails if any of that moves. If the track cannot be found anyway, the hologram falls back to the SDK's readers described above: it still draws and nothing fails, but the sphere answers a reading that is barely a voice — on Android a volume that reads near full scale for any sound at all, in a browser one that never reads silence — and on Android two of its bands stay dark.
 
+## Showing him something
+
+Jarvis can be shown a photo — a receipt, a label, a letter — and asked about it. He asks for it
+himself ("what's the total on this receipt?"), or sir taps the camera beside him. The photo goes to
+the Mastra server, is kept there in memory for half an hour, and a model that can see answers from
+it (`mcp/AGENTS.md`, "Vision").
+
+```
+agent ─ preparePhotoUpload (MCP) ──▶ Mastra mints a one-photo upload slot
+          │ ElevenLabs relays the result as an mcp_tool_call event
+          ▼
+phone  keeps the upload URL (camera-answers.ts readOfferedUploadUrl)
+agent ─ openCamera (client tool, no parameters) ──▶ phone opens the camera
+phone  PUT image/jpeg ──▶ Mastra /api/photos/<token> ──▶ { photoId }
+phone  answers openCamera with the id ──▶ agent asks routePromptWorkflow "… (photo photo3)"
+```
+
+Four decisions carry it, and each has a reason:
+
+- **The upload URL never passes through the model.** `openCamera` takes no parameters. The URL is read
+  from the MCP result ElevenLabs relays to the client, which the model cannot write — so an email it
+  summarised or a page it read cannot talk it into sending sir's photo elsewhere. The phone still
+  knows no Mastra address and holds no Mastra secret (see Configuration); the address arrives one
+  photo at a time, from Mastra. Only a URL of the upload path's shape is ever used.
+- **The phone's own camera app takes the photo, and `CAMERA` stays blocked.** Summoned, the
+  conversation is drawn in the assistant's window, which has no activity — and expo-camera's view
+  and the image picker both need one, as does a runtime permission prompt. So `JarvisPhotoActivity`
+  (in `modules/jarvis-assistant`) hands `ACTION_IMAGE_CAPTURE` to the camera app for one shot, into a
+  file lent through `JarvisPhotoProvider`, and hands back a JPEG no longer than 1600 px, turned
+  upright. `ACTION_IMAGE_CAPTURE` needs no permission from an app that does not declare `CAMERA`,
+  and throws for one that declares it without holding it, which is why the block in `app.config.ts`
+  must stay; `take-photo.contract.spec.ts` holds it there.
+- **The window steps aside, and comes back only to a conversation.** The assistant's window is
+  above every app, the camera's included, so it is put away while the photo is taken — with React
+  Native left running, so the conversation is kept alive and the photo sent the moment it exists —
+  and `returnFromTheCamera` brings it back only if the conversation lived through the photo. Brought
+  back to one that had ended, the showing would have started a new conversation with a greeting.
+  The photo activity runs in a task of its own, so it never brings the app's own activity forward
+  behind it.
+- **Every call is answered, once.** The agent waits on `openCamera` for up to two minutes, so a
+  photo not taken, a camera app missing, a newer request, a capture left open for 110 s (timed on
+  the main looper, since JavaScript's timers stop behind the camera) and a URL that never arrives
+  are all answers rather than silence — and never thrown, because a client tool that throws is a
+  failed conversation in red. `photo-request.ts` decides what to do as the tool call, the photo and
+  the URL arrive in whatever order; its spec walks every order.
+
+**The button.** A small outline of a camera at the sphere's lower right, half strength, drawn from
+views (no icon library, and no Skia before CanvasKit has loaded in a browser). It is there only while
+he is connected and not busy: pressing it sends a turn — "sir has opened his camera", which is what
+gets the agent to fetch an upload URL — and a turn in the middle of a request would cancel it. The
+camera opens on the tap itself, before anything is awaited, because a browser only opens its picker
+inside the gesture. A photo taken before the agent's call arrives is held for it for up to a minute.
+In a browser the agent cannot open the picker on its own, so when it asks, the button lights up in
+the accent colour and waits 25 s for the tap.
+
+**The call is not hung up on while sir frames the shot.** The camera open, or its photo still on the
+way, holds the quiet hang-up's clock (`busy`), and opening it and the photo arriving both count as
+him answering (`answered`). `user_activity` is sent every five seconds meanwhile, because ElevenLabs
+ends a call thirty seconds after the user last spoke — whether that covers the time behind the
+camera app, where JavaScript's timers stop, is still to be checked on a device.
+
+**Only the phone is asked.** Once connected it tells the agent it has a camera
+(`CAMERA_ON_THIS_DEVICE`, a contextual update); the prompt asks for photos only where it has heard
+that. The watch answers `openCamera` with "no camera here" anyway, and so does the voice firmware.
+
 ## Sample mode
 
 Before the app is set up there is nothing for the hologram to follow, so the settings screen offers **"No key yet? Try the hologram"**. It opens `sample-screen.tsx`: the same hologram, in a sheet, walking through what Jarvis does.
@@ -376,7 +448,7 @@ Only ever here. `readingAloud` is set from `onMessage`, which is wired on the te
 
 `conversation-token.ts` turns each failure into what to fix — a rejected key, a key without permission to start conversations (which ElevenLabs can also answer with 401), an agent ID the account does not have or a malformed one (400), an account out of credits (402), rate limiting (429) — by reading only ElevenLabs' fixed `detail.status` / `detail.code` identifiers. It never repeats anything else from a response, since a message can echo the request that carried the key.
 
-This used to go through the MCP server, which held the key and handed the phone tokens behind a shared secret. It was changed so the app needs nothing but ElevenLabs: no server address, no second secret, no tunnel to reach. The price is a real credential on the phone, so give the app **its own key**, restricted to what a conversation needs where the account allows it — then a lost phone is one revoked key, not every integration on the account.
+This used to go through the MCP server, which held the key and handed the phone tokens behind a shared secret. It was changed so the app needs nothing but ElevenLabs: no server address, no second secret, no tunnel to reach. Photos keep it that way: the address a photo is sent to is minted by Mastra for that one photo and reaches the phone through the conversation (see "Showing him something"), so there is still nothing to configure. The price is a real credential on the phone, so give the app **its own key**, restricted to what a conversation needs where the account allows it — then a lost phone is one revoked key, not every integration on the account.
 
 What the keystore does and does not do for that key:
 
@@ -436,7 +508,8 @@ Versions are pinned exactly, and every one of them has to clear the repository's
 - `@livekit/react-native` is held at **2.x**. The 3.x line is published as `latest` but does not satisfy `@elevenlabs/react-native`'s peer range.
 - `livekit-client` is a direct dependency even though it is transitive, so only one copy can resolve.
 - `expo-audio` is at **57.0.5**, what Expo 57's `bundledNativeModules.json` allows (`~57.0.4`). It plays the greeting in a browser, through an `HTMLAudioElement`; on Android `hologram`'s own native module plays it, as call audio. It needs no config plugin: it only plays, and its manifest adds nothing but `MODIFY_AUDIO_SETTINGS`.
-- `@config-plugins/react-native-webrtc` is deliberately **not** installed. Its Android half only adds permissions, and two of them — `CAMERA` and `SYSTEM_ALERT_WINDOW` — have no business in a voice assistant. `app.config.ts` declares the permissions this app actually uses and blocks `CAMERA`, which LiveKit's own manifest would otherwise merge in.
+- `@config-plugins/react-native-webrtc` is deliberately **not** installed. Its Android half only adds permissions, and two of them — `CAMERA` and `SYSTEM_ALERT_WINDOW` — have no business in a voice assistant. `app.config.ts` declares the permissions this app actually uses and blocks `CAMERA`, which LiveKit's own manifest would otherwise merge in. The block is also what lets the phone's camera app take a photo for Jarvis with no permission at all — see "Showing him something".
+- **No camera package either.** expo-camera and expo-image-picker both need the current activity, which the assistant's window does not have; the photo is taken by the phone's own camera app through a small activity in `modules/jarvis-assistant`, and read back with React Native's own `fetch`.
 
 `metro.config.js` points Metro at both this package's `node_modules` and the workspace root's, and keeps hierarchical lookup **on** — the usual monorepo advice to switch it off breaks bun's isolated layout, where walking up from the importing file is how a package finds its own dependencies.
 
@@ -453,14 +526,15 @@ The hologram adds three native packages, each at the version Expo 57 pins in `bu
 
 `platforms` includes `web`, and the conversation genuinely works there: `@elevenlabs/react-native` resolves through its `browser` export condition to the plain `@elevenlabs/react` build, which speaks WebRTC through the browser rather than through LiveKit's native modules. The same components, the same provider, no branching in the screens.
 
-Two things do differ, and each is a pair of files Metro picks between rather than a conditional:
+Three things do differ, and each is a pair of files Metro picks between rather than a conditional:
 
 - **Storage.** `expo-secure-store` ships `export default {}` as its web implementation, so the native path does not degrade on web — it throws. `key-value-store.web.ts` uses `localStorage` instead, and the settings screen says so, because `localStorage` is not a keystore.
 - **The microphone.** `PermissionsAndroid` is not part of `react-native-web`. `microphone-permission.web.ts` asks by requesting a stream and releasing it again, so a refusal still surfaces as a permission problem rather than as a failed connection.
+- **The camera.** `take-photo.web.ts` is a file picker (`capture="environment"`, which a phone's browser opens on its camera and a desktop's on its files), drawn onto a canvas and re-encoded as the same JPEG the phone sends. A picker only opens inside a tap, so the agent asking lights the camera button up instead (`CAMERA_OPENS_WITHOUT_A_TAP`).
 
 `platform-contracts.ts` holds the types both halves implement, so neither can drift — nothing else in the app imports both.
 
-The hologram is the third pair, and a different kind: Skia's web build is WebAssembly that has to be fetched before anything Skia-backed can even be imported. `jarvis-hologram.web.tsx` loads the view lazily through `WithSkiaWeb`, holding its space empty meanwhile, and CanvasKit is served from the site root — `turbo initialize` copies `canvaskit.wasm` into `public/`, which the web export publishes — so a browser never reaches for a CDN.
+The hologram is the fourth pair, and a different kind: Skia's web build is WebAssembly that has to be fetched before anything Skia-backed can even be imported. `jarvis-hologram.web.tsx` loads the view lazily through `WithSkiaWeb`, holding its space empty meanwhile, and CanvasKit is served from the site root — `turbo initialize` copies `canvaskit.wasm` into `public/`, which the web export publishes — so a browser never reaches for a CDN.
 
 What does **not** work on web is the assistant role, and it never will: it is Android's. The assistant card says that outright instead of offering a setup step that leads nowhere.
 
@@ -482,11 +556,15 @@ Tests must not import React Native or any Expo native module — there is no run
 
 The boundary is the ElevenLabs session, which needs a real API key and real quota. Everything up to it is exercised for real: the first-run tour (its two steps in a browser, its links, Back, and the side trip to sample mode and back), settings validation, persistence across a reload, the hologram drawing and moving with CanvasKit loaded from the export's own `canvaskit.wasm`, and the token request to ElevenLabs — its `xi-api-key` header, agent ID and participant name, and that the key never appears in the URL — along with how a rejected key and an unknown agent are explained. The typed field is covered on both of its paths: that a refused microphone still opens a conversation — dialled by asking for a **signed URL** rather than a token — and that the field stops saying "Connecting…" once nothing is; and that a microphone that *works* gets the same field beside it, over a token and not a signed URL, since a typed line there is answered out loud and quietly turning it into a text-only session would be the one way to lose that. A `start` that never opened a session at all gets no field, which is the phone's refused microphone by another route. The greeting is covered by counting `HTMLMediaElement.play()` in the page — the player fetches the recording at mount whether or not it plays, so a request proves nothing: it plays once from the export's own assets beside the token request, plays without being refused in a tab nobody has clicked — with the microphone held for it let go afterwards — and does not play in the text-only session, whose `conversation_initiation_client_data` must carry no `first_message`. The override on a voice session travels over LiveKit's data channel, which these tests close, so it is pinned by `greeting-handover.spec.ts` in `hologram` instead. Both URLs are intercepted with `page.route`; every other non-localhost request is aborted, and non-local WebSockets are closed, so a test can never dial out. Playwright answers CORS preflights for routed requests itself, so whether ElevenLabs' real CORS policy admits the web build is **not** covered — the test checks instead that the request carries no header besides `xi-api-key`, which is all a preflight would have to allow.
 
+**The camera is covered end to end in the text-only session**, whose socket the suite can play ElevenLabs' side of (`speakForTheAgent`): the page tells the agent it has a camera once connected; a relayed `preparePhotoUpload` result followed by an `openCamera` call lights the button, a tap opens the file chooser, the picked image is `PUT` as a JPEG to exactly the URL the MCP result carried, and the call is answered with the photo's id; a tap with no call waiting sends sir's turn, holds the photo and sends it when the call comes; and a call naming an address of its own, with no MCP result behind it, uploads nothing and is sent to fetch one. What it cannot reach is the phone's camera app and the assistant's window stepping aside for it — see below.
+
 Every test that needs a configured app walks the tour first, through the `walkToCredentials` helper: the app no longer opens on a form, so a spec that types into one without pressing Next is a spec that fails on a missing field rather than on what it was checking.
 
 Set `CHROMIUM_EXECUTABLE_PATH` to run against a Chromium that Playwright did not install itself — useful in a sandbox that ships a browser of a different build than the pinned `@playwright/test` expects. Leave it unset everywhere else.
 
 ### What CI cannot test, and what stands in for it
+
+**Showing Jarvis a photo on a device** has not been run on one yet. Before relying on it, check on a phone or an emulator with a camera app: that the camera comes up over the assistant's window and the window comes back after it with the conversation still open; that the same works from the app's own activity, where the conversation's JavaScript is paused behind the camera — LiveKit's keep-alive runs on JavaScript timers, so a long capture may cost a reconnect; that ElevenLabs does not end a call while sir frames a shot in silence; that the relayed `mcp_tool_call` result really carries the upload URL; and that a receipt arrives upright. What stands in for the native half meanwhile is `take-photo.contract.spec.ts` — the provider's authority and directory, the activity's manifest entry, the module's function names and the photo's size, read out of the Kotlin, the manifest and the resource as text — and the Mobile APK workflow compiling it.
 
 CI has no Android emulator, and neither does an agent sandbox: that needs the Android SDK and hardware virtualisation, and the SDK only comes from `dl.google.com`. So the device-level behaviour — the assist gesture, the role picker, the session opening the app — is checked by hand on an emulator, with the script below, rather than on every push. The commands above under "Becoming the assistant" are how to look at it there, and this is the one-line version:
 

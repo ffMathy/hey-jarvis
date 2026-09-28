@@ -199,7 +199,12 @@ way round it. Two of them are already written:
   is on `main`. Add a contact address to §10 before you do; it is the one field left blank.
 - **Data safety** — declare **no data collected and no data shared**, which is what the app does and
   what the policy says. Audio goes to ElevenLabs under your own key and never to us; there is no
-  analytics, telemetry or crash-reporting library in the app at all.
+  analytics, telemetry or crash-reporting library in the app at all. A photo shown to Jarvis goes
+  the same way: taken only when the user taps the camera or agrees to Jarvis asking, and uploaded
+  only to the server the user's own agent names, never to us. If Play's reviewers read either as
+  collection by the app, the answer that stays true is **Audio** and **Photos** collected — not
+  shared, not optional to the feature, for app functionality — and the policy's §4 already
+  describes both.
 
 **The store listing's text** — the short description, the full description and the app-access answer
 — is in [`docs/play-listing.md`](./play-listing.md), written to Play's character limits and ready to

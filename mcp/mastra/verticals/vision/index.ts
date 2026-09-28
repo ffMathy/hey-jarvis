@@ -7,6 +7,7 @@ export {
   KEEP_PHOTO_MS,
   type KeptPhoto,
   keepPhoto,
+  LATEST_PHOTO_STANDS_IN_MS,
   MAX_KEPT_PHOTOS,
   MAX_OPEN_SLOTS,
   MAX_PHOTO_BYTES,

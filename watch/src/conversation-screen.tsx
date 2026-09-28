@@ -39,7 +39,7 @@ interface ConversationScreenProps {
  * The same agent talks to the phone, which has one, and asks for it only where a device has said
  * so — which this one never does. It answers anyway, because the SDK reports a tool nobody
  * registered through `onError`, and that would put the SDK's own sentence on the face in red. See
- * `camera-request.ts` in `hologram`.
+ * `camera-request.ts` in `hologram`, and `camera-answers.ts` in `mobile` for the device that has one.
  */
 const NO_CAMERA: ClientTools = { [OPEN_CAMERA_TOOL]: () => NO_CAMERA_HERE };
 

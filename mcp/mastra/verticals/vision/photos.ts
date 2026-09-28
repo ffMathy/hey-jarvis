@@ -30,6 +30,15 @@ export const UPLOAD_SLOT_MS = 5 * 60_000;
 /** How long a photo is kept, so a follow-up question about it still finds it. */
 export const KEEP_PHOTO_MS = 30 * 60_000;
 
+/**
+ * How recent the latest photo has to be to stand in for a question that names none.
+ *
+ * Long enough for "and how much was the milk?" straight after the total; short enough that a
+ * question about something else entirely, on the watch or the speaker, is not answered from a
+ * receipt shown twenty minutes ago on another call.
+ */
+export const LATEST_PHOTO_STANDS_IN_MS = 3 * 60_000;
+
 /** The most photos kept at once. A household shows Jarvis one thing at a time. */
 export const MAX_KEPT_PHOTOS = 5;
 
@@ -128,20 +137,27 @@ export function keepPhoto(data: Buffer, mediaType: PhotoMediaType, now = Date.no
 }
 
 /**
- * The photo by this id, or the latest photo when the id names none.
+ * The photo by this id — or, when no id is given, the latest photo if it is recent.
  *
- * **The latest stands in for an id that did not survive the trip.** The id passes through two
- * models before it arrives here — the voice agent's query and the planner's prompt — and either
- * may write "photo 3" or drop it altogether. This is one household, showing Jarvis one thing at a
- * time, so the photo it most likely means is the one it was shown last. An id that is still
- * recognisable after its spaces and punctuation go is matched exactly.
+ * **An id is matched however the models wrote it.** It passes through two before it arrives here —
+ * the voice agent's query and the planner's prompt — and either may write "Photo 3" for `photo3`, so
+ * spaces and punctuation are dropped before it is looked up. An id that names no photo kept here
+ * finds nothing: answering about some other photo would be answering the wrong question with
+ * confidence.
+ *
+ * **The latest stands in only for a question that named none, and only for a while**
+ * ({@link LATEST_PHOTO_STANDS_IN_MS}): a planner that dropped the id from a follow-up still means the
+ * photo just shown, and anything older is more likely a different question altogether.
  */
 export function findPhoto(photoId: string | undefined, now = Date.now()): KeptPhoto | undefined {
   prune(now);
   const wanted = photoId?.toLowerCase().replace(/[^a-z0-9]/g, '');
-  const named = wanted ? keptPhotos.get(wanted) : undefined;
+  if (wanted) {
+    return keptPhotos.get(wanted);
+  }
   const photos = [...keptPhotos.values()];
-  return named ?? photos[photos.length - 1];
+  const latest = photos[photos.length - 1];
+  return latest && now - latest.keptAt < LATEST_PHOTO_STANDS_IN_MS ? latest : undefined;
 }
 
 /** Forgets every slot and photo, and starts the ids again. For tests. */

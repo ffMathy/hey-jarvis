@@ -5,6 +5,7 @@ import {
   forgetPhotos,
   KEEP_PHOTO_MS,
   keepPhoto,
+  LATEST_PHOTO_STANDS_IN_MS,
   MAX_KEPT_PHOTOS,
   MAX_OPEN_SLOTS,
   openUploadSlot,
@@ -80,13 +81,21 @@ describe('the photos kept', () => {
     expect(findPhoto('"photo1".', 0)).toBe(first);
   });
 
-  it('stand in with the latest when the id names none, or there is no id at all', () => {
+  it('find nothing for an id that names no photo, rather than answering about another one', () => {
+    keepPhoto(PHOTO, 'image/jpeg', 0);
+
+    expect(findPhoto('photo99', 0)).toBeUndefined();
+    expect(findPhoto('the receipt', 0)).toBeUndefined();
+  });
+
+  it('stand in with the latest for a question that named none, while it is recent', () => {
     keepPhoto(PHOTO, 'image/jpeg', 0);
     const latest = keepPhoto(Buffer.from([1]), 'image/png', 0);
 
-    expect(findPhoto(undefined, 0)).toBe(latest);
-    expect(findPhoto('photo99', 0)).toBe(latest);
-    expect(findPhoto('the receipt', 0)).toBe(latest);
+    expect(findPhoto(undefined, LATEST_PHOTO_STANDS_IN_MS - 1)).toBe(latest);
+    expect(findPhoto(undefined, LATEST_PHOTO_STANDS_IN_MS)).toBeUndefined();
+    // Still kept, and still found by name.
+    expect(findPhoto('photo2', LATEST_PHOTO_STANDS_IN_MS)).toBe(latest);
   });
 
   it('are let go of once they have been kept long enough', () => {
@@ -101,8 +110,9 @@ describe('the photos kept', () => {
       keepPhoto(PHOTO, 'image/jpeg', 0);
     }
 
-    // The first has gone, so its id finds the latest instead.
-    expect(findPhoto('photo1', 0)?.photoId).toBe(`photo${MAX_KEPT_PHOTOS + 1}`);
+    // The first has gone.
+    expect(findPhoto('photo1', 0)).toBeUndefined();
+    expect(findPhoto(undefined, 0)?.photoId).toBe(`photo${MAX_KEPT_PHOTOS + 1}`);
     expect(findPhoto('photo2', 0)?.photoId).toBe('photo2');
   });
 

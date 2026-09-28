@@ -20,7 +20,7 @@ import {
 } from './tools.js';
 
 /**
- * The upload URL the phone will send a photo to, as `camera-request.ts` in `hologram` checks it.
+ * The upload URL the phone will send a photo to, as `camera-answers.ts` in `mobile` checks it.
  * Repeated here because this package cannot import that one; a URL this server mints that the
  * phone would refuse is a photo that never arrives.
  */
@@ -182,7 +182,7 @@ describe('looking at a photo', () => {
 
     const { answer } = await executeTool(lookAtPhoto, { question: 'What is the total?' }, { mastra });
 
-    expect(answer).toBe('Photo photo1 shows: «The total is 243.50 DKK.»');
+    expect(answer).toBe('Photo photo1, taken just now, shows: «The total is 243.50 DKK.»');
   });
 
   it('says there is nothing to look at, without asking the reader, when no photo is kept', async () => {

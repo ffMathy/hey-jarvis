@@ -110,8 +110,9 @@ async function walkToCredentials(page: Page): Promise<void> {
  * Walks the tour, fills in the two values and saves, leaving the app on the conversation screen.
  *
  * What says it arrived is the hologram, because that is all the conversation screen is now: no
- * title, no status line, no button. It opens the conversation by itself, so there is nothing to
- * press and nothing to read — see `conversation-screen.tsx`.
+ * title, no status line, and no button until there is a conversation to show a photo to. It opens
+ * the conversation by itself, so there is nothing to press and nothing to read — see
+ * `conversation-screen.tsx`.
  */
 async function configureElevenLabs(page: Page): Promise<void> {
   await walkToCredentials(page);
@@ -706,4 +707,225 @@ test('says nothing to type into when no conversation was opened at all', async (
   // place — a browser is simply the only surface these tests can press it on.
   await expect(page.getByTestId('conversation-problem')).toBeVisible();
   await expect(page.getByTestId('typed-message')).toHaveCount(0);
+});
+
+/** Where Mastra would have Jarvis's photo sent. Answered by `page.route` below, and nowhere else. */
+const UPLOAD_URL = 'https://jarvis.example.test/api/photos/Q2hhbmdlIG1lIHBsZWFzZQ';
+
+/** A one-pixel PNG: something the browser can decode, draw and re-encode as a JPEG like any photo. */
+const ONE_PIXEL = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64',
+);
+
+/**
+ * Plays ElevenLabs' side of a text-only conversation, and lets the test speak for the agent.
+ *
+ * `answerAsJarvis` above answers what is typed; this one hands the socket to the test instead, so it
+ * can send what only the agent sends — the relayed result of an MCP tool, and a client tool call —
+ * and read back everything the page said. That is the whole of the camera's conversation with the
+ * agent, and none of it needs a real one.
+ */
+async function speakForTheAgent(page: Page): Promise<{ heard: unknown[]; say: (frame: unknown) => void }> {
+  const heard: unknown[] = [];
+  let socket: { send: (message: string) => void } | undefined;
+
+  await page.routeWebSocket(/convai\/conversation/, (webSocket) => {
+    socket = webSocket;
+    webSocket.onMessage((frame: string | Buffer) => {
+      const event = JSON.parse(String(frame));
+      heard.push(event);
+      if (event.type === 'conversation_initiation_client_data') {
+        webSocket.send(
+          JSON.stringify({
+            type: 'conversation_initiation_metadata',
+            conversation_initiation_metadata_event: {
+              conversation_id: 'conv_1',
+              agent_output_audio_format: 'pcm_16000',
+              user_input_audio_format: 'pcm_16000',
+            },
+          }),
+        );
+      }
+    });
+  });
+
+  return {
+    heard,
+    say: (frame) => {
+      if (!socket) {
+        throw new Error('The conversation has not opened its socket yet');
+      }
+      socket.send(JSON.stringify(frame));
+    },
+  };
+}
+
+/** `preparePhotoUpload` answering, as ElevenLabs relays an MCP result to the client. */
+const UPLOAD_PREPARED = {
+  type: 'mcp_tool_call',
+  mcp_tool_call: {
+    service_id: 'jarvis',
+    tool_call_id: 'mcp_1',
+    tool_name: 'preparePhotoUpload',
+    parameters: {},
+    timestamp: '2026-09-28T12:00:00Z',
+    state: 'success',
+    result: [{ type: 'text', text: JSON.stringify({ uploadUrl: UPLOAD_URL, instructions: 'Now call openCamera.' }) }],
+  },
+};
+
+/** The agent asking to see something. */
+const OPEN_CAMERA = {
+  type: 'client_tool_call',
+  client_tool_call: { tool_name: 'openCamera', tool_call_id: 'call_1', parameters: {}, event_id: 1 },
+};
+
+/** Opens a text-only conversation with a socket the test speaks for the agent on, and Mastra's upload URL answered. */
+async function openAConversationToShowThingsTo(page: Page) {
+  await refuseMicrophone(page);
+  await page.route(SIGNED_URL_URL, async (route: Route) => {
+    await answerTokenRequest(route, 200, {
+      signed_url: 'wss://api.elevenlabs.io/v1/convai/conversation?agent_id=x&conversation_signature=y',
+    });
+  });
+  const agent = await speakForTheAgent(page);
+
+  const uploads: { method: string; contentType: string | undefined; body: Buffer | null }[] = [];
+  await page.route(`${UPLOAD_URL}`, async (route: Route) => {
+    const request = route.request();
+    uploads.push({
+      method: request.method(),
+      contentType: request.headers()['content-type'],
+      body: request.postDataBuffer(),
+    });
+    await route.fulfill({
+      status: 201,
+      contentType: 'application/json',
+      headers: { 'access-control-allow-origin': '*' },
+      body: JSON.stringify({ success: true, message: 'Photo received', data: { photoId: 'photo7' } }),
+    });
+  });
+
+  await page.goto('/');
+  await configureElevenLabs(page);
+  await expect(page.getByTestId('typed-message')).toBeEditable();
+
+  return { ...agent, uploads };
+}
+
+/** Taps the camera button and picks the photo in the browser's file chooser, as a phone's browser would take one. */
+async function showAPhoto(page: Page): Promise<void> {
+  const chooser = page.waitForEvent('filechooser');
+  await page.getByTestId('open-camera').click();
+  await (await chooser).setFiles({ name: 'receipt.png', mimeType: 'image/png', buffer: ONE_PIXEL });
+}
+
+/** An answer the page gave one of the agent's client tool calls, as far as these tests read it. */
+interface ToolResult {
+  type: 'client_tool_result';
+  tool_call_id?: string;
+  result?: string;
+  is_error?: boolean;
+}
+
+function isToolResult(event: unknown): event is ToolResult {
+  return typeof event === 'object' && event !== null && 'type' in event && event.type === 'client_tool_result';
+}
+
+/** The answers the page gave the agent's client tool calls. */
+function toolResults(heard: unknown[]): ToolResult[] {
+  return heard.filter(isToolResult);
+}
+
+test('tells Jarvis it has a camera, and puts one beside him', async ({ page }) => {
+  const { heard } = await openAConversationToShowThingsTo(page);
+
+  // The agent only asks for photos where a device has said it can take one.
+  await expect
+    .poll(() =>
+      heard.some(
+        (event) =>
+          JSON.stringify(event).includes('"type":"contextual_update"') && JSON.stringify(event).includes('openCamera'),
+      ),
+    )
+    .toBe(true);
+
+  // Faint, and there: the one thing on the screen besides him.
+  await expect(page.getByTestId('open-camera')).toBeVisible();
+  await expect(page.getByTestId('hologram')).toBeVisible();
+});
+
+test('sends the photo Jarvis asks for to where Mastra said, and tells him what it is called', async ({ page }) => {
+  const { heard, say, uploads } = await openAConversationToShowThingsTo(page);
+
+  say(UPLOAD_PREPARED);
+  say(OPEN_CAMERA);
+
+  // A browser cannot open a picker by itself, so the button lights up and asks for the tap.
+  await expect(page.getByTestId('open-camera')).toHaveAttribute(
+    'aria-label',
+    'Jarvis wants to see something: open the camera',
+  );
+  await showAPhoto(page);
+
+  // Sent once, as a JPEG, to exactly the URL the MCP result carried.
+  await expect.poll(() => uploads.length).toBe(1);
+  expect(uploads[0]?.method).toBe('PUT');
+  expect(uploads[0]?.contentType).toBe('image/jpeg');
+  expect(uploads[0]?.body?.subarray(0, 2)).toEqual(Buffer.from([0xff, 0xd8]));
+
+  // And the agent is answered with the photo's id, as a result rather than an error.
+  await expect.poll(() => toolResults(heard).length).toBe(1);
+  const [answer] = toolResults(heard);
+  expect(answer?.tool_call_id).toBe('call_1');
+  expect(answer?.is_error).toBe(false);
+  expect(JSON.parse(answer?.result ?? '{}')).toMatchObject({ photoId: 'photo7' });
+});
+
+test('asks Jarvis to look when the camera button is tapped, and sends the photo when he does', async ({ page }) => {
+  const { heard, say, uploads } = await openAConversationToShowThingsTo(page);
+
+  await showAPhoto(page);
+
+  // The tap is a turn of sir's: it is what gets the agent to fetch somewhere to send the photo.
+  await expect
+    .poll(() =>
+      heard.some(
+        (event) =>
+          JSON.stringify(event).includes('"type":"user_message"') &&
+          JSON.stringify(event).includes('preparePhotoUpload'),
+      ),
+    )
+    .toBe(true);
+  // Nothing is sent before Mastra has said where.
+  expect(uploads).toHaveLength(0);
+
+  say(UPLOAD_PREPARED);
+  say(OPEN_CAMERA);
+
+  // The photo was already taken, so the call is answered with it rather than opening the camera again.
+  await expect.poll(() => uploads.length).toBe(1);
+  await expect.poll(() => toolResults(heard).length).toBe(1);
+  expect(JSON.parse(toolResults(heard)[0]?.result ?? '{}')).toMatchObject({ photoId: 'photo7' });
+});
+
+test('never sends a photo anywhere the model names, only where Mastra said', async ({ page }) => {
+  const { heard, say, uploads } = await openAConversationToShowThingsTo(page);
+
+  // No MCP result, only a call with an address in it: the kind a prompt injection would write.
+  say({
+    type: 'client_tool_call',
+    client_tool_call: {
+      tool_name: 'openCamera',
+      tool_call_id: 'call_1',
+      parameters: { uploadUrl: 'https://elsewhere.example.test/api/photos/Q2hhbmdlIG1lIHBsZWFzZQ' },
+      event_id: 1,
+    },
+  });
+
+  // The camera is not opened, and the agent is told to fetch somewhere first.
+  await expect.poll(() => toolResults(heard).length, { timeout: 10_000 }).toBe(1);
+  expect(JSON.parse(toolResults(heard)[0]?.result ?? '{}').instructions).toContain('preparePhotoUpload');
+  expect(uploads).toHaveLength(0);
 });

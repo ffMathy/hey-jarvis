@@ -1,24 +1,21 @@
 import { useConversationControls, useConversationStatus } from '@elevenlabs/react-native';
+import { OPEN_CAMERA_TOOL } from 'hologram';
+import type { ClientTools } from 'hologram/conversation';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   CAMERA_ON_THIS_DEVICE,
-  OPEN_CAMERA_TOOL,
   PHOTO_NOT_SENT,
   photoShown,
   REPLACED_BY_A_LATER_CALL,
   readOfferedUploadUrl,
   SHOWING_YOU_SOMETHING,
-} from 'hologram';
-import type { ClientTools } from 'hologram/conversation';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  afterPhotoEvent,
-  NOTHING_REQUESTED,
-  type PhotoEvent,
-  type PhotoStep,
-  WAIT_FOR_A_TAP_MS,
-} from './photo-request';
+} from './camera-answers';
+import { afterPhotoEvent, NOTHING_REQUESTED, nextLook, type PhotoEvent, type PhotoStep } from './photo-request';
 import { sendPhoto } from './photo-upload';
 import { CAMERA_OPENS_WITHOUT_A_TAP, takePhoto } from './take-photo';
+
+/** How often sir is said to be still there while the camera is open. See the heartbeat below. */
+const STILL_HERE_EVERY_MS = 5_000;
 
 /**
  * Showing Jarvis something: the agent's `openCamera` client tool, answered here, and the camera
@@ -26,8 +23,7 @@ import { CAMERA_OPENS_WITHOUT_A_TAP, takePhoto } from './take-photo';
  *
  * **Jarvis asks, or sir offers, and either way it is one photo to one call.** Before the agent calls,
  * it has Mastra mint an upload URL, and the answer reaches this device as an MCP tool event — which
- * is the only place the URL is taken from, never from the model (see `camera-request.ts` in
- * `hologram` for why). Sir's tap opens the camera at once and asks Jarvis to do all that in the same
+ * is the only place the URL is taken from, never from the model (see `camera-answers.ts` for why). Sir's tap opens the camera at once and asks Jarvis to do all that in the same
  * breath (`SHOWING_YOU_SOMETHING`). The photo is sent when a call and a photo are both in hand,
  * whichever came second — `photo-request.ts` decides, and says why — and the call is answered with
  * the id Mastra filed it under, or with what happened instead. The agent then asks about it through
@@ -54,7 +50,7 @@ import { CAMERA_OPENS_WITHOUT_A_TAP, takePhoto } from './take-photo';
  */
 export function useCameraTool({ inAssistantWindow }: { inAssistantWindow: boolean }) {
   const { status } = useConversationStatus();
-  const { sendUserMessage, sendContextualUpdate } = useConversationControls();
+  const { sendUserMessage, sendContextualUpdate, sendUserActivity } = useConversationControls();
 
   // Refs rather than state: the tool is handed to the session once, and has to find these without
   // a render. What the screen draws from is mirrored into state below.
@@ -71,6 +67,8 @@ export function useCameraTool({ inAssistantWindow }: { inAssistantWindow: boolea
   const [wanted, setWanted] = useState(false);
   /** Counts sir opening the camera and his photo arriving: each is him answering. See the return. */
   const [sirAnswered, setSirAnswered] = useState(0);
+  /** When the request next needs the clock looked at, if it does. See `nextLook`. */
+  const [lookAt, setLookAt] = useState<number | undefined>(undefined);
 
   const answer = useCallback((told: string) => {
     const waiting = answerTheCall.current;
@@ -151,6 +149,7 @@ export function useCameraTool({ inAssistantWindow }: { inAssistantWindow: boolea
         opensWithoutATap: CAMERA_OPENS_WITHOUT_A_TAP,
       });
       request.current = next;
+      setLookAt(nextLook(next));
       follow(step);
     },
     [follow],
@@ -178,7 +177,7 @@ export function useCameraTool({ inAssistantWindow }: { inAssistantWindow: boolea
       setCameraOpen(false);
       if (taken) {
         heldPhoto.current = taken;
-        happen({ type: 'photoTaken' });
+        happen({ type: 'photoTaken', at: Date.now() });
       } else {
         happen({ type: 'noPhotoTaken', at: Date.now() });
       }
@@ -193,7 +192,7 @@ export function useCameraTool({ inAssistantWindow }: { inAssistantWindow: boolea
    * tells him sir is showing him something, which is what gets him the URL to send it to.
    */
   const showJarvisSomething = useCallback(() => {
-    const nobodyAsked = request.current.uploadUrl === undefined;
+    const nobodyAsked = request.current.askedAt === undefined;
     openTheCamera();
     if (!nobodyAsked) {
       return;
@@ -229,14 +228,38 @@ export function useCameraTool({ inAssistantWindow }: { inAssistantWindow: boolea
     happen({ type: 'sessionOver' });
   }, [connected, happen]);
 
-  // Where the camera waits on a tap, the agent is told no photo is coming before it stops waiting.
+  // A URL or a tap that has not come in time is given up on, and the agent told, before it stops waiting.
   useEffect(() => {
-    if (!wanted) {
+    if (lookAt === undefined) {
       return;
     }
-    const givingUp = setTimeout(() => happen({ type: 'tick', at: Date.now() }), WAIT_FOR_A_TAP_MS);
-    return () => clearTimeout(givingUp);
-  }, [wanted, happen]);
+    const looking = setTimeout(() => happen({ type: 'tick', at: Date.now() }), Math.max(0, lookAt - Date.now()));
+    return () => clearTimeout(looking);
+  }, [lookAt, happen]);
+
+  /**
+   * Sir framing a shot, or about to tap for one, is sir still there.
+   *
+   * ElevenLabs ends a call a while after the user last spoke, whatever its agent is waiting on, and
+   * someone pointing a camera says nothing. `user_activity` is what its client events offer for
+   * exactly this — activity that is not speech. Sent while the camera is open or wanted; JavaScript's
+   * timers stop while the app is behind the camera, so this covers the browser and the moments either
+   * side of the camera app rather than the whole of it.
+   */
+  const busy = cameraOpen || sending;
+  useEffect(() => {
+    if (!busy && !wanted) {
+      return;
+    }
+    const stillHere = setInterval(() => {
+      try {
+        sendUserActivity();
+      } catch {
+        // The conversation went; the session ending lets go of the rest.
+      }
+    }, STILL_HERE_EVERY_MS);
+    return () => clearInterval(stillHere);
+  }, [busy, wanted, sendUserActivity]);
 
   const cameraSessionOptions = useMemo(
     () => ({
@@ -262,7 +285,7 @@ export function useCameraTool({ inAssistantWindow }: { inAssistantWindow: boolea
 
   return {
     cameraSessionOptions,
-    cameraBusy: cameraOpen || sending,
+    cameraBusy: busy,
     cameraWanted: wanted,
     sirAnswered,
     showJarvisSomething,

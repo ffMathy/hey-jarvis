@@ -193,7 +193,7 @@ ${agentCatalogue(agents)}`;
  * The ids the planner is allowed to name, remembered from the catalogue it was built with.
  *
  * Held rather than re-derived because `getPublicAgents()` constructs a fresh agent per call
- * -- ten of them, each with its own tools and memory -- and a routing request would otherwise
+ * -- one per public agent, each with its own tools and memory -- and a routing request would otherwise
  * pay for that twice: once to build the planner and once to check what it wrote.
  */
 let routableAgentIds: ReadonlySet<string> | undefined;

@@ -161,7 +161,7 @@ export function registerWorkflowApi(router: Router, config: WorkflowApiConfig): 
  * Where a photo is sent: `PHOTO_UPLOAD_PATH` and the token of the slot it was minted for.
  *
  * Spelled out rather than built from `PHOTO_UPLOAD_PATH`, so that it can be found as it is: the
- * phone's check of an upload URL (`camera-request.ts` in `hologram`) is pinned to this line.
+ * phone's check of an upload URL (`camera-answers.ts` in `mobile`) is pinned to this line.
  */
 export const PHOTO_UPLOAD_ROUTE = '/api/photos/:uploadToken';
 

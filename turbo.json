@@ -30,6 +30,16 @@
     "deploy:test": {
       "cache": false
     },
+    "hologram#test": {
+      "dependsOn": ["lint"],
+      "cache": false,
+      "outputs": []
+    },
+    "mobile#test": {
+      "dependsOn": ["lint"],
+      "cache": false,
+      "outputs": []
+    },
     "elevenlabs#test": {
       "dependsOn": ["lint", "mcp#test"],
       "cache": false,

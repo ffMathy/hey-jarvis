@@ -73,12 +73,16 @@ export function publicOrigin(mcpExtra: unknown): string | undefined {
  *
  * Published on the MCP server only (see `mcp-server.ts`), because the URL is built from the MCP
  * request it arrives on and the slot lives in that server's memory. See `photos.ts` for the slot,
- * and `camera-request.ts` in `hologram` for the device's half.
+ * and `camera-answers.ts` and `camera-tool.ts` in `mobile` for the device's half.
  */
 export const preparePhotoUpload = createTool({
   id: 'preparePhotoUpload',
   description: `The first step of sir showing you something with his phone's camera — a receipt, a label, a document, anything he wants you to look at. Only in a conversation where a context update has said his device has a camera. It makes somewhere for the photo to go; then call ${OPEN_CAMERA_TOOL} as its instructions say.`,
   inputSchema: z.object({}),
+  // The URL has to be in the text channel as well as the structured one: that is what ElevenLabs
+  // relays to the phone, and the phone looks for it there. So this tool must never take the
+  // empty-text shape the routing tools use (`createInstructionsWorkflowTool`) — the phone would find
+  // no URL, and no photo would ever be sent.
   outputSchema: z.object({
     uploadUrl: z
       .string()
@@ -99,7 +103,16 @@ export const preparePhotoUpload = createTool({
 
 /** What {@link lookAtPhoto} answers when there is nothing to look at. */
 export const NO_PHOTO_TO_LOOK_AT =
-  'There is no photo to look at: none has been shown in the last half hour. Sir can show one with the camera on his phone.';
+  'There is no such photo to look at: photos are kept for half an hour, and a question that names none only means one shown in the last few minutes. Sir can show one with the camera on his phone.';
+
+/** How long ago something happened, in words for an answer that will be read out. */
+function howLongAgo(milliseconds: number): string {
+  const minutes = Math.floor(milliseconds / 60_000);
+  if (minutes < 1) {
+    return 'just now';
+  }
+  return minutes === 1 ? 'a minute ago' : `${minutes} minutes ago`;
+}
 
 /**
  * The photo reader, as registered on this Mastra instance — or a fresh one, where there is none.
@@ -164,7 +177,10 @@ export const lookAtPhoto = createTool({
       { label: 'lookAtPhoto' },
     );
 
-    return { answer: `Photo ${photo.photoId} shows: «${reading.text.trim()}»` };
+    // Its age too, so the agent reading this can tell a photo just taken from one shown earlier.
+    return {
+      answer: `Photo ${photo.photoId}, taken ${howLongAgo(Date.now() - photo.keptAt)}, shows: «${reading.text.trim()}»`,
+    };
   },
 });
 

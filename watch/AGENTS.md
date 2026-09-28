@@ -107,6 +107,12 @@ session the way the agent hanging up does: the network is let go and he stays on
 wrist drops. The wearer speaking calls it off. It is `useHangUpWhenQuiet` from
 `hologram/conversation`, shared with the phone; see [its notes](../hologram/AGENTS.md).
 
+**He can't be shown anything here.** The agent's `openCamera` client tool is the phone's, and the
+agent only calls it where a device has said it has a camera, which the watch never does. The watch
+answers it anyway, with `NO_CAMERA_HERE` from `hologram`, because the SDK reports a call to a tool
+nobody registered through `onError`, which would put its own sentence on the face in red. Its
+answer tells the agent to suggest the phone instead.
+
 **On the watch's own speaker he is at 90% of the call volume.** Everything he says there is call audio, and full call volume from a wrist carries across a room. `modules/jarvis-volume` lowers `STREAM_VOICE_CALL` to 90% of its maximum before the greeting, in the watch's own volume steps, rounded down so a five-step scale really comes down one step. It only ever lowers the volume: a wearer who set it lower keeps their setting.
 
 Two things differ from the phone, both deliberate:

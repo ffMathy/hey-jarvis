@@ -1,4 +1,4 @@
-import { useConversationControls, useConversationStatus } from '@elevenlabs/react-native';
+import { useConversationControls, useConversationMode, useConversationStatus } from '@elevenlabs/react-native';
 import * as Linking from 'expo-linking';
 import {
   type ElevenLabsSettings,
@@ -107,6 +107,10 @@ function showsTypedField({ canType, gone, textMode }: { canType: boolean; gone: 
  * Whether the camera is beside him: while there is a conversation to show something to. Not during
  * the greeting, whose microphone is still muted, and not while a phone is held in writing, where the
  * keyboard has pushed the field up to where the button would be.
+ *
+ * **And not while he is busy with something else**, unless it is him asking for it. Pressing it sends
+ * a turn of its own, and a turn in the middle of one replaces it: a request still being worked on is
+ * cancelled, and an answer still being spoken is cut off.
  */
 function showsCameraButton({
   connected,
@@ -114,14 +118,21 @@ function showsCameraButton({
   settled,
   greeting,
   textMode,
+  thinking,
+  speaking,
+  wanted,
 }: {
   connected: boolean;
   gone: boolean;
   settled: boolean;
   greeting: boolean;
   textMode: boolean;
+  thinking: boolean;
+  speaking: boolean;
+  wanted: boolean;
 }) {
-  return connected && !gone && settled && !greeting && !(ON_A_PHONE && textMode);
+  const inFront = connected && !gone && settled && !greeting && !(ON_A_PHONE && textMode);
+  return inFront && (wanted || !(thinking || speaking));
 }
 
 /**
@@ -212,6 +223,7 @@ export function ConversationScreen({
 }: ConversationScreenProps) {
   const { startSession, sendUserMessage, endSession } = useConversationControls();
   const { status } = useConversationStatus();
+  const { mode } = useConversationMode();
   const liveVoice = useJarvisVoice();
   const { frameRate, buildMilliseconds, particleShare, provenShare, startingShare } = useSparkDensity();
   // Onto the AirPods, if there are any. Only once the call is up, because the list of routes is
@@ -830,7 +842,16 @@ export function ConversationScreen({
 
       {/* The camera, beside him. See `showsCameraButton`. */}
       <CameraButton
-        visible={showsCameraButton({ connected: status === 'connected', gone, settled, greeting, textMode })}
+        visible={showsCameraButton({
+          connected: status === 'connected',
+          gone,
+          settled,
+          greeting,
+          textMode,
+          thinking,
+          speaking: mode === 'speaking',
+          wanted: cameraWanted,
+        })}
         hologramSize={hologramSize}
         wanted={cameraWanted}
         busy={cameraBusy}

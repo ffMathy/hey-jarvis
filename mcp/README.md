@@ -7,7 +7,7 @@ The AI brain of the Jarvis ecosystem — a Mastra-powered MCP server with specia
 ```bash
 bunx turbo serve:all --filter=mcp       # Start Mastra Studio (4111) + MCP server (4112)
 bunx turbo serve --filter=mcp           # Start the Mastra API server only (no Studio UI)
-bun run --cwd mcp serve:mcp             # Start MCP server only (JWT-authenticated)
+bun run --cwd mcp serve:mcp             # Start MCP server only
 bunx turbo test --filter=mcp            # Run tests
 bunx turbo e2e --filter=mcp             # Run E2E tests
 ```
@@ -22,7 +22,7 @@ The project is organized by business domain. Each vertical contains its own agen
 
 | Vertical | Purpose |
 |----------|---------|
-| `api` | Token usage tracking |
+| `api` | REST endpoints (Home Assistant triggers, photo uploads), token usage tracking, data retention |
 | `calendar` | Google Calendar management |
 | `coding` | GitHub repo/issue management, requirements gathering |
 | `commute` | Travel planning and navigation (Google Maps) |
@@ -35,10 +35,11 @@ The project is organized by business domain. Each vertical contains its own agen
 | `presence` | Where the primary user is: in the car, at home, or out |
 | `phone` | Phone calls and texts (Twilio/ElevenLabs), contacts (Google People) |
 | `reflection` | The assistant's own health: failed runs, failing workflow steps, and the errors Mastra reports about itself |
-| `routing` | DAG-based task routing and orchestration |
+| `routing` | Plans each voice request and runs it across the specialized agents |
 | `shopping` | Bilka grocery shopping (Danish) |
 | `synapse` | IoT state change reactor |
 | `todo-list` | Google Tasks management |
+| `vision` | Photos shown from the phone's camera, kept in memory for half an hour and read by a vision model |
 | `weather` | OpenWeatherMap forecasting |
 | `web-research` | Google Search with citations |
 
@@ -55,7 +56,7 @@ The project is organized by business domain. Each vertical contains its own agen
 | Endpoint | Port | Purpose |
 |----------|------|---------|
 | Mastra Studio (Hono) | 4111 | Agent playground, OpenAPI spec, health check |
-| MCP Server (Express) | 4112 | JWT-authenticated MCP endpoint |
+| MCP Server (Express) | 4112 | MCP endpoint, Home Assistant REST triggers, photo uploads (`PUT /api/photos/:uploadToken`) |
 
 ## Running on a Raspberry Pi
 
@@ -137,7 +138,7 @@ The image is public, so the Pi needs no registry login.
 | Process | Port | Purpose |
 | --- | --- | --- |
 | `mastra dev` | 4111 | Studio UI, API, `/health` |
-| `mcp-server.ts` | 4112 | JWT-authenticated MCP endpoint — the one ElevenLabs calls |
+| `mcp-server.ts` | 4112 | MCP endpoint — the one ElevenLabs calls — and the photo upload route |
 
 Secrets are never written to the Pi. The 1Password CLI lives inside the image and resolves the
 `op://` references in `mcp/op.env` (and those in `mcp/op.optional.env` that resolve) at process
@@ -429,7 +430,9 @@ ElevenLabs needs. Studio on 4111 is therefore not reachable until you route a ho
 
 4. **Sign in.** Cloudflare Access sits in front of the hostname. A browser is covered by the
    identity policy — you authenticate with your email and Studio loads normally. Service tokens are
-   for machine clients such as ElevenLabs and the test suite; a browser does not need them.
+   for machine clients such as ElevenLabs and the test suite; a browser does not need them. The one
+   path on the MCP hostname that must bypass Access is `/api/photos/*`, which the phone uploads to
+   without a token — see "MCP Server Access" in [AGENTS.md](./AGENTS.md#mcp-server-access).
 
 ### If Studio is served from a different origin
 
@@ -460,7 +463,6 @@ Secrets managed via 1Password CLI. Key variables:
 
 - Google API key (Gemini), OpenWeatherMap API key
 - Bilka credentials, Algolia keys
-- MCP JWT secret
 - OAuth credentials for Google Calendar, Gmail, GitHub, Microsoft
 
 See [AGENTS.md](./AGENTS.md) for development guidelines.

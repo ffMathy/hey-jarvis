@@ -484,7 +484,8 @@ describe('the photo upload', () => {
     const again = await putPhoto(uploadToken);
 
     expect(again.status).toBe(404);
-    expect(findPhoto('photo2')?.photoId).toBe('photo1');
+    expect(findPhoto('photo1')).toBeDefined();
+    expect(findPhoto('photo2')).toBeUndefined();
   });
 
   it('turns away a slot nobody opened, and one that has closed', async () => {

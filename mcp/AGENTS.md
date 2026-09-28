@@ -46,10 +46,10 @@ mcp/
 │   │   │   ├── workflows.ts
 │   │   │   └── index.ts
 │   │   ├── notification/    # Proactive notifications
-│   │       ├── agent.ts
-│   │       ├── tools.ts
-│   │       ├── workflows.ts
-│   │       └── index.ts
+│   │   │   ├── agent.ts
+│   │   │   ├── tools.ts
+│   │   │   ├── workflows.ts
+│   │   │   └── index.ts
 │   │   ├── phone/           # Phone calls, texts and contacts (tools only)
 │   │   │   ├── contacts.ts
 │   │   │   ├── tools.ts
@@ -61,6 +61,11 @@ mcp/
 │   │   │   └── index.ts
 │   │   ├── presence/        # Where the user is (shortcuts only)
 │   │   │   ├── shortcuts.ts
+│   │   │   └── index.ts
+│   │   ├── vision/          # Photos shown from the phone's camera, and the agents that read them
+│   │   │   ├── agents.ts
+│   │   │   ├── photos.ts    # The in-memory store and its upload slots
+│   │   │   ├── tools.ts
 │   │   │   └── index.ts
 │   │   └── reflection/      # The assistant's own errors and failed runs
 │   │       ├── agent.ts
@@ -394,6 +399,67 @@ that can publish artifacts; plus the companion-app notify service the
 - "Visualize the electricity prices for the rest of the day"
 - "Generate a UI for tracking my running times"
 - "Send that chart to my phone again"
+
+### Vision Vertical
+Lets sir show Jarvis something with his phone's camera — a receipt, a label, a letter, a screen —
+and ask about it. The camera and the shot are the phone's (see "Showing him something" in
+`mobile/AGENTS.md`); what lives here is where the photo is kept and how an agent gets to see it.
+
+**How a photo arrives:**
+1. The voice agent calls **`preparePhotoUpload`**, an MCP tool. It opens a *slot* for one photo
+   and answers with its URL, `https://<host>/api/photos/<token>`, where the token is 128 random
+   bits and the host is whichever one the MCP request came in on (`publicOrigin`, from
+   `X-Forwarded-Host`/`Host` and `X-Forwarded-Proto`) — nothing in this server is configured with
+   its own public hostname.
+2. ElevenLabs relays that result to the phone as an `mcp_tool_call` event, and the phone keeps the
+   URL. The model never passes it on: `openCamera`, the client tool the agent calls next, takes no
+   parameters, so a model talked into naming another address cannot send the photo anywhere.
+3. The phone `PUT`s the JPEG to the URL. The first body sent to a slot within five minutes is the
+   photo; it answers `201` with `{ photoId }`, which `openCamera` hands back to the agent.
+4. The agent calls `routePromptWorkflow` with sir's question and `(photo <id>)` in it, and the
+   planner routes it to the vision agent.
+
+**Available Tools** (`vision/tools.ts`):
+- **`preparePhotoUpload`**: MCP-only — registered in `mcp-server.ts`, not on the Mastra instance,
+  because the URL is built from the MCP request and the slot lives in that process. The URL must stay
+  in the text channel of its result as well as the structured one, since that is what ElevenLabs
+  relays; it must never take the empty-text shape of `createInstructionsWorkflowTool`.
+- **`lookAtPhoto`**: fetches the photo by id and shows it, beside the question, to the photo reader.
+  The only way any agent here sees a photo, since a routed agent is handed text and nothing else.
+  Its answer is the reading quoted as the photo's content, with the photo's age:
+  `Photo photo1, taken just now, shows: «…»`.
+
+**Agents** (`vision/agents.ts`):
+- **`vision`** is public, so the planner routes to it. It finds the id and the question in its
+  prompt and calls `lookAtPhoto` once, at low thinking. A chain works like any other: "add what is
+  on this receipt to the shopping list" is this agent, then the shopping list agent.
+- **`photoReader`** is not public and has no memory — a photo is never written into a thread. It
+  treats text in a photo as something to report, never as instructions, because whoever made the
+  thing photographed wrote it.
+
+**The photo store** (`vision/photos.ts`) is **in memory, in the MCP server's process, and nowhere
+else**: `/data` goes into every Home Assistant backup, and a photo of a letter does not belong there.
+Everything is bounded for the Pi — at most 20 open slots and 5 photos of at most 3 MB, oldest let go
+first, a photo kept for 30 minutes. An id is matched however a model wrote it ("Photo 3" is
+`photo3`), and a question that names no photo means the latest only if it is under three minutes
+old. Studio's process (`mastra dev`, 4111) has a store of its own that nothing fills, so photos can
+only be asked about through the MCP server.
+
+**The upload route** (`PUT /api/photos/:uploadToken`, `api/routes.ts`) is open to anyone — the
+phone holds no Cloudflare Access service token — so **the slot is claimed before the body is read**:
+a wrong content type is a `415` and an unknown or used token a `404`, both with nothing read, and
+only then does `express.raw` read at most 3 MB. The JSON parser in `mcp-server.ts` skips the path
+for the same reason, and the request log writes it without its token (`withoutUploadToken`). CORS
+allows any origin, because the token is the whole of the authority and the browser build is served
+from GitHub Pages.
+
+**Requirements:** a Cloudflare Access bypass for `/api/photos/*` — see
+[MCP Server Access](#mcp-server-access).
+
+**Example Use Cases:**
+- "What's the total on this receipt?"
+- "What does this letter say I have to do?"
+- "Add everything on this receipt to the shopping list"
 
 ### Phone Vertical (Tools Only)
 Provides outbound calling, texting and contact lookup:
@@ -788,7 +854,7 @@ here rather than guessed at.
 
 ### Routing Planner Agent
 Turns a voice request into a **plan** for the specialized agents to run:
-- **The twelve public agents are its catalogue**, baked into its instructions at boot
+- **The thirteen public agents are its catalogue**, baked into its instructions at boot
 - **No tools of its own**: it writes a plan, it never runs one and never sees a result
 - **No memory**: planning one request has nothing to recall from the last
 - **Flash-Lite, not Flash**: every request waits on the planner before any work starts, and
@@ -833,6 +899,11 @@ Studio draws it and the run is persisted — and the work is written down before
 ### Routing
 The entry point for every voice request. Two MCP tools, deliberately: the voice model gets a
 small, fast surface, and everything else happens behind them.
+
+The one other tool on the MCP server is `preparePhotoUpload` (see [Vision Vertical](#vision-vertical)),
+and it is not a way round the planner: it answers a question about the conversation itself — where
+the phone can send a photo — which has to be ready before the camera opens, and which no agent
+behind the planner could answer, since the URL is built from the MCP request.
 
 **Workflows:**
 - **`routePromptWorkflow`**: starts a request and returns at once, with the session to poll
@@ -2332,7 +2403,30 @@ const PROVIDERS: OAuthProvider[] = [
 
 ## MCP Server Access
 
-The MCP server does not require authentication. All endpoints are publicly accessible on port 4112. Security is handled at the network level (e.g., Home Assistant ingress, firewall rules).
+The MCP server itself checks no credentials on port 4112. What stands in front of it is the
+Cloudflare tunnel and its **Cloudflare Access** application: ElevenLabs and the integration tests
+present a service token (`CF-Access-Client-Id` / `CF-Access-Client-Secret`), and a browser signs in
+with an identity policy.
+
+**One path must bypass Access: `/api/photos/*`.** The phone uploads photos there and holds no
+service token — the app is configured with nothing but an ElevenLabs key and agent — so without a
+bypass Access answers every upload with its sign-in page, and the phone reports "The server turned
+the photo away". In Zero Trust → Access → Applications, add a self-hosted application for
+`<your MCP hostname>/api/photos/*` with a single **Bypass** policy (include: Everyone). It covers
+every method, which matters because the browser build sends a CORS preflight (`OPTIONS`) first.
+
+What protects that path instead is the capability in it: a token of 128 random bits that
+`preparePhotoUpload` minted for one photo, good for five minutes, and claimed before a byte of the
+body is read (see [Vision Vertical](#vision-vertical)). Nothing else under `/api` is reachable
+without Access.
+
+**Rolling the camera out** takes three steps, in this order:
+1. Deploy the MCP server image with the vision vertical, and add the bypass above.
+2. Redeploy the ElevenLabs agent (`bunx turbo deploy --filter=elevenlabs`). It adds the `openCamera`
+   client tool and the `mcp_tool_call` client event; an agent that has `openCamera` before the server
+   has `preparePhotoUpload` can only fail to take a photo.
+3. In the ElevenLabs dashboard, check that `preparePhotoUpload` is allowed to run without approval
+   on the MCP server's tool approval policy, like the routing tools.
 
 ## Integration Capabilities
 
