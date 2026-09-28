@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.13.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.12.0...mcp-v2.13.0) (2026-09-28)
+
+
+### Features
+
+* **coding:** let sessions ask questions along the way over reply channels ([#900](https://github.com/ffMathy/hey-jarvis/issues/900)) ([f8d991f](https://github.com/ffMathy/hey-jarvis/commit/f8d991fc3de4e03f2fd4ebebca0d4ff109b51ac6))
+
+
+### Documentation
+
+* **mcp:** update stale vertical counts and add missing generative-ui entry ([#898](https://github.com/ffMathy/hey-jarvis/issues/898)) ([80552e1](https://github.com/ffMathy/hey-jarvis/commit/80552e1537461740c06f13fc5e38e416298825da))
+
 ## [2.12.0](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.11.0...mcp-v2.12.0) (2026-09-27)
 
 

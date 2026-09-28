@@ -1,5 +1,17 @@
 # Changelog
 
+## [4.12.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.11.0...root-v4.12.0) (2026-09-28)
+
+
+### Features
+
+* **coding:** let sessions ask questions along the way over reply channels ([#900](https://github.com/ffMathy/hey-jarvis/issues/900)) ([f8d991f](https://github.com/ffMathy/hey-jarvis/commit/f8d991fc3de4e03f2fd4ebebca0d4ff109b51ac6))
+
+
+### Documentation
+
+* **mcp:** update stale vertical counts and add missing generative-ui entry ([#898](https://github.com/ffMathy/hey-jarvis/issues/898)) ([80552e1](https://github.com/ffMathy/hey-jarvis/commit/80552e1537461740c06f13fc5e38e416298825da))
+
 ## [4.11.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.10.0...root-v4.11.0) (2026-09-27)
 
 

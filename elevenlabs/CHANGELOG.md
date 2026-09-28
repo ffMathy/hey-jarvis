@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v2.1.0...elevenlabs-v2.2.0) (2026-09-28)
+
+
+### Features
+
+* **coding:** let sessions ask questions along the way over reply channels ([#900](https://github.com/ffMathy/hey-jarvis/issues/900)) ([f8d991f](https://github.com/ffMathy/hey-jarvis/commit/f8d991fc3de4e03f2fd4ebebca0d4ff109b51ac6))
+
 ## [2.1.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v2.0.2...elevenlabs-v2.1.0) (2026-09-26)
 
 
