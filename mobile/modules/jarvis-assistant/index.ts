@@ -15,6 +15,8 @@ interface JarvisAssistantNativeModule {
   canReachAssistantSettings(): boolean;
   openAssistantSettings(): AssistantSettingsScreen;
   dismissAssistantWindow(): boolean;
+  takePhoto(inAssistantWindow: boolean): Promise<string | null>;
+  returnFromTheCamera(showWindowAgain: boolean): Promise<boolean>;
 }
 
 /**
@@ -82,4 +84,34 @@ export function openAssistantSettings(): AssistantSettingsScreen {
  */
 export function dismissAssistantWindow(): boolean {
   return nativeModule?.dismissAssistantWindow() ?? false;
+}
+
+/**
+ * Takes one photo with the phone's own camera app, and resolves with where it was put — a `file://`
+ * URI to a small, upright JPEG — or `undefined` when none was taken: sir went back without one,
+ * the phone has no camera app, or the build has no native module to ask.
+ *
+ * `inAssistantWindow` says where the conversation is drawn, because that decides how the camera
+ * gets in front of it: the assistant's window is above every app, the camera's included, so it is
+ * put away for the photo — and it stays away until {@link returnFromTheCamera} says whether to bring
+ * it back. Only the tree drawn in the window may say so — see `inAssistantWindow` in `App`.
+ */
+export async function takePhotoWithTheCameraApp({
+  inAssistantWindow,
+}: {
+  inAssistantWindow: boolean;
+}): Promise<string | undefined> {
+  return (await nativeModule?.takePhoto(inAssistantWindow)) ?? undefined;
+}
+
+/**
+ * After a photo taken from the assistant's window: brings the window back if there is still a
+ * conversation in it, or lets it rest if there is not.
+ *
+ * The app decides rather than the native side, because only the app knows whether the conversation
+ * lived through the photo. The window coming back is a showing like any other, and a showing with
+ * no conversation open starts a new one — so the window is brought back only to one still open.
+ */
+export function returnFromTheCamera({ showWindowAgain }: { showWindowAgain: boolean }): void {
+  void nativeModule?.returnFromTheCamera(showWindowAgain);
 }

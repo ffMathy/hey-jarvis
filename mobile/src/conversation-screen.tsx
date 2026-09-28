@@ -6,12 +6,21 @@ import {
   requestConversationToken,
   requestSignedConversationUrl,
 } from 'hologram';
-import { inTurn, useGreeting, useHangUpWhenQuiet, useToolActivity, useUserVoice } from 'hologram/conversation';
+import {
+  inTurn,
+  mergeClientTools,
+  useGreeting,
+  useHangUpWhenQuiet,
+  useToolActivity,
+  useUserVoice,
+} from 'hologram/conversation';
 import { LEAVING_SECONDS } from 'hologram/react/lifecycle';
 import { useSimulatedVoice } from 'hologram/react/sample';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, ToastAndroid, View } from 'react-native';
 import { createAssistLaunchClaim } from './assist-link';
+import { CameraButton } from './camera-button';
+import { useCameraTool } from './camera-tool';
 import { afterStatus, isLive, NOT_YET_OPEN } from './conversation-life';
 import { ConversationFrame, useConversationSheet } from './conversation-sheet';
 import { JarvisHologram } from './jarvis-hologram';
@@ -95,6 +104,27 @@ function showsTypedField({ canType, gone, textMode }: { canType: boolean; gone: 
 }
 
 /**
+ * Whether the camera is beside him: while there is a conversation to show something to. Not during
+ * the greeting, whose microphone is still muted, and not while a phone is held in writing, where the
+ * keyboard has pushed the field up to where the button would be.
+ */
+function showsCameraButton({
+  connected,
+  gone,
+  settled,
+  greeting,
+  textMode,
+}: {
+  connected: boolean;
+  gone: boolean;
+  settled: boolean;
+  greeting: boolean;
+  textMode: boolean;
+}) {
+  return connected && !gone && settled && !greeting && !(ON_A_PHONE && textMode);
+}
+
+/**
  * Starts the greeting while the microphone is still held, and lets go of it once the greeting has
  * started or been refused. Holding it is what lets a browser tab nobody has clicked play a sound at
  * all; see `microphone-permission.web.ts`.
@@ -129,6 +159,12 @@ async function greetHolding(microphone: MicrophoneAccess, beginGreeting: () => P
  * The one thing that does put something on the screen is a field to type into, under him, in a
  * browser — see `typed-message-field.tsx`. It is the exception that keeps the rule: there is still
  * nothing to read, only somewhere to write.
+ *
+ * **The other is a camera, beside him, and it is faint.** Showing Jarvis a receipt or a label is
+ * something you decide to do rather than something he can guess, so it needs a door — but only one
+ * you can find, never one you have to read: a small outline at the sphere's lower right, at half
+ * strength, there only while he is connected. He can also ask for it himself (`camera-tool.ts`), and
+ * in a browser, where the camera cannot open without a tap, the button lighting up is how he asks.
  *
  * **On a phone it is there only when asked for.** It used to sit under him as an empty bar on
  * every summoning — something on the assistant's screen that was not him, for a keyboard nobody
@@ -303,10 +339,17 @@ export function ConversationScreen({
    * calls its `hangUpWhenQuiet` client tool, and three seconds of nobody saying anything after he
    * has finished ends the call exactly as tapping beside the sheet would. See `useHangUpWhenQuiet`.
    *
-   * An answer he is still miming in writing counts as him speaking, since it is still on screen
-   * being read and would leave with him.
+   * An answer he is still miming in writing keeps it waiting, since it is still on screen being read
+   * and would leave with him; so does the camera, open or still sending what it took.
    */
-  const { quietSessionOptions, heardTheUser } = useHangUpWhenQuiet({ hangUp: hangUpSession, speaking: readingAloud });
+  const { cameraSessionOptions, cameraBusy, cameraWanted, sirAnswered, showJarvisSomething } = useCameraTool({
+    inAssistantWindow,
+  });
+  const { quietSessionOptions, heardTheUser } = useHangUpWhenQuiet({
+    hangUp: hangUpSession,
+    busy: readingAloud || cameraBusy,
+    answered: sirAnswered,
+  });
 
   /**
    * Sends what was typed, and forgets the answer to the last thing.
@@ -414,10 +457,14 @@ export function ConversationScreen({
         onError: reportSessionFailure,
         onDisconnect: reportEnding,
         ...toolHandlers,
+        // The sphere thinks while an MCP tool runs, and the camera keeps the upload URL one mints.
+        onMCPToolCall: inTurn(toolHandlers.onMCPToolCall, cameraSessionOptions.onMCPToolCall),
         ...playbackHandlers,
         ...userVoiceHandlers,
         // The client tool, and the two handlers below that both it and something else want.
         ...quietSessionOptions,
+        // Both hooks answer a client tool, and a second `clientTools` spread would drop the first.
+        clientTools: mergeClientTools(quietSessionOptions.clientTools, cameraSessionOptions.clientTools),
         // The listening lattice and the quiet hang-up hear the user through the same score.
         onVadScore: inTurn(userVoiceHandlers.onVadScore, quietSessionOptions.onVadScore),
         // Only kept while the conversation is held in writing; see `text-mode.ts`.
@@ -435,6 +482,7 @@ export function ConversationScreen({
       playbackHandlers,
       userVoiceHandlers,
       quietSessionOptions,
+      cameraSessionOptions,
       rememberInTextMode,
       reportSessionFailure,
       reportEnding,
@@ -516,10 +564,13 @@ export function ConversationScreen({
           onError: reportSessionFailure,
           onDisconnect: reportEnding,
           ...toolHandlers,
+          onMCPToolCall: inTurn(toolHandlers.onMCPToolCall, cameraSessionOptions.onMCPToolCall),
           // Hung up on quiet here too. Nothing is spoken or scored in this session, so it is three
           // seconds after the call — counted once he has finished miming his written answer —
           // unless a line is typed.
           ...quietSessionOptions,
+          // The camera too: a browser's picker takes a photo in writing as readily as in voice.
+          clientTools: mergeClientTools(quietSessionOptions.clientTools, cameraSessionOptions.clientTools),
           // The only place this is asked for, because it is the only place there is anything to
           // read: his reply arrives written here and as audio everywhere else.
           onMessage: inTurn(rememberWhatHeSaid, quietSessionOptions.onMessage),
@@ -544,6 +595,7 @@ export function ConversationScreen({
     resetTextMode,
     toolHandlers,
     quietSessionOptions,
+    cameraSessionOptions,
     reportProblem,
     reportSessionFailure,
     reportEnding,
@@ -775,6 +827,15 @@ export function ConversationScreen({
           autoFocus={ON_A_PHONE}
         />
       ) : null}
+
+      {/* The camera, beside him. See `showsCameraButton`. */}
+      <CameraButton
+        visible={showsCameraButton({ connected: status === 'connected', gone, settled, greeting, textMode })}
+        hologramSize={hologramSize}
+        wanted={cameraWanted}
+        busy={cameraBusy}
+        onPress={showJarvisSomething}
+      />
 
       {ON_A_PHONE ? null : (
         <Pressable

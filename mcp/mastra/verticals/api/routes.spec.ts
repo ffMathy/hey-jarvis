@@ -3,7 +3,16 @@ import express, { type Request as ExpressRequest, type Response as ExpressRespon
 import type { Server } from 'http';
 import { z } from 'zod';
 import { createStep, createWorkflow, getWorkflowRuntime } from '../../utils/workflows/workflow-factory.js';
-import { createWorkflowApiHandler, extractWorkflowError, registerApiRoutes, registerWorkflowApi } from './routes.js';
+import { findPhoto, forgetPhotos, MAX_PHOTO_BYTES, openUploadSlot, UPLOAD_SLOT_MS } from '../vision/index.js';
+import {
+  createWorkflowApiHandler,
+  extractWorkflowError,
+  PHOTO_UPLOAD_ROUTE,
+  type RegisteredApiRoute,
+  registerApiRoutes,
+  registerWorkflowApi,
+  withoutUploadToken,
+} from './routes.js';
 
 /**
  * A workflow that simply hands its input back, used to assert what a caller
@@ -122,7 +131,7 @@ const unserialisableWorkflow = createWorkflow({
 let server: Server;
 let baseUrl: string;
 let registeredWorkflowPaths: string[];
-let registeredApiPaths: string[];
+let registeredApiRoutes: RegisteredApiRoute[];
 let forwardedError: unknown;
 
 /** Errors the handler passes to `next` land here instead of Express's HTML page. */
@@ -169,7 +178,7 @@ beforeAll(async () => {
   app.post('/api/unserialisable', createWorkflowApiHandler(unserialisableWorkflow));
 
   const productionRouter = express.Router();
-  registeredApiPaths = registerApiRoutes(productionRouter);
+  registeredApiRoutes = registerApiRoutes(productionRouter);
   app.use(productionRouter);
 
   app.use((error: unknown, _request: ExpressRequest, response: ExpressResponse, _next: NextFunction) => {
@@ -361,8 +370,11 @@ describe('registerWorkflowApi', () => {
 });
 
 describe('registerApiRoutes', () => {
-  it('registers exactly the shopping list endpoint', () => {
-    expect(registeredApiPaths).toEqual(['/api/shopping-list']);
+  it('registers exactly the shopping list endpoint and the photo upload', () => {
+    expect(registeredApiRoutes).toEqual([
+      { method: 'POST', path: '/api/shopping-list' },
+      { method: 'PUT', path: PHOTO_UPLOAD_ROUTE },
+    ]);
   });
 
   it('validates the shopping list body before running the workflow', async () => {
@@ -429,5 +441,108 @@ describe('extractWorkflowError', () => {
 
     expect(result.status).toBe('suspended');
     expect(extractWorkflowError(result)).toBe('Workflow failed with status suspended');
+  });
+});
+
+describe('the photo upload', () => {
+  /** A JPEG's first bytes, which is all the route looks at: it keeps what it is sent. */
+  const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+
+  function putPhoto(uploadToken: string, body: Uint8Array<ArrayBuffer> = JPEG, contentType = 'image/jpeg') {
+    return fetch(`${baseUrl}/api/photos/${uploadToken}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': contentType },
+      body,
+    });
+  }
+
+  beforeEach(() => {
+    forgetPhotos();
+  });
+
+  it('is the path the phone checks an upload URL against', () => {
+    expect(PHOTO_UPLOAD_ROUTE).toBe('/api/photos/:uploadToken');
+  });
+
+  it('keeps a photo sent to a slot, and says what it is called now', async () => {
+    const { uploadToken } = openUploadSlot();
+
+    const response = await putPhoto(uploadToken);
+
+    expect(response.status).toBe(201);
+    const body = await readBody(response);
+    expect(body.success).toBe(true);
+    expect(body.data).toMatchObject({ photoId: 'photo1' });
+    expect(findPhoto('photo1')?.data).toEqual(Buffer.from(JPEG));
+    expect(findPhoto('photo1')?.mediaType).toBe('image/jpeg');
+  });
+
+  it('takes one photo per slot', async () => {
+    const { uploadToken } = openUploadSlot();
+    expect((await putPhoto(uploadToken)).status).toBe(201);
+
+    const again = await putPhoto(uploadToken);
+
+    expect(again.status).toBe(404);
+    expect(findPhoto('photo2')?.photoId).toBe('photo1');
+  });
+
+  it('turns away a slot nobody opened, and one that has closed', async () => {
+    expect((await putPhoto('Q2hhbmdlIG1lIHBsZWFzZQ')).status).toBe(404);
+
+    const { uploadToken } = openUploadSlot(Date.now() - UPLOAD_SLOT_MS - 1);
+    expect((await putPhoto(uploadToken)).status).toBe(404);
+
+    expect(findPhoto(undefined)).toBeUndefined();
+  });
+
+  it('turns a stranger away before reading what they sent', async () => {
+    // Larger than any photo is allowed to be. Read first, this would be refused as too large; that
+    // it is refused as a slot that does not exist is what says nothing was read.
+    const tooLarge = new Uint8Array(MAX_PHOTO_BYTES + 1);
+
+    expect((await putPhoto('Q2hhbmdlIG1lIHBsZWFzZQ', tooLarge)).status).toBe(404);
+  });
+
+  it('refuses a photo larger than a photo can be, even for a live slot', async () => {
+    const { uploadToken } = openUploadSlot();
+
+    const response = await putPhoto(uploadToken, new Uint8Array(MAX_PHOTO_BYTES + 1));
+
+    // The body parser's own refusal, forwarded to the error handler with its status.
+    expect(forwardedError).toMatchObject({ status: 413 });
+    expect(response.status).toBe(ERROR_HANDLER_STATUS);
+    expect(findPhoto(undefined)).toBeUndefined();
+  });
+
+  it('refuses anything that is not an image, without spending the slot', async () => {
+    const { uploadToken } = openUploadSlot();
+
+    expect((await putPhoto(uploadToken, new TextEncoder().encode('{"a":1}'), 'application/json')).status).toBe(415);
+    expect((await putPhoto(uploadToken)).status).toBe(201);
+  });
+
+  it('refuses an empty body', async () => {
+    const { uploadToken } = openUploadSlot();
+
+    expect((await putPhoto(uploadToken, new Uint8Array(0))).status).toBe(415);
+  });
+
+  it('lets the browser build send from its own origin', async () => {
+    const preflight = await fetch(`${baseUrl}/api/photos/Q2hhbmdlIG1lIHBsZWFzZQ`, { method: 'OPTIONS' });
+
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get('access-control-allow-origin')).toBe('*');
+    expect(preflight.headers.get('access-control-allow-methods')).toContain('PUT');
+    expect(preflight.headers.get('access-control-allow-headers')).toContain('Content-Type');
+
+    const { uploadToken } = openUploadSlot();
+    expect((await putPhoto(uploadToken)).headers.get('access-control-allow-origin')).toBe('*');
+  });
+
+  it('keeps upload tokens out of the request log', () => {
+    expect(withoutUploadToken('/api/photos/Q2hhbmdlIG1lIHBsZWFzZQ')).toBe('/api/photos/…');
+    expect(withoutUploadToken('/api/photos/Q2hhbmdlIG1lIHBsZWFzZQ?x=1')).toBe('/api/photos/…?x=1');
+    expect(withoutUploadToken('/api/shopping-list')).toBe('/api/shopping-list');
   });
 });

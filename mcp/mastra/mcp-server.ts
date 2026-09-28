@@ -6,7 +6,14 @@ import { logTokenUsageSummary } from './index.js';
 import { initializeScheduler } from './scheduler.js';
 import { createInstructionsWorkflowTool, createSimplifiedWorkflowTool } from './utils/mcp-tool-factory.js';
 import { getMissingClaudeCodeHostVariables, isClaudeCodeHostConfigured } from './verticals/coding/index.js';
-import { getPublicAgents, registerApiRoutes, registerShoppingTriggers } from './verticals/index.js';
+import {
+  getPublicAgents,
+  PHOTO_UPLOAD_PATH,
+  preparePhotoUpload,
+  registerApiRoutes,
+  registerShoppingTriggers,
+  withoutUploadToken,
+} from './verticals/index.js';
 import { getNextInstructionsWorkflow, routePromptWorkflow } from './verticals/routing/workflows.js';
 
 // Re-export for cross-project imports
@@ -21,6 +28,9 @@ export async function startMcpServer() {
     tools: {
       routePromptWorkflow: createInstructionsWorkflowTool(routePromptWorkflow),
       getNextInstructionsWorkflow: createSimplifiedWorkflowTool(getNextInstructionsWorkflow),
+      // Here rather than on the Mastra instance: the upload URL is built from the MCP request's own
+      // host, and the slot lives in this process, beside the photo route. See `vision/tools.ts`.
+      preparePhotoUpload,
     },
   });
 
@@ -32,9 +42,11 @@ export async function startMcpServer() {
 
   const app = express();
 
-  // JSON body parsing middleware for API routes (exclude MCP endpoint and subpaths which read raw body)
+  // JSON body parsing middleware for API routes. Not the MCP endpoint and its subpaths, which read
+  // the raw body, and not the photo route, which is open to anyone and must turn a stranger away
+  // before reading anything they send (see `claimSlotBeforeReading` in `verticals/api/routes.ts`).
   app.use((req, res, next) => {
-    if (req.path === mcpPath || req.path.startsWith(`${mcpPath}/`)) {
+    if (req.path === mcpPath || req.path.startsWith(`${mcpPath}/`) || req.path.startsWith(`${PHOTO_UPLOAD_PATH}/`)) {
       next();
     } else {
       express.json()(req, res, next);
@@ -46,14 +58,15 @@ export async function startMcpServer() {
     const startTime = Date.now();
     const requestTimestamp = new Date().toISOString();
 
-    // Log incoming request
-    console.log(`[${requestTimestamp}] ${req.method} ${req.url}`);
+    // Log incoming request, without the key to an upload slot in it
+    const loggedUrl = withoutUploadToken(req.url);
+    console.log(`[${requestTimestamp}] ${req.method} ${loggedUrl}`);
 
     // Log response when finished
     res.on('finish', () => {
       const responseTimestamp = new Date().toISOString();
       const duration = Date.now() - startTime;
-      console.log(`[${responseTimestamp}] ${req.method} ${req.url} - ${res.statusCode} (${duration}ms)`);
+      console.log(`[${responseTimestamp}] ${req.method} ${loggedUrl} - ${res.statusCode} (${duration}ms)`);
     });
 
     next();
@@ -68,7 +81,7 @@ export async function startMcpServer() {
   const apiRouter = express.Router();
 
   // Register API routes (shopping list, etc.) and get the registered paths
-  const registeredApiPaths = registerApiRoutes(apiRouter);
+  const registeredApiRoutes = registerApiRoutes(apiRouter);
   app.use(apiRouter);
 
   // MCP endpoint - handles both GET (for initial connection) and POST (for messages)
@@ -108,8 +121,8 @@ export async function startMcpServer() {
   );
 
   console.log(`J.A.R.V.I.S. MCP Server listening on http://${host}:${port}${mcpPath}`);
-  for (const apiPath of registeredApiPaths) {
-    console.log(`API endpoint available: POST http://${host}:${port}${apiPath}`);
+  for (const { method, path } of registeredApiRoutes) {
+    console.log(`API endpoint available: ${method} http://${host}:${port}${path}`);
   }
 
   // Register email triggers for shopping notifications

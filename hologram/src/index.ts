@@ -15,6 +15,7 @@
  * microphone, a view tree, a clock or an SDK — those live in `./react`, in `./conversation`, or in
  * the app that has one.
  */
+export * from './camera-request';
 export * from './conversation-token';
 export * from './density-control';
 export * from './elevenlabs-settings';

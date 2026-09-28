@@ -23,6 +23,8 @@ describe('findSpokenToolCallsInText', () => {
       // followed by a bracketed note standing in for the tool it should have called.
       '[sounding like Jarvis from the Iron Man movies] As you wish, sir. Do try not to miss me too much. [end_call invoked]',
       '→ end_call',
+      '[dry] Calling preparePhotoUpload, then openCamera, sir.',
+      '[openCamera]',
       // A tool this codebase does not have. The generic shape still catches it, so a
       // renamed or newly added tool does not silently escape the net.
       'unknownFutureTool(someArgument="value")',
@@ -52,6 +54,9 @@ describe('findSpokenToolCallsInText', () => {
       // it is. A closing line belongs in the transcript; the call itself does not.
       'Ending the call now, sir. [dry] Do try not to miss me too much.',
       '[sighs] As you wish, sir. I shall end the call.',
+      // Likewise the camera: saying what is about to happen is fine, as long as it is prose.
+      "[dry] I'll open the camera, sir. Do try to hold it steady.",
+      '[amused] Preparing a photo upload for a receipt, sir. How thrilling.',
     ];
 
     for (const spoken of speech) {

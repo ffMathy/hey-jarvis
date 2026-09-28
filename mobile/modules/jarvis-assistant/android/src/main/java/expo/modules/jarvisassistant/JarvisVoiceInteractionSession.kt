@@ -110,6 +110,7 @@ class JarvisVoiceInteractionSession(context: Context) : VoiceInteractionSession(
     super.onShow(args, showFlags)
 
     current = WeakReference(this)
+    keptRunning = null
     nextShowing?.invoke()
     nextShowing = null
 
@@ -142,7 +143,14 @@ class JarvisVoiceInteractionSession(context: Context) : VoiceInteractionSession(
    * has actually finished with the session.
    */
   override fun onHide() {
-    pauseReactNative()
+    // Put away for the camera, React Native keeps running: the conversation has to go on being kept
+    // alive, and the photo sent, while the window is out of the way. See `makeWayForTheCamera`.
+    if (awayForTheCamera) {
+      awayForTheCamera = false
+      keptRunning = WeakReference(this)
+    } else {
+      pauseReactNative()
+    }
     if (current?.get() === this) {
       current = null
     }
@@ -318,6 +326,43 @@ class JarvisVoiceInteractionSession(context: Context) : VoiceInteractionSession(
      * system quietly declines must leave the watch to talk for itself. Main thread only.
      */
     internal var nextShowing: (() -> Unit)? = null
+
+    /** Whether the assistant window is on screen now. */
+    internal fun isShowing(): Boolean = current?.get() != null
+
+    /** Set just before the window is put away for the camera, for `onHide` to leave React Native running. */
+    private var awayForTheCamera = false
+
+    /** The window put away for the camera with React Native left running, until it is shown or rests. */
+    private var keptRunning: WeakReference<JarvisVoiceInteractionSession>? = null
+
+    /**
+     * Puts the window away so the camera app can come in front of it, and leaves React Native
+     * running meanwhile. Main thread only; the camera's activity must already have been started.
+     */
+    internal fun makeWayForTheCamera() {
+      val session = current?.get() ?: return
+      awayForTheCamera = true
+      session.hide()
+    }
+
+    /**
+     * After the camera: shows the window again, or — when there is no conversation left to show —
+     * lets React Native rest as the window's going away would have. Main thread only.
+     *
+     * Showing it again counts as a showing like any other, and the app answers that by bringing a
+     * conversation that is still open back into view (`summonAgain`). The app only asks for it
+     * while there is one: asked for after it had ended, the showing would have started a new one.
+     */
+    internal fun returnFromTheCamera(showWindowAgain: Boolean): Boolean {
+      val kept = keptRunning?.get()
+      keptRunning = null
+      if (showWindowAgain && JarvisVoiceInteractionService.summon()) {
+        return true
+      }
+      kept?.pauseReactNative()
+      return false
+    }
 
     /** Closes the assistant window, if one is open. Safe to call from any thread. */
     internal fun dismissCurrent(): Boolean {

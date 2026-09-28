@@ -1,12 +1,16 @@
 import { useConversationControls, useConversationStatus } from '@elevenlabs/react-native';
 import {
   type ElevenLabsSettings,
+  NO_CAMERA_HERE,
+  OPEN_CAMERA_TOOL,
   requestConversationToken,
   WATCH_PARTICIPANT_NAME,
   WATCH_PARTICLE_COUNT,
 } from 'hologram';
 import {
+  type ClientTools,
   inTurn,
+  mergeClientTools,
   useAgentVoice,
   useGreeting,
   useHangUpWhenQuiet,
@@ -28,6 +32,16 @@ interface ConversationScreenProps {
   /** The credentials the phone handed over. There is no conversation without them. */
   settings: ElevenLabsSettings;
 }
+
+/**
+ * The camera the agent may ask for, answered: a watch has none.
+ *
+ * The same agent talks to the phone, which has one, and asks for it only where a device has said
+ * so — which this one never does. It answers anyway, because the SDK reports a tool nobody
+ * registered through `onError`, and that would put the SDK's own sentence on the face in red. See
+ * `camera-request.ts` in `hologram`.
+ */
+const NO_CAMERA: ClientTools = { [OPEN_CAMERA_TOOL]: () => NO_CAMERA_HERE };
 
 /**
  * How long to wait for Wi-Fi or cellular to come up before trying the conversation anyway.
@@ -226,6 +240,8 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
         ...userVoiceHandlers,
         // The client tool, and what tells it the wearer has answered.
         ...quietSessionOptions,
+        // Both answered here — the camera with "there is none" — and a second spread would drop one.
+        clientTools: mergeClientTools(quietSessionOptions.clientTools, NO_CAMERA),
         // The listening lattice and the quiet hang-up hear the wearer through the same score.
         onVadScore: inTurn(userVoiceHandlers.onVadScore, quietSessionOptions.onVadScore),
         ...(greeted ? greetingSessionOptions : {}),

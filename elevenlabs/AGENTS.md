@@ -118,6 +118,7 @@ The agent prompt in `src/assets/agent-prompt.md` defines:
   written "[end_call invoked]" is a stage direction, not a call, and leaves the
   line open
 - **When sir is silent**: see **Hanging up when he goes quiet** below
+- **Seeing through the phone's camera**: see **Showing Jarvis something** below
 
 Keep it short. The prompt is carried on every turn, so anything the agent does
 not need in order to decide its *next* utterance does not belong in it — that is
@@ -236,6 +237,40 @@ where they arrive exactly when they apply.
 
 State each such rule in one place only. Asking for the same line here *and*
 there is how Jarvis once acknowledged the same request twice.
+
+## Showing Jarvis something
+
+**Where the photo goes never passes through the model.** Sir shows Jarvis something in two tool
+calls. `preparePhotoUpload`, an MCP tool on the Mastra server, mints a single-use upload URL, and
+ElevenLabs relays that result to the client as an `mcp_tool_call` event, where the phone keeps it.
+Then **`openCamera`**, a client tool declared in `agent-config.json`, opens the camera, uploads to
+the kept URL and answers with the photo's id, which the agent hands `routePromptWorkflow` with sir's
+question. Had the URL been a parameter, anything that can put words in the model's mouth — an email
+it summarised, the text on an earlier photo — could have sent the photo elsewhere, so `openCamera`
+takes none. The device's half of the contract is `hologram/src/camera-request.ts`.
+
+**`openCamera` waits as long as ElevenLabs allows** — `expectsResponse: true`,
+`responseTimeoutSecs: 120` — so the agent holds the turn while sir frames the shot, and the prompt
+counts an open camera as the conversation waiting on him rather than finished. Every outcome the
+phone reports, a photo not taken included, comes back as a result carrying `instructions`, never as
+an error.
+
+**Only a device that says it has a camera is asked.** The watch, the Voice speaker and telephone
+calls share this agent. The phone announces its camera in a contextual update once connected, and
+the prompt asks for the camera only where it has heard one. The watch and the speaker still answer
+a stray `openCamera` with "no camera here", rather than leave the agent in two minutes of silence.
+
+**`clientEvents` carries `mcp_tool_call` and `client_tool_call` for it.** The first is what delivers
+the URL, which means every client now receives MCP results — the speaker logs only their tool name
+and state, since a result can hold an email summary or that very URL. `applyTestAgentOverrides`
+still adds `mcp_tool_call` to the test agent should the config ever drop it, because the integration
+specs read tool calls off the socket.
+
+**None of this reaches the live agent until a release deploys it.** `bunx turbo deploy` runs in the
+release workflow, and only when a releasable commit type (`feat`, `fix`, `perf`, `refactor`, `docs`)
+cuts a release — until then the phone offers a camera the agent has never heard of. And because that
+deploy strips unrecognised keys without a word, `tests/specs/agent-config.spec.ts` runs the
+hand-written client tools through the SDK's own serialiser, strictly, on every push.
 
 ## Contributing
 - **Update agent-prompt.md** for behavior changes

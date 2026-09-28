@@ -10,6 +10,8 @@ tests/
 │   ├── agent-prompt.integration.spec.ts          # live — needs credentials + tunnel
 │   ├── routing-orchestration.integration.spec.ts # live — needs credentials + tunnel
 │   ├── acknowledgement-timing.spec.ts            # offline
+│   ├── agent-config.spec.ts                      # offline
+│   ├── procedure-version-refs.spec.ts            # offline
 │   ├── routing-loop.spec.ts                      # offline
 │   ├── spoken-tool-call.spec.ts                  # offline
 │   └── retry-with-backoff.spec.ts                # offline
@@ -107,10 +109,17 @@ Tests start the MCP server and Cloudflare tunnel, and only then deploy the test
 agent. ElevenLabs reads the agent's MCP tool list when the agent is updated, so
 deploying before the tunnel is up leaves the agent with no tools to call.
 
-`spoken-tool-call.spec.ts`, `acknowledgement-timing.spec.ts`, `routing-loop.spec.ts`
-and `retry-with-backoff.spec.ts` need none of this — they are pure logic and run
-offline, so they still give useful signal when the credentials or the tunnel are
-unavailable.
+`spoken-tool-call.spec.ts`, `acknowledgement-timing.spec.ts`, `routing-loop.spec.ts`,
+`retry-with-backoff.spec.ts`, `procedure-version-refs.spec.ts` and
+`agent-config.spec.ts` need none of this — they are pure logic and run offline, so
+they still give useful signal when the credentials or the tunnel are unavailable.
+
+`agent-config.spec.ts` is the one that guards the deploy rather than a detector. The
+deploy runs only after a merge to `main`, and the SDK strips any key it does not
+recognise without a word, so it runs the hand-written client tools in
+`agent-config.json` through the SDK's own serialiser with unknown keys set to fail —
+a snake_case key that would have vanished, or an enum value that would have failed the
+release, fails here on the push instead.
 
 ## The orchestration eval
 

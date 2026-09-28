@@ -106,7 +106,9 @@
         "audio",
         "agent_tool_response",
         "vad_score",
-        "agent_chat_response_part"
+        "agent_chat_response_part",
+        "mcp_tool_call",
+        "client_tool_call"
       ],
       "fileInput": {
         "enabled": true,
@@ -364,6 +366,26 @@
               "required": []
             },
             "expectsResponse": false,
+            "executionMode": "post_tool_speech"
+          },
+          {
+            "type": "client",
+            "name": "openCamera",
+            "description": "Opens the camera on sir's phone and hands back the photo's id once he has taken it. Call it only where a context update said the device has a camera, and only after preparePhotoUpload, as its instructions say. Sir framing the shot is not silence: while it runs, the conversation is waiting on him.",
+            "responseTimeoutSecs": 120,
+            "disableInterruptions": false,
+            "interruptionMode": "allow",
+            "forcePreToolSpeech": false,
+            "preToolSpeech": "auto",
+            "assignments": [],
+            "toolCallSoundBehavior": "auto",
+            "toolErrorHandlingMode": "passthrough",
+            "parameters": {
+              "type": "object",
+              "properties": {},
+              "required": []
+            },
+            "expectsResponse": true,
             "executionMode": "post_tool_speech"
           }
         ]

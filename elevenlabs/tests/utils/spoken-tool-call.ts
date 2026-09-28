@@ -17,6 +17,10 @@ export const SPOKEN_TOOL_CALL_PATTERNS: { pattern: RegExp; description: string }
   // tag as far as the voice is concerned, so the user hears nothing and stays on a
   // line that was never closed.
   { pattern: /end_call/i, description: 'the end_call tool name' },
+  // Showing Jarvis something takes two calls, one straight after the other, so they are as
+  // easily read out as a pair. Written as one word, neither is anything he would say.
+  { pattern: /preparePhotoUpload/i, description: 'the preparePhotoUpload tool name' },
+  { pattern: /openCamera/i, description: 'the openCamera tool name' },
   {
     // `something(argument=` — code, not speech. The opening bracket has to follow the
     // name with nothing in between, which is what separates it from the parenthetical

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The only files JarvisPhotoProvider will hand out: the photos passing through
+  the cache on their way to Jarvis. `jarvis-photos/` is the directory
+  JarvisPhotoActivity writes to, and nothing else in the app is reachable.
+-->
+<paths>
+  <cache-path name="photos" path="jarvis-photos/" />
+</paths>

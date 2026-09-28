@@ -9,7 +9,9 @@ import android.os.Build
 import android.provider.Settings
 import android.service.voice.VoiceInteractionService
 import android.util.Log
+import expo.modules.kotlin.Promise
 import expo.modules.kotlin.exception.Exceptions
+import expo.modules.kotlin.functions.Queues
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 
@@ -23,7 +25,7 @@ private const val TAG = "JarvisAssistant"
 /**
  * The JavaScript side of becoming the phone's assistant.
  *
- * Deliberately three reads and one action, with no state of its own. Whether
+ * Deliberately a few reads and actions, with no state of its own. Whether
  * Jarvis is the assistant is something the system can be asked at any moment,
  * and asking beats caching here: the user can change the assistant from Settings
  * while the app is in the background, and a cached answer would then be
@@ -35,6 +37,9 @@ private const val TAG = "JarvisAssistant"
  * resolves, starts, and finishes immediately with no dialog — a first-run flow
  * built on it reads as correct and shows the user a flicker. Settings is the
  * only route, so Settings is the only route offered.
+ *
+ * It also takes a photo for Jarvis, because the camera has to be reached from the assistant's
+ * window as well as the app, and only this module knows that window. See `JarvisPhotoActivity`.
  */
 class JarvisAssistantModule : Module() {
   override fun definition() = ModuleDefinition {
@@ -59,6 +64,14 @@ class JarvisAssistantModule : Module() {
     Function("dismissAssistantWindow") {
       JarvisVoiceInteractionSession.dismissCurrent()
     }
+
+    AsyncFunction("takePhoto") { inAssistantWindow: Boolean, promise: Promise ->
+      takePhoto(context(), appContext.currentActivity, inAssistantWindow) { photo -> promise.resolve(photo) }
+    }.runOnQueue(Queues.MAIN)
+
+    AsyncFunction("returnFromTheCamera") { showWindowAgain: Boolean ->
+      JarvisVoiceInteractionSession.returnFromTheCamera(showWindowAgain)
+    }.runOnQueue(Queues.MAIN)
   }
 
   private fun context(): Context = appContext.reactContext ?: throw Exceptions.ReactContextLost()
@@ -135,4 +148,49 @@ private fun openAssistantSettings(activity: Activity): String {
   }
 
   throw IllegalStateException("This device has no settings screen for choosing an assistant.")
+}
+
+/**
+ * Opens the phone's camera app for one photo, and gives `receive` the photo's `file://` URI — or
+ * null, for a photo not taken. See `JarvisPhotoActivity`.
+ *
+ * **From the app's own activity it is an ordinary start**, on top of the conversation, which comes
+ * back into view when the camera is done.
+ *
+ * **From the assistant's window the window has to make way.** It is drawn above every app, the
+ * camera included, so the photo activity is started in a task of its own and the window put away
+ * after it — in that order, as `showConversationInTheApp` does, because the start is authorised
+ * against the window being there. React Native is kept running while it is away, so the
+ * conversation goes on being kept alive and the photo can be sent the moment it is taken; whether
+ * the window then comes back is JavaScript's to decide, since only it knows whether there is still
+ * a conversation to come back to. See `returnFromTheCamera`.
+ *
+ * Nowhere to start it from — no window to put away, no activity in front — is a photo not taken.
+ */
+private fun takePhoto(context: Context, activity: Activity?, inAssistantWindow: Boolean, receive: (String?) -> Unit) {
+  val request = JarvisPhotoActivity.awaitPhoto(receive)
+  val intent = Intent(context, JarvisPhotoActivity::class.java).putExtra(JarvisPhotoActivity.REQUEST, request)
+
+  try {
+    if (!inAssistantWindow) {
+      if (activity == null) {
+        JarvisPhotoActivity.deliver(request, null)
+        return
+      }
+      activity.startActivity(intent)
+      return
+    }
+
+    if (!JarvisVoiceInteractionSession.isShowing()) {
+      JarvisPhotoActivity.deliver(request, null)
+      return
+    }
+    // A task of its own, replacing any photo task an earlier request left behind.
+    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+    context.startActivity(intent)
+    JarvisVoiceInteractionSession.makeWayForTheCamera()
+  } catch (error: RuntimeException) {
+    Log.w(TAG, "Could not open the camera for a photo.", error)
+    JarvisPhotoActivity.deliver(request, null)
+  }
 }

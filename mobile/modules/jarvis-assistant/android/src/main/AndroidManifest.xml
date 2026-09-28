@@ -96,6 +96,36 @@
     </activity>
 
     <!--
+      One photo for Jarvis, taken by the phone's own camera app. See
+      `JarvisPhotoActivity.kt`: it hands ACTION_IMAGE_CAPTURE on and finishes
+      when the camera answers, so it is never anything a user navigates to.
+
+      Translucent rather than NoDisplay, because it has to stay alive for the
+      camera's answer, and a NoDisplay activity still alive when it would be
+      resumed is killed by the system. Not exported: only this app starts it.
+    -->
+    <activity
+      android:name="expo.modules.jarvisassistant.JarvisPhotoActivity"
+      android:exported="false"
+      android:excludeFromRecents="true"
+      android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+    <!--
+      Lends the camera app the file the photo is written into, and nothing else:
+      `res/xml/jarvis_photo_paths.xml` names one cache directory. The authority
+      is spelled `PROVIDER_SUFFIX` in `JarvisPhotoActivity.kt` as well.
+    -->
+    <provider
+      android:name="expo.modules.jarvisassistant.JarvisPhotoProvider"
+      android:authorities="${applicationId}.jarvisphotos"
+      android:exported="false"
+      android:grantUriPermissions="true">
+      <meta-data
+        android:name="android.support.FILE_PROVIDER_PATHS"
+        android:resource="@xml/jarvis_photo_paths" />
+    </provider>
+
+    <!--
       The watch asking whether the phone will hold the conversation, because
       the phone has earbuds in. Play Services starts this for a request on the
       path below, whether or not the app is running. See

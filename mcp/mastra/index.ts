@@ -44,6 +44,7 @@ import { getNextInstructionsWorkflow, routePromptWorkflow } from './verticals/ro
 import { getShoppingListAgent, getShoppingListSummaryAgent, shoppingTools } from './verticals/shopping/index.js';
 import { getStateChangeReactorAgent, synapseTools } from './verticals/synapse/index.js';
 import { getTodoListAgent, todoListTools } from './verticals/todo-list/index.js';
+import { getPhotoReaderAgent, getVisionAgent, visionTools } from './verticals/vision/index.js';
 import { getWeatherAgent, weatherTools } from './verticals/weather/index.js';
 import { getWebResearchAgent, webResearchShortcuts } from './verticals/web-research/index.js';
 import { retireUnrestartableRuns } from './workflow-run-recovery.js';
@@ -128,12 +129,14 @@ export async function getMastra(): Promise<Mastra> {
       await getGenerativeUiAgent(),
       await getInternetOfThingsAgent(),
       await getNotificationAgent(),
+      await getPhotoReaderAgent(),
       await getReflectionAgent(),
       await getRoutingPlannerAgent(),
       await getShoppingListAgent(),
       await getShoppingListSummaryAgent(),
       await getStateChangeReactorAgent(),
       await getTodoListAgent(),
+      await getVisionAgent(),
       await getWeatherAgent(),
       await getWebResearchAgent(),
     ]),
@@ -156,6 +159,7 @@ export async function getMastra(): Promise<Mastra> {
       ...shoppingTools,
       ...synapseTools,
       ...todoListTools,
+      ...visionTools,
       ...weatherTools,
       ...webResearchShortcuts,
     },

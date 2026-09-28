@@ -78,6 +78,20 @@ static const float ANNOUNCEMENT_SPEECH_THRESHOLD = 0.5f;
 // mode, so it arrives once Jarvis has finished speaking and no result is waited for.
 static const char *const HANG_UP_WHEN_QUIET_TOOL = "hangUpWhenQuiet";
 
+// Name of the client tool the agent calls to see something through sir's phone camera.
+// The speaker has no camera, and the agent is told to ask only where the device has said
+// it has one -- but the tool is configured with expects_response on, so if it ever asks
+// here anyway, an unanswered call would hold the conversation in dead air for up to two
+// minutes. It is answered at once with OPEN_CAMERA_NO_CAMERA_RESULT instead.
+static const char *const OPEN_CAMERA_TOOL = "openCamera";
+
+// The result openCamera is answered with. A JSON string, like every answer the phone and
+// watch give the same tool, and word for word NO_CAMERA_HERE in
+// hologram/src/camera-request.ts, so the agent hears one sentence whichever device lacks
+// the camera.
+static const char *const OPEN_CAMERA_NO_CAMERA_RESULT =
+    "{\"instructions\":\"This device has no camera. Tell sir he can show you things from his phone.\"}";
+
 // How long the room must stay quiet after a finished request before the call is hung up.
 // Long enough to start a follow-up without being cut off, short enough that nobody is
 // left wondering whether Jarvis is still listening.
@@ -1155,6 +1169,20 @@ void ElevenLabsStream::parse_json_message_from_buffer(uint8_t *buffer, size_t le
     return;
   }
   
+  // MCP tool calls are sent to every client because the phone reads its photo upload URL
+  // out of one, from preparePhotoUpload. The speaker has no use for them, and their results carry whatever
+  // the tools returned -- email summaries, calendar entries, that same upload URL -- so
+  // they are handled before json_str below and never logged in full, which the
+  // unknown-type fallback would otherwise do at WARN.
+  if (strcmp(type, "mcp_tool_call") == 0) {
+    JsonObject mcp_tool_call = root["mcp_tool_call"];
+    const char* tool_name = mcp_tool_call ? mcp_tool_call["tool_name"].as<const char*>() : nullptr;
+    const char* state = mcp_tool_call ? mcp_tool_call["state"].as<const char*>() : nullptr;
+    ESP_LOGD(TAG, "PARSE_JSON_BUF: Ignoring mcp_tool_call (%s, %s)", tool_name ? tool_name : "NULL",
+             state ? state : "NULL");
+    return;
+  }
+
   std::string json_str = JsonDeserializer::to_string(root);
   if (strcmp(type, "mcp_connection_status") == 0) {
     ESP_LOGD(TAG, "PARSE_JSON_BUF: Processing MCP connection status: '%s'", json_str.c_str());
@@ -1225,6 +1253,28 @@ void ElevenLabsStream::parse_json_message_from_buffer(uint8_t *buffer, size_t le
       this->silence_started_ms_ = 0;
       this->hang_up_when_quiet_ = true;
       this->awaiting_response_ = true;
+      return;
+    }
+
+    // openCamera: the agent wants a photo, and this device cannot take one. Unlike
+    // hangUpWhenQuiet the agent is waiting for a result, so it gets one straight away --
+    // a successful answer carrying instructions, not an error, because a missing camera
+    // is an outcome for the agent to relay rather than a failure to retry.
+    if (strcmp(tool_name, OPEN_CAMERA_TOOL) == 0) {
+      const char* tool_call_id = tool_call["tool_call_id"].as<const char*>();
+      if (tool_call_id == nullptr) {
+        ESP_LOGW(TAG, "PARSE_JSON_BUF: %s without a tool_call_id, cannot answer it", OPEN_CAMERA_TOOL);
+        return;
+      }
+
+      ESP_LOGI(TAG, "PARSE_JSON_BUF: Agent asked for the camera; answering that this device has none");
+      std::string tool_result = json::build_json([tool_call_id](JsonObject root) {
+        root["type"] = "client_tool_result";
+        root["tool_call_id"] = tool_call_id;
+        root["result"] = OPEN_CAMERA_NO_CAMERA_RESULT;
+        root["is_error"] = false;
+      });
+      this->send_websocket_message(tool_result);
       return;
     }
 

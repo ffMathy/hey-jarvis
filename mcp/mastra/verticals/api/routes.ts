@@ -1,9 +1,18 @@
-import type { NextFunction, Request, Response, Router } from 'express';
+import express, { type NextFunction, type Request, type Response, type Router } from 'express';
 import type { ZodTypeAny } from 'zod';
 import { extractErrorMessage } from '../../utils/errors.js';
 import { logger } from '../../utils/logger.js';
 import type { AnyWorkflow, AnyWorkflowResult } from '../../utils/workflows/workflow-factory.js';
 import { shoppingListWorkflow } from '../shopping/workflows.js';
+import {
+  claimUploadSlot,
+  KEEP_PHOTO_MS,
+  keepPhoto,
+  MAX_PHOTO_BYTES,
+  PHOTO_MEDIA_TYPES,
+  PHOTO_UPLOAD_PATH,
+  type PhotoMediaType,
+} from '../vision/index.js';
 
 /**
  * Standard API response structure for workflow endpoints.
@@ -149,27 +158,146 @@ export function registerWorkflowApi(router: Router, config: WorkflowApiConfig): 
 }
 
 /**
+ * Where a photo is sent: `PHOTO_UPLOAD_PATH` and the token of the slot it was minted for.
+ *
+ * Spelled out rather than built from `PHOTO_UPLOAD_PATH`, so that it can be found as it is: the
+ * phone's check of an upload URL (`camera-request.ts` in `hologram`) is pinned to this line.
+ */
+export const PHOTO_UPLOAD_ROUTE = '/api/photos/:uploadToken';
+
+/** The one kind of body a photo may arrive as, from a `Content-Type` header, or `undefined`. */
+function photoMediaType(contentType: string | undefined): PhotoMediaType | undefined {
+  const mediaType = contentType?.split(';')[0]?.trim().toLowerCase();
+  return PHOTO_MEDIA_TYPES.find((allowed) => allowed === mediaType);
+}
+
+/**
+ * Lets the browser build send a photo from the origin it is served from.
+ *
+ * Any origin, because the token in the path is the whole of the authority to upload: there are no
+ * cookies or credentials for a wildcard to expose, and the phone's browser build is served from
+ * GitHub Pages rather than from this server.
+ */
+function allowAnyOrigin(_request: Request, response: Response, next: NextFunction): void {
+  response.set({
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'PUT, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Max-Age': '600',
+  });
+  next();
+}
+
+/**
+ * Turns an upload away before a byte of it is read, unless it is an image for a live slot.
+ *
+ * **The order is the protection.** This path has to be reachable without Cloudflare Access — the
+ * phone holds no service token — so anyone can send to it. A body parser in front of this would read
+ * a stranger's ten megabytes into memory before refusing them, and a few hundred of those at once
+ * are the Pi's memory, and with it the process every other part of Jarvis runs in. Checked first,
+ * a guessed token costs one map lookup, and a slot is read from once.
+ */
+function claimSlotBeforeReading(request: Request, response: Response, next: NextFunction): void {
+  if (!photoMediaType(request.headers['content-type'])) {
+    response.status(415).json({
+      success: false,
+      message: `Send the photo as one of ${PHOTO_MEDIA_TYPES.join(', ')}.`,
+    } satisfies WorkflowApiResponse);
+    return;
+  }
+
+  const { uploadToken } = request.params;
+  if (typeof uploadToken !== 'string' || !claimUploadSlot(uploadToken)) {
+    response.status(404).json({
+      success: false,
+      message: 'This upload link has expired or has been used already.',
+    } satisfies WorkflowApiResponse);
+    return;
+  }
+
+  next();
+}
+
+/** Reads the photo itself — only ever for a slot just claimed, and never more than a photo can be. */
+const readPhoto = express.raw({ type: [...PHOTO_MEDIA_TYPES], limit: MAX_PHOTO_BYTES, inflate: false });
+
+/** Keeps what was read, and says what it is called now. */
+function keepUploadedPhoto(request: Request, response: Response): void {
+  const mediaType = photoMediaType(request.headers['content-type']);
+  // Express 5 leaves `body` undefined when no parser ran, rather than an empty object.
+  const body: unknown = request.body;
+  if (!mediaType || !Buffer.isBuffer(body) || body.length === 0) {
+    response
+      .status(415)
+      .json({ success: false, message: 'There was no photo in the request.' } satisfies WorkflowApiResponse);
+    return;
+  }
+
+  const photo = keepPhoto(body, mediaType);
+  logger.info('[API] Photo received', { photoId: photo.photoId, bytes: body.length, mediaType });
+  response.status(201).json({
+    success: true,
+    message: 'Photo received',
+    data: { photoId: photo.photoId, expiresAt: new Date(photo.keptAt + KEEP_PHOTO_MS).toISOString() },
+  } satisfies WorkflowApiResponse);
+}
+
+/**
+ * The request's path, with an upload token taken out, for logging.
+ *
+ * A token is a key to one slot for a few minutes, and a log is read by more people than that.
+ */
+export function withoutUploadToken(url: string): string {
+  return url.replace(new RegExp(`^(${PHOTO_UPLOAD_PATH}/)[^/?#]+`), '$1…');
+}
+
+/**
+ * Registers the endpoint sir's phone sends a photo to. See `vision/photos.ts` for the slot a photo
+ * comes in through, and `preparePhotoUpload` for where its URL comes from.
+ *
+ * @returns The registered path, for logging
+ */
+export function registerPhotoUploadApi(router: Router): string {
+  router.options(PHOTO_UPLOAD_ROUTE, allowAnyOrigin, (_request: Request, response: Response) => {
+    response.sendStatus(204);
+  });
+  router.put(PHOTO_UPLOAD_ROUTE, allowAnyOrigin, claimSlotBeforeReading, readPhoto, keepUploadedPhoto);
+  logger.info('[API] Registered photo upload endpoint', { method: 'PUT', path: PHOTO_UPLOAD_ROUTE });
+  return PHOTO_UPLOAD_ROUTE;
+}
+
+/** An endpoint as it is announced when the server starts. */
+export interface RegisteredApiRoute {
+  method: 'POST' | 'PUT';
+  path: string;
+}
+
+/**
  * Registers all API routes on the provided Express router.
- * These routes are intended to be called from Home Assistant via REST calls.
+ * The workflow routes are intended to be called from Home Assistant via REST calls; the photo
+ * route by sir's phone, with a URL the voice agent had minted for it.
  *
  * @param router - The Express router to register routes on
- * @returns Array of registered API paths for logging purposes
+ * @returns Every registered route, for logging purposes
  */
-export function registerApiRoutes(router: Router): string[] {
-  const registeredPaths: string[] = [];
+export function registerApiRoutes(router: Router): RegisteredApiRoute[] {
+  const registeredRoutes: RegisteredApiRoute[] = [];
 
   // Shopping List API - triggers shoppingListWorkflow
-  registeredPaths.push(
-    registerWorkflowApi(router, {
+  registeredRoutes.push({
+    method: 'POST',
+    path: registerWorkflowApi(router, {
       path: '/api/shopping-list',
       workflow: shoppingListWorkflow,
       description: 'Add items to the shopping list using natural language',
     }),
-  );
+  });
+
+  // Photos sir shows Jarvis with his phone's camera
+  registeredRoutes.push({ method: 'PUT', path: registerPhotoUploadApi(router) });
 
   // Add more workflow APIs here as needed:
-  // registeredPaths.push(registerWorkflowApi(router, { path: '/api/weather', workflow: weatherWorkflow }));
-  // registeredPaths.push(registerWorkflowApi(router, { path: '/api/meal-plan', workflow: mealPlanWorkflow }));
+  // registeredRoutes.push({ method: 'POST', path: registerWorkflowApi(router, { path: '/api/weather', workflow: weatherWorkflow }) });
 
-  return registeredPaths;
+  return registeredRoutes;
 }
