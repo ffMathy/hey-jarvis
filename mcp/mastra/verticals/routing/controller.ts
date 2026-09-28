@@ -25,6 +25,7 @@ import {
   rememberOpenQuestions,
   type SuspendedAgentQuestion,
   takeOpenQuestion,
+  takeQuestionsToBringUp,
 } from './questions.js';
 
 /**
@@ -112,6 +113,13 @@ export class RoutingProgress {
    * cancel that work the moment he replied.
    */
   questions: OpenQuestion[] = [];
+  /**
+   * Questions work started earlier is still waiting on, which the closing report brings up.
+   *
+   * Asked before this request -- on a call he missed, in a push notification, or in a conversation
+   * he moved on from -- and not answered by it. See `takeQuestionsToBringUp`.
+   */
+  earlierQuestions: OpenQuestion[] = [];
   /** Tasks that started something slow, which the caller has not been told about yet. */
   unannouncedSlowTaskIds: string[] = [];
   /** Every task that started something slow, so each is announced once. */
@@ -362,6 +370,8 @@ export interface RoutingSnapshot {
   finished: boolean;
   /** Questions the request is waiting on the user to answer. */
   questions: OpenQuestion[];
+  /** Questions work started earlier is waiting on, to bring up once the request is done. */
+  earlierQuestions: OpenQuestion[];
   /** Tasks that have started something slow since the last poll. */
   newlySlow: string[];
   /** How the planner said the request should be answered. */
@@ -387,6 +397,7 @@ export function buildSnapshot(progress: RoutingProgress): RoutingSnapshot {
     inProgress: [...new Set([...progress.outstandingByDelegationId.values()].map((one) => one.taskId))],
     finished: progress.isFinished(),
     questions: progress.questions,
+    earlierQuestions: progress.earlierQuestions,
     newlySlow,
     responseStyle: progress.responseStyle,
     error: progress.error,
@@ -884,6 +895,21 @@ function takeAnsweredQuestions(answers: PlannedAnswer[]): { question: OpenQuesti
 }
 
 /**
+ * Hands the request's closing report the questions earlier work is still waiting on.
+ *
+ * Only for a request whose report will be heard: a superseded one is never read, and one the user
+ * is notified about sends its own questions and no others. Taking them marks them as brought up,
+ * so doing it for a report nobody hears would silence the reminder for nothing.
+ */
+function bringUpEarlierQuestions(sessionId: string, progress: RoutingProgress): void {
+  if (progressBySessionId.get(sessionId) !== progress || progress.notifyWhenDone) {
+    return;
+  }
+
+  progress.earlierQuestions = takeQuestionsToBringUp(new Set(progress.questions.map((question) => question.id)));
+}
+
+/**
  * Plans a request and does everything it asks: the new work in a plan run, and each answer it
  * gives to an open question carried back to the agent that asked.
  */
@@ -916,6 +942,7 @@ async function runRequest(
   const answered = takeAnsweredQuestions(answers);
 
   if (chains.length === 0 && answered.length === 0) {
+    bringUpEarlierQuestions(sessionId, progress);
     progress.fail('none of the specialized agents can handle this request');
     return;
   }
@@ -953,6 +980,7 @@ async function runRequest(
       questionIds: progress.questions.map((question) => question.id),
     });
   }
+  bringUpEarlierQuestions(sessionId, progress);
 
   const failure = outcomes.find((outcome) => outcome.status === 'rejected');
   if (failure) {

@@ -158,6 +158,17 @@ export function readSuspension(
 /** Where a question waits until sir answers it, by id. */
 const openQuestionsById = new Map<string, OpenQuestion>();
 
+/**
+ * How long after Jarvis last brought a question up he leaves it alone.
+ *
+ * Long enough that one conversation hears it once rather than after every request, short enough
+ * that the next conversation brings it up again.
+ */
+export const QUESTION_REMINDER_INTERVAL_MS = 30 * 60 * 1000;
+
+/** When Jarvis last brought each open question up in a reply, by id. */
+const lastBroughtUpAtById = new Map<string, number>();
+
 let questionsAsked = 0;
 
 /** Mints the id a new question is known by. Short, because the planner has to repeat it. */
@@ -204,11 +215,34 @@ export function takeOpenQuestion(id: string): OpenQuestion | undefined {
   }
 
   openQuestionsById.delete(id);
+  lastBroughtUpAtById.delete(id);
   return question;
+}
+
+/**
+ * The open questions Jarvis should bring up in his reply to sir, marked as brought up.
+ *
+ * A question he was asked on a call he missed, or in a push notification, only gets answered if
+ * something reminds him of it, so every reply carries the questions still waiting — except those
+ * brought up within {@link QUESTION_REMINDER_INTERVAL_MS}, so a conversation is not nagged with
+ * the same one after every request, and those in `excludedIds`, which the reply asks anyway.
+ */
+export function takeQuestionsToBringUp(excludedIds: ReadonlySet<string>, now = Date.now()): OpenQuestion[] {
+  const due = [...openQuestionsById.values()].filter(
+    (question) =>
+      !excludedIds.has(question.id) &&
+      now - (lastBroughtUpAtById.get(question.id) ?? Number.NEGATIVE_INFINITY) >= QUESTION_REMINDER_INTERVAL_MS,
+  );
+
+  for (const question of due) {
+    lastBroughtUpAtById.set(question.id, now);
+  }
+  return due;
 }
 
 /** Forgets every open question. Used by tests. */
 export function forgetOpenQuestions(): void {
   openQuestionsById.clear();
+  lastBroughtUpAtById.clear();
   questionsAsked = 0;
 }

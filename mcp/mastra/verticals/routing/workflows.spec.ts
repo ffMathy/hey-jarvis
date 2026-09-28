@@ -20,6 +20,7 @@ import {
   resetRoutingRuntime,
   setRoutingRuntime,
 } from './controller.js';
+import type { OpenQuestion } from './questions.js';
 import {
   getNextInstructionsWorkflow,
   HANG_UP_WHEN_QUIET_TOOL,
@@ -313,6 +314,62 @@ describe('getNextInstructionsWorkflow', () => {
 
     expect(outcome.instructions).toContain('could not be completed');
     expect(outcome.instructions).toContain('the plan could not be registered');
+  });
+});
+
+describe('a request made while earlier work is waiting on the user', () => {
+  const EARLIER: OpenQuestion = {
+    id: 'q7',
+    taskId: 'Push reminders for tasks',
+    agentId: 'coding',
+    question: 'Should the reminder go out by email, or as a push notification?',
+    deliverAnswer: async () => 'Passed on.',
+  };
+
+  it('answers the request, then brings the earlier question up', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'what is the weather', async: false });
+    const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    delegate(DEFAULT_ROUTING_SESSION_ID, 'weather', 'It is 8 degrees.');
+    progress.earlierQuestions = [EARLIER];
+    endPlanRun(progress);
+
+    const closing = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(closing.completedTaskResults).toEqual([{ id: 'weather', result: 'It is 8 degrees.' }]);
+    expect(closing.questionsForUser).toEqual([{ id: EARLIER.taskId, question: EARLIER.question }]);
+    expect(closing.instructions).toStartWith('This request has finished, but work he started earlier');
+    expect(closing.instructions).toContain('Then remind him of it and ask him the question');
+    expect(closing.instructions).toContain('send his answer through routePromptWorkflow');
+  });
+
+  it('asks this request’s own question last, after the earlier one', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'remind me before tasks are due', async: false });
+    const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    suspendDelegation(DEFAULT_ROUTING_SESSION_ID, startDelegation(DEFAULT_ROUTING_SESSION_ID, 'coding'), 'How early?');
+    progress.earlierQuestions = [EARLIER];
+    endPlanRun(progress);
+
+    const closing = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(closing.questionsForUser).toEqual([
+      { id: EARLIER.taskId, question: EARLIER.question },
+      { id: 'coding', question: 'How early?' },
+    ]);
+    expect(closing.instructions).toStartWith('Part of this request cannot go on');
+  });
+
+  it('still brings the earlier question up when the request failed', async () => {
+    await runWorkflow(routePromptWorkflow, { userQuery: 'what is the meaning of life', async: false });
+    const progress = progressFor(DEFAULT_ROUTING_SESSION_ID);
+    progress.earlierQuestions = [EARLIER];
+    progress.fail('none of the specialized agents can handle this request');
+
+    const closing = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
+
+    expect(closing.instructions).toStartWith('The request could not be completed');
+    expect(closing.instructions).toContain('work he started earlier is still waiting on him');
+    expect(closing.instructions).not.toContain(HANG_UP_WHEN_QUIET_TOOL);
+    expect(closing.questionsForUser).toEqual([{ id: EARLIER.taskId, question: EARLIER.question }]);
   });
 });
 

@@ -1,3 +1,4 @@
+import { upperFirst } from 'lodash-es';
 import z from 'zod';
 import { createStep, createWorkflow } from '../../utils';
 import {
@@ -7,6 +8,7 @@ import {
   rememberMastraRegistry,
 } from './controller.js';
 import type { ResponseStyle } from './planner.js';
+import type { OpenQuestion } from './questions.js';
 
 /* -------------------------------------------------------------------------- */
 /* Public contract                                                            */
@@ -91,7 +93,7 @@ const instructionsOutputSchema = z.object({
       }),
     )
     .optional()
-    .describe('Questions only the user can answer, which part of the request is waiting on'),
+    .describe('Questions only the user can answer, which this request or work started earlier is waiting on'),
   slowTaskIds: z
     .array(z.string())
     .optional()
@@ -282,11 +284,16 @@ function allTasksCompletedInstructions(style: ResponseStyle): string {
  *
  * The question comes last so that his answer is the next thing he says.
  */
-function askTheUserInstructions(hasResults: boolean, style: ResponseStyle): string {
+function askTheUserInstructions(hasResults: boolean, style: ResponseStyle, waitingOnThisRequest: boolean): string {
+  const lead = waitingOnThisRequest
+    ? 'Part of this request cannot go on until the user answers a question, which is in questionsForUser. ' +
+      (hasResults ? `Everything else has finished. ${recapInstructions(style)}Then ` : '')
+    : 'This request has finished, but work he started earlier is still waiting on him to answer a question, which ' +
+      'is in questionsForUser; its id says what the work is. ' +
+      (hasResults ? `${recapInstructions(style)}Then remind him of it and ` : 'Remind him of it and ');
+
   return (
-    'Part of this request cannot go on until the user answers a question, which is in questionsForUser. ' +
-    (hasResults ? `Everything else has finished. ${recapInstructions(style)}Then ` : '') +
-    'Ask him the question — briefly, in your own voice, as the last thing you say — and stop there to let him answer. ' +
+    upperFirst(`${lead}ask him the question — briefly, in your own voice, as the last thing you say — and stop there to let him answer. `) +
     'It is not a clarifying question of yours: the work is waiting on it and only he can answer it, so ask it even ' +
     'though you otherwise never ask him anything, and never answer it for him or guess what he would say. ' +
     'If there is more than one, ask them together, saying what each is about. ' +
@@ -393,6 +400,24 @@ export function resetPollDeadlineForTest(): void {
 }
 
 /**
+ * What the closing report says about questions earlier work is waiting on, when the request failed.
+ *
+ * A failed request is still a reply sir hears, and the question may be the reason he called.
+ */
+function earlierQuestionsAfterFailure(): string {
+  return (
+    'Then remind him that work he started earlier is still waiting on him to answer the question in ' +
+    'questionsForUser — its id says what the work is — and ask it as the last thing you say. If he answers, send ' +
+    'his answer through routePromptWorkflow in his own words. '
+  );
+}
+
+/** The questions a closing report asks, as Jarvis is handed them. */
+function questionsForUser(questions: OpenQuestion[]): { id: string; question: string }[] {
+  return questions.map((question) => ({ id: question.taskId, question: question.question }));
+}
+
+/**
  * The closing report, which carries every result the request produced rather than only the
  * ones that finished last.
  *
@@ -417,23 +442,32 @@ function buildClosingReport(snapshot: RoutingSnapshot): z.infer<typeof instructi
       instructions:
         `The request could not be completed: ${snapshot.error}. Tell him plainly, in a sentence, what could not be ` +
         `done, then anything that did finish: ${speakingInstructions(snapshot.responseStyle)} ` +
-        HANG_UP_WHEN_QUIET_INSTRUCTIONS +
-        CONVERSATION_CONTROL_EXCEPTION,
+        (snapshot.earlierQuestions.length > 0
+          ? earlierQuestionsAfterFailure() + CONVERSATION_CONTROL_EXCEPTION
+          : HANG_UP_WHEN_QUIET_INSTRUCTIONS + CONVERSATION_CONTROL_EXCEPTION),
       ...(answered.length > 0 && {
         completedTaskResults: answered.map((outcome) => ({ id: outcome.taskId, result: outcome.result })),
       }),
       taskIdsInProgress: [],
+      ...(snapshot.earlierQuestions.length > 0 && { questionsForUser: questionsForUser(snapshot.earlierQuestions) }),
     };
   }
 
   const completedTaskResults = snapshot.all.map((outcome) => ({ id: outcome.taskId, result: outcome.result }));
 
-  if (snapshot.questions.length > 0) {
+  // Earlier work's questions first and this request's own last: his next words most likely answer
+  // the last thing he was asked, and that should be the question he has just been working with.
+  const questions = [...snapshot.earlierQuestions, ...snapshot.questions];
+  if (questions.length > 0) {
     return {
-      instructions: askTheUserInstructions(completedTaskResults.length > 0, snapshot.responseStyle),
+      instructions: askTheUserInstructions(
+        completedTaskResults.length > 0,
+        snapshot.responseStyle,
+        snapshot.questions.length > 0,
+      ),
       ...(completedTaskResults.length > 0 && { completedTaskResults }),
       taskIdsInProgress: [],
-      questionsForUser: snapshot.questions.map((question) => ({ id: question.taskId, question: question.question })),
+      questionsForUser: questionsForUser(questions),
     };
   }
 

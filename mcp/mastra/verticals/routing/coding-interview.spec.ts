@@ -269,4 +269,18 @@ describe('a question the Claude session asks along the way', () => {
     await say(ANSWER);
     expect(line.sent).toEqual([{ sessionId: RECORDED_SESSION_ID, message: ANSWER }]);
   }, 60_000);
+
+  it('is brought up the next time sir talks to Jarvis, once', async () => {
+    await setUp();
+    await say(FEATURE_REQUEST);
+    await sessionAsks(SESSION_QUESTION);
+
+    const next = await say('What is the meaning of life?');
+    expect(next.questionsForUser).toEqual([{ id: TITLE, question: SESSION_QUESTION }]);
+    expect(next.instructions).toContain('work he started earlier is still waiting on him');
+
+    // Not after every request of the same conversation.
+    const after = await say('What is the meaning of life?');
+    expect(after.questionsForUser).toBeUndefined();
+  }, 60_000);
 });

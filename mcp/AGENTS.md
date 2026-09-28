@@ -906,7 +906,13 @@ A suspending tool goes like this:
    the delegation's result — or stops on the next question, which is asked in turn.
 
 A question sir ignores stays open: talking about something else plans that as usual, and the
-answer is still taken later. Open questions live in memory, so a restart forgets them while the
+answer is still taken later. It is not forgotten either: the closing report of the next request he
+makes carries every question still waiting in `questionsForUser`, and Jarvis answers the request,
+then reminds him of the question and asks it last (`takeQuestionsToBringUp` in `questions.ts`).
+That is what rescues a question asked on a call he missed or in a push notification. A question
+brought up is left alone for 30 minutes (`QUESTION_REMINDER_INTERVAL_MS`), so a conversation hears
+it once rather than after every request, and a superseded request or one he is to be notified about
+brings nothing up, since nobody hears its report. Open questions live in memory, so a restart forgets them while the
 suspended run stays in storage; the request then has to be made again.
 
 A reply given on a call or on the house speakers only reaches the work if the ElevenLabs agent
