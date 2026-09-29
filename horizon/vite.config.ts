@@ -45,6 +45,12 @@ export default defineConfig({
     // so the warning still fires for anything that grows past three's size.
     chunkSizeWarningLimit: 600,
     rolldownOptions: {
+      // Two pages: the app, and the preview that shows Jarvis in 3D on a desktop and walks him
+      // through every phase — published beside it, at /hey-jarvis/horizon/preview.html.
+      input: {
+        main: 'index.html',
+        preview: 'preview.html',
+      },
       onLog(level, log, defaultHandler) {
         if (isCanvasKitNodeBranch(log)) return;
         defaultHandler(level, log);
