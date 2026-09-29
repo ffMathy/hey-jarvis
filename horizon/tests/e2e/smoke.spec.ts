@@ -15,6 +15,21 @@ import { expect, test } from './fixtures';
 /** Enough frames that the arrival is over and the idle motion is well under way. */
 const FRAMES_TO_WAIT_FOR = 30;
 
+/**
+ * Settings the page accepts as already checked, stored as the page itself stores them: under
+ * hologram's `ELEVENLABS_SETTINGS_STORAGE_KEY`, written out here because Playwright's loader
+ * cannot follow an import into the `hologram` package's TypeScript. The room at this milestone
+ * holds no conversation, so nothing is ever sent with them.
+ */
+async function withSavedSettings(page: Page) {
+  await page.addInitScript(() => {
+    window.localStorage.setItem(
+      'jarvis.elevenlabs-settings',
+      JSON.stringify({ apiKey: 'sk_smoke_test', agentId: 'agent_smoke_test' }),
+    );
+  });
+}
+
 async function debugState(page: Page): Promise<JarvisDebugState> {
   const state = await page.evaluate(() => window.__jarvis);
   if (state === undefined) throw new Error('The app published no debug state.');
@@ -28,6 +43,7 @@ test('Jarvis appears ahead of you in your room and keeps moving', async ({ page 
     if (message.type() === 'error') problems.push(message.text());
   });
 
+  await withSavedSettings(page);
   await page.goto('/hey-jarvis/horizon/');
   expect(await page.evaluate(() => window.__xrHarness !== undefined)).toBe(true);
   await page.evaluate(() => window.__xrHarness?.ready);
@@ -65,6 +81,7 @@ test('a room he cannot be drawn in is closed again, and the page says why', asyn
   // CanvasKit's wasm missing from the site, as it was from the phone's first published page.
   await page.route('**/vendor/canvaskit.wasm', (route) => route.fulfill({ status: 404, body: 'Not found' }));
 
+  await withSavedSettings(page);
   await page.goto('/hey-jarvis/horizon/');
   await page.evaluate(() => window.__xrHarness?.ready);
   const enter = page.getByRole('button', { name: 'Enter your room' });
