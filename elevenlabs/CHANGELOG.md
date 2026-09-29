@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.4.1](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v2.4.0...elevenlabs-v2.4.1) (2026-09-29)
+
+
+### Code Refactoring
+
+* remove the hangUpWhenQuiet client tool ([#910](https://github.com/ffMathy/hey-jarvis/issues/910)) ([81a9537](https://github.com/ffMathy/hey-jarvis/commit/81a9537c9719a319f3e93b7a04fbfbd00a6ee8af))
+
 ## [2.4.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v2.3.0...elevenlabs-v2.4.0) (2026-09-29)
 
 
