@@ -2,8 +2,8 @@
 
 Two things come out of this, from one pipeline:
 
-- **Every push to a pull request publishes to internal testing**, which is the only way to get the
-  app onto a paired Wear OS watch.
+- **Only a release publishes.** Pull requests build the APKs as run artifacts but upload nothing to
+  Play; the manual trigger is there for anything else, internal testing included.
 - **Every release cut on `main` publishes to the closed test.** Release Please tags the release and
   `release.yml` hands the tagged commit to the same workflow with the closed track named instead.
   Production is not where a release goes, and §9 explains why: it is not open to this account yet,
@@ -22,10 +22,8 @@ name, it is live within minutes instead of after a week of review, and it never 
 
 Everything below is done once, and by release 2.2.0 all of it had been: the account is open, the app
 exists, and Play accepts uploads signed with our key. §0 is kept as the history of how it was
-unblocked rather than as a thing still to do. After that it is automatic — every push to a pull
-request that touches the app publishes a build to internal testing, so what is on your phone and
-your watch is the branch you are working on, and every release on `main` publishes the same build to
-the closed test. There is a manual trigger too, for when you want a different track.
+unblocked rather than as a thing still to do. After that it is automatic — every release on `main` publishes the
+phone to the closed test and the watch to `wear:internal`. There is a manual trigger too, for when you want a different track.
 
 ---
 
@@ -463,7 +461,7 @@ Worth knowing, because it is the part that looks like magic:
 
 When a release is cut on `main`, `release.yml` waits for Release Please to tag it and then calls the
 **Play** workflow with the tagged commit. The bundles are built the same way, signed with the same
-key and uploaded by the same action as the ones going to internal testing on every pull request —
+key and uploaded by the same action as a manual run —
 the track names are the only difference, which is the point of it being one workflow.
 
 | | Phone | Watch |
