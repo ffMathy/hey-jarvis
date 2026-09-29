@@ -1,11 +1,9 @@
 /**
- * How long Jarvis takes to go.
+ * How long Jarvis takes to go, for the screens that wait for him.
  *
- * Shorter than he takes to arrive: leaving should not be a ceremony. Whoever sets a hologram's
- * `leaving` prop has to keep its screen alive for this long before closing anything, so the number
- * is shared rather than guessed at twice.
- *
- * In a file of its own, not beside the view that uses it, because the screens that wait for it need
- * it before Skia is loadable — see `lifecycle.ts`.
+ * The number itself is in the main entry's `frame-timing.ts`, beside the rest of the clock the view
+ * runs him on, so that a renderer with no React in it can reach it too. It is handed on from here,
+ * in a file of its own rather than beside the view that uses it, because the screens that wait for
+ * it need it before Skia is loadable — see `lifecycle.ts`.
  */
-export const LEAVING_SECONDS = 0.45;
+export { LEAVING_SECONDS } from '../frame-timing';

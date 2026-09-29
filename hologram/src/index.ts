@@ -18,6 +18,7 @@
 export * from './conversation-token';
 export * from './density-control';
 export * from './elevenlabs-settings';
+export * from './frame-timing';
 export * from './greeting-handover';
 export * from './greeting-voice';
 export * from './hearing';

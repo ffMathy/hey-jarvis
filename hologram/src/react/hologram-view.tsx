@@ -24,17 +24,21 @@ import {
   foldSpectrum,
   hearingFromPresence,
   hearingLevelFromVolume,
+  LEAVING_SECONDS,
   MATERIALISE_SECONDS,
+  MINIMUM_FRAME_SECONDS,
   PARTICLE_COUNT,
   perceivedLevel,
+  READ_INTERVAL_MS,
+  SCENE_SEED,
   seedFromRemembered,
   steerDensity,
+  THOUGHT_FADE_SECONDS,
   VOICE_BAND_COUNT,
   voiceDrive,
 } from '../index';
 import type { JarvisVoice, UserVoice } from '../voice-contract';
 import { useIsForeground } from './is-foreground';
-import { LEAVING_SECONDS } from './leaving';
 
 export interface JarvisHologramProps {
   /** Width and height of the square it is drawn in, in points. */
@@ -163,9 +167,6 @@ export interface JarvisHologramProps {
   background?: string;
 }
 
-/** How long it takes to fall into a thought, and to come out of one. */
-const THOUGHT_FADE_SECONDS = 0.45;
-
 /**
  * How long the canvas is covered for when it first appears, in milliseconds.
  *
@@ -262,33 +263,6 @@ const DRAWN_RESOLUTION = 0.45;
  */
 const DRAWN_IN_A_LAYER = Platform.OS === 'android';
 
-/**
- * The shortest gap between two drawn frames: a hundred and twenty a second at most.
- *
- * **This is a safety rail, not the frame rate.** What Jarvis actually runs at is decided by
- * `density-control.ts`, which adds particles until building a picture takes `BUILD_BUDGET_MS`, and
- * never past a count at which the frame rate was seen falling below `TARGET_FRAMES_PER_SECOND`. This
- * only stops a very fast phone with very few particles from redrawing faster than any screen can
- * show.
- *
- * **It was a forty-eighth for an hour, and that was a real mistake**: capping at the rate the loop
- * was aiming for made the loop blind, because a measurement can never come back above its own cap,
- * so "exactly fast enough" and "could draw three times as much" read identically. On a 60 Hz screen
- * it was worse than blind. A gate can only produce the refresh divided by a whole number, so a
- * forty-eighth yields thirty there — and the loop, told to hold forty, read thirty as the phone
- * struggling and stripped the particles to the floor. Two hundred and fifty of the five thousand
- * there were then, at a rate the cap itself had imposed.
- *
- * A hundred-and-twenty-eighth rather than a hundred-and-twentieth so the arithmetic lands on the
- * right side of a real screen's timing: at 120 Hz frames arrive every 8.3 ms, which clears 7.8 and
- * draws every one.
- *
- * The clock is not tied to it either way. Time keeps adding up every frame the screen offers and
- * the whole of it is handed over when a picture is built, so this changes how often Jarvis is drawn
- * and never how fast he moves.
- */
-const MINIMUM_FRAME_SECONDS = 1 / 128;
-
 /** How long the frame rate is averaged over before it is reported. Long enough not to flicker. */
 const FRAME_RATE_OVER_SECONDS = 0.5;
 
@@ -320,13 +294,6 @@ const FRAME_RATE_OVER_SECONDS = 0.5;
  */
 const LONGEST_FRAME_WORTH_MEASURING = 0.2;
 
-/**
- * How often the voice is read. The SDK's native processors refresh every 40 ms,
- * so reading faster only re-reads the same value; the UI thread eases between
- * readings every frame, which is where the smoothness comes from.
- */
-const READ_INTERVAL_MS = 40;
-
 /** The step assumed for a frame with no previous one to measure from. */
 const DEFAULT_FRAME_MS = 16;
 
@@ -335,9 +302,6 @@ function meanOf(total: number, count: number): number {
   'worklet';
   return count > 0 ? total / count : 0;
 }
-
-/** Fixed, so the hologram has the same shape every time the app opens. */
-const SCENE_SEED = 1337;
 
 /**
  * Jarvis, drawn: a golden holographic sphere that turns on its own and grows
