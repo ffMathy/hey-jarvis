@@ -2,17 +2,25 @@
 
 name: Mobile Web
 
-# Publishes the app's web build to GitHub Pages, so the hologram can be watched
-# in a browser without installing anything.
+# Publishes both of Jarvis's web builds to GitHub Pages, so he can be watched in a
+# browser, or stood in a room with on a headset, without installing anything:
 #
-# What is on the page is the real app: the same conversation screen, the same
-# hologram, drawn by CanvasKit instead of native Skia. Taking over the assist
+#   /hey-jarvis/           the phone app's web build (mobile/)
+#   /hey-jarvis/horizon/   the Meta Quest app that puts him in your room (horizon/)
+#
+# What is at the root is the real phone app: the same conversation screen, the
+# same hologram, drawn by CanvasKit instead of native Skia. Taking over the assist
 # gesture is Android's alone and the app says so when it is on web, so the page
 # is for looking at Jarvis and talking to him, not for replacing your assistant.
 #
 # Runs on main, and by hand from any branch — which is the useful one while the
 # hologram is being worked on, since a branch's build can be put up and looked at
-# without merging it first. Pages keeps one live site, so the last run wins.
+# without merging it first. Pages keeps one live site, so the last run wins — and
+# the site is one artifact, so every run builds and publishes both apps: a run
+# that published one alone would take the other off the site. That includes runs
+# from branches cut before the headset app existed, whose copy of this workflow
+# still publishes the phone app alone; /horizon/ is gone until the next run from a
+# branch that has it.
 on:
   push:
     # Working branches as well as main: the point of the page is to look at the
@@ -24,6 +32,8 @@ on:
       - 'mobile/**'
       # The sphere itself lives in its own package now, shared with the watch.
       - 'hologram/**'
+      # The headset app, published beside the phone's under /horizon/.
+      - 'horizon/**'
       - 'bun.lock'
       - 'bunfig.toml'
       - 'package.json'
@@ -84,6 +94,13 @@ jobs:
       - name: Fetch CanvasKit
         run: bunx turbo initialize --filter=mobile
 
+      # First, so a headset app that does not build fails the run before the phone
+      # app's slower export. `turbo build` also runs its initialize (the wasm into
+      # public/vendor/), lint and typecheck, and writes it to dist/horizon. Its
+      # asset URLs are relative, so it needs no base path of its own.
+      - name: Build the headset app
+        run: bunx turbo build --filter=horizon
+
       - name: Configure Pages
         id: pages
         uses: actions/configure-pages@v6.0.0
@@ -97,10 +114,18 @@ jobs:
         run: bunx expo export --platform web --output-dir dist --clear
         working-directory: mobile
 
+      # One folder for the one site: the phone app at its root, the headset app in
+      # horizon/. Nothing in the phone's export is called horizon, so they never clash.
+      - name: Assemble the site
+        run: |
+          mkdir -p _site
+          cp -r mobile/dist/. _site/
+          cp -r dist/horizon _site/horizon
+
       - name: Upload the site
         uses: actions/upload-pages-artifact@v5.0.0
         with:
-          path: mobile/dist
+          path: _site
 
       - name: Deploy to Pages
         id: deploy
