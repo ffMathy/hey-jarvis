@@ -71,6 +71,13 @@
         min-height: 1.5em;
         color: var(--muted);
       }
+      footer {
+        font-size: 0.8rem;
+        color: var(--muted);
+      }
+      footer a {
+        color: inherit;
+      }
     </style>
   </head>
   <body>
@@ -78,6 +85,14 @@
     <p>He appears in the room with you, in passthrough, on a Meta Quest.</p>
     <button id="enter-room" type="button" disabled>Enter your room</button>
     <p id="status" role="status" aria-live="polite">Getting Jarvis ready…</p>
+    <footer>
+      <p>
+        The “Hey Jarvis” wake-word models are
+        <a href="https://github.com/dscripka/openWakeWord">openWakeWord</a>'s, by David Scripka, under
+        <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA 4.0</a> —
+        see <a href="./models/LICENCE.txt">their licence</a>.
+      </p>
+    </footer>
     <script type="module" src="./src/main.ts"></script>
   </body>
 </html>
