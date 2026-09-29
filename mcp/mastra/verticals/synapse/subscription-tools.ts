@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { getSubscriptionStorage } from '../../storage/index.js';
-import type { SubscriptionEmbeddings } from '../../storage/subscriptions.js';
+import type { NewSubscription, SubscriptionEmbeddings, SubscriptionStorage } from '../../storage/subscriptions.js';
 import { logger } from '../../utils/logger.js';
 import { embedTexts } from '../../utils/static-embedder.js';
 import { createTool } from '../../utils/tool-factory.js';
@@ -26,15 +26,6 @@ const subscriptionSchema = z.object({
   expiresAt: z.string().nullable(),
 });
 
-/**
- * Registers a Given/When/Then subscription — a "point of interest" the user has
- * expressed.
- *
- * All three components are embedded with Model2Vec (potion) at registration
- * time. The `whenEvent` and `givenCondition` embeddings are what incoming state changes are
- * matched against; the `thenAction` is embedded too so the action text can be searched
- * and deduplicated later.
- */
 /**
  * Embeds everything a subscription needs stored, in a single pass.
  *
@@ -76,6 +67,53 @@ async function embedSubscriptionComponents(input: {
   };
 }
 
+/**
+ * Embeds and stores a subscription, refusing one that has no end.
+ *
+ * Shared by {@link registerSubscription} and by the promotion of working-memory
+ * preferences (see `preference-promotion.ts`), so that both paths go through the same
+ * "every subscription must say how it ends" rule and the same embedding pass. The
+ * storage is passed in rather than fetched, so the promotion pass and its tests can
+ * hand over the instance they already hold.
+ */
+export async function createSubscription(storage: SubscriptionStorage, subscription: NewSubscription) {
+  // Every subscription has to say how it ends. Enforced here rather than only in the
+  // schema description, because the cost of forgetting is invisible and cumulative:
+  // an endless subscription is scored against every state change forever, and nothing
+  // ever removes it. Throwing gives the model a specific thing to fix and retry.
+  const oneShot = subscription.oneShot ?? false;
+  const maxTriggerCount = subscription.maxTriggerCount ?? (oneShot ? 1 : null);
+  const expiresAt = subscription.expiresAt ?? null;
+
+  if (maxTriggerCount === null && !expiresAt) {
+    throw new Error(
+      'A subscription needs an end: pass maxTriggerCount (how many times it may fire), expiresAt (an ISO timestamp), or both. For an open-ended request, pick a generous expiresAt such as six months out rather than leaving it unbounded.',
+    );
+  }
+
+  logger.info('Registering subscription', {
+    source: subscription.source,
+    whenEvent: subscription.whenEvent,
+    givenCondition: subscription.givenCondition,
+    thenAction: subscription.thenAction,
+    maxTriggerCount,
+    expiresAt,
+  });
+
+  const embeddings = await embedSubscriptionComponents(subscription);
+
+  return await storage.add({ ...subscription, oneShot, maxTriggerCount, expiresAt }, embeddings);
+}
+
+/**
+ * Registers a Given/When/Then subscription — a "point of interest" the user has
+ * expressed.
+ *
+ * All three components are embedded with Model2Vec (potion) at registration
+ * time. The `whenEvent` and `givenCondition` embeddings are what incoming state changes are
+ * matched against; the `thenAction` is embedded too so the action text can be searched
+ * and deduplicated later.
+ */
 export const registerSubscription = createTool({
   id: 'registerSubscription',
   description:
@@ -125,42 +163,16 @@ export const registerSubscription = createTool({
     subscription: subscriptionSchema,
   }),
   execute: async (inputData) => {
-    // Every subscription has to say how it ends. Enforced here rather than only in the
-    // schema description, because the cost of forgetting is invisible and cumulative:
-    // an endless subscription is scored against every state change forever, and nothing
-    // ever removes it. Throwing gives the model a specific thing to fix and retry.
-    const oneShot = inputData.oneShot ?? false;
-    const maxTriggerCount = inputData.maxTriggerCount ?? (oneShot ? 1 : null);
-
-    if (maxTriggerCount === null && !inputData.expiresAt) {
-      throw new Error(
-        'A subscription needs an end: pass maxTriggerCount (how many times it may fire), expiresAt (an ISO timestamp), or both. For an open-ended request, pick a generous expiresAt such as six months out rather than leaving it unbounded.',
-      );
-    }
-
-    logger.info('Registering subscription', {
+    const storage = await getSubscriptionStorage();
+    const subscription = await createSubscription(storage, {
+      source: inputData.source,
       whenEvent: inputData.whenEvent,
       givenCondition: inputData.givenCondition,
       thenAction: inputData.thenAction,
-      maxTriggerCount,
-      expiresAt: inputData.expiresAt ?? null,
+      oneShot: inputData.oneShot ?? false,
+      maxTriggerCount: inputData.maxTriggerCount,
+      expiresAt: inputData.expiresAt,
     });
-
-    const embeddings = await embedSubscriptionComponents(inputData);
-
-    const storage = await getSubscriptionStorage();
-    const subscription = await storage.add(
-      {
-        source: inputData.source,
-        whenEvent: inputData.whenEvent,
-        givenCondition: inputData.givenCondition,
-        thenAction: inputData.thenAction,
-        oneShot,
-        maxTriggerCount,
-        expiresAt: inputData.expiresAt ?? null,
-      },
-      embeddings,
-    );
 
     return { registered: true, subscription };
   },

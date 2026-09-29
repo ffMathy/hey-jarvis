@@ -63,6 +63,9 @@ Both may be set, in which case whichever comes first ends it. For an open-ended 
 
 Lapsed subscriptions stop matching immediately and are deleted in the background, so you do not have to tidy up. pruneExpiredSubscriptions exists for when the user asks what has lapsed, or asks you to clear things out.
 
+**Subscriptions promoted from your working memory:**
+Standing preferences you record in working memory ("user wants to know about freezing temperatures") are turned into subscriptions automatically every few hours, with source "memory". You do not need to register those yourself. Their working-memory note is what keeps them alive: when the user drops such a preference, remove it from your working memory, and its subscription is retired on the next pass. Removing only the subscription is not enough — it is re-created as long as the note is there.
+
 **How work reaches you:**
 State changes arrive as notifications rather than as a prompt you were handed. Two shapes:
 

@@ -18,4 +18,4 @@ export {
 } from './subscription-matcher.js';
 export { subscriptionTools } from './subscription-tools.js';
 export { registerStateChange, synapseTools } from './tools.js';
-export { stateChangeNotificationWorkflow } from './workflows.js';
+export { promoteMemoryPreferencesWorkflow, stateChangeNotificationWorkflow } from './workflows.js';

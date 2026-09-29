@@ -5,6 +5,7 @@ import {
   emailCheckingWorkflow,
   formRepliesDetectionWorkflow,
   iotNoiseBaselineWorkflow,
+  promoteMemoryPreferencesWorkflow,
   storageRetentionWorkflow,
   weatherMonitoringWorkflow,
   weeklyMealPlanningWorkflow,
@@ -109,6 +110,15 @@ export const SCHEDULED_WORKFLOWS: ScheduledWorkflowDeclaration[] = [
   // Home Assistant's websocket API (verticals/internet-of-things/event-monitor.ts), not a schedule.
   {
     workflowId: iotNoiseBaselineWorkflow.id,
+    cron: CronPatterns.EVERY_3_HOURS,
+    runOnStartup: true,
+  },
+  // Preference promotion - every 3 hours
+  // Turns standing preferences in the reactor's working memory into subscriptions, renews
+  // the leases of the ones that still stand and retires the rest. On startup too, so a
+  // lease cannot run down across a long outage while the process waits for its first tick.
+  {
+    workflowId: promoteMemoryPreferencesWorkflow.id,
     cron: CronPatterns.EVERY_3_HOURS,
     runOnStartup: true,
   },

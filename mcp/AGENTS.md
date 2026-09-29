@@ -1145,7 +1145,13 @@ in standard 5-field form; croner nicknames (`@hourly`, `@daily`) work too.
      so the Home Assistant event monitor can drop changes that are only noise. The changes
      themselves are not polled: see [Home Assistant Event Monitor](#home-assistant-event-monitor)
 
-6. **Storage Retention** - Runs nightly at midnight
+6. **Preference Promotion** - Runs every 3 hours + on startup
+   - Workflow: `promoteMemoryPreferencesWorkflow`
+   - Purpose: Turns standing preferences in the reactor's working memory into leased
+     subscriptions, and retires the ones whose preference is gone. See
+     [Preferences promoted from working memory](#preferences-promoted-from-working-memory)
+
+7. **Storage Retention** - Runs nightly at midnight
    - Workflow: `storageRetentionWorkflow`
    - Purpose: Trims token usage rows past their retention window
 
@@ -1254,6 +1260,20 @@ Semantic memory recall still uses the hosted Gemini embedder; Model2Vec is used 
 - `setSubscriptionEnabled` / `removeSubscription` — pause or delete
 
 Storage lives in `mastra/storage/subscriptions.ts` (table `synapse_subscriptions`); embeddings are stored as BLOBs alongside the text.
+
+#### Preferences promoted from working memory
+
+The reactor records what it learns about the user in Mastra working memory — "wants to know about freezing temperatures", "tell me when mom texts about dinner". Left there, that is free text the reactor may or may not connect to a state change. `promoteMemoryPreferencesWorkflow` turns such preferences into real subscriptions, so they are vector-matched against every state change like registered ones.
+
+- **Whose memory**: the reactor's, resource `STATE_CHANGE_RESOURCE_ID` (`hey-jarvis-primary-user`). Working memory is resource-scoped, and the reactor is the only agent that runs with a memory resource — routing plans and the MCP server pass none, so the conversational agents never write working memory.
+- **When**: every 3 hours and once at startup (`schedule-reconciler.ts`). Not on each working-memory write: that happens inside the reactor's own tool loop via Mastra's `updateWorkingMemory`, and the leases below need a periodic pass regardless.
+- **Extraction**: `preference-extraction.ts` asks a tool-less, memory-less agent for structured output (`extractedPreferencesSchema`) on the reactor's model — local Ollama, falling back to Gemini Flash Lite. It is shown the existing subscriptions and answers with `existingSubscriptionId` when one already expresses a preference, which keeps a slightly reworded preference from being retired and re-created every pass. Blank working memory skips the model entirely.
+- **Deciding** is deterministic (`planPromotion` in `preference-promotion.ts`): a preference matches an existing promoted subscription by the id the model gave, then by normalised WHEN/GIVEN/THEN (`subscriptionKey`). Matched ones are renewed, unmatched ones created, and promoted subscriptions nothing matched are deleted. Running it twice over the same memory changes only deadlines.
+- **Ownership**: promoted subscriptions carry `source: 'memory'`. Only those are ever renewed or deleted. Every other subscription is the user's — used to skip preferences it already covers, never modified.
+- **How a standing preference ends**: `registerSubscription`'s rule that every subscription must end still holds, so a promoted one is recurring with a **7-day lease** (`PROMOTION_LEASE_MILLISECONDS`) that each pass pushes forward while the preference stands. A preference removed from working memory loses its subscription on the next pass; if promotion stops running altogether, everything it created lapses within a week and is pruned as usual. Renewal moves only the deadline, so a promoted subscription the user paused stays paused.
+- **Failure is safe**: nothing is written until the model's answer has passed the schema, so a run that cannot read memory or reach the model leaves every subscription as it was.
+
+To drop a promoted preference, remove it from working memory — deleting only the subscription is undone on the next pass. The reactor's instructions say so.
 
 **Example:**
 ```typescript

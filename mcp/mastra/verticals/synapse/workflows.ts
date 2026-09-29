@@ -1,10 +1,20 @@
 import { z } from 'zod';
 import { createMemory } from '../../memory/index.js';
+import { getSubscriptionStorage } from '../../storage/index.js';
 import { logger } from '../../utils/logger.js';
 import { createStep, createWorkflow } from '../../utils/workflows/workflow-factory.js';
 import { getStateChangeReactorAgent } from './agent.js';
+import { extractPreferences } from './preference-extraction.js';
+import {
+  applyPromotionPlan,
+  extractedPreferenceSchema,
+  planPromotion,
+  promotionSubscriptionSchema,
+  toPromotionSubscription,
+} from './preference-promotion.js';
 import { runStateChangeReactor } from './reactor-run.js';
 import { describeStateChange } from './state-change.js';
+import { STATE_CHANGE_RESOURCE_ID, STATE_CHANGE_THREAD_ID } from './state-change-notifier.js';
 import { findRelevantSubscriptions, formatSubscriptionMatches } from './subscription-matcher.js';
 
 // State change notification workflow
@@ -177,6 +187,107 @@ Then analyze this state change using your working memory and context. Decide if 
           analyzed: true,
           reasoning,
         };
+      },
+    }),
+  )
+  .commit();
+
+/**
+ * Promotes the standing preferences in working memory to subscriptions.
+ *
+ * Which working memory: the State Change Reactor's, filed under
+ * {@link STATE_CHANGE_RESOURCE_ID}. Working memory is resource-scoped (Mastra's default,
+ * which `createMemory` keeps), and the reactor is the only agent that runs with a memory
+ * resource at all — the conversational agents are reached through routing plans and the
+ * MCP server, neither of which passes one, so they never read or write working memory.
+ * The thread id is required by the API but not consulted for resource-scoped memory.
+ *
+ * Why a scheduled pass rather than a hook on every working-memory write: the write
+ * happens inside the reactor's own tool loop, through Mastra's built-in
+ * `updateWorkingMemory` tool, so reacting to it would mean wrapping Mastra's memory and
+ * putting a model call inside every reactor run. And promoted subscriptions are leased
+ * (see `PROMOTION_LEASE_MILLISECONDS`), so something has to run periodically to renew
+ * them anyway — the same pass picks up new preferences and retires removed ones. A few
+ * hours' delay is fine for preferences that stand for weeks.
+ *
+ * Failure is safe in every step: nothing is changed until the model's answer has passed
+ * the schema, so a run that cannot read memory or reach the model leaves every
+ * subscription as it was, and the leases carry them to the next run.
+ */
+export const promoteMemoryPreferencesWorkflow = createWorkflow({
+  id: 'promoteMemoryPreferencesWorkflow',
+  description: 'Turns standing preferences in working memory into leased Synapse subscriptions',
+  inputSchema: z.object({}),
+  outputSchema: z.object({
+    created: z.number(),
+    renewed: z.number(),
+    retired: z.number(),
+    skipped: z.number(),
+  }),
+})
+  .then(
+    createStep({
+      id: 'read-working-memory',
+      description: "Reads the reactor's working memory and every stored subscription",
+      inputSchema: z.object({}),
+      outputSchema: z.object({
+        workingMemory: z.string().nullable(),
+        subscriptions: z.array(promotionSubscriptionSchema),
+      }),
+      execute: async () => {
+        const memory = await createMemory({ enableSemanticRecall: false });
+        const workingMemory = await memory.getWorkingMemory({
+          threadId: STATE_CHANGE_THREAD_ID,
+          resourceId: STATE_CHANGE_RESOURCE_ID,
+        });
+
+        // Paused and lapsed rows included: a paused promoted subscription whose
+        // preference still stands is renewed rather than duplicated, and a lapsed one is
+        // brought back rather than joined by a copy.
+        const storage = await getSubscriptionStorage();
+        const subscriptions = await storage.list({ includeDisabled: true });
+
+        return { workingMemory, subscriptions: subscriptions.map(toPromotionSubscription) };
+      },
+    }),
+  )
+  .then(
+    createStep({
+      id: 'extract-preferences',
+      description: 'Reads WHEN/GIVEN/THEN out of the standing preferences, with structured output',
+      inputSchema: z.object({
+        workingMemory: z.string().nullable(),
+        subscriptions: z.array(promotionSubscriptionSchema),
+      }),
+      outputSchema: z.object({
+        preferences: z.array(extractedPreferenceSchema),
+        subscriptions: z.array(promotionSubscriptionSchema),
+      }),
+      // A plain step rather than an agent step, so blank working memory skips the model
+      // entirely instead of paying for a call whose answer is known.
+      execute: async ({ inputData }) => ({
+        preferences: await extractPreferences(inputData),
+        subscriptions: inputData.subscriptions,
+      }),
+    }),
+  )
+  .then(
+    createStep({
+      id: 'apply-promotion',
+      description: 'Creates, renews and retires the subscriptions promoted from working memory',
+      inputSchema: z.object({
+        preferences: z.array(extractedPreferenceSchema),
+        subscriptions: z.array(promotionSubscriptionSchema),
+      }),
+      outputSchema: z.object({
+        created: z.number(),
+        renewed: z.number(),
+        retired: z.number(),
+        skipped: z.number(),
+      }),
+      execute: async ({ inputData }) => {
+        const plan = planPromotion({ ...inputData, now: new Date() });
+        return await applyPromotionPlan(plan, await getSubscriptionStorage());
       },
     }),
   )

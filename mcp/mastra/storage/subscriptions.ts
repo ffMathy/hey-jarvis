@@ -422,6 +422,27 @@ export class SubscriptionStorage {
   }
 
   /**
+   * Move a subscription's deadline.
+   *
+   * This is how a lease is renewed: a subscription promoted from working memory is
+   * given a deadline a few days out, and each promotion pass that still finds the
+   * preference pushes it forward again. Only the deadline changes — the firing count
+   * and whether the subscription is paused are left exactly as they were.
+   *
+   * @returns True when a subscription was updated
+   */
+  async setExpiresAt(id: string, expiresAt: string | null): Promise<boolean> {
+    await this.initialize();
+
+    const result = await this.client.execute({
+      sql: 'UPDATE synapse_subscriptions SET expires_at = ? WHERE id = ?',
+      args: [expiresAt, id],
+    });
+
+    return result.rowsAffected > 0;
+  }
+
+  /**
    * Permanently delete a subscription.
    *
    * @returns True when a subscription was deleted

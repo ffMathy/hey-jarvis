@@ -232,6 +232,36 @@ describe('SubscriptionStorage expiry', () => {
     });
   });
 
+  describe('setExpiresAt', () => {
+    it('renews a lapsed subscription so it matches again', async () => {
+      const stored = await add({ expiresAt: past });
+
+      expect(await storage.setExpiresAt(stored.id, future)).toBe(true);
+
+      const [renewed] = await storage.list();
+      expect(renewed?.id).toBe(stored.id);
+      expect(renewed?.expiresAt).toBe(future);
+    });
+
+    it('leaves the firing count and a pause alone', async () => {
+      const stored = await add({ expiresAt: future });
+      await storage.markTriggered(stored.id);
+      await storage.setEnabled(stored.id, false);
+
+      const later = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+      await storage.setExpiresAt(stored.id, later);
+
+      const updated = await storage.get(stored.id);
+      expect(updated?.expiresAt).toBe(later);
+      expect(updated?.triggerCount).toBe(1);
+      expect(updated?.enabled).toBe(false);
+    });
+
+    it('reports an unknown id', async () => {
+      expect(await storage.setExpiresAt('does-not-exist', future)).toBe(false);
+    });
+  });
+
   describe('pruneExpired', () => {
     it('deletes subscriptions whose deadline has passed', async () => {
       const doomed = await add({ expiresAt: past });
