@@ -1,14 +1,7 @@
 import type { Surface } from 'canvaskit-wasm';
-import { createHologramResources, createHologramScene, drawHologram, type HologramFrame } from 'hologram';
+import { createHologramResources, createHologramScene, drawHologram, type HologramFrame, SCENE_SEED } from 'hologram';
 import type { HologramSurfaceKind } from '../debug-hook';
 import { type Painter, wrapCanvas } from './canvaskit';
-
-/**
- * The seed the phone builds its scene from, so the headset's Jarvis is the same arrangement of
- * particles as the phone's rather than a sibling. It is a private constant in
- * `hologram/src/react/hologram-view.tsx` for now; it belongs in hologram's main entry.
- */
-const SCENE_SEED = 1337;
 
 /**
  * How many pixels across the drawing is.
