@@ -64,9 +64,6 @@ export type Scene =
  */
 export type WakeReadiness = { kind: 'absent' } | { kind: 'listening' } | { kind: 'not-listening'; problem: string };
 
-/** How long a select must be held to count as the hang-up gesture, in seconds. */
-export const HANG_UP_HOLD_SECONDS = 0.8;
-
 /**
  * How long the room stays blurred before the call is ended, in milliseconds.
  *
