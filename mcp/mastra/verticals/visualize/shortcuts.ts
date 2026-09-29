@@ -55,7 +55,7 @@ const HTML_DOCUMENT_PATTERN = /(?:<!doctype html[^>]*>|<html[\s>])[\s\S]*<\/html
  */
 export function findArtifactHtml(message: string): string | undefined {
   const fencedBlocks = [...message.matchAll(HTML_CODE_BLOCK_PATTERN)].map((match) => match[1].trim());
-  const candidate = fencedBlocks.at(-1) ?? message.match(HTML_DOCUMENT_PATTERN)?.[0].trim();
+  const candidate = fencedBlocks[fencedBlocks.length - 1] ?? message.match(HTML_DOCUMENT_PATTERN)?.[0].trim();
 
   return candidate && /<\/html>\s*$/i.test(candidate) ? candidate : undefined;
 }
