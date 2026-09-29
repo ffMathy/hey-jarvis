@@ -18,6 +18,7 @@ import {
   type RoomMode,
   reduceApp,
   type SelectEvent,
+  viewOf,
   type WakeReadiness,
 } from './app-state';
 import { createFrameRateMeter, type FrameRateMeter } from './frame-rate-meter';
@@ -33,6 +34,7 @@ import {
   readinessOf,
   type WakePort,
 } from './ports';
+import { publishRoomDebugState } from './room-debug-hook';
 import { createRoomPanels, type RoomPanels } from './room-panels';
 import { createSampleDriver, type SampleDriver } from './sample-driver';
 
@@ -309,8 +311,12 @@ function dispatch(room: Room, event: AppEvent) {
   try {
     for (let next = room.queue.shift(); next !== undefined; next = room.queue.shift()) {
       const step = reduceApp(room.model, next, room.now());
+      const changed = step.model !== room.model || step.effects.length > 0;
       room.model = step.model;
       for (const effect of step.effects) carryOut(room, effect);
+      if (changed) {
+        publishRoomDebugState(sceneName(room.model), viewOf(room.model), step.effects);
+      }
     }
   } finally {
     room.dispatching = false;
