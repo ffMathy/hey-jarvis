@@ -1,19 +1,19 @@
 import type { Agent } from '@mastra/core/agent';
 import { createAgent, LOW_THINKING_PROVIDER_OPTIONS } from '../../utils/index.js';
 import { openArtifactOnPhone } from './shortcuts.js';
-import { generativeUiTools } from './tools.js';
+import { visualizeTools } from './tools.js';
 
 /**
- * Generative UI Agent
+ * Visualize Agent
  *
  * Answers the requests that are better seen than heard — "visualize…", "generate a UI for…" —
  * with a page. It builds nothing itself: `generateUserInterface` has a Claude Code session build
- * and publish the page, and pushes the link to the user's phone, where a tap opens it.
+ * the page, hosts it for a day, and pushes the link to the user's phone, where a tap opens it.
  */
-export async function getGenerativeUiAgent(): Promise<Agent> {
+export async function getVisualizeAgent(): Promise<Agent> {
   return createAgent({
-    id: 'generativeUi',
-    name: 'GenerativeUi',
+    id: 'visualize',
+    name: 'Visualize',
     instructions: `You turn requests to visualize something, or to generate a user interface for something, into an interactive web page (an artifact) that the user opens on their phone.
 
 # Building a page
@@ -25,7 +25,7 @@ Call generateUserInterface once per request:
 Building takes a few minutes; wait for the tool to finish.
 
 # Sending a page again
-When the user asks for a page that was already built to be sent to their phone again, call openArtifactOnPhone with its URL, a short title and a one-line message.
+When the user asks for a page that was already built to be sent to their phone again, call openArtifactOnPhone with its URL, a short title and a one-line message. A page is only hosted for 24 hours, so one older than that has to be built again.
 
 # Answering
 Your answer is usually spoken, so keep it to a sentence or two and never read a URL out loud:
@@ -42,8 +42,9 @@ Build interactive web pages (artifacts) on request — charts, dashboards, diagr
 
 # Good to know
 - The page is built by a Claude Code session and takes a few minutes
+- The link works for 24 hours
 - The builder cannot reach Jarvis's own data. When the page should show the calendar, the house, the shopping list or anything else another agent owns, have that agent fetch it first and pass it along in the prompt`,
-    tools: { ...generativeUiTools, openArtifactOnPhone },
+    tools: { ...visualizeTools, openArtifactOnPhone },
     // The agent's one decision is the brief it hands generateUserInterface, and the moment it
     // calls that tool is the moment routing can offer to notify the user rather than hold the
     // line. Thinking at medium only postpones that moment; the builder does the thinking.

@@ -28,7 +28,7 @@ The project is organized by business domain. Each vertical contains its own agen
 | `commute` | Travel planning and navigation (Google Maps) |
 | `cooking` | Recipe search and meal planning (Valdemarsro) |
 | `email` | Gmail search, draft, reply |
-| `generative-ui` | On-demand interactive web pages (artifacts), pushed to the user's phone |
+| `visualize` | On-demand interactive web pages (artifacts), pushed to the user's phone |
 | `human-in-the-loop` | Form-based approval workflows |
 | `internet-of-things` | Smart home device control (Home Assistant) |
 | `notification` | Alerts routed to whoever they are for, over whichever channel reaches them (call, voice announcement, push, SMS, email) |
@@ -56,7 +56,7 @@ The project is organized by business domain. Each vertical contains its own agen
 | Endpoint | Port | Purpose |
 |----------|------|---------|
 | Mastra Studio (Hono) | 4111 | Agent playground, OpenAPI spec, health check |
-| MCP Server (Express) | 4112 | MCP endpoint, Home Assistant REST triggers, photo uploads (`PUT /api/photos/:uploadToken`) |
+| MCP Server (Express) | 4112 | MCP endpoint, Home Assistant REST triggers, photo uploads (`PUT /api/photos/:uploadToken`), and the visualize vertical's pages at `/artifacts/<id>` (24 hours) |
 
 ## Running on a Raspberry Pi
 
@@ -430,9 +430,10 @@ ElevenLabs needs. Studio on 4111 is therefore not reachable until you route a ho
 
 4. **Sign in.** Cloudflare Access sits in front of the hostname. A browser is covered by the
    identity policy — you authenticate with your email and Studio loads normally. Service tokens are
-   for machine clients such as ElevenLabs and the test suite; a browser does not need them. The one
-   path on the MCP hostname that must bypass Access is `/api/photos/*`, which the phone uploads to
-   without an Access token. The bypass opens a door that asks for a key: the route itself refuses
+   for machine clients such as ElevenLabs and the test suite; a browser does not need them. Two
+   paths on the MCP hostname must bypass Access: `/artifacts/*`, the visualize vertical's pages, and
+   `/api/photos/*`, which the phone uploads to without an Access token. The photo bypass opens a
+   door that asks for a key: the route itself refuses
    any upload without the photo upload key (`HEY_JARVIS_PHOTO_UPLOAD_KEY`) — see "MCP Server
    Access" in [AGENTS.md](./AGENTS.md#mcp-server-access).
 

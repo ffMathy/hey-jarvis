@@ -62,11 +62,11 @@ function requestHeader(mcpExtra: unknown, name: string): string | undefined {
 /**
  * This server's own address, as the caller of this MCP request reached it.
  *
- * **Asked of the request, not configured.** Nothing in this server knows its public hostname — the
- * Cloudflare tunnel in front of it does — and the integration tests run a server of their own
- * behind a tunnel of their own. The request ElevenLabs sent this call on names the host it was sent
- * to either way: `cloudflared` passes the original `Host` through, and says the client spoke HTTPS
- * in `X-Forwarded-Proto`. Whoever sends a different host gets a URL for it back, which is only ever
+ * **Asked of the request, not configured.** `HEY_JARVIS_CLOUDFLARED_TUNNEL_URL`, which the visualize
+ * vertical builds its links from, is a setting, and one that can be missing; the request ElevenLabs
+ * sent this call on always names the host it reached, in production and behind the integration
+ * tests' own tunnel alike: `cloudflared` passes the original `Host` through, and says the client
+ * spoke HTTPS in `X-Forwarded-Proto`. Whoever sends a different host gets a URL for it back, which is only ever
  * the one they asked with.
  */
 export function publicOrigin(mcpExtra: unknown): string | undefined {

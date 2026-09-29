@@ -17,7 +17,6 @@ import { codingTools, getCodingAgent } from './verticals/coding/index.js';
 import { commuteTools, getCommuteAgent } from './verticals/commute/index.js';
 import { cookingTools, getCookingAgent } from './verticals/cooking/index.js';
 import { emailTools, getEmailAgent } from './verticals/email/index.js';
-import { generativeUiShortcuts, generativeUiTools, getGenerativeUiAgent } from './verticals/generative-ui/index.js';
 import { getEmailParsingAgent, humanInTheLoopTools } from './verticals/human-in-the-loop/index.js';
 import {
   emailCheckingWorkflow,
@@ -45,6 +44,7 @@ import { getShoppingListAgent, getShoppingListSummaryAgent, shoppingTools } from
 import { getStateChangeReactorAgent, synapseTools } from './verticals/synapse/index.js';
 import { getTodoListAgent, todoListTools } from './verticals/todo-list/index.js';
 import { getPhotoReaderAgent, getVisionAgent, visionTools } from './verticals/vision/index.js';
+import { getVisualizeAgent, visualizeShortcuts, visualizeTools } from './verticals/visualize/index.js';
 import { getWeatherAgent, weatherTools } from './verticals/weather/index.js';
 import { getWebResearchAgent, webResearchShortcuts } from './verticals/web-research/index.js';
 import { retireUnrestartableRuns } from './workflow-run-recovery.js';
@@ -126,7 +126,7 @@ export async function getMastra(): Promise<Mastra> {
       await getCodingAgent(),
       await getEmailAgent(),
       await getEmailParsingAgent(),
-      await getGenerativeUiAgent(),
+      await getVisualizeAgent(),
       await getInternetOfThingsAgent(),
       await getNotificationAgent(),
       await getPhotoReaderAgent(),
@@ -147,8 +147,8 @@ export async function getMastra(): Promise<Mastra> {
       ...commuteTools,
       ...cookingTools,
       ...emailTools,
-      ...generativeUiShortcuts,
-      ...generativeUiTools,
+      ...visualizeShortcuts,
+      ...visualizeTools,
       ...humanInTheLoopTools,
       ...internetOfThingsTools,
       ...internetOfThingsShortcuts,
