@@ -12,25 +12,18 @@ name: Play
 # tracks of its own since March 2023. Sharing one release also meant the watch being refused took the
 # phone's release down with it. See the note above the publish steps.
 #
-# **There are two ways in, and they differ only in which tracks they name.**
+# **It runs only for a release.** Every release cut on `main` publishes to the *closed test*:
+# `release.yml` calls this workflow through `workflow_call` once Release Please has tagged the
+# release, handing it the tagged commit and the tracks to use. Pull requests no longer publish
+# anything — a branch's build is checked by the Mobile APK and Wear APK workflows, which build
+# without signing or uploading, so nothing reaches testers until it has been released.
 #
-# - Every push to a pull request publishes to *internal testing*, so the build on your phone and
-#   your watch is the branch you are working on without anybody having to go and press anything.
-#   Only pushes that could change the app: the same paths the APK workflow watches, because a
-#   README edit has no way into a bundle. Internal testing goes to a named list of up to a hundred
-#   testers, is available within minutes rather than after a review, and never appears in search.
-# - Every release cut on `main` publishes to the *closed test*. `release.yml` calls this workflow
-#   through `workflow_call` once Release Please has tagged the release, handing it the tagged commit
-#   and the tracks to use. That is the only caller, and it is why this is one workflow with two
-#   entry points rather than two workflows that would drift apart — the build, the signing and the
-#   two-releases-on-two-tracks dance are identical and only the track names change.
+# It aimed at `production` once, on 2.2.0, and Play took the bundle and then refused to commit the
+# release. A personal developer account has to run a closed test with twelve testers for fourteen
+# days before production is open to it at all, so the closed track is both where a release can go
+# today and how that requirement gets served. `docs/play-store.md` section 9 has the whole story.
 #
-#   It aimed at `production` once, on 2.2.0, and Play took the bundle and then refused to commit the
-#   release. A personal developer account has to run a closed test with twelve testers for fourteen
-#   days before production is open to it at all, so the closed track is both where a release can go
-#   today and how that requirement gets served. `docs/play-store.md` section 9 has the whole story.
-#
-# A third way in, `workflow_dispatch`, exists for picking a track by hand.
+# `workflow_dispatch` also exists, for picking a track by hand — internal testing included.
 #
 # Each publish costs a `versionCode`, which can never be reused — see "Work out the version code"
 # below for where it comes from and why it is no longer the run number. The only thing that retries
@@ -42,20 +35,8 @@ name: Play
 # production, and a developer account granted production access — and both are Console settings
 # rather than anything here. Section 9 is where that is written down.
 on:
-  pull_request:
-    branches: [ main ]
-    paths:
-      - 'mobile/**'
-      # The sphere itself lives in its own package now, shared with the watch.
-      - 'hologram/**'
-      - 'bun.lock'
-      - 'bunfig.toml'
-      - 'package.json'
-      - 'turbo.json'
-      - '.github/workflows/play.yml'
-
-  # How `release.yml` publishes a release to production. Called rather than duplicated, so the
-  # production path is the same build that has already been proven on every pull request.
+  # How `release.yml` publishes a release. Called rather than duplicated, so there is one build,
+  # one signing path and one upload dance, and only the track names change.
   workflow_call:
     inputs:
       ref:
@@ -126,7 +107,7 @@ jobs:
       # keystore, its passwords, the Play publisher account — is resolved at run time from the
       # `Jarvis` 1Password vault by `.scripts/run-with-env.sh`, exactly as `build.yml` does. Nothing
       # here is mirrored into GitHub Actions secrets, so adding a value is a 1Password change and
-      # not a repository one. A pull request run reads it from the repository; `release.yml` names
+      # not a repository one. A manual run reads it from the repository; `release.yml` names
       # it explicitly when it calls this workflow, rather than inheriting everything.
       OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
 
@@ -145,7 +126,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6.1.0
         with:
-          # Empty for a pull request or a manual run, which is what `actions/checkout` wants in
+          # Empty for a manual run, which is what `actions/checkout` wants in
           # order to take the commit that started the run. Release passes the *tagged* commit
           # instead: it merges the release pull request inside its own run, so the commit carrying
           # the bumped version — the one the bundle is stamped with — is newer than the commit that
@@ -197,8 +178,8 @@ jobs:
       # Play orders uploads by this and refuses a repeat, so it has to rise every time — and, now
       # that there are two ways into this workflow, it has to rise across *both of them*.
       #
-      # **Which is why it is no longer `github.run_number`.** A run number counts the runs of one
-      # workflow, so the pull request path and the release path would each have one of their own,
+      # **Which is why it is not `github.run_number`.** A run number counts the runs of one
+      # workflow, so the manual path and the release path would each have one of their own,
       # starting from different places and both going up: the two sequences overlap, and the first
       # collision is an upload Play refuses outright. Reusable workflows do not help — a called
       # workflow sees the *caller's* run number, so `release.yml` would be counting its own runs.
@@ -275,8 +256,7 @@ jobs:
           serviceAccountJson: play-publisher.json
           packageName: com.ffmathy.heyjarvis
           releaseFiles: dist/mobile-aab/jarvis.aab
-          # `inputs` is empty for a pull request push, which takes the defaults — the ones worth
-          # having automatically: straight to the testers. A release passes `production`.
+          # Always set by a release (`alpha`) or a manual run; the fallback is only a safe default.
           track: ${{ inputs.track || 'internal' }}
           status: ${{ inputs.status || 'completed' }}
 

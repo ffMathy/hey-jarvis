@@ -90,10 +90,7 @@ jobs:
 
   # The phone and the watch on Google Play, to the closed test.
   #
-  # The same build a pull request publishes to internal testing — `play.yml` is one workflow with
-  # two entry points precisely so that the thing a release publishes is the thing that has been
-  # going to testers all along, rather than a second pipeline nobody exercises until the day it
-  # matters. All that changes is the track.
+  # Only a release publishes to Play; pull requests build the APKs but upload nothing.
   #
   # **Closed testing rather than production, and not only because the app is not ready to be
   # public.** Release 2.2.0 went at `production` and Play took the bundle and then refused to commit
@@ -135,6 +132,19 @@ jobs:
     # it reaches the upload keystore and the Play publisher account.
     secrets:
       OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+
+  # The web build of the app, to GitHub Pages — the tagged commit, for the same reason as `play`.
+  pages:
+    if: ${{ needs.release.outputs.release_created }}
+    needs:
+      - release
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/mobile-web.yml
+    with:
+      ref: ${{ needs.release.outputs.sha }}
 
   deploy:
     runs-on: ubuntu-latest
