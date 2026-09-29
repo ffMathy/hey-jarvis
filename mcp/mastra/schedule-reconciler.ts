@@ -4,7 +4,7 @@ import { CronPatterns } from './utils/workflows/cron-patterns.js';
 import {
   emailCheckingWorkflow,
   formRepliesDetectionWorkflow,
-  iotMonitoringWorkflow,
+  iotNoiseBaselineWorkflow,
   storageRetentionWorkflow,
   weatherMonitoringWorkflow,
   weeklyMealPlanningWorkflow,
@@ -104,10 +104,11 @@ export const SCHEDULED_WORKFLOWS: ScheduledWorkflowDeclaration[] = [
     cron: CronPatterns.EVERY_3_HOURS,
     runOnStartup: true,
   },
-  // IoT device monitoring - every 3 hours
-  // Polls Home Assistant for state changes, filters out devices/entities with 'sensitive' label.
+  // IoT noise baselines - every 3 hours
+  // Recalculates how much each entity normally fluctuates. The changes themselves arrive over
+  // Home Assistant's websocket API (verticals/internet-of-things/event-monitor.ts), not a schedule.
   {
-    workflowId: iotMonitoringWorkflow.id,
+    workflowId: iotNoiseBaselineWorkflow.id,
     cron: CronPatterns.EVERY_3_HOURS,
     runOnStartup: true,
   },

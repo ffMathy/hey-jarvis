@@ -36,6 +36,7 @@
         "fkill": "10.0.3",
         "geolib": "3.3.14",
         "googleapis": "175.0.0",
+        "home-assistant-js-websocket": "9.7.0",
         "hono": "4.13.5",
         "libphonenumber-js": "1.13.11",
         "lodash-es": "4.18.1",
@@ -68,7 +69,7 @@
     },
     "elevenlabs": {
       "name": "elevenlabs",
-      "version": "2.1.0",
+      "version": "2.4.1",
       "devDependencies": {
         "bun-types": "1.3.14",
       },
@@ -107,7 +108,7 @@
     },
     "mcp": {
       "name": "mcp",
-      "version": "2.11.0",
+      "version": "2.13.2",
       "devDependencies": {
         "bun-types": "1.3.14",
       },
@@ -1742,6 +1743,8 @@
     "hermes-parser": ["hermes-parser@0.36.1", "", { "dependencies": { "hermes-estree": "0.36.1" } }, "sha512-GApNk4zLHi2UWoWZZkx7LNCOSzLSc5lB55pZ/PhK7ycFeg7u5LcF88p/WbpIi1XUDtE0MpHE3uRR3u3KB7TjSQ=="],
 
     "hologram": ["hologram@workspace:hologram"],
+
+    "home-assistant-js-websocket": ["home-assistant-js-websocket@9.7.0", "", {}, "sha512-AE/VtwY+sKi7B3934KuIgvj2g06QY9aFVdd2zh1r5ygbpMo2TZbvN9Zoma8L2wHNYFsngTRiZxYOnLlCysIOzA=="],
 
     "home-assistant-voice-firmware": ["home-assistant-voice-firmware@workspace:home-assistant-voice-firmware"],
 

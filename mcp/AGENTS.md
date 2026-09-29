@@ -1139,9 +1139,11 @@ in standard 5-field form; croner nicknames (`@hourly`, `@daily`) work too.
    - Purpose: Resumes the suspended runs that inbound form replies answer, and registers the
      emails as a state change
 
-5. **IoT Device Monitoring** - Runs every 3 hours + on startup
-   - Workflow: `iotMonitoringWorkflow`
-   - Purpose: Monitors Home Assistant devices and registers state changes
+5. **IoT Noise Baselines** - Runs every 3 hours + on startup
+   - Workflow: `iotNoiseBaselineWorkflow`
+   - Purpose: Recalculates how much each entity normally fluctuates, from 15 minutes of history,
+     so the Home Assistant event monitor can drop changes that are only noise. The changes
+     themselves are not polled: see [Home Assistant Event Monitor](#home-assistant-event-monitor)
 
 6. **Storage Retention** - Runs nightly at midnight
    - Workflow: `storageRetentionWorkflow`
@@ -2352,6 +2354,29 @@ The MCP server does not require authentication. All endpoints are publicly acces
   request can be read back as a breakdown
 - Sensor data processing and analysis
 - Scene and routine management
+
+#### Home Assistant Event Monitor
+`verticals/internet-of-things/event-monitor.ts` holds one subscription to Home Assistant's
+websocket API (through the official `home-assistant-js-websocket` client) and files what happens in
+the house for the State Change Reactor as it happens. It is started by `mcp-server.ts` only, the
+process that also owns the schedules, so Studio never files a change twice.
+
+- **What it listens to.** `state_changed` events whose state value moved (attribute-only updates
+  and entities being added or removed are dropped), and every other bus event except
+  `IGNORED_EVENT_TYPES` — Home Assistant's own bookkeeping, plus `call_service`,
+  `automation_triggered` and `script_started`, whose effects are reported as state changes anyway.
+  Other events are what bring button presses, doorbells and tag scans to the reactor, filed as
+  `home_assistant_event`; state changes keep the `device_state_change` type.
+- **Spammy sources are bulked** (`change-bulker.ts`). Changes are collected per entity, or per event
+  type and source. A quiet bucket is released after 30 seconds; one that reaches 5 changes is spammy
+  and held for 10 minutes, then reported once with `changeCount`/`occurrences`, the first and last
+  value and the distinct values in between.
+- **Filtering** (`change-reports.ts`). Anything whose entity or device carries the `sensitive` label
+  is dropped. A state bucket is dropped as noise unless some value it passed through differs from
+  where it started by more than the entity's noise baseline, so a door that opened and closed inside
+  one window is still reported.
+- **Catch-up.** On every connect and reconnect it compares `get_states` against the last states it
+  saw (persisted in `iot_device_states`) and reports what changed while it was away.
 
 ### Model Context Protocol (MCP)
 - Server-client communication for tool sharing
