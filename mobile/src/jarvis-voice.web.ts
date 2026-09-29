@@ -1,9 +1,9 @@
 import { useConversationMode, useConversationStatus, useRawConversation } from '@elevenlabs/react-native';
+import { createPlayedVoiceReaders, type PlayedAudioSource, readingWindowSize } from 'hologram';
 import { useSdkVoiceReaders } from 'hologram/conversation';
 import { useEffect, useMemo, useState } from 'react';
 import { type AgentTrackRoom, agentAudioTracks, followAgentTrack, roomOfConversation } from './agent-audio-track';
 import type { UseJarvisVoice } from './platform-contracts';
-import { createPlayedVoiceReaders, type PlayedAudioSource, readingWindowSize } from './played-voice';
 
 /** An analyser watching one track, and the way to let go of it. */
 interface OpenedAudio {
@@ -78,7 +78,7 @@ function listenToTrack(track: MediaStreamTrack): OpenedAudio | undefined {
  * still the fallback here. The SDK's volume is the mean of an `AnalyserNode`'s byte spectrum on a
  * −100 dB floor, which never reads silence as silence: the gaps between Jarvis's words stayed well
  * above the tracker's speech threshold, so the sphere stayed agitated and the rim threw chips
- * through them. See `played-voice.ts` for the whole of that argument.
+ * through them. See `hologram/src/played-voice.ts` for the whole of that argument.
  *
  * So the track is found in the LiveKit room the same way the phone finds it — `agent-audio-track.ts`,
  * shared between them — and analysed with the same code the phone runs on its tapped samples. What

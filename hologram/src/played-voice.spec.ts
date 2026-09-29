@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
-import { createVoiceAnalyser } from 'hologram';
 import { createPlayedVoiceReaders, type PlayedAudioSource, readingWindowSize } from './played-voice';
+import { createVoiceAnalyser } from './voice-analysis';
 
 /**
  * An `AnalyserNode`'s answer for one second of a 1 kHz tone at `amplitude`: the newest

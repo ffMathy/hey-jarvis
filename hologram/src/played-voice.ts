@@ -1,4 +1,5 @@
-import { createVoiceAnalyser, type JarvisVoiceReaders, type VoiceAnalyser, type VoiceReading } from 'hologram';
+import { createVoiceAnalyser, type VoiceAnalyser, type VoiceReading } from './voice-analysis';
+import type { JarvisVoiceReaders } from './voice-contract';
 
 /** What a played voice reads from: a window onto the audio a browser is playing right now. */
 export interface PlayedAudioSource {
@@ -18,8 +19,8 @@ export interface PlayedAudioSource {
 const SILENCE = new Uint8Array(0);
 
 /**
- * Readings this close together share one analysis, for the reason `tapped-voice.ts` gives: the
- * hologram asks for the volume and then the spectrum in the same breath.
+ * Readings this close together share one analysis, for the reason `mobile/src/tapped-voice.ts`
+ * gives: the hologram asks for the volume and then the spectrum in the same breath.
  */
 const SHARED_READING_MS = 10;
 
@@ -62,6 +63,10 @@ export function readingWindowSize(sampleRate: number): number {
  *
  * Before any audio has arrived — the track just subscribed, nothing playing yet — both readings
  * are silence, which is the truth.
+ *
+ * In the main entry rather than the phone app because every browser that plays him reads him this
+ * way — the phone app's web build and the headset alike — and the source is only an interface, so
+ * nothing here touches Web Audio itself.
  */
 export function createPlayedVoiceReaders(
   source: PlayedAudioSource,
