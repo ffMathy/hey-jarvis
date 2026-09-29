@@ -3,6 +3,7 @@ import { getSubscriptionStorage } from '../../storage/index.js';
 import { logger } from '../../utils/logger.js';
 import { embedTexts } from '../../utils/static-embedder.js';
 import type { ToolMastra } from '../../utils/tool-factory.js';
+import { findRulesForStateChange } from './rules.js';
 import { describeStateChangeFacets, type StateChange } from './state-change.js';
 import { formatSubscriptionMatches, rankSubscriptions } from './subscription-matcher.js';
 
@@ -189,6 +190,7 @@ export async function registerStateChangeNotification(
 
   const reactorAgent = mastra.getAgentById(STATE_CHANGE_REACTOR_AGENT_ID);
   const [matchedSubscriptions] = await Promise.all([matchSubscriptions(change), saveToMemory(change)]);
+  const rules = findRulesForStateChange(change);
 
   const result = await reactorAgent.sendNotificationSignal(
     {
@@ -196,13 +198,15 @@ export async function registerStateChangeNotification(
       kind: change.stateType,
       // The summary is what the model reads inline when this delivers on its own. The
       // payload is what it gets from the inbox tool after a rollup, so the candidate
-      // subscriptions have to be in the payload -- a summary line cannot carry them.
+      // subscriptions and the rules have to be in the payload -- a summary line cannot
+      // carry them.
       summary: `${change.stateType} from ${change.source}: ${JSON.stringify(change.stateData)}`,
       payload: {
         source: change.source,
         stateType: change.stateType,
         stateData: change.stateData,
         matchedSubscriptions,
+        rules,
       },
       // Everything arrives low, which is what makes the default policy roll changes up
       // instead of waking the reactor once each -- the job the batch timer used to do.
