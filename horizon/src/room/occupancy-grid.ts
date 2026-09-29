@@ -56,24 +56,29 @@ export function createGrid(min: Vector3Like, max: Vector3Like): OccupancyGrid {
   };
 }
 
+/** Cells per metre, to multiply by rather than divide by in the loops that mark millions of points. */
+const CELLS_PER_METRE = 1 / VOXEL_METRES;
+
 /** Marks the cell holding the point x, y, z as occupied; a point outside the grid is ignored. */
 export function markPoint(grid: OccupancyGrid, x: number, y: number, z: number): void {
-  const cellX = Math.floor((x - grid.minX) / VOXEL_METRES);
-  const cellY = Math.floor((y - grid.minY) / VOXEL_METRES);
-  const cellZ = Math.floor((z - grid.minZ) / VOXEL_METRES);
+  const cellX = Math.floor((x - grid.minX) * CELLS_PER_METRE);
+  const cellY = Math.floor((y - grid.minY) * CELLS_PER_METRE);
+  const cellZ = Math.floor((z - grid.minZ) * CELLS_PER_METRE);
   if (cellX < 0 || cellY < 0 || cellZ < 0 || cellX >= grid.sizeX || cellY >= grid.sizeY || cellZ >= grid.sizeZ) return;
   grid.occupied[(cellZ * grid.sizeY + cellY) * grid.sizeX + cellX] = 1;
 }
 
 /** How many cells hold something. */
 export function countOccupied(grid: OccupancyGrid): number {
+  const { occupied } = grid;
   let count = 0;
-  for (const cell of grid.occupied) count += cell;
+  // Indexed: iterating a typed array with for…of is several times slower in JavaScriptCore.
+  for (let cell = 0; cell < occupied.length; cell++) count += occupied[cell];
   return count;
 }
 
 /**
- * The exact Euclidean distance transform of one line of squared distances, in place.
+ * The exact Euclidean distance transform of one line of squared distances, into `out`.
  *
  * Felzenszwalb and Huttenlocher's lower envelope of parabolas: each cell's squared distance is
  * the lowest of the parabolas rooted at every cell of the line. Run along x, then y, then z, it
@@ -102,34 +107,58 @@ function transformLine(line: Float64Array, length: number, roots: Int32Array, bo
     const offset = cell - roots[top];
     out[cell] = offset * offset + line[roots[top]];
   }
-  for (let cell = 0; cell < length; cell++) line[cell] = out[cell];
 }
 
-/** Runs `transformLine` over every line of `squared` along one axis, yielding now and then. */
-function* transformAxis(
-  squared: Float32Array,
-  length: number,
-  stride: number,
-  lineStarts: Generator<number>,
-): Generator<void, void, void> {
+/** The lines of one pass: `length` cells `stride` apart, starting at every `a × aStride + b × bStride`. */
+interface Lines {
+  length: number;
+  stride: number;
+  aCount: number;
+  aStride: number;
+  bCount: number;
+  bStride: number;
+}
+
+/** Lines transformed between two yields. */
+const LINES_PER_SLICE = 512;
+
+/** Copies one line of `squared` into `line`, and returns the smallest value on it. */
+function readLine(squared: Float32Array, start: number, stride: number, line: Float64Array): number {
+  let nearest = FAR_SQUARED_CELLS;
+  for (let cell = 0; cell < line.length; cell++) {
+    const value = squared[start + cell * stride];
+    line[cell] = value;
+    if (value < nearest) nearest = value;
+  }
+  return nearest;
+}
+
+/**
+ * Runs `transformLine` over every line of `squared` along one axis, yielding now and then.
+ *
+ * A line with nothing occupied on it, and nothing near it found by an earlier pass, is left as
+ * far as it was without being transformed — which in a room is most of the first pass.
+ */
+function* transformAxis(squared: Float32Array, lines: Lines): Generator<void, void, void> {
+  const { length, stride } = lines;
   const line = new Float64Array(length);
   const out = new Float64Array(length);
   const roots = new Int32Array(length);
   const bounds = new Float64Array(length + 1);
   let linesSinceYield = 0;
-  for (const start of lineStarts) {
-    for (let cell = 0; cell < length; cell++) line[cell] = squared[start + cell * stride];
-    transformLine(line, length, roots, bounds, out);
-    for (let cell = 0; cell < length; cell++) squared[start + cell * stride] = line[cell];
-    if (++linesSinceYield === 512) {
+  for (let b = 0; b < lines.bCount; b++) {
+    for (let a = 0; a < lines.aCount; a++) {
+      const start = a * lines.aStride + b * lines.bStride;
+      if (readLine(squared, start, stride, line) === FAR_SQUARED_CELLS) continue;
+      transformLine(line, length, roots, bounds, out);
+      for (let cell = 0; cell < length; cell++) squared[start + cell * stride] = out[cell];
+    }
+    linesSinceYield += lines.aCount;
+    if (linesSinceYield >= LINES_PER_SLICE) {
       linesSinceYield = 0;
       yield;
     }
   }
-}
-
-function* range(count: number, map: (index: number) => number): Generator<number> {
-  for (let index = 0; index < count; index++) yield map(index);
 }
 
 /**
@@ -142,56 +171,67 @@ export function* computeDistanceField(grid: OccupancyGrid): Generator<void, void
   const { sizeX, sizeY, sizeZ, occupied, distance } = grid;
   for (let cell = 0; cell < occupied.length; cell++) distance[cell] = occupied[cell] === 1 ? 0 : FAR_SQUARED_CELLS;
   const plane = sizeX * sizeY;
-  yield* transformAxis(
-    distance,
-    sizeX,
-    1,
-    range(sizeY * sizeZ, (line) => line * sizeX),
-  );
-  yield* transformAxis(
-    distance,
-    sizeY,
-    sizeX,
-    range(sizeX * sizeZ, (line) => Math.floor(line / sizeX) * plane + (line % sizeX)),
-  );
-  yield* transformAxis(
-    distance,
-    sizeZ,
-    plane,
-    range(plane, (line) => line),
-  );
+  yield* transformAxis(distance, {
+    length: sizeX,
+    stride: 1,
+    aCount: sizeY,
+    aStride: sizeX,
+    bCount: sizeZ,
+    bStride: plane,
+  });
+  yield* transformAxis(distance, {
+    length: sizeY,
+    stride: sizeX,
+    aCount: sizeX,
+    aStride: 1,
+    bCount: sizeZ,
+    bStride: plane,
+  });
+  yield* transformAxis(distance, {
+    length: sizeZ,
+    stride: plane,
+    aCount: sizeX,
+    aStride: 1,
+    bCount: sizeY,
+    bStride: sizeX,
+  });
   for (let cell = 0; cell < distance.length; cell++) {
     const squared = distance[cell];
     distance[cell] = squared >= FAR_SQUARED_CELLS / 2 ? Number.POSITIVE_INFINITY : Math.sqrt(squared) * VOXEL_METRES;
   }
 }
 
+/** A coordinate as a position among cell centres (0 at the first centre), kept inside the grid. */
+function centreCoordinate(value: number, min: number, size: number): number {
+  return Math.min(Math.max((value - min) * CELLS_PER_METRE - 0.5, 0), size - 1);
+}
+
 /** The distance field at a point inside the grid, interpolated between the eight nearest cell centres. */
 function interpolatedDistance(grid: OccupancyGrid, point: Vector3Like): number {
   const { sizeX, sizeY, sizeZ, distance } = grid;
-  const at = (value: number, min: number, size: number) =>
-    Math.min(Math.max((value - min) / VOXEL_METRES - 0.5, 0), size - 1);
-  const x = at(point.x, grid.minX, sizeX);
-  const y = at(point.y, grid.minY, sizeY);
-  const z = at(point.z, grid.minZ, sizeZ);
+  const x = centreCoordinate(point.x, grid.minX, sizeX);
+  const y = centreCoordinate(point.y, grid.minY, sizeY);
+  const z = centreCoordinate(point.z, grid.minZ, sizeZ);
   const x0 = Math.min(Math.floor(x), Math.max(sizeX - 2, 0));
   const y0 = Math.min(Math.floor(y), Math.max(sizeY - 2, 0));
   const z0 = Math.min(Math.floor(z), Math.max(sizeZ - 2, 0));
-  const x1 = Math.min(x0 + 1, sizeX - 1);
-  const y1 = Math.min(y0 + 1, sizeY - 1);
-  const z1 = Math.min(z0 + 1, sizeZ - 1);
+  // Steps to the neighbouring centre along each axis, or none on an axis one cell thick.
+  const stepX = sizeX > 1 ? 1 : 0;
+  const stepY = sizeY > 1 ? sizeX : 0;
+  const stepZ = sizeZ > 1 ? sizeX * sizeY : 0;
   const fx = x - x0;
   const fy = y - y0;
   const fz = z - z0;
-  const value = (cellX: number, cellY: number, cellZ: number) => distance[(cellZ * sizeY + cellY) * sizeX + cellX];
-  const lerp = (a: number, b: number, fraction: number) => a + (b - a) * fraction;
-  const bottom = lerp(
-    lerp(value(x0, y0, z0), value(x1, y0, z0), fx),
-    lerp(value(x0, y1, z0), value(x1, y1, z0), fx),
-    fy,
-  );
-  const top = lerp(lerp(value(x0, y0, z1), value(x1, y0, z1), fx), lerp(value(x0, y1, z1), value(x1, y1, z1), fx), fy);
-  return lerp(bottom, top, fz);
+  const corner = (z0 * sizeY + y0) * sizeX + x0;
+  const near = corner;
+  const far = corner + stepZ;
+  const bottomNear = distance[near] + (distance[near + stepX] - distance[near]) * fx;
+  const topNear = distance[near + stepY] + (distance[near + stepY + stepX] - distance[near + stepY]) * fx;
+  const bottomFar = distance[far] + (distance[far + stepX] - distance[far]) * fx;
+  const topFar = distance[far + stepY] + (distance[far + stepY + stepX] - distance[far + stepY]) * fx;
+  const nearValue = bottomNear + (topNear - bottomNear) * fy;
+  const farValue = bottomFar + (topFar - bottomFar) * fy;
+  return nearValue + (farValue - nearValue) * fz;
 }
 
 /**

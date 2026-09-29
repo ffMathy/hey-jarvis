@@ -17,10 +17,11 @@ import type { SceneMesh, ScenePlane, Vector3Like } from './types';
 const SAMPLE_METRES = VOXEL_METRES / 2;
 
 /**
- * How far either side of a plane it is sampled as well. A plane at an angle to the grid can
- * graze a cell by a sliver that the samples on the plane itself miss; a sliver is exactly the
- * gap a line of sight slips through. The walls this thickens are the room's, so erring thick
- * only keeps him a little further from them.
+ * How far either side of a plane it is sampled, instead of on the plane itself. A plane at an
+ * angle to the grid can graze a cell by a sliver that samples on the plane miss, and a sliver
+ * is exactly the gap a line of sight slips through; two sheets of samples this far apart
+ * between them cover every cell the plane passes through. The walls this thickens are the
+ * room's, so erring thick only keeps him a little further from them.
  */
 const PLANE_HALF_THICKNESS = VOXEL_METRES / 4;
 
@@ -79,10 +80,13 @@ function onPolygon(polygon: readonly Vector3Like[], x: number, z: number, tolera
   for (let index = 0, previous = polygon.length - 1; index < polygon.length; previous = index++) {
     const a = polygon[index];
     const b = polygon[previous];
-    if (distanceToSegment(x, z, a, b) <= tolerance) return true;
     if (a.z > z !== b.z > z && x < a.x + ((z - a.z) / (b.z - a.z)) * (b.x - a.x)) inside = !inside;
   }
-  return inside;
+  if (inside) return true;
+  for (let index = 0, previous = polygon.length - 1; index < polygon.length; previous = index++) {
+    if (distanceToSegment(x, z, polygon[index], polygon[previous]) <= tolerance) return true;
+  }
+  return false;
 }
 
 function distanceToSegment(x: number, z: number, a: Vector3Like, b: Vector3Like): number {
@@ -106,14 +110,27 @@ export function rasterisePlane(grid: OccupancyGrid, plane: ScenePlane): void {
   if (polygon.length < 3) return;
   const xs = polygon.map((point) => point.x);
   const zs = polygon.map((point) => point.z);
-  const offsets = [-PLANE_HALF_THICKNESS, 0, PLANE_HALF_THICKNESS];
+  const alongZ = steps(Math.min(...zs), Math.max(...zs), SAMPLE_METRES);
+  // The pose written out, since this runs for every sample of every wall.
+  const [xx, xy, xz, , yx, yy, yz, , zx, zy, zz, , ox, oy, oz] = pose;
   for (const x of steps(Math.min(...xs), Math.max(...xs), SAMPLE_METRES)) {
-    for (const z of steps(Math.min(...zs), Math.max(...zs), SAMPLE_METRES)) {
+    for (const z of alongZ) {
       if (!onPolygon(polygon, x, z, 1e-4)) continue;
-      for (const offset of offsets) {
-        const point = toReference(pose, x, offset, z);
-        markPoint(grid, point.x, point.y, point.z);
-      }
+      const onX = xx * x + zx * z + ox;
+      const onY = xy * x + zy * z + oy;
+      const onZ = xz * x + zz * z + oz;
+      markPoint(
+        grid,
+        onX - yx * PLANE_HALF_THICKNESS,
+        onY - yy * PLANE_HALF_THICKNESS,
+        onZ - yz * PLANE_HALF_THICKNESS,
+      );
+      markPoint(
+        grid,
+        onX + yx * PLANE_HALF_THICKNESS,
+        onY + yy * PLANE_HALF_THICKNESS,
+        onZ + yz * PLANE_HALF_THICKNESS,
+      );
     }
   }
 }

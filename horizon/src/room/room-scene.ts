@@ -38,8 +38,14 @@ export interface RoomScene {
   description: RoomDescription;
 }
 
-/** Room left around the geometry, so a spot just past the last known surface still has a grid under it. */
-const GRID_MARGIN_METRES = 1.2;
+/**
+ * Room left around the geometry, so a spot just past the last known surface still has a grid
+ * under it. Less below and above than around: he is never placed under the floor or over the
+ * ceiling, while a room known only by its furniture has candidates well past the last box.
+ * Beyond the grid, clearance is still answered, only more cautiously.
+ */
+const GRID_MARGIN_METRES = 0.6;
+const GRID_VERTICAL_MARGIN_METRES = 0.4;
 
 /**
  * How far from the reference space's origin the grid may reach, horizontally and vertically.
@@ -115,12 +121,12 @@ function gridBox(planes: PosedPlane[], posedMeshes: Float32Array[]): { min: Vect
   }
   const low = {
     x: Math.max(min.x - GRID_MARGIN_METRES, -GRID_REACH_METRES),
-    y: Math.max(min.y - GRID_MARGIN_METRES, GRID_LOWEST_METRES),
+    y: Math.max(min.y - GRID_VERTICAL_MARGIN_METRES, GRID_LOWEST_METRES),
     z: Math.max(min.z - GRID_MARGIN_METRES, -GRID_REACH_METRES),
   };
   const high = {
     x: Math.min(max.x + GRID_MARGIN_METRES, GRID_REACH_METRES),
-    y: Math.min(max.y + GRID_MARGIN_METRES, GRID_HIGHEST_METRES),
+    y: Math.min(max.y + GRID_VERTICAL_MARGIN_METRES, GRID_HIGHEST_METRES),
     z: Math.min(max.z + GRID_MARGIN_METRES, GRID_REACH_METRES),
   };
   return low.x < high.x && low.y < high.y && low.z < high.z ? { min: low, max: high } : null;
