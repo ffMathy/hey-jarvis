@@ -76,6 +76,13 @@ describe('judging the wake engine', () => {
     expect(judged).toEqual({ state: 'broken', problem: 'HTTP 404', needsGesture: false, recover: false });
   });
 
+  it('recovers from models that failed after they had loaded and run', () => {
+    const judged = judgeWakeHealth(
+      observation({ models: { phase: 'failed', problem: 'out of memory', failedWhileRunning: true } }),
+    );
+    expect(judged).toEqual({ state: 'broken', problem: 'out of memory', needsGesture: false, recover: true });
+  });
+
   it('is ready but not listening before it has been started, and after it was stopped', () => {
     expect(judgeWakeHealth(observation({ audio: undefined }))).toMatchObject({
       state: 'ready',

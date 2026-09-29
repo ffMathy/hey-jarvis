@@ -50,6 +50,22 @@ export type MicrophoneProfile = 'processed' | 'raw';
 
 export type MicrophonePermission = 'granted' | 'denied' | 'prompt' | 'unknown';
 
+/** What the `?debug` HUD shows about the wake engine beyond its health. */
+export interface WakeDiagnostics {
+  /** The wake AudioContext's state ('running', 'suspended', 'interrupted', 'closed'); undefined before `start`. */
+  contextState: string | undefined;
+  /** The rate that context really runs at: 16000, unless the browser ignored the request and the worklet resamples. */
+  sampleRate: number | undefined;
+  /** The microphone track being listened to; undefined when not listening. */
+  trackState: 'live' | 'ended' | undefined;
+  trackMuted: boolean | undefined;
+  /** Chunks dropped since the stream was last connected, because inference fell behind. */
+  droppedChunks: number;
+  /** Recoveries attempted since the engine was created. */
+  recoveries: number;
+  profile: MicrophoneProfile;
+}
+
 export interface WakeEngine {
   /** Loads ORT + the three models in the worker and runs the warm-up. Safe to call before any gesture. */
   prepare(onProgress?: (fraction: number) => void): Promise<void>;
@@ -71,6 +87,8 @@ export interface WakeEngine {
   onWake(listener: (score: number) => void): () => void;
   onHealth(listener: (health: WakeHealth) => void): () => void;
   readonly health: WakeHealth;
+  /** For the HUD: the audio context, the track and the counters behind the health. */
+  readonly diagnostics: WakeDiagnostics;
   /** Watchdog recovery; may need user activation (call again inside a select if it rejects). */
   rebuild(): Promise<void>;
   dispose(): void;

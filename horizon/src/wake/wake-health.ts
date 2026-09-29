@@ -150,6 +150,13 @@ export function createStatsHistory(windowMilliseconds = STATS_WINDOW_MILLISECOND
 
 export type ModelPhase = 'unloaded' | 'loading' | 'warming' | 'ready' | 'failed';
 
+export interface ModelState {
+  phase: ModelPhase;
+  problem?: string;
+  /** Whether the failure came after the models had loaded and run: a worker that crashed or ran out of memory. */
+  failedWhileRunning?: boolean;
+}
+
 export interface AudioObservation {
   /** When the engine last started or recovered the stream. */
   startedAt: number;
@@ -161,7 +168,7 @@ export interface AudioObservation {
 
 export interface WakeObservation {
   now: number;
-  models: { phase: ModelPhase; problem?: string };
+  models: ModelState;
   /** Undefined until `start`, and after `stop`. */
   audio?: AudioObservation;
   stats: StatsRates;
@@ -185,9 +192,11 @@ function verdict(state: WakeState, problem: string | undefined, recover = false)
 function modelVerdict(models: WakeObservation['models']): WakeVerdict | undefined {
   switch (models.phase) {
     case 'failed':
-      // Not retried on its own: a failed load is usually a missing file or a runtime this browser
-      // cannot run, and retrying would fetch 17 MB again for the same answer. `rebuild` retries.
-      return verdict('broken', models.problem ?? WAKE_PROBLEMS.modelsFailed);
+      // A failed load is not retried on its own: it is usually a missing file or a runtime this
+      // browser cannot run, and retrying would fetch 17 MB again for the same answer (`rebuild`
+      // retries). Models that loaded and then failed — a crashed worker, memory running out —
+      // are worth a new worker, spaced out like any other recovery.
+      return verdict('broken', models.problem ?? WAKE_PROBLEMS.modelsFailed, models.failedWhileRunning === true);
     case 'unloaded':
       return verdict('unloaded', WAKE_PROBLEMS.notLoaded);
     case 'loading':

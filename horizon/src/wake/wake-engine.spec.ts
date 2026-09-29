@@ -48,6 +48,7 @@ class FakeStream implements WakeStream {
 
 class FakeGraph implements WakeAudioGraph<FakeStream> {
   state = 'running';
+  sampleRate = 16000;
   failed = false;
   ready = Promise.resolve();
   /** Whether `resume` works, as it would inside a gesture or with the page already activated. */
@@ -294,6 +295,20 @@ describe('loading the wake engine', () => {
     expect(engine.health.state).toBe('ready');
   });
 
+  it('starts a new worker on its own when the models fail after running', async () => {
+    const context = await listening();
+    context.worker().emit({ type: 'failed', message: 'The wake word stopped working: out of memory' });
+    expect(context.engine.health).toMatchObject({
+      state: 'broken',
+      problem: 'The wake word stopped working: out of memory',
+    });
+    await context.advance(WATCHDOG_INTERVAL_MILLISECONDS);
+    expect(context.workers).toHaveLength(2);
+    context.worker().ready();
+    await context.advance(WATCHDOG_INTERVAL_MILLISECONDS);
+    expect(context.worker().types()).toEqual(['load', 'arm', 'listen']);
+  });
+
   it('treats a crashed worker as failed models', async () => {
     const { engine, workers } = scenario();
     const preparing = engine.prepare();
@@ -521,6 +536,26 @@ describe('the watchdog', () => {
     await context.advance(WATCHDOG_INTERVAL_MILLISECONDS);
     expect(context.graphs).toHaveLength(2);
     expect(context.graphs[0].closed).toBe(true);
+  });
+});
+
+describe('the diagnostics', () => {
+  it('show the audio context, the track and the counters behind the health', async () => {
+    const context = await listening();
+    expect(context.engine.diagnostics).toEqual({
+      contextState: 'running',
+      sampleRate: 16000,
+      trackState: 'live',
+      trackMuted: false,
+      droppedChunks: 0,
+      recoveries: 0,
+      profile: 'processed',
+    });
+    context.stream.track.end();
+    await context.advance(WATCHDOG_INTERVAL_MILLISECONDS);
+    expect(context.engine.diagnostics.recoveries).toBe(1);
+    context.engine.stop();
+    expect(context.engine.diagnostics.trackState).toBeUndefined();
   });
 });
 

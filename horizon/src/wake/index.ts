@@ -13,7 +13,14 @@ import { toWakeWorkerEvent } from './worker-protocol';
  */
 
 export { MICROPHONE_BLOCKED, microphonePermission, openWakeMicrophone } from './microphone';
-export type { MicrophonePermission, MicrophoneProfile, WakeEngine, WakeHealth, WakeState } from './types';
+export type {
+  MicrophonePermission,
+  MicrophoneProfile,
+  WakeDiagnostics,
+  WakeEngine,
+  WakeHealth,
+  WakeState,
+} from './types';
 export { GestureNeededError } from './wake-engine';
 export { WAKE_PROBLEMS } from './wake-health';
 

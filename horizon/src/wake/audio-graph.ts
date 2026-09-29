@@ -63,6 +63,9 @@ export function createWakeAudioGraph(): WakeAudioGraph<MediaStream> {
     get state() {
       return context.state;
     },
+    get sampleRate() {
+      return context.sampleRate;
+    },
     get failed() {
       return failed;
     },

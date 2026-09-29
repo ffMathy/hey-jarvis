@@ -1,10 +1,10 @@
 import { MICROPHONE_BLOCKED, type StoppableStream } from './microphone';
-import type { MicrophonePermission, MicrophoneProfile, WakeHealth } from './types';
+import type { MicrophonePermission, MicrophoneProfile, WakeDiagnostics, WakeHealth } from './types';
 import {
   type AudioObservation,
   createStatsHistory,
   judgeWakeHealth,
-  type ModelPhase,
+  type ModelState,
   WAKE_PROBLEMS,
   WATCHDOG_INTERVAL_MILLISECONDS,
   type WakeVerdict,
@@ -38,6 +38,8 @@ export interface WakeStream extends StoppableStream {
 export interface WakeAudioGraph<Stream> {
   /** The AudioContext's state: 'running', 'suspended', 'interrupted' or 'closed'. */
   readonly state: string;
+  /** The rate the AudioContext really runs at. */
+  readonly sampleRate: number;
   /** Whether the worklet's processor threw, which stops it for good. */
   readonly failed: boolean;
   /** Resolves once the worklet is loaded and connected. */
@@ -84,6 +86,7 @@ export interface WakeEngineOver<Stream> {
   onWake(listener: (score: number) => void): () => void;
   onHealth(listener: (health: WakeHealth) => void): () => void;
   readonly health: WakeHealth;
+  readonly diagnostics: WakeDiagnostics;
   rebuild(): Promise<void>;
   dispose(): void;
 }
@@ -158,7 +161,7 @@ export function assembleWakeEngine<Stream extends WakeStream>(
   const stats = createStatsHistory();
 
   let worker: WakeWorkerHandle | undefined;
-  let models: { phase: ModelPhase; problem?: string } = { phase: 'unloaded' };
+  let models: ModelState = { phase: 'unloaded' };
   let loading: Deferred | undefined;
   let graph: WakeAudioGraph<Stream> | undefined;
   let stream: Stream | undefined;
@@ -173,6 +176,7 @@ export function assembleWakeEngine<Stream extends WakeStream>(
   let recovering: Promise<void> | undefined;
   let lastRecoveryAt = Number.NEGATIVE_INFINITY;
   let recoveriesInARow = 0;
+  let recoveries = 0;
   let watchdog: ReturnType<typeof setInterval> | undefined;
   let disposed = false;
   let health: WakeHealth = {
@@ -257,9 +261,10 @@ export function assembleWakeEngine<Stream extends WakeStream>(
   // ── the worker ──
 
   function failModels(message: string) {
-    models = { phase: 'failed', problem: message };
+    models = { phase: 'failed', problem: message, failedWhileRunning: models.phase === 'ready' };
     loading?.reject(new Error(message));
     loading = undefined;
+    progressListeners.clear();
     // onnxruntime-web never recovers from a failed initialisation in the same worker, and a
     // pipeline that threw mid-chunk has lost its buffers; a new worker is the only way back.
     worker?.terminate();
@@ -443,10 +448,6 @@ export function assembleWakeEngine<Stream extends WakeStream>(
     ]);
   }
 
-  /**
-   * Gets audio flowing again, in the plan's order: the permission, then the context, then the
-   * microphone. `userInitiated` is whether this runs inside a gesture, where a prompt may show.
-   */
   /** The graph to recover with: the current one, or a new one when it is beyond resuming. */
   function recoveryGraph() {
     const current = graph;
@@ -490,6 +491,7 @@ export function assembleWakeEngine<Stream extends WakeStream>(
   async function runRecovery(userInitiated: boolean) {
     lastRecoveryAt = dependencies.now();
     recoveriesInARow++;
+    recoveries++;
     recovery = { running: true };
     evaluate();
     try {
@@ -547,6 +549,18 @@ export function assembleWakeEngine<Stream extends WakeStream>(
     },
     get health() {
       return health;
+    },
+    get diagnostics() {
+      const track = listening ? stream?.getAudioTracks()[0] : undefined;
+      return {
+        contextState: graph?.state,
+        sampleRate: graph?.sampleRate,
+        trackState: track?.readyState,
+        trackMuted: track?.muted,
+        droppedChunks: stats.rates().latest?.counters.dropped ?? 0,
+        recoveries,
+        profile: dependencies.profile,
+      };
     },
     rebuild() {
       if (disposed) return Promise.reject(new Error('The wake engine was disposed.'));
