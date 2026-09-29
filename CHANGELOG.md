@@ -1,5 +1,40 @@
 # Changelog
 
+## [4.15.1](https://github.com/ffMathy/hey-jarvis/compare/root-v4.15.0...root-v4.15.1) (2026-09-29)
+
+
+### Code Refactoring
+
+* remove the hangUpWhenQuiet client tool ([#910](https://github.com/ffMathy/hey-jarvis/issues/910)) ([81a9537](https://github.com/ffMathy/hey-jarvis/commit/81a9537c9719a319f3e93b7a04fbfbd00a6ee8af))
+
+## [4.15.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.14.0...root-v4.15.0) (2026-09-29)
+
+
+### Features
+
+* **mobile:** answer aloud in a phone's text mode ([#908](https://github.com/ffMathy/hey-jarvis/issues/908)) ([16177ac](https://github.com/ffMathy/hey-jarvis/commit/16177ac7628acbbf343c78fceae2bd050796ab14))
+
+## [4.14.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.13.0...root-v4.14.0) (2026-09-29)
+
+
+### Features
+
+* **elevenlabs:** replace default voice tags with victorian ([#906](https://github.com/ffMathy/hey-jarvis/issues/906)) ([e970cb2](https://github.com/ffMathy/hey-jarvis/commit/e970cb24e09ed603ec2beac801170e93144f965a))
+
+## [4.13.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.12.1...root-v4.13.0) (2026-09-29)
+
+
+### Features
+
+* **elevenlabs:** switch agent voice to eleven v4 turbo ([#904](https://github.com/ffMathy/hey-jarvis/issues/904)) ([6be2895](https://github.com/ffMathy/hey-jarvis/commit/6be289563aff5715429b7fea6fdc352677633377))
+
+## [4.12.1](https://github.com/ffMathy/hey-jarvis/compare/root-v4.12.0...root-v4.12.1) (2026-09-28)
+
+
+### Bug Fixes
+
+* **coding:** tell the user when a coding session is done ([#901](https://github.com/ffMathy/hey-jarvis/issues/901)) ([ac9da32](https://github.com/ffMathy/hey-jarvis/commit/ac9da327fdac35eb3ff8f6cf702f9315e882bb40))
+
 ## [4.12.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.11.0...root-v4.12.0) (2026-09-28)
 
 

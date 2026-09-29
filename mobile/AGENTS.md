@@ -65,7 +65,6 @@ The agent on the other end is the same one `elevenlabs/` deploys, with the same 
 ├── voice-levels.ts               # spectrum folding, easing, and the agitation/burst tracker
 ├── voice-contract.ts             # JarvisVoice: the two questions the sphere asks a voice
 ├── greeting-handover.ts          # when the recorded greeting is over, and the override it comes with
-├── quiet-hang-up.ts              # when a finished request followed by quiet ends the call
 ├── react/                        # `hologram/react`, the half that needs a framework
 │   ├── hologram-view.tsx         # Skia canvas, Reanimated clocks, reading the voice every frame
 │   └── is-foreground.ts          # stops the clock and the microphone when nobody is looking
@@ -74,7 +73,6 @@ The agent on the other end is the same one `elevenlabs/` deploys, with the same 
     ├── sdk-voice-readers.ts      # the SDK's analysers, safe to call before a session exists
     ├── tool-activity.ts          # which tool calls are in flight, and how long he keeps thinking after
     ├── greeting.ts               # "Hello sir, how can I help?" while the session is dialled behind it
-    ├── hang-up-when-quiet.ts     # ending the call after a finished request and three seconds of quiet
     └── user-voice.ts             # the user's vad_score and microphone level, for the listening lattice
 
 mobile/
@@ -175,13 +173,9 @@ conversation fades him over `LEAVING_SECONDS`, unmounts the drawing (a frame loo
 that has faded to nothing is a phone kept awake for no one), and — summoned — lets the sheet follow him down and retracts the assistant's window,
 which is how sample mode leaves too.
 
-**Quiet after a finished request ends it too.** The agent calls its `hangUpWhenQuiet` client tool at
-the end of every request, and if nobody says anything for three seconds after he has finished, the
-screen hangs up through `hangUpSession` — the same path as tapping beside the sheet, so he fades and
-the window goes. Speaking, a transcript or typing calls it off; the rules are in
-`../hologram/AGENTS.md`. The text-only session registers the tool as well: nothing is spoken or scored
-there, so it is three seconds after the call, counted once he has finished miming his written answer,
-unless a line is typed.
+**Quiet after a finished request ends it too, from the agent's side.** Its `turnTimeout` of three
+seconds and its `end_call` tool hang up once a request is done and nobody answers, so to the screen it
+is simply the agent hanging up: the app registers no client tool for it.
 
 ### He greets you before he is connected
 
@@ -362,11 +356,15 @@ inside the gesture. A photo taken before the agent's call arrives is held for it
 In a browser the agent cannot open the picker on its own, so when it asks, the button lights up in
 the accent colour and waits 25 s for the tap.
 
-**The call is not hung up on while sir frames the shot.** The camera open, or its photo still on the
-way, holds the quiet hang-up's clock (`busy`), and opening it and the photo arriving both count as
-him answering (`answered`). `user_activity` is sent every five seconds meanwhile, because ElevenLabs
-ends a call thirty seconds after the user last spoke — whether that covers the time behind the
-camera app, where JavaScript's timers stop, is still to be checked on a device.
+**The call is not hung up on while sir frames the shot.** A finished request is ended by the agent
+itself, after its `turnTimeout` (see `hologram/AGENTS.md`), and while the camera is open the agent's
+`openCamera` call is still waiting on it — which the prompt counts as the conversation waiting on
+sir, so a nudge then gets `skip_turn`, not `end_call`. Sir opening the camera from the button starts
+a turn of its own (`SHOWING_YOU_SOMETHING`). `user_activity` is sent every five seconds meanwhile,
+because ElevenLabs ends a call thirty seconds after the user last spoke — whether that covers the
+time behind the camera app, where JavaScript's timers stop, is still to be checked on a device. A
+photo not taken, or a tap that never came, ends the conversation the way a finished request does:
+said nothing about, and `end_call` if sir stays quiet.
 
 **Only the phone is asked, and only with the key.** Once connected, a phone that has the photo
 upload key tells the agent it has a camera (`CAMERA_ON_THIS_DEVICE`, a contextual update); the
@@ -478,7 +476,7 @@ For each conversation the app asks `GET https://api.elevenlabs.io/v1/convai/conv
 
 Only ever here. `readingAloud` is set from `onMessage`, which is wired on the text-only session alone, so every conversation that has a voice goes on following Jarvis's real one. The words are genuinely his; the only invented thing is the delivery, and it is invented only where ElevenLabs was asked not to provide one.
 
-**Typing to Jarvis is not that branch, and has not been since he started answering typed lines out loud.** The two were the same thing for as long as the field existed only where the microphone had been refused, and the confusion cost the feature its voice: `textOnly` is what makes ElevenLabs write the reply instead of speaking it, and that override was the only session the field ever appeared in. It is not needed to *send* text. `sendUserMessage` is on `BaseConversation` rather than on `TextConversation`, so a typed line into an ordinary WebRTC session takes exactly the turn a spoken one would — Jarvis speaks the reply, and the sphere follows his voice, because `jarvis-voice.ts` reads his audio track and `mode` and neither knows how the turn began. So in a browser the field is beside a working microphone as readily as without one, and the text-only fallback is what is left when there is no microphone to hold a voice conversation with at all. **A phone has no field until asked for**: it sat under him as an empty bar on every summoning, and the user asked for it gone. Tapping Jarvis now switches a phone's conversation into writing and back (`text-mode.ts`). A phone cannot open the text-only session — `@elevenlabs/react-native` refuses WebSocket sessions on a device — so the voice session stays up with the microphone muted and his volume at zero, the field appears with the keyboard, and his replies are written above it (`onMessage` is wired on the voice session, but only kept while in writing), the sphere miming them as in a browser's text-only session. The mode is applied whenever the session is connected, so a tap during the greeting lands once it is up, and it is never remembered: every conversation starts in voice.
+**Typing to Jarvis is not that branch, and has not been since he started answering typed lines out loud.** The two were the same thing for as long as the field existed only where the microphone had been refused, and the confusion cost the feature its voice: `textOnly` is what makes ElevenLabs write the reply instead of speaking it, and that override was the only session the field ever appeared in. It is not needed to *send* text. `sendUserMessage` is on `BaseConversation` rather than on `TextConversation`, so a typed line into an ordinary WebRTC session takes exactly the turn a spoken one would — Jarvis speaks the reply, and the sphere follows his voice, because `jarvis-voice.ts` reads his audio track and `mode` and neither knows how the turn began. So in a browser the field is beside a working microphone as readily as without one, and the text-only fallback is what is left when there is no microphone to hold a voice conversation with at all. **A phone has no field until asked for**: it sat under him as an empty bar on every summoning, and the user asked for it gone. Tapping Jarvis now switches a phone's conversation into writing and back (`text-mode.ts`). A phone cannot open the text-only session — `@elevenlabs/react-native` refuses WebSocket sessions on a device — so the voice session stays up with the microphone muted, the field appears with the keyboard, and his replies are written above it (`onMessage` is wired on the voice session, but only kept while in writing). **He still answers out loud**, exactly as a typed line into a browser's voice session is answered, and as ElevenLabs' own preview answers one: writing to him is a way to be heard without speaking, not a request for silence. It used to turn his volume to zero and mime the written line on the sphere, and the user asked for his voice back. So the volume is left alone, and the written line goes through `afterSpokenMessage` rather than `afterMessage`, which shows it without starting the mime — the sphere follows his real voice, and a clock on top of it would keep it moving after he had stopped. The mode is applied whenever the session is connected, so a tap during the greeting lands once it is up, and it is never remembered: every conversation starts in voice.
 
 **It also needs the agent's permission.** A typed conversation is asked for by sending the `text_only` override, and overrides are an allow-list: send one the agent does not permit and the server closes the conversation rather than ignoring it. So the session connects, drops immediately, and — because the SDK reports a server-side close through `onDisconnect` and *not* through `onError` — used to say nothing at all: Jarvis faded out because a conversation really had ended, and no line explained why. The screen listens for the ending now, and `platformSettings.overrides.conversationConfigOverride.conversation.textOnly` is on in `elevenlabs/src/assets/agent-config.json`, which reaches the agent only once that project is deployed.
 

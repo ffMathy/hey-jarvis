@@ -19,7 +19,7 @@ import { CAMERA_NOT_OPENED, NO_PHOTO_TAKEN, NO_UPLOAD_URL, PHOTOS_UNAVAILABLE } 
  * {@link HOLD_A_PHOTO_MS} — or the next request, minutes later, would be answered with it instead
  * of opening the camera.
  *
- * Kept free of React and timers, with the time handed in, like `quiet-hang-up.ts`: what the photo
+ * Kept free of React and timers, with the time handed in: what the photo
  * is, and who is waiting on it, belong to the hook in `camera-tool.ts`; what to do next — and when
  * to look again ({@link nextLook}) — is decided here, where each rule is a test.
  */

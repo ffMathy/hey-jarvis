@@ -1,6 +1,5 @@
 import { useConversationControls, useConversationStatus } from '@elevenlabs/react-native';
 import { OPEN_CAMERA_TOOL } from 'hologram';
-import type { ClientTools } from 'hologram/conversation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   CAMERA_ON_THIS_DEVICE,
@@ -52,16 +51,17 @@ const STILL_HERE_EVERY_MS = 5_000;
  * one (`settings-screen.tsx`). The one change that reaches a conversation still running here is a
  * summoning reading the key again (`app.tsx`), and the tool and `send` read it through a ref for that.
  *
- * `cameraBusy` and `sirAnswered` are for the quiet hang-up. The camera open, or its photo still on
- * the way, is not the room going quiet, so it holds the clock. And sir opening the camera, and his
- * photo arriving, both answer whatever finished request was waiting on quiet: the photo hands Jarvis
- * a new question to ask of it, and an old request still armed would hang up while he asks it.
- * `cameraWanted` is a browser's: the agent has asked, the camera cannot open without a tap there,
- * and the button says so.
+ * **Nothing here holds the call open while sir frames the shot; the agent does.** A finished
+ * request is hung up on by the agent itself, after its `turnTimeout`, and while the camera is open
+ * its `openCamera` call is still waiting — which the prompt counts as the conversation waiting on
+ * him, so a nudge then gets `skip_turn` rather than `end_call`. `cameraBusy` is only for the button,
+ * which fades while the camera is open or its photo is on the way. `cameraWanted` is a browser's:
+ * the agent has asked, the camera cannot open without a tap there, and the button says so.
  *
- * The session options go to `startSession` beside the other hooks' — their `clientTools` merged with
- * `mergeClientTools` and `onMCPToolCall` with `inTurn`, never spread, or one hook's replaces the
- * other's. Both are built once per session and read everything live through refs, the key included.
+ * The session options go to `startSession` beside the other hooks' — `clientTools` as they are,
+ * since this is the only client tool the agent has, and `onMCPToolCall` combined with the sphere's,
+ * never spread, or one replaces the other. Both are built once per session and read everything live
+ * through refs, the key included.
  */
 export function useCameraTool({
   inAssistantWindow,
@@ -96,8 +96,6 @@ export function useCameraTool({
   const [cameraOpen, setCameraOpen] = useState(false);
   const [sending, setSending] = useState(false);
   const [wanted, setWanted] = useState(false);
-  /** Counts sir opening the camera and his photo arriving: each is him answering. See the return. */
-  const [sirAnswered, setSirAnswered] = useState(0);
   /** When the request next needs the clock looked at, if it does. See `nextLook`. */
   const [lookAt, setLookAt] = useState<number | undefined>(undefined);
 
@@ -132,7 +130,6 @@ export function useCameraTool({
           return;
         }
         setSending(false);
-        setSirAnswered((times) => times + 1);
         if ('photoId' in delivery) {
           answer(photoShown(delivery.photoId));
           return;
@@ -207,7 +204,6 @@ export function useCameraTool({
     const photo = takePhoto({ inAssistantWindow, stillTalking: () => takenIn === conversation.current });
     setWanted(false);
     setCameraOpen(true);
-    setSirAnswered((times) => times + 1);
     happen({ type: 'cameraOpened' });
 
     void photo.then((taken) => {
@@ -319,7 +315,7 @@ export function useCameraTool({
             happen({ type: 'asked', at: Date.now() });
           });
         },
-      } satisfies ClientTools,
+      },
       // Every MCP call the agent makes is relayed here; the one that mints an upload URL is kept.
       onMCPToolCall: (mcpToolCall: unknown) => {
         const uploadUrl = readOfferedUploadUrl(mcpToolCall);
@@ -336,7 +332,6 @@ export function useCameraTool({
     cameraBusy: busy,
     cameraWanted: wanted,
     canSendPhotos,
-    sirAnswered,
     showJarvisSomething,
   };
 }

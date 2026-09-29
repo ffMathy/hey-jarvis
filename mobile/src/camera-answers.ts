@@ -137,6 +137,13 @@ export function readOfferedUploadUrl(mcpToolCall: unknown): string | undefined {
   return uploadUrlsIn(mcpToolCall.result, 0)[0];
 }
 
+/**
+ * How a photo that came to nothing ends the conversation: word for word the agent's way of ending a
+ * finished request (`FINISHED_REQUEST_INSTRUCTIONS` in `mcp/mastra/verticals/routing/workflows.ts`).
+ */
+const END_QUIETLY =
+  'If you are asked to speak again before he has said anything, he has nothing more: call end_call without a word.';
+
 /** A tool answer: what the agent should do next, and anything it needs to do it. */
 function answer(fields: Record<string, string>): string {
   return JSON.stringify(fields);
@@ -150,10 +157,15 @@ export function photoShown(photoId: string): string {
   });
 }
 
-/** He closed the camera without taking one. */
+/**
+ * He closed the camera without taking one.
+ *
+ * Nothing is said, and the conversation ends the way a finished request does — the routing's
+ * `FINISHED_REQUEST_INSTRUCTIONS` in `mcp`, which the agent's `turnTimeout` asks it to follow — so
+ * a camera put away is not left as an open line until ElevenLabs' own silence timeout.
+ */
 export const NO_PHOTO_TAKEN = answer({
-  instructions:
-    'Sir closed the camera without taking a photo, so there is nothing to look at. Say nothing about it, and call hangUpWhenQuiet silently.',
+  instructions: `Sir closed the camera without taking a photo, so there is nothing to look at. Say nothing about it. ${END_QUIETLY}`,
 });
 
 /** The photo was taken and could not be sent. */
@@ -199,9 +211,9 @@ export const PHOTOS_UNAVAILABLE = answer({
     'Photos cannot reach you from this phone right now. Tell sir so in one short sentence, and do not call openCamera again in this conversation.',
 });
 
-/** The camera was asked for, and sir never opened it. */
+/** The camera was asked for, and sir never opened it. Ended like {@link NO_PHOTO_TAKEN}. */
 export const CAMERA_NOT_OPENED = answer({
-  instructions: 'Sir did not open the camera. Say nothing about it, and call hangUpWhenQuiet silently.',
+  instructions: `Sir did not open the camera. Say nothing about it. ${END_QUIETLY}`,
 });
 
 /** A second call arrived while this one was still waiting, and the photo goes to that one. */

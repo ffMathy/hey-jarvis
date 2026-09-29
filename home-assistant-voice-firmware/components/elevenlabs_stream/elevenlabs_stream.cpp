@@ -67,16 +67,10 @@ static const uint32_t REPLY_PREBUFFER_MAX_MS = 400;
 // How long to let a short reply finish playing before the speaker is stopped.
 static const uint32_t SPEAKER_DRAIN_TIMEOUT_MS = 3000;
 
-// vad_score above which the quiet window treats the room as occupied: an announcement
-// keeps waiting, and hangUpWhenQuiet is disarmed. The service documents the score as the
-// probability that the user is speaking, so this is "more likely than not". See the VAD
-// handler for why it sits above the LED's 0.25.
+// vad_score above which an announcement treats the room as occupied and keeps waiting.
+// The service documents the score as the probability that the user is speaking, so this
+// is "more likely than not". See the VAD handler for why it sits above the LED's 0.25.
 static const float ANNOUNCEMENT_SPEECH_THRESHOLD = 0.5f;
-
-// Name of the client tool the agent calls at the end of every finished request. It is
-// configured on the agent with expects_response off and the post_tool_speech execution
-// mode, so it arrives once Jarvis has finished speaking and no result is waited for.
-static const char *const HANG_UP_WHEN_QUIET_TOOL = "hangUpWhenQuiet";
 
 // Name of the client tool the agent calls to see something through sir's phone camera.
 // The speaker has no camera, and the agent is told to ask only where the device has said
@@ -91,11 +85,6 @@ static const char *const OPEN_CAMERA_TOOL = "openCamera";
 // the camera.
 static const char *const OPEN_CAMERA_NO_CAMERA_RESULT =
     "{\"instructions\":\"This device has no camera. Tell sir he can show you things from his phone.\"}";
-
-// How long the room must stay quiet after a finished request before the call is hung up.
-// Long enough to start a follow-up without being cut off, short enough that nobody is
-// left wondering whether Jarvis is still listening.
-static const uint32_t HANG_UP_WHEN_QUIET_WINDOW_MS = 3000;
 
 // How long an announcement waits for the agent's first audio before giving up on it.
 static const uint32_t ANNOUNCEMENT_FIRST_AUDIO_TIMEOUT_MS = 20000;
@@ -471,16 +460,14 @@ void ElevenLabsStream::loop() {
     }
   }
 
-  // Hang up if the room stays quiet: after an announcement nobody answers, or after the
-  // agent has finished a request and called hangUpWhenQuiet.
+  // An announcement hangs up if nobody answers it.
   //
   // The clock is held at zero, rather than merely reset, for as long as there is any
   // reason to believe the exchange is still alive: the agent has yet to say anything,
   // its audio is still playing, or the speaker has only just fallen quiet. It starts
-  // running at the first moment none of that is true. For an announcement, vad_score
-  // pushes it back whenever the service thinks it can hear somebody; for hangUpWhenQuiet,
-  // hearing somebody disarms it altogether (see parse_json_message_from_buffer). So the
-  // window measures silence in the room after the agent stopped talking, which is the
+  // running at the first moment none of that is true, and vad_score pushes it back
+  // whenever the service thinks it can hear somebody (see parse_json_message_from_buffer).
+  // So the window measures silence in the room after the announcement, which is the
   // thing actually being asked about.
   if (this->awaiting_response_ && this->response_window_ms_ > 0 && this->state_ == StreamState::ON) {
     // Nothing else bounds an announcement that never gets off the ground -- if the agent
@@ -488,10 +475,7 @@ void ElevenLabsStream::loop() {
     // socket is left open on a conversation nobody in the room is aware of. The bound is
     // loose on purpose: it has to cover the signed URL round trip, the LLM and the first
     // sentence of speech, and it only exists to catch outright failure.
-    //
-    // Announcements only: hangUpWhenQuiet is armed mid-conversation, where the time since
-    // the connection opened says nothing about whether the agent has failed.
-    if (!this->hang_up_when_quiet_ && !this->agent_has_spoken_ &&
+    if (!this->agent_has_spoken_ &&
         millis() - this->connection_start_time_ >= ANNOUNCEMENT_FIRST_AUDIO_TIMEOUT_MS) {
       ESP_LOGW(TAG, "LOOP: Announcement produced no audio within %ums, ending conversation",
                ANNOUNCEMENT_FIRST_AUDIO_TIMEOUT_MS);
@@ -501,11 +485,7 @@ void ElevenLabsStream::loop() {
       return;
     }
 
-    // "Has the agent spoken yet" only matters to an announcement, whose window is armed
-    // before the first word is synthesised. hangUpWhenQuiet is sent after the agent's
-    // speech (post_tool_speech), so for it only audio still playing counts as busy -- a
-    // request that happened to produce no audio must still be allowed to hang up.
-    const bool agent_busy = agent_speaking || (!this->hang_up_when_quiet_ && !this->agent_has_spoken_);
+    const bool agent_busy = !this->agent_has_spoken_ || agent_speaking;
     if (agent_busy) {
       this->silence_started_ms_ = 0;
     } else if (this->silence_started_ms_ == 0) {
@@ -513,10 +493,9 @@ void ElevenLabsStream::loop() {
       ESP_LOGD(TAG, "LOOP: Room is quiet, giving a reply %ums before hanging up",
                this->response_window_ms_);
     } else if (millis() - this->silence_started_ms_ >= this->response_window_ms_) {
-      ESP_LOGI(TAG, "LOOP: No reply within %ums of %s, ending conversation", this->response_window_ms_,
-               this->hang_up_when_quiet_ ? "the finished request" : "the announcement");
+      ESP_LOGI(TAG, "LOOP: No reply within %ums of the announcement, ending conversation",
+               this->response_window_ms_);
       this->awaiting_response_ = false;
-      this->hang_up_when_quiet_ = false;
       this->silence_started_ms_ = 0;
       this->stop_stream();
       return;
@@ -575,7 +554,6 @@ bool ElevenLabsStream::start_stream(const std::string &initial_message, uint32_t
   this->initial_message_ = initial_message;
   this->response_window_ms_ = timeout_ms;
   this->awaiting_response_ = timeout_ms > 0;
-  this->hang_up_when_quiet_ = false;
   this->agent_has_spoken_ = false;
   this->silence_started_ms_ = 0;
   this->end_call_requested_ = false;
@@ -705,10 +683,9 @@ void ElevenLabsStream::stop_stream() {
   this->accumulated_duration_ms_ = 0;
   ESP_LOGD(TAG, "STOP_STREAM: Speaker activity tracking reset");
 
-  // Clear the quiet window too, so a conversation started afterwards by the wake word
-  // cannot inherit a stale one and hang itself up mid-sentence.
+  // Clear the announcement window too, so a conversation started afterwards by the wake
+  // word cannot inherit a stale one and hang itself up mid-sentence.
   this->awaiting_response_ = false;
-  this->hang_up_when_quiet_ = false;
   this->agent_has_spoken_ = false;
   this->silence_started_ms_ = 0;
   this->response_window_ms_ = 0;
@@ -1023,18 +1000,6 @@ void ElevenLabsStream::parse_json_message_from_buffer(uint8_t *buffer, size_t le
   // Handle user transcript
   if (strcmp(type, "user_transcript") == 0) {
     ESP_LOGD(TAG, "PARSE_JSON_BUF: Processing user_transcript");
-
-    // The user took a turn after a finished request, so this is a new request: stand the
-    // hangUpWhenQuiet window down until the agent finishes that one and calls it again.
-    // Any transcript counts, even an empty or malformed one -- the service has opened a
-    // user turn either way, and hanging up underneath it would cut off the reply.
-    if (this->awaiting_response_ && this->hang_up_when_quiet_) {
-      ESP_LOGI(TAG, "PARSE_JSON_BUF: User spoke after a finished request, disarming hangUpWhenQuiet");
-      this->awaiting_response_ = false;
-      this->hang_up_when_quiet_ = false;
-      this->silence_started_ms_ = 0;
-    }
-
     JsonObject transcript = root["user_transcription_event"];
     if (transcript) {
       const char* user_transcript = transcript["user_transcript"];
@@ -1044,9 +1009,9 @@ void ElevenLabsStream::parse_json_message_from_buffer(uint8_t *buffer, size_t le
         // Somebody answered the announcement, so stop policing it. A transcript is the
         // one unambiguous signal available -- vad_score only ever says something
         // speech-shaped was heard -- and past this point the exchange is an ordinary
-        // conversation, which from now on hangs up only when the agent says a request
-        // is finished (hangUpWhenQuiet), not by a window meant to catch an empty room.
-        if (this->awaiting_response_ && !this->hang_up_when_quiet_ && user_transcript[0] != '\0') {
+        // conversation that should live or die by the agent's own settings, not by a
+        // three second window meant to catch an empty room.
+        if (this->awaiting_response_ && user_transcript[0] != '\0') {
           ESP_LOGI(TAG, "PARSE_JSON_BUF: Announcement was answered, dropping the reply window");
           this->awaiting_response_ = false;
           this->silence_started_ms_ = 0;
@@ -1104,27 +1069,15 @@ void ElevenLabsStream::parse_json_message_from_buffer(uint8_t *buffer, size_t le
 
       this->last_vad_score_ = vad_score;
 
-      // Hold off the hang-up while the service thinks it can hear someone.
+      // Hold off the announcement hang-up while the service thinks it can hear someone.
       //
       // Deliberately a stricter threshold than the ring's 0.25. The LED is meant to be
       // twitchy -- lighting up early feels responsive and costs nothing if it is wrong
       // -- but the same twitchiness applied here would let a fridge hum or a passing car
       // hold the call open indefinitely. This only needs to catch a person starting to
       // answer, and a false negative merely ends a conversation nobody was having.
-      //
-      // The two windows part ways here. An announcement is still waiting for a real
-      // answer, so speech only pushes its clock back and a transcript decides the rest.
-      // After hangUpWhenQuiet, speech is the start of a follow-up request, so the window
-      // is disarmed outright -- a follow-up that pauses mid-sentence for three seconds
-      // must not be hung up on -- and the agent re-arms it once that request is done.
-      // Scores arriving while the speaker is active never reach this point (see above),
-      // so Jarvis's own voice cannot disarm it.
       if (this->awaiting_response_ && vad_score >= ANNOUNCEMENT_SPEECH_THRESHOLD) {
-        if (this->hang_up_when_quiet_) {
-          ESP_LOGI(TAG, "PARSE_JSON_BUF: Speech detected (VAD %.2f), disarming hangUpWhenQuiet", vad_score);
-          this->awaiting_response_ = false;
-          this->hang_up_when_quiet_ = false;
-        } else if (this->silence_started_ms_ != 0) {
+        if (this->silence_started_ms_ != 0) {
           ESP_LOGD(TAG, "PARSE_JSON_BUF: Speech detected (VAD %.2f), holding the announcement open",
                    vad_score);
         }
@@ -1216,7 +1169,8 @@ void ElevenLabsStream::parse_json_message_from_buffer(uint8_t *buffer, size_t le
 
   // Client tools are tools the agent asks the device to run. The shape is
   // {"type":"client_tool_call","client_tool_call":{"tool_name":...,"tool_call_id":...,
-  // "parameters":{...}}}, per ElevenLabs' client events documentation.
+  // "parameters":{...}}}, per ElevenLabs' client events documentation. The only one the
+  // agent has is openCamera, which is the phone's.
   if (strcmp(type, "client_tool_call") == 0) {
     ESP_LOGD(TAG, "PARSE_JSON_BUF: Processing client_tool_call: '%s'", json_str.c_str());
     JsonObject tool_call = root["client_tool_call"];
@@ -1226,40 +1180,10 @@ void ElevenLabsStream::parse_json_message_from_buffer(uint8_t *buffer, size_t le
       return;
     }
 
-    // hangUpWhenQuiet: the agent has finished a request, so end the call if the room
-    // stays quiet for HANG_UP_WHEN_QUIET_WINDOW_MS. loop() does the timing and the
-    // teardown -- stop_stream() destroys the websocket client, and this runs on the
-    // websocket's own task.
-    //
-    // No client_tool_result is sent back. The tool is configured with expects_response
-    // off, so the agent is not waiting for one, and a result it did not ask for could
-    // be taken as a new turn and set it talking again.
-    if (strcmp(tool_name, HANG_UP_WHEN_QUIET_TOOL) == 0) {
-      // An announcement that is still waiting for its first answer keeps its own window.
-      // Its rules -- its own length, speech only pushing the clock back -- are what an
-      // unanswered announcement needs, and the agent may well call this right after the
-      // announcement itself.
-      if (this->awaiting_response_ && !this->hang_up_when_quiet_) {
-        ESP_LOGD(TAG, "PARSE_JSON_BUF: %s while an announcement awaits a reply; keeping its window",
-                 HANG_UP_WHEN_QUIET_TOOL);
-        return;
-      }
-
-      ESP_LOGI(TAG, "PARSE_JSON_BUF: Agent finished the request; hanging up after %ums of quiet",
-               HANG_UP_WHEN_QUIET_WINDOW_MS);
-      // awaiting_response_ goes last, so loop() never sees the window armed with the
-      // previous length or mode.
-      this->response_window_ms_ = HANG_UP_WHEN_QUIET_WINDOW_MS;
-      this->silence_started_ms_ = 0;
-      this->hang_up_when_quiet_ = true;
-      this->awaiting_response_ = true;
-      return;
-    }
-
-    // openCamera: the agent wants a photo, and this device cannot take one. Unlike
-    // hangUpWhenQuiet the agent is waiting for a result, so it gets one straight away --
-    // a successful answer carrying instructions, not an error, because a missing camera
-    // is an outcome for the agent to relay rather than a failure to retry.
+    // openCamera: the agent wants a photo, and this device cannot take one. The agent is
+    // waiting for a result, so it gets one straight away -- a successful answer carrying
+    // instructions, not an error, because a missing camera is an outcome for the agent to
+    // relay rather than a failure to retry.
     if (strcmp(tool_name, OPEN_CAMERA_TOOL) == 0) {
       const char* tool_call_id = tool_call["tool_call_id"].as<const char*>();
       if (tool_call_id == nullptr) {

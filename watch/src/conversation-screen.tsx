@@ -7,16 +7,7 @@ import {
   WATCH_PARTICIPANT_NAME,
   WATCH_PARTICLE_COUNT,
 } from 'hologram';
-import {
-  type ClientTools,
-  inTurn,
-  mergeClientTools,
-  useAgentVoice,
-  useGreeting,
-  useHangUpWhenQuiet,
-  useToolActivity,
-  useUserVoice,
-} from 'hologram/conversation';
+import { useAgentVoice, useGreeting, useToolActivity, useUserVoice } from 'hologram/conversation';
 import { JarvisHologram } from 'hologram/react';
 import { useIsForeground } from 'hologram/react/lifecycle';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -41,7 +32,7 @@ interface ConversationScreenProps {
  * registered through `onError`, and that would put the SDK's own sentence on the face in red. See
  * `camera-request.ts` in `hologram`, and `camera-answers.ts` in `mobile` for the device that has one.
  */
-const NO_CAMERA: ClientTools = { [OPEN_CAMERA_TOOL]: () => NO_CAMERA_HERE };
+const NO_CAMERA = { [OPEN_CAMERA_TOOL]: () => NO_CAMERA_HERE };
 
 /**
  * How long to wait for Wi-Fi or cellular to come up before trying the conversation anyway.
@@ -169,21 +160,6 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
     [reportProblem],
   );
 
-  /**
-   * Hangs up once a finished request is followed by three seconds of quiet — the agent's
-   * `hangUpWhenQuiet` client tool, answered here. See `useHangUpWhenQuiet` in `hologram/conversation`.
-   *
-   * It ends the conversation the way it ends when the agent hangs up: the session goes, and the
-   * network is let go on the way down from live (below). He stays on the screen, as he does then,
-   * and dropping the wrist is still what puts the watch away.
-   */
-  const hangUpQuietly = useCallback(() => {
-    setConnectingUntil(undefined);
-    stopGreeting();
-    endSession();
-  }, [endSession, stopGreeting]);
-  const { quietSessionOptions } = useHangUpWhenQuiet({ hangUp: hangUpQuietly });
-
   const start = useCallback(async () => {
     setProblem(undefined);
     setOnThePhone(false);
@@ -238,12 +214,8 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
         onDisconnect: reportEnding,
         ...toolHandlers,
         ...userVoiceHandlers,
-        // The client tool, and what tells it the wearer has answered.
-        ...quietSessionOptions,
-        // Both answered here — the camera with "there is none" — and a second spread would drop one.
-        clientTools: mergeClientTools(quietSessionOptions.clientTools, NO_CAMERA),
-        // The listening lattice and the quiet hang-up hear the wearer through the same score.
-        onVadScore: inTurn(userVoiceHandlers.onVadScore, quietSessionOptions.onVadScore),
+        // The one client tool the agent has, answered with "there is none".
+        clientTools: NO_CAMERA,
         ...(greeted ? greetingSessionOptions : {}),
       });
     } catch (error: unknown) {
@@ -266,7 +238,6 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
     greetingSessionOptions,
     toolHandlers,
     userVoiceHandlers,
-    quietSessionOptions,
     reportProblem,
     reportEnding,
   ]);

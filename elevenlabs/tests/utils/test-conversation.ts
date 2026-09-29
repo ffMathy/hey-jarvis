@@ -141,7 +141,7 @@ export class TestConversation {
   }
 
   /**
-   * Names of the client tools the agent invoked — `openCamera`, `hangUpWhenQuiet` — which the
+   * Names of the client tools the agent invoked — `openCamera`, the only one it has — which the
    * device answers rather than a server, so they arrive as `client_tool_call` events.
    */
   getInvokedClientToolNames(): string[] {

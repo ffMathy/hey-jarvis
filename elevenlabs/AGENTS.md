@@ -142,6 +142,19 @@ Anything changed here reaches the agent only through `bunx turbo deploy --filter
 needs the 1Password credentials. Until that runs, the committed config and the live agent disagree,
 and it is the live one the app talks to.
 
+## The voice model
+
+`conversationConfig.tts.modelId` is `eleven_v4_turbo`, Eleven v4 Turbo: the low-latency variant of
+Eleven v4 that ElevenAgents recommends for live conversation. It keeps the audio tags
+(`suggestedAudioTags`) the prompt relies on, as `eleven_v3_conversational` did before it.
+
+The SDK lags the API here. `@elevenlabs/elevenlabs-js` validates the request against enums frozen at
+its release, and no published version lists `eleven_v4_turbo` yet, so a plain `agents.update` throws
+`Expected enum` before sending anything. `deployConfig` therefore serializes `conversationConfig`
+itself through `toConversationConfigBody`, which lets unknown enum values through, and sends it as an
+additional body parameter. Once the SDK knows the model the workaround is harmless; keep it anyway,
+because the next model will outrun the SDK the same way.
+
 ## The conversational model
 
 `conversationConfig.agent.prompt.llm` in `src/assets/agent-config.json` names the
@@ -203,26 +216,23 @@ this one included, until they run.
 ## Hanging up when he goes quiet
 
 A finished request should not leave the line open until the 30-second `silenceEndCallTimeout`
-gives up on it. So every finished request — answered, failed, or handed off to a notification —
-ends with the routing loop telling Jarvis to call **`hangUpWhenQuiet`**, a client tool declared in
-`agent-config.json` (`expectsResponse: false`, `executionMode: post_tool_speech`). The client keeps
-the clock, because only the client knows when Jarvis has stopped talking and whether sir has said
-anything since: three seconds of quiet ends the call, and anything he says first disarms it. The
-phone and watch apps handle it in `hologram/conversation`, the Voice speaker in its firmware. A
-request still waiting on him — a question, a slow-work offer — never carries it.
+gives up on it. So the agent has **`turnTimeout: 3`**: after three seconds of silence, ElevenLabs asks
+Jarvis to speak again. The prompt's **When Sir Is Silent** section and the `end_call`/`skip_turn`
+descriptions tell him what that means — after a finished request, `end_call` without a word; while
+the conversation waits on sir, `skip_turn`. Every finished request — answered, failed, or handed off
+to a notification — also ends with the routing loop's `FINISHED_REQUEST_INSTRUCTIONS`, which says
+the same and forbids ending on a question or an offer, since the line closes while he is still
+answering it. A request still waiting on him never carries it.
 
-A telephone call has no client to keep that clock, so the agent also has **`turnTimeout: 3`**: after
-three seconds of silence, ElevenLabs asks Jarvis to speak again. The prompt's **When Sir Is Silent**
-section and the `end_call`/`skip_turn` descriptions tell him what that means — after a finished
-request, `end_call` without a word; while the conversation waits on sir, `skip_turn`. That setting
-is agent-wide, so it applies on every medium, where the client usually wins the race by a model
-round trip. `initialWaitTime: 30` keeps it from firing at the start of a session whose first
-message is empty (the apps play a recorded greeting instead). If the model ever fills those
-silences with "are you still there?", `turnTimeout: -1` switches the whole mechanism off again and
-leaves the client tool doing the work where there is a client.
+That setting is agent-wide, so it is the one mechanism on every medium: the apps, the Voice speaker
+and a telephone call alike. `initialWaitTime: 30` keeps it from firing at the start of a session
+whose first message is empty (the apps play a recorded greeting instead). If the model ever fills
+those silences with "are you still there?", `turnTimeout: -1` switches it off again — and with it
+every hang-up after a finished request, so that is a trade, not a fix.
 
-The test agent keeps its client tools (`applyTestAgentOverrides` in `src/main.ts`): the loop names
-`hangUpWhenQuiet`, and an agent without it would be tested against an instruction it cannot follow.
+There used to be a second mechanism, the `hangUpWhenQuiet` client tool, that armed a three-second
+clock on the device itself. It was removed: the agent asked for it, the phone, watch and firmware
+each kept their own copy of the clock, and `turnTimeout` already did the same job everywhere.
 
 ### What belongs in the routing instructions instead
 
@@ -278,9 +288,8 @@ update once connected — but only once it holds the **photo upload key** the Ma
 before it takes a photo (`HEY_JARVIS_PHOTO_UPLOAD_KEY` there, typed into the phone's settings); a
 phone without it says nothing, and is never asked. The gate is stated in the prompt's
 `preparePhotoUpload` entry alone.
-`openCamera` is only ever called when `preparePhotoUpload`'s instructions say to — the way
-`hangUpWhenQuiet` is only called when the routing instructions say to — so its entry and its
-description need no gate of their own, and repeating it there is how the two copies drift apart. The
+`openCamera` is only ever called when `preparePhotoUpload`'s instructions say to, so its entry and
+its description need no gate of their own, and repeating it there is how the two copies drift apart. The
 watch and the speaker still answer a stray `openCamera` with "no camera here", rather than leave the
 agent in two minutes of silence.
 

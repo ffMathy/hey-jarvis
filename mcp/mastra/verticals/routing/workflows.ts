@@ -210,32 +210,24 @@ function speakingInstructions(style: ResponseStyle): string {
 }
 
 /**
- * The client tool that ends the call a few seconds after Jarvis finishes, unless sir speaks.
- *
- * Declared on the agent in `elevenlabs/src/assets/agent-config.json` and handled by every client
- * that can hear sir -- the phone and watch apps through `hologram/conversation`, the Voice speaker
- * in its firmware. Its name has to match in all of those places.
+ * What ends every finished request: nothing more to say, and a silent hang-up if sir has nothing
+ * more either.
  *
  * A finished request is where a call most often dies of politeness: Jarvis has answered, sir has
  * what he came for, and the line stays open until a thirty-second silence timeout gives up on it.
- * The client, not the model, keeps the clock, because only the client knows when Jarvis has
- * actually stopped talking and whether sir has said anything since.
- */
-export const HANG_UP_WHEN_QUIET_TOOL = 'hangUpWhenQuiet';
-
-/**
- * What ends every finished request: the silent hand-off to the hang-up, and the one fallback for a
- * call with no client to keep the clock.
+ * The agent's turn timeout is what closes it instead. After a few seconds of silence it asks Jarvis
+ * to speak again, and at that point, with nothing new from sir, the right thing to say is nothing,
+ * and to hang up. That holds on every medium alike, a telephone call included.
  *
- * A telephone call has no app on the other end, so nothing handles the client tool there. What it
- * has instead is the agent's turn timeout, which asks Jarvis to speak again after a short silence
- * -- and at that point, with nothing new from sir, the right thing to say is nothing, and to hang up.
+ * It also rules out ending on an offer. A coding session's result said it would report back, and
+ * Jarvis turned that into "shall I let you know when it is done?" and then, as told here, hung up
+ * -- which closed the line while sir was still saying yes.
  */
-const HANG_UP_WHEN_QUIET_INSTRUCTIONS =
-  `Once you have said it, call ${HANG_UP_WHEN_QUIET_TOOL}, silently and without announcing it. It does not ` +
-  'hang up by itself: the call ends only if he then stays quiet for a few seconds, so it never cuts him off, and ' +
-  'anything he says first keeps the line open. If you are asked to speak again before he has said anything, he ' +
-  'has nothing more: call end_call without a word. ';
+export const FINISHED_REQUEST_INSTRUCTIONS =
+  'Once you have said it, stop. If you are asked to speak again before he has said anything, he has nothing ' +
+  'more: call end_call without a word. Because of that, never end what you say here on a question or an ' +
+  'offer — "shall I let you know when it is done?" — since the line closes while he is still answering it. State ' +
+  'what will happen instead; work that tells him when it is done says so in its result. ';
 
 /**
  * The recap is for results that never reached Jarvis, not for results he already spoke. "Do not
@@ -260,7 +252,7 @@ function recapInstructions(style: ResponseStyle): string {
 function allTasksCompletedInstructions(style: ResponseStyle): string {
   return (
     `All tasks have completed. ${recapInstructions(style)}` +
-    HANG_UP_WHEN_QUIET_INSTRUCTIONS +
+    FINISHED_REQUEST_INSTRUCTIONS +
     'That finishes this request, but not the conversation: if the user asks for anything further, ' +
     'send it through routePromptWorkflow exactly as you did this one, however small it sounds and ' +
     'however many times you have already done it. Answering a later request from ' +
@@ -350,7 +342,7 @@ function notifyWhenDoneInstructions(hasResults: boolean, style: ResponseStyle): 
     'The user will be notified when this request is done — with its results, or with any question it needs him to ' +
     'answer. Tell him so in a few words. It carries on in the background whatever else he asks for, so stop calling ' +
     'getNextInstructionsWorkflow for it. ' +
-    HANG_UP_WHEN_QUIET_INSTRUCTIONS +
+    FINISHED_REQUEST_INSTRUCTIONS +
     'If he asks for anything further, send it through routePromptWorkflow as usual. ' +
     CONVERSATION_CONTROL_EXCEPTION
   );
@@ -446,7 +438,7 @@ function buildClosingReport(snapshot: RoutingSnapshot): z.infer<typeof instructi
         `done, then anything that did finish: ${speakingInstructions(snapshot.responseStyle)} ` +
         (snapshot.earlierQuestions.length > 0
           ? earlierQuestionsAfterFailure() + CONVERSATION_CONTROL_EXCEPTION
-          : HANG_UP_WHEN_QUIET_INSTRUCTIONS + CONVERSATION_CONTROL_EXCEPTION),
+          : FINISHED_REQUEST_INSTRUCTIONS + CONVERSATION_CONTROL_EXCEPTION),
       ...(answered.length > 0 && {
         completedTaskResults: answered.map((outcome) => ({ id: outcome.taskId, result: outcome.result })),
       }),

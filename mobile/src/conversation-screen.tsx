@@ -6,14 +6,7 @@ import {
   requestConversationToken,
   requestSignedConversationUrl,
 } from 'hologram';
-import {
-  inTurn,
-  mergeClientTools,
-  useGreeting,
-  useHangUpWhenQuiet,
-  useToolActivity,
-  useUserVoice,
-} from 'hologram/conversation';
+import { useGreeting, useToolActivity, useUserVoice } from 'hologram/conversation';
 import { LEAVING_SECONDS } from 'hologram/react/lifecycle';
 import { useSimulatedVoice } from 'hologram/react/sample';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -34,7 +27,7 @@ import { QUIETEST_SPEECH_HERE } from './speech-floor';
 import { useTextMode } from './text-mode';
 import { theme } from './theme';
 import { TypedMessageField } from './typed-message-field';
-import { afterMessage, SAYING_NOTHING } from './written-reply';
+import { afterMessage, afterSpokenMessage, SAYING_NOTHING } from './written-reply';
 import { WrittenReplyLine } from './written-reply-line';
 
 interface ConversationScreenProps {
@@ -267,22 +260,28 @@ export function ConversationScreen({
   // refused, which says that in one line and is done. See `start` below.
   const [canType, setCanType] = useState(false);
   /**
-   * The last thing Jarvis said, on the one conversation where he says it in writing.
+   * The last thing Jarvis said, in the conversations where you are writing to him.
    *
-   * Only ever set from the text-only session — see `written-reply.ts`. In a voice conversation his
-   * answer is his voice, and putting it on screen as well would be a transcript under a sphere
-   * drawn precisely so there would not have to be one.
+   * Set from the text-only session, and from a phone's voice session while it is held in writing —
+   * see `written-reply.ts` and `text-mode.ts`. In a spoken conversation his answer is his voice, and
+   * putting it on screen as well would be a transcript under a sphere drawn precisely so there
+   * would not have to be one.
    */
   const [writtenReply, setWrittenReply] = useState(SAYING_NOTHING);
   const rememberWhatHeSaid = useCallback((incoming: { message: string; role: string }) => {
     setWrittenReply((reply) => afterMessage(reply, incoming, Date.now()));
+  }, []);
+  // Held in writing, a phone still hears him, so his line is shown but not mimed: the sphere
+  // follows his real voice. See `afterSpokenMessage`.
+  const rememberWhatHeSaidAloud = useCallback((incoming: { message: string; role: string }) => {
+    setWrittenReply((reply) => afterSpokenMessage(reply, incoming));
   }, []);
   // Tapping him switches a phone's conversation between talking and writing. See `text-mode.ts`.
   const clearWrittenReply = useCallback(() => setWrittenReply(SAYING_NOTHING), []);
   const { textMode, toggleTextMode, resetTextMode, rememberInTextMode } = useTextMode({
     connected: status === 'connected',
     onSwitch: clearWrittenReply,
-    remember: rememberWhatHeSaid,
+    remember: rememberWhatHeSaidAloud,
   });
   /**
    * When to stop waiting for the conversation to open, or `undefined` once nothing is waited for.
@@ -327,9 +326,10 @@ export function ConversationScreen({
    * **It is a fiction, and only ever where there is nothing to be honest about.** The words are
    * really his; only the delivery is invented, and it is invented only in the session ElevenLabs
    * was asked not to speak in. A conversation with a voice never reaches this: `readingAloud` is
-   * set from `onMessage`, which is wired on the text-only session alone, so the sphere goes on
-   * following his real voice everywhere else — where it would be wrong to overrule it with a
-   * clock.
+   * only ever set by the text-only session's `onMessage`, and a phone held in writing — which
+   * still speaks — shows his line through `afterSpokenMessage`, which never sets it. So the sphere
+   * goes on following his real voice everywhere else, where it would be wrong to overrule it with
+   * a clock.
    */
   const simulatedVoice = useSimulatedVoice(readingAloud ? 'speaking' : undefined);
   /**
@@ -340,8 +340,9 @@ export function ConversationScreen({
   const voice = readingAloud ? simulatedVoice : greeting ? greetingVoice : liveVoice;
 
   /**
-   * Hangs up, whoever asks: the user tapping beside the sheet or pressing back, or the quiet after a
-   * finished request (below).
+   * Hangs up when the user asks: tapping beside the sheet or pressing back. The quiet after a
+   * finished request is not the screen's to judge — the agent ends that call itself, with its
+   * `turnTimeout` and `end_call`.
    *
    * Summoned, there is a window to retract as well, and nothing behind it but what the user was
    * doing before — so the end of the conversation is the end of the window. Opened as an app or in
@@ -357,20 +358,26 @@ export function ConversationScreen({
   }, [endSession, stopGreeting]);
 
   /**
-   * Hanging up once a finished request is followed by quiet. At the end of every request the agent
-   * calls its `hangUpWhenQuiet` client tool, and three seconds of nobody saying anything after he
-   * has finished ends the call exactly as tapping beside the sheet would. See `useHangUpWhenQuiet`.
-   *
-   * An answer he is still miming in writing keeps it waiting, since it is still on screen being read
-   * and would leave with him; so does the camera, open or still sending what it took.
+   * The camera the agent may ask for with its `openCamera` client tool, and the faint button beside
+   * him that opens it from sir's side. See `camera-tool.ts`.
    */
-  const { cameraSessionOptions, cameraBusy, cameraWanted, canSendPhotos, sirAnswered, showJarvisSomething } =
-    useCameraTool({ inAssistantWindow, photoUploadKey });
-  const { quietSessionOptions, heardTheUser } = useHangUpWhenQuiet({
-    hangUp: hangUpSession,
-    busy: readingAloud || cameraBusy,
-    answered: sirAnswered,
+  const { cameraSessionOptions, cameraBusy, cameraWanted, canSendPhotos, showJarvisSomething } = useCameraTool({
+    inAssistantWindow,
+    photoUploadKey,
   });
+
+  /**
+   * Every MCP call the agent makes, handed to both that want it: the sphere thinks while one runs,
+   * and the camera keeps the upload URL `preparePhotoUpload` mints. `startSession` takes one handler
+   * per event, so two spread side by side would leave only the second.
+   */
+  const onMCPToolCall = useCallback(
+    (mcpToolCall: Parameters<typeof toolHandlers.onMCPToolCall>[0]) => {
+      toolHandlers.onMCPToolCall(mcpToolCall);
+      cameraSessionOptions.onMCPToolCall(mcpToolCall);
+    },
+    [toolHandlers, cameraSessionOptions],
+  );
 
   /**
    * Sends what was typed, and forgets the answer to the last thing.
@@ -382,17 +389,13 @@ export function ConversationScreen({
    * the question you just asked for as long as Jarvis took to answer it, reading as his reply to
    * it. `afterMessage` still handles a user line for the session that does echo one; this is what
    * makes the screen right in the session that does not.
-   *
-   * For the same reason it is the screen that tells the quiet hang-up the user has answered: a line
-   * that is never echoed back is never heard by it either.
    */
   const sendTypedMessage = useCallback(
     (message: string) => {
-      heardTheUser();
       setWrittenReply(SAYING_NOTHING);
       sendUserMessage(message);
     },
-    [sendUserMessage, heardTheUser],
+    [sendUserMessage],
   );
 
   const launchUrl = Linking.useURL();
@@ -478,18 +481,12 @@ export function ConversationScreen({
         onError: reportSessionFailure,
         onDisconnect: reportEnding,
         ...toolHandlers,
-        // The sphere thinks while an MCP tool runs, and the camera keeps the upload URL one mints.
-        onMCPToolCall: inTurn(toolHandlers.onMCPToolCall, cameraSessionOptions.onMCPToolCall),
+        onMCPToolCall,
         ...playbackHandlers,
         ...userVoiceHandlers,
-        // The client tool, and the two handlers below that both it and something else want.
-        ...quietSessionOptions,
-        // Both hooks answer a client tool, and a second `clientTools` spread would drop the first.
-        clientTools: mergeClientTools(quietSessionOptions.clientTools, cameraSessionOptions.clientTools),
-        // The listening lattice and the quiet hang-up hear the user through the same score.
-        onVadScore: inTurn(userVoiceHandlers.onVadScore, quietSessionOptions.onVadScore),
+        clientTools: cameraSessionOptions.clientTools,
         // Only kept while the conversation is held in writing; see `text-mode.ts`.
-        onMessage: inTurn(rememberInTextMode, quietSessionOptions.onMessage),
+        onMessage: rememberInTextMode,
         ...(greeted ? greetingSessionOptions : {}),
       });
     },
@@ -502,7 +499,7 @@ export function ConversationScreen({
       toolHandlers,
       playbackHandlers,
       userVoiceHandlers,
-      quietSessionOptions,
+      onMCPToolCall,
       cameraSessionOptions,
       rememberInTextMode,
       reportSessionFailure,
@@ -585,16 +582,13 @@ export function ConversationScreen({
           onError: reportSessionFailure,
           onDisconnect: reportEnding,
           ...toolHandlers,
-          onMCPToolCall: inTurn(toolHandlers.onMCPToolCall, cameraSessionOptions.onMCPToolCall),
-          // Hung up on quiet here too. Nothing is spoken or scored in this session, so it is three
-          // seconds after the call — counted once he has finished miming his written answer —
-          // unless a line is typed.
-          ...quietSessionOptions,
+          onMCPToolCall,
           // The camera too: a browser's picker takes a photo in writing as readily as in voice.
-          clientTools: mergeClientTools(quietSessionOptions.clientTools, cameraSessionOptions.clientTools),
-          // The only place this is asked for, because it is the only place there is anything to
-          // read: his reply arrives written here and as audio everywhere else.
-          onMessage: inTurn(rememberWhatHeSaid, quietSessionOptions.onMessage),
+          clientTools: cameraSessionOptions.clientTools,
+          // The only place his line is mimed as well as shown, because it is the only place there
+          // is no voice for the sphere to follow: his reply arrives written here and as audio
+          // everywhere else.
+          onMessage: rememberWhatHeSaid,
         });
       }
       setCanType(true);
@@ -615,7 +609,7 @@ export function ConversationScreen({
     releaseCallAudio,
     resetTextMode,
     toolHandlers,
-    quietSessionOptions,
+    onMCPToolCall,
     cameraSessionOptions,
     reportProblem,
     reportSessionFailure,
@@ -840,8 +834,6 @@ export function ConversationScreen({
       {showsTypedField({ canType, gone, textMode }) ? (
         <TypedMessageField
           onSend={sendTypedMessage}
-          // Someone writing an answer has answered, as far as the quiet hang-up is concerned.
-          onTyping={heardTheUser}
           enabled={status === 'connected'}
           opening={connectingUntil !== undefined}
           // Switched into writing with a tap, the keyboard is what was asked for.

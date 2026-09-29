@@ -10,27 +10,18 @@ name: Mobile Web
 # gesture is Android's alone and the app says so when it is on web, so the page
 # is for looking at Jarvis and talking to him, not for replacing your assistant.
 #
-# Runs on main, and by hand from any branch — which is the useful one while the
-# hologram is being worked on, since a branch's build can be put up and looked at
-# without merging it first. Pages keeps one live site, so the last run wins.
+# Runs only for a release: `release.yml` calls it once Release Please has tagged
+# one, handing it the tagged commit, so the page always shows what was released.
+# Pushes and pull requests publish nothing. It can still be started by hand from
+# the Actions tab. Pages keeps one live site, so the last run wins.
 on:
-  push:
-    # Working branches as well as main: the point of the page is to look at the
-    # hologram while it is being changed, and a workflow can only be started by
-    # hand if it is on the default branch — which a branch's version never is.
-    # Pages keeps one live site, so whichever pushed last is what is up.
-    branches: [ main, 'claude/**' ]
-    paths:
-      - 'mobile/**'
-      # The sphere itself lives in its own package now, shared with the watch.
-      - 'hologram/**'
-      - 'bun.lock'
-      - 'bunfig.toml'
-      - 'package.json'
-      - 'turbo.json'
-      - '.github/workflows/mobile-web.yml'
-      # The lockfile pins the actions this workflow runs, so it changes what runs.
-      - '.github/workflows/actions.lock'
+  workflow_call:
+    inputs:
+      ref:
+        description: 'The commit to build. Release passes the tagged one, which is not the commit its run started from.'
+        type: string
+        required: false
+        default: ''
   workflow_dispatch:
 
 # Least privilege by default: the job below opts into exactly what it needs.
@@ -63,6 +54,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6.1.0
         with:
+          # Empty for a manual run, which takes the commit that started it. Release
+          # passes the tagged commit — see `deploy` in `release.yml` for why.
+          ref: ${{ inputs.ref }}
           # Nothing here needs to push; never leave a usable token in .git/config.
           persist-credentials: false
 

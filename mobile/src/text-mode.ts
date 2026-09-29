@@ -1,4 +1,4 @@
-import { useConversationControls, useConversationInput } from '@elevenlabs/react-native';
+import { useConversationInput } from '@elevenlabs/react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 
@@ -22,9 +22,13 @@ interface TextModeOptions {
  *
  * **A phone cannot switch to the text-only session a browser falls back to** —
  * `@elevenlabs/react-native` refuses WebSocket sessions on a device — so the voice session stays up
- * and is made into a written one: the microphone is muted, his voice turned down to nothing, the
- * field put under him and his answers written above it, with the sphere miming them from the clock
- * exactly as it does in a browser's text-only session. Tapping him again undoes all of it.
+ * and only the half that listens is switched off: the microphone is muted, the field put under him,
+ * and his answers are written above it as well as spoken. Tapping him again undoes all of it.
+ *
+ * **He still answers out loud**, as he does when you type to him in a browser or in ElevenLabs' own
+ * preview: writing to him is a way to be heard without speaking, not a request for silence. So his
+ * volume is never touched, and the sphere follows his real voice rather than miming the written
+ * line — see `afterSpokenMessage` in `written-reply.ts`.
  *
  * **It is never remembered.** Every conversation starts in voice — the screen calls `resetTextMode`
  * as it starts one — because the gesture that summons him is a request to be talked to, and a mode
@@ -36,7 +40,6 @@ interface TextModeOptions {
  * refused microphone.
  */
 export function useTextMode({ connected, onSwitch, remember }: TextModeOptions) {
-  const { setVolume } = useConversationControls();
   const { setMuted } = useConversationInput();
   const [textMode, setTextMode] = useState(false);
   /** The same fact, for the session's message callback, which must see it without a render. */
@@ -69,11 +72,10 @@ export function useTextMode({ connected, onSwitch, remember }: TextModeOptions) 
     }
     try {
       setMuted(textMode);
-      setVolume({ volume: textMode ? 0 : 1 });
     } catch {
       // The session went between the status and this; the next one starts in voice anyway.
     }
-  }, [textMode, connected, setMuted, setVolume]);
+  }, [textMode, connected, setMuted]);
 
   return { textMode, toggleTextMode, resetTextMode, rememberInTextMode };
 }

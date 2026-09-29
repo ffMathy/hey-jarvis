@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { HANG_UP_WHEN_QUIET_TOOL, OPEN_CAMERA_TOOL } from 'hologram';
+import { OPEN_CAMERA_TOOL } from 'hologram';
 import {
   CAMERA_NOT_OPENED,
   CAMERA_ON_THIS_DEVICE,
@@ -126,9 +126,15 @@ describe('what the agent is told', () => {
   });
 
   it('ends a conversation that was only a photo not taken the way a finished request ends', () => {
-    // Otherwise "say nothing" leaves the line open until ElevenLabs' own silence timeout.
+    // Otherwise "say nothing" leaves the line open until ElevenLabs' own silence timeout. The
+    // routing's own ending is the one the agent already follows, so it is repeated word for word.
+    const routing = readFileSync(join(import.meta.dir, '../../mcp/mastra/verticals/routing/workflows.ts'), 'utf8');
     for (const nothingToSee of [NO_PHOTO_TAKEN, CAMERA_NOT_OPENED]) {
-      expect(JSON.parse(nothingToSee).instructions).toContain(HANG_UP_WHEN_QUIET_TOOL);
+      const { instructions } = JSON.parse(nothingToSee);
+      expect(instructions).toContain('call end_call without a word');
+      expect(routing.replace(/'\s*\+\s*'/g, '')).toContain(
+        instructions.slice(instructions.indexOf('If you are asked')),
+      );
     }
   });
 

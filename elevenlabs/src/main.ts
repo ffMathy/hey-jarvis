@@ -3,10 +3,12 @@
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import {
   ClientEvent,
+  type ConversationalConfig,
   type GetAgentResponseModel,
   type ProcedureRefResponseModel,
   type ProcedureVersionRef,
 } from '@elevenlabs/elevenlabs-js/api';
+import * as serialization from '@elevenlabs/elevenlabs-js/serialization';
 import { Command } from 'commander';
 import { access, mkdir, readFile, writeFile } from 'fs/promises';
 import * as path from 'path';
@@ -17,6 +19,25 @@ import { cwd } from 'process';
  * running server, kept separate from the one production uses.
  */
 export const TEST_AGENT_MCP_SERVER_ID = 'GMOqF385QS1GsrZKfQk6';
+
+/**
+ * Serializes `conversationConfig` to the snake_case body `update` sends, letting
+ * through enum values this SDK version has not heard of yet.
+ *
+ * The SDK validates the request against enums frozen at its release, and rejects an
+ * unknown one before anything is sent. The API moves first: `eleven_v4_turbo`, the
+ * Eleven v4 model ElevenAgents runs on, is accepted by ElevenLabs but missing from
+ * `TtsConversationalModel` in every published SDK so far. Serializing this one key
+ * ourselves, leniently, and sending it as an additional body parameter keeps every
+ * other field of the request validated as before. Unknown object keys are stripped,
+ * exactly as `update` itself strips them.
+ */
+export function toConversationConfigBody(conversationConfig: ConversationalConfig): unknown {
+  return serialization.ConversationalConfig.jsonOrThrow(conversationConfig, {
+    allowUnrecognizedEnumValues: true,
+    unrecognizedObjectKeys: 'strip',
+  });
+}
 
 /**
  * Turns the saved `procedures` map into the one `update` accepts.
@@ -240,9 +261,9 @@ class ElevenLabsAgentManager {
       config.conversationConfig.agent.prompt.mcpServerIds = [TEST_AGENT_MCP_SERVER_ID];
       console.log('🔧 Setting mcpServerIds to local tunnel MCP server for test agent');
 
-      // Client tools stay: the routing loop tells the agent to call `hangUpWhenQuiet` at the end of
-      // every finished request, and on an agent without it that instruction names a tool that does
-      // not exist -- which the tests would then measure instead of the agent's real behaviour.
+      // The client tool stays: `preparePhotoUpload` tells the agent to call `openCamera` next, and on an
+      // agent without it that instruction names a tool that does not exist -- which the camera eval
+      // would then measure instead of the agent's real behaviour.
       config.conversationConfig.agent.prompt.tools = (config.conversationConfig.agent.prompt.tools ?? []).filter(
         (tool) => tool.type === 'client',
       );
@@ -292,11 +313,17 @@ class ElevenLabsAgentManager {
     const agentType = isTestAgent ? 'test agent' : 'agent';
     console.log(`🚀 Deploying configuration to ${agentType} ${agentId}...`);
 
-    const { procedures, ...agentConfig } = config;
+    const { procedures, conversationConfig, ...agentConfig } = config;
     const request =
       procedures === undefined ? agentConfig : { ...agentConfig, procedures: toProcedureVersionRefs(procedures) };
 
-    const response = await this.client.conversationalAi.agents.update(agentId, request);
+    const response = await this.client.conversationalAi.agents.update(
+      agentId,
+      request,
+      conversationConfig && {
+        additionalBodyParameters: { conversation_config: toConversationConfigBody(conversationConfig) },
+      },
+    );
 
     console.log('✅ Agent configuration deployed successfully');
     console.log(`📋 Agent Name: ${response.name}`);
