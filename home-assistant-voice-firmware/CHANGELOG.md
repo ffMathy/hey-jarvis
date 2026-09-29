@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.12.0...home-assistant-voice-firmware-v0.13.0) (2026-09-29)
+
+
+### Features
+
+* **mobile:** answer aloud in a phone's text mode ([#908](https://github.com/ffMathy/hey-jarvis/issues/908)) ([16177ac](https://github.com/ffMathy/hey-jarvis/commit/16177ac7628acbbf343c78fceae2bd050796ab14))
+
 ## [0.12.0](https://github.com/ffMathy/hey-jarvis/compare/home-assistant-voice-firmware-v0.11.2...home-assistant-voice-firmware-v0.12.0) (2026-09-26)
 
 
