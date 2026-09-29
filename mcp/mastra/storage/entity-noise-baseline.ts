@@ -149,53 +149,7 @@ export class EntityNoiseBaselineStorage {
    * Analyze if a state change is significant based on baseline
    */
   async isSignificantChange(entityId: string, oldState: string, newState: string): Promise<NoiseAnalysisResult> {
-    const baseline = await this.getBaseline(entityId);
-
-    // If no baseline exists, consider all changes significant
-    if (!baseline) {
-      return {
-        entityId,
-        isSignificantChange: true,
-        oldValue: oldState,
-        newValue: newState,
-      };
-    }
-
-    // For string states, any change is significant
-    if (baseline.stateType === 'string') {
-      return {
-        entityId,
-        isSignificantChange: oldState !== newState,
-        oldValue: oldState,
-        newValue: newState,
-      };
-    }
-
-    // For numeric states, check if change exceeds threshold
-    const oldNumeric = Number.parseFloat(oldState);
-    const newNumeric = Number.parseFloat(newState);
-
-    // If either value is not a valid number, treat as string comparison
-    if (Number.isNaN(oldNumeric) || Number.isNaN(newNumeric)) {
-      return {
-        entityId,
-        isSignificantChange: oldState !== newState,
-        oldValue: oldState,
-        newValue: newState,
-      };
-    }
-
-    const changeAmount = Math.abs(newNumeric - oldNumeric);
-    const threshold = baseline.numericThreshold || 0;
-
-    return {
-      entityId,
-      isSignificantChange: changeAmount > threshold,
-      oldValue: oldState,
-      newValue: newState,
-      changeAmount,
-      threshold,
-    };
+    return analyzeStateChange(entityId, await this.getBaseline(entityId), oldState, newState);
   }
 
   /**
@@ -284,4 +238,63 @@ export class EntityNoiseBaselineStorage {
       args: [entityId],
     });
   }
+}
+
+/**
+ * Decides whether a change from `oldState` to `newState` stands out from an entity's usual noise.
+ *
+ * Pure, so a caller that already holds every baseline -- the Home Assistant event monitor loads
+ * them once per flush -- can analyse a whole batch without a query per change.
+ */
+export function analyzeStateChange(
+  entityId: string,
+  baseline: EntityNoiseBaseline | null | undefined,
+  oldState: string,
+  newState: string,
+): NoiseAnalysisResult {
+  // If no baseline exists, consider all changes significant
+  if (!baseline) {
+    return {
+      entityId,
+      isSignificantChange: true,
+      oldValue: oldState,
+      newValue: newState,
+    };
+  }
+
+  // For string states, any change is significant
+  if (baseline.stateType === 'string') {
+    return {
+      entityId,
+      isSignificantChange: oldState !== newState,
+      oldValue: oldState,
+      newValue: newState,
+    };
+  }
+
+  // For numeric states, check if change exceeds threshold
+  const oldNumeric = Number.parseFloat(oldState);
+  const newNumeric = Number.parseFloat(newState);
+
+  // If either value is not a valid number, treat as string comparison
+  if (Number.isNaN(oldNumeric) || Number.isNaN(newNumeric)) {
+    return {
+      entityId,
+      isSignificantChange: oldState !== newState,
+      oldValue: oldState,
+      newValue: newState,
+    };
+  }
+
+  const changeAmount = Math.abs(newNumeric - oldNumeric);
+  const threshold = baseline.numericThreshold || 0;
+
+  return {
+    entityId,
+    isSignificantChange: changeAmount > threshold,
+    oldValue: oldState,
+    newValue: newState,
+    changeAmount,
+    threshold,
+  };
 }

@@ -1,22 +1,8 @@
 import { z } from 'zod';
-import { getDeviceStateStorage, getEntityNoiseBaselineStorage } from '../../storage/index.js';
+import { getEntityNoiseBaselineStorage } from '../../storage/index.js';
 import { logger } from '../../utils/logger.js';
-import { executeTool } from '../../utils/tool-factory.js';
 import { createStep, createWorkflow } from '../../utils/workflows/workflow-factory.js';
-import { registerStateChange } from '../synapse/tools.js';
-import { fetchHistoricalStates, getChangedDevicesSince } from './tools.js';
-
-/**
- * Label used to mark devices/entities that should be excluded from state change monitoring.
- * This matches the old n8n behavior where 'sensitive' labeled items were filtered out.
- */
-const SENSITIVE_LABEL = 'sensitive';
-
-/**
- * Time window in seconds to look back for state changes.
- * Set to 3 hours to match the scheduler interval.
- */
-const STATE_CHANGE_WINDOW_SECONDS = 3 * 60 * 60;
+import { fetchHistoricalStates } from './tools.js';
 
 /**
  * Time window in seconds to look back for historical data when calculating noise baselines.
@@ -66,221 +52,17 @@ const calculateNoiseBaselines = createStep({
   },
 });
 
-// Fetch recently changed device states from Home Assistant
-const fetchRecentlyChangedDevices = createStep({
-  id: 'fetch-recently-changed-devices',
-  description: 'Fetches devices that changed state in the last 3 hours from Home Assistant',
-  inputSchema: z.object({
-    baselinesCalculated: z.number(),
-    timestamp: z.string(),
-  }),
-  outputSchema: z.object({
-    devices: z.array(
-      z.object({
-        id: z.string(),
-        name: z.string(),
-        entities: z.array(
-          z.object({
-            id: z.string(),
-            newState: z.string(),
-            lastChanged: z.string(),
-          }),
-        ),
-      }),
-    ),
-    timestamp: z.string(),
-  }),
-  execute: async ({ mastra }) => {
-    const result = await executeTool(getChangedDevicesSince, { sinceSeconds: STATE_CHANGE_WINDOW_SECONDS }, { mastra });
-
-    // Group by device and filter out sensitive labels (matching old n8n behavior)
-    const deviceMap = new Map<
-      string,
-      { id: string; name: string; entities: Array<{ id: string; newState: string; lastChanged: string }> }
-    >();
-
-    for (const item of result.changed_devices) {
-      // Skip if device or entity has the sensitive label
-      if (item.device_label_ids?.includes(SENSITIVE_LABEL) || item.entity_label_ids?.includes(SENSITIVE_LABEL)) {
-        continue;
-      }
-
-      const deviceId = item.device_id || 'unknown';
-      const deviceName = item.device_name || 'Unknown Device';
-
-      if (!deviceMap.has(deviceId)) {
-        deviceMap.set(deviceId, {
-          id: deviceId,
-          name: deviceName,
-          entities: [],
-        });
-      }
-
-      const device = deviceMap.get(deviceId);
-      if (device) {
-        device.entities.push({
-          id: item.entity_id,
-          newState: item.state,
-          lastChanged: new Date(item.last_changed * 1000).toISOString(),
-        });
-      }
-    }
-
-    const devices = Array.from(deviceMap.values());
-
-    logger.info('IoT Monitoring: entities changed', {
-      totalChanged: result.total_changed,
-      windowSeconds: STATE_CHANGE_WINDOW_SECONDS,
-      devicesWithChanges: devices.length,
-    });
-
-    return {
-      devices,
-      timestamp: new Date().toISOString(),
-    };
-  },
-});
-
-/**
- * Checks whether a state change is within the noise threshold and should be filtered out.
- * Returns `true` if the change is noise (i.e. should be skipped), `false` if it is significant.
- */
-async function isNoiseChange(
-  noiseBaselineStorage: Awaited<ReturnType<typeof getEntityNoiseBaselineStorage>>,
-  entityId: string,
-  previousState: { state: string } | null,
-  newState: string,
-  deviceName: string,
-): Promise<boolean> {
-  if (!previousState) {
-    return false;
-  }
-
-  const analysis = await noiseBaselineStorage.isSignificantChange(entityId, previousState.state, newState);
-
-  if (!analysis.isSignificantChange) {
-    logger.info('State change filtered as noise', {
-      entityId,
-      deviceName,
-      oldValue: previousState.state,
-      newValue: newState,
-      changeAmount: analysis.changeAmount,
-      threshold: analysis.threshold,
-    });
-    return true;
-  }
-
-  return false;
-}
-
-// Trigger state change notifications for detected changes
-const triggerStateChangeNotifications = createStep({
-  id: 'trigger-state-change-notifications',
-  description: 'Triggers state change notifications for detected IoT device changes, filtering out noise',
-  inputSchema: z.object({
-    devices: z.array(
-      z.object({
-        id: z.string(),
-        name: z.string(),
-        entities: z.array(
-          z.object({
-            id: z.string(),
-            newState: z.string(),
-            lastChanged: z.string(),
-          }),
-        ),
-      }),
-    ),
-    timestamp: z.string(),
-  }),
-  outputSchema: z.object({
-    changesProcessed: z.number(),
-    notificationsTriggered: z.number(),
-    filteredAsNoise: z.number(),
-    timestamp: z.string(),
-  }),
-  execute: async ({ inputData, mastra }) => {
-    let changesProcessed = 0;
-    let notificationsTriggered = 0;
-    let filteredAsNoise = 0;
-
-    // Get storage instances
-    const noiseBaselineStorage = await getEntityNoiseBaselineStorage();
-    const deviceStateStorage = await getDeviceStateStorage();
-
-    for (const device of inputData.devices) {
-      for (const entity of device.entities) {
-        changesProcessed++;
-
-        // Get the previous state from device state storage
-        const previousState = await deviceStateStorage.getState(entity.id);
-
-        // Update the state in storage
-        await deviceStateStorage.updateState(
-          entity.id,
-          entity.newState,
-          {}, // attributes not available from getChangedDevicesSince
-          entity.lastChanged,
-        );
-
-        // Check if this is a significant change using noise baseline
-        if (await isNoiseChange(noiseBaselineStorage, entity.id, previousState, entity.newState, device.name)) {
-          filteredAsNoise++;
-          continue; // Skip this change as it's within noise threshold
-        }
-
-        // If we reach here, the change is significant (or no baseline/previous state exists)
-        await executeTool(
-          registerStateChange,
-          {
-            source: 'internet-of-things',
-            stateType: 'device_state_change',
-            stateData: {
-              deviceId: device.id,
-              deviceName: device.name,
-              entityId: entity.id,
-              newState: entity.newState,
-              lastChanged: entity.lastChanged,
-              detectedAt: inputData.timestamp,
-            },
-          },
-          { mastra },
-        );
-
-        notificationsTriggered++;
-
-        logger.info('State change registered', {
-          entityId: entity.id,
-          deviceName: device.name,
-          // Do not log newState value as it may contain sensitive data
-        });
-      }
-    }
-
-    return {
-      changesProcessed,
-      notificationsTriggered,
-      filteredAsNoise,
-      timestamp: inputData.timestamp,
-    };
-  },
-});
-
-// IoT Monitoring Workflow
-// Uses Home Assistant's last_changed timestamp to detect recent state changes,
-// filters out sensitive devices/entities, calculates noise baselines from historical data,
-// and triggers state change notifications only for significant changes.
-export const iotMonitoringWorkflow = createWorkflow({
-  id: 'iotMonitoringWorkflow',
+// IoT Noise Baseline Workflow
+// Recalculates how much each entity normally fluctuates, which the Home Assistant event
+// monitor (./event-monitor.ts) uses to drop changes that are only noise. Detecting the
+// changes themselves is the monitor's job, over the websocket API, rather than a schedule's.
+export const iotNoiseBaselineWorkflow = createWorkflow({
+  id: 'iotNoiseBaselineWorkflow',
   inputSchema: z.object({}),
   outputSchema: z.object({
-    changesProcessed: z.number(),
-    notificationsTriggered: z.number(),
-    filteredAsNoise: z.number(),
+    baselinesCalculated: z.number(),
     timestamp: z.string(),
   }),
 })
   .then(calculateNoiseBaselines)
-  .then(fetchRecentlyChangedDevices)
-  .then(triggerStateChangeNotifications)
   .commit();

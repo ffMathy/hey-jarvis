@@ -2,11 +2,16 @@
 
 import { MCPServer } from '@mastra/mcp';
 import express from 'express';
-import { logTokenUsageSummary } from './index.js';
+import { logTokenUsageSummary, mastra } from './index.js';
 import { initializeScheduler } from './scheduler.js';
 import { createInstructionsWorkflowTool, createSimplifiedWorkflowTool } from './utils/mcp-tool-factory.js';
 import { getMissingClaudeCodeHostVariables, isClaudeCodeHostConfigured } from './verticals/coding/index.js';
-import { getPublicAgents, registerApiRoutes, registerShoppingTriggers } from './verticals/index.js';
+import {
+  getPublicAgents,
+  registerApiRoutes,
+  registerShoppingTriggers,
+  startHomeAssistantEventMonitor,
+} from './verticals/index.js';
 import { getNextInstructionsWorkflow, routePromptWorkflow } from './verticals/routing/workflows.js';
 
 // Re-export for cross-project imports
@@ -127,6 +132,11 @@ export async function startMcpServer() {
 
   // Reconcile the persisted workflow schedules and start the workers that fire them
   await initializeScheduler();
+
+  // Report what happens in the house as it happens, over Home Assistant's websocket API. Only
+  // this process does it, for the same reason only this process owns the schedules: Studio
+  // builds the same instance, and two monitors would file every change twice.
+  await startHomeAssistantEventMonitor(mastra);
 
   // Start the Express server
   return new Promise<void>((resolve) => {
