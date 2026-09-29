@@ -35,18 +35,20 @@ describe('placement in the captured living room', () => {
     const room = await loadSemRoom('living_room');
     const model = createRoomModel();
     // The first build pays for compiling the code as well; the one the app waits on after a
-    // change of room is the steady one, so both are measured and the steady one is held to the
-    // budget. Printed so a slowdown shows in the log before it trips the limit.
+    // change of room is a warm one. The quickest of three warm builds, and the median of the warm
+    // placements, are held to the budget: machines running the suite are often busy with other
+    // work, and a single run can land on a garbage collection or a stolen time slice. Printed, so
+    // a slowdown shows in the log before it trips the limit.
     const firstBuild = milliseconds(() => model.update(room));
-    const steadyBuild = milliseconds(() => model.update({ ...room }));
+    const warmBuilds = Array.from({ length: 3 }, () => milliseconds(() => model.update({ ...room })));
+    const steadyBuild = Math.min(...warmBuilds);
     const placeTimes = Array.from({ length: 25 }, () => milliseconds(() => model.place(HEAD_IN_THE_E2E)));
-    // The median of the warm runs: a single run can land on a garbage collection.
     const warm = placeTimes.slice(5).sort((a, b) => a - b);
     const typicalPlace = warm[Math.floor(warm.length / 2)];
     console.log(
-      `living room: first build ${firstBuild.toFixed(1)} ms, steady build ${steadyBuild.toFixed(1)} ms, ` +
-        `place ${placeTimes[0].toFixed(2)} ms cold, ${typicalPlace.toFixed(2)} ms warm (slowest ` +
-        `${warm[warm.length - 1].toFixed(2)} ms)`,
+      `living room: first build ${firstBuild.toFixed(1)} ms, warm builds ` +
+        `${warmBuilds.map((time) => time.toFixed(1)).join(' / ')} ms, place ${placeTimes[0].toFixed(2)} ms ` +
+        `cold, ${typicalPlace.toFixed(2)} ms warm (slowest ${warm[warm.length - 1].toFixed(2)} ms)`,
     );
 
     const placement = model.place(HEAD_IN_THE_E2E);
