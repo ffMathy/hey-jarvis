@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.14.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.13.0...root-v4.14.0) (2026-09-29)
+
+
+### Features
+
+* **elevenlabs:** replace default voice tags with victorian ([#906](https://github.com/ffMathy/hey-jarvis/issues/906)) ([e970cb2](https://github.com/ffMathy/hey-jarvis/commit/e970cb24e09ed603ec2beac801170e93144f965a))
+
 ## [4.13.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.12.1...root-v4.13.0) (2026-09-29)
 
 
