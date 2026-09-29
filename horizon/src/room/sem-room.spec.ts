@@ -45,7 +45,7 @@ describe('placement in the captured living room', () => {
     const warmBuilds = Array.from({ length: 3 }, () => milliseconds(() => model.update({ ...room })));
     const steadyBuild = Math.min(...warmBuilds);
     const placeTimes = Array.from({ length: 25 }, () => milliseconds(() => model.place(HEAD_IN_THE_E2E)));
-    const warm = placeTimes.slice(5).sort((a, b) => a - b);
+    const warm = placeTimes.slice(5).sort((quicker, slower) => quicker - slower);
     const typicalPlace = warm[Math.floor(warm.length / 2)];
     console.log(
       `living room: first build ${firstBuild.toFixed(1)} ms, warm builds ` +

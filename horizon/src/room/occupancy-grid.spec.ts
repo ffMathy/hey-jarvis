@@ -103,12 +103,12 @@ describe('line of sight', () => {
     const length = Math.hypot(to[0] - from[0], to[1] - from[1], to[2] - from[2]);
     const steps = Math.ceil(length / 0.001);
     for (let step = 0; step <= steps; step++) {
-      const t = step / steps;
-      const x = Math.floor((from[0] + (to[0] - from[0]) * t - grid.minX) / VOXEL_METRES);
-      const y = Math.floor((from[1] + (to[1] - from[1]) * t - grid.minY) / VOXEL_METRES);
-      const z = Math.floor((from[2] + (to[2] - from[2]) * t - grid.minZ) / VOXEL_METRES);
+      const fraction = step / steps;
+      const x = Math.floor((from[0] + (to[0] - from[0]) * fraction - grid.minX) / VOXEL_METRES);
+      const y = Math.floor((from[1] + (to[1] - from[1]) * fraction - grid.minY) / VOXEL_METRES);
+      const z = Math.floor((from[2] + (to[2] - from[2]) * fraction - grid.minZ) / VOXEL_METRES);
       const inside = x >= 0 && y >= 0 && z >= 0 && x < grid.sizeX && y < grid.sizeY && z < grid.sizeZ;
-      if (inside && grid.occupied[(z * grid.sizeY + y) * grid.sizeX + x] === 1) return t;
+      if (inside && grid.occupied[(z * grid.sizeY + y) * grid.sizeX + x] === 1) return fraction;
     }
     return Number.POSITIVE_INFINITY;
   }

@@ -32,8 +32,8 @@ function place(room: RoomSnapshot, request: PlacementRequest): Placement {
   return model.place(request);
 }
 
-function distanceAlongFloor(a: Vector3Like, b: Vector3Like): number {
-  return Math.hypot(a.x - b.x, a.z - b.z);
+function distanceAlongFloor(first: Vector3Like, second: Vector3Like): number {
+  return Math.hypot(first.x - second.x, first.z - second.z);
 }
 
 /** Whether the segment from `from` to `to` passes through the axis-aligned box (slab test). */

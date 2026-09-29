@@ -149,7 +149,9 @@ function bearingOf(scene: RoomScene, request: PlacementRequest): Bearing {
   // ahead for that case, so this only keeps the arithmetic finite.
   const forward = along > 1e-4 ? { x: request.forward.x / along, z: request.forward.z / along } : { x: 0, z: -1 };
   const { outline, floor } = roomAround(scene, head);
-  const floorBelow = scene.floors.filter((area) => area.height < head.y).sort((a, b) => b.height - a.height)[0];
+  const floorBelow = scene.floors
+    .filter((area) => area.height < head.y)
+    .sort((lower, higher) => higher.height - lower.height)[0];
   const floorHeight = floor?.height ?? floorBelow?.height ?? 0;
   const samePlace = request.previousEpoch === undefined || request.previousEpoch === scene.epoch;
   return {
@@ -286,7 +288,7 @@ function bestAt(scene: RoomScene, bearing: Bearing, rules: LevelRules): Candidat
     const candidate = assess(scene, bearing, rules, position);
     if (candidate !== null) candidates.push(candidate);
   }
-  candidates.sort((a, b) => b.score - a.score);
+  candidates.sort((worse, better) => better.score - worse.score);
   return candidates.find((candidate) => inSight(scene, bearing.head, candidate.position)) ?? null;
 }
 

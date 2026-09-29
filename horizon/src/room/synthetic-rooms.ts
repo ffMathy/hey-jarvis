@@ -80,20 +80,19 @@ export function roomPlanes(area: FloorRectangle, height: number): ScenePlane[] {
   ];
 }
 
-/** A piece of furniture as Quest sends it: a box mesh of 8 corners and 12 triangles, standing on the floor. */
-export function boxMesh(label: string, area: FloorRectangle, height: number, bottom = 0): SceneMesh {
-  const halfWidth = (area.maxX - area.minX) / 2;
-  const halfDepth = (area.maxZ - area.minZ) / 2;
-  const centre = { x: (area.minX + area.maxX) / 2, y: bottom, z: (area.minZ + area.maxZ) / 2 };
-  const pose = poseFromAxes(centre, { x: 1, y: 0, z: 0 }, UP, { x: 0, y: 0, z: 1 });
+/**
+ * A box's 8 corners — the bottom four, then the top four, each round its footprint — and its 12
+ * triangles, from its lowest corner to its highest.
+ */
+export function boxShape(low: Vector3Like, high: Vector3Like): { vertices: Float32Array; indices: Uint32Array } {
   const vertices = new Float32Array(24);
   let offset = 0;
-  for (const y of [0, height]) {
+  for (const y of [low.y, high.y]) {
     for (const [x, z] of [
-      [-halfWidth, -halfDepth],
-      [halfWidth, -halfDepth],
-      [halfWidth, halfDepth],
-      [-halfWidth, halfDepth],
+      [low.x, low.z],
+      [high.x, low.z],
+      [high.x, high.z],
+      [low.x, high.z],
     ]) {
       vertices.set([x, y, z], offset);
       offset += 3;
@@ -107,15 +106,25 @@ export function boxMesh(label: string, area: FloorRectangle, height: number, bot
     [2, 3, 7, 2, 7, 6],
     [3, 0, 4, 3, 4, 7],
   ];
-  return { label, pose, vertices, indices: new Uint32Array(faces.flat()) };
+  return { vertices, indices: new Uint32Array(faces.flat()) };
+}
+
+/** A piece of furniture as Quest sends it: a box mesh of 8 corners and 12 triangles, standing on the floor. */
+export function boxMesh(label: string, area: FloorRectangle, height: number, bottom = 0): SceneMesh {
+  const halfWidth = (area.maxX - area.minX) / 2;
+  const halfDepth = (area.maxZ - area.minZ) / 2;
+  const centre = { x: (area.minX + area.maxX) / 2, y: bottom, z: (area.minZ + area.maxZ) / 2 };
+  const pose = poseFromAxes(centre, { x: 1, y: 0, z: 0 }, UP, { x: 0, y: 0, z: 1 });
+  const shape = boxShape({ x: -halfWidth, y: 0, z: -halfDepth }, { x: halfWidth, y: height, z: halfDepth });
+  return { label, pose, ...shape };
 }
 
 /** A quadrilateral by its corners in order, for building a room scan. */
 type Quad = [Vector3Like, Vector3Like, Vector3Like, Vector3Like];
 
 function planeQuad(plane: ScenePlane): Quad {
-  const [a, b, c, d] = plane.polygon.map((point) => toReference(plane.pose, point.x, 0, point.z));
-  return [a, b, c, d];
+  const [first, second, third, fourth] = plane.polygon.map((point) => toReference(plane.pose, point.x, 0, point.z));
+  return [first, second, third, fourth];
 }
 
 function boxQuads(box: SceneMesh): Quad[] {
@@ -132,12 +141,21 @@ function boxQuads(box: SceneMesh): Quad[] {
     [2, 3, 7, 6],
     [3, 0, 4, 7],
   ];
-  return faces.map(([a, b, c, d]) => [corners[a], corners[b], corners[c], corners[d]]);
+  return faces.map(([first, second, third, fourth]) => [
+    corners[first],
+    corners[second],
+    corners[third],
+    corners[fourth],
+  ]);
 }
 
 /** Linear interpolation between two points. */
-function mix(a: Vector3Like, b: Vector3Like, fraction: number): Vector3Like {
-  return { x: a.x + (b.x - a.x) * fraction, y: a.y + (b.y - a.y) * fraction, z: a.z + (b.z - a.z) * fraction };
+function mix(from: Vector3Like, to: Vector3Like, fraction: number): Vector3Like {
+  return {
+    x: from.x + (to.x - from.x) * fraction,
+    y: from.y + (to.y - from.y) * fraction,
+    z: from.z + (to.z - from.z) * fraction,
+  };
 }
 
 /**
@@ -148,13 +166,15 @@ export function roomScan(planes: ScenePlane[], boxes: SceneMesh[], spacing = 0.3
   const quads = [...planes.map(planeQuad), ...boxes.flatMap(boxQuads)];
   const vertices: number[] = [];
   const indices: number[] = [];
-  for (const [a, b, c, d] of quads) {
-    const across = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z) / spacing));
-    const down = Math.max(1, Math.ceil(Math.hypot(d.x - a.x, d.y - a.y, d.z - a.z) / spacing));
+  for (const [topLeft, topRight, bottomRight, bottomLeft] of quads) {
+    const width = Math.hypot(topRight.x - topLeft.x, topRight.y - topLeft.y, topRight.z - topLeft.z);
+    const height = Math.hypot(bottomLeft.x - topLeft.x, bottomLeft.y - topLeft.y, bottomLeft.z - topLeft.z);
+    const across = Math.max(1, Math.ceil(width / spacing));
+    const down = Math.max(1, Math.ceil(height / spacing));
     const first = vertices.length / 3;
     for (let row = 0; row <= down; row++) {
-      const left = mix(a, d, row / down);
-      const right = mix(b, c, row / down);
+      const left = mix(topLeft, bottomLeft, row / down);
+      const right = mix(topRight, bottomRight, row / down);
       for (let column = 0; column <= across; column++) {
         const point = mix(left, right, column / across);
         vertices.push(point.x, point.y, point.z);

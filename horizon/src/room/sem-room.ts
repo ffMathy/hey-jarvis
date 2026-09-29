@@ -1,4 +1,5 @@
 import { poseFromQuaternion } from './pose-matrix';
+import { boxShape } from './synthetic-rooms';
 import type { RoomSnapshot, SceneMesh, ScenePlane } from './types';
 
 /**
@@ -100,23 +101,7 @@ function boxFrom(label: string, pose: Float32Array, bounds: JsonRecord): SceneMe
     y: low.y + numberAt(extent, 'height'),
     z: low.z + numberAt(extent, 'depth'),
   };
-  const vertices = new Float32Array(24);
-  let offset = 0;
-  for (const y of [low.y, high.y]) {
-    for (const [x, z] of [
-      [low.x, low.z],
-      [high.x, low.z],
-      [high.x, high.z],
-      [low.x, high.z],
-    ]) {
-      vertices.set([x, y, z], offset);
-      offset += 3;
-    }
-  }
-  const faces = [
-    0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 1, 2, 6, 1, 6, 5, 2, 3, 7, 2, 7, 6, 3, 0, 4, 3, 4, 7,
-  ];
-  return { label, pose, vertices, indices: new Uint32Array(faces) };
+  return { label, pose, ...boxShape(low, high) };
 }
 
 function meshFrom(label: string, pose: Float32Array, triangles: JsonRecord): SceneMesh {

@@ -70,9 +70,9 @@ export interface LiveRoomSnapshot extends RoomSnapshot {
 const MOVED_METRES = 0.01;
 const TURNED = 0.005;
 
-function samePose(a: Float32Array, b: Float32Array): boolean {
-  for (let index = 0; index < 12; index++) if (Math.abs(a[index] - b[index]) > TURNED) return false;
-  for (let index = 12; index < 15; index++) if (Math.abs(a[index] - b[index]) > MOVED_METRES) return false;
+function samePose(held: Float32Array, current: Float32Array): boolean {
+  for (let index = 0; index < 12; index++) if (Math.abs(held[index] - current[index]) > TURNED) return false;
+  for (let index = 12; index < 15; index++) if (Math.abs(held[index] - current[index]) > MOVED_METRES) return false;
   return true;
 }
 

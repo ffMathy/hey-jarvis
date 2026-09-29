@@ -1,3 +1,4 @@
+import { areaOf, coversPoint } from './floor-polygon';
 import { markPoint, type OccupancyGrid, VOXEL_METRES } from './occupancy-grid';
 import { axisOf, toLocal, toReference } from './pose-matrix';
 import type { SceneMesh, ScenePlane, Vector3Like } from './types';
@@ -62,40 +63,7 @@ export function posePlane(plane: ScenePlane): PosedPlane {
   const orientation: PlaneOrientation =
     upness >= LEVEL_COSINE ? 'horizontal' : upness <= Math.sqrt(1 - LEVEL_COSINE ** 2) ? 'vertical' : 'slanted';
   const height = corners.reduce((sum, corner) => sum + corner.y, 0) / Math.max(corners.length, 1);
-  return { label: plane.label, corners, orientation, height, area: polygonArea(plane.polygon) };
-}
-
-/** Area of a plane-space polygon (x and z), whatever its winding. */
-function polygonArea(polygon: readonly Vector3Like[]): number {
-  let twiceArea = 0;
-  for (let index = 0, previous = polygon.length - 1; index < polygon.length; previous = index++) {
-    twiceArea += polygon[previous].x * polygon[index].z - polygon[index].x * polygon[previous].z;
-  }
-  return Math.abs(twiceArea) / 2;
-}
-
-/** Whether the plane-space point x, z is inside the polygon or within `tolerance` of its outline. */
-function onPolygon(polygon: readonly Vector3Like[], x: number, z: number, tolerance: number): boolean {
-  let inside = false;
-  for (let index = 0, previous = polygon.length - 1; index < polygon.length; previous = index++) {
-    const a = polygon[index];
-    const b = polygon[previous];
-    if (a.z > z !== b.z > z && x < a.x + ((z - a.z) / (b.z - a.z)) * (b.x - a.x)) inside = !inside;
-  }
-  if (inside) return true;
-  for (let index = 0, previous = polygon.length - 1; index < polygon.length; previous = index++) {
-    if (distanceToSegment(x, z, polygon[index], polygon[previous]) <= tolerance) return true;
-  }
-  return false;
-}
-
-function distanceToSegment(x: number, z: number, a: Vector3Like, b: Vector3Like): number {
-  const edgeX = b.x - a.x;
-  const edgeZ = b.z - a.z;
-  const lengthSquared = edgeX * edgeX + edgeZ * edgeZ;
-  const along =
-    lengthSquared === 0 ? 0 : Math.min(Math.max(((x - a.x) * edgeX + (z - a.z) * edgeZ) / lengthSquared, 0), 1);
-  return Math.hypot(x - (a.x + along * edgeX), z - (a.z + along * edgeZ));
+  return { label: plane.label, corners, orientation, height, area: areaOf(plane.polygon) };
 }
 
 /** Evenly spaced values from `min` to `max`, both included, no further apart than `spacing`. */
@@ -108,29 +76,23 @@ function steps(min: number, max: number, spacing: number): number[] {
 export function rasterisePlane(grid: OccupancyGrid, plane: ScenePlane): void {
   const { polygon, pose } = plane;
   if (polygon.length < 3) return;
-  const xs = polygon.map((point) => point.x);
-  const zs = polygon.map((point) => point.z);
-  const alongZ = steps(Math.min(...zs), Math.max(...zs), SAMPLE_METRES);
+  const acrossX = polygon.map((point) => point.x);
+  const acrossZ = polygon.map((point) => point.z);
+  const samplesAlongZ = steps(Math.min(...acrossZ), Math.max(...acrossZ), SAMPLE_METRES);
   // The pose written out, since this runs for every sample of every wall.
-  const [xx, xy, xz, , yx, yy, yz, , zx, zy, zz, , ox, oy, oz] = pose;
-  for (const x of steps(Math.min(...xs), Math.max(...xs), SAMPLE_METRES)) {
-    for (const z of alongZ) {
-      if (!onPolygon(polygon, x, z, 1e-4)) continue;
-      const onX = xx * x + zx * z + ox;
-      const onY = xy * x + zy * z + oy;
-      const onZ = xz * x + zz * z + oz;
-      markPoint(
-        grid,
-        onX - yx * PLANE_HALF_THICKNESS,
-        onY - yy * PLANE_HALF_THICKNESS,
-        onZ - yz * PLANE_HALF_THICKNESS,
-      );
-      markPoint(
-        grid,
-        onX + yx * PLANE_HALF_THICKNESS,
-        onY + yy * PLANE_HALF_THICKNESS,
-        onZ + yz * PLANE_HALF_THICKNESS,
-      );
+  const [xAxisX, xAxisY, xAxisZ, , normalX, normalY, normalZ, , zAxisX, zAxisY, zAxisZ, , originX, originY, originZ] =
+    pose;
+  const offsetX = normalX * PLANE_HALF_THICKNESS;
+  const offsetY = normalY * PLANE_HALF_THICKNESS;
+  const offsetZ = normalZ * PLANE_HALF_THICKNESS;
+  for (const x of steps(Math.min(...acrossX), Math.max(...acrossX), SAMPLE_METRES)) {
+    for (const z of samplesAlongZ) {
+      if (!coversPoint(polygon, { x, z }, 1e-4)) continue;
+      const onX = xAxisX * x + zAxisX * z + originX;
+      const onY = xAxisY * x + zAxisY * z + originY;
+      const onZ = xAxisZ * x + zAxisZ * z + originZ;
+      markPoint(grid, onX - offsetX, onY - offsetY, onZ - offsetZ);
+      markPoint(grid, onX + offsetX, onY + offsetY, onZ + offsetZ);
     }
   }
 }
@@ -153,30 +115,38 @@ export function poseVertices(mesh: SceneMesh): Float32Array {
   return posed;
 }
 
-/** Samples one triangle of posed vertices `a`, `b`, `c` (offsets into `posed`) at half-cell spacing. */
-function rasteriseTriangle(grid: OccupancyGrid, posed: Float32Array, a: number, b: number, c: number) {
-  const abX = posed[b] - posed[a];
-  const abY = posed[b + 1] - posed[a + 1];
-  const abZ = posed[b + 2] - posed[a + 2];
-  const acX = posed[c] - posed[a];
-  const acY = posed[c + 1] - posed[a + 1];
-  const acZ = posed[c + 2] - posed[a + 2];
+/**
+ * Samples one triangle at half-cell spacing. `first`, `second` and `third` are the offsets of
+ * its corners into `posed`.
+ */
+function rasteriseTriangle(grid: OccupancyGrid, posed: Float32Array, first: number, second: number, third: number) {
+  const toSecondX = posed[second] - posed[first];
+  const toSecondY = posed[second + 1] - posed[first + 1];
+  const toSecondZ = posed[second + 2] - posed[first + 2];
+  const toThirdX = posed[third] - posed[first];
+  const toThirdY = posed[third + 1] - posed[first + 1];
+  const toThirdZ = posed[third + 2] - posed[first + 2];
   const longest = Math.sqrt(
     Math.max(
-      abX * abX + abY * abY + abZ * abZ,
-      acX * acX + acY * acY + acZ * acZ,
-      (acX - abX) ** 2 + (acY - abY) ** 2 + (acZ - abZ) ** 2,
+      toSecondX * toSecondX + toSecondY * toSecondY + toSecondZ * toSecondZ,
+      toThirdX * toThirdX + toThirdY * toThirdY + toThirdZ * toThirdZ,
+      (toThirdX - toSecondX) ** 2 + (toThirdY - toSecondY) ** 2 + (toThirdZ - toSecondZ) ** 2,
     ),
   );
   // Most of a room scan's triangles are smaller than a sample spacing, and their corners are
   // already in the grid: every vertex is marked before the triangles are walked.
   if (longest <= SAMPLE_METRES) return;
   const divisions = Math.ceil(longest / SAMPLE_METRES);
-  for (let along = 0; along <= divisions; along++) {
-    for (let across = 0; across <= divisions - along; across++) {
-      const u = along / divisions;
-      const v = across / divisions;
-      markPoint(grid, posed[a] + abX * u + acX * v, posed[a + 1] + abY * u + acY * v, posed[a + 2] + abZ * u + acZ * v);
+  for (let towardsSecond = 0; towardsSecond <= divisions; towardsSecond++) {
+    for (let towardsThird = 0; towardsThird <= divisions - towardsSecond; towardsThird++) {
+      const secondWeight = towardsSecond / divisions;
+      const thirdWeight = towardsThird / divisions;
+      markPoint(
+        grid,
+        posed[first] + toSecondX * secondWeight + toThirdX * thirdWeight,
+        posed[first + 1] + toSecondY * secondWeight + toThirdY * thirdWeight,
+        posed[first + 2] + toSecondZ * secondWeight + toThirdZ * thirdWeight,
+      );
     }
   }
 }
@@ -186,8 +156,9 @@ const TRIANGLES_PER_SLICE = 4000;
 
 /** Draws the mesh's surface into the grid, yielding every few thousand triangles. */
 export function* rasteriseMesh(grid: OccupancyGrid, posed: Float32Array, indices: Uint32Array): Generator<void> {
-  for (let index = 0; index < posed.length; index += 3)
+  for (let index = 0; index < posed.length; index += 3) {
     markPoint(grid, posed[index], posed[index + 1], posed[index + 2]);
+  }
   for (let index = 0; index + 2 < indices.length; index += 3) {
     rasteriseTriangle(grid, posed, indices[index] * 3, indices[index + 1] * 3, indices[index + 2] * 3);
     if ((index / 3) % TRIANGLES_PER_SLICE === TRIANGLES_PER_SLICE - 1) yield;

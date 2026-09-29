@@ -109,14 +109,17 @@ function transformLine(line: Float64Array, length: number, roots: Int32Array, bo
   }
 }
 
-/** The lines of one pass: `length` cells `stride` apart, starting at every `a × aStride + b × bStride`. */
+/**
+ * The lines of one pass: `length` cells `stride` apart, one starting at every
+ * `inner × innerStride + outer × outerStride`.
+ */
 interface Lines {
   length: number;
   stride: number;
-  aCount: number;
-  aStride: number;
-  bCount: number;
-  bStride: number;
+  innerCount: number;
+  innerStride: number;
+  outerCount: number;
+  outerStride: number;
 }
 
 /** Lines transformed between two yields. */
@@ -146,14 +149,14 @@ function* transformAxis(squared: Float32Array, lines: Lines): Generator<void, vo
   const roots = new Int32Array(length);
   const bounds = new Float64Array(length + 1);
   let linesSinceYield = 0;
-  for (let b = 0; b < lines.bCount; b++) {
-    for (let a = 0; a < lines.aCount; a++) {
-      const start = a * lines.aStride + b * lines.bStride;
+  for (let outer = 0; outer < lines.outerCount; outer++) {
+    for (let inner = 0; inner < lines.innerCount; inner++) {
+      const start = inner * lines.innerStride + outer * lines.outerStride;
       if (readLine(squared, start, stride, line) === FAR_SQUARED_CELLS) continue;
       transformLine(line, length, roots, bounds, out);
       for (let cell = 0; cell < length; cell++) squared[start + cell * stride] = out[cell];
     }
-    linesSinceYield += lines.aCount;
+    linesSinceYield += lines.innerCount;
     if (linesSinceYield >= LINES_PER_SLICE) {
       linesSinceYield = 0;
       yield;
@@ -174,26 +177,26 @@ export function* computeDistanceField(grid: OccupancyGrid): Generator<void, void
   yield* transformAxis(distance, {
     length: sizeX,
     stride: 1,
-    aCount: sizeY,
-    aStride: sizeX,
-    bCount: sizeZ,
-    bStride: plane,
+    innerCount: sizeY,
+    innerStride: sizeX,
+    outerCount: sizeZ,
+    outerStride: plane,
   });
   yield* transformAxis(distance, {
     length: sizeY,
     stride: sizeX,
-    aCount: sizeX,
-    aStride: 1,
-    bCount: sizeZ,
-    bStride: plane,
+    innerCount: sizeX,
+    innerStride: 1,
+    outerCount: sizeZ,
+    outerStride: plane,
   });
   yield* transformAxis(distance, {
     length: sizeZ,
     stride: plane,
-    aCount: sizeX,
-    aStride: 1,
-    bCount: sizeY,
-    bStride: sizeX,
+    innerCount: sizeX,
+    innerStride: 1,
+    outerCount: sizeY,
+    outerStride: sizeX,
   });
   for (let cell = 0; cell < distance.length; cell++) {
     const squared = distance[cell];
@@ -212,26 +215,25 @@ function interpolatedDistance(grid: OccupancyGrid, point: Vector3Like): number {
   const x = centreCoordinate(point.x, grid.minX, sizeX);
   const y = centreCoordinate(point.y, grid.minY, sizeY);
   const z = centreCoordinate(point.z, grid.minZ, sizeZ);
-  const x0 = Math.min(Math.floor(x), Math.max(sizeX - 2, 0));
-  const y0 = Math.min(Math.floor(y), Math.max(sizeY - 2, 0));
-  const z0 = Math.min(Math.floor(z), Math.max(sizeZ - 2, 0));
+  const lowX = Math.min(Math.floor(x), Math.max(sizeX - 2, 0));
+  const lowY = Math.min(Math.floor(y), Math.max(sizeY - 2, 0));
+  const lowZ = Math.min(Math.floor(z), Math.max(sizeZ - 2, 0));
   // Steps to the neighbouring centre along each axis, or none on an axis one cell thick.
   const stepX = sizeX > 1 ? 1 : 0;
   const stepY = sizeY > 1 ? sizeX : 0;
   const stepZ = sizeZ > 1 ? sizeX * sizeY : 0;
-  const fx = x - x0;
-  const fy = y - y0;
-  const fz = z - z0;
-  const corner = (z0 * sizeY + y0) * sizeX + x0;
-  const near = corner;
-  const far = corner + stepZ;
-  const bottomNear = distance[near] + (distance[near + stepX] - distance[near]) * fx;
-  const topNear = distance[near + stepY] + (distance[near + stepY + stepX] - distance[near + stepY]) * fx;
-  const bottomFar = distance[far] + (distance[far + stepX] - distance[far]) * fx;
-  const topFar = distance[far + stepY] + (distance[far + stepY + stepX] - distance[far + stepY]) * fx;
-  const nearValue = bottomNear + (topNear - bottomNear) * fy;
-  const farValue = bottomFar + (topFar - bottomFar) * fy;
-  return nearValue + (farValue - nearValue) * fz;
+  const alongX = x - lowX;
+  const alongY = y - lowY;
+  const alongZ = z - lowZ;
+  const near = (lowZ * sizeY + lowY) * sizeX + lowX;
+  const far = near + stepZ;
+  const bottomNear = distance[near] + (distance[near + stepX] - distance[near]) * alongX;
+  const topNear = distance[near + stepY] + (distance[near + stepY + stepX] - distance[near + stepY]) * alongX;
+  const bottomFar = distance[far] + (distance[far + stepX] - distance[far]) * alongX;
+  const topFar = distance[far + stepY] + (distance[far + stepY + stepX] - distance[far + stepY]) * alongX;
+  const nearValue = bottomNear + (topNear - bottomNear) * alongY;
+  const farValue = bottomFar + (topFar - bottomFar) * alongY;
+  return nearValue + (farValue - nearValue) * alongZ;
 }
 
 /**
@@ -258,7 +260,10 @@ export function clearanceAt(grid: OccupancyGrid, point: Vector3Like, occupiedCel
   return Math.max(0, Math.max(outside, inside - outside) - VOXEL_METRES / 2);
 }
 
-/** The part of the segment from `from` along `delta` (t from 0 to 1) that is inside the grid, or null. */
+/**
+ * The part of the segment from `from` along `delta` that is inside the grid, as fractions of the
+ * way along it (0 at `from`, 1 at the end), or null.
+ */
 function clipToGrid(grid: OccupancyGrid, from: Vector3Like, delta: Vector3Like): [number, number] | null {
   let enter = 0;
   let exit = 1;
@@ -284,14 +289,14 @@ function clipToGrid(grid: OccupancyGrid, from: Vector3Like, delta: Vector3Like):
 interface AxisWalk {
   cell: number;
   step: number;
-  /** t at which the walk next crosses a cell boundary on this axis. */
+  /** How far along the segment the walk next crosses a cell boundary on this axis. */
   next: number;
-  /** t between two crossings on this axis. */
+  /** How far along the segment two crossings on this axis are apart. */
   every: number;
 }
 
-function startAxis(start: number, delta: number, min: number, size: number, t: number): AxisWalk {
-  const position = (start + delta * t - min) / VOXEL_METRES;
+function startAxis(start: number, delta: number, min: number, size: number, fraction: number): AxisWalk {
+  const position = (start + delta * fraction - min) / VOXEL_METRES;
   const cell = Math.min(Math.max(Math.floor(position), 0), size - 1);
   if (Math.abs(delta) < 1e-12) return { cell, step: 0, next: Number.POSITIVE_INFINITY, every: 0 };
   const step = delta > 0 ? 1 : -1;
@@ -315,11 +320,11 @@ export function firstBlockedFraction(grid: OccupancyGrid, from: Vector3Like, to:
   const x = startAxis(from.x, delta.x, grid.minX, grid.sizeX, enter);
   const y = startAxis(from.y, delta.y, grid.minY, grid.sizeY, enter);
   const z = startAxis(from.z, delta.z, grid.minZ, grid.sizeZ, enter);
-  let t = enter;
-  while (t <= exit) {
-    if (grid.occupied[(z.cell * grid.sizeY + y.cell) * grid.sizeX + x.cell] === 1) return t;
+  let fraction = enter;
+  while (fraction <= exit) {
+    if (grid.occupied[(z.cell * grid.sizeY + y.cell) * grid.sizeX + x.cell] === 1) return fraction;
     const axis = x.next <= y.next && x.next <= z.next ? x : y.next <= z.next ? y : z;
-    t = axis.next;
+    fraction = axis.next;
     axis.next += axis.every;
     axis.cell += axis.step;
     if (
