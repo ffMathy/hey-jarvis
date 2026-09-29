@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.3.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v2.2.0...elevenlabs-v2.3.0) (2026-09-29)
+
+
+### Features
+
+* **elevenlabs:** switch agent voice to eleven v4 turbo ([#904](https://github.com/ffMathy/hey-jarvis/issues/904)) ([6be2895](https://github.com/ffMathy/hey-jarvis/commit/6be289563aff5715429b7fea6fdc352677633377))
+
 ## [2.2.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v2.1.0...elevenlabs-v2.2.0) (2026-09-28)
 
 
