@@ -9,6 +9,7 @@ import { getMissingClaudeCodeHostVariables, isClaudeCodeHostConfigured } from '.
 import {
   getPublicAgents,
   registerApiRoutes,
+  registerArtifactRoutes,
   registerShoppingTriggers,
   startHomeAssistantEventMonitor,
 } from './verticals/index.js';
@@ -74,6 +75,9 @@ export async function startMcpServer() {
 
   // Register API routes (shopping list, etc.) and get the registered paths
   const registeredApiPaths = registerApiRoutes(apiRouter);
+
+  // The pages the visualize vertical builds, hosted for a day under the tunnel's public hostname
+  const artifactRoutePath = registerArtifactRoutes(apiRouter);
   app.use(apiRouter);
 
   // MCP endpoint - handles both GET (for initial connection) and POST (for messages)
@@ -116,6 +120,7 @@ export async function startMcpServer() {
   for (const apiPath of registeredApiPaths) {
     console.log(`API endpoint available: POST http://${host}:${port}${apiPath}`);
   }
+  console.log(`Hosted pages available: GET http://${host}:${port}${artifactRoutePath}`);
 
   // Register email triggers for shopping notifications
   registerShoppingTriggers();
