@@ -196,10 +196,10 @@ function* fanPositions(bearing: Bearing, rules: LevelRules): Generator<Vector3Li
 /** Spots hovering over table and desk tops, a few gaps above each. */
 function* surfacePositions(surfaces: LevelArea[], radius: number): Generator<Vector3Like> {
   for (const { outline, height } of surfaces) {
-    const xs = outline.map((point) => point.x);
-    const zs = outline.map((point) => point.z);
-    for (const x of spaced(Math.min(...xs), Math.max(...xs), SURFACE_STEP)) {
-      for (const z of spaced(Math.min(...zs), Math.max(...zs), SURFACE_STEP)) {
+    const acrossX = outline.map((point) => point.x);
+    const acrossZ = outline.map((point) => point.z);
+    for (const x of spaced(Math.min(...acrossX), Math.max(...acrossX), SURFACE_STEP)) {
+      for (const z of spaced(Math.min(...acrossZ), Math.max(...acrossZ), SURFACE_STEP)) {
         if (!containsPoint(outline, { x, z })) continue;
         for (const lift of SURFACE_LIFTS) yield { x, y: height + radius + lift, z };
       }

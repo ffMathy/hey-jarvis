@@ -135,8 +135,9 @@ function gridBox(planes: PosedPlane[], posedMeshes: Float32Array[]): { min: Vect
 /**
  * Builds the scene placement reads from `snapshot`.
  *
- * A generator that yields every millisecond or so of work, so the worker can answer placements
- * from the previous scene while this one is built; `buildRoomSceneNow` runs it in one go.
+ * A generator that yields between pieces of work — a plane, a few thousand triangles, a few
+ * hundred lines of the distance transform — so the worker can answer placements from the
+ * previous scene while this one is built; `buildRoomSceneNow` runs it in one go.
  */
 export function* buildRoomScene(snapshot: RoomSnapshot): Generator<void, RoomScene, void> {
   const planes = snapshot.planes.map(posePlane);
