@@ -97,6 +97,9 @@ jobs:
             bunx turbo build
             bunx turbo test
             bunx turbo e2e --filter=mobile
+            # A line of its own rather than a second --filter: Turbo would run the two suites at
+            # once, the headset's software-rendered room competing with the phone's web export.
+            bunx turbo e2e --filter=horizon
           env: |
             GITHUB_ACTIONS
             GITHUB_TOKEN
