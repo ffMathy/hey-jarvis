@@ -5,7 +5,10 @@ import { toConversationConfigBody } from '../../src/main.js';
 
 describe('toConversationConfigBody', () => {
   it('should send the TTS model even when the SDK does not know it yet', () => {
-    const body = toConversationConfigBody({ tts: { modelId: 'eleven_v4_turbo' } } as ConversationalConfig);
+    // Typed as a plain string, as it arrives from agent-config.json: the SDK's own
+    // TtsConversationalModel union does not list the model yet.
+    const modelId: string = 'eleven_v4_turbo';
+    const body = toConversationConfigBody({ tts: { modelId } } as ConversationalConfig);
 
     expect(body).toEqual({ tts: { model_id: 'eleven_v4_turbo' } });
   });
