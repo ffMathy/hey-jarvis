@@ -141,6 +141,19 @@ Anything changed here reaches the agent only through `bunx turbo deploy --filter
 needs the 1Password credentials. Until that runs, the committed config and the live agent disagree,
 and it is the live one the app talks to.
 
+## The voice model
+
+`conversationConfig.tts.modelId` is `eleven_v4_turbo`, Eleven v4 Turbo: the low-latency variant of
+Eleven v4 that ElevenAgents recommends for live conversation. It keeps the audio tags
+(`suggestedAudioTags`) the prompt relies on, as `eleven_v3_conversational` did before it.
+
+The SDK lags the API here. `@elevenlabs/elevenlabs-js` validates the request against enums frozen at
+its release, and no published version lists `eleven_v4_turbo` yet, so a plain `agents.update` throws
+`Expected enum` before sending anything. `deployConfig` therefore serializes `conversationConfig`
+itself through `toConversationConfigBody`, which lets unknown enum values through, and sends it as an
+additional body parameter. Once the SDK knows the model the workaround is harmless; keep it anyway,
+because the next model will outrun the SDK the same way.
+
 ## The conversational model
 
 `conversationConfig.agent.prompt.llm` in `src/assets/agent-config.json` names the

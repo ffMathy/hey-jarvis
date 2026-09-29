@@ -47,7 +47,7 @@
       "initialWaitTime": 30
     },
     "tts": {
-      "modelId": "eleven_v3_conversational",
+      "modelId": "eleven_v4_turbo",
       "supportedVoices": [],
       "expressiveMode": true,
       "suggestedAudioTags": [
