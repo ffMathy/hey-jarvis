@@ -361,8 +361,8 @@ describe('registerWorkflowApi', () => {
 });
 
 describe('registerApiRoutes', () => {
-  it('registers exactly the shopping list endpoint', () => {
-    expect(registeredApiPaths).toEqual(['/api/shopping-list']);
+  it('registers exactly the shopping list and phone notification endpoints', () => {
+    expect(registeredApiPaths).toEqual(['/api/shopping-list', '/api/phone-notification']);
   });
 
   it('validates the shopping list body before running the workflow', async () => {
@@ -388,6 +388,32 @@ describe('registerApiRoutes', () => {
   it('answers POST only', async () => {
     const response = await fetch(`${baseUrl}/api/shopping-list`);
     expect(response.status).toBe(404);
+  });
+
+  it('requires the app a phone notification came from', async () => {
+    const response = await postJson('/api/phone-notification', { title: 'Mom', text: 'Dinner at 6?' });
+    const body = await readBody(response);
+
+    expect(response.status).toBe(400);
+    expect(body.message).toContain('Validation failed');
+    expect(body.message).toContain('app');
+  });
+
+  it('accepts the nulls Home Assistant sends for missing notification attributes', async () => {
+    // Nothing to register, so the run finishes without reaching Synapse -- which needs the
+    // app's Mastra instance, and this server has none.
+    const response = await postJson('/api/phone-notification', {
+      app: 'com.spotify.music',
+      title: null,
+      text: null,
+      bigText: null,
+      postedAt: null,
+    });
+    const body = await readBody(response);
+
+    expect(response.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.data).toMatchObject({ registered: false });
   });
 });
 

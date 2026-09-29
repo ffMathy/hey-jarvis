@@ -395,10 +395,11 @@ that can publish artifacts; plus the companion-app notify service the
 - "Generate a UI for tracking my running times"
 - "Send that chart to my phone again"
 
-### Phone Vertical (Tools Only)
-Provides outbound calling, texting and contact lookup:
+### Phone Vertical
+Provides outbound calling, texting and contact lookup, and feeds the phone's notifications to Synapse:
 - **4 phone tools**: Place calls, send texts, and read the user's Google address book
-- **No agents or workflows**: This vertical exposes only tools for use by other agents
+- **No agents**: The tools are for use by other agents
+- **`phoneNotificationWorkflow`**: Receives Android notifications from Home Assistant and registers them with Synapse (see [Phone Notifications Into Synapse](#phone-notifications-into-synapse))
 - **Twilio integration**: Uses ElevenLabs Conversational AI platform with Twilio for phone calls
 - **Custom first message**: Each call can specify a custom greeting message for the recipient
 - **Conversation support**: After the initial message, the agent can engage in conversation with the recipient
@@ -1196,6 +1197,75 @@ api:
             timeout: !lambda 'return silence_seconds > 0 ? silence_seconds * 1000 : 3000;'
 ```
 
+
+### Phone Notifications Into Synapse
+
+The Home Assistant companion app on Android reports each notification the phone posts through its
+`sensor.<phone>_last_notification` sensor. A Home Assistant automation forwards every change of that
+sensor to `POST /api/phone-notification`, and `phoneNotificationWorkflow` registers it with Synapse as
+`notification_posted` from the `phone` source, with `app`, `title`, `text` and `postedAt` in its data.
+From there it is an ordinary state change: matched against subscriptions, saved to memory, and rolled
+up by the delivery policy rather than waking the reactor per notification.
+
+It is pushed rather than polled because the sensor only ever holds the latest notification, so the
+three-hourly IoT poll would see one per interval and lose the rest. For the same reason the IoT poll
+skips the `_last_notification` and `_last_removed_notification` sensors: they would otherwise be filed
+a second time, without the app or title.
+
+A notification with neither a title nor text (media players, progress bars) is accepted and dropped.
+
+**No authentication happens in the app.** Like `/api/shopping-list`, the route trusts whoever reaches
+it; the Cloudflare Access policy on the tunnel hostname is what keeps others out. Call it through the
+tunnel with a service token, not over the LAN port, which bypasses Access.
+
+**Setup:**
+
+1. **Companion app** → Settings → Companion app → Manage sensors → *Last notification*: enable it, grant
+   Notification Access, and set its **Allow List** to the apps Jarvis should see. Everything allowed
+   ends up in shared memory, so leave out banking, one-time codes and the like.
+2. **Cloudflare**: create a service token and allow it on the MCP hostname's Access application with a
+   *Service Auth* policy. Put its id and secret in Home Assistant's `secrets.yaml` as
+   `jarvis_cf_access_client_id` and `jarvis_cf_access_client_secret`.
+3. **`configuration.yaml`** (restart Home Assistant afterwards):
+
+   ```yaml
+   rest_command:
+     jarvis_phone_notification:
+       url: https://<mcp-tunnel-hostname>/api/phone-notification
+       method: POST
+       content_type: application/json
+       headers:
+         CF-Access-Client-Id: !secret jarvis_cf_access_client_id
+         CF-Access-Client-Secret: !secret jarvis_cf_access_client_secret
+       payload: >-
+         {{ {
+           "app": trigger.to_state.attributes.package,
+           "title": trigger.to_state.attributes['android.title'],
+           "text": trigger.to_state.attributes['android.text'],
+           "bigText": trigger.to_state.attributes['android.bigText'],
+           "postedAt": trigger.to_state.attributes.post_time
+         } | to_json }}
+   ```
+
+4. **Automation**:
+
+   ```yaml
+   alias: Forward phone notifications to Jarvis
+   mode: queued
+   max: 20
+   triggers:
+     - trigger: state
+       entity_id: sensor.<phone>_last_notification
+   conditions:
+     - condition: template
+       value_template: "{{ trigger.to_state is not none and trigger.to_state.attributes.package is defined }}"
+   actions:
+     - action: rest_command.jarvis_phone_notification
+   ```
+
+   The trigger names no `to:`, so it also fires when only the attributes change, which is what happens
+   when two notifications in a row carry the same text. `mode: queued` keeps a burst of notifications
+   from being dropped while the previous call is still in flight.
 
 ### State Change Notification Workflow
 Reactive notification workflow using agent network for intelligent state change analysis:

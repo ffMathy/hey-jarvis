@@ -36,7 +36,7 @@ import {
   internetOfThingsTools,
 } from './verticals/internet-of-things/index.js';
 import { getNotificationAgent, notificationTools } from './verticals/notification/index.js';
-import { phoneTools } from './verticals/phone/index.js';
+import { phoneNotificationWorkflow, phoneTools } from './verticals/phone/index.js';
 import { presenceShortcuts } from './verticals/presence/index.js';
 import { getReflectionAgent, reflectionTools } from './verticals/reflection/index.js';
 import { getRoutingPlannerAgent } from './verticals/routing/planner.js';
@@ -115,6 +115,7 @@ export async function getMastra(): Promise<Mastra> {
       emailCheckingWorkflow,
       formRepliesDetectionWorkflow,
       iotMonitoringWorkflow,
+      phoneNotificationWorkflow,
       routePromptWorkflow,
       getNextInstructionsWorkflow,
     },

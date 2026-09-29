@@ -12,3 +12,9 @@ export {
   toContact,
 } from './contacts.js';
 export { initiatePhoneCall, phoneTools, sendTextMessage } from './tools.js';
+export {
+  type PhoneNotification,
+  phoneNotificationSchema,
+  phoneNotificationWorkflow,
+  toNotificationStateChange,
+} from './workflows.js';

@@ -13,6 +13,24 @@ import { fetchHistoricalStates, getChangedDevicesSince } from './tools.js';
 const SENSITIVE_LABEL = 'sensitive';
 
 /**
+ * The companion app's notification sensors, whose state is the text of a notification.
+ *
+ * Those reach Synapse through `POST /api/phone-notification` the moment they are posted, with
+ * the app and title this poll cannot see. Letting the poll report them too would file every
+ * notification twice, the second time stripped of what makes it readable.
+ */
+const COMPANION_NOTIFICATION_SENSOR = /^sensor\..+_last(_removed)?_notification$/;
+
+/**
+ * Whether an entity is one of the companion app's notification sensors.
+ *
+ * Exported for testing.
+ */
+export function isCompanionNotificationSensor(entityId: string): boolean {
+  return COMPANION_NOTIFICATION_SENSOR.test(entityId);
+}
+
+/**
  * Time window in seconds to look back for state changes.
  * Set to 3 hours to match the scheduler interval.
  */
@@ -102,6 +120,10 @@ const fetchRecentlyChangedDevices = createStep({
     for (const item of result.changed_devices) {
       // Skip if device or entity has the sensitive label
       if (item.device_label_ids?.includes(SENSITIVE_LABEL) || item.entity_label_ids?.includes(SENSITIVE_LABEL)) {
+        continue;
+      }
+
+      if (isCompanionNotificationSensor(item.entity_id)) {
         continue;
       }
 
