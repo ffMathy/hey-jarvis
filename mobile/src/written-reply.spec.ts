@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'bun:test';
-import { afterMessage, readingMilliseconds, SAYING_NOTHING, type WrittenReply } from './written-reply';
+import {
+  afterMessage,
+  afterSpokenMessage,
+  readingMilliseconds,
+  SAYING_NOTHING,
+  type WrittenReply,
+} from './written-reply';
 
 /** A moment to measure from, so every expectation below is an exact number rather than a range. */
 const NOW = 1_000_000;
@@ -53,6 +59,28 @@ describe('afterMessage', () => {
     const first = afterMessage(SAYING_NOTHING, { message: 'Yes.', role: 'ai' }, NOW);
     const second = afterMessage(first, { message: 'Yes.', role: 'ai' }, NOW + 4000);
     expect(second.readingUntil).toBeGreaterThan(first.readingUntil);
+  });
+});
+
+describe('afterSpokenMessage', () => {
+  it('shows what Jarvis said', () => {
+    expect(afterSpokenMessage(SAYING_NOTHING, { message: 'Good evening.', role: 'ai' }).shown).toBe('Good evening.');
+  });
+
+  it('never sets him miming a line he is saying out loud', () => {
+    // His real voice is playing, and the sphere follows that. A clock on top of it would keep the
+    // sphere speaking after he has stopped.
+    expect(afterSpokenMessage(SAYING_NOTHING, { message: 'A'.repeat(140), role: 'ai' }).readingUntil).toBe(0);
+  });
+
+  it('clears his answer the moment you send something', () => {
+    const answered: WrittenReply = { shown: 'Good evening.', readingUntil: 0 };
+    expect(afterSpokenMessage(answered, { message: 'What is the time?', role: 'user' })).toEqual(SAYING_NOTHING);
+  });
+
+  it('keeps his answer when a blank line arrives from him', () => {
+    const answered: WrittenReply = { shown: 'Good evening.', readingUntil: 0 };
+    expect(afterSpokenMessage(answered, { message: '   ', role: 'ai' })).toEqual(answered);
   });
 });
 

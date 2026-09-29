@@ -98,3 +98,15 @@ export function afterMessage(reply: WrittenReply, incoming: ConversationMessage,
 
   return { shown: said, readingUntil: now + readingMilliseconds(said) };
 }
+
+/**
+ * The same, for a line he is also saying out loud: shown, but never mimed.
+ *
+ * A phone's conversation held in writing keeps its voice (see `text-mode.ts`), so the sphere
+ * already has his real voice to follow. Miming the line from the clock on top of it would
+ * overrule the one honest signal there is with an invented one, and keep the sphere moving after
+ * he has actually stopped. What is on screen follows the same two rules as `afterMessage`.
+ */
+export function afterSpokenMessage(reply: WrittenReply, incoming: ConversationMessage): WrittenReply {
+  return { ...afterMessage(reply, incoming, 0), readingUntil: 0 };
+}

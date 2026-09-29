@@ -25,7 +25,7 @@ import { QUIETEST_SPEECH_HERE } from './speech-floor';
 import { useTextMode } from './text-mode';
 import { theme } from './theme';
 import { TypedMessageField } from './typed-message-field';
-import { afterMessage, SAYING_NOTHING } from './written-reply';
+import { afterMessage, afterSpokenMessage, SAYING_NOTHING } from './written-reply';
 import { WrittenReplyLine } from './written-reply-line';
 
 interface ConversationScreenProps {
@@ -209,22 +209,28 @@ export function ConversationScreen({
   // refused, which says that in one line and is done. See `start` below.
   const [canType, setCanType] = useState(false);
   /**
-   * The last thing Jarvis said, on the one conversation where he says it in writing.
+   * The last thing Jarvis said, in the conversations where you are writing to him.
    *
-   * Only ever set from the text-only session — see `written-reply.ts`. In a voice conversation his
-   * answer is his voice, and putting it on screen as well would be a transcript under a sphere
-   * drawn precisely so there would not have to be one.
+   * Set from the text-only session, and from a phone's voice session while it is held in writing —
+   * see `written-reply.ts` and `text-mode.ts`. In a spoken conversation his answer is his voice, and
+   * putting it on screen as well would be a transcript under a sphere drawn precisely so there
+   * would not have to be one.
    */
   const [writtenReply, setWrittenReply] = useState(SAYING_NOTHING);
   const rememberWhatHeSaid = useCallback((incoming: { message: string; role: string }) => {
     setWrittenReply((reply) => afterMessage(reply, incoming, Date.now()));
+  }, []);
+  // Held in writing, a phone still hears him, so his line is shown but not mimed: the sphere
+  // follows his real voice. See `afterSpokenMessage`.
+  const rememberWhatHeSaidAloud = useCallback((incoming: { message: string; role: string }) => {
+    setWrittenReply((reply) => afterSpokenMessage(reply, incoming));
   }, []);
   // Tapping him switches a phone's conversation between talking and writing. See `text-mode.ts`.
   const clearWrittenReply = useCallback(() => setWrittenReply(SAYING_NOTHING), []);
   const { textMode, toggleTextMode, resetTextMode, rememberInTextMode } = useTextMode({
     connected: status === 'connected',
     onSwitch: clearWrittenReply,
-    remember: rememberWhatHeSaid,
+    remember: rememberWhatHeSaidAloud,
   });
   /**
    * When to stop waiting for the conversation to open, or `undefined` once nothing is waited for.
@@ -269,9 +275,10 @@ export function ConversationScreen({
    * **It is a fiction, and only ever where there is nothing to be honest about.** The words are
    * really his; only the delivery is invented, and it is invented only in the session ElevenLabs
    * was asked not to speak in. A conversation with a voice never reaches this: `readingAloud` is
-   * set from `onMessage`, which is wired on the text-only session alone, so the sphere goes on
-   * following his real voice everywhere else — where it would be wrong to overrule it with a
-   * clock.
+   * only ever set by the text-only session's `onMessage`, and a phone held in writing — which
+   * still speaks — shows his line through `afterSpokenMessage`, which never sets it. So the sphere
+   * goes on following his real voice everywhere else, where it would be wrong to overrule it with
+   * a clock.
    */
   const simulatedVoice = useSimulatedVoice(readingAloud ? 'speaking' : undefined);
   /**
@@ -520,8 +527,9 @@ export function ConversationScreen({
           // seconds after the call — counted once he has finished miming his written answer —
           // unless a line is typed.
           ...quietSessionOptions,
-          // The only place this is asked for, because it is the only place there is anything to
-          // read: his reply arrives written here and as audio everywhere else.
+          // The only place his line is mimed as well as shown, because it is the only place there
+          // is no voice for the sphere to follow: his reply arrives written here and as audio
+          // everywhere else.
           onMessage: inTurn(rememberWhatHeSaid, quietSessionOptions.onMessage),
         });
       }
