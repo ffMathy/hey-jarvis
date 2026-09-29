@@ -8,6 +8,9 @@
  * one chunk.
  */
 
+/** The name the frame-packing AudioWorklet processor registers under (`pcm-frames.worklet.ts`). */
+export const WAKE_FRAMES_PROCESSOR = 'wake-pcm-frames';
+
 /** A float sample in [-1, 1] as a 16-bit integer, clamped. */
 export function toInt16(sample: number) {
   const scaled = Math.round(sample * 32768);
