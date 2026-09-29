@@ -69,8 +69,11 @@ interface ServicesApiResponse {
 // Type for services grouped by domain
 type ServicesByDomain = Record<string, Record<string, ServiceDefinition>>;
 
-// Get Home Assistant configuration from environment
-const getHomeAssistantConfig = () => {
+/**
+ * Where Home Assistant is and how to authenticate against it, for both the REST calls here and
+ * the websocket the event monitor holds open.
+ */
+export const getHomeAssistantConfig = () => {
   let url = process.env.HEY_JARVIS_HOME_ASSISTANT_URL;
   let token = process.env.HEY_JARVIS_HOME_ASSISTANT_TOKEN;
 

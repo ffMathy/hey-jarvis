@@ -399,7 +399,7 @@ that can publish artifacts; plus the companion-app notify service the
 Provides outbound calling, texting and contact lookup, and feeds the phone's notifications to Synapse:
 - **4 phone tools**: Place calls, send texts, and read the user's Google address book
 - **No agents**: The tools are for use by other agents
-- **`phoneNotificationWorkflow`**: Receives Android notifications from Home Assistant and registers them with Synapse (see [Phone Notifications Into Synapse](#phone-notifications-into-synapse))
+- **Notifications**: Maps the Android notifications the Home Assistant event monitor sees into Synapse state changes (see [Phone Notifications Into Synapse](#phone-notifications-into-synapse))
 - **Twilio integration**: Uses ElevenLabs Conversational AI platform with Twilio for phone calls
 - **Custom first message**: Each call can specify a custom greeting message for the recipient
 - **Conversation support**: After the initial message, the agent can engage in conversation with the recipient
@@ -1140,9 +1140,11 @@ in standard 5-field form; croner nicknames (`@hourly`, `@daily`) work too.
    - Purpose: Resumes the suspended runs that inbound form replies answer, and registers the
      emails as a state change
 
-5. **IoT Device Monitoring** - Runs every 3 hours + on startup
-   - Workflow: `iotMonitoringWorkflow`
-   - Purpose: Monitors Home Assistant devices and registers state changes
+5. **IoT Noise Baselines** - Runs every 3 hours + on startup
+   - Workflow: `iotNoiseBaselineWorkflow`
+   - Purpose: Recalculates how much each entity normally fluctuates, from 15 minutes of history,
+     so the Home Assistant event monitor can drop changes that are only noise. The changes
+     themselves are not polled: see [Home Assistant Event Monitor](#home-assistant-event-monitor)
 
 6. **Storage Retention** - Runs nightly at midnight
    - Workflow: `storageRetentionWorkflow`
@@ -1201,71 +1203,31 @@ api:
 ### Phone Notifications Into Synapse
 
 The Home Assistant companion app on Android reports each notification the phone posts through its
-`sensor.<phone>_last_notification` sensor. A Home Assistant automation forwards every change of that
-sensor to `POST /api/phone-notification`, and `phoneNotificationWorkflow` registers it with Synapse as
-`notification_posted` from the `phone` source, with `app`, `title`, `text` and `postedAt` in its data.
-From there it is an ordinary state change: matched against subscriptions, saved to memory, and rolled
-up by the delivery policy rather than waking the reactor per notification.
+`sensor.<phone>_last_notification` sensor: the state is the text, and the attributes carry the app
+(`package`), `android.title`, `android.text`, `android.bigText` and `post_time`. The Home Assistant
+event monitor (`internet-of-things/event-monitor.ts`) already receives that sensor's `state_changed`
+events, and routes them to `phone/notifications.ts` instead of the device reports. Each one is
+registered with Synapse as `notification_posted` from the `phone` source, with `app`, `title`,
+`text` and `postedAt`. From there it is an ordinary state change: matched against subscriptions, saved
+to memory, and rolled up by the delivery policy rather than waking the reactor per notification.
 
-It is pushed rather than polled because the sensor only ever holds the latest notification, so the
-three-hourly IoT poll would see one per interval and lose the rest. For the same reason the IoT poll
-skips the `_last_notification` and `_last_removed_notification` sensors: they would otherwise be filed
-a second time, without the app or title.
+How these differ from the monitor's other entities:
 
-A notification with neither a title nor text (media players, progress bars) is accepted and dropped.
+- **Attribute-only updates count.** The monitor otherwise drops them, but two notifications in a row
+  with the same text differ only in their attributes.
+- **No bulking.** Each notification is its own message; the bulker would keep only the first and
+  last of a burst.
+- **Never a device state.** Neither this sensor nor `_last_removed_notification` is reported,
+  caught up on, or stored as a device state, so the text never lands in `device_state` storage.
+- **No catch-up.** The sensor holds only the latest notification, so one posted while the socket
+  was down is not reported on reconnect.
+- The `sensitive` label excludes the sensor as it does any other entity. A notification with neither
+  a title nor text (media players, progress bars) is dropped.
 
-**No authentication happens in the app.** Like `/api/shopping-list`, the route trusts whoever reaches
-it; the Cloudflare Access policy on the tunnel hostname is what keeps others out. Call it through the
-tunnel with a service token, not over the LAN port, which bypasses Access.
-
-**Setup:**
-
-1. **Companion app** → Settings → Companion app → Manage sensors → *Last notification*: enable it, grant
-   Notification Access, and set its **Allow List** to the apps Jarvis should see. Everything allowed
-   ends up in shared memory, so leave out banking, one-time codes and the like.
-2. **Cloudflare**: create a service token and allow it on the MCP hostname's Access application with a
-   *Service Auth* policy. Put its id and secret in Home Assistant's `secrets.yaml` as
-   `jarvis_cf_access_client_id` and `jarvis_cf_access_client_secret`.
-3. **`configuration.yaml`** (restart Home Assistant afterwards):
-
-   ```yaml
-   rest_command:
-     jarvis_phone_notification:
-       url: https://<mcp-tunnel-hostname>/api/phone-notification
-       method: POST
-       content_type: application/json
-       headers:
-         CF-Access-Client-Id: !secret jarvis_cf_access_client_id
-         CF-Access-Client-Secret: !secret jarvis_cf_access_client_secret
-       payload: >-
-         {{ {
-           "app": trigger.to_state.attributes.package,
-           "title": trigger.to_state.attributes['android.title'],
-           "text": trigger.to_state.attributes['android.text'],
-           "bigText": trigger.to_state.attributes['android.bigText'],
-           "postedAt": trigger.to_state.attributes.post_time
-         } | to_json }}
-   ```
-
-4. **Automation**:
-
-   ```yaml
-   alias: Forward phone notifications to Jarvis
-   mode: queued
-   max: 20
-   triggers:
-     - trigger: state
-       entity_id: sensor.<phone>_last_notification
-   conditions:
-     - condition: template
-       value_template: "{{ trigger.to_state is not none and trigger.to_state.attributes.package is defined }}"
-   actions:
-     - action: rest_command.jarvis_phone_notification
-   ```
-
-   The trigger names no `to:`, so it also fires when only the attributes change, which is what happens
-   when two notifications in a row carry the same text. `mode: queued` keeps a burst of notifications
-   from being dropped while the previous call is still in flight.
+**Setup:** in the companion app, go to Settings → Companion app → Manage sensors → *Last
+notification*, enable it, grant Notification Access, and set its **Allow List** to the apps Jarvis
+should see. Everything allowed ends up in shared memory, so leave out banking, one-time codes and the
+like. Nothing needs configuring in Home Assistant itself.
 
 ### State Change Notification Workflow
 Reactive notification workflow using agent network for intelligent state change analysis:
@@ -2422,6 +2384,31 @@ The MCP server does not require authentication. All endpoints are publicly acces
   request can be read back as a breakdown
 - Sensor data processing and analysis
 - Scene and routine management
+
+#### Home Assistant Event Monitor
+`verticals/internet-of-things/event-monitor.ts` holds one subscription to Home Assistant's
+websocket API (through the official `home-assistant-js-websocket` client) and files what happens in
+the house for the State Change Reactor as it happens. It is started by `mcp-server.ts` only, the
+process that also owns the schedules, so Studio never files a change twice.
+
+- **What it listens to.** `state_changed` events whose state value moved (attribute-only updates
+  and entities being added or removed are dropped), and every other bus event except
+  `IGNORED_EVENT_TYPES` — Home Assistant's own bookkeeping, plus `call_service`,
+  `automation_triggered` and `script_started`, whose effects are reported as state changes anyway.
+  Other events are what bring button presses, doorbells and tag scans to the reactor, filed as
+  `home_assistant_event`; state changes keep the `device_state_change` type. The companion app's
+  notification sensors are the exception: they are routed to the phone vertical, not reported as
+  device states (see [Phone Notifications Into Synapse](#phone-notifications-into-synapse)).
+- **Spammy sources are bulked** (`change-bulker.ts`). Changes are collected per entity, or per event
+  type and source. A quiet bucket is released after 30 seconds; one that reaches 5 changes is spammy
+  and held for 10 minutes, then reported once with `changeCount`/`occurrences`, the first and last
+  value and the distinct values in between.
+- **Filtering** (`change-reports.ts`). Anything whose entity or device carries the `sensitive` label
+  is dropped. A state bucket is dropped as noise unless some value it passed through differs from
+  where it started by more than the entity's noise baseline, so a door that opened and closed inside
+  one window is still reported.
+- **Catch-up.** On every connect and reconnect it compares `get_states` against the last states it
+  saw (persisted in `iot_device_states`) and reports what changed while it was away.
 
 ### Model Context Protocol (MCP)
 - Server-client communication for tool sharing

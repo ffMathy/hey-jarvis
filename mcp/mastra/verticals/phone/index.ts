@@ -13,8 +13,9 @@ export {
 } from './contacts.js';
 export { initiatePhoneCall, phoneTools, sendTextMessage } from './tools.js';
 export {
+  isLastNotificationSensor,
+  isNotificationSensor,
   type PhoneNotification,
-  phoneNotificationSchema,
-  phoneNotificationWorkflow,
+  readNotificationAttributes,
   toNotificationStateChange,
-} from './workflows.js';
+} from './notifications.js';

@@ -3,7 +3,6 @@ import type { ZodTypeAny } from 'zod';
 import { extractErrorMessage } from '../../utils/errors.js';
 import { logger } from '../../utils/logger.js';
 import type { AnyWorkflow, AnyWorkflowResult } from '../../utils/workflows/workflow-factory.js';
-import { phoneNotificationWorkflow } from '../phone/workflows.js';
 import { shoppingListWorkflow } from '../shopping/workflows.js';
 
 /**
@@ -165,16 +164,6 @@ export function registerApiRoutes(router: Router): string[] {
       path: '/api/shopping-list',
       workflow: shoppingListWorkflow,
       description: 'Add items to the shopping list using natural language',
-    }),
-  );
-
-  // Phone Notification API - a Home Assistant automation forwards each Android notification
-  // from the companion app, and phoneNotificationWorkflow hands it to Synapse
-  registeredPaths.push(
-    registerWorkflowApi(router, {
-      path: '/api/phone-notification',
-      workflow: phoneNotificationWorkflow,
-      description: 'Register an Android notification with Synapse',
     }),
   );
 
