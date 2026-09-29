@@ -1,15 +1,18 @@
 import { describe, expect, it } from 'bun:test';
+import type { AgentTrackRoom } from 'hologram';
 import { Room } from 'livekit-client';
 import {
-  type AgentTrackRoom,
-  agentAudioTracks,
   findAgentAudioTrack,
   followAgentAudioTrack,
-  followAgentTrack,
   type NativeTrackIds,
-  nativeTrackIds,
   roomOfConversation,
 } from './agent-audio-track';
+
+/**
+ * This app's half of finding Jarvis's track: the native ids Android reads it by, and the check
+ * against this app's own `livekit-client`. Walking the room is shared, and tested with it in
+ * `hologram/src/agent-audio-track.spec.ts`.
+ */
 
 /** A React Native WebRTC track as JavaScript sees it: an id, and the connection it arrived on. */
 function receivedTrack(peerConnectionId: number, id: string) {
@@ -43,25 +46,6 @@ function fakeRoom(initial: ReturnType<typeof participant>[] = []) {
   } satisfies AgentTrackRoom & Record<string, unknown>;
 }
 
-describe('nativeTrackIds', () => {
-  it('finds the connection and id of a received track', () => {
-    expect(nativeTrackIds(receivedTrack(3, 'agent-voice').mediaStreamTrack)).toEqual({
-      peerConnectionId: 3,
-      trackId: 'agent-voice',
-    });
-  });
-
-  it('refuses a local track, which belongs to no connection', () => {
-    expect(nativeTrackIds(receivedTrack(-1, 'microphone').mediaStreamTrack)).toBeUndefined();
-  });
-
-  it('refuses anything that is not a React Native WebRTC track', () => {
-    expect(nativeTrackIds(undefined)).toBeUndefined();
-    expect(nativeTrackIds({ id: 'browser-track' })).toBeUndefined();
-    expect(nativeTrackIds({ id: 7, _peerConnectionId: 1 })).toBeUndefined();
-  });
-});
-
 describe('findAgentAudioTrack', () => {
   it("picks the agent's track, not another participant's", () => {
     const room = fakeRoom([
@@ -76,51 +60,11 @@ describe('findAgentAudioTrack', () => {
     expect(findAgentAudioTrack(fakeRoom([participant('agent_jarvis', [])]))).toBeUndefined();
     expect(findAgentAudioTrack(fakeRoom())).toBeUndefined();
   });
-});
 
-describe('agentAudioTracks', () => {
-  // The track objects themselves, narrowed by nobody: `jarvis-voice.web.ts` wants the browser's
-  // `MediaStreamTrack` off them and `queued-audio.ts` wants the elements they are playing
-  // through. See the note on the function.
-  it("hands over the agent's tracks as they are, and nobody else's", () => {
-    const jarvis = receivedTrack(1, 'jarvis');
-    const alsoJarvis = receivedTrack(1, 'jarvis-again');
-    const room = fakeRoom([
-      participant('user_42', [receivedTrack(1, 'someone-else')]),
-      participant('agent_jarvis', [jarvis, alsoJarvis]),
-    ]);
+  it('skips a track native code cannot find, such as a local one', () => {
+    const room = fakeRoom([participant('agent_jarvis', [receivedTrack(-1, 'local'), receivedTrack(4, 'jarvis')])]);
 
-    expect(agentAudioTracks(room)).toEqual([jarvis, alsoJarvis]);
-  });
-
-  it('hands over nothing before the agent has a track', () => {
-    expect(agentAudioTracks(fakeRoom([participant('agent_jarvis', [])]))).toEqual([]);
-    expect(agentAudioTracks(fakeRoom())).toEqual([]);
-  });
-});
-
-describe('followAgentTrack', () => {
-  /** The trackless thing a browser reads: whatever `read` says, followed by identity. */
-  const followIdentities = (room: AgentTrackRoom, onChange: (found: string | undefined) => void) =>
-    followAgentTrack(
-      room,
-      (current) => findAgentAudioTrack(current)?.trackId,
-      (one, other) => one === other,
-      onChange,
-    );
-
-  it('follows whatever it is told to read, not only the native ids', () => {
-    const room = fakeRoom();
-    const reports: (string | undefined)[] = [];
-
-    const stop = followIdentities(room, (track) => reports.push(track));
-    room.remoteParticipants.set('agent_jarvis', participant('agent_jarvis', [receivedTrack(2, 'jarvis')]));
-    room.emit('trackSubscribed');
-    room.emit('trackSubscribed');
-    stop();
-
-    expect(reports).toEqual(['jarvis', undefined]);
-    expect(room.listenerCount()).toBe(0);
+    expect(findAgentAudioTrack(room)).toEqual({ peerConnectionId: 4, trackId: 'jarvis' });
   });
 });
 
@@ -183,5 +127,12 @@ describe('roomOfConversation', () => {
     expect(roomOfConversation({})).toBeUndefined();
     expect(roomOfConversation({ connection: {} })).toBeUndefined();
     expect(roomOfConversation({ connection: { getRoom: () => ({ not: 'a room' }) } })).toBeUndefined();
+  });
+
+  it("finds nothing when what the SDK hands over only looks like this app's Room", () => {
+    // What a second copy of `livekit-client` would hand over: the same shape, a different class.
+    const lookalike = { remoteParticipants: new Map(), on() {}, off() {} };
+
+    expect(roomOfConversation({ connection: { getRoom: () => lookalike } })).toBeUndefined();
   });
 });

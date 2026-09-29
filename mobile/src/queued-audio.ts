@@ -1,6 +1,7 @@
 import { useRawConversation } from '@elevenlabs/react-native';
+import { type AgentTrack, agentAudioTracks } from 'hologram';
 import { useEffect, useMemo, useRef } from 'react';
-import { type AgentTrack, agentAudioTracks, roomOfConversation } from './agent-audio-track';
+import { roomOfConversation } from './agent-audio-track';
 
 /**
  * As much of a media element as dropping what it has queued needs.

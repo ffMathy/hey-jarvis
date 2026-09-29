@@ -1,8 +1,15 @@
 import { useConversationMode, useConversationStatus, useRawConversation } from '@elevenlabs/react-native';
-import { createPlayedVoiceReaders, type PlayedAudioSource, readingWindowSize } from 'hologram';
+import {
+  type AgentTrackRoom,
+  agentAudioTracks,
+  createPlayedVoiceReaders,
+  followAgentTrack,
+  type PlayedAudioSource,
+  readingWindowSize,
+} from 'hologram';
 import { useSdkVoiceReaders } from 'hologram/conversation';
 import { useEffect, useMemo, useState } from 'react';
-import { type AgentTrackRoom, agentAudioTracks, followAgentTrack, roomOfConversation } from './agent-audio-track';
+import { roomOfConversation } from './agent-audio-track';
 import type { UseJarvisVoice } from './platform-contracts';
 
 /** An analyser watching one track, and the way to let go of it. */
@@ -80,9 +87,10 @@ function listenToTrack(track: MediaStreamTrack): OpenedAudio | undefined {
  * above the tracker's speech threshold, so the sphere stayed agitated and the rim threw chips
  * through them. See `hologram/src/played-voice.ts` for the whole of that argument.
  *
- * So the track is found in the LiveKit room the same way the phone finds it — `agent-audio-track.ts`,
- * shared between them — and analysed with the same code the phone runs on its tapped samples. What
- * differs is only how the samples are come by: natively there, through Web Audio here.
+ * So the track is found in the LiveKit room the same way the phone finds it —
+ * `hologram/src/agent-audio-track.ts`, shared between them — and analysed with the same code the
+ * phone runs on its tapped samples. What differs is only how the samples are come by: natively
+ * there, through Web Audio here.
  */
 export const useJarvisVoice: UseJarvisVoice = () => {
   const { status } = useConversationStatus();

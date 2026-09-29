@@ -10,7 +10,10 @@ import { join } from 'node:path';
  * new SDK version that moves it breaks nothing loudly: the hologram quietly goes
  * back to the SDK's own readings, which on Android barely move it. So this reads
  * the installed SDK and fails if the room is no longer where
- * `agent-audio-track.ts` looks for it.
+ * `roomOfConversation` looks for it — the shared half in
+ * `hologram/src/agent-audio-track.ts`, handed this app's own `Room` check by
+ * `agent-audio-track.ts`. It stays here rather than beside the shared half
+ * because the copies it compares are this app's.
  */
 
 const MOBILE_ROOT = join(import.meta.dir, '..');
