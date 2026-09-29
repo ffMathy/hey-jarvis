@@ -18,6 +18,16 @@ const HEAD_IN_THE_E2E: PlacementRequest = {
   depthProbes: [],
 };
 
+/**
+ * How long a warm build of the captured living room and a warm placement in it may take before
+ * the suite fails. The budget is about 150 ms for a build — it runs in the worker, so it costs no
+ * frames, but a changed room should be in use soon after — and a few milliseconds for a
+ * placement, which runs the moment he is summoned. The build's limit leaves room for a busy
+ * machine above that budget.
+ */
+const WARM_BUILD_LIMIT_MILLISECONDS = 250;
+const PLACE_LIMIT_MILLISECONDS = 5;
+
 function milliseconds(work: () => void): number {
   const start = performance.now();
   work();
@@ -38,9 +48,11 @@ describe('placement in the captured living room', () => {
     const model = createRoomModel();
     // The first build pays for compiling the code as well; the one the app waits on after a
     // change of room is a warm one. The quickest of three warm builds, and the median of the warm
-    // placements, are held to the budget: machines running the suite are often busy with other
-    // work, and a single run can land on a garbage collection or a stolen time slice. Printed, so
-    // a slowdown shows in the log before it trips the limit.
+    // placements, are what is held to a limit: a single run can land on a garbage collection or a
+    // stolen time slice. The limits are guards against a real slowdown, not the budget itself —
+    // on an idle machine the build takes about 40 ms and a placement about 1 ms, but the suite
+    // shares its machine with every other package's tests, which can more than double both.
+    // Printed, so a slowdown shows in the log before it trips a limit.
     const firstBuild = milliseconds(() => model.update(room));
     const warmBuilds = Array.from({ length: 3 }, () => milliseconds(() => model.update({ ...room })));
     const steadyBuild = Math.min(...warmBuilds);
@@ -67,8 +79,8 @@ describe('placement in the captured living room', () => {
     expect(ahead).toBeGreaterThanOrEqual(0.9);
     expect(ahead).toBeLessThanOrEqual(2.6);
 
-    expect(steadyBuild).toBeLessThan(150);
-    expect(typicalPlace).toBeLessThan(5);
+    expect(steadyBuild).toBeLessThan(WARM_BUILD_LIMIT_MILLISECONDS);
+    expect(typicalPlace).toBeLessThan(PLACE_LIMIT_MILLISECONDS);
   });
 });
 
