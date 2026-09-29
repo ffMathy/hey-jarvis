@@ -88,7 +88,11 @@ jobs:
           imageName: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
           cacheFrom: ghcr.io/${{ env.REPO_OWNER_LC }}/devcontainer
           push: never
+          # `runCmd` runs as one `bash -c` script, and without `set -e` only its last
+          # line's exit code counts: a failed build or test used to pass CI as long as
+          # the e2e line after it succeeded.
           runCmd: |
+            set -euo pipefail
             bun install --frozen-lockfile
             bunx turbo build
             bunx turbo test

@@ -6,20 +6,28 @@
       "dependsOn": ["^build", "lint", "typecheck", "initialize"],
       "outputs": ["../dist/**", ".esphome/build/**"]
     },
+    // Runs nothing: no package has a `transit` script. Depending on `^transit` puts a
+    // workspace dependency's files into a task's hash without making it wait for
+    // anything, so a change to `hologram` alone re-runs the typecheck and tests of
+    // every app built on it instead of replaying their cached pass.
+    "transit": {
+      "dependsOn": ["^transit"]
+    },
     "typecheck": {
+      "dependsOn": ["^transit"],
       "inputs": ["**/*.ts", "**/*.tsx", "tsconfig*.json"],
       "cache": true
     },
     "lint": {
       "dependsOn": ["typecheck"],
-      "inputs": ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.json", "$TURBO_ROOT/biome.json"],
+      "inputs": ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.json", "$TURBO_ROOT$/biome.json"],
       "cache": true
     },
     "format": {
       "cache": false
     },
     "test": {
-      "dependsOn": ["lint"],
+      "dependsOn": ["^transit", "lint"],
       "outputs": ["../coverage/**"]
     },
     "test:integration": {
@@ -52,7 +60,7 @@
       "persistent": true
     },
     "e2e": {
-      "dependsOn": ["build"],
+      "dependsOn": ["^transit", "build"],
       "outputs": ["playwright-report/**", "test-results/**"]
     },
     "build:apk": {
@@ -66,7 +74,7 @@
       "outputs": []
     },
     "mobile#e2e": {
-      "dependsOn": ["lint", "typecheck", "initialize"],
+      "dependsOn": ["^transit", "lint", "typecheck", "initialize"],
       "outputs": ["playwright-report/**", "test-results/**", "dist/**"]
     },
     "initialize": {
