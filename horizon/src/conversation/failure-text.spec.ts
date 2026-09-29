@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import {
+  CONNECTION_PROBLEM,
   DROPPED_PROBLEM,
   describeDisconnect,
   describeStartFailure,
@@ -30,6 +31,16 @@ describe('explaining a failed summoning', () => {
   it('names a refused microphone', () => {
     expect(describeStartFailure(new DOMException('Permission denied', 'NotAllowedError'))).toBe(MICROPHONE_PROBLEM);
     expect(describeStartFailure(new DOMException('Insecure', 'SecurityError'))).toBe(MICROPHONE_PROBLEM);
+  });
+
+  it('says the connection could not be opened rather than repeating LiveKit’s signalling', () => {
+    // Shaped like livekit-client's own: an Error named `ConnectionError`, with this very message
+    // from a browser whose socket to LiveKit was closed.
+    const refused = Object.assign(
+      new Error('could not establish signal connection: Websocket got closed during a (re)connection attempt:'),
+      { name: 'ConnectionError' },
+    );
+    expect(describeStartFailure(refused)).toBe(CONNECTION_PROBLEM);
   });
 
   it('falls back to the phone’s words when there is nothing to say, or nothing safe to say', () => {

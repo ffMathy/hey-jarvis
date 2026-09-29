@@ -5,9 +5,9 @@
  * every device: the token request's own messages (`describeFailure` in
  * `hologram/src/conversation-token.ts`, which reach the session as the rejection's message), the
  * deadline's (`mobile/src/conversation-screen.tsx`), the refused microphone's and the generic
- * ones. What is new here are the two raw texts the phone shows verbatim and should not — the
- * browser's own words for being offline, and LiveKit's for a room that closed — which on a headset
- * would be the only thing in front of you.
+ * ones. What is new here are the raw texts the phone shows verbatim and should not — the
+ * browser's own words for being offline, and LiveKit's for a room that would not open or that
+ * closed — which on a headset would be the only thing in front of you.
  */
 
 /** When nothing has answered by `GIVE_UP_CONNECTING_AFTER_MS`. The phone's words, exactly. */
@@ -15,6 +15,13 @@ export const DEADLINE_PROBLEM = 'Jarvis did not answer. ElevenLabs may be unreac
 
 /** A `fetch` that never reached a server. */
 export const OFFLINE_PROBLEM = 'ElevenLabs could not be reached. Check that the headset is connected to the internet.';
+
+/**
+ * LiveKit failing to open the room at all. Its own words — "could not establish signal connection:
+ * Websocket got closed during a (re)connection attempt:" is what a blocked socket reads as, seen in
+ * a browser — describe its internals rather than anything the user can do.
+ */
+export const CONNECTION_PROBLEM = 'The connection to ElevenLabs could not be opened. The network may be blocking it.';
 
 /** The room closing under an open conversation, without the agent having hung up. */
 export const DROPPED_PROBLEM = 'The connection to Jarvis dropped.';
@@ -71,15 +78,24 @@ export function describeTokenFailure(error: unknown): string {
   return safely(messageOf(error), UNREACHABLE_PROBLEM);
 }
 
+/** Whether LiveKit could not open the room: its errors for that are all named `ConnectionError`. */
+function isRoomFailure(error: unknown): boolean {
+  return error instanceof Error && error.name === 'ConnectionError';
+}
+
 /**
  * Why `startSession` rejected, or why the SDK reported an error before the conversation opened.
  *
- * A refused microphone is the one worth naming: the SDK asks for it again as it dials, and a
- * browser that says no rejects with `NotAllowedError`.
+ * A refused microphone is worth naming: the SDK asks for it again as it dials, and a browser that
+ * says no rejects with `NotAllowedError`. So is a room LiveKit could not open, in words about the
+ * network rather than about LiveKit's signalling.
  */
 export function describeStartFailure(error: unknown): string {
   if (error instanceof Error && (error.name === 'NotAllowedError' || error.name === 'SecurityError')) {
     return MICROPHONE_PROBLEM;
+  }
+  if (isRoomFailure(error)) {
+    return CONNECTION_PROBLEM;
   }
   if (isNetworkFailure(error)) {
     return OFFLINE_PROBLEM;
