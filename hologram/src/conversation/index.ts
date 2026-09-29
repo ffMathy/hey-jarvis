@@ -13,14 +13,12 @@
  * itself, at the top of its own entry. See the note at the top of `mobile/src/app.tsx`; getting it
  * wrong fails at runtime with "No voice session setup strategy registered", nowhere near the cause.
  */
+
+// The list of calls in flight and its reducers live in the main entry now, beside the
+// framework-free `createToolActivity`; they are still handed on here so this entry's API holds.
+export { NOTHING_IN_FLIGHT, type ToolCallsInFlight, toolCallFinished, toolCallStarted } from '../tool-activity';
 export { useAgentVoice } from './agent-voice';
 export { useGreeting } from './greeting';
 export { useSdkVoiceReaders } from './sdk-voice-readers';
-export {
-  NOTHING_IN_FLIGHT,
-  type ToolCallsInFlight,
-  toolCallFinished,
-  toolCallStarted,
-  useToolActivity,
-} from './tool-activity';
+export { useToolActivity } from './tool-activity';
 export { useUserVoice } from './user-voice';
