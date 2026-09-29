@@ -45,9 +45,7 @@ export function getArtifactDirectory(): string {
 export function getPublicBaseUrl(): string {
   const baseUrl = process.env.HEY_JARVIS_CLOUDFLARED_TUNNEL_URL?.trim();
   if (!baseUrl) {
-    throw new Error(
-      'HEY_JARVIS_CLOUDFLARED_TUNNEL_URL is not set, so there is no public address to host the page at.',
-    );
+    throw new Error('HEY_JARVIS_CLOUDFLARED_TUNNEL_URL is not set, so there is no public address to host the page at.');
   }
 
   return (/^https?:\/\//.test(baseUrl) ? baseUrl : `https://${baseUrl}`).replace(/\/+$/, '');
