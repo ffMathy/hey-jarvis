@@ -18,7 +18,9 @@
  *
  * A box rather than state: only the latest score matters, and it is read on the drawing's own
  * clock, so putting every score through React would render the screen dozens of times a second for
- * a number only the drawing reads.
+ * a number only the drawing reads. Being a box is also what puts it in the main entry rather than
+ * in `hologram/conversation`: it needs no React, so the headset keeps one beside the SDK's client
+ * exactly as `useUserVoice` keeps one beside the provider.
  */
 export interface VadScoreKeeper {
   /** A score as it arrived; ignored while Jarvis speaks. Kept inside 0–1, and 0 if not a number. */

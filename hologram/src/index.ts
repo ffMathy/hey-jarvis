@@ -26,6 +26,7 @@ export * from './hearing';
 export * from './hologram-drawing';
 export * from './sample-mode';
 export * from './simulated-voice';
+export * from './vad-score';
 export * from './voice-analysis';
 export * from './voice-contract';
 export * from './voice-levels';

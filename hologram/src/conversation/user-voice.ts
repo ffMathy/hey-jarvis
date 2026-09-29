@@ -5,8 +5,8 @@ import {
   useConversationStatus,
 } from '@elevenlabs/react-native';
 import { useEffect, useMemo, useState } from 'react';
+import { createVadScoreKeeper } from '../vad-score';
 import type { UserVoice } from '../voice-contract';
-import { createVadScoreKeeper } from './vad-score';
 
 /** Nobody speaking: what the sphere is told whenever there is no open microphone to listen to. */
 const NOBODY: UserVoice = { getPresence: () => 0, getVolume: () => 0 };
