@@ -96,7 +96,7 @@
     },
     "conversation": {
       "textOnly": false,
-      "maxDurationSeconds": 900,
+      "maxDurationSeconds": 3600,
       "max_duration_seconds_after_last_agent_message": null,
       "clientEvents": [
         "interruption",
