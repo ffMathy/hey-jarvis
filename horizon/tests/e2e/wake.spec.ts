@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { expect, type Page, type TestInfo, test } from '@playwright/test';
+import { type Browser, type BrowserType, expect, type Page, type TestInfo, test } from '@playwright/test';
 import { build } from 'vite';
 import type { WakeCheck } from '../../src/wake/harness/wake-harness';
 
@@ -68,20 +68,25 @@ async function buildHarness(outDir: string) {
   });
 }
 
-/** Chromium with the fake microphone playing `clip` on a loop, and everything else as the config has it. */
-function microphonePlaying(clip: string) {
-  return {
-    permissions: ['microphone'],
-    launchOptions: {
-      args: [
-        '--use-fake-ui-for-media-stream',
-        '--use-fake-device-for-media-stream',
-        `--use-file-for-fake-audio-capture=${path.join(FIXTURES, clip)}`,
-        '--enable-unsafe-swiftshader',
-      ],
-      executablePath: process.env.CHROMIUM_EXECUTABLE_PATH,
-    },
-  };
+/**
+ * A Chromium of its own whose fake microphone plays `clip` on a loop, and a page in it that may
+ * use the microphone.
+ *
+ * Launched here rather than configured: the clip is a launch flag, and Playwright only takes
+ * launch options per file or per project, while each test here needs a different clip.
+ */
+async function browserHearing(chromium: BrowserType, clip: string): Promise<{ browser: Browser; page: Page }> {
+  const browser = await chromium.launch({
+    args: [
+      '--use-fake-ui-for-media-stream',
+      '--use-fake-device-for-media-stream',
+      `--use-file-for-fake-audio-capture=${path.join(FIXTURES, clip)}`,
+    ],
+    // As in playwright.config.ts: normally undefined, meaning Playwright's own Chromium.
+    executablePath: process.env.CHROMIUM_EXECUTABLE_PATH,
+  });
+  const context = await browser.newContext({ permissions: ['microphone'] });
+  return { browser, page: await context.newPage() };
 }
 
 async function wakeCheck(page: Page): Promise<WakeCheck> {
@@ -115,10 +120,7 @@ interface Harness {
 
 let harness: Promise<Harness> | undefined;
 
-/**
- * The harness, built and served once per worker (each group below gets a browser, and so a
- * worker, of its own), into the output folder of the first test that asks for it.
- */
+/** The harness, built and served once, into the output folder of the first test that asks for it. */
 function harnessFor(testInfo: TestInfo): Promise<Harness> {
   harness ??= (async () => {
     const outDir = testInfo.outputPath('wake-harness');
@@ -134,18 +136,19 @@ test.afterAll(async () => {
   await new Promise((resolve) => running?.server.close(resolve));
 });
 
-test.describe('hearing "hey jarvis"', () => {
-  test.use(microphonePlaying('hey-jarvis-american.wav'));
+test('the real pipeline loads with progress, listens, and wakes on a spoken "hey jarvis"', async ({
+  playwright,
+}, testInfo) => {
+  const built = await harnessFor(testInfo);
+  // The worker and the worklet are modules of their own, and the extern-wasm condition reached
+  // the worker's bundle: onnxruntime-web's 14 MB wasm is fetched from vendor/, never bundled.
+  const assets = readdirSync(path.join(built.build, 'assets'));
+  expect(assets.filter((file) => file.endsWith('.wasm'))).toEqual([]);
+  expect(assets.some((file) => file.startsWith('wake.worker'))).toBe(true);
+  expect(assets.some((file) => file.startsWith('pcm-frames.worklet'))).toBe(true);
 
-  test('loads with progress, listens, and wakes on the spoken clip', async ({ page }, testInfo) => {
-    const built = await harnessFor(testInfo);
-    // The worker and the worklet are modules of their own, and the extern-wasm condition reached
-    // the worker's bundle: onnxruntime-web's 14 MB wasm is fetched from vendor/, never bundled.
-    const assets = readdirSync(path.join(built.build, 'assets'));
-    expect(assets.filter((file) => file.endsWith('.wasm'))).toEqual([]);
-    expect(assets.some((file) => file.startsWith('wake.worker'))).toBe(true);
-    expect(assets.some((file) => file.startsWith('pcm-frames.worklet'))).toBe(true);
-
+  const { browser, page } = await browserHearing(playwright.chromium, 'hey-jarvis-american.wav');
+  try {
     const problems: string[] = [];
     await listen(page, built.url, problems);
 
@@ -168,21 +171,25 @@ test.describe('hearing "hey jarvis"', () => {
     expect(check.health.level).toBeGreaterThan(0);
     expect(check.problem).toBeNull();
     expect(problems).toEqual([]);
-  });
+  } finally {
+    await browser.close();
+  }
 });
 
-test.describe('hearing other speech', () => {
-  test.use(microphonePlaying('other-speech.wav'));
-
-  test('listens without waking', async ({ page }, testInfo) => {
+test('the real pipeline listens to other speech without waking', async ({ playwright }, testInfo) => {
+  const built = await harnessFor(testInfo);
+  const { browser, page } = await browserHearing(playwright.chromium, 'other-speech.wav');
+  try {
     const problems: string[] = [];
-    await listen(page, (await harnessFor(testInfo)).url, problems);
-    // Two loops of the clip, well past the 2 s pause after arming.
+    await listen(page, built.url, problems);
+    // Two loops of the 7.7 s clip, well past the 2 s pause after arming.
     await page.waitForTimeout(16000);
     const check = await wakeCheck(page);
     expect(check.health.state).toBe('listening');
     expect(check.wakes).toEqual([]);
     expect(check.highestScore).toBeLessThan(0.5);
     expect(problems).toEqual([]);
-  });
+  } finally {
+    await browser.close();
+  }
 });
