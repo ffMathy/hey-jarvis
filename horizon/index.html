@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#05070a" />
+    <title>Jarvis in your room</title>
+    <!-- Relative, like everything else here: resolved against the page, they stay inside
+         /hey-jarvis/horizon/ on Pages, and the manifest's own "./" start and scope with them. -->
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" type="image/png" href="./icon-512.png" />
+    <style>
+      :root {
+        color-scheme: dark;
+        --background: #05070a;
+        --text: #e8ecf0;
+        --muted: #8a949e;
+        --accent: #dc5c20;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 1.5rem;
+        padding: 2rem 1rem;
+        background: var(--background);
+        color: var(--text);
+        font-family: system-ui, sans-serif;
+        text-align: center;
+      }
+      h1 {
+        margin: 0;
+        font-weight: 300;
+        letter-spacing: 0.3em;
+        text-transform: uppercase;
+      }
+      p {
+        margin: 0;
+        max-width: 32rem;
+        line-height: 1.5;
+      }
+      /* Big, because on a headset it is pointed at with a ray from across the room. */
+      button {
+        min-width: 16rem;
+        padding: 1.1rem 2rem;
+        border: 1px solid var(--accent);
+        border-radius: 999px;
+        background: transparent;
+        color: var(--text);
+        font: inherit;
+        font-size: 1.25rem;
+        cursor: pointer;
+      }
+      button:enabled:hover,
+      button:enabled:focus-visible {
+        background: var(--accent);
+        color: var(--background);
+      }
+      button:disabled {
+        border-color: var(--muted);
+        color: var(--muted);
+        cursor: default;
+      }
+      #status {
+        min-height: 1.5em;
+        color: var(--muted);
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Jarvis</h1>
+    <p>He appears in the room with you, in passthrough, on a Meta Quest.</p>
+    <button id="enter-room" type="button" disabled>Enter your room</button>
+    <p id="status" role="status" aria-live="polite">Getting Jarvis ready…</p>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

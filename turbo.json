@@ -93,6 +93,13 @@
       "cache": false,
       "outputs": [],
       "dependsOn": ["//#install-skia"]
+    },
+    // Copies the WebAssembly into horizon/public/vendor/, which is gitignored. A cache hit
+    // would replay the log and restore no files, and the build after it would publish a site
+    // with no CanvasKit — so, like the phone's and the watch's, it always runs.
+    "horizon#initialize": {
+      "cache": false,
+      "outputs": []
     }
   }
 }

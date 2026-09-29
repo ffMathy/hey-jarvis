@@ -1,0 +1,26 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    // Nothing emits from here: Vite compiles the sources for the browser. The output
+    // directory is a safety net for the same reason as in `mobile/tsconfig.json` — an
+    // emit with no `outDir` would land beside the sources.
+    "outDir": "../dist/horizon-tsc",
+    "lib": ["esnext", "dom"],
+    // The base sets `types` to nothing, so ambient packages have to be named. TypeScript's
+    // DOM library has no WebXR in it at all; `webxr` is what declares `navigator.xr`,
+    // `XRSession` and `XRFrame`.
+    "types": ["bun-types", "webxr"],
+    "esModuleInterop": true,
+    // Declarations would be output nobody reads — the same reasoning as in
+    // `hologram/tsconfig.json` and `mobile/tsconfig.json`.
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "incremental": false
+  },
+  // The Playwright specs, the harness they inject and the build scripts are typechecked
+  // with the app: they are the kind of code nothing else would notice rotting.
+  "include": ["src/**/*.ts", "tests/**/*.ts", ".scripts/**/*.ts", "vite.config.ts", "playwright.config.ts"],
+  "exclude": ["**/node_modules", "**/dist"]
+}
