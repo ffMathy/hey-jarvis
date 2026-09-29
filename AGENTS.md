@@ -32,7 +32,7 @@ This is an Turborepo monorepo containing intelligent voice assistant components:
 | --------------------------------- | ------------------------------------------------- |
 | **mcp**                           | Mastra AI-powered Model Context Protocol server   |
 | **elevenlabs**                    | ElevenLabs voice interface integration            |
-| **hologram**                      | Jarvis's sphere, voice tracker and conversation, phone and watch |
+| **hologram**                      | Jarvis's sphere, voice tracker and conversation, shared by every app that is him |
 | **mobile**                        | Expo app that is the phone's default assistant    |
 | **watch**                         | Expo app that is the watch's assistant            |
 | **home-assistant-voice-firmware** | ESPHome firmware for voice hardware               |
@@ -78,19 +78,18 @@ pre-commit hook.
 | `saveTextLockfile = true`      | Dependency changes stay reviewable in diffs                          |
 | `registry = …registry.npmjs.org` | Installs cannot be silently redirected to another host             |
 
-Dependabot mirrors the same 7-day cooldown, so new versions sit out the window
-that malicious releases are typically caught and yanked in. Each ecosystem uses
-a single catch-all group, so bumps arrive as one rolling pull request per
-ecosystem instead of one per dependency. A grouped pull request auto-merges only
-when the largest bump in it is a patch or minor, so a single major parks the
-whole batch for a human.
+Nothing updates dependencies automatically: Dependabot, and the job that
+auto-merged its pull requests, were removed in `1ca5f2b` (`ci: remove
+dependabot`). Every bump is made by hand with `bun add` or `bun update`, and the
+7-day `minimumReleaseAge` applies to it, so new versions still sit out the window
+that malicious releases are typically caught and yanked in.
 
 ### Adding or updating a dependency
 
 ```bash
 bun add <package>            # writes an exact version
 bun install --frozen-lockfile # what CI and containers run
-bun run check:supply-chain   # the policy check CI runs
+bun run check:supply-chain   # the policy check, which CI no longer runs for you
 bun run audit                # known advisories, high severity and above
 ```
 
