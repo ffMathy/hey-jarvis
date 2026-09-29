@@ -92,7 +92,7 @@ mobile/
     ├── conversation-screen.tsx   # the hologram, and nothing else on the screen
     ├── settings-screen.tsx       # the two fields with no tour around them, for coming back to
     ├── elevenlabs-fields.tsx     # the two fields themselves, shared with the tour
-    ├── settings-storage.ts       # platform-agnostic half of persistence
+    ├── settings-storage.ts       # platform-agnostic half of persistence (the key and format are hologram's)
     ├── watch-card.tsx            # whether Jarvis is on the paired watch, and the key handover
     ├── answer-the-watch.ts       # sends the credentials across whenever the watch asks
     ├── use-assistant-registration.ts  # whether Jarvis still holds the assistant role
@@ -108,15 +108,12 @@ mobile/
     ├── spark-memory.ts           # … and remembering what it managed last time
     ├── jarvis-voice.ts           # Jarvis's voice on Android: his track, tapped and analysed …
     ├── jarvis-voice.web.ts       # … and in a browser, the same track through Web Audio
-    ├── agent-audio-track.ts      # finding Jarvis's track in the conversation's LiveKit room
+    ├── agent-audio-track.ts      # this app's Room check, and Android's native ids for Jarvis's track
     ├── tapped-voice.ts           # raw samples from modules/jarvis-audio → volume and spectrum
-    ├── played-voice.ts           # the same, from the samples a browser is playing
     ├── queued-audio.ts           # dropping what a browser still has queued when he is cut off
-    ├── conversation-life.ts      # whether a conversation is open, and whether one has ended
     ├── typed-message-field.tsx   # writing to Jarvis instead of talking, and he still answers aloud
     ├── text-mode.ts              # tapping him on a phone: the voice session held in writing, and back
-    ├── written-reply.ts          # the last thing he said in writing, and how long he takes to say it …
-    ├── written-reply-line.tsx    # … and the one thing on this screen there is to read
+    ├── written-reply-line.tsx    # the last thing he said in writing: the one thing on this screen to read
     ├── theme.ts                  # the one place colours and spacing are defined
     ├── platform-contracts.ts     # the shapes the .web.ts pairs below must keep
     ├── key-value-store.ts        # keystore on Android …
@@ -129,6 +126,14 @@ mobile/
     └── speech-floor.web.ts           # … and, now both measure an RMS, the same in a browser
 ```
 
+Some of what this screen runs is not in this tree, because the headset (`horizon/`) runs it too and
+it has no React Native in it: whether a conversation is open or has ended and how long to wait for
+one (`conversation-life.ts`), his voice analysed from what a browser plays (`played-voice.ts`), the
+dropping of what an interruption leaves queued (`queued-audio.ts`), finding his track in the room
+(`agent-audio-track.ts`), his last written line (`written-reply.ts`), and the settings' storage key
+and format (`elevenlabs-settings.ts`). They are in `hologram/src/`, with their specs, and this app
+imports them from `hologram`.
+
 ## The hologram
 
 The conversation screen is built around Jarvis as the film drew him: the golden sphere from the *Avengers: Age of Ultron* lab scene. A round, see-through, warm amber ball, brightest at its core and never dark inside, textured with short bright strokes, bounded by one rim element at a time — a bright crescent on the left limb, a segmented ladder ring, or a thin ring — and a hooked ring at the core. The film's slow protrusions are deliberately not drawn: on a phone they read as an arm swinging out of the ball on a loop, and the user asked for them gone. It turns on its own — the body about the vertical axis, the rim rolling the other way — it spirals out of its core when it first appears, and when Jarvis talks it grows agitated, glows and swells.
@@ -138,7 +143,7 @@ None of those numbers are a guess. The proportions, the colours, the rotation sp
 ```
 Android, in a conversation     Jarvis's WebRTC track ─ modules/jarvis-audio (AudioTap) ─ tapped-voice.ts ─ hologram/src/voice-analysis.ts
 Android, in sample mode        WebRTC's recorder ────── modules/jarvis-audio (AudioTap) ─ tapped-voice.ts ─ hologram/src/voice-analysis.ts
-Browser, in a conversation     Jarvis's WebRTC track ─ AnalyserNode (time domain) ─ played-voice.ts ─ hologram/src/voice-analysis.ts
+Browser, in a conversation     Jarvis's WebRTC track ─ AnalyserNode (time domain) ─ hologram/src/played-voice.ts ─ hologram/src/voice-analysis.ts
 Browser, in sample mode        getUserMedia ─ AnalyserNode
   └─ a JarvisVoice (platform-contracts.ts), read every 40 ms on the JS thread
        └─ hologram/src/voice-levels.ts perceivedLevel + foldSpectrum → 24 log-spaced bands (targets)
@@ -153,7 +158,7 @@ Every source hands the hologram the same two readings — a volume, and 1024 byt
 
 Both did once, and on both it was the wrong quantity — for different reasons, which is why each has its own way of getting at the samples.
 
-**In a browser the SDK's volume is not a loudness at all.** `getOutputVolume` is the mean of an `AnalyserNode`'s *byte* spectrum, and a byte of that spectrum is a decibel reading between −100 dB and −30 dB. So the quietest thing the scale can express is −100 dB, and everything above it reads as something: the hiss under a recording, the comfort noise a codec sends between words, the room the voice was recorded in. Read as a level that says Jarvis is talking for as long as a conversation is open, and the gaps between his words never reach the tracker's speech threshold — the sphere stayed agitated through his pauses and the rim threw chips into his silences. `played-voice.ts` reads the time-domain samples off an `AnalyserNode` of its own instead and puts them through the same analysis the phone uses, where silence is zero. It used to be covered up by doubling the browser's speech floor; a floor that means something different on every surface cannot be reasoned about, and covering it was all that did.
+**In a browser the SDK's volume is not a loudness at all.** `getOutputVolume` is the mean of an `AnalyserNode`'s *byte* spectrum, and a byte of that spectrum is a decibel reading between −100 dB and −30 dB. So the quietest thing the scale can express is −100 dB, and everything above it reads as something: the hiss under a recording, the comfort noise a codec sends between words, the room the voice was recorded in. Read as a level that says Jarvis is talking for as long as a conversation is open, and the gaps between his words never reach the tracker's speech threshold — the sphere stayed agitated through his pauses and the rim threw chips into his silences. `hologram/src/played-voice.ts` reads the time-domain samples off an `AnalyserNode` of its own instead and puts them through the same analysis the phone uses, where silence is zero. It used to be covered up by doubling the browser's speech floor; a floor that means something different on every surface cannot be reasoned about, and covering it was all that did.
 
 ### What happens when the conversation ends
 
@@ -244,7 +249,7 @@ is still there.
 
 **Ending is not the same as never starting**, and both read `disconnected`. A conversation that
 never opened has failed, and the answer to that is the line saying why *under a sphere that is
-still there*. So `conversation-life.ts` folds the statuses rather than looking at the current one,
+still there*. So `hologram/src/conversation-life.ts` folds the statuses rather than looking at the current one,
 and only a conversation that was open can end.
 
 ### What happens to a sentence he is cut off in
@@ -257,7 +262,8 @@ There is no queue to clear in this app or in the SDK. Over WebRTC the SDK's `int
 documented no-op, because audio is a live LiveKit track rather than chunks the client buffers, and
 audio arriving on the data channel is deliberately not re-played. (The `audioConcatProcessor` queue
 that *does* have this shape is the WebSocket transport's, which here carries no audio at all.) The
-only queue left is the media element's own, so `queued-audio.ts` empties it: clearing `srcObject`
+only queue left is the media element's own, so `queued-audio.ts` empties it, through
+`flushQueuedAudio` in `hologram/src/queued-audio.ts`: clearing `srcObject`
 tears the element's renderer down and takes the queued audio with it, and putting the same live
 stream back builds a new one at the live edge. It hangs off the SDK's `onInterruption` — which the
 agent sends because `interruption` is in its `clientEvents` — and an interruption is exactly the
@@ -275,7 +281,7 @@ On Android the SDK's two readers come from LiveKit's native processors (`@liveki
 
 So `modules/jarvis-audio` hangs its own `AudioTap` off the same audio — Jarvis's remote track in a conversation, or WebRTC's recorder in sample mode — reading the bytes little-endian into a ring of the last third of a second, and JavaScript pulls from it and analyses it with `hologram/src/voice-analysis.ts`. That is the same code that turns the emulator check's recorded voice into its replayed readings, so what the replay shows is what a phone computes.
 
-Finding Jarvis's track takes one step outside the SDK's public surface, and **both platforms take the same step**: `useRawConversation()` is public, but the LiveKit room is on the conversation's protected `connection`. `agent-audio-track.ts` reaches it with `Reflect.get`, checks it is a real `livekit-client` `Room`, and follows the participant whose identity contains "agent" — as the SDK's own code does. What each platform then does with the publication differs, so that is where they part: Android turns it into the pair of native ids its `AudioTap` needs, and `jarvis-voice.web.ts` checks it is the browser's own `MediaStreamTrack` and points Web Audio at it. `agent-audio-track.contract.spec.ts` reads the installed SDK and fails if any of that moves. If the track cannot be found anyway, the hologram falls back to the SDK's readers described above: it still draws and nothing fails, but the sphere answers a reading that is barely a voice — on Android a volume that reads near full scale for any sound at all, in a browser one that never reads silence — and on Android two of its bands stay dark.
+Finding Jarvis's track takes one step outside the SDK's public surface, and **both platforms take the same step**: `useRawConversation()` is public, but the LiveKit room is on the conversation's protected `connection`. `roomOfConversation` in `hologram/src/agent-audio-track.ts` reaches it with `Reflect.get` and follows the participant whose identity contains "agent" — as the SDK's own code does — and this app's `agent-audio-track.ts` hands it the check that the room is a real `Room` of the `livekit-client` this app bundles, since an `instanceof` against any other copy would never be true. What each platform then does with the publication differs, so that is where they part: Android turns it into the pair of native ids its `AudioTap` needs, and `jarvis-voice.web.ts` checks it is the browser's own `MediaStreamTrack` and points Web Audio at it. `agent-audio-track.contract.spec.ts` reads the installed SDK and fails if any of that moves. If the track cannot be found anyway, the hologram falls back to the SDK's readers described above: it still draws and nothing fails, but the sphere answers a reading that is barely a voice — on Android a volume that reads near full scale for any sound at all, in a browser one that never reads silence — and on Android two of its bands stay dark.
 
 ## Sample mode
 
@@ -358,9 +364,9 @@ For each conversation the app asks `GET https://api.elevenlabs.io/v1/convai/conv
 
 **Except for a text-only conversation, which asks `GET /v1/convai/conversation/get-signed-url` instead and runs on a WebSocket.** That is the one case where the transport cannot be WebRTC: a text-only session publishes no audio, ElevenLabs' room waits for the client to publish some before it finishes coming up, and a conversation token can only be spent on a room. Dialled over WebRTC it therefore never connected *and never failed* — the screen sat on "Connecting…" indefinitely, which is what a browser with the microphone switched off used to show. Only a browser ever takes this branch: a phone with no microphone says so and stops, and `@elevenlabs/react-native` refuses a signed URL on a device outright.
 
-**That branch was write-only until it learned to show his answer.** A text-only session returns the reply as an `agent_response` over the socket and never as audio, and nothing in the app rendered it — no transcript, no `onMessage`, nothing. So a browser with the microphone refused could send a line, get an answer, and display absolutely nothing: a silent sphere and an empty screen, indistinguishable from a conversation that had failed. `written-reply.ts` keeps the last thing he said — the last, not a transcript, and cleared the moment you send again so a stale answer never sits under a fresh question — and `written-reply-line.tsx` puts it above the field. It is the only screen in the app with something to read on it, because it is the only one with nothing to listen to.
+**That branch was write-only until it learned to show his answer.** A text-only session returns the reply as an `agent_response` over the socket and never as audio, and nothing in the app rendered it — no transcript, no `onMessage`, nothing. So a browser with the microphone refused could send a line, get an answer, and display absolutely nothing: a silent sphere and an empty screen, indistinguishable from a conversation that had failed. `hologram/src/written-reply.ts` keeps the last thing he said — the last, not a transcript, and cleared the moment you send again so a stale answer never sits under a fresh question — and `written-reply-line.tsx` puts it above the field. It is the only screen in the app with something to read on it, because it is the only one with nothing to listen to.
 
-**The sphere speaks it, out of the clock.** With no audio there is nothing for the hologram to follow, so it idled through the whole exchange: Jarvis answering you while looking exactly like an assistant who had not heard you. `written-reply.ts` also says how long he should look like he is delivering an answer — its length at fourteen characters a second, floored at 0.9 s so "Yes." is still a beat and capped at 12 s so a long answer is not mimed at length over text you have already read — and for that long the screen hands the drawing the same simulated voice sample mode uses (`useSimulatedVoice` from `hologram/react/sample`, shapes in `hologram/src/simulated-voice.ts`). It is a spectrum built from the clock, so it goes through the fold into bands, the easing, the agitation envelope and the chip bursts exactly as a real voice does, and nothing downstream knows the difference — which is the whole reason those moods are written as spectra rather than as flags on the drawing.
+**The sphere speaks it, out of the clock.** With no audio there is nothing for the hologram to follow, so it idled through the whole exchange: Jarvis answering you while looking exactly like an assistant who had not heard you. `hologram/src/written-reply.ts` also says how long he should look like he is delivering an answer — its length at fourteen characters a second, floored at 0.9 s so "Yes." is still a beat and capped at 12 s so a long answer is not mimed at length over text you have already read — and for that long the screen hands the drawing the same simulated voice sample mode uses (`useSimulatedVoice` from `hologram/react/sample`, shapes in `hologram/src/simulated-voice.ts`). It is a spectrum built from the clock, so it goes through the fold into bands, the easing, the agitation envelope and the chip bursts exactly as a real voice does, and nothing downstream knows the difference — which is the whole reason those moods are written as spectra rather than as flags on the drawing.
 
 Only ever here. `readingAloud` is set from `onMessage`, which is wired on the text-only session alone, so every conversation that has a voice goes on following Jarvis's real one. The words are genuinely his; the only invented thing is the delivery, and it is invented only where ElevenLabs was asked not to provide one.
 

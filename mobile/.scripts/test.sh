@@ -9,8 +9,9 @@
 #
 # What is *not* here is anything the watch also has: the sphere, the voice
 # tracker, the ElevenLabs credentials and the token client all moved to the
-# `hologram` package as the watch grew into a second Jarvis, and they are tested
-# there (`bunx turbo test --filter=hologram`).
+# `hologram` package as the watch grew into a second Jarvis, and the pure parts
+# of the conversation followed them when the headset became a third. They are
+# tested there (`bunx turbo test --filter=hologram`).
 #
 # Usage:
 #   ./mobile/.scripts/test.sh                              # all mobile tests

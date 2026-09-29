@@ -2,17 +2,21 @@
 
 Jarvis himself: the sphere, the voice tracking that drives it, and the
 conversation with the agent doing the talking. Shared by every app that *is*
-him — today `mobile/` and `watch/`.
+him — `mobile/` and `watch/`, and `horizon/`, the Quest headset app that stands
+him in your room, which uses only the main entry and the assets.
 
 > **Note:** See the root [AGENTS.md](../AGENTS.md) for shared conventions (Turborepo commands, commit standards, 1Password, etc.)
 
 ## Three entry points
 
 ```
-hologram               the design, the voice tracking, and the ElevenLabs credentials — no framework
+hologram               the design, the voice tracking, the ElevenLabs credentials, and the
+                       conversation's framework-free parts — no framework
 hologram/react         the same sphere as a React Native view you can render
                        (plus ./react/lifecycle and ./react/sample, which are Skia-free)
 hologram/conversation  the hooks a screen holding an ElevenLabs conversation needs
+hologram/assets/*      the files themselves (the greeting, the icons), for a bundler that takes
+                       a file as a URL
 ```
 
 The split is the whole architecture of this package, and the rule below is why
@@ -32,7 +36,7 @@ that rule.
 
 | Entry | Imports | What it holds |
 | --- | --- | --- |
-| `hologram` | nothing but types | the drawing, the voice tracker, the simulated voices, sample mode's moods and readout text, the density control, and the ElevenLabs credentials and the token request |
+| `hologram` | types, its own siblings, and the plain values of Skia's enums | the drawing and the frame analysis behind it, the clock the view runs him on (`frame-timing.ts`), the voice tracker, the simulated voices, sample mode's moods and readout text, the density control, the ElevenLabs credentials, how they are stored and the token request, and the parts of a conversation with no framework in them: whether it is open or has ended and how long to wait for it (`conversation-life.ts`), which tool calls are in flight (`tool-activity.ts`, with `createToolActivity`), the latest `vad_score` (`vad-score.ts`), his voice as a browser plays it (`played-voice.ts`), finding his track in the room (`agent-audio-track.ts`), dropping what an interruption leaves queued (`queued-audio.ts`) and his last written line (`written-reply.ts`) |
 | `hologram/react` | React, Reanimated, Skia | the Skia canvas and the frame loop |
 | `hologram/react/sample` | React, Reanimated — not Skia | sample mode's clock-made voice, mood toast and frame-rate readout, shared by the phone's sample screen and the watch's waiting screen |
 | `hologram/conversation` | React, `@elevenlabs/react-native`, `@livekit/react-native`'s audio session, hologram's own native greeting player (`expo-audio` in a browser) — not Skia | his voice as the SDK hears it, which of his tool calls are in flight, the recorded greeting he answers with, and the user's voice for the listening lattice |
@@ -46,15 +50,20 @@ is why the conversation hooks are not simply part of `hologram/react`.
 
 ## The rule that makes this package work
 
-**Nothing in the main entry imports a value.** The only imports across
-`hologram-drawing.ts`, `voice-levels.ts`, `voice-analysis.ts`,
-`voice-contract.ts`, `sample-mode.ts`, `elevenlabs-settings.ts`
-and `conversation-token.ts` are `import type`. That is not tidiness; it is the reason the same drawing runs in
-three places:
+**Nothing in the main entry imports a value from outside the package**, with one
+exception. Its modules import each other, and everything else they import is
+`import type` — apart from `hologram-drawing.ts`, which takes Skia's enums
+(`BlendMode`, `StrokeCap` and the rest) as values from the package's type
+module, `@shopify/react-native-skia/lib/module/skia/types`. That module is
+plain numbers with no imports of its own, so it loads under `bun test` and in
+a browser as readily as a type does, and the enums are only read on the JS
+thread, in `createHologramResources`. That is not tidiness; it is the reason
+the same drawing runs in four places:
 
 - native Skia, on a phone or a watch;
 - CanvasKit, in the browser build published to GitHub Pages;
-- CanvasKit headless, in `hologram-drawing.spec.ts` and the contact sheets.
+- CanvasKit headless, in `hologram-drawing.spec.ts` and the contact sheets;
+- the headset, which has no React at all.
 
 The two ElevenLabs files keep the same rule for the same payoff. `fetch` is a
 global rather than an import, so the token request and every failure ElevenLabs
@@ -90,8 +99,9 @@ the 5.3 ms a picture took to build at the floor, on a desktop harness.
 
 `src/conversation/` is where `@elevenlabs/react-native` is called for real, and
 it is thinner still: two flags out of the conversation's own state, two readers
-out of the SDK's analysers, a list of the tool call ids still in flight, the
-latest `vad_score`, the greeting's player, and one timer for hanging up.
+out of the SDK's analysers, the tool calls in flight and the latest `vad_score`
+held in React for the screens (the rules for both are the main entry's), and
+the greeting's player.
 
 If you find yourself wanting a microphone, a permission prompt, a navigation
 decision or a screen layout in any of the three, it belongs in the app, not
@@ -100,11 +110,12 @@ here.
 ## Two things about the ElevenLabs half worth knowing before changing it
 
 **The participant name is a required argument, not a default.** Each device
-names itself in the ElevenLabs conversation history — `jarvis-android` and
-`jarvis-wear` — and the point of the names is to be told apart, so a
-conversation held on the wrist is distinguishable from one held in a pocket.
-Both constants are in `conversation-token.ts` and neither is the default,
-because a default is how the watch ends up filed under the phone's name.
+names itself in the ElevenLabs conversation history — `jarvis-android`,
+`jarvis-wear` and `jarvis-horizon` — and the point of the names is to be told
+apart, so a conversation held on the wrist is distinguishable from one held in
+a pocket or in a headset. All three constants are in `conversation-token.ts`
+and none is the default, because a default is how the watch ends up filed under
+the phone's name.
 
 **Nothing from an error response is ever repeated back.** `conversation-token.ts`
 reads only `detail.status` and `detail.code`, and only when they look like the
@@ -212,6 +223,38 @@ their callers, and nothing closes over anything but its arguments and
 module-level constants. Breaking one of those rules fails at runtime on a device
 and nowhere else — the tests call these functions on the JS thread, where a
 worklet is an ordinary function.
+
+Modules inside the package import their siblings directly and never `./index`:
+a circular import leaves what a worklet captured undefined, which again fails
+only on a device, or in the web bundle the mobile e2e runs. Exporting a
+function or a constant is safe (the `export` keyword changes nothing about how
+it is captured). Moving a constant into a module of its own is safe as long as
+nothing that module imports leads back to whoever imports it — `frame-timing.ts`
+imports nothing at all — and moving a worklet is safe only if it is still
+declared after every worklet it calls.
+
+## A second renderer: the headset
+
+The headset draws the body in three dimensions on the GPU and the rest of him
+with CanvasKit, and it composes him from the same pieces the view does rather
+than from copies of them. So the main entry exports what that needs:
+`analyseFrame` and its `HologramFrameState`, the per-fragment helpers
+(`readFragment`, `fragmentStrength`, `placeFragment`, `swirlFragment`,
+`latticeFragment`, `scanned`, `densityRowsEnd` and the rest), the body's and
+the stream's row layouts, and the constants they read; and `frame-timing.ts`,
+the view's clock — `READ_INTERVAL_MS`, `THOUGHT_FADE_SECONDS`,
+`LEAVING_SECONDS`, `MINIMUM_FRAME_SECONDS`, `SCENE_SEED` — which the view
+imports from there, as it does `MATERIALISE_SECONDS`. The view's frame loop
+itself is deliberately not shared: the headset's runs on XR frame time and
+resets the arrival on every summon, and extracting the phone's would rewrite
+the hot loop of two shipped apps for two constants' worth of gain.
+
+Its conversation runs on the SDK's own client with no React, so the rules the
+hooks follow are here too: `createToolActivity` is `useToolActivity`'s state
+machine on injected timers, and the hook keeps its own implementation so the
+phone and the watch did not change. `roomOfConversation` takes the app's own
+`Room` guard rather than importing `livekit-client`, because an `instanceof` is
+only true against the copy the app's SDK built the room from.
 
 ## Tests
 

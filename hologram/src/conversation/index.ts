@@ -2,8 +2,8 @@
  * The conversation with Jarvis, for the apps that hold one.
  *
  * The package's third entry, and the split is the same argument as the other two. `hologram` is the
- * design, the voice tracking and the credentials, with nothing but type imports in it, so it runs
- * headless in the tests. `hologram/react` needs React, Reanimated and Skia for real. This one needs
+ * design, the voice tracking, the credentials and the conversation's framework-free parts, with no
+ * framework in it, so it runs headless in the tests. `hologram/react` needs React, Reanimated and Skia for real. This one needs
  * React and **`@elevenlabs/react-native`** — and deliberately not Skia, so that a screen can hold a
  * conversation before CanvasKit has finished loading in a browser, which is precisely the case
  * `mobile/src/jarvis-hologram.web.tsx` exists to handle.
