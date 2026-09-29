@@ -345,26 +345,6 @@
             "params": {
               "systemToolType": "skip_turn"
             }
-          },
-          {
-            "type": "client",
-            "name": "hangUpWhenQuiet",
-            "description": "Ends the call if sir stays quiet for a few seconds after you have finished speaking. Call it exactly when the instructions field of a routing response tells you to - at the end of a finished request, after you have spoken its result - silently, without announcing it. It never cuts him off: anything he says first keeps the call open, and his device keeps the clock.",
-            "responseTimeoutSecs": 20,
-            "disableInterruptions": false,
-            "interruptionMode": "allow",
-            "forcePreToolSpeech": false,
-            "preToolSpeech": "off",
-            "assignments": [],
-            "toolCallSoundBehavior": "auto",
-            "toolErrorHandlingMode": "hide",
-            "parameters": {
-              "type": "object",
-              "properties": {},
-              "required": []
-            },
-            "expectsResponse": false,
-            "executionMode": "post_tool_speech"
           }
         ]
       }

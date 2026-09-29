@@ -32,10 +32,10 @@ that rule.
 
 | Entry | Imports | What it holds |
 | --- | --- | --- |
-| `hologram` | nothing but types | the drawing, the voice tracker, the simulated voices, sample mode's moods and readout text, the density control, the ElevenLabs credentials and the token request, and when a quiet call is hung up |
+| `hologram` | nothing but types | the drawing, the voice tracker, the simulated voices, sample mode's moods and readout text, the density control, and the ElevenLabs credentials and the token request |
 | `hologram/react` | React, Reanimated, Skia | the Skia canvas and the frame loop |
 | `hologram/react/sample` | React, Reanimated — not Skia | sample mode's clock-made voice, mood toast and frame-rate readout, shared by the phone's sample screen and the watch's waiting screen |
-| `hologram/conversation` | React, `@elevenlabs/react-native`, `@livekit/react-native`'s audio session, hologram's own native greeting player (`expo-audio` in a browser) — not Skia | his voice as the SDK hears it, which of his tool calls are in flight, the recorded greeting he answers with, the user's voice for the listening lattice, and hanging up when it goes quiet |
+| `hologram/conversation` | React, `@elevenlabs/react-native`, `@livekit/react-native`'s audio session, hologram's own native greeting player (`expo-audio` in a browser) — not Skia | his voice as the SDK hears it, which of his tool calls are in flight, the recorded greeting he answers with, and the user's voice for the listening lattice |
 
 `hologram/conversation` deliberately does **not** reach Skia. That is what lets
 a screen open a conversation before CanvasKit has finished loading in a browser,
@@ -48,8 +48,8 @@ is why the conversation hooks are not simply part of `hologram/react`.
 
 **Nothing in the main entry imports a value.** The only imports across
 `hologram-drawing.ts`, `voice-levels.ts`, `voice-analysis.ts`,
-`voice-contract.ts`, `sample-mode.ts`, `elevenlabs-settings.ts`,
-`conversation-token.ts` and `quiet-hang-up.ts` are `import type`. That is not tidiness; it is the reason the same drawing runs in
+`voice-contract.ts`, `sample-mode.ts`, `elevenlabs-settings.ts`
+and `conversation-token.ts` are `import type`. That is not tidiness; it is the reason the same drawing runs in
 three places:
 
 - native Skia, on a phone or a watch;
@@ -198,28 +198,11 @@ easy to break:
 `speaker_is_active_` rule, since his voice through the speaker scores as the user's — and volume is
 the SDK's input level. Both read zero while the session is not connected or its microphone is muted.
 
-## He hangs up when it goes quiet
+## Hanging up after a finished request
 
-At the end of every request it has finished, the agent calls the client tool `hangUpWhenQuiet`
-(`HANG_UP_WHEN_QUIET_TOOL`) — no parameters, `expectsResponse: false`, `executionMode:
-'post_tool_speech'`, so it arrives once he has said the answer. The call only *arms* a hang-up:
-the device ends the conversation itself if nobody says anything for `QUIET_BEFORE_HANGING_UP_MS`
-(3 s) — the voice firmware's announcement rule, on the phone and the watch. The rules are pure and
-tested in `quiet-hang-up.ts`; `useHangUpWhenQuiet` (`src/conversation/hang-up-when-quiet.ts`) holds
-the timer and gives the screen the client tool and its handlers to pass to `startSession`.
-
-- **The clock only runs while he is quiet** — the SDK's `mode`, plus anything the screen says he is
-  still delivering (a written answer being mimed). Speaking again puts it back to nothing; it stays
-  armed.
-- **The user answering calls it off** until the next finished request: a `vad_score` of at least
-  `USER_SPEECH_THRESHOLD` (0.5, the firmware's `ANNOUNCEMENT_SPEECH_THRESHOLD`, stricter than the
-  lattice's 0.25), a user transcript, or a line typed (`heardTheUser`). Scores heard while he speaks
-  are ignored, as `vad-score.ts` ignores them.
-- **Anything but `connected` disarms it**, so the quiet of one call never ends the next.
-
-The screen passes its own hang-up, so a quiet ending is the same ending as the user's. `onVadScore`
-and `onMessage` are wanted by other hooks too, so screens combine them with `inTurn` rather than
-spreading one over the other.
+The apps do not decide this. A finished request that is followed by quiet is ended by the agent
+itself — its `turnTimeout` of 3 s and its `end_call` tool — so the phone and the watch register no
+client tool for it and see it as the agent hanging up.
 
 ## Worklets
 

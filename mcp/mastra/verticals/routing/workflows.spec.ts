@@ -22,8 +22,8 @@ import {
 } from './controller.js';
 import type { OpenQuestion } from './questions.js';
 import {
+  FINISHED_REQUEST_INSTRUCTIONS,
   getNextInstructionsWorkflow,
-  HANG_UP_WHEN_QUIET_TOOL,
   resetPollDeadlineForTest,
   routePromptWorkflow,
   setPollDeadlineForTest,
@@ -368,7 +368,7 @@ describe('a request made while earlier work is waiting on the user', () => {
 
     expect(closing.instructions).toStartWith('The request could not be completed');
     expect(closing.instructions).toContain('work he started earlier is still waiting on him');
-    expect(closing.instructions).not.toContain(HANG_UP_WHEN_QUIET_TOOL);
+    expect(closing.instructions).not.toContain(FINISHED_REQUEST_INSTRUCTIONS);
     expect(closing.questionsForUser).toEqual([{ id: EARLIER.taskId, question: EARLIER.question }]);
   });
 });
@@ -509,9 +509,9 @@ describe('a request that has started something slow', () => {
  * How long Jarvis is told to be, and when the call is allowed to end.
  *
  * The planner labels each request (see `RESPONSE_STYLES`), and every report speaks in that style.
- * A finished request also ends with the hand-off to `hangUpWhenQuiet`, which the client turns into
- * a hang-up if sir stays quiet -- and nothing that is still waiting on him may carry it, or the
- * call would end under a question he was about to answer.
+ * A finished request also ends with `FINISHED_REQUEST_INSTRUCTIONS`, which hangs up silently if sir
+ * stays quiet -- and nothing that is still waiting on him may carry it, or the call would end
+ * under a question he was about to answer.
  */
 describe('how a request is answered, and when the call may end', () => {
   it('confirms a command in a few words, and hands over to the hang-up', async () => {
@@ -525,7 +525,7 @@ describe('how a request is answered, and when the call may end', () => {
 
     expect(closing.instructions).toContain('"Done, sir." is enough');
     expect(closing.instructions).not.toContain('in detail');
-    expect(closing.instructions).toContain(HANG_UP_WHEN_QUIET_TOOL);
+    expect(closing.instructions).toContain(FINISHED_REQUEST_INSTRUCTIONS);
   });
 
   it('gives a briefing its detail, and still hands over to the hang-up once it is done', async () => {
@@ -538,7 +538,7 @@ describe('how a request is answered, and when the call may end', () => {
     const closing = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
 
     expect(closing.instructions).toContain('Summarize the results in detail');
-    expect(closing.instructions).toContain(HANG_UP_WHEN_QUIET_TOOL);
+    expect(closing.instructions).toContain(FINISHED_REQUEST_INSTRUCTIONS);
   });
 
   it('answers a lookup in one sentence, and conversation in full character', async () => {
@@ -569,7 +569,7 @@ describe('how a request is answered, and when the call may end', () => {
     const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
 
     expect(outcome.instructions).toContain('"Done, sir." is enough');
-    expect(outcome.instructions).not.toContain(HANG_UP_WHEN_QUIET_TOOL);
+    expect(outcome.instructions).not.toContain(FINISHED_REQUEST_INSTRUCTIONS);
   });
 
   it('hands over to the hang-up after a request that failed, which is finished too', async () => {
@@ -579,7 +579,7 @@ describe('how a request is answered, and when the call may end', () => {
     const closing = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
 
     expect(closing.instructions).toContain('could not be completed');
-    expect(closing.instructions).toContain(HANG_UP_WHEN_QUIET_TOOL);
+    expect(closing.instructions).toContain(FINISHED_REQUEST_INSTRUCTIONS);
     expect(closing.instructions).toContain('end_call');
   });
 
@@ -595,7 +595,7 @@ describe('how a request is answered, and when the call may end', () => {
 
     const closing = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
 
-    expect(closing.instructions).not.toContain(HANG_UP_WHEN_QUIET_TOOL);
+    expect(closing.instructions).not.toContain(FINISHED_REQUEST_INSTRUCTIONS);
   });
 
   it('never ends the call under an offer he has yet to answer', async () => {
@@ -604,7 +604,7 @@ describe('how a request is answered, and when the call may end', () => {
 
     const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, {}));
 
-    expect(outcome.instructions).not.toContain(HANG_UP_WHEN_QUIET_TOOL);
+    expect(outcome.instructions).not.toContain(FINISHED_REQUEST_INSTRUCTIONS);
   });
 
   it('hands over to the hang-up once he has agreed to be notified instead', async () => {
@@ -614,7 +614,7 @@ describe('how a request is answered, and when the call may end', () => {
 
     const outcome = resultOf(await runWorkflow(getNextInstructionsWorkflow, { notifyWhenDone: true }));
 
-    expect(outcome.instructions).toContain(HANG_UP_WHEN_QUIET_TOOL);
+    expect(outcome.instructions).toContain(FINISHED_REQUEST_INSTRUCTIONS);
   });
 
   it('errs on the side of saying enough when the planner never labelled the request', () => {
