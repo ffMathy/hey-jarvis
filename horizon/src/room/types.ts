@@ -101,6 +101,8 @@ export interface RoomDescription {
   voxels: number;
   /** The epoch of the snapshot the grid was built from. */
   epoch: number;
+  /** Why the room could not be used, in words for the HUD; undefined when it could. */
+  problem?: string;
 }
 
 export interface RoomModel {
