@@ -120,11 +120,12 @@ deploying before the tunnel is up leaves the agent with no tools to call.
 they still give useful signal when the credentials or the tunnel are unavailable.
 
 `agent-config.spec.ts` is the one that guards the deploy rather than a detector. The
-deploy runs only after a merge to `main`, and the SDK strips any key it does not
-recognise without a word, so it runs the hand-written client tools in
-`agent-config.json` through the SDK's own serialiser with unknown keys set to fail —
-a snake_case key that would have vanished, or an enum value that would have failed the
-release, fails here on the push instead.
+deploy runs only after a merge to `main`, strips any key the SDK does not recognise
+without a word, and sends an enum value it does not recognise on to ElevenLabs as
+written. So the spec runs the hand-written client tools in `agent-config.json` through
+the SDK's own serialiser with both set to fail — a snake_case key that would have
+vanished, or a misspelt enum value the deploy would have sent anyway, fails here on the
+push instead.
 
 ## The camera eval
 

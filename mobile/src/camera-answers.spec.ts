@@ -5,6 +5,7 @@ import { OPEN_CAMERA_TOOL } from 'hologram';
 import {
   CAMERA_NOT_OPENED,
   CAMERA_ON_THIS_DEVICE,
+  END_QUIETLY,
   NO_PHOTO_TAKEN,
   NO_PHOTO_UPLOAD_KEY,
   NO_UPLOAD_URL,
@@ -125,16 +126,22 @@ describe('what the agent is told', () => {
     expect(JSON.parse(photoShown('photo3')).instructions).toContain('"What does this photo show? (photo photo3)"');
   });
 
-  it('ends a conversation that was only a photo not taken the way a finished request ends', () => {
-    // Otherwise "say nothing" leaves the line open until ElevenLabs' own silence timeout. The
-    // routing's own ending is the one the agent already follows, so it is repeated word for word.
-    const routing = readFileSync(join(import.meta.dir, '../../mcp/mastra/verticals/routing/workflows.ts'), 'utf8');
-    for (const nothingToSee of [NO_PHOTO_TAKEN, CAMERA_NOT_OPENED]) {
-      const { instructions } = JSON.parse(nothingToSee);
-      expect(instructions).toContain('call end_call without a word');
-      expect(routing.replace(/'\s*\+\s*'/g, '')).toContain(
-        instructions.slice(instructions.indexOf('If you are asked')),
-      );
+  it('ends every camera outcome that closes the request the way a finished request ends', () => {
+    // Otherwise the line stays open until ElevenLabs' own silence timeout. The routing's own ending
+    // is the one the agent already follows, so it is repeated word for word.
+    const routing = readFileSync(join(REPOSITORY, 'mcp', 'mastra', 'verticals', 'routing', 'workflows.ts'), 'utf8');
+    expect(END_QUIETLY).toContain('call end_call without a word');
+    expect(routing.replace(/'\s*\+\s*'/g, '')).toContain(END_QUIETLY);
+
+    for (const closing of [
+      NO_PHOTO_TAKEN,
+      CAMERA_NOT_OPENED,
+      PHOTO_NOT_SENT,
+      NO_PHOTO_UPLOAD_KEY,
+      PHOTO_KEY_REFUSED,
+      PHOTOS_UNAVAILABLE,
+    ]) {
+      expect(JSON.parse(closing).instructions).toEndWith(END_QUIETLY);
     }
   });
 

@@ -138,10 +138,11 @@ export function readOfferedUploadUrl(mcpToolCall: unknown): string | undefined {
 }
 
 /**
- * How a photo that came to nothing ends the conversation: word for word the agent's way of ending a
- * finished request (`FINISHED_REQUEST_INSTRUCTIONS` in `mcp/mastra/verticals/routing/workflows.ts`).
+ * How every camera outcome that closes the request ends the conversation: word for word the agent's
+ * way of ending a finished request (`FINISHED_REQUEST_INSTRUCTIONS` in
+ * `mcp/mastra/verticals/routing/workflows.ts`), which its `turnTimeout` asks it to follow.
  */
-const END_QUIETLY =
+export const END_QUIETLY =
   'If you are asked to speak again before he has said anything, he has nothing more: call end_call without a word.';
 
 /** A tool answer: what the agent should do next, and anything it needs to do it. */
@@ -170,8 +171,7 @@ export const NO_PHOTO_TAKEN = answer({
 
 /** The photo was taken and could not be sent. */
 export const PHOTO_NOT_SENT = answer({
-  instructions:
-    'The photo was taken but could not be sent to you. Tell sir so in one short sentence, and do not try again unless he asks.',
+  instructions: `The photo was taken but could not be sent to you. Tell sir so in one short sentence, and do not try again unless he asks. ${END_QUIETLY}`,
 });
 
 /**
@@ -183,8 +183,7 @@ export const PHOTO_NOT_SENT = answer({
  * here — so it also says not to ask again, which is all a model needs to stop going round.
  */
 export const NO_PHOTO_UPLOAD_KEY = answer({
-  instructions:
-    "Sir has not given this phone the photo upload key, so it cannot send you photos. Tell him in one short sentence that he can add it in the app's settings, and do not call openCamera again in this conversation.",
+  instructions: `Sir has not given this phone the photo upload key, so it cannot send you photos. Tell him in one short sentence that he can add it in the app's settings, and do not call openCamera again in this conversation. ${END_QUIETLY}`,
 });
 
 /**
@@ -193,8 +192,7 @@ export const NO_PHOTO_UPLOAD_KEY = answer({
  * and because trying again with the same key would only be refused again.
  */
 export const PHOTO_KEY_REFUSED = answer({
-  instructions:
-    "Jarvis's server refused this phone's photo upload key. Tell sir in one short sentence to check the photo upload key in the app's settings, and do not try again unless he asks.",
+  instructions: `Jarvis's server refused this phone's photo upload key. Tell sir in one short sentence to check the photo upload key in the app's settings, and do not try again unless he asks. ${END_QUIETLY}`,
 });
 
 /** The agent called before Mastra had minted somewhere to send the photo. */
@@ -207,8 +205,7 @@ export const NO_UPLOAD_URL = answer({
  * the device is not getting through, and asking again would only go round in circles.
  */
 export const PHOTOS_UNAVAILABLE = answer({
-  instructions:
-    'Photos cannot reach you from this phone right now. Tell sir so in one short sentence, and do not call openCamera again in this conversation.',
+  instructions: `Photos cannot reach you from this phone right now. Tell sir so in one short sentence, and do not call openCamera again in this conversation. ${END_QUIETLY}`,
 });
 
 /** The camera was asked for, and sir never opened it. Ended like {@link NO_PHOTO_TAKEN}. */

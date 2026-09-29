@@ -5,12 +5,13 @@ import agentConfig from '../../src/assets/agent-config.json';
 
 /**
  * The committed config reaches ElevenLabs only through `deploy`, and that runs in the release
- * workflow — after the merge, on `main`, where nobody is watching it. It is unforgiving in two
- * opposite ways. The SDK serialises the update with `unrecognizedObjectKeys: 'strip'`, so a key it
- * does not know — `expects_response` written beside the camelCase keys it expects — is dropped
- * without a word, and the agent quietly keeps whatever it had. A value its enums do not know fails
- * the whole deploy instead. Either one is caught here, on every push, by the same serialiser run
- * strictly.
+ * workflow — after the merge, on `main`, where nobody is watching it — and it lets both kinds of
+ * mistake through. It serialises the update with `unrecognizedObjectKeys: 'strip'`, so a key the
+ * SDK does not know — `expects_response` written beside the camelCase keys it expects — is dropped
+ * without a word, and the agent quietly keeps whatever it had. And since the voice model outran
+ * the SDK's enums it passes `allowUnrecognizedEnumValues` too (`toConversationConfigBody` in
+ * `src/main.ts`), so a misspelt enum value goes to ElevenLabs as written, for the server to accept
+ * or refuse. Both are caught here, on every push, by the same serialiser run strictly.
  */
 describe('the committed agent config', () => {
   const tools = agentConfig.conversationConfig.agent.prompt.tools;
