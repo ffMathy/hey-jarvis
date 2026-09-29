@@ -66,6 +66,11 @@ export interface RoomOptions {
   stopMicrophone?: () => void;
   /** The `?debug` HUD. */
   showHud?: boolean;
+  /**
+   * What the other modules can add to the HUD that the room cannot see itself: the microphone's
+   * permission and track, the AudioContext's state.
+   */
+  diagnostics?: () => Partial<Diagnostics>;
   debug: JarvisDebugState;
   /** Called once the room is open and drawing. */
   onInside?: () => void;
@@ -164,11 +169,16 @@ interface Room {
   pendingPlacement: { towards: Ray | undefined } | undefined;
   placing: boolean;
   pendingAnchor: Vector3Like | undefined;
+  /** Whether `spot` has just been found and not yet stood at (and anchored). */
+  freshSpot: boolean;
   goneReported: boolean;
   lastReadout: number;
   lastReadiness: WakeReadiness | undefined;
   queue: AppEvent[];
   dispatching: boolean;
+  /** Set by `return-to-page`: the room is let go of once the step carrying it is done. */
+  returning: boolean;
+  released: boolean;
   outcome: RoomOutcome;
   cleanups: (() => void)[];
   finish: () => void;
@@ -208,11 +218,14 @@ function startRoom(
     pendingPlacement: undefined,
     placing: false,
     pendingAnchor: undefined,
+    freshSpot: false,
     goneReported: false,
     lastReadout: 0,
     lastReadiness: undefined,
     queue: [],
     dispatching: false,
+    returning: false,
+    released: false,
     outcome: {},
     cleanups: [],
     finish: () => undefined,
@@ -289,7 +302,8 @@ function targetOf(room: Room, ray: Ray | undefined): SelectEvent['target'] {
   const keyboard = room.panels.keyboard.visible
     ? raySphereDistance(ray, room.panels.keyboard.centre(), 0.07)
     : undefined;
-  const spot = room.hologramState === 'hidden' ? undefined : room.spot?.position;
+  // Where he is drawn now — following his anchor — rather than where he was first placed.
+  const spot = room.hologramState === 'hidden' ? undefined : copyPoint(room.holder.position);
   const him = spot === undefined ? undefined : raySphereDistance(ray, spot, HIT_RADII * room.hologram.radius);
   if (keyboard !== undefined && (him === undefined || keyboard <= him)) return 'keyboard';
   return him === undefined ? 'elsewhere' : 'him';
@@ -305,6 +319,8 @@ function onSelect(room: Room, hold: SelectEvent['hold'], ray: Ray | undefined) {
 
 /** Puts `event` through the state machine and carries out what comes back, one event at a time. */
 function dispatch(room: Room, event: AppEvent) {
+  // A part answering late — a timer, a promise — after the room has been let go of.
+  if (room.released) return;
   room.queue.push(event);
   if (room.dispatching) return;
   room.dispatching = true;
@@ -321,6 +337,9 @@ function dispatch(room: Room, event: AppEvent) {
   } finally {
     room.dispatching = false;
   }
+  // Only once the step that ended the room has been carried out in full, so nothing in it reaches
+  // for a part already let go of.
+  if (room.returning) release(room);
 }
 
 function carryOut(room: Room, effect: AppEffect) {
@@ -383,17 +402,22 @@ function carryOutEffect(room: Room, effect: AppEffect) {
     case 'exit-xr':
       return room.stage.end();
     case 'return-to-page':
-      return release(room);
+      room.returning = true;
+      return;
   }
 }
 
-/** He appears at the spot just found, or where he already stands when a leaving is cancelled. */
+/**
+ * He appears at the spot just found — anchored there in the next frame — or, when a leaving is
+ * cancelled, where he already stands, still following the anchor he had.
+ */
 function arrive(room: Room) {
   const spot = room.spot;
-  if (spot !== undefined) {
+  if (spot !== undefined && room.freshSpot) {
     room.hologram.radius = spot.radius;
     room.holder.position.set(spot.position.x, spot.position.y, spot.position.z);
     room.pendingAnchor = copyPoint(spot.position);
+    room.freshSpot = false;
   }
   room.goneReported = false;
   room.hologram.arrive();
@@ -420,6 +444,8 @@ async function checkWake(room: Room) {
 
 /** Lets go of everything the room made, and hands the outcome back to the page. */
 function release(room: Room) {
+  if (room.released) return;
+  room.released = true;
   room.input.dispose();
   room.keyboard.dispose();
   room.depth?.dispose();
@@ -469,6 +495,7 @@ function placeIfAsked(room: Room, tick: XrFrameTick) {
   const placed = (placement: PlacementLike) => {
     room.placing = false;
     room.spot = { ...placement, position: copyPoint(placement.position) };
+    room.freshSpot = true;
     room.options.debug.hologramPosition = toRoomPoint(placement.position);
     room.options.debug.headPositionAtPlacement = toRoomPoint(head);
     dispatch(room, { type: 'placed' });
@@ -549,5 +576,6 @@ function collectDiagnostics(room: Room): Diagnostics {
     frameMilliseconds: room.meter.frameMilliseconds,
     hologram: room.hologram.diagnostics,
     webglExtensions: extensionsOfInterest(stage.renderer.getContext().getSupportedExtensions()),
+    ...options.diagnostics?.(),
   };
 }
