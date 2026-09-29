@@ -1,5 +1,12 @@
 import type { Surface } from 'canvaskit-wasm';
-import { createHologramResources, createHologramScene, drawHologram, type HologramFrame, SCENE_SEED } from 'hologram';
+import {
+  createHologramResources,
+  createHologramScene,
+  drawHologram,
+  type HologramFrame,
+  type HologramScene,
+  SCENE_SEED,
+} from 'hologram';
 import type { HologramSurfaceKind } from '../debug-hook';
 import { type Painter, wrapCanvas } from './canvaskit';
 
@@ -81,10 +88,16 @@ function makeDrawingTarget(painter: Painter, size: number): DrawingTarget {
  * Cleared to opaque black every frame, because that is what the phone draws him over: every
  * layer of him is Screen-blended, and Screen over black is the light alone. The quad's shader
  * turns that light into colour and alpha for the passthrough; the picture itself carries none.
+ *
+ * `scene` is the phone's own by default; the volumetric hologram hands over the one its GPU rows
+ * were built from, so the scene is built once and CanvasKit's layers and the body cannot differ.
  */
-export function createFlatHologram(painter: Painter, size: number = DRAWING_SIZE_PIXELS): FlatHologram {
+export function createFlatHologram(
+  painter: Painter,
+  size: number = DRAWING_SIZE_PIXELS,
+  scene: HologramScene = createHologramScene(SCENE_SEED),
+): FlatHologram {
   const target = makeDrawingTarget(painter, size);
-  const scene = createHologramScene(SCENE_SEED);
   const resources = createHologramResources(painter.skia, scene);
   const rawCanvas = target.surface.getCanvas();
   const canvas = wrapCanvas(painter, rawCanvas);
