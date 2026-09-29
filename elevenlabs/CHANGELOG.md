@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.4.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v2.3.0...elevenlabs-v2.4.0) (2026-09-29)
+
+
+### Features
+
+* **elevenlabs:** replace default voice tags with victorian ([#906](https://github.com/ffMathy/hey-jarvis/issues/906)) ([e970cb2](https://github.com/ffMathy/hey-jarvis/commit/e970cb24e09ed603ec2beac801170e93144f965a))
+
 ## [2.3.0](https://github.com/ffMathy/hey-jarvis/compare/elevenlabs-v2.2.0...elevenlabs-v2.3.0) (2026-09-29)
 
 
