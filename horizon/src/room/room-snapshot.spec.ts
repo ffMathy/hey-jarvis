@@ -105,6 +105,14 @@ describe('snapshotRoom', () => {
     expect(snapshotRoom(headset.frame, headset.referenceSpace, first)).toBe(first);
   });
 
+  it('compares a mesh handed over in new arrays before calling it changed', () => {
+    const headset = fakeHeadset();
+    const first = snapshotRoom(headset.frame, headset.referenceSpace);
+    headset.scan.vertices = new Float32Array(headset.scan.vertices);
+    headset.scan.lastChangedTime = 2;
+    expect(snapshotRoom(headset.frame, headset.referenceSpace, first)).toBe(first);
+  });
+
   it('copies again only what changed', () => {
     const headset = fakeHeadset();
     const first = snapshotRoom(headset.frame, headset.referenceSpace);

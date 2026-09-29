@@ -47,6 +47,9 @@ interface PlaneRecord {
 
 interface MeshRecord {
   lastChangedTime: number;
+  /** The arrays the copies were made from, to tell a mesh handed over again from a new one. */
+  vertices: Float32Array;
+  indices: Uint32Array;
   mesh: SceneMesh;
 }
 
@@ -132,19 +135,33 @@ function planeRecord(source: PlaneSource, pose: Float32Array, old: PlaneRecord |
   };
 }
 
+/**
+ * Whether the mesh's shape is the one `old` copied.
+ *
+ * A change time that has not moved says so; so do the very arrays the copies were made from,
+ * which is how the emulator hands over a mesh it marks changed on every frame — comparing its
+ * room scan element by element took several milliseconds a frame there. Anything else is
+ * compared in full, since a scan whose change time moved may still hold the same triangles.
+ */
+function sameShape(source: MeshSource, old: MeshRecord): boolean {
+  if (old.lastChangedTime === source.lastChangedTime) return true;
+  if (old.vertices === source.vertices && old.indices === source.indices) return true;
+  return sameArray(old.mesh.vertices, source.vertices) && sameArray(old.mesh.indices, source.indices);
+}
+
 /** The record for this mesh now; vertices are copied only when they are not the ones already held. */
 function meshRecord(source: MeshSource, pose: Float32Array, old: MeshRecord | undefined): MeshRecord {
-  const unchangedShape =
-    old !== undefined &&
-    (old.lastChangedTime === source.lastChangedTime ||
-      (sameArray(old.mesh.vertices, source.vertices) && sameArray(old.mesh.indices, source.indices)));
-  if (old !== undefined && unchangedShape) {
+  if (old !== undefined && sameShape(source, old)) {
     old.lastChangedTime = source.lastChangedTime;
+    old.vertices = source.vertices;
+    old.indices = source.indices;
     if (samePose(old.mesh.pose, pose)) return old;
-    return { lastChangedTime: source.lastChangedTime, mesh: { ...old.mesh, pose: new Float32Array(pose) } };
+    return { ...old, mesh: { ...old.mesh, pose: new Float32Array(pose) } };
   }
   return {
     lastChangedTime: source.lastChangedTime,
+    vertices: source.vertices,
+    indices: source.indices,
     mesh: {
       label: source.semanticLabel ?? '',
       pose: new Float32Array(pose),
