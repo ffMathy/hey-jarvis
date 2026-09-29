@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.13.2](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.13.1...mcp-v2.13.2) (2026-09-29)
+
+
+### Code Refactoring
+
+* remove the hangUpWhenQuiet client tool ([#910](https://github.com/ffMathy/hey-jarvis/issues/910)) ([81a9537](https://github.com/ffMathy/hey-jarvis/commit/81a9537c9719a319f3e93b7a04fbfbd00a6ee8af))
+
 ## [2.13.1](https://github.com/ffMathy/hey-jarvis/compare/mcp-v2.13.0...mcp-v2.13.1) (2026-09-28)
 
 
