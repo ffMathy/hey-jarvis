@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'bun:test';
-import { afterStatus, type ConversationLife, isLive, NOT_YET_OPEN } from './conversation-life';
+import {
+  afterStatus,
+  type ConversationLife,
+  GIVE_UP_CONNECTING_AFTER_MS,
+  isLive,
+  NOT_YET_OPEN,
+} from './conversation-life';
 
 /** Plays a run of statuses through, the way the screen hands them over one at a time. */
 function watch(...statuses: string[]): ConversationLife {
@@ -70,5 +76,14 @@ describe('afterStatus', () => {
       open: true,
       ended: true,
     });
+  });
+});
+
+describe('GIVE_UP_CONNECTING_AFTER_MS', () => {
+  it('waits far longer than a session takes to open, so a slow network is not called a failure', () => {
+    // A token, a socket and a handshake are a second or two on a bad connection. Every device that
+    // holds a conversation gives up on the same deadline, so changing it is a decision for all of
+    // them at once rather than one app quietly drifting from the others.
+    expect(GIVE_UP_CONNECTING_AFTER_MS).toBe(20_000);
   });
 });

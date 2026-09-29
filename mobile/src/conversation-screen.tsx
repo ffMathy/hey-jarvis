@@ -1,7 +1,11 @@
 import { useConversationControls, useConversationStatus } from '@elevenlabs/react-native';
 import * as Linking from 'expo-linking';
 import {
+  afterStatus,
   type ElevenLabsSettings,
+  GIVE_UP_CONNECTING_AFTER_MS,
+  isLive,
+  NOT_YET_OPEN,
   PHONE_PARTICIPANT_NAME,
   requestConversationToken,
   requestSignedConversationUrl,
@@ -12,7 +16,6 @@ import { useSimulatedVoice } from 'hologram/react/sample';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, ToastAndroid, View } from 'react-native';
 import { createAssistLaunchClaim } from './assist-link';
-import { afterStatus, isLive, NOT_YET_OPEN } from './conversation-life';
 import { ConversationFrame, useConversationSheet } from './conversation-sheet';
 import { JarvisHologram } from './jarvis-hologram';
 import { useJarvisVoice } from './jarvis-voice';
@@ -53,22 +56,6 @@ const ON_A_PHONE = Platform.OS !== 'web';
 const SCREEN_LABEL = ON_A_PHONE
   ? 'Jarvis. Tap to switch between talking and writing. Press and hold for ElevenLabs settings.'
   : 'Jarvis. Press and hold for ElevenLabs settings.';
-
-/**
- * How long the screen waits for a conversation to open before saying it has not.
- *
- * **Nothing below this screen has a deadline.** The ElevenLabs SDK reports `connecting`, then
- * either `connected` or an error — except when it reports neither, which is what a session that
- * cannot finish coming up does: it waits on a room event that never arrives, with no timeout of
- * its own, for ever. A screen whose only signal is the SDK eventually saying something therefore
- * has a state in which it says nothing at all, which is precisely how this looked with the
- * microphone switched off: "Connecting…" and no more, indefinitely.
- *
- * So the wait is bounded here. Twenty seconds is far longer than a session takes — a token, a
- * socket and a handshake are a second or two on a bad connection — and long enough that a slow
- * network is never mistaken for a failure.
- */
-const GIVE_UP_CONNECTING_AFTER_MS = 20_000;
 
 /**
  * What tapping the screen does: on a phone, once there is a conversation that has not ended, it
@@ -603,7 +590,7 @@ export function ConversationScreen({
    * *Was* open is the whole of the condition, and it is why this is a fold over the statuses
    * rather than a look at the current one: a conversation that never opened is a different state
    * with a different answer — the line saying why, under a sphere that is still there — and both
-   * of them read `disconnected`. See `conversation-life.ts`.
+   * of them read `disconnected`. See `hologram/src/conversation-life.ts`.
    */
   const [life, setLife] = useState(NOT_YET_OPEN);
   useEffect(() => {

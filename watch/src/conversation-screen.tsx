@@ -1,6 +1,8 @@
 import { useConversationControls, useConversationStatus } from '@elevenlabs/react-native';
 import {
   type ElevenLabsSettings,
+  GIVE_UP_CONNECTING_AFTER_MS,
+  isLive,
   requestConversationToken,
   WATCH_PARTICIPANT_NAME,
   WATCH_PARTICLE_COUNT,
@@ -32,16 +34,6 @@ interface ConversationScreenProps {
 const WAIT_FOR_FAST_NETWORK_MS = 6000;
 
 /**
- * How long a conversation may take to open before the screen says it has not.
- *
- * The phone's reason, from `GIVE_UP_CONNECTING_AFTER_MS` in `mobile/src/conversation-screen.tsx`:
- * a WebRTC session that cannot finish coming up waits on a room event with no deadline of its
- * own, and says nothing while it does. On a watch that is exactly what the Bluetooth proxy
- * produces, and a sphere turning in silence is indistinguishable from one listening.
- */
-const GIVE_UP_CONNECTING_AFTER_MS = 20_000;
-
-/**
  * How long to wait for the phone to say whether it will hold the conversation in its earbuds.
  *
  * Longer than the phone gives its own window to come up (`WAIT_FOR_THE_WINDOW_MS` in
@@ -58,11 +50,6 @@ const ASK_THE_PHONE_MS = 3000;
  * own volume steps, is still plainly heard at arm's length. See `modules/jarvis-volume`.
  */
 const CALL_VOLUME_SHARE = 0.9;
-
-/** Whether a conversation is open, or on its way to being open. */
-function isLive(status: string): boolean {
-  return status === 'connected' || status === 'connecting';
-}
 
 /**
  * Jarvis answering on the wrist: the sphere, and nothing else on the screen.
