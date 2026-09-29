@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.15.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.14.0...root-v4.15.0) (2026-09-29)
+
+
+### Features
+
+* **mobile:** answer aloud in a phone's text mode ([#908](https://github.com/ffMathy/hey-jarvis/issues/908)) ([16177ac](https://github.com/ffMathy/hey-jarvis/commit/16177ac7628acbbf343c78fceae2bd050796ab14))
+
 ## [4.14.0](https://github.com/ffMathy/hey-jarvis/compare/root-v4.13.0...root-v4.14.0) (2026-09-29)
 
 
