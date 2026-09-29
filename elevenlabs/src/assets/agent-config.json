@@ -52,8 +52,8 @@
       "expressiveMode": true,
       "suggestedAudioTags": [
         {
-          "tag": "Fast",
-          "description": ""
+          "tag": "Victorian",
+          "description": "The default delivery: a composed, refined Victorian butler"
         },
         {
           "tag": "sighs",
@@ -139,7 +139,7 @@
       "background_voice_detection": true
     },
     "agent": {
-      "firstMessage": "[fastly spoken but in a normal pitch] [sounding like Jarvis from the Iron Man movies] Hello sir, how can I help?",
+      "firstMessage": "[Victorian] Hello sir, how can I help?",
       "language": "en",
       "hinglishMode": false,
       "dynamicVariables": {

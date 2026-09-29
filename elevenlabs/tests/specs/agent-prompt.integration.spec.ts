@@ -621,7 +621,7 @@ describe('Agent Prompt Specifications', () => {
                 `said, and which tools it called with what arguments and what came back — covering the ` +
                 `calendar request and the routing call that followed it. Its delivery must be flat and ` +
                 `literal: a "[robot-like]" audio tag or an equivalent machine-voiced one, with none of ` +
-                `the usual Jarvis wit, condescension, flourish or speed tags, and none of the 5-15 word ` +
+                `the usual Jarvis wit, condescension, flourish or Victorian tag, and none of the 5-15 word ` +
                 `brevity that governs ordinary replies. Naming its tools aloud is correct here and must not ` +
                 `count against it. It must not route the word: the agent had made ${toolCallsBeforeAnalysis} ` +
                 `tool call(s) before "analysis" and ${toolCallsAfterAnalysis} after, and those numbers must be ` +
