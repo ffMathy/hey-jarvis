@@ -2,6 +2,7 @@ import { describeFrameRate, PARTICLE_COUNT } from 'hologram';
 import { Group } from 'three';
 import { type JarvisDebugState, toRoomPoint } from '../debug-hook';
 import { createDebugHud, type DebugHud, type Diagnostics, extensionsOfInterest } from '../ui3d/debug-hud';
+import { KEYBOARD_GLYPH_REACH_METRES } from '../ui3d/keyboard-glyph';
 import { type AnchorKeeper, createAnchorKeeper } from '../xr/anchor-keeper';
 import { createDepthProbeFan, type DepthProbeFan } from '../xr/depth-probes';
 import { type Ray, raySphereDistance, type Vector3Like } from '../xr/ray';
@@ -300,7 +301,7 @@ function reportReadiness(room: Room, readiness: WakeReadiness) {
 function targetOf(room: Room, ray: Ray | undefined): SelectEvent['target'] {
   if (ray === undefined) return 'elsewhere';
   const keyboard = room.panels.keyboard.visible
-    ? raySphereDistance(ray, room.panels.keyboard.centre(), 0.07)
+    ? raySphereDistance(ray, room.panels.keyboard.centre(), KEYBOARD_GLYPH_REACH_METRES)
     : undefined;
   // Where he is drawn now — following his anchor — rather than where he was first placed.
   const spot = room.hologramState === 'hidden' ? undefined : copyPoint(room.holder.position);
