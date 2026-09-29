@@ -85,7 +85,6 @@ interface LevelRules {
   halfAngle: number;
   /** Whether spots hovering above a table or desk are tried. */
   aboveSurfaces: boolean;
-  needsPointer: boolean;
 }
 
 const FULL_SIZE = { radius: RESTING_RADIUS, nearest: 0.9, farthest: 2.6, aboveSurfaces: false };
@@ -93,11 +92,11 @@ const SQUEEZED = { radius: SQUEEZED_RADIUS, clearance: 0.3, nearest: 0.6, farthe
 
 /** The relax chain, strictest first. `wide` is tried at full size first and squeezed second. */
 const LEVELS: LevelRules[] = [
-  { level: 'full', ...FULL_SIZE, clearance: 0.5, halfAngle: COMFORTABLE_HALF_ANGLE, needsPointer: false },
-  { level: 'tight', ...FULL_SIZE, clearance: 0.35, halfAngle: COMFORTABLE_HALF_ANGLE, needsPointer: false },
-  { level: 'small', ...SQUEEZED, halfAngle: COMFORTABLE_HALF_ANGLE, needsPointer: false },
-  { level: 'wide', ...FULL_SIZE, clearance: 0.35, halfAngle: WIDE_HALF_ANGLE, needsPointer: true },
-  { level: 'wide', ...SQUEEZED, halfAngle: WIDE_HALF_ANGLE, needsPointer: true },
+  { level: 'full', ...FULL_SIZE, clearance: 0.5, halfAngle: COMFORTABLE_HALF_ANGLE },
+  { level: 'tight', ...FULL_SIZE, clearance: 0.35, halfAngle: COMFORTABLE_HALF_ANGLE },
+  { level: 'small', ...SQUEEZED, halfAngle: COMFORTABLE_HALF_ANGLE },
+  { level: 'wide', ...FULL_SIZE, clearance: 0.35, halfAngle: WIDE_HALF_ANGLE },
+  { level: 'wide', ...SQUEEZED, halfAngle: WIDE_HALF_ANGLE },
 ];
 
 /** The request, worked out against the room: which way is ahead, which room the user is in, what height suits them. */
@@ -341,7 +340,8 @@ export function placeInRoom(scene: RoomScene, request: PlacementRequest): Placem
         radius: rules.radius,
         level: rules.level,
         clearance: best.clearance,
-        needsPointer: rules.needsPointer,
+        // Only the wide cone reaches past the comfortable one, but the angle is what decides.
+        needsPointer: Math.abs(best.azimuth) > COMFORTABLE_HALF_ANGLE + 1e-6,
         epoch: scene.epoch,
       };
     }

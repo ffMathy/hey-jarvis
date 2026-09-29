@@ -113,6 +113,22 @@ describe('placement in an open living room', () => {
     expect(Math.abs(placement.position.x)).toBeGreaterThan(0.5);
   });
 
+  it('goes further round, with a pointer to him, when nothing in the comfortable cone is in sight', () => {
+    // Half a metre from a tall room divider a metre wide: everything within 35° is behind it.
+    const divider = boxMesh('shelf', { minX: -0.5, maxX: 0.5, minZ: -0.1, maxZ: 0 }, 2.4);
+    const request = { ...STANDING, head: { x: 0, y: 1.65, z: 0.5 } };
+    const placement = place(snapshot(roomPlanes(LIVING_ROOM, LIVING_ROOM_HEIGHT), [divider]), request);
+    expect(placement.level).toBe('wide');
+    expect(placement.needsPointer).toBe(true);
+    expect(placement.radius).toBe(0.22);
+    const angle = Math.atan2(Math.abs(placement.position.x), request.head.z - placement.position.z);
+    expect(angle).toBeGreaterThan((35 * Math.PI) / 180);
+    expect(angle).toBeLessThanOrEqual((60 * Math.PI) / 180 + 1e-9);
+    const min = { x: -0.5, y: 0, z: -0.1 };
+    const max = { x: 0.5, y: 2.4, z: 0 };
+    expect(segmentHitsBox(request.head, placement.position, min, max)).toBe(false);
+  });
+
   it('keeps out of the way of something the depth sensor sees but the room data does not', () => {
     // Someone standing 1.2 m ahead, level with the eyes.
     const request = { ...STANDING, depthProbes: [{ direction: { x: 0, y: 0, z: -1 }, distance: 1.2 }] };

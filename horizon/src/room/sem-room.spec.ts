@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 import { containsPoint } from './floor-polygon';
+import { firstBlockedFraction } from './occupancy-grid';
 import { toReference } from './pose-matrix';
 import { createRoomModel } from './room-model';
-import { loadSemRoom } from './sem-room';
-import type { PlacementRequest } from './types';
+import { buildRoomSceneNow } from './room-scene';
+import { loadSemRoom, type SemRoomName } from './sem-room';
+import type { PlacementLevel, PlacementRequest, RoomSnapshot } from './types';
 
 /**
  * Placement in a real captured room — the living room the browser tests stand the emulated
@@ -68,4 +70,62 @@ describe('placement in the captured living room', () => {
     expect(steadyBuild).toBeLessThan(150);
     expect(typicalPlace).toBeLessThan(5);
   });
+});
+
+/** The free space each level promises around his centre. */
+const PROMISED_CLEARANCE: Record<PlacementLevel, number> = {
+  full: 0.5,
+  tight: 0.35,
+  small: 0.3,
+  wide: 0.3,
+  fallback: 0,
+};
+
+function floorOutline(room: RoomSnapshot) {
+  const floor = room.planes.find((plane) => plane.label === 'floor');
+  if (floor === undefined) throw new Error('The room has no floor.');
+  return floor.polygon.map((point) => toReference(floor.pose, point.x, 0, point.z));
+}
+
+describe('placement in every captured room', () => {
+  const rooms: SemRoomName[] = ['living_room', 'meeting_room', 'music_room', 'office_large', 'office_small'];
+
+  for (const name of rooms) {
+    it(`keeps its promises in the ${name.replace('_', ' ')}, whichever way the user faces`, async () => {
+      const room = await loadSemRoom(name);
+      const model = createRoomModel();
+      model.update(room);
+      const scene = buildRoomSceneNow(room);
+      const outline = floorOutline(room);
+      // Standing in the middle of the floor, turning round in eight steps.
+      const corners = outline.slice(0, 4);
+      const head = {
+        x: corners.reduce((sum, point) => sum + point.x, 0) / corners.length,
+        y: corners[0].y + 1.6,
+        z: corners.reduce((sum, point) => sum + point.z, 0) / corners.length,
+      };
+      for (let step = 0; step < 8; step++) {
+        const angle = (step * Math.PI) / 4;
+        const placement = model.place({
+          head,
+          forward: { x: Math.sin(angle), y: 0, z: -Math.cos(angle) },
+          depthProbes: [],
+        });
+        expect(placement.level).not.toBe('fallback');
+        expect(placement.clearance).toBeGreaterThanOrEqual(PROMISED_CLEARANCE[placement.level]);
+        expect(containsPoint(outline, placement.position)).toBe(true);
+        // Nothing the grid holds between the eyes (past the first 20 cm) and his centre.
+        const { position } = placement;
+        const length = Math.hypot(position.x - head.x, position.y - head.y, position.z - head.z);
+        const start = 0.2 / length;
+        const from = {
+          x: head.x + (position.x - head.x) * start,
+          y: head.y + (position.y - head.y) * start,
+          z: head.z + (position.z - head.z) * start,
+        };
+        if (scene.grid === null) throw new Error('The room has no grid.');
+        expect(firstBlockedFraction(scene.grid, from, position)).toBe(Number.POSITIVE_INFINITY);
+      }
+    });
+  }
 });
