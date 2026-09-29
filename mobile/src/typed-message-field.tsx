@@ -18,11 +18,6 @@ interface TypedMessageFieldProps {
   opening: boolean;
   /** Whether to take focus, and so the keyboard, as soon as it appears. */
   autoFocus?: boolean;
-  /**
-   * Told whenever the draft changes. Someone writing is someone answering, which is what keeps a
-   * conversation from being hung up on as quiet while they type (`useHangUpWhenQuiet`).
-   */
-  onTyping?: () => void;
 }
 
 /**
@@ -60,16 +55,8 @@ interface TypedMessageFieldProps {
  * is not a conflict: each platform reads the one it understands. Enter still submits either way —
  * web gates that on `blurOnSubmit || !multiline`, and this field is not multiline.
  */
-export function TypedMessageField({ onSend, enabled, opening, autoFocus = false, onTyping }: TypedMessageFieldProps) {
+export function TypedMessageField({ onSend, enabled, opening, autoFocus = false }: TypedMessageFieldProps) {
   const [draft, setDraft] = useState('');
-
-  const changeDraft = useCallback(
-    (text: string) => {
-      setDraft(text);
-      onTyping?.();
-    },
-    [onTyping],
-  );
 
   const send = useCallback(() => {
     const message = draft.trim();
@@ -87,7 +74,7 @@ export function TypedMessageField({ onSend, enabled, opening, autoFocus = false,
   return (
     <TextInput
       value={draft}
-      onChangeText={changeDraft}
+      onChangeText={setDraft}
       onSubmitEditing={send}
       submitBehavior="submit"
       blurOnSubmit={false}

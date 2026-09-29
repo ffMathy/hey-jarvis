@@ -215,26 +215,23 @@ this one included, until they run.
 ## Hanging up when he goes quiet
 
 A finished request should not leave the line open until the 30-second `silenceEndCallTimeout`
-gives up on it. So every finished request — answered, failed, or handed off to a notification —
-ends with the routing loop telling Jarvis to call **`hangUpWhenQuiet`**, a client tool declared in
-`agent-config.json` (`expectsResponse: false`, `executionMode: post_tool_speech`). The client keeps
-the clock, because only the client knows when Jarvis has stopped talking and whether sir has said
-anything since: three seconds of quiet ends the call, and anything he says first disarms it. The
-phone and watch apps handle it in `hologram/conversation`, the Voice speaker in its firmware. A
-request still waiting on him — a question, a slow-work offer — never carries it.
+gives up on it. So the agent has **`turnTimeout: 3`**: after three seconds of silence, ElevenLabs asks
+Jarvis to speak again. The prompt's **When Sir Is Silent** section and the `end_call`/`skip_turn`
+descriptions tell him what that means — after a finished request, `end_call` without a word; while
+the conversation waits on sir, `skip_turn`. Every finished request — answered, failed, or handed off
+to a notification — also ends with the routing loop's `FINISHED_REQUEST_INSTRUCTIONS`, which says
+the same and forbids ending on a question or an offer, since the line closes while he is still
+answering it. A request still waiting on him never carries it.
 
-A telephone call has no client to keep that clock, so the agent also has **`turnTimeout: 3`**: after
-three seconds of silence, ElevenLabs asks Jarvis to speak again. The prompt's **When Sir Is Silent**
-section and the `end_call`/`skip_turn` descriptions tell him what that means — after a finished
-request, `end_call` without a word; while the conversation waits on sir, `skip_turn`. That setting
-is agent-wide, so it applies on every medium, where the client usually wins the race by a model
-round trip. `initialWaitTime: 30` keeps it from firing at the start of a session whose first
-message is empty (the apps play a recorded greeting instead). If the model ever fills those
-silences with "are you still there?", `turnTimeout: -1` switches the whole mechanism off again and
-leaves the client tool doing the work where there is a client.
+That setting is agent-wide, so it is the one mechanism on every medium: the apps, the Voice speaker
+and a telephone call alike. `initialWaitTime: 30` keeps it from firing at the start of a session
+whose first message is empty (the apps play a recorded greeting instead). If the model ever fills
+those silences with "are you still there?", `turnTimeout: -1` switches it off again — and with it
+every hang-up after a finished request, so that is a trade, not a fix.
 
-The test agent keeps its client tools (`applyTestAgentOverrides` in `src/main.ts`): the loop names
-`hangUpWhenQuiet`, and an agent without it would be tested against an instruction it cannot follow.
+There used to be a second mechanism, the `hangUpWhenQuiet` client tool, that armed a three-second
+clock on the device itself. It was removed: the agent asked for it, the phone, watch and firmware
+each kept their own copy of the clock, and `turnTimeout` already did the same job everywhere.
 
 ### What belongs in the routing instructions instead
 

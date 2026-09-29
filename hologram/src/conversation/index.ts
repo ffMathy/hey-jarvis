@@ -15,8 +15,6 @@
  */
 export { useAgentVoice } from './agent-voice';
 export { useGreeting } from './greeting';
-export { useHangUpWhenQuiet } from './hang-up-when-quiet';
-export { inTurn } from './in-turn';
 export { useSdkVoiceReaders } from './sdk-voice-readers';
 export {
   NOTHING_IN_FLIGHT,

@@ -866,9 +866,10 @@ that style (`SPEAKING_INSTRUCTIONS` in `routing/workflows.ts`); it used to ask f
 manner" every time, which is how "turn off the lights" earned a paragraph.
 
 **Ending the call:** every finished request — answered, failed, or handed to a notification — ends
-by telling Jarvis to call the `hangUpWhenQuiet` client tool (`HANG_UP_WHEN_QUIET_TOOL`), which the
-client turns into a hang-up after three seconds of quiet. Nothing still waiting on sir carries it.
-See **Hanging up when he goes quiet** in `elevenlabs/AGENTS.md`.
+with `FINISHED_REQUEST_INSTRUCTIONS`: say nothing more, and if asked to speak again before sir has
+said anything, call `end_call` without a word. The agent's turn timeout is what asks him again.
+Nothing still waiting on sir carries it. See **Hanging up when he goes quiet** in
+`elevenlabs/AGENTS.md`.
 
 **Questions for the user:**
 Some work cannot finish on what the request said. Questions come from two places, and
