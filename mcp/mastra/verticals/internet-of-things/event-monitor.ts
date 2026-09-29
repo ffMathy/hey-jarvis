@@ -10,6 +10,12 @@ import {
 import { getDeviceStateStorage, getEntityNoiseBaselineStorage } from '../../storage/index.js';
 import { logger } from '../../utils/logger.js';
 import { executeTool, type ToolMastra } from '../../utils/tool-factory.js';
+import {
+  isLastNotificationSensor,
+  isNotificationSensor,
+  readNotificationAttributes,
+  toNotificationStateChange,
+} from '../phone/notifications.js';
 import { registerStateChange } from '../synapse/tools.js';
 import { type BulkingPolicy, ChangeBulker, DEFAULT_BULKING_POLICY } from './change-bulker.js';
 import {
@@ -199,8 +205,41 @@ export async function startHomeAssistantEventMonitor(
     registryStale = false;
   };
 
+  /**
+   * Files a phone notification with Synapse as it arrives.
+   *
+   * Not bulked: each notification is its own message, and bulking would reduce a burst of
+   * them to the first and last. Rolling them up is left to the reactor's delivery policy,
+   * which does it without losing any.
+   */
+  const fileNotification = (entityId: string, attributes: Record<string, unknown>): void => {
+    if (describeEntity(registry, entityId).sensitive) {
+      return;
+    }
+
+    const notification = readNotificationAttributes(attributes);
+    const stateChange = notification ? toNotificationStateChange(notification) : null;
+    if (!stateChange) {
+      return;
+    }
+
+    void executeTool(registerStateChange, stateChange, { mastra }).catch((error) =>
+      logger.error('Filing a phone notification failed', { entityId, error }),
+    );
+  };
+
   const onStateChanged = (event: StateChangedEvent): void => {
     const { entity_id: entityId, old_state: oldState, new_state: newState } = event.data;
+
+    // The notification sensors' state is the text of a notification, so none of it belongs
+    // in the device reports. The last-notification sensor is read on every update, attribute-
+    // only ones included: two notifications in a row with the same text differ only there.
+    if (isNotificationSensor(entityId)) {
+      if (newState && isLastNotificationSensor(entityId)) {
+        fileNotification(entityId, newState.attributes);
+      }
+      return;
+    }
 
     // An entity being added or removed is registry churn, and an attribute-only update is
     // most of the bus's traffic; neither is a change in what the entity reports.
@@ -246,7 +285,9 @@ export async function startHomeAssistantEventMonitor(
     let seeded = 0;
 
     for (const entity of states) {
-      if (describeEntity(registry, entity.entity_id).sensitive) {
+      // A notification posted while the socket was down is not caught up on: the sensor holds
+      // only the latest one, and it may be hours old by now.
+      if (describeEntity(registry, entity.entity_id).sensitive || isNotificationSensor(entity.entity_id)) {
         continue;
       }
 

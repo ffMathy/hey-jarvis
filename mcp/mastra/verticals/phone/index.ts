@@ -11,4 +11,11 @@ export {
   scoreContactMatch,
   toContact,
 } from './contacts.js';
+export {
+  isLastNotificationSensor,
+  isNotificationSensor,
+  type PhoneNotification,
+  readNotificationAttributes,
+  toNotificationStateChange,
+} from './notifications.js';
 export { initiatePhoneCall, phoneTools, sendTextMessage } from './tools.js';

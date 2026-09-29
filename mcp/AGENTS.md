@@ -395,10 +395,11 @@ that can publish artifacts; plus the companion-app notify service the
 - "Generate a UI for tracking my running times"
 - "Send that chart to my phone again"
 
-### Phone Vertical (Tools Only)
-Provides outbound calling, texting and contact lookup:
+### Phone Vertical
+Provides outbound calling, texting and contact lookup, and feeds the phone's notifications to Synapse:
 - **4 phone tools**: Place calls, send texts, and read the user's Google address book
-- **No agents or workflows**: This vertical exposes only tools for use by other agents
+- **No agents**: The tools are for use by other agents
+- **Notifications**: Maps the Android notifications the Home Assistant event monitor sees into Synapse state changes (see [Phone Notifications Into Synapse](#phone-notifications-into-synapse))
 - **Twilio integration**: Uses ElevenLabs Conversational AI platform with Twilio for phone calls
 - **Custom first message**: Each call can specify a custom greeting message for the recipient
 - **Conversation support**: After the initial message, the agent can engage in conversation with the recipient
@@ -1198,6 +1199,87 @@ api:
             timeout: !lambda 'return silence_seconds > 0 ? silence_seconds * 1000 : 3000;'
 ```
 
+
+### Phone Notifications Into Synapse
+
+The Home Assistant companion app on Android reports each notification the phone posts through its
+`sensor.<phone>_last_notification` sensor: the state is the text, and the attributes carry the app
+(`package`), `android.title`, `android.text`, `android.bigText` and `post_time`. The Home Assistant
+event monitor (`internet-of-things/event-monitor.ts`) already receives that sensor's `state_changed`
+events, and routes them to `phone/notifications.ts` instead of the device reports. Each one is
+registered with Synapse as `notification_posted` from the `phone` source, with `app`, `title`,
+`text` and `postedAt`. From there it is an ordinary state change: matched against subscriptions, saved
+to memory, and rolled up by the delivery policy rather than waking the reactor per notification.
+
+How these differ from the monitor's other entities:
+
+- **Attribute-only updates count.** The monitor otherwise drops them, but two notifications in a row
+  with the same text differ only in their attributes.
+- **No bulking.** Each notification is its own message; the bulker would keep only the first and
+  last of a burst.
+- **Never a device state.** Neither this sensor nor `_last_removed_notification` is reported,
+  caught up on, or stored as a device state, so the text never lands in `device_state` storage.
+- **No catch-up.** The sensor holds only the latest notification, so one posted while the socket
+  was down is not reported on reconnect.
+- The `sensitive` label excludes the sensor as it does any other entity. A notification with neither
+  a title nor text (media players, progress bars) is dropped.
+
+**Setup:** the *Last notification* sensor and its Allow List, in the
+[companion app checklist](#home-assistant-companion-app-setup) below.
+
+### Home Assistant Companion App Setup
+
+Jarvis reads the primary user's Android phone entirely through the Home Assistant companion app:
+where he is, whether he is driving, whether the phone is silenced, and what notifications it gets. It
+also sends to the phone through the app. Every toggle below is in the companion app unless stated
+otherwise, and most are under **Settings → Companion app → Manage sensors**.
+
+**Home Assistant side:**
+
+- **Assign the phone to the user's person.** Go to Settings → People → *the user* → *Track device*
+  and add the phone's `device_tracker`. The `person` entity is what "is he home" and "how far is he
+  from the car" are answered from (`inferUserLocation`). A phone that isn't assigned to a person
+  gives no location at all.
+- **Tell Jarvis which phone is his.** Companion-app devices are named after the phone ("Pixel 9"),
+  not after the user. Do one of these:
+  - set `HEY_JARVIS_PRIMARY_USER_PHONE_DEVICE` to the device name;
+  - name the device after the user;
+  - make a notify group called `notify.<user>_phone`.
+
+  In a household with only one phone, none of this is needed.
+
+**Companion app:**
+
+| Toggle | Where | Permission | Used for |
+| --- | --- | --- | --- |
+| Background location | Location sensors | Location → *Allow all the time* | The user's zone and GPS fix: home or away, distance to the car |
+| Detected activity | Activity sensors | Physical activity | "In vehicle" means he is driving, so an urgent message becomes a call |
+| Android Auto | Android Auto sensors | — | Connected to the car, so the same as driving |
+| Ringer mode | Audio sensors | — | Silent or vibrate means an urgent message is not spoken out loud in the house |
+| Do not disturb | Do not disturb sensors | — | Same as ringer mode, for DND and its priority-only modes |
+| Battery level | Battery sensors | — | Only used to recognise the device as a phone |
+| Last notification | Notification sensors | Notification access; set the **Allow List** | Feeds the phone's notifications into Synapse (see [above](#phone-notifications-into-synapse)) |
+| Notifications | Android app settings → Notifications | Allow notifications | Push notifications from `sendPushNotification` / `sendNotification` |
+| Display over other apps | Android app settings | Display over other apps | `command_activity`, which is how Jarvis sets an alarm on the phone |
+
+Notes:
+
+- **Leave *Last removed notification* off.** Jarvis never reads it and keeps it out of every report,
+  so enabling it only costs battery.
+- **Allow List for *Last notification*:** everything allowed ends up in shared memory, so leave out
+  banking, one-time codes and the like.
+- **Display over other apps can't be requested up front.** The companion app asks for it the first
+  time a `command_activity` arrives, so the first alarm Jarvis sets only opens that prompt. Grant it,
+  and every alarm after that works.
+- **Battery:** set the companion app's battery usage to *Unrestricted* in Android's app settings.
+  Otherwise Android defers its background updates, and the location, activity and notification
+  sensors can be minutes behind. Jarvis would then route messages based on where the user was, not
+  where he is.
+- **A Wear OS watch** with the companion app registers as a device of its own. Jarvis never sends to
+  it, because the phone mirrors its notifications onto the watch anyway, so nothing on the watch
+  needs enabling.
+- **A reinstalled app** comes back as a new device. Assign its new `device_tracker` to the person
+  again. The rest is picked up on its own within ten minutes.
 
 ### State Change Notification Workflow
 Reactive notification workflow using agent network for intelligent state change analysis:
@@ -2366,7 +2448,9 @@ process that also owns the schedules, so Studio never files a change twice.
   `IGNORED_EVENT_TYPES` — Home Assistant's own bookkeeping, plus `call_service`,
   `automation_triggered` and `script_started`, whose effects are reported as state changes anyway.
   Other events are what bring button presses, doorbells and tag scans to the reactor, filed as
-  `home_assistant_event`; state changes keep the `device_state_change` type.
+  `home_assistant_event`; state changes keep the `device_state_change` type. The companion app's
+  notification sensors are the exception: they are routed to the phone vertical, not reported as
+  device states (see [Phone Notifications Into Synapse](#phone-notifications-into-synapse)).
 - **Spammy sources are bulked** (`change-bulker.ts`). Changes are collected per entity, or per event
   type and source. A quiet bucket is released after 30 seconds; one that reaches 5 changes is spammy
   and held for 10 minutes, then reported once with `changeCount`/`occurrences`, the first and last
