@@ -1,12 +1,12 @@
 import { createShortcut } from '../../utils/shortcut-factory.js';
 import { executeTool } from '../../utils/tool-factory.js';
-import { generateUserInterface } from '../generative-ui/tools.js';
+import { generateUserInterface } from '../visualize/tools.js';
 
 /**
  * Shortcuts are tools that piggy-back on other verticals' capabilities.
  *
  * Research is often easier to take in as a picture than read aloud: a comparison, a timeline, a
- * set of figures. Building a page for it is the generative UI vertical's job, but the findings
+ * set of figures. Building a page for it is the visualize vertical's job, but the findings
  * live here, in the research agent's own context -- and the page builder sees nothing but the
  * request it is handed. So the agent that did the research is the one that hands them over,
  * rather than the planner routing a second request that would have to repeat the research first.

@@ -2,7 +2,11 @@ import { z } from 'zod';
 import { logger } from '../../utils/logger.js';
 import { markAsSlow } from '../../utils/slow-tasks.js';
 import { createTool, executeTool } from '../../utils/tool-factory.js';
-import { createArtifact, findArtifactUrl, openArtifactOnPhone } from './shortcuts.js';
+import { hostArtifact } from './artifact-hosting.js';
+import { createArtifact, findArtifactHtml, openArtifactOnPhone } from './shortcuts.js';
+
+/** How much of a session's answer is quoted back when it held no page, so a failure stays short. */
+const MAXIMUM_QUOTED_ANSWER_LENGTH = 500;
 
 /** The notification heading when the caller gave the page no name. */
 const DEFAULT_NOTIFICATION_TITLE = 'Jarvis built something for you';
@@ -11,9 +15,10 @@ const DEFAULT_NOTIFICATION_TITLE = 'Jarvis built something for you';
  * Builds a page for a request and hands back its link, pushing it to the user's phone on the way.
  *
  * The vertical's two shortcuts, run in order: {@link createArtifact} has a Claude Code session
- * build and publish the page, and {@link openArtifactOnPhone} sends it to the phone. It exists as
- * one tool rather than leaving the chaining to the agent because the link has to be read out of
- * the session's last message first, and that is a job for code, not for a model.
+ * build the page, and {@link openArtifactOnPhone} sends it to the phone. In between, the page is
+ * read out of the session's last message and hosted for a day by {@link hostArtifact}. It exists
+ * as one tool rather than leaving the chaining to the agent because that is a job for code, not
+ * for a model.
  *
  * Marked slow in its own right. The agent calls this tool, not the `createArtifact` shortcut
  * inside it, and routing only sees the tool the agent calls -- so without the mark the voice call
@@ -24,7 +29,7 @@ export const generateUserInterface = markAsSlow(
   createTool({
     id: 'generateUserInterface',
     description:
-      "Visualize something or generate a user interface for it: a Claude Code session builds an interactive web page (an artifact) and publishes it, and its URL is returned. By default the URL is also pushed to the primary user's phone, so tapping the notification opens it in the phone's browser. Takes a few minutes.",
+      "Visualize something or generate a user interface for it: a Claude Code session builds an interactive web page (an artifact), which is hosted for 24 hours, and its URL is returned. By default the URL is also pushed to the primary user's phone, so tapping the notification opens it in the phone's browser. Takes a few minutes.",
     inputSchema: z.object({
       request: z
         .string()
@@ -44,7 +49,8 @@ export const generateUserInterface = markAsSlow(
     }),
     outputSchema: z.object({
       success: z.boolean(),
-      artifactUrl: z.string().optional().describe('The HTTP(S) URL the page was published at'),
+      artifactUrl: z.string().optional().describe('The HTTPS URL the page is hosted at'),
+      expiresAt: z.string().optional().describe('When the link stops working, as an ISO 8601 timestamp'),
       sentToPhone: z.boolean().describe("Whether a push notification opening the page reached the user's phone"),
       message: z.string(),
     }),
@@ -52,15 +58,35 @@ export const generateUserInterface = markAsSlow(
       const { request, title, sendToPhone = true } = inputData;
 
       const session = await executeTool(createArtifact, { task: request }, context);
-      const artifactUrl = session.success ? findArtifactUrl(session.final_message ?? '') : undefined;
+      if (!session.success) {
+        return { success: false, sentToPhone: false, message: session.message };
+      }
 
-      if (!artifactUrl) {
+      const answer = session.final_message ?? '';
+      const html = findArtifactHtml(answer);
+      if (!html) {
         return {
           success: false,
           sentToPhone: false,
-          message: session.success
-            ? `The session finished without reporting a link to the page. It said: ${session.final_message || 'nothing'}`
-            : session.message,
+          message: `The session finished without handing back a page. It said: ${
+            answer.slice(0, MAXIMUM_QUOTED_ANSWER_LENGTH) || 'nothing'
+          }`,
+        };
+      }
+
+      let artifactUrl: string;
+      let expiresAt: string;
+      try {
+        const hosted = await hostArtifact(html);
+        artifactUrl = hosted.url;
+        expiresAt = hosted.expiresAt.toISOString();
+      } catch (error) {
+        logger.error('[VISUALIZE] Failed to host the page', { error });
+
+        return {
+          success: false,
+          sentToPhone: false,
+          message: `The page was built, but hosting it failed: ${error instanceof Error ? error.message : String(error)}`,
         };
       }
 
@@ -68,8 +94,9 @@ export const generateUserInterface = markAsSlow(
         return {
           success: true,
           artifactUrl,
+          expiresAt,
           sentToPhone: false,
-          message: `The page is published at ${artifactUrl}.`,
+          message: `The page is hosted at ${artifactUrl} until ${expiresAt}.`,
         };
       }
 
@@ -89,17 +116,19 @@ export const generateUserInterface = markAsSlow(
         return {
           success: true,
           artifactUrl,
+          expiresAt,
           sentToPhone: true,
-          message: `The page is published at ${artifactUrl}, and a notification that opens it was pushed to the phone.`,
+          message: `The page is hosted at ${artifactUrl} until ${expiresAt}, and a notification that opens it was pushed to the phone.`,
         };
       } catch (error) {
-        logger.error('[GENERATIVE UI] Failed to push the artifact to the phone', { error });
+        logger.error('[VISUALIZE] Failed to push the artifact to the phone', { error });
 
         return {
           success: true,
           artifactUrl,
+          expiresAt,
           sentToPhone: false,
-          message: `The page is published at ${artifactUrl}, but pushing it to the phone failed: ${
+          message: `The page is hosted at ${artifactUrl} until ${expiresAt}, but pushing it to the phone failed: ${
             error instanceof Error ? error.message : String(error)
           }`,
         };
@@ -108,6 +137,6 @@ export const generateUserInterface = markAsSlow(
   }),
 );
 
-export const generativeUiTools = {
+export const visualizeTools = {
   generateUserInterface,
 };

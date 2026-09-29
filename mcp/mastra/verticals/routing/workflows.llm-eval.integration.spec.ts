@@ -6,8 +6,8 @@ import { z } from 'zod';
 import { createAgent } from '../../utils/index.js';
 import { isOllamaAvailable } from '../../utils/providers/ollama-provider.js';
 import { getCodingAgent } from '../coding/agent.js';
-import { getGenerativeUiAgent } from '../generative-ui/agent.js';
 import { getReflectionAgent } from '../reflection/agent.js';
+import { getVisualizeAgent } from '../visualize/agent.js';
 import { getWebResearchAgent } from '../web-research/agent.js';
 import type { PlannedChain } from './plan.js';
 import { plannerInstructions, plannerPrompt, planSchema } from './planner.js';
@@ -295,7 +295,7 @@ Two separate chains would be wrong: the weather delegation would then run withou
       await getCodingAgent(),
       await getReflectionAgent(),
       await getWebResearchAgent(),
-      await getGenerativeUiAgent(),
+      await getVisualizeAgent(),
     ]);
 
     const delegatedAgentIds = chains.flatMap((chain) => chain.delegations.map((delegation) => delegation.agentId));
@@ -306,10 +306,10 @@ Two separate chains would be wrong: the weather delegation would then run withou
       userQuery,
       `The plan should:
 1. Delegate to coding to read Jarvis's own code and gather ideas for improving it
-2. Delegate to generativeUi AFTER coding, IN THE SAME CHAIN, so the page is built from the ideas coding found
+2. Delegate to visualize AFTER coding, IN THE SAME CHAIN, so the page is built from the ideas coding found
 3. Optionally delegate to reflection FIRST in that same chain, so coding is handed the recent failures to ground its ideas in
 
-It must NOT delegate to webResearch: the ideas are about Jarvis's own code, which the web knows nothing about. generativeUi in a chain of its own would also be wrong, since it would then have no ideas to visualize.`,
+It must NOT delegate to webResearch: the ideas are about Jarvis's own code, which the web knows nothing about. visualize in a chain of its own would also be wrong, since it would then have no ideas to visualize.`,
       0.8,
     );
   }, 120000);

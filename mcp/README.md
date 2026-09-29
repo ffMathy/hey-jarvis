@@ -28,7 +28,7 @@ The project is organized by business domain. Each vertical contains its own agen
 | `commute` | Travel planning and navigation (Google Maps) |
 | `cooking` | Recipe search and meal planning (Valdemarsro) |
 | `email` | Gmail search, draft, reply |
-| `generative-ui` | On-demand interactive web pages (artifacts), pushed to the user's phone |
+| `visualize` | On-demand interactive web pages (artifacts), pushed to the user's phone |
 | `human-in-the-loop` | Form-based approval workflows |
 | `internet-of-things` | Smart home device control (Home Assistant) |
 | `notification` | Alerts routed to whoever they are for, over whichever channel reaches them (call, voice announcement, push, SMS, email) |
@@ -55,7 +55,7 @@ The project is organized by business domain. Each vertical contains its own agen
 | Endpoint | Port | Purpose |
 |----------|------|---------|
 | Mastra Studio (Hono) | 4111 | Agent playground, OpenAPI spec, health check |
-| MCP Server (Express) | 4112 | JWT-authenticated MCP endpoint |
+| MCP Server (Express) | 4112 | JWT-authenticated MCP endpoint, plus the visualize vertical's pages at `/artifacts/<id>` (24 hours) |
 
 ## Running on a Raspberry Pi
 
