@@ -19,6 +19,9 @@
  * the screen points the hologram at a simulated voice for that long. It is an honest fiction: the
  * words really are his, and the only thing invented is the delivery, because ElevenLabs was asked
  * not to speak in this session and there is nothing to play.
+ *
+ * In the main entry, where it imports nothing, because the headset shows his line in the room by the
+ * same rules as the phone's screen (`mobile/src/written-reply-line.tsx`) shows it on glass.
  */
 
 /** A line of the conversation, as the SDK reports it. */
@@ -102,8 +105,8 @@ export function afterMessage(reply: WrittenReply, incoming: ConversationMessage,
 /**
  * The same, for a line he is also saying out loud: shown, but never mimed.
  *
- * A phone's conversation held in writing keeps its voice (see `text-mode.ts`), so the sphere
- * already has his real voice to follow. Miming the line from the clock on top of it would
+ * A phone's conversation held in writing keeps its voice (see `mobile/src/text-mode.ts`), so the
+ * sphere already has his real voice to follow. Miming the line from the clock on top of it would
  * overrule the one honest signal there is with an invented one, and keep the sphere moving after
  * he has actually stopped. What is on screen follows the same two rules as `afterMessage`.
  */

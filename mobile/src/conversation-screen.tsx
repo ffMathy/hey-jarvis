@@ -1,6 +1,8 @@
 import { useConversationControls, useConversationStatus } from '@elevenlabs/react-native';
 import * as Linking from 'expo-linking';
 import {
+  afterMessage,
+  afterSpokenMessage,
   afterStatus,
   type ElevenLabsSettings,
   GIVE_UP_CONNECTING_AFTER_MS,
@@ -9,6 +11,7 @@ import {
   PHONE_PARTICIPANT_NAME,
   requestConversationToken,
   requestSignedConversationUrl,
+  SAYING_NOTHING,
 } from 'hologram';
 import { useGreeting, useToolActivity, useUserVoice } from 'hologram/conversation';
 import { LEAVING_SECONDS } from 'hologram/react/lifecycle';
@@ -28,7 +31,6 @@ import { QUIETEST_SPEECH_HERE } from './speech-floor';
 import { useTextMode } from './text-mode';
 import { theme } from './theme';
 import { TypedMessageField } from './typed-message-field';
-import { afterMessage, afterSpokenMessage, SAYING_NOTHING } from './written-reply';
 import { WrittenReplyLine } from './written-reply-line';
 
 interface ConversationScreenProps {
@@ -131,9 +133,10 @@ async function greetHolding(microphone: MicrophoneAccess, beginGreeting: () => P
  *
  * **That one now shows what he wrote**, which it never did. His reply arrived over the socket and
  * nothing rendered it, so typing into the fallback sent the line, got an answer and displayed
- * nothing at all — a conversation you could talk into and never hear back from. `written-reply.ts`
- * keeps the last thing he said and `WrittenReplyLine` puts it above the field. It is the one screen
- * where there is something to read, because it is the one where there is nothing to listen to.
+ * nothing at all — a conversation you could talk into and never hear back from.
+ * `hologram/src/written-reply.ts` keeps the last thing he said and `WrittenReplyLine` puts it above
+ * the field. It is the one screen where there is something to read, because it is the one where
+ * there is nothing to listen to.
  *
  * **And he delivers it.** With no audio the sphere had nothing to follow and idled through the
  * whole exchange, which is an assistant answering you while looking exactly like one who has not
@@ -199,9 +202,9 @@ export function ConversationScreen({
    * The last thing Jarvis said, in the conversations where you are writing to him.
    *
    * Set from the text-only session, and from a phone's voice session while it is held in writing —
-   * see `written-reply.ts` and `text-mode.ts`. In a spoken conversation his answer is his voice, and
-   * putting it on screen as well would be a transcript under a sphere drawn precisely so there
-   * would not have to be one.
+   * see `hologram/src/written-reply.ts` and `text-mode.ts`. In a spoken conversation his answer is
+   * his voice, and putting it on screen as well would be a transcript under a sphere drawn precisely
+   * so there would not have to be one.
    */
   const [writtenReply, setWrittenReply] = useState(SAYING_NOTHING);
   const rememberWhatHeSaid = useCallback((incoming: { message: string; role: string }) => {
@@ -233,8 +236,8 @@ export function ConversationScreen({
    *
    * A boolean derived from the moment rather than the moment itself, because what reads it is a
    * hook and not the drawing: the sphere is handed one voice or the other, and swapping them is a
-   * render. See `written-reply.ts` for where the moment comes from, and the voice below for what
-   * is done with it.
+   * render. See `hologram/src/written-reply.ts` for where the moment comes from, and the voice below
+   * for what is done with it.
    */
   const [readingAloud, setReadingAloud] = useState(false);
   useEffect(() => {

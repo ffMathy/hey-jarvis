@@ -12,7 +12,7 @@ interface WrittenReplyLineProps {
  * **This exists because the text-only conversation was write-only.** A browser with the microphone
  * refused holds the session as text on both sides, so his reply arrives as an `agent_response` and
  * never as audio — and nothing rendered it, so typing a question got a silent sphere and no answer.
- * See `written-reply.ts` for why only the last line is kept.
+ * See `hologram/src/written-reply.ts` for why only the last line is kept.
  *
  * It is deliberately quiet: muted text, no bubble, no name in front of it. There is only one other
  * person in this conversation, so saying who is talking is a word nobody needs to read, and a chat

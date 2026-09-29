@@ -28,7 +28,7 @@ interface TextModeOptions {
  * **He still answers out loud**, as he does when you type to him in a browser or in ElevenLabs' own
  * preview: writing to him is a way to be heard without speaking, not a request for silence. So his
  * volume is never touched, and the sphere follows his real voice rather than miming the written
- * line — see `afterSpokenMessage` in `written-reply.ts`.
+ * line — see `afterSpokenMessage` in `hologram/src/written-reply.ts`.
  *
  * **It is never remembered.** Every conversation starts in voice — the screen calls `resetTextMode`
  * as it starts one — because the gesture that summons him is a request to be talked to, and a mode
