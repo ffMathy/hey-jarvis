@@ -166,8 +166,8 @@ const serviceTargetSchema = z.object({
 /**
  * The words Home Assistant reads in `entity_id` as "every entity" or "no entity" rather than as ids.
  *
- * Every light in the house is a survey rather than something being worked on, so neither is
- * resolved.
+ * Neither is resolved: every light in the house is a survey rather than something being worked on,
+ * and no entity is nothing to report.
  */
 const ENTITY_ID_KEYWORDS = new Set(['all', 'none']);
 
@@ -242,10 +242,8 @@ async function renderServiceTargets(domain: string, data: Record<string, unknown
  * Asked for alongside the call rather than after it, and given up on after
  * {@link TARGET_RESOLUTION_TIMEOUT_MS}: an area's lights are only known to Home Assistant, and the
  * call must never wait long on the answer, let alone fail over it.
- *
- * Exported for testing.
  */
-export async function resolveServiceTargets(domain: string, data: Record<string, unknown>): Promise<AffectedEntity[]> {
+async function resolveServiceTargets(domain: string, data: Record<string, unknown>): Promise<AffectedEntity[]> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timedOut = new Promise<AffectedEntity[]>((resolve) => {
     timer = setTimeout(() => {

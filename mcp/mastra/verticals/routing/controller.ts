@@ -146,7 +146,10 @@ export class RoutingProgress {
    * is still going on.
    */
   unannouncedAffectedEntities: AffectedEntity[] = [];
-  /** Every thing this request has reported as touched, so each is reported once and the total stays capped. */
+  /**
+   * Each thing this request has reported as touched, so that none is reported twice and the total
+   * stays within {@link MOST_AFFECTED_ENTITIES_PER_REQUEST}.
+   */
   private readonly affectedEntityIds = new Set<string>();
   /**
    * Whether the user asked to be notified when this request is done.

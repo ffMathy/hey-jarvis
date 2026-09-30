@@ -220,10 +220,10 @@ const INSTRUCTIONS = {
  *
  * The rest is what a client tool needs said where it is asked for. It must be silent, because a tool
  * call sir can hear is not one (see `agent-prompt.md`). It must copy the entities exactly, because
- * the headset matches them by id. And it must never be retried: a device that does not light
- * anything up answers it with an error, and the loop's own rule is to retry a failed call at once.
- * Whether the conversation is on such a device at all is the agent prompt's to say, alongside the
- * tool itself.
+ * the headset matches them by id. And it must never be retried: a client that does not know the tool
+ * -- an app built before it, or the speaker firmware -- answers it with an error, and the loop's own
+ * rule is to retry a failed call at once. Whether the conversation is on a device that lights
+ * anything up at all is the agent prompt's to say, alongside the tool itself.
  */
 export const MARK_AFFECTED_INSTRUCTIONS =
   `affectedEntities lists what this request has just started reading or changing. Before anything else, call ` +
