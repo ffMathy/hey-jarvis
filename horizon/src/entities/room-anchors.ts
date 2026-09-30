@@ -20,7 +20,9 @@ import type { AnchorOffset, EntityPlacement, EntityRegistry } from './registry';
  *   4 m, but kept rather than refused.
  * - **Created in the frame of the drop.** `XRFrame.createAnchor` only works on an active frame, and
  *   the handle comes later, so a drop onto a new anchor completes in a later {@link RoomAnchors.update}.
- *   Until then the entity stands where it was dropped.
+ *   Until then the entity stands where it was dropped. A recentre meanwhile moves the space under
+ *   that point: the entity is no longer drawn there, and is kept only on its own new anchor — at no
+ *   offset, since the anchor is the spot — never on another one by a point that has moved.
  * - **Restored once per session.** Every handle a placement uses that the session lists in
  *   `persistentAnchors` is restored; one it does not list is gone for good (the site's data was
  *   cleared, or the headset forgot the room), and the caller forgets it, which leaves its
@@ -115,12 +117,15 @@ export interface RoomAnchors<Space, Transform> {
   restore(uuids: readonly string[], now: number): string[];
   /**
    * Each frame, before anything asks where an entity is: re-reads every anchor's pose, and settles
-   * the drops whose new anchors have been made — or have failed — since.
+   * the drops whose new anchors have been made — or have failed — since. `epoch` is how many times
+   * `space` has been reset (the stage's count): a recentre moves every pose in it, so a point kept
+   * from an earlier epoch no longer names the spot it did.
    */
-  update(frame: RoomAnchorFrame<Space, Transform>, space: Space, now: number): SettledDrop[];
+  update(frame: RoomAnchorFrame<Space, Transform>, space: Space, now: number, epoch: number): SettledDrop[];
   /**
    * Keeps entity `id` at `point` (in `space`, this frame): on the nearest anchor, or a new one.
-   * Call from the frame callback of the frame the drop happened in, after `update`.
+   * Call from the frame callback of the frame the drop happened in, after `update`, whose epoch
+   * the point is in.
    */
   drop(
     frame: RoomAnchorFrame<Space, Transform>,
@@ -138,7 +143,10 @@ export interface RoomAnchors<Space, Transform> {
   cancel(id: string): void;
   /** Where a placement is in the last frame updated, or undefined while its anchor is not located. */
   positionOf(placement: EntityPlacement): Vector3Like | undefined;
-  /** Where each drop still waiting on a new anchor was dropped, so it can be drawn there meanwhile. */
+  /**
+   * Where each drop still waiting on a new anchor was dropped, so it can be drawn there meanwhile —
+   * leaving out one dropped before a recentre, whose point is somewhere else now.
+   */
   pendingDrops(): { id: string; position: Vector3Like }[];
   /**
    * Gives back the persistent handles in `anchors` — ones no placement uses any more — asking the
@@ -161,7 +169,10 @@ interface StoredAnchor<Space> {
 
 interface PendingDrop {
   id: string;
+  /** Where it was dropped, in the space as it was in `epoch`. */
   point: Vector3Like;
+  /** The space's reset count when it was dropped. */
+  epoch: number;
   droppedAt: number;
   /** The new anchor's handle once the headset has given one. */
   anchor?: string;
@@ -185,6 +196,8 @@ export function createRoomAnchors<Space, Transform>(
 ): RoomAnchors<Space, Transform> {
   const stored = new Map<string, StoredAnchor<Space>>();
   const pending: PendingDrop[] = [];
+  /** The space's reset count in the last frame updated. */
+  let currentEpoch = 0;
 
   function located(uuid: string): Float32Array | undefined {
     const entry = stored.get(uuid);
@@ -337,15 +350,32 @@ export function createRoomAnchors<Space, Transform>(
    * What `drop` settled as, or undefined while it still waits: on its new anchor once that is
    * located; on the nearest one when the new one was refused, or has not been located in
    * NOT_FOUND_AFTER_SECONDS, which a spot just anchored always should be.
+   *
+   * On its own anchor it is at no offset at all: the anchor was made at the drop's point, level, in
+   * the drop's own frame, so it is that point whatever the space has done since. Working the offset
+   * out from the point instead would mix the anchor's pose after a recentre with a point from before
+   * it, and store the recentre itself as where the entity stands.
    */
   function settled(drop: PendingDrop, now: number): SettledDrop | undefined {
-    if (drop.failure !== undefined) return placeOnNearest(drop.id, drop.point, drop.failure);
-    const pose = drop.anchor === undefined ? undefined : located(drop.anchor);
-    if (drop.anchor !== undefined && pose !== undefined) return placeOn(drop.anchor, pose, drop.id, drop.point);
+    if (drop.failure !== undefined) return fallBack(drop, drop.failure);
+    if (drop.anchor !== undefined && located(drop.anchor) !== undefined) {
+      return { kind: 'placed', id: drop.id, anchor: drop.anchor, offset: [0, 0, 0] };
+    }
     if (now - drop.droppedAt < NOT_FOUND_AFTER_SECONDS) return undefined;
     // The new anchor is not used after all, so its handle is given back rather than kept for nothing.
     if (drop.anchor !== undefined) void release([drop.anchor]);
-    return placeOnNearest(drop.id, drop.point, 'The headset did not find the new anchor.');
+    return fallBack(drop, 'The headset did not find the new anchor.');
+  }
+
+  /**
+   * `drop` on the nearest located anchor, by its point — unless the space has been reset since it
+   * was dropped, when the point names a spot the recentre has moved and it is refused instead.
+   */
+  function fallBack(drop: PendingDrop, reason: string): SettledDrop {
+    if (drop.epoch !== currentEpoch) {
+      return { kind: 'failed', id: drop.id, reason: 'The room was recentred before it could be kept.' };
+    }
+    return placeOnNearest(drop.id, drop.point, reason);
   }
 
   function settle(now: number): SettledDrop[] {
@@ -404,7 +434,8 @@ export function createRoomAnchors<Space, Transform>(
       }
       return missing;
     },
-    update(frame, space, now) {
+    update(frame, space, now, epoch) {
+      currentEpoch = epoch;
       readPoses(frame, space);
       return settle(now);
     },
@@ -420,7 +451,7 @@ export function createRoomAnchors<Space, Transform>(
       if (anchorsTaken(registry) >= MAX_ROOM_ANCHORS) {
         return placeOnNearest(id, where, 'Every anchor this app may keep is in use, and none of them is in this room.');
       }
-      const drop: PendingDrop = { id, point: where, droppedAt: now };
+      const drop: PendingDrop = { id, point: where, epoch: currentEpoch, droppedAt: now };
       pending.push(drop);
       createFor(drop, frame, space, now);
       return { kind: 'pending', id };
@@ -433,7 +464,9 @@ export function createRoomAnchors<Space, Transform>(
       return toReference(pose, x, y, z);
     },
     pendingDrops() {
-      return pending.map((drop) => ({ id: drop.id, position: { ...drop.point } }));
+      return pending
+        .filter((drop) => drop.epoch === currentEpoch)
+        .map((drop) => ({ id: drop.id, position: { ...drop.point } }));
     },
     release,
     status(now) {

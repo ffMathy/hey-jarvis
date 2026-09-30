@@ -108,6 +108,8 @@ import { type CentreEye, pointAhead } from '../xr/viewer-pose';
 export interface EntitiesFrame {
   frame: XRFrame;
   space: XRReferenceSpace;
+  /** How many times `space` has been reset (recentred): a point from an earlier epoch has moved. */
+  epoch: number;
   eye: CentreEye;
   /** Seconds on the XR frame's clock. */
   time: number;
@@ -278,7 +280,7 @@ export function createRoomEntities(options: RoomEntitiesOptions): RoomEntities {
       releaseAnchors(unusedAnchors(store.registry));
     }
     let kept = false;
-    for (const settled of anchors.update(frame.frame, frame.space, time)) {
+    for (const settled of anchors.update(frame.frame, frame.space, time, frame.epoch)) {
       if (awaitingAnchor.has(settled.id)) {
         keep(settled);
         kept = true;

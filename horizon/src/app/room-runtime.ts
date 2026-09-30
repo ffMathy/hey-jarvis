@@ -599,6 +599,7 @@ function updateEntities(room: Room, tick: XrFrameTick) {
   const outcome = room.entities.update({
     frame: tick.frame,
     space: tick.referenceSpace,
+    epoch: tick.epoch,
     eye: tick.centreEye,
     time: tick.time / 1000,
     deltaSeconds: tick.deltaSeconds,
