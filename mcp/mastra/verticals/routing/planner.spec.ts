@@ -13,8 +13,10 @@ import { describe, expect, it } from 'bun:test';
 import { Classifier } from '@mastra/core/classifier';
 import { createScriptedModel } from '../../../tests/utils/scripted-model.js';
 import { createAgent } from '../../utils/agent-factory.js';
+import { routingQuestions } from './classifier.js';
 import {
   decisionFromClassification,
+  getRoutableAgentIds,
   PLANNER_AGENT_ID,
   planDelegations,
   plannerInstructions,
@@ -305,35 +307,58 @@ describe('a photo he sent without saying what he wants', () => {
  */
 describe('a photo, with the routing classifier sure of a fast route', () => {
   const WAITING = [{ photoId: 'photo3', keptAt: Date.now() - 2_000 }];
+  const PLANNER_ERROR = 'Structured output validation failed';
 
-  /** A classifier sure of the one agent or answer it was told to be sure of. */
-  function classifierSureOf(route: string) {
-    return new Classifier({
+  /** A distribution over every choice, as a provider has to answer one, all but sure of `sureOf`. */
+  function sureDistribution(sureOf: string, choices: readonly string[]): Record<string, number> {
+    const rest = 0.03 / (choices.length - 1);
+    return Object.fromEntries(choices.map((choice) => [choice, choice === sureOf ? 0.97 : rest]));
+  }
+
+  /**
+   * A classifier sure of the one route it was told to be sure of, and how often it was asked. Its
+   * route is the only answer it gives, so it is sure of nothing else a request could settle on.
+   */
+  async function classifierSureOf(route: string) {
+    const agents = [...(await getRoutableAgentIds())].map((id) => ({ id, description: '' }));
+    const routes = Object.keys(routingQuestions({ agents, openQuestions: [], services: [] }).route.criteria);
+    let evaluations = 0;
+    const classifier = new Classifier({
       id: 'routingClassifier',
       model: {
         specificationVersion: 'v4',
         provider: 'fake',
         modelId: 'jev-fake',
         supportedQuestionTypes: ['choice', 'boolean'],
-        doEvaluate: async () => ({
-          answers: {
-            route: { type: 'choice', choice: route, probabilities: { [route]: 0.97 } },
-            responseStyle: { type: 'choice', choice: 'command', probabilities: { command: 0.97 } },
-          },
-          warnings: [],
-        }),
+        doEvaluate: async () => {
+          evaluations += 1;
+          return {
+            answers: {
+              route: { type: 'choice', choice: route, probabilities: sureDistribution(route, routes) },
+              responseStyle: {
+                type: 'choice',
+                choice: 'command',
+                probabilities: sureDistribution('command', RESPONSE_STYLES),
+              },
+            },
+            warnings: [],
+          };
+        },
       },
     });
+    return { classifier, evaluations: () => evaluations };
   }
 
-  it('takes the fast route when no photo is in play', async () => {
+  it('takes the fast route when no photo is in play, even over a planner that failed', async () => {
+    const { classifier } = await classifierSureOf('weather');
+
     const decision = await planDelegations(
       await plannerReplying({ nothing: 'like a plan' }),
       'What is the weather like?',
       [],
       [],
       undefined,
-      classifierSureOf('weather'),
+      classifier,
     );
 
     expect(decision.chains.flatMap((chain) => chain.delegations.map((delegation) => delegation.agentId))).toEqual([
@@ -342,6 +367,8 @@ describe('a photo, with the routing classifier sure of a fast route', () => {
   });
 
   it('leaves the request to the planner while a photo is waiting', async () => {
+    const { classifier, evaluations } = await classifierSureOf('weather');
+
     await expect(
       planDelegations(
         await plannerReplying({ nothing: 'like a plan' }),
@@ -349,12 +376,16 @@ describe('a photo, with the routing classifier sure of a fast route', () => {
         [],
         WAITING,
         undefined,
-        classifierSureOf('weather'),
+        classifier,
       ),
-    ).rejects.toThrow();
+    ).rejects.toThrow(PLANNER_ERROR);
+    // It was asked, and was as sure as in the request above: its route was passed over, not missing.
+    expect(evaluations()).toBe(1);
   });
 
   it('leaves the request to the planner when it names a photo, even one no longer waiting', async () => {
+    const { classifier, evaluations } = await classifierSureOf('weather');
+
     await expect(
       planDelegations(
         await plannerReplying({ nothing: 'like a plan' }),
@@ -362,19 +393,22 @@ describe('a photo, with the routing classifier sure of a fast route', () => {
         [],
         [],
         undefined,
-        classifierSureOf('weather'),
+        classifier,
       ),
-    ).rejects.toThrow();
+    ).rejects.toThrow(PLANNER_ERROR);
+    expect(evaluations()).toBe(1);
   });
 
   it('still lets a goodbye end the call, leaving the photo waiting for next time', async () => {
+    const { classifier } = await classifierSureOf('endCall');
+
     const decision = await planDelegations(
       await plannerReplying({ nothing: 'like a plan' }),
       'That will be all.',
       [],
       WAITING,
       undefined,
-      classifierSureOf('endCall'),
+      classifier,
     );
 
     expect(decision.endsCall).toBe(true);
