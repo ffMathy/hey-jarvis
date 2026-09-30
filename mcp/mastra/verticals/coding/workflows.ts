@@ -1,6 +1,7 @@
 import { z } from 'zod';
+import { markAsAffectingEntities } from '../../utils/affected-entities.js';
 import { createStep, createToolStep, createWorkflow } from '../../utils/workflows/workflow-factory.js';
-import { DEFAULT_OWNER, DEFAULT_REPOSITORY } from './repository.js';
+import { DEFAULT_OWNER, DEFAULT_REPOSITORY, describeRepository } from './repository.js';
 import { startCodingSession } from './tools.js';
 
 // Schema for the request the workflow is started with
@@ -118,3 +119,16 @@ export const implementFeatureWorkflow = createWorkflow({
   .then(startCodingSessionTool)
   .then(formatFinalOutput)
   .commit();
+
+/** What the coding agent hands the workflow when it calls it as a tool. */
+const implementFeatureArgumentsSchema = z.object({
+  inputData: z.object({ owner: z.string().optional(), repository: z.string().optional() }),
+});
+
+// The coding agent starts an implementation by calling this workflow as a tool, so the repository
+// it names is read off that call -- the session inside it is started by a workflow step, whose result
+// never reaches the agent's stream.
+markAsAffectingEntities(implementFeatureWorkflow, (toolArguments) => {
+  const { owner, repository } = implementFeatureArgumentsSchema.parse(toolArguments).inputData;
+  return [describeRepository(owner, repository)];
+});
