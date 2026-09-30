@@ -507,11 +507,13 @@ as the reference the 3D look is checked against.
 
 Per frame, on the CPU:
 
-1. **The phone's clock** (`frame-clock.ts`): the same exported pieces
-   `hologram-view.tsx` composes, in the same order — the voice read every
-   READ_INTERVAL_MS (on the clock's own time), eased per frame, the tracker stepped
-   on the raw reading, thinking and leaving faded at their fixed rates, the lattice
-   eased — and the arrival restarted on `arrive()`.
+1. **The phone's clock** (`frame-clock.ts`): hologram's frame clock, the one
+   `hologram-view.tsx` steps in its frame callback — `advanceFrameClock` behind the
+   `frameStepSeconds` gate, drawn through `hologramFrameOf`: the voice eased per
+   frame, the tracker stepped on the raw reading, thinking and leaving faded at
+   their fixed rates, the lattice eased. This file keeps only what the headset does
+   differently: the voice is read every READ_INTERVAL_MS on the clock's own time,
+   and the arrival restarts on `arrive()` (`restartArrival`).
 2. **`analyseFrame`**, and CanvasKit drawing everything flat — the whorl, the core,
    the rim, the chips, the pulse — at **density 0**, which skips the body and the
    stream and nothing else (`flat-hologram.ts`). CanvasKit is the full build React

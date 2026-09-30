@@ -1,25 +1,19 @@
 import {
-  advanceVoiceActivity,
-  createVoiceActivityState,
-  easeBands,
-  easeHearing,
-  easeHearingLevel,
-  easeLevel,
+  advanceFrameClock,
+  createFrameClockState,
   foldSpectrum,
+  frameStepSeconds,
   type HologramFrame,
   hearingFromPresence,
   hearingLevelFromVolume,
+  hologramFrameOf,
   type JarvisVoice,
-  LEAVING_SECONDS,
-  MATERIALISE_SECONDS,
-  MINIMUM_FRAME_SECONDS,
   perceivedLevel,
   QUIETEST_SPEECH,
   READ_INTERVAL_MS,
-  THOUGHT_FADE_SECONDS,
+  restartArrival,
   type UserVoice,
   VOICE_BAND_COUNT,
-  voiceDrive,
 } from 'hologram';
 
 /**
@@ -34,18 +28,17 @@ export interface HologramDrive {
 }
 
 /**
- * The phone's frame loop, on the headset's clock.
+ * The phone's frame clock, on the headset's time.
  *
- * `hologram/src/react/hologram-view.tsx` is the reference, and this composes the same exported
- * pieces in the same order, so a frame here is the frame the phone would draw at the same moment:
- * the voice read every READ_INTERVAL_MS, eased every frame, the tracker stepped on the raw reading,
- * thinking and leaving faded at their fixed rates, the listening lattice eased, and the drawn level
- * judged against the loudest this voice has been. The view's loop itself is not shared (see
- * hologram/AGENTS.md, "A second renderer"), so this is where the two could drift, and
- * `frame-clock.spec.ts` pins a step against the formulas.
+ * The stepping is not this file's: it is hologram's `advanceFrameClock`, the very function
+ * `hologram/src/react/hologram-view.tsx` calls in its frame callback, over the same state, behind
+ * the same hundred-and-twenty-eighth-of-a-second gate (`frameStepSeconds`), drawn through the same
+ * `hologramFrameOf`. So a frame here is the frame the phone would draw at the same moment, and
+ * hologram's `frame-clock.spec.ts` holds that function to the phone's frames.
  *
- * Two things differ, both on purpose. The voice is read on the clock's own time rather than on a
- * wall-clock timer, so a preview that steps it at a fixed rate gets the same frame every time; and
+ * What is left here is what the headset does differently, which is when things happen rather than
+ * what they do. The voice is read on the clock's own time rather than on a wall-clock timer on
+ * another thread, so a preview that steps it at a fixed rate gets the same frame every time; and
  * the arrival restarts on `arrive()`, which the headset calls on every summon, where the phone
  * restarts it when the app comes back to the foreground.
  */
@@ -75,15 +68,7 @@ function silentBands(): number[] {
  */
 export function createFrameClock(quietestSpeech: number = QUIETEST_SPEECH): FrameClock {
   const readInterval = READ_INTERVAL_MS / 1000;
-  let time = 0;
-  let presence = 1;
-  let thinking = 0;
-  let level = 0;
-  let bands = silentBands();
-  let hearing = 0;
-  let hearingLevel = 0;
-  let speaking = false;
-  const activity = createVoiceActivityState(quietestSpeech);
+  const state = createFrameClockState(quietestSpeech);
   // What the last reading said, which the frames between readings ease toward.
   let targetLevel = 0;
   let targetBands = silentBands();
@@ -137,61 +122,38 @@ export function createFrameClock(quietestSpeech: number = QUIETEST_SPEECH): Fram
     }
   }
 
-  function step(deltaSeconds: number, drive: HologramDrive) {
-    time += deltaSeconds;
-    level = easeLevel(level, targetLevel, deltaSeconds);
-    bands = easeBands(bands, targetBands, deltaSeconds);
-    speaking = drive.voice.speaking;
-    // Toward whichever end is asked for, at a fixed rate: see THOUGHT_FADE_SECONDS and LEAVING_SECONDS.
-    thinking = Math.min(1, Math.max(0, thinking + (drive.thinking ? 1 : -1) * (deltaSeconds / THOUGHT_FADE_SECONDS)));
-    presence = Math.min(1, Math.max(0, presence + (drive.leaving ? -1 : 1) * (deltaSeconds / LEAVING_SECONDS)));
-    hearing = easeHearing(hearing, targetHearing, deltaSeconds);
-    hearingLevel = easeHearingLevel(hearingLevel, targetHearingLevel, deltaSeconds);
-    // The raw reading, not the eased level: easing is what would smear an onset into a slope.
-    advanceVoiceActivity(activity, targetLevel, deltaSeconds);
-  }
-
   return {
     arrive() {
-      // What the phone's view does on coming back to the foreground: the arrival is derived from
-      // the clock, so winding it back is the whole of it. The voice tracker, the thought and the
-      // lattice carry on, as they do there.
-      time = 0;
-      presence = 1;
+      // What the phone's view does on coming back to the foreground, with the same function.
+      restartArrival(state);
     },
     advance(deltaSeconds, drive) {
       if (!(deltaSeconds >= 0) || !Number.isFinite(deltaSeconds)) return;
       readIfDue(drive, deltaSeconds);
       waiting += deltaSeconds;
-      if (waiting < MINIMUM_FRAME_SECONDS) return;
-      const stepSeconds = waiting;
+      const stepSeconds = frameStepSeconds(waiting);
+      if (stepSeconds === 0) return;
       waiting = 0;
-      step(stepSeconds, drive);
+      advanceFrameClock(
+        state,
+        stepSeconds,
+        targetLevel,
+        targetBands,
+        drive.voice.speaking,
+        drive.thinking,
+        drive.leaving,
+        targetHearing,
+        targetHearingLevel,
+      );
     },
     frame(density) {
-      return {
-        time,
-        // Judged against how loud this voice actually gets, as the phone's view does.
-        level: voiceDrive(level, activity.loudest),
-        bands,
-        speaking,
-        agitation: activity.agitation,
-        burstAge: activity.burstAge,
-        burstStrength: activity.burstStrength,
-        burstCount: activity.burstCount,
-        appearance: Math.min(1, time / MATERIALISE_SECONDS),
-        thinking,
-        hearing,
-        hearingLevel,
-        presence,
-        density,
-      };
+      return hologramFrameOf(state, density);
     },
     get time() {
-      return time;
+      return state.time;
     },
     get presence() {
-      return presence;
+      return state.presence;
     },
   };
 }
