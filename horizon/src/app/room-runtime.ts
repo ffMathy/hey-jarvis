@@ -480,6 +480,8 @@ function carryOutEffect(room: Room, effect: AppEffect) {
       return room.stage.setFrameRate(effect.target);
     case 'editing':
       return room.entities.setEditing(effect.active);
+    case 'consume-held-selects':
+      return room.input.consumeHeld();
     case 'start-sample':
     case 'cycle-sample':
       return sample.setMode(effect.mode);

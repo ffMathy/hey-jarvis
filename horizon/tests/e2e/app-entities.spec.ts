@@ -3,6 +3,7 @@ import {
   aim,
   collectProblems,
   debugState,
+  effectsSince,
   enterRoom,
   frames,
   hologramPosition,
@@ -335,6 +336,34 @@ test('what Jarvis works on is placed in the room by hand and controller, kept, p
     await frames(page, 3);
     await hold(heldFor(button, tip));
     await expect.poll(() => scene(page), { timeout: 30000 }).toBe('waiting');
+  });
+
+  await test.step('the trigger that pulled Done, held and let go in the waiting room, never summons him', async () => {
+    await useInput(page, 'controller');
+    await pressControllerButton(page, 'right', 'a-button');
+    await expect.poll(() => scene(page), { timeout: 30000 }).toBe('editing');
+    await expect
+      .poll(async () => (await entities(page)).drawer.buttons.some((button) => button.button === 'done'), {
+        timeout: 30000,
+      })
+      .toBe(true);
+    const done = (await entities(page)).drawer.buttons.find((button) => button.button === 'done');
+    if (done === undefined) throw new Error('The drawer has no Done.');
+    await aim(page, toEmulator(done.worldPosition, MOVED));
+    await frames(page, 2);
+    await controllerButton(page, 'right', 'trigger', 1);
+    await expect.poll(() => scene(page), { timeout: 30000 }).toBe('waiting');
+    // Held past the 0.8 s that makes a hold — which would hang up on him, or summon him from waiting —
+    // and then let go, which a Quest reports as the select itself.
+    await page.waitForTimeout(1500);
+    await frames(page, 3);
+    expect(await scene(page)).toBe('waiting');
+    await controllerButton(page, 'right', 'trigger', 0);
+    await frames(page, 3);
+    expect(await scene(page)).toBe('waiting');
+    const effects = effectsSince((await roomReport(page)).recentEffects, 'editing');
+    expect(effects).not.toContain('place');
+    expect(effects).not.toContain('summon');
   });
 
   await test.step('sample mode’s thinking lights a corona round every placed entity', async () => {

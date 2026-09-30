@@ -22,7 +22,9 @@ import type { Ray } from '../xr/ray';
  * and both are selects: while editing every select is the placing's own, and the state machine
  * ignores it. He can only be summoned from `waiting` and editing is entered only from there, so a
  * grab held for a second can never be read as the hold that hangs up. The wake word is disarmed
- * for as long as it lasts.
+ * for as long as it lasts. A select still held when editing ends — the trigger or pinch that
+ * pressed Done on its way down — is spent then, so its release in the waiting room that follows is
+ * not read as a summon.
  *
  * **Dismissing him** is voice first (the agent's own `end_call`), and otherwise a select held for
  * at least 0.8 s or the B/Y button — never a short select, because hands pinch by accident while
@@ -232,6 +234,8 @@ export type AppEffect =
   | { type: 'hide-panel'; panel: PanelName }
   | { type: 'set-frame-rate'; target: 'lowest' | 'highest' }
   | { type: 'editing'; active: boolean }
+  /** Every select under way is spent: neither its hold nor its release is reported. */
+  | { type: 'consume-held-selects' }
   | { type: 'start-sample'; mode: SampleMode }
   | { type: 'cycle-sample'; mode: SampleMode }
   | { type: 'stop-sample' }
@@ -320,10 +324,14 @@ function leaveToExit(model: AppModel): Transition {
 /**
  * Placing things is over: back to waiting for the wake word, or — in a room opened only to place
  * things, which has nothing to wait for — back to the page, at once, since there is nobody to fade.
+ *
+ * Whatever select is still held was the placing's: Done is pressed as a trigger or a pinch goes
+ * down, so it is spent here, before its release reaches a waiting room that would summon him.
  */
 function leaveEditing(model: AppModel): Transition {
-  if (model.mode === 'placement') return go(model, { scene: { kind: 'outside' } }, { type: 'exit-xr' });
-  return go(model, { scene: { kind: 'waiting' } });
+  const spend: AppEffect = { type: 'consume-held-selects' };
+  if (model.mode === 'placement') return go(model, { scene: { kind: 'outside' } }, spend, { type: 'exit-xr' });
+  return go(model, { scene: { kind: 'waiting' } }, spend);
 }
 
 function onEntered(model: AppModel, event: Extract<AppEvent, { type: 'entered' }>): Transition {

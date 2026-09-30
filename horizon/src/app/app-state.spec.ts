@@ -751,6 +751,7 @@ describe('placing things', () => {
     ] satisfies AppEvent[]) {
       const room = new Room().editing();
       expect(room.send(event)).toEqual([
+        { type: 'consume-held-selects' },
         { type: 'show-panel', panel: 'hint', lines: HINT_LINES },
         { type: 'hide-panel', panel: 'guide' },
         { type: 'set-frame-rate', target: 'lowest' },
@@ -772,6 +773,18 @@ describe('placing things', () => {
       expect(room.send(event)).toEqual([]);
     }
     expect(room.scene).toEqual({ kind: 'editing' });
+  });
+
+  it('spends the select still held as it closes, so the trigger that pressed Done never summons him', () => {
+    for (const event of [
+      { type: 'edit-done' },
+      { type: 'dismiss-button' },
+      { type: 'edit-button' },
+    ] satisfies AppEvent[]) {
+      const room = new Room().editing();
+      expect(room.send(event)[0]).toEqual({ type: 'consume-held-selects' });
+      expect(room.scene).toEqual({ kind: 'waiting' });
+    }
   });
 
   it('hears no wake word while it is open', () => {
@@ -874,6 +887,7 @@ describe('placing things', () => {
         const room = new Room({ kind: 'absent' });
         room.send({ type: 'entered', mode: 'placement' });
         expect(room.send(event)).toEqual([
+          { type: 'consume-held-selects' },
           { type: 'exit-xr' },
           { type: 'hide-panel', panel: 'guide' },
           { type: 'editing', active: false },

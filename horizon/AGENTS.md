@@ -219,8 +219,10 @@ after. The product rules pinned in `app-state.spec.ts`:
   only to place things, back to the page at once. Every select while editing is
   the placing's own, so a pinch never summons him, and since editing never opens
   over a call, a grab held for a second can never be read as the hold that hangs
-  up. The wake word is disarmed, the frame rate is the highest, and a guide line
-  says what to do.
+  up. A select still held as it closes — the trigger or pinch that pressed Done
+  on its way down — is spent (`consumeHeld` in `xr/select-gesture.ts`), so letting
+  it go in the waiting room does not summon him either. The wake word is
+  disarmed, the frame rate is the highest, and a guide line says what to do.
 
 **`app/room-runtime.ts` is where the parts meet.** It opens the stage, queues
 events so each step sees the model the previous one left, and carries out the
