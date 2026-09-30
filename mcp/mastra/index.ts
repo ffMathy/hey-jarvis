@@ -11,6 +11,7 @@ import { ownsSchedules } from './schedule-reconciler.js';
 import { getMastraStorageProvider, getTokenUsageStorage } from './storage/index.js';
 import { stripTransferEncodingHeader } from './streaming-headers.js';
 import { createLogger } from './utils/logger.js';
+import { PhotoSpanFilter } from './utils/photo-span-filter.js';
 import { TokenTrackingProcessor, TokenUsageExporter } from './utils/token-usage-exporter.js';
 import { storageRetentionWorkflow, tokenUsageTools } from './verticals/api/index.js';
 import { calendarTools, getCalendarAgent } from './verticals/calendar/index.js';
@@ -114,7 +115,9 @@ export async function getMastra(): Promise<Mastra> {
           serviceName: 'hey-jarvis',
           sampling: { type: SamplingStrategyType.ALWAYS },
           exporters: [new DefaultExporter(), new CloudExporter(), new TokenUsageExporter()],
-          spanOutputProcessors: [new TokenTrackingProcessor()],
+          // The photo filter takes a photo's bytes out of the span of the model call that reads it,
+          // which would otherwise keep them in the trace store (see `utils/photo-span-filter.ts`).
+          spanOutputProcessors: [new TokenTrackingProcessor(), new PhotoSpanFilter()],
           // One span per streamed chunk of every model call, which nothing here reads: token usage
           // is taken from the generation spans, and the reflection agent reads failing spans. Kept,
           // they are storage writes on every call and noise in every trace that agent is handed.

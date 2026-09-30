@@ -305,8 +305,9 @@ routing's `FINISHED_REQUEST_INSTRUCTIONS`. It was once in the prompt alone, wher
 to hang up outweighed it: routing's above all, since it arrives last and the prompt says to follow it
 literally. An exception stated in fewer places than the rule it breaks is outweighed the same way.
 
-The phone also sends `user_activity` every five seconds while the camera is open or the photo is on its
-way, which is too seldom to hold off a three-second turn timeout, and which ElevenLabs does not document
+The phone also sends `user_activity` once in the tap, beside the note that the camera is open, and then
+every five seconds while the camera is open or the photo is on its way. The first may land before the
+three-second turn timeout; the rest are too seldom to hold one off, and ElevenLabs does not document them
 as holding off the 30-second `silenceEndCallTimeout`; the phone's timers stop while the app is behind
 the camera besides. So a long enough shot can still end the call — and the slot, opened at the tap,
 outlives it.

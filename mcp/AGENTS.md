@@ -561,6 +561,14 @@ to make room is not held by it. An id is matched however a model wrote it ("Phot
 and a question that names no photo means the latest only if it is under three minutes old. Studio's process (`mastra dev`, 4111) has a store of its own that nothing fills, so photos can
 only be asked about through the MCP server.
 
+**Nor is a photo kept in a trace.** The span of the photo reader's model call records its input as
+the model was sent it, the photo base64-encoded into a `data:image/...` string that Mastra keeps up to
+128 KB of — in the trace store on `/data`, and in Mastra Cloud where that is set up. `PhotoSpanFilter`
+(`utils/photo-span-filter.ts`, on the observability config in `mastra/index.ts`) replaces every
+image's bytes in every span before it is exported, leaving the question and the rest of the span as
+they were. Its spec runs a real trace, with and without it, so it is held to the spans Mastra actually
+writes. The photo reader has no memory, which would be a second copy.
+
 **The photo routes** (`api/routes.ts`) are reachable by anyone — the phone holds no Cloudflare Access
 service token — and both answer in the routes' JSON envelope (`success`, `message`, `data`):
 - **`POST /api/photos/slots`** (`PHOTO_SLOTS_ROUTE`) reads its own body, JSON of at most a kilobyte
