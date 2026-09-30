@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import { LONGEST_FRAME_SECONDS } from '../xr/xr-stage';
 import { BACKSTOP_FLOOR, BACKSTOP_WINDOW, createDensityBackstop } from './density-backstop';
 
 const FRAME = 1 / 72;
@@ -41,6 +42,21 @@ describe('the dropped-frame backstop', () => {
     const backstop = createDensityBackstop();
     for (let stall = 0; stall < 5; stall++) backstop.observe(0.5);
     for (const interval of window(0)) backstop.observe(interval);
+    expect(backstop.density).toBe(1);
+  });
+
+  it('takes a stall for a stall after the room has capped it, since that is all it is ever handed', () => {
+    // The XR stage caps every step it hands on at LONGEST_FRAME_SECONDS, so a half-second hitch
+    // while he is summoned — shaders compiling, the greeting and the call starting — arrives here
+    // as exactly that, never as anything longer.
+    const backstop = createDensityBackstop();
+    for (let round = 0; round < 4; round++) {
+      const intervals = window(0);
+      intervals[5] = LONGEST_FRAME_SECONDS;
+      intervals[12] = LONGEST_FRAME_SECONDS;
+      intervals[20] = LONGEST_FRAME_SECONDS;
+      for (const interval of intervals) backstop.observe(interval);
+    }
     expect(backstop.density).toBe(1);
   });
 
