@@ -1,11 +1,12 @@
 // This import has to come first, and it has to be this package.
 //
 // `@elevenlabs/react-native` is a side-effect module: importing it installs the WebRTC globals and
-// registers the React Native voice session strategy. Reaching for `@elevenlabs/react` or
-// `@elevenlabs/client` instead — or importing one of them before this line — leaves the strategy
-// unregistered, and the first attempt to talk fails at runtime with "No voice session setup
-// strategy registered". The same note as at the top of `mobile/src/app.tsx`, and the same trap.
-import { ConversationProvider } from '@elevenlabs/react-native';
+// registers the React Native voice session strategy on `@elevenlabs/client`, which is what the
+// conversation dials with, through `useJarvisSession` in `hologram/conversation`. Nothing else is
+// taken from it any more, but without this line the strategy is never registered, and the first
+// attempt to talk fails at runtime with "No voice session setup strategy registered". The same
+// note as at the top of `mobile/src/app.tsx`, and the same trap.
+import '@elevenlabs/react-native';
 import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { ConversationScreen } from './conversation-screen';
@@ -23,8 +24,8 @@ import { WaitingForThePhone } from './waiting-for-the-phone';
  *
  * The sphere is not a copy. It comes from `hologram/`, the same files the phone bundles, so
  * changing how Jarvis looks is one edit in one place and both apps follow. The conversation is
- * shared the same way, through `conversation/`: one token client, one set of ElevenLabs failures
- * explained once, one pair of voice readers.
+ * shared the same way: one session, the phone's and the headset's too, with one token client and
+ * one set of ElevenLabs failures explained once.
  *
  * What a watch still does differently is only what a watch is: a round screen drawn edge to edge,
  * an assistant gesture that arrives as an intent rather than through a voice interaction session,
@@ -34,7 +35,7 @@ export function App() {
   const { settings, isLoaded, isPhoneInRange } = usePhoneHandover();
 
   return (
-    <ConversationProvider>
+    <>
       <StatusBar hidden />
       <View style={styles.screen}>
         {/*
@@ -47,7 +48,7 @@ export function App() {
         {isLoaded && settings ? <ConversationScreen settings={settings} /> : null}
         {isLoaded && !settings ? <WaitingForThePhone isPhoneInRange={isPhoneInRange} /> : null}
       </View>
-    </ConversationProvider>
+    </>
   );
 }
 

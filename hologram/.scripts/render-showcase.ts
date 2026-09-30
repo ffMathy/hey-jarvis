@@ -47,14 +47,16 @@ import {
   createHologramScene,
   drawHologram,
   GREETING_SECONDS,
+  LEAVING_SECONDS,
   MATERIALISE_SECONDS,
   moodOf,
   PARTICLE_COUNT,
   SAMPLE_MODE_NAMES,
+  SCENE_SEED,
   type SimulatedMood,
+  THOUGHT_FADE_SECONDS,
   WATCH_PARTICLE_COUNT,
 } from '../src/index';
-import { LEAVING_SECONDS } from '../src/react/leaving';
 import { createPerformance, findLoudestMoment, stillMoment } from './simulated-performance';
 
 /**
@@ -131,9 +133,6 @@ const SHEET_LEAVES_SECONDS = 0.2;
 
 /** A beat of dark at either end of the watch's clip, since it has no sheet to open and close. */
 const WATCH_HOLD_SECONDS = 0.26;
-
-/** How long a thought takes to settle in: `THOUGHT_FADE_SECONDS` in `hologram-view.tsx`. */
-const THOUGHT_FADE_SECONDS = 0.45;
 
 /** The sheet, as `sample-sheet.tsx` has it: as tall as the screen is wide, up to this share of its height. */
 const SHEET_MOST_OF_THE_HEIGHT = 0.6;
@@ -801,9 +800,9 @@ async function main() {
   const skia = JsiSkApi(globalThis.CanvasKit);
   // The same Jarvis on both devices — one seed, one drawing — each at the most particles that
   // device can hold. See the file header.
-  const phoneScene = createHologramScene(1337, PARTICLE_COUNT);
+  const phoneScene = createHologramScene(SCENE_SEED, PARTICLE_COUNT);
   const phoneResources = createHologramResources(skia, phoneScene);
-  const watchScene = createHologramScene(1337, WATCH_PARTICLE_COUNT);
+  const watchScene = createHologramScene(SCENE_SEED, WATCH_PARTICLE_COUNT);
   const watchResources = createHologramResources(skia, watchScene);
 
   const typeface = skia.Typeface.MakeFreeTypeFaceFromData(

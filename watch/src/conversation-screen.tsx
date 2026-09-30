@@ -1,11 +1,5 @@
-import { useConversationControls, useConversationStatus } from '@elevenlabs/react-native';
-import {
-  type ElevenLabsSettings,
-  requestConversationToken,
-  WATCH_PARTICIPANT_NAME,
-  WATCH_PARTICLE_COUNT,
-} from 'hologram';
-import { useAgentVoice, useGreeting, useToolActivity, useUserVoice } from 'hologram/conversation';
+import { type ElevenLabsSettings, isLive, WATCH_PARTICIPANT_NAME, WATCH_PARTICLE_COUNT } from 'hologram';
+import { useJarvisSession } from 'hologram/conversation';
 import { JarvisHologram } from 'hologram/react';
 import { useIsForeground } from 'hologram/react/lifecycle';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -32,16 +26,6 @@ interface ConversationScreenProps {
 const WAIT_FOR_FAST_NETWORK_MS = 6000;
 
 /**
- * How long a conversation may take to open before the screen says it has not.
- *
- * The phone's reason, from `GIVE_UP_CONNECTING_AFTER_MS` in `mobile/src/conversation-screen.tsx`:
- * a WebRTC session that cannot finish coming up waits on a room event with no deadline of its
- * own, and says nothing while it does. On a watch that is exactly what the Bluetooth proxy
- * produces, and a sphere turning in silence is indistinguishable from one listening.
- */
-const GIVE_UP_CONNECTING_AFTER_MS = 20_000;
-
-/**
  * How long to wait for the phone to say whether it will hold the conversation in its earbuds.
  *
  * Longer than the phone gives its own window to come up (`WAIT_FOR_THE_WINDOW_MS` in
@@ -59,10 +43,14 @@ const ASK_THE_PHONE_MS = 3000;
  */
 const CALL_VOLUME_SHARE = 0.9;
 
-/** Whether a conversation is open, or on its way to being open. */
-function isLive(status: string): boolean {
-  return status === 'connected' || status === 'connecting';
-}
+/**
+ * What the deadline says when the watch could not get onto Wi-Fi or cellular: the likeliest reason,
+ * and the one thing the person looking can change.
+ */
+const OFF_THE_PROXY_PROBLEM = 'Jarvis could not be reached. Put the watch on Wi-Fi.';
+
+/** What it says when the watch was on a network that carries audio, and nobody answered anyway. */
+const NO_ANSWER_PROBLEM = 'Jarvis did not answer. ElevenLabs may be unreachable.';
 
 /**
  * Jarvis answering on the wrist: the sphere, and nothing else on the screen.
@@ -76,10 +64,17 @@ function isLive(status: string): boolean {
  * What is left when something goes wrong is one line over the top of him, because an assistant
  * that has silently failed to connect looks exactly like one that is listening.
  *
+ * **The conversation is the phone's, and the headset's.** It is `hologram`'s session (see
+ * `useJarvisSession` in `hologram/conversation`), with its rules: the greeting from the recording,
+ * played inside the call's audio, and the session dialled after him; twenty seconds for it to open,
+ * and a late one ended; failures said in words. What is the watch's is handed to it here: its name
+ * in the history, getting off the phone's Bluetooth before the token, and what the deadline says.
+ *
  * **His voice comes from the SDK's own analysers** rather than from a tap on the WebRTC track, and
- * that is a deliberate difference from the phone. See `useAgentVoice` in `hologram/conversation`:
- * tapping the track means a native module, a peer-connection id and a ring buffer, and on a watch
- * the readings the SDK gives are good enough for a sphere this size.
+ * that is a deliberate difference from the phone: the session is given no room check and no way to
+ * follow his track, so it reads the SDK's readings. Tapping the track means a native module, a
+ * peer-connection id and a ring buffer, and on a watch the readings the SDK gives are good enough
+ * for a sphere this size.
  *
  * **He answers in the phone's earbuds when there are some.** Summoned on the wrist, he asks the
  * phone first, and a phone with AirPods connected holds the conversation itself, where only the
@@ -96,57 +91,39 @@ function isLive(status: string): boolean {
  * until one of those reasons changes would be rude to them and useless to whoever is looking.
  */
 export function ConversationScreen({ settings }: ConversationScreenProps) {
-  const { startSession, endSession } = useConversationControls();
-  const { status } = useConversationStatus();
   const isForeground = useIsForeground();
-  const agentVoice = useAgentVoice();
-  // "Hello sir, how can I help?", from a recording, while the session is dialled behind it — and
-  // the sphere saying it with him. See `greeting.ts` in `hologram/conversation`.
-  const {
-    greeting,
-    greetingVoice,
-    beginGreeting,
-    stopGreeting,
-    untilCallMayTakeTheAudio,
-    releaseCallAudio,
-    greetingSessionOptions,
-  } = useGreeting();
-  const voice = greeting ? greetingVoice : agentVoice;
-  // Whoever is talking to him, for the sphere's listening animation. See `user-voice.ts`.
-  const { user, userVoiceHandlers } = useUserVoice({ greeting });
-  const size = useWatchHologramSize();
-  // Handing these over is what turns the density loop on at all — the drawing skips it
-  // entirely when there is nowhere to write the frame rate. See `watch-density.ts`.
-  const { frameRate, buildMilliseconds, particleShare, provenShare, pace } = useWatchDensity();
-  // What he is doing between hearing you and answering; the drawing has a whole state for it.
-  const { thinking, toolHandlers, forgetToolCalls } = useToolActivity();
   const [problem, setProblem] = useState<string | undefined>(undefined);
   /** Whether the phone took this summoning, in its earbuds, so the watch holds no conversation. */
   const [onThePhone, setOnThePhone] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
   /** What the conversation is being held over, so a failure can say whether that was the trouble. */
   const network = useRef<FastNetwork>('none');
-  /** When to stop waiting for the conversation to open, or `undefined` once nothing is waited for. */
-  const [connectingUntil, setConnectingUntil] = useState<number | undefined>(undefined);
 
-  const reportProblem = useCallback((message: string) => {
-    setConnectingUntil(undefined);
-    setProblem(message);
-  }, []);
-
-  /**
-   * A conversation the server closed, which the SDK reports here and not through `onError`. The
-   * same gap the phone's `reportEnding` closes: without it the sphere simply stopped answering. An
-   * agent that hung up after saying goodbye is `agent`, not `error`, and gets no line.
-   */
-  const reportEnding = useCallback(
-    (details: { reason: string; message?: string }) => {
-      if (details.reason === 'error') {
-        reportProblem(details.message || 'The conversation with Jarvis ended unexpectedly.');
-      }
+  const conversation = useJarvisSession({
+    settings,
+    participantName: WATCH_PARTICIPANT_NAME,
+    // Every problem is the line over him: there is no toast on a watch, and no window to outlive.
+    onProblem: (message: string) => setProblem(message),
+    // Off the phone's Bluetooth proxy before anything goes out, token request included: WebRTC's
+    // audio does not get through it, which is why the watch used to connect and then say nothing.
+    // Asked once he has started greeting, so the network comes up while he speaks. See
+    // `modules/jarvis-network`.
+    untilOnline: async () => {
+      network.current = await holdFastNetwork(WAIT_FOR_FAST_NETWORK_MS);
     },
-    [reportProblem],
-  );
+    // The radio goes when the conversation does: a network held up for nobody is a battery spent
+    // on nothing. The session says when, including for a conversation that ended while the
+    // network was still coming up.
+    leaveNetwork: releaseFastNetwork,
+    // Naming Wi-Fi when the watch could not get onto it, since that is then the likeliest reason
+    // and the one thing the person looking can change.
+    deadlineProblem: () => (network.current === 'none' ? OFF_THE_PROXY_PROBLEM : NO_ANSWER_PROBLEM),
+  });
+  const { status, summon, endQuietly } = conversation;
+  const size = useWatchHologramSize();
+  // Handing these over is what turns the density loop on at all — the drawing skips it
+  // entirely when there is nowhere to write the frame rate. See `watch-density.ts`.
+  const { frameRate, buildMilliseconds, particleShare, provenShare, pace } = useWatchDensity();
 
   const start = useCallback(async () => {
     setProblem(undefined);
@@ -165,120 +142,25 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
       // where there is a keyboard in front of you; here the assistant gesture *is* the request to
       // be talked to, and there is nowhere to type.
       if (!(await requestMicrophoneAccess())) {
-        reportProblem('Jarvis needs the microphone.');
+        setProblem('Jarvis needs the microphone.');
         return;
       }
 
-      // He answers at once, from a recording, and the network and the token are got while he says
-      // it. The session is told not to greet a second time. A session slower than the greeting
-      // goes on connecting exactly as it did before there was one.
-      // Down from full call volume before he says a word, greeting included.
+      // Down from full call volume before he says a word, greeting included. He then answers at
+      // once, from a recording, and the network and the token are got while he says it; the
+      // session waits for him to finish before it dials, since starting it switches the watch into
+      // call audio, which clipped the recording and turned it into a voice that was not his.
       capCallVolume(CALL_VOLUME_SHARE);
-      const greeted = await beginGreeting();
-
-      // Off the phone's Bluetooth proxy before anything goes out, token request included: WebRTC's
-      // audio does not get through it, which is why the watch used to connect and then say nothing.
-      // See `modules/jarvis-network`.
-      network.current = await holdFastNetwork(WAIT_FOR_FAST_NETWORK_MS);
-      setConnectingUntil(Date.now() + GIVE_UP_CONNECTING_AFTER_MS);
-
-      // Minted here rather than kept: a conversation token is short-lived, and one fetched when
-      // the app opened may be dead by the time a wrist is raised.
-      const { token } = await requestConversationToken({ settings, participantName: WATCH_PARTICIPANT_NAME });
-
-      // But the session itself waits for him to finish: starting it switches the watch into call
-      // audio, which clipped the recording and turned it into a voice that was not his. See
-      // `untilCallMayTakeTheAudio`. The wrist dropping mid-greeting stops it, and then there is no
-      // one to dial for.
-      if (!(await untilCallMayTakeTheAudio())) {
-        releaseFastNetwork();
-        return;
-      }
-
-      startSession({
-        conversationToken: token,
-        connectionType: 'webrtc',
-        onError: reportProblem,
-        onDisconnect: reportEnding,
-        ...toolHandlers,
-        ...userVoiceHandlers,
-        ...(greeted ? greetingSessionOptions : {}),
-      });
+      summon();
     } catch (error: unknown) {
-      // No session to hold the network for, so it goes now rather than when one ends — and none
-      // to take the call's audio the greeting started, so that goes too.
-      releaseFastNetwork();
-      stopGreeting();
-      releaseCallAudio();
-      reportProblem(error instanceof Error ? error.message : 'Jarvis could not be reached.');
+      setProblem(error instanceof Error ? error.message : 'Jarvis could not be reached.');
     } finally {
       setIsStarting(false);
     }
-  }, [
-    settings,
-    startSession,
-    beginGreeting,
-    stopGreeting,
-    untilCallMayTakeTheAudio,
-    releaseCallAudio,
-    greetingSessionOptions,
-    toolHandlers,
-    userVoiceHandlers,
-    reportProblem,
-    reportEnding,
-  ]);
+  }, [summon]);
 
-  // Gives up on a conversation that is taking too long to open, and says so — naming Wi-Fi when the
-  // watch could not get onto it, since that is then the likeliest reason and the one thing the
-  // person looking can change.
-  useEffect(() => {
-    if (connectingUntil === undefined) {
-      return;
-    }
-    if (status === 'connected') {
-      setConnectingUntil(undefined);
-      return;
-    }
-    const givingUp = setTimeout(
-      () => {
-        setConnectingUntil(undefined);
-        setProblem(
-          network.current === 'none'
-            ? 'Jarvis could not be reached. Put the watch on Wi-Fi.'
-            : 'Jarvis did not answer. ElevenLabs may be unreachable.',
-        );
-      },
-      Math.max(0, connectingUntil - Date.now()),
-    );
-    return () => clearTimeout(givingUp);
-  }, [connectingUntil, status]);
-
-  // The radio goes when the conversation does: a network held up for nobody is a battery spent on
-  // nothing. On the way *down* from live rather than whenever it is not live, because between
-  // `startSession` and the status reading `connecting` there is a render where it is neither — and
-  // letting go then would pull the network out from under the call as it dialled.
-  const wasLive = useRef(false);
-  useEffect(() => {
-    if (isLive(status)) {
-      wasLive.current = true;
-      return;
-    }
-    if (wasLive.current) {
-      wasLive.current = false;
-      releaseFastNetwork();
-    }
-  }, [status]);
   // And on the way out of the app altogether, whatever state it was in.
   useEffect(() => () => releaseFastNetwork(), []);
-
-  // A call still running when the conversation drops never gets its answer, so the sphere would be
-  // left mid-thought — and the next conversation would open with him already thinking about
-  // something that stopped happening.
-  useEffect(() => {
-    if (!isLive(status)) {
-      forgetToolCalls();
-    }
-  }, [status, forgetToolCalls]);
 
   /**
    * Opens the conversation while anyone is looking, and closes it when nobody is.
@@ -292,10 +174,9 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
   useEffect(() => {
     if (!isForeground) {
       tried.current = false;
-      setConnectingUntil(undefined);
-      // The wrist dropped mid-greeting: he stops, rather than finishing it into a sleeve.
-      stopGreeting();
-      endSession();
+      // The wrist dropped: he stops, rather than finishing the greeting into a sleeve, and the
+      // conversation and the network go with him.
+      endQuietly();
       releaseFastNetwork();
       return;
     }
@@ -304,16 +185,16 @@ export function ConversationScreen({ settings }: ConversationScreenProps) {
     }
     tried.current = true;
     void start();
-  }, [isForeground, endSession, stopGreeting, start, status, isStarting]);
+  }, [isForeground, endQuietly, start, status, isStarting]);
 
   return (
     <View style={styles.screen}>
       <View accessible accessibilityLabel="Jarvis" style={{ width: size, height: size }} testID="hologram">
         <JarvisHologram
           size={size}
-          voice={voice}
-          user={user}
-          thinking={thinking}
+          voice={conversation.voice}
+          user={conversation.user}
+          thinking={conversation.thinking}
           particleCount={WATCH_PARTICLE_COUNT}
           frameRate={frameRate}
           buildMilliseconds={buildMilliseconds}

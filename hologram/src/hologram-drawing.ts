@@ -303,6 +303,8 @@ type SkiaApiType = HologramSkia;
 
 // ---- constants (unit space: the sphere's radius R is 1, y points down) ---------------------
 // Clock angles are degrees clockwise from 12 o'clock, as the film study measures them.
+// The ones a renderer of the body and the stream reads are exported, for the reason
+// HologramFrameState gives; exporting one changes nothing about how it is captured in a worklet.
 
 /** How long the view takes to count appearance from 0 to 1: the vortex bringing him out of the core. */
 export const MATERIALISE_SECONDS = 1.4;
@@ -336,7 +338,7 @@ export const ROLL_DEGREES_PER_SECOND = 11;
  */
 export const SHELL_DEGREES_PER_SECOND = -5;
 /** The lower hemisphere's equatorial shell turns about the vertical axis, which reads as a sideways stream. */
-const STREAM_RADIANS_PER_SECOND = 0.21;
+export const STREAM_RADIANS_PER_SECOND = 0.21;
 /**
  * The body turns about the vertical axis, like a globe.
  *
@@ -345,7 +347,7 @@ const STREAM_RADIANS_PER_SECOND = 0.21;
  * a much weaker cue than the ball itself turning, so the user asked for the constant rotation
  * the first hologram had back. This is that one's rate, 0.26 rad/s, a turn every 24 s.
  */
-const BODY_RADIANS_PER_SECOND = 0.26;
+export const BODY_RADIANS_PER_SECOND = 0.26;
 /** How long one turn of the body takes. */
 export const BODY_TURN_SECONDS = (2 * Math.PI) / BODY_RADIANS_PER_SECOND;
 
@@ -376,7 +378,7 @@ export function bodyTurnRadians(time: number) {
  */
 export const GLOW_WITH_VOICE = 0.1;
 /** How much of the glow answers "is he talking at all" rather than "how loudly". */
-const GLOW_FROM_ENVELOPE = 0.65;
+export const GLOW_FROM_ENVELOPE = 0.65;
 /**
  * How much bigger the whole sphere grows at full voice.
  *
@@ -385,9 +387,9 @@ const GLOW_FROM_ENVELOPE = 0.65;
  * the user's call, after the glow alone still read as too quiet a signal on a phone: it
  * pulsates now, and 8% is enough to see without the silhouette lurching.
  */
-const SWELL_WITH_VOICE = 0.18;
+export const SWELL_WITH_VOICE = 0.18;
 /** How small the sphere has shrunk to by the time he has gone. */
-const LEAVING_SMALLEST = 0.55;
+export const LEAVING_SMALLEST = 0.55;
 /**
  * How he listens: while someone talks to him his particles snap onto a hexagonal lattice that turns
  * slowly inside the ball and breathes with their voice — a crystalline, working look that says
@@ -398,33 +400,33 @@ const LEAVING_SMALLEST = 0.55;
  * which read as a decoration rather than as him paying attention.
  */
 /** How far apart the lattice's points are, and how fast it turns, in radians a second. */
-const LATTICE_SPACING = 0.11;
-const LATTICE_TURN = 0.12;
+export const LATTICE_SPACING = 0.11;
+export const LATTICE_TURN = 0.12;
 /** How much the lattice's spacing swells at full voice, and how quickly it breathes, in radians a second. */
-const LATTICE_BREATH = 0.18;
-const LATTICE_PULSE = 2.4;
+export const LATTICE_BREATH = 0.18;
+export const LATTICE_PULSE = 2.4;
 /** How much of the way to their point the particles go at full attention: not quite all of it. */
-const LATTICE_PULL = 0.88;
+export const LATTICE_PULL = 0.88;
 /** How much shorter a stroke is drawn while it is on the lattice, so a point reads as a knot, not a smear. */
-const LATTICE_STROKE_SHRINK = 0.55;
+export const LATTICE_STROKE_SHRINK = 0.55;
 /** How far round a fragment has still to go as it leaves the core in the vortex, in radians: a turn and a half. */
-const VORTEX_TWIST = 3 * Math.PI;
+export const VORTEX_TWIST = 3 * Math.PI;
 /** How long the vortex's strokes are drawn while they are still travelling, as a multiple of their length. */
-const VORTEX_STRETCH = 4;
+export const VORTEX_STRETCH = 4;
 const DEGREES_TO_RADIANS = 0.017453292519943295;
 /** The core sits a hair up and left of centre, well inside the film's 0.08R. */
-const CORE_X = -0.02;
-const CORE_Y = -0.02;
+export const CORE_X = -0.02;
+export const CORE_Y = -0.02;
 /** How long a burst's chips stay fully lit, in seconds, and when the last of them has broken up and gone. */
-const CHIP_HOLD_SECONDS = 0.13;
-const CHIP_GONE_SECONDS = 0.2;
+export const CHIP_HOLD_SECONDS = 0.13;
+export const CHIP_GONE_SECONDS = 0.2;
 
 // Strides of the flat scene tables (the builders describe the fields).
-const BODY_STRIDE = 10;
-const STREAM_STRIDE = 11;
+export const BODY_STRIDE = 10;
+export const STREAM_STRIDE = 11;
 /** Where a body row and a stream row keep the fragment's id, which the density share is taken over. */
-const BODY_ID_FIELD = 6;
-const STREAM_ID_FIELD = 7;
+export const BODY_ID_FIELD = 6;
+export const STREAM_ID_FIELD = 7;
 
 /**
  * How the two tables a density share thins are laid out: how wide a row is, and where its id is.
@@ -478,15 +480,15 @@ const SPARKLE_TEXEL_SIZE = 0.018;
  * A pass is slow on purpose. Fast, it reads as a scanner in a film; at this rate it reads as
  * deliberate, which is the half of Jarvis this is for.
  */
-const SCAN_SECONDS = 2.6;
+export const SCAN_SECONDS = 2.6;
 /** How wide the lit band is, in sphere radii: a quarter of him at a time. */
-const SCAN_HALF_WIDTH = 0.38;
+export const SCAN_HALF_WIDTH = 0.38;
 /** What is left of a fragment the plane is nowhere near. Not zero: he is thinking, not gone. */
-const SCAN_FLOOR = 0.12;
+export const SCAN_FLOOR = 0.12;
 /** How near the middle of the band a fragment has to be to be lit to the bright tier. */
-const SCAN_BRIGHT_NEARNESS = 0.55;
+export const SCAN_BRIGHT_NEARNESS = 0.55;
 /** How long the ring takes to bloom from the core to past the limb, at the end of each pass. */
-const PULSE_SECONDS = 0.55;
+export const PULSE_SECONDS = 0.55;
 
 const LIMB_BLOOM_RADIUS = 0.995;
 const LIMB_BLOOM_BAND = 0.25;
@@ -520,13 +522,13 @@ const LIMB_RIDGE_BAND = 0.17;
 const HALO_ANTIALIASED = false;
 
 /** A fragment is lit for this share of its clock's cycle, fading in and out over a third of that at each end. */
-const FRAGMENT_DUTY = 0.6;
+export const FRAGMENT_DUTY = 0.6;
 /**
  * A body fragment's code holds its class — brightness (0-2) + 3 × pool + 6 × rides the turning
  * shell, so 0 to 11 — and its glyph above that, at this step. See {@link buildBody} for why the
  * two share a number.
  */
-const FRAGMENT_CODE_GLYPH_STEP = 12;
+export const FRAGMENT_CODE_GLYPH_STEP = 12;
 /**
  * The multiplier that turns a fragment's id into its blink phase. Any multiplier with a long
  * fractional part scatters a uniform id into a uniform phase; this one is far from every other
@@ -610,7 +612,7 @@ export const WATCH_PARTICLE_COUNT = 5000;
  */
 const DENSITY_FROM_ID = 733.1357;
 
-const FRAGMENT_PHASE_FROM_ID = 37.9;
+export const FRAGMENT_PHASE_FROM_ID = 37.9;
 /**
  * How lit a fragment must be to be drawn at all. Below this it is a tenth of its length under a
  * paint that does not fade with it, so it costs a path verb and shows a dot. It is also how
@@ -619,17 +621,17 @@ const FRAGMENT_PHASE_FROM_ID = 37.9;
  * both of those matter: much higher and every arrival is a step rather than a fade; much lower
  * and a twentieth of the frame's verbs go on strokes too short to see.
  */
-const FRAGMENT_FAINTEST = 0.1;
+export const FRAGMENT_FAINTEST = 0.1;
 /**
  * How far from its place a fragment may re-light, in R, on top of the half-length it already
  * slides along itself. Getting on for two median fragment lengths: far enough that the stroke that goes
  * out and the one that comes on light different pixels — which is what the film's turnover
  * counts — and near enough that the mass, the clumping and the crowded left half stay put.
  */
-const FRAGMENT_WANDER = 0.06;
+export const FRAGMENT_WANDER = 0.06;
 
 /** The rim element that dominates takes this long to hand over to the next. */
-const HANDOVER_SECONDS = 1.2;
+export const HANDOVER_SECONDS = 1.2;
 
 // ---- scene: random geometry, built once on the JS thread ---------------------------------
 
@@ -1134,7 +1136,8 @@ export function createHologramScene(seed: number, particleCount: number = PARTIC
   };
 }
 
-type Scene = ReturnType<typeof createHologramScene>;
+/** The random geometry one hologram is drawn from, as `createHologramScene` builds it. */
+export type HologramScene = ReturnType<typeof createHologramScene>;
 
 // ---- resources: Skia objects built once per mounted canvas --------------------------------
 
@@ -1500,7 +1503,7 @@ function amberHex(red: number, green: number, blue: number) {
 }
 
 /** Paints, gradient shaders, prebuilt paths and the reusable path builders. */
-export function createHologramResources(Skia: SkiaApiType, scene: Scene) {
+export function createHologramResources(Skia: SkiaApiType, scene: HologramScene) {
   const makePaint = (color: string, style: PaintStyle, strokeCap: StrokeCap) => {
     const paint = Skia.Paint();
     paint.setAntiAlias(true);
@@ -1726,6 +1729,94 @@ export function createHologramResources(Skia: SkiaApiType, scene: Scene) {
 
 type Resources = ReturnType<typeof createHologramResources>;
 
+/** A Skia object that is freed only when something deletes it: a path, or a paint. */
+interface Disposable {
+  dispose(): void;
+}
+
+function isDisposable(value: unknown): value is Disposable {
+  return typeof value === 'object' && value !== null && 'dispose' in value && typeof value.dispose === 'function';
+}
+
+/**
+ * The resources, and a way to let go of what drawing with them makes: for Skia over CanvasKit.
+ *
+ * Every frame builds its paths afresh (pathOf) and drops them once they are drawn. Native Skia
+ * frees a dropped path when the collector finds its wrapper. React Native Skia's web API over
+ * CanvasKit — what the headset draws with, and the phone's web build — never does: a path there
+ * wraps a PathBuilder, a raw WebAssembly object no finalizer is registered for, and nothing in
+ * the web API deletes it. Measured over CanvasKit, every frame left fourteen behind: about 4 kB
+ * a frame at density 0, as the headset draws, and about 80 kB at density 1, as the phone does,
+ * for as long as he is drawn and until CanvasKit's heap runs out.
+ */
+export interface ReleasableHologramResources {
+  resources: Resources;
+  /**
+   * Deletes every path the frames since the last call made, except the ladder ring's, which
+   * drawTruss keeps from one frame to the next until its weight changes. Call it once a frame
+   * has been handed on — the surface flushed, or the picture recorded — never in the middle of one.
+   */
+  release(): void;
+  /** Deletes the paths still held and the paints; the resources cannot be drawn with afterwards. */
+  dispose(): void;
+}
+
+/**
+ * {@link createHologramResources}, with every path they make recorded so it can be deleted.
+ *
+ * Only for Skia over CanvasKit. Native Skia already frees what the frame drops, and there this
+ * would only add work to every frame.
+ */
+export function createReleasableHologramResources(
+  Skia: SkiaApiType,
+  scene: HologramScene,
+): ReleasableHologramResources {
+  const made: DetachedPath[] = [];
+  const makeFromCmds: SkiaApiType['Path']['MakeFromCmds'] = (commands) => {
+    const path = Skia.Path.MakeFromCmds(commands);
+    if (path !== null) made.push(path);
+    return path;
+  };
+  // Everything else about the path factory is left as it is, `this` included, so its other
+  // methods go on working on CanvasKit's own factory object.
+  const Path = new Proxy(Skia.Path, {
+    get: (target, property, receiver) =>
+      property === 'MakeFromCmds' ? makeFromCmds : Reflect.get(target, property, receiver),
+  });
+  const resources = createHologramResources({ ...Skia, Path }, scene);
+  // The prebuilt shapes, and the empty stand-in the ladder ring starts from: they last as long
+  // as the resources do.
+  const lasting = made.splice(0);
+  let disposed = false;
+  return {
+    resources,
+    release() {
+      const cache = resources.trussCache;
+      const reused = [cache.outer, cache.inner, cache.haze, cache.rungs, cache.detail];
+      let kept = 0;
+      for (const path of made) {
+        if (reused.includes(path)) {
+          made[kept++] = path;
+        } else {
+          path.dispose();
+        }
+      }
+      made.length = kept;
+    },
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      // A set, because the prebuilt paths are both recorded and held in the resources.
+      const everything = new Set<Disposable>([...made, ...lasting]);
+      for (const value of Object.values(resources)) {
+        if (isDisposable(value)) everything.add(value);
+      }
+      for (const disposable of everything) disposable.dispose();
+      made.length = 0;
+    },
+  };
+}
+
 // ---- math helpers (worklets) --------------------------------------------------------------
 // Every worklet is declared after the worklets it calls: the worklets plugin captures what a
 // worklet calls at the moment the worklet is defined, so a helper declared further down would
@@ -1765,7 +1856,7 @@ export function densityKey(id: number) {
  * phone's ten thousand, where the loop used to read and hash every row to find out. A share of 1
  * keeps every row, since no key reaches 1.
  */
-function densityRowsEnd(rows: number[], stride: number, idField: number, density: number) {
+export function densityRowsEnd(rows: number[], stride: number, idField: number, density: number) {
   'worklet';
   // Every row before `keptUpTo` is kept and every row from `notKeptFrom` on is not.
   let keptUpTo = 0;
@@ -1856,7 +1947,7 @@ function rimTarget(element: number, dominant: number) {
  * epoch's line kind and its envelope, and the red flash.
  * Everything is a function of time alone, so it never jumps.
  */
-function readScript(scene: Scene, time: number) {
+function readScript(scene: HologramScene, time: number) {
   'worklet';
   const epochs = scene.epochs;
   const period = scene.scriptPeriod;
@@ -1892,7 +1983,7 @@ function readScript(scene: Scene, time: number) {
 }
 
 /** Everything a frame derives from its fields; see the file header for the mapping. */
-function analyseFrame(frame: HologramFrame, size: number, scene: Scene) {
+export function analyseFrame(frame: HologramFrame, size: number, scene: HologramScene) {
   'worklet';
   const time = frame.time;
   // How far on the vortex is: 1 once it is over.
@@ -1999,7 +2090,17 @@ function analyseFrame(frame: HologramFrame, size: number, scene: Scene) {
   };
 }
 
-type FrameState = ReturnType<typeof analyseFrame>;
+/**
+ * Everything a frame derives from its fields, as every per-fragment helper here reads it.
+ *
+ * Exported with {@link analyseFrame} and those helpers for a renderer that draws the same sphere
+ * some other way — the headset's draws the body in three dimensions on the GPU — so that it takes
+ * the same state from the same frame instead of keeping a copy of this arithmetic that drifts.
+ * Its `radius` is in the units of the `size` it was analysed at, `roll` and `shellTurn` are in
+ * degrees because that is what a canvas takes, and `scan` is a height measured downward, as every y
+ * in this file is.
+ */
+export type HologramFrameState = ReturnType<typeof analyseFrame>;
 
 // ---- the volume ---------------------------------------------------------------------------
 
@@ -2008,7 +2109,7 @@ type FrameState = ReturnType<typeof analyseFrame>;
  * (section 3): the whorl winding out of the core, the bold loop rising past it, the ")" arc and
  * the faint near half of the edge-on ellipse. The data streaks lie on the pinned body.
  */
-function drawInnerShells(canvas: HologramCanvas, resources: Resources, state: FrameState) {
+function drawInnerShells(canvas: HologramCanvas, resources: Resources, state: HologramFrameState) {
   'worklet';
   const alpha = state.innerAlpha;
   if (alpha <= 0) return;
@@ -2106,7 +2207,7 @@ function appendGlyph(
  * Whether a fragment is part of the ball at all, 0..1: the script's slow fragment density thins
  * them out a little, in the order revealKey gives.
  */
-function fragmentShown(revealOrder: number, state: FrameState) {
+export function fragmentShown(revealOrder: number, state: HologramFrameState) {
   'worklet';
   return clamp01((state.bodyShare * 1.12 - revealOrder) * 9);
 }
@@ -2122,7 +2223,7 @@ function fragmentShown(revealOrder: number, state: FrameState) {
  * pixels it covers, and with the fragment clocks running half again as fast as before, a
  * quarter of the window had come down to three frames and each arrival showed as a step.
  */
-function fragmentStrength(life: number, id: number, pool: number, state: FrameState) {
+export function fragmentStrength(life: number, id: number, pool: number, state: HologramFrameState) {
   'worklet';
   const progress = life / FRAGMENT_DUTY;
   const envelope = Math.min(1, progress * 3, (1 - progress) * 3);
@@ -2134,7 +2235,7 @@ function fragmentStrength(life: number, id: number, pool: number, state: FrameSt
  * Which body builder a fragment goes to: 0 dim, 1 mid, 2 bright. Fading fragments and
  * thinned-out hot ones step down.
  */
-function fragmentTier(brightness: number, strength: number, id: number, hotShare: number) {
+export function fragmentTier(brightness: number, strength: number, id: number, hotShare: number) {
   'worklet';
   if (brightness === 2) {
     if (strength <= 0.55) return 1;
@@ -2158,12 +2259,12 @@ function fragmentTier(brightness: number, strength: number, id: number, hotShare
  * places a couple of thousand fragments and an object apiece would be a frame's worth of
  * rubbish to collect.
  */
-function placeFragment(
+export function placeFragment(
   body: number[],
   offset: number,
   along: number,
   across: number,
-  state: FrameState,
+  state: HologramFrameState,
   out: number[],
 ) {
   'worklet';
@@ -2193,9 +2294,9 @@ function placeFragment(
  * Returns the strength, or 0 for a fragment that is not drawn, and writes what the caller needs
  * into `into`: strength, glyph, which pair of builders it belongs to, which blink it is on, and its
  * brightness tier. An array rather than an object because this runs three thousand times a frame,
- * and it is the array {@link FrameState.reading} keeps for exactly that reason.
+ * and it is the array {@link HologramFrameState.reading} keeps for exactly that reason.
  */
-function readFragment(body: number[], offset: number, state: FrameState, into: number[]): number {
+export function readFragment(body: number[], offset: number, state: HologramFrameState, into: number[]): number {
   'worklet';
   // Is it lit at all? This is the cheapest question to ask of them: everything below — unpacking
   // its class, where it sits in the reveal — is work the ones that fail would only throw away.
@@ -2239,7 +2340,7 @@ function readFragment(body: number[], offset: number, state: FrameState, into: n
  * which is why the second comes back in a scratch rather than being worked out again by the caller.
  * Nothing is promoted when he is not thinking.
  */
-function scanned(y: number, state: FrameState): number {
+export function scanned(y: number, state: HologramFrameState): number {
   'worklet';
   if (state.thinking <= 0) {
     state.scanBright[0] = 0;
@@ -2259,7 +2360,14 @@ function scanned(y: number, state: FrameState): number {
  * slows, drawn longer while it moves so the arms read as streams rather than dots. A fragment
  * still at the core is not shown at all, so the eye does not start on a blot of light.
  */
-function swirlFragment(x: number, y: number, unitX: number, unitY: number, id: number, state: FrameState) {
+export function swirlFragment(
+  x: number,
+  y: number,
+  unitX: number,
+  unitY: number,
+  id: number,
+  state: HologramFrameState,
+) {
   'worklet';
   const out = state.swirled;
   if (state.swirl >= 1) {
@@ -2303,7 +2411,7 @@ function swirlFragment(x: number, y: number, unitX: number, unitY: number, id: n
 }
 
 /** Its place on the nearest point of the slowly turning hexagonal grid, which breathes with the voice. */
-function latticeTarget(x: number, y: number, id: number, state: FrameState, out: number[]) {
+export function latticeTarget(x: number, y: number, id: number, state: HologramFrameState, out: number[]) {
   'worklet';
   const turn = state.time * LATTICE_TURN;
   const cos = Math.cos(turn);
@@ -2333,7 +2441,7 @@ function latticeTarget(x: number, y: number, id: number, state: FrameState, out:
  * small knot of strokes rather than one. Each fragment lives only a fraction of a second before it
  * re-lights, so the ball resolves onto the lattice rather than sliding onto it.
  */
-function latticeFragment(x: number, y: number, id: number, state: FrameState) {
+export function latticeFragment(x: number, y: number, id: number, state: HologramFrameState) {
   'worklet';
   const out = state.listened;
   const pull = state.hearing * LATTICE_PULL;
@@ -2348,7 +2456,7 @@ function latticeFragment(x: number, y: number, id: number, state: FrameState) {
 }
 
 /** The fragment body, turning about the vertical axis, sorted into the dim, mid and bright builders. */
-function appendBody(builders: PathBuilder[], body: number[], state: FrameState) {
+function appendBody(builders: PathBuilder[], body: number[], state: HologramFrameState) {
   'worklet';
   const placed = state.scratch;
   const reading = state.reading;
@@ -2415,7 +2523,7 @@ function appendBody(builders: PathBuilder[], body: number[], state: FrameState) 
  * have no glyph packing to take apart. Returns the strength, or 0 for one that is not drawn, and
  * leaves its pool in `state.reading[0]` — which is all the caller needs of it afterwards.
  */
-function readShellFragment(stream: number[], offset: number, state: FrameState): number {
+export function readShellFragment(stream: number[], offset: number, state: HologramFrameState): number {
   'worklet';
   const id = stream[offset + STREAM_ID_FIELD];
   const cycles = state.time * stream[offset + 5] + stream[offset + 6];
@@ -2430,7 +2538,7 @@ function readShellFragment(stream: number[], offset: number, state: FrameState):
 }
 
 /** The lower hemisphere's turning shell: its front drifts right, its back (dim) drifts left. */
-function appendStream(builders: PathBuilder[], stream: number[], state: FrameState) {
+function appendStream(builders: PathBuilder[], stream: number[], state: HologramFrameState) {
   'worklet';
   const cosYaw = state.streamCos;
   const sinYaw = state.streamSin;
@@ -2503,8 +2611,8 @@ type DetachedPath = ReturnType<typeof pathOf>;
  * or on the app. It stays at one because one is what the user has been looking at, and
  * bringing the ramp back is a change to how he looks rather than to how fast he is.
  */
-const HALO_RINGS = 1;
-const HALO_RING_SHARE = 0.52;
+export const HALO_RINGS = 1;
+export const HALO_RING_SHARE = 0.52;
 
 function drawParticleHalo(
   canvas: HologramCanvas,
@@ -2529,7 +2637,7 @@ function drawParticleHalo(
 }
 
 /** The body's dim and mid strokes, pinned and turning (the bright ones are drawn later, over the core). */
-function drawBody(canvas: HologramCanvas, resources: Resources, scene: Scene, state: FrameState) {
+function drawBody(canvas: HologramCanvas, resources: Resources, scene: HologramScene, state: HologramFrameState) {
   'worklet';
   const builders = resources.pathBuilders.body;
   if (state.bodyShare <= 0) return;
@@ -2561,7 +2669,7 @@ function drawBody(canvas: HologramCanvas, resources: Resources, scene: Scene, st
 }
 
 /** The bright fragments, with the widest of the amber halos. */
-function drawBodyHighlights(canvas: HologramCanvas, resources: Resources, state: FrameState) {
+function drawBodyHighlights(canvas: HologramCanvas, resources: Resources, state: HologramFrameState) {
   'worklet';
   const brightPath = pathOf(resources.skia, resources.pathBuilders.body[2]);
   const turningBrightPath = pathOf(resources.skia, resources.pathBuilders.body[5]);
@@ -2652,7 +2760,7 @@ function appendSwoosh(builder: PathBuilder, seconds: number) {
 }
 
 /** Comets always; spokes or the swoosh when the script's epoch calls for them. */
-function drawLines(canvas: HologramCanvas, resources: Resources, scene: Scene, state: FrameState) {
+function drawLines(canvas: HologramCanvas, resources: Resources, scene: HologramScene, state: HologramFrameState) {
   'worklet';
   const alpha = state.innerAlpha * state.coreAlpha;
   if (alpha <= 0) return;
@@ -2678,7 +2786,7 @@ function drawLines(canvas: HologramCanvas, resources: Resources, scene: Scene, s
 // ---- the core -----------------------------------------------------------------------------
 
 /** The core: the elongated bloom, the hooked ring with its darker middle, the faint 0.3R ring, the bar and a spiky knot. */
-function drawCore(canvas: HologramCanvas, resources: Resources, state: FrameState) {
+function drawCore(canvas: HologramCanvas, resources: Resources, state: HologramFrameState) {
   'worklet';
   const alpha = state.coreAlpha;
   if (alpha <= 0) return;
@@ -2794,7 +2902,7 @@ function appendTruss(builders: Resources['pathBuilders'], truss: number[], weigh
  * The rolling rim layer: the ladder truss, the thin ring's ticks and, when the truss
  * leads, the fan of strands on the right.
  */
-function drawTruss(canvas: HologramCanvas, resources: Resources, scene: Scene, state: FrameState) {
+function drawTruss(canvas: HologramCanvas, resources: Resources, scene: HologramScene, state: HologramFrameState) {
   'worklet';
   const script = state.script;
   const weight = script.trussWeight * state.rimAlpha;
@@ -2900,7 +3008,7 @@ function appendCrescentStrand(
   drift: number,
   windowFrom: number,
   windowTo: number,
-  state: FrameState,
+  state: HologramFrameState,
   shatterClock: number,
 ) {
   'worklet';
@@ -2971,7 +3079,7 @@ function crescentStrandNumbers(strand: number, spread: number, out: number[]) {
  * 2 wide, 3 core): the inner strands reach the wide and core tiers, the outer ones only
  * the thin and medium. Tier windows are centred on 8:40.
  */
-function appendCrescent(builders: PathBuilder[], pieces: number[], state: FrameState) {
+function appendCrescent(builders: PathBuilder[], pieces: number[], state: HologramFrameState) {
   'worklet';
   const spread = state.spread;
   const shatterClock = burstClock(state.burstCount);
@@ -3008,7 +3116,7 @@ function appendCrescent(builders: PathBuilder[], pieces: number[], state: FrameS
  * tapered band; while he talks they spread to 0.94-1.19R, thin, break up and lose
  * their hot core.
  */
-function drawCrescent(canvas: HologramCanvas, resources: Resources, scene: Scene, state: FrameState) {
+function drawCrescent(canvas: HologramCanvas, resources: Resources, scene: HologramScene, state: HologramFrameState) {
   'worklet';
   const weight = Math.max(state.script.crescentWeight, 0.65 * state.agitation) * state.rimAlpha;
   if (weight <= 0.01) return;
@@ -3048,7 +3156,7 @@ function drawCrescent(canvas: HologramCanvas, resources: Resources, scene: Scene
  * 0.92-1.02R band 1.3-1.6× as bright as the band inside it) — which also shows under a
  * leading ladder ring.
  */
-function drawThinRing(canvas: HologramCanvas, resources: Resources, state: FrameState) {
+function drawThinRing(canvas: HologramCanvas, resources: Resources, state: HologramFrameState) {
   'worklet';
   const script = state.script;
   const ridge = script.ringWeight * state.rimAlpha;
@@ -3071,7 +3179,7 @@ function drawThinRing(canvas: HologramCanvas, resources: Resources, state: Frame
  * and thin streak arcs at 1.2-1.27R. Each is a slot on its own clock; agitation only
  * decides which slots show, and a slot fades through its length, so nothing pops.
  */
-function drawFray(canvas: HologramCanvas, resources: Resources, scene: Scene, state: FrameState) {
+function drawFray(canvas: HologramCanvas, resources: Resources, scene: HologramScene, state: HologramFrameState) {
   'worklet';
   const drive = state.frayDrive;
   if (drive <= 0.02) return;
@@ -3212,7 +3320,7 @@ function appendBurstChip(
  * on black). Where they leave from, and each chip's size and speed, come from the burst's
  * number, so a burst always looks the same.
  */
-function drawChips(canvas: HologramCanvas, resources: Resources, state: FrameState) {
+function drawChips(canvas: HologramCanvas, resources: Resources, state: HologramFrameState) {
   'worklet';
   const age = state.burstAge;
   const strength = state.burstStrength;
@@ -3246,7 +3354,7 @@ function drawChips(canvas: HologramCanvas, resources: Resources, state: FrameSta
 // ---- rare accents -------------------------------------------------------------------------
 
 /** The jagged lightning filament, re-jagged every film frame, and the very rare two-frame red segment. */
-function drawAccents(canvas: HologramCanvas, resources: Resources, state: FrameState) {
+function drawAccents(canvas: HologramCanvas, resources: Resources, state: HologramFrameState) {
   'worklet';
   const script = state.script;
   const alpha = state.rimAlpha;
@@ -3290,7 +3398,7 @@ function drawAccents(canvas: HologramCanvas, resources: Resources, state: FrameS
  * sphere rather than sitting on it. Nothing at all when he is not thinking, which is most of the
  * time — the whole function is two comparisons then.
  */
-function drawThinkingPulse(canvas: HologramCanvas, resources: Resources, state: FrameState) {
+function drawThinkingPulse(canvas: HologramCanvas, resources: Resources, state: HologramFrameState) {
   'worklet';
   const strength = state.thinking * state.pulse;
   if (strength <= 0) return;
@@ -3304,7 +3412,7 @@ export function drawHologram(
   canvas: HologramCanvas,
   size: number,
   frame: HologramFrame,
-  scene: Scene,
+  scene: HologramScene,
   resources: Resources,
 ) {
   'worklet';

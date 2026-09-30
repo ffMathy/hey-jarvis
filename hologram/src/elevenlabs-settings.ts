@@ -76,3 +76,45 @@ export function parseElevenLabsSettings(
 
   return { settings: { apiKey: rawApiKey.trim(), agentId: rawAgentId.trim() } };
 }
+
+/**
+ * Where the ElevenLabs API key and agent ID are kept, in whatever key-value store the device has —
+ * the Android keystore on a phone, `localStorage` in a browser.
+ *
+ * A new key rather than the one the earlier server settings used: what was kept under that one is
+ * a different shape, and reading it as this one would only ever fail. An install that has it simply
+ * opens on the settings screen.
+ *
+ * Here, with the reading and writing of what is stored under it, rather than in the phone app,
+ * because more than one app reads the same store: the headset's page is published on the same
+ * origin as the phone app's web build, so it sees the same `localStorage`. A key or a format kept
+ * by one app alone is a rename away from the other quietly finding nothing.
+ */
+export const ELEVENLABS_SETTINGS_STORAGE_KEY = 'jarvis.elevenlabs-settings';
+
+/**
+ * Narrows what came back out of storage, which is only ever a string, to settings — or nothing,
+ * when it is not the shape {@link serialiseElevenLabsSettings} writes.
+ *
+ * Text that is not JSON at all throws, as `JSON.parse` does, and what that means is the caller's to
+ * decide.
+ */
+export function parseStoredElevenLabsSettings(stored: string): ElevenLabsSettings | undefined {
+  const parsed: unknown = JSON.parse(stored);
+
+  if (typeof parsed !== 'object' || parsed === null || !('apiKey' in parsed) || !('agentId' in parsed)) {
+    return undefined;
+  }
+
+  const { apiKey, agentId } = parsed;
+  if (typeof apiKey !== 'string' || !apiKey || typeof agentId !== 'string' || !agentId) {
+    return undefined;
+  }
+
+  return { apiKey, agentId };
+}
+
+/** What is kept under {@link ELEVENLABS_SETTINGS_STORAGE_KEY}, for {@link parseStoredElevenLabsSettings} to read back. */
+export function serialiseElevenLabsSettings(settings: ElevenLabsSettings): string {
+  return JSON.stringify(settings);
+}

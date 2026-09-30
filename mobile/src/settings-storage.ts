@@ -1,4 +1,9 @@
-import type { ElevenLabsSettings } from 'hologram';
+import {
+  ELEVENLABS_SETTINGS_STORAGE_KEY,
+  type ElevenLabsSettings,
+  parseStoredElevenLabsSettings,
+  serialiseElevenLabsSettings,
+} from 'hologram';
 import { readStoredValue, writeStoredValue } from './key-value-store';
 
 /**
@@ -9,27 +14,11 @@ import { readStoredValue, writeStoredValue } from './key-value-store';
  * `key-value-store.web.ts` is where that difference is kept. Everything above
  * this line is the same on both.
  *
- * A new key rather than the one the earlier server settings used: what was kept
- * under that one is a different shape, and reading it as this one would only
- * ever fail. An install that has it simply opens on the settings screen.
+ * The key and the format of what is kept under it are `hologram`'s
+ * (`ELEVENLABS_SETTINGS_STORAGE_KEY` in `hologram/src/elevenlabs-settings.ts`),
+ * because the headset's page reads the same `localStorage` as this app's web
+ * build. What is left here is only the reading and writing.
  */
-const STORAGE_KEY = 'jarvis.elevenlabs-settings';
-
-/** Narrows what came back out of storage, which is only ever a string. */
-function readSettings(stored: string): ElevenLabsSettings | undefined {
-  const parsed: unknown = JSON.parse(stored);
-
-  if (typeof parsed !== 'object' || parsed === null || !('apiKey' in parsed) || !('agentId' in parsed)) {
-    return undefined;
-  }
-
-  const { apiKey, agentId } = parsed;
-  if (typeof apiKey !== 'string' || !apiKey || typeof agentId !== 'string' || !agentId) {
-    return undefined;
-  }
-
-  return { apiKey, agentId };
-}
 
 /**
  * What came back: the settings, nothing stored at all, or a read that failed.
@@ -56,7 +45,7 @@ export type StoredSettings =
 export async function loadElevenLabsSettings(): Promise<StoredSettings> {
   let stored: string | undefined;
   try {
-    stored = await readStoredValue(STORAGE_KEY);
+    stored = await readStoredValue(ELEVENLABS_SETTINGS_STORAGE_KEY);
   } catch (error: unknown) {
     return { kind: 'unreadable', why: error instanceof Error ? error.message : 'the keystore could not be read' };
   }
@@ -67,10 +56,10 @@ export async function loadElevenLabsSettings(): Promise<StoredSettings> {
 
   // A corrupted entry *is* "nothing usable": it can never become readable, and answering anything
   // else would wedge the app on a screen it cannot leave. Only the throw above is worth retrying.
-  const settings = readSettings(stored);
+  const settings = parseStoredElevenLabsSettings(stored);
   return settings ? { kind: 'settings', settings } : { kind: 'nothing' };
 }
 
 export async function saveElevenLabsSettings(settings: ElevenLabsSettings): Promise<void> {
-  await writeStoredValue(STORAGE_KEY, JSON.stringify(settings));
+  await writeStoredValue(ELEVENLABS_SETTINGS_STORAGE_KEY, serialiseElevenLabsSettings(settings));
 }

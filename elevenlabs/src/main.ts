@@ -245,8 +245,9 @@ class ElevenLabsAgentManager {
       console.log('🔧 Setting textOnly to true for test agent');
 
       // The socket only carries the events an agent is configured to emit, and
-      // the tests assert that MCP tools were called. Production has no such
-      // listener, so this stays a test-agent concern.
+      // the tests assert that MCP tools were called. The production config lists
+      // it too (the apps' thinking phase listens for it), so this only guards a
+      // config that has lost it.
       const clientEvents = config.conversationConfig.conversation.clientEvents ?? [];
       if (!clientEvents.includes(ClientEvent.McpToolCall)) {
         config.conversationConfig.conversation.clientEvents = [...clientEvents, ClientEvent.McpToolCall];

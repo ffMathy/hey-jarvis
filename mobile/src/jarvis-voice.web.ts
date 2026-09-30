@@ -1,9 +1,12 @@
-import { useConversationMode, useConversationStatus, useRawConversation } from '@elevenlabs/react-native';
-import { useSdkVoiceReaders } from 'hologram/conversation';
-import { useEffect, useMemo, useState } from 'react';
-import { type AgentTrackRoom, agentAudioTracks, followAgentTrack, roomOfConversation } from './agent-audio-track';
-import type { UseJarvisVoice } from './platform-contracts';
-import { createPlayedVoiceReaders, type PlayedAudioSource, readingWindowSize } from './played-voice';
+import {
+  type AgentTrackRoom,
+  agentAudioTracks,
+  createPlayedVoiceReaders,
+  followAgentTrack,
+  type PlayedAudioSource,
+  readingWindowSize,
+} from 'hologram';
+import type { FollowJarvisVoice, UseJarvisVoice } from './platform-contracts';
 
 /** An analyser watching one track, and the way to let go of it. */
 interface OpenedAudio {
@@ -72,56 +75,38 @@ function listenToTrack(track: MediaStreamTrack): OpenedAudio | undefined {
 }
 
 /**
- * The conversation's output audio in a browser, read from the audio itself.
+ * Jarvis's voice in a browser, read from the audio itself.
  *
- * It used to be whatever the SDK said — `useAgentVoice`, which is still what the watch uses and
- * still the fallback here. The SDK's volume is the mean of an `AnalyserNode`'s byte spectrum on a
- * −100 dB floor, which never reads silence as silence: the gaps between Jarvis's words stayed well
- * above the tracker's speech threshold, so the sphere stayed agitated and the rim threw chips
- * through them. See `played-voice.ts` for the whole of that argument.
+ * It used to be whatever the SDK said, which is still the fallback here and the whole of the voice
+ * on the watch. The SDK's volume is the mean of an `AnalyserNode`'s byte spectrum on a −100 dB
+ * floor, which never reads silence as silence: the gaps between Jarvis's words stayed well above
+ * the tracker's speech threshold, so the sphere stayed agitated and the rim threw chips through
+ * them. See `hologram/src/played-voice.ts` for the whole of that argument.
  *
- * So the track is found in the LiveKit room the same way the phone finds it — `agent-audio-track.ts`,
- * shared between them — and analysed with the same code the phone runs on its tapped samples. What
- * differs is only how the samples are come by: natively there, through Web Audio here.
+ * So the track is found in the LiveKit room the same way the phone finds it —
+ * `hologram/src/agent-audio-track.ts`, shared between them — and analysed with the same code the
+ * phone runs on its tapped samples. What differs is only how the samples are come by: natively
+ * there, through Web Audio here. Handed to the session as its `followAgentVoice`.
  */
-export const useJarvisVoice: UseJarvisVoice = () => {
-  const { status } = useConversationStatus();
-  const { mode } = useConversationMode();
-  const conversation = useRawConversation();
-  const sdkReaders = useSdkVoiceReaders();
-  const [agentTrack, setAgentTrack] = useState<MediaStreamTrack | undefined>(undefined);
-  const [playedAudio, setPlayedAudio] = useState<PlayedAudioSource | undefined>(undefined);
-
-  useEffect(() => {
-    const room = conversation ? roomOfConversation(conversation) : undefined;
-    if (!room) {
-      setAgentTrack(undefined);
-      return;
-    }
-    return followAgentTrack(room, findPlayableTrack, (one, other) => one === other, setAgentTrack);
-  }, [conversation]);
-
-  useEffect(() => {
-    if (!agentTrack) {
-      return;
-    }
-    const opened = listenToTrack(agentTrack);
-    if (!opened) {
-      // Not listenable after all: the SDK's readers carry on.
-      return;
-    }
-    setPlayedAudio(opened.source);
-    return () => {
-      setPlayedAudio(undefined);
-      opened.close();
-    };
-  }, [agentTrack]);
-
-  // Remade only when the audio behind them is, so they stay the same functions while Jarvis
-  // switches between speaking and listening — see `useSdkVoiceReaders` for why that matters.
-  const playedReaders = useMemo(() => (playedAudio ? createPlayedVoiceReaders(playedAudio) : undefined), [playedAudio]);
-  const readers = playedReaders ?? sdkReaders;
-
-  const listening = status === 'connected';
-  return { listening, speaking: listening && mode === 'speaking', ...readers };
+export const followJarvisVoice: FollowJarvisVoice = (room, onReaders) => {
+  let opened: OpenedAudio | undefined;
+  const stopFollowing = followAgentTrack(
+    room,
+    findPlayableTrack,
+    (one, other) => one === other,
+    (track) => {
+      opened?.close();
+      opened = track ? listenToTrack(track) : undefined;
+      // Not listenable after all, or gone: the SDK's readers carry on.
+      onReaders(opened ? createPlayedVoiceReaders(opened.source) : undefined);
+    },
+  );
+  return () => {
+    stopFollowing();
+    opened?.close();
+    opened = undefined;
+  };
 };
+
+/** The voice the sphere follows in a conversation: the session's own. See `jarvis-voice.ts`. */
+export const useJarvisVoice: UseJarvisVoice = (voice) => voice;

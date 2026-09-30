@@ -9,7 +9,7 @@
  * **Skia-free, like `lifecycle.ts`, and for the same reason.** A browser screen can import this
  * before CanvasKit has loaded, so nothing here may reach `@shopify/react-native-skia`;
  * `react.contract.spec.ts` checks it. The moods themselves, their names and the readout's text are
- * in the main `hologram` entry, which imports nothing at all.
+ * in the main `hologram` entry, which needs no framework at all.
  */
 
 export { FrameRate } from './frame-rate';

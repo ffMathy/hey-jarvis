@@ -10,31 +10,30 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import {
-  advanceVoiceActivity,
+  advanceFrameClock,
   createDensityControl,
+  createFrameClockState,
   createHologramResources,
   createHologramScene,
-  createVoiceActivityState,
+  createReleasableHologramResources,
   type DensityPace,
   drawHologram,
-  easeBands,
-  easeHearing,
-  easeHearingLevel,
-  easeLevel,
   foldSpectrum,
+  frameStepSeconds,
   hearingFromPresence,
   hearingLevelFromVolume,
-  MATERIALISE_SECONDS,
+  hologramFrameOf,
   PARTICLE_COUNT,
   perceivedLevel,
+  READ_INTERVAL_MS,
+  restartArrival,
+  SCENE_SEED,
   seedFromRemembered,
   steerDensity,
   VOICE_BAND_COUNT,
-  voiceDrive,
 } from '../index';
 import type { JarvisVoice, UserVoice } from '../voice-contract';
 import { useIsForeground } from './is-foreground';
-import { LEAVING_SECONDS } from './leaving';
 
 export interface JarvisHologramProps {
   /** Width and height of the square it is drawn in, in points. */
@@ -163,9 +162,6 @@ export interface JarvisHologramProps {
   background?: string;
 }
 
-/** How long it takes to fall into a thought, and to come out of one. */
-const THOUGHT_FADE_SECONDS = 0.45;
-
 /**
  * How long the canvas is covered for when it first appears, in milliseconds.
  *
@@ -263,31 +259,17 @@ const DRAWN_RESOLUTION = 0.45;
 const DRAWN_IN_A_LAYER = Platform.OS === 'android';
 
 /**
- * The shortest gap between two drawn frames: a hundred and twenty a second at most.
+ * Whether the paths each frame makes have to be deleted by hand once the picture is recorded.
  *
- * **This is a safety rail, not the frame rate.** What Jarvis actually runs at is decided by
- * `density-control.ts`, which adds particles until building a picture takes `BUILD_BUDGET_MS`, and
- * never past a count at which the frame rate was seen falling below `TARGET_FRAMES_PER_SECOND`. This
- * only stops a very fast phone with very few particles from redrawing faster than any screen can
- * show.
- *
- * **It was a forty-eighth for an hour, and that was a real mistake**: capping at the rate the loop
- * was aiming for made the loop blind, because a measurement can never come back above its own cap,
- * so "exactly fast enough" and "could draw three times as much" read identically. On a 60 Hz screen
- * it was worse than blind. A gate can only produce the refresh divided by a whole number, so a
- * forty-eighth yields thirty there — and the loop, told to hold forty, read thirty as the phone
- * struggling and stripped the particles to the floor. Two hundred and fifty of the five thousand
- * there were then, at a rate the cap itself had imposed.
- *
- * A hundred-and-twenty-eighth rather than a hundred-and-twentieth so the arithmetic lands on the
- * right side of a real screen's timing: at 120 Hz frames arrive every 8.3 ms, which clears 7.8 and
- * draws every one.
- *
- * The clock is not tied to it either way. Time keeps adding up every frame the screen offers and
- * the whole of it is handed over when a picture is built, so this changes how often Jarvis is drawn
- * and never how fast he moves.
+ * In a browser they do. There React Native Skia's API is a thin layer over CanvasKit's WebAssembly
+ * objects, which nothing ever frees: no finalizer, no garbage collection reaching into the wasm heap.
+ * The drawing makes a few dozen paths a frame, so a page left showing Jarvis grew by some 84 KB a
+ * frame at full density — measured headlessly over CanvasKit — until the tab ran out of memory. The
+ * recorded picture holds its own reference to every path it drew, so deleting ours afterwards costs
+ * the picture nothing. On a phone and a watch the JSI objects are freed with their JavaScript wrappers,
+ * so nothing changes there: the resources are the plain ones and nothing is released.
  */
-const MINIMUM_FRAME_SECONDS = 1 / 128;
+const RELEASES_PATHS_BY_HAND = Platform.OS === 'web';
 
 /** How long the frame rate is averaged over before it is reported. Long enough not to flicker. */
 const FRAME_RATE_OVER_SECONDS = 0.5;
@@ -320,13 +302,6 @@ const FRAME_RATE_OVER_SECONDS = 0.5;
  */
 const LONGEST_FRAME_WORTH_MEASURING = 0.2;
 
-/**
- * How often the voice is read. The SDK's native processors refresh every 40 ms,
- * so reading faster only re-reads the same value; the UI thread eases between
- * readings every frame, which is where the smoothness comes from.
- */
-const READ_INTERVAL_MS = 40;
-
 /** The step assumed for a frame with no previous one to measure from. */
 const DEFAULT_FRAME_MS = 16;
 
@@ -335,9 +310,6 @@ function meanOf(total: number, count: number): number {
   'worklet';
   return count > 0 ? total / count : 0;
 }
-
-/** Fixed, so the hologram has the same shape every time the app opens. */
-const SCENE_SEED = 1337;
 
 /**
  * Jarvis, drawn: a golden holographic sphere that turns on its own and grows
@@ -371,7 +343,15 @@ function JarvisHologramView({
   const isForeground = useIsForeground();
   const drawnSize = Math.round(size * DRAWN_RESOLUTION);
   const scene = useMemo(() => createHologramScene(SCENE_SEED, particleCount), [particleCount]);
-  const resources = useMemo(() => createHologramResources(Skia, scene), [scene]);
+  // In a browser, resources that remember the paths each frame makes, so they can be deleted once
+  // the picture is recorded: see RELEASES_PATHS_BY_HAND. Undefined on a device, where the worklet
+  // then captures nothing it could not carry to the UI thread.
+  const releasable = useMemo(
+    () => (RELEASES_PATHS_BY_HAND ? createReleasableHologramResources(Skia, scene) : undefined),
+    [scene],
+  );
+  const resources = useMemo(() => releasable?.resources ?? createHologramResources(Skia, scene), [releasable, scene]);
+  useEffect(() => () => releasable?.dispose(), [releasable]);
 
   const targetLevel = useSharedValue(0);
   // The person talking to him, as last read: see `user`.
@@ -381,7 +361,8 @@ function JarvisHologramView({
   const speakingNow = useSharedValue(speaking);
   const thinkingNow = useSharedValue(thinking);
   const leavingNow = useSharedValue(leaving);
-  // Everything the drawing reads, in one value, advanced once a frame.
+  // Everything the drawing reads, in one value, advanced once a frame: the frame clock the headset
+  // steps too (see `frame-clock.ts` in the main entry).
   //
   // These were six shared values — the clock, the level, the bands, and the
   // tracker's agitation, burst age and burst count. Each write is a reason for the
@@ -391,17 +372,7 @@ function JarvisHologramView({
   // frame cannot see — whether the voice just started or stopped, and how long ago
   // the rim last threw chips — is the tracker's state, which rides along here so it
   // is advanced in place by the same `modify`.
-  const frame = useSharedValue({
-    time: 0,
-    level: 0,
-    bands: new Array(VOICE_BAND_COUNT).fill(0) as number[],
-    speaking,
-    thinking: 0,
-    presence: 1,
-    hearing: 0,
-    hearingLevel: 0,
-    activity: createVoiceActivityState(quietestSpeech),
-  });
+  const frame = useSharedValue(createFrameClockState(quietestSpeech, speaking));
 
   useEffect(() => {
     speakingNow.value = speaking;
@@ -536,10 +507,11 @@ function JarvisHologramView({
 
   const clock = useFrameCallback((info) => {
     waiting.value += (info.timeSincePreviousFrame ?? DEFAULT_FRAME_MS) / 1000;
-    if (waiting.value < MINIMUM_FRAME_SECONDS) {
+    // Nought while what has waited is still under MINIMUM_FRAME_SECONDS, and then the whole of it.
+    const deltaSeconds = frameStepSeconds(waiting.value);
+    if (deltaSeconds === 0) {
       return;
     }
-    const deltaSeconds = waiting.value;
     waiting.value = 0;
     // A frame has been asked for, so a picture is about to exist. Exactly 1 only before the fade
     // has started, so this runs once.
@@ -548,19 +520,17 @@ function JarvisHologramView({
     }
     frame.modify((current) => {
       'worklet';
-      current.time += deltaSeconds;
-      current.level = easeLevel(current.level, targetLevel.value, deltaSeconds);
-      current.bands = easeBands(current.bands, targetBands.value, deltaSeconds);
-      current.speaking = speakingNow.value;
-      // Toward whichever end the app is asking for, at a fixed rate: see THOUGHT_FADE_SECONDS.
-      const towardThought = (thinkingNow.value ? 1 : -1) * (deltaSeconds / THOUGHT_FADE_SECONDS);
-      current.thinking = Math.min(1, Math.max(0, current.thinking + towardThought));
-      const towardGone = (leavingNow.value ? -1 : 1) * (deltaSeconds / LEAVING_SECONDS);
-      current.presence = Math.min(1, Math.max(0, current.presence + towardGone));
-      current.hearing = easeHearing(current.hearing, targetHearing.value, deltaSeconds);
-      current.hearingLevel = easeHearingLevel(current.hearingLevel, targetHearingLevel.value, deltaSeconds);
-      advanceVoiceActivity(current.activity, targetLevel.value, deltaSeconds);
-      return current;
+      return advanceFrameClock(
+        current,
+        deltaSeconds,
+        targetLevel.value,
+        targetBands.value,
+        speakingNow.value,
+        thinkingNow.value,
+        leavingNow.value,
+        targetHearing.value,
+        targetHearingLevel.value,
+      );
     });
 
     if (frameRate === undefined) {
@@ -609,9 +579,7 @@ function JarvisHologramView({
     if (isForeground) {
       frame.modify((current) => {
         'worklet';
-        current.time = 0;
-        current.presence = 1;
-        return current;
+        return restartArrival(current);
       });
     }
     clock.setActive(isForeground);
@@ -624,7 +592,6 @@ function JarvisHologramView({
     // Read once: this is a copy out of the UI runtime, and the drawing wants nine
     // fields of it.
     const current = frame.value;
-    const activity = current.activity;
     const recorder = Skia.PictureRecorder();
     const bounds = Skia.XYWHRect(0, 0, drawnSize, drawnSize);
     const canvas = recorder.beginRecording(bounds);
@@ -635,36 +602,16 @@ function JarvisHologramView({
     if (background !== undefined) {
       canvas.drawColor(Skia.Color(background));
     }
-    drawHologram(
-      canvas,
-      drawnSize,
-      {
-        time: current.time,
-        // Judged against how loud this voice actually gets, not against full scale. A phone
-        // microphone in a quiet room never comes near 1, and the sphere answering the absolute
-        // number is why the user saw almost no change however far the answer was turned up.
-        level: voiceDrive(current.level, activity.loudest),
-        bands: current.bands,
-        speaking: current.speaking,
-        agitation: activity.agitation,
-        burstAge: activity.burstAge,
-        burstStrength: activity.burstStrength,
-        burstCount: activity.burstCount,
-        // The materialisation plays once, from the moment this canvas mounted.
-        appearance: Math.min(1, current.time / MATERIALISE_SECONDS),
-        thinking: current.thinking,
-        hearing: current.hearing,
-        hearingLevel: current.hearingLevel,
-        presence: current.presence,
-        density: density.value.density,
-      },
-      scene,
-      resources,
-    );
+    // The level judged against how loud this voice actually gets, and the materialisation played
+    // once from the start of the arrival: see `hologramFrameOf`.
+    drawHologram(canvas, drawnSize, hologramFrameOf(current, density.value.density), scene, resources);
     if (DRAWN_IN_A_LAYER) {
       canvas.restore();
     }
     const recorded = recorder.finishRecordingAsPicture();
+    if (RELEASES_PATHS_BY_HAND) {
+      releasable?.release();
+    }
     const took = performance.now() - startedAt;
     built.value += 1;
     buildingFor.value += took;

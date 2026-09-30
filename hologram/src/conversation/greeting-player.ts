@@ -1,25 +1,8 @@
 import { requireOptionalNativeModule } from 'expo';
 import { useMemo } from 'react';
 import { Image } from 'react-native';
+import type { GreetingPlayer } from '../session-contract';
 import { GREETING_SOUND } from './greeting-sound';
-
-/** What the greeting needs of whatever plays the recording. */
-export interface GreetingPlayer {
-  /**
-   * Resolves once what is played can be heard where it will be played — at once, unless a headset's
-   * call audio is still coming up. Never rejects: a route that does not answer is waited out.
-   */
-  untilAudible(): Promise<void>;
-  /** Plays from the start. Resolves whether it is playing, which is false if it could not. */
-  playFromStart(): Promise<boolean>;
-  pause(): void;
-  /** Whether it is audibly playing right now. */
-  readonly playing: boolean;
-  /** Where it is in the recording, in seconds. */
-  readonly currentTime: number;
-  /** How long the recording is, in seconds, or 0 while that is not known. */
-  readonly duration: number;
-}
 
 /** `hologram/android`'s `JarvisGreetingModule`. */
 interface JarvisGreeting {
@@ -48,7 +31,8 @@ const WAIT_FOR_HEADSET_MS = 2500;
 const jarvisGreeting = requireOptionalNativeModule<JarvisGreeting>('JarvisGreeting') ?? undefined;
 
 /**
- * The recording on a phone and a watch: played as call audio, by `hologram/android`.
+ * The recording on a phone and a watch: played as call audio, by `hologram/android`, inside the
+ * call's audio session the session switches into first (`call-audio.ts`).
  *
  * **Not through expo-audio, which is what it used to be.** expo-audio plays as media
  * (`USAGE_MEDIA`), and on a phone the greeting was not heard that way — not on its own, and not
@@ -77,13 +61,10 @@ export function useGreetingPlayer(): GreetingPlayer {
           return false;
         }
       },
-      pause: () => module?.pause(),
-      get playing() {
-        return module?.isPlaying() ?? false;
-      },
-      get currentTime() {
-        return module?.currentTime() ?? 0;
-      },
+      stop: () => module?.pause(),
+      // Silence until the recording is actually playing, and after it stops: the sphere follows
+      // what can be heard, not what was asked for.
+      position: () => (module?.isPlaying() ? module.currentTime() : -1),
       get duration() {
         return module?.duration() ?? 0;
       },

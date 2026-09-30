@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Wake word check</title>
+    <!-- Not part of the site: tests/e2e/wake.spec.ts builds this page on its own, with the app's
+         Vite config, to run the real wake pipeline in Chromium. -->
+  </head>
+  <body>
+    <button id="listen" type="button">Listen</button>
+    <pre id="health" role="status"></pre>
+    <script type="module" src="./wake-harness.ts"></script>
+  </body>
+</html>

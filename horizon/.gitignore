@@ -1,0 +1,7 @@
+# Copied out of canvaskit-wasm and onnxruntime-web by `turbo initialize`
+# (.scripts/initialize.sh); the lockfile pins them, so they are not committed.
+/public/vendor/
+
+# Playwright output from `turbo e2e`
+/playwright-report
+/test-results

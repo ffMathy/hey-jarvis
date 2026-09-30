@@ -49,8 +49,10 @@ import {
   createHologramScene,
   drawHologram,
   PARTICLE_COUNT,
+  SCENE_SEED,
   type SimulatedMood,
   SPHERE_FRACTION,
+  THOUGHT_FADE_SECONDS,
   WATCH_PARTICLE_COUNT,
 } from '../src/index';
 import { createPerformance, findLoudestMoment, type SimulatedFrame, stillMoment } from './simulated-performance';
@@ -58,9 +60,6 @@ import { createPerformance, findLoudestMoment, type SimulatedFrame, stillMoment 
 /** The clock the simulated voice is advanced on, matching the clips. */
 const FRAMES_PER_SECOND = 60;
 const FRAME_SECONDS = 1 / FRAMES_PER_SECOND;
-
-/** How long a thought takes to settle in: `THOUGHT_FADE_SECONDS` in `hologram-view.tsx`. */
-const THOUGHT_FADE_SECONDS = 0.45;
 
 /** How far into a speech to look for its loudest instant. */
 const LISTEN_SECONDS = 9;
@@ -480,7 +479,7 @@ async function main() {
     if (known) {
       return known;
     }
-    const scene = createHologramScene(1337, particles);
+    const scene = createHologramScene(SCENE_SEED, particles);
     const built = { scene, resources: createHologramResources(skia, scene) };
     hologramFor.set(particles, built);
     return built;

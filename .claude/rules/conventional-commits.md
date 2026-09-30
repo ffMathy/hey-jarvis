@@ -33,7 +33,7 @@ Use project-specific scopes:
 
 **MCP project:** `mcp`, `agents`, `workflows`, `tools`, `weather`, `shopping`, `cooking`, `coding`
 
-**Other projects:** `firmware`, `elevenlabs`
+**Other projects:** `firmware`, `elevenlabs`, `hologram`, `mobile`, `watch`, `horizon`
 
 ## Subject Line Rules
 

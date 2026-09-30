@@ -23,6 +23,7 @@ import {
   foldSpectrum,
   hearingFromPresence,
   hearingLevelFromVolume,
+  LEAVING_SECONDS,
   MATERIALISE_SECONDS,
   perceivedLevel,
   type SimulatedMood,
@@ -31,7 +32,6 @@ import {
   VOICE_BAND_COUNT,
   voiceDrive,
 } from '../src/index';
-import { LEAVING_SECONDS } from '../src/react/leaving';
 
 /**
  * What is happening at one instant, as far as the sphere is concerned.
